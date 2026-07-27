@@ -116,7 +116,7 @@ The system is designed for migration. Every Cloudflare-specific service is hidde
 
 The monorepo is organized by contract. Shared Zod schemas are the single source of truth for client and server. Files are small and focused. Contracts, types, and tests are written before implementation. Schema changes require both server and client migrations. API versions are explicit; breaking changes get a new version, never an in-place break.
 
-Gated by: `vp check` (lint + typecheck) and `vp test` (coverage > 80%) on every PR.
+Gated by: `bun run check` (lint + typecheck) and `bun run test` (coverage > 80%) on every PR.
 
 ### Versioning and client lifecycle
 
@@ -125,14 +125,14 @@ All API routes are under `/v1/`. The Service Worker uses versioned precache with
 ### Monorepo layout
 
 ```
-my-app/
+.
 ├── apps/
 │   ├── web/                    # React 19 PWA
 │   │   ├── src/routes/         # File-based routes
-│   │   ├── src/components/     # shadcn/ui + custom
+│   │   ├── src/components/     # UI components
 │   │   ├── src/lib/            # MergeableStore, sync, i18n, migrations
 │   │   └── public/             # manifest, icons
-│   └── api/                    # Hono RPC Worker
+│   └── api/                    # Hono Worker (also serves web assets)
 │       ├── src/routes/         # /v1/* route handlers
 │       ├── src/lib/            # auth, db, merge, payments, middleware
 │       └── wrangler.toml
@@ -146,9 +146,9 @@ my-app/
 │   ├── e2e.yml                 # Playwright-BDD vs wrangler dev
 │   ├── staging.yml             # Deploy staging → BDD + DAST + fuzz
 │   └── deploy.yml              # Promote staging → production + smoke tests
-├── ARCHITECTURE.md             # ← this file
+├── docs/ARCHITECTURE.md        # ← this file
 ├── AGENTS.md                   # ← normative rules
-├── flake.nix                   # reproducible dev shell
+├── flake.nix                   # optional reproducible dev shell
 └── adr/                        # architecture decision records
 ```
 
@@ -184,7 +184,7 @@ This means contracts, types, and tests exist before code. Coverage is enforced b
 
 Coverage gate: greater than 80 percent.
 
-Gated by: `vp test` with coverage enforcement; `size-limit` for bundle budget.
+Gated by: `bun run test` with coverage enforcement; `bun run size-limit` for bundle budget.
 
 ---
 
@@ -228,10 +228,30 @@ Gated by: lint rules for file size (300 lines max) and dependency count (5 direc
 | UI | shadcn/ui + Tailwind | Owned source, Radix accessibility, build-time only CSS. |
 | PWA | vite-plugin-pwa | Service Worker, manifest, precache, update-prompt flow. |
 | i18n | Build-time translations | English and Indonesian. Intl API for dates, numbers, currency. |
-| Tooling | Vite+ | Unified task runner: dev, build, test, lint, format, typecheck. |
-| TypeScript | tsgo | Native TypeScript compiler. Strict mode. |
+| Tooling | Vite+ (`vp`) via Bun scripts | `bun run check|test|build|dev`. Root scripts wrap `vp` when present, else direct tools. |
+| TypeScript | typescript (strict) | Strict mode. `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`. |
 | Package manager | Bun | Native workspaces. Single lockfile. |
-| Dev environment | Nix Flakes | Reproducible shell: identical Bun, Node, Wrangler across all machines. |
+| Dev environment | Nix Flakes (optional) | Pinned Bun, Node, Wrangler when Nix is available. |
 | Testing | Vitest + Playwright-BDD + fast-check | Unit, E2E, and property-based testing. |
 | Error tracking | Sentry | Client and Worker errors and replays. Degrades past free quota. |
 | Log ingestion | Workers Logs | Structured JSON logs via Logger adapter. |
+
+---
+
+## 14. Tooling
+
+Root `package.json` scripts are the single source of truth for gates:
+
+| Script | Purpose |
+|---|---|
+| `bun run check` | format/lint/typecheck |
+| `bun run test` | unit + property tests (coverage gate) |
+| `bun run size-limit` | bundle budget (&lt;200 KB gzipped JS) |
+| `bun run build` | build web + prepare worker |
+| `bun run dev` | local worker + web |
+| `bun run deploy` | `wrangler deploy` (requires login) |
+| `bun run deploy:staging` | deploy `--env staging` |
+
+Vite+ (`vite-plus` / `vp`) is preferred when installed. Scripts fall back to `tsc`, `vitest`, and `vite` so CI works without a global `vp` binary.
+
+This repo is a **working Hello World**, not a prose scaffold. There is no bootstrap skill — start features with `grill-with-docs` / `guided-implementation`.

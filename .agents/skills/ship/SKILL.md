@@ -35,7 +35,7 @@ Expected: `{"status":"ok","env":"staging"}`. If the health endpoint fails, stop 
 The BDD suite exercises user-facing flows against a live environment. Run it headless in CI or locally:
 
 ```bash
-vp e2e --env staging
+bun run e2e -- --env staging
 ```
 
 Or via the E2E workflow trigger. All scenarios must pass. Staging BDD catches integration gaps that unit tests miss: real D1 queries, real R2 operations, real webhook endpoints.

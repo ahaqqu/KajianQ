@@ -1,0 +1,50 @@
+name = "agentic-template"
+main = "src/index.ts"
+compatibility_date = "2025-07-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "agentic-template-db"
+database_id = "7dc87f2b-cc2b-437d-ac1a-05cd4134b26a"
+migrations_dir = "../../packages/db-schema/migrations"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "agentic-template-bucket"
+
+[assets]
+binding = "ASSETS"
+directory = "../web/dist"
+not_found_handling = "single-page-application"
+run_worker_first = true
+
+[observability]
+enabled = true
+
+[vars]
+APP_ENV = "production"
+ALLOWED_ORIGINS = "http://localhost:8787,http://127.0.0.1:8787,https://agentic-template.rumaq.workers.dev"
+
+[triggers]
+crons = ["0 3 * * *"]
+
+[env.staging]
+name = "agentic-template-staging"
+vars = { APP_ENV = "staging", ALLOWED_ORIGINS = "http://localhost:8787,https://agentic-template-staging.rumaq.workers.dev" }
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "agentic-template-db-staging"
+database_id = "local-agentic-template-db-staging"
+migrations_dir = "../../packages/db-schema/migrations"
+
+[[env.staging.r2_buckets]]
+binding = "BUCKET"
+bucket_name = "agentic-template-bucket-staging"
+
+[env.staging.assets]
+binding = "ASSETS"
+directory = "../web/dist"
+not_found_handling = "single-page-application"
+run_worker_first = true

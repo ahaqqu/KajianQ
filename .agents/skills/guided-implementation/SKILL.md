@@ -11,7 +11,7 @@ Use this skill when implementing a plan that is unclear, complex, or may affect 
 
 1. Read the plan.
 2. Read `AGENTS.md` for universal guardrails.
-3. Read `docs/ARCHITECTURE.md` §1–14 to verify alignment.
+3. Read `docs/ARCHITECTURE.md` fully (including §14 Tooling) to verify alignment.
 4. Review the domain checklist below for the areas your plan touches.
 5. List implementation steps: contracts → tests → implementation → validation.
 6. Highlight deviations. Do not start until the user confirms.
@@ -87,7 +87,7 @@ For each area the plan touches, verify compliance before writing code.
 
 ## After implementation
 
-- Run the project CI gate locally: `vp check && vp test && vp size-limit`. `vp` is the Vite+ task runner; run `vp help` if the command format differs. If no `vp` binary is available, see `docs/ARCHITECTURE.md` §14 for tooling to scaffold.
+- Run the project CI gate locally: `bun run check && bun run test && bun run size-limit`. See `docs/ARCHITECTURE.md` §14 for tooling.
 - Verify against `AGENTS.md` Definition of Done.
 - Report what was implemented and what changed from the plan.
 - **Handoff:** load `writing-tests` to add any missing unit, property, and BDD coverage. After tests pass with >80% coverage, load `pr-creation` to create the pull request.

@@ -1,6 +1,6 @@
 ---
 name: payment-integration
-description: Use when implementing payment flows, webhooks, or entitlements. Read AGENTS.md §Payments for guardrails.
+description: Use when implementing payment flows, webhooks, or entitlements. Read AGENTS.md Payments section for guardrails.
 ---
 
 # Payment Integration Skill

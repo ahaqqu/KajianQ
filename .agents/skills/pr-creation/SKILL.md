@@ -10,7 +10,7 @@ Use this skill when creating a pull request.
 ## Before creating the PR
 
 1. Create a branch from `main`.
-2. Run the project CI gate locally. If `scripts/ci-gate.sh` exists, run it. Otherwise run `vp check && vp test && vp size-limit`. Fix failures until green.
+2. Run the project CI gate locally: `bun run check && bun run test && bun run size-limit`. Fix failures until green.
 3. Read `AGENTS.md`. Validate code against the Definition of Done.
 4. Do not read `docs/ARCHITECTURE.md`.
 

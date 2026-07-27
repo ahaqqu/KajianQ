@@ -371,4 +371,4 @@ Tests are done when:
 - [ ] Property tests for sync merge assert idempotency, commutativity, and delete propagation.
 - [ ] Property tests for webhook handlers assert idempotency on random payloads.
 - [ ] BDD scenarios exist for every new user-facing flow, including offline and error states.
-- [ ] `vp test` passes with coverage above 80% on changed files.
+- [ ] `bun run test` passes with coverage above 80% on changed files.

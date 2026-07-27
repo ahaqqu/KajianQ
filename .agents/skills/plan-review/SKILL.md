@@ -32,3 +32,11 @@ For each principle in `docs/ARCHITECTURE.md`, verify the plan addresses it:
 ## Output
 
 Report what the plan covers, what it misses, and what violates architecture. Do not approve a plan that violates a principle without explicit user approval.
+
+Severity on each finding:
+
+- **BLOCK** — MUST/MUST NOT violation; plan cannot proceed
+- **FLAG** — SHOULD fix before implement; needs user decision
+- **NOTE** — observation only
+
+This repo is already a working monorepo (no bootstrap). Plans must extend the existing layout in `CONTEXT.md`, not invent a new scaffold.

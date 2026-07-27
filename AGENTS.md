@@ -14,6 +14,15 @@ These apply regardless of whether you are planning, implementing, reviewing, or 
 - When handling secrets, you MUST use `wrangler secret`. You MUST NEVER commit secrets to the repo.
 - Files are 300 lines or fewer with 5 or fewer direct dependencies.
 
+## Payments
+
+- Payments MUST go through the Payments adapter interface in `packages/infra`. Provider APIs are NEVER called from business logic.
+- Webhook handlers MUST verify signatures on the raw body before JSON parsing.
+- Webhook handlers MUST be idempotent (same payload twice = same state as once).
+- Every payment mutation MUST carry an idempotency key.
+- Premium features MUST be gated by ConfigStore entitlement checks at the edge, not only client-side.
+- Providers: Xendit (ID) and/or Polar MoR (global) behind one adapter. Per-transaction fees only — no fixed paid dependency on the critical path.
+
 ## Prior to implementation
 
 See `.agents/skills/grill-with-docs/SKILL.md` — sharpen designs through structured interview; produce ADRs and glossary.
@@ -22,14 +31,7 @@ See `.agents/skills/plan-review/SKILL.md` — validate your plan against archite
 
 ## During implementation
 
-See `.agents/skills/guided-implementation/SKILL.md` — contains the full domain-specific checklist for routes, database schema, sync, components, adapters, and payments. Load it when writing code. The checklist covers:
-
-- Routes: `/v1/` prefix, `@hono/zod-openapi`, OpenAPI spec regeneration
-- Database: Drizzle migrations, client migrations, `SCHEMA_VERSION` bumps
-- Sync: Tinybase MergeableStore CRDT, IndexedDB persistence, batching, multi-tab leader election
-- Components: shadcn/ui primitives, i18n wrapping, `Intl` API, Tailwind only
-- Adapters: interface-first in `packages/infra/`, env var injection
-- Payments: adapter interface only, webhook signature verification, idempotency
+See `.agents/skills/guided-implementation/SKILL.md` — domain checklist for routes, database schema, sync, components, adapters, and payments.
 
 See `.agents/skills/writing-tests/SKILL.md` — unit, property, BDD, and integration test patterns.
 
@@ -45,7 +47,7 @@ See `.agents/skills/diagnosing-bugs/SKILL.md` — tight feedback-loop-first debu
 
 ## Definition of Done
 
-- [ ] All CI gates green: `vp check`, `vp test`, coverage > 80%, `size-limit`, security scans.
+- [ ] All CI gates green: `bun run check`, `bun run test`, coverage > 80%, `bun run size-limit`, security scans.
 - [ ] Contracts written before implementation.
 - [ ] API or UI changes: BDD tests added covering the user-facing flow.
 - [ ] Schema changes: server migration + client migration + `SCHEMA_VERSION` bump.

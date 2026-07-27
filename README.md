@@ -1,130 +1,98 @@
 # Agentic Project Template
 
-A template for full-stack TypeScript projects built with Cloudflare Workers, React, and AI-assisted development. Mirrors the architecture, guardrails, and skill suite described in `docs/ARCHITECTURE.md`.
+Working full-stack starter for AI-assisted product development: Cloudflare Workers + React PWA + agent skills.
 
-## Structure
+**Tracer feature:** local-first **Notes** CRUD (create / read / update-via-sync / delete) with D1 sync. Payments are out of scope for this template.
 
-```
-.
-├── docs/
-│   └── ARCHITECTURE.md    # Philosophy — why the system is built this way
-├── AGENTS.md              # Normative guardrails for implementing agents
-├── .agents/
-│   └── skills/            # Agent skills: plan, implement, review, diagnose, ship
-└── .commandcode/
-    └── skills/            # Mirror of .agents/skills/ for alternate harness
-```
+## Purpose
 
-This template is a **meta-project**. It contains no application code — it defines the rules, conventions, skills, and architecture that agents and humans follow to build a correct, high-quality product. The actual scaffold (monorepo layout, `flake.nix`, CI workflows, `wrangler.toml`) is generated at project start.
+| Goal | How |
+|---|---|
+| Cheap | Cloudflare free tier |
+| Offline-first | Tinybase-style merge + IndexedDB + batched `/v1/sync` |
+| Fast | Bundle &lt;200 KB gzip; PWA |
+| Agent-ready | Zod contracts, adapters, ≤300-line files, skill pipeline |
+| Quality | Unit, property, BDD, size-limit, security CI |
 
-## Principles
-
-The architecture is organized around 12 gated principles:
-
-1. **Cost** — zero-cost free tier (Cloudflare free quotas)
-2. **Local-first** — works without network (Tinybase MergeableStore CRDT)
-3. **Performance** — fast on slow hardware (<200 KB gzipped bundle)
-4. **Cross-Platform** — PWA for Web, Android, iOS
-5. **Polished** — responsive, accessible, localized (en + id)
-6. **Secure** — defense in depth (Zod, Better Auth, secure headers)
-7. **Observable** — structured logs, correlation IDs, Sentry
-8. **Maintainable** — adapter pattern, stateless Workers, standard SQL
-9. **Available** — graceful degradation, exponential backoff, D1 Time Travel
-10. **Reliable** — contracts-first, property tests, BDD, >80% coverage
-11. **Reproducible** — Nix Flakes, identical dev environment everywhere
-12. **Agentic** — 300-line files, explicit contracts, self-describing structure
-
-Each principle is enforced by an automated CI gate. See `docs/ARCHITECTURE.md` for the full rationale.
+Docs: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · [`AGENTS.md`](AGENTS.md) · [`CONTEXT.md`](CONTEXT.md)
 
 ## Stack
 
 | Layer | Choice |
 |---|---|
-| Platform | Cloudflare Workers + D1 + R2 |
-| API | Hono RPC + zod-openapi |
-| Client | React 19 + TanStack Router + TanStack Query |
-| State | Tinybase MergeableStore CRDT |
-| UI | shadcn/ui + Tailwind CSS |
-| Auth | Better Auth |
-| Sync | Batched POST /v1/sync |
-| Testing | Vitest + fast-check + Playwright-BDD |
-| Dev env | Nix Flakes |
-| Tooling | Vite+ (`vp` task runner) |
+| Edge | Workers + Static Assets + D1 + R2 + Cron |
+| API | Hono `/v1/*` |
+| Web | React 19 + TanStack Router/Query + Tailwind + PWA |
+| Contracts | Zod (`packages/shared-zod`) |
+| Sync | `mergeNotes` + leader election + BroadcastChannel |
+| Infra | Logger, ObjectStore, ConfigStore, Cache, JobScheduler, RateLimiter |
+| Auth | Anonymous session in D1 (Bearer); cascade delete |
+| Tests | Vitest + fast-check + Playwright-BDD |
 
-## Skill flow
+## Setup a new project
 
-The skills form a complete development pipeline. **[auto]** fires on its own when the agent detects a match; **[you]** must be manually invoked by the human.
-
-```
-bootstrap-project
-       │
-       ▼
-grill-with-docs
-       │
-       ▼
-    to-spec
-       │
-       ▼
-  to-tickets
-       │
-       ▼  
-  plan-review
-       │
-       ▼
-guided-implementation
-       │
-       ▼
- writing-tests [auto]
-       │
-       ▼
-  pr-creation [auto]
-       │
-       ▼
-   code-review
-       │
-       ▼
-     ship
-       │
-       ▼
-   production
-
-Any step can branch to:
-  diagnosing-bugs              (find + fix bugs)
-  payment-integration          (payments/webhooks)
-  writing-great-skills         (improve skills themselves)
+```bash
+bun install
+cp .env.example .env   # or create .env with CF tokens
+# edit apps/api/wrangler.toml name + D1/R2 ids if forking
+bunx wrangler d1 create <your-db>
+bunx wrangler r2 bucket create <your-bucket>
+bun run db:migrate:local
+bunx wrangler d1 migrations apply <your-db> --remote -c apps/api/wrangler.toml
+bun run check && bun run test && bun run e2e
+bun run deploy
 ```
 
-## Skill index
+`.env` (gitignored):
 
-| Skill | Purpose |
+```bash
+CLOUDFLARE_ACCOUNT_ID=…
+CLOUDFLARE_API_TOKEN=…   # Workers Scripts:Edit, D1:Edit, R2:Edit
+```
+
+## Develop a product
+
+```
+grill-with-docs → to-spec → to-tickets → plan-review
+  → guided-implementation → writing-tests → pr-creation
+  → code-review → ship
+```
+
+Extend **Notes** patterns: contracts in `shared-zod` → D1 migration + client migration + `SCHEMA_VERSION` → route under `/v1/` → UI route → BDD.
+
+### Commands
+
+| Command | Use |
 |---|---|
-| `bootstrap-project` | Scaffold the full monorepo, flake.nix, CI, and tooling from scratch |
-| `plan-review` | Validate plans against architecture |
-| `grill-with-docs` | Interview to sharpen designs; produce ADRs and glossary |
-| `to-spec` | Synthesize conversation into a published spec |
-| `to-tickets` | Break specs into tracer-bullet tickets |
-| `guided-implementation` | Implement a plan with guardrail checks |
-| `writing-tests` | Write unit, property, BDD, and integration tests |
-| `code-review` | Review PRs for philosophy and guardrail compliance |
-| `diagnosing-bugs` | Tight feedback-loop-first debugging |
-| `pr-creation` | Create PRs with validated DoD |
-| `ship` | Deploy to staging, validate gates, promote to production |
-| `payment-integration` | Payment flows, webhooks, entitlements |
-| `writing-great-skills` | Reference for writing effective agent skills |
+| `bun run dev` | Build web + wrangler dev |
+| `bun run check` | Typecheck |
+| `bun run test` | Unit + property + coverage |
+| `bun run e2e` | Playwright-BDD |
+| `bun run size-limit` | Bundle budget |
+| `bun run agentic-limits` | File size / import caps |
+| `bun run deploy` | Production Worker |
+| `bun run deploy:staging` | Staging |
 
-## Prerequisites
+### API surface
 
-- Nix (for reproducible dev shell via `flake.nix` — generated at scaffold)
-- Cloudflare account (for `wrangler` deployment)
-- Bun (bundled in the Nix flake)
+- `GET /v1/health`
+- `POST /v1/auth/anonymous`
+- `DELETE /v1/auth/me`
+- `GET /v1/notes`
+- `POST /v1/sync`
+- `GET /openapi.json`
 
-## Quick start
+## Architecture coverage (template)
 
-This template is not directly runnable. To use it for a new project:
+| Band | Status |
+|---|---|
+| P0 core (D1, sync, BDD, security CI, zod contracts) | Done |
+| P1 (auth session, CORS, adapters/R2, router, PWA, staging workflows) | Done |
+| P2 (lint limits, restore runbook, ZAP/fuzz workflows, quota doc) | Done |
+| P3 except payments (rate limit, account cascade delete) | Done |
+| Payments (Xendit/Polar) | **Omitted** |
 
-1. Clone this template.
-2. Scaffold the monorepo (see `docs/ARCHITECTURE.md` for layout).
-3. Set up the Nix flake, CI workflows, `wrangler.toml`, and tooling.
-4. Implement features guided by the skills in `.agents/skills/`.
+## Ops docs
 
-For detailed rules agents must follow, see `AGENTS.md`.
+- [`docs/RUNBOOK_RESTORE.md`](docs/RUNBOOK_RESTORE.md) — D1 Time Travel + R2 backups  
+- [`docs/QUOTA.md`](docs/QUOTA.md) — free-tier monitoring  
