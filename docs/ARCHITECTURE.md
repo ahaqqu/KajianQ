@@ -29,7 +29,7 @@ Every principle has an automated gate in CI. A principle without a gate does not
 
 Staging BDD runs consume the same quotas. Batch writes, clean up after runs, keep headroom.
 
-Gated by: `size-limit` in CI; quota monitoring is a manual runbook (`docs/QUOTA.md`).
+Gated by: `size-limit` in CI. Quota monitoring remains a manual runbook (`docs/QUOTA.md`) because Cloudflare free-tier analytics do not expose an API that supports an automated CI gate at this time.
 
 ---
 

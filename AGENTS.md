@@ -25,9 +25,17 @@ This template ships **without** payments (see CONTEXT.md). The rules in this sec
 - Premium features MUST be gated by ConfigStore entitlement checks at the edge, not only client-side.
 - Providers: Xendit (ID) and/or Polar MoR (global) behind one adapter. Per-transaction fees only — no fixed paid dependency on the critical path.
 
+## The agentic workflow
+
+For the recommended end-to-end pipeline and when to use each skill, invoke the `agentic-workflow` skill (`agentic-workflow/SKILL.md`). It maps the design → spec → tickets → plan → implementation → tests → PR → review → ship sequence without duplicating each skill's content.
+
 ## Prior to implementation
 
 See `.agents/skills/grill-with-docs/SKILL.md` — sharpen designs through structured interview; produce ADRs and glossary.
+
+See `.agents/skills/to-spec/SKILL.md` — turn the grilled design into a spec.
+
+See `.agents/skills/to-tickets/SKILL.md` — break the spec into tracer-bullet tickets.
 
 See `.agents/skills/plan-review/SKILL.md` — validate your plan against architecture before writing code.
 
@@ -38,6 +46,8 @@ See `.agents/skills/guided-implementation/SKILL.md` — domain checklist for rou
 See `.agents/skills/writing-tests/SKILL.md` — unit, property, BDD, and integration test patterns.
 
 ## After implementation
+
+See `.agents/skills/pr-creation/SKILL.md` — validate against the Definition of Done and create the pull request.
 
 See `.agents/skills/code-review/SKILL.md` — verify changes against philosophy and guardrails before creating a PR. It recommends a review depth first: normal, or the opt-in `.agents/skills/thermo-nuclear-code-quality-review/SKILL.md` for an extremely strict maintainability review.
 

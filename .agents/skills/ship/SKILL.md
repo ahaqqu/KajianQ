@@ -63,7 +63,7 @@ Check the report. Fail on any High or Medium severity findings. Low findings are
 
 ## Phase 4 — API fuzzing (Schemathesis)
 
-Fuzz the OpenAPI spec against staging. Schemathesis generates requests from the zod-openapi schema and checks for 500s, timeouts, and schema violations.
+Fuzz the OpenAPI spec against staging. Schemathesis generates requests from the hono-openapi / Valibot route definitions and checks for 500s, timeouts, and schema violations.
 
 ```bash
 schemathesis run --base-url https://staging.<project>.workers.dev \
@@ -93,10 +93,9 @@ Once staging passes BDD, DAST, and fuzz, promote:
 wrangler deploy --env production
 ```
 
-Production is a separate Worker and D1. Secrets are injected via `wrangler secret` — per environment:
+Production is a separate Worker and D1. D1 is bound via `wrangler.toml`; only runtime secrets (e.g., Sentry DSN, payment provider tokens) are injected via `wrangler secret` — per environment:
 
 ```bash
-wrangler secret put DATABASE_URL --env production
 wrangler secret put SENTRY_DSN --env production
 ```
 
@@ -108,12 +107,10 @@ After production deploy, run a minimal health check and one critical user flow t
 # Health
 curl -sf https://<project>.workers.dev/v1/health
 
-# Critical flow: create widget, read it back
-curl -sf -X POST https://<project>.workers.dev/v1/widgets \
-  -H "Authorization: Bearer $TEST_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"smoke-test","price":1}' \
-  | jq .id
+# Critical flow: anonymous session + sync token
+curl -sf -X POST https://<project>.workers.dev/v1/auth/anonymous | jq .token
+curl -sf -X GET https://<project>.workers.dev/v1/notes \
+  -H "Authorization: Bearer $TEST_TOKEN" | jq .notes
 ```
 
 Smoke tests are in `.github/workflows/deploy.yml` and run automatically after promotion. If smoke fails, initiate Phase 7.

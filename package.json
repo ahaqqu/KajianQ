@@ -12,6 +12,7 @@
     "size-limit": "size-limit",
     "agentic-limits": "bun scripts/check-agentic-limits.mjs",
     "truth": "bun scripts/check-template-truth.mjs",
+    "openapi:check": "bun scripts/openapi-check.mjs",
     "e2e": "bun run db:migrate:local && bddgen && playwright test",
     "deploy": "bun run build && wrangler deploy -c apps/api/wrangler.toml --env=\"\"",
     "deploy:staging": "bun run build && wrangler deploy -c apps/api/wrangler.toml --env staging",

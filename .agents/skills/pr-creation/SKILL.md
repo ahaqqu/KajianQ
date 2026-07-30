@@ -21,8 +21,8 @@ Follow the Definition of Done in `AGENTS.md`:
 - All CI gates green.
 - Contracts written before implementation.
 - API or UI changes: BDD tests added.
-- Schema changes: server migration + client migration + `SCHEMA_VERSION` bump.
-- New routes: zod-openapi contract defined, docs regenerated.
+- Schema changes: server migration (raw SQL in `apps/api/migrations/`) + client migration (in `packages/local-first`) + `SCHEMA_VERSION` bump.
+- New routes: Valibot contract in `packages/contracts` (`@app/contracts`) + `hono-openapi` route definition; `/openapi.json` regenerates from the same definitions.
 - No new paid dependency in the critical path.
 - Nothing sensitive in the diff.
 - Architectural changes documented in PR description.

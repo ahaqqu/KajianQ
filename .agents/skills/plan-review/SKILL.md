@@ -21,7 +21,7 @@ For each principle in `docs/ARCHITECTURE.md`, verify the plan addresses it:
 - **Performance**: Does the plan affect bundle size? Does it add runtime CSS-in-JS?
 - **Cross-Platform**: Does the plan introduce platform-specific code?
 - **Polished**: Does the plan include i18n for `en` + `id`? Does it consider accessibility?
-- **Secure**: Does the plan touch auth, payments, or external boundaries? Does it use Zod validation?
+- **Secure**: Does the plan touch auth, payments, or external boundaries? Does it use Valibot validation from `@app/contracts`?
 - **Observable**: Does the plan add logging? Does it use the Logger adapter?
 - **Maintainable**: Does the plan add adapters for new external services? Does it change the database schema?
 - **Available**: Does the plan handle failure gracefully? Does it degrade rather than crash?

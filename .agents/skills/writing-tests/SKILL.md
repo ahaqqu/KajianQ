@@ -13,7 +13,7 @@ Pick the right test layer before writing anything. The table from `docs/ARCHITEC
 
 | What you're testing | Tool | Needs |
 |---|---|---|
-| Business logic, Zod schemas, store queries, adapter logic, route handlers in isolation | Vitest (unit) | Mock adapters; test the contract, not the implementation |
+| Business logic, Valibot schemas, store queries, adapter logic, route handlers in isolation | Vitest (unit) | Mock adapters; test the contract, not the implementation |
 | Sync merge, client migrations, webhook idempotency | fast-check (property) | Randomly generated inputs; laws that must hold for all inputs |
 | User-facing flows, offline-to-online sync, PWA lifecycle | Playwright-BDD | Full stack running against wrangler dev; real browser |
 | Bundle size | size-limit | Every PR |
@@ -24,42 +24,38 @@ If unsure, start at the highest feasible layer: BDD for user flows, property tes
 
 ### When to write
 
-Every piece of business logic, every module boundary, every Zod schema, every adapter implementation. Write the test before or alongside the implementation.
+Every piece of business logic, every module boundary, every Valibot schema, every adapter implementation. Write the test before or alongside the implementation.
 
 ### File conventions
 
 - Unit tests live beside the module they test: `src/foo.ts` → `src/foo.test.ts`
 - Test files import `describe`/`it`/`expect` from `vitest`
 
-### Pattern: testing a Zod schema
+### Pattern: testing a Valibot schema
 
 Schemas are the external boundary. Test them with both valid and invalid inputs.
 
 ```ts
 import { describe, it, expect } from "vitest";
-import { CreateWidgetSchema } from "./widgets";
+import * as v from "valibot";
+import { CreateNoteSchema } from "@app/contracts";
 
-describe("CreateWidgetSchema", () => {
+describe("CreateNoteSchema", () => {
   it("accepts valid input", () => {
-    const result = CreateWidgetSchema.safeParse({
-      name: "My Widget",
-      price: 1000,
+    const result = v.safeParse(CreateNoteSchema, {
+      title: "My note",
+      body: "content",
     });
     expect(result.success).toBe(true);
   });
 
   it("rejects missing required fields", () => {
-    const result = CreateWidgetSchema.safeParse({ name: "My Widget" });
+    const result = v.safeParse(CreateNoteSchema, { title: "My note" });
     expect(result.success).toBe(false);
   });
 
-  it("rejects negative price", () => {
-    const result = CreateWidgetSchema.safeParse({ name: "X", price: -1 });
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects empty name", () => {
-    const result = CreateWidgetSchema.safeParse({ name: "", price: 100 });
+  it("rejects empty title", () => {
+    const result = v.safeParse(CreateNoteSchema, { title: "", body: "content" });
     expect(result.success).toBe(false);
   });
 });
@@ -124,11 +120,11 @@ describe("GET /v1/widgets", () => {
 ### When to write
 
 Property tests are mandatory for:
-- Sync merge logic (idempotency, commutativity, delete propagation)
+- Sync merge logic (idempotency, commutativity, associativity, delete propagation, tombstone GC safety)
 - Client migration logic (round-trip: migrate up then down returns original)
 - Webhook idempotency (same payload twice produces same state as once)
 
-The AGENTS.md guardrail: "When implementing merge logic, you MUST make it idempotent, commutative, and propagate deletes."
+The AGENTS.md / `guided-implementation` guardrail: the custom LWW-element-set CRDT in `packages/local-first` must be idempotent, commutative (including exact-timestamp ties), associative, propagate deletes, and safely GC tombstones.
 
 ### File conventions
 
@@ -142,76 +138,67 @@ Idempotency: merging the same change twice produces the same result as merging i
 ```ts
 import { test, fc } from "@fast-check/vitest";
 import { expect } from "vitest";
-import { createMergeableStore } from "tinybase";
-import { mergeChanges } from "./merge";
+import { mergeNotes, type NoteRow } from "@app/local-first";
 
-test.prop([fc.record({
+const noteArbitrary = fc.record({
   id: fc.uuid(),
   title: fc.string({ minLength: 1 }),
-  done: fc.boolean(),
-})])(
+  body: fc.string(),
+  updatedAt: fc.integer({ min: 1 }),
+});
+
+test.prop([fc.array(noteArbitrary, { minLength: 1, maxLength: 20 })])(
   "merge is idempotent",
-  (change) => {
-    const store = createMergeableStore();
-    mergeChanges(store, [change]);
-
-    const stateAfterFirst = store.getTables();
-    mergeChanges(store, [change]);
-
-    expect(store.getTables()).toEqual(stateAfterFirst);
+  (changes) => {
+    const first = mergeNotes([], changes);
+    const second = mergeNotes(first, changes);
+    expect(second).toEqual(first);
   }
 );
 ```
 
 ### Pattern: sync merge commutativity
 
-Commutativity: merging in any order produces the same final state.
+Commutativity: merging in any order produces the same final state (including exact-timestamp ties).
 
 ```ts
 test.prop([
-  fc.array(fc.record({
-    id: fc.uuid(),
-    title: fc.string({ minLength: 1 }),
-    done: fc.boolean(),
-  }), { minLength: 1, maxLength: 10 }),
-  fc.shuffledSubarray([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
+  fc.array(noteArbitrary, { minLength: 1, maxLength: 20 }),
+  fc.uniqueArray(fc.integer({ min: 0, max: 19 }), {
+    minLength: 1,
+    maxLength: 20,
+  }),
 ])(
   "merge is commutative",
   (changes, order) => {
-    const store1 = createMergeableStore();
-    for (const i of order) {
-      if (i < changes.length) mergeChanges(store1, [changes[i]!]);
-    }
-
-    const store2 = createMergeableStore();
-    for (const change of changes) {
-      mergeChanges(store2, [change]);
-    }
-
-    expect(store1.getTables()).toEqual(store2.getTables());
+    const shuffled = order
+      .map((i) => changes[i])
+      .filter((c): c is NoteRow => Boolean(c));
+    const viaShuffle = mergeNotes([], shuffled);
+    const viaOriginal = mergeNotes([], changes);
+    expect(viaShuffle).toEqual(viaOriginal);
   }
 );
 ```
 
 ### Pattern: delete propagation
 
-Delete propagation: a delete always wins over any concurrent update.
+Delete propagation: a tombstone always wins over any concurrent update.
 
 ```ts
 test.prop([fc.record({
   id: fc.uuid(),
   title: fc.string({ minLength: 1 }),
+  body: fc.string(),
+  updatedAt: fc.integer({ min: 1 }),
 })])(
   "delete beats concurrent update",
   (item) => {
-    const store = createMergeableStore();
-    mergeChanges(store, [item]);
-    const update = { ...item, title: "updated" };
-    const deleteOp = { ...item, _deleted: true };
+    const update = { ...item, title: "updated", updatedAt: item.updatedAt + 1 };
+    const tombstone = { ...item, title: item.title, updatedAt: item.updatedAt + 1, deleted: true };
 
-    mergeChanges(store, [update, deleteOp]);
-    const tables = store.getTables();
-    expect(tables.widgets?.[item.id]).toBeUndefined();
+    const merged = mergeNotes([item], [update, tombstone]);
+    expect(merged.find((n) => n.id === item.id)?.deleted).toBe(true);
   }
 );
 ```
@@ -272,38 +259,38 @@ Every user-facing flow. Every API or UI change per AGENTS.md Definition of Done.
 
 Given a spec user story:
 
-> As a user, I want to see a list of my widgets so that I can manage them.
+> As a user, I want to see a list of my notes so that I can manage them.
 
 Derive:
-- **Happy path**: Given widgets exist, when I open the list, I see them.
-- **Empty state**: Given no widgets, when I open the list, I see a message.
+- **Happy path**: Given notes exist, when I open the list, I see them.
+- **Empty state**: Given no notes, when I open the list, I see a message.
 - **Error state**: Given the network is down, when I open the list, I see cached data or an error.
-- **Offline**: Given I'm offline, when I create a widget, it appears immediately and syncs when online.
-- **Edge case**: Given 1000 widgets, the list paginates and doesn't block the UI.
+- **Offline**: Given I'm offline, when I create a note, it appears immediately and syncs when online.
+- **Edge case**: Given 1000 notes, the list paginates and doesn't block the UI.
 
 Example feature file:
 
 ```gherkin
-Feature: Widget List
+Feature: Note List
   As a user
-  I want to see a list of my widgets
+  I want to see a list of my notes
   So that I can manage them
 
-  Scenario: View widgets
-    Given I have 3 widgets in my account
-    When I navigate to the widgets page
-    Then I see 3 widgets displayed
+  Scenario: View notes
+    Given I have 3 notes in my account
+    When I navigate to the notes page
+    Then I see 3 notes displayed
 
-  Scenario: Empty widget list
-    Given I have no widgets
-    When I navigate to the widgets page
+  Scenario: Empty note list
+    Given I have no notes
+    When I navigate to the notes page
     Then I see an empty state message
 
-  Scenario: Offline widget creation
+  Scenario: Offline note creation
     Given I am offline
-    When I create a new widget named "Test"
-    Then the widget appears in the list immediately
-    And the widget syncs when I come online
+    When I create a new note titled "Test"
+    Then the note appears in the list immediately
+    And the note syncs when I come online
 ```
 
 ### Pattern: step definitions
@@ -312,16 +299,16 @@ Feature: Widget List
 import { Given, When, Then } from "@cucumber/cucumber";
 import { expect } from "@playwright/test";
 
-Given("I have {int} widgets in my account", async function (count: number) {
-  await seedWidgets(this.page, count);
+Given("I have {int} notes in my account", async function (count: number) {
+  await seedNotes(this.page, count);
 });
 
-When("I navigate to the widgets page", async function () {
-  await this.page.goto("/widgets");
+When("I navigate to the notes page", async function () {
+  await this.page.goto("/notes");
 });
 
-Then("I see {int} widgets displayed", async function (count: number) {
-  const items = this.page.locator("[data-testid='widget-item']");
+Then("I see {int} notes displayed", async function (count: number) {
+  const items = this.page.locator("[data-testid='note-item']");
   await expect(items).toHaveCount(count);
 });
 ```
@@ -368,7 +355,7 @@ describe("D1 ObjectStore adapter", () => {
 Tests are done when:
 - [ ] Every changed module has a corresponding `*.test.ts` or `*.prop.test.ts` file.
 - [ ] Unit tests cover happy path, all error paths, and at least one edge case (empty, max, concurrent).
-- [ ] Property tests for sync merge assert idempotency, commutativity, and delete propagation.
+- [ ] Property tests for sync merge assert idempotency, commutativity (including exact-timestamp ties), associativity, delete propagation, and GC safety.
 - [ ] Property tests for webhook handlers assert idempotency on random payloads.
 - [ ] BDD scenarios exist for every new user-facing flow, including offline and error states.
 - [ ] `bun run test` passes with coverage above 80% on changed files.

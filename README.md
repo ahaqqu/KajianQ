@@ -65,6 +65,8 @@ grill-with-docs → to-spec → to-tickets → plan-review
   → code-review → ship
 ```
 
+For the full pipeline and when to use each skill, invoke the `agentic-workflow` skill (`.agents/skills/agentic-workflow/SKILL.md`).
+
 Extend **Notes** patterns: contracts in `packages/contracts` → D1 migration + client migration + `SCHEMA_VERSION` → route under `/v1/` → UI route → BDD.
 
 ### Commands

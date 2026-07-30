@@ -1,17 +1,36 @@
 ---
 name: grill-with-docs
-description: A relentless interview to sharpen a plan or design, which also creates docs (ADR's and glossary) as we go.
+description: A relentless interview to sharpen a plan or design and produce ADRs and a glossary. Use when the user wants to grill a design and write its docs.
 disable-model-invocation: true
 ---
 
 # Grill With Docs
 
-A structured interview that sharpens a plan or design into something implementation-ready, producing an ADR and a domain glossary as you go. Every question has a purpose: to expose ambiguity, find missing edges, or align the design with the architecture.
+A structured grilling session that sharpens a plan or design into something implementation-ready, producing ADRs and a domain glossary as you go.
+
+This skill is an orchestrator. It runs the `/grilling` interview discipline, then uses the `/domain-modeling` skill to capture the resulting terms and decisions.
 
 ## Inputs
 
 - A plan, design brief, or user description of what to build.
 - `docs/ARCHITECTURE.md` — every design decision must survive a principle check.
+- `CONTEXT.md` and any existing `docs/GLOSSARY.md`.
+
+## How to run this session
+
+1. **Load the grilling discipline.** Use `.agents/skills/grilling/SKILL.md`:
+   - Ask one question at a time.
+   - Look up facts in the repo yourself (code, `CONTEXT.md`, `ARCHITECTURE.md`, existing ADRs).
+   - Put every true decision to the user and wait for their answer.
+   - Do not start implementing until the user confirms shared understanding.
+
+2. **Load the domain-modeling discipline.** Use `.agents/skills/domain-modeling/SKILL.md`:
+   - Challenge terms against `CONTEXT.md` / `docs/GLOSSARY.md`.
+   - Sharpen fuzzy language into canonical terms.
+   - Stress-test relationships with concrete edge-case scenarios.
+   - Cross-reference the user's claims with the actual code.
+   - Write resolved terms to `docs/GLOSSARY.md` immediately.
+   - Write hard/surprising/trade-off decisions to `adr/`.
 
 ## Phase 1 — Domain modeling
 
@@ -20,7 +39,7 @@ Before grilling, build a **domain glossary** — the shared vocabulary that will
 1. Extract every noun the user used. List them. Ask: "Is this an entity (has identity and lifecycle), a value object (defined by its attributes), or an aggregate (the root of a consistency boundary)?"
 2. Extract every verb. Ask: "Is this a command (synchronicity expected), an event (something that happened), or a query (no side effects)?"
 3. Draw the boundaries. Group nouns and verbs into **bounded contexts** — areas where a term means one thing consistently. Flag terms that cross contexts with different meanings.
-4. Name each concept with one canonical term. Record it in the glossary. This is the **ubiquitous language** — it will name your Zod schemas, table columns, and route segments.
+4. Name each concept with one canonical term. Record it in `docs/GLOSSARY.md`. This is the **ubiquitous language** — it will name your Valibot schemas in `@app/contracts`, table columns, and route segments.
 
 Output: a draft glossary of terms, their type (entity/value/aggregate/event/command), and which bounded context they belong to.
 
@@ -60,48 +79,23 @@ For each principle in `docs/ARCHITECTURE.md`, ask:
 Every user action must have answers for:
 - The happy path (one sentence)
 - The auth check (who, what role)
-- The validation (what Zod schema, what edge cases)
+- The validation (what Valibot schema in `@app/contracts`, what edge cases)
 - The error path (what specific error, what the user sees)
 - The data flow (which stores, which adapters, which routes)
 - The test seam (where you'd wire a test to verify this exact behavior)
 
 ## Phase 3 — ADR
 
-Write an Architecture Decision Record for any decision that is:
+Use the `domain-modeling` skill to write an Architecture Decision Record for any decision that is:
 - A structural tradeoff (two viable paths, one chosen)
 - A constraint the team must remember
-- A departure from ARCHITECTURE.md defaults
-
-### ADR template
-
-```markdown
-# ADR-<NNN>: <title>
-
-**Status:** proposed | accepted | superseded
-**Date:** YYYY-MM-DD
-
-## Context
-
-What is the problem we're solving? What constraints are we under?
-
-## Decision
-
-What did we decide? One sentence.
-
-## Rationale
-
-Why this over the alternatives? What does this enable downstream?
-
-## Consequences
-
-What becomes easier? What becomes harder? What must we remember?
-```
+- A departure from `ARCHITECTURE.md` defaults
 
 Write the ADR under `adr/` and number it sequentially.
 
 ## Phase 4 — Glossary
 
-Finalize the domain glossary. Each entry:
+Use the `domain-modeling` skill to finalize `docs/GLOSSARY.md`. Each entry:
 
 ```markdown
 ### <Term>
@@ -112,8 +106,6 @@ Finalize the domain glossary. Each entry:
 **Also known as:** <rejected aliases — names we deliberately did NOT use>
 ```
 
-Write it to `docs/GLOSSARY.md`.
-
 ## Completion criterion
 
 Grilling is done when:
@@ -122,3 +114,4 @@ Grilling is done when:
 - [ ] The glossary covers every noun and verb in the design with unambiguous definitions.
 - [ ] Every structural decision has an ADR, or a note explaining why it doesn't need one.
 - [ ] The user has reviewed and approved the glossary and ADRs.
+- [ ] The user has confirmed shared understanding and permission to proceed.
