@@ -7,7 +7,7 @@ compatibility_flags = ["nodejs_compat"]
 binding = "DB"
 database_name = "agentic-template-db"
 database_id = "7dc87f2b-cc2b-437d-ac1a-05cd4134b26a"
-migrations_dir = "../../packages/db-schema/migrations"
+migrations_dir = "migrations"
 
 [[r2_buckets]]
 binding = "BUCKET"
@@ -37,7 +37,7 @@ vars = { APP_ENV = "staging", ALLOWED_ORIGINS = "http://localhost:8787,https://a
 binding = "DB"
 database_name = "agentic-template-db-staging"
 database_id = "local-agentic-template-db-staging"
-migrations_dir = "../../packages/db-schema/migrations"
+migrations_dir = "migrations"
 
 [[env.staging.r2_buckets]]
 binding = "BUCKET"

@@ -10,11 +10,13 @@ These apply regardless of whether you are planning, implementing, reviewing, or 
 - When adding a dependency, you MUST verify free-tier compatibility. You MUST NEVER add paid services to the critical path.
 - When adding user-facing strings, you MUST externalize for `en` and `id`. You MUST NEVER hardcode copy.
 - When logging, you MUST use the Logger adapter with structured JSON. You MUST NEVER use `console.log`.
-- When validating input, you MUST use Zod at every external boundary.
+- When validating input, you MUST use Valibot schemas from `packages/contracts` (`@app/contracts`) at every external boundary.
 - When handling secrets, you MUST use `wrangler secret`. You MUST NEVER commit secrets to the repo.
 - Files are 300 lines or fewer with 5 or fewer direct dependencies.
 
 ## Payments
+
+This template ships **without** payments (see CONTEXT.md). The rules in this section apply **when a consuming project adds payments** — start from the `.agents/skills/payment-integration/SKILL.md` skill, which provides the Payments adapter interface in `packages/infra`.
 
 - Payments MUST go through the Payments adapter interface in `packages/infra`. Provider APIs are NEVER called from business logic.
 - Webhook handlers MUST verify signatures on the raw body before JSON parsing.
@@ -37,7 +39,7 @@ See `.agents/skills/writing-tests/SKILL.md` — unit, property, BDD, and integra
 
 ## After implementation
 
-See `.agents/skills/code-review/SKILL.md` — verify changes against philosophy and guardrails before creating a PR.
+See `.agents/skills/code-review/SKILL.md` — verify changes against philosophy and guardrails before creating a PR. It recommends a review depth first: normal, or the opt-in `.agents/skills/thermo-nuclear-code-quality-review/SKILL.md` for an extremely strict maintainability review.
 
 See `.agents/skills/ship/SKILL.md` — staging → tests → production → smoke tests.
 
@@ -47,11 +49,12 @@ See `.agents/skills/diagnosing-bugs/SKILL.md` — tight feedback-loop-first debu
 
 ## Definition of Done
 
-- [ ] All CI gates green: `bun run check`, `bun run test`, coverage > 80%, `bun run size-limit`, security scans.
+- [ ] All CI gates green: `bun run check`, `bun run test` (coverage > 80%), `bun run size-limit`, `bun run agentic-limits`, `bun run truth`, security scans.
 - [ ] Contracts written before implementation.
 - [ ] API or UI changes: BDD tests added covering the user-facing flow.
 - [ ] Schema changes: server migration + client migration + `SCHEMA_VERSION` bump.
-- [ ] New routes: zod-openapi contract defined; docs regenerate cleanly.
+- [ ] New routes: Valibot contract in `packages/contracts` + hono-openapi route definition; `/openapi.json` regenerates from the same definitions.
 - [ ] No new paid dependency in the critical path.
+- [ ] No dependency without an importer; no adapter without a production caller; every gate blocking; every doc claim has code.
 - [ ] Nothing sensitive in the diff.
 - [ ] Architectural changes documented in PR description.

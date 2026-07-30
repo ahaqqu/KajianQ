@@ -20,6 +20,7 @@ jobs:
       - run: bun run build
       - run: bun run size-limit
       - run: bun run agentic-limits
+      - run: bun run truth
       - name: gitleaks
         run: |
           curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz \

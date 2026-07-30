@@ -21,13 +21,12 @@
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
             bun
-            nodejs_22
             wrangler
             git
             gh
           ];
           shellHook = ''
-            echo "Bun $(bun --version) | Node $(node --version)"
+            echo "Bun $(bun --version)"
           '';
         };
       }

@@ -1,10 +1,10 @@
+import * as Sentry from "@sentry/cloudflare";
 import {
   createMemoryConfigStore,
   createMemoryObjectStore,
   createR2ObjectStore,
-  createSentry,
 } from "@app/infra";
-import { SCHEMA_VERSION } from "@app/sync-protocol";
+import { SCHEMA_VERSION } from "@app/local-first";
 import { createApi } from "./app";
 import type { WorkerBindings } from "./env";
 
@@ -18,7 +18,7 @@ function isApiPath(pathname: string): boolean {
   );
 }
 
-export default {
+const handler = {
   async fetch(
     request: Request,
     env: WorkerBindings,
@@ -26,15 +26,8 @@ export default {
   ): Promise<Response> {
     const url = new URL(request.url);
     if (isApiPath(url.pathname)) {
-      try {
-        return await api.fetch(request, env, ctx as never);
-      } catch (err) {
-        createSentry(env.SENTRY_DSN).captureException(err);
-        if (err instanceof Error && err.message === "db_unbound") {
-          return Response.json({ error: "db_unbound" }, { status: 503 });
-        }
-        return Response.json({ error: "internal" }, { status: 500 });
-      }
+      // Handler errors are dispatched by the app's typed onError (lib/errors).
+      return api.fetch(request, env, ctx as never);
     }
     return env.ASSETS.fetch(request);
   },
@@ -55,3 +48,15 @@ export default {
     );
   },
 };
+
+// Errors-only Sentry. Passthrough when SENTRY_DSN is unset: `enabled: false`
+// means the SDK client stays disabled — nothing is captured or sent.
+export default Sentry.withSentry(
+  (env: WorkerBindings) => ({
+    dsn: env.SENTRY_DSN,
+    enabled: Boolean(env.SENTRY_DSN),
+    environment: env.APP_ENV ?? "development",
+    tracesSampleRate: 0,
+  }),
+  handler,
+);

@@ -29,7 +29,7 @@ Every principle has an automated gate in CI. A principle without a gate does not
 
 Staging BDD runs consume the same quotas. Batch writes, clean up after runs, keep headroom.
 
-Gated by: `size-limit`, quota monitoring in CI.
+Gated by: `size-limit` in CI; quota monitoring is a manual runbook (`docs/QUOTA.md`).
 
 ---
 
@@ -37,9 +37,11 @@ Gated by: `size-limit`, quota monitoring in CI.
 
 The client store is the source of truth. All reads and writes succeed offline. Sync is opportunistic, never blocking. Conflict resolution is automatic and invisible.
 
-This means the sync protocol is event-driven, not polled. Writes are optimistic into the client store and the UI reacts immediately. Changes persist to IndexedDB in the same tick. Batched sync fires on reconnect, foreground, online events, or explicit flush. The edge is stateless: each request carries enough context to merge and persist independently. Conflicts resolve via CRDT merge without user intervention. One elected leader syncs per browser; peers stay consistent via BroadcastChannel without redundant network traffic. Client and server negotiate schema version compatibility; mismatches surface as update prompts, not silent failures.
+This means the sync protocol is event-driven, not polled. Writes are optimistic into the client store and the UI reacts immediately. Changes persist to IndexedDB in the same tick. Batched sync fires on reconnect, foreground, online events, or explicit flush. The edge is stateless: each request carries enough context to merge and persist independently. Conflicts resolve via a per-record LWW-element-set CRDT with tombstones (`packages/local-first`), without user intervention. Writes are stamped against a server-raised clock floor — each sync response carries `serverNow` — so a skewed client clock can neither lose nor win every merge. Deletes write payload-stripped tombstones; after a successful sync, local tombstones older than 30 days are garbage-collected. One elected leader syncs per browser; peers stay consistent via BroadcastChannel without redundant network traffic. Client and server negotiate schema version compatibility; mismatches surface as a visible sync error, not silent failure.
 
-Gated by: `fast-check` property tests for merge idempotency and commutativity.
+The trade-off is granularity: LWW resolves at the whole record, so two clients editing the same note concurrently keep only one side's record — even when they touched different fields. That is acceptable for single-user data. Adopt a field-level CRDT library (e.g. Automerge, Yjs) when collaborative editing of shared records becomes a requirement.
+
+Gated by: `fast-check` property tests for merge idempotency, commutativity (including exact-timestamp ties), associativity, delete-wins, and GC safety.
 
 ---
 
@@ -69,13 +71,13 @@ The app is responsive across all screen sizes from mobile to desktop. Layouts ar
 
 Interactions are optimistic. Buttons respond instantly even before the network confirms. Transitions are smooth and purposeful, never decorative. The app feels native: installable, offline-capable, with a consistent design language. Accessibility is built in, not bolted on — keyboard navigation, focus management, and screen reader support are first-class. Copy is concise and localized for English and Indonesian. Dates, numbers, and currency are formatted via the Intl API for each locale.
 
-Gated by: visual regression tests and accessibility audits in CI.
+Gated by: axe accessibility audits in the Playwright-BDD suite (serious/critical violations fail the run).
 
 ---
 
 ## 6. Secure — defense in depth
 
-Every external boundary is validated. Sessions live in D1 via Better Auth with social OAuth and passkeys. There is no custom crypto. Secrets are injected via `wrangler secret`; nothing sensitive lives in the repository.
+Every external boundary is validated. Sessions are anonymous Bearer tokens stored in D1. There is no custom crypto. Secrets are injected via `wrangler secret`; nothing sensitive lives in the repository. Better Auth (social OAuth + passkeys, sessions in D1) is the documented upgrade path for consuming projects.
 
 Rate limiting is enforced at the edge. Secure headers and CORS locked to known origins are mandatory on all responses. Account deletion cascades across all data stores for GDPR readiness. Payment webhooks verify signatures and are idempotent.
 
@@ -83,7 +85,7 @@ Rate limiting is enforced at the edge. Secure headers and CORS locked to known o
 
 | Layer | Tool | When |
 |---|---|---|
-| Static analysis | Semgrep + CodeQL | Every PR |
+| Static analysis | Semgrep | Every PR |
 | Dependency vulnerabilities | OSV-Scanner | Every PR |
 | Secret scanning | gitleaks | Every PR |
 | Dynamic security scan | OWASP ZAP Baseline | Every main merge against staging |
@@ -93,9 +95,9 @@ Rate limiting is enforced at the edge. Secure headers and CORS locked to known o
 
 ## 7. Observable — easy to monitor
 
-Every layer emits structured data. Infrastructure metrics come from Cloudflare Analytics. Core Web Vitals and page views come from Cloudflare RUM. Logs are structured JSON with correlation IDs that propagate across client, edge, and database. Errors are tracked via Sentry with graceful degradation when quotas are exhausted.
+Every layer emits structured data. Infrastructure metrics come from Cloudflare Analytics. Core Web Vitals and page views come from Cloudflare RUM. Logs are structured JSON with correlation IDs that propagate across client, edge, and database. Errors are tracked via Sentry — `@sentry/cloudflare` wrapping the Worker handler, `@sentry/react` in the client — errors-only and DSN-gated: with no DSN the SDKs stay disabled and nothing is captured. Session Replay is opt-in (it would pressure the 200 KB bundle budget).
 
-Gated by: structured log validation and correlation ID tracing in CI.
+Gated by: structured-log and correlation-ID tests in CI.
 
 This is not an afterthought. Observability is a design constraint that shapes how adapters are built and how logs are emitted.
 
@@ -114,13 +116,13 @@ Workers are stateless. All external service interactions pass through adapter in
 
 The system is designed for migration. Every Cloudflare-specific service is hidden behind an adapter interface. A future move to a VPS requires swapping adapters, not rewriting business logic.
 
-The monorepo is organized by contract. Shared Zod schemas are the single source of truth for client and server. Files are small and focused. Contracts, types, and tests are written before implementation. Schema changes require both server and client migrations. API versions are explicit; breaking changes get a new version, never an in-place break.
+The monorepo is organized by contract. Shared Valibot schemas in `packages/contracts` are the single source of truth for client and server, and hono-openapi generates the OpenAPI document from the same route definitions that validate requests. Files are small and focused. Contracts, types, and tests are written before implementation. Schema changes require both server and client migrations. API versions are explicit; breaking changes get a new version, never an in-place break.
 
-Gated by: `bun run check` (lint + typecheck) and `bun run test` (coverage > 80%) on every PR.
+Gated by: `bun run check` (typecheck) and `bun run test` (coverage > 80%) on every PR.
 
 ### Versioning and client lifecycle
 
-All API routes are under `/v1/`. The Service Worker uses versioned precache with an update-prompt flow so users are never stranded on stale clients. Client migrations run before the store loads, governed by `SCHEMA_VERSION` in `packages/sync-protocol`.
+All API routes are under `/v1/`. The Service Worker uses versioned precache with an update-prompt flow so users are never stranded on stale clients. Client migrations run before the store loads, governed by `SCHEMA_VERSION` in `packages/local-first`.
 
 ### Monorepo layout
 
@@ -128,19 +130,19 @@ All API routes are under `/v1/`. The Service Worker uses versioned precache with
 .
 ├── apps/
 │   ├── web/                    # React 19 PWA
-│   │   ├── src/routes/         # File-based routes
+│   │   ├── src/router.tsx      # Code-based type-safe routes
 │   │   ├── src/components/     # UI components
-│   │   ├── src/lib/            # MergeableStore, sync, i18n, migrations
+│   │   ├── src/lib/            # Local notes store (IndexedDB), session, i18n
 │   │   └── public/             # manifest, icons
 │   └── api/                    # Hono Worker (also serves web assets)
-│       ├── src/routes/         # /v1/* route handlers
-│       ├── src/lib/            # auth, db, merge, payments, middleware
+│       ├── src/routes/         # /v1/* route handlers + hono-openapi definitions
+│       ├── src/lib/            # auth, db, notes-repo, middleware, errors
+│       ├── migrations/         # Raw SQL — the single database truth
 │       └── wrangler.toml
 ├── packages/
-│   ├── shared-zod/             # Client ↔ server contracts
-│   ├── db-schema/              # Drizzle schema + migrations
-│   ├── sync-protocol/          # Sync types, SCHEMA_VERSION, merge helpers
-│   └── infra/                  # Adapters: ObjectStore, ConfigStore, Cache, JobScheduler, Logger
+│   ├── contracts/              # Valibot client ↔ server contracts
+│   ├── local-first/            # LWW CRDT, SCHEMA_VERSION, note mapping; /client: sync loop, leader, migrations
+│   └── infra/                  # Adapters: Logger, ObjectStore, ConfigStore, RateLimiter
 ├── .github/workflows/
 │   ├── ci.yml                  # PR gate
 │   ├── e2e.yml                 # Playwright-BDD vs wrangler dev
@@ -158,9 +160,9 @@ All API routes are under `/v1/`. The Service Worker uses versioned precache with
 
 The system degrades gracefully rather than failing hard. On flaky networks, sync retries with exponential backoff and persists pending changes in IndexedDB. When quotas are exhausted, non-critical services like Sentry and email degrade silently rather than crashing the app.
 
-The server is the durable copy. D1 Time Travel provides point-in-time recovery. Daily Cron Triggers export snapshots to R2 with versioning and lifecycle retention. A restore runbook exists and is drilled before launch.
+The server is the durable copy. D1 Time Travel is the point-in-time recovery mechanism, drilled per `docs/RUNBOOK_RESTORE.md`. The daily cron writes a timestamped JSON marker to R2 — a placeholder seam that exercises the ObjectStore adapter end-to-end, not a data export. A real export is a consuming-project decision.
 
-Gated by: staging BDD tests and smoke tests post-deploy.
+Gated by: post-deploy smoke tests (`staging.yml`, `deploy.yml`) and blocking ZAP/Schemathesis scans against staging.
 
 ---
 
@@ -180,7 +182,7 @@ This means contracts, types, and tests exist before code. Coverage is enforced b
 | Bundle | size-limit | Every PR |
 | API fuzz | Schemathesis | Every main merge against staging |
 | DAST | OWASP ZAP Baseline | Every main merge against staging |
-| Security | Semgrep + OSV-Scanner | Every PR |
+| Security | Semgrep + OSV-Scanner + gitleaks | Every PR |
 
 Coverage gate: greater than 80 percent.
 
@@ -190,11 +192,11 @@ Gated by: `bun run test` with coverage enforcement; `bun run size-limit` for bun
 
 ## 11. Reproducible — same environment everywhere
 
-The development environment is identical on every machine. A new contributor runs one command and has the exact same Bun, Node, Wrangler, and tool versions as every other contributor. There is no "works on my machine."
+The development environment is identical on every machine. A new contributor runs one command and has the exact same Bun, Wrangler, and tool versions as every other contributor. There is no "works on my machine."
 
 This means the dev shell is defined declaratively. Dependencies, compilers, and CLI tools are pinned. The CI environment matches the local environment. Onboarding takes minutes, not hours.
 
-Gated by: CI runs in the same environment as local dev; nix flake lockfile is version-controlled.
+Gated by: CI runs the same Bun scripts as local dev; `flake.nix` pins the toolchain when Nix is available.
 
 ---
 
@@ -202,9 +204,9 @@ Gated by: CI runs in the same environment as local dev; nix flake lockfile is ve
 
 The codebase is structured so that any agent can understand and modify any module without reading everything. There is no hidden state, no manual wiring, no tribal knowledge required.
 
-This means files are 300 lines or fewer with 5 or fewer direct dependencies. Each module has a typed contract and a clear boundary. Dependencies are explicit and shallow. File-based routing and convention-over-configuration eliminate boilerplate. The structure is self-describing: the monorepo layout, the adapter interfaces, and the Zod schemas tell you what each piece does without reading the implementation. An agent opening a file knows its inputs, outputs, and dependencies at a glance.
+This means files are 300 lines or fewer with 5 or fewer direct dependencies. Each module has a typed contract and a clear boundary. Dependencies are explicit and shallow. Convention-over-configuration eliminates boilerplate. The structure is self-describing: the monorepo layout, the adapter interfaces, and the Valibot contracts tell you what each piece does without reading the implementation. An agent opening a file knows its inputs, outputs, and dependencies at a glance.
 
-Gated by: lint rules for file size (300 lines max) and dependency count (5 direct deps max); typecheck for contract completeness.
+Gated by: `bun run agentic-limits` (300-line / 5-import caps; exemptions only for tests and `src/index.ts` barrels), `bun run truth` (every dependency has an importer), and typecheck for contract completeness.
 
 ---
 
@@ -214,26 +216,26 @@ Gated by: lint rules for file size (300 lines max) and dependency count (5 direc
 |---|---|---|
 | Platform | Cloudflare | Workers, D1, R2, Cron, Static Assets, RUM — unified free tier, single vendor. |
 | Edge runtime | Cloudflare Workers | Stateless compute at the edge. Free tier, 10ms CPU/req. |
-| API framework | Hono + zod-openapi | One Zod schema produces validation, TS types, and OpenAPI 3.1 spec. |
-| Auth | Better Auth | Social OAuth + passkeys. Sessions in D1. |
-| ORM | Drizzle | Plain-SQL migrations. Database-agnostic schema. |
+| API framework | Hono + hono-openapi | Valibot (Standard Schema) route definitions produce validation, TS types, and the OpenAPI 3.1 doc. |
+| Auth | Anonymous D1 sessions | Bearer token in D1; cascade delete. Better Auth (OAuth/passkeys) is the documented upgrade path. |
+| Migrations | Raw SQL (`apps/api/migrations/`) | Single database truth. Standard SQL only — no ORM. |
 | Database | Cloudflare D1 | Free tier, SQLite-compatible. Row-level authorization. |
 | Storage | R2 via ObjectStore adapter | Swappable for S3, MinIO, or local filesystem. |
-| Config | D1-backed ConfigStore | Feature flags and runtime config. |
-| Jobs | Cron Triggers via JobScheduler | Swappable for node-cron in non-Worker environments. |
-| Payments | Xendit + Polar MoR | Single adapter interface. Per-transaction fees only. |
-| Client state | Tinybase MergeableStore | CRDT merge. Only source of truth. |
-| Routing | TanStack Router | File-based, type-safe. |
+| Config | ConfigStore adapter | In-memory implementation ships with the template; a D1-backed store is a consuming-project step. |
+| Jobs | Cron Triggers | Daily cron writes via the ObjectStore adapter. |
+| Payments | Deferred | Not in the template. When added: Xendit (ID) and/or Polar MoR behind one adapter, per-transaction fees only — see AGENTS.md and the `payment-integration` skill. |
+| Client state | Custom LWW CRDT (`@app/local-first`) | Per-record LWW-element-set + tombstones. Only source of truth. |
+| Routing | TanStack Router | Code-based route tree, type-safe. |
 | Transport | TanStack Query | Retries, dedupe, offline persistence. Not a state layer. |
 | UI | shadcn/ui + Tailwind | Owned source, Radix accessibility, build-time only CSS. |
 | PWA | vite-plugin-pwa | Service Worker, manifest, precache, update-prompt flow. |
 | i18n | Build-time translations | English and Indonesian. Intl API for dates, numbers, currency. |
-| Tooling | Vite+ (`vp`) via Bun scripts | `bun run check|test|build|dev`. Root scripts wrap `vp` when present, else direct tools. |
+| Tooling | Bun scripts | `bun run check`/`test`/`build`/`dev` call `tsc`, `vitest`, `vite`, and `wrangler` directly. |
 | TypeScript | typescript (strict) | Strict mode. `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`. |
 | Package manager | Bun | Native workspaces. Single lockfile. |
-| Dev environment | Nix Flakes (optional) | Pinned Bun, Node, Wrangler when Nix is available. |
+| Dev environment | Nix Flakes (optional) | Pinned Bun and Wrangler when Nix is available. |
 | Testing | Vitest + Playwright-BDD + fast-check | Unit, E2E, and property-based testing. |
-| Error tracking | Sentry | Client and Worker errors and replays. Degrades past free quota. |
+| Error tracking | Sentry | Client and Worker errors. Errors-only, DSN-gated; Session Replay opt-in. |
 | Log ingestion | Workers Logs | Structured JSON logs via Logger adapter. |
 
 ---
@@ -244,14 +246,17 @@ Root `package.json` scripts are the single source of truth for gates:
 
 | Script | Purpose |
 |---|---|
-| `bun run check` | format/lint/typecheck |
+| `bun run check` | typecheck (root + api + web) |
 | `bun run test` | unit + property tests (coverage gate) |
 | `bun run size-limit` | bundle budget (&lt;200 KB gzipped JS) |
+| `bun run agentic-limits` | file-size / import-count caps |
+| `bun run truth` | no dependency without an importer |
+| `bun run e2e` | Playwright-BDD against `wrangler dev` |
 | `bun run build` | build web + prepare worker |
 | `bun run dev` | local worker + web |
 | `bun run deploy` | `wrangler deploy` (requires login) |
 | `bun run deploy:staging` | deploy `--env staging` |
 
-Vite+ (`vite-plus` / `vp`) is preferred when installed. Scripts fall back to `tsc`, `vitest`, and `vite` so CI works without a global `vp` binary.
+Scripts call `tsc`, `vitest`, `vite`, and `wrangler` directly — no global tooling required beyond Bun. Repo scripts (`scripts/*.mjs`) run under Bun, so the dev shell needs no Node runtime.
 
 This repo is a **working Hello World**, not a prose scaffold. There is no bootstrap skill — start features with `grill-with-docs` / `guided-implementation`.

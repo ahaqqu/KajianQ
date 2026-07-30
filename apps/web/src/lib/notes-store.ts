@@ -1,20 +1,25 @@
-import type { Note } from "@app/shared-zod";
+import { SyncResponseSchema, type Note } from "@app/contracts";
 import {
   CLIENT_VERSION,
   SCHEMA_VERSION,
   aliveNotes,
+  gcTombstones,
   mergeNotes,
+  noteToRow,
+  raiseClockFloor,
+  rowToNote,
+  stampNow,
+  toTombstone,
   type NoteRow,
-} from "@app/sync-protocol";
-import { migrateToLatest } from "./migrations";
+} from "@app/local-first";
+import { migrateToLatest, type NotesState } from "@app/local-first/client";
+import * as v from "valibot";
+import { apiFetch } from "./api";
+
+export type { NotesState };
 
 const DB_NAME = "apt-notes";
 const STORE = "snapshot";
-
-export type NotesState = {
-  schemaVersion: number;
-  notes: NoteRow[];
-};
 
 async function idb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -53,22 +58,21 @@ export async function saveState(state: NotesState): Promise<void> {
 }
 
 export function listAlive(state: NotesState): Note[] {
-  return aliveNotes(state.notes).map((n) => ({
-    id: n.id,
-    title: n.title,
-    body: n.body,
-    updatedAt: n.updatedAt,
-    deleted: Boolean(n.deleted),
-  }));
+  return aliveNotes(state.notes).map(rowToNote);
 }
 
 export async function upsertNote(
   state: NotesState,
   note: NoteRow,
 ): Promise<NotesState> {
+  const stamped: NoteRow = {
+    ...note,
+    updatedAt: stampNow(state.clockFloor, note.updatedAt),
+  };
   const next: NotesState = {
     schemaVersion: SCHEMA_VERSION,
-    notes: mergeNotes(state.notes, [note]),
+    notes: mergeNotes(state.notes, [stamped]),
+    clockFloor: state.clockFloor,
   };
   await saveState(next);
   return next;
@@ -78,52 +82,29 @@ export async function removeNote(
   state: NotesState,
   id: string,
 ): Promise<NotesState> {
-  const prev = state.notes.find((n) => n.id === id);
-  const del: NoteRow = {
-    id,
-    title: prev?.title ?? "",
-    body: prev?.body ?? "",
-    updatedAt: Date.now(),
-    deleted: true,
-  };
-  return upsertNote(state, del);
+  return upsertNote(state, toTombstone(id, stampNow(state.clockFloor)));
 }
 
 export async function pushPull(
   state: NotesState,
   token: string,
 ): Promise<NotesState> {
-  const res = await fetch("/v1/sync", {
+  const res = await apiFetch("/sync", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
+    token,
     body: JSON.stringify({
       schemaVersion: SCHEMA_VERSION,
       clientVersion: CLIENT_VERSION,
-      notes: state.notes.map((n) => ({
-        id: n.id,
-        title: n.title,
-        body: n.body,
-        updatedAt: n.updatedAt,
-        deleted: Boolean(n.deleted),
-      })),
+      notes: state.notes.map(rowToNote),
     }),
   });
   if (res.status === 409) throw new Error("schema_mismatch");
   if (!res.ok) throw new Error(`sync_${res.status}`);
-  const body = (await res.json()) as { notes: Note[] };
-  const serverRows: NoteRow[] = body.notes.map((n) => ({
-    id: n.id,
-    title: n.title,
-    body: n.body,
-    updatedAt: n.updatedAt,
-    deleted: n.deleted,
-  }));
+  const body = v.parse(SyncResponseSchema, await res.json());
   const next: NotesState = {
     schemaVersion: SCHEMA_VERSION,
-    notes: mergeNotes(state.notes, serverRows),
+    notes: gcTombstones(mergeNotes(state.notes, body.notes.map(noteToRow))),
+    clockFloor: raiseClockFloor(state.clockFloor, body.serverNow),
   };
   await saveState(next);
   return next;

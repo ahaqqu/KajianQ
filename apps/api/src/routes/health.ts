@@ -1,6 +1,8 @@
-import { HealthResponseSchema, type HealthResponse } from "@app/shared-zod";
-import { SCHEMA_VERSION } from "@app/sync-protocol";
-import type { RequestContext } from "../lib/context";
+import { HealthResponseSchema, type HealthResponse } from "@app/contracts";
+import { SCHEMA_VERSION } from "@app/local-first";
+import { describeRoute, resolver } from "hono-openapi";
+import { createRequestContext, type RequestContext } from "../lib/context";
+import { newRouter } from "../lib/guard";
 
 export function buildHealth(ctx: RequestContext): HealthResponse {
   const body: HealthResponse = {
@@ -9,7 +11,23 @@ export function buildHealth(ctx: RequestContext): HealthResponse {
     schemaVersion: SCHEMA_VERSION,
     message: "Hello World",
   };
-  const parsed = HealthResponseSchema.parse(body);
-  ctx.logger.info("health.ok", { schemaVersion: parsed.schemaVersion });
-  return parsed;
+  ctx.logger.info("health.ok", { schemaVersion: body.schemaVersion });
+  return body;
 }
+
+export const healthRoutes = newRouter().get(
+  "/v1/health",
+  describeRoute({
+    summary: "Health",
+    responses: {
+      200: {
+        description: "OK",
+        content: { "application/json": { schema: resolver(HealthResponseSchema) } },
+      },
+    },
+  }),
+  (c) => {
+    const ctx = createRequestContext(c.env.APP_ENV, c.get("correlationId"));
+    return c.json(buildHealth(ctx));
+  },
+);

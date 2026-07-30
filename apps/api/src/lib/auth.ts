@@ -1,4 +1,4 @@
-import type { AuthResponse } from "@app/shared-zod";
+import type { AuthResponse } from "@app/contracts";
 import type { D1Database } from "../cf-types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;

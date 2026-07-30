@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
@@ -7,17 +7,16 @@ const MAX_LINES = 300;
 const MAX_DEPS = 5;
 const roots = ["apps", "packages"];
 
+// Exemptions: test files only (plus index.ts barrels for the import cap
+// below). Every source file — app.ts, main.tsx, router.tsx, components —
+// must fit the limits.
 const skip = (p) =>
   p.includes("node_modules") ||
   p.includes("dist") ||
   p.includes(".wrangler") ||
   p.includes(".features-gen") ||
   p.endsWith(".test.ts") ||
-  p.endsWith(".prop.test.ts") ||
-  p.includes(`${join("src", "app.ts")}`) ||
-  p.includes("router.tsx") ||
-  p.includes("main.tsx") ||
-  (p.endsWith(".tsx") && p.includes("components"));
+  p.endsWith(".prop.test.ts");
 
 function walk(dir, out = []) {
   for (const name of readdirSync(dir)) {

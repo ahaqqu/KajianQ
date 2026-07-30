@@ -1,13 +1,22 @@
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
 
 /** Minimal shadcn-like primitives (owned source). */
+const BUTTON_VARIANTS = {
+  primary: "bg-sky-500 text-slate-950 hover:bg-sky-400",
+  muted: "bg-slate-700 text-slate-100 hover:bg-slate-600",
+  danger: "bg-rose-500/90 text-slate-950 hover:bg-rose-400",
+} as const;
+
 export function Button({
+  variant = "primary",
   className = "",
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement>) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: keyof typeof BUTTON_VARIANTS;
+}) {
   return (
     <button
-      className={`inline-flex items-center justify-center rounded-md bg-sky-500 px-3 py-1.5 text-sm font-medium text-slate-950 hover:bg-sky-400 disabled:opacity-50 ${className}`}
+      className={`inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-50 ${BUTTON_VARIANTS[variant]} ${className}`}
       {...props}
     />
   );

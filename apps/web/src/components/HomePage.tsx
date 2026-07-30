@@ -36,11 +36,11 @@ export function HomePage({ locale }: { locale: Locale }) {
         )}
         {health.data && (
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
-            <dt className="text-slate-500">{t(locale, "env")}</dt>
+            <dt className="text-slate-400">{t(locale, "env")}</dt>
             <dd>{health.data.env}</dd>
-            <dt className="text-slate-500">{t(locale, "schema")}</dt>
+            <dt className="text-slate-400">{t(locale, "schema")}</dt>
             <dd data-testid="schema-version">{health.data.schemaVersion}</dd>
-            <dt className="text-slate-500">time</dt>
+            <dt className="text-slate-400">{t(locale, "time")}</dt>
             <dd>{formatWhen(locale, new Date())}</dd>
           </dl>
         )}

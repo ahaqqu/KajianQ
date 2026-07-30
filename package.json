@@ -10,7 +10,8 @@
     "check": "tsc -p tsconfig.json && bun run --filter @app/api check && bun run --filter @app/web check",
     "test": "vitest run --coverage",
     "size-limit": "size-limit",
-    "agentic-limits": "node scripts/check-agentic-limits.mjs",
+    "agentic-limits": "bun scripts/check-agentic-limits.mjs",
+    "truth": "bun scripts/check-template-truth.mjs",
     "e2e": "bun run db:migrate:local && bddgen && playwright test",
     "deploy": "bun run build && wrangler deploy -c apps/api/wrangler.toml --env=\"\"",
     "deploy:staging": "bun run build && wrangler deploy -c apps/api/wrangler.toml --env staging",
@@ -41,8 +42,5 @@
       "limit": "200 KB",
       "gzip": true
     }
-  ],
-  "dependencies": {
-    "brace-expansion": "^5.0.8"
-  }
+  ]
 }

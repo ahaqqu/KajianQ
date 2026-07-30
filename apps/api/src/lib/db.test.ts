@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { requireDb } from "./db";
+import { DbUnboundError, requireDb } from "./db";
 
 describe("requireDb", () => {
-  it("throws when unbound", () => {
+  it("throws a typed DbUnboundError when unbound", () => {
+    expect(() => requireDb({ ASSETS: { fetch } })).toThrow(DbUnboundError);
     expect(() => requireDb({ ASSETS: { fetch } })).toThrow("db_unbound");
   });
 

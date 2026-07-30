@@ -1,16 +1,13 @@
-import type { Note } from "@app/shared-zod";
-import { aliveNotes, mergeNotes, type NoteRow } from "@app/sync-protocol";
+import type { Note } from "@app/contracts";
+import {
+  aliveNotes,
+  dbToRow,
+  mergeNotes,
+  noteToRow,
+  rowToNote,
+  type NoteDbRow,
+} from "@app/local-first";
 import type { D1Database } from "../cf-types";
-
-function toNote(row: NoteRow): Note {
-  return {
-    id: row.id,
-    title: row.title,
-    body: row.body,
-    updatedAt: row.updatedAt,
-    deleted: Boolean(row.deleted),
-  };
-}
 
 export async function listNotes(
   db: D1Database,
@@ -22,21 +19,9 @@ export async function listNotes(
        FROM notes WHERE user_id = ?`,
     )
     .bind(userId)
-    .all<{
-      id: string;
-      title: string;
-      body: string;
-      updatedAt: number;
-      deleted: number;
-    }>();
-  const rows = (res.results ?? []).map((r) => ({
-    id: r.id,
-    title: r.title,
-    body: r.body,
-    updatedAt: r.updatedAt,
-    deleted: r.deleted === 1,
-  }));
-  return aliveNotes(rows).map(toNote);
+    .all<NoteDbRow>();
+  const rows = (res.results ?? []).map(dbToRow);
+  return aliveNotes(rows).map(rowToNote);
 }
 
 export async function syncNotes(
@@ -50,27 +35,9 @@ export async function syncNotes(
        FROM notes WHERE user_id = ?`,
     )
     .bind(userId)
-    .all<{
-      id: string;
-      title: string;
-      body: string;
-      updatedAt: number;
-      deleted: number;
-    }>();
-  const serverRows: NoteRow[] = (existing.results ?? []).map((r) => ({
-    id: r.id,
-    title: r.title,
-    body: r.body,
-    updatedAt: r.updatedAt,
-    deleted: r.deleted === 1,
-  }));
-  const clientRows: NoteRow[] = incoming.map((n) => ({
-    id: n.id,
-    title: n.title,
-    body: n.body,
-    updatedAt: n.updatedAt,
-    deleted: n.deleted,
-  }));
+    .all<NoteDbRow>();
+  const serverRows = (existing.results ?? []).map(dbToRow);
+  const clientRows = incoming.map(noteToRow);
   const merged = mergeNotes(serverRows, clientRows);
   for (const row of merged) {
     await db
@@ -94,5 +61,5 @@ export async function syncNotes(
       )
       .run();
   }
-  return aliveNotes(merged).map(toNote);
+  return aliveNotes(merged).map(rowToNote);
 }

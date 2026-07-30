@@ -8,17 +8,16 @@ Working monorepo proving `docs/ARCHITECTURE.md` via a **Notes** CRUD vertical sl
 
 ## Layout
 
-- `apps/api` — Hono Worker: health, anonymous auth, notes list, sync, OpenAPI; ASSETS for SPA; D1 + R2; cron backup
+- `apps/api` — Hono Worker: health, anonymous auth, notes list, sync, OpenAPI; ASSETS for SPA; D1 + R2; cron backup; raw-SQL migrations in `migrations/`
 - `apps/web` — React PWA + TanStack Router (`/`, `/notes`); IndexedDB notes; leader sync; en/id
-- `packages/shared-zod` — Health, Note, Sync, Auth contracts
-- `packages/sync-protocol` — `SCHEMA_VERSION=2`, `mergeNotes` (+ property tests)
-- `packages/infra` — Logger, ObjectStore, ConfigStore, Cache, JobScheduler, RateLimiter, Sentry facade
-- `packages/db-schema` — users, sessions, notes, rate_limits + SQL migration
+- `packages/contracts` — Health, Note, Sync, Auth contracts (Valibot)
+- `packages/local-first` — `SCHEMA_VERSION=2`, LWW `mergeNotes` (+ property tests), clock discipline, tombstone GC, note-mapper; `/client` entrypoint: leader election, sync loop, persistence, migrations
+- `packages/infra` — Logger, ObjectStore, ConfigStore, RateLimiter adapters
 - `tests/features` — Playwright-BDD
 
 ## Gates
 
-`bun run check` · `bun run test` · `bun run size-limit` · `bun run agentic-limits` · `bun run e2e` · `bun run deploy`
+`bun run check` · `bun run test` · `bun run size-limit` · `bun run agentic-limits` · `bun run truth` · `bun run e2e` · `bun run deploy`
 
 ## Auth model
 

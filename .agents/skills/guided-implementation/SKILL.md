@@ -22,28 +22,28 @@ For each area the plan touches, verify compliance before writing code.
 
 ### Routes
 
-- [ ] Zod schema defined in `packages/shared-zod` before route implementation.
-- [ ] Route uses `@hono/zod-openapi` on shared schemas.
+- [ ] Valibot schema defined in `packages/contracts` (`@app/contracts`) before route implementation.
+- [ ] Route uses `hono-openapi` on shared schemas.
 - [ ] Route path under `/v1/`.
-- [ ] OpenAPI spec regenerated after route addition. Docs at `/docs` must not drift.
+- [ ] OpenAPI spec regenerated from route definitions. Docs at `/docs` must not drift.
 
 ### Database schema
 
-- [ ] Drizzle migration written in `packages/db-schema/migrations/`.
-- [ ] Client migration written in `apps/web/src/lib/migrations/`.
-- [ ] `SCHEMA_VERSION` bumped in `packages/sync-protocol`.
+- [ ] Raw SQL migration written in `apps/api/migrations/`.
+- [ ] Client migration written in `packages/local-first` (or `apps/web/src/lib/` if not yet moved).
+- [ ] `SCHEMA_VERSION` bumped in `packages/local-first`.
 - [ ] SQL uses only standard features — no SQLite-specific or D1-specific extensions.
 
 ### Sync logic
 
-- [ ] Writes are optimistic into Tinybase MergeableStore CRDT. No hand-rolled last-write-wins.
+- [ ] Writes are optimistic into the custom LWW-element-set CRDT in `packages/local-first`. Tinybase is not used.
 - [ ] Changes persist to IndexedDB in the same tick.
 - [ ] Batched via `POST /v1/sync`. No polling loops.
 - [ ] Retries use exponential backoff; permanent errors stop.
 - [ ] Requests include `schemaVersion` and `clientVersion`.
-- [ ] Merge logic is idempotent, commutative, and propagates deletes.
+- [ ] Merge logic is idempotent, commutative (including exact-timestamp ties), and propagates deletes.
 - [ ] Multi-tab: single leader elected. Peers receive state via BroadcastChannel.
-- [ ] Property tests added for idempotency, commutativity, and delete propagation. See `.agents/skills/writing-tests/SKILL.md`.
+- [ ] Property tests added for idempotency, commutativity, associativity, delete-wins, and GC safety. See `.agents/skills/writing-tests/SKILL.md`.
 
 ### Components
 
@@ -67,7 +67,7 @@ For each area the plan touches, verify compliance before writing code.
 
 ### Security
 
-- [ ] Zod validates every external input boundary.
+- [ ] Valibot validates every external input boundary.
 - [ ] Secrets injected via `wrangler secret` — never committed.
 - [ ] `secure-headers` middleware applied; CORS locked to known origins.
 
@@ -80,7 +80,7 @@ For each area the plan touches, verify compliance before writing code.
 
 ## During implementation
 
-- Write contracts (Zod schemas, types) before implementation.
+- Write contracts (Valibot schemas, types) before implementation.
 - Write tests before or alongside implementation.
 - When deviating from the plan, pause and ask for approval.
 - When touching architecture, pause and ask for approval.

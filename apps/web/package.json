@@ -10,14 +10,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@app/shared-zod": "workspace:*",
-    "@app/sync-protocol": "workspace:*",
+    "@app/contracts": "workspace:*",
+    "@app/local-first": "workspace:*",
+    "@sentry/react": "10.68.0",
     "@tanstack/react-query": "5.101.4",
     "@tanstack/react-router": "1.170.18",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "tinybase": "9.2.0",
-    "workbox-window": "^7.4.1"
+    "valibot": "1.4.2"
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.3.3",

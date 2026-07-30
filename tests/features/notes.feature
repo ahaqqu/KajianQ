@@ -23,3 +23,16 @@ Feature: Notes CRUD
     And I create a note titled "Offline idea" with body "later"
     Then I see a note titled "Offline idea"
     And the sync status indicates offline or local
+
+  Scenario: Switch language to Bahasa Indonesia
+    When I open the home page
+    And I switch the language to Bahasa Indonesia
+    Then I see the home page in Bahasa Indonesia
+
+  Scenario: Home page has no serious accessibility violations
+    When I open the home page
+    Then the page has no serious accessibility violations
+
+  Scenario: Notes page has no serious accessibility violations
+    When I open the notes page
+    Then the page has no serious accessibility violations
