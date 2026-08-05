@@ -6,10 +6,21 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
+    versioning-strategy: "increase"
     labels:
       - "dependencies"
       - "bun"
+    commit-message:
+      prefix: "fix"
+      prefix-development: "chore"
+      include: "scope"
+    groups:
+      minor-patch:
+        applies-to: "version-updates"
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -17,7 +28,10 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
     labels:
       - "dependencies"
       - "github-actions"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
