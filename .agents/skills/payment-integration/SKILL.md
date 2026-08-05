@@ -1,6 +1,6 @@
 ---
 name: payment-integration
-description: Use when implementing payment flows, webhooks, or entitlements. Read AGENTS.md Payments section for guardrails.
+description: Use when implementing payment flows, webhooks, or entitlements. Read AGENTS.md for universal guardrails.
 ---
 
 # Payment Integration Skill
@@ -14,6 +14,8 @@ Payments are handled through a single Payments adapter interface that abstracts 
 - **Polar MoR**: Global (cards, wallets, worldwide sales tax/VAT handling)
 
 The adapter lives in `packages/infra`. Business logic MUST NOT call provider APIs directly.
+
+Providers MUST charge per-transaction fees only; do not introduce fixed-cost paid dependencies on the critical path.
 
 ## Webhook Handlers
 

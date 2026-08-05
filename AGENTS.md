@@ -16,14 +16,7 @@ These apply regardless of whether you are planning, implementing, reviewing, or 
 
 ## Payments
 
-This template ships **without** payments (see CONTEXT.md). The rules in this section apply **when a consuming project adds payments** — start from the `.agents/skills/payment-integration/SKILL.md` skill, which provides the Payments adapter interface in `packages/infra`.
-
-- Payments MUST go through the Payments adapter interface in `packages/infra`. Provider APIs are NEVER called from business logic.
-- Webhook handlers MUST verify signatures on the raw body before JSON parsing.
-- Webhook handlers MUST be idempotent (same payload twice = same state as once).
-- Every payment mutation MUST carry an idempotency key.
-- Premium features MUST be gated by ConfigStore entitlement checks at the edge, not only client-side.
-- Providers: Xendit (ID) and/or Polar MoR (global) behind one adapter. Per-transaction fees only — no fixed paid dependency on the critical path.
+This template ships **without** payments (see CONTEXT.md); when a consuming project adds payments, start from the `.agents/skills/payment-integration/SKILL.md` skill, which provides the Payments adapter interface in `packages/infra`.
 
 ## The agentic workflow
 
@@ -49,7 +42,7 @@ See `.agents/skills/writing-tests/SKILL.md` — unit, property, BDD, and integra
 
 See `.agents/skills/pr-creation/SKILL.md` — validate against the Definition of Done and create the pull request.
 
-See `.agents/skills/code-review/SKILL.md` — verify changes against philosophy and guardrails before creating a PR. It recommends a review depth first: normal, or the opt-in `.agents/skills/thermo-nuclear-code-quality-review/SKILL.md` for an extremely strict maintainability review.
+See `.agents/skills/code-review/SKILL.md` — verify changes against philosophy and guardrails before creating a PR. It recommends a review depth first: normal, or the opt-in thermos skills in `.agents/skills/thermos/` for an extremely strict maintainability review.
 
 See `.agents/skills/ship/SKILL.md` — staging → tests → production → smoke tests.
 

@@ -12,9 +12,9 @@ Use this skill when reviewing a pull request after it has been created.
 Before reviewing, recommend a depth and confirm with the user:
 
 - **Normal** — this skill's philosophy and guardrail review. Default for typical PRs.
-- **Thermo-nuclear** — additionally apply `.agents/skills/thermo-nuclear-code-quality-review/SKILL.md`, an extremely strict maintainability review of abstraction quality, file size, and branching complexity. Recommend for large diffs, refactors, new abstractions, or changes to core/shared modules.
+- **Thermo-nuclear** — additionally apply `.agents/skills/thermos/SKILL.md`, which launches both the security/correctness and the maintainability thermo-nuclear review passes in parallel. Recommend for large diffs, refactors, new abstractions, or changes to core/shared modules.
 
-State your recommendation with a one-sentence reason, then ask the user to confirm normal or harsh. On harsh, read the thermo-nuclear skill file and apply its standards on top of this review; where the two conflict, its approval bar wins.
+State your recommendation with a one-sentence reason, then ask the user to confirm normal or harsh. On harsh, read the thermos skill file and apply its standards on top of this review; where the two conflict, the thermo approval bar wins.
 
 ## Inputs
 
