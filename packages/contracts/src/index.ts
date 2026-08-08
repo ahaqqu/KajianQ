@@ -19,3 +19,11 @@ export {
   AuthResponseSchema,
   type AuthResponse,
 } from "./auth";
+export {
+  TemplateSyncManifestSchema,
+  TemplateSyncStateSchema,
+  parseTemplateSyncManifest,
+  parseTemplateSyncState,
+  type TemplateSyncManifest,
+  type TemplateSyncState,
+} from "./template-sync";

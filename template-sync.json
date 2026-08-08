@@ -1,0 +1,23 @@
+{
+  "upstream": "https://github.com/ahaqqu/agentic-project-template.git",
+  "overwrite": [
+    ".agents/",
+    ".github/workflows/",
+    "AGENTS.md",
+    "docs/",
+    "scripts/",
+    "template-sync.json",
+    "flake.nix",
+    "playwright.config.ts",
+    "tsconfig.base.json",
+    "tsconfig.json",
+    "vitest.config.ts"
+  ],
+  "merge": [
+    "apps/",
+    "packages/",
+    "package.json",
+    "README.md",
+    "CONTEXT.md"
+  ]
+}

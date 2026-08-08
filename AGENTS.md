@@ -14,6 +14,10 @@ These apply regardless of whether you are planning, implementing, reviewing, or 
 - When handling secrets, you MUST use `wrangler secret`. You MUST NEVER commit secrets to the repo.
 - Files are 300 lines or fewer with 5 or fewer direct dependencies.
 
+## Template sync
+
+Forked projects sync template updates via `scripts/template-sync/cli.mjs`; `template-sync.json` is the ownership map. `overwrite` paths (`.agents/`, `.github/workflows/`, `AGENTS.md`, `docs/`, `scripts/`, root configs, `template-sync.json` itself) are template-owned — never edit them in a project; `bun run template-gate` fails on drift. `merge` paths (`apps/`, `packages/`, `package.json`, `README.md`, `CONTEXT.md`) inherit changes — extend project code there. Unlisted paths are project-owned.
+
 ## Payments
 
 This template ships **without** payments (see CONTEXT.md); when a consuming project adds payments, start from the `.agents/skills/payment-integration/SKILL.md` skill, which provides the Payments adapter interface in `packages/infra`.
@@ -52,7 +56,7 @@ See `.agents/skills/diagnosing-bugs/SKILL.md` — tight feedback-loop-first debu
 
 ## Definition of Done
 
-- [ ] All CI gates green: `bun run check`, `bun run test` (coverage > 80%), `bun run size-limit`, `bun run agentic-limits`, `bun run truth`, security scans.
+- [ ] All CI gates green: `bun run check`, `bun run test` (coverage > 80%), `bun run size-limit`, `bun run agentic-limits`, `bun run truth`, `bun run template-gate`, security scans.
 - [ ] Contracts written before implementation.
 - [ ] API or UI changes: BDD tests added covering the user-facing flow.
 - [ ] Schema changes: server migration + client migration + `SCHEMA_VERSION` bump.

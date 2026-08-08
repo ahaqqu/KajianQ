@@ -57,6 +57,19 @@ bunx wrangler secret put SENTRY_DSN    # Worker errors (per env)
 VITE_SENTRY_DSN=… bun run build        # web errors-only; Session Replay is opt-in
 ```
 
+### Keep in sync with template updates
+
+Template changes (skills, guardrails, workflows, docs) flow into forked projects via `scripts/template-sync/cli.mjs`. `template-sync.json` declares ownership: **overwrite** paths are template-owned and enforced — `bun run template-gate` (CI) fails on any drift, and syncs always take the template version; **merge** paths (`apps/`, `packages/`, `package.json`, `README.md`, `CONTEXT.md`) merge normally; unlisted paths are project-owned and never synced.
+
+```bash
+bun run template-sync init     # add + fetch the upstream remote (once)
+bun run template-sync check    # gate: fail on template-owned drift
+bun run template-sync update   # merge latest template release (--ref=X to pin)
+bun run template-sync finish   # complete a sync after resolving conflicts
+```
+
+The `template-sync` workflow (`.github/workflows/template-sync.yml`) opens a sync PR weekly. If it reports conflicts, check out the `template-sync` branch, resolve them, then run `bun run template-sync finish`. To sync from a different upstream URL, set the `TEMPLATE_SYNC_UPSTREAM` environment variable. Do not edit `template-sync.json` in a fork: it is template-owned and the gate will flag any drift.
+
 ## Develop a product
 
 ```

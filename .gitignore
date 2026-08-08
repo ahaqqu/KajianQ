@@ -16,7 +16,5 @@ coverage/
 .scratch/
 apps/api/.mf/
 .dev.vars
-.features-gen/
-test-results/
-playwright-report/
-blob-report/
+
+.template-sync.pending
