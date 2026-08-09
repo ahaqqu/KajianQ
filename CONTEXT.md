@@ -51,3 +51,15 @@ _Avoid_: log, debug info
 **Golden Set**:
 The versioned collection of Indonesian/English test questions with expected sources and citations, run against real services as the integration-test regression gate.
 _Avoid_: eval set, test set (unqualified)
+
+**Terminology Glossary**:
+The curated bilingual table mapping an Indonesian religious term to its Arabic variants (e.g., surga → jannah, firdaus, na'im, darussalam; neraka → jahannam, nar, saqar), living in `kajianq-domain`, seeded from Kemenag↔Uthmani alignment and human-verified. Used for Query Expansion per ADR-0010.
+_Avoid_: dictionary (ambiguous with generic dictionaries)
+
+**Query Expansion**:
+Smart Router stage-2 augmentation that emits Arabic term variants from the Terminology Glossary as an additional retrieval channel alongside the Indonesian sub-queries, fused via RRF. Expansion only — never replaces the original user query; never whole-query translation (rejected per ADR-0010).
+_Avoid_: query translation (a different, rejected mechanism)
+
+**Deep Think**:
+The opt-in retrieval mode for comprehensive-coverage questions: iterative rounds (draft → gap detection → re-retrieve) over a deep candidate pool (50–100 chunks) with cheap-tier relevance filtering before assembly, under hard budget caps. The Trace shows coverage (passages examined vs. used). Never "read all documents into the context" (ADR-0011).
+_Avoid_: deep research (marketing term), read-all (rejected approach)
