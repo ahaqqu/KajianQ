@@ -129,7 +129,7 @@ Ingestion and eval harness run as **Bun CLI scripts** (local/CI), never on Worke
 ### 3.3 The DARS pipeline (Smart Router)
 
 1. **Intent & Principle detection** (cheap tier) → JSON: `category, subcategory, madzhab, needs_principle, principle_tags, query_type (factual|ruling|analogy|comparison|history|aqidah), confidence, reasoning`.
-2. **Query decomposition** (cheap tier) → 2–4 sub-queries: always one factual; +principle if `needs_principle`; +Quranic dalil if fiqh; +sanad verification if hadith.
+2. **Query decomposition** (cheap tier) → 2–4 sub-queries: always one factual; +principle if `needs_principle`; +Quranic dalil if fiqh; +sanad verification if hadith. +Arabic expansion terms from the Terminology Glossary for variant-term queries (ADR-0010; expansion only, never query translation).
 3. **Source routing** (rules + cheap tier) → index selection + SQL metadata filters (`source_type`, `madzhab`, `grade IN …`, `principle_tags ANY …`).
 4. **Retrieval** — hybrid: pgvector HNSW dense + tsvector sparse (upgrade to ParadeDB `pg_search` true BM25 if the Neon plan allows) fused with **RRF (k=60)** + hierarchy bonuses (Quran +0.3, Sahih +0.25, Hasan +0.15, Kitab +0.1, Principle +0.2 on analogy).
 5. **Context assembly** — presentation order: Principles → Quran → Hadith → Kitab → concept links; parents contribute LLM summaries so children keep their chapter context.
@@ -270,6 +270,8 @@ Mitigations: top-k discipline (8–12 chunks, not 20), prompt caching for the st
 | `adr/0007` | User-facing Trace + trace-anchored feedback |
 | `adr/0008` | Neon Postgres+pgvector behind RagStore adapter (not D1/Vectorize) |
 | `adr/0009` | Vendor allowlist (Gemini/Kimi/DeepSeek/Qwen); paid critical path accepted with price discipline; Qwen tie-break |
+| `adr/0010` | Terminology Glossary + Arabic query expansion (never query translation) |
+| `adr/0011` | Deep Think: iterative budget-capped retrieval mode, never read-all |
 
 Domain vocabulary: `CONTEXT.md`. Workflow after this spec: `to-spec` → `to-tickets` per the template's agentic pipeline.
 
