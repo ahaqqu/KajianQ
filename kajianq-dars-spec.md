@@ -196,9 +196,16 @@ Prompt/model config stays in files, reviewed via PRs — no UI editing in v1.
 
 All attributions ship in `NOTICES/DATASETS.md` (MIT repo; notes.md requirement).
 
-### 4.2 Priority kitab (pre-600 H) — unchanged
+### 4.2 Priority kitab (pre-600 H)
 
 Mudawwanah (Sahnun 240H), Al-Umm (Syafi'i 204H), Syarh Aqidah Thahawiyah (321H), Ihya Ulumuddin (505H), Tarikh Tabari (310H), Al-Kamil (Ibn Athir 630H), Muwatta (179H), Musnad Ahmad (241H), Sunan ad-Darimi (255H), Tahdzib al-Akhlaq (421H); medium: Al-Mabsut (483H, partial), Al-Hidayah (593H). Verify matn dates against OpenITI metadata — many Shamela editions are later commentaries (matn vs sharh discipline per `CONTEXT.md`).
+
+**Complete author corpora (verified)** — issues #33 (Al-Ghazali), #35 (Makki, Qushayri, Jilani). Beyond single priority titles, the corpus targets the complete *verified* works of the classical tasawuf lineage plus Al-Ghazali — all pre-600 H. For every author: the bibliography is LLM-drafted then owner-verified against standard catalogues, and disputed attributions are excluded or explicitly labeled — never silently ingested.
+
+- **Abu Talib al-Makki (d. 386 H)**: Qut al-Qulub fi Mu'amalat al-Mahbub — the foundational tasawuf manual; his other works are not extant.
+- **Abu al-Qasim al-Qushayri (d. 465 H)**: Al-Risalah al-Qushayriyyah, Lata'if al-Isharat (tasawuf tafsir), Sharh Asma' Allah al-Husna, Tarikh al-Sufiyyah, Kitab al-Mi'raj; attributed works (e.g., Al-Fusul fi al-Usul) verified before ingestion.
+- **Al-Ghazali (d. 505 H)**: the fiqh trilogy (Al-Wajiz, Al-Wasit, Al-Basit), ushul (Al-Mustasfa, Al-Mankhul), aqidah/kalam (Al-Iqtisad fi al-I'tiqad, Tahafut al-Falasifah, Fada'ih al-Batiniyyah, Faysal al-Tafriqah, Iljam al-'Awam, Al-Qistas al-Mustaqim), tasawuf/akhlaq (Ihya Ulumuddin, Mizan al-'Amal, Al-Arba'in fi Ushul al-Din, Bidayat al-Hidayah, Misykat al-Anwar, Al-Maqsad al-Asna, Jawahir al-Qur'an, Al-Munqidz min al-Dhalal), and the Persian works (Ayyuha al-Walad, Kimiya-i Sa'adat — these validate the FA→ID translation path in the harness). Disputed attributions (e.g., Minhaj al-'Abidin, Al-Madnun) excluded or labeled per verification. Note: the Ihya is rich in dhaif hadith — v1 dhaif flagging and v2 per-chain grades (ADR-0012) apply.
+- **Abdul Qadir al-Jilani (d. 561 H, Hanbali)**: Al-Ghunyah li Thalibi Tariq al-Haqq, Futuh al-Ghayb, Al-Fath al-Rabbani, Malfuzat, Jala' al-Khawatir (discourses recorded by his students); popular attributions such as Sirr al-Asrar are disputed → excluded or labeled per verification. Adds Hanbali representation to the corpus.
 
 ### 4.3 Principle Index
 
