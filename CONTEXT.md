@@ -21,7 +21,7 @@ One of the four Sunni legal schools, stored as enum metadata: `hanafi | maliki |
 _Avoid_: sect, denomination, school (unqualified)
 
 **Matn**:
-The original authorial text of a kitab, as opposed to commentary written about it.
+The original authorial text of a kitab, as opposed to commentary written about it. Of a hadith: the body text, as opposed to its Isnad.
 _Avoid_: original text (ambiguous)
 
 **Sharh**:
@@ -29,7 +29,7 @@ A commentary written to explain a matn. Ingestion must distinguish sharh from ma
 _Avoid_: commentary (ambiguous in English prose)
 
 **Grade**:
-A hadith's authenticity classification: `mutawatir | sahih | hasan | dhaif`. Dhaif material is always flagged to the user with a warning.
+A hadith's authenticity classification: `mutawatir | sahih | hasan | dhaif`. Dhaif material is always flagged to the user with a warning. v1 stores one headline grade per hadith; from v2 (ADR-0012) a Grade attaches per Isnad, because the same matn can be sahih via one chain and dhaif via another.
 _Avoid_: score, rating
 
 **Principle**:
@@ -63,3 +63,11 @@ _Avoid_: query translation (a different, rejected mechanism)
 **Deep Think**:
 The opt-in retrieval mode for comprehensive-coverage questions: iterative rounds (draft → gap detection → re-retrieve) over a deep candidate pool (50–100 chunks) with cheap-tier relevance filtering before assembly, under hard budget caps. The Trace shows coverage (passages examined vs. used). Never "read all documents into the context" (ADR-0011).
 _Avoid_: deep research (marketing term), read-all (rejected approach)
+
+**Isnad**:
+The ordered chain of narrators through which a hadith was transmitted. From v2 stored as structured rows (narrators + chains), not prose; grading applies to the Isnad, not the Matn (ADR-0012).
+_Avoid_: sanad (unqualified romanization drift), chain (unqualified)
+
+**Narrator Graph**:
+The relational structure of hadith narrators (rawi) and the Isnads they appear in, built from Sanadset in v2 and traversed with recursive SQL over Postgres. Not a graph database and not GraphRAG.
+_Avoid_: knowledge graph (implies GraphRAG-style entity extraction)
