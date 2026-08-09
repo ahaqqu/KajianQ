@@ -190,7 +190,7 @@ Prompt/model config stays in files, reviewed via PRs — no UI editing in v1.
 | Terjemahan ID | Kemenag via Tanzil | TXT | **Verify terms**; attribute (risk §7) |
 | Tafsir | Tanzil / Quran.com (Ibnu Katsir, Jalalayn, Tabari) | XML/JSON | Attribute; prefer public-domain editions |
 | Hadith ~50K | hadith-json (AhmedBaset) | JSON | Check repo license; attribute |
-| Hadith 650K w/ sanad | Sanadset (Kaggle) | CSV (later phase) | Check Kaggle terms; attribute |
+| Hadith 650K w/ sanad | Sanadset (Kaggle) | CSV (v2, §9) | Check Kaggle terms; attribute |
 | Hadith API | Sunnah.com | JSON API | **API key request needed** (open task) |
 | Kitab | Shamela `.bok` / OpenITI TEI | MDB / XML | Classical texts public domain; attribute Shamela/OpenITI |
 
@@ -272,8 +272,66 @@ Mitigations: top-k discipline (8–12 chunks, not 20), prompt caching for the st
 | `adr/0009` | Vendor allowlist (Gemini/Kimi/DeepSeek/Qwen); paid critical path accepted with price discipline; Qwen tie-break |
 | `adr/0010` | Terminology Glossary + Arabic query expansion (never query translation) |
 | `adr/0011` | Deep Think: iterative budget-capped retrieval mode, never read-all |
+| `adr/0012` | Per-chain hadith grades via Sanadset isnad data (v2); additive migration, no graph DB / GraphRAG |
 
 Domain vocabulary: `CONTEXT.md`. Workflow after this spec: `to-spec` → `to-tickets` per the template's agentic pipeline.
+
+---
+
+## 9. v2 Plan — Sanadset: Isnad data & per-chain grades (targeted for v2.0)
+
+### 9.1 Goal
+
+Close v1's integrity gap. v1 stores one flattened grade per matn, but hadith science grades **chains, not texts**: the same matn can be sahih via one isnad and dhaif via another, and weak chains can strengthen each other (hasan li-ghayrihi). A trust-first product cannot stay confidently wrong in this class of answers. v2 makes grades per-chain with grader attribution and shows transmission evidence (ADR-0012).
+
+### 9.2 Scope
+
+- **In:** Sanadset ingestion (650K hadith, tagged sanad/matn); `narrators` + `hadith_chains` tables; reconciliation against the v1 hadith corpus; per-chain grades in citations, answers, UI, and Trace; narrator-reliability answers; Golden Set v2 gate.
+- **Out:** full GraphRAG / any graph DB (ADR-0012 — recursive SQL suffices); narrator biographies beyond Sanadset fields; non-hadith chains (e.g., tafsir isnads) — later.
+
+### 9.3 Data layer (additive migration)
+
+- `narrators`: id, canonical_name_ar, name_variants[], kunya, laqab, death_year, tabaqa, per-critic reliability JSONB, metadata.
+- `hadith_chains`: id, child_id → doc_children, collection, narrator_ids[] (ordered), grade, grader, source_ref.
+- Teacher/student relations derived from chain adjacency — no separate table in v2.
+- Existing v1 rows, embeddings, and indexes untouched — no re-ingestion, no re-indexing.
+
+### 9.4 Ingestion (CLI, off-Workers)
+
+Acquire (Kaggle; **human prerequisite: verify license terms**) → parse sanad/matn tags → narrator entity resolution (deterministic Arabic name normalization → LLM assist on unresolved → sampled cross-vendor review; variants recorded) → matn reconciliation (exact → normalized → fuzzy + LLM adjudication; unmatched ingest as new children; low-confidence quarantined, never force-merged) → attach chains; same-matn variants linked via `concept_links` → ingestion report (match rate, resolution rate, quarantine count, cost).
+
+### 9.5 Retrieval, generation, UI
+
+- Retrieval filters: chain grade, narrator.
+- Citation: `HR. Bukhari no. N (Sahih — al-Albani; chain via …)`; multiple chains presented neutrally; dhaif flagged as in v1.
+- Prompt rules: never upgrade a grade beyond retrieved evidence; note corroboration when chains support it.
+- Trace shows chains consulted; takhrij-style answers when cross-collection evidence exists.
+
+### 9.6 Eval & gate
+
+Golden Set v2 traps (ID/EN): conflicting grades per matn; corroboration cases; narrator reliability; takhrij. Cross-vendor faithfulness judge validates per-chain claims against retrieved chains. v1 suite must stay green. Full gate before v2.0.
+
+### 9.7 Tickets
+
+| Ticket | Deliverable | Blocked by |
+|---|---|---|
+| #27 | v2 spec (parent) | — |
+| #28 | V2-P1: Schema & domain model | #4 |
+| #29 | V2-P2: Sanadset ingestion (+ Kaggle terms, human) | #28, #7 |
+| #30 | V2-P3: Per-chain grades in retrieval/UI/Trace | #29, #11, #12 |
+| #31 | V2-P4: Golden Set v2 & v2.0 gate | #30, #20 |
+
+Sequenced V2-P1 → V2-P4; indicative 4–6 weeks, starts after v1.0 (§7).
+
+### 9.8 Risks
+
+| Risk | Mitigation |
+|---|---|
+| Narrator name-resolution errors (Arabic name variants) | Variant table + LLM assist + sampled cross-vendor review |
+| Wrong matn matches | Conservative thresholds; quarantine bucket; spot-checks |
+| Kaggle licensing | Verify terms before ingestion (human prerequisite) |
+| Scope creep toward GraphRAG | Explicitly out of scope per ADR-0012 |
+| v1 answers built on flattened grades | Semantic upgrade documented (CONTEXT.md Grade); v1 Golden Set re-run gates regressions |
 
 ---
 
