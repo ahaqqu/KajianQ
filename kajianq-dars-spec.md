@@ -196,9 +196,11 @@ Prompt/model config stays in files, reviewed via PRs — no UI editing in v1.
 
 All attributions ship in `NOTICES/DATASETS.md` (MIT repo; notes.md requirement).
 
-### 4.2 Priority kitab (pre-600 H) — unchanged
+### 4.2 Priority kitab (pre-600 H)
 
 Mudawwanah (Sahnun 240H), Al-Umm (Syafi'i 204H), Syarh Aqidah Thahawiyah (321H), Ihya Ulumuddin (505H), Tarikh Tabari (310H), Al-Kamil (Ibn Athir 630H), Muwatta (179H), Musnad Ahmad (241H), Sunan ad-Darimi (255H), Tahdzib al-Akhlaq (421H); medium: Al-Mabsut (483H, partial), Al-Hidayah (593H). Verify matn dates against OpenITI metadata — many Shamela editions are later commentaries (matn vs sharh discipline per `CONTEXT.md`).
+
+**Complete author corpus: Al-Ghazali (d. 505 H)** — issue #33. Beyond the Ihya, the corpus targets all *verified* Ghazali works: the fiqh trilogy (Al-Wajiz, Al-Wasit, Al-Basit), ushul (Al-Mustasfa, Al-Mankhul), aqidah/kalam (Al-Iqtisad fi al-I'tiqad, Tahafut al-Falasifah, Fada'ih al-Batiniyyah, Faysal al-Tafriqah, Iljam al-'Awam, Al-Qistas al-Mustaqim), tasawuf/akhlaq (Mizan al-'Amal, Al-Arba'in fi Ushul al-Din, Bidayat al-Hidayah, Misykat al-Anwar, Al-Maqsad al-Asna, Jawahir al-Qur'an, Al-Munqidz min al-Dhalal), and the Persian works (Ayyuha al-Walad, Kimiya-i Sa'adat — these validate the FA→ID translation path in the harness). Hundreds of titles are *attributed* to Al-Ghazali; the bibliography is LLM-drafted then owner-verified against standard catalogues (Badawi, Bouyges), and disputed attributions (e.g., Minhaj al-'Abidin, Al-Madnun) are excluded or explicitly labeled — never silently ingested. Note: the Ihya is rich in dhaif hadith — v1 dhaif flagging and v2 per-chain grades (ADR-0012) apply.
 
 ### 4.3 Principle Index
 
