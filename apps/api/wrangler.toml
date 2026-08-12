@@ -24,14 +24,14 @@ enabled = true
 
 [vars]
 APP_ENV = "production"
-ALLOWED_ORIGINS = "http://localhost:8787,http://127.0.0.1:8787,https://agentic-template.rumaq.workers.dev"
+ALLOWED_ORIGINS = ""
 
 [triggers]
 crons = ["0 3 * * *"]
 
 [env.staging]
 name = "agentic-template-staging"
-vars = { APP_ENV = "staging", ALLOWED_ORIGINS = "http://localhost:8787,https://agentic-template-staging.rumaq.workers.dev" }
+vars = { APP_ENV = "staging", ALLOWED_ORIGINS = "" }
 
 [[env.staging.d1_databases]]
 binding = "DB"

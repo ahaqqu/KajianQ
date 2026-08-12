@@ -6,7 +6,19 @@ import { allowRequest } from "./rate-limit-mw";
 
 /** Installs the cross-cutting middleware every route shares. */
 export function applyMiddleware(api: Hono<ApiEnv>): void {
-  api.use("*", secureHeaders());
+  api.use("*", secureHeaders({
+    contentSecurityPolicy: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "blob:"],
+      fontSrc: ["'self'", "data:"],
+      connectSrc: ["'self'", "https://sentry.io"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      frameAncestors: ["'none'"],
+    },
+  }));
   api.use("*", corsGuard);
   api.use("*", async (c, next) => {
     const id = c.req.header("X-Correlation-Id") ?? crypto.randomUUID();

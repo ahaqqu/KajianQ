@@ -31,7 +31,7 @@ export function resolveEnvName(raw: string | undefined): AppEnvName {
 
 export function allowedOrigins(raw: string | undefined): string[] {
   if (!raw || raw.trim() === "") {
-    return ["http://localhost:8787", "http://127.0.0.1:8787"];
+    return [];
   }
   return raw.split(",").map((s) => s.trim()).filter(Boolean);
 }

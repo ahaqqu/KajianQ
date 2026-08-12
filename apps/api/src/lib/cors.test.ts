@@ -9,9 +9,9 @@ describe("resolveCorsOrigin", () => {
       .toBe("http://localhost:8787");
   });
 
-  it("falls back to * when the allowlist is empty", () => {
+  it("falls back to empty string (block) when the allowlist is empty", () => {
     expect(resolveCorsOrigin(undefined, "https://api.example/v1/health", []))
-      .toBe("*");
+      .toBe("");
   });
 
   it("echoes an allowlisted origin", () => {

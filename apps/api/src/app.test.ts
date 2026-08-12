@@ -101,11 +101,12 @@ describe("createApi routes", () => {
   });
 
   it("reflects the allowlisted request origin and rejects others", async () => {
+    const corsEnv = { ...env, ALLOWED_ORIGINS: "http://localhost:8787" };
     const api = createApi();
     const ok = await api.request(
       "/v1/health",
       { headers: { Origin: "http://localhost:8787" } },
-      env,
+      corsEnv,
     );
     expect(ok.headers.get("Access-Control-Allow-Origin")).toBe(
       "http://localhost:8787",
@@ -113,11 +114,30 @@ describe("createApi routes", () => {
     const bad = await api.request(
       "/v1/health",
       { headers: { Origin: "https://evil.example" } },
-      env,
+      corsEnv,
     );
     expect(bad.headers.get("Access-Control-Allow-Origin")).not.toBe(
       "https://evil.example",
     );
+  });
+
+  it("blocks cross-origin requests when ALLOWED_ORIGINS is empty", async () => {
+    const api = createApi();
+    const res = await api.request(
+      "/v1/health",
+      { headers: { Origin: "https://evil.example" } },
+      { ...env, ALLOWED_ORIGINS: "" },
+    );
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
+  });
+
+  it("emits a restrictive Content-Security-Policy header", async () => {
+    const res = await createApi().request("/v1/health", {}, env);
+    const csp = res.headers.get("Content-Security-Policy");
+    expect(csp).toBeTruthy();
+    expect(csp).toContain("default-src 'self'");
+    expect(csp).toContain("object-src 'none'");
+    expect(csp).toContain("frame-ancestors 'none'");
   });
 });
 

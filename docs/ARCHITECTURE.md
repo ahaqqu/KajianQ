@@ -81,6 +81,10 @@ Every external boundary is validated. Sessions are anonymous Bearer tokens store
 
 Rate limiting is enforced at the edge. Secure headers and CORS locked to known origins are mandatory on all responses. Account deletion cascades across all data stores for GDPR readiness. Payment webhooks verify signatures and are idempotent.
 
+### Rate limiter limitations
+
+The in-memory rate limiter (`apps/api/src/lib/rate-limit-mw.ts`) is per-isolate: each Worker isolate keeps its own counter, counters reset on cold starts, and there is no shared state across Cloudflare POPs or isolates. A determined attacker can exceed the nominal limit by routing requests through multiple POPs or awaiting isolate eviction. This is an accepted free-tier trade-off. The upgrade path is Durable Objects, which provide a single shared counter per key with a global view. Until then, treat the limiter as best-effort mitigation, not a hard guarantee.
+
 ### Security scanning
 
 | Layer | Tool | When |
@@ -132,16 +136,16 @@ All API routes are under `/v1/`. The Service Worker uses versioned precache with
 │   ├── web/                    # React 19 PWA
 │   │   ├── src/router.tsx      # Code-based type-safe routes
 │   │   ├── src/components/     # UI components
-│   │   ├── src/lib/            # Local notes store (IndexedDB), session, i18n
+│   │   ├── src/lib/            # Local data store (IndexedDB), session, i18n
 │   │   └── public/             # manifest, icons
 │   └── api/                    # Hono Worker (also serves web assets)
 │       ├── src/routes/         # /v1/* route handlers + hono-openapi definitions
-│       ├── src/lib/            # auth, db, notes-repo, middleware, errors
+│       ├── src/lib/            # auth, db, sync-repo, middleware, errors
 │       ├── migrations/         # Raw SQL — the single database truth
 │       └── wrangler.toml
 ├── packages/
 │   ├── contracts/              # Valibot client ↔ server contracts
-│   ├── local-first/            # LWW CRDT, SCHEMA_VERSION, note mapping; /client: sync loop, leader, migrations
+│   ├── local-first/            # LWW CRDT, SCHEMA_VERSION, domain mapping; /client: sync loop, leader, migrations
 │   └── infra/                  # Adapters: Logger, ObjectStore, ConfigStore, RateLimiter
 ├── .github/workflows/
 │   ├── ci.yml                  # PR gate
