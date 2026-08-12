@@ -22,7 +22,9 @@ export default defineConfig({
       exclude: [
         "**/*.{test,prop.test}.ts",
         "**/index.ts",
+        "**/client.ts",
         "**/*.d.ts",
+        "apps/api/src/cf-types.ts",
         "apps/web/src/main.tsx",
         "apps/web/src/components/**",
       ],

@@ -60,8 +60,8 @@ Use these after the initial bootstrap to align the team and agents.
 We are building <project-name> for <target users>. The core value is
 <one-sentence value>. The first shipped milestone must demonstrate
 <end-to-end user flow>. Use the grill-with-docs skill to interview me,
-produce ADRs for the two highest-risk decisions, and update the glossary
-in docs/GLOSSARY.md.
+produce ADRs for the two highest-risk decisions, and create or update the
+project glossary in `docs/GLOSSARY.md` (project-owned).
 ```
 
 ### Spec and tickets

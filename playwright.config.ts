@@ -21,7 +21,7 @@ export default defineConfig({
     ? undefined
     : {
         command:
-          "bun run build && bunx wrangler d1 migrations apply agentic-template-db --local -c apps/api/wrangler.toml && bunx wrangler dev -c apps/api/wrangler.toml --ip 127.0.0.1 --port 8787",
+          "bun run build && bunx wrangler d1 migrations apply DB --local -c apps/api/wrangler.toml && bunx wrangler dev -c apps/api/wrangler.toml --ip 127.0.0.1 --port 8787",
         url: "http://127.0.0.1:8787/v1/health",
         reuseExistingServer: !process.env.CI,
         timeout: 180_000,

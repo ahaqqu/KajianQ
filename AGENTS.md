@@ -16,7 +16,7 @@ These apply regardless of whether you are planning, implementing, reviewing, or 
 
 ## Template sync
 
-Forked projects sync template updates via `scripts/template-sync/cli.mjs`; `template-sync.json` is the ownership map. `overwrite` paths (`.agents/`, `.github/workflows/`, `AGENTS.md`, `docs/`, `scripts/`, root configs, `template-sync.json` itself) are template-owned — never edit them in a project; `bun run template-gate` fails on drift. `merge` paths (`apps/`, `packages/`, `package.json`, `README.md`, `CONTEXT.md`) inherit changes — extend project code there. Unlisted paths are project-owned.
+Forked projects sync template updates via `scripts/template-sync/cli.mjs`; `template-sync.json` is the ownership map and the single source of truth for which paths are template-owned. `overwrite` paths (listed in `template-sync.json`) are template-owned — never edit them in a project; `bun run template-gate` fails on drift. `merge` paths (`apps/`, `packages/`, `package.json`, `README.md`, `CONTEXT.md`) inherit changes — extend project code there. Unlisted paths are project-owned.
 
 ## Payments
 
