@@ -25,6 +25,7 @@ export default defineConfig({
         "**/client.ts",
         "**/*.d.ts",
         "apps/api/src/cf-types.ts",
+        "apps/api/src/test-utils/**",
         "apps/web/src/main.tsx",
         "apps/web/src/components/**",
       ],
