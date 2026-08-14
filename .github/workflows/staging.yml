@@ -50,8 +50,15 @@ jobs:
         with:
           target: ${{ vars.STAGING_URL }}
       - name: Schemathesis fuzz
+        # --checks: exclude unsupported_methods (TRACE/CONNECT etc. return 405
+        # without Allow header at the Cloudflare edge — not our app's behavior)
+        # --auth: provide a session token for /v1/sync (creates a session first)
         run: |
           pip install schemathesis
-          schemathesis run "$STAGING_URL/openapi.json" --url "$STAGING_URL" --checks all
+          TOKEN=$(curl -sf -X POST "$STAGING_URL/v1/session" | jq -r '.token')
+          schemathesis run "$STAGING_URL/openapi.json" \
+            --url "$STAGING_URL" \
+            --checks all,-unsupported_methods \
+            -H "Authorization: Bearer $TOKEN"
         env:
           STAGING_URL: ${{ vars.STAGING_URL }}
