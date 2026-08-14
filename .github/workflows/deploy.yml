@@ -12,7 +12,7 @@ jobs:
           bun-version: latest
       - run: bun install --frozen-lockfile
       - run: bun run build
-      - run: bunx wrangler d1 migrations apply agentic-template-db --remote -c apps/api/wrangler.toml
+      - run: bunx wrangler d1 migrations apply DB --remote -c apps/api/wrangler.toml
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -20,6 +20,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
       - name: Smoke
         run: |
           curl -sf "$PROD_URL/v1/health" | grep -q '"status":"ok"'

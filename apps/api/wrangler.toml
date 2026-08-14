@@ -6,7 +6,11 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "agentic-template-db"
-database_id = "7dc87f2b-cc2b-437d-ac1a-05cd4134b26a"
+# Sentinel: replace with the UUID from `wrangler d1 create` before first
+# remote deploy. Local dev uses `preview_database_id` below; remote deploy
+# injects the real UUID via a CI secret (see README §Deploy).
+database_id = "replace-me-with-your-d1-uuid"
+preview_database_id = "local-template-db"
 migrations_dir = "migrations"
 
 [[r2_buckets]]
@@ -36,7 +40,10 @@ vars = { APP_ENV = "staging", ALLOWED_ORIGINS = "" }
 [[env.staging.d1_databases]]
 binding = "DB"
 database_name = "agentic-template-db-staging"
-database_id = "local-agentic-template-db-staging"
+# Sentinel: replace with the staging UUID from `wrangler d1 create` before
+# first remote deploy. Local dev uses `preview_database_id` below.
+database_id = "replace-me-with-your-d1-uuid-staging"
+preview_database_id = "local-template-db-staging"
 migrations_dir = "migrations"
 
 [[env.staging.r2_buckets]]

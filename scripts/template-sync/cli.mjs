@@ -15,6 +15,7 @@ const usage = (log) => {
       init: "add and fetch the upstream remote (run once per project)",
       check: "gate: fail if template-owned files drifted from the last synced ref",
       gate: "alias for check",
+      seed: "record sync state against an upstream ref without merging (--ref=X to pin)",
       update: "merge the latest template release (--ref=X to pin)",
       finish: "complete an update after resolving merge conflicts",
     },
@@ -74,6 +75,7 @@ function main() {
       init: commands.cmdInit,
       check: commands.cmdCheck,
       gate: commands.cmdCheck,
+      seed: () => commands.cmdSeed(flags),
       update: () => commands.cmdUpdate(flags),
       finish: commands.cmdFinish,
     };

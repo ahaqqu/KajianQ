@@ -132,4 +132,66 @@ describe("template-sync CLI", () => {
     const out = run(fork, "init", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
     expect(out).toContain("upstream fetched");
   });
+
+  it("seed records state without merging, then check enforces drift", () => {
+    // Simulate a tree-copy bootstrap: the fork has the same template-owned
+    // file content as upstream v1.0.0, but no shared git history.
+    const dir = setupRepo("treecopy-");
+    git(dir, `remote add upstream ${upstream}`);
+    writeFileSync(`${dir}/AGENTS.md`, "template agents\n");
+    writeFileSync(`${dir}/template-sync.json`, JSON.stringify({
+      upstream: `${upstream}`,
+      overwrite: ["AGENTS.md"],
+      merge: ["README.md"],
+    }));
+    commit(dir, "tree-copy bootstrap");
+
+    run(dir, "init", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
+    const out = run(dir, "seed --ref=v1.0.0", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
+    expect(out).toContain("state seeded");
+
+    // check now enforces (no longer "no sync state found").
+    const check = run(dir, "check", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
+    expect(check).toContain("gate passed");
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("seed refuses when template-owned files do not match the target ref", () => {
+    const dir = setupRepo("drifted-");
+    git(dir, `remote add upstream ${upstream}`);
+    writeFileSync(`${dir}/AGENTS.md`, "drifted content\n");
+    writeFileSync(`${dir}/template-sync.json`, JSON.stringify({
+      upstream: `${upstream}`,
+      overwrite: ["AGENTS.md"],
+      merge: ["README.md"],
+    }));
+    commit(dir, "drifted bootstrap");
+
+    run(dir, "init", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
+    expect(() =>
+      run(dir, "seed --ref=v1.0.0", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` }),
+    ).toThrow();
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("seed is idempotent — re-seeding the same ref is a no-op", () => {
+    const dir = setupRepo("idempotent-");
+    git(dir, `remote add upstream ${upstream}`);
+    writeFileSync(`${dir}/AGENTS.md`, "template agents\n");
+    writeFileSync(`${dir}/template-sync.json`, JSON.stringify({
+      upstream: `${upstream}`,
+      overwrite: ["AGENTS.md"],
+      merge: ["README.md"],
+    }));
+    commit(dir, "bootstrap");
+
+    run(dir, "init", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
+    run(dir, "seed --ref=v1.0.0", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
+    const second = run(dir, "seed --ref=v1.0.0", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
+    expect(second).toContain("state already recorded");
+
+    rmSync(dir, { recursive: true, force: true });
+  });
 });

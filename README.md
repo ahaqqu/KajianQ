@@ -35,10 +35,10 @@ Docs: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · [`AGENTS.md`](AGENTS.md)
 bun install
 cp .env.example .env   # or create .env with CF tokens
 # edit apps/api/wrangler.toml name + D1/R2 ids if forking
-bunx wrangler d1 create <your-db>
+bunx wrangler d1 create <your-db>          # prints a UUID
 bunx wrangler r2 bucket create <your-bucket>
 bun run db:migrate:local
-bunx wrangler d1 migrations apply <your-db> --remote -c apps/api/wrangler.toml
+bunx wrangler d1 migrations apply DB --remote -c apps/api/wrangler.toml   # uses the binding, not the name
 bun run check && bun run test && bun run e2e
 bun run deploy
 ```
@@ -49,6 +49,13 @@ bun run deploy
 CLOUDFLARE_ACCOUNT_ID=…
 CLOUDFLARE_API_TOKEN=…   # Workers Scripts:Edit, D1:Edit, R2:Edit
 ```
+
+> **D1 `database_id`:** `wrangler.toml` ships a `replace-me-with-your-d1-uuid`
+> sentinel. Replace it with the UUID from `wrangler d1 create` before your
+> first remote deploy, or inject the UUID via a CI secret at deploy time
+> (wrangler does not interpolate env vars in `wrangler.toml` — substitute
+> the value before calling `wrangler deploy`). Local dev uses the
+> `preview_database_id` field and is unaffected.
 
 Error tracking is optional and DSN-gated (Sentry free tier). With no DSNs set, the SDKs stay disabled:
 
