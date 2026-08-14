@@ -28,6 +28,6 @@ jobs:
       - name: Smoke
         run: |
           curl -sf "$PROD_URL/v1/health" | grep -q '"status":"ok"'
-          curl -sf -X POST "$PROD_URL/v1/auth/anonymous" | grep -q userId
+          curl -sf -X POST "$PROD_URL/v1/session" | grep -q sessionId
         env:
           PROD_URL: ${{ vars.PROD_URL }}
