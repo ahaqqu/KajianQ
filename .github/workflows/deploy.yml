@@ -12,6 +12,10 @@ jobs:
           bun-version: latest
       - run: bun install --frozen-lockfile
       - run: bun run build
+      - name: Inject D1 database_id
+        run: bun run deploy:inject
+        env:
+          D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
       - run: bunx wrangler d1 migrations apply DB --remote -c apps/api/wrangler.toml
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
