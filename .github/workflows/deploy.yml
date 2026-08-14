@@ -26,8 +26,31 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
       - name: Smoke
+        # Retry loop: Cloudflare edge propagation can lag a few seconds
+        # after wrangler deploy returns. Wait and retry rather than failing
+        # transiently on a stale isolate.
         run: |
-          curl -sf "$PROD_URL/v1/health" | grep -q '"status":"ok"'
-          curl -sf -X POST "$PROD_URL/v1/session" | grep -q sessionId
+          for i in 1 2 3 4 5; do
+            if curl -sf "$PROD_URL/v1/health" | grep -q '"status":"ok"'; then
+              break
+            fi
+            echo "Health smoke attempt $i failed; waiting 5s for edge propagation..."
+            sleep 5
+            if [ "$i" = "5" ]; then
+              echo "::error::Health smoke check failed after 5 attempts"
+              exit 1
+            fi
+          done
+          for i in 1 2 3 4 5; do
+            if curl -sf -X POST "$PROD_URL/v1/session" | grep -q sessionId; then
+              break
+            fi
+            echo "Session smoke attempt $i failed; waiting 5s for edge propagation..."
+            sleep 5
+            if [ "$i" = "5" ]; then
+              echo "::error::Session smoke check failed after 5 attempts"
+              exit 1
+            fi
+          done
         env:
           PROD_URL: ${{ vars.PROD_URL }}
