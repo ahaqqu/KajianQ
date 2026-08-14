@@ -52,6 +52,6 @@ jobs:
       - name: Schemathesis fuzz
         run: |
           pip install schemathesis
-          schemathesis run --base-url "$STAGING_URL" "$STAGING_URL/openapi.json" --checks all
+          schemathesis run "$STAGING_URL/openapi.json" --url "$STAGING_URL" --checks all
         env:
           STAGING_URL: ${{ vars.STAGING_URL }}
