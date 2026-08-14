@@ -1,16 +1,18 @@
 #!/usr/bin/env bun
 /**
  * One-time provisioning: create Cloudflare D1 databases and R2 buckets,
- * then print the D1 UUIDs as copy-pasteable `gh secret set` commands.
+ * derive deploy URLs, then print copy-pasteable `gh secret set` and
+ * `gh variable set` commands for everything the deploy pipeline needs.
  *
- * Reads database/bucket names from apps/api/wrangler.toml so it works for
- * any fork. Requires CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID env
- * vars (set as GitHub secrets).
+ * Reads database/bucket/worker names from apps/api/wrangler.toml so it
+ * works for any fork. Requires CLOUDFLARE_API_TOKEN and
+ * CLOUDFLARE_ACCOUNT_ID env vars (set as GitHub secrets).
  *
- * The default GITHUB_TOKEN in Actions cannot write repository secrets, so
- * after the first run you set D1_DATABASE_ID and D1_DATABASE_ID_STAGING
- * once — the script prints the exact commands. Locally (with `gh auth
- * login`), it sets them automatically.
+ * The default GITHUB_TOKEN in Actions cannot write repository secrets or
+ * variables, so after the first run you set D1_DATABASE_ID,
+ * D1_DATABASE_ID_STAGING, PROD_URL, and STAGING_URL once — the script
+ * prints the exact commands. Locally (with `gh auth login`), it sets them
+ * automatically.
  *
  * Usage (local):
  *   bun scripts/provision-cf.mjs
@@ -51,11 +53,20 @@ function parseWranglerToml(path) {
   if (!prodD1Match) throw new Error("Could not parse production database_name from wrangler.toml");
   if (!stagingD1Match) throw new Error("Could not parse staging database_name from wrangler.toml");
 
+  // Worker names: top-level `name = "..."` (production) and
+  // `name = "..."` under [env.staging] (staging).
+  const prodWorkerMatch = prodSection.match(/^name\s*=\s*"([^"]+)"/m);
+  const stagingWorkerMatch = stagingSection.match(/^name\s*=\s*"([^"]+)"/m);
+  if (!prodWorkerMatch) throw new Error("Could not parse production worker name from wrangler.toml");
+  if (!stagingWorkerMatch) throw new Error("Could not parse staging worker name from wrangler.toml");
+
   return {
     prodD1Name: prodD1Match[1],
     prodR2Name: prodR2Match?.[1] ?? null,
     stagingD1Name: stagingD1Match[1],
     stagingR2Name: stagingR2Match?.[1] ?? null,
+    prodWorkerName: prodWorkerMatch[1],
+    stagingWorkerName: stagingWorkerMatch[1],
   };
 }
 
@@ -134,20 +145,59 @@ function trySetGitHubSecret(name, value) {
   return true;
 }
 
+/**
+ * Try to set a GitHub variable via `gh`. Same constraint as secrets —
+ * works locally with `gh auth login`, fails in CI with default token.
+ */
+function trySetGitHubVariable(name, value) {
+  if (!process.env.GH_TOKEN && !process.env.GITHUB_TOKEN) {
+    return false;
+  }
+  const result = run(`echo "${value}" | gh variable set "${name}"`, {
+    ignoreError: true,
+  });
+  if (result === null) return false;
+  console.log(`GitHub variable "${name}" set.`);
+  return true;
+}
+
+/**
+ * Fetch the workers.dev subdomain for the account from the Cloudflare API.
+ * Returns e.g. "my-subdomain" so URLs are "https://<worker>.my-subdomain.workers.dev".
+ */
+function fetchWorkersDevSubdomain(accountId, token) {
+  const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/subdomain`;
+  const out = run(
+    `curl -sf -H "Authorization: Bearer ${token}" "${url}"`,
+    { ignoreError: true },
+  );
+  if (!out) return null;
+  try {
+    const data = JSON.parse(out);
+    return data?.result?.subdomain ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function main() {
   const token = process.env.CLOUDFLARE_API_TOKEN;
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
   if (!token) throw new Error("CLOUDFLARE_API_TOKEN is not set.");
   if (!accountId) throw new Error("CLOUDFLARE_ACCOUNT_ID is not set.");
 
-  const { prodD1Name, prodR2Name, stagingD1Name, stagingR2Name } =
-    parseWranglerToml(CONFIG_PATH);
+  const {
+    prodD1Name, prodR2Name, stagingD1Name, stagingR2Name,
+    prodWorkerName, stagingWorkerName,
+  } = parseWranglerToml(CONFIG_PATH);
 
   console.log(`Provisioning Cloudflare resources from wrangler.toml:`);
   console.log(`  Production D1: ${prodD1Name}`);
   console.log(`  Staging D1:    ${stagingD1Name}`);
   if (prodR2Name) console.log(`  Production R2: ${prodR2Name}`);
   if (stagingR2Name) console.log(`  Staging R2:    ${stagingR2Name}`);
+  console.log(`  Production worker: ${prodWorkerName}`);
+  console.log(`  Staging worker:    ${stagingWorkerName}`);
   console.log("");
 
   // D1 databases
@@ -158,34 +208,64 @@ function main() {
   ensureR2(prodR2Name);
   ensureR2(stagingR2Name);
 
-  // Try to set GitHub secrets (works locally with gh auth; fails in CI)
+  // Derive deploy URLs from worker names + workers.dev subdomain
+  const subdomain = fetchWorkersDevSubdomain(accountId, token);
+  let prodUrl = null;
+  let stagingUrl = null;
+  if (subdomain) {
+    prodUrl = `https://${prodWorkerName}.${subdomain}.workers.dev`;
+    stagingUrl = `https://${stagingWorkerName}.${subdomain}.workers.dev`;
+    console.log(`  workers.dev subdomain: ${subdomain}`);
+    console.log(`  PROD_URL:    ${prodUrl}`);
+    console.log(`  STAGING_URL: ${stagingUrl}`);
+  } else {
+    console.log("  ⚠️  Could not fetch workers.dev subdomain from Cloudflare API.");
+    console.log("     PROD_URL and STAGING_URL will need to be set manually.");
+  }
   console.log("");
+
+  // Try to set GitHub secrets + variables (works locally with gh auth; fails in CI)
   const prodSecretSet = trySetGitHubSecret("D1_DATABASE_ID", prodUuid);
   const stagingSecretSet = trySetGitHubSecret("D1_DATABASE_ID_STAGING", stagingUuid);
+  let prodVarSet = false;
+  let stagingVarSet = false;
+  if (prodUrl) prodVarSet = trySetGitHubVariable("PROD_URL", prodUrl);
+  if (stagingUrl) stagingVarSet = trySetGitHubVariable("STAGING_URL", stagingUrl);
 
   console.log("");
   console.log("Provisioning complete.");
   console.log(`  D1_DATABASE_ID          = ${prodUuid}`);
   console.log(`  D1_DATABASE_ID_STAGING  = ${stagingUuid}`);
+  if (prodUrl) console.log(`  PROD_URL                = ${prodUrl}`);
+  if (stagingUrl) console.log(`  STAGING_URL             = ${stagingUrl}`);
   console.log("");
 
-  if (!prodSecretSet || !stagingSecretSet) {
-    console.log("⚠️  GitHub secrets could not be auto-set.");
-    console.log("    The default GITHUB_TOKEN in Actions cannot write secrets.");
-    console.log("    Run one of these commands from a terminal with gh auth login:");
+  const needManual = !prodSecretSet || !stagingSecretSet || (prodUrl && !prodVarSet) || (stagingUrl && !stagingVarSet);
+  if (needManual) {
+    console.log("⚠️  Some GitHub secrets/variables could not be auto-set.");
+    console.log("    The default GITHUB_TOKEN in Actions cannot write secrets or variables.");
+    console.log("    Run these commands from a terminal with gh auth login:");
     console.log("");
-    console.log(`      echo "${prodUuid}" | gh secret set D1_DATABASE_ID --repo <owner/repo>`);
-    console.log(`      echo "${stagingUuid}" | gh secret set D1_DATABASE_ID_STAGING --repo <owner/repo>`);
+    if (!prodSecretSet)
+      console.log(`      echo "${prodUuid}" | gh secret set D1_DATABASE_ID --repo <owner/repo>`);
+    if (!stagingSecretSet)
+      console.log(`      echo "${stagingUuid}" | gh secret set D1_DATABASE_ID_STAGING --repo <owner/repo>`);
+    if (prodUrl && !prodVarSet)
+      console.log(`      echo "${prodUrl}" | gh variable set PROD_URL --repo <owner/repo>`);
+    if (stagingUrl && !stagingVarSet)
+      console.log(`      echo "${stagingUrl}" | gh variable set STAGING_URL --repo <owner/repo>`);
     console.log("");
     console.log("    Or set them in the browser:");
-    console.log("    Settings → Secrets and variables → Actions → New repository secret");
-    console.log(`      D1_DATABASE_ID          = ${prodUuid}`);
-    console.log(`      D1_DATABASE_ID_STAGING  = ${stagingUuid}`);
+    console.log("    Settings → Secrets and variables → Actions");
+    if (!prodSecretSet) console.log(`      Secret: D1_DATABASE_ID          = ${prodUuid}`);
+    if (!stagingSecretSet) console.log(`      Secret: D1_DATABASE_ID_STAGING  = ${stagingUuid}`);
+    if (prodUrl && !prodVarSet) console.log(`      Variable: PROD_URL    = ${prodUrl}`);
+    if (stagingUrl && !stagingVarSet) console.log(`      Variable: STAGING_URL = ${stagingUrl}`);
     console.log("");
-    console.log("    After setting the secrets, run the Staging or Deploy production");
+    console.log("    After setting these, run the Staging or Deploy production");
     console.log("    workflow to deploy.");
   } else {
-    console.log("All secrets set automatically. Next: run the Staging or Deploy");
+    console.log("All secrets and variables set. Next: run the Staging or Deploy");
     console.log("production workflow to deploy.");
   }
 }
