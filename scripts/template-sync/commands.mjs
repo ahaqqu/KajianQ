@@ -9,7 +9,7 @@ import {
   resolveRef,
 } from "./git.mjs";
 import { isOverwritePath } from "./manifest.mjs";
-import { clearPending, readPending } from "./state.mjs";
+import { clearPending, readPending, writeState } from "./state.mjs";
 import { baseline, commitState, drift, stageState, validateFlag } from "./sync.mjs";
 
 const DEFAULT_SYNC_BRANCH = "template-sync";
@@ -73,6 +73,19 @@ export function createCommands(ctx) {
         hint: "run 'bun run template-sync update --ref=" + ref + "' to pull the ref, or restore the files, then seed",
       });
       return 1;
+    }
+
+    // --no-commit: write the state file without staging/committing.
+    // Used in CI to auto-seed before the gate check without creating a
+    // commit in the ephemeral runner.
+    if (flags.noCommit) {
+      writeState(statePath, { ref, commit });
+      log.info("state seeded (no-commit)", {
+        ref,
+        commit: commit.slice(0, 8),
+        next: "bun run template-gate now enforces drift against this ref",
+      });
+      return 0;
     }
 
     assertCleanWorktree({ gitOut, log });

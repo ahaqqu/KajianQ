@@ -21,7 +21,6 @@ jobs:
       - run: bun run size-limit
       - run: bun run agentic-limits
       - run: bun run truth
-      - run: bun run template-gate
       - name: gitleaks
         run: |
           curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz \
@@ -31,3 +30,23 @@ jobs:
         run: |
           pip install --quiet semgrep
           semgrep scan --config auto --error --quiet .
+
+  template-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: Auto-seed template-sync state
+        # If template-owned files match upstream main, re-seed so the gate
+        # checks against the latest template. If they drifted (real drift),
+        # seed refuses and the gate fails against the last known-good state.
+        # --no-commit: write state file without committing (CI is ephemeral).
+        # continue-on-error so the gate step is the actual gate, not the seed.
+        run: bun run template-sync seed --ref=main --no-commit
+        continue-on-error: true
+      - run: bun run template-gate

@@ -23,7 +23,7 @@ const usage = (log) => {
 };
 
 function parseArgs(argv) {
-  const flags = { ref: null, branch: null };
+  const flags = { ref: null, branch: null, noCommit: false };
   let command = "";
   for (const a of argv) {
     if (a === "--help" || a === "-h") {
@@ -33,6 +33,8 @@ function parseArgs(argv) {
       flags.ref = a.slice("--ref=".length);
     } else if (a.startsWith("--branch=")) {
       flags.branch = a.slice("--branch=".length);
+    } else if (a === "--no-commit") {
+      flags.noCommit = true;
     } else if (!a.startsWith("-")) {
       if (command) throw new Error(`Unexpected positional argument: ${a}`);
       command = a;
