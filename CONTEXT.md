@@ -53,11 +53,11 @@ The versioned collection of Indonesian/English test questions with expected sour
 _Avoid_: eval set, test set (unqualified)
 
 **Terminology Glossary**:
-The curated bilingual table mapping an Indonesian religious term to its Arabic variants (e.g., surga → jannah, firdaus, na'im, darussalam; neraka → jahannam, nar, saqar), living in `kajianq-domain`, seeded from Kemenag↔Uthmani alignment and human-verified. Used for Query Expansion per ADR-0010.
-_Avoid_: dictionary (ambiguous with generic dictionaries)
+The bilingual terminology **concept graph** mapping Indonesian and Arabic religious terms to shared language-neutral concept nodes with typed relations (broader/narrower/related/part_of), living in Postgres (`concept`, `lemma`, `concept_relation`, `lemma_evidence` tables). Built via LLM extraction from aligned Quran pairs with human review; seeded from license-safe resources (QSAC, Quranic Arabic Corpus, Arabic WordNet, Wordnet Bahasa). Supersedes the flat bilingual table of ADR-0010 per ADR-0014. Used for Query Expansion.
+_Avoid_: dictionary (ambiguous with generic dictionaries), glossary table (superseded — implies the flat ADR-0010 model)
 
 **Query Expansion**:
-Smart Router stage-2 augmentation that emits Arabic term variants from the Terminology Glossary as an additional retrieval channel alongside the Indonesian sub-queries, fused via RRF. Expansion only — never replaces the original user query; never whole-query translation (rejected per ADR-0010).
+Smart Router stage-2 augmentation that emits Arabic term variants from the Terminology Glossary as an additional retrieval channel alongside the Indonesian sub-queries, fused via RRF. The router LLM receives the relevant concept slice (1–2 hop subgraph) as prompt context and picks contextually appropriate Arabic expansion terms; expansion candidates are recorded in the Trace. Expansion only — never replaces the original user query; never whole-query translation (rejected per ADR-0010, carried forward by ADR-0014).
 _Avoid_: query translation (a different, rejected mechanism)
 
 **Deep Think**:

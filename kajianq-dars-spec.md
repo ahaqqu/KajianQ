@@ -129,7 +129,7 @@ Ingestion and eval harness run as **Bun CLI scripts** (local/CI), never on Worke
 ### 3.3 The DARS pipeline (Smart Router)
 
 1. **Intent & Principle detection** (cheap tier) → JSON: `category, subcategory, madzhab, needs_principle, principle_tags, query_type (factual|ruling|analogy|comparison|history|aqidah), confidence, reasoning`.
-2. **Query decomposition** (cheap tier) → 2–4 sub-queries: always one factual; +principle if `needs_principle`; +Quranic dalil if fiqh; +sanad verification if hadith. +Arabic expansion terms from the Terminology Glossary for variant-term queries (ADR-0010; expansion only, never query translation).
+2. **Query decomposition** (cheap tier) → 2–4 sub-queries: always one factual; +principle if `needs_principle`; +Quranic dalil if fiqh; +sanad verification if hadith. +Arabic expansion terms from the Terminology Glossary for variant-term queries (ADR-0014; expansion only, never query translation). The router LLM receives the relevant concept-graph slice (1–2 hop subgraph) as prompt context and picks contextually appropriate Arabic terms; expansion candidates are recorded in the Trace.
 3. **Source routing** (rules + cheap tier) → index selection + SQL metadata filters (`source_type`, `madzhab`, `grade IN …`, `principle_tags ANY …`).
 4. **Retrieval** — hybrid: pgvector HNSW dense + tsvector sparse (upgrade to ParadeDB `pg_search` true BM25 if the Neon plan allows) fused with **RRF (k=60)** + hierarchy bonuses (Quran +0.3, Sahih +0.25, Hasan +0.15, Kitab +0.1, Principle +0.2 on analogy).
 5. **Context assembly** — presentation order: Principles → Quran → Hadith → Kitab → concept links; parents contribute LLM summaries so children keep their chapter context.
@@ -148,7 +148,7 @@ All calls behind a **Provider interface** (`generate/stream/embed`); every stage
 | Reviewer (cross-vendor) | Gemini 3.1 Pro (golden set), Gemini 3 Flash (live sample) | Kimi K2.6 | $2/$12, $0.50/$3 |
 | Ingestion translation (AR→ID) | Qwen3 Max | Gemini 3 Flash | $0.78/$3.90 |
 
-⚠️ **The embedding default is unproven on our corpus.** Phase 1's benchmark harness must validate Arabic+Indonesian cross-lingual recall on real KajianQ data before the chat build proceeds; the spec's former Cohere choice remains a one-line config fallback. Gemini free-tier traffic is used for training by Google — acceptable for public religious content and anonymous queries; never route feedback free-text containing personal data through free tiers.
+⚠️ **The embedding default is unproven on our corpus.** Per ADR-0013 (accepted), retrieval is Arabic-canonical: `text_ar`/`embedding_ar` is the primary evidence index; `text_id`/`embedding_id` is a built-from-the-start fallback/fusion track. Phase 1's benchmark harness (#9) is the **go/no-go gate** for the retrieval posture: it compares at least `gemini-embedding-001` and `gemini-embedding-2` on ID→AR and AR→AR recall over the real corpus. The retrieval-layer choice (AR-only vs. ID-fallback fusion) is decided by #9's numbers, not asserted in advance. The dual-index schema is built up front in #4 so the choice is switchable without re-embedding. Gemini free-tier traffic is used for training by Google — acceptable for public religious content and anonymous queries; never route feedback free-text containing personal data through free tiers.
 
 The harness (notes.md: *"test LLM and give a score for Arabic & Indonesian ability"*) is `packages/eval`: versioned test sets (Arabic comprehension, Indonesian generation, citation discipline, translation fidelity), scoring every candidate; results stored and visible in admin; re-run on model releases.
 
@@ -156,7 +156,8 @@ The harness (notes.md: *"test LLM and give a score for Arabic & Indonesian abili
 
 Carried over from v1.2 §5 with changes:
 
-- `doc_parents`, `doc_children`, `principle_index`, `concept_links`, `chat_sessions`, `chat_messages` — unchanged in shape, **except `embedding VECTOR(1536)`** (Gemini MRL), and sparse search via `to_tsvector('arabic'|'indonesian'|'english', …)` (both are built-in PostgreSQL configs).
+- `doc_parents`, `doc_children`, `principle_index`, `concept_links`, `chat_sessions`, `chat_messages` — unchanged in shape, **except dual embeddings per ADR-0013**: `text_ar`/`embedding_ar VECTOR(1536)` (canonical) + `text_id`/`embedding_id VECTOR(1536)` (fallback/fusion), both built from the start. Sparse search via `to_tsvector('arabic'|'indonesian'|'english', …)` (built-in PostgreSQL configs).
+- **New (ADR-0014):** terminology concept graph tables — `concept` (language-neutral concept node, ≈ SKOS Concept / WordNet synset), `lemma` (per-language lemma + `embedding VECTOR(1024)` for BGE-M3 candidate retrieval), `concept_relation` (typed: broader/narrower/related/part_of), `lemma_evidence` (lemma ↔ aligned ayah pairs). Distinct from `concept_links` (passage-level) — the terminology graph is term-level.
 - **New:** `answer_traces` (message_id, router intent JSONB, sub_queries JSONB, chunks JSONB `[{id, rrf_score, rank_dense, rank_sparse}]`, model, tokens_in/out, cost_usd, latency_ms) — powers the user Trace panel and admin.
 - **New:** `feedback` (message_id, rating, anchor_type `answer|chunk|citation|translation|grade`, anchor_id, category, free_text, status `pending|accepted|rejected`, created_at).
 - **New:** `golden_questions`, `eval_runs`, `eval_results` — Golden Set + harness results.
@@ -246,7 +247,7 @@ Mitigations: top-k discipline (8–12 chunks, not 20), prompt caching for the st
 |---|---|
 | Hallucinated/invented citations | Deterministic citation validator; answer-only-from-context prompt; cross-vendor faithfulness sampling; Golden Set gate |
 | Answer conflicts with Islamic legal method | Usul-derived authority order in prompt; Principle lens; contradiction handler; scholar-visible Traces invite correction |
-| Gemini embedding underperforms Cohere on Arabic↔Indonesian | Phase 1 harness gate before chat build; Provider interface makes Cohere a config-level fallback |
+| Gemini embedding underperforms on ID→AR cross-lingual recall | #9 is the go/no-go gate (compares gemini-embedding-001 + gemini-embedding-2 on ID→AR and AR→AR); dual-index schema (ADR-0013) allows AR-only vs. ID-fallback fusion switchable without re-embedding; Terminology Glossary (ADR-0014) bridges ID→AR explicitly, reducing reliance on cross-lingual embedding |
 | Machine translation of classical Arabic is wrong | Label + Arabic always shown (ADR-0006); sampled cross-vendor review; translation-fidelity suite in harness; `text_raw` preserved |
 | Shamela OCR noise / wrong-author editions | LLM cleaning pipeline; matn/sharh discipline; OpenITI cross-check; 100-chunk manual sampling via translator |
 | Kemenag translation licensing | Verify terms before launch; attribute in NOTICES; fallback to alternate ID translation |
@@ -277,9 +278,11 @@ Mitigations: top-k discipline (8–12 chunks, not 20), prompt caching for the st
 | `adr/0007` | User-facing Trace + trace-anchored feedback |
 | `adr/0008` | Neon Postgres+pgvector behind RagStore adapter (not D1/Vectorize) |
 | `adr/0009` | Vendor allowlist (Gemini/Kimi/DeepSeek/Qwen); paid critical path accepted with price discipline; Qwen tie-break |
-| `adr/0010` | Terminology Glossary + Arabic query expansion (never query translation) |
+| `adr/0010` | Terminology Glossary + Arabic query expansion (never query translation) — **superseded by ADR-0014** |
 | `adr/0011` | Deep Think: iterative budget-capped retrieval mode, never read-all |
 | `adr/0012` | Per-chain hadith grades via Sanadset isnad data (v2); additive migration, no graph DB / GraphRAG |
+| `adr/0013` | Arabic as canonical evidence, Indonesian as display; cross-lingual ID→AR retrieval; dual-index schema; #9 as go/no-go gate |
+| `adr/0014` | Bilingual terminology concept graph (supersedes ADR-0010's flat table); LLM extraction + human review; prompt-injection consumption |
 
 Domain vocabulary: `CONTEXT.md`. Workflow after this spec: `to-spec` → `to-tickets` per the template's agentic pipeline.
 

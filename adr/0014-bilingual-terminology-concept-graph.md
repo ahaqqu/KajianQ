@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed — pending review against spec #1, ADR-0013, and ticket #24. If accepted, it amends #24's "curated bilingual table" model into a concept-graph model and defines the build pipeline and license-safe seed sources.
+Accepted (2026-08-15). Supersedes ADR-0010 (Terminology Glossary as a flat bilingual table) — ADR-0010's "expansion only, never query translation" principle is carried forward; the flat table is replaced by a concept graph. Amends #24's "curated bilingual table" model into a concept-graph model and defines the build pipeline and license-safe seed sources. Depends on ADR-0013 (Arabic-canonical retrieval, accepted).
 
 ## Context
 

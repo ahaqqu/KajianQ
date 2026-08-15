@@ -1,3 +1,11 @@
 # Terminology Glossary with Arabic query expansion (never query translation)
 
+**Superseded by ADR-0014 (accepted 2026-08-15).** The "curated bilingual table" (Indonesian term ↔ set of Arabic variants) is replaced by a bilingual terminology **concept graph** — language-neutral concept nodes anchoring lemmas in each language with typed SKOS relations (broader/narrower/related/part_of), built via LLM extraction from aligned Quran pairs with human review, and consumed by injecting concept slices into the router LLM prompt. See `adr/0014-bilingual-terminology-concept-graph.md`. The concept graph handles the 1:many/many:many mappings and hierarchical structure (e.g. firdaus is narrower-than jannah, not an interchangeable variant) that a flat variant set throws away, and lets the router LLM pick contextually appropriate Arabic terms rather than emitting all variants blindly.
+
+The core principle is unchanged and carried forward by ADR-0014: query expansion emits Arabic term variants as an additional retrieval channel alongside the Indonesian sub-queries, fused via RRF — expansion only, never replacing the original query, never whole-query translation.
+
+---
+
+Original decision (superseded):
+
 Indonesian religious terms map to multiple Arabic variants (surga → jannah/firdaus/na'im/…), so translating a user query into Arabic forces a single term choice that silently misses passages using the other variants — and query-side translation fails silently on colloquial Indonesian. KajianQ therefore keeps ADR-0006's document-side translation as the auditable source of truth and adds a curated Terminology Glossary in `kajianq-domain`: Indonesian term ↔ set of Arabic variants, seeded from the Kemenag↔Uthmani ayah alignment and human-verified. Smart Router stage 2 (decomposition) emits the Arabic variants as an additional retrieval channel alongside the Indonesian sub-queries, fused via RRF — expansion only, never replacing the original query. Chosen over (a) whole-query translation to Arabic (single-term loss plus silent failure), and (b) relying on cross-lingual dense embeddings alone (sparse Arabic matching catches exact terminology that dense retrieval ranks weakly). Golden Set gains variant-term trap questions so regressions are caught.
