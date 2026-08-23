@@ -106,7 +106,7 @@ Ticket labels on `ahaqqu/KajianQ` route the work to the right model:
 | Domain vocabulary | `CONTEXT.md` |
 | Architecture & plan | `kajianq-dars-spec.md` + GitHub issue #1 (v1), #27 (v2) |
 | Success factors & phase metrics | `docs/success-factors-and-metrics.md` |
-| Decisions | `adr/0005`–`0016` (note: 0010 superseded by 0014; 0006 amended by 0013; 0007 amended for the typed trace contract; 0015/0016 bound generator reasoning and knowledge-graph scope) |
+| Decisions | `adr/0005`–`0018` (note: 0010 superseded by 0014; 0006 amended by 0013; 0007 amended for the typed trace contract; 0015/0016 bound generator reasoning and knowledge-graph scope; 0017 anonymous sessions over hosted identity; 0018 AssembledContext carries structured turns + routed query) |
 | Current session handoff | `HANDOFF.md` |
 | Ticket board | `gh issue list --repo ahaqqu/KajianQ` |
 | Dataset attributions | `NOTICES/DATASETS.md` |
