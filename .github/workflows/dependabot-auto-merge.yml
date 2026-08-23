@@ -4,11 +4,12 @@ name: Dependabot auto-merge
 # list of every PR (as "skipped" when filtered by author); a scheduled one
 # never does, while still auto-merging Dependabot PRs.
 #
-# Dependabot titles are standardized ("bump X from <old> to <new>"), so the
-# semver kind is derived from the title. Grouped updates have no parseable
-# title and stay for human review (fetch-metadata cannot classify them
-# either). Requires the repo setting "Allow auto-merge"
-# (Settings -> General -> Pull Requests) in every repository.
+# Single-package PRs carry "from <old> to <new>" in the title; the semver kind
+# is derived from that range. Grouped-update PRs have no title range, so the
+# PR body's update table is parsed instead: every row must classify as
+# minor/patch (no major, downgrade, or pre-release) for the group to auto-merge.
+# Requires the repo setting "Allow auto-merge" (Settings -> General -> Pull
+# Requests) in every repository.
 on:
   schedule:
     - cron: "*/15 * * * *"
@@ -51,6 +52,27 @@ jobs:
             else echo unchanged; fi
           }
 
+          # Grouped-update PRs (title "bump the minor-patch group with N updates")
+          # have no "from X to Y" range. Their body holds a Markdown table with a
+          # `From`/`To` column per package. Auto-merge only if EVERY row classifies
+          # as minor/patch with no pre-release; any major/downgrade/prerelease or
+          # unparseable row leaves the whole group for human review.
+          classify_group() {
+            local body="$1" rows from to kind
+            rows=$(printf '%s\n' "$body" \
+              | grep -E '^\| \[' \
+              | sed -E 's/.*`([^`]+)`.+`([^`]+)`.*/\1 \2/')
+            [ -z "$rows" ] && { echo "no-table"; return; }
+            while read -r from to; do
+              [ -z "$from" ] || [ -z "$to" ] && { echo "unparseable-row"; return; }
+              kind=$(semver_kind "$from" "$to")
+              case "$from" in *-*) kind=prerelease;; esac
+              case "$to"   in *-*) kind=prerelease;; esac
+              case "$kind" in patch|minor) ;; *) echo "$kind"; return;; esac
+            done <<< "$rows"
+            echo "auto"
+          }
+
           gh pr list --state open --json number,title,author \
             | jq -c '.[] | select(.author.login == "app/dependabot" or .author.login == "dependabot[bot]")' \
             | while read -r pr; do
@@ -59,7 +81,20 @@ jobs:
                 old=$(printf '%s' "$title" | sed -nE 's/.*from (v?[0-9][^ ]*) to (v?[0-9][^ ]*).*/\1/p')
                 new=$(printf '%s' "$title" | sed -nE 's/.*from (v?[0-9][^ ]*) to (v?[0-9][^ ]*).*/\2/p')
                 if [ -z "$old" ] || [ -z "$new" ]; then
-                  echo "PR #$number: no parseable version range, leaving for human review: $title"
+                  # Grouped-update PR: parse the body's update table and
+                  # auto-merge only if every row is minor/patch with no pre-release.
+                  body=$(gh pr view "$number" --repo "$GITHUB_REPOSITORY" --json body --jq .body)
+                  verdict=$(classify_group "$body")
+                  case "$verdict" in
+                    auto)
+                      echo "PR #$number: group update (all minor/patch) — enabling auto-merge"
+                      gh pr merge --auto --squash "$number" --repo "$GITHUB_REPOSITORY" \
+                        || echo "  failed — is 'Allow auto-merge' enabled in repository settings?"
+                      ;;
+                    *)
+                      echo "PR #$number: group update, blocked by $verdict — leaving for human review"
+                      ;;
+                  esac
                   continue
                 fi
                 kind=$(semver_kind "$old" "$new")
