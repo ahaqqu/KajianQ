@@ -30,18 +30,18 @@
     "brace-expansion": "5.0.8"
   },
   "devDependencies": {
-    "@axe-core/playwright": "4.12.1",
+    "@axe-core/playwright": "4.13.0",
     "@fast-check/vitest": "0.4.1",
     "@playwright/test": "1.62.1",
     "@size-limit/file": "13.0.3",
-    "@types/node": "26.1.2",
+    "@types/node": "26.2.0",
     "@vitest/coverage-v8": "4.1.10",
     "fast-check": "4.9.0",
     "playwright-bdd": "9.2.0",
     "size-limit": "13.0.3",
     "typescript": "7.0.2",
     "vitest": "4.1.10",
-    "wrangler": "4.119.0"
+    "wrangler": "4.122.0"
   },
   "size-limit": [
     {
