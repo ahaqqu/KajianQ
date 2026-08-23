@@ -19,17 +19,16 @@ jobs:
             -o /tmp/osv-scanner
           chmod +x /tmp/osv-scanner
           /tmp/osv-scanner scan --lockfile=bun.lock
-      - name: Trigger Dependabot
+      - name: Surface Dependabot alerts
         if: failure()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Dependabot has no public "trigger re-run" API; it runs on its own
+          # schedule. On an OSV failure we list open Dependabot alerts so the
+          # workflow log shows what Dependabot already knows about. Requires
+          # the repo setting Dependabot security alerts enabled.
           gh api repos/${{ github.repository }}/dependabot/alerts \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             --jq '.[] | select(.state == "open") | [.security_advisory.ghsa_id, .dependency.package.name, .dependency.scope, .security_vulnerability.first_patched_version.identifier] | @tsv' || true
-          gh api repos/${{ github.repository }}/actions/dependant-bot \
-            --method POST \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            -f "ecosystem=bun" || true

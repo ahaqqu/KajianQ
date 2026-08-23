@@ -10,7 +10,6 @@
     "scripts/check-agentic-limits.mjs",
     "scripts/check-template-truth.mjs",
     "scripts/openapi-check.mjs",
-    "template-sync.json",
     "flake.nix",
     "tsconfig.base.json",
     "tsconfig.json",
