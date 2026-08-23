@@ -10,7 +10,10 @@ permissions:
 
 concurrency:
   group: template-sync
-  cancel-in-progress: false
+  # A scheduled run and a workflow_dispatch run can overlap. The job force-pushes
+  # the shared `template-sync` branch; a newer run cancels the older to avoid two
+  # runs racing the same branch with --force-with-lease.
+  cancel-in-progress: true
 
 jobs:
   sync:
