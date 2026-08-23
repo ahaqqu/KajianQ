@@ -1,0 +1,71 @@
+name: Staging
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  staging:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - name: Require secrets
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          test -n "$STAGING_URL"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          STAGING_URL: ${{ vars.STAGING_URL }}
+      - run: bun run deploy:staging
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Smoke health
+        # Retry loop: Cloudflare edge propagation can lag a few seconds
+        # after wrangler deploy returns. Wait and retry rather than failing
+        # transiently on a stale isolate.
+        run: |
+          for i in 1 2 3 4 5; do
+            if curl -sf "$STAGING_URL/v1/health" | grep -q '"status":"ok"'; then
+              break
+            fi
+            echo "Health smoke attempt $i failed; waiting 5s for edge propagation..."
+            sleep 5
+            if [ "$i" = "5" ]; then
+              echo "::error::Health smoke check failed after 5 attempts"
+              exit 1
+            fi
+          done
+        env:
+          STAGING_URL: ${{ vars.STAGING_URL }}
+      # Blocking gates (D6): a ZAP or Schemathesis failure fails the workflow.
+      # Suppressing a finding requires an inline rule file entry with a
+      # justification comment — never a workflow-level bypass.
+      - name: ZAP baseline
+        uses: zaproxy/action-baseline@de8ad967d3548d44ef623df22cf95c3b0baf8b25 # v0.15.0
+        with:
+          target: ${{ vars.STAGING_URL }}
+      - name: Schemathesis fuzz
+        # schemathesis.toml suppresses unsupported_method (Cloudflare edge
+        # returns 405 without Allow header — not our app's behavior). See the
+        # config file for the justification comment. The foundation shell's
+        # routes are unauthenticated (guarded routes arrive with the RagStore in
+        # #4+), so no bearer token is seeded yet.
+        run: |
+          pip install schemathesis
+          schemathesis run "$STAGING_URL/openapi.json" \
+            --url "$STAGING_URL" \
+            --checks all
+        env:
+          STAGING_URL: ${{ vars.STAGING_URL }}

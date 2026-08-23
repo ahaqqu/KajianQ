@@ -1,0 +1,26 @@
+{
+  "upstream": "https://github.com/ahaqqu/agentic-project-template.git",
+  "overwrite": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/e2e.yml",
+    ".github/workflows/vuln-scan.yml",
+    ".github/workflows/dependabot-auto-merge.yml",
+    ".github/workflows/template-sync.yml",
+    "scripts/template-sync/",
+    "scripts/check-agentic-limits.mjs",
+    "scripts/check-template-truth.mjs",
+    "scripts/openapi-check.mjs",
+    "flake.nix",
+    "tsconfig.base.json",
+    "tsconfig.json",
+    "vitest.config.ts"
+  ],
+  "merge": [
+    "apps/",
+    "packages/",
+    "package.json",
+    "README.md",
+    "CONTEXT.md",
+    "bun.lock"
+  ]
+}

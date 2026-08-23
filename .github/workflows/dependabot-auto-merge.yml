@@ -1,0 +1,70 @@
+name: Dependabot auto-merge
+# Polls for open Dependabot PRs on a schedule instead of reacting to the
+# pull_request event. A PR-triggered workflow always appears in the checks
+# list of every PR (as "skipped" when filtered by author); a scheduled one
+# never does, while still auto-merging Dependabot PRs.
+#
+# Dependabot titles are standardized ("bump X from <old> to <new>"), so the
+# semver kind is derived from the title. Grouped updates have no parseable
+# title and stay for human review (fetch-metadata cannot classify them
+# either). Requires the repo setting "Allow auto-merge"
+# (Settings -> General -> Pull Requests) in every repository.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  dependabot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable auto-merge for patch/minor Dependabot PRs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # The kind is decided by the first differing version component:
+          # major up -> "major", minor up -> "minor", patch up -> "patch",
+          # anything down -> "downgrade", no change -> "unchanged".
+          # 19.0.0 -> 18.9.0 and 4.4.0 -> 7.0.1 are both classified right:
+          # only the first differing component counts.
+          semver_kind() {
+            local oa na o1 o2 o3 n1 n2 n3
+            oa=$(printf '%s' "$1" | sed 's/^v//' | tr '.' '\n' | sed -E 's/[^0-9]//g')
+            na=$(printf '%s' "$2" | sed 's/^v//' | tr '.' '\n' | sed -E 's/[^0-9]//g')
+            o1=$(printf '%s\n' "$oa" | sed -n 1p); o2=$(printf '%s\n' "$oa" | sed -n 2p); o3=$(printf '%s\n' "$oa" | sed -n 3p)
+            n1=$(printf '%s\n' "$na" | sed -n 1p); n2=$(printf '%s\n' "$na" | sed -n 2p); n3=$(printf '%s\n' "$na" | sed -n 3p)
+            [ -z "$o1" ] && o1=0; [ -z "$o2" ] && o2=0; [ -z "$o3" ] && o3=0
+            [ -z "$n1" ] && n1=0; [ -z "$n2" ] && n2=0; [ -z "$n3" ] && n3=0
+            if   [ "$n1" -ne "$o1" ]; then [ "$n1" -gt "$o1" ] && echo major || echo downgrade
+            elif [ "$n2" -ne "$o2" ]; then [ "$n2" -gt "$o2" ] && echo minor || echo downgrade
+            elif [ "$n3" -ne "$o3" ]; then [ "$n3" -gt "$o3" ] && echo patch || echo downgrade
+            else echo unchanged; fi
+          }
+
+          gh pr list --state open --json number,title,author \
+            | jq -c '.[] | select(.author.login == "app/dependabot" or .author.login == "dependabot[bot]")' \
+            | while read -r pr; do
+                number=$(printf '%s' "$pr" | jq -r .number)
+                title=$(printf '%s' "$pr" | jq -r .title)
+                old=$(printf '%s' "$title" | sed -nE 's/.*from (v?[0-9][^ ]*) to (v?[0-9][^ ]*).*/\1/p')
+                new=$(printf '%s' "$title" | sed -nE 's/.*from (v?[0-9][^ ]*) to (v?[0-9][^ ]*).*/\2/p')
+                if [ -z "$old" ] || [ -z "$new" ]; then
+                  echo "PR #$number: no parseable version range, leaving for human review: $title"
+                  continue
+                fi
+                kind=$(semver_kind "$old" "$new")
+                case "$kind" in
+                  patch|minor)
+                    echo "PR #$number: $kind update — enabling auto-merge"
+                    gh pr merge --auto --squash "$number" --repo "$GITHUB_REPOSITORY" \
+                      || echo "  failed — is 'Allow auto-merge' enabled in repository settings?"
+                    ;;
+                  *)
+                    echo "PR #$number: $kind update — leaving for human review"
+                    ;;
+                esac
+              done

@@ -1,0 +1,52 @@
+{
+  "name": "kajianq",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun run build:web && bun run --filter @app/api dev",
+    "build:web": "bun run --filter @app/web build",
+    "build": "bun run --filter @app/web build && bun run --filter @app/api build",
+    "check": "tsc -p tsconfig.json && bun run --filter '@app/*' check",
+    "test": "vitest run --coverage",
+    "boundary": "bun scripts/check-boundary.mjs",
+    "size-limit": "size-limit",
+    "agentic-limits": "bun scripts/check-agentic-limits.mjs",
+    "truth": "bun scripts/check-template-truth.mjs",
+    "openapi:check": "bun scripts/openapi-check.mjs",
+    "e2e": "bddgen && playwright test",
+    "deploy": "bun run build && wrangler deploy -c apps/api/wrangler.toml --env=\"\"",
+    "deploy:staging": "bun run build && wrangler deploy -c apps/api/wrangler.toml --env staging",
+    "deploy:temp": "bun run build && wrangler deploy -c apps/api/wrangler.toml --env=\"\" --temporary",
+    "template-gate": "bun scripts/template-sync/cli.mjs check",
+    "template-sync": "bun scripts/template-sync/cli.mjs"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.8"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.12.1",
+    "@fast-check/vitest": "0.4.1",
+    "@playwright/test": "1.62.1",
+    "@size-limit/file": "13.0.3",
+    "@types/node": "26.1.2",
+    "@vitest/coverage-v8": "4.1.10",
+    "fast-check": "4.9.0",
+    "playwright-bdd": "9.2.0",
+    "size-limit": "13.0.3",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10",
+    "wrangler": "4.119.0"
+  },
+  "size-limit": [
+    {
+      "name": "web-js",
+      "path": "apps/web/dist/assets/*.js",
+      "limit": "200 KB",
+      "gzip": true
+    }
+  ]
+}

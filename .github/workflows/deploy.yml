@@ -1,0 +1,36 @@
+name: Deploy production
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - run: bun run deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Smoke
+        # Retry loop: Cloudflare edge propagation can lag a few seconds
+        # after wrangler deploy returns. Wait and retry rather than failing
+        # transiently on a stale isolate.
+        run: |
+          for i in 1 2 3 4 5; do
+            if curl -sf "$PROD_URL/v1/health" | grep -q '"status":"ok"'; then
+              break
+            fi
+            echo "Health smoke attempt $i failed; waiting 5s for edge propagation..."
+            sleep 5
+            if [ "$i" = "5" ]; then
+              echo "::error::Health smoke check failed after 5 attempts"
+              exit 1
+            fi
+          done
+        env:
+          PROD_URL: ${{ vars.PROD_URL }}
