@@ -121,6 +121,87 @@ describe("template-sync CLI", () => {
     expect(second).toContain("already up to date");
   });
 
+  it("update with no --ref follows the recorded state ref, not a stale older tag", () => {
+    // Upstream: v1.0.0 at initial, then advance main, tag v1.1.0 at an
+    // intermediate commit, then advance main further — so v1.1.0 is an
+    // ancestor of main, not the tip. A tree-copy fork seeded against main
+    // must follow state.ref (main) on the next update, not the stale v1.1.0
+    // tag, which would merge backwards and downgrade overwrite files.
+    writeFileSync(`${upstream}/AGENTS.md`, "template agents v2\n");
+    commit(upstream, "v2");
+    git(upstream, "tag v1.1.0");
+    writeFileSync(`${upstream}/AGENTS.md`, "template agents v3\n");
+    commit(upstream, "v3");
+
+    // Tree-copy fork: overwrite file matches main HEAD; merge file is custom.
+    const dir = setupRepo("stale-tag-");
+    git(dir, `remote add upstream ${upstream}`);
+    writeFileSync(`${dir}/AGENTS.md`, "template agents v3\n");
+    writeFileSync(`${dir}/README.md`, "my fork readme\n");
+    writeFileSync(`${dir}/template-sync.json`, JSON.stringify({
+      upstream: `${upstream}`,
+      overwrite: ["AGENTS.md"],
+      merge: ["README.md"],
+    }));
+    commit(dir, "tree-copy bootstrap");
+
+    run(dir, "init", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
+    // Seed against the upstream default branch (master in the test repo),
+    // matching a tree-copy fork bootstrapped from the template's main line.
+    run(dir, "seed --ref=master", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
+
+    // Advance upstream main beyond v1.1.0.
+    writeFileSync(`${upstream}/AGENTS.md`, "template agents v4\n");
+    commit(upstream, "v4");
+
+    run(dir, "init", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
+    // No --ref: must follow state.ref (main), not the stale v1.1.0 tag.
+    const out = run(dir, "update", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
+    expect(out).toContain("sync merged");
+    // Overwrite file advances to the template's latest (v4), not the stale
+    // tag's v2.
+    expect(readFileSync(`${dir}/AGENTS.md`, "utf8")).toBe("template agents v4\n");
+    // Merge-path file keeps the fork's content.
+    expect(readFileSync(`${dir}/README.md`, "utf8")).toBe("my fork readme\n");
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("update auto-resolves unrelated-history merge-path conflicts with --ours", () => {
+    // A tree-copy fork (no shared git history) has the same overwrite files as
+    // upstream but customized merge files. The first sync merges with
+    // --allow-unrelated-histories; overwrite files resolve to the template,
+    // merge-path files keep the fork's content (--ours).
+    const dir = setupRepo("treecopy-update-");
+    git(dir, `remote add upstream ${upstream}`);
+    // Overwrite file matches upstream v1.0.0; merge file is fork-customized.
+    writeFileSync(`${dir}/AGENTS.md`, "template agents\n");
+    writeFileSync(`${dir}/README.md`, "my fork readme\n");
+    writeFileSync(`${dir}/template-sync.json`, JSON.stringify({
+      upstream: `${upstream}`,
+      overwrite: ["AGENTS.md"],
+      merge: ["README.md"],
+    }));
+    commit(dir, "tree-copy bootstrap");
+
+    // Advance upstream's overwrite file.
+    writeFileSync(`${upstream}/AGENTS.md`, "template agents v2\n");
+    commit(upstream, "v2");
+    git(upstream, "tag v1.1.0");
+
+    run(dir, "init", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
+    const out = run(dir, "update --ref=v1.1.0", {
+      TEMPLATE_SYNC_UPSTREAM: `${upstream}`,
+    });
+    expect(out).toContain("sync merged");
+    // Overwrite file takes the template's version.
+    expect(readFileSync(`${dir}/AGENTS.md`, "utf8")).toBe("template agents v2\n");
+    // Merge-path file keeps the fork's content, not the template's.
+    expect(readFileSync(`${dir}/README.md`, "utf8")).toBe("my fork readme\n");
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it("normalizes GitHub SSH upstream to HTTPS for git operations", () => {
     writeFileSync(`${fork}/template-sync.json`, JSON.stringify({
       upstream: "git@github.com:ahaqqu/agentic-project-template.git",
