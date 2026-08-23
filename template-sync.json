@@ -1,7 +1,6 @@
 {
   "upstream": "https://github.com/ahaqqu/agentic-project-template.git",
   "overwrite": [
-    ".github/workflows/ci.yml",
     ".github/workflows/e2e.yml",
     ".github/workflows/vuln-scan.yml",
     ".github/workflows/dependabot-auto-merge.yml",
@@ -21,6 +20,8 @@
     "package.json",
     "README.md",
     "CONTEXT.md",
-    "bun.lock"
-  ]
+    "bun.lock",
+    ".github/workflows/ci.yml"
+  ],
+  "_comment_ci": "ci.yml moved from overwrite to merge: the fork wires its own infrastructure secrets (NEON_DATABASE_URL, and the existing Cloudflare/D1 secrets in staging.yml) into CI test steps, which makes workflows fork-owned in practice. Decided in #4's PR review."
 }
