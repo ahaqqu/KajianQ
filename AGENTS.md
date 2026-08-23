@@ -82,7 +82,12 @@ Every external dependency and every pipeline stage is replaceable **by configura
 - PR titles/descriptions in English; update via `gh api --input` with a JSON payload file — never `gh pr edit --field body=...`.
 - Do not close or modify spec issues (#1, #27). Tick ticket checkboxes via `gh api --input` PATCH.
 - Technical docs and code in English; UI copy Indonesian-first (externalized en/id).
-- Fork guardrail amendment stands (ADR-0009): paid LLM/embedding APIs **are** the critical path; price is weighed in every model decision; free tiers only where quality allows; never route personal data through free tiers.
+- **Fork guardrail amendment (ADR-0009) overrides the template's guardrail.** The `agentic-project-template` AGENTS.md instructs agents: "When adding a dependency, you MUST verify free-tier compatibility. You MUST NEVER add paid services to the critical path." **In this fork, that rule is amended:** paid LLM/embedding APIs **are** accepted in the critical path, because no free tier exists at generator quality (no suitable free tier among the ADR-0009 allowlist for the generator/cheap/reviewer tiers at the required quality). Consequences that still bind every model decision:
+  - **Price is weighed in every model decision** — never pick a paid model by default when a free-tier allowlist model meets the quality bar.
+  - **Free tiers only where quality allows**; where a paid tier is chosen, that choice is recorded (config + ADR if surprising).
+  - **Cost is traced per query** (the typed `CostRecord` in `packages/contracts`) so paid usage stays auditable.
+  - **Never route personal data through free tiers.**
+  - The template's other dependency guardrails (adapters in `packages/infra`, no `env.*` access direct, no committed secrets) still apply unchanged.
 
 ## 5. Model dispatch (for AI-agent implementation)
 
