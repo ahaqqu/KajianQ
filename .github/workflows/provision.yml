@@ -2,10 +2,11 @@ name: Provision Cloudflare resources
 on:
   workflow_dispatch:
 
-# Creates the R2 buckets from wrangler.toml names and prints the
-# copy-pasteable `gh variable set` commands for PROD_URL / STAGING_URL.
-# Persistence is Neon (RagStore seam, ADR-0008) — there is no D1 to create;
-# Neon is provisioned by #4 outside this workflow.
+# Creates D1 databases and R2 buckets from wrangler.toml names, then
+# prints the D1 UUIDs as copy-pasteable `gh secret set` commands.
+# The default GITHUB_TOKEN cannot write repository secrets, so the
+# D1_DATABASE_ID / D1_DATABASE_ID_STAGING secrets must be set once
+# after the first run — see the workflow output for exact commands.
 permissions:
   contents: read
 
@@ -25,7 +26,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      - name: Provision R2
+      - name: Provision D1 + R2
         run: bun scripts/provision-cf.mjs
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

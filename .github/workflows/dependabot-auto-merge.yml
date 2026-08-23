@@ -73,7 +73,7 @@ jobs:
             echo "auto"
           }
 
-          gh pr list --state open --json number,title,author \
+          gh pr list --repo "$GITHUB_REPOSITORY" --state open --json number,title,author \
             | jq -c '.[] | select(.author.login == "app/dependabot" or .author.login == "dependabot[bot]")' \
             | while read -r pr; do
                 number=$(printf '%s' "$pr" | jq -r .number)
