@@ -147,7 +147,13 @@ export function createCommands(ctx) {
     ensureRemote({ git, gitOk, gitOut, remote, log, manifest, env });
     fetchUpstream({ git, remote, log });
 
-    const ref = resolveRef({ gitOut, remote }, flags.ref);
+    // When no --ref is given, prefer the recorded state's ref over the
+    // latest v* tag. The state ref is the line we last synced along; a tag
+    // is only useful for a first sync (no state yet). Without this, a stale
+    // tag older than the state commit sends the merge backwards (the tag is
+    // an ancestor of what the fork already has), re-introducing every file
+    // the fork holds and producing add/add conflicts across all merge paths.
+    const ref = resolveRef({ gitOut, remote }, flags.ref ?? state?.ref);
     const commit = resolveCommit({ gitOut, remote }, ref);
     if (!commit) {
       throw new Error(
@@ -223,6 +229,35 @@ export function createCommands(ctx) {
         throw new Error(
           `resolving template-owned conflicts failed:\n${r.stderr}`,
         );
+      }
+    }
+
+    // A tree-copy fork (bootstrapped without shared git history) turns every
+    // file that exists on both sides into an add/add conflict, even merge-path
+    // files the fork customized (apps/, packages/, README.md, …). Overwrite
+    // paths were resolved above; the remaining conflicts are merge-path files
+    // the fork owns. When there is no merge-base (unrelated histories), keep
+    // the fork's content (--ours) for those files — the fork's customizations
+    // must survive the first sync. A shared-history merge still surfaces these
+    // as real conflicts for the human to resolve.
+    const afterOverwrite =
+      (gitOut(["diff", "--name-only", "--diff-filter=U"]) ?? "")
+        .split("\n")
+        .filter(Boolean);
+    if (afterOverwrite.length && !hasBase) {
+      const r = git(["checkout", "--ours", "--", ...afterOverwrite]);
+      if (r.status !== 0) {
+        if (merging) git(["merge", "--abort"]);
+        clearPending(pendingPath);
+        throw new Error(
+          `resolving merge-path conflicts (--ours) failed:\n${r.stderr}`,
+        );
+      }
+      const add = git(["add", "--", ...afterOverwrite]);
+      if (add.status !== 0) {
+        if (merging) git(["merge", "--abort"]);
+        clearPending(pendingPath);
+        throw new Error(`git add of --ours resolutions failed:\n${add.stderr}`);
       }
     }
 
