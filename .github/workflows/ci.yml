@@ -17,6 +17,13 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run check
       - run: bun run test
+        env:
+          # #4/ADR-0008: RagStore contract tests run against real Neon staging
+          # (the AC requires the seam to be *verified*, not just compiled).
+          # Without the secret these tests skip and rag-store-neon.ts reports
+          # near-zero coverage, tripping the gate; with it they insert fixture
+          # rows under a per-run prefix and clean up after themselves.
+          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
       - run: bun run build
       - run: bun run size-limit
       - run: bun run agentic-limits
