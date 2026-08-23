@@ -43,6 +43,8 @@ Improve the Islamic character (*akhlak*) of Indonesian Muslims — youth in part
 3. **Never hide the machinery.** Every answer carries its full Trace (ADR-0007).
 4. **Never silently machine-translate.** All kitab translations are labeled *"Terjemahan mesin — lihat teks Arab asli"* with the Arabic always shown (ADR-0006).
 5. **Dhaif hadith is always flagged** with a warning.
+6. **Never derive a new ruling.** The Generator surfaces classical reasoning (ta'lil, madzhab disagreement, applied Principles) *as cited*; it never synthesizes novel rulings, never resolves disagreements, never upgrades a grade. Insufficient evidence → refusal, not synthesis (ADR-0015).
+7. **No corpus-wide inferred knowledge graphs.** Knowledge layers are bounded, curated, human-reviewed concept structures (#24 terminology graph, #29 isnad, Principle Index, curated `concept_links`) — never a community-GraphRAG corpus extraction (ADR-0016).
 
 ---
 
@@ -258,6 +260,8 @@ Mitigations: top-k discipline (8–12 chunks, not 20), prompt caching for the st
 
 ## 7. Plan (12 weeks, approved)
 
+> **Monitoring:** success factors and per-phase metrics live in `docs/success-factors-and-metrics.md` — the instrument panel for the phases below.
+
 | Phase | Weeks | Deliverable (exit criteria) |
 |---|---|---|
 | **0. Fork & foundation** | 1 | Template forked; Notes/local-first/D1 removed; Neon + RagStore adapter live; 4 Provider impls behind interface; fork AGENTS.md amended (ADR-0009); NOTICES/DATASETS.md created; CONTEXT.md + ADRs imported |
@@ -283,6 +287,8 @@ Mitigations: top-k discipline (8–12 chunks, not 20), prompt caching for the st
 | `adr/0012` | Per-chain hadith grades via Sanadset isnad data (v2); additive migration, no graph DB / GraphRAG |
 | `adr/0013` | Arabic as canonical evidence, Indonesian as display; cross-lingual ID→AR retrieval; dual-index schema; #9 as go/no-go gate |
 | `adr/0014` | Bilingual terminology concept graph (supersedes ADR-0010's flat table); LLM extraction + human review; prompt-injection consumption |
+| `adr/0015` | No novel legal reasoning: surface classical ta'lil/qiyas as cited, never synthesize new rulings; refusal beats confident gap-filling |
+| `adr/0016` | No corpus-wide GraphRAG: knowledge ships as bounded curated concept structures (#24, #29, principle index, curated concept_links); revisit gate stated |
 
 Domain vocabulary: `CONTEXT.md`. Workflow after this spec: `to-spec` → `to-tickets` per the template's agentic pipeline.
 
