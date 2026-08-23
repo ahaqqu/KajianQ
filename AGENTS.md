@@ -84,7 +84,17 @@ Every external dependency and every pipeline stage is replaceable **by configura
 - Technical docs and code in English; UI copy Indonesian-first (externalized en/id).
 - Fork guardrail amendment stands (ADR-0009): paid LLM/embedding APIs **are** the critical path; price is weighed in every model decision; free tiers only where quality allows; never route personal data through free tiers.
 
-## 5. Key references
+## 5. Model dispatch (for AI-agent implementation)
+
+Ticket labels on `ahaqqu/KajianQ` route the work to the right model:
+
+- No label → default (medium / cheap-tier acceptable).
+- `model:high` → implement with a high-reasoning model; do not downgrade. These tickets carry a correctness/trust invariant that fails silently (validators, trap questions, sample audits).
+- `model:plus-human` → a human curation/verification gate holds an acceptance criterion (Principle Index, complete-works bibliographies, Golden Set trap design). Code alone never closes the ticket.
+
+**When creating a new ticket later, label it by this heuristic:** if the acceptance criteria include a validator, a trap question, or a sample-audit → `model:high`; if they require owner verification or human review → `model:plus-human`.
+
+## 6. Key references
 
 | Need | Where |
 |---|---|
