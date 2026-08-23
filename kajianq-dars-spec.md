@@ -201,6 +201,8 @@ All attributions ship in `NOTICES/DATASETS.md` (MIT repo; notes.md requirement).
 
 ### 4.2 Priority kitab (pre-600 H)
 
+> **v1 scope rule:** the kitab corpus is the listed priority titles plus the complete *verified* corpora of the classical tasawuf lineage (below). Edge editions that are themselves later commentaries are out (matn discipline), and disputed attributions are excluded or labeled — never silently ingested. Persian works (Ayyuha al-Walad, Kimiya-i Sa'adat) are in v1 scope only via the verified Al-Ghazali corpus (#33), not as standalone titles; standalone Persian works are post-v1.
+
 Mudawwanah (Sahnun 240H), Al-Umm (Syafi'i 204H), Syarh Aqidah Thahawiyah (321H), Ihya Ulumuddin (505H), Tarikh Tabari (310H), Al-Kamil (Ibn Athir 630H), Muwatta (179H), Musnad Ahmad (241H), Sunan ad-Darimi (255H), Tahdzib al-Akhlaq (421H); medium: Al-Mabsut (483H, partial), Al-Hidayah (593H). Verify matn dates against OpenITI metadata — many Shamela editions are later commentaries (matn vs sharh discipline per `CONTEXT.md`).
 
 **Complete author corpora (verified)** — issues #33 (Al-Ghazali), #35 (Makki, Qushayri, Jilani). Beyond single priority titles, the corpus targets the complete *verified* works of the classical tasawuf lineage plus Al-Ghazali — all pre-600 H. For every author: the bibliography is LLM-drafted then owner-verified against standard catalogues, and disputed attributions are excluded or explicitly labeled — never silently ingested.
