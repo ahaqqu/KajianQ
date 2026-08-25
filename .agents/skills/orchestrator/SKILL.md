@@ -71,7 +71,7 @@ DSH subagents run in-process and **inherit your session cwd** (`read`/`write`/`e
    - Prefix EVERY `read`/`write`/`edit`/`glob`/`grep` path with the worktree path — an unprefixed relative path lands in the main tree.
    - Pass `workdir: "<worktree>"` on EVERY bash call — `cd` does not persist between calls.
    - Never touch anything outside your worktree.
-4. On completion the subagent commits in its worktree; you merge the branch back, then clean up so worktrees don't accumulate:
+4. On completion the subagent commits in its worktree; you merge the branch back, then clean up so worktrees don't accumulate. Preferred: `bun run worktree:clean` — squash-merge-aware (trusts GitHub PR state), keeps unmerged work even with `--force`, skips dirty trees unless forced; `--dry-run` previews. Manual equivalent:
    ```
    git merge agent/<slug>
    git worktree remove .worktrees/<slug>
