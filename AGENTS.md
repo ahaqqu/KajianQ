@@ -78,8 +78,8 @@ Every external dependency and every pipeline stage is replaceable **by configura
 
 ## 4. Working agreements (from the user — non-negotiable)
 
-- **No `git commit`, push, or PR without explicit approval each time**, unless the user has explicitly delegated a batch to an agent with the instruction "it's fine to commit, push, and create PR when ready for me to review." In that delegated mode, the agent may create a branch, commit, push, and open the PR using the `pr-creation` skill template and `gh api --input` — then report the PR URL and final CI status to the user. The agent MUST NOT merge the PR itself; it remains pending human review/approval.
-- **When an orchestrator spawns a subagent for a delegated batch, the orchestrator MUST explicitly instruct the subagent that it is allowed to create a PR.** The instruction must reference this working agreement and the `pr-creation` skill, e.g. "it's fine to commit, push, and create a PR when ready for me to review." Without that explicit instruction, the subagent must default to waiting for approval before every commit/push/PR.
+- Any agent that completes a task should create a PR using the `pr-creation` skill, then hand it to the user for review. The agent MUST NOT merge the PR unless the user explicitly approves merging it.
+- **When an orchestrator spawns a subagent, the orchestrator MUST explicitly instruct the subagent whether it is allowed to create a PR.** The instruction should reference this working agreement and the `pr-creation` skill, e.g. "it's fine to commit, push, and create a PR when ready for me to review." Without that explicit instruction, the subagent must default to waiting for approval before every commit/push/PR.
 - PR titles/descriptions in English; create via `gh api --input` with a JSON payload file — never `gh pr edit --field body=....`
 - Do not close or modify spec issues (#1, #27). Tick ticket checkboxes via `gh api --input` PATCH.
 - Technical docs and code in English; UI copy Indonesian-first (externalized en/id).

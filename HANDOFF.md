@@ -1,4 +1,4 @@
-# Handoff prompt — KajianQ v1, session 3
+# Handoff prompt — KajianQ issues #40, #43, #44, #45, #47, #49, #63
 
 Paste everything below the line into a fresh agent session.
 
@@ -6,62 +6,139 @@ Paste everything below the line into a fresh agent session.
 
 ## Mission
 
-Implement **issue #4 — "P0: Neon + pgvector behind RagStore adapter, full schema, R2 wiring"** of `ahaqqu/KajianQ`. It is unblocked now that #3 (monorepo foundation) is merged and live. Finishing it unblocks #5 (Provider interface) and the corpus/Smart-Router tickets (#6, #7, #10, #14, #15).
+Tackle GitHub issues **#40, #43, #44, #45, #47, #49, #63** in `ahaqqu/KajianQ`. These were validated against `main` (`9612a8d`) and are all still open/required. Implement them in the grouped PR plan below. Read `AGENTS.md`, `CONTEXT.md`, and the relevant ADRs before writing code.
 
-## Where #3 left off (read this first — do not redo it)
+## Decisions already made by the user
 
-#3 is **complete and merged to main** (PR #36, all 10 ACs ticked, issue #3 closed-by-ACs). The foundation is live:
+| # | Question | Decision |
+|---|---|---|
+| #43 | SPA middleware path | Route SPA paths through Hono so `secureHeaders`/CSP/CORS/rate-limit/correlation-id apply, then serve ASSETS from a catch-all handler. |
+| #47 | Trailing slashes | Normalize (e.g. `/v1/health/` resolves to `/v1/health`). |
+| #45 | `TraceEvent` contract | Strict discriminated union — unknown `kind` fails `v.parse`. |
+| #63 item 1 | `RetrievalTrack` / columns | Rename both TS enum and DB columns: `ar`/`id` → `primary`/`fallback`, `embedding_ar`/`embedding_id` → `embedding_primary`/`embedding_fallback`. No backward-compat migration; update the initial schema files directly. |
 
-- Monorepo with 6 workspace packages: `contracts`, `infra`, `rag-core`, `rag-ingest`, `eval`, `kajianq-domain` (all `@app/*`, all typecheck clean).
-- `packages/contracts` already defines the typed trace contract `Trace` / `TraceEvent` / `CostRecord` (ADR-0007 amendment) — consume it, do not redefine it.
-- `packages/rag-core` exports the pipeline interfaces `Router`, `Retriever`, `Assembler`, `Generator`, `Reviewer`, plus `Query` / `Chunk` / `Answer` types.
-- `packages/infra` has the template adapters (Logger, ObjectStore/R2, ConfigStore, RateLimiter) and a `README.md` that already notes the four ADR-0014 concept-graph tables must be in the first Neon migration — read it.
-- API shell `kajianq-api` (+`-staging`) deploys via CI to **https://kajianq-api-staging.rumaq.workers.dev**; only `/v1/health` + OpenAPI are mounted. The D1-backed session routes were removed in #3 — #4 re-lands them Postgres-backed (see auth ACs below).
-- `scripts/check-boundary.mjs` enforces the engine boundary (no domain logic / vendor names / direct SQL in `rag-core`, `rag-ingest`, `eval`, `contracts`, `infra/src`). Run `bun run boundary` — keep it green.
-- Staging deploys on push to `main`; template-sync is wired and seeded against upstream `main` (`bun run template-gate`).
-- ADR-0017 ("Anonymous sessions over hosted identity for v1") was just written — it records the decision to use owned `users`/`sessions` tables via the RagStore seam, *not* Neon Auth. Read it before designing auth.
+## PR plan (implement in this order)
 
-## Context you need
+### PR A — API middleware / routing hygiene
+**Issues:** #40, #43, #47
 
-- Your ticket with acceptance criteria: `gh issue view 4 --repo ahaqqu/KajianQ --json body` (the `gh issue view` plain form errors on deprecated Projects classic — use `--json`). **Those ACs are your definition of done.** Note the three amendments already on the ticket: ADR-0013 (dual embeddings), ADR-0014 (four concept-graph tables), and the #3 strip (auth `users`/`sessions` tables + RagStore session methods).
-- Read in the repo root, in this order: `CONTEXT.md` (domain glossary — vocabulary is enforced) → `AGENTS.md` (standing rules; §1.1 pluggable, §1.2 traceable, §2 non-negotiable) → these ADRs: `0008` (Neon+pgvector behind RagStore), `0007` (typed trace contract), `0013` (Arabic-canonical dual embeddings), `0014` (concept-graph tables + exact column definitions), `0017` (anonymous sessions, not hosted identity). `adr/0014` has the concrete table DDL for the four terminology tables — use it verbatim.
-- `kajianq-dars-spec.md` is background; the spec's §0 chose anonymous-session auth.
+1. **Thread `RequestContext` through `c.var`** (#40)
+   - In `apps/api/src/lib/middleware.ts`, build `createRequestContext(c.env.APP_ENV, correlationId)` once and store it as `c.set("ctx", ctx)`.
+   - Extend `ApiEnv` `Variables` to include `ctx: RequestContext`.
+   - Update `apps/api/src/lib/errors.ts` to read `c.get("ctx").logger` instead of constructing a new logger.
+   - Update `apps/api/src/routes/health.ts` to use `c.get("ctx")` directly.
 
-## Credentials already provisioned (by the user)
+2. **Route everything through Hono + serve SPA from catch-all** (#43)
+   - Change `apps/api/src/index.ts` to send **all** requests into `api.fetch(request, env, ctx)`.
+   - In `apps/api/src/app.ts` or `apps/api/src/routes/index.ts`, register a final catch-all after `registerDocRoutes(api)`:
+     - If the path starts with `/v1/`, return JSON `404 { error: "not_found" }`.
+     - Otherwise, serve the SPA by calling `c.env.ASSETS.fetch(c.req.raw)`.
+   - Adjust CSP in `applyMiddleware` if needed for SPA inline styles while keeping restrictive defaults.
+   - Update `apps/api/src/app.test.ts` to assert CSP on `/` and a client-side route (e.g., `/chat`).
 
-- Cloudflare: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` are GitHub Secrets; `STAGING_URL` / `PROD_URL` are GitHub variables. R2 buckets `kajianq-raw` + `kajianq-raw-staging` exist.
-- **Neon: the user is setting up `NEON_DATABASE_URL` (the pooled connection string, with `-pooler` hostname + `?sslmode=require`) as a GitHub Secret and in local `.env`.** `NEON_API_KEY` is optional for v1 (only for CI branching); do not block on it. Confirm with the user that `NEON_DATABASE_URL` is set before running migrations against staging.
-- Vendor API keys (Gemini/Kimi/DeepSeek/Qwen) are **not** your scope — those are #5.
+3. **Normalize trailing slashes** (#47)
+   - Enable Hono trailing-slash normalization so `/v1/health/` works.
+   - Add tests for `/v1/health/`, `/v1/foo` (JSON 404), and `/` (SPA with CSP).
 
-## Scope guardrails
+### PR B — Rate limiter: document + bound memory
+**Issue:** #44
 
-- **All Neon access goes through the `RagStore` adapter in `packages/infra`.** No direct SQL, no DB client imports, outside the adapter and migrations (ADR-0008, AGENTS.md §2 rule 3). `check-boundary.mjs` already gates `@neondatabase|drizzle|\bpg\b|postgres(` in engine packages — keep it green; extend it only if needed.
-- **No vendor or model names in engine code** (ADR-0009). The RagStore is vendor-agnostic; model choice is config.
-- **No Islamic-domain logic in engine packages.** The RagStore schema columns are generic (`metadata` JSONB, `text_ar`/`text_id`); domain vocabulary (`madzhab`, `grade`, `textLayer`) lives in `kajianq-domain` and is passed through as filter values, never named in SQL or the adapter.
-- **First migration = full v1 schema in one apply/rollback-clean migration:** `doc_parents`/`doc_children` (dual embeddings `embedding_ar`/`embedding_id VECTOR(1536)` + keep `text_raw`), `principle_index`, `concept_links`, `concept`/`lemma`/`concept_relation`/`lemma_evidence` (use ADR-0014's DDL), `chat_sessions`/`chat_messages`, `answer_traces`, `feedback`, `golden_questions`, `eval_runs`/`eval_results`, `model_configs`, and the new `users`/`sessions` (anonymous, 30-day Bearer, cascade delete — distinct from `chat_sessions`).
-- **`answer_traces` stores the `Trace` shape from `@app/contracts`** (ADR-0007 amendment) — do not invent a parallel trace schema.
-- Do NOT start #5 work (no Provider implementations) — separate ticket.
-- Minimal changes; follow the repo's existing code style (template conventions: ≤300-line files, Valibot contracts, Logger adapter). Technical docs and code in English.
+1. Add clear comments in `packages/infra/src/rate-limit.ts` and `apps/api/src/lib/rate-limit-mw.ts` stating the memory limiter is single-isolate, non-production, and must be replaced by a global backend (DO/KV) later.
+2. Implement bounded memory: add `maxKeys` cap to `createMemoryRateLimiter`, evict oldest when over cap, optionally prune expired windows.
+3. Keep the `RateLimiter` interface unchanged.
+4. Update `apps/api/src/app.ratelimit.test.ts` if behavior changes.
 
-## Working agreements (user's rules — non-negotiable)
+### PR C — `TraceEvent` strict discriminated union
+**Issue:** #45
 
-- **No `git commit`, push, or PR without explicit approval — ask each time.**
-- PR title and description in English. Update PR title/body via `gh api --input` with a JSON payload file — never `gh pr edit --field body=...`.
-- Do not close or modify spec issues (#1, #27). Tick #4's acceptance-criteria checkboxes as they complete (via `gh api --input` PATCH of the issue body — the plain `gh issue view` form errors on this repo; use `--json`).
-- If anything in the ticket is ambiguous, ask the user before building.
-- Staging deploys on push to `main` — keep the Staging workflow green; do not break it.
+1. In `packages/contracts/src/trace.ts`:
+   - Replace `kind` with a `v.picklist` of concrete kinds: `"llm_call"`, `"retrieval"`, `"subquery"`, `"intent"`, `"refusal"`, `"assembly"`, `"review"`, `"ingest"`, `"eval"`.
+   - Replace open `detail: Record<string, unknown>` with a discriminated union via `v.variant` keyed on `kind`.
+   - Define typed detail variants for each kind.
+   - Keep `cost` and `reason` fields as today.
+2. Update any existing `TraceEvent` producers/consumers to the new shape.
+3. Add a code comment noting that unknown kinds now fail validation (strict mode per user decision).
 
-## Suggested approach (not prescriptive)
+### PR D1 — Rename `RetrievalTrack` and DB columns
+**Issue:** #63 item 1
 
-1. Define the `RagStore` interface in `packages/infra` first (the seam), then implement it against Neon — pluggability before implementation.
-2. Write the migration(s) with a clean rollback; run them locally against your Neon dev/staging branch first.
-3. RagStore contract tests against real Neon staging: vector insert + similarity round-trip on **both** `embedding_ar` and `embedding_id` (the AC calls this out explicitly — the dual-index choice stays reversible).
-4. Probe `pg_search`/BM25 on the Neon plan; record the result (fallback tsvector) — this is an AC.
-5. Storage/cost calc for dual 1536-dim vectors across the full v1 corpus (6,236 ayah + 650K hadith + ~10 kitab) — an AC; record it in the PR or an ADR if surprising.
-6. `createSession`/`resolveUserId`/`deleteUserCascade` on RagStore; do NOT re-mount the routes (that's #10's wiring) — just the adapter methods + tables.
+Since the user confirmed no migration/backward-compat concern, update the initial schema source-of-truth:
 
-## Done means
+1. In `packages/infra/src/rag-store.ts`:
+   - `RetrievalTrack = "primary" | "fallback"`
+   - Rename `DocChild.embeddingAr` → `embeddingPrimary`, `embeddingId` → `embeddingFallback` (and `DocChildInsert`).
+2. Update initial migration SQL (`packages/infra/migrations/*.sql`):
+   - `embedding_ar` → `embedding_primary`
+   - `embedding_id` → `embedding_fallback`
+3. Update adapter SQL in `rag-store-neon.ts`, `rag-store-neon-query.ts`, `rag-store-shared.ts`.
+4. Update tests that construct rows or assert column names.
+5. Add a comment explaining `primary`/`fallback` maps to KajianQ’s AR/ID language tracks at the domain-pack layer.
 
-- All of #4's ACs verifiably true: migrations apply + roll back clean from CLI, RagStore contract tests pass against real Neon staging, R2 readable/writable from the ingestion CLI env, `pg_search` probed and recorded, dual-vector storage/cost calc done and recorded, all Neon access behind the RagStore seam, `users`/`sessions` tables + session methods in place.
-- `bun run check && bun run test && bun run boundary && bun run build` green locally; Staging workflow green on push.
-- Final report to the user: which ACs are checked off, what #5 (Provider interface) will need next, and any Neon plan/cost findings.
+### PR D2 — Remaining #63 cosmetic refactors
+
+Group in dependency order:
+
+1. **Discoverability / tooling**
+   - Add `bin` entry to `packages/infra/package.json` pointing at `scripts/db-migrate.mjs`.
+   - Move `template-sync.json` `_comment_ci` rationale to `template-sync.notes.md`; keep JSON pure config.
+
+2. **Observability**
+   - Accept optional `Logger` in `createNeonRagStore` and log slow queries / errors. Default remains no-op for tests.
+
+3. **Type ergonomics**
+   - Introduce `PartialBy<T, K>` helper and preserve `readonly` on `DocChildInsert`/`DocParentInsert` embedding fields.
+
+4. **Decision record**
+   - Promote `docs/neon-sizing-issue-4.md` to `adr/0019-neon-dual-vector-sizing.md` (or next available number) and replace the doc with a pointer.
+
+5. **Pluggability polish**
+   - Add `createRagStore(provider: 'neon', sql)` factory.
+   - Stop exporting `SqlRunner` from `packages/infra/src/index.ts`; keep it internal to the Neon adapter.
+
+6. **Interface decomposition (deferred)**
+   - Leave `RagStore` as one interface for now. Only split into `CorpusStore`/`TraceStore`/`ChatStore`/`SessionStore` façade when a second adapter becomes concrete.
+
+## Working agreements (non-negotiable)
+
+- **No `git commit`, push, or PR without explicit approval each time.**
+- PR titles/descriptions in English; update via `gh api --input` with a JSON payload file — never `gh pr edit --field body=...`.
+- Do not close or modify spec issues (#1, #27). Tick acceptance-criteria checkboxes via `gh api --input` PATCH.
+- Technical docs and code in English; UI copy Indonesian-first.
+- Run `bun run check && bun run test && bun run boundary && bun run build` before declaring a PR ready.
+
+## Key files involved
+
+- `apps/api/src/index.ts`
+- `apps/api/src/app.ts`
+- `apps/api/src/lib/middleware.ts`
+- `apps/api/src/lib/errors.ts`
+- `apps/api/src/lib/context.ts`
+- `apps/api/src/routes/health.ts`
+- `apps/api/src/routes/index.ts`
+- `apps/api/src/routes/docs.ts`
+- `apps/api/src/app.test.ts`
+- `apps/api/src/app.ratelimit.test.ts`
+- `packages/infra/src/rate-limit.ts`
+- `apps/api/src/lib/rate-limit-mw.ts`
+- `packages/contracts/src/trace.ts`
+- `packages/infra/src/rag-store.ts`
+- `packages/infra/src/rag-store-neon.ts`
+- `packages/infra/src/rag-store-neon-query.ts`
+- `packages/infra/src/rag-store-shared.ts`
+- `packages/infra/src/index.ts`
+- `packages/infra/package.json`
+- `packages/infra/migrations/*.sql`
+- `template-sync.json`
+- `docs/neon-sizing-issue-4.md`
+- `.github/workflows/deploy.yml`
+- `.github/workflows/staging.yml`
+
+## Verification checklist per PR
+
+- Domain boundary: no Islamic-domain identifiers in engine packages.
+- No vendor names in engine/app code outside `packages/infra` Provider adapters and config.
+- No direct DB client imports outside RagStore adapter and migrations.
+- Any new LLM call records model/tokens/cost to a trace.
+- Any new persisted answer path writes a trace record the UI can render.
+- Vocabulary matches `CONTEXT.md`.
+- `bun run check && bun run test && bun run boundary && bun run build` green.
