@@ -328,21 +328,22 @@ export function createCommands(ctx) {
       });
     }
 
+    // Stage the state file BEFORE checking for net changes. In an unrelated-
+    // histories sync every shared file resolves to --ours, so the only staged
+    // difference is the state file. If we checked for changes first we would
+    // abort the merge and lose the upstream parent (the merge-base for the next
+    // sync). The state commit always changes when upstream advances, so this
+    // keeps MERGE_HEAD alive and produces a real two-parent merge commit.
+    stageState(syncCtx, ref, commit);
+
     if (gitOk(["diff", "--cached", "--quiet"])) {
+      // Truly nothing changed (upstream commit matches last synced commit).
       if (merging) git(["merge", "--abort"]);
-      stageState(syncCtx, ref, commit);
-      if (gitOk(["diff", "--cached", "--quiet"])) {
-        clearPending(pendingPath);
-        log.info("already up to date", { ref, commit: commit.slice(0, 8) });
-        return 0;
-      }
-      commitState(git, `chore: record template sync state (${ref})`);
       clearPending(pendingPath);
       log.info("already up to date", { ref, commit: commit.slice(0, 8) });
       return 0;
     }
 
-    stageState(syncCtx, ref, commit);
     const message = `chore: record template sync state (${ref})`;
     const c = merging
       ? git(["commit", "--no-verify", "--no-edit"])

@@ -1,6 +1,6 @@
 ---
 name: writing-tests
-description: Use when writing tests of any kind: unit, property, BDD, or integration. Read docs/ARCHITECTURE.md §10 for testing requirements and AGENTS.md for guardrails.
+description: "Use when writing tests of any kind: unit, property, BDD, or integration. Read docs/ARCHITECTURE.md §10 for testing requirements and AGENTS.md for guardrails."
 ---
 
 # Writing Tests
