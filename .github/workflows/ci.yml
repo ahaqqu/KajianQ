@@ -52,32 +52,6 @@ jobs:
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
-      # TEMPORARY (PR #72): the engine 0001 migration was edited in place
-      # (fix-forward process), so shared staging's shape no longer matches the
-      # repo. Roll the ENGINE set back and re-apply once so the contract tests
-      # see the renamed embedding columns. This step is reverted on the branch
-      # right after it has repaired staging; future fix-forwards use the manual
-      # neon-schema-reapply.yml workflow. Staging is a disposable testbed
-      # (README "Production bring-up"); domain/product sets are untouched.
-      - name: Sync engine schema to repo (temporary)
-        env:
-          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
-        run: |
-          migrate() { bun packages/infra/scripts/db-migrate.mjs "$@"; }
-          migrate status
-          for _ in $(seq 1 3); do
-            # `|| rc=$?` keeps bash -e from killing us before we can print out.
-            out=$(migrate down 2>&1) || rc=$?
-            rc=${rc:-0}
-            echo "${out:-<down produced no output>}"
-            if [ "$rc" -ne 0 ]; then
-              echo "::error::db-migrate down failed (rc=$rc)"
-              exit "$rc"
-            fi
-            echo "$out" | grep -q "nothing to roll back" && break
-          done
-          migrate up
-          migrate status
       - run: bunx vitest run --no-file-parallelism packages/infra/src/rag-store-neon.test.ts
         env:
           NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
