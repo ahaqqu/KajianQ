@@ -15,9 +15,12 @@
 --     UNIQUE so re-running ingestion upserts by provenance key, and
 --     doc_children are upserted by (parent_id, ordinal).
 --   * Dual embeddings from the start (ADR-0013 amendment): each child chunk
---     carries embedding_ar (primary/canonical) and embedding_id
---     (fallback/fusion), both VECTOR(1536), nullable until embedded, so the
---     AR-only vs. ID-fusion retrieval posture stays a RagStore query-layer
+--     carries embedding_primary (canonical) and embedding_fallback
+--     (fusion), both VECTOR(1536), nullable until embedded. The column names
+--     are role-based on purpose: KajianQ maps primary/fallback onto its AR/ID
+--     language tracks at the domain-pack layer, so the engine schema stays
+--     language-agnostic. Both columns exist from the start so the
+--     primary-only vs. fusion retrieval posture stays a RagStore query-layer
 --     switch, not a re-embed.
 --   * Anonymous sessions per ADR-0017: users + sessions, distinct from
 --     chat_sessions / chat_messages; 30-day Bearer tokens, cascade delete.
@@ -57,8 +60,8 @@ CREATE TABLE doc_children (
   -- (source-type citation anchors differ); the engine stores and returns it
   -- verbatim, not a text column (shapes differ → forced re-parsing).
   citation      jsonb NOT NULL DEFAULT '{}'::jsonb,
-  embedding_ar  vector(1536),              -- nullable until embedded
-  embedding_id  vector(1536),              -- nullable until embedded
+  embedding_primary vector(1536),          -- nullable until embedded
+  embedding_fallback vector(1536),         -- nullable until embedded
   ordinal       integer NOT NULL,
   metadata      jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at    timestamptz NOT NULL DEFAULT now(),
@@ -68,10 +71,10 @@ CREATE TABLE doc_children (
 -- ANN indexes on both embedding tracks. HNSW is preferred over IVFFlat here
 -- because it needs no training pass, so ingestion stays idempotent and
 -- re-runnable (AGENTS.md §2) without a manual REINDEX step.
-CREATE INDEX doc_children_embedding_ar_hnsw
-  ON doc_children USING hnsw (embedding_ar vector_cosine_ops);
-CREATE INDEX doc_children_embedding_id_hnsw
-  ON doc_children USING hnsw (embedding_id vector_cosine_ops);
+CREATE INDEX doc_children_embedding_primary_hnsw
+  ON doc_children USING hnsw (embedding_primary vector_cosine_ops);
+CREATE INDEX doc_children_embedding_fallback_hnsw
+  ON doc_children USING hnsw (embedding_fallback vector_cosine_ops);
 CREATE INDEX doc_children_metadata_gin ON doc_children USING gin (metadata);
 CREATE INDEX doc_children_parent_id_idx ON doc_children (parent_id);
 

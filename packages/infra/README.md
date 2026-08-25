@@ -26,7 +26,11 @@ vendor client directly (ADR-0008, ADR-0009). What lives here:
 ## RagStore
 
 `createNeonRagStore(sql)` takes the query object returned by
-`neon(NEON_DATABASE_URL)` and returns a `RagStore`. Executable SQL lives only in
+`neon(NEON_DATABASE_URL)` and returns a `RagStore`. Prefer
+`createRagStore(provider, sql, opts?)` when wiring by config: it names the
+backend by role (`"neon"` today) instead of importing the concrete adapter
+constructor. Pass `opts.logger` for slow-query/error ops logging (omitted →
+fully silent). Executable SQL lives only in
 `rag-store-neon.ts`, `rag-store-neon-query.ts`, and the migrations; nothing
 else may hold a DB client or query (`check-boundary.mjs` enforces this).
 
@@ -41,9 +45,11 @@ else may hold a DB client or query (`check-boundary.mjs` enforces this).
 - Ingestion is idempotent (AGENTS.md rule 11): `insertDocParent` upserts by
   `source_key` (UNIQUE); `insertDocChild` upserts by `(parent_id, ordinal)`,
   refreshing derived fields but never overwriting immutable `text_raw`.
-- The dual embedding columns (`embedding_ar`, `embedding_id`) are queried via
-  `similaritySearch(track, …)` so the AR-only vs. ID-fusion posture decided by
-  the #9 benchmark is a query-layer switch, not a schema change (ADR-0013).
+- The dual embedding columns (`embedding_primary`, `embedding_fallback`) are
+  queried via `similaritySearch(track, …)` so the primary-only vs. fusion
+  posture decided by the #9 benchmark is a query-layer switch, not a schema
+  change (ADR-0013). Track names are role-based; KajianQ maps them onto its
+  AR/ID language tracks at the domain-pack layer.
   Embeddings are validated for dimension (1536) and finite components at the
   seam, before they reach Postgres.
 - `answer_traces` stores the `@app/contracts` `Trace` shape verbatim and now
@@ -80,6 +86,11 @@ NEON_DATABASE_URL=postgres://… bun run db:status:all
   `-pooler`, `?sslmode=require`).
 - Applied migrations are recorded in `schema_migrations(name)`; `up` is a
   no-op when nothing is pending.
+- The CLI self-describes via this package's `bin` field
+  (`db-migrate` → `scripts/db-migrate.mjs`). Bun does not link workspace
+  member bins into `node_modules/.bin`, so inside this monorepo the root
+  `db:*` scripts remain the canonical invocation; the `bin` entry keeps the
+  manifest honest about its operational commands.
 - Engine `migrations/0001_init.sql` is the domain-agnostic v1 schema (corpus,
   traces, chat, anonymous sessions, feedback, eval ledger, model configs).
 - Domain `packages/kajianq-domain/migrations/0001_concept_graph.sql` follows
@@ -88,8 +99,8 @@ NEON_DATABASE_URL=postgres://… bun run db:status:all
   can be promoted to a real FK.
 - Product `apps/api/migrations/0001_product.sql` creates `principle_index` and
   `golden_questions`.
-- Corpus sizing for the dual-vector schema is recorded in
-  `docs/neon-sizing-issue-4.md`.
+- Corpus sizing / storage cost of the dual-vector schema is decided in
+  [ADR-0020](../../adr/0020-neon-dual-vector-sizing.md).
 
 ### Production bring-up
 
