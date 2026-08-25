@@ -14,12 +14,6 @@
     "vitest.config.ts"
   ],
   "merge": [
-    "apps/",
-    "packages/",
-    "package.json",
-    "README.md",
-    "CONTEXT.md",
-    "bun.lock",
     ".github/workflows/ci.yml",
     ".github/workflows/staging.yml",
     ".github/workflows/template-sync.yml",
