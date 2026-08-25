@@ -26,8 +26,8 @@ During #4 planning, a question surfaced: should KajianQ use **Neon Auth** (Neon'
 
 ## Consequences
 
-- **#4** adds `users` and `sessions` tables to the first Neon migration (anonymous, 30-day Bearer token, cascade delete) — distinct from `chat_sessions` / `chat_messages` — and `RagStore` gains `createSession` / `resolveUserId` / `deleteUserCascade` (already recorded as #4 ACs).
-- **#10** re-mounts the auth routes behind `authGuard`; the session token seeds the `Authorization: Bearer` header for chat/feedback.
+- **#4** adds `users` and `sessions` tables to the first Neon migration (anonymous, 30-day Bearer token, cascade delete) — distinct from `chat_sessions` / `chat_messages` — and `RagStore` gains `createSession` / `resolveUserId` / `deleteUserCascade` (already recorded as #4 ACs). `RagStore` also gains `cleanupExpiredSessions(before?)` (implemented in the #4 review fix-forward, PR #62), which `DELETE`s `sessions` rows whose `expires_at` has passed and returns the count.
+- **#10** re-mounts the auth routes behind `authGuard`; the session token seeds the `Authorization: Bearer` header for chat/feedback. **#10 also wires the cleanup job:** `resolveUserId` already rejects expired rows on read (so expiry is a storage-reclamation concern, not a correctness one), but expired rows are never removed by the read path. A Cloudflare Worker cron trigger (`[triggers] crons` in `apps/api/wrangler.toml` + a `scheduled()` handler) must call `ragStore.cleanupExpiredSessions()` on a schedule (e.g. nightly) once #10 mounts the `RagStore` in the Worker. This is a #10 acceptance criterion, not engine work.
 - Auth remains swappable: changing the session store is a RagStore adapter change, not an app change.
 - No vendor identity SDK enters the engine or app; the `check-boundary.mjs` gate already forbids vendor/client coupling in engine packages.
 
