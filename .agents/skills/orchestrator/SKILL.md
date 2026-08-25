@@ -33,19 +33,23 @@ Start independent delegations together in one message and keep working while the
 
 Use `subagent_fork` instead when the child needs your completed conversation context (a follow-up analysis, a review, a continuation). A fork sees your completed turns but not your in-flight turn.
 
-## Model routing
+## Model selection by difficulty
 
-The `subagent` tool inherits your model — there is no per-call model override on it. Model routing is configured at the composition level (agent presets), not per delegation.
+Pick a model per task by difficulty, exactly as the pi `/subagent` presets did. The available models (provider `ollama`, from `~/.dsh/settings.yaml`):
 
-For large fan-out where you need per-task model selection, use the `workflow` tool: it runs many subagents with phases and structured results, and each `agent(prompt, { provider, model })` call accepts an independent `provider`/`model` override.
+| Preset | Model | Use for |
+|---|---|---|
+| `low` | `ollama/deepseek-v4-flash:0731` | fast, cheap, bounded tasks (renames, small helpers, simple fixes) |
+| `medium` | `ollama/kimi-k2.7-code` | capable coding model for standard tasks (features, tests, refactors) |
+| `high` | `ollama/glm-5.2` | strongest reasoning for architecture, tricky bugs, cross-cutting changes, validators, trap questions, sample audits |
 
-## Workload guidance
+The `subagent` tool inherits your model — it has no per-call model override. To route a task to a specific model, use the `workflow` tool and pass the model per agent:
 
-- **Bounded, cheap tasks** (renames, small helpers, simple fixes): delegate to a `subagent`; it inherits your model.
-- **Standard tasks** (features, tests, refactors): delegate to a `subagent`.
-- **Architecture, tricky bugs, cross-cutting changes, validators, trap questions, sample audits**: delegate to a `subagent` (or a `workflow` with a high-reasoning model override) — these carry a correctness/trust invariant that fails silently.
+```
+agent(prompt, { provider: "ollama", model: "glm-5.2" })
+```
 
-If you are uncertain whether a task should be delegated at all, ask the user before spawning.
+This works for a single delegation too (a workflow with one agent). If you are uncertain which preset fits a task, ask the user before spawning.
 
 ## PR creation permission (non-negotiable)
 
