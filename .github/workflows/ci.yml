@@ -16,17 +16,16 @@ jobs:
           bun-version: latest
       - run: bun install --frozen-lockfile
       - run: bun run check
+      # Default unit/coverage gate runs WITHOUT the Neon secret: the RagStore
+      # contract tests (rag-store-neon.test.ts) self-skip without it, so this
+      # job stays green for fork PRs (no secret) and the I/O adapter is
+      # excluded from coverage (see vitest.config.ts) since it needs the
+      # secret. The contract suite runs in the separate neon-contract job.
       - run: bun run test
-        env:
-          # #4/ADR-0008: RagStore contract tests run against real Neon staging
-          # (the AC requires the seam to be *verified*, not just compiled).
-          # Without the secret these tests skip and rag-store-neon.ts reports
-          # near-zero coverage, tripping the gate; with it they insert fixture
-          # rows under a per-run prefix and clean up after themselves.
-          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
       - run: bun run build
       - run: bun run size-limit
       - run: bun run agentic-limits
+      - run: bun run boundary
       - run: bun run truth
       - name: gitleaks
         run: |
@@ -37,6 +36,25 @@ jobs:
         run: |
           pip install --quiet semgrep
           semgrep scan --config auto --error --quiet .
+
+  # Secret-gated RagStore contract tests against real Neon staging. The
+  # suite self-skips when NEON_DATABASE_URL is empty (fork PRs have no
+  # secret), so the job stays green there. When the secret is present it
+  # runs in series (--no-file-parallelism) because the tests share one
+  # fixture namespace keyed off a per-run prefix.
+  neon-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bunx vitest run --no-file-parallelism packages/infra/src/rag-store-neon.test.ts
+        env:
+          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
 
   template-sync:
     runs-on: ubuntu-latest

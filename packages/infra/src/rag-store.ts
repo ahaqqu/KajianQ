@@ -113,12 +113,15 @@ export interface RagStore {
   // -- Traces (ADR-0007) ---------------------------------------------------
 
   /**
-   * Persist the Trace for one answer. The store writes the @app/contracts
-   * `Trace` shape verbatim — it never re-serializes or invents a parallel
-   * trace schema (ADR-0007 amendment).
+   * Persist the Trace for one answer, owned by `userId`. The store writes
+   * the @app/contracts `Trace` shape verbatim — it never re-serializes or
+   * invents a parallel trace schema (ADR-0007). The user link makes the
+   * trace cascade-delete with its owner on anonymous self-deletion
+   * (ADR-0007 amendment).
    */
   insertAnswerTrace(input: {
     messageId: string;
+    userId: string;
     trace: Trace;
   }): Promise<string>;
 
@@ -163,7 +166,16 @@ export interface RagStore {
 
   /**
    * Delete a user and everything they own (sessions, chat sessions and their
-   * messages, feedback) via cascade. Anonymous self-deletion endpoint in #10.
+   * messages, feedback, and the user's answer traces) via cascade. Anonymous
+   * self-deletion endpoint in #10. Trace cascade is the ADR-0007 amendment.
    */
   deleteUserCascade(userId: string): Promise<void>;
+
+  /**
+   * Delete session rows whose TTL has passed. Returns the count removed.
+   * Wire this to a periodic job (Worker cron) so `sessions` does not grow
+   * unbounded; `resolveUserId` already rejects expired rows on read, so this
+   * is a storage-reclamation concern, not a correctness one.
+   */
+  cleanupExpiredSessions(before?: Date): Promise<number>;
 }

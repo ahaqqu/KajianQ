@@ -1,31 +1,96 @@
-import type { DocChild, RetrievalTrack } from "./rag-store";
+import type { DocChild } from "./rag-store";
 
 /**
  * Pure, database-free helpers shared by the RagStore adapter and its unit
  * tests. Everything here is deterministic and side-effect-free; the Neon
- * adapter composes these with its I/O.
+ * adapter composes these with its I/O. Crucially, NO SQL lives here — the
+ * similarity-search query builder is co-located with the Neon adapter
+ * (`rag-store-neon.ts`), the only place executable SQL should appear.
  *
  * pg returns `vector` columns as their wire form `'[0.1,0.2]'`; embeddings go
  * in as bracketed strings and come out parsed to `number[]`, so callers never
  * see the wire representation.
  */
 
+/** Dimension of the corpus chunk embeddings (ADR-0013 dual-track). */
+export const CORPUS_EMBEDDING_DIM = 1536;
+
+/**
+ * Serialize a vector to pgvector's bracketed literal form. Callers must have
+ * already validated dimension/finite-ness (see {@link assertEmbedding}); this
+ * helper stays a pure formatter so it is trivially unit-testable.
+ */
 export function toVectorLiteral(vec: readonly number[]): string {
   return `[${vec.join(",")}]`;
 }
 
+/**
+ * Assert an embedding is the expected dimension and every component is a
+ * finite number. Throws a descriptive `RangeError` *before* the value reaches
+ * Postgres, so a misconfigured provider or ingestion bug fails loudly at the
+ * seam instead of as an opaque pgvector dimension error.
+ */
+export function assertEmbedding(
+  vec: readonly number[] | null | undefined,
+  dim: number,
+): asserts vec is readonly number[] | null {
+  if (vec === null || vec === undefined) return;
+  if (vec.length !== dim) {
+    throw new RangeError(
+      `embedding dimension mismatch: expected ${dim}, got ${vec.length}`,
+    );
+  }
+  for (let i = 0; i < vec.length; i += 1) {
+    const x = vec[i];
+    if (typeof x !== "number" || !Number.isFinite(x)) {
+      throw new RangeError(
+        `embedding component ${i} is not a finite number: ${String(x)}`,
+      );
+    }
+  }
+}
+
+/** Validate then serialize in one step for the adapter's insert path. */
+export function toVectorLiteralChecked(
+  vec: readonly number[] | null | undefined,
+  dim: number,
+): string | null {
+  assertEmbedding(vec, dim);
+  return vec === null || vec === undefined ? null : toVectorLiteral(vec);
+}
+
+/**
+ * Parse pgvector's wire form back to a `number[]`. Every component must be a
+ * finite number; a corrupt value throws instead of silently producing `NaN`s
+ * that would propagate into retrieval.
+ */
 export function fromVectorLiteral(value: unknown): number[] | null {
   if (value === null || value === undefined) return null;
-  if (Array.isArray(value)) return value.map((x) => Number(x));
+  if (Array.isArray(value)) {
+    return value.map((x, i) => {
+      const n = Number(x);
+      if (!Number.isFinite(n)) {
+        throw new Error(`unexpected vector component ${i}: ${String(x)}`);
+      }
+      return n;
+    });
+  }
   if (typeof value === "string") {
     const inner = value.trim().replace(/^\[/, "").replace(/\]$/, "");
     if (inner === "") return [];
-    return inner.split(",").map((x) => Number(x));
+    return inner.split(",").map((x, i) => {
+      const n = Number(x);
+      if (!Number.isFinite(n)) {
+        throw new Error(`unexpected vector component ${i}: '${x}'`);
+      }
+      return n;
+    });
   }
   throw new Error(`unexpected vector value: ${String(value)}`);
 }
 
-export type ChildRow = Record<string, unknown> & {
+/** Snake_case row shape produced by the adapter's similarity SELECT. */
+export interface ChildRow {
   id: string;
   parent_id: string;
   text_raw: string;
@@ -37,7 +102,7 @@ export type ChildRow = Record<string, unknown> & {
   ordinal: number;
   metadata: Record<string, unknown> | null;
   created_at: unknown;
-};
+}
 
 export function toEpochMs(value: unknown): number {
   if (value instanceof Date) return value.getTime();
@@ -85,43 +150,4 @@ export async function hashToken(token: string): Promise<string> {
   return Array.from(new Uint8Array(digest))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-}
-
-/**
- * Per-track SELECT template for similarity search. Each track gets its own
- * fixed query string so no column identifier is ever constructed from input;
- * the only thing chosen at runtime is which of the two strings is produced,
- * and metadata filters are appended as bound parameters.
- */
-const SIMILARITY_SELECT = `
-  SELECT id, parent_id, text_raw, text_ar, text_id, citation,
-         embedding_ar::text AS embedding_ar,
-         embedding_id::text AS embedding_id,
-         ordinal, metadata, created_at,
-         (%COL% <=> $1::vector) AS distance,
-         ROW_NUMBER() OVER (ORDER BY %COL% <=> $1::vector) AS rank_dense
-  FROM doc_children
-  WHERE %COL% IS NOT NULL
-`;
-
-export function buildSimilarityQuery(
-  track: RetrievalTrack,
-  filterCount: number,
-): string {
-  const column = track === "ar" ? "embedding_ar" : "embedding_id";
-  const filters =
-    filterCount > 0
-      ? "        AND " +
-        Array.from({ length: filterCount }, (_, i) => {
-          const kIdx = 3 + i * 2;
-          const vIdx = kIdx + 1;
-          return `metadata->>$${kIdx} = ANY($${vIdx}::text[])`;
-        }).join("\n        AND ") +
-        "\n"
-      : "";
-  return (
-    SIMILARITY_SELECT.split("%COL%").join(column) +
-    filters +
-    `  ORDER BY ${column} <=> $1::vector\n  LIMIT $2\n`
-  );
 }
