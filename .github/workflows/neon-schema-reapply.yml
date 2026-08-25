@@ -35,16 +35,16 @@ jobs:
           NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
         run: |
           set -euo pipefail
-          MIGRATE="bun packages/infra/scripts/db-migrate.mjs"
+          migrate() { bun packages/infra/scripts/db-migrate.mjs "$@"; }
           echo "== state before =="
-          "$MIGRATE" status
+          migrate status
           echo "== rolling back engine set =="
           for _ in $(seq 1 20); do
-            if "$MIGRATE" down 2>&1 | grep -q "nothing to roll back"; then
+            if migrate down 2>&1 | grep -q "nothing to roll back"; then
               break
             fi
           done
           echo "== re-applying from repo =="
-          "$MIGRATE" up
+          migrate up
           echo "== state after =="
-          "$MIGRATE" status
+          migrate status

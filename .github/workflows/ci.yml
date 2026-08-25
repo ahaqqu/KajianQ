@@ -63,13 +63,13 @@ jobs:
         env:
           NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
         run: |
-          MIGRATE="bun packages/infra/scripts/db-migrate.mjs"
-          "$MIGRATE" status
+          migrate() { bun packages/infra/scripts/db-migrate.mjs "$@"; }
+          migrate status
           for _ in $(seq 1 20); do
-            "$MIGRATE" down 2>&1 | grep -q "nothing to roll back" && break
+            migrate down 2>&1 | grep -q "nothing to roll back" && break
           done
-          "$MIGRATE" up
-          "$MIGRATE" status
+          migrate up
+          migrate status
       - run: bunx vitest run --no-file-parallelism packages/infra/src/rag-store-neon.test.ts
         env:
           NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
