@@ -39,24 +39,14 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # Retry logic lives in the reusable composite action (issue #49):
+      # Cloudflare edge propagation can lag a few seconds after wrangler
+      # deploy returns, so wait and retry rather than failing transiently.
       - name: Smoke health
-        # Retry loop: Cloudflare edge propagation can lag a few seconds
-        # after wrangler deploy returns. Wait and retry rather than failing
-        # transiently on a stale isolate.
-        run: |
-          for i in 1 2 3 4 5; do
-            if curl -sf "$STAGING_URL/v1/health" | grep -q '"status":"ok"'; then
-              break
-            fi
-            echo "Health smoke attempt $i failed; waiting 5s for edge propagation..."
-            sleep 5
-            if [ "$i" = "5" ]; then
-              echo "::error::Health smoke check failed after 5 attempts"
-              exit 1
-            fi
-          done
-        env:
-          STAGING_URL: ${{ vars.STAGING_URL }}
+        uses: ./.github/actions/smoke-health
+        with:
+          name: Health
+          url: ${{ vars.STAGING_URL }}/v1/health
       - name: ZAP baseline
         uses: zaproxy/action-baseline@de8ad967d3548d44ef623df22cf95c3b0baf8b25 # v0.15.0
         with:

@@ -1,0 +1,54 @@
+name: "Smoke health check"
+description: >-
+  Retry an HTTP smoke check until the response body matches a pattern.
+  Cloudflare edge propagation can lag a few seconds after `wrangler deploy`
+  returns, so deploy pipelines wait and retry rather than failing transiently
+  on a stale isolate (issue #49: one implementation, fork-owned).
+inputs:
+  name:
+    description: "Label used in log lines and the failure annotation."
+    required: true
+  url:
+    description: "Absolute URL to request."
+    required: true
+  method:
+    description: "HTTP method for the check."
+    required: false
+    default: "GET"
+  success-pattern:
+    description: "Extended regex the response body must match (grep -E)."
+    required: false
+    default: '"status":"ok"'
+  attempts:
+    description: "Total attempts before the check fails."
+    required: false
+    default: "5"
+  delay-seconds:
+    description: "Seconds to wait between attempts."
+    required: false
+    default: "5"
+
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      env:
+        SMOKE_NAME: ${{ inputs.name }}
+        SMOKE_URL: ${{ inputs.url }}
+        SMOKE_METHOD: ${{ inputs.method }}
+        SMOKE_PATTERN: ${{ inputs.success-pattern }}
+        SMOKE_ATTEMPTS: ${{ inputs.attempts }}
+        SMOKE_DELAY: ${{ inputs.delay-seconds }}
+      run: |
+        attempt=1
+        while [ "$attempt" -le "$SMOKE_ATTEMPTS" ]; do
+          if curl -sf -X "$SMOKE_METHOD" "$SMOKE_URL" | grep -qE "$SMOKE_PATTERN"; then
+            echo "${SMOKE_NAME} smoke check passed on attempt ${attempt}"
+            exit 0
+          fi
+          echo "${SMOKE_NAME} smoke attempt ${attempt}/${SMOKE_ATTEMPTS} failed; waiting ${SMOKE_DELAY}s for edge propagation..."
+          sleep "$SMOKE_DELAY"
+          attempt=$((attempt + 1))
+        done
+        echo "::error::${SMOKE_NAME} smoke check failed after ${SMOKE_ATTEMPTS} attempts (${SMOKE_METHOD} ${SMOKE_URL})"
+        exit 1
