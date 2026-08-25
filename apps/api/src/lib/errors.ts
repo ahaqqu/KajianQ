@@ -9,7 +9,8 @@ import type { ApiEnv } from "../env";
  */
 export function onError(err: unknown, c: Context<ApiEnv>): Response {
   Sentry.captureException(err);
-  const logger = createLogger({
+  const ctx = c.get("ctx");
+  const logger = ctx?.logger ?? createLogger({
     service: "api",
     env: c.env.APP_ENV ?? "development",
     correlationId: c.get("correlationId"),

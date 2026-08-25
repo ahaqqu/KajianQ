@@ -7,7 +7,33 @@ const { captureException } = vi.hoisted(() => ({
 
 vi.mock("@sentry/cloudflare", () => ({ captureException }));
 
-const env = { ASSETS: { fetch } };
+const spaHtml = "<!doctype html><html><body>SPA</body></html>";
+
+function mockAssets(): { fetch: typeof fetch } {
+  return {
+    fetch: async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      new Response(spaHtml, {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      }),
+  };
+}
+
+const env = { ASSETS: mockAssets() };
+
+const cspDefaults = [
+  "default-src 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'none'",
+];
+
+function assertCsp(res: Response) {
+  const csp = res.headers.get("Content-Security-Policy");
+  expect(csp).toBeTruthy();
+  for (const directive of cspDefaults) {
+    expect(csp).toContain(directive);
+  }
+}
 
 type Doc = {
   openapi: string;
@@ -23,6 +49,18 @@ describe("createApi routes", () => {
     const body = (await res.json()) as { status: string; schemaVersion: number };
     expect(body.status).toBe("ok");
     expect(body.schemaVersion).toBe(1);
+  });
+
+  it("normalizes trailing slashes on /v1/health", async () => {
+    const res = await createApi().request("/v1/health/", {}, env);
+    expect(res.status).toBe(301);
+    expect(res.headers.get("location")).toMatch(/\/v1\/health$/);
+  });
+
+  it("returns JSON 404 for unknown /v1/* paths", async () => {
+    const res = await createApi().request("/v1/foo", {}, env);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not_found" });
   });
 
   it("reflects the allowlisted request origin and rejects others", async () => {
@@ -56,13 +94,23 @@ describe("createApi routes", () => {
     expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 
-  it("emits a restrictive Content-Security-Policy header", async () => {
+  it("emits a restrictive Content-Security-Policy header on API routes", async () => {
     const res = await createApi().request("/v1/health", {}, env);
-    const csp = res.headers.get("Content-Security-Policy");
-    expect(csp).toBeTruthy();
-    expect(csp).toContain("default-src 'self'");
-    expect(csp).toContain("object-src 'none'");
-    expect(csp).toContain("frame-ancestors 'none'");
+    assertCsp(res);
+  });
+
+  it("emits a restrictive CSP header on the SPA root", async () => {
+    const res = await createApi().request("/", {}, env);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    assertCsp(res);
+  });
+
+  it("emits a restrictive CSP header on a client-side route", async () => {
+    const res = await createApi().request("/chat", {}, env);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    assertCsp(res);
   });
 });
 

@@ -1,13 +1,14 @@
+import { createRequestContext, corsGuard, allowRequest } from "./";
+import type { ApiEnv, RateLimiter } from "../env";
 import { secureHeaders } from "hono/secure-headers";
+import { trimTrailingSlash } from "hono/trailing-slash";
 import type { Hono } from "hono";
-import type { ApiEnv } from "../env";
-import { corsGuard } from "./cors";
-import { allowRequest, type RateLimiter } from "./rate-limit-mw";
 
 export type MiddlewareOpts = { limiter?: RateLimiter; limit?: number };
 
 /** Installs the cross-cutting middleware every route shares. */
 export function applyMiddleware(api: Hono<ApiEnv>, opts?: MiddlewareOpts): void {
+  api.use("*", trimTrailingSlash());
   api.use("*", secureHeaders({
     contentSecurityPolicy: {
       defaultSrc: ["'self'"],
@@ -24,7 +25,9 @@ export function applyMiddleware(api: Hono<ApiEnv>, opts?: MiddlewareOpts): void 
   api.use("*", corsGuard);
   api.use("*", async (c, next) => {
     const id = c.req.header("X-Correlation-Id") ?? crypto.randomUUID();
+    const ctx = createRequestContext(c.env.APP_ENV, id);
     c.set("correlationId", id);
+    c.set("ctx", ctx);
     c.header("X-Correlation-Id", id);
     const ip = c.req.header("CF-Connecting-IP") ?? "local";
     if (!(await allowRequest(`ip:${ip}`, opts?.limiter, opts?.limit))) {
