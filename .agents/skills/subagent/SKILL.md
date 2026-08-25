@@ -1,35 +1,44 @@
 ---
 name: subagent
-description: Use this skill when you are running as a dedicated subagent inside a git worktree spawned by the /subagent extension.
+description: Use this skill when you are running as a dedicated subagent spawned by the orchestrator via the subagent tool.
 ---
 
 # Subagent
 
-Use this skill when you are running as a dedicated subagent inside a git worktree spawned by the `/subagent` extension.
+Use this skill when you are running as a dedicated subagent spawned by the orchestrator via the `subagent` tool.
 
 ## Context
 
-You are an autonomous subagent. You have your own pi session, your own git worktree under `.pi-worktrees/<slug>/`, and a dedicated `agent/<slug>` branch. A parent orchestrator agent delegated a single focused task to you.
+You are an autonomous subagent. You run in your own context, in-process, with no view of the parent orchestrator's conversation. A parent orchestrator agent delegated a single focused task to you. Your final message is returned to the orchestrator.
 
 ## Rules
 
-1. **Stay in your lane.** Work only inside your own worktree. Do not switch branches, do not create new worktrees, and do not touch the parent orchestrator's working tree.
+1. **Stay in your lane.** Work only on the task you were given. Do not expand scope, switch branches, or touch work the orchestrator did not delegate to you. If you were given a worktree path (see Workspace isolation), stay inside it.
 2. **Be focused.** Make the minimal set of changes needed to complete the task. Avoid unrelated refactors.
-3. **Verify.** Run the project's tests, type checks, linter, or build as appropriate. If verification fails and you cannot fix them, document the failure.
+3. **Verify.** Run the project's tests, type checks, linter, or build as appropriate. If verification fails and you cannot fix it, document the failure.
 4. **Commit.** When the task is complete — or when the orchestrator asks for a checkpoint — stage and commit your changes with a clear message.
 5. **PR creation.** Only create a PR if the orchestrator explicitly told you it is fine to do so (e.g. "it's fine to commit, push, and create a PR when ready for me to review"). If you were not given explicit permission, stop after committing and ask the orchestrator before pushing or creating a PR. Never merge a PR unless the user explicitly approved merging it.
-6. **Report.** Write a concise `AGENT_REPORT.md` in the worktree root covering:
+6. **Report.** End with a concise final message that the orchestrator can act on without re-reading your whole diff. Cover:
    - What you changed and why
    - Files touched
    - Verification results
    - Blockers or follow-ups for the orchestrator
-7. **Status.** Write `AGENT_STATUS.json` in the worktree root with these keys:
-   - `startedAt`: ISO timestamp from when you began
-   - `completedAt`: ISO timestamp when you finished (omit until done)
-   - `commit`: short hash of your final commit
-   - `reportPath`: absolute path to `AGENT_REPORT.md`
-8. **Stop on blockers.** If you are stuck or unsure, do not guess. Record the blocker in `AGENT_REPORT.md` and stop.
+7. **Stop on blockers.** If you are stuck or unsure — including a rejected operation you cannot retry yourself — do not guess. Record the blocker in your final message and stop.
+
+## Workspace isolation
+
+You share the parent's working directory, branch, and session cwd: file tools (`read`/`write`/`edit`/`glob`/`grep`) resolve relative paths against the project root, NOT against bash's working directory, and each bash call is a fresh shell so `cd` never persists.
+
+If the orchestrator gave you a worktree path, that path is your entire world:
+
+- Prefix EVERY file-tool path with the worktree path. An unprefixed relative path reads/writes the main tree.
+- Pass `workdir: "<worktree>"` on EVERY bash call. `cd` has no effect on file tools at all.
+- Never edit, commit, or switch branches in the main tree.
+
+If no worktree path was given and parallel work may be running, ask for one before making any change; otherwise restrict yourself strictly to your delegated files.
+
+Your approval policy is pinned: operations that need interactive approval are rejected automatically. Do not retry a rejected operation — report it as a blocker instead.
 
 ## Output format
 
-`AGENT_REPORT.md` should be short enough for a human to scan, but complete enough that the orchestrator can continue without re-reading the whole diff.
+Your final message is the report. Keep it short enough for a human to scan, but complete enough that the orchestrator can continue without re-reading the whole diff.

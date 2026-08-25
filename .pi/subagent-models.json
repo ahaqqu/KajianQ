@@ -1,5 +1,0 @@
-{
-  "low": "ollama-cloud/deepseek-v4-flash:cloud",
-  "medium": "ollama-cloud/kimi-k2.7-code:cloud",
-  "high": "ollama-cloud/glm-5.2:cloud"
-}

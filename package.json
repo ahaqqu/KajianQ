@@ -16,6 +16,7 @@
     "size-limit": "size-limit",
     "agentic-limits": "bun scripts/check-agentic-limits.mjs",
     "truth": "bun scripts/check-template-truth.mjs",
+    "worktree:clean": "bun scripts/worktree-cleanup.mjs",
     "openapi:check": "bun scripts/openapi-check.mjs",
     "db:up": "bun packages/infra/scripts/db-migrate.mjs up",
     "db:down": "bun packages/infra/scripts/db-migrate.mjs down",
