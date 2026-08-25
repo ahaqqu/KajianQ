@@ -65,8 +65,14 @@ jobs:
         run: |
           migrate() { bun packages/infra/scripts/db-migrate.mjs "$@"; }
           migrate status
-          for _ in $(seq 1 20); do
-            migrate down 2>&1 | grep -q "nothing to roll back" && break
+          for _ in $(seq 1 3); do
+            out=$(migrate down 2>&1); rc=$?
+            echo "$out"
+            if [ "$rc" -ne 0 ]; then
+              echo "::error::db-migrate down failed (rc=$rc)"
+              exit "$rc"
+            fi
+            echo "$out" | grep -q "nothing to roll back" && break
           done
           migrate up
           migrate status
