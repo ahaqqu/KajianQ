@@ -58,9 +58,18 @@ export type TraceEvent = v.InferOutput<typeof TraceEventSchema>;
  * never reconstructs "how the answer was built" ad hoc. Invariant: a trace's
  * total cost equals the sum of its events' LLM costs — `totalCost` is derived
  * by the persister, so it cannot drift from the events.
+ *
+ * Forward-compatibility contract: `version` is the schema anchor. The Trace
+ * shape may only ever *add optional* fields (version-bumped); it must never
+ * add a required field or rename/remove an existing one without migrating
+ * persisted traces. The RagStore reader uses `v.parse`, which tolerates
+ * missing optional fields and strips unknown future keys, so older persisted
+ * traces stay readable as the contract evolves (ADR-0007 amendment).
  */
 export const TraceSchema = v.object({
   id: v.pipe(v.string(), v.minLength(1)),
+  /** Schema version, starting at 1. Older persisted traces read as unset. */
+  version: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
   createdAt: v.pipe(v.number(), v.integer()),
   events: v.array(TraceEventSchema),
 });

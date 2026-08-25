@@ -138,8 +138,14 @@ run("RagStore contract (real Neon)", () => {
     expect(await store.resolveUserId(token)).toBeNull();
   }, 60_000);
 
-  it("persists and reads back a @app/contracts Trace verbatim", async () => {
+  it("persists and reads back a @app/contracts Trace, and cascade-deletes it with the user", async () => {
     if (!URL) return;
+    // The trace must be owned by a user so it cascades on anonymous deletion
+    // (ADR-0007 amendment). Create a session and tag its chat_session with
+    // pfx so the run's cleanup can find the user.
+    const { userId, token } = await store.createSession();
+    await store.createChatSession({ userId, metadata: { pfx: PREFIX } });
+
     const trace = {
       id: "trace-1",
       createdAt: 1_700_000_000_000,
@@ -159,9 +165,74 @@ run("RagStore contract (real Neon)", () => {
       ],
     };
     const messageId = `${PREFIX}-msg-1`;
-    await store.insertAnswerTrace({ messageId, trace });
+    await store.insertAnswerTrace({ messageId, userId, trace });
+
+    // Tolerant reader: a trace stored without `version` reads back unchanged
+    // (version is an optional forward-compat anchor, ADR-0007 amendment).
     const fetched = await store.getAnswerTraceByMessage(messageId);
     expect(fetched).toEqual(trace);
+    expect(fetched?.version).toBeUndefined();
     expect(await store.getAnswerTraceByMessage(`${PREFIX}-nope`)).toBeNull();
+
+    // Cascade: deleting the user removes their traces (the user_id FK), so the
+    // message's trace is gone and the session token no longer resolves.
+    await store.deleteUserCascade(userId);
+    expect(await store.getAnswerTraceByMessage(messageId)).toBeNull();
+    expect(await store.resolveUserId(token)).toBeNull();
+  }, 60_000);
+
+  it("upserts doc parents/children idempotently by source_key / (parent_id, ordinal)", async () => {
+    if (!URL) return;
+    const ar = vec(1536, 7);
+    const parentId = await store.insertDocParent({
+      sourceKey: `${PREFIX}-upsert`,
+      title: "first",
+      metadata: { pfx: PREFIX, rev: 1 },
+    });
+    // Re-insert the same source_key with different metadata/title → same id,
+    // updated fields, no duplicate row.
+    const parentId2 = await store.insertDocParent({
+      sourceKey: `${PREFIX}-upsert`,
+      title: "second",
+      metadata: { pfx: PREFIX, rev: 2 },
+    });
+    expect(parentId2).toBe(parentId);
+
+    const childId = await store.insertDocChild({
+      parentId,
+      textRaw: "raw-immutable",
+      textAr: "ar-v1",
+      textId: "id-v1",
+      citation: { s: 2, a: 255 },
+      embeddingAr: ar,
+      embeddingId: null,
+      ordinal: 9,
+      metadata: { pfx: PREFIX },
+    });
+    // Re-insert the same (parent_id, ordinal) with refreshed derived fields →
+    // same id, no duplicate; text_raw is immutable and must not change.
+    const childId2 = await store.insertDocChild({
+      parentId,
+      textRaw: "raw-SHOULD-NOT-OVERWRITE",
+      textAr: "ar-v2",
+      textId: "id-v2",
+      citation: { s: 3, a: 7 },
+      embeddingAr: ar,
+      embeddingId: null,
+      ordinal: 9,
+      metadata: { pfx: PREFIX, rev: 2 },
+    });
+    expect(childId2).toBe(childId);
+
+    const hits = await store.similaritySearch("ar", ar, {
+      limit: 5,
+      filters: { pfx: PREFIX },
+    });
+    const me = hits.find((h) => h.child.id === childId);
+    expect(me).toBeDefined();
+    expect(me?.child.textRaw).toBe("raw-immutable"); // rule 11: text_raw immutable
+    expect(me?.child.textAr).toBe("ar-v2"); // derived layer refreshed
+    expect(me?.child.citation).toEqual({ s: 3, a: 7 });
+    expect(me?.child.metadata).toMatchObject({ rev: 2 });
   }, 60_000);
 });

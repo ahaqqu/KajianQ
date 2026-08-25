@@ -6,13 +6,16 @@ import type {
   SimilarChild,
 } from "./rag-store";
 import {
-  buildSimilarityQuery,
+  assertEmbedding,
+  CORPUS_EMBEDDING_DIM,
   hashToken,
   randomToken,
   rowToChild,
   toVectorLiteral,
+  toVectorLiteralChecked,
   type ChildRow,
 } from "./rag-store-shared";
+import { buildSimilarityQuery } from "./rag-store-neon-query";
 
 /**
  * The Neon serverless driver's query surface, loosely typed.
@@ -20,38 +23,64 @@ import {
  * The adapter only awaits results and validates row shapes itself, so the
  * runner type is intentionally `unknown[]`-shaped rather than generic: this
  * avoids fighting the driver's heavy generics while still letting the real
- * `neon(url)` handle be passed directly, and keeps the adapter unit-testable
- * against a fake that returns canned rows.
+ * driver query handle be passed directly, and keeps the adapter
+ * unit-testable against a fake that returns canned rows. `transaction`
+ * mirrors the Neon HTTP driver's non-interactive transaction primitive, used
+ * so multi-statement writes (e.g. createSession) are atomic.
  */
 export type SqlRunner = {
   (strings: TemplateStringsArray, ...values: unknown[]): Promise<unknown[]>;
   query(text: string, params?: unknown[]): Promise<unknown[]>;
+  // `any` here is deliberate: the Neon HTTP driver's `transaction()` accepts
+  // a union of an array of its own query-promise type OR a callback, and the
+  // adapter only ever passes an array of the call-signature's `Promise<unknown[]>`.
+  // A precise signature would force callers into a cast; `any` keeps the
+  // already-loose runner assignable from the real driver handle.
+  transaction(queries: any[]): Promise<any>;
 };
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days, per ADR-0017.
 
 /**
  * Create a RagStore backed by Neon Postgres + pgvector. `sql` is the driver's
- * query object, injected so configuration stays in the caller. All SQL in the
- * repository lives in this file and the migrations.
+ * query object, injected so configuration stays in the caller. All executable
+ * SQL in the repository lives in this file (and `rag-store-neon-query.ts`)
+ * and the migrations.
  */
 export function createNeonRagStore(sql: SqlRunner): RagStore {
   return {
     async insertDocParent(input) {
       const id = input.id ?? crypto.randomUUID();
-      await sql`
+      // Idempotent upsert by provenance key (AGENTS.md rule 11): re-running
+      // ingestion with the same source_key updates metadata/title in place
+      // and returns the existing id, never duplicates.
+      const rows = (await sql`
         INSERT INTO doc_parents (id, source_key, title, metadata)
         VALUES (
           ${id}, ${input.sourceKey}, ${input.title},
           ${JSON.stringify(input.metadata ?? {})}::jsonb
         )
-      `;
-      return id;
+        ON CONFLICT (source_key) DO UPDATE
+          SET title = EXCLUDED.title, metadata = EXCLUDED.metadata
+        RETURNING id
+      `) as { id: string }[];
+      return rows[0]?.id ?? id;
     },
 
     async insertDocChild(input: DocChildInsert) {
       const id = input.id ?? crypto.randomUUID();
-      await sql`
+      const embeddingAr = toVectorLiteralChecked(
+        input.embeddingAr,
+        CORPUS_EMBEDDING_DIM,
+      );
+      const embeddingId = toVectorLiteralChecked(
+        input.embeddingId,
+        CORPUS_EMBEDDING_DIM,
+      );
+      // Idempotent upsert by (parent_id, ordinal). text_raw is immutable
+      // (AGENTS.md rule 11): it is NOT in the UPDATE set — only the derived
+      // layers (translations, embeddings, citation, metadata) refresh.
+      const rows = (await sql`
         INSERT INTO doc_children (
           id, parent_id, text_raw, text_ar, text_id, citation,
           embedding_ar, embedding_id, ordinal, metadata
@@ -60,17 +89,28 @@ export function createNeonRagStore(sql: SqlRunner): RagStore {
           ${id}, ${input.parentId}, ${input.textRaw}, ${input.textAr},
           ${input.textId},
           ${JSON.stringify(input.citation ?? {})}::jsonb,
-          ${input.embeddingAr ? toVectorLiteral(input.embeddingAr) : null},
-          ${input.embeddingId ? toVectorLiteral(input.embeddingId) : null},
+          ${embeddingAr},
+          ${embeddingId},
           ${input.ordinal},
           ${JSON.stringify(input.metadata ?? {})}::jsonb
         )
-      `;
-      return id;
+        ON CONFLICT (parent_id, ordinal) DO UPDATE
+          SET text_ar = EXCLUDED.text_ar,
+              text_id = EXCLUDED.text_id,
+              citation = EXCLUDED.citation,
+              embedding_ar = EXCLUDED.embedding_ar,
+              embedding_id = EXCLUDED.embedding_id,
+              metadata = EXCLUDED.metadata
+        RETURNING id
+      `) as { id: string }[];
+      return rows[0]?.id ?? id;
     },
 
     async similaritySearch(track, embedding, opts) {
+      assertEmbedding(embedding, CORPUS_EMBEDDING_DIM);
       const filters = Object.entries(opts.filters ?? {});
+      // $1 embedding, $2 limit, then per filter: the key string ($k) and the
+      // values array ($v) — both bound, matching buildSimilarityQuery's slots.
       const params: unknown[] = [toVectorLiteral(embedding), opts.limit];
       for (const [key, val] of filters) {
         params.push(key, Array.isArray(val) ? val : [val]);
@@ -91,8 +131,11 @@ export function createNeonRagStore(sql: SqlRunner): RagStore {
       const parsed = v.parse(TraceSchema, input.trace);
       const id = crypto.randomUUID();
       await sql`
-        INSERT INTO answer_traces (id, message_id, trace)
-        VALUES (${id}, ${input.messageId}, ${JSON.stringify(parsed)}::jsonb)
+        INSERT INTO answer_traces (id, message_id, user_id, trace)
+        VALUES (
+          ${id}, ${input.messageId}, ${input.userId},
+          ${JSON.stringify(parsed)}::jsonb
+        )
       `;
       return id;
     },
@@ -103,6 +146,10 @@ export function createNeonRagStore(sql: SqlRunner): RagStore {
       `) as { trace: unknown }[];
       const [row] = rows;
       if (!row) return null;
+      // Tolerant reader (ADR-0007 amendment): the Trace contract only ever
+      // ADDS optional fields (versioned), so v.parse accepts older traces and
+      // strips unknown future keys rather than throwing. Never add a required
+      // field to TraceSchema without a migration of persisted traces.
       return v.parse(TraceSchema, row.trace);
     },
 
@@ -136,12 +183,18 @@ export function createNeonRagStore(sql: SqlRunner): RagStore {
       const sessionId = crypto.randomUUID();
       const token = randomToken();
       const expiresAt = Date.now() + SESSION_TTL_MS;
-      await sql`INSERT INTO users (id, kind) VALUES (${userId}, 'anonymous')`;
-      await sql`
-        INSERT INTO sessions (id, user_id, token_hash, expires_at)
-        VALUES (${sessionId}, ${userId}, ${await hashToken(token)},
-                ${new Date(expiresAt).toISOString()})
-      `;
+      const tokenHash = await hashToken(token);
+      // Atomic: the user row and its session row are written in one Neon HTTP
+      // non-interactive transaction, so a mid-write failure cannot orphan a
+      // user with no session.
+      await sql.transaction([
+        sql`INSERT INTO users (id, kind) VALUES (${userId}, 'anonymous')`,
+        sql`
+          INSERT INTO sessions (id, user_id, token_hash, expires_at)
+          VALUES (${sessionId}, ${userId}, ${tokenHash},
+                  ${new Date(expiresAt).toISOString()})
+        `,
+      ]);
       return { userId, sessionId, token, expiresAt };
     },
 
@@ -155,9 +208,19 @@ export function createNeonRagStore(sql: SqlRunner): RagStore {
       return row ? row.user_id : null;
     },
 
+    async cleanupExpiredSessions(before = new Date()) {
+      const rows = (await sql`
+        DELETE FROM sessions WHERE expires_at <= ${before.toISOString()}
+        RETURNING id
+      `) as { id: string }[];
+      return rows.length;
+    },
+
     async deleteUserCascade(userId) {
-      // sessions, chat_sessions/chat_messages, and feedback reference users
-      // with ON DELETE CASCADE, so one delete removes the subtree.
+      // sessions, chat_sessions/chat_messages, feedback, and answer_traces
+      // all reference users with ON DELETE CASCADE (answer_traces via its
+      // user_id FK, ADR-0007 amendment), so one delete removes the full
+      // subtree — including the user's Q&A traces.
       await sql`DELETE FROM users WHERE id = ${userId}`;
     },
   };

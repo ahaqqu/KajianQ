@@ -1,20 +1,29 @@
--- 0001_init.sql — KajianQ v1 schema (issue #4), one apply, one clean rollback.
+-- 0001_init.sql — DARS engine schema (issue #4), one apply, one clean rollback.
 --
 -- Scope and rules this file honors:
---   * Domain-agnostic. Column names never encode KajianQ domain vocabulary;
---     domain values travel inside `metadata` JSONB or as opaque filter values.
+--   * Domain-agnostic (AGENTS.md rule 1). This is the DARS *engine* schema:
+--     corpus chunks, traces, chat, anonymous sessions, feedback, the generic
+--     eval run/result ledger, and model configs. Product-owned tables were
+--     originally placed here by ADR-0014 but are domain leakage into an engine
+--     package; they have been relocated (ADR-0014 amendment):
+--       - the bilingual terminology concept graph (concept / lemma /
+--         concept_relation / lemma_evidence) → packages/kajianq-domain.
+--       - principle_index + golden_questions → apps/api.
+--     scripts/check-boundary.mjs scans this .sql for Islamic-domain
+--     identifiers, so keep this file domain-free (incl. comments).
+--   * Idempotent ingestion (AGENTS.md rule 11): doc_parents.source_key is
+--     UNIQUE so re-running ingestion upserts by provenance key, and
+--     doc_children are upserted by (parent_id, ordinal).
 --   * Dual embeddings from the start (ADR-0013 amendment): each child chunk
---     carries `embedding_ar` (primary/canonical) and `embedding_id`
---     (fallback/fusion), both VECTOR(1536), nullable until embedded. Keeping
---     both columns from the first migration means the AR-only vs. ID-fusion
---     retrieval posture stays a RagStore query-layer switch, not a re-embed.
---   * Terminology concept graph per ADR-0014 (term-level): `concept`,
---     `lemma`, `concept_relation`, `lemma_evidence`. Column sets follow
---     ADR-0014's DDL verbatim.
---   * Anonymous sessions per ADR-0017: `users` + `sessions`, distinct from
---     `chat_sessions` / `chat_messages`; 30-day Bearer tokens, cascade delete.
---   * `answer_traces` stores the @app/contracts `Trace` shape verbatim as
---     JSONB (ADR-0007 amendment); the store never re-shapes it.
+--     carries embedding_ar (primary/canonical) and embedding_id
+--     (fallback/fusion), both VECTOR(1536), nullable until embedded, so the
+--     AR-only vs. ID-fusion retrieval posture stays a RagStore query-layer
+--     switch, not a re-embed.
+--   * Anonymous sessions per ADR-0017: users + sessions, distinct from
+--     chat_sessions / chat_messages; 30-day Bearer tokens, cascade delete.
+--   * answer_traces stores the @app/contracts Trace shape verbatim as JSONB
+--     (ADR-0007) AND carries user_id so a user's traces cascade-delete with
+--     the user on anonymous self-deletion (ADR-0007 amendment).
 
 BEGIN;
 
@@ -28,25 +37,25 @@ CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TABLE doc_parents (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  source_key  text NOT NULL,
+  source_key  text NOT NULL UNIQUE,         -- idempotent upsert key (rule 11)
   title       text,
   metadata    jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at  timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE INDEX doc_parents_metadata_gin ON doc_parents USING gin (metadata);
+CREATE INDEX doc_parents_source_key_idx ON doc_parents (source_key);
 
 CREATE TABLE doc_children (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   parent_id     uuid NOT NULL REFERENCES doc_parents (id) ON DELETE CASCADE,
-  text_raw      text NOT NULL,             -- immutable after insert
+  text_raw      text NOT NULL,             -- immutable after insert (rule 11)
   text_ar       text NOT NULL,             -- primary/canonical layer
   text_id       text,                      -- secondary/fallback layer
-  -- Structured identity of the chunk for the deterministic citation validator
-  -- (spec §71: "every citation must exist in retrieved chunks"). Opaque JSONB:
-  -- the domain pack chooses the shape (QS/HR/Kitab anchors differ); the engine
-  -- stores and returns it verbatim. NOT a text column because the three
-  -- citation shapes differ and a string would force re-parsing.
+  -- Structured identity of the chunk for the deterministic citation
+  -- validator (spec §71). Opaque JSONB: the domain pack chooses the shape
+  -- (source-type citation anchors differ); the engine stores and returns it
+  -- verbatim, not a text column (shapes differ → forced re-parsing).
   citation      jsonb NOT NULL DEFAULT '{}'::jsonb,
   embedding_ar  vector(1536),              -- nullable until embedded
   embedding_id  vector(1536),              -- nullable until embedded
@@ -77,20 +86,9 @@ CREATE INDEX doc_children_text_id_tsvector
 -- Curated retrieval structures.
 -- --------------------------------------------------------------------------
 
--- Principle Index: a small curated set of interpretive lenses, retrieved
--- alongside evidence so answers keep the big picture (CONTEXT.md).
-CREATE TABLE principle_index (
-  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  slug        text NOT NULL UNIQUE,
-  title       text NOT NULL,
-  body        text NOT NULL,
-  metadata    jsonb NOT NULL DEFAULT '{}'::jsonb,
-  created_at  timestamptz NOT NULL DEFAULT now(),
-  updated_at  timestamptz NOT NULL DEFAULT now()
-);
-
--- Passage-level links between child chunks (curated, not inferred — ADR-0016).
--- Distinct from the term-level concept graph below.
+-- Passage-level links between child chunks (curated, not inferred —
+-- ADR-0016). rel_type is opaque; the domain pack defines its values. This is
+-- a generic, term-agnostic structure and so stays in the engine schema.
 CREATE TABLE concept_links (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   child_id    uuid NOT NULL REFERENCES doc_children (id) ON DELETE CASCADE,
@@ -103,66 +101,12 @@ CREATE TABLE concept_links (
 );
 
 -- --------------------------------------------------------------------------
--- Terminology concept graph (ADR-0014, term-level). DDL follows the ADR.
---
--- NOTE on lemma_evidence.ayah_pair_id: ADR-0014 leaves the aligned-ayah-pair
--- table as "TBD by #4/#6". #4 does not invent that table — the FK target is
--- #6's scope. To keep this migration self-contained and roll back cleanly
--- without referencing a table that does not exist yet, the column is stored
--- as `uuid NOT NULL` (not a foreign key), constrained by shape only. #6 will
--- add the aligned-pair table and can promote this to a true FK then.
--- --------------------------------------------------------------------------
-
-CREATE TABLE concept (
-  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  slug        text NOT NULL UNIQUE,
-  scheme      text,
-  gloss_en    text,
-  source      text,
-  created_at  timestamptz NOT NULL DEFAULT now(),
-  updated_at  timestamptz NOT NULL DEFAULT now()
-);
-
-CREATE TABLE lemma (
-  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  concept_id    uuid NOT NULL REFERENCES concept (id) ON DELETE CASCADE,
-  lang          text NOT NULL,
-  written_rep   text NOT NULL,
-  translit      text,
-  is_preferred  boolean NOT NULL DEFAULT true,
-  pos           text,
-  embedding     vector(1024),            -- candidate-retrieval embedding
-  created_at    timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (concept_id, lang, written_rep)
-);
-
-CREATE INDEX lemma_embedding_hnsw
-  ON lemma USING hnsw (embedding vector_cosine_ops);
-
-CREATE TABLE concept_relation (
-  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  source_id         uuid NOT NULL REFERENCES concept (id) ON DELETE CASCADE,
-  target_id         uuid NOT NULL REFERENCES concept (id) ON DELETE CASCADE,
-  rel_type          text NOT NULL,
-  evidence_ayah_ids uuid[],
-  created_at        timestamptz NOT NULL DEFAULT now(),
-  CHECK (source_id <> target_id),
-  UNIQUE (source_id, target_id, rel_type)
-);
-
-CREATE TABLE lemma_evidence (
-  lemma_id      uuid NOT NULL REFERENCES lemma (id) ON DELETE CASCADE,
-  ayah_pair_id  uuid NOT NULL,           -- promoted to FK by #6 (see note)
-  PRIMARY KEY (lemma_id, ayah_pair_id)
-);
-
--- --------------------------------------------------------------------------
 -- Conversational surface v1 (distinct from auth `users`/`sessions` below).
 -- --------------------------------------------------------------------------
 
 CREATE TABLE chat_sessions (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id     uuid,                       -- FK added after `users` exists (below)
+  user_id     uuid,                       -- FK wired after `users` exists (below)
   metadata    jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at  timestamptz NOT NULL DEFAULT now()
 );
@@ -172,7 +116,7 @@ CREATE TABLE chat_messages (
   session_id      uuid NOT NULL REFERENCES chat_sessions (id) ON DELETE CASCADE,
   role            text NOT NULL,
   content         text NOT NULL,
-  answer_trace_id uuid,                   -- FK added after answer_traces exists
+  answer_trace_id uuid,                   -- FK wired after answer_traces exists
   metadata        jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at      timestamptz NOT NULL DEFAULT now()
 );
@@ -185,15 +129,19 @@ CREATE INDEX chat_messages_session_created
 -- --------------------------------------------------------------------------
 
 -- One row per answer. `trace` JSONB is the @app/contracts Trace shape
--- verbatim; `message_id` indexes it back to the chat surface.
+-- verbatim; `message_id` indexes it back to the chat surface. `user_id`
+-- cascade-deletes the trace with its owner on anonymous self-deletion
+-- (ADR-0007 amendment), so a user's Q&A record is erased with them.
 CREATE TABLE answer_traces (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   message_id  text NOT NULL UNIQUE,
+  user_id     uuid,                       -- FK wired after `users` exists; CASCADE
   trace       jsonb NOT NULL,
   created_at  timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE INDEX answer_traces_created_at ON answer_traces (created_at);
+CREATE INDEX answer_traces_user_id ON answer_traces (user_id);
 
 ALTER TABLE chat_messages
   ADD CONSTRAINT chat_messages_answer_trace_fk
@@ -202,7 +150,7 @@ ALTER TABLE chat_messages
 CREATE TABLE feedback (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   message_id  text NOT NULL,
-  user_id     uuid,                       -- FK added after `users` exists
+  user_id     uuid,                       -- FK wired after `users` exists
   rating      smallint NOT NULL CHECK (rating IN (-1, 1)),
   anchor_type text NOT NULL,
   anchor_id   text,
@@ -215,16 +163,12 @@ CREATE TABLE feedback (
 CREATE INDEX feedback_status_created ON feedback (status, created_at);
 
 -- --------------------------------------------------------------------------
--- Golden Set + eval harness results (spec §165).
+-- Generic eval run/result ledger (spec §165). The curated question set
+-- (golden_questions) is product-owned (apps/api), so question_id is a loose
+-- uuid reference with no FK — mirroring the cross-boundary loose-reference
+-- precedent — the eval harness resolves it through its own seam, not a
+-- cross-schema FK.
 -- --------------------------------------------------------------------------
-
-CREATE TABLE golden_questions (
-  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  question    text NOT NULL,
-  metadata    jsonb NOT NULL DEFAULT '{}'::jsonb,
-  created_at  timestamptz NOT NULL DEFAULT now(),
-  updated_at  timestamptz NOT NULL DEFAULT now()
-);
 
 CREATE TABLE eval_runs (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -236,7 +180,7 @@ CREATE TABLE eval_runs (
 CREATE TABLE eval_results (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   run_id        uuid NOT NULL REFERENCES eval_runs (id) ON DELETE CASCADE,
-  question_id   uuid NOT NULL REFERENCES golden_questions (id) ON DELETE CASCADE,
+  question_id   uuid NOT NULL,            -- loose ref to product golden_questions
   answer_trace_id uuid REFERENCES answer_traces (id) ON DELETE SET NULL,
   outcome       jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at    timestamptz NOT NULL DEFAULT now()
@@ -277,7 +221,7 @@ CREATE TABLE sessions (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id     uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
   token_hash  text NOT NULL UNIQUE,
-  expires_at  timestamptz NOT NULL,
+  expires_at  timestamptz NOT NULL,       -- set by the adapter (30-day TTL, ADR-0017)
   created_at  timestamptz NOT NULL DEFAULT now()
 );
 
@@ -291,6 +235,10 @@ ALTER TABLE chat_sessions
 
 ALTER TABLE feedback
   ADD CONSTRAINT feedback_user_fk
+  FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE;
+
+ALTER TABLE answer_traces
+  ADD CONSTRAINT answer_traces_user_fk
   FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE;
 
 COMMIT;

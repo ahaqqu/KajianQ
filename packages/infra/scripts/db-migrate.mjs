@@ -8,12 +8,20 @@
  *   NEON_DATABASE_URL=postgres://… bun packages/infra/scripts/db-migrate.mjs down
  *   NEON_DATABASE_URL=postgres://… bun packages/infra/scripts/db-migrate.mjs down --step 2
  *
+ * Multiple migration sets share one Neon database and one ledger. Pass
+ * `--dir <path>` (relative to cwd) to target a set:
+ *
+ *   bun run db:up                                 # engine (packages/infra)
+ *   bun run db:up:domain                          # domain (kajianq-domain)
+ *   bun run db:up:api                              # product (apps/api)
+ *
  * Conventions:
- *   - Migration files live in `packages/infra/migrations/` as NNNN_name.sql,
- *     with a required NNNN_name.down.sql companion for rollback.
+ *   - Migration files live in a migrations dir as NNNN_name.sql, with a
+ *     required NNNN_name.down.sql companion for rollback.
  *   - `up` applies pending migrations in filename order; `down` rolls back
  *     the most recent `step` migrations (default 1) via their `.down.sql`.
- *   - Applied migrations are recorded in `schema_migrations(name)`.
+ *   - Applied migrations are recorded in the shared `schema_migrations(name)`
+ *     ledger; migration *names* must be unique across all dirs.
  *
  * Runs over Neon's WebSocket `Pool` (not the HTTP `neon()` function) because
  * migrations need session transactions: each file is applied as an explicit
@@ -24,14 +32,19 @@
  */
 import { Pool } from "@neondatabase/serverless";
 import { readdir, readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const MIGRATIONS_DIR = join(
+const DEFAULT_MIGRATIONS_DIR = join(
   dirname(fileURLToPath(import.meta.url)),
   "..",
   "migrations",
 );
+
+// Active migrations directory; overridden by `--dir`. One shared ledger
+// (schema_migrations) covers all dirs — migration *names* are unique across
+// dirs (engine: 0001_init, domain: 0001_concept_graph, app: 0001_product).
+let MIGRATIONS_DIR = DEFAULT_MIGRATIONS_DIR;
 
 function fail(msg) {
   console.error(`db-migrate: ${msg}`);
@@ -39,10 +52,13 @@ function fail(msg) {
 }
 
 function parseArgs(argv) {
-  const args = { command: argv[2] ?? "status", step: null };
+  const args = { command: argv[2] ?? "status", step: null, dir: null };
   for (let i = 3; i < argv.length; i += 1) {
     if (argv[i] === "--step") {
       args.step = Number.parseInt(argv[i + 1] ?? "", 10);
+      i += 1;
+    } else if (argv[i] === "--dir") {
+      args.dir = argv[i + 1] ?? fail("--dir requires a path argument");
       i += 1;
     } else {
       fail(`unknown argument: ${argv[i]}`);
@@ -164,7 +180,8 @@ async function status(client) {
 }
 
 async function main() {
-  const { command, step } = parseArgs(process.argv);
+  const { command, step, dir } = parseArgs(process.argv);
+  if (dir) MIGRATIONS_DIR = resolve(process.cwd(), dir);
   const url = process.env.NEON_DATABASE_URL;
   if (!url) fail("NEON_DATABASE_URL is not set");
   const pool = new Pool({ connectionString: url });

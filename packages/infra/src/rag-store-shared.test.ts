@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildSimilarityQuery,
+  assertEmbedding,
   fromVectorLiteral,
   hashToken,
   randomToken,
   rowToChild,
   toEpochMs,
   toVectorLiteral,
+  toVectorLiteralChecked,
 } from "./rag-store-shared";
 
 describe("rag-store-shared: vector helpers", () => {
@@ -27,9 +28,37 @@ describe("rag-store-shared: vector helpers", () => {
     expect(fromVectorLiteral(undefined)).toBeNull();
   });
 
-  it("fromVectorLiteral rejects unrecognised shapes", () => {
+  it("fromVectorLiteral rejects unrecognised shapes and non-finite components", () => {
     expect(() => fromVectorLiteral(42)).toThrow(/unexpected vector/);
     expect(() => fromVectorLiteral({})).toThrow(/unexpected vector/);
+    expect(() => fromVectorLiteral(["NaN"])).toThrow(/unexpected vector component/);
+    expect(() => fromVectorLiteral("[1,abc]")).toThrow(/unexpected vector component/);
+  });
+});
+
+describe("rag-store-shared: embedding validation", () => {
+  it("assertEmbedding passes a well-formed vector of the right dim", () => {
+    expect(() => assertEmbedding([0.5, -0.5, 0], 3)).not.toThrow();
+  });
+
+  it("assertEmbedding accepts null/undefined (nullable embedding columns)", () => {
+    expect(() => assertEmbedding(null, 3)).not.toThrow();
+    expect(() => assertEmbedding(undefined, 3)).not.toThrow();
+  });
+
+  it("assertEmbedding rejects wrong dimension", () => {
+    expect(() => assertEmbedding([1, 2], 3)).toThrow(/dimension mismatch/);
+  });
+
+  it("assertEmbedding rejects non-finite components", () => {
+    expect(() => assertEmbedding([1, Number.NaN, 3], 3)).toThrow(/finite number/);
+    expect(() => assertEmbedding([1, Number.POSITIVE_INFINITY, 3], 3)).toThrow(/finite number/);
+  });
+
+  it("toVectorLiteralChecked validates then serializes, null passes through", () => {
+    expect(toVectorLiteralChecked([1, 2, 3], 3)).toBe("[1,2,3]");
+    expect(toVectorLiteralChecked(null, 3)).toBeNull();
+    expect(() => toVectorLiteralChecked([1, 2], 3)).toThrow(/dimension mismatch/);
   });
 });
 
@@ -89,29 +118,5 @@ describe("rag-store-shared: tokens", () => {
     expect(h1).toMatch(/^[0-9a-f]{64}$/);
     expect(h1).toBe(h2);
     expect(h1).not.toBe(h3);
-  });
-});
-
-describe("rag-store-shared: similarity query builder", () => {
-  it("targets the ar track by default and the id track on request", () => {
-    const ar = buildSimilarityQuery("ar", 0);
-    const id = buildSimilarityQuery("id", 0);
-    expect(ar).toContain("embedding_ar <=> $1::vector");
-    expect(ar).not.toContain("embedding_id <=> $1::vector");
-    expect(id).toContain("embedding_id <=> $1::vector");
-    expect(id).not.toContain("embedding_ar <=> $1::vector");
-  });
-
-  it("does not interpolate filter keys; filters are bound parameters", () => {
-    const q = buildSimilarityQuery("ar", 2);
-    // Parameters start at $3 because $1 is the embedding, $2 the limit.
-    expect(q).toContain("metadata->>$3 = ANY($4::text[])");
-    expect(q).toContain("metadata->>$5 = ANY($6::text[])");
-    // No filter key text ever appears in the SQL string.
-    expect(q).not.toContain("pfx");
-  });
-
-  it("omits the AND block entirely when there are no filters", () => {
-    expect(buildSimilarityQuery("ar", 0)).not.toContain("AND metadata");
   });
 });
