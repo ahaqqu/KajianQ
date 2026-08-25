@@ -1,0 +1,33 @@
+[
+  {
+    "name": "Islamic-domain identifier in an engine package",
+    "pattern": "madzhab|madhhab|hadith|hadis|quran|qur'an|kitab|\\bisnad\\b|\\bsanad\\b|sahih|dhaif|\\bhasan\\b|mutawatir|hanafi|maliki|syafii|shafi|hambali|hanbali|tafsir|fiqh|aqidah|tasawuf|\\bsharh\\b|\\bmatn\\b|ayah",
+    "flags": "i",
+    "exts": ["ts", "tsx", "mts", "cts", "sql"],
+    "deps": false,
+    "justification": "CONTEXT.md vocabulary — engine packages must receive these as opaque inputs. The short substrings 'isnad', 'sanad', 'hasan', 'sharh', and 'matn' are word-boundary anchored so legitimate identifiers like 'hasAnnotation' or 'chasan' do not false-positive; the longer terms are left unanchored to also catch suffixed forms (e.g. 'quranic'). 'ayah' is included so a migration cannot encode Quran-verse references in the engine schema (the concept graph with ayah_pair_id lives in the domain pack, per the ADR-0014 amendment). The domain rule is NOT applied to package.json dependency names — only to source and SQL."
+  },
+  {
+    "name": "vendor or model name outside config",
+    "pattern": "qwen|gemini|deepseek|kimi|moonshot|dashscope|anthropic|openai|cohere",
+    "flags": "i",
+    "exts": ["ts", "tsx", "mts", "cts"],
+    "deps": true,
+    "pkgExempt": ["packages/infra/package.json"],
+    "justification": "ADR-0009 vendor allowlist — vendor/model names appear only in model_configs and the Provider adapters in packages/infra. Also applied to engine package.json dependency names so a vendor SDK cannot be added to an engine package by config. The infra manifest is exempt because packages/infra is the sanctioned Provider adapter home."
+  },
+  {
+    "name": "direct database client outside the RagStore seam",
+    "pattern": "(@neondatabase|drizzle|\\bfrom\\s+[\"']pg[\"']|require\\([\"']pg[\"']\\)|import\\s*\\(\\s*[\"']pg[\"']\\s*\\)|new\\s+pg\\.|new\\s+Pool\\b|postgres\\(|neon\\(|createPool|\\.prepare\\()",
+    "flags": "i",
+    "exts": ["ts", "tsx", "mts", "cts"],
+    "deps": true,
+    "pkgExempt": ["packages/infra/package.json"],
+    "exempt": [
+      "packages/infra/src/rag-store-neon.test.ts",
+      "packages/infra/scripts/db-migrate.mjs",
+      "packages/infra/scripts/pg-search-probe.mjs"
+    ],
+    "justification": "Match code-level coupling: an import of a DB driver, a pool/prepared call, a tagged SQL query, or a dynamic import of 'pg'. Doc comments naming 'pg'/'postgres' are not violations — the rule's target is dependency, not vocabulary. Also applied to engine package.json dependency names (e.g. 'drizzle-orm', '@neondatabase/serverless'). The exempt files are the RagStore adapter's own integration tests and the infra scripts that own migrations/probes against a real database — the one place a DB driver import IS the point."
+  }
+]
