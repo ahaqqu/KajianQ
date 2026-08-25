@@ -1,0 +1,5 @@
+interface:
+  display_name: "Grilling"
+  short_description: "Relentless one-question-at-a-time interview"
+policy:
+  allow_implicit_invocation: false
