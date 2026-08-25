@@ -66,8 +66,10 @@ jobs:
           migrate() { bun packages/infra/scripts/db-migrate.mjs "$@"; }
           migrate status
           for _ in $(seq 1 3); do
-            out=$(migrate down 2>&1); rc=$?
-            echo "$out"
+            # `|| rc=$?` keeps bash -e from killing us before we can print out.
+            out=$(migrate down 2>&1) || rc=$?
+            rc=${rc:-0}
+            echo "${out:-<down produced no output>}"
             if [ "$rc" -ne 0 ]; then
               echo "::error::db-migrate down failed (rc=$rc)"
               exit "$rc"
