@@ -64,8 +64,18 @@ NEON_DATABASE_URL=postgres://… bun run db:down
 
 NEON_DATABASE_URL=postgres://… bun run db:up:domain      # packages/kajianq-domain
 NEON_DATABASE_URL=postgres://… bun run db:up:api        # apps/api
+
+# All three sets, in the documented order (engine → domain → product):
+NEON_DATABASE_URL=postgres://… bun run db:up:all
+NEON_DATABASE_URL=postgres://… bun run db:down:all       # reverse order: product → domain → engine
+NEON_DATABASE_URL=postgres://… bun run db:status:all
 ```
 
+- `db:up:all` / `db:down:all` / `db:status:all` are the bring-up commands:
+  they chain the three sets (`db:up && db:up:domain && db:up:api`, reversed for
+  `down`). The per-set scripts stay for granular control — partial bring-up as
+  each set's ticket lands, and per-set rollback (`db:down:api` rolls back just
+  the product set without touching engine/domain).
 - `NEON_DATABASE_URL` is the pooled connection string (hostname contains
   `-pooler`, `?sslmode=require`).
 - Applied migrations are recorded in `schema_migrations(name)`; `up` is a
@@ -80,6 +90,23 @@ NEON_DATABASE_URL=postgres://… bun run db:up:api        # apps/api
   `golden_questions`.
 - Corpus sizing for the dual-vector schema is recorded in
   `docs/neon-sizing-issue-4.md`.
+
+### Production bring-up
+
+When a production Neon database is provisioned, apply the full v1 schema with
+`bun run db:up:all` (one command, engine → domain → product). Notes:
+
+- The engine `0001_init.sql` was **edited in place** during the #4 review
+  fix-forward (PR #62): the earlier merged `0001` had created the
+  product/domain tables too, and the new `0001` is domain-agnostic only.
+  Production must run the **current** `0001` (not a stale copy) plus the
+  domain and product sets — `db:up:all` does exactly this.
+- **Staging** was torn down and re-applied as the testbed for this shape (PR
+  #62); production has no data yet, so the first `db:up:all` is greenfield with
+  nothing to roll back.
+- Roll back a single set with `db:down:{api,domain}` (per-set `down`) or the
+  whole shape in reverse with `db:down:all`. The engine `down.sql` drops only
+  engine tables; the domain and product sets have their own down-migrations.
 
 ## One-off probes (results recorded in the #4 PR)
 
