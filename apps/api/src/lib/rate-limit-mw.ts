@@ -1,5 +1,7 @@
 import { createMemoryRateLimiter, type RateLimiter } from "@app/infra";
 
+export type { RateLimiter };
+
 const globalLimiter = createMemoryRateLimiter();
 
 export async function allowRequest(

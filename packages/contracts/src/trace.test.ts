@@ -33,14 +33,49 @@ const eventArb = fc.record({
 describe("trace contract", () => {
   // ADR-0007 amendment invariant: a run's recorded cost equals the sum of its
   // recorded LLM calls — an untraced call is a defect.
+  //
+  // The properties below test *independent* invariants rather than mirroring
+  // the body of `totalCostMicroUsd` (which would make the test tautological):
+  //   1. an event with no cost leaves the total unchanged;
+  //   2. an event carrying cost `k` increases the total by exactly `k`;
+  //   3. the total equals a *separately computed* sum — filter events that
+  //      carry a cost, then reduce their `costMicroUsd` — rather than the
+  //      same optional-chain expression the implementation uses.
+  fcTest.prop([fc.array(eventArb), costArb])(
+    "appending an event with cost k increases the total by exactly k",
+    (events, cost) => {
+      const before = totalCostMicroUsd({ id: "t", createdAt: 0, events });
+      const after = totalCostMicroUsd({
+        id: "t",
+        createdAt: 0,
+        events: [...events, { stage: "generator", kind: "llm_call", cost, at: 0 }],
+      });
+      expect(after).toBe(before + cost.costMicroUsd);
+    },
+  );
+
+  fcTest.prop([fc.array(eventArb), stageArb, fc.string({ minLength: 1 })])(
+    "appending an event with cost: undefined does not change the total",
+    (events, stage, kind) => {
+      const before = totalCostMicroUsd({ id: "t", createdAt: 0, events });
+      const after = totalCostMicroUsd({
+        id: "t",
+        createdAt: 0,
+        events: [...events, { stage, kind, at: 0 }],
+      });
+      expect(after).toBe(before);
+    },
+  );
+
   fcTest.prop([fc.array(eventArb)])(
-    "total cost equals the sum of per-event LLM costs",
+    "total equals the sum of costMicroUsd over cost-bearing events",
     (events) => {
       const trace = { id: "t", createdAt: 0, events };
-      const expected = events.reduce(
-        (sum, e) => sum + (e.cost?.costMicroUsd ?? 0),
-        0,
-      );
+      // Independent computation: keep only cost-bearing events first, then
+      // sum — a different shape from the implementation's optional chain.
+      const expected = events
+        .filter((e) => e.cost !== undefined)
+        .reduce((sum, e) => sum + e.cost!.costMicroUsd, 0);
       expect(totalCostMicroUsd(trace)).toBe(expected);
     },
   );

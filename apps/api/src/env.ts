@@ -1,3 +1,4 @@
+import type { RagStore } from "@app/infra";
 import type { R2Bucket } from "./cf-types";
 
 export type AppEnvName = "development" | "staging" | "production";
@@ -12,11 +13,11 @@ export type WorkerBindings = {
 
 /**
  * Resolved per-request identity, set by `authGuard` before guarded routes run.
- * Session persistence lives behind the RagStore seam (ADR-0008); it is unbound
- * until #4 lands the Neon adapter, so guarded routes stay unmounted in this
- * foundation shell.
+ * Session persistence lives behind the RagStore seam (ADR-0008); the store is
+ * now a concrete `RagStore` rather than a placeholder, but guarded routes stay
+ * unmounted in this foundation shell until #4 lands the Neon adapter wiring.
  */
-export type Authed = { store: unknown; userId: string };
+export type Authed = { store: RagStore; userId: string };
 
 /** Hono generics for the whole API: bindings + request-scoped variables. */
 export type ApiEnv = {
