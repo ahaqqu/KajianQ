@@ -3,6 +3,13 @@
 -- Only the engine-schema tables are dropped here; the product-owned tables
 -- (principle_index, golden_questions) and the domain-owned terminology
 -- concept graph are rolled back by their own per-package down migrations.
+--
+-- NOTE: the pgvector extension is intentionally NOT dropped here. It is an
+-- instance-level shared resource this database may not exclusively control
+-- (other objects can depend on it, and on Neon it may be provisioned by an
+-- admin role), so removing it would fail the whole rollback transaction.
+-- Re-applying 0001_init.sql stays safe either way: it uses
+-- CREATE EXTENSION IF NOT EXISTS.
 
 BEGIN;
 
@@ -23,7 +30,5 @@ DROP TABLE IF EXISTS chat_sessions;
 DROP TABLE IF EXISTS concept_links;
 DROP TABLE IF EXISTS doc_children;
 DROP TABLE IF EXISTS doc_parents;
-
-DROP EXTENSION IF EXISTS vector;
 
 COMMIT;
