@@ -69,11 +69,20 @@ jobs:
             echo "No changes to sync"
             exit 0
           fi
-          count=$(gh pr list --head template-sync --state open --json number --jq 'length')
+          count=$(gh pr list --repo "$GITHUB_REPOSITORY" --head template-sync --state open --json number --jq 'length')
           if [ "$count" -gt 0 ]; then
             echo "Sync PR already open"
             exit 0
           fi
-          gh pr create --base "${base}" --head template-sync \
-            --title "chore: sync template updates" \
-            --body "Automated merge of upstream template changes. Review the diff, then merge and delete the template-sync branch."
+          # Use the REST API instead of `gh pr create` to avoid the GraphQL
+          # "Resource not accessible by integration" error when the workflow
+          # runs with the built-in GITHUB_TOKEN.
+          gh api \
+            --method POST \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/${GITHUB_REPOSITORY}/pulls" \
+            -f title="chore: sync template updates" \
+            -f body="Automated merge of upstream template changes. Review the diff, then merge and delete the template-sync branch." \
+            -f head="template-sync" \
+            -f base="${base}"
