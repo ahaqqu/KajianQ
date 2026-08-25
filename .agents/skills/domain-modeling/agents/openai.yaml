@@ -1,0 +1,5 @@
+interface:
+  display_name: "Domain Modeling"
+  short_description: "Build and sharpen the domain glossary and ADRs"
+policy:
+  allow_implicit_invocation: true
