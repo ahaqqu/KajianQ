@@ -8,7 +8,7 @@ import {
   resolveCommit,
   resolveRef,
 } from "./git.mjs";
-import { isOverwritePath } from "./manifest.mjs";
+import { isManifestPath, isOverwritePath } from "./manifest.mjs";
 import { clearPending, readPending, writeState } from "./state.mjs";
 import { baseline, commitState, drift, stageState, validateFlag } from "./sync.mjs";
 
@@ -270,6 +270,62 @@ export function createCommands(ctx) {
         hint: "resolve them, git add each file, then run: bun run template-sync finish",
       });
       return 1;
+    }
+
+    // Restore the project branch's version for any path not covered by the
+    // manifest. Paths outside overwrite/merge are project-owned: the template
+    // must not add, update, or delete them. This prevents upstream-only product
+    // code from leaking into forks that do not list those paths.
+    const mergedPaths = gitOut(["ls-files"]) ?? "";
+    const nonManifestPaths = mergedPaths
+      .split("\n")
+      .filter(Boolean)
+      .filter((p) => !isManifestPath(manifest, p));
+    if (nonManifestPaths.length) {
+      const existsOnMain = gitOut([
+        "ls-tree",
+        "-r",
+        "--name-only",
+        headBefore,
+        "--",
+        ...nonManifestPaths,
+      ]) ?? "";
+      const existingSet = new Set(existsOnMain.split("\n").filter(Boolean));
+      const toRestore = nonManifestPaths.filter((p) => existingSet.has(p));
+      const toRemove = nonManifestPaths.filter((p) => !existingSet.has(p));
+
+      if (toRestore.length) {
+        const restore = git(["checkout", "--ours", "--", ...toRestore]);
+        if (restore.status !== 0) {
+          if (merging) git(["merge", "--abort"]);
+          clearPending(pendingPath);
+          throw new Error(
+            `restoring project version of non-manifest paths failed:\n${restore.stderr}`,
+          );
+        }
+        const add = git(["add", "--", ...toRestore]);
+        if (add.status !== 0) {
+          if (merging) git(["merge", "--abort"]);
+          clearPending(pendingPath);
+          throw new Error(`git add of restored paths failed:\n${add.stderr}`);
+        }
+      }
+
+      if (toRemove.length) {
+        const rm = git(["rm", "-r", "--cached", "--", ...toRemove]);
+        if (rm.status !== 0) {
+          if (merging) git(["merge", "--abort"]);
+          clearPending(pendingPath);
+          throw new Error(`removing upstream-only paths failed:\n${rm.stderr}`);
+        }
+      }
+
+      log.info("reconciled non-manifest paths", {
+        count: nonManifestPaths.length,
+        restored: toRestore.length,
+        removed: toRemove.length,
+        sample: nonManifestPaths.slice(0, 5),
+      });
     }
 
     if (gitOk(["diff", "--cached", "--quiet"])) {
