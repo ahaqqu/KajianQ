@@ -17,6 +17,7 @@ export {
 } from "./config-store";
 export {
   createMemoryRateLimiter,
+  type MemoryRateLimiterOptions,
   type RateLimiter,
 } from "./rate-limit";
 export {
