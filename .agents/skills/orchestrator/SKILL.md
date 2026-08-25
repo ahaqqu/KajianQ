@@ -9,7 +9,7 @@ Use when you are the main agent the user talks to and you coordinate work by spa
 
 ## Role
 
-You are the orchestrator. The user speaks to you. You decide whether to do work yourself or delegate to a subagent in a dedicated git worktree. Subagents are independent pi sessions that run in parallel and report back.
+You are the orchestrator. The user speaks to you. You decide whether to do work yourself or delegate to a subagent. Subagents are independent DeepSeek Harness (DSH) agents that run in their own context, in-process, and report back to you.
 
 ## When to use subagents
 
@@ -23,37 +23,29 @@ Do small, quick tasks yourself instead of spawning a subagent.
 
 ## How to spawn a subagent
 
-Use the `/subagent` command. Specify a workload preset so the right model is used.
+Use the `subagent` tool. It creates a fresh child agent with its own context — the child does **not** see your conversation, so give it a complete, standalone prompt. It runs in the background by default and returns a durable subagent id; set `run_in_background: false` only when your next action depends on its result.
 
 ```
-/subagent low <slug> <task description>
-/subagent medium <slug> <task description>
-/subagent high <slug> <task description>
+subagent(prompt = "<complete, self-contained task>")
 ```
 
-Presets are configured in `.pi/subagent-models.json` (project-level) or `~/.pi/agent/subagent-models.json` (global). This setup uses Ollama Cloud models:
+Start independent delegations together in one message and keep working while they run. When a background run settles, you are notified with its outcome and final message.
 
-```json
-{
-  "low": "ollama-cloud/deepseek-v4-flash:cloud",
-  "medium": "ollama-cloud/kimi-k2.7-code:cloud",
-  "high": "ollama-cloud/glm-5.2:cloud"
-}
-```
+Use `subagent_fork` instead when the child needs your completed conversation context (a follow-up analysis, a review, a continuation). A fork sees your completed turns but not your in-flight turn.
 
-You can also override with any Ollama Cloud model:
+## Model routing
 
-```
-/subagent --model ollama-cloud/qwen3.5:397b fix-race debug the race condition
-```
+The `subagent` tool inherits your model — there is no per-call model override on it. Model routing is configured at the composition level (agent presets), not per delegation.
+
+For large fan-out where you need per-task model selection, use the `workflow` tool: it runs many subagents with phases and structured results, and each `agent(prompt, { provider, model })` call accepts an independent `provider`/`model` override.
 
 ## Workload guidance
 
-- **low**: fast, cheap models for bounded tasks (renames, small helpers, simple fixes). Default is `deepseek-v4-flash:cloud`.
-- **medium**: capable coding model for standard tasks (features, tests, refactors). Default is `kimi-k2.7-code:cloud`.
-- **high**: strongest model for architecture, tricky bugs, cross-cutting changes, validators, trap questions, and sample audits. Default is `glm-5.2:cloud`.
+- **Bounded, cheap tasks** (renames, small helpers, simple fixes): delegate to a `subagent`; it inherits your model.
+- **Standard tasks** (features, tests, refactors): delegate to a `subagent`.
+- **Architecture, tricky bugs, cross-cutting changes, validators, trap questions, sample audits**: delegate to a `subagent` (or a `workflow` with a high-reasoning model override) — these carry a correctness/trust invariant that fails silently.
 
-If you are uncertain which preset fits a task, ask the user before spawning.
+If you are uncertain whether a task should be delegated at all, ask the user before spawning.
 
 ## PR creation permission (non-negotiable)
 
@@ -67,21 +59,11 @@ The subagent **MUST NOT** merge the PR unless the user explicitly approves mergi
 
 ## Supervising subagents
 
-To check progress across all subagents:
+- `list_agents` — list your continuable background subagents by id and label.
+- `send_message` — continue a subagent's conversation (only your direct children).
+- `interrupt_agent` — request cancellation of a subagent's current turn.
 
-```
-/subagents
-```
-
-This shows each subagent's worktree, branch, completion status, and whether a report is ready.
-
-To inspect one subagent in detail:
-
-```
-/subagent-status <slug>
-```
-
-When a subagent reports completion, read its `AGENT_REPORT.md` (the path is shown by `/subagent-status`). Summarize the result for the user and decide whether to:
+When a subagent settles, you are notified with its outcome and final message. Summarize the result for the user and decide whether to:
 - merge the subagent's branch,
 - request changes via a new subagent task,
 - do final integration yourself, or
@@ -93,14 +75,14 @@ You must also verify that any PR created by a subagent has green CI before repor
 
 1. Understand the user's request.
 2. Break the request into independent, delegatable pieces if needed.
-3. Pick the right model preset for each piece. If uncertain, ask the user before spawning.
-4. Spawn subagents with clear tasks, an explicit PR-creation instruction, and appropriate model presets.
-5. Periodically run `/subagents` to monitor progress.
+3. Decide the model for each piece. If uncertain, ask the user before spawning.
+4. Spawn subagents with clear, self-contained prompts and an explicit PR-creation instruction.
+5. Keep working while they run; collect results as they settle.
 6. Read completed reports and verify each subagent's PR has green CI.
 7. Report back to the user with a concise summary: what was spawned, which model per subagent, PR links, and CI status.
 
 ## Important
 
-- Subagents work in `.pi-worktrees/`. Do not modify their branches directly unless you intend to take over.
+- Subagents run in-process in their own context — there are no git worktrees. Do not modify a subagent's branch directly unless you intend to take over.
 - Subagents do not auto-merge. You are responsible for confirming PRs are ready and CI is green.
 - Always verify the final result with tests, type checks, or review before telling the user the work is done.
