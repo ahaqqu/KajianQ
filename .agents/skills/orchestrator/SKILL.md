@@ -35,7 +35,7 @@ Use `subagent_fork` instead when the child needs your completed conversation con
 
 ## Model selection by difficulty
 
-Pick a model per task by difficulty, exactly as the pi `/subagent` presets did. The available models (provider `ollama`, from `~/.dsh/settings.yaml`):
+Pick a model per task by difficulty. The available models (provider `ollama`, from `~/.dsh/settings.yaml`):
 
 | Preset | Model | Use for |
 |---|---|---|
@@ -51,13 +51,34 @@ agent(prompt, { provider: "ollama", model: "glm-5.2" })
 
 This works for a single delegation too (a workflow with one agent). If you are uncertain which preset fits a task, ask the user before spawning.
 
+### Background delegations inherit your model
+
+`subagent` and `subagent_fork` both have no per-call model override — background children always run on YOUR model. Per-difficulty routing works only through `workflow`, which runs in the foreground and blocks until every agent finishes. Consequence:
+
+- **Spawn-and-monitor** (children run while you keep talking to the user): use `subagent` and accept that every child runs on your model.
+- **Foreground fan-out where the model matters more than interactivity**: use `workflow` with per-agent `provider`/`model`.
+
 ## Workspace isolation
 
-Each subagent works in its own git worktree so parallel tasks never collide in the same working tree. Subagents inherit your working directory, so the worktree path in the prompt is what keeps each one isolated.
+DSH subagents run in-process and **inherit your session cwd** (`read`/`write`/`edit` resolve relative paths against the project root) **and your branch**. There is no built-in per-subagent cwd. A git worktree isolates parallel tasks only if the subagent prefixes every path — telling it to `cd` there isolates nothing: each bash call is a fresh shell so `cd` never persists, and file tools ignore bash's cwd entirely.
 
-1. Create one worktree per subagent before spawning: `git worktree add -b agent/<slug> .worktrees/<slug>`.
-2. In the subagent prompt, state the absolute worktree path and instruct it to `cd` there and stay inside it — never touch the main working tree.
-3. On completion, the subagent commits in its worktree; you merge the `agent/<slug>` branch back and remove the worktree.
+1. Before the first spawn, make sure `.worktrees/` is in `.gitignore`.
+2. Create one worktree per subagent, based off the integration branch (usually `main`) — not your current WIP branch:
+   ```
+   git worktree add -b agent/<slug> .worktrees/<slug> main
+   ```
+3. In the subagent prompt, state the ABSOLUTE worktree path plus these hard rules:
+   - Prefix EVERY `read`/`write`/`edit`/`glob`/`grep` path with the worktree path — an unprefixed relative path lands in the main tree.
+   - Pass `workdir: "<worktree>"` on EVERY bash call — `cd` does not persist between calls.
+   - Never touch anything outside your worktree.
+4. On completion the subagent commits in its worktree; you merge the branch back, then clean up so worktrees don't accumulate:
+   ```
+   git merge agent/<slug>
+   git worktree remove .worktrees/<slug>
+   git branch -d agent/<slug>
+   ```
+
+Never rely on "cd there and stay inside it" — that instruction cannot isolate anything in DSH.
 
 ## PR creation permission (non-negotiable)
 
@@ -81,6 +102,8 @@ When a subagent settles, you are notified with its outcome and final message. Su
 - do final integration yourself, or
 - spawn another subagent for the next slice.
 
+Subagents run with their approval policy pinned to `never`: operations that need interactive approval are rejected automatically, not prompted. When a subagent reports a permission or sandbox rejection, do not tell it to retry — either perform that operation yourself or widen the delegated scope and respawn.
+
 You must also verify that any PR created by a subagent has green CI before reporting it back to the user as ready for review.
 
 ## Workflow
@@ -88,13 +111,14 @@ You must also verify that any PR created by a subagent has green CI before repor
 1. Understand the user's request.
 2. Break the request into independent, delegatable pieces if needed.
 3. Decide the model for each piece. If uncertain, ask the user before spawning.
-4. Spawn subagents with clear, self-contained prompts and an explicit PR-creation instruction.
-5. Keep working while they run; collect results as they settle.
-6. Read completed reports and verify each subagent's PR has green CI.
-7. Report back to the user with a concise summary: what was spawned, which model per subagent, PR links, and CI status.
+4. For parallel work, create one gitignored worktree per subagent (see Workspace isolation) and put its absolute path in each prompt.
+5. Spawn subagents with clear, self-contained prompts and an explicit PR-creation instruction.
+6. Keep working while they run; collect results as they settle.
+7. Read completed reports and verify each subagent's PR has green CI.
+8. Report back to the user with a concise summary: what was spawned, which model per subagent, PR links, and CI status.
 
 ## Important
 
-- Subagents run in-process in their own context — there are no git worktrees. Do not modify a subagent's branch directly unless you intend to take over.
+- Subagents run in-process in their own context, but they share YOUR working directory and branch — filesystem isolation comes only from the worktree path discipline in the Workspace isolation section. Do not modify a subagent's branch directly unless you intend to take over.
 - Subagents do not auto-merge. You are responsible for confirming PRs are ready and CI is green.
 - Always verify the final result with tests, type checks, or review before telling the user the work is done.
