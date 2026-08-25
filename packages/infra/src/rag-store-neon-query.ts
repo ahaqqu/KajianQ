@@ -14,9 +14,15 @@ import type { RetrievalTrack } from "./rag-store";
  * filter keys and values are bound parameters ($N).
  */
 
+/**
+ * Track role → physical embedding column. The two-column allowlist is the
+ * whole point of ADR-0013's dual-track schema; `primary`/`fallback` are
+ * engine-level role names — KajianQ binds them to its AR/ID language tracks
+ * at the domain-pack boundary, so no language code appears here.
+ */
 const SIMILARITY_COLUMNS: Record<RetrievalTrack, string> = {
-  ar: "embedding_ar",
-  id: "embedding_id",
+  primary: "embedding_primary",
+  fallback: "embedding_fallback",
 };
 
 /**
@@ -32,8 +38,8 @@ export function buildSimilarityQuery(
   const column = SIMILARITY_COLUMNS[track];
   const select = `
   SELECT id, parent_id, text_raw, text_ar, text_id, citation,
-         embedding_ar::text AS embedding_ar,
-         embedding_id::text AS embedding_id,
+         embedding_primary::text AS embedding_primary,
+         embedding_fallback::text AS embedding_fallback,
          ordinal, metadata, created_at,
          (${column} <=> $1::vector) AS distance,
          ROW_NUMBER() OVER (ORDER BY ${column} <=> $1::vector) AS rank_dense

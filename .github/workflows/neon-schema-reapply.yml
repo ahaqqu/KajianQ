@@ -1,0 +1,50 @@
+name: Re-apply Neon engine schema
+# DESTRUCTIVE — drops and recreates the ENGINE migration set's tables
+# (doc_parents/doc_children/concept_links/chat/answer_traces/feedback/
+# eval/model_configs/users/sessions) on the shared Neon database pointed to
+# by NEON_DATABASE_URL.
+#
+# Purpose: the engine initial migration is edited IN PLACE while
+# pre-production (fix-forward process, see README "Production bring-up" and
+# PR #62/#72). After such an edit the shared staging schema no longer matches
+# the repo, which fails the neon-contract CI job with 42703
+# (column does not exist). Run this once after the edit so staging matches
+# the source of truth again — the same tear-down-and-reapply that PR #62 did
+# by hand. Domain/product migration sets are NOT touched.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neon-schema-reapply
+  cancel-in-progress: false
+
+jobs:
+  reapply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: Roll engine migrations back, then re-apply from the repo
+        env:
+          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          migrate() { bun packages/infra/scripts/db-migrate.mjs "$@"; }
+          echo "== state before =="
+          migrate status
+          echo "== rolling back engine set =="
+          for _ in $(seq 1 20); do
+            if migrate down 2>&1 | grep -q "nothing to roll back"; then
+              break
+            fi
+          done
+          echo "== re-applying from repo =="
+          migrate up
+          echo "== state after =="
+          migrate status

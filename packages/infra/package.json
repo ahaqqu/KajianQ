@@ -6,6 +6,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "bin": {
+    "db-migrate": "./scripts/db-migrate.mjs"
+  },
   "scripts": {
     "check": "tsc -p tsconfig.json --noEmit"
   },

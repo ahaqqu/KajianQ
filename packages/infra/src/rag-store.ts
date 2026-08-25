@@ -15,6 +15,14 @@ import type { Trace } from "@app/contracts";
  * `filters`, never as names in this file.
  */
 
+/**
+ * Make the given keys of `T` optional while leaving every other property —
+ * including its modifiers (`readonly`) — exactly as declared. Used for the
+ * `*Insert` shapes below so "same as the row type minus server-owned fields"
+ * stays a one-liner that cannot drift from the source type.
+ */
+type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
+
 /** A parent document — a coarse retrieval unit (a container of child chunks). */
 export type DocParent = {
   id: string;
@@ -26,9 +34,7 @@ export type DocParent = {
   createdAt: number;
 };
 
-export type DocParentInsert = Omit<DocParent, "id" | "createdAt"> & {
-  id?: string;
-};
+export type DocParentInsert = PartialBy<DocParent, "id" | "createdAt">;
 
 /**
  * A child chunk — the fine-grained retrieved unit. Carries the dual embedding
@@ -55,28 +61,33 @@ export type DocChild = {
    */
   citation: Record<string, unknown>;
   /** 1536-dim embedding of the primary-track text; null until embedded. */
-  embeddingAr: readonly number[] | null;
+  embeddingPrimary: readonly number[] | null;
   /** 1536-dim embedding of the secondary-track text; null until embedded. */
-  embeddingId: readonly number[] | null;
+  embeddingFallback: readonly number[] | null;
   /** Position within the parent, stable across re-ingestion. */
   ordinal: number;
   metadata: Record<string, unknown>;
   createdAt: number;
 };
 
-export type DocChildInsert = Omit<DocChild, "id" | "createdAt" | "citation"> & {
-  id?: string;
-  /** Defaults to `{}`. See {@link DocChild.citation} for the contract. */
-  citation?: Record<string, unknown>;
-};
+/**
+ * Row-shaped insert: `id`/`createdAt` are store-generated and `citation`
+ * defaults to `{}` (see {@link DocChild.citation}).
+ */
+export type DocChildInsert = PartialBy<
+  DocChild,
+  "id" | "createdAt" | "citation"
+>;
 
 /**
- * Which embedding track a similarity search runs against. A downstream
- * benchmark gate picks the production posture; this knob keeps both tracks
- * readable so the choice is a RagStore query-layer decision, not a schema
- * change (ADR-0013).
+ * Which embedding track a similarity search runs against. Named by role, not
+ * by language: `primary` is the canonical evidence layer and `fallback` the
+ * fusion layer (ADR-0013). KajianQ maps these roles onto its AR/ID language
+ * tracks at the domain-pack boundary — the engine itself stays
+ * language-agnostic (AGENTS.md §1.1). The DB columns carry the same names
+ * (`embedding_primary` / `embedding_fallback`).
  */
-export type RetrievalTrack = "ar" | "id";
+export type RetrievalTrack = "primary" | "fallback";
 
 /** A scored retrieval hit with its dense rank, for later fusion. */
 export type SimilarChild = {

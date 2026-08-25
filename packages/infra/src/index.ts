@@ -21,8 +21,12 @@ export {
 } from "./rate-limit";
 export {
   createNeonRagStore,
-  type SqlRunner,
 } from "./rag-store-neon";
+export { type NeonRagStoreOptions } from "./rag-store-neon-logging";
+export {
+  createRagStore,
+  type RagStoreProvider,
+} from "./rag-store-factory";
 export {
   type DocChild,
   type DocChildInsert,

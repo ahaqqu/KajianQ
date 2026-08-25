@@ -1,5 +1,3 @@
-import * as v from "valibot";
-import { TraceSchema } from "@app/contracts";
 import type {
   DocChildInsert,
   RagStore,
@@ -9,6 +7,7 @@ import {
   assertEmbedding,
   CORPUS_EMBEDDING_DIM,
   hashToken,
+  parseTrace,
   randomToken,
   rowToChild,
   toVectorLiteral,
@@ -16,6 +15,11 @@ import {
   type ChildRow,
 } from "./rag-store-shared";
 import { buildSimilarityQuery } from "./rag-store-neon-query";
+import {
+  DEFAULT_SLOW_QUERY_MS,
+  instrumentRunner,
+  type NeonRagStoreOptions,
+} from "./rag-store-neon-logging";
 
 /**
  * The Neon serverless driver's query surface, loosely typed.
@@ -45,9 +49,17 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days, per ADR-0017.
  * Create a RagStore backed by Neon Postgres + pgvector. `sql` is the driver's
  * query object, injected so configuration stays in the caller. All executable
  * SQL in the repository lives in this file (and `rag-store-neon-query.ts`)
- * and the migrations.
+ * and the migrations. Pass `opts.logger` to get slow-query/error ops logging
+ * (`rag-store-neon-logging.ts`); omitted, the adapter stays silent.
  */
-export function createNeonRagStore(sql: SqlRunner): RagStore {
+export function createNeonRagStore(
+  rawSql: SqlRunner,
+  opts: NeonRagStoreOptions = {},
+): RagStore {
+  const logger = opts.logger ?? null;
+  const slowQueryMs = opts.slowQueryMs ?? DEFAULT_SLOW_QUERY_MS;
+  const sql =
+    logger === null ? rawSql : instrumentRunner(rawSql, logger, slowQueryMs);
   return {
     async insertDocParent(input) {
       const id = input.id ?? crypto.randomUUID();
@@ -69,28 +81,31 @@ export function createNeonRagStore(sql: SqlRunner): RagStore {
 
     async insertDocChild(input: DocChildInsert) {
       const id = input.id ?? crypto.randomUUID();
-      const embeddingAr = toVectorLiteralChecked(
-        input.embeddingAr,
+      const embeddingPrimary = toVectorLiteralChecked(
+        input.embeddingPrimary,
         CORPUS_EMBEDDING_DIM,
       );
-      const embeddingId = toVectorLiteralChecked(
-        input.embeddingId,
+      const embeddingFallback = toVectorLiteralChecked(
+        input.embeddingFallback,
         CORPUS_EMBEDDING_DIM,
       );
       // Idempotent upsert by (parent_id, ordinal). text_raw is immutable
       // (AGENTS.md rule 11): it is NOT in the UPDATE set — only the derived
       // layers (translations, embeddings, citation, metadata) refresh.
+      // Column names are role-based (`embedding_primary`/`embedding_fallback`);
+      // KajianQ binds the roles to its AR/ID language tracks at the
+      // domain-pack boundary.
       const rows = (await sql`
         INSERT INTO doc_children (
           id, parent_id, text_raw, text_ar, text_id, citation,
-          embedding_ar, embedding_id, ordinal, metadata
+          embedding_primary, embedding_fallback, ordinal, metadata
         )
         VALUES (
           ${id}, ${input.parentId}, ${input.textRaw}, ${input.textAr},
           ${input.textId},
           ${JSON.stringify(input.citation ?? {})}::jsonb,
-          ${embeddingAr},
-          ${embeddingId},
+          ${embeddingPrimary},
+          ${embeddingFallback},
           ${input.ordinal},
           ${JSON.stringify(input.metadata ?? {})}::jsonb
         )
@@ -98,8 +113,8 @@ export function createNeonRagStore(sql: SqlRunner): RagStore {
           SET text_ar = EXCLUDED.text_ar,
               text_id = EXCLUDED.text_id,
               citation = EXCLUDED.citation,
-              embedding_ar = EXCLUDED.embedding_ar,
-              embedding_id = EXCLUDED.embedding_id,
+              embedding_primary = EXCLUDED.embedding_primary,
+              embedding_fallback = EXCLUDED.embedding_fallback,
               metadata = EXCLUDED.metadata
         RETURNING id
       `) as { id: string }[];
@@ -128,7 +143,7 @@ export function createNeonRagStore(sql: SqlRunner): RagStore {
     },
 
     async insertAnswerTrace(input) {
-      const parsed = v.parse(TraceSchema, input.trace);
+      const parsed = parseTrace(input.trace);
       const id = crypto.randomUUID();
       await sql`
         INSERT INTO answer_traces (id, message_id, user_id, trace)
@@ -147,10 +162,10 @@ export function createNeonRagStore(sql: SqlRunner): RagStore {
       const [row] = rows;
       if (!row) return null;
       // Tolerant reader (ADR-0007 amendment): the Trace contract only ever
-      // ADDS optional fields (versioned), so v.parse accepts older traces and
+      // ADDS optional fields (versioned), so parseTrace accepts older traces and
       // strips unknown future keys rather than throwing. Never add a required
       // field to TraceSchema without a migration of persisted traces.
-      return v.parse(TraceSchema, row.trace);
+      return parseTrace(row.trace);
     },
 
     async createChatSession(input) {

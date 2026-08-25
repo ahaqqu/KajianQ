@@ -6,7 +6,7 @@ import type { RagStore } from "./rag-store";
 
 /**
  * RagStore contract tests (#4 AC: "vector insert + similarity query
- * round-trip on both `embedding_ar` and `embedding_id`").
+ * round-trip on both `embedding_primary` and `embedding_fallback`").
  *
  * These are integration tests against a real Neon database. They only run
  * when NEON_DATABASE_URL is set — without it they are skipped so unit-test
@@ -52,7 +52,7 @@ run("RagStore contract (real Neon)", () => {
     if (cleanup) await cleanup();
   });
 
-  it("round-trips a vector insert + similarity search on embedding_ar", async () => {
+  it("round-trips a vector insert + similarity search on embedding_primary", async () => {
     if (!URL) return;
     const ar = vec(1536, 1);
     const parentId = await store.insertDocParent({
@@ -66,23 +66,23 @@ run("RagStore contract (real Neon)", () => {
       textAr: "text-ar-fixture",
       textId: "text-id-fixture",
       citation: { s: 2, a: 255 },
-      embeddingAr: ar,
-      embeddingId: null,
+      embeddingPrimary: ar,
+      embeddingFallback: null,
       ordinal: 0,
       metadata: { pfx: PREFIX },
     });
-    const hits = await store.similaritySearch("ar", ar, {
+    const hits = await store.similaritySearch("primary", ar, {
       limit: 5,
       filters: { pfx: PREFIX },
     });
     expect(hits.length).toBeGreaterThan(0);
     expect(hits[0]?.child.id).toBe(childId);
     expect(hits[0]?.distance ?? 1).toBeLessThan(1e-6);
-    expect(hits[0]?.child.embeddingAr).toHaveLength(1536);
+    expect(hits[0]?.child.embeddingPrimary).toHaveLength(1536);
     expect(hits[0]?.child.citation).toEqual({ s: 2, a: 255 });
   }, 60_000);
 
-  it("round-trips a vector insert + similarity search on embedding_id", async () => {
+  it("round-trips a vector insert + similarity search on embedding_fallback", async () => {
     if (!URL) return;
     const idEmb = vec(1536, 2);
     const arEmb = vec(1536, 3);
@@ -96,14 +96,15 @@ run("RagStore contract (real Neon)", () => {
       textRaw: "raw-fixture",
       textAr: "text-ar-fixture",
       textId: "text-id-fixture",
-      embeddingAr: arEmb,
-      embeddingId: idEmb,
+      embeddingPrimary: arEmb,
+      embeddingFallback: idEmb,
       ordinal: 1,
       metadata: { pfx: PREFIX },
     });
-    // Query the id track with the id embedding; nearest must be this row, and
-    // the ar embedding stored on the same row must come back unchanged.
-    const hits = await store.similaritySearch("id", idEmb, {
+    // Query the fallback track with the fallback-track embedding; nearest must
+    // be this row, and the primary embedding stored on the same row must come
+    // back unchanged.
+    const hits = await store.similaritySearch("fallback", idEmb, {
       limit: 5,
       filters: { pfx: PREFIX },
     });
@@ -111,9 +112,9 @@ run("RagStore contract (real Neon)", () => {
     expect(hits[0]?.child.id).toBe(childId);
     expect(hits[0]?.distance ?? 1).toBeLessThan(1e-6);
 
-    // And searching the SAME row's ar embedding on the ar track must find it
-    // too — the two tracks are independently queryable.
-    const arHits = await store.similaritySearch("ar", arEmb, {
+    // And searching the SAME row's primary embedding on the primary track
+    // must find it too — the two tracks are independently queryable.
+    const arHits = await store.similaritySearch("primary", arEmb, {
       limit: 5,
       filters: { pfx: PREFIX },
     });
@@ -204,8 +205,8 @@ run("RagStore contract (real Neon)", () => {
       textAr: "ar-v1",
       textId: "id-v1",
       citation: { s: 2, a: 255 },
-      embeddingAr: ar,
-      embeddingId: null,
+      embeddingPrimary: ar,
+      embeddingFallback: null,
       ordinal: 9,
       metadata: { pfx: PREFIX },
     });
@@ -217,14 +218,14 @@ run("RagStore contract (real Neon)", () => {
       textAr: "ar-v2",
       textId: "id-v2",
       citation: { s: 3, a: 7 },
-      embeddingAr: ar,
-      embeddingId: null,
+      embeddingPrimary: ar,
+      embeddingFallback: null,
       ordinal: 9,
       metadata: { pfx: PREFIX, rev: 2 },
     });
     expect(childId2).toBe(childId);
 
-    const hits = await store.similaritySearch("ar", ar, {
+    const hits = await store.similaritySearch("primary", ar, {
       limit: 5,
       filters: { pfx: PREFIX },
     });

@@ -1,3 +1,5 @@
+import * as v from "valibot";
+import { TraceSchema, type Trace } from "@app/contracts";
 import type { DocChild } from "./rag-store";
 
 /**
@@ -14,6 +16,17 @@ import type { DocChild } from "./rag-store";
 
 /** Dimension of the corpus chunk embeddings (ADR-0013 dual-track). */
 export const CORPUS_EMBEDDING_DIM = 1536;
+
+/**
+ * Validate an untrusted value against the shared Trace contract (ADR-0007).
+ * The store writes/parses the @app/contracts `Trace` shape verbatim — it
+ * never invents a parallel trace schema. Used on both the write path
+ * (reject malformed traces before persisting) and the read path (tolerant
+ * reader: the contract only ever adds optional fields).
+ */
+export function parseTrace(value: unknown): Trace {
+  return v.parse(TraceSchema, value);
+}
 
 /**
  * Serialize a vector to pgvector's bracketed literal form. Callers must have
@@ -97,8 +110,8 @@ export interface ChildRow {
   text_ar: string;
   text_id: string | null;
   citation: Record<string, unknown> | null;
-  embedding_ar: unknown;
-  embedding_id: unknown;
+  embedding_primary: unknown;
+  embedding_fallback: unknown;
   ordinal: number;
   metadata: Record<string, unknown> | null;
   created_at: unknown;
@@ -119,8 +132,8 @@ export function rowToChild(row: ChildRow): DocChild {
     textAr: row.text_ar,
     textId: row.text_id,
     citation: row.citation ?? {},
-    embeddingAr: fromVectorLiteral(row.embedding_ar),
-    embeddingId: fromVectorLiteral(row.embedding_id),
+    embeddingPrimary: fromVectorLiteral(row.embedding_primary),
+    embeddingFallback: fromVectorLiteral(row.embedding_fallback),
     ordinal: row.ordinal,
     metadata: row.metadata ?? {},
     createdAt: toEpochMs(row.created_at),
