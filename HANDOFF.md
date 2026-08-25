@@ -98,14 +98,6 @@ Group in dependency order:
 6. **Interface decomposition (deferred)**
    - Leave `RagStore` as one interface for now. Only split into `CorpusStore`/`TraceStore`/`ChatStore`/`SessionStore` façade when a second adapter becomes concrete.
 
-## Working agreements (non-negotiable)
-
-- **No `git commit`, push, or PR without explicit approval each time.**
-- PR titles/descriptions in English; update via `gh api --input` with a JSON payload file — never `gh pr edit --field body=...`.
-- Do not close or modify spec issues (#1, #27). Tick acceptance-criteria checkboxes via `gh api --input` PATCH.
-- Technical docs and code in English; UI copy Indonesian-first.
-- Run `bun run check && bun run test && bun run boundary && bun run build` before declaring a PR ready.
-
 ## Key files involved
 
 - `apps/api/src/index.ts`
