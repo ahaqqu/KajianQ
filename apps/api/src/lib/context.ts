@@ -1,11 +1,7 @@
-import { createLogger, type Logger } from "@app/infra";
-import { resolveEnvName, type AppEnvName } from "../env";
+import { createLogger } from "@app/infra";
+import { resolveEnvName, type RequestContext } from "../env";
 
-export type RequestContext = {
-  logger: Logger;
-  envName: AppEnvName;
-  correlationId: string;
-};
+export type { RequestContext } from "../env";
 
 export function createRequestContext(
   appEnv: string | undefined,

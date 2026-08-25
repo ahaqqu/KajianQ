@@ -1,6 +1,6 @@
 import { HealthResponseSchema, type HealthResponse } from "@app/contracts";
 import { describeRoute, resolver } from "hono-openapi";
-import { createRequestContext, type RequestContext } from "../lib/context";
+import type { RequestContext } from "../env";
 import { newRouter } from "../lib/guard";
 
 /**
@@ -34,7 +34,7 @@ export const healthRoutes = newRouter().get(
     },
   }),
   (c) => {
-    const ctx = createRequestContext(c.env.APP_ENV, c.get("correlationId"));
+    const ctx = c.get("ctx");
     return c.json(buildHealth(ctx));
   },
 );

@@ -4,26 +4,17 @@ import type { WorkerBindings } from "./env";
 
 const api = createApi();
 
-function isApiPath(pathname: string): boolean {
-  return (
-    pathname.startsWith("/v1/") ||
-    pathname === "/openapi.json" ||
-    pathname === "/docs"
-  );
-}
-
 const handler = {
   async fetch(
     request: Request,
     env: WorkerBindings,
     ctx: unknown,
   ): Promise<Response> {
-    const url = new URL(request.url);
-    if (isApiPath(url.pathname)) {
-      // Handler errors are dispatched by the app's typed onError (lib/errors).
-      return api.fetch(request, env, ctx as never);
-    }
-    return env.ASSETS.fetch(request);
+    // All requests flow through the Hono stack so CSP, CORS, rate-limit,
+    // correlation-id, and the typed error handler apply to the SPA as well.
+    // The catch-all route at the bottom of createApi serves ASSETS for
+    // non-API paths. Handler errors are dispatched by the app's typed onError.
+    return api.fetch(request, env, ctx as never);
   },
 };
 
