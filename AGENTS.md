@@ -78,8 +78,9 @@ Every external dependency and every pipeline stage is replaceable **by configura
 
 ## 4. Working agreements (from the user — non-negotiable)
 
-- **No `git commit`, push, or PR without explicit approval each time.**
-- PR titles/descriptions in English; update via `gh api --input` with a JSON payload file — never `gh pr edit --field body=...`.
+- **No `git commit`, push, or PR without explicit approval each time**, unless the user has explicitly delegated a batch to an agent with the instruction "it's fine to commit, push, and create PR when ready for me to review." In that delegated mode, the agent may create a branch, commit, push, and open the PR using the `pr-creation` skill template and `gh api --input` — then report the PR URL and final CI status to the user. The agent MUST NOT merge the PR itself; it remains pending human review/approval.
+- **When an orchestrator spawns a subagent for a delegated batch, the orchestrator MUST explicitly instruct the subagent that it is allowed to create a PR.** The instruction must reference this working agreement and the `pr-creation` skill, e.g. "it's fine to commit, push, and create a PR when ready for me to review." Without that explicit instruction, the subagent must default to waiting for approval before every commit/push/PR.
+- PR titles/descriptions in English; create via `gh api --input` with a JSON payload file — never `gh pr edit --field body=....`
 - Do not close or modify spec issues (#1, #27). Tick ticket checkboxes via `gh api --input` PATCH.
 - Technical docs and code in English; UI copy Indonesian-first (externalized en/id).
 - **Fork guardrail amendment (ADR-0009) overrides the template's guardrail.** The `agentic-project-template` AGENTS.md instructs agents: "When adding a dependency, you MUST verify free-tier compatibility. You MUST NEVER add paid services to the critical path." **In this fork, that rule is amended:** paid LLM/embedding APIs **are** accepted in the critical path, because no free tier exists at generator quality (no suitable free tier among the ADR-0009 allowlist for the generator/cheap/reviewer tiers at the required quality). Consequences that still bind every model decision:
