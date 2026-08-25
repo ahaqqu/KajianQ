@@ -30,3 +30,8 @@ export function isMergePath(manifest, p) {
     p === e || p.startsWith(e.endsWith("/") ? e : `${e}/`),
   );
 }
+
+/** True when a path is covered by the manifest at all (overwrite or merge). */
+export function isManifestPath(manifest, p) {
+  return isOverwritePath(manifest, p) || isMergePath(manifest, p);
+}
