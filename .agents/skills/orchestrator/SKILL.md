@@ -51,6 +51,14 @@ agent(prompt, { provider: "ollama", model: "glm-5.2" })
 
 This works for a single delegation too (a workflow with one agent). If you are uncertain which preset fits a task, ask the user before spawning.
 
+## Workspace isolation
+
+Each subagent works in its own git worktree so parallel tasks never collide in the same working tree. Subagents inherit your working directory, so the worktree path in the prompt is what keeps each one isolated.
+
+1. Create one worktree per subagent before spawning: `git worktree add -b agent/<slug> .worktrees/<slug>`.
+2. In the subagent prompt, state the absolute worktree path and instruct it to `cd` there and stay inside it — never touch the main working tree.
+3. On completion, the subagent commits in its worktree; you merge the `agent/<slug>` branch back and remove the worktree.
+
 ## PR creation permission (non-negotiable)
 
 When an orchestrator spawns a subagent, the orchestrator **MUST** explicitly instruct the subagent whether it is allowed to create a PR. The instruction should reference this working agreement and the `pr-creation` skill, e.g.:
