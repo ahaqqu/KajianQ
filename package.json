@@ -35,13 +35,13 @@
     "@playwright/test": "1.62.1",
     "@size-limit/file": "13.0.3",
     "@types/node": "26.2.0",
-    "@vitest/coverage-v8": "4.1.10",
+    "@vitest/coverage-v8": "4.1.11",
     "fast-check": "4.9.0",
     "playwright-bdd": "9.2.0",
     "size-limit": "13.0.3",
     "typescript": "7.0.2",
-    "vitest": "4.1.10",
-    "wrangler": "4.122.0"
+    "vitest": "4.1.11",
+    "wrangler": "4.124.0"
   },
   "size-limit": [
     {
