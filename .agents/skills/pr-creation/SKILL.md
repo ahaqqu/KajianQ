@@ -76,10 +76,15 @@ Docs updated: `AGENTS.md` / `adr/`, or `None`.
 Any limitations, or `None`.
 ```
 
+## Push authentication
+
+- You SHOULD push over SSH (`git@github.com:owner/repo.git`) — HTTPS OAuth pushes that create or update `.github/workflows/` require the `workflow` scope; check `gh auth status` first.
+- You MUST NOT fix push-auth failures by editing the global gh/git config; use SSH or repo-local `git config`.
+
 ## Rules
 
 - You MUST NEVER merge your own PR. Submit for human review only.
 - You MUST NOT create a PR with a dirty working tree.
 - You MUST create a PR even for trivial changes.
-- You MUST NEVER add a co-author to the PR description or commit messages.
+- You MUST NEVER add a co-author to the PR description or commit messages, directly or via an author-email override.
 - You MUST reference relevant GitHub issues in the PR description so they close automatically upon merge.
