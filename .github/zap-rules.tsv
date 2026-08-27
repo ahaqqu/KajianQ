@@ -1,0 +1,12 @@
+# ZAP baseline scan rule overrides — format: pluginId<TAB>action<TAB>justification.
+# Policy (docs/ARCHITECTURE.md §Security scanning): a finding may only be
+# suppressed here, with an inline justification — never by bypassing or
+# weakening the workflow step. The step runs with `fail_action: true`, so
+# any alert NOT listed below fails the staging workflow. Header regressions
+# for the suppressed plugins above are guarded by unit tests in
+# apps/api/src/app.test.ts instead of by ZAP.
+10055	IGNORE	style-src 'unsafe-inline' is a documented trade-off (Vite build-injected styles; script-src stays 'self'). The 10055 no-fallback findings (form-action) are fixed by @app/hardening defaults and covered by unit tests.
+10109	IGNORE	Informational fingerprinting ("Modern Web Application") — every SPA triggers it; not a finding.
+10015	IGNORE	Informational cache-control heuristic: HTML/manifest/robots intentionally revalidate (max-age=0, must-revalidate); hashed /assets/* are served immutable by @app/hardening and unit-tested.
+10049	IGNORE	Informational; same intentional caching policy as 10015.
+90004	IGNORE	COEP deliberately unset: the app has no cross-origin-isolation requirement (no SharedArrayBuffer usage); COOP+CORP ship via @app/hardening and are unit-tested. Revisit only if cross-origin isolation is needed.

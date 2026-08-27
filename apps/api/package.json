@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@app/contracts": "workspace:*",
+    "@app/hardening": "workspace:*",
     "@app/infra": "workspace:*",
     "@app/local-first": "workspace:*",
     "@app/rate": "workspace:*",

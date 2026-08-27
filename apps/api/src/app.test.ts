@@ -31,6 +31,42 @@ vi.mock("./lib/notes-repo", () => ({ listNotes, syncNotes }));
 const env = { ASSETS: { fetch }, DB: {} as never };
 const authed = { headers: { Authorization: "Bearer good" } };
 
+const spaHtml = "<!doctype html><html><body>SPA</body></html>";
+const spaEnv = {
+  ...env,
+  ASSETS: {
+    fetch: async (): Promise<Response> =>
+      new Response(spaHtml, {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      }),
+  },
+};
+
+const cspDefaults = [
+  "default-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+];
+
+function assertSecurityHeaders(res: Response) {
+  const csp = res.headers.get("Content-Security-Policy");
+  expect(csp).toBeTruthy();
+  for (const directive of cspDefaults) {
+    expect(csp).toContain(directive);
+  }
+  expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
+  expect(res.headers.get("X-Frame-Options")).toBe("SAMEORIGIN");
+  expect(res.headers.get("Cross-Origin-Opener-Policy")).toBe("same-origin");
+  expect(res.headers.get("Cross-Origin-Resource-Policy")).toBe("same-origin");
+  expect(res.headers.get("Permissions-Policy")).toBe(
+    "camera=(), microphone=(), geolocation=()",
+  );
+  expect(res.headers.get("Strict-Transport-Security")).toContain("max-age=");
+}
+
 type Doc = {
   openapi: string;
   info: { title: string };
@@ -131,13 +167,32 @@ describe("createApi routes", () => {
     expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 
-  it("emits a restrictive Content-Security-Policy header", async () => {
+  it("emits the shared security headers on API routes", async () => {
     const res = await createApi().request("/v1/health", {}, env);
-    const csp = res.headers.get("Content-Security-Policy");
-    expect(csp).toBeTruthy();
-    expect(csp).toContain("default-src 'self'");
-    expect(csp).toContain("object-src 'none'");
-    expect(csp).toContain("frame-ancestors 'none'");
+    assertSecurityHeaders(res);
+  });
+
+  it("serves the SPA through the middleware stack with the same headers", async () => {
+    const res = await createApi().request("/", {}, spaEnv);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    expect(await res.text()).toBe(spaHtml);
+    assertSecurityHeaders(res);
+  });
+
+  it("returns a JSON 404 for unknown /v1/* paths instead of the SPA", async () => {
+    const res = await createApi().request("/v1/missing", {}, spaEnv);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not_found" });
+  });
+
+  it("serves content-hashed assets with immutable caching", async () => {
+    const res = await createApi().request("/assets/index-Bx1k2.js", {}, spaEnv);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Cache-Control")).toBe(
+      "public, max-age=31536000, immutable",
+    );
+    assertSecurityHeaders(res);
   });
 });
 

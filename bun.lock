@@ -24,6 +24,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@app/contracts": "workspace:*",
+        "@app/hardening": "workspace:*",
         "@app/infra": "workspace:*",
         "@app/local-first": "workspace:*",
         "@app/rate": "workspace:*",
@@ -75,6 +76,17 @@
         "typescript": "7.0.2",
       },
     },
+    "packages/hardening": {
+      "name": "@app/hardening",
+      "version": "0.0.1",
+      "devDependencies": {
+        "hono": ">=4.13.0 <5",
+        "typescript": "7.0.2",
+      },
+      "peerDependencies": {
+        "hono": ">=4.13.0 <5",
+      },
+    },
     "packages/infra": {
       "name": "@app/infra",
       "version": "0.0.1",
@@ -116,6 +128,8 @@
     "@app/api": ["@app/api@workspace:apps/api"],
 
     "@app/contracts": ["@app/contracts@workspace:packages/contracts"],
+
+    "@app/hardening": ["@app/hardening@workspace:packages/hardening"],
 
     "@app/infra": ["@app/infra@workspace:packages/infra"],
 

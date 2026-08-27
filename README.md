@@ -47,6 +47,7 @@ The philosophy is documented in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) a
 | Sync | `mergeNotes` + leader election + BroadcastChannel |
 | Infra | Pluggable adapters: Logger, ObjectStore, ConfigStore |
 | Rate limiting | `@app/rate`: Durable Object per key + bounded in-memory fallback |
+| Secure headers | `@app/hardening`: one CSP/Permissions-Policy policy for API + SPA, immutable hashed assets |
 | Auth | Anonymous session in D1 (Bearer); cascade delete |
 | Tests | Vitest + fast-check + Playwright-BDD |
 | Security | Semgrep + OSV-Scanner + gitleaks per PR; ZAP + Schemathesis on staging |

@@ -85,6 +85,10 @@ Rate limiting is enforced at the edge. Secure headers and CORS locked to known o
 
 Rate limiting is enforced at the edge behind the `RateLimiter` adapter in `packages/rate` (`@app/rate`), a dedicated reusable package so forked projects inherit it via template-sync instead of copying it from `apps/`. In production the limiter is backed by one Durable Object per key (`RateLimiterDo` in `packages/rate`, re-exported by the Worker entrypoint for registration), which is single-threaded and strongly consistent, so the counter is global across Worker isolates and POPs. Each key's Durable Object stores a single fixed-window counter and clears its storage via an alarm when the window lapses, so state stays bounded. The in-memory implementation remains only as the bindingless fallback for local dev and tests (per-isolate, bounded to 10,000 keys) — it is not a global defense.
 
+### Secure headers
+
+Security headers (CSP, COOP/CORP, HSTS, nosniff, X-Frame-Options, Permissions-Policy) are one shared policy in `packages/hardening` (`@app/hardening`), a dedicated reusable package so forked projects inherit hardening via template-sync instead of copying middleware. Every request — API and SPA alike — flows through the Hono stack (wrangler `run_worker_first` + the SPA catch-all in `apps/api`), so headers, CORS, and rate limiting cover static assets too; content-hashed assets are served `immutable` while HTML keeps its revalidating default. ZAP baseline findings may only be suppressed in `.github/zap-rules.tsv`, each with an inline justification; the staging step runs with `fail_action: true`, so anything not suppressed fails the deploy workflow.
+
 ### Security scanning
 
 | Layer | Tool | When |
