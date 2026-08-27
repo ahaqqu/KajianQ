@@ -17,7 +17,7 @@ Most implementation in both projects is done by AI agents. This file is the **st
 
 Every external dependency and every pipeline stage is replaceable **by configuration, never by code edit**.
 
-- **Pipeline stages.** The DARS pipeline is typed interfaces in `rag-core`: `Router`, `Retriever`, `Assembler`, `Generator`, `Reviewer`. Implementations live behind those interfaces; stages communicate **in-process** (modular monolith — no HTTP between stages).
+- **Pipeline stages.** The DARS pipeline is typed interfaces in `rag-core`: `Router`, `Retriever`, `Assembler`, `Generator`, `Reviewer`. Implementations live behind those interfaces; stages communicate **in-process** (modular monolith — no HTTP between stages). A single `runPipeline` runner walks the five stages and owns the run scope; each stage receives a `RunContext` (per-run config + `dispose?()` teardown) — never wired ad hoc (ADR-0021).
 - **Vendors.** All LLM/embedding calls go through the `Provider` interface (`generate` / `stream` / `embed`). Vendor allowlist: **Gemini, Kimi, DeepSeek, Qwen only** (ADR-0009). Model choice per stage comes from config (`model_configs`) only.
 - **Persistence.** All database access goes through the `RagStore` adapter in `packages/infra` (ADR-0008). Blob storage goes through the `ObjectStore` adapter (R2 today).
 
@@ -26,6 +26,7 @@ Every external dependency and every pipeline stage is replaceable **by configura
 **Never hide the machinery** — this is a hard product boundary (spec §1.5), not a nice-to-have.
 
 - Every answer persists a full `answer_traces` record: router intent, sub-queries (including Query Expansion candidates per ADR-0014), retrieved chunks with scores (`rrf_score`, `rank_dense`, `rank_sparse`), routing filters, model identity, tokens in/out, latency, computed cost.
+- The `runPipeline` runner is the **single trace collection point**: it emits the deterministic stage-boundary events and assembles + validates the final `Trace`; stages append `llm_call`/`refusal`/`review` through `RunContext.record` — never by hand-assembling a trace (ADR-0021).
 - Every batch operation (ingestion, eval, glossary build, narrator resolution) produces an **ingestion/eval report**: counts, sampled-review scores, quarantine count, cost.
 - Traceability extends to provenance: `text_raw` is always preserved (R2 + DB), every Lemma ties back to evidence ayah pairs (`lemma_evidence`), disputed attributions are excluded or labeled — never silently ingested.
 
@@ -51,7 +52,7 @@ Every external dependency and every pipeline stage is replaceable **by configura
 8. **Use `CONTEXT.md` vocabulary exactly.** Kitab, Madzhab, Matn, Sharh, Grade, Isnad, Trace, Golden Set, Smart Router — with the definitions and `_Avoid_` lists given there. New domain terms are added to `CONTEXT.md` in the same PR that introduces them.
 9. **Tickets and PRs cite their sources.** Implementation PRs reference the issue + relevant ADRs. If you discover the issue contradicts an ADR, stop and surface it — do not pick one silently.
 10. **Respect go/no-go gates.** #9 (embedding benchmark) is the gate for the retrieval posture: AR-only vs. ID-fallback fusion is decided by its numbers. Kitab-scale ingestion (#22, #33, #35) must not start before it, because re-embedding is expensive. The dual-index schema is built up front so the choice stays reversible.
-11. **Traceability is typed, checked every change.** `Trace` / `TraceEvent` / `CostRecord` are defined in `packages/contracts`; pipeline, PWA, admin, and eval all consume that one shape (ADR-0007 amendment). Refusal/suppression events are recorded with reason and stage, not silently swallowed.
+11. **Traceability is typed, checked every change.** `Trace` / `TraceEvent` / `CostRecord` are defined in `packages/contracts`; pipeline, PWA, admin, and eval all consume that one shape (ADR-0007 amendment). `TraceEvent` is a strict discriminated union keyed on `kind` — an unknown kind or malformed `detail` fails `v.parse`. Refusal/suppression events are recorded with reason and stage, not silently swallowed.
 12. **Bound the generator's reasoning; bound the knowledge graph.** KajianQ never synthesizes novel rulings — it surfaces classical reasoning as cited and refuses when evidence is insufficient (ADR-0015). Knowledge layers are bounded, curated, human-reviewed structures — never corpus-wide inferred entity graphs; revisit needs ADR-0016's gate, in an ADR, not inline.
 
 ### Data integrity
@@ -107,7 +108,7 @@ Ticket labels on `ahaqqu/KajianQ` route the work to the right model:
 | Domain vocabulary | `CONTEXT.md` |
 | Architecture & plan | `kajianq-dars-spec.md` + GitHub issue #1 (v1), #27 (v2) |
 | Success factors & phase metrics | `docs/success-factors-and-metrics.md` |
-| Decisions | `adr/0005`–`0018` (note: 0010 superseded by 0014; 0006 amended by 0013; 0007 amended for the typed trace contract; 0015/0016 bound generator reasoning and knowledge-graph scope; 0017 anonymous sessions over hosted identity; 0018 AssembledContext carries structured turns + routed query) |
+| Decisions | `adr/0005`–`0021` (note: 0010 superseded by 0014; 0006 amended by 0013; 0007 amended for the typed trace contract; 0015/0016 bound generator reasoning and knowledge-graph scope; 0017 anonymous sessions over hosted identity; 0018 AssembledContext carries structured turns + routed query — amended by 0021; 0019 boundary gate scans SQL migrations; 0020 Neon dual-vector sizing; 0021 runPipeline runner owns run scope/config/trace — hand-rolled seams, cordis deferred) |
 | Current session handoff | `HANDOFF.md` |
 | Ticket board | `gh issue list --repo ahaqqu/KajianQ` |
 | Dataset attributions | `NOTICES/DATASETS.md` |
