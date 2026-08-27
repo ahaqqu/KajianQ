@@ -83,7 +83,7 @@ Rate limiting is enforced at the edge. Secure headers and CORS locked to known o
 
 ### Rate limiter
 
-Rate limiting is enforced at the edge behind the `RateLimiter` adapter in `packages/infra`. In production the limiter is backed by one Durable Object per key (`apps/api/src/durable/rate-limiter-do.ts`), which is single-threaded and strongly consistent, so the counter is global across Worker isolates and POPs. Each key's Durable Object stores a single fixed-window counter and clears its storage via an alarm when the window lapses, so state stays bounded. The in-memory implementation remains only as the bindingless fallback for local dev and tests (per-isolate, bounded to 10,000 keys) — it is not a global defense.
+Rate limiting is enforced at the edge behind the `RateLimiter` adapter in `packages/rate` (`@app/rate`), a dedicated reusable package so forked projects inherit it via template-sync instead of copying it from `apps/`. In production the limiter is backed by one Durable Object per key (`RateLimiterDo` in `packages/rate`, re-exported by the Worker entrypoint for registration), which is single-threaded and strongly consistent, so the counter is global across Worker isolates and POPs. Each key's Durable Object stores a single fixed-window counter and clears its storage via an alarm when the window lapses, so state stays bounded. The in-memory implementation remains only as the bindingless fallback for local dev and tests (per-isolate, bounded to 10,000 keys) — it is not a global defense.
 
 ### Security scanning
 
@@ -146,7 +146,8 @@ All API routes are under `/v1/`. The Service Worker uses versioned precache with
 ├── packages/
 │   ├── contracts/              # Valibot client ↔ server contracts
 │   ├── local-first/            # LWW CRDT, SCHEMA_VERSION, domain mapping; /client: sync loop, leader, migrations
-│   └── infra/                  # Adapters: Logger, ObjectStore, ConfigStore, RateLimiter
+│   ├── infra/                  # Adapters: Logger, ObjectStore, ConfigStore
+│   └── rate/                   # Rate limiting: RateLimiter adapters + RateLimiterDo; reusable across forks
 ├── .github/workflows/
 │   ├── ci.yml                  # PR gate
 │   ├── e2e.yml                 # Playwright-BDD vs wrangler dev

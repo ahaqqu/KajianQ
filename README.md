@@ -45,7 +45,8 @@ The philosophy is documented in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) a
 | Tooling | Bun · TypeScript · Wrangler |
 | Contracts | Valibot (`packages/contracts`) + hono-openapi |
 | Sync | `mergeNotes` + leader election + BroadcastChannel |
-| Infra | Pluggable adapters: Logger, ObjectStore, ConfigStore, RateLimiter |
+| Infra | Pluggable adapters: Logger, ObjectStore, ConfigStore |
+| Rate limiting | `@app/rate`: Durable Object per key + bounded in-memory fallback |
 | Auth | Anonymous session in D1 (Bearer); cascade delete |
 | Tests | Vitest + fast-check + Playwright-BDD |
 | Security | Semgrep + OSV-Scanner + gitleaks per PR; ZAP + Schemathesis on staging |
@@ -61,7 +62,8 @@ flowchart LR
 
   subgraph Edge["Cloudflare edge"]
     WHono["Hono API<br/>@app/api · /v1/*"]
-    Adapters["Adapters<br/>Logger · ObjectStore · ConfigStore · RateLimiter<br/>@app/infra"]
+    Adapters["Adapters<br/>Logger · ObjectStore · ConfigStore<br/>@app/infra"]
+    RateLimit["Rate limiting<br/>@app/rate · DO per key"]
   end
 
   subgraph Data["Cloudflare D1 (SQLite)"]
@@ -82,6 +84,8 @@ flowchart LR
   UI <-->|optimistic read/write| Store
   Store <-->|batched /v1/sync<br/>deltas only| WHono
   WHono -->|adapters| Adapters
+  WHono -->|429 on excess| RateLimit
+  RateLimit -->|one DO per key| DO[("RateLimiterDo<br/>global counter")]
   Adapters <--> DB
   Adapters <--> R2
   WHono -. serves .-> Static

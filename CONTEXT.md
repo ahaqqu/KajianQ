@@ -12,7 +12,8 @@ Working monorepo proving `docs/ARCHITECTURE.md` via a **Notes** CRUD vertical sl
 - `apps/web` — React PWA + TanStack Router (`/`, `/notes`); IndexedDB notes; leader sync; en/id
 - `packages/contracts` — Health, Note, Sync, Auth contracts (Valibot)
 - `packages/local-first` — `SCHEMA_VERSION=2`, LWW `mergeNotes` (+ property tests), clock discipline, tombstone GC, note-mapper; `/client` entrypoint: leader election, sync loop, persistence, migrations
-- `packages/infra` — Logger, ObjectStore, ConfigStore, RateLimiter adapters
+- `packages/infra` — Logger, ObjectStore, ConfigStore adapters
+- `packages/rate` — Rate limiting (`RateLimiter` adapters, `RateLimiterDo`); reusable across forks via template-sync
 - `tests/features` — Playwright-BDD
 
 ## Gates

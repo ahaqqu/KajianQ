@@ -5,7 +5,7 @@ import type { WorkerBindings } from "./env";
 /**
  * 429 through the real middleware stack. Without a `RATE_LIMITER` binding the
  * middleware falls back to the per-isolate in-memory limiter, so the 120
- * req/min budget in `rate-limit-mw.ts` is intact for this test. The loop
+ * req/min budget in `@app/rate` is intact for this test. The loop
  * drives the limiter to exhaustion instead of mocking it — if the 429 branch
  * in `lib/middleware.ts` is removed, this test fails (no 429 ever arrives).
  * Coupled to the 120/min constant by design: change the limit, update this.

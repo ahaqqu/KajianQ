@@ -4,7 +4,7 @@ import {
   createMemoryRateLimiter,
   fnv1aHex,
   tickFixedWindow,
-} from "./rate-limit";
+} from "./rate-limiter";
 
 describe("tickFixedWindow", () => {
   it("starts a fresh window", () => {

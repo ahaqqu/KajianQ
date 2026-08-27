@@ -15,12 +15,3 @@ export {
   createMemoryConfigStore,
   type ConfigStore,
 } from "./config-store";
-export {
-  createDurableObjectRateLimiter,
-  createMemoryRateLimiter,
-  fnv1aHex,
-  tickFixedWindow,
-  type RateLimiter,
-  type RateLimiterStubLike,
-  type WindowState,
-} from "./rate-limit";

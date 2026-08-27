@@ -7,6 +7,7 @@ Task guardrails for AI agents. Read before any task. For philosophy and rational
 These apply regardless of whether you are planning, implementing, reviewing, or debugging:
 
 - When touching business logic, you MUST use adapters in `packages/infra`. You MUST NEVER access `env.*` bindings directly.
+- When planning or implementing, you MUST decide whether a module is reusable across forked projects. Shared, project-agnostic logic (adapters, algorithms, protocols) MUST live in a dedicated `packages/<name>` workspace package (e.g. `@app/rate`), never in `apps/` — `apps/` is the per-project composition root (bindings, entrypoints, deploy config) and the part forks own and customize.
 - When adding a dependency, you MUST verify free-tier compatibility. You MUST NEVER add paid services to the critical path.
 - When adding user-facing strings, you MUST externalize for `en` and `id`. You MUST NEVER hardcode copy.
 - When logging, you MUST use the Logger adapter with structured JSON. You MUST NEVER use `console.log`.
@@ -16,7 +17,7 @@ These apply regardless of whether you are planning, implementing, reviewing, or 
 
 ## Template sync
 
-Forked projects sync template updates via `scripts/template-sync/cli.mjs`; `template-sync.json` is the ownership map and the single source of truth for which paths are template-owned. `overwrite` paths (listed in `template-sync.json`) are template-owned — never edit them in a project; `bun run template-gate` fails on drift. `merge` paths (`apps/`, `packages/`, `package.json`, `README.md`, `CONTEXT.md`) inherit changes — extend project code there. Unlisted paths are project-owned.
+Forked projects sync template updates via `scripts/template-sync/cli.mjs`; `template-sync.json` is the ownership map and the single source of truth for which paths are template-owned. `overwrite` paths (listed in `template-sync.json`) are template-owned — never edit them in a project; `bun run template-gate` fails on drift. `merge` paths (`apps/`, `packages/`, `package.json`, `README.md`, `CONTEXT.md`) inherit changes — extend project code there. Unlisted paths are project-owned. Because `packages/` is a merge path and `apps/` glue is fork-customized, keeping reusable code in `packages/` is what lets forks inherit template improvements (e.g. `@app/rate`) without copy-pasting.
 
 ## Payments
 

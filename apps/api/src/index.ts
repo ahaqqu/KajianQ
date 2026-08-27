@@ -5,10 +5,11 @@ import {
   createR2ObjectStore,
 } from "@app/infra";
 import { SCHEMA_VERSION } from "@app/local-first";
+import { RateLimiterDo } from "@app/rate/durable";
 import { createApi } from "./app";
 import type { WorkerBindings } from "./env";
 
-export { RateLimiterDo } from "./durable/rate-limiter-do";
+export { RateLimiterDo };
 
 const api = createApi();
 

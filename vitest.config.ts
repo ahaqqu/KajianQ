@@ -11,7 +11,7 @@ export default defineConfig({
         find: /^cloudflare:workers$/,
         replacement: fileURLToPath(
           new URL(
-            "./apps/api/src/test-utils/durable-object-stub.ts",
+            "./packages/rate/src/test-utils/durable-object-stub.ts",
             import.meta.url,
           ),
         ),
@@ -42,8 +42,8 @@ export default defineConfig({
         "**/client.ts",
         "**/*.d.ts",
         "apps/api/src/cf-types.ts",
-        "apps/api/src/durable/**",
-        "apps/api/src/test-utils/**",
+        "packages/rate/src/rate-limiter-do.ts",
+        "packages/rate/src/test-utils/**",
         "apps/web/src/main.tsx",
         "apps/web/src/components/**",
       ],

@@ -26,6 +26,7 @@
         "@app/contracts": "workspace:*",
         "@app/infra": "workspace:*",
         "@app/local-first": "workspace:*",
+        "@app/rate": "workspace:*",
         "@hono/standard-validator": "0.4.0",
         "@sentry/cloudflare": "10.70.0",
         "@standard-community/standard-json": "0.3.5",
@@ -91,6 +92,14 @@
         "typescript": "7.0.2",
       },
     },
+    "packages/rate": {
+      "name": "@app/rate",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@cloudflare/workers-types": "5.20260819.1",
+        "typescript": "7.0.2",
+      },
+    },
   },
   "overrides": {
     "brace-expansion": "5.0.8",
@@ -111,6 +120,8 @@
     "@app/infra": ["@app/infra@workspace:packages/infra"],
 
     "@app/local-first": ["@app/local-first@workspace:packages/local-first"],
+
+    "@app/rate": ["@app/rate@workspace:packages/rate"],
 
     "@app/web": ["@app/web@workspace:apps/web"],
 
@@ -1359,8 +1370,6 @@
     "xmlbuilder": ["xmlbuilder@15.1.1", "", {}, "sha512-yMqGBqtXyeN1e3TGYvgNgDVZ3j84W4cwkOXQswghol6APgZWaff9lnbvN7MHYJOiXsvGPXtjTYJEiC9J2wv9Eg=="],
 
     "yallist": ["yallist@3.1.1", "", {}, "sha512-a4UGQaWPH59mOXUYnAG2ewncQS4i4F43Tv3JoAM+s2VDAmS9NsK8GpDMLrCHPksFT7h3K6TOoUNn2pb7RoXx4g=="],
-
-    "yaml": ["yaml@2.9.0", "", { "bin": { "yaml": "bin.mjs" } }, "sha512-2AvhNX3mb8zd6Zy7INTtSpl1F15HW6Wnqj0srWlkKLcpYl/gMIMJiyuGq2KeI2YFxUPjdlB+3Lc10seMLtL4cA=="],
 
     "youch": ["youch@4.1.0-beta.10", "", { "dependencies": { "@poppinss/colors": "^4.1.5", "@poppinss/dumper": "^0.6.4", "@speed-highlight/core": "^1.2.7", "cookie": "^1.0.2", "youch-core": "^0.3.3" } }, "sha512-rLfVLB4FgQneDr0dv1oddCVZmKjcJ6yX6mS4pU82Mq/Dt9a3cLZQ62pDBL4AUO+uVrCvtWz3ZFUL2HFAFJ/BXQ=="],
 

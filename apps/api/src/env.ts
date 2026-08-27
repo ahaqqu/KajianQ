@@ -1,4 +1,5 @@
-import type { D1Database, R2Bucket, RateLimiterNamespace } from "./cf-types";
+import type { RateLimiterNamespace } from "@app/rate";
+import type { D1Database, R2Bucket } from "./cf-types";
 
 export type AppEnvName = "development" | "staging" | "production";
 

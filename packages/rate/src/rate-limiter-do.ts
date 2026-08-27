@@ -1,11 +1,14 @@
 import { DurableObject } from "cloudflare:workers";
-import { tickFixedWindow, type WindowState } from "@app/infra";
+import { tickFixedWindow, type WindowState } from "./rate-limiter";
 
 /**
  * One Durable Object per rate-limit key (see `createDurableObjectRateLimiter`).
  * Single-threaded and strongly consistent, so the counter is global across
  * Worker isolates and POPs. The alarm clears storage when the window lapses,
  * keeping state bounded to a single `{ count, start }` entry per active key.
+ *
+ * Adopting Workers must re-export this class from the Worker entrypoint and
+ * bind it via `wrangler.toml` (see `packages/rate/README.md`).
  */
 export class RateLimiterDo extends DurableObject {
   /** RPC: atomic check-and-increment against a fixed window. */
