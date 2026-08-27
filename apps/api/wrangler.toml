@@ -23,6 +23,16 @@ directory = "../web/dist"
 not_found_handling = "single-page-application"
 run_worker_first = true
 
+[[durable_objects.bindings]]
+name = "RATE_LIMITER"
+class_name = "RateLimiterDo"
+
+# Durable Object classes register via migrations, not a pre-provisioned UUID.
+# Applies to both production and staging (SQLite-backed, Workers Free plan).
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RateLimiterDo"]
+
 [observability]
 enabled = true
 

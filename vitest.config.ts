@@ -1,6 +1,23 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  resolve: {
+    alias: [
+      {
+        // The Workers runtime provides `cloudflare:workers`; Node (vitest)
+        // does not. Tests that import the entrypoint (which re-exports the
+        // Durable Object class) resolve it to a minimal stub instead.
+        find: /^cloudflare:workers$/,
+        replacement: fileURLToPath(
+          new URL(
+            "./apps/api/src/test-utils/durable-object-stub.ts",
+            import.meta.url,
+          ),
+        ),
+      },
+    ],
+  },
   test: {
     include: [
       "packages/**/src/**/*.{test,prop.test}.ts",
@@ -25,6 +42,7 @@ export default defineConfig({
         "**/client.ts",
         "**/*.d.ts",
         "apps/api/src/cf-types.ts",
+        "apps/api/src/durable/**",
         "apps/api/src/test-utils/**",
         "apps/web/src/main.tsx",
         "apps/web/src/components/**",

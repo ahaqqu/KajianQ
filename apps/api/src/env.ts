@@ -1,4 +1,4 @@
-import type { D1Database, R2Bucket } from "./cf-types";
+import type { D1Database, R2Bucket, RateLimiterNamespace } from "./cf-types";
 
 export type AppEnvName = "development" | "staging" | "production";
 
@@ -7,6 +7,7 @@ export type WorkerBindings = {
   APP_ENV?: string;
   DB?: D1Database;
   BUCKET?: R2Bucket;
+  RATE_LIMITER?: RateLimiterNamespace;
   ALLOWED_ORIGINS?: string;
   SENTRY_DSN?: string;
 };

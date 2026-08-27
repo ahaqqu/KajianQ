@@ -8,6 +8,8 @@ import { SCHEMA_VERSION } from "@app/local-first";
 import { createApi } from "./app";
 import type { WorkerBindings } from "./env";
 
+export { RateLimiterDo } from "./durable/rate-limiter-do";
+
 const api = createApi();
 
 function isApiPath(pathname: string): boolean {

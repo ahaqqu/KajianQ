@@ -81,9 +81,9 @@ Every external boundary is validated. Sessions are anonymous Bearer tokens store
 
 Rate limiting is enforced at the edge. Secure headers and CORS locked to known origins are mandatory on all responses. Account deletion cascades across all data stores for GDPR readiness. Payment webhooks verify signatures and are idempotent.
 
-### Rate limiter limitations
+### Rate limiter
 
-The in-memory rate limiter (`apps/api/src/lib/rate-limit-mw.ts`) is per-isolate: each Worker isolate keeps its own counter, counters reset on cold starts, and there is no shared state across Cloudflare POPs or isolates. A determined attacker can exceed the nominal limit by routing requests through multiple POPs or awaiting isolate eviction. This is an accepted free-tier trade-off. The upgrade path is Durable Objects, which provide a single shared counter per key with a global view. Until then, treat the limiter as best-effort mitigation, not a hard guarantee.
+Rate limiting is enforced at the edge behind the `RateLimiter` adapter in `packages/infra`. In production the limiter is backed by one Durable Object per key (`apps/api/src/durable/rate-limiter-do.ts`), which is single-threaded and strongly consistent, so the counter is global across Worker isolates and POPs. Each key's Durable Object stores a single fixed-window counter and clears its storage via an alarm when the window lapses, so state stays bounded. The in-memory implementation remains only as the bindingless fallback for local dev and tests (per-isolate, bounded to 10,000 keys) — it is not a global defense.
 
 ### Security scanning
 
@@ -226,6 +226,7 @@ Gated by: `bun run agentic-limits` (300-line / 5-import caps; exemptions only fo
 | Database | Cloudflare D1 | Free tier, SQLite-compatible. Row-level authorization. |
 | Storage | R2 via ObjectStore adapter | Swappable for S3, MinIO, or local filesystem. |
 | Config | ConfigStore adapter | In-memory implementation ships with the template; a D1-backed store is a consuming-project step. |
+| Rate limiting | RateLimiter adapter (Durable Objects) | One DO per key: global counter, alarm-based eviction; in-memory fallback for dev/tests. |
 | Jobs | Cron Triggers | Daily cron writes via the ObjectStore adapter. |
 | Payments | Deferred | Not in the template. When added: Xendit (ID) and/or Polar MoR behind one adapter, per-transaction fees only — see AGENTS.md and the `payment-integration` skill. |
 | Client state | Custom LWW CRDT (`@app/local-first`) | Per-record LWW-element-set + tombstones. Only source of truth. |

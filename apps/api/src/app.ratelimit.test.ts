@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { createApi } from "./app";
+import type { WorkerBindings } from "./env";
 
 /**
- * 429 through the real middleware stack: a fresh module graph per test file
- * means a fresh global rate limiter, so the 120 req/min budget in
- * `rate-limit-mw.ts` is intact here. The loop drives the limiter to
- * exhaustion instead of mocking it — if the 429 branch in
- * `lib/middleware.ts` is removed, this test fails (no 429 ever arrives).
+ * 429 through the real middleware stack. Without a `RATE_LIMITER` binding the
+ * middleware falls back to the per-isolate in-memory limiter, so the 120
+ * req/min budget in `rate-limit-mw.ts` is intact for this test. The loop
+ * drives the limiter to exhaustion instead of mocking it — if the 429 branch
+ * in `lib/middleware.ts` is removed, this test fails (no 429 ever arrives).
  * Coupled to the 120/min constant by design: change the limit, update this.
  */
 const env = { ASSETS: { fetch } };
@@ -23,5 +24,26 @@ describe("rate limiting", () => {
     expect(await res.json()).toEqual({ error: "rate_limited" });
     // Correlation ids are set before the rate-limit short-circuit.
     expect(res.headers.get("X-Correlation-Id")).toBeTruthy();
+  });
+
+  it("routes through the Durable Object binding when present", async () => {
+    const fakeNamespace = {
+      idFromName: (name: string) => ({ name }),
+      get: (_id: { name: string }) => ({
+        async check(_limit: number, _windowMs: number): Promise<boolean> {
+          return false;
+        },
+      }),
+    };
+    const doEnv = {
+      ASSETS: { fetch },
+      RATE_LIMITER: fakeNamespace,
+    } as unknown as WorkerBindings;
+    const api = createApi();
+    // The fake stub denies immediately, proving the middleware used the DO
+    // path (the in-memory fallback would allow the first request).
+    const res = await api.request("/v1/health", {}, doEnv);
+    expect(res.status).toBe(429);
+    expect(await res.json()).toEqual({ error: "rate_limited" });
   });
 });
