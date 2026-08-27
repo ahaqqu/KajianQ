@@ -12,7 +12,11 @@ vendor client directly (ADR-0008, ADR-0009). What lives here:
   similarity-search SQL builder (pure, unit-tested). Engine/app code consumes
   the interface only.
 - **`ObjectStore`** — R2. Holds raw source archives and `text_raw` backups.
-- **`Logger` / `ConfigStore` / `RateLimiter`** — template runtime adapters.
+- **`Logger` / `ConfigStore`** — template runtime adapters.
+- **`RateLimiter`** — moved out of this package into `packages/rate`
+  (`@app/rate`), a dedicated reusable package inherited from the template;
+  the app resolves its backend from the `RATE_LIMITER` Durable Object
+  binding via `resolveRateLimiter`.
 
 > **Domain boundary (AGENTS.md rule 1, ADR-0014 amendment).** This package is
 > domain-agnostic. Product-owned tables (`principle_index`, `golden_questions`)

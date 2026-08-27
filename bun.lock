@@ -25,6 +25,7 @@
       "dependencies": {
         "@app/contracts": "workspace:*",
         "@app/infra": "workspace:*",
+        "@app/rate": "workspace:*",
         "@hono/standard-validator": "0.4.0",
         "@sentry/cloudflare": "10.70.0",
         "@standard-community/standard-json": "0.3.5",
@@ -86,6 +87,9 @@
     "packages/infra": {
       "name": "@app/infra",
       "version": "0.0.1",
+      "bin": {
+        "db-migrate": "./scripts/db-migrate.mjs",
+      },
       "dependencies": {
         "@app/contracts": "workspace:*",
         "@aws-sdk/client-s3": "^3.1116.0",
@@ -123,6 +127,14 @@
         "typescript": "7.0.2",
       },
     },
+    "packages/rate": {
+      "name": "@app/rate",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@cloudflare/workers-types": "5.20260819.1",
+        "typescript": "7.0.2",
+      },
+    },
   },
   "overrides": {
     "brace-expansion": "5.0.8",
@@ -149,6 +161,8 @@
     "@app/rag-core": ["@app/rag-core@workspace:packages/rag-core"],
 
     "@app/rag-ingest": ["@app/rag-ingest@workspace:packages/rag-ingest"],
+
+    "@app/rate": ["@app/rate@workspace:packages/rate"],
 
     "@app/web": ["@app/web@workspace:apps/web"],
 
@@ -1459,6 +1473,8 @@
     "youch-core": ["youch-core@0.3.3", "", { "dependencies": { "@poppinss/exception": "^1.2.2", "error-stack-parser-es": "^1.0.5" } }, "sha512-ho7XuGjLaJ2hWHoK8yFnsUGy2Y5uDpqSTq1FkHLK4/oqKtyUU1AFbOOxY4IpC9f0fTLjwYbslUz0Po5BpD1wrA=="],
 
     "@apm-js-collab/code-transformer/source-map": ["source-map@0.6.1", "", {}, "sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g=="],
+
+    "@app/rate/@cloudflare/workers-types": ["@cloudflare/workers-types@5.20260819.1", "", {}, "sha512-nUoWrl+16WfocHgXAARAvpQ7dLMF4tSmTvvgLLg5clYhP2j8CYerZ2KC8agnlWHqOAKp45B3F+LcsjNZrZyiRA=="],
 
     "@babel/code-frame/js-tokens": ["js-tokens@4.0.0", "", {}, "sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ=="],
 

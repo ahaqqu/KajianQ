@@ -60,6 +60,10 @@ Every external dependency and every pipeline stage is replaceable **by configura
 11. **Never overwrite raw source data.** `text_raw` and original exports are immutable; cleaning/translation always writes new fields. Re-runnable ingestion must be idempotent.
 12. **Matn and Sharh are never mixed in one chunk.** Disputed attributions and low-confidence reconciliation matches are quarantined or labeled, never force-merged.
 
+### Reuse and template sync
+
+13. **Shared, project-agnostic logic lives in `packages/`, never `apps/`.** When planning or implementing, decide whether a module is reusable across forked projects (adapters, algorithms, protocols). If yes, it belongs in a dedicated `packages/<name>` workspace package (e.g. `@app/rate`): `packages/` is a template-sync merge path, so forks inherit template improvements there, while `apps/` is the per-project composition root (bindings, entrypoints, deploy config) that each fork owns and customizes — code placed in `apps/` forces every fork to copy-paste template fixes by hand.
+
 ---
 
 ## 3. Standard workflow for every ticket

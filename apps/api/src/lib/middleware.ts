@@ -1,4 +1,9 @@
-import { createRequestContext, corsGuard, allowRequest } from "./";
+import {
+  allowRequest,
+  corsGuard,
+  createRequestContext,
+  resolveRateLimiter,
+} from "./";
 import type { ApiEnv, RateLimiter } from "../env";
 import { secureHeaders } from "hono/secure-headers";
 import { trimTrailingSlash } from "hono/trailing-slash";
@@ -30,7 +35,10 @@ export function applyMiddleware(api: Hono<ApiEnv>, opts?: MiddlewareOpts): void 
     c.set("ctx", ctx);
     c.header("X-Correlation-Id", id);
     const ip = c.req.header("CF-Connecting-IP") ?? "local";
-    if (!(await allowRequest(`ip:${ip}`, opts?.limiter, opts?.limit))) {
+    // Injected limiter wins (tests); otherwise resolve from bindings:
+    // Durable Objects when `RATE_LIMITER` is bound (global across isolates),
+    // else the bounded in-memory fallback.
+    if (!(await allowRequest(`ip:${ip}`, opts?.limiter ?? resolveRateLimiter(c.env), opts?.limit))) {
       return c.json({ error: "rate_limited" }, 429);
     }
     await next();

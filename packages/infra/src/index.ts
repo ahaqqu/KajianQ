@@ -16,10 +16,6 @@ export {
   type ConfigStore,
 } from "./config-store";
 export {
-  createMemoryRateLimiter,
-  type RateLimiter,
-} from "./rate-limit";
-export {
   createNeonRagStore,
 } from "./rag-store-neon";
 export { type NeonRagStoreOptions } from "./rag-store-neon-logging";
