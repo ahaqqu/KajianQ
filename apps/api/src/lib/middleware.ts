@@ -4,8 +4,8 @@ import {
   createRequestContext,
   resolveRateLimiter,
 } from "./";
+import { installSecurityHeaders } from "@app/hardening";
 import type { ApiEnv, RateLimiter } from "../env";
-import { secureHeaders } from "hono/secure-headers";
 import { trimTrailingSlash } from "hono/trailing-slash";
 import type { Hono } from "hono";
 
@@ -14,19 +14,7 @@ export type MiddlewareOpts = { limiter?: RateLimiter; limit?: number };
 /** Installs the cross-cutting middleware every route shares. */
 export function applyMiddleware(api: Hono<ApiEnv>, opts?: MiddlewareOpts): void {
   api.use("*", trimTrailingSlash());
-  api.use("*", secureHeaders({
-    contentSecurityPolicy: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:", "blob:"],
-      fontSrc: ["'self'", "data:"],
-      connectSrc: ["'self'", "https://sentry.io"],
-      objectSrc: ["'none'"],
-      baseUri: ["'self'"],
-      frameAncestors: ["'none'"],
-    },
-  }));
+  installSecurityHeaders(api);
   api.use("*", corsGuard);
   api.use("*", async (c, next) => {
     const id = c.req.header("X-Correlation-Id") ?? crypto.randomUUID();

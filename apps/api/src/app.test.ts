@@ -24,15 +24,25 @@ const env = { ASSETS: mockAssets() };
 const cspDefaults = [
   "default-src 'self'",
   "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
   "frame-ancestors 'none'",
 ];
 
-function assertCsp(res: Response) {
+function assertSecurityHeaders(res: Response) {
   const csp = res.headers.get("Content-Security-Policy");
   expect(csp).toBeTruthy();
   for (const directive of cspDefaults) {
     expect(csp).toContain(directive);
   }
+  expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
+  expect(res.headers.get("X-Frame-Options")).toBe("SAMEORIGIN");
+  expect(res.headers.get("Cross-Origin-Opener-Policy")).toBe("same-origin");
+  expect(res.headers.get("Cross-Origin-Resource-Policy")).toBe("same-origin");
+  expect(res.headers.get("Permissions-Policy")).toBe(
+    "camera=(), microphone=(), geolocation=()",
+  );
+  expect(res.headers.get("Strict-Transport-Security")).toContain("max-age=");
 }
 
 type Doc = {
@@ -94,23 +104,32 @@ describe("createApi routes", () => {
     expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 
-  it("emits a restrictive Content-Security-Policy header on API routes", async () => {
+  it("emits the shared security headers on API routes", async () => {
     const res = await createApi().request("/v1/health", {}, env);
-    assertCsp(res);
+    assertSecurityHeaders(res);
   });
 
-  it("emits a restrictive CSP header on the SPA root", async () => {
+  it("emits the shared security headers on the SPA root", async () => {
     const res = await createApi().request("/", {}, env);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/html");
-    assertCsp(res);
+    assertSecurityHeaders(res);
   });
 
-  it("emits a restrictive CSP header on a client-side route", async () => {
+  it("emits the shared security headers on a client-side route", async () => {
     const res = await createApi().request("/chat", {}, env);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/html");
-    assertCsp(res);
+    assertSecurityHeaders(res);
+  });
+
+  it("serves content-hashed assets with immutable caching", async () => {
+    const res = await createApi().request("/assets/index-CTkTHNJp.js", {}, env);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Cache-Control")).toBe(
+      "public, max-age=31536000, immutable",
+    );
+    assertSecurityHeaders(res);
   });
 });
 

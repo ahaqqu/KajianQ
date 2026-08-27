@@ -16,3 +16,15 @@ template-sync) into their steps, so they are fork-owned in practice. Decided in
 #4's PR review; staging.yml re-forked after a template auto-resolution
 regressed the #3 D1 strip; template-sync.yml re-forked after the #54 Neon
 commit broke the sync run (missing install, bun 1.3 lockfile mismatch).
+
+## Why packages/hardening and .github/zap-rules.tsv are in `merge`
+
+`packages/hardening` (`@app/hardening`) is the template's single source of
+truth for security headers (CSP, Permissions-Policy, COOP/CORP) and the SPA
+catch-all serving rules — the KajianQ copy must stay identical to upstream so
+template fixes land here via sync instead of fork-drifting (same reasoning as
+`@app/rate`). `.github/zap-rules.tsv` is the sanctioned ZAP suppression list:
+suppression entries carry their justification inline in the file, so it is
+kept template-owned (synced) rather than edited ad hoc in the fork. Added
+with the #38 header-hardening work; the upstream counterpart PR lands the
+same files in the template repo.

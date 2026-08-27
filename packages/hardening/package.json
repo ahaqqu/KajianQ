@@ -1,0 +1,19 @@
+{
+  "name": "@app/hardening",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "hono": ">=4.13.0 <5"
+  },
+  "devDependencies": {
+    "hono": ">=4.13.0 <5",
+    "typescript": "7.0.2"
+  }
+}
