@@ -4,6 +4,8 @@
 
 Accepted (2026-08-23). Bounds the `Generator`/`Assembler`/`Reviewer` interfaces in `packages/rag-core` before #5 implements the `Generator` and #6 implements the `Retriever`. Supersedable by a future ADR if streaming or multi-turn chat demands a richer turn shape.
 
+Amended (2026-08-26, ADR-0021): stage methods gain a `run: RunContext` parameter (single trace collection point + per-run disposal), and `Generator`/`Reviewer` now return a `Draft` (`{ text }`) instead of `Answer` — the runner owns the final `Trace`. No implementation existed yet at the time of the amendment, so the change is non-breaking for callers.
+
 ## Context
 
 The foundation PR (#36) shipped the five pipeline interfaces in `packages/rag-core/src/pipeline.ts`. A thermos review flagged two shapes that would force breaking changes once #5/#6 implement against them:

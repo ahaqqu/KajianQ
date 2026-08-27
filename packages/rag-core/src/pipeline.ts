@@ -1,4 +1,5 @@
 import type { Trace } from "@app/contracts";
+import type { RunContext } from "./context";
 
 /**
  * Caller-chosen filter dimensions, passed through untouched. The engine is
@@ -58,6 +59,16 @@ export type AssembledContext<TFilters extends Record<string, unknown> = DefaultF
   turns: readonly Turn[];
 };
 
+/**
+ * The Generator's draft — rendered text only. The run owns the full Trace as
+ * its single collection point (ADR-0007, ADR-0021), so a stage that calls the
+ * LLM records its `llm_call`/`refusal` events through the run's sink instead
+ * of returning a half-built trace.
+ */
+export type Draft = {
+  text: string;
+};
+
 /** The pipeline result: the rendered answer plus its full Trace (ADR-0007). */
 export type Answer = {
   text: string;
@@ -67,15 +78,18 @@ export type Answer = {
 /**
  * Router: intent & principle detection, query decomposition, source routing.
  * Not a mere classifier. Implementations hold an injected Provider; they never
- * name a vendor.
+ * name a vendor. Receives the run so it can record `llm_call` cost and defer
+ * per-run resources.
  */
 export interface Router<TFilters extends Record<string, unknown> = DefaultFilters> {
-  route(query: Query<TFilters>): Promise<RoutedQuery<TFilters>>;
+  route(query: Query<TFilters>, run: RunContext<TFilters>): Promise<RoutedQuery<TFilters>>;
+  dispose?(): void | Promise<void>;
 }
 
 /** Retriever: hybrid search over the store, fused and scored. */
 export interface Retriever<TFilters extends Record<string, unknown> = DefaultFilters> {
-  retrieve(routed: RoutedQuery<TFilters>): Promise<readonly Chunk[]>;
+  retrieve(routed: RoutedQuery<TFilters>, run: RunContext<TFilters>): Promise<readonly Chunk[]>;
+  dispose?(): void | Promise<void>;
 }
 
 /**
@@ -83,23 +97,35 @@ export interface Retriever<TFilters extends Record<string, unknown> = DefaultFil
  * ordered turn list; the Generator owns final prompt assembly.
  */
 export interface Assembler<TFilters extends Record<string, unknown> = DefaultFilters> {
-  assemble(query: Query<TFilters>, chunks: readonly Chunk[]): Promise<AssembledContext<TFilters>>;
+  assemble(
+    query: Query<TFilters>,
+    chunks: readonly Chunk[],
+    run: RunContext<TFilters>,
+  ): Promise<AssembledContext<TFilters>>;
+  dispose?(): void | Promise<void>;
 }
 
 /**
  * Generator: produce the grounded answer from the assembled turns. Receives
  * the routed query (intent, filters) so it can branch the system prompt and
  * apply citation discipline. Calls the LLM through the Provider seam and
- * records tokens/latency/cost into the trace (ADR-0018).
+ * records tokens/latency/cost into the run's trace (ADR-0018, ADR-0007).
  */
 export interface Generator<TFilters extends Record<string, unknown> = DefaultFilters> {
-  generate(context: AssembledContext<TFilters>): Promise<Answer>;
+  generate(context: AssembledContext<TFilters>, run: RunContext<TFilters>): Promise<Draft>;
+  dispose?(): void | Promise<void>;
 }
 
 /**
  * Reviewer: cross-checks the draft against the retrieved evidence and emits a
- * verdict; refusals/suppressions are recorded with reason and stage.
+ * verdict; refusals/suppressions are recorded with reason and stage through
+ * the run's sink.
  */
 export interface Reviewer<TFilters extends Record<string, unknown> = DefaultFilters> {
-  review(answer: Answer, context: AssembledContext<TFilters>): Promise<Answer>;
+  review(
+    draft: Draft,
+    context: AssembledContext<TFilters>,
+    run: RunContext<TFilters>,
+  ): Promise<Draft>;
+  dispose?(): void | Promise<void>;
 }

@@ -153,7 +153,7 @@ run("RagStore contract (real Neon)", () => {
       events: [
         {
           stage: "generator" as const,
-          kind: "llm_call",
+          kind: "llm_call" as const,
           cost: {
             modelId: "cfg:generator",
             tokensIn: 120,
