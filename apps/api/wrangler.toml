@@ -11,6 +11,17 @@ compatibility_flags = ["nodejs_compat"]
 binding = "BUCKET"
 bucket_name = "kajianq-raw"
 
+[[durable_objects.bindings]]
+name = "RATE_LIMITER"
+class_name = "RateLimiterDo"
+
+# Durable Object classes register via migrations, not a pre-provisioned UUID.
+# Top-level, so it applies to production and staging (SQLite-backed, Workers
+# Free plan). Backs @app/rate — one DO per key, global across isolates.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RateLimiterDo"]
+
 [assets]
 binding = "ASSETS"
 directory = "../web/dist"

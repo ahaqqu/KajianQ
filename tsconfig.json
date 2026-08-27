@@ -2,9 +2,14 @@
   "extends": "./tsconfig.base.json",
   "include": [
     "packages/*/src/**/*.ts",
-    "apps/api/src/**/*.ts",
     "apps/web/src/**/*.{ts,tsx}",
     "vitest.config.ts"
   ],
-  "exclude": ["**/dist/**", "node_modules"]
+  "exclude": [
+    "**/dist/**",
+    "node_modules",
+    // @app/rate owns its tsconfig: its Durable Object class needs
+    // @cloudflare/workers-types, which conflicts with the umbrella's DOM lib.
+    "packages/rate/src"
+  ]
 }

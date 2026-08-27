@@ -1,6 +1,10 @@
 import * as Sentry from "@sentry/cloudflare";
+import { RateLimiterDo } from "@app/rate/durable";
 import { createApi } from "./app";
 import type { WorkerBindings } from "./env";
+
+// Wrangler registers Durable Object classes re-exported from the entrypoint.
+export { RateLimiterDo };
 
 const api = createApi();
 

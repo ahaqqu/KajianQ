@@ -10,10 +10,10 @@ import { registerRoutes } from "./routes";
  * OpenAPI doc share one source of truth.
  *
  * `opts.limiter` lets tests inject an isolated `RateLimiter` instead of
- * exhausting the module-level global limiter, and `opts.limit` lets tests use
+ * exhausting the shared limiter, and `opts.limit` lets tests use
  * a small budget instead of the magic 120/min production default; when either
- * is omitted, production uses the `globalLimiter` and `120` from
- * `rate-limit-mw.ts`.
+ * is omitted, production resolves the limiter from the `RATE_LIMITER`
+ * binding via `resolveRateLimiter` (`@app/rate`).
  */
 export function createApi(opts?: MiddlewareOpts) {
   const api = new Hono<ApiEnv>();

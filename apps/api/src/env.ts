@@ -1,5 +1,5 @@
 import type { Logger, RagStore } from "@app/infra";
-import type { RateLimiter } from "./lib/rate-limit-mw";
+import type { RateLimiterNamespace } from "@app/rate";
 import type { R2Bucket } from "./cf-types";
 
 export type AppEnvName = "development" | "staging" | "production";
@@ -15,6 +15,7 @@ export type WorkerBindings = {
   ASSETS: { fetch: typeof fetch };
   APP_ENV?: string;
   BUCKET?: R2Bucket;
+  RATE_LIMITER?: RateLimiterNamespace;
   ALLOWED_ORIGINS?: string;
   SENTRY_DSN?: string;
 };
@@ -33,7 +34,7 @@ export type ApiEnv = {
   Variables: { correlationId: string; ctx: RequestContext; authed: Authed };
 };
 
-export type { RateLimiter } from "./lib/rate-limit-mw";
+export type { RateLimiter } from "@app/rate";
 
 export function resolveEnvName(raw: string | undefined): AppEnvName {
   if (raw === "staging" || raw === "production" || raw === "development") {
