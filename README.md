@@ -1,83 +1,103 @@
 # Agentic Project Template
 
-Working full-stack starter for AI-assisted product development: Cloudflare Workers + React PWA + agent skills.
+A working full-stack starter for AI-assisted product development: Cloudflare Workers + React PWA + an agent skill pipeline. It is a real, runnable app built to prove an architecture while giving agents and humans a repeatable path from idea to production. Cloudflare is the shipped example, but every external dependency is a swappable adapter, so moving to other infrastructure is supported by design.
 
-**Tracer feature:** local-first **Notes** CRUD (create / read / update-via-sync / delete) with D1 sync. Payments are out of scope for this template.
+## What it is
 
-## Purpose
+A working, runnable foundation for building AI-assisted products: a real app plus a pipeline of instructions that lets an AI agent take a feature from idea to shipped code. It's built around a set of principles, and every principle is enforced by an automated gate in CI. A documented principle without a gate does not exist:
 
-| Goal | How |
+- **Cost:** you can run and scale an app without spending much until you have users paying you.
+- **Local-first:** your app works offline, so users keep using it when the network is poor or absent.
+- **Performance:** it loads and feels fast even on slow devices and connections.
+- **Cross-platform:** one codebase reaches web, Android, and iOS instead of maintaining several.
+- **Polished:** the product feels native and accessible, not like a starter skeleton.
+- **Secure:** users' data and sessions are protected by default, so you don't ship common vulnerabilities.
+- **Observable:** you can see what is failing and why, even before users report it.
+- **Maintainable:** you can change and extend the codebase over time without it becoming a mess.
+- **Available:** the service keeps working under load and can be restored after failures.
+- **Reliable:** changes ship with confidence because tests and checks catch problems early.
+- **Reproducible:** anyone on any machine gets the same setup and the same results.
+- **Agentic:** AI agents can work on the codebase consistently, which is the whole point of this template.
+
+## Why use it
+
+| Problem it solves | How |
 |---|---|
-| Cheap | Cloudflare free tier |
-| Offline-first | LWW merge (`@app/local-first`) + IndexedDB + batched `/v1/sync` |
-| Fast | Bundle &lt;200 KB gzip; PWA |
-| Agent-ready | Valibot contracts, adapters, ≤300-line files, skill pipeline |
-| Quality | Unit, property, BDD, size-limit, security CI |
+| Cheap to run and scale from zero | Cloudflare free tier; static assets are unbilled |
+| Not locked into any vendor | Every external dependency sits behind a swappable adapter in `packages/infra` |
+| Works offline, not just online | LWW merge (`@app/local-first`) + IndexedDB + batched `/v1/sync` |
+| Fast on slow hardware | Bundle <200 KB gzip; PWA; cache-first service worker |
+| Ready for AI agents | Valibot contracts, pluggable adapters, ≤300-line files, skill pipeline |
+| Quality you can rely on | Unit, property, BDD, size-limit, security CI, all gated |
 
-Docs: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · [`AGENTS.md`](AGENTS.md) · [`CONTEXT.md`](CONTEXT.md)
+The philosophy is documented in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and enforced by [`AGENTS.md`](AGENTS.md). See [`CONTEXT.md`](CONTEXT.md) for a mental model of the repo.
 
-## Stack
+## How it works
+
+### The stack
 
 | Layer | Choice |
 |---|---|
-| Edge | Workers + Static Assets + D1 + R2 + Cron |
+| Edge | Workers + Static Assets + D1 (SQLite) + R2 + Cron |
 | API | Hono `/v1/*` |
 | Web | React 19 + TanStack Router/Query + Tailwind + PWA |
+| Build | Vite |
+| Tooling | Bun · TypeScript · Wrangler |
 | Contracts | Valibot (`packages/contracts`) + hono-openapi |
 | Sync | `mergeNotes` + leader election + BroadcastChannel |
-| Infra | Logger, ObjectStore, ConfigStore, RateLimiter |
+| Infra | Pluggable adapters: Logger, ObjectStore, ConfigStore, RateLimiter |
 | Auth | Anonymous session in D1 (Bearer); cascade delete |
 | Tests | Vitest + fast-check + Playwright-BDD |
+| Security | Semgrep + OSV-Scanner + gitleaks per PR; ZAP + Schemathesis on staging |
 
-## Setup a new project
+### Runtime flow
 
-```bash
-bun install
-cp .env.example .env   # or create .env with CF tokens
-# edit apps/api/wrangler.toml name + D1/R2 ids if forking
-bunx wrangler d1 create <your-db>          # prints a UUID
-bunx wrangler r2 bucket create <your-bucket>
-bun run db:migrate:local
-bunx wrangler d1 migrations apply DB --remote -c apps/api/wrangler.toml   # uses the binding, not the name
-bun run check && bun run test && bun run e2e
-bun run deploy
+```mermaid
+flowchart LR
+  subgraph Client["apps/web (React 19 PWA)"]
+    UI["UI / Router<br/>TanStack Router + Query"]
+    Store["Local-first store<br/>@app/local-first · IndexedDB<br/>LWW CRDT + leader + tombstones"]
+  end
+
+  subgraph Edge["Cloudflare edge"]
+    WHono["Hono API<br/>@app/api · /v1/*"]
+    Adapters["Adapters<br/>Logger · ObjectStore · ConfigStore · RateLimiter<br/>@app/infra"]
+  end
+
+  subgraph Data["Cloudflare D1 (SQLite)"]
+    DB[("notes · sessions<br/>raw SQL migrations<br/>SCHEMA_VERSION")]
+  end
+
+  subgraph Backing["Other Cloudflare bindings"]
+    R2[("R2<br/>ObjectStore")]
+    Static["Static Assets<br/>app shell"]
+  end
+
+  subgraph Skills["Agent skill pipeline"]
+    S1["grill-with-docs → to-spec → to-tickets"]
+    S2["plan-review → guided-implementation"]
+    S3["writing-tests → pr-creation → code-review → ship"]
+  end
+
+  UI <-->|optimistic read/write| Store
+  Store <-->|batched /v1/sync<br/>deltas only| WHono
+  WHono -->|adapters| Adapters
+  Adapters <--> DB
+  Adapters <--> R2
+  WHono -. serves .-> Static
+  UI -. precache .-> Static
+  Skills -. drives .-> Edge
+  Skills -. drives .-> Client
 ```
 
-`.env` (gitignored):
+**Reading the diagram**
 
-```bash
-CLOUDFLARE_ACCOUNT_ID=…
-CLOUDFLARE_API_TOKEN=…   # Workers Scripts:Edit, D1:Edit, R2:Edit
-```
+- **The client store is the source of truth:** reads and writes succeed offline; sync is opportunistic, never blocking (`docs/ARCHITECTURE.md` §2).
+- **The edge is stateless:** each request carries enough context to merge and persist independently. The client never talks to D1 directly, so the API mediates every read and write.
+- **Adapters isolate the platform** (`@app/infra`): a new infra layer is a swap of adapter implementations, not a rewrite of business logic.
+- **The skill pipeline drives every change** end-to-end, from design to ship. Agents and humans follow the same path.
 
-> **D1 `database_id`:** `wrangler.toml` ships a `replace-me-with-your-d1-uuid`
-> sentinel. Replace it with the UUID from `wrangler d1 create` before your
-> first remote deploy, or inject the UUID via a CI secret at deploy time
-> (wrangler does not interpolate env vars in `wrangler.toml` — substitute
-> the value before calling `wrangler deploy`). Local dev uses the
-> `preview_database_id` field and is unaffected.
-
-Error tracking is optional and DSN-gated (Sentry free tier). With no DSNs set, the SDKs stay disabled:
-
-```bash
-bunx wrangler secret put SENTRY_DSN    # Worker errors (per env)
-VITE_SENTRY_DSN=… bun run build        # web errors-only; Session Replay is opt-in
-```
-
-### Keep in sync with template updates
-
-Template changes (skills, guardrails, workflows, docs) flow into forked projects via `scripts/template-sync/cli.mjs`. `template-sync.json` declares ownership: **overwrite** paths are template-owned and enforced — `bun run template-gate` (CI) fails on any drift, and syncs always take the template version; **merge** paths (`apps/`, `packages/`, `package.json`, `README.md`, `CONTEXT.md`) merge normally; unlisted paths are project-owned and never synced.
-
-```bash
-bun run template-sync init     # add + fetch the upstream remote (once)
-bun run template-sync check    # gate: fail on template-owned drift
-bun run template-sync update   # merge latest template release (--ref=X to pin)
-bun run template-sync finish   # complete a sync after resolving conflicts
-```
-
-The `template-sync` workflow (`.github/workflows/template-sync.yml`) opens a sync PR weekly. If it reports conflicts, check out the `template-sync` branch, resolve them, then run `bun run template-sync finish`. To sync from a different upstream URL, set the `TEMPLATE_SYNC_UPSTREAM` environment variable. Do not edit `template-sync.json` in a fork: it is template-owned and the gate will flag any drift.
-
-## Develop a product
+## The agentic workflow
 
 ```
 grill-with-docs → to-spec → to-tickets → plan-review
@@ -85,44 +105,15 @@ grill-with-docs → to-spec → to-tickets → plan-review
   → code-review → ship
 ```
 
-For the full pipeline and when to use each skill, invoke the `agentic-workflow` skill (`.agents/skills/agentic-workflow/SKILL.md`).
+For the full pipeline and when to use each skill, invoke the `agentic-workflow` skill (`.agents/skills/agentic-workflow/SKILL.md`). Extend the **Notes** patterns: contracts in `packages/contracts` → D1 migration + client migration + `SCHEMA_VERSION` → route under `/v1/` → UI route → BDD.
 
-Extend **Notes** patterns: contracts in `packages/contracts` → D1 migration + client migration + `SCHEMA_VERSION` → route under `/v1/` → UI route → BDD.
+## Future plans
 
-### Commands
+- **Payments** (Xendit / Polar): will be implemented in a follow-up template release behind a single adapter. Until then, consuming projects can wire it in via the `payment-integration` skill; see `AGENTS.md` and `docs/ARCHITECTURE.md` §13.
 
-| Command | Use |
-|---|---|
-| `bun run dev` | Build web + wrangler dev |
-| `bun run check` | Typecheck |
-| `bun run test` | Unit + property + coverage |
-| `bun run e2e` | Playwright-BDD |
-| `bun run size-limit` | Bundle budget |
-| `bun run agentic-limits` | File size / import caps |
-| `bun run truth` | No dependency without an importer |
-| `bun run deploy` | Production Worker |
-| `bun run deploy:staging` | Staging |
+## Learn more
 
-### API surface
-
-- `GET /v1/health`
-- `POST /v1/auth/anonymous`
-- `DELETE /v1/auth/me`
-- `GET /v1/notes`
-- `POST /v1/sync`
-- `GET /openapi.json`
-
-## Architecture coverage (template)
-
-| Band | Status |
-|---|---|
-| P0 core (D1, sync, BDD, security CI, Valibot contracts) | Done |
-| P1 (auth session, CORS, adapters/R2, router, PWA, staging workflows) | Done |
-| P2 (lint limits, restore runbook, ZAP/fuzz workflows, quota doc) | Done |
-| P3 except payments (rate limit, account cascade delete) | Done |
-| Payments (Xendit/Polar) | **Omitted** |
-
-## Ops docs
-
-- [`docs/RUNBOOK_RESTORE.md`](docs/RUNBOOK_RESTORE.md) — D1 Time Travel + R2 backups  
-- [`docs/QUOTA.md`](docs/QUOTA.md) — free-tier monitoring  
+- [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md): set up, run, and sync this template
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): why the system is built this way
+- [`AGENTS.md`](AGENTS.md): guardrails for agents
+- [`CONTEXT.md`](CONTEXT.md): mental model of the repo
