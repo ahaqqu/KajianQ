@@ -51,6 +51,10 @@ jobs:
         uses: zaproxy/action-baseline@de8ad967d3548d44ef623df22cf95c3b0baf8b25 # v0.15.0
         with:
           target: ${{ vars.STAGING_URL }}
+          # Template policy: suppressions live in the rule file with inline
+          # justifications — never a workflow-level bypass.
+          rules_file_name: .github/zap-rules.tsv
+          fail_action: true
       - name: Schemathesis fuzz
         # schemathesis.toml suppresses unsupported_method (Cloudflare edge
         # returns 405 without Allow header — not our app's behavior). See the

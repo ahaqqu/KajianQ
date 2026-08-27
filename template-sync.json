@@ -17,6 +17,8 @@
     ".github/workflows/ci.yml",
     ".github/workflows/staging.yml",
     ".github/workflows/template-sync.yml",
-    ".agents/skills/"
+    ".github/zap-rules.tsv",
+    ".agents/skills/",
+    "packages/hardening"
   ]
 }
