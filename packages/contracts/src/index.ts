@@ -7,11 +7,13 @@ export {
   StageSchema,
   TraceEventSchema,
   TraceSchema,
+  parseTrace,
   totalCostMicroUsd,
   type CostRecord,
   type Stage,
   type Trace,
   type TraceEvent,
+  type TraceEventKind,
 } from "./trace";
 export {
   TemplateSyncManifestSchema,
