@@ -27,7 +27,7 @@ jobs:
           # The lockfile is regenerated under bun 1.4 (see #54); 1.3.x cannot
           # parse it, and the sync scripts import workspace packages, so the
           # install must run before any template-sync command.
-          bun-version: latest
+          bun-version: 1.4.0
       - run: bun install --frozen-lockfile
       - run: |
           git config user.name "github-actions[bot]"
