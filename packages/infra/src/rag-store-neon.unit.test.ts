@@ -116,7 +116,7 @@ describe("rag-store-neon adapter (fake runner)", () => {
     expect(text).toContain("INSERT INTO doc_children");
     expect(text).toContain("embedding_primary, embedding_fallback");
     expect(text).toContain("ON CONFLICT (parent_id, ordinal) DO UPDATE");
-    // text_raw must NOT be in the UPDATE set (rule 11: immutable).
+    // text_raw must NOT be in the UPDATE set (rule 13: immutable).
     expect(text).not.toMatch(/SET[^]*text_raw\s*=/);
   });
 

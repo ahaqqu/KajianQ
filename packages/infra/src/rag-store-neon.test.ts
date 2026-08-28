@@ -231,7 +231,7 @@ run("RagStore contract (real Neon)", () => {
     });
     const me = hits.find((h) => h.child.id === childId);
     expect(me).toBeDefined();
-    expect(me?.child.textRaw).toBe("raw-immutable"); // rule 11: text_raw immutable
+    expect(me?.child.textRaw).toBe("raw-immutable"); // rule 13: text_raw immutable
     expect(me?.child.textAr).toBe("ar-v2"); // derived layer refreshed
     expect(me?.child.citation).toEqual({ s: 3, a: 7 });
     expect(me?.child.metadata).toMatchObject({ rev: 2 });

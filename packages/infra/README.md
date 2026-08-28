@@ -46,7 +46,7 @@ else may hold a DB client or query (`check-boundary.mjs` enforces this).
   ADR-0007 amendment — the user's `answer_traces`); `cleanupExpiredSessions()`
   reclaims expired session rows (wire to a cron). The auth routes these feed
   are mounted in #10, not here.
-- Ingestion is idempotent (AGENTS.md rule 11): `insertDocParent` upserts by
+- Ingestion is idempotent (AGENTS.md rule 13): `insertDocParent` upserts by
   `source_key` (UNIQUE); `insertDocChild` upserts by `(parent_id, ordinal)`,
   refreshing derived fields but never overwriting immutable `text_raw`.
 - The dual embedding columns (`embedding_primary`, `embedding_fallback`) are

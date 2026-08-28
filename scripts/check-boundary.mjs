@@ -42,6 +42,8 @@ const RULES_JSON = resolve(HERE, "boundary-rules.json");
 
 // Source scan paths (TS + SQL only). `packages/infra/src` and `migrations` are
 // scoped subpaths so infra scripts outside the seam are not swept in.
+// `rate` and `hardening` are shared project-agnostic packages (AGENTS.md rule 1
+// lists them alongside the engine packages), so the gate scans them whole.
 const ENGINE_PKGS = [
   "packages/rag-core",
   "packages/rag-ingest",
@@ -49,6 +51,8 @@ const ENGINE_PKGS = [
   "packages/contracts",
   "packages/infra/src",
   "packages/infra/migrations",
+  "packages/rate",
+  "packages/hardening",
 ];
 
 // Package roots for the `package.json` dependency-name scan. Broader than the
@@ -60,6 +64,8 @@ const ENGINE_PKG_ROOTS = [
   "packages/eval",
   "packages/contracts",
   "packages/infra",
+  "packages/rate",
+  "packages/hardening",
 ];
 
 const TS_EXT_RE = /\.(?:ts|tsx|mts|cts)$/;

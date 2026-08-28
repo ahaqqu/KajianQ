@@ -1,4 +1,4 @@
-# ADR-0013 (proposed): Bilingual RAG with Arabic as canonical evidence, Indonesian as query/output channel
+# ADR-0013: Bilingual RAG with Arabic as canonical evidence, Indonesian as query/output channel
 
 ## Status
 

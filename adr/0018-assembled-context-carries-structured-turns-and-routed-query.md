@@ -16,7 +16,7 @@ The foundation PR (#36) shipped the five pipeline interfaces in `packages/rag-co
 
 3. **`RoutedQuery.filters` as `Record<string, string | readonly string[]>`** erased the domain pack's typed `KajianQFilters` (`{ madzhab?, grade?, textLayer? }`). Building a `Query` from `KajianQFilters` required spreading a typed object into an open string map (lossy), and a Retriever reading filters back got strings it had to re-cast to `Madzhab`/`Grade`. The "filters are opaque to the engine" intent was right; the shape was not — it made the domain pack's types advisory only.
 
-The spec (`kajianq-dars-spec.md` §6, §9) and ADR-0015 together prescribe: the Assembler orders Principles first then evidence; the Generator applies a strict-grounding system prompt, branches by intent, and refuses on insufficient evidence; the Reviewer cross-checks "no claim beyond retrieved evidence." All of these need the Generator to see the routed query, not just a frozen prompt.
+The spec (`SPECS.md` §1.5 hard boundaries, §2.2 quality/safety policy, §3.3 pipeline stages) and ADR-0015 together prescribe: the Assembler orders Principles first then evidence; the Generator applies a strict-grounding system prompt, branches by intent, and refuses on insufficient evidence; the Reviewer cross-checks "no claim beyond retrieved evidence." All of these need the Generator to see the routed query, not just a frozen prompt.
 
 ## Decision
 

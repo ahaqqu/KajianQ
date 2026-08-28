@@ -15,8 +15,9 @@ OpenAPI) is up; the Smart RAG pipeline lands in the milestone tickets.
 - **Traceable by design** — every answer ships a full `Trace`; the machinery is
   never hidden.
 
-See `AGENTS.md` for the standing rules, `CONTEXT.md` for the domain glossary,
-and `adr/` for the decisions.
+See `AGENTS.md` for the standing rules, `SPECS.md` for the architecture &
+plan (a living document), `CONTEXT.md` for the domain glossary, and `adr/`
+for the decisions.
 
 ## Layout
 
@@ -31,8 +32,12 @@ and `adr/` for the decisions.
   `Assembler`, `Generator`, `Reviewer`.
 - `packages/rag-ingest` — ingestion pipeline skeleton.
 - `packages/eval` — evaluation harness skeleton.
-- `packages/infra` — adapters (Logger, ObjectStore, ConfigStore, RateLimiter);
-  RagStore/Provider seams land in #4/#5.
+- `packages/infra` — adapters (Logger, ObjectStore, ConfigStore) plus the
+  RagStore (ADR-0008) and Provider seams.
+- `packages/rate` — `@app/rate`: RateLimiter adapter (Durable Object backend +
+  bounded-memory fallback), shared via the template-sync merge path.
+- `packages/hardening` — `@app/hardening`: security headers/CSP and ASSETS
+  serving for the Hono Worker.
 - `packages/kajianq-domain` — the KajianQ domain pack (all Islamic-domain
   logic lives here, never in the engine packages).
 
