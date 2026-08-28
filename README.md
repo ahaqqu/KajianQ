@@ -91,6 +91,21 @@ Every answer carries its full **Trace** — the sub-questions asked, the sources
 consulted with their relevance scores, the model used, and the cost — visible
 in the app, never hidden.
 
+## Built with AI
+
+KajianQ is developed agentically — AI agents write the code under explicit
+working rules ([`AGENTS.md`](AGENTS.md)).
+
+**Agentic development (now):**
+
+- **Harness:** DeepSeek Harness, zcode
+- **Provider:** Ollama Cloud Pro
+- **Models:** kimi-k3, glm-5.3, glm-5.3-flash
+
+**Runtime LLM (later):** the chat product's own LLM stack is a later choice —
+the engine is model-agnostic by design, and the vendor/model selection is
+configuration, decided per pipeline stage.
+
 ## Go deeper
 
 For readers who want the full picture, the working documents are open:
