@@ -1,7 +1,7 @@
 # KajianQ & DARS — Specification, Architecture & Plan
 
-> **Version:** 2.0 (2026-08-08) — supersedes `islamic_classical_rag_spec.md` v1.2
-> **Status:** Grilled & approved via grill-with-docs session; decisions recorded in `adr/0005–0009`, vocabulary in `CONTEXT.md`
+> **Version:** 2.1 (2026-08-28) — living document; supersedes `islamic_classical_rag_spec.md` v1.2 (frozen, retained for history)
+> **Status:** Grilled & approved via grill-with-docs session; decisions recorded in `adr/0005–0021` (full index in §8), vocabulary in `CONTEXT.md`
 > **Doc language:** English (technical) — UI copy is Indonesian-first (en/id externalized)
 
 ---
@@ -95,13 +95,17 @@ apps/
   api/        # Hono Worker: /v1/chat, /v1/feedback, /v1/admin/*    — from template shell
 packages/
   contracts/  # Valibot contracts for all API boundaries            — template pattern
-  infra/      # Logger, ConfigStore, RateLimiter, ObjectStore,      — template adapters
-              # + RagStore (ADR-0008), + Provider adapters
+  infra/      # Logger, ConfigStore, ObjectStore,                  — template adapters
+              # RagStore (ADR-0008), + Provider adapters
   rag-core/   # DARS: pipeline interfaces — Router, Retriever,      — NEW, domain-agnostic
               # Assembler, Generator, Reviewer
   rag-ingest/ # DARS: source parsers (Tanzil, hadith-json, Shamela),— NEW, domain-agnostic
               # cleaning/translation pipeline, chunking
   eval/       # DARS: benchmark harness, Golden Set runner, judges  — NEW, domain-agnostic
+  rate/       # @app/rate: RateLimiter adapter (Durable Object +    — shared, project-agnostic
+              # bounded-memory fallback)
+  hardening/  # @app/hardening: security headers/CSP + ASSETS       — shared, project-agnostic
+              # serving for the Hono Worker
   kajianq-domain/ # KajianQ: madzhab enums, principle seed data,    — NEW, the domain pack
               # prompts (ID/EN), citation formatters
 scripts/      # Ingestion & eval CLI (Bun, run off-Workers)
@@ -281,16 +285,21 @@ Mitigations: top-k discipline (8–12 chunks, not 20), prompt caching for the st
 |---|---|
 | `adr/0005` | Monorepo: DARS engine packages + KajianQ product app |
 | `adr/0006` | Kitab LLM-translated at ingestion, labeled, Arabic always shown |
-| `adr/0007` | User-facing Trace + trace-anchored feedback |
+| `adr/0007` | User-facing Trace + trace-anchored feedback (amended: typed `Trace`/`TraceEvent`/`CostRecord` contract in `packages/contracts`; trace owned by the user, erased with them on self-deletion) |
 | `adr/0008` | Neon Postgres+pgvector behind RagStore adapter (not D1/Vectorize) |
 | `adr/0009` | Vendor allowlist (Gemini/Kimi/DeepSeek/Qwen); paid critical path accepted with price discipline; Qwen tie-break |
 | `adr/0010` | Terminology Glossary + Arabic query expansion (never query translation) — **superseded by ADR-0014** |
 | `adr/0011` | Deep Think: iterative budget-capped retrieval mode, never read-all |
 | `adr/0012` | Per-chain hadith grades via Sanadset isnad data (v2); additive migration, no graph DB / GraphRAG |
 | `adr/0013` | Arabic as canonical evidence, Indonesian as display; cross-lingual ID→AR retrieval; dual-index schema; #9 as go/no-go gate |
-| `adr/0014` | Bilingual terminology concept graph (supersedes ADR-0010's flat table); LLM extraction + human review; prompt-injection consumption |
+| `adr/0014` | Bilingual terminology concept graph (supersedes ADR-0010's flat table); LLM extraction + human review; prompt-injection consumption (amended: terminology tables relocated to `kajianq-domain`, product tables to `apps/api` — engine schema stays domain-agnostic) |
 | `adr/0015` | No novel legal reasoning: surface classical ta'lil/qiyas as cited, never synthesize new rulings; refusal beats confident gap-filling |
 | `adr/0016` | No corpus-wide GraphRAG: knowledge ships as bounded curated concept structures (#24, #29, principle index, curated concept_links); revisit gate stated |
+| `adr/0017` | Anonymous sessions as first-class KajianQ tables over hosted identity (no Neon Auth in v1) |
+| `adr/0018` | AssembledContext carries structured turns + the routed query; Generator owns the final prompt (amended by ADR-0021: stage methods take `RunContext`, Generator/Reviewer return `Draft`) |
+| `adr/0019` | Boundary gate scans engine migration SQL, not just TypeScript (closes the `.sql` blind spot in the domain/vendor/DB-client rules) |
+| `adr/0020` | Neon plan sizing for the dual 1536-dim vector schema (storage/cost trade-off recorded before the #9 gate) |
+| `adr/0021` | `runPipeline` runner owns run scope, run config, and trace assembly; typed dispatch, per-run disposal; cordis deferred behind a revisit trigger |
 
 Domain vocabulary: `CONTEXT.md`. Workflow after this spec: `to-spec` → `to-tickets` per the template's agentic pipeline.
 
@@ -353,4 +362,4 @@ Sequenced V2-P1 → V2-P4; indicative 4–6 weeks, starts after v1.0 (§7).
 
 ---
 
-*Living document. Supersedes `islamic_classical_rag_spec.md` v1.2, which is retained for history (its §9 prompt library and §5 schema details remain valid where not amended here).*
+*Living document (AGENTS.md §2 rule 16): a PR that changes what this spec describes updates the relevant sections in the same PR. Supersedes `islamic_classical_rag_spec.md` v1.2, which is frozen history (its §9 prompt library and §5 schema details remain valid where not amended here).*

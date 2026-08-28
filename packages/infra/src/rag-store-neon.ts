@@ -63,7 +63,7 @@ export function createNeonRagStore(
   return {
     async insertDocParent(input) {
       const id = input.id ?? crypto.randomUUID();
-      // Idempotent upsert by provenance key (AGENTS.md rule 11): re-running
+      // Idempotent upsert by provenance key (AGENTS.md rule 13): re-running
       // ingestion with the same source_key updates metadata/title in place
       // and returns the existing id, never duplicates.
       const rows = (await sql`
@@ -90,7 +90,7 @@ export function createNeonRagStore(
         CORPUS_EMBEDDING_DIM,
       );
       // Idempotent upsert by (parent_id, ordinal). text_raw is immutable
-      // (AGENTS.md rule 11): it is NOT in the UPDATE set — only the derived
+      // (AGENTS.md rule 13): it is NOT in the UPDATE set — only the derived
       // layers (translations, embeddings, citation, metadata) refresh.
       // Column names are role-based (`embedding_primary`/`embedding_fallback`);
       // KajianQ binds the roles to its AR/ID language tracks at the

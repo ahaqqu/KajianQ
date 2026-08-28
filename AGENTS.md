@@ -7,7 +7,7 @@ This repository hosts two projects in one monorepo (ADR-0005):
 
 Most implementation in both projects is done by AI agents. This file is the **standing instruction set** for every agent session. It exists so that a principle stated once — *pluggable and traceable by design* — is enforced in every ticket, without the user having to repeat it.
 
-**Read first, in this order:** `CONTEXT.md` (domain glossary — never invent synonyms for defined terms) → the ADRs that touch your ticket → your GitHub issue's acceptance criteria (your definition of done).
+**Read first, in this order:** `CONTEXT.md` (domain glossary — never invent synonyms for defined terms) → `kajianq-dars-spec.md` (the **living** architecture/plan spec — read the sections your ticket touches) → the ADRs that touch your ticket → your GitHub issue's acceptance criteria (your definition of done).
 
 ---
 
@@ -36,7 +36,7 @@ Every external dependency and every pipeline stage is replaceable **by configura
 
 ### Domain boundary
 
-1. **Engine packages (`rag-core`, `rag-ingest`, `eval`, `contracts`, `infra`) contain ZERO Islamic-domain logic.** No madhhab enums, grade vocabulary, principle tags, citation formats, Arabic-specific handling, or religious prompt text. All of that lives in `kajianq-domain` and `apps/`. A boundary test/lint rule enforces this (ticket #3) — if you need a domain concept in an engine package, you are building the wrong shape: parameterize it instead.
+1. **Engine and shared packages (`rag-core`, `rag-ingest`, `eval`, `contracts`, `infra`, `rate`, `hardening`) contain ZERO Islamic-domain logic.** No madhhab enums, grade vocabulary, principle tags, citation formats, Arabic-specific handling, or religious prompt text. All of that lives in `kajianq-domain` and `apps/`. A boundary test/lint rule enforces this (ticket #3) — if you need a domain concept in an engine package, you are building the wrong shape: parameterize it instead.
 2. **No vendor or model names in engine code.** "Qwen", "Gemini", model IDs, and prices appear only in `model_configs` config and the Provider adapter implementations in `packages/infra`. Swapping the generator must be a config edit, not a PR against `rag-core`.
 3. **No direct SQL outside the `RagStore` adapter.** Engine and app code never import a database client. Migrations may contain SQL; nothing else does.
 
@@ -57,28 +57,33 @@ Every external dependency and every pipeline stage is replaceable **by configura
 
 ### Data integrity
 
-11. **Never overwrite raw source data.** `text_raw` and original exports are immutable; cleaning/translation always writes new fields. Re-runnable ingestion must be idempotent.
-12. **Matn and Sharh are never mixed in one chunk.** Disputed attributions and low-confidence reconciliation matches are quarantined or labeled, never force-merged.
+13. **Never overwrite raw source data.** `text_raw` and original exports are immutable; cleaning/translation always writes new fields. Re-runnable ingestion must be idempotent.
+14. **Matn and Sharh are never mixed in one chunk.** Disputed attributions and low-confidence reconciliation matches are quarantined or labeled, never force-merged.
 
 ### Reuse and template sync
 
-13. **Shared, project-agnostic logic lives in `packages/`, never `apps/`.** When planning or implementing, decide whether a module is reusable across forked projects (adapters, algorithms, protocols). If yes, it belongs in a dedicated `packages/<name>` workspace package (e.g. `@app/rate`): `packages/` is a template-sync merge path, so forks inherit template improvements there, while `apps/` is the per-project composition root (bindings, entrypoints, deploy config) that each fork owns and customizes — code placed in `apps/` forces every fork to copy-paste template fixes by hand.
+15. **Shared, project-agnostic logic lives in `packages/`, never `apps/`.** When planning or implementing, decide whether a module is reusable across forked projects (adapters, algorithms, protocols). If yes, it belongs in a dedicated `packages/<name>` workspace package (e.g. `@app/rate`): `packages/` is a template-sync merge path, so forks inherit template improvements there, while `apps/` is the per-project composition root (bindings, entrypoints, deploy config) that each fork owns and customizes — code placed in `apps/` forces every fork to copy-paste template fixes by hand.
+
+### Living documents
+
+16. **`kajianq-dars-spec.md` is a living document: read it, then keep it true.** A PR that changes what the spec describes — architecture or package layout, data layer, provider/model mix, cost model, phases, or product scope — updates the relevant spec sections **in the same PR**; an ADR-worthy change also adds its row to the spec's §8 Record of Decisions. Never merge code that leaves the spec contradicting the codebase. The one exception: `islamic_classical_rag_spec.md` is frozen history (superseded v1.2) — never update it.
 
 ---
 
 ## 3. Standard workflow for every ticket
 
-1. **Read before write**: `CONTEXT.md`, the issue with its acceptance criteria, the ADRs it cites, `HANDOFF.md` if present. If the issue is ambiguous, ask — do not guess.
+1. **Read before write**: `CONTEXT.md`, `kajianq-dars-spec.md` (the sections your ticket touches — it is a living document, see rule 16), the issue with its acceptance criteria, the ADRs it cites, `HANDOFF.md` if present. If the issue is ambiguous, ask — do not guess.
 2. **Locate the seam**: which interface does this ticket implement or consume (Provider? RagStore? Router stage?)? Work behind it. If no seam exists and you need one, add the seam first, in its own PR if it changes a public shape.
 3. **Ship the slice**: vertical, demoable, within scope guardrails. Keep the template's code style; minimal diffs.
 4. **Verify the principles before opening the PR** — run this checklist:
-   - Domain boundary: no Islamic-domain identifiers in engine packages (`rg -i "madzhab|hadith|quran|kitab|isnad|sahih|dhaif|syafii" packages/rag-core packages/rag-ingest packages/eval packages/contracts packages/infra/src` should find only tests/docs of the boundary rule itself).
+   - Domain boundary: no Islamic-domain identifiers in engine packages (`rg -i "madzhab|hadith|quran|kitab|isnad|sahih|dhaif|syafii" packages/rag-core packages/rag-ingest packages/eval packages/contracts packages/infra/src packages/rate packages/hardening` should find only tests/docs of the boundary rule itself).
    - No vendor names in engine code or app code outside `packages/infra` Provider adapters and config.
    - No direct DB client imports outside the RagStore adapter and migrations.
    - Any new LLM call records model/tokens/cost to a trace.
    - Any new persisted answer path writes a trace record the UI can render.
    - Vocabulary matches `CONTEXT.md`; new ADRs/Golden Set traps added where the ticket demands.
    - `NOTICES/DATASETS.md` updated when a dataset or corpus resource is touched.
+   - Spec currency: if this ticket changed what `kajianq-dars-spec.md` describes (architecture §3, data layer §3.5/§4, cost §5, plan §7, product scope §2), the same PR updates those sections — and any new ADR gets its row in the spec's §8 Record of Decisions.
 5. **Tick the acceptance-criteria checkboxes** as they verifiably complete (per the working agreements in `HANDOFF.md`).
 
 ## 4. Working agreements (from the user — non-negotiable)
@@ -110,9 +115,10 @@ Ticket labels on `ahaqqu/KajianQ` route the work to the right model:
 | Need | Where |
 |---|---|
 | Domain vocabulary | `CONTEXT.md` |
-| Architecture & plan | `kajianq-dars-spec.md` + GitHub issue #1 (v1), #27 (v2) |
+| Architecture & plan (**living document** — read the sections your ticket touches; update in the same PR, rule 16) | `kajianq-dars-spec.md` + GitHub issue #1 (v1), #27 (v2) |
 | Success factors & phase metrics | `docs/success-factors-and-metrics.md` |
-| Decisions | `adr/0005`–`0021` (note: 0010 superseded by 0014; 0006 amended by 0013; 0007 amended for the typed trace contract; 0015/0016 bound generator reasoning and knowledge-graph scope; 0017 anonymous sessions over hosted identity; 0018 AssembledContext carries structured turns + routed query — amended by 0021; 0019 boundary gate scans SQL migrations; 0020 Neon dual-vector sizing; 0021 runPipeline runner owns run scope/config/trace — hand-rolled seams, cordis deferred) |
+| Decisions | `adr/0005`–`0021` (note: 0010 superseded by 0014; 0006 amended by 0013; 0007 amended for the typed trace contract and per-user erasure; 0015/0016 bound generator reasoning and knowledge-graph scope; 0017 anonymous sessions over hosted identity; 0018 AssembledContext carries structured turns + routed query — amended by 0021; 0019 boundary gate scans SQL migrations; 0020 Neon dual-vector sizing; 0021 runPipeline runner owns run scope/config/trace — hand-rolled seams, cordis deferred) |
+| Historical spec (frozen, superseded — never update) | `islamic_classical_rag_spec.md` (v1.2) |
 | Current session handoff | `HANDOFF.md` |
 | Ticket board | `gh issue list --repo ahaqqu/KajianQ` |
 | Dataset attributions | `NOTICES/DATASETS.md` |

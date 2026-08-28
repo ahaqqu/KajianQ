@@ -9,9 +9,9 @@ You are reviewing a proposed architectural change for the KajianQ project.
 Read these documents in order:
 
 1. Original specification: GitHub issue #1 (`Spec: KajianQ v1 — Islamic classical-knowledge chatbot on the DARS engine`). Use the GitHub REST API if `gh issue view` fails: `gh api repos/ahaqqu/KajianQ/issues/1 --jq '{title,body}'`.
-2. Current translation/indexing ADR: `/home/ahaqqu/projects/KajianQ/adr/0006-llm-translated-kitab.md`.
-3. Current Neon/RagStore ADR: `/home/ahaqqu/projects/KajianQ/adr/0008-neon-pgvector-behind-ragstore-adapter.md`.
-4. Proposed ADR: `/home/ahaqqu/projects/KajianQ/adr/ADR-0013-bilingual-retrieval-arabic-canonical-evidence.md`.
+2. Current translation/indexing ADR: `/home/ahaqqu/Projects/KajianQ/adr/0006-llm-translated-kitab.md`.
+3. Current Neon/RagStore ADR: `/home/ahaqqu/Projects/KajianQ/adr/0008-neon-pgvector-behind-ragstore-adapter.md`.
+4. Proposed ADR: `/home/ahaqqu/Projects/KajianQ/adr/0013-bilingual-retrieval-arabic-canonical-evidence.md`.
 5. Related tickets (optional but recommended): #4 (Neon schema), #6 (Quran ingestion), #7 (hadith ingestion), #9 (embedding benchmark), #10 (chat pipeline), #21 (kitab tracer), #24 (terminology glossary), #25 (Deep Think).
 
 Deliver a structured review with the following sections:
