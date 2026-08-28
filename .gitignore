@@ -20,4 +20,7 @@ apps/api/.mf/
 # Orchestrator subagent git worktrees (.agents/skills/orchestrator)
 .worktrees/
 
+# direnv cache (nix-direnv GC roots + env dumps)
+.direnv/
+
 .template-sync.pending
