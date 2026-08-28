@@ -28,25 +28,3 @@ suppression entries carry their justification inline in the file, so it is
 kept template-owned (synced) rather than edited ad hoc in the fork. Added
 with the #38 header-hardening work; the upstream counterpart PR lands the
 same files in the template repo.
-
-## Why docs/ is NOT in the sync map
-
-The upstream template lists `docs/ARCHITECTURE.md`, `docs/BOOTSTRAP_PROMPT.md`,
-`docs/QUOTA.md`, and `docs/RUNBOOK_RESTORE.md` as template-owned; this fork
-deliberately dropped all `docs/` entries at fork setup:
-
-- `docs/ARCHITECTURE.md` describes the template's product philosophy —
-  zero-cost Cloudflare-only, local-first CRDT sync, D1 — and predates DARS
-  entirely. Two of its foundational pillars are superseded here by decision
-  (ADR-0009: paid LLM/embedding APIs accepted in the critical path; local-first
-  dropped with D1 per spec §3.1, ADR-0008), so syncing it verbatim would make
-  agents treat a partially-wrong document as authoritative. The fork instead
-  keeps its own fork-adapted `docs/ARCHITECTURE.md` (stable "why" layer, marks
-  each template pillar Inherited or Deviated with the ADR cited) — fork-owned,
-  NOT in `overwrite`/`merge`, so upstream edits cannot clobber the adaptations.
-- The fork's architecture truth is `SPECS.md` (living document, AGENTS.md §2
-  rule 16) plus `adr/0005`–`0021`; the template's QUOTA/RUNBOOK/BOOTSTRAP docs
-  describe template-specific runbooks (D1 Time Travel restore, quota headroom)
-  that do not apply to the Neon/RagStore foundation.
-- The `.agents/skills/` directory IS a merge path, so template skills that say
-  "read docs/ARCHITECTURE.md" resolve against the fork's own adapted file.

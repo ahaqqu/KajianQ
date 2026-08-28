@@ -16,8 +16,8 @@ OpenAPI) is up; the Smart RAG pipeline lands in the milestone tickets.
   never hidden.
 
 See `AGENTS.md` for the standing rules, `SPECS.md` for the architecture &
-plan (a living document), `docs/ARCHITECTURE.md` for the design rationale,
-`CONTEXT.md` for the domain glossary, and `adr/` for the decisions.
+plan (a living document), `CONTEXT.md` for the domain glossary, and `adr/`
+for the decisions.
 
 ## Layout
 
