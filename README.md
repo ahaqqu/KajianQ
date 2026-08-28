@@ -111,6 +111,26 @@ All corpus texts keep their attributions — the Quran and its translations
 (Tanzil, Kemenag), hadith collections, and classical kitab (Shamela, OpenITI).
 See [`NOTICES/DATASETS.md`](NOTICES/DATASETS.md) for the full list.
 
+## Built with AI
+
+KajianQ is developed agentically — AI agents write the code under explicit
+working rules ([`AGENTS.md`](AGENTS.md)).
+
+**Agentic development:**
+
+- **Harness:** DeepSeek Harness, ZCode
+- **Provider:** Ollama Cloud Pro
+- **Models:** kimi-k3, glm-5.3, glm-5.3-flash
+
+**Runtime LLM:** the chat product's own LLM stack is a later choice —
+the engine is model-agnostic by design, and the vendor/model selection is
+configuration, decided per pipeline stage.
+
+**Corpus processing:** later, LLMs will ingest and process the corpus itself —
+cleaning and structuring raw sources, translating classical Arabic into
+Indonesian (always labeled, with the Arabic shown), tagging principles, and
+preparing it for retrieval — while the raw texts are preserved untouched.
+
 ## License
 
 [MIT](LICENSE).
