@@ -24,7 +24,8 @@ wrong, update it in the same PR (rule 16 applies to this file too).
 ## 1. Pluggable by design — DARS
 
 Every external dependency and every pipeline stage is replaceable **by
-configuration, never by code edit**. The DARS pipeline is typed interfaces in
+configuration first, and by code changes when deep customization is needed**.
+The DARS pipeline is typed interfaces in
 `packages/rag-core` — `Router`, `Retriever`, `Assembler`, `Generator`,
 `Reviewer` — composed in-process (modular monolith, no HTTP between stages). A
 single `runPipeline` runner walks the five stages, owns the run scope, and
