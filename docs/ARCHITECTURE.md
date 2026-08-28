@@ -263,9 +263,11 @@ Coverage gate: 80% lines/functions/statements, 70% branches over logic globs
 
 CI pins the Bun version (1.4.0) to match local dev (mise). The template's
 `flake.nix` dev shell is dormant — a nix-based toolchain unification was
-evaluated and rejected by the owner (2026-08-28; see `HANDOFF.md`), because
-prod runs on Cloudflare and the dev-shell parity value was judged too small
-for the added tooling. One command onboarding, no "works on my machine".
+evaluated and rejected by the owner (2026-08-28), because prod runs on
+Cloudflare and the dev-shell parity value was judged too small for the added
+tooling. Do not activate it without a new owner decision; the file stays
+because it is template-owned (`template-gate` fails if it drifts or is
+deleted locally). One command onboarding, no "works on my machine".
 
 ## 14. Agentic — built for autonomous development *(inherited + boundary)*
 
