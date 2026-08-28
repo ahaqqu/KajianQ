@@ -11,22 +11,22 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: latest
-      - run: bun install --frozen-lockfile
-      - run: bun run check
+      # Toolchain is pinned by the committed flake.lock (single source of
+      # truth with local dev — docs/ARCHITECTURE.md §13), not floating latest.
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+      - run: nix develop -c bun install --frozen-lockfile
+      - run: nix develop -c bun run check
       # Default unit/coverage gate runs WITHOUT the Neon secret: the RagStore
       # contract tests (rag-store-neon.test.ts) self-skip without it, so this
       # job stays green for fork PRs (no secret) and the I/O adapter is
       # excluded from coverage (see vitest.config.ts) since it needs the
       # secret. The contract suite runs in the separate neon-contract job.
-      - run: bun run test
-      - run: bun run build
-      - run: bun run size-limit
-      - run: bun run agentic-limits
-      - run: bun run boundary
-      - run: bun run truth
+      - run: nix develop -c bun run test
+      - run: nix develop -c bun run build
+      - run: nix develop -c bun run size-limit
+      - run: nix develop -c bun run agentic-limits
+      - run: nix develop -c bun run boundary
+      - run: nix develop -c bun run truth
       - name: gitleaks
         run: |
           curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz \
@@ -48,11 +48,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: latest
-      - run: bun install --frozen-lockfile
-      - run: bunx vitest run --no-file-parallelism packages/infra/src/rag-store-neon.test.ts
+      # Toolchain is pinned by the committed flake.lock (single source of
+      # truth with local dev — docs/ARCHITECTURE.md §13), not floating latest.
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+      - run: nix develop -c bun install --frozen-lockfile
+      - run: nix develop -c bunx vitest run --no-file-parallelism packages/infra/src/rag-store-neon.test.ts
         env:
           NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
 
@@ -62,16 +62,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: latest
-      - run: bun install --frozen-lockfile
+      # Toolchain is pinned by the committed flake.lock (single source of
+      # truth with local dev — docs/ARCHITECTURE.md §13), not floating latest.
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+      - run: nix develop -c bun install --frozen-lockfile
       - name: Auto-seed template-sync state
         # If template-owned files match upstream main, re-seed so the gate
         # checks against the latest template. If they drifted (real drift),
         # seed refuses and the gate fails against the last known-good state.
         # --no-commit: write state file without committing (CI is ephemeral).
         # continue-on-error so the gate step is the actual gate, not the seed.
-        run: bun run template-sync seed --ref=main --no-commit
+        run: nix develop -c bun run template-sync seed --ref=main --no-commit
         continue-on-error: true
-      - run: bun run template-gate
+      - run: nix develop -c bun run template-gate

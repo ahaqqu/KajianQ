@@ -19,11 +19,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: latest
-      - run: bun install --frozen-lockfile
-      - run: bun run build
+      # Toolchain is pinned by the committed flake.lock (single source of
+      # truth with local dev — docs/ARCHITECTURE.md §13), not floating latest.
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+      - run: nix develop -c bun install --frozen-lockfile
+      - run: nix develop -c bun run build
       - name: Require secrets
         run: |
           test -n "$CLOUDFLARE_API_TOKEN"
@@ -35,7 +35,7 @@ jobs:
           STAGING_URL: ${{ vars.STAGING_URL }}
       # Persistence is Neon Postgres behind RagStore (ADR-0008) — the template's
       # D1 migration/deploy:inject steps were removed when D1 was stripped (#3).
-      - run: bun run deploy:staging
+      - run: nix develop -c bun run deploy:staging
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
