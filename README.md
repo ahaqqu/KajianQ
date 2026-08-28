@@ -125,6 +125,11 @@ working rules ([`AGENTS.md`](AGENTS.md)).
 the engine is model-agnostic by design, and the vendor/model selection is
 configuration, decided per pipeline stage.
 
+**Corpus processing:** later, LLMs will ingest and process the corpus itself —
+cleaning and structuring raw sources, translating classical Arabic into
+Indonesian (always labeled, with the Arabic shown), tagging principles, and
+preparing it for retrieval — while the raw texts are preserved untouched.
+
 ## License
 
 [MIT](LICENSE).
