@@ -1,6 +1,6 @@
 # KajianQ & DARS — Specification, Architecture & Plan
 
-> **Version:** 2.1 (2026-08-28) — living document; supersedes `islamic_classical_rag_spec.md` v1.2 (frozen, retained for history)
+> **Version:** 2.1 (2026-08-28) — living document; supersedes `INITIAL_IDEA.md` (v1.2; frozen, retained for history)
 > **Status:** Grilled & approved via grill-with-docs session; decisions recorded in `adr/0005–0021` (full index in §8), vocabulary in `CONTEXT.md`
 > **Doc language:** English (technical) — UI copy is Indonesian-first (en/id externalized)
 
@@ -362,4 +362,4 @@ Sequenced V2-P1 → V2-P4; indicative 4–6 weeks, starts after v1.0 (§7).
 
 ---
 
-*Living document (AGENTS.md §2 rule 16): a PR that changes what this spec describes updates the relevant sections in the same PR. Supersedes `islamic_classical_rag_spec.md` v1.2, which is frozen history (its §9 prompt library and §5 schema details remain valid where not amended here).*
+*Living document (AGENTS.md §2 rule 16): a PR that changes what this spec describes updates the relevant sections in the same PR. Supersedes `INITIAL_IDEA.md` (v1.2), which is frozen history (its §9 prompt library and §5 schema details remain valid where not amended here).*

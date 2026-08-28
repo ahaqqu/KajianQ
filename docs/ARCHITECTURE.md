@@ -217,7 +217,7 @@ so swapping the RagStore adapter swaps the backend.
 ├── SPECS.md                    # living architecture & plan (rule 16)
 ├── AGENTS.md                   # normative rules for agents
 ├── CONTEXT.md                  # domain vocabulary
-├── islamic_classical_rag_spec.md # frozen v1.2 history — never updated
+├── INITIAL_IDEA.md             # frozen v1.2 history — never updated
 └── adr/                        # 0005–0021, numbered to continue the sequence
 ```
 

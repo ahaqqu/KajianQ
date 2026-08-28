@@ -66,7 +66,7 @@ Every external dependency and every pipeline stage is replaceable **by configura
 
 ### Living documents
 
-16. **`SPECS.md` is a living document: read it, then keep it true.** A PR that changes what the spec describes — architecture or package layout, data layer, provider/model mix, cost model, phases, or product scope — updates the relevant spec sections **in the same PR**; an ADR-worthy change also adds its row to the spec's §8 Record of Decisions. Never merge code that leaves the spec contradicting the codebase. The one exception: `islamic_classical_rag_spec.md` is frozen history (superseded v1.2) — never update it.
+16. **`SPECS.md` is a living document: read it, then keep it true.** A PR that changes what the spec describes — architecture or package layout, data layer, provider/model mix, cost model, phases, or product scope — updates the relevant spec sections **in the same PR**; an ADR-worthy change also adds its row to the spec's §8 Record of Decisions. Never merge code that leaves the spec contradicting the codebase. The one exception: `INITIAL_IDEA.md` (the original v1.2 spec) is frozen history — never update it.
 
 ---
 
@@ -120,7 +120,7 @@ Ticket labels on `ahaqqu/KajianQ` route the work to the right model:
 | Architecture rationale (stable "why" — inherited vs. deviated template pillars) | `docs/ARCHITECTURE.md` |
 | Success factors & phase metrics | `docs/SUCCESS_FACTORS_AND_METRICS.md` |
 | Decisions | `adr/0005`–`0021` (note: 0010 superseded by 0014; 0006 amended by 0013; 0007 amended for the typed trace contract and per-user erasure; 0015/0016 bound generator reasoning and knowledge-graph scope; 0017 anonymous sessions over hosted identity; 0018 AssembledContext carries structured turns + routed query — amended by 0021; 0019 boundary gate scans SQL migrations; 0020 Neon dual-vector sizing; 0021 runPipeline runner owns run scope/config/trace — hand-rolled seams, cordis deferred) |
-| Historical spec (frozen, superseded — never update) | `islamic_classical_rag_spec.md` (v1.2) |
+| Historical spec (frozen, superseded — never update) | `INITIAL_IDEA.md` (v1.2) |
 | Current session handoff | `HANDOFF.md` |
 | Ticket board | `gh issue list --repo ahaqqu/KajianQ` |
 | Dataset attributions | `NOTICES/DATASETS.md` |
