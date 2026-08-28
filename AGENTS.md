@@ -116,6 +116,7 @@ Ticket labels on `ahaqqu/KajianQ` route the work to the right model:
 |---|---|
 | Domain vocabulary | `CONTEXT.md` |
 | Architecture & plan (**living document** — read the sections your ticket touches; update in the same PR, rule 16) | `SPECS.md` + GitHub issue #1 (v1), #27 (v2) |
+| Architecture rationale (stable "why" — inherited vs. deviated template pillars) | `docs/ARCHITECTURE.md` |
 | Success factors & phase metrics | `docs/success-factors-and-metrics.md` |
 | Decisions | `adr/0005`–`0021` (note: 0010 superseded by 0014; 0006 amended by 0013; 0007 amended for the typed trace contract and per-user erasure; 0015/0016 bound generator reasoning and knowledge-graph scope; 0017 anonymous sessions over hosted identity; 0018 AssembledContext carries structured turns + routed query — amended by 0021; 0019 boundary gate scans SQL migrations; 0020 Neon dual-vector sizing; 0021 runPipeline runner owns run scope/config/trace — hand-rolled seams, cordis deferred) |
 | Historical spec (frozen, superseded — never update) | `islamic_classical_rag_spec.md` (v1.2) |
