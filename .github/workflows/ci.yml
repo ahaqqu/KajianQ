@@ -13,7 +13,7 @@ jobs:
           fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: latest
+          bun-version: 1.4.0
       - run: bun install --frozen-lockfile
       - run: bun run check
       # Default unit/coverage gate runs WITHOUT the Neon secret: the RagStore
@@ -50,7 +50,7 @@ jobs:
           fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: latest
+          bun-version: 1.4.0
       - run: bun install --frozen-lockfile
       - run: bunx vitest run --no-file-parallelism packages/infra/src/rag-store-neon.test.ts
         env:
@@ -64,7 +64,7 @@ jobs:
           fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: latest
+          bun-version: 1.4.0
       - run: bun install --frozen-lockfile
       - name: Auto-seed template-sync state
         # If template-owned files match upstream main, re-seed so the gate

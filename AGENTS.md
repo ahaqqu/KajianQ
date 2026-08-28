@@ -72,7 +72,7 @@ Every external dependency and every pipeline stage is replaceable **by configura
 
 ## 3. Standard workflow for every ticket
 
-1. **Read before write**: `CONTEXT.md`, `SPECS.md` (the sections your ticket touches — it is a living document, see rule 16), the issue with its acceptance criteria, the ADRs it cites, `HANDOFF.md` if present. If the issue is ambiguous, ask — do not guess.
+1. **Read before write**: `CONTEXT.md`, `SPECS.md` (the sections your ticket touches — it is a living document, see rule 16), the issue with its acceptance criteria, the ADRs it cites. If the issue is ambiguous, ask — do not guess.
 2. **Locate the seam**: which interface does this ticket implement or consume (Provider? RagStore? Router stage?)? Work behind it. If no seam exists and you need one, add the seam first, in its own PR if it changes a public shape.
 3. **Ship the slice**: vertical, demoable, within scope guardrails. Keep the template's code style; minimal diffs.
 4. **Verify the principles before opening the PR** — run this checklist:
@@ -84,7 +84,7 @@ Every external dependency and every pipeline stage is replaceable **by configura
    - Vocabulary matches `CONTEXT.md`; new ADRs/Golden Set traps added where the ticket demands.
    - `NOTICES/DATASETS.md` updated when a dataset or corpus resource is touched.
    - Spec currency: if this ticket changed what `SPECS.md` describes (architecture §3, data layer §3.5/§4, cost §5, plan §7, product scope §2), the same PR updates those sections — and any new ADR gets its row in the spec's §8 Record of Decisions.
-5. **Tick the acceptance-criteria checkboxes** as they verifiably complete (per the working agreements in §4; a session's `HANDOFF.md`, if present, may add session-specific agreements).
+5. **Tick the acceptance-criteria checkboxes** as they verifiably complete (per the working agreements in §4).
 
 ## 4. Working agreements (from the user — non-negotiable)
 
@@ -121,6 +121,5 @@ Ticket labels on `ahaqqu/KajianQ` route the work to the right model:
 | Success factors & phase metrics | `docs/SUCCESS_FACTORS_AND_METRICS.md` |
 | Decisions | `adr/0005`–`0021` (note: 0010 superseded by 0014; 0006 amended by 0013; 0007 amended for the typed trace contract and per-user erasure; 0015/0016 bound generator reasoning and knowledge-graph scope; 0017 anonymous sessions over hosted identity; 0018 AssembledContext carries structured turns + routed query — amended by 0021; 0019 boundary gate scans SQL migrations; 0020 Neon dual-vector sizing; 0021 runPipeline runner owns run scope/config/trace — hand-rolled seams, cordis deferred) |
 | Historical spec (frozen, superseded — never update) | `INITIAL_IDEA.md` (v1.2) |
-| Current session handoff | `HANDOFF.md` |
 | Ticket board | `gh issue list --repo ahaqqu/KajianQ` |
 | Dataset attributions | `NOTICES/DATASETS.md` |
