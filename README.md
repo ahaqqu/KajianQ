@@ -26,8 +26,9 @@ Islamic-domain knowledge lives in its own clearly separated layer.
 
 ## Principles
 
-- **Pluggable** — every external dependency and pipeline stage is replaceable
-  by configuration, never by code edit.
+- **Pluggable** — every external dependency and pipeline stage is swappable
+  by configuration first, and by editing the code when deep customization is
+  needed.
 - **Traceable** — nothing is hidden: every answer shows how it was built —
   sources consulted, scores, model, latency, cost.
 - **Price-disciplined** — paid AI services are accepted where quality demands
