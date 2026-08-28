@@ -91,13 +91,24 @@ Every answer carries its full **Trace** — the sub-questions asked, the sources
 consulted with their relevance scores, the model used, and the cost — visible
 in the app, never hidden.
 
+## Go deeper
+
+For readers who want the full picture, the working documents are open:
+
+| Question | Document |
+|---|---|
+| What is the architecture and plan *now*? | [`SPECS.md`](SPECS.md) — the living spec |
+| Why is it built this way? | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — stable design rationale |
+| Is it working? (success factors & metrics) | [`docs/SUCCESS_FACTORS_AND_METRICS.md`](docs/SUCCESS_FACTORS_AND_METRICS.md) |
+| How is it developed? (working rules, incl. AI agents) | [`AGENTS.md`](AGENTS.md) |
+| What do the domain words mean? (Kitab, Madzhab, Isnad…) | [`CONTEXT.md`](CONTEXT.md) |
+| Where did the idea start? (original v1.2 spec, frozen) | [`INITIAL_IDEA.md`](INITIAL_IDEA.md) |
+
 ## Data sources & attribution
 
 All corpus texts keep their attributions — the Quran and its translations
 (Tanzil, Kemenag), hadith collections, and classical kitab (Shamela, OpenITI).
-See [`NOTICES/DATASETS.md`](NOTICES/DATASETS.md) for the full list, and
-[`CONTEXT.md`](CONTEXT.md) for the meaning of domain terms such as *Kitab*,
-*Madzhab*, *Isnad*, *Trace*, and *Golden Set*.
+See [`NOTICES/DATASETS.md`](NOTICES/DATASETS.md) for the full list.
 
 ## License
 
