@@ -27,7 +27,7 @@ jobs:
           # Match ci.yml: the sync scripts import workspace packages
           # (packages/infra, packages/contracts), so deps must be installed
           # before any template-sync command runs.
-          bun-version: latest
+          bun-version: 1.4.0
       - run: bun install --frozen-lockfile
       - run: |
           git config user.name "github-actions[bot]"
