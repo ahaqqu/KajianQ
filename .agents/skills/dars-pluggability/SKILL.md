@@ -5,7 +5,7 @@ description: Enforce pluggable-by-design when building or reviewing DARS/KajianQ
 
 # DARS Pluggability
 
-The DARS engine is a reusable, domain-agnostic RAG engine. KajianQ is a domain pack (`kajianq-domain`) + apps on top of it. The pluggability principle: **everything external is replaceable by configuration, never by code edit.** This skill is the working checklist for keeping that true.
+The DARS engine is a reusable, domain-agnostic RAG engine. KajianQ is a domain pack (`kajianq-domain`) + apps on top of it. The pluggability principle: **everything external is replaceable by configuration first, and by code changes when deep customization is needed.** This skill is the working checklist for keeping that true.
 
 ## The seams
 

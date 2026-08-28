@@ -15,7 +15,7 @@ Most implementation in both projects is done by AI agents. This file is the **st
 
 ### 1.1 Pluggable by design
 
-Every external dependency and every pipeline stage is replaceable **by configuration, never by code edit**.
+Every external dependency and every pipeline stage is replaceable **by configuration first, and by code changes when deep customization is needed**.
 
 - **Pipeline stages.** The DARS pipeline is typed interfaces in `rag-core`: `Router`, `Retriever`, `Assembler`, `Generator`, `Reviewer`. Implementations live behind those interfaces; stages communicate **in-process** (modular monolith — no HTTP between stages). A single `runPipeline` runner walks the five stages and owns the run scope; each stage receives a `RunContext` (per-run config + `dispose?()` teardown) — never wired ad hoc (ADR-0021).
 - **Vendors.** All LLM/embedding calls go through the `Provider` interface (`generate` / `stream` / `embed`). Vendor allowlist: **Gemini, Kimi, DeepSeek, Qwen only** (ADR-0009). Model choice per stage comes from config (`model_configs`) only.
