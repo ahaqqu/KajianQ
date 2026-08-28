@@ -1,6 +1,6 @@
 # Success Factors & Metrics — KajianQ / DARS
 
-> **Companion to:** `kajianq-dars-spec.md` (architecture/plan) and `adr/` (decisions). **Where risks live long-term:** spec §6 (product/technical risk table) keeps risk *mitigation design*; this doc keeps the **monitorable** factors, the metrics per phase, and the explicit failure signals. Do not duplicate mitigations here — this doc answers "is it working," not "what would we do."
+> **Companion to:** `SPECS.md` (architecture/plan) and `adr/` (decisions). **Where risks live long-term:** spec §6 (product/technical risk table) keeps risk *mitigation design*; this doc keeps the **monitorable** factors, the metrics per phase, and the explicit failure signals. Do not duplicate mitigations here — this doc answers "is it working," not "what would we do."
 
 ---
 

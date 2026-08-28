@@ -6,7 +6,7 @@ Accepted (2026-08-23). Amends the auth approach inherited from `agentic-project-
 
 ## Context
 
-The v1 spec (`kajianq-dars-spec.md` §3.1) chose *anonymous-session auth (matches anonymous feedback)*: users ask questions, receive cited answers, and give anonymous thumbs + trace-anchored flags (ADR-0007). There are no user accounts, no login, no OAuth, and no email/password in v1. The template's session implementation was D1-backed; #3 removed it when D1 was stripped, and amended #4 to re-land sessions Postgres-backed behind the RagStore seam (ADR-0008).
+The v1 spec (`SPECS.md` §3.1) chose *anonymous-session auth (matches anonymous feedback)*: users ask questions, receive cited answers, and give anonymous thumbs + trace-anchored flags (ADR-0007). There are no user accounts, no login, no OAuth, and no email/password in v1. The template's session implementation was D1-backed; #3 removed it when D1 was stripped, and amended #4 to re-land sessions Postgres-backed behind the RagStore seam (ADR-0008).
 
 During #4 planning, a question surfaced: should KajianQ use **Neon Auth** (Neon's "Managed Better Auth" — a hosted identity product offering OAuth, email/password, JWT, and session management, with auth state in a `neon_auth` schema accessed via Neon's own REST API/SDK) instead of rolling anonymous sessions in the KajianQ schema?
 

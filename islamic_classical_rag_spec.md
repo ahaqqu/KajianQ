@@ -1,4 +1,4 @@
-> ⚠️ **SUPERSEDED by `kajianq-dars-spec.md` v2.0 (2026-08-08).** Retained for history. Still-valid details: §5 schema shape, §9 prompt library. Superseded: Python/FastAPI (now TypeScript via template fork), Cohere embedding (now `gemini-embedding-001`), Claude 3.5 (retired; vendor allowlist ADR-0005), Vercel/Railway hosting (now Workers + Neon, ADR-0004), cost table §11 (corrected in v2 §5).
+> ⚠️ **SUPERSEDED by `SPECS.md` v2.0 (2026-08-08).** Retained for history. Still-valid details: §5 schema shape, §9 prompt library. Superseded: Python/FastAPI (now TypeScript via template fork), Cohere embedding (now `gemini-embedding-001`), Claude 3.5 (retired; vendor allowlist ADR-0005), Vercel/Railway hosting (now Workers + Neon, ADR-0004), cost table §11 (corrected in v2 §5).
 
 # Spec & Arsitektur: Islamic Classical Knowledge RAG
 
