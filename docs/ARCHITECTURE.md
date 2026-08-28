@@ -324,7 +324,7 @@ Root `package.json` scripts are the single source of truth for gates:
 | What rules must agents follow? | `AGENTS.md` |
 | What do the domain words mean? | `CONTEXT.md` |
 | What was decided, when, and why? | `adr/0005`–`0021` |
-| Is it working? (factors, metrics, failure signals) | `docs/success-factors-and-metrics.md` |
+| Is it working? (factors, metrics, failure signals) | `docs/SUCCESS_FACTORS_AND_METRICS.md` |
 
 When this document and `SPECS.md` disagree, `SPECS.md` wins (it is the living
 spec) — and this file is updated in the same PR.
