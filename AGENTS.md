@@ -88,6 +88,7 @@ Every external dependency and every pipeline stage is replaceable **by configura
 
 ## 4. Working agreements (from the user — non-negotiable)
 
+- **All project commands run inside the Nix dev shell.** `flake.nix` + the committed `flake.lock` are the single source of truth for bun/wrangler/gh versions — no host-installed or floating toolchains. Interactive shells activate it automatically via direnv (`.envrc`); non-interactive shells (agents, CI, scripts) must prefix commands with `nix develop -c` (e.g. `nix develop -c bun test`). If a tool is missing, add it to the flake's `buildInputs` — in the upstream template (`ahaqqu/agentic-project-template`), since `flake.nix` is in `template-sync.json`'s `overwrite` list.
 - **Check the branch at the start of every turn.** Before the first git write of each session turn, run `git branch --show-current` and switch to the intended PR branch if needed. The owner may change branches between prompts, but never mid-turn — so one check per turn is enough (not per commit). Never commit task work directly on `main`.
 - Any agent that completes a task should create a PR using the `pr-creation` skill, then hand it to the user for review. The agent MUST NOT merge the PR unless the user explicitly approves merging it.
 - When an orchestrator spawns a subagent, the orchestrator MUST explicitly instruct the subagent to do works includes create a PR using `pr-creation` skill and make sure all CI for that PR is green. Orchestrator must supervise and monitor subagent works and report to me after subagent finish.

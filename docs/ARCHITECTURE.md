@@ -261,9 +261,14 @@ Coverage gate: 80% lines/functions/statements, 70% branches over logic globs
 
 ## 13. Reproducible — same environment everywhere *(inherited)*
 
-The dev shell is declarative (`flake.nix` pins Bun/Wrangler when Nix is
-available); CI runs the same Bun scripts as local dev. One command onboarding,
-no "works on my machine".
+The dev shell is declarative and single-sourced: `flake.nix` + the committed
+`flake.lock` pin Bun/Wrangler/gh for every consumer — local dev (direnv
+auto-activates via `.envrc`), CI (`cachix/install-nix-action`, every step
+through `nix develop -c`), and agents (AGENTS.md §4 working agreement). One
+command onboarding, no "works on my machine". Bun tracks nixpkgs: when a bun
+release is newer than what nixpkgs packages, the flake stays on the older pin
+until `nix flake update` brings it in and `bun.lock` is regenerated in the
+same PR.
 
 ## 14. Agentic — built for autonomous development *(inherited + boundary)*
 
@@ -298,7 +303,7 @@ Gated by: `bun run agentic-limits`, `bun run truth`, `bun run boundary`.
 | Trace contract | `packages/contracts`: `Trace`/`TraceEvent`/`CostRecord` | One shape for pipeline, PWA, admin, eval (ADR-0007 amendments). |
 | Evaluation | `packages/eval` + Golden Set | Versioned test sets; #9 embedding benchmark is the retrieval go/no-go gate. |
 | Payments | Deferred | Not in KajianQ v1; template guidance (Xendit/Polar behind one adapter) stands if ever adopted. |
-| Tooling | Bun scripts; TypeScript strict; Nix optional | Inherited. |
+| Tooling | Bun scripts via the Nix dev shell (committed `flake.lock`); TypeScript strict | Inherited; Nix is the toolchain source (§13), not optional. |
 
 ## 16. Tooling
 
