@@ -266,7 +266,7 @@ Mitigations: top-k discipline (8–12 chunks, not 20), prompt caching for the st
 
 ## 7. Plan (12 weeks, approved)
 
-> **Monitoring:** success factors and per-phase metrics live in `docs/success-factors-and-metrics.md` — the instrument panel for the phases below.
+> **Monitoring:** success factors and per-phase metrics live in `docs/SUCCESS_FACTORS_AND_METRICS.md` — the instrument panel for the phases below.
 
 | Phase | Weeks | Deliverable (exit criteria) |
 |---|---|---|
