@@ -59,6 +59,20 @@ not hard-fail. Check agent discoverability in ZCode via
 | thermo-nuclear-code-quality-review-subagent | `thermo-nuclear-code-quality-review-subagent.md` | `ollama/kimi-k2.7-code:cloud` | maintainability pass |
 | assistant-manager | `assistant-manager.md` | `ollama/kimi-k2.7-code:cloud` | read-only fact-finding and adjudication evidence |
 
+## Running the manager loop on ZCode
+
+This directory is the ZCode adapter for `.agents/skills/manager/SKILL.md` —
+the harness-specific half of the loop (see its *Harness adapters* router).
+
+- **Spawn:** each role is a named `subagent_type` (`implementer`,
+  `senior-implementer`, `reviewer`, `assistant-manager`) from this directory,
+  dispatched with background run. The definitions and model pins resolve
+  automatically — no prompt assembly needed.
+- **Resume:** continue a child with `SendMessage`; re-issue its prompt
+  verbatim when respawning after a stall.
+- **Model routing:** resolved by ZCode from the pin files (order above) —
+  nothing to map at dispatch time.
+
 ## Adapting to another harness
 
 The workflow in `.agents/skills/manager/SKILL.md` relies on exactly these
@@ -71,78 +85,13 @@ capabilities, which any harness must supply to run it end-to-end:
 
 To run on another harness, create the **same-named role agents** in that
 harness's agent-definition directory, translating the frontmatter model key
-to that harness's convention.
+to that harness's convention — or, when the harness parses no agent files,
+give it an adapter that honors these pins through its own dispatch rule.
 
-## DeepSeek Harness (DSH) adapter — verified
-
-This repo's primary harness (see README "Agentic development") **is** DSH,
-and the adapter below is verified against the installed DSH checkout
-(2026-08-29) with live smoke tests: foreground and background spawn,
-`send_message` continuation, a nested two-level spawn, and `workflow`
-per-agent model overrides. DSH has no named agent types and no
-agent-definition files, so a role's *body travels in the prompt*: copy the
-body of the role's file in this directory (everything under the frontmatter)
-into the spawn prompt, keep the task on top, and name the skill the role
-must apply.
-
-### Dispatch recipe — all six roles
-
-| Role file | DSH dispatch (verified) |
-| --- | --- |
-| `implementer.md` | generic `subagent`, background (`run_in_background` default). Returns a durable subagent id; continue with `send_message`. |
-| `senior-implementer.md` | same spawn mechanics; model pinning via `workflow` (see model routing). |
-| `reviewer.md` | generic `subagent`, background. Verified: it can spawn its two sub-reviewers itself (nested depth 2). |
-| `thermo-nuclear-review-subagent.md` | child generic `subagent` spawned by the reviewer, with the review baseline (`## Prompt` section) of `thermo-nuclear-review/SKILL.md` inlined. DSH has no `subagent_type` for it; this is the fallback `thermos-with-comments` already allows. |
-| `thermo-nuclear-code-quality-review-subagent.md` | child generic `subagent` with the baseline prompt of `thermo-nuclear-code-quality-review/SKILL.md` inlined. |
-| `assistant-manager.md` | generic `subagent`, background. DSH exposes no per-call tool filter, so its read-only constraint is enforced by the role body alone. |
-
-Mechanics: continue a child with `send_message`, list with `list_agents`,
-cancel a stalled turn with `interrupt_agent`; a child's result arrives as a
-settle notice. DSH subagents run with approval policy pinned to `never` — a
-rejected operation is a blocker to report, never a retry. DSH subagents
-inherit the session cwd and branch: for parallel implementers use gitignored
-worktrees and require absolute-path prefixing on file tools plus `workdir:`
-on every bash call (see the manager skill's DSH adapter).
-
-### Model routing on DSH (ADR-0023)
-
-The pin in each role file's frontmatter is the single source of truth, and
-the DSH adapter honors it for **every** dispatch: read the pin, translate
-`ollama/<model>:cloud` to `{ provider: "ollama", model: "<model>" }`, resolve
-the effective model against the routing status below (unroutable ids map to
-their recorded fallback), then dispatch — plain `subagent` (continuable) when
-the effective model equals the session model, otherwise a `workflow`
-`agent()` call. The `subagent` tool itself has no per-call model override —
-children inherit the session model.
-
-Routing status, verified by probes on this install (2026-08-29):
-
-| Pin (roles) | Routes on DSH | Effective DSH model |
-| --- | --- | --- |
-| `ollama/glm-5.3-flash:cloud` (implementer) | yes (session default) | `glm-5.3-flash` |
-| `ollama/glm-5.3:cloud` (senior-implementer, thermo-nuclear-review-subagent) | **no** — child resolves `null` | fallback `glm-5.2` (ADR-0023) until it routes |
-| `ollama/kimi-k2.7-code:cloud` (reviewer, thermo-nuclear-code-quality-review-subagent, assistant-manager) | yes | `kimi-k2.7-code` |
-
-Trade-offs, verified:
-
-- `workflow` runs in the foreground and its children are one-shot — a
-  model-pinned implementer cannot be resumed with `send_message`; when its
-  CI goes red, spawn a fresh workflow agent carrying the failing logs.
-- Nested spawn works from `workflow` children too (probe-verified), so the
-  reviewer keeps dispatching its two sub-reviewers wherever it runs.
-- `deepseek-v4-flash:0731` also does not route; no role pins it today — a
-  pin on an unrouted id means "re-probe before dispatch", never silent
-  session-model drift.
-- ZCode is unaffected: its pins resolve inside ZCode.
-
-### End-to-end support status
-
-- **ZCode:** runs the manager loop end-to-end (reference adapter — named
-  role agents, per-role model resolution, `SendMessage` continuation).
-- **DSH:** runs the manager loop end-to-end for **all six ZCode-configured
-  roles with their pins honored** — spawn, nested review (from plain
-  subagents and from workflow children), `send_message` continuation, and
-  per-pin model routing are probe-verified — with two recorded deviations:
-  role bodies are inlined rather than name-resolved, and the `glm-5.3` roles
-  run on the `glm-5.2` fallback until that id routes (ADR-0023).
+This repo's second harness **DSH (DeepSeek Harness)** works exactly that way:
+its verified adapter — dispatch recipe for all six roles, pin-routing rule
+with the dated routing/fallback table, and support status — lives in
+`.agents/skills/manager/DSH-ADAPTER.md` (ADR-0023). On DSH the role bodies
+are inlined into the dispatch prompt and the frontmatter pins are honored by
+the adapter's dispatch rule, not parsed by the harness.
 
