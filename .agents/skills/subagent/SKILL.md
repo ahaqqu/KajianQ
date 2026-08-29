@@ -1,13 +1,14 @@
 ---
 name: subagent
-description: Use this skill when you are running as a dedicated subagent spawned by a coordinating agent (the manager's role dispatch, or any orchestrating agent's delegation) to execute one delegated task.
+description: Reference for running as a dedicated subagent executing one delegated task from a coordinating agent.
+disable-model-invocation: true
 source: project
 synced: 2026-08-29
 ---
 
 # Subagent
 
-> **Library skill** — not an entry point. Loaded by role agents and ad-hoc delegates; the coordinating agent's dispatch is the entry point.
+> **Library skill** — not an entry point. The coordinating agent's dispatch is the entry point: it inlines these rules into the dispatch prompt or points you at this file's path (`.agents/skills/subagent/SKILL.md`) to read them.
 
 Use this skill when you are running as a dedicated subagent spawned by a coordinating agent (the `manager` skill's role dispatch, or any ad-hoc delegation from a session agent).
 

@@ -19,7 +19,7 @@ You are the manager. Your job is to **orchestrate**, not implement. You spawn, m
 | B — reviewer | `reviewer` | `code-review` (posting via `thermos-with-comments`) | Reviews the PR: applies the `code-review` skill — philosophy/guardrail compliance plus the thermos passes, which are mandatory for code-touching PRs — then spawns its two sub-reviewers (`thermo-nuclear-review-subagent`, `thermo-nuclear-code-quality-review-subagent`), synthesizes, and posts itemized review comments (`A1…`, `B1…`, `C1…`) plus a summary comment with a recommendation. |
 | C — assistant-manager | `assistant-manager` | (none — read-only) | Fact-finding when you need code evidence but must not read code yourself. |
 
-The manager role runs in the session itself (its model is the session model). Every role agent is pinned to a default model in `.zcode/agents/` — see `.zcode/agents/README.md` for the pinned defaults and the override order (user → project → template pin). The skills are harness-agnostic; the pin files are the single source of truth for models on every harness (ADR-0023), and each adapter defines how its harness honors them.
+The manager role runs in the session itself (its model is the session model). Every role agent is defined and model-pinned in a role file under `.zcode/agents/` — that pin is the single source of truth for role models on every harness, and each harness adapter defines how it honors it. The skills are harness-agnostic.
 
 ## Harness adapters
 
