@@ -1,7 +1,7 @@
 # KajianQ & DARS — Specification, Architecture & Plan
 
 > **Version:** 2.1 (2026-08-28) — living document; supersedes `INITIAL_IDEA.md` (v1.2; frozen, retained for history)
-> **Status:** Grilled & approved via grill-with-docs session; decisions recorded in `adr/0005–0021` (full index in §8), vocabulary in `CONTEXT.md`
+> **Status:** Grilled & approved via grill-with-docs session; decisions recorded in `adr/0005–0023` (full index in §8), vocabulary in `CONTEXT.md`
 > **Doc language:** English (technical) — UI copy is Indonesian-first (en/id externalized)
 
 ---

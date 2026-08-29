@@ -45,7 +45,7 @@ deliberately dropped all `docs/` entries at fork setup:
   each template pillar Inherited or Deviated with the ADR cited) — fork-owned,
   NOT in `overwrite`/`merge`, so upstream edits cannot clobber the adaptations.
 - The fork's architecture truth is `SPECS.md` (living document, AGENTS.md §2
-  rule 16) plus `adr/0005`–`0021`; the template's QUOTA/RUNBOOK/BOOTSTRAP docs
+  rule 16) plus `adr/0005`–`0023`; the template's QUOTA/RUNBOOK/BOOTSTRAP docs
   describe template-specific runbooks (D1 Time Travel restore, quota headroom)
   that do not apply to the Neon/RagStore foundation.
 - The `.agents/skills/` directory IS a merge path, so template skills that say
