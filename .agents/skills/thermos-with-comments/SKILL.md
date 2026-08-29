@@ -1,6 +1,9 @@
 ---
 name: thermos-with-comments
 description: Thermos depth of the `code-review` skill — runs the two thermo-nuclear review passes (security/correctness + code quality) and posts each finding as an itemized GitHub review comment (A1, A2…, B1, B2…, C1, C2…) with a summary comment and recommendation. Loaded by `code-review` (mandatory for code-touching PRs) and the manager's `reviewer` role — never dispatched directly.
+source: https://github.com/ahaqqu/agentic-project-template/blob/main/.agents/skills/thermos-with-comments/SKILL.md
+synced: 2026-08-29
+modified: true
 ---
 
 # Thermos With Comments

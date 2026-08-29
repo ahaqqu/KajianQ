@@ -1,6 +1,8 @@
 ---
 name: kajianq-traceability
 description: Enforce traceable-by-design when building or reviewing KajianQ/DARS code. Use whenever you add or change anything that calls an LLM, retrieves chunks, assembles context, generates an answer, runs an ingestion/eval batch, or renders an answer — the trace must always show how the output was built.
+source: project
+synced: 2026-08-29
 ---
 
 # KajianQ Traceability

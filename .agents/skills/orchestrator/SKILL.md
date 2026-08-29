@@ -1,6 +1,8 @@
 ---
 name: orchestrator
 description: Use when you are the main agent the user talks to and coordinate work by spawning focused subagents.
+source: project
+synced: 2026-08-29
 ---
 
 # Orchestrator

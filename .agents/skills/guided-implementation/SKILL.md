@@ -1,6 +1,10 @@
 ---
 name: guided-implementation
 description: Use when implementing a plan. Read AGENTS.md for guardrails.
+source: https://github.com/ahaqqu/agentic-project-template/blob/main/.agents/skills/guided-implementation/SKILL.md
+upstream: https://github.com/mattpocock/skills/blob/main/skills/engineering/implement/SKILL.md
+synced: 2026-08-29
+modified: true
 ---
 
 # Guided Implementation

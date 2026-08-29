@@ -2,6 +2,9 @@
 name: writing-great-skills
 description: Reference for writing and editing skills well — the vocabulary and principles that make a skill predictable.
 disable-model-invocation: true
+source: https://github.com/ahaqqu/agentic-project-template/blob/main/.agents/skills/writing-great-skills/SKILL.md
+synced: 2026-08-29
+modified: true
 ---
 
 A skill exists to wrangle determinism out of a stochastic system. **Predictability** — the agent taking the same _process_ every run, not producing the same output — is the root virtue; every lever below serves it.
@@ -29,7 +32,18 @@ Every skill is one of two tiers, defined by **who may start it** — never by di
   - **Description stripped of trigger phrases** — it states what the skill *is* and who loads it, never "Use when…". This is the same pruning the description section demands, taken to its library conclusion: no triggers, no autonomous firing.
   - **Not indexed in the instruction file** — referenced only by relative path from its parents. Invariant: the library header's presence, not any directory, decides the tier.
   - `disable-model-invocation: true` only when nothing auto-loads it — verify first that the consumers that need it (e.g. a role agent's `skills:` field) still load a flagged skill.
-- **Vendored skills** — synced from an upstream source — are exempt from body edits: keep them byte-faithful so upstream syncs stay trivial, and declare their tier at the consumption sites (the parent skills and role agents that reach them) instead.
+- **Vendored skills** — synced from an upstream source — are exempt from *body* edits: keep the body byte-faithful so upstream syncs stay trivial, and declare their tier at the consumption sites (the parent skills and role agents that reach them) instead.
+
+### Provenance fields
+
+Every `SKILL.md` frontmatter declares where the skill came from and its sync state, so origin and staleness are checkable per file:
+
+- `source:` — where this repo's copy syncs from: a blob URL of the sync source (usually the template repo's copy of the skill), or `project` for skills authored in this repo.
+- `upstream:` — the deepest known origin's blob URL, when the content originally came from outside the sync source (e.g. [mattpocock/skills](https://github.com/mattpocock/skills), [cursor/plugins](https://github.com/cursor/plugins)). Omit when the sync source is the original author.
+- `modified:` — `true` when this repo's copy intentionally diverges from `source` (adaptation or override); `false` when byte-identical to it. Omit for `source: project`.
+- `synced:` — date the copy was last compared against `source`/`upstream`. A staleness check is: fetch the current upstream, diff, update `synced`.
+
+Provenance frontmatter is the *only* addition permitted to a vendored skill's frontmatter/body contract: never edit a vendored body, and never add fields whose loss a sync would make ambiguous.
 
 ## Writing the description
 

@@ -2,6 +2,9 @@
 name: ship
 description: Use when deploying to staging, running pre-prod validation, promoting to production, or handling rollbacks. CI (GitHub Actions) runs DAST, fuzz, and smoke — this skill guides manual intervention.
 disable-model-invocation: true
+source: https://github.com/ahaqqu/agentic-project-template/blob/main/.agents/skills/ship/SKILL.md
+synced: 2026-08-29
+modified: false
 ---
 
 # Ship — Deploy & Validate

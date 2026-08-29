@@ -1,6 +1,8 @@
 ---
 name: dars-pluggability
 description: Enforce pluggable-by-design when building or reviewing DARS/KajianQ code. Use whenever you add, change, or review a pipeline stage, provider call, persistence call, or package boundary in the KajianQ monorepo — especially anything touching packages/rag-core, rag-ingest, eval, infra, or contracts.
+source: project
+synced: 2026-08-29
 ---
 
 # DARS Pluggability
