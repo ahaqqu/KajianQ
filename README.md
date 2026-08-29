@@ -80,6 +80,7 @@ flowchart LR
     S1["grill-with-docs → to-spec → to-tickets"]
     S2["plan-review → guided-implementation"]
     S3["writing-tests → pr-creation → code-review → ship"]
+    S0["manager — orchestrates role subagents<br/>implementer · reviewer · assistant-manager"]
   end
 
   UI <-->|optimistic read/write| Store
@@ -111,6 +112,8 @@ grill-with-docs → to-spec → to-tickets → plan-review
 ```
 
 For the full pipeline and when to use each skill, invoke the `agentic-workflow` skill (`.agents/skills/agentic-workflow/SKILL.md`). Extend the **Notes** patterns: contracts in `packages/contracts` → D1 migration + client migration + `SCHEMA_VERSION` → route under `/v1/` → UI route → BDD.
+
+For autonomous, multi-agent orchestration (implement → review → fix in one run), invoke the `manager` skill (`.agents/skills/manager/SKILL.md`). It supervises role subagents — implementer, reviewer, assistant-manager — spawning them per phase, monitoring until the PR is green, relaying itemized review feedback, and reporting back with a recommendation. Per-role models are configured in `.zcode/agents/` (see [`.zcode/agents/README.md`](.zcode/agents/README.md) for override precedence and DeepSeek/other-harness adaptation).
 
 ## Future plans
 

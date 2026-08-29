@@ -23,3 +23,7 @@ Working monorepo proving `docs/ARCHITECTURE.md` via a **Notes** CRUD vertical sl
 ## Auth model
 
 Anonymous session: `POST /v1/auth/anonymous` → Bearer token in D1. Account delete: `DELETE /v1/auth/me` cascades notes/sessions. (Better Auth OAuth can replace this adapter later.)
+
+## Agentic pipeline
+
+Skill pipeline lives in `.agents/skills/` (router: `agentic-workflow`). Multi-agent orchestration lives in `manager` (spawns role subagents per phase; role models configured in `.zcode/agents/`). Reviews can post itemized PR comments via `thermos-with-comments`.
