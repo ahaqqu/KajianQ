@@ -1,9 +1,8 @@
 ---
 name: pr-creation
 description: Use when creating a pull request. Validate against AGENTS.md Definition of Done.
-source: https://github.com/ahaqqu/agentic-project-template/blob/main/.agents/skills/pr-creation/SKILL.md
+source: project
 synced: 2026-08-29
-modified: false
 ---
 
 # PR Creation
@@ -49,8 +48,9 @@ Max 72 characters
 Concise summary of changes, not a file list.
 
 ## Closes
-Closes #123, #124. When the PR is merged, GitHub auto-closes these issues.
+Closes #123, closes #124. When the PR is merged, GitHub auto-closes these issues.
 - Use the keyword `Closes` (or `Fixes` / `Resolves`) followed by the issue number, e.g. `Closes #123`.
+- Repeat the keyword for every issue: a keyword binds only the first reference after it — `Closes #123, #124` auto-closes #123 and silently leaves #124 open (GitHub does not re-run closing keywords on a merged PR, so the skip is permanent).
 - List every issue this PR fully resolves. Do not list issues that are only partially addressed — those need a comment, not auto-close.
 - If this PR does not address a tracked issue, write `None`.
 

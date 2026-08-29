@@ -2,9 +2,8 @@
 name: manager
 description: Orchestrate the implement → review → fix loop as a supervising manager. Spawns an implementer subagent (guided-implementation) to produce a PR, monitors CI, spawns a reviewer subagent (code-review, posting findings via thermos-with-comments), relays findings to the implementer, supervises accept/reject/fix until CI is green, then summarizes and recommends next steps. User-invoked — type "manager <task>".
 disable-model-invocation: true
-source: https://github.com/ahaqqu/agentic-project-template/blob/main/.agents/skills/manager/SKILL.md
+source: project
 synced: 2026-08-29
-modified: true
 ---
 
 # Manager

@@ -2,10 +2,9 @@
 name: grill-with-docs
 description: A relentless interview to sharpen a plan or design and produce ADRs and a glossary. Use when the user wants to grill a design and write its docs.
 disable-model-invocation: true
-source: https://github.com/ahaqqu/agentic-project-template/blob/main/.agents/skills/grill-with-docs/SKILL.md
-upstream: https://github.com/mattpocock/skills/blob/main/skills/engineering/grill-with-docs/SKILL.md
+source: https://github.com/mattpocock/skills/blob/main/skills/engineering/grill-with-docs/SKILL.md
 synced: 2026-08-29
-modified: false
+modified: true
 ---
 
 # Grill With Docs
@@ -40,10 +39,10 @@ This skill is an orchestrator. It runs the `/grilling` interview discipline, the
 
 Before grilling, build a **domain glossary** — the shared vocabulary that will name types, routes, stores, and tables. A glossary built now prevents the drift where the same concept is named three ways in three layers.
 
-1. Extract every noun the user used. List them. Ask: "Is this an entity (has identity and lifecycle), a value object (defined by its attributes), or an aggregate (the root of a consistency boundary)?"
+1. Extract every noun the user used. Ask: "Is this an entity (has identity and lifecycle), a value object (defined by its attributes), or an aggregate (the root of a consistency boundary)?"
 2. Extract every verb. Ask: "Is this a command (synchronicity expected), an event (something that happened), or a query (no side effects)?"
 3. Draw the boundaries. Group nouns and verbs into **bounded contexts** — areas where a term means one thing consistently. Flag terms that cross contexts with different meanings.
-4. Name each concept with one canonical term. Record it in `docs/GLOSSARY.md`. This is the **ubiquitous language** — it will name your Valibot schemas in `@app/contracts`, table columns, and route segments.
+4. Name each concept with one canonical term — this **ubiquitous language** will name your Valibot schemas in `@app/contracts`, table columns, and route segments.
 
 Output: a draft glossary of terms, their type (entity/value/aggregate/event/command), and which bounded context they belong to.
 
@@ -99,16 +98,7 @@ Write the ADR under `adr/` and number it sequentially.
 
 ## Phase 4 — Glossary
 
-Use the `domain-modeling` skill to finalize `docs/GLOSSARY.md`. Each entry:
-
-```markdown
-### <Term>
-
-**Type:** entity | value object | aggregate | event | command | query
-**Context:** <bounded context name>
-**Definition:** one sentence that makes the term unambiguous in every context it appears.
-**Also known as:** <rejected aliases — names we deliberately did NOT use>
-```
+Use the `domain-modeling` skill to finalize `docs/GLOSSARY.md` — every noun and verb in the design carries an unambiguous definition, with rejected aliases recorded.
 
 ## Completion criterion
 

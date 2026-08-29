@@ -2,8 +2,7 @@
 name: grilling
 description: Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases.
 disable-model-invocation: true
-source: https://github.com/ahaqqu/agentic-project-template/blob/main/.agents/skills/grilling/SKILL.md
-upstream: https://github.com/mattpocock/skills/blob/main/skills/productivity/grilling/SKILL.md
+source: https://github.com/mattpocock/skills/blob/main/skills/productivity/grilling/SKILL.md
 synced: 2026-08-29
 modified: false
 ---

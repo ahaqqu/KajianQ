@@ -2,8 +2,7 @@
 name: thermos
 description: "Launch both thermo-nuclear review subagents in parallel, then synthesize their findings. Use for thermos, double thermo review, or combined bug/security and code-quality branch audits."
 disable-model-invocation: true
-source: https://github.com/ahaqqu/agentic-project-template/blob/main/.agents/skills/thermos/SKILL.md
-upstream: https://github.com/cursor/plugins/blob/main/thermos/skills/thermos/SKILL.md
+source: https://github.com/cursor/plugins/blob/main/thermos/skills/thermos/SKILL.md
 synced: 2026-08-29
 modified: false
 ---

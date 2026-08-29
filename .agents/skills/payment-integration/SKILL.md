@@ -1,9 +1,8 @@
 ---
 name: payment-integration
 description: Use when implementing payment flows, webhooks, or entitlements. Read AGENTS.md for universal guardrails.
-source: https://github.com/ahaqqu/agentic-project-template/blob/main/.agents/skills/payment-integration/SKILL.md
+source: project
 synced: 2026-08-29
-modified: false
 ---
 
 # Payment Integration Skill
