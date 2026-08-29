@@ -1,0 +1,11 @@
+# ZCode adapter — dispatching the manager's roles on ZCode
+
+The manager skill (`SKILL.md`) is harness-neutral; this file is its **ZCode adapter** — the reference harness this workflow was designed for. Load it only when running the manager loop on ZCode. The role files and their model pins live in `.zcode/agents/<role>.md` — the single source of truth for role models on every harness; on ZCode the harness parses them natively, so the adapter is thin.
+
+Mechanics per ZCode's native behavior. Evidence class: spawn/resume/result mechanics verified by live probes on the installed client (2026-08-30, this repo); pin resolution is **config-dependent, not verified by the probes** — see Model routing and ADR-0023's known-gap note.
+
+- **Spawn:** each role is a named `subagent_type` (`implementer`, `senior-implementer`, `reviewer`, `assistant-manager`) defined in `.zcode/agents/`, dispatched with background run. The definitions and model pins resolve automatically — no prompt assembly or role-body inlining needed.
+- **Resume:** continue a child with `SendMessage` (manager steps 2 and 5); re-issue its prompt verbatim when respawning after a stall.
+- **Results:** read a child's report from its final message. Probe-verified (2026-08-30): a completed background agent's `output.txt`/`task.output` artifact holds the final message text, while the full run history sits in a much larger `transcript.jsonl` beside it — do not read the transcript for the result or you will overflow your context.
+- **Model routing:** the `model:` frontmatter ref must name a provider **key** in the ZCode client's provider config (`~/.zcode/v2/config.json`, `provider` object). A pin like `ollama/<model>:cloud` resolves only if a provider entry is keyed `ollama` in that file; a key mismatch fails the spawn with "Model provider is not configured: <id>" (reproduced live 2026-08-30 — see ADR-0023's known-gap note). Before a model-pinned run, verify resolution with `bun run zcode:preflight`. Override order: `~/.zcode/agents/<role>.md` (user) → this project's `.zcode/agents/` → template pin (see the pinned-defaults table in the role registry). A model-pinned dispatch keeps `SendMessage` continuation.
+- **Approvals and isolation:** subagent approval and workspace-isolation mechanics follow the `subagent` skill (§ Workspace isolation) — it is harness-neutral by design.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Remove orchestrator subagent worktrees (.worktrees/<slug>) whose branch is
+// Remove manager-skill subagent worktrees (.worktrees/<slug>) whose branch is
 // safely disposable. A branch counts as disposable when ANY of these holds:
 //   1. its GitHub PR reports state MERGED (squash-safe — history was rewritten);
 //   2. it is an ancestor of origin/main (falling back to local main);

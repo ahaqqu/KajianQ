@@ -59,7 +59,16 @@ not hard-fail. Check agent discoverability in ZCode via
 | thermo-nuclear-code-quality-review-subagent | `thermo-nuclear-code-quality-review-subagent.md` | `ollama/kimi-k2.7-code:cloud` | maintainability pass |
 | assistant-manager | `assistant-manager.md` | `ollama/kimi-k2.7-code:cloud` | read-only fact-finding and adjudication evidence |
 
-## Adapting to another harness (e.g. DeepSeek)
+## Role registry
+
+This directory is the role-file home the ZCode harness parses (see the
+pinned-defaults table above). The *dispatch* mechanics for running the
+manager loop live in the per-harness adapters under
+`.agents/skills/manager/`: `.agents/skills/manager/ZCODE-ADAPTER.md`
+(reference harness) and `.agents/skills/manager/DSH-ADAPTER.md`
+(DeepSeek Harness — verified).
+
+## Adapting to another harness
 
 The workflow in `.agents/skills/manager/SKILL.md` relies on exactly these
 capabilities, which any harness must supply to run it end-to-end:
@@ -69,9 +78,12 @@ capabilities, which any harness must supply to run it end-to-end:
    field.
 3. `gh` CLI access (subagents use `gh` for PR and comment operations).
 
-To run on a Claude-Code-compatible or other harness, create the **same-named
-role agents** in that harness's agent-definition directory, translating the
-frontmatter model key to that harness's convention. **DeepSeek support is
-documented but unverified** — no DeepSeek CLI is currently installed, so this
-recipe has not been validated against it.
+To run on another harness, create the **same-named role agents** in that
+harness's agent-definition directory, translating the frontmatter model key
+to that harness's convention — or, when the harness parses no agent files,
+give it an adapter that honors these pins through its own dispatch rule.
+
+This repo's second harness **DSH (DeepSeek Harness)** works exactly that way:
+its verified adapter — dispatch recipe for all six roles and the pin-routing
+rule — lives in `.agents/skills/manager/DSH-ADAPTER.md` (ADR-0023).
 

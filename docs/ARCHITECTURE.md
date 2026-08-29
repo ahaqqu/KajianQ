@@ -9,7 +9,7 @@ template's engineering principles still hold. For normative rules agents must
 follow, see [`AGENTS.md`](../AGENTS.md). For the **living** architecture and
 plan — the current package tree, data layer, cost model, and phased plan — see
 [`SPECS.md`](../SPECS.md) (AGENTS.md §2 rule 16). Decisions live in
-`adr/0005`–`0021`; vocabulary in [`CONTEXT.md`](../CONTEXT.md).
+`adr/` (0005 onward, numbered to continue the sequence); vocabulary in [`CONTEXT.md`](../CONTEXT.md).
 
 This fork descends from `agentic-project-template`. Its `docs/ARCHITECTURE.md`
 was **deliberately not synced** (docs/ is fork-owned in `template-sync.json`):
@@ -219,7 +219,7 @@ so swapping the RagStore adapter swaps the backend.
 ├── AGENTS.md                   # normative rules for agents
 ├── CONTEXT.md                  # domain vocabulary
 ├── INITIAL_IDEA.md             # frozen v1.2 history — never updated
-└── adr/                        # 0005–0021, numbered to continue the sequence
+└── adr/                        # numbered to continue the sequence
 ```
 
 ## 11. Available — degrade, don't crash *(inherited, adapted)*
@@ -328,7 +328,7 @@ Root `package.json` scripts are the single source of truth for gates:
 | What is the architecture and plan *now*? | `SPECS.md` (living, rule 16) |
 | What rules must agents follow? | `AGENTS.md` |
 | What do the domain words mean? | `CONTEXT.md` |
-| What was decided, when, and why? | `adr/0005`–`0021` |
+| What was decided, when, and why? | `adr/` (0005 onward) |
 | Is it working? (factors, metrics, failure signals) | `docs/SUCCESS_FACTORS_AND_METRICS.md` |
 
 When this document and `SPECS.md` disagree, `SPECS.md` wins (it is the living
