@@ -64,8 +64,8 @@ not hard-fail. Check agent discoverability in ZCode via
 This directory is the role-file home the ZCode harness parses (see the
 pinned-defaults table above). The *dispatch* mechanics for running the
 manager loop live in the per-harness adapters under
-`.agents/skills/manager/`: [`ZCODE-ADAPTER.md`](../../.agents/skills/manager/ZCODE-ADAPTER.md)
-(reference harness) and [`DSH-ADAPTER.md`](../../.agents/skills/manager/DSH-ADAPTER.md)
+`.agents/skills/manager/`: `.agents/skills/manager/ZCODE-ADAPTER.md`
+(reference harness) and `.agents/skills/manager/DSH-ADAPTER.md`
 (DeepSeek Harness — verified).
 
 ## Adapting to another harness
@@ -85,10 +85,5 @@ give it an adapter that honors these pins through its own dispatch rule.
 
 This repo's second harness **DSH (DeepSeek Harness)** works exactly that way:
 its verified adapter — dispatch recipe for all six roles and the pin-routing
-rule — lives in `.agents/skills/manager/DSH-ADAPTER.md` (ADR-0023). On DSH
-the role bodies are inlined into the dispatch prompt and the frontmatter
-pins are honored by the adapter's dispatch rule, not parsed by the harness;
-whether every pin resolves is checked by the preflight gate
-(`bun run dsh:preflight`), whose `--fix` declares a missing model id in the
-DSH provider's model list — pins are never rerouted.
+rule — lives in `.agents/skills/manager/DSH-ADAPTER.md` (ADR-0023).
 

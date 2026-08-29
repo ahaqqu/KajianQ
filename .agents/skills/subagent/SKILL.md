@@ -39,9 +39,9 @@ You share the delegating agent's working directory and branch: parallel agents r
 
 If no worktree path was given and parallel work may be running, ask for one before making any change; otherwise restrict yourself strictly to your delegated files.
 
-Mechanics differ per harness — on DSH (DeepSeek Harness): file tools (`read`/`write`/`edit`/`glob`/`grep`) resolve relative paths against the session cwd regardless of bash's working directory, and each bash call is a fresh shell, so also pass `workdir: "<worktree>"` on EVERY bash call; `cd` has no effect on file tools at all. Work isolation comes only from path discipline, never from `cd`.
+`cd` is not isolation — it changes the shell's directory, never another tool's working root. Isolation comes only from path discipline.
 
-Your approval policy is pinned: operations that need interactive approval are rejected automatically. Do not retry a rejected operation — report it as a blocker instead.
+If your harness runs every operation under an approval policy (some pin it to never-approve), a rejected operation you cannot retry is a blocker to report, not to work around — see Rule #7.
 
 ## Output format
 
