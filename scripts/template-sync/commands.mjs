@@ -261,6 +261,57 @@ export function createCommands(ctx) {
       }
     }
 
+    // Non-manifest paths are project-owned: the template must never leave
+    // them conflicted for a human. Auto-resolve to the fork's version —
+    // including shared-history merges, where both sides edited the same
+    // project file (e.g. a fork-tuned README vs the template's). Only
+    // merge-path conflicts remain for manual resolution.
+    const conflictedProjectPaths =
+      (gitOut(["diff", "--name-only", "--diff-filter=U"]) ?? "")
+        .split("\n")
+        .filter(Boolean)
+        .filter((p) => !isManifestPath(manifest, p));
+    if (conflictedProjectPaths.length) {
+      const oursKept = conflictedProjectPaths.filter((p) =>
+        gitOk(["cat-file", "-e", `:2:${p}`]),
+      );
+      const oursDeleted = conflictedProjectPaths.filter(
+        (p) => !gitOk(["cat-file", "-e", `:2:${p}`]),
+      );
+      if (oursKept.length) {
+        const r = git(["checkout", "--ours", "--", ...oursKept]);
+        if (r.status !== 0) {
+          if (merging) git(["merge", "--abort"]);
+          clearPending(pendingPath);
+          throw new Error(
+            `resolving non-manifest conflicts (--ours) failed:\n${r.stderr}`,
+          );
+        }
+        const add = git(["add", "--", ...oursKept]);
+        if (add.status !== 0) {
+          if (merging) git(["merge", "--abort"]);
+          clearPending(pendingPath);
+          throw new Error(
+            `git add of non-manifest conflict resolutions failed:\n${add.stderr}`,
+          );
+        }
+      }
+      if (oursDeleted.length) {
+        const rm = git(["rm", "--quiet", "--", ...oursDeleted]);
+        if (rm.status !== 0) {
+          if (merging) git(["merge", "--abort"]);
+          clearPending(pendingPath);
+          throw new Error(
+            `removing non-manifest paths deleted by the fork failed:\n${rm.stderr}`,
+          );
+        }
+      }
+      log.info("resolved non-manifest conflicts with the fork's version", {
+        kept: oursKept,
+        deleted: oursDeleted,
+      });
+    }
+
     const remaining = (gitOut(["diff", "--name-only", "--diff-filter=U"]) ?? "")
       .split("\n")
       .filter(Boolean);
