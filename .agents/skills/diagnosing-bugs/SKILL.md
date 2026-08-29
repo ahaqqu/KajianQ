@@ -1,8 +1,7 @@
 ---
 name: diagnosing-bugs
 description: Diagnosis loop for hard bugs and performance regressions. Use when the user says "diagnose"/"debug this", or reports something broken/throwing/failing/slow.
-source: https://github.com/ahaqqu/agentic-project-template/blob/main/.agents/skills/diagnosing-bugs/SKILL.md
-upstream: https://github.com/mattpocock/skills/blob/main/skills/engineering/diagnosing-bugs/SKILL.md
+source: https://github.com/mattpocock/skills/blob/main/skills/engineering/diagnosing-bugs/SKILL.md
 synced: 2026-08-29
 modified: false
 ---

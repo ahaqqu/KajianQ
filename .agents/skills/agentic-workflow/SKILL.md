@@ -2,9 +2,8 @@
 name: agentic-workflow
 description: Orchestration map for the recommended agent-driven development pipeline. User-invoked only — type "agentic workflow".
 disable-model-invocation: true
-source: https://github.com/ahaqqu/agentic-project-template/blob/main/.agents/skills/agentic-workflow/SKILL.md
+source: project
 synced: 2026-08-29
-modified: true
 ---
 
 # Agentic Workflow

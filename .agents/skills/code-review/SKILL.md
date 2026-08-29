@@ -1,10 +1,8 @@
 ---
 name: code-review
 description: Use when reviewing a pull request after it is created. The single review entry point — sets the review depth (normal for docs/skill-only changes, thermos mandatory for anything touching code) and verifies philosophy and guardrail compliance.
-source: https://github.com/ahaqqu/agentic-project-template/blob/main/.agents/skills/code-review/SKILL.md
-upstream: https://github.com/mattpocock/skills/blob/main/skills/engineering/code-review/SKILL.md
+source: project
 synced: 2026-08-29
-modified: true
 ---
 
 # Code Review

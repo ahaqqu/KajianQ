@@ -2,8 +2,7 @@
 name: thermo-nuclear-review
 description: Comprehensive security and correctness audit of a branch's changes. Use for thermo nuclear, thermonuclear, or deep review requests, or branch/PR diff audits focused on bugs, breaking changes, security issues, devex regressions, and feature-gate leaks.
 disable-model-invocation: true
-source: https://github.com/ahaqqu/agentic-project-template/blob/main/.agents/skills/thermo-nuclear-review/SKILL.md
-upstream: https://github.com/cursor/plugins/blob/main/thermos/skills/thermo-nuclear-review/SKILL.md
+source: https://github.com/cursor/plugins/blob/main/thermos/skills/thermo-nuclear-review/SKILL.md
 synced: 2026-08-29
 modified: false
 ---
