@@ -17,7 +17,7 @@ coverage/
 apps/api/.mf/
 .dev.vars
 
-# Orchestrator subagent git worktrees (.agents/skills/orchestrator)
+# Agentic subagent git worktrees (manager skill, DSH adapter)
 .worktrees/
 
 .template-sync.pending

@@ -19,7 +19,37 @@ You are the manager. Your job is to **orchestrate**, not implement. You spawn, m
 | B — reviewer | `reviewer` | `code-review` (posting via `thermos-with-comments`) | Reviews the PR: applies the `code-review` skill — philosophy/guardrail compliance plus the thermos passes, which are mandatory for code-touching PRs — then spawns its two sub-reviewers (`thermo-nuclear-review-subagent`, `thermo-nuclear-code-quality-review-subagent`), synthesizes, and posts itemized review comments (`A1…`, `B1…`, `C1…`) plus a summary comment with a recommendation. |
 | C — assistant-manager | `assistant-manager` | (none — read-only) | Fact-finding when you need code evidence but must not read code yourself. |
 
-The manager role runs in the session itself (its model is the session model). Every role agent is pinned to a default model in `.zcode/agents/` — see `.zcode/agents/README.md` for the pinned defaults and the override order (user → project → template pin). The skills are harness-agnostic; only the files in `.zcode/agents/` are harness-specific.
+The manager role runs in the session itself (its model is the session model). Every role agent is pinned to a default model in `.zcode/agents/` — see `.zcode/agents/README.md` for the pinned defaults and the override order (user → project → template pin). The skills are harness-agnostic; only the files in `.zcode/agents/` are harness-specific, and each adapter below maps the roles onto its harness's spawn mechanism.
+
+## Harness adapters
+
+The loop runs on any harness that can spawn a background subagent, continue it later, and drive `gh`. Two adapters are maintained:
+
+### ZCode (reference adapter)
+
+Spawn each role by its named `subagent_type` (`implementer`, `senior-implementer`, `reviewer`, `assistant-manager`) with background dispatch; the definitions and per-role model pins in `.zcode/agents/` resolve automatically. Continue a child with `SendMessage`.
+
+### DSH (DeepSeek Harness) — verified against the installed harness
+
+DSH has no named agent types and no agent-definition files, so the role definition travels in the prompt:
+
+| Role | DSH dispatch |
+| --- | --- |
+| A — implementer | generic `subagent`, background (durable id); role body from `.zcode/agents/implementer.md` inlined into the prompt. Continue with `send_message` for the CI-fix relay. |
+| A — senior-implementer | same, body from `senior-implementer.md`; model pinning via `workflow` (see routing caveat). |
+| B — reviewer | generic `subagent`, background; body from `reviewer.md` inlined. It spawns its two sub-reviewers itself (nested spawn verified). |
+| sub-reviewer (security) | child generic `subagent` with the baseline prompt from `thermo-nuclear-review/SKILL.md` inlined — DSH has no subagent types for them; this is the fallback `thermos-with-comments` already allows. |
+| sub-reviewer (quality) | child generic `subagent` with the baseline prompt from `thermo-nuclear-code-quality-review/SKILL.md` inlined. |
+| C — assistant-manager | generic `subagent`, background; body from `assistant-manager.md` inlined. Read-only is enforced by the role body's constraints — DSH exposes no per-call tool filter. |
+
+DSH mechanics every dispatch uses:
+
+- **Spawn:** `subagent` with a complete, standalone prompt = task + role body + the skill to apply. Result arrives as a settle notice; the id stays continuable.
+- **Resume:** `send_message` to the subagent id (steps 2 and 5); list with `list_agents`; cancel a stalled turn with `interrupt_agent`.
+- **Model routing:** `subagent` children inherit the session model — there is no per-call override. To pin a role's model, use the `workflow` tool: `agent(prompt, { provider: "ollama", model: "glm-5.3-flash" })`, where a `.zcode/agents/` pin of `ollama/<model>:cloud` maps to `<model>`. Workflow runs in the foreground, blocks until every agent settles, and its children are one-shot — a model-pinned implementer cannot be resumed with `send_message`; when its CI goes red, spawn a fresh workflow agent carrying the failing logs. The assistant-manager is a single read-only turn, so this costs nothing.
+- **Routing caveat (verified on the installed DSH, 2026-08-29):** `kimi-k2.7-code`, `kimi-k3`, `glm-5.2`, and the session default route; `glm-5.3` and `deepseek-v4-flash:0731` fail (the workflow child resolves `null`). Until those ids route, dispatch a DSH `model:high` ticket through `glm-5.2` — the strongest verified high-reasoning target, not a downgrade of the ticket. ZCode is unaffected: its pins resolve inside ZCode.
+- **Approvals:** DSH subagents run with their approval policy pinned to `never` — a rejected operation is a blocker to report, never a retry.
+- **Workspace isolation (parallel implementers):** DSH subagents inherit the session cwd and branch. Give each a gitignored worktree off the integration branch (`git worktree add -b agent/<slug> .worktrees/<slug> main`) and require in the prompt: prefix EVERY `read`/`write`/`edit`/`glob`/`grep` path with the worktree's absolute path (an unprefixed relative path lands in the main tree), pass `workdir: "<worktree>"` on EVERY bash call (each call is a fresh shell), and touch nothing outside it. Telling a subagent to `cd` isolates nothing. When the branch is merged, clean up with `bun run worktree:clean`.
 
 ## Non-negotiables
 
@@ -38,13 +68,13 @@ The manager role runs in the session itself (its model is the session model). Ev
 
 ### 1. Dispatch A (implement)
 
-Choose the implementer type using the **dispatch decision** below, then spawn it with `run_in_background: true`. The prompt must state: the task, the Definition of Done in `AGENTS.md`, that the completion criterion is **PR URL + `gh pr checks` green**, and that it must apply `guided-implementation`. For a `senior-implementer` dispatch, also require it to lead with the invariant and design-for-verification statement.
+Choose the implementer type using the **dispatch decision** below, then spawn it in the background (per your harness adapter). The prompt must state: the task, the Definition of Done in `AGENTS.md`, that the completion criterion is **PR URL + `gh pr checks` green**, and that it must apply `guided-implementation` — and explicitly that it may commit, push, and open the PR (subagents default to stopping for approval before each of those; see the `subagent` skill's PR-creation rule). For a `senior-implementer` dispatch, also require it to lead with the invariant and design-for-verification statement.
 
 **Completion criterion (verified):** the implementer returns a PR URL; `gh pr view <url>` confirms the PR exists and is open.
 
 #### Dispatch decision: implementer vs senior-implementer
 
-Pick the implementer type by **label first, then judgment**, exactly once per ticket at dispatch time (this decides which subagent_type to spawn; it does not change either agent's definition):
+Pick the implementer type by **label first, then judgment**, exactly once per ticket at dispatch time (this decides which role to spawn — its `subagent_type` on ZCode, its role body on DSH; it does not change either agent's definition):
 
 - If the ticket is labeled **`model:high`** → spawn `senior-implementer`. These tickets carry a correctness/trust invariant that fails silently; do not downgrade them.
 - If the ticket has no model label → use your own judgment: spawn `senior-implementer` when you assess the work as hard (cross-cutting change, correctness/trust risk, or a silent-failure mode not yet codified as a label), otherwise spawn `implementer`. Record why in the final summary.
@@ -56,11 +86,11 @@ The `model:` ticket labels are produced by the `to-tickets` skill when tickets a
 
 - Run `gh pr checks <pr> --watch`.
 - Green → proceed.
-- Red → send A the failing check name and `gh run view --log-failed` output verbatim via `SendMessage`. Resume the same A (`agentId`) — do not spawn a new implementer unless A has crashed. Repeat until green or stall (see Reliability).
+- Red → send A the failing check name and `gh run view --log-failed` output verbatim via the harness's continue mechanism (`SendMessage` on ZCode, `send_message` on DSH). Resume the same A (its agent/subagent id) — do not spawn a new implementer unless A has crashed; on a model-pinned DSH workflow dispatch, respawning fresh carries the logs. Repeat until green or stall (see Reliability).
 
 ### 3. Dispatch B (review)
 
-Spawn `subagent_type: "reviewer"` with `run_in_background: true`. It applies the `code-review` skill (the single review entry point — for a code-touching PR the thermos depth is mandatory) and posts the itemized findings via `thermos-with-comments`, internally spawning its two sub-reviewers in parallel. Its prompt must hand it the PR number/URL and require its completion criterion: **every item posted as a review comment + summary comment present**.
+Spawn the reviewer role (per your harness adapter) in the background. It applies the `code-review` skill (the single review entry point — for a code-touching PR the thermos depth is mandatory) and posts the itemized findings via `thermos-with-comments`, internally spawning its two sub-reviewers in parallel. Its prompt must hand it the PR number/URL and require its completion criterion: **every item posted as a review comment + summary comment present**.
 
 **Completion criterion (verified):** `gh pr view <pr> --comments` shows the summary comment (contains "Thermos review") and at least as many review comments as items in B's returned report.
 
@@ -93,9 +123,9 @@ Produce the final user-facing summary:
 
 ## Reliability & supervision
 
-- **Subagent results.** Capture each spawn's `agentId`. Use `SendMessage` to resume/redirect a running background agent. Use `TaskOutput` **only** for plain `Bash` background tasks — for subagents its `.output` is a transcript symlink, not a report, and reading it can overflow your context.
+- **Subagent results.** Capture each spawn's agent/subagent id. Continue a running child with the harness's continue mechanism (`SendMessage` on ZCode, `send_message` on DSH). Read a child's result from its report/settle notice — not from a transcript-style output tool (on ZCode, `TaskOutput` on a subagent exposes a transcript symlink, not a report; on DSH, `job_output` covers only plain background bash jobs).
 - **Objective verification over prose.** Every awaited artifact is verified independently (`gh pr view`, `gh pr checks`, `gh api`), not trusted from a subagent's message.
-- **Stall rule.** Configurable: `STALL_MINUTES` (default 30). If a background subagent produces no observable artifact within that window, send one `SendMessage` "status?" ping. On continued stall, respawn the subagent fresh (new `agentId`), re-issuing the same prompt. After two stalled attempts, escalate to the user.
+- **Stall rule.** Configurable: `STALL_MINUTES` (default 30). If a background subagent produces no observable artifact within that window, send one "status?" ping via the continue mechanism. On continued stall, respawn the subagent fresh (new id), re-issuing the same prompt. After two stalled attempts, escalate to the user.
 - **CI protocol.** `gh pr checks --watch` is the only sanctioned CI-wait mechanism; do not poll in a tight loop.
 - **Escalation.** Surface blockers (auth failures, repeated stalls, B-flagged-High rejections without evidence) to the user immediately. Do not silently absorb or decide them.
 
