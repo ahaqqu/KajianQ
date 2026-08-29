@@ -19,6 +19,16 @@ export {
   type RunContext,
 } from "./context";
 export {
+  type EmbedSpec,
+  type EmbeddingResult,
+  type GenerationResult,
+  type PromptSpec,
+  ProviderError,
+  type ProviderErrorKind,
+  type Provider,
+  type StreamHandle,
+} from "./provider";
+export {
   runPipeline,
   type PipelineStages,
   type RunOptions,

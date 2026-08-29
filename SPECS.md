@@ -300,6 +300,7 @@ Mitigations: top-k discipline (8–12 chunks, not 20), prompt caching for the st
 | `adr/0019` | Boundary gate scans engine migration SQL, not just TypeScript (closes the `.sql` blind spot in the domain/vendor/DB-client rules) |
 | `adr/0020` | Neon plan sizing for the dual 1536-dim vector schema (storage/cost trade-off recorded before the #9 gate) |
 | `adr/0021` | `runPipeline` runner owns run scope, run config, and trace assembly; typed dispatch, per-run disposal; cordis deferred behind a revisit trigger |
+| `adr/0022` | Provider seam in `rag-core`, generic config-driven vendor adapters in `infra` (zero vendor names in engine `.ts`; vendor data lives in checked-in JSON); fallback chains; streaming with deferred cost |
 
 Domain vocabulary: `CONTEXT.md`. Workflow after this spec: `to-spec` → `to-tickets` per the template's agentic pipeline.
 

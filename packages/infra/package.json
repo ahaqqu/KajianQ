@@ -7,7 +7,8 @@
     ".": "./src/index.ts"
   },
   "bin": {
-    "db-migrate": "./scripts/db-migrate.mjs"
+    "db-migrate": "./scripts/db-migrate.mjs",
+    "provider-smoke": "./scripts/provider-smoke.mjs"
   },
   "scripts": {
     "check": "tsc -p tsconfig.json --noEmit"
@@ -17,6 +18,7 @@
   },
   "dependencies": {
     "@app/contracts": "workspace:*",
+    "@app/rag-core": "workspace:*",
     "@aws-sdk/client-s3": "^3.1116.0",
     "@neondatabase/serverless": "^1.1.0",
     "valibot": "1.4.2"

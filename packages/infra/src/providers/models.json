@@ -1,0 +1,92 @@
+{
+  "$comment": "Provider config — the single source of truth for the ADR-0009 vendor allowlist: endpoints, model ids, api-key env names, prices per MTok, and per-role fallback chains (ADR-0022). Vendor data lives ONLY here (and the model_configs DB mirror); no .ts file in the engine may name a vendor — the boundary gate enforces it by scanning .ts and not .json. Prices are micro-USD per MTok (1 USD = 1e6 micro-USD, so a $0.50/MTok input price is 500000), PR-reviewed like any model decision. Defaults from SPECS.md §3.4 (2026-08).",
+  "vendors": {
+    "gemini": {
+      "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "apiKeyEnv": "GEMINI_API_KEY",
+      "protocol": "chat-completions",
+      "freeTier": true,
+      "personalDataAllowed": false,
+      "models": {
+        "gemini-3.1-pro": {
+          "capabilities": ["generate", "stream"],
+          "priceMicroUsdPerMTok": { "in": 2000, "out": 12000 }
+        },
+        "gemini-3-flash": {
+          "capabilities": ["generate", "stream"],
+          "priceMicroUsdPerMTok": { "in": 500, "out": 3000 }
+        },
+        "gemini-embedding-001": {
+          "capabilities": ["embed"],
+          "dimensions": 1536,
+          "priceMicroUsdPerMTok": { "in": 0, "out": 0 }
+        }
+      }
+    },
+    "qwen": {
+      "$comment": "DashScope OpenAI-compatible endpoint (international base).",
+      "baseUrl": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+      "apiKeyEnv": "DASHSCOPE_API_KEY",
+      "protocol": "chat-completions",
+      "freeTier": false,
+      "personalDataAllowed": true,
+      "models": {
+        "qwen3.7-max": {
+          "capabilities": ["generate", "stream"],
+          "priceMicroUsdPerMTok": { "in": 2500, "out": 7500 }
+        },
+        "qwen3-max": {
+          "capabilities": ["generate", "stream"],
+          "priceMicroUsdPerMTok": { "in": 780, "out": 3900 }
+        }
+      }
+    },
+    "deepseek": {
+      "baseUrl": "https://api.deepseek.com/v1",
+      "apiKeyEnv": "DEEPSEEK_API_KEY",
+      "protocol": "chat-completions",
+      "freeTier": false,
+      "personalDataAllowed": true,
+      "models": {
+        "deepseek-v4-flash": {
+          "capabilities": ["generate", "stream"],
+          "priceMicroUsdPerMTok": { "in": 140, "out": 280 }
+        }
+      }
+    },
+    "kimi": {
+      "baseUrl": "https://api.moonshot.ai/v1",
+      "apiKeyEnv": "MOONSHOT_API_KEY",
+      "protocol": "chat-completions",
+      "freeTier": false,
+      "personalDataAllowed": true,
+      "models": {
+        "kimi-k3": {
+          "capabilities": ["generate", "stream"],
+          "priceMicroUsdPerMTok": { "in": 2000, "out": 8000 }
+        },
+        "kimi-k2.6": {
+          "capabilities": ["generate", "stream"],
+          "priceMicroUsdPerMTok": { "in": 550, "out": 2200 }
+        }
+      }
+    }
+  },
+  "roles": {
+    "generator": { "chain": ["qwen:qwen3.7-max"] },
+    "reviewer": { "chain": ["gemini:gemini-3.1-pro"] },
+    "reviewer-live": {
+      "$comment": "Live-sample faithfulness review; cheap but not free-tier.",
+      "chain": ["gemini:gemini-3-flash"]
+    },
+    "cheap": {
+      "$comment": "Router stages 1-3, tagging, cleaning. Free tier first, paid fallback on provider failure (spec 3.4).",
+      "chain": ["gemini:gemini-3-flash", "deepseek:deepseek-v4-flash"]
+    },
+    "translation": { "chain": ["qwen:qwen3-max"] },
+    "embedder": {
+      "$comment": "Pending the #9 embedding benchmark gate (AGENTS.md rule 10) — AR-only vs ID-fallback fusion is decided by its numbers, not here.",
+      "chain": ["gemini:gemini-embedding-001"]
+    }
+  }
+}
