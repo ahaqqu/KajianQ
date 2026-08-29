@@ -5,12 +5,12 @@ description: Use when reviewing a pull request after it is created. The single r
 
 # Code Review
 
-Use this skill when reviewing a pull request after it has been created. It is the single entry point for all review: the thermo passes (`thermos`, `thermos-with-comments`) are reached through this skill, never dispatched directly.
+Use this skill when reviewing a pull request after it has been created. It is the single entry point for all review: the thermo passes are reached through this skill — always via `.agents/skills/thermos-with-comments/SKILL.md`, which posts the itemized findings on the PR. This skill never runs `thermos` (the chat-synthesis variant).
 
 ## Review depth (determined by the change, not negotiated)
 
 - **Normal** — this skill's philosophy and guardrail review only. Allowed only when the PR touches **no code**: docs, skills, agent-instruction files, ADRs, specs, and similar non-runtime surfaces.
-- **Thermos (mandatory for code)** — if the diff touches any runtime code (`apps/`, `packages/`, `scripts/`, migrations, CI workflows), additionally apply `.agents/skills/thermos/SKILL.md`: both the security/correctness and the maintainability thermo-nuclear passes. This is not optional and not a recommendation — a PR that changes code is always reviewed at thermos depth.
+- **Thermos (mandatory for code)** — if the diff touches any runtime code (`apps/`, `packages/`, `scripts/`, migrations, CI workflows), run `.agents/skills/thermos-with-comments/SKILL.md`: dispatch both thermo-nuclear sub-reviewers (security/correctness + maintainability) and post the itemized findings as PR comments. This is not optional and not a recommendation — a PR that changes code is always reviewed at thermos depth.
 
 There is no third depth. If a PR mixes code and docs, thermos applies to the whole PR.
 
@@ -54,7 +54,7 @@ Report:
 
 - Philosophy violations: which principle (cite the `docs/ARCHITECTURE.md` section), which file, and why.
 - Guardrail violations: which rule, which file and line.
-- Thermo findings (when code was touched): merged and prioritized per the thermos output format.
+- Thermo findings (when code was touched): the itemized report posted by thermos-with-comments (A/B/C IDs), merged and prioritized.
 - Approval or rejection with justification.
 
 Block the PR on any MUST or MUST NOT violation. Flag SHOULD violations for author response.

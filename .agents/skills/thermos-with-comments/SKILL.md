@@ -5,7 +5,7 @@ description: Run the two thermo-nuclear review passes (security/correctness + co
 
 # Thermos With Comments
 
-Use this skill when a review's findings must land on the PR as individually-referencable, itemized comments — the manager-orchestrated implement → review → fix loop. It is the comment-posting arm of the `code-review` skill's thermos depth: reviews reach it through `code-review` (applied by the manager's `reviewer` role), never dispatched directly. It runs the same two thermo passes as `thermos` but instead of synthesizing in chat, it posts the itemized report to the PR and returns the same itemized report to the caller.
+Use this skill when a review's findings must land on the PR as individually-referencable, itemized comments — the manager-orchestrated implement → review → fix loop, and the only thermos arm `code-review` ever calls. It runs the two thermo passes (standards inherited from `thermo-nuclear-review/SKILL.md` and `thermo-nuclear-code-quality-review/SKILL.md`) and posts the itemized report to the PR instead of synthesizing in chat, returning the same itemized report to the caller.
 
 The review standards are inherited from `thermo-nuclear-review/SKILL.md` (security/correctness) and `thermo-nuclear-code-quality-review/SKILL.md` (maintainability). Load both into the dispatched subagents.
 
