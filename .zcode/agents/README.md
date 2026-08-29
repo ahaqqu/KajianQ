@@ -59,19 +59,14 @@ not hard-fail. Check agent discoverability in ZCode via
 | thermo-nuclear-code-quality-review-subagent | `thermo-nuclear-code-quality-review-subagent.md` | `ollama/kimi-k2.7-code:cloud` | maintainability pass |
 | assistant-manager | `assistant-manager.md` | `ollama/kimi-k2.7-code:cloud` | read-only fact-finding and adjudication evidence |
 
-## Running the manager loop on ZCode
+## Role registry
 
-This directory is the ZCode adapter for `.agents/skills/manager/SKILL.md` —
-the harness-specific half of the loop (see its *Harness adapters* router).
-
-- **Spawn:** each role is a named `subagent_type` (`implementer`,
-  `senior-implementer`, `reviewer`, `assistant-manager`) from this directory,
-  dispatched with background run. The definitions and model pins resolve
-  automatically — no prompt assembly needed.
-- **Resume:** continue a child with `SendMessage`; re-issue its prompt
-  verbatim when respawning after a stall.
-- **Model routing:** resolved by ZCode from the pin files (order above) —
-  nothing to map at dispatch time.
+This directory is the role-file home the ZCode harness parses (see the
+pinned-defaults table above). The *dispatch* mechanics for running the
+manager loop live in the per-harness adapters under
+`.agents/skills/manager/`: [`ZCODE-ADAPTER.md`](../../.agents/skills/manager/ZCODE-ADAPTER.md)
+(reference harness) and [`DSH-ADAPTER.md`](../../.agents/skills/manager/DSH-ADAPTER.md)
+(DeepSeek Harness — verified).
 
 ## Adapting to another harness
 

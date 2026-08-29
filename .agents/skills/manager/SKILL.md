@@ -25,7 +25,7 @@ The manager role runs in the session itself (its model is the session model). Ev
 
 The loop runs on any harness that can spawn a background subagent, continue it later, and drive `gh`. Load the adapter file for your harness — you know which you are from your own spawn tools — and let it resolve every step marked "per your harness adapter":
 
-- **ZCode** → `.zcode/agents/README.md`
+- **ZCode** → `.agents/skills/manager/ZCODE-ADAPTER.md`
 - **DSH (DeepSeek Harness)** → `.agents/skills/manager/DSH-ADAPTER.md`
 
 ## Non-negotiables

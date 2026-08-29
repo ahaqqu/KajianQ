@@ -47,5 +47,5 @@ DSH subagents inherit the session cwd and branch. Give each a gitignored worktre
 
 ## Support status
 
-- ZCode is the reference adapter: its pins resolve inside ZCode (see `.zcode/agents/README.md`).
+- ZCode is the reference adapter: its pins resolve inside ZCode (see `ZCODE-ADAPTER.md`, sibling to this file).
 - DSH runs the manager loop end-to-end for **all six ZCode-configured roles with their pins honored** — spawn, nested review (from plain subagents and from workflow children), `send_message` continuation, and per-pin model routing are probe-verified — with two recorded deviations: role bodies are inlined rather than name-resolved, and the `glm-5.3` roles run on the `glm-5.2` fallback until that id routes (ADR-0023).

@@ -32,7 +32,7 @@ These apply to every role and every task. Each bullet names the skill that carri
 
 For the recommended end-to-end pipeline and when to use each skill, invoke the `agentic-workflow` skill (`.agents/skills/agentic-workflow/SKILL.md`). It maps the design → spec → tickets → plan → implementation → tests → PR → review → ship sequence without duplicating each skill's content.
 
-For autonomous, multi-agent orchestration of the implement → review → fix loop, invoke the `manager` skill (`.agents/skills/manager/SKILL.md`). It spawns role subagents (implementer, reviewer, assistant-manager), monitors until the PR is green, relays itemized review findings, and recommends next steps. Role models are configured in `.zcode/agents/` (see `.zcode/agents/README.md` for override order and other-harness adaptation).
+For autonomous, multi-agent orchestration of the implement → review → fix loop, invoke the `manager` skill (`.agents/skills/manager/SKILL.md`). It spawns role subagents (implementer, reviewer, assistant-manager), monitors until the PR is green, relays itemized review findings, and recommends next steps. Role models are configured in `.zcode/agents/` — see `.zcode/agents/README.md` for the override order and the per-harness adapters in `.agents/skills/manager/` (`ZCODE-ADAPTER.md`, `DSH-ADAPTER.md`) for how each harness dispatches.
 
 ## Prior to implementation
 
