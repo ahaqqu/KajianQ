@@ -76,15 +76,6 @@ You win twice: fewer tokens, and a sharper hook for the agent to hang its thinki
 
 **Negation** is the failure mode beside this lever: steering by prohibition drags the forbidden behaviour into context and makes it _more_ available, not less. _Don't think of an elephant_, and the elephant is all there is; the negation is a weak modifier the strongly-activated concept overruns, so the ban half-reads as an instruction to do the thing. Prompt the **positive**: state the target behaviour ("write one-line comments") so the banned one is never spoken. A prohibition earns its place only as a hard guardrail you cannot phrase positively; even then, pair it with the positive target so attention lands on what to do.
 
-## Make it a gate
-
-When a guarantee can be decided by code, encode it in a script and cite the script. Wording asks the model to comply, and compliance varies; a script gives consistency and certainty — the same verdict every run, failing observably (a non-zero exit) instead of subtly. This is the strongest form of the checkable completion criterion: `bun run boundary` enforces "no vendor names in engine packages" where a prose checklist would leave the same rule to attention, because a scan cannot be partially obeyed.
-
-- Checkable guarantees — pattern scans, schema validation, reference and dependency audits, doc-claim checks — live in `scripts/` and run blocking in CI; the document names the script and what green means.
-- Judgment the script cannot make stays in wording, but scripts still gather its evidence (read the file, run the scan, query `gh`) so judgment starts from verified facts.
-- The script is the single source of truth; restating what it checks in the document creates a drift-prone cache (see Pruning).
-- A new enforced rule ships with its gate — a rule with no script is a request, not a guarantee.
-
 ## Pruning
 
 - Keep each meaning in a **single source of truth**: one authoritative place, so changing the behaviour is a one-place edit. **Duplication** (the same meaning in more than one place) costs maintenance and tokens, and inflates a meaning's prominence on the ladder past its real rank. (The accidental inverse of a leading word, which repeats a token on purpose, never the meaning.)

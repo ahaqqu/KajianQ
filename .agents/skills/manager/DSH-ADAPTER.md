@@ -6,21 +6,21 @@ Verified against the installed DSH by live probes (2026-08-29): foreground and b
 
 ## Dispatch recipe — all six roles
 
-DSH has no named agent types and no agent-definition files, so the role definition travels in the prompt:
+DSH has no named agent types and no agent-definition files, so the role definition travels in the prompt — assembled by script, never by hand. `bun run dsh:prompt --role <role> (--task <text> | --task-file <path>)` prints the complete standalone prompt: the role body from `.zcode/agents/<role>.md` (the single source of truth) plus, where the role opens PRs, the dispatcher's authorization. Pass stdout verbatim to `subagent` — the agent opens no role files.
 
 | Role | DSH dispatch |
 | --- | --- |
-| A — implementer | generic `subagent`, background (durable id); role body from `.zcode/agents/implementer.md` inlined into the prompt. Continue with `send_message` for the CI-fix relay (a workflow-pinned dispatch respawns fresh instead — see Model routing). |
-| A — senior-implementer | same, body from `senior-implementer.md`; model honored via the routing rule below. |
-| B — reviewer | generic `subagent`, background; body from `reviewer.md` inlined. It spawns its two sub-reviewers itself (nested spawn verified). |
-| sub-reviewer (security) | child generic `subagent` with the baseline prompt from `thermo-nuclear-review/SKILL.md` inlined — DSH has no subagent types for them; this is the fallback `thermos-with-comments` already allows. |
-| sub-reviewer (quality) | child generic `subagent` with the baseline prompt from `thermo-nuclear-code-quality-review/SKILL.md` inlined. |
-| C — assistant-manager | generic `subagent`, background; body from `assistant-manager.md` inlined. Read-only is enforced by the role body's constraints — DSH exposes no per-call tool filter. |
+| A — implementer | generic `subagent`, background (durable id); prompt assembled by `bun run dsh:prompt --role implementer --task <task>`. Continue with `send_message` for the CI-fix relay (a workflow-pinned dispatch respawns fresh instead — see Model routing). |
+| A — senior-implementer | same; prompt assembled by `bun run dsh:prompt --role senior-implementer` — the invariant-first lead is in the role body. |
+| B — reviewer | generic `subagent`, background; prompt assembled by `bun run dsh:prompt --role reviewer --task <pr-context>`. It spawns its two sub-reviewers itself (nested spawn verified). |
+| sub-reviewer (security) | child generic `subagent` with the baseline prompt from `thermo-nuclear-review/SKILL.md` inlined (or `bun run dsh:prompt --role thermo-nuclear-review-subagent`) — DSH has no subagent types for them; this is the fallback `thermos-with-comments` already allows. |
+| sub-reviewer (quality) | child generic `subagent` with the baseline prompt from `thermo-nuclear-code-quality-review/SKILL.md` inlined (or the matching `--role`). |
+| C — assistant-manager | generic `subagent`, background; prompt assembled by `bun run dsh:prompt --role assistant-manager --task <question>`. Read-only is enforced by the role body's constraints — DSH exposes no per-call tool filter. |
 
 ## Mechanics
 
-- **Spawn:** `subagent` with a complete, standalone prompt = task + role body + the skill to apply. Result arrives as a settle notice; the id stays continuable.
-- **Resume:** `send_message` to the subagent id (manager steps 2 and 5); list with `list_agents`; cancel a stalled turn with `interrupt_agent`.
+- **Spawn:** assemble by script (`bun run dsh:prompt --role <role>`), pass stdout verbatim to `subagent`. Task, role body, completion criterion, and (where the role opens PRs) the dispatch authorization are baked in — no dispatch prompt is hand-worded. Result arrives as a settle notice; the id stays continuable.
+- **Resume:** `send_message` to the subagent id (manager steps 2 and 5); list with `list_agents`; cancel a stalled turn with `interrupt_agent`. These are session tools the manager calls in-conversation — the scriptable surface around them is `dsh:prompt` (prompt assembly) and `dsh:preflight` (pin resolution).
 - **Approvals:** DSH subagents run with their approval policy pinned to `never` — a rejected operation is a blocker to report, never a retry.
 
 ## Model routing
