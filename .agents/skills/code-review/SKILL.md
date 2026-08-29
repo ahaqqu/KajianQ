@@ -7,7 +7,7 @@ synced: 2026-08-29
 
 # Code Review
 
-Use this skill when reviewing a pull request after it has been created. It is the single entry point for all review: the thermo passes are reached through this skill — always via `.agents/skills/thermos-with-comments/SKILL.md`, which posts the itemized findings on the PR. This skill never runs `thermos` (the chat-synthesis variant).
+Use this skill when reviewing a pull request after it has been created. It is the single entry point for all review: the thermo passes are reached through this skill — always via `.agents/skills/thermos-with-comments/SKILL.md`, which posts the itemized findings on the PR.
 
 ## Review depth (determined by the change, not negotiated)
 

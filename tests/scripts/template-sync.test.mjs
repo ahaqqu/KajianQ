@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync, execSync } from "node:child_process";
@@ -57,9 +57,12 @@ describe("template-sync CLI", () => {
   beforeEach(() => {
     upstream = setupRepo("upstream-");
 
-    // Seed upstream with template-owned and merge files.
+    // Seed upstream with template-owned, merge, and project-owned files.
+    // NOTES.md is deliberately non-manifest and present at the merge base so
+    // conflict scenarios below can exercise both-side edits and deletions.
     writeFileSync(`${upstream}/AGENTS.md`, "template agents\n");
     writeFileSync(`${upstream}/README.md`, "template readme\n");
+    writeFileSync(`${upstream}/NOTES.md`, "template notes\n");
     commit(upstream, "initial");
     git(upstream, "tag v1.0.0");
 
@@ -200,6 +203,58 @@ describe("template-sync CLI", () => {
     expect(readFileSync(`${dir}/README.md`, "utf8")).toBe("my fork readme\n");
 
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("update auto-resolves non-manifest conflicts with the fork's version", () => {
+    // A shared-history merge can conflict on project-owned paths (both sides
+    // edit the same file). Those paths are not in the manifest, so the
+    // template must never leave them for a human: update resolves them to the
+    // fork's version and completes on its own.
+    writeFileSync(`${upstream}/NOTES.md`, "template notes v2\n");
+    commit(upstream, "notes v2");
+    git(upstream, "tag v1.2.0");
+
+    writeFileSync(`${fork}/NOTES.md`, "fork notes\n");
+    commit(fork, "fork notes");
+
+    const out = run(fork, "update --ref=v1.2.0", {
+      TEMPLATE_SYNC_UPSTREAM: `${upstream}`,
+    });
+    expect(out).toContain("sync merged");
+    expect(readFileSync(`${fork}/NOTES.md`, "utf8")).toBe("fork notes\n");
+    // The gate is green right after the sync — no manual cleanup needed.
+    const check = run(fork, "check", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
+    expect(check).toContain("gate passed");
+  });
+
+  it("update removes non-manifest paths the fork deleted, despite upstream edits", () => {
+    writeFileSync(`${upstream}/NOTES.md`, "template notes v2\n");
+    commit(upstream, "notes v2");
+    git(upstream, "tag v1.2.0");
+
+    execSync(`git rm --quiet NOTES.md`, { cwd: fork });
+    commit(fork, "delete notes");
+
+    const out = run(fork, "update --ref=v1.2.0", {
+      TEMPLATE_SYNC_UPSTREAM: `${upstream}`,
+    });
+    expect(out).toContain("sync merged");
+    expect(existsSync(`${fork}/NOTES.md`)).toBe(false);
+  });
+
+  it("update still defers merge-path conflicts to a human", () => {
+    // Merge paths are fork-customizable by design, so a real conflict there
+    // (both sides edited) must fail the sync for manual resolution.
+    writeFileSync(`${upstream}/README.md`, "template readme v2\n");
+    commit(upstream, "readme v2");
+    git(upstream, "tag v1.2.0");
+
+    writeFileSync(`${fork}/README.md`, "fork readme\n");
+    commit(fork, "fork readme");
+
+    expect(() =>
+      run(fork, "update --ref=v1.2.0", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` }),
+    ).toThrow(/merge conflicts remain/);
   });
 
   it("normalizes GitHub SSH upstream to HTTPS for git operations", () => {
