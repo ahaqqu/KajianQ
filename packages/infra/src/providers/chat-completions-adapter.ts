@@ -123,6 +123,21 @@ export type ChatCompletionsOptions = {
  * Build a Provider that speaks the chat-completions wire against
  * `vendor.baseUrl` with `modelId`. All vendor identity is config data.
  */
+
+/** Assemble the chat-completions request body shared by generate/stream. */
+function buildChatRequest(
+  modelId: string,
+  spec: PromptSpec,
+  stream: boolean,
+): ChatRequest {
+  return {
+    model: modelId,
+    messages: spec.turns.map((t) => ({ role: t.role, content: t.content })),
+    stream,
+    ...(spec.options ?? {}),
+  };
+}
+
 export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Provider {
   const { vendor, modelId, model, apiKey } = opts;
   const doFetch = opts.fetchImpl ?? ((input, init) => fetch(input, init));
@@ -169,12 +184,7 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
       if (!model.capabilities.includes("generate")) {
         throw new ProviderError("bad_request", `model ${modelId} does not support generate`);
       }
-      const body: ChatRequest = {
-        model: modelId,
-        messages: spec.turns.map((t) => ({ role: t.role, content: t.content })),
-        stream: false,
-        ...(spec.options ?? {}),
-      };
+      const body = buildChatRequest(modelId, spec, false);
       const started = Date.now();
       const res = await post("/chat/completions", body);
       await assertOk(res, "/chat/completions");
@@ -209,12 +219,7 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
       if (!model.capabilities.includes("stream")) {
         throw new ProviderError("bad_request", `model ${modelId} does not support stream`);
       }
-      const body: ChatRequest = {
-        model: modelId,
-        messages: spec.turns.map((t) => ({ role: t.role, content: t.content })),
-        stream: true,
-        ...(spec.options ?? {}),
-      };
+      const body = buildChatRequest(modelId, spec, true);
       const started = Date.now();
       const res = await post("/chat/completions", body);
       await assertOk(res, "/chat/completions (stream)");
@@ -224,11 +229,10 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
 
       // Cost resolves only when the stream ends (ADR-0022); where the vendor
       // reports no streamed usage, tokens are estimated (~4 chars/token) and
-      // the record is marked estimated — never presented as metered.
-      // Latency note: measures wall clock from request start to the end of
-      // iteration, so a slow consumer inflates it. Deliberate — decoupling
-      // the reader from consumer pull (eager buffering) would add complexity
-      // and memory to every stream to fix a Trace-only metric.
+      // the record is marked estimated — never presented as metered. Latency
+      // is wall clock to the end of iteration, so a slow consumer inflates
+      // it (deliberate; eager buffering rejected as complexity for a
+      // Trace-only metric).
       return wrapSseStream(res.body, (usage, charCount) => {
         const metered =
           typeof usage?.prompt_tokens === "number" && typeof usage?.completion_tokens === "number";

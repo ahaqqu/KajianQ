@@ -25,6 +25,9 @@ export {
 } from "./rag-store-factory";
 export {
   loadProviderConfig,
+  parseCandidateKey,
+  parseProviderConfig,
+  resolveChain,
   ProviderConfigSchema,
   type Candidate,
   type ModelConfig,

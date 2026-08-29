@@ -34,7 +34,7 @@ Canonical terms beyond `CONTEXT.md`, captured per the domain-modeling discipline
 
 **Type:** value object
 **Context:** LLM provisioning (engine)
-**Definition:** What a Provider returns per call: the output (text, stream, or embeddings) plus the `CostRecord` (model id, tokens in/out, latency, computed cost in micro-USD) the caller must record to the run's trace sink.
+**Definition:** What a Provider returns per call: the output (generated text, a stream of text, or embeddings) plus the call's metered cost record (model identity, tokens in/out, latency, cost in micro-USD); when the vendor reports no usage the record is estimated and marked as such, never presented as metered.
 **Also known as:** completion, response (both vendor-shaped; ours is seam-shaped)
 
 ### Smoke Script

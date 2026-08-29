@@ -1,5 +1,5 @@
 {
-  "$comment": "Provider config — the single source of truth for the ADR-0009 vendor allowlist: endpoints, model ids, api-key env names, prices per MTok, and per-role fallback chains (ADR-0022). Vendor data lives ONLY here (and the model_configs DB mirror); no .ts file in the engine may name a vendor — the boundary gate enforces it by scanning .ts and not .json. Prices in micro-USD per MTok (1 MTok = 1e12 micro-USD), PR-reviewed like any model decision. Defaults from SPECS.md §3.4 (2026-08).",
+  "$comment": "Provider config — the single source of truth for the ADR-0009 vendor allowlist: endpoints, model ids, api-key env names, prices per MTok, and per-role fallback chains (ADR-0022). Vendor data lives ONLY here (and the model_configs DB mirror); no .ts file in the engine may name a vendor — the boundary gate enforces it by scanning .ts and not .json. Prices are micro-USD per MTok (1 USD = 1e6 micro-USD, so a $0.50/MTok input price is 500000), PR-reviewed like any model decision. Defaults from SPECS.md §3.4 (2026-08).",
   "vendors": {
     "gemini": {
       "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",

@@ -95,7 +95,12 @@ export function parseCandidateKey(key: string): [vendor: string, modelId: string
   return [key.slice(0, sep), key.slice(sep + 1)];
 }
 
-/** Resolve a role's chain into parsed candidates, in order. */
+/**
+ * Resolve a role's chain into parsed candidates, in order. Re-validates
+ * candidate existence: unlike `parseProviderConfig`, this also serves
+ * ad-hoc configs built in code (test fixtures, future programmatic
+ * overrides) that never passed through load-time validation.
+ */
 export function resolveChain(config: ProviderConfig, role: string): Candidate[] {
   const roleEntry = config.roles[role];
   if (!roleEntry) {

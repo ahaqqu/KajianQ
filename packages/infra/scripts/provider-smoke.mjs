@@ -16,7 +16,7 @@
  * with the second candidate's model id. The drill is fully synthetic — it
  * never touches the network or spends money.
  */
-import { loadProviderConfig, resolveRole } from "../src/index";
+import { loadProviderConfig, parseCandidateKey, resolveRole } from "../src/index";
 
 const config = loadProviderConfig();
 
@@ -85,7 +85,7 @@ for (const { role, call } of SMOKED_ROLES) {
 
 console.log("\nprovider-smoke: cheap-tier fallback drill (forced 429 on first candidate)\n");
 const missingCheap = config.roles.cheap.chain
-  .map((key) => config.vendors[key.slice(0, key.indexOf(":"))].apiKeyEnv)
+  .map((key) => config.vendors[parseCandidateKey(key)[0]].apiKeyEnv)
   .filter((envName) => !process.env[envName]);
 if (missingCheap.length > 0) {
   row("cheap fallback", "not-run", `missing ${missingCheap.join(", ")}`);
@@ -96,7 +96,7 @@ try {
   // only — it never touches the network or spends money (the role drill
   // above intentionally does when keys are present).
   const first = config.roles.cheap.chain[0];
-  const firstModel = first.slice(first.indexOf(":") + 1);
+  const firstModel = parseCandidateKey(first)[1];
   const syntheticFetch = async (_url, init) => {
     const body = JSON.parse(init.body);
     if (body.model === firstModel) {
