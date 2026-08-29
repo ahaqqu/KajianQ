@@ -74,4 +74,4 @@ _Avoid_: knowledge graph (implies GraphRAG-style entity extraction)
 
 ## Agentic pipeline
 
-Skill pipeline lives in `.agents/skills/` (router: `agentic-workflow`). Multi-agent orchestration lives in `manager` (spawns role subagents per phase; role models configured in `.zcode/agents/`). Reviews can post itemized PR comments via `thermos-with-comments`. Domain guardrails that the skills enforce: `dars-pluggability` (pluggable-by-design) and `kajianq-traceability` (traceable-by-design).
+Skill pipeline lives in `.agents/skills/` (router: `agentic-workflow`). Multi-agent orchestration lives in `manager` (spawns role subagents per phase; role models configured in `.zcode/agents/`). Reviews route through `code-review` — the single review entry point; thermos depth is mandatory for code-touching PRs, skippable only for docs/skill/non-code changes. Findings can be posted as itemized PR comments via `thermos-with-comments` (the manager's reviewer role). Domain guardrails that the skills enforce: `dars-pluggability` (pluggable-by-design) and `kajianq-traceability` (traceable-by-design).

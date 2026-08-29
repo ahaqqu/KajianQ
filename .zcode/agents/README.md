@@ -4,10 +4,12 @@ These files are the ZCode adapter layer for the manager-orchestrated workflow
 in `.agents/skills/manager/SKILL.md`. Each role the manager dispatches
 (`implementer`, `reviewer`, `assistant-manager`) is a defined subagent whose
 body carries its operating persona and completion criterion. The `reviewer`
-is itself a coordinator: it internally dispatches two sub-reviewers
+is itself a coordinator: it applies the `code-review` skill (the single
+review entry point — thermos depth mandatory for code-touching PRs) and
+internally dispatches two sub-reviewers
 (`thermo-nuclear-review-subagent` for security/correctness,
-`thermo-nuclear-code-quality-review-subagent` for code quality) following the
-`thermos-with-comments` skill.
+`thermo-nuclear-code-quality-review-subagent` for code quality), posting
+findings via the `thermos-with-comments` skill.
 
 These files are the **only** harness-specific part of the workflow. The skills
 in `.agents/skills/` are intentionally harness-agnostic so forks can run the
