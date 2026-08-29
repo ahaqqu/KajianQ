@@ -25,26 +25,12 @@ DSH has no named agent types and no agent-definition files, so the role definiti
 
 ## Model routing
 
-The pin in each role file's frontmatter is the single source of truth, and the DSH adapter honors it for **every** dispatch: read the pin, translate `ollama/<model>:cloud` to `{ provider: "ollama", model: "<model>" }`, resolve the effective model against the routing status below (unroutable ids map to their recorded fallback), then dispatch — plain `subagent` (continuable) when the effective model equals the session model, otherwise a `workflow` `agent()` call. The `subagent` tool itself has no per-call model override — children inherit the session model.
+The pin in each role file's frontmatter is the single source of truth, and the DSH adapter honors it for **every** dispatch: read the pin, translate `ollama/<model>:cloud` to `{ provider: "ollama", model: "<model>" }`, then dispatch — plain `subagent` (continuable) when the pinned model equals the session model, otherwise a `workflow` `agent()` call. The `subagent` tool itself has no per-call model override — children inherit the session model.
 
-Routing status, verified by probes on this install (2026-08-29):
+A pin that fails to resolve is a harness-config gap: declare the model id in the DSH provider's model list (`~/.dsh/settings.yaml`, hot-reloaded) and re-probe. Pins are never rerouted to a different model.
 
-| Pin (roles) | Routes on DSH | Effective DSH model |
-| --- | --- | --- |
-| `ollama/glm-5.3-flash:cloud` (implementer) | yes (session default) | `glm-5.3-flash` |
-| `ollama/glm-5.3:cloud` (senior-implementer, thermo-nuclear-review-subagent) | **no** — child resolves `null` | recorded fallback `glm-5.2` until it routes |
-| `ollama/kimi-k2.7-code:cloud` (reviewer, thermo-nuclear-code-quality-review-subagent, assistant-manager) | yes | `kimi-k2.7-code` |
-
-Trade-offs, verified:
-
-- `workflow` runs in the foreground and its children are one-shot — a model-pinned implementer cannot be resumed with `send_message`; when its CI goes red, spawn a fresh workflow agent carrying the failing logs.
-- Nested spawn works from `workflow` children too (probe-verified), so the reviewer keeps dispatching its two sub-reviewers wherever it runs.
-- `deepseek-v4-flash:0731` also does not route; no role pins it today — a pin on an unrouted id means "re-probe before dispatch", never silent session-model drift.
+Verified on this install (2026-08-29): workflow children are one-shot — a model-pinned implementer cannot be resumed with `send_message`; when its CI goes red, spawn a fresh workflow agent carrying the failing logs. Nested spawn works from `workflow` children too (probe-verified), so the reviewer keeps dispatching its two sub-reviewers wherever it runs.
 
 ## Workspace isolation (parallel implementers)
 
 DSH subagents inherit the session cwd and branch. Give each a gitignored worktree off the integration branch (`git worktree add -b agent/<slug> .worktrees/<slug> main`) and require in the prompt: prefix EVERY `read`/`write`/`edit`/`glob`/`grep` path with the worktree's absolute path (an unprefixed relative path lands in the main tree), pass `workdir: "<worktree>"` on EVERY bash call (each call is a fresh shell), and touch nothing outside it. Telling a subagent to `cd` isolates nothing. When the branch is merged, clean up with `bun run worktree:clean`.
-
-## Support status
-
-- DSH runs the manager loop end-to-end for **all six configured role agents with their pins honored** — spawn, nested review (from plain subagents and from workflow children), `send_message` continuation, and per-pin model routing are probe-verified — with two recorded deviations: role bodies are inlined rather than name-resolved, and the `glm-5.3` roles run on the `glm-5.2` fallback until that id routes — re-verify the routing table before relying on it.

@@ -84,9 +84,10 @@ to that harness's convention — or, when the harness parses no agent files,
 give it an adapter that honors these pins through its own dispatch rule.
 
 This repo's second harness **DSH (DeepSeek Harness)** works exactly that way:
-its verified adapter — dispatch recipe for all six roles, pin-routing rule
-with the dated routing/fallback table, and support status — lives in
-`.agents/skills/manager/DSH-ADAPTER.md` (ADR-0023). On DSH the role bodies
-are inlined into the dispatch prompt and the frontmatter pins are honored by
-the adapter's dispatch rule, not parsed by the harness.
+its verified adapter — dispatch recipe for all six roles and the pin-routing
+rule — lives in `.agents/skills/manager/DSH-ADAPTER.md` (ADR-0023). On DSH
+the role bodies are inlined into the dispatch prompt and the frontmatter
+pins are honored by the adapter's dispatch rule, not parsed by the harness;
+a pin that fails to resolve there is fixed by declaring the model id in the
+DSH provider's model list, never rerouted.
 
