@@ -104,30 +104,45 @@ inherit the session cwd and branch: for parallel implementers use gitignored
 worktrees and require absolute-path prefixing on file tools plus `workdir:`
 on every bash call (see the manager skill's DSH adapter).
 
-### Model routing on DSH
+### Model routing on DSH (ADR-0023)
 
-The `subagent` tool has no per-call model override — children inherit the
-session model. To route a role to its pinned model, use the `workflow` tool
-(`agent(prompt, { provider: "ollama", model: "…" })`), where a pin of
-`ollama/<model>:cloud` maps to `<model>`. Trade-offs, verified on this
-install (2026-08-29):
+The pin in each role file's frontmatter is the single source of truth, and
+the DSH adapter honors it for **every** dispatch: read the pin, translate
+`ollama/<model>:cloud` to `{ provider: "ollama", model: "<model>" }`, resolve
+the effective model against the routing status below (unroutable ids map to
+their recorded fallback), then dispatch — plain `subagent` (continuable) when
+the effective model equals the session model, otherwise a `workflow`
+`agent()` call. The `subagent` tool itself has no per-call model override —
+children inherit the session model.
+
+Routing status, verified by probes on this install (2026-08-29):
+
+| Pin (roles) | Routes on DSH | Effective DSH model |
+| --- | --- | --- |
+| `ollama/glm-5.3-flash:cloud` (implementer) | yes (session default) | `glm-5.3-flash` |
+| `ollama/glm-5.3:cloud` (senior-implementer, thermo-nuclear-review-subagent) | **no** — child resolves `null` | fallback `glm-5.2` (ADR-0023) until it routes |
+| `ollama/kimi-k2.7-code:cloud` (reviewer, thermo-nuclear-code-quality-review-subagent, assistant-manager) | yes | `kimi-k2.7-code` |
+
+Trade-offs, verified:
 
 - `workflow` runs in the foreground and its children are one-shot — a
   model-pinned implementer cannot be resumed with `send_message`; when its
   CI goes red, spawn a fresh workflow agent carrying the failing logs.
-- Routing status by pin: `glm-5.3-flash` (session default), `kimi-k2.7-code`,
-  `kimi-k3`, and `glm-5.2` route; **`glm-5.3` and `deepseek-v4-flash:0731`
-  fail** (the workflow child resolves `null`). Until those ids route on DSH,
-  dispatch a `model:high` ticket there through `glm-5.2` — the strongest
-  verified high-reasoning target. ZCode is unaffected: its pins resolve
-  inside ZCode.
+- Nested spawn works from `workflow` children too (probe-verified), so the
+  reviewer keeps dispatching its two sub-reviewers wherever it runs.
+- `deepseek-v4-flash:0731` also does not route; no role pins it today — a
+  pin on an unrouted id means "re-probe before dispatch", never silent
+  session-model drift.
+- ZCode is unaffected: its pins resolve inside ZCode.
 
 ### End-to-end support status
 
 - **ZCode:** runs the manager loop end-to-end (reference adapter — named
   role agents, per-role model resolution, `SendMessage` continuation).
-- **DSH:** runs the manager loop end-to-end — spawn, nested review, and
-  `send_message` continuation are verified — with the two trade-offs above:
-  role bodies are inlined rather than name-resolved, and exact model pinning
-  is only available through (one-shot) `workflow` dispatches.
+- **DSH:** runs the manager loop end-to-end for **all six ZCode-configured
+  roles with their pins honored** — spawn, nested review (from plain
+  subagents and from workflow children), `send_message` continuation, and
+  per-pin model routing are probe-verified — with two recorded deviations:
+  role bodies are inlined rather than name-resolved, and the `glm-5.3` roles
+  run on the `glm-5.2` fallback until that id routes (ADR-0023).
 

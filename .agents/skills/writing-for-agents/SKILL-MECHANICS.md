@@ -20,3 +20,12 @@ The invocation cut of splitting (the sequence cut lives in `SKILL.md`): split of
 ## Router skills
 
 When user-invoked skills multiply past what you can remember, that piled-up cognitive load is cured by a **router skill**: one user-invoked skill that names the others and when to reach for each, so the human has one skill to remember instead of many. It can only hint, never fire them: user-invoked skills have no description, so nothing but the human can reach them.
+
+## Multiple harnesses
+
+A project can run its agentic skills on more than one harness (this repo: ZCode and DeepSeek Harness). The writing rules generalize there:
+
+- **Keep the body harness-neutral; label the harness branches.** Per-harness mechanics go behind a labeled adapter section — one branch per installed harness (see the `manager` skill's *Harness adapters*). A harness-specific mechanic stated in the shared body is a variance bug: runs on the other harness take a path the text does not describe. Label the mechanics where they are true ("on DSH: …"), the way a context pointer names the branch that fires it.
+- **One configurable fact, one file.** A role's persona and model pin live in the agent-definition file the harness parses. A harness that parses no such files can still honor the same file through a documented dispatch rule — read the value at dispatch, translate it per the declared mapping, fall back visibly when the value cannot run — written next to a pointer to the file it reads, named as the source of truth (ADR-0023).
+- **Verified ≠ documented.** A harness claim (a tool's parameters, a model id routing, a nested spawn) is verified only by running it on the installed harness: record the probe and its date, and state the recorded fallback for what fails. An unverified recipe documented as supported is a false completion criterion.
+- **Per-harness deviations are configuration, recorded in one place.** A dated routing/fallback table in the adapter README beats both silent drift and edits to the shared files — template-synced pins stay untouched, and the deviation stays auditable (ADR-0023's rationale).
