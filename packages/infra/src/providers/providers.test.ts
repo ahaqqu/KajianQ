@@ -41,6 +41,9 @@ function configWith(chain: string[]) {
   const altVendor = {
     ...fakeVendor,
     apiKeyEnv: "ALT_KEY",
+    // The paid-tier alternative: personal data may route here (ADR-0009).
+    personalDataAllowed: true,
+    freeTier: false,
     models: {
       "alt-chat": {
         capabilities: ["generate", "stream"],
@@ -139,6 +142,7 @@ describe("chat-completions adapter", () => {
     expect(result.cost.tokensOut).toBe(34);
     expect(result.cost.costMicroUsd).toBe(Math.ceil((12 * 500 + 34 * 3000) / 1e6));
     expect(result.cost.modelId).toBe("m-chat");
+    expect(result.cost.estimated).toBeFalsy(); // metered usage → not an estimate
 
     const first = calls[0];
     expect(first?.url).toBe("https://example.invalid/v1/chat/completions");
@@ -146,6 +150,24 @@ describe("chat-completions adapter", () => {
     expect(first?.body.model).toBe("m-chat");
     expect(first?.body.stream).toBe(false);
     expect(first?.body.temperature).toBe(0.2);
+  });
+
+  it("generate without usage reports an estimated cost, marked estimated", async () => {
+    const fetchImpl: FetchLike = async () =>
+      jsonResponse({ choices: [{ message: { content: "hi there" } }] });
+    const provider = createChatCompletionsProvider({
+      vendor: fakeVendor as never,
+      modelId: "m-chat",
+      model: fakeVendor.models["m-chat"] as never,
+      apiKey: "k-1",
+      fetchImpl,
+    });
+    const result = await provider.generate({
+      turns: [{ role: "user", content: "12345678" }], // 8 chars → est. 2 tokens
+    });
+    expect(result.cost.tokensIn).toBe(2);
+    expect(result.cost.tokensOut).toBe(0);
+    expect(result.cost.estimated).toBe(true);
   });
 
   it("maps HTTP statuses to retryable/non-retryable error kinds", () => {
@@ -196,8 +218,28 @@ describe("chat-completions adapter", () => {
       [0.3, 0.4],
     ]);
     expect(result.cost.tokensIn).toBe(9);
+    expect(result.cost.estimated).toBeFalsy(); // metered prompt tokens
     expect(bodies[0]?.model).toBe("m-embed");
     expect(bodies[0]?.dimensions).toBe(8);
+  });
+
+  it("embed without usage estimates tokens from chars, never the text count", async () => {
+    const fetchImpl: FetchLike = async () =>
+      jsonResponse({ data: [{ embedding: [0.1] }, { embedding: [0.2] }] });
+    const provider = createChatCompletionsProvider({
+      vendor: fakeVendor as never,
+      modelId: "m-embed",
+      model: fakeVendor.models["m-embed"] as never,
+      apiKey: "k-1",
+      fetchImpl,
+    });
+    // Two long-ish texts: estimate must be char-derived (≈10 tokens), NOT 2.
+    const result = await provider.embed({
+      texts: ["12345678", "12345678"], // 8 chars each → 2+2 estimated tokens
+    });
+    expect(result.cost.tokensIn).toBe(4);
+    expect(result.cost.estimated).toBe(true);
+    expect(result.cost.tokensIn).not.toBe(2); // the old text-count bug
   });
 
   it("embed rejects a misaligned vector count as a server error", async () => {
@@ -381,5 +423,56 @@ describe("fallback chain", () => {
     expect(() => resolveRole(config as never, "nope", { env: {} })).toThrow(
       /unknown role "nope"/,
     );
+  });
+
+  it("a personal-data call skips disallowed (free-tier) candidates and falls forward", async () => {
+    // "test" disallows personal data (free tier); "alt" allows it.
+    const config = configWith(["test:m-chat", "alt:alt-chat"]);
+    const requestedModels: string[] = [];
+    const fetchImpl: FetchLike = async (_url, init) => {
+      requestedModels.push((JSON.parse(init.body) as { model: string }).model);
+      return jsonResponse(chatBody());
+    };
+    const { provider } = resolveRole(config as never, "cheap", {
+      env: { TEST_KEY: "a", ALT_KEY: "b" },
+      fetchImpl,
+    });
+    const result = await provider.generate({
+      turns: [{ role: "user", content: "hi" }],
+      personalData: true,
+    });
+    // Only the allowed candidate was called — the free tier was never hit.
+    expect(requestedModels).toEqual(["alt-chat"]);
+    expect(result.cost.modelId).toBe("alt-chat");
+  });
+
+  it("a personal-data call with no allowed candidate fails with a typed error", async () => {
+    const config = configWith(["test:m-chat"]); // single free-tier candidate
+    const fetchImpl: FetchLike = async () => {
+      throw new Error("must not be called");
+    };
+    const { provider } = resolveRole(config as never, "cheap", {
+      env: { TEST_KEY: "a" },
+      fetchImpl,
+    });
+    await expect(
+      provider.generate({ turns: [{ role: "user", content: "hi" }], personalData: true }),
+    ).rejects.toMatchObject({ kind: "bad_request", name: "ProviderError" });
+  });
+
+  it("a non-personal call still uses the free-tier first candidate", async () => {
+    const config = configWith(["test:m-chat", "alt:alt-chat"]);
+    const requestedModels: string[] = [];
+    const fetchImpl: FetchLike = async (_url, init) => {
+      requestedModels.push((JSON.parse(init.body) as { model: string }).model);
+      return jsonResponse(chatBody());
+    };
+    const { provider } = resolveRole(config as never, "cheap", {
+      env: { TEST_KEY: "a", ALT_KEY: "b" },
+      fetchImpl,
+    });
+    const result = await provider.generate({ turns: [{ role: "user", content: "hi" }] });
+    expect(requestedModels).toEqual(["m-chat"]);
+    expect(result.cost.modelId).toBe("m-chat");
   });
 });

@@ -41,6 +41,12 @@ export type PromptSpec = {
   turns: readonly { role: string; content: string }[];
   /** Opaque per-model settings (e.g. temperature) — adapters pass them through. */
   options?: Record<string, unknown>;
+  /**
+   * True when the prompt content is personal data. The wiring layer must
+   * skip free-tier candidates for such calls (ADR-0009: never route
+   * personal data through free tiers).
+   */
+  personalData?: boolean;
 };
 
 /** A non-streamed generation result: the text plus its metered cost. */
@@ -66,6 +72,8 @@ export type EmbedSpec = {
   texts: readonly string[];
   /** Requested output dimensions where the model supports truncation (MRL). */
   dimensions?: number;
+  /** True when the embedded texts are personal data (see PromptSpec). */
+  personalData?: boolean;
 };
 
 /** An embedding result: vectors (row-aligned with the input texts) plus cost. */

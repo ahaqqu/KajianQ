@@ -35,39 +35,81 @@ function buildCandidate(
       `provider factory: protocol "${candidate.vendorConfig.protocol}" has no adapter`,
     );
   }
+  const apiKey = opts.env[candidate.vendorConfig.apiKeyEnv];
+  if (!apiKey) {
+    // The missing-key filter in resolveRole is the single source of truth;
+    // this guard keeps buildCandidate safe for any future direct caller —
+    // an empty key would send a bare "Bearer " header to the vendor.
+    throw new ProviderError(
+      "bad_request",
+      `candidate ${candidate.vendor}:${candidate.modelId} has no API key (${candidate.vendorConfig.apiKeyEnv})`,
+    );
+  }
   return createChatCompletionsProvider({
     vendor: candidate.vendorConfig,
     modelId: candidate.modelId,
     model: candidate.modelConfig,
-    apiKey: opts.env[candidate.vendorConfig.apiKeyEnv] ?? "",
+    apiKey,
     ...(opts.fetchImpl != null ? { fetchImpl: opts.fetchImpl } : {}),
     ...(opts.timeoutMs != null ? { timeoutMs: opts.timeoutMs } : {}),
   });
 }
 
+/** One wired candidate: its adapter plus its privacy posture. */
+type WiredCandidate = {
+  provider: Provider;
+  personalDataAllowed: boolean;
+};
+
 class FallbackProvider implements Provider {
+  /**
+   * The primary candidate's model id — wiring metadata only. Per-call cost
+   * records carry the model that actually answered, which may be any chain
+   * member after a fallback.
+   */
   readonly modelId: string;
 
   constructor(
     private readonly config: ProviderConfig,
     private readonly role: string,
-    private readonly providers: readonly Provider[],
+    private readonly candidates: readonly WiredCandidate[],
     private readonly missingKeys: readonly string[],
   ) {
-    this.modelId = providers[0]?.modelId ?? role;
+    this.modelId = candidates[0]?.provider.modelId ?? role;
   }
 
-  private async withFallback<T>(op: (p: Provider) => Promise<T>): Promise<T> {
-    if (this.providers.length === 0) {
+  /**
+   * Filter for the call's privacy label: a personal-data call skips
+   * candidates whose vendor disallows it (free tiers — ADR-0009: never
+   * route personal data through free tiers).
+   */
+  private eligibleFor(spec: { personalData?: boolean }): readonly WiredCandidate[] {
+    if (!spec.personalData) return this.candidates;
+    const eligible = this.candidates.filter((c) => c.personalDataAllowed);
+    if (eligible.length === 0 && this.candidates.length > 0) {
+      throw new ProviderError(
+        "bad_request",
+        `role "${this.role}": personal-data call but no candidate allows personal data ` +
+          `(candidates: ${this.candidates.map((c) => c.provider.modelId).join(", ")})`,
+      );
+    }
+    return eligible;
+  }
+
+  private async withFallback<T>(
+    eligible: readonly WiredCandidate[],
+    op: (p: Provider) => Promise<T>,
+  ): Promise<T> {
+    if (eligible.length === 0) {
       throw new ProviderError(
         "bad_request",
         `role "${this.role}": no candidate has an API key (missing: ${this.missingKeys.join(", ")})`,
       );
     }
     let lastError: ProviderError | undefined;
-    for (const provider of this.providers) {
+    for (const candidate of eligible) {
       try {
-        return await op(provider);
+        return await op(candidate.provider);
       } catch (err) {
         if (err instanceof ProviderError && isRetryable(err.kind)) {
           lastError = err;
@@ -79,20 +121,20 @@ class FallbackProvider implements Provider {
     throw new ProviderError(
       "exhausted",
       `role "${this.role}": all candidates failed (last: ${lastError?.message ?? "unknown"})`,
-      this.providers.map((p) => p.modelId),
+      eligible.map((c) => c.provider.modelId),
     );
   }
 
-  generate(spec: PromptSpec): Promise<GenerationResult> {
-    return this.withFallback((p) => p.generate(spec));
+  async generate(spec: PromptSpec): Promise<GenerationResult> {
+    return this.withFallback(this.eligibleFor(spec), (p) => p.generate(spec));
   }
 
-  stream(spec: PromptSpec): Promise<StreamHandle> {
-    return this.withFallback((p) => p.stream(spec));
+  async stream(spec: PromptSpec): Promise<StreamHandle> {
+    return this.withFallback(this.eligibleFor(spec), (p) => p.stream(spec));
   }
 
-  embed(spec: EmbedSpec): Promise<EmbeddingResult> {
-    return this.withFallback((p) => p.embed(spec));
+  async embed(spec: EmbedSpec): Promise<EmbeddingResult> {
+    return this.withFallback(this.eligibleFor(spec), (p) => p.embed(spec));
   }
 }
 
@@ -114,7 +156,7 @@ export function resolveRole(
   opts: ResolveOptions,
 ): ResolvedRole {
   const candidates = resolveChain(config, role);
-  const wired: Provider[] = [];
+  const wired: WiredCandidate[] = [];
   const missingKeys: string[] = [];
   for (const candidate of candidates) {
     const key = opts.env[candidate.vendorConfig.apiKeyEnv];
@@ -122,7 +164,10 @@ export function resolveRole(
       missingKeys.push(candidate.vendorConfig.apiKeyEnv);
       continue;
     }
-    wired.push(buildCandidate(candidate, opts));
+    wired.push({
+      provider: buildCandidate(candidate, opts),
+      personalDataAllowed: candidate.vendorConfig.personalDataAllowed,
+    });
   }
   return {
     provider: new FallbackProvider(config, role, wired, missingKeys),

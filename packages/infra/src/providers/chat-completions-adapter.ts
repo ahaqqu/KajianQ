@@ -69,6 +69,7 @@ function computeCost(
     // Ceil so a metered-looking cost can never under-report (a fraction of a
     // micro-USD rounds up, never down).
     costMicroUsd: Math.ceil(exact),
+    estimated,
   };
 }
 
@@ -106,24 +107,6 @@ async function readError(res: Response): Promise<string> {
     // Body unreadable — the status line is all we have.
   }
   return `HTTP ${res.status}${detail ? `: ${detail.slice(0, 300)}` : ""}`;
-}
-
-function requireUsage(
-  modelId: string,
-  usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined,
-  fallbackTotal: number,
-): { tokensIn: number; tokensOut: number } {
-  const tokensIn = usage?.prompt_tokens;
-  const tokensOut = usage?.completion_tokens;
-  if (
-    typeof tokensIn === "number" && Number.isFinite(tokensIn) && tokensIn >= 0 &&
-    typeof tokensOut === "number" && Number.isFinite(tokensOut) && tokensOut >= 0
-  ) {
-    return { tokensIn, tokensOut };
-  }
-  // No usage reported (common on streams): estimate so the trace still
-  // carries a cost, marked as estimated by the caller (ADR-0022).
-  return { tokensIn: fallbackTotal, tokensOut: 0 };
 }
 
 export type ChatCompletionsOptions = {
@@ -191,13 +174,31 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
       };
       const started = Date.now();
       const res = await post("/chat/completions", body);
-      assertOk(res, "/chat/completions");
+      await assertOk(res, "/chat/completions");
       const json = (await res.json()) as ChatResponse;
       const text = json.choices?.[0]?.message?.content ?? json.choices?.[0]?.text ?? "";
-      const usage = requireUsage(modelId, json.usage, 0);
+      const meteredIn = json.usage?.prompt_tokens;
+      const meteredOut = json.usage?.completion_tokens;
+      const isMetered =
+        typeof meteredIn === "number" && Number.isFinite(meteredIn) && meteredIn >= 0 &&
+        typeof meteredOut === "number" && Number.isFinite(meteredOut) && meteredOut >= 0;
+      // Where the vendor reports no usage, estimate from chars and mark the
+      // record estimated (ADR-0022) — a trace must never present an estimate
+      // as metered.
+      const tokensIn = isMetered
+        ? meteredIn!
+        : spec.turns.reduce((n, t) => n + estimateTokens(t.content.length), 0);
+      const tokensOut = isMetered ? meteredOut! : 0;
       return {
         text,
-        cost: computeCost(modelId, model.priceMicroUsdPerMTok, usage.tokensIn, usage.tokensOut, Date.now() - started),
+        cost: computeCost(
+          modelId,
+          model.priceMicroUsdPerMTok,
+          tokensIn,
+          tokensOut,
+          Date.now() - started,
+          !isMetered,
+        ),
       };
     },
 
@@ -219,8 +220,8 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
       }
 
       // Cost resolves only when the stream ends (ADR-0022); where the vendor
-      // reports no streamed usage, tokens are estimated (~4 chars/token) —
-      // the record must never present an estimate as metered.
+      // reports no streamed usage, tokens are estimated (~4 chars/token) and
+      // the record is marked estimated — never presented as metered.
       return wrapSseStream(res.body, (usage, charCount) => {
         const metered =
           typeof usage?.prompt_tokens === "number" && typeof usage?.completion_tokens === "number";
@@ -234,6 +235,7 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
           tokensIn,
           tokensOut,
           Date.now() - started,
+          !metered,
         );
       });
     },
@@ -260,13 +262,25 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
           `embeddings returned ${vectors.length} vectors for ${spec.texts.length} texts`,
         );
       }
-      const usage = requireUsage(modelId, json.usage, spec.texts.length);
-      // Embeddings meter prompt tokens only; accept prompt-only usage.
-      const tokensIn =
-        typeof json.usage?.prompt_tokens === "number" ? json.usage.prompt_tokens : usage.tokensIn;
+      // Embeddings meter prompt tokens only. Where the vendor reports none,
+      // estimate from input chars (~4 chars/token) — never the text count,
+      // which would understate cost by orders of magnitude — and mark the
+      // record estimated (ADR-0022).
+      const meteredIn = json.usage?.prompt_tokens;
+      const isMetered = typeof meteredIn === "number" && Number.isFinite(meteredIn) && meteredIn >= 0;
+      const tokensIn = isMetered
+        ? meteredIn!
+        : spec.texts.reduce((n, t) => n + estimateTokens(t.length), 0);
       return {
         vectors,
-        cost: computeCost(modelId, model.priceMicroUsdPerMTok, tokensIn, 0, Date.now() - started),
+        cost: computeCost(
+          modelId,
+          model.priceMicroUsdPerMTok,
+          tokensIn,
+          0,
+          Date.now() - started,
+          !isMetered,
+        ),
       };
     },
   };

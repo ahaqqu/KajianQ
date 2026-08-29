@@ -12,6 +12,13 @@ export const CostRecordSchema = v.object({
   latencyMs: v.pipe(v.number(), v.minValue(0)),
   /** Computed monetary cost in micro-USD to keep integer arithmetic exact. */
   costMicroUsd: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  /**
+   * True when tokens were estimated (e.g. a vendor that reports no streamed
+   * usage) rather than metered — a trace must never present an estimate as
+   * metered (ADR-0022). Optional so pre-existing records stay readable;
+   * absent means metered.
+   */
+  estimated: v.optional(v.boolean()),
 });
 
 export type CostRecord = v.InferOutput<typeof CostRecordSchema>;

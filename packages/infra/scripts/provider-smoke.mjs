@@ -8,11 +8,13 @@
  * Vendors whose api-key env (GEMINI_API_KEY, DASHSCOPE_API_KEY,
  * DEEPSEEK_API_KEY, MOONSHOT_API_KEY) is absent are reported NOT RUN and do
  * NOT fail the script — CI stays green before the keys exist (#2); tracked
- * in #92. A keyed vendor that fails its call exits non-zero.
+ * in #92. A keyed vendor that fails its call exits non-zero. NOTE: the role
+ * drill intentionally makes real (billable) API calls when keys are present.
  *
  * Also drills the cheap-tier fallback chain (spec §3.4): the first cheap
- * candidate is forced to fail (fetch that returns 429) and the chain must
- * answer with the second candidate's model id.
+ * candidate is forced to fail (synthetic 429) and the chain must answer
+ * with the second candidate's model id. The drill is fully synthetic — it
+ * never touches the network or spends money.
  */
 import { loadProviderConfig, resolveRole } from "../src/index";
 
@@ -89,25 +91,33 @@ if (missingCheap.length > 0) {
   row("cheap fallback", "not-run", `missing ${missingCheap.join(", ")}`);
 } else {
 try {
-  const failingFirst = async (url, init) => {
+  // Fully synthetic fetch: 429 for the first cheap candidate, a canned 200
+  // with usage for the fallback. The drill verifies the chain mechanism
+  // only — it never touches the network or spends money (the role drill
+  // above intentionally does when keys are present).
+  const first = config.roles.cheap.chain[0];
+  const firstModel = first.slice(first.indexOf(":") + 1);
+  const syntheticFetch = async (_url, init) => {
     const body = JSON.parse(init.body);
-    // Fail only the first cheap candidate's model; the fallback answers.
-    const first = config.roles.cheap.chain[0];
-    if (body.model === first.slice(first.indexOf(":") + 1)) {
+    if (body.model === firstModel) {
       return new Response(JSON.stringify({ error: { message: "forced 429" } }), {
         status: 429,
         headers: { "content-type": "application/json" },
       });
     }
-    return fetch(url, init);
+    return new Response(
+      JSON.stringify({
+        choices: [{ message: { content: "fallback ok" } }],
+        usage: { prompt_tokens: 3, completion_tokens: 2 },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
   };
   const { provider } = resolveRole(config, "cheap", {
     env: process.env,
-    fetchImpl: failingFirst,
+    fetchImpl: syntheticFetch,
   });
   const result = await provider.generate(PROMPT);
-  const chain = config.roles.cheap.chain;
-  const firstModel = chain[0].slice(chain[0].indexOf(":") + 1);
   if (result.cost.modelId === firstModel) {
     throw new Error(
       `fallback did not trigger: answered by first candidate ${firstModel}`,
@@ -116,7 +126,7 @@ try {
   row(
     "cheap fallback",
     "ok",
-    `failed ${firstModel} → answered by ${result.cost.modelId}  ${microUsd(result.cost)}`,
+    `failed ${firstModel} → answered by ${result.cost.modelId}  (synthetic, no spend)`,
   );
 } catch (err) {
   failures += 1;
