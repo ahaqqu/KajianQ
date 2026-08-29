@@ -1,125 +1,95 @@
-# AGENTS.md — Rules for AI agents working on KajianQ & DARS
+# AGENTS.md — Task guardrails for AI agents working on KajianQ & DARS
 
-This repository hosts two projects in one monorepo (ADR-0005):
+Read before any task, whatever your role — manager, implementer, reviewer, or assistant. This file states the guardrails every role must hold; the technical depth (seam maps, checklists, verification scans, pipeline contracts) lives in the skills referenced below — load the skill for the phase you are working in.
+
+For philosophy and rationale, see `docs/ARCHITECTURE.md`. For the living architecture/plan spec, see `SPECS.md` — read the sections your task touches, and keep them true in the same PR (rule below).
+
+## What this repo is
+
+Two projects in one monorepo (ADR-0005):
 
 - **DARS** (*Dynamic Automated RAG Solution*) — the generic, domain-agnostic RAG engine: workspace packages under `packages/` (`rag-core`, `rag-ingest`, `eval`, `contracts`, `infra`). When DARS matures it may live in its own repo (`github.com/ahaqqu/DARS`); until the second consumer exists, this file governs it here.
 - **KajianQ** — the product: an Islamic classical-knowledge chatbot under `apps/` plus the domain pack `packages/kajianq-domain`.
 
-Most implementation in both projects is done by AI agents. This file is the **standing instruction set** for every agent session. It exists so that a principle stated once — *pluggable and traceable by design* — is enforced in every ticket, without the user having to repeat it.
+**Read first, in this order:** `CONTEXT.md` (domain glossary — its vocabulary is normative: use defined terms exactly, never invent synonyms; new domain terms are added to `CONTEXT.md` in the same PR that introduces them) → `SPECS.md` (the sections your task touches) → the ADRs that touch your task → your GitHub issue's acceptance criteria (your definition of done).
 
-**Read first, in this order:** `CONTEXT.md` (domain glossary — never invent synonyms for defined terms) → `SPECS.md` (the **living** architecture/plan spec — read the sections your ticket touches) → the ADRs that touch your ticket → your GitHub issue's acceptance criteria (your definition of done).
+## Universal guardrails
 
----
+These apply to every role and every task. Each bullet names the skill that carries the full checklist — when the bullet binds your work, load that skill.
 
-## 1. The two design principles
+- **Pluggable by design** — every external dependency and every pipeline stage is replaceable by configuration first, and by code changes when deep customization is needed. Work behind the existing seams (`Provider`, `RagStore`, `ObjectStore`, the pipeline stage interfaces); if no seam exists and you need one, add the seam first. Checklist: `.agents/skills/dars-pluggability/SKILL.md`.
+- **Traceable by design** — never hide the machinery (a hard product boundary, not a nice-to-have). Every LLM call records model identity, tokens, latency, and cost on the trace of the answer/run that triggered it; user-visible data structures come from persisted trace records. Checklist: `.agents/skills/kajianq-traceability/SKILL.md`.
+- **Engine purity** — engine packages (`rag-core`, `rag-ingest`, `eval`, `contracts`, `infra`, `rate`, `hardening`) contain zero Islamic-domain logic, zero vendor or model names, and no direct database access (only the `RagStore` adapter and migrations touch SQL). Checklist: `dars-pluggability`.
+- **Reuse** — shared, project-agnostic logic lives in a dedicated `packages/<name>` workspace package, never `apps/`. `packages/` is the template-sync merge path that forks inherit; `apps/` is the per-project composition root that each fork owns and customizes.
+- **Data integrity** — never overwrite raw source data (`text_raw` and original exports are immutable; cleaning/translation writes new fields); re-runnable ingestion is idempotent; Matn and Sharh are never mixed in one chunk; disputed attributions are quarantined or labeled, never force-merged.
+- **Cost discipline** — price is weighed in every model decision; model choice per stage comes from config (`model_configs`) only. Vendor allowlist and the paid-API amendment: ADR-0009.
+- **Decisions** — hard-to-reverse, surprising, trade-off decisions get an ADR in `adr/` (numbered to continue the existing sequence) before or with the implementing PR. Never relitigate an accepted ADR in code comments; amend the ADR instead. Respect the go/no-go gates recorded in ADRs.
+- **Living documents** — a PR that changes what `SPECS.md` describes (architecture §3, data layer §3.5/§4, cost §5, plan §7, product scope §2) updates those sections in the same PR, and any new ADR gets its row in the spec's §8 Record of Decisions. `INITIAL_IDEA.md` is frozen history — never update it.
+- **Datasets** — update `NOTICES/DATASETS.md` when a dataset or corpus resource is touched.
+- **Language** — technical docs and code in English; UI copy Indonesian-first (externalized `en`/`id`).
 
-### 1.1 Pluggable by design
+## The agentic workflow
 
-Every external dependency and every pipeline stage is replaceable **by configuration first, and by code changes when deep customization is needed**.
+For the recommended end-to-end pipeline and when to use each skill, invoke the `agentic-workflow` skill (`.agents/skills/agentic-workflow/SKILL.md`). It maps the design → spec → tickets → plan → implementation → tests → PR → review → ship sequence without duplicating each skill's content.
 
-- **Pipeline stages.** The DARS pipeline is typed interfaces in `rag-core`: `Router`, `Retriever`, `Assembler`, `Generator`, `Reviewer`. Implementations live behind those interfaces; stages communicate **in-process** (modular monolith — no HTTP between stages). A single `runPipeline` runner walks the five stages and owns the run scope; each stage receives a `RunContext` (per-run config + `dispose?()` teardown) — never wired ad hoc (ADR-0021).
-- **Vendors.** All LLM/embedding calls go through the `Provider` interface (`generate` / `stream` / `embed`). Vendor allowlist: **Gemini, Kimi, DeepSeek, Qwen only** (ADR-0009). Model choice per stage comes from config (`model_configs`) only.
-- **Persistence.** All database access goes through the `RagStore` adapter in `packages/infra` (ADR-0008). Blob storage goes through the `ObjectStore` adapter (R2 today).
+For autonomous, multi-agent orchestration of the implement → review → fix loop, invoke the `manager` skill (`.agents/skills/manager/SKILL.md`). It spawns role subagents (implementer, reviewer, assistant-manager), monitors until the PR is green, relays itemized review findings, and recommends next steps. Role models are configured in `.zcode/agents/` (see `.zcode/agents/README.md` for override order and other-harness adaptation).
 
-### 1.2 Traceable by design
+## Prior to implementation
 
-**Never hide the machinery** — this is a hard product boundary (spec §1.5), not a nice-to-have.
+See `.agents/skills/grill-with-docs/SKILL.md` — sharpen designs through structured interview; produce ADRs and glossary.
 
-- Every answer persists a full `answer_traces` record: router intent, sub-queries (including Query Expansion candidates per ADR-0014), retrieved chunks with scores (`rrf_score`, `rank_dense`, `rank_sparse`), routing filters, model identity, tokens in/out, latency, computed cost.
-- The `runPipeline` runner is the **single trace collection point**: it emits the deterministic stage-boundary events and assembles + validates the final `Trace`; stages append `llm_call`/`refusal`/`review` through `RunContext.record` — never by hand-assembling a trace (ADR-0021).
-- Every batch operation (ingestion, eval, glossary build, narrator resolution) produces an **ingestion/eval report**: counts, sampled-review scores, quarantine count, cost.
-- Traceability extends to provenance: `text_raw` is always preserved (R2 + DB), every Lemma ties back to evidence ayah pairs (`lemma_evidence`), disputed attributions are excluded or labeled — never silently ingested.
+See `.agents/skills/to-spec/SKILL.md` — turn the grilled design into a spec.
 
----
+See `.agents/skills/to-tickets/SKILL.md` — break the spec into tracer-bullet tickets; it also assigns the model routing labels (see § Ticket model routing).
 
-## 2. Non-negotiable rules (violations are PR-blocking)
+See `.agents/skills/plan-review/SKILL.md` — validate your plan against architecture before writing code.
 
-### Domain boundary
+## During implementation
 
-1. **Engine and shared packages (`rag-core`, `rag-ingest`, `eval`, `contracts`, `infra`, `rate`, `hardening`) contain ZERO Islamic-domain logic.** No madhhab enums, grade vocabulary, principle tags, citation formats, Arabic-specific handling, or religious prompt text. All of that lives in `kajianq-domain` and `apps/`. A boundary test/lint rule enforces this (ticket #3) — if you need a domain concept in an engine package, you are building the wrong shape: parameterize it instead.
-2. **No vendor or model names in engine code.** "Qwen", "Gemini", model IDs, and prices appear only in `model_configs` config and the Provider adapter implementations in `packages/infra`. Swapping the generator must be a config edit, not a PR against `rag-core`.
-3. **No direct SQL outside the `RagStore` adapter.** Engine and app code never import a database client. Migrations may contain SQL; nothing else does.
+See `.agents/skills/guided-implementation/SKILL.md` — the implementation checklist, including the KajianQ/DARS domain checklist: seams, trace discipline, ingestion rules, vocabulary/ADR/spec-currency duties, and the pre-PR verification scans.
 
-### Traceability discipline
+See `.agents/skills/writing-tests/SKILL.md` — unit, property, BDD, and integration test patterns.
 
-4. **Adding an LLM call without recording it in the trace is a defect.** Tokens, latency, model identity, and computed cost attach to the trace of the answer/run that triggered it.
-5. **User-visible data structures come from persisted trace records** — the PWA never reconstructs "how the answer was built" ad hoc; it renders `answer_traces`.
-6. **Every pipeline stage's model is config-swappable; every stage's cost is traced.** These two statements are checked together — a stage with a hardcoded model usually also fails to trace cost.
+## After implementation
 
-### Decision and vocabulary discipline
+See `.agents/skills/pr-creation/SKILL.md` — validate against the Definition of Done and create the pull request.
 
-7. **Hard-to-reverse, surprising, trade-off decisions get an ADR** in `adr/` (numbered to continue the existing sequence) **before or with** the implementing PR. Never relitigate an accepted ADR in code comments; amend the ADR instead.
-8. **Use `CONTEXT.md` vocabulary exactly.** Kitab, Madzhab, Matn, Sharh, Grade, Isnad, Trace, Golden Set, Smart Router — with the definitions and `_Avoid_` lists given there. New domain terms are added to `CONTEXT.md` in the same PR that introduces them.
-9. **Tickets and PRs cite their sources.** Implementation PRs reference the issue + relevant ADRs. If you discover the issue contradicts an ADR, stop and surface it — do not pick one silently.
-10. **Respect go/no-go gates.** #9 (embedding benchmark) is the gate for the retrieval posture: AR-only vs. ID-fallback fusion is decided by its numbers. Kitab-scale ingestion (#22, #33, #35) must not start before it, because re-embedding is expensive. The dual-index schema is built up front so the choice stays reversible.
-11. **Traceability is typed, checked every change.** `Trace` / `TraceEvent` / `CostRecord` are defined in `packages/contracts`; pipeline, PWA, admin, and eval all consume that one shape (ADR-0007 amendment). `TraceEvent` is a strict discriminated union keyed on `kind` — an unknown kind or malformed `detail` fails `v.parse`. Refusal/suppression events are recorded with reason and stage, not silently swallowed.
-12. **Bound the generator's reasoning; bound the knowledge graph.** KajianQ never synthesizes novel rulings — it surfaces classical reasoning as cited and refuses when evidence is insufficient (ADR-0015). Knowledge layers are bounded, curated, human-reviewed structures — never corpus-wide inferred entity graphs; revisit needs ADR-0016's gate, in an ADR, not inline.
+See `.agents/skills/code-review/SKILL.md` — the single review entry point: philosophy and guardrail compliance plus the review-depth rule. Any PR that touches code is reviewed at thermos depth (mandatory — the two thermo passes, posted as itemized comments via `thermos-with-comments`, so an implementer can accept, reject, or address findings individually by ID); docs/skill-only changes may skip thermos. code-review never runs `thermos` directly.
 
-### Data integrity
+See `.agents/skills/ship/SKILL.md` — staging → tests → production → smoke tests.
 
-13. **Never overwrite raw source data.** `text_raw` and original exports are immutable; cleaning/translation always writes new fields. Re-runnable ingestion must be idempotent.
-14. **Matn and Sharh are never mixed in one chunk.** Disputed attributions and low-confidence reconciliation matches are quarantined or labeled, never force-merged.
+## Troubleshooting
 
-### Reuse and template sync
+See `.agents/skills/diagnosing-bugs/SKILL.md` — tight feedback-loop-first debugging discipline.
 
-15. **Shared, project-agnostic logic lives in `packages/`, never `apps/`.** When planning or implementing, decide whether a module is reusable across forked projects (adapters, algorithms, protocols). If yes, it belongs in a dedicated `packages/<name>` workspace package (e.g. `@app/rate`): `packages/` is a template-sync merge path, so forks inherit template improvements there, while `apps/` is the per-project composition root (bindings, entrypoints, deploy config) that each fork owns and customizes — code placed in `apps/` forces every fork to copy-paste template fixes by hand.
+## Ticket model routing
 
-### Living documents
+Tickets carry model routing labels applied by the `to-tickets` skill and consumed by the `manager` skill's dispatch decision — the manager consumes labels, never invents them:
 
-16. **`SPECS.md` is a living document: read it, then keep it true.** A PR that changes what the spec describes — architecture or package layout, data layer, provider/model mix, cost model, phases, or product scope — updates the relevant spec sections **in the same PR**; an ADR-worthy change also adds its row to the spec's §8 Record of Decisions. Never merge code that leaves the spec contradicting the codebase. The one exception: `INITIAL_IDEA.md` (the original v1.2 spec) is frozen history — never update it.
+- **`model:high`** — the ticket carries a correctness/trust invariant that fails silently (validators, trap questions, sample audits). Implement with a high-reasoning model; do not downgrade.
+- **`model:plus-human`** — a human curation/verification gate holds an acceptance criterion (Principle Index, complete-works bibliographies, Golden Set trap design). Code alone never closes the ticket; the manager escalates to the owner instead of dispatching implementation.
+- **No label** — default tier.
 
----
+## Working agreements (from the owner — non-negotiable)
 
-## 3. Standard workflow for every ticket
+- **Check the branch at the start of every turn.** Before the first git write of each session turn, run `git branch --show-current` and switch to the intended PR branch if needed. The owner may change branches between prompts, but never mid-turn — one check per turn is enough. Never commit task work directly on `main`.
+- Complete a task end-to-end with a PR created via the `pr-creation` skill, then hand it to the owner for review. **Never merge a PR unless the owner explicitly approves merging it.**
+- Orchestrators instruct spawned subagents explicitly about PR creation and CI-green expectations, supervise and monitor their work, and report back when they finish.
+- PR titles/descriptions in English; create via `gh api --input` with a JSON payload file — never `gh pr edit --field body=…`.
+- Do not close or modify the spec issues (#1, #27). Tick ticket checkboxes via `gh api --input` PATCH.
+- Dependency guardrails (ADR-0009 amendment): paid LLM/embedding APIs **are** accepted in the critical path, but price is weighed in every model decision, free tiers are used only where quality allows, cost is traced per query, personal data never routes through free tiers, adapters stay in `packages/infra`, business logic never touches `env.*` directly, and no secrets are committed.
 
-1. **Read before write**: `CONTEXT.md`, `SPECS.md` (the sections your ticket touches — it is a living document, see rule 16), the issue with its acceptance criteria, the ADRs it cites. If the issue is ambiguous, ask — do not guess.
-2. **Locate the seam**: which interface does this ticket implement or consume (Provider? RagStore? Router stage?)? Work behind it. If no seam exists and you need one, add the seam first, in its own PR if it changes a public shape.
-3. **Ship the slice**: vertical, demoable, within scope guardrails. Keep the template's code style; minimal diffs.
-4. **Verify the principles before opening the PR** — run this checklist:
-   - Domain boundary: no Islamic-domain identifiers in engine packages (`rg -i "madzhab|hadith|quran|kitab|isnad|sahih|dhaif|syafii" packages/rag-core packages/rag-ingest packages/eval packages/contracts packages/infra/src packages/rate packages/hardening` should find only tests/docs of the boundary rule itself).
-   - No vendor names in engine code or app code outside `packages/infra` Provider adapters and config.
-   - No direct DB client imports outside the RagStore adapter and migrations.
-   - Any new LLM call records model/tokens/cost to a trace.
-   - Any new persisted answer path writes a trace record the UI can render.
-   - Vocabulary matches `CONTEXT.md`; new ADRs/Golden Set traps added where the ticket demands.
-   - `NOTICES/DATASETS.md` updated when a dataset or corpus resource is touched.
-   - Spec currency: if this ticket changed what `SPECS.md` describes (architecture §3, data layer §3.5/§4, cost §5, plan §7, product scope §2), the same PR updates those sections — and any new ADR gets its row in the spec's §8 Record of Decisions.
-5. **Tick the acceptance-criteria checkboxes** as they verifiably complete (per the working agreements in §4).
+## Definition of Done
 
-## 4. Working agreements (from the user — non-negotiable)
-
-- **Check the branch at the start of every turn.** Before the first git write of each session turn, run `git branch --show-current` and switch to the intended PR branch if needed. The owner may change branches between prompts, but never mid-turn — so one check per turn is enough (not per commit). Never commit task work directly on `main`.
-- Any agent that completes a task should create a PR using the `pr-creation` skill, then hand it to the user for review. The agent MUST NOT merge the PR unless the user explicitly approves merging it.
-- When an orchestrator spawns a subagent, the orchestrator MUST explicitly instruct the subagent to do works includes create a PR using `pr-creation` skill and make sure all CI for that PR is green. Orchestrator must supervise and monitor subagent works and report to me after subagent finish.
-- PR titles/descriptions in English; create via `gh api --input` with a JSON payload file — never `gh pr edit --field body=....`
-- Do not close or modify spec issues (#1, #27). Tick ticket checkboxes via `gh api --input` PATCH.
-- Technical docs and code in English; UI copy Indonesian-first (externalized en/id).
-- **Fork guardrail amendment (ADR-0009) overrides the template's guardrail.** The `agentic-project-template` AGENTS.md instructs agents: "When adding a dependency, you MUST verify free-tier compatibility. You MUST NEVER add paid services to the critical path." **In this fork, that rule is amended:** paid LLM/embedding APIs **are** accepted in the critical path, because no free tier exists at generator quality (no suitable free tier among the ADR-0009 allowlist for the generator/cheap/reviewer tiers at the required quality). Consequences that still bind every model decision:
-  - **Price is weighed in every model decision** — never pick a paid model by default when a free-tier allowlist model meets the quality bar.
-  - **Free tiers only where quality allows**; where a paid tier is chosen, that choice is recorded (config + ADR if surprising).
-  - **Cost is traced per query** (the typed `CostRecord` in `packages/contracts`) so paid usage stays auditable.
-  - **Never route personal data through free tiers.**
-  - The template's other dependency guardrails (adapters in `packages/infra`, no `env.*` access direct, no committed secrets) still apply unchanged.
-
-## 5. Model dispatch (for AI-agent implementation)
-
-Ticket labels on `ahaqqu/KajianQ` route the work to the right model:
-
-- No label → default (medium / cheap-tier acceptable).
-- `model:high` → implement with a high-reasoning model; do not downgrade. These tickets carry a correctness/trust invariant that fails silently (validators, trap questions, sample audits).
-- `model:plus-human` → a human curation/verification gate holds an acceptance criterion (Principle Index, complete-works bibliographies, Golden Set trap design). Code alone never closes the ticket.
-
-**When creating a new ticket later, label it by this heuristic:** if the acceptance criteria include a validator, a trap question, or a sample-audit → `model:high`; if they require owner verification or human review → `model:plus-human`.
-
-## 6. Key references
-
-| Need | Where |
-|---|---|
-| Domain vocabulary | `CONTEXT.md` |
-| Architecture & plan (**living document** — read the sections your ticket touches; update in the same PR, rule 16) | `SPECS.md` + GitHub issue #1 (v1), #27 (v2) |
-| Architecture rationale (stable "why" — inherited vs. deviated template pillars) | `docs/ARCHITECTURE.md` |
-| Success factors & phase metrics | `docs/SUCCESS_FACTORS_AND_METRICS.md` |
-| Decisions | `adr/0005`–`0021` (note: 0010 superseded by 0014; 0006 amended by 0013; 0007 amended for the typed trace contract and per-user erasure; 0015/0016 bound generator reasoning and knowledge-graph scope; 0017 anonymous sessions over hosted identity; 0018 AssembledContext carries structured turns + routed query — amended by 0021; 0019 boundary gate scans SQL migrations; 0020 Neon dual-vector sizing; 0021 runPipeline runner owns run scope/config/trace — hand-rolled seams, cordis deferred) |
-| Historical spec (frozen, superseded — never update) | `INITIAL_IDEA.md` (v1.2) |
-| Ticket board | `gh issue list --repo ahaqqu/KajianQ` |
-| Dataset attributions | `NOTICES/DATASETS.md` |
+- [ ] All CI gates green: `bun run check`, `bun run test`, `bun run boundary`, `bun run size-limit`, `bun run agentic-limits`, `bun run truth`, `bun run openapi:check`, `bun run template-gate`, plus security scans.
+- [ ] Domain boundary holds: the verification scans in `.agents/skills/dars-pluggability/SKILL.md` return only allowed hits.
+- [ ] Traceability holds: any new LLM call records model/tokens/cost to a trace; any new persisted answer path writes a trace record the UI can render. Checklist: `.agents/skills/kajianq-traceability/SKILL.md`.
+- [ ] Contracts written before implementation; pipeline wiring goes through the `runPipeline` runner — never hand-assembled traces or ad hoc stage wiring (ADR-0021).
+- [ ] API or UI changes: BDD tests added covering the user-facing flow.
+- [ ] Schema changes: migration through the `RagStore` adapter's conventions; no direct DB client imports outside the adapter and migrations.
+- [ ] No new paid dependency without a recorded decision (config + ADR if surprising).
+- [ ] No dependency without an importer; no adapter without a production caller; every gate blocking; every doc claim has code.
+- [ ] Nothing sensitive in the diff.
+- [ ] Vocabulary matches `CONTEXT.md`; new ADRs and Golden Set traps added where the task demands.
+- [ ] Spec currency: touched `SPECS.md` sections updated in the same PR; new ADR row in its §8 Record of Decisions.
+- [ ] Architectural changes documented in the PR description.

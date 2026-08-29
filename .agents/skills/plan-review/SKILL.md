@@ -1,6 +1,9 @@
 ---
 name: plan-review
 description: Use when reviewing a proposed plan or validating that an existing plan aligns with architecture. Read docs/ARCHITECTURE.md for philosophy and rationale.
+source: https://github.com/ahaqqu/agentic-project-template/blob/main/.agents/skills/plan-review/SKILL.md
+synced: 2026-08-29
+modified: false
 ---
 
 # Plan & Review

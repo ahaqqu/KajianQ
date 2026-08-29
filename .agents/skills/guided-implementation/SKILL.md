@@ -1,6 +1,10 @@
 ---
 name: guided-implementation
 description: Use when implementing a plan. Read AGENTS.md for guardrails.
+source: https://github.com/ahaqqu/agentic-project-template/blob/main/.agents/skills/guided-implementation/SKILL.md
+upstream: https://github.com/mattpocock/skills/blob/main/skills/engineering/implement/SKILL.md
+synced: 2026-08-29
+modified: true
 ---
 
 # Guided Implementation
@@ -77,6 +81,29 @@ For each area the plan touches, verify compliance before writing code.
 - [ ] Property tests (fast-check) for sync merge, client migrations, webhook idempotency.
 - [ ] BDD tests (Playwright-BDD) for user-facing flows, offline-to-online sync.
 - [ ] Coverage above 80%. See `.agents/skills/writing-tests/SKILL.md` for patterns.
+
+## KajianQ/DARS domain checklist
+
+This monorepo also hosts the DARS engine (`packages/`) and the KajianQ domain pack (`packages/kajianq-domain`). When the plan touches DARS stages, retrieval, generation, ingestion, or evaluation, verify these in addition to the checklist above:
+
+- **Locate the seam.** Pipeline stage (`Router`/`Retriever`/`Assembler`/`Generator`/`Reviewer`), `Provider`, `RagStore`, or `ObjectStore`. Implement behind it; if no seam exists, add the interface first, then the implementation, then the wiring. Full seam map and hard rules: `.agents/skills/dars-pluggability/SKILL.md`.
+- **Stage wiring through the runner.** Stages are wired via the `runPipeline` runner and receive a `RunContext` (per-run config + `dispose?()`); the runner is the single trace collection point. Never wire a stage ad hoc or hand-assemble a trace — stages append `llm_call`/`refusal`/`review` events through `RunContext.record` (ADR-0021).
+- **Trace every LLM call.** Model identity, tokens, latency, computed cost attach to the trace of the answer/run that triggered it. Trace/TraceEvent/CostRecord shapes come from `packages/contracts`; refusal/suppression events are recorded with reason and stage, never silently swallowed. Checklist: `.agents/skills/kajianq-traceability/SKILL.md`.
+- **Per-stage models from config only.** Model choice per stage comes from `model_configs` config; no vendor or model names in engine or app code outside `packages/infra` Provider adapters.
+- **Batch jobs produce reports.** Ingestion, eval, glossary build, narrator resolution runs produce ingestion/eval reports (counts, sampled-review scores, quarantine count, cost) — stored and citable, never skipped.
+- **Respect go/no-go gates.** E.g. the embedding benchmark gate (#9) decides the retrieval posture before Kitab-scale ingestion starts. Check `adr/` and `SPECS.md` §7 for the gates your ticket touches.
+
+### Pre-PR verification (KajianQ-specific)
+
+Before opening the PR, run the Quick review scans from `.agents/skills/dars-pluggability/SKILL.md` (domain leakage, vendor names, direct SQL) and verify:
+
+- [ ] Any new LLM call records model/tokens/cost to a trace.
+- [ ] Any new persisted answer path writes a trace record the UI can render.
+- [ ] Vocabulary matches `CONTEXT.md`; new domain terms added to `CONTEXT.md` in this PR.
+- [ ] New ADRs added for hard-to-reverse decisions; PR description cites the issue + relevant ADRs.
+- [ ] `NOTICES/DATASETS.md` updated when a dataset or corpus resource is touched.
+- [ ] Touched `SPECS.md` sections updated in the same PR (architecture §3, data layer §3.5/§4, cost §5, plan §7, product scope §2); new ADR row in its §8 Record of Decisions.
+- [ ] Golden Set traps added where the ticket demands them (new refusal case, trap question, or validator).
 
 ## During implementation
 

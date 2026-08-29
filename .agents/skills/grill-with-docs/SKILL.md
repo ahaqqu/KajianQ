@@ -2,6 +2,10 @@
 name: grill-with-docs
 description: A relentless interview to sharpen a plan or design and produce ADRs and a glossary. Use when the user wants to grill a design and write its docs.
 disable-model-invocation: true
+source: https://github.com/ahaqqu/agentic-project-template/blob/main/.agents/skills/grill-with-docs/SKILL.md
+upstream: https://github.com/mattpocock/skills/blob/main/skills/engineering/grill-with-docs/SKILL.md
+synced: 2026-08-29
+modified: false
 ---
 
 # Grill With Docs

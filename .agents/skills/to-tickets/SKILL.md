@@ -2,6 +2,10 @@
 name: to-tickets
 description: Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker — edges as text in one file per ticket locally, or native blocking links on a real tracker.
 disable-model-invocation: true
+source: https://github.com/ahaqqu/agentic-project-template/blob/main/.agents/skills/to-tickets/SKILL.md
+upstream: https://github.com/mattpocock/skills/blob/main/skills/engineering/to-tickets/SKILL.md
+synced: 2026-08-29
+modified: true
 ---
 
 # To Tickets
@@ -61,6 +65,16 @@ Publish the approved tickets. **How** depends on the project's issue tracker —
 
 - **Local files** → write one file per ticket under `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01` in dependency order (blockers first). Each file's "Blocked by" lists the numbers/titles it depends on. Use the per-ticket file template below — one ticket per file, never a single combined file.
 - **A real issue tracker (GitHub, Linear, …)** → publish one issue per ticket in dependency order (blockers first) so each ticket's blocking edges can reference real identifiers. Use the platform's native blocking / sub-issue relationship where it has one; otherwise set each ticket's "Blocked by" to the blocking issues. Apply the `ready-for-agent` triage label unless instructed otherwise — the tickets are agent-grabbable by construction.
+
+#### Model routing labels
+
+Apply a **model routing label** to every published ticket so downstream agents (see `.agents/skills/manager/SKILL.md`) dispatch the right implementation model. The label states a *requirement* (`model:high` is a floor — do not downgrade), not a cost ceiling:
+
+- **`model:high`** — an acceptance criterion whose failure would be silent on a medium tier: a check the implementation can nominally "pass" while missing the point (e.g. a validator that must reject adversarial input, a trap question that must stay unguessable, an audit against a known-good sample).
+- **`model:plus-human`** — an acceptance criterion requires **owner verification or human review/curation**. Code alone never closes the ticket.
+- **No label** — default tier: medium/cheap-tier model acceptable.
+
+These heuristics are template-generic. Project-specific routing rules live in project-owned surfaces — this fork's `AGENTS.md` (§ Ticket model routing) or `CONTEXT.md` — and are applied on top of the heuristics above.
 
 Work the **frontier**: any ticket whose blockers are all done. For a purely linear chain that means top to bottom.
 

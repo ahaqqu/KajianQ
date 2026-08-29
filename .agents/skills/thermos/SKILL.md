@@ -2,11 +2,17 @@
 name: thermos
 description: "Launch both thermo-nuclear review subagents in parallel, then synthesize their findings. Use for thermos, double thermo review, or combined bug/security and code-quality branch audits."
 disable-model-invocation: true
+source: https://github.com/ahaqqu/agentic-project-template/blob/main/.agents/skills/thermos/SKILL.md
+upstream: https://github.com/cursor/plugins/blob/main/thermos/skills/thermos/SKILL.md
+synced: 2026-08-29
+modified: false
 ---
 
 # Thermos
 
 Run the two thermo review passes as async background subagents in parallel, then synthesize their results.
+
+If the findings must land on the PR as individually-referencable comments (the manager-orchestrated implement → review → fix loop), use `.agents/skills/thermos-with-comments/SKILL.md` instead — it runs the same two reviewer subagents and posts the itemized report to the PR.
 
 ## Workflow
 

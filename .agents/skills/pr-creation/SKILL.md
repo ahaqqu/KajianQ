@@ -1,6 +1,9 @@
 ---
 name: pr-creation
 description: Use when creating a pull request. Validate against AGENTS.md Definition of Done.
+source: https://github.com/ahaqqu/agentic-project-template/blob/main/.agents/skills/pr-creation/SKILL.md
+synced: 2026-08-29
+modified: false
 ---
 
 # PR Creation
