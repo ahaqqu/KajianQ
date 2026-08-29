@@ -25,11 +25,9 @@ DSH has no named agent types and no agent-definition files, so the role definiti
 
 ## Model routing
 
-The pin in each role file's frontmatter is the single source of truth, and the DSH adapter honors it for **every** dispatch: read the pin, translate `ollama/<model>:cloud` to `{ provider: "ollama", model: "<model>" }`, then dispatch — plain `subagent` (continuable) when the pinned model equals the session model, otherwise a `workflow` `agent()` call. The `subagent` tool itself has no per-call model override — children inherit the session model.
+The pin in each role file's frontmatter is the single source of truth, and the DSH adapter honors it for **every** dispatch. Before model-pinned dispatch, run the preflight gate — `bun run dsh:preflight` — which reads every role pin from `.zcode/agents/` and checks each model id against the DSH provider's declared models (`~/.dsh/settings.yaml`) and the ollama.com catalog, exiting non-zero with the exact fix when one cannot resolve. `bun run dsh:preflight --fix` auto-appends missing declarations (DSH hot-reloads the file); re-run until it exits green, then dispatch — plain `subagent` (continuable) when the pinned model equals the session model, otherwise a `workflow` `agent()` call. The `subagent` tool itself has no per-call model override — children inherit the session model. Pins are never rerouted to a different model: the exit code, not a routing table, is what the routing claim rests on.
 
-A pin that fails to resolve is a harness-config gap: declare the model id in the DSH provider's model list (`~/.dsh/settings.yaml`, hot-reloaded) and re-probe. Pins are never rerouted to a different model.
-
-Verified on this install (2026-08-29): workflow children are one-shot — a model-pinned implementer cannot be resumed with `send_message`; when its CI goes red, spawn a fresh workflow agent carrying the failing logs. Nested spawn works from `workflow` children too (probe-verified), so the reviewer keeps dispatching its two sub-reviewers wherever it runs.
+Verified on this install (2026-08-29): `bun run dsh:preflight` resolves all six role pins, including after simulating a removed declaration (`--fix` restored the file byte-identically). Workflow children are one-shot — a model-pinned implementer cannot be resumed with `send_message`; when its CI goes red, spawn a fresh workflow agent carrying the failing logs. Nested spawn works from `workflow` children too (probe-verified), so the reviewer keeps dispatching its two sub-reviewers wherever it runs.
 
 ## Workspace isolation (parallel implementers)
 

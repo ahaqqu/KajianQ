@@ -88,6 +88,7 @@ its verified adapter — dispatch recipe for all six roles and the pin-routing
 rule — lives in `.agents/skills/manager/DSH-ADAPTER.md` (ADR-0023). On DSH
 the role bodies are inlined into the dispatch prompt and the frontmatter
 pins are honored by the adapter's dispatch rule, not parsed by the harness;
-a pin that fails to resolve there is fixed by declaring the model id in the
-DSH provider's model list, never rerouted.
+whether every pin resolves is checked by the preflight gate
+(`bun run dsh:preflight`), whose `--fix` declares a missing model id in the
+DSH provider's model list — pins are never rerouted.
 
