@@ -45,7 +45,7 @@ The loop runs on any harness that can spawn a background subagent, continue it l
 
 ### 1. Dispatch A (implement)
 
-Choose the implementer type using the **dispatch decision** below, then spawn it in the background (per your harness adapter). The prompt must state: the task, the Definition of Done in `AGENTS.md`, that the completion criterion is **PR URL + `gh pr checks` green**, and that it must apply `guided-implementation` — and explicitly that it may commit, push, and open the PR (subagents default to stopping for approval before each of those; see the `subagent` skill's PR-creation rule). For a `senior-implementer` dispatch, also require it to lead with the invariant and design-for-verification statement.
+Choose the implementer type using the **dispatch decision** below, then spawn it in the background (per your harness adapter). The prompt must state: the task, the Definition of Done in `AGENTS.md`, that the completion criterion is **PR URL + `gh pr checks` green**, and that it must apply `guided-implementation`. For a `senior-implementer` dispatch, also require it to lead with the invariant and design-for-verification statement.
 
 **Completion criterion (verified):** the implementer returns a PR URL; `gh pr view <url>` confirms the PR exists and is open.
 
