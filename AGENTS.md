@@ -54,9 +54,7 @@ See `.agents/skills/writing-tests/SKILL.md` — unit, property, BDD, and integra
 
 See `.agents/skills/pr-creation/SKILL.md` — validate against the Definition of Done and create the pull request.
 
-See `.agents/skills/code-review/SKILL.md` — the single review entry point: philosophy and guardrail compliance plus the review-depth rule. Any PR that touches code is reviewed at thermos depth (mandatory — the two thermo passes, posted as itemized comments via `thermos-with-comments`); docs/skill-only changes may skip thermos. code-review never runs `thermos` directly.
-
-See `.agents/skills/thermos-with-comments/SKILL.md` — the comment-posting arm of code-review's thermos depth (used by the manager's reviewer role): posts each finding as an itemized GitHub review comment (A1/B1/C1 IDs) plus a summary comment, so an implementer can accept, reject, or address findings individually by ID.
+See `.agents/skills/code-review/SKILL.md` — the single review entry point: philosophy and guardrail compliance plus the review-depth rule. Any PR that touches code is reviewed at thermos depth (mandatory — the two thermo passes, posted as itemized comments via `thermos-with-comments`, so an implementer can accept, reject, or address findings individually by ID); docs/skill-only changes may skip thermos. code-review never runs `thermos` directly.
 
 See `.agents/skills/ship/SKILL.md` — staging → tests → production → smoke tests.
 

@@ -19,6 +19,18 @@ Pick model-invocation only when the agent must reach the skill on its own, or an
 
 When user-invoked skills multiply past what you can remember, that piled-up cognitive load is cured by a **router skill**: one user-invoked skill that names the others and when to reach for each.
 
+## Tiers
+
+Every skill is one of two tiers, defined by **who may start it** — never by directory location. Semantics live in metadata and prose (portable across harnesses, which enforce only the invocation flag), not in where the folder sits.
+
+- **Entry skill** — startable on its own: the user types it, an orchestrator dispatches it, or the agent auto-fires it from a trigger-rich description. Entry skills are what the project's instruction file (e.g. `AGENTS.md`) indexes.
+- **Library skill** — reached only through a parent: an entry skill's step, a role agent, or a spawned agent's dispatch. Never started directly. Mechanics:
+  - First line of the body, right under the title: `> **Library skill** — not an entry point. Reached only through <parents>.` The pointer's **wording** is the mechanism — naming the parents is what makes agents route correctly.
+  - **Description stripped of trigger phrases** — it states what the skill *is* and who loads it, never "Use when…". This is the same pruning the description section demands, taken to its library conclusion: no triggers, no autonomous firing.
+  - **Not indexed in the instruction file** — referenced only by relative path from its parents. Invariant: the library header's presence, not any directory, decides the tier.
+  - `disable-model-invocation: true` only when nothing auto-loads it — verify first that the consumers that need it (e.g. a role agent's `skills:` field) still load a flagged skill.
+- **Vendored skills** — synced from an upstream source — are exempt from body edits: keep them byte-faithful so upstream syncs stay trivial, and declare their tier at the consumption sites (the parent skills and role agents that reach them) instead.
+
 ## Writing the description
 
 A model-invoked **description** does two jobs — state what the skill is, and list the **branches** that should trigger it. Every word increases **context load**, so a description earns even harder pruning than the body:

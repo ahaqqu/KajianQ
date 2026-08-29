@@ -5,6 +5,8 @@ description: Use this skill when you are running as a dedicated subagent spawned
 
 # Subagent
 
+> **Library skill** — not an entry point. Loaded automatically when running as a spawned subagent; the orchestrator's dispatch is the entry point.
+
 Use this skill when you are running as a dedicated subagent spawned by the orchestrator via the `subagent` tool.
 
 ## Context

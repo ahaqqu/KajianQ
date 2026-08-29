@@ -8,8 +8,6 @@ disable-model-invocation: true
 
 Run the two thermo review passes as async background subagents in parallel, then synthesize their results.
 
-**Not on the review path.** PR reviews never run this skill: `code-review` (the single review entry point) applies `.agents/skills/thermos-with-comments/SKILL.md` for its thermos depth — mandatory for code-touching PRs, skippable only for docs/skill/non-code changes. This skill is retained only for interactive, chat-synthesized audits explicitly requested by the user.
-
 If the findings must land on the PR as individually-referencable comments (the manager-orchestrated implement → review → fix loop), use `.agents/skills/thermos-with-comments/SKILL.md` instead — it runs the same two reviewer subagents and posts the itemized report to the PR.
 
 ## Workflow
