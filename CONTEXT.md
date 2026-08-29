@@ -71,3 +71,7 @@ _Avoid_: sanad (unqualified romanization drift), chain (unqualified)
 **Narrator Graph**:
 The relational structure of hadith narrators (rawi) and the Isnads they appear in, built from Sanadset in v2 and traversed with recursive SQL over Postgres. Not a graph database and not GraphRAG.
 _Avoid_: knowledge graph (implies GraphRAG-style entity extraction)
+
+## Agentic pipeline
+
+Skill pipeline lives in `.agents/skills/` (router: `agentic-workflow`). Multi-agent orchestration lives in `manager` (spawns role subagents per phase; role models configured in `.zcode/agents/`). Reviews can post itemized PR comments via `thermos-with-comments`. Domain guardrails that the skills enforce: `dars-pluggability` (pluggable-by-design) and `kajianq-traceability` (traceable-by-design).

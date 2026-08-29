@@ -8,6 +8,8 @@ disable-model-invocation: true
 
 Run the two thermo review passes as async background subagents in parallel, then synthesize their results.
 
+If the findings must land on the PR as individually-referencable comments (the manager-orchestrated implement → review → fix loop), use `.agents/skills/thermos-with-comments/SKILL.md` instead — it runs the same two reviewer subagents and posts the itemized report to the PR.
+
 ## Workflow
 
 1. Determine the review scope from the user request, PR, current branch, or relevant changed files.
