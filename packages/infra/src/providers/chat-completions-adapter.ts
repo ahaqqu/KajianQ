@@ -150,11 +150,14 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
     }
   }
 
-  function assertOk(res: Response, path: string): void {
+  async function assertOk(res: Response, path: string): Promise<void> {
     if (!res.ok) {
+      // Include the vendor's error body (capped) — "quota exceeded" or a
+      // safety refusal in the message is the difference between a retry
+      // and a config fix.
       throw new ProviderError(
         errorKindForStatus(res.status),
-        `${path} failed: ${res.status} ${res.statusText}`,
+        `${path} failed: ${await readError(res)}`,
       );
     }
   }
@@ -214,7 +217,7 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
       };
       const started = Date.now();
       const res = await post("/chat/completions", body);
-      assertOk(res, "/chat/completions (stream)");
+      await assertOk(res, "/chat/completions (stream)");
       if (!res.body) {
         throw new ProviderError("transport", "stream response has no body");
       }
@@ -222,6 +225,10 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
       // Cost resolves only when the stream ends (ADR-0022); where the vendor
       // reports no streamed usage, tokens are estimated (~4 chars/token) and
       // the record is marked estimated — never presented as metered.
+      // Latency note: measures wall clock from request start to the end of
+      // iteration, so a slow consumer inflates it. Deliberate — decoupling
+      // the reader from consumer pull (eager buffering) would add complexity
+      // and memory to every stream to fix a Trace-only metric.
       return wrapSseStream(res.body, (usage, charCount) => {
         const metered =
           typeof usage?.prompt_tokens === "number" && typeof usage?.completion_tokens === "number";
@@ -253,7 +260,7 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
       };
       const started = Date.now();
       const res = await post("/embeddings", body);
-      assertOk(res, "/embeddings");
+      await assertOk(res, "/embeddings");
       const json = (await res.json()) as EmbedResponse;
       const vectors = (json.data ?? []).map((d) => d.embedding ?? []);
       if (vectors.length !== spec.texts.length) {

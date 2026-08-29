@@ -195,6 +195,23 @@ describe("chat-completions adapter", () => {
     ).rejects.toMatchObject({ name: "ProviderError", kind: "bad_request" });
   });
 
+  it("error responses include the vendor's message body (capped)", async () => {
+    const fetchImpl: FetchLike = async () =>
+      jsonResponse({ error: { message: "quota exceeded for this key" } }, 429);
+    const provider = createChatCompletionsProvider({
+      vendor: fakeVendor as never,
+      modelId: "m-chat",
+      model: fakeVendor.models["m-chat"] as never,
+      apiKey: "k",
+      fetchImpl,
+    });
+    const err = await provider
+      .generate({ turns: [{ role: "user", content: "hi" }] })
+      .catch((e: unknown) => e);
+    expect((err as Error).message).toContain("quota exceeded");
+    expect((err as Error).name).toBe("ProviderError");
+  });
+
   it("embed posts to the embeddings wire and aligns vectors with inputs", async () => {
     const bodies: Record<string, unknown>[] = [];
     const fetchImpl: FetchLike = async (_url, init) => {
