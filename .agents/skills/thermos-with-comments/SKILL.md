@@ -1,11 +1,16 @@
 ---
 name: thermos-with-comments
-description: Run the two thermo-nuclear review passes (security/correctness + code quality) on a PR, then post each finding as an itemized GitHub review comment (A1, A2…, B1, B2…, C1, C2…) with a summary comment and recommendation. Use when a review must leave actionable, individually-referencable items on the PR for an implementer to accept, reject, and address.
+description: Thermos depth of the `code-review` skill — runs the two thermo-nuclear review passes (security/correctness + code quality) and posts each finding as an itemized GitHub review comment (A1, A2…, B1, B2…, C1, C2…) with a summary comment and recommendation. Loaded by `code-review` (mandatory for code-touching PRs) and the manager's `reviewer` role — never dispatched directly.
+disable-model-invocation: true
+source: project
+synced: 2026-08-29
 ---
 
 # Thermos With Comments
 
-Use this skill when a review's findings must land on the PR as individually-referencable, itemized comments — the manager-orchestrated implement → review → fix loop. It runs the same two thermo passes as `thermos` but instead of synthesizing in chat, it posts the itemized report to the PR and returns the same itemized report to the caller.
+> **Library skill** — not an entry point. Reached only through the `code-review` skill (its thermos depth) and the manager's `reviewer` role.
+
+Use this skill when a review's findings must land on the PR as individually-referencable, itemized comments — the manager-orchestrated implement → review → fix loop, and the only thermos arm `code-review` ever calls. It runs the two thermo passes (standards inherited from `thermo-nuclear-review/SKILL.md` and `thermo-nuclear-code-quality-review/SKILL.md`) and posts the itemized report to the PR instead of synthesizing in chat, returning the same itemized report to the caller.
 
 The review standards are inherited from `thermo-nuclear-review/SKILL.md` (security/correctness) and `thermo-nuclear-code-quality-review/SKILL.md` (maintainability). Load both into the dispatched subagents.
 

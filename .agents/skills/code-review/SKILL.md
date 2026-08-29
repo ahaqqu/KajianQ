@@ -1,20 +1,22 @@
 ---
 name: code-review
-description: Use when reviewing a pull request after it is created. Read docs/ARCHITECTURE.md for philosophy alignment and AGENTS.md for guardrail compliance.
+description: Use when reviewing a pull request after it is created. The single review entry point — sets the review depth (normal for docs/skill-only changes, thermos mandatory for anything touching code) and verifies philosophy and guardrail compliance.
+source: project
+synced: 2026-08-29
 ---
 
 # Code Review
 
-Use this skill when reviewing a pull request after it has been created.
+Use this skill when reviewing a pull request after it has been created. It is the single entry point for all review: the thermo passes are reached through this skill — always via `.agents/skills/thermos-with-comments/SKILL.md`, which posts the itemized findings on the PR. This skill never runs `thermos` (the chat-synthesis variant).
 
-## Review depth
+## Review depth (determined by the change, not negotiated)
 
-Before reviewing, recommend a depth and confirm with the user:
+- **Normal** — this skill's philosophy and guardrail review only. Allowed only when the PR touches **no code**: docs, skills, agent-instruction files, ADRs, specs, and similar non-runtime surfaces.
+- **Thermos (mandatory for code)** — if the diff touches any runtime code (`apps/`, `packages/`, `scripts/`, migrations, CI workflows), run `.agents/skills/thermos-with-comments/SKILL.md`: dispatch both thermo-nuclear sub-reviewers (security/correctness + maintainability) and post the itemized findings as PR comments. This is not optional and not a recommendation — a PR that changes code is always reviewed at thermos depth.
 
-- **Normal** — this skill's philosophy and guardrail review. Default for typical PRs.
-- **Thermo-nuclear** — additionally apply `.agents/skills/thermos/SKILL.md`, which launches both the security/correctness and the maintainability thermo-nuclear review passes in parallel. Recommend for large diffs, refactors, new abstractions, or changes to core/shared modules.
+There is no third depth. If a PR mixes code and docs, thermos applies to the whole PR.
 
-State your recommendation with a one-sentence reason, then ask the user to confirm normal or harsh. On harsh, read the thermos skill file and apply its standards on top of this review; where the two conflict, the thermo approval bar wins.
+Under the manager-orchestrated loop, the `reviewer` role applies this skill and posts findings as itemized PR comments via `.agents/skills/thermos-with-comments/SKILL.md` instead of synthesizing in chat — same passes, same depth rule, comment-based deliverable.
 
 ## Inputs
 
@@ -64,6 +66,7 @@ For each changed file, verify against `AGENTS.md` universal guardrails and the `
 Report:
 - Philosophy violations: which principle is violated, which file, and why.
 - Guardrail violations: which rule is broken, which file and line.
+- Thermo findings (when code was touched): the itemized report posted by thermos-with-comments (A/B/C IDs), merged and prioritized.
 - Approval or rejection with justification.
 
 Block the PR on any MUST or MUST NOT violation. Flag SHOULD violations for author response.

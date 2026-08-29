@@ -1,6 +1,8 @@
 ---
 name: pr-creation
 description: Use when creating a pull request. Validate against AGENTS.md Definition of Done.
+source: project
+synced: 2026-08-29
 ---
 
 # PR Creation

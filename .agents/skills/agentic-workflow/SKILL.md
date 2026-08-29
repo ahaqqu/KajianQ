@@ -2,6 +2,8 @@
 name: agentic-workflow
 description: Orchestration map for the recommended agent-driven development pipeline. User-invoked only — type "agentic workflow".
 disable-model-invocation: true
+source: project
+synced: 2026-08-29
 ---
 
 # Agentic Workflow
@@ -54,7 +56,7 @@ For bug fixes, start with `diagnosing-bugs` before any implementation phase, the
    - Validate against `AGENTS.md` Definition of Done before opening.
 
 8. **Review the PR** — load `.agents/skills/code-review/SKILL.md`.
-   - For large refactors / core modules, also load `.agents/skills/thermo-nuclear-code-quality-review/SKILL.md`.
+   - It is the single review entry point. Depth is determined by the change: a PR that touches code is reviewed at thermos depth (mandatory — both thermo passes); docs/skill-only changes may skip thermos.
 
 9. **Ship** — load `.agents/skills/ship/SKILL.md`.
    - Staging → BDD → DAST → fuzz → production → smoke tests → cleanup.

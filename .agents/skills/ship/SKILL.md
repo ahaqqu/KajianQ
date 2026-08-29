@@ -2,6 +2,8 @@
 name: ship
 description: Use when deploying to staging, running pre-prod validation, promoting to production, or handling rollbacks. CI (GitHub Actions) runs DAST, fuzz, and smoke — this skill guides manual intervention.
 disable-model-invocation: true
+source: project
+synced: 2026-08-29
 ---
 
 # Ship — Deploy & Validate

@@ -1,7 +1,9 @@
 ---
 name: manager
-description: Orchestrate the implement → review → fix loop as a supervising manager. Spawns an implementer subagent (guided-implementation) to produce a PR, monitors CI, spawns a reviewer subagent (thermos-with-comments) to post itemized review comments, relays findings to the implementer, supervises accept/reject/fix until CI is green, then summarizes and recommends next steps. User-invoked — type "manager <task>".
+description: Orchestrate the implement → review → fix loop as a supervising manager. Spawns an implementer subagent (guided-implementation) to produce a PR, monitors CI, spawns a reviewer subagent (code-review, posting findings via thermos-with-comments), relays findings to the implementer, supervises accept/reject/fix until CI is green, then summarizes and recommends next steps. User-invoked — type "manager <task>".
 disable-model-invocation: true
+source: project
+synced: 2026-08-29
 ---
 
 # Manager
@@ -14,7 +16,7 @@ You are the manager. Your job is to **orchestrate**, not implement. You spawn, m
 | --- | --- | --- | --- |
 | A — implementer | `implementer` | `guided-implementation` | Implements regular/complexity-normal tasks end-to-end, opens a PR, keeps CI green. |
 | A — senior-implementer | `senior-implementer` | `guided-implementation` | Implements tickets labeled `model:high` or assessed as hard; works the correctness/trust invariant first and designs for verification. See Dispatch decision below. |
-| B — reviewer | `reviewer` | `thermos-with-comments` | Reviews the PR: spawns its two sub-reviewers (`thermo-nuclear-review-subagent`, `thermo-nuclear-code-quality-review-subagent`), synthesizes, posts itemized review comments (`A1…`, `B1…`, `C1…`) plus a summary comment with a recommendation. |
+| B — reviewer | `reviewer` | `code-review` (posting via `thermos-with-comments`) | Reviews the PR: applies the `code-review` skill — philosophy/guardrail compliance plus the thermos passes, which are mandatory for code-touching PRs — then spawns its two sub-reviewers (`thermo-nuclear-review-subagent`, `thermo-nuclear-code-quality-review-subagent`), synthesizes, and posts itemized review comments (`A1…`, `B1…`, `C1…`) plus a summary comment with a recommendation. |
 | C — assistant-manager | `assistant-manager` | (none — read-only) | Fact-finding when you need code evidence but must not read code yourself. |
 
 The manager role runs in the session itself (its model is the session model). Every role agent is pinned to a default model in `.zcode/agents/` — see `.zcode/agents/README.md` for the pinned defaults and the override order (user → project → template pin). The skills are harness-agnostic; only the files in `.zcode/agents/` are harness-specific.
@@ -57,7 +59,7 @@ The `model:` ticket labels are produced by the `to-tickets` skill when tickets a
 
 ### 3. Dispatch B (review)
 
-Spawn `subagent_type: "reviewer"` with `run_in_background: true`. It runs `thermos-with-comments`, internally spawning its two sub-reviewers in parallel. Its prompt must hand it the PR number/URL and require its completion criterion: **every item posted as a review comment + summary comment present**.
+Spawn `subagent_type: "reviewer"` with `run_in_background: true`. It applies the `code-review` skill (the single review entry point — for a code-touching PR the thermos depth is mandatory) and posts the itemized findings via `thermos-with-comments`, internally spawning its two sub-reviewers in parallel. Its prompt must hand it the PR number/URL and require its completion criterion: **every item posted as a review comment + summary comment present**.
 
 **Completion criterion (verified):** `gh pr view <pr> --comments` shows the summary comment (contains "Thermos review") and at least as many review comments as items in B's returned report.
 
@@ -85,7 +87,7 @@ Produce the final user-facing summary:
 - **Dispatch rationale**: which implementer type you spawned for this ticket (implementer vs senior-implementer) and why (label or judgment).
 - **Review outcome**: B's recommendation, item counts by priority, and the final accept/reject disposition per item.
 - **Workflow observations**: what went smoothly, what stalled, what required retries or C's adjudication.
-- **Next-step recommendation**: e.g. merge (with the code-review philosophy pass), follow-up tickets, or escalating a rejected-High to the user.
+- **Next-step recommendation**: e.g. merge (B's compliance + thermos passes already ran), follow-up tickets, or escalating a rejected-High to the user.
 - **Workflow improvement suggestion**: at least one concrete change to this skill, the role agent files, or the relay protocol that would have made this run faster or more reliable. This is a standing duty of the manager — if everything went perfectly, say so and skip.
 
 ## Reliability & supervision

@@ -1,6 +1,8 @@
 ---
 name: plan-review
 description: Use when reviewing a proposed plan or validating that an existing plan aligns with architecture. Read docs/ARCHITECTURE.md for philosophy and rationale.
+source: project
+synced: 2026-08-29
 ---
 
 # Plan & Review

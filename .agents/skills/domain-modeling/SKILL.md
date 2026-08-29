@@ -1,6 +1,10 @@
 ---
 name: domain-modeling
-description: Build and sharpen the project's domain model. Use when the user wants to pin down domain terminology or a ubiquitous language, record an architectural decision, or when another skill needs to maintain the domain model.
+description: Build and sharpen the project's domain model — pin down terminology, maintain the glossary and ADRs. Reached through `grill-with-docs`, or loaded directly for focused terminology or ADR work.
+disable-model-invocation: true
+source: https://github.com/mattpocock/skills/blob/main/skills/engineering/domain-modeling/SKILL.md
+synced: 2026-08-29
+modified: true
 ---
 
 # Domain Modeling

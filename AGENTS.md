@@ -29,6 +29,10 @@ For the recommended end-to-end pipeline and when to use each skill, invoke the `
 
 For autonomous, multi-agent orchestration of the implement → review → fix loop, invoke the `manager` skill (`manager/SKILL.md`). It spawns role subagents (implementer, reviewer, assistant-manager), monitors until the PR is green, relays itemized review findings, and recommends next steps. Role models are configured in `.zcode/agents/` (see `.zcode/agents/README.md` for override order and DeepSeek/other-harness adaptation).
 
+## Skill authoring
+
+When creating or editing a skill (or this file), load `.agents/skills/writing-for-agents/SKILL.md` — the craft reference; its `SKILL-MECHANICS.md` covers invocation and router skills, and `TIERS.md` this template's conventions: skills are **entry** (indexed here) or **library** (reached only through a parent — library header line, trigger-free description, never indexed); vendored skill bodies stay byte-faithful; every `SKILL.md` frontmatter carries `source` / `upstream` / `modified` / `synced` provenance.
+
 ## Prior to implementation
 
 See `.agents/skills/grill-with-docs/SKILL.md` — sharpen designs through structured interview; produce ADRs and glossary.
@@ -49,9 +53,7 @@ See `.agents/skills/writing-tests/SKILL.md` — unit, property, BDD, and integra
 
 See `.agents/skills/pr-creation/SKILL.md` — validate against the Definition of Done and create the pull request.
 
-See `.agents/skills/code-review/SKILL.md` — verify changes against philosophy and guardrails before creating a PR. It recommends a review depth first: normal, or the opt-in thermos skills in `.agents/skills/thermos/` for an extremely strict maintainability review.
-
-See `.agents/skills/thermos-with-comments/SKILL.md` — run the two thermo passes and post each finding as an itemized GitHub review comment (A1/B1/C1 IDs) plus a summary comment, so an implementer can accept, reject, or address findings individually by ID.
+See `.agents/skills/code-review/SKILL.md` — the single review entry point: philosophy and guardrail compliance plus the review-depth rule. Any PR that touches code is reviewed at thermos depth (mandatory — the two thermo passes, posted as itemized comments via `thermos-with-comments`, so an implementer can accept, reject, or address findings individually by ID); docs/skill-only changes may skip thermos. code-review never runs `thermos` directly.
 
 See `.agents/skills/ship/SKILL.md` — staging → tests → production → smoke tests.
 

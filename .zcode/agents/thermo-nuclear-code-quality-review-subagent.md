@@ -1,6 +1,6 @@
 ---
 name: thermo-nuclear-code-quality-review-subagent
-description: Maintainability and code-quality reviewer for the thermos / thermos-with-comments skills. Extremely strict audit of abstraction quality, file-size growth, spaghetti-condition growth, and structural regressions.
+description: Maintainability and code-quality reviewer for the code-review skill's thermos depth (thermos / thermos-with-comments). Extremely strict audit of abstraction quality, file-size growth, spaghetti-condition growth, and structural regressions.
 background: true
 tools: ['*']
 model: ollama/kimi-k2.7-code:cloud
