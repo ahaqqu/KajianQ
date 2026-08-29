@@ -24,6 +24,26 @@ export {
   type RagStoreProvider,
 } from "./rag-store-factory";
 export {
+  loadProviderConfig,
+  ProviderConfigSchema,
+  type Candidate,
+  type ModelConfig,
+  type ProviderConfig,
+  type VendorConfig,
+} from "./providers/provider-config";
+export {
+  createChatCompletionsProvider,
+  errorKindForStatus,
+  isRetryable,
+  type FetchLike,
+  type ChatCompletionsOptions,
+} from "./providers/chat-completions-adapter";
+export {
+  resolveRole,
+  type ResolvedRole,
+  type ResolveOptions,
+} from "./providers/provider-factory";
+export {
   type DocChild,
   type DocChildInsert,
   type DocParent,

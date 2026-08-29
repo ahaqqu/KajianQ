@@ -31,6 +31,7 @@
     "db:down:all": "bun run db:down:api && bun run db:down:domain && bun run db:down",
     "db:status:all": "bun run db:status && bun run db:status:domain && bun run db:status:api",
     "db:probe:pg-search": "bun packages/infra/scripts/pg-search-probe.mjs",
+    "provider:smoke": "bun packages/infra/scripts/provider-smoke.mjs",
     "e2e": "bddgen && playwright test",
     "deploy": "bun run build && wrangler deploy -c apps/api/wrangler.toml --env=\"\"",
     "deploy:staging": "bun run build && wrangler deploy -c apps/api/wrangler.toml --env staging",
