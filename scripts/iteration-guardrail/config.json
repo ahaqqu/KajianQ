@@ -1,4 +1,6 @@
 {
+  "scope": "subagents-only",
+  "subagentSessionPattern": "^sess_subagent_agent_",
   "sameFailureCap": 3,
   "distinctFailureCap": 8,
   "verificationPatterns": [

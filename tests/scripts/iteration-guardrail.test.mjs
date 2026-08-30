@@ -471,12 +471,21 @@ describe("hook.mjs subprocess (fail-open and deny at the process boundary)", () 
   // removed after each test even when an assertion fails mid-test, so no
   // guardrail-hook-* directories leak into $TMPDIR.
   const liveEnvs = [];
-  function newEnv() {
+  // Issue #123 parameterization: the shipped config.json defaults to scope
+  // "subagents-only", under which these hook-level sessions (sess_guardrail_*)
+  // would be a full no-op. The counting/deny semantics under test are
+  // scope-agnostic, so they run under scope "all" — byte-identical to the
+  // pre-#123 behavior. Scope-specific behavior has its own suite:
+  // iteration-guardrail-scope.test.mjs.
+  function newEnv(scope = "all") {
     const dir = mkdtempSync(join(tmpdir(), "guardrail-hook-"));
     const stateDir = join(dir, "state");
     mkdirSync(stateDir, { recursive: true });
     const configPath = join(dir, "config.json");
     copyFileSync(join(REPO_ROOT, "scripts", "iteration-guardrail", "config.json"), configPath);
+    const cfg = JSON.parse(readFileSync(configPath, "utf8"));
+    cfg.scope = scope;
+    writeFileSync(configPath, JSON.stringify(cfg, null, 2));
     const env = { dir, stateDir, configPath };
     liveEnvs.push(env);
     return env;
@@ -629,8 +638,12 @@ describe("hook.mjs subprocess (fail-open and deny at the process boundary)", () 
     const env = newEnv();
     const missing = join(env.dir, "does-not-exist.json");
     const overrides = { ZCODE_GUARDRAIL_CONFIG: missing };
-    seedFailures(env, SESSION_A, 3, {}, overrides);
-    const denied = runHook(preToolUse(SESSION_A, CMD), env, overrides);
+    // Issue #123: with the config file missing, the built-in defaults apply —
+    // which now include scope "subagents-only". The session must therefore
+    // match the default subagent pattern for the caps to govern it.
+    const sid = "sess_subagent_agent_missing_config";
+    seedFailures(env, sid, 3, {}, overrides);
+    const denied = runHook(preToolUse(sid, CMD), env, overrides);
     expect(denied.status).toBe(0);
     expect(JSON.parse(denied.stdout).hookSpecificOutput.permissionDecision).toBe("deny");
   });

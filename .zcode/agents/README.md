@@ -116,7 +116,10 @@ Implementer-class roles run under the mechanical iteration guardrail (issue
 **denies** verification reruns past progress-based caps — 3 failed cycles on
 the same failure, 8 failed cycles since the last successful verification
 (both configurable in `scripts/iteration-guardrail/config.json`). The hook
-fails open on its own internal errors and never blocks non-verification
+is scoped (issue #123) to subagent dispatches only — `scope:
+"subagents-only"` in the config, matching the observed `sess_subagent_agent_*`
+session-id convention — so interactive sessions are a full no-op. It fails
+open on its own internal errors and never blocks non-verification
 commands, so a checkpoint commit is always available. The manager's
 decision table for acting on a stuck report lives in the manager skill
 (`.agents/skills/manager/SKILL.md`, Reliability & supervision).

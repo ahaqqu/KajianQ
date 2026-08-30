@@ -24,6 +24,11 @@
 //   legitimate sessions.
 
 import { createHash } from "node:crypto";
+import { defaultScopeConfig, normalizeScopeConfig } from "./scope.mjs";
+
+// Session-scope config (issue #123): re-exported so hook.mjs and the tests
+// keep a single import surface, same as the messages.mjs re-exports below.
+export { defaultScopeConfig, isSubagentSession, normalizeScopeConfig } from "./scope.mjs";
 
 export const DEFAULT_SAME_FAILURE_CAP = 3;
 export const DEFAULT_DISTINCT_FAILURE_CAP = 8;
@@ -49,6 +54,7 @@ export const DEFAULT_VERIFICATION_PATTERNS = [
 // every fallback path, making the hook inert on exactly those paths.)
 export function defaultConfig() {
   return {
+    ...defaultScopeConfig(),
     sameFailureCap: DEFAULT_SAME_FAILURE_CAP,
     distinctFailureCap: DEFAULT_DISTINCT_FAILURE_CAP,
     verificationPatterns: compilePatterns(DEFAULT_VERIFICATION_PATTERNS),
@@ -107,6 +113,7 @@ export function normalizeConfig(raw) {
     if (compiled && compiled.length > 0) config.verificationPatterns = compiled;
     else degraded.push("verificationPatterns");
   }
+  normalizeScopeConfig(raw, config, degraded);
   return { config, degraded };
 }
 
