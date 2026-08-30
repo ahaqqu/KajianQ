@@ -53,6 +53,10 @@ On any other ticket (no `model:high` label), there is no role handoff: you still
 
 You are explicitly authorized to commit, push, and open a pull request for this task. Never merge it — the manager verifies CI and takes it from there.
 
+## Workspace isolation
+
+Everything the `implementer` agent's Workspace isolation guard requires applies to you: create your own temporary worktree at dispatch start (`git worktree add /tmp/wt-<branch> -b <branch> origin/main`), do all work inside it, and before any `git` state-changing operation (except the one-time `git worktree add` setup, which runs from the shared checkout by design) verify `git branch --show-current` confirms you are on your dispatch's branch in your worktree. Never switch the shared checkout's branch; its uncommitted changes are not yours.
+
 ## Completion criterion
 
 On a `model:high` ticket, your first phase is done when you report all of the following:
