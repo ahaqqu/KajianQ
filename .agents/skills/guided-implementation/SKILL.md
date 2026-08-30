@@ -87,6 +87,32 @@ For each area the plan touches, verify compliance before writing code.
 - Write tests before or alongside implementation.
 - When deviating from the plan, pause and ask for approval.
 - When touching architecture, pause and ask for approval.
+- Checkpoint commit at every test-green point (see below) — never batch all commits to the end.
+
+## Phase boundaries
+
+A run billed per request at its current context size gets expensive fast as the
+context grows, and a run killed by a rate limit loses everything not yet
+committed. An implementer run is therefore a sequence of explicit phases —
+**implement → handoff → test loop → report** — and each boundary below is
+mandatory, not advisory:
+
+1. **Implement phase.** One-pass reads; do not re-read files you already hold,
+   and trim command output as you go. Checkpoint commit as soon as any gate
+   passes locally (typecheck, lint, a single test file), not only the full
+   suite.
+2. **Handoff boundary — before the test-iteration phase.** The exploration and
+   writing you did to produce the change is dead weight for iterating on test
+   failures. Before the first full test iteration, hand the verification loop
+   (run gates, read failures, patch, rerun) to a fresh scoped context that
+   carries only the failing output and the code under test; compaction, where
+   the harness provides it, is an equivalent fallback.
+3. **Test loop.** Iterate to green in the lean context. Commit at every
+   test-green point so a kill loses nothing but the current request.
+4. **Report/review boundary — after review, before addressing feedback.**
+   Address review findings in a fresh context (a new scoped subagent;
+   compaction, where the harness provides it, is equivalent) that carries the
+   findings and the relevant diff — not the whole implementation transcript.
 
 ## After implementation
 

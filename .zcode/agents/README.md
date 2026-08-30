@@ -88,6 +88,25 @@ not hard-fail. Check agent discoverability in ZCode via
 | thermo-nuclear-code-quality-review-subagent | `thermo-nuclear-code-quality-review-subagent.md` | `ollama/kimi-k2.7-code:cloud` | maintainability pass |
 | assistant-manager | `assistant-manager.md` | `ollama/kimi-k2.7-code:cloud` | read-only fact-finding and adjudication evidence |
 
+## Phase-boundary discipline
+
+The implementer-class roles (`implementer`, `senior-implementer`) carry an
+operating discipline in their agent files, mirrored in the
+`guided-implementation` skill (`.agents/skills/guided-implementation/SKILL.md`,
+"Phase boundaries"): run **implement → handoff → test loop → report**
+as explicit phases. Follow all three boundaries:
+
+1. Checkpoint commit at every test-green point.
+2. Hand the verification loop to a fresh scoped context (compaction, where the
+   harness provides it, is equivalent) *before* entering test iteration.
+3. Address review findings in a fresh context *after* review, never in the
+   implementation context.
+
+Ownership note: the skill path is template-owned (`.agents/` is an
+`overwrite` entry in `template-sync.json`), so forks inherit the discipline;
+`.zcode/agents/` is unlisted in that map (project-owned), so this directory
+is where a fork customizes or extends it.
+
 ## Role registry
 
 This directory is the role-file home the ZCode harness parses (see the
