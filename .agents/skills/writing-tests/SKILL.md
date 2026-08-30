@@ -7,7 +7,7 @@ synced: 2026-08-29
 
 # Writing Tests
 
-Generate correct, guardrail-compliant tests at the right layer. Use this skill whenever implementing code that needs testing — which is all code per `docs/ARCHITECTURE.md` §10 (>80% coverage gate).
+Generate correct, guardrail-compliant tests at the right layer. Load this skill when the run enters the test phase — after code exists to test (per `docs/ARCHITECTURE.md` §10, >80% coverage gate). The patterns are not inlined here: the repo's own suites are the pattern library, cited below. Read the one matching your case before writing tests of that kind.
 
 ## Test layer decision
 
@@ -22,325 +22,46 @@ Pick the right test layer before writing anything. The table from `docs/ARCHITEC
 
 If unsure, start at the highest feasible layer: BDD for user flows, property tests for logic with laws, unit tests for everything else.
 
-## Unit tests (Vitest)
+## Exemplary test files
 
-### When to write
+Each pattern below is exemplified by a real, CI-green file in this repo. Cite path, open it, and mirror its structure — schema of the test, mocking seam, naming — not its subject matter.
 
-Every piece of business logic, every module boundary, every Valibot schema, every adapter implementation. Write the test before or alongside the implementation.
+| Pattern | Exemplary file |
+|---|---|
+| Valibot schema at the boundary: valid, empty, and type-invalid inputs | `packages/contracts/src/note.test.ts` |
+| Business logic over injected dependencies: clock injection and hand-written fakes | `packages/rate/src/rate-limiter.test.ts` |
+| Route handlers exercised directly at the unit layer | `apps/api/src/app.test.ts` |
+| Adapter implementation honoring its interface contract (incl. missing-key / delete paths) | `packages/infra/src/object-store.test.ts` |
+| Sync merge properties: idempotency, associativity, delete-wins | `packages/local-first/src/merge.prop.test.ts` |
+| Tombstone GC safety properties | `packages/local-first/src/tombstones.prop.test.ts` |
+| Client migration round-trip property | `packages/local-first/src/migrations.prop.test.ts` |
+| BDD feature file + step definitions for a user-facing flow | `tests/features/notes.feature` and `tests/steps/notes.steps.ts` |
 
-### File conventions
+Webhook idempotency (same payload twice = same state as once) is a mandatory property whenever a consuming project adds payments — this template ships without payments (see `CONTEXT.md`), so it has no exemplary file yet; the first one written becomes the reference.
 
-- Unit tests live beside the module they test: `src/foo.ts` → `src/foo.test.ts`
-- Test files import `describe`/`it`/`expect` from `vitest`
+## Layer conventions
 
-### Pattern: testing a Valibot schema
+### Unit tests (Vitest)
 
-Schemas are the external boundary. Test them with both valid and invalid inputs.
+- Every business logic module, Valibot schema, and adapter implementation gets one; write them in the test phase, once the module exists (see `guided-implementation` phase boundaries).
+- Tests live beside the module they test: `src/foo.ts` → `src/foo.test.ts`.
+- Mock at adapter boundaries, not at function boundaries — the adapter interface is the test seam (see the rate-limiter exemplar).
 
-```ts
-import { describe, it, expect } from "vitest";
-import * as v from "valibot";
-import { CreateNoteSchema } from "@app/contracts";
+### Property tests (fast-check)
 
-describe("CreateNoteSchema", () => {
-  it("accepts valid input", () => {
-    const result = v.safeParse(CreateNoteSchema, {
-      title: "My note",
-      body: "content",
-    });
-    expect(result.success).toBe(true);
-  });
+- Mandatory for sync merge logic, client migrations, and webhook handlers; the LWW-element-set CRDT laws (idempotency, commutativity including exact-timestamp ties, associativity, delete propagation, tombstone GC safety) are the `guided-implementation` guardrail.
+- Files are `*.prop.test.ts` beside the module; import `{ test, fc }` from `@fast-check/vitest`.
+- The generator must exhaust the input space of the law — hand-picked values make it a unit test in `fc` syntax.
 
-  it("rejects missing required fields", () => {
-    const result = v.safeParse(CreateNoteSchema, { title: "My note" });
-    expect(result.success).toBe(false);
-  });
+### BDD tests (Playwright-BDD)
 
-  it("rejects empty title", () => {
-    const result = v.safeParse(CreateNoteSchema, { title: "", body: "content" });
-    expect(result.success).toBe(false);
-  });
-});
-```
+- Every user-facing flow per the AGENTS.md Definition of Done; scenarios describe what the user does and sees.
+- Enumerate each user story into scenarios for: happy path, empty state, error state, offline, and one edge case (e.g. max volume).
+- Features in `tests/features/<feature>.feature`, steps in `tests/steps/<feature>.steps.ts` (see the notes exemplar).
 
-### Pattern: testing business logic with mocked adapters
+### Integration tests (adapter boundaries)
 
-Business logic depends on adapter interfaces, not implementations. Mock the interface, test the logic.
-
-```ts
-import { describe, it, expect, vi } from "vitest";
-import type { ObjectStore } from "@project/infra";
-import { createWidget } from "./widgets";
-
-function mockObjectStore(): ObjectStore {
-  return {
-    put: vi.fn().mockResolvedValue(undefined),
-    get: vi.fn().mockResolvedValue(null),
-    delete: vi.fn().mockResolvedValue(undefined),
-    list: vi.fn().mockResolvedValue([]),
-  };
-}
-
-describe("createWidget", () => {
-  it("stores the widget and returns it", async () => {
-    const store = mockObjectStore();
-    const result = await createWidget(store, { name: "W", price: 100 });
-    expect(result.name).toBe("W");
-    expect(store.put).toHaveBeenCalledOnce();
-  });
-
-  it("throws when widget name is empty", async () => {
-    const store = mockObjectStore();
-    await expect(createWidget(store, { name: "", price: 100 }))
-      .rejects.toThrow();
-  });
-});
-```
-
-### Pattern: testing route handlers
-
-Route handlers are tested by calling them directly with a mock Hono context. Do not test through HTTP in unit tests — that's what BDD covers.
-
-```ts
-import { describe, it, expect } from "vitest";
-import { Hono } from "hono";
-import { testClient } from "hono/testing";
-
-describe("GET /v1/widgets", () => {
-  it("returns empty list when no widgets", async () => {
-    const app = new Hono().get("/v1/widgets", listWidgets);
-    const res = await app.request("/v1/widgets");
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body).toEqual({ widgets: [] });
-  });
-});
-```
-
-## Property tests (fast-check)
-
-### When to write
-
-Property tests are mandatory for:
-- Sync merge logic (idempotency, commutativity, associativity, delete propagation, tombstone GC safety)
-- Client migration logic (round-trip: migrate up then down returns original)
-- Webhook idempotency (same payload twice produces same state as once)
-
-The AGENTS.md / `guided-implementation` guardrail: the custom LWW-element-set CRDT in `packages/local-first` must be idempotent, commutative (including exact-timestamp ties), associative, propagate deletes, and safely GC tombstones.
-
-### File conventions
-
-- Property tests live in `*.prop.test.ts` files beside the module.
-- Import from `fast-check` and `vitest` together: `import { test, fc } from "@fast-check/vitest"`
-
-### Pattern: sync merge idempotency
-
-Idempotency: merging the same change twice produces the same result as merging it once.
-
-```ts
-import { test, fc } from "@fast-check/vitest";
-import { expect } from "vitest";
-import { mergeNotes, type NoteRow } from "@app/local-first";
-
-const noteArbitrary = fc.record({
-  id: fc.uuid(),
-  title: fc.string({ minLength: 1 }),
-  body: fc.string(),
-  updatedAt: fc.integer({ min: 1 }),
-});
-
-test.prop([fc.array(noteArbitrary, { minLength: 1, maxLength: 20 })])(
-  "merge is idempotent",
-  (changes) => {
-    const first = mergeNotes([], changes);
-    const second = mergeNotes(first, changes);
-    expect(second).toEqual(first);
-  }
-);
-```
-
-### Pattern: sync merge commutativity
-
-Commutativity: merging in any order produces the same final state (including exact-timestamp ties).
-
-```ts
-test.prop([
-  fc.array(noteArbitrary, { minLength: 1, maxLength: 20 }),
-  fc.uniqueArray(fc.integer({ min: 0, max: 19 }), {
-    minLength: 1,
-    maxLength: 20,
-  }),
-])(
-  "merge is commutative",
-  (changes, order) => {
-    const shuffled = order
-      .map((i) => changes[i])
-      .filter((c): c is NoteRow => Boolean(c));
-    const viaShuffle = mergeNotes([], shuffled);
-    const viaOriginal = mergeNotes([], changes);
-    expect(viaShuffle).toEqual(viaOriginal);
-  }
-);
-```
-
-### Pattern: delete propagation
-
-Delete propagation: a tombstone always wins over any concurrent update.
-
-```ts
-test.prop([fc.record({
-  id: fc.uuid(),
-  title: fc.string({ minLength: 1 }),
-  body: fc.string(),
-  updatedAt: fc.integer({ min: 1 }),
-})])(
-  "delete beats concurrent update",
-  (item) => {
-    const update = { ...item, title: "updated", updatedAt: item.updatedAt + 1 };
-    const tombstone = { ...item, title: item.title, updatedAt: item.updatedAt + 1, deleted: true };
-
-    const merged = mergeNotes([item], [update, tombstone]);
-    expect(merged.find((n) => n.id === item.id)?.deleted).toBe(true);
-  }
-);
-```
-
-### Pattern: webhook idempotency
-
-```ts
-test.prop([fc.record({
-  event_type: fc.constantFrom("payment.succeeded", "payment.failed"),
-  id: fc.uuid(),
-  amount: fc.integer({ min: 100, max: 100000 }),
-})])(
-  "webhook handler is idempotent",
-  async (payload) => {
-    const { handleWebhook } = await import("./handler");
-    const db = createTestDb(); // in-memory D1 for tests
-
-    await handleWebhook(db, payload);
-    const state1 = await db.select().from("payments").all();
-
-    await handleWebhook(db, payload);
-    const state2 = await db.select().from("payments").all();
-
-    expect(state2.length).toBe(state1.length);
-    expect(state2).toEqual(state1);
-  }
-);
-```
-
-### Pattern: client migration round-trip
-
-```ts
-test.prop([fc.record({
-  id: fc.uuid(),
-  name: fc.string(),
-})])(
-  "migration round-trip preserves data",
-  (oldFormat) => {
-    const migrated = migrationV2ToV3(oldFormat);
-    const back = migrationV3ToV2(migrated);
-    expect(back).toEqual(oldFormat);
-  }
-);
-```
-
-## BDD tests (Playwright-BDD)
-
-### When to write
-
-Every user-facing flow. Every API or UI change per AGENTS.md Definition of Done. BDD tests describe behavior, not implementation.
-
-### File conventions
-
-- BDD feature files: `tests/features/<feature>.feature`
-- Step definitions: `tests/steps/<feature>.steps.ts`
-
-### Pattern: deriving scenarios from specs
-
-Given a spec user story:
-
-> As a user, I want to see a list of my notes so that I can manage them.
-
-Derive:
-- **Happy path**: Given notes exist, when I open the list, I see them.
-- **Empty state**: Given no notes, when I open the list, I see a message.
-- **Error state**: Given the network is down, when I open the list, I see cached data or an error.
-- **Offline**: Given I'm offline, when I create a note, it appears immediately and syncs when online.
-- **Edge case**: Given 1000 notes, the list paginates and doesn't block the UI.
-
-Example feature file:
-
-```gherkin
-Feature: Note List
-  As a user
-  I want to see a list of my notes
-  So that I can manage them
-
-  Scenario: View notes
-    Given I have 3 notes in my account
-    When I navigate to the notes page
-    Then I see 3 notes displayed
-
-  Scenario: Empty note list
-    Given I have no notes
-    When I navigate to the notes page
-    Then I see an empty state message
-
-  Scenario: Offline note creation
-    Given I am offline
-    When I create a new note titled "Test"
-    Then the note appears in the list immediately
-    And the note syncs when I come online
-```
-
-### Pattern: step definitions
-
-```ts
-import { Given, When, Then } from "@cucumber/cucumber";
-import { expect } from "@playwright/test";
-
-Given("I have {int} notes in my account", async function (count: number) {
-  await seedNotes(this.page, count);
-});
-
-When("I navigate to the notes page", async function () {
-  await this.page.goto("/notes");
-});
-
-Then("I see {int} notes displayed", async function (count: number) {
-  const items = this.page.locator("[data-testid='note-item']");
-  await expect(items).toHaveCount(count);
-});
-```
-
-## Integration tests (adapter boundaries)
-
-Test that each adapter implementation honors its interface contract. These run against real infrastructure in CI (D1, R2) or mocks locally.
-
-```ts
-describe("D1 ObjectStore adapter", () => {
-  const store = createD1ObjectStore(testDb);
-
-  it("put then get returns the same value", async () => {
-    await store.put("test-key", { hello: "world" });
-    const result = await store.get("test-key");
-    expect(result).toEqual({ hello: "world" });
-  });
-
-  it("get missing key returns null", async () => {
-    const result = await store.get("nonexistent");
-    expect(result).toBeNull();
-  });
-
-  it("delete removes the value", async () => {
-    await store.put("key", "value");
-    await store.delete("key");
-    expect(await store.get("key")).toBeNull();
-  });
-});
-```
+- Adapter implementations also get integration tests that exercise the interface contract end to end: against real infrastructure (D1, R2) in CI, or mocks locally. The unit-layer contract shape is the `packages/infra/src/object-store.test.ts` exemplar; full-stack real-infra coverage rides the BDD layer (wrangler dev).
 
 ## Guards
 
