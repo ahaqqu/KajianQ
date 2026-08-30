@@ -47,6 +47,7 @@ export {
   type ResolveOptions,
 } from "./providers/provider-factory";
 export {
+  type AlignedPairInsert,
   type DocChild,
   type DocChildInsert,
   type DocParent,

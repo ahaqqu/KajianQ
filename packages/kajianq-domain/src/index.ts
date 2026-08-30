@@ -31,3 +31,43 @@ export type KajianQFilters = {
   grade?: Grade;
   textLayer?: TextLayer;
 };
+
+export {
+  TOTAL_SURAHS,
+  TOTAL_AYAHS,
+  ayahMetadata,
+  formatQuranCitation,
+  parseQuranCitation,
+  surahSourceKey,
+  ayahPairId,
+  type QuranAyah,
+  type QuranSurahMeta,
+  type QuranCitation,
+  type QuranAlignedPair,
+  type SourceType,
+} from "./quran-source";
+export {
+  cleanTranslation,
+  parseSurahFile,
+  parseSurahList,
+  parseMorphology,
+  assertAyahIntegrity,
+  missingMorphologyCoverage,
+  morphologyWordCountDiffs,
+  type SurahFileAyah,
+  type SurahListEntry,
+} from "./quran-parse";
+export {
+  buildAlignedPairs,
+  buildCorpus,
+  corpusWordCountDiffs,
+  quranSourceParser,
+  type QuranCorpus,
+} from "./quran-ingest";
+export {
+  archiveFingerprint,
+  fallbackSurahSummary,
+  quranPairSink,
+  surahSummarizer,
+  type SummarizerProvider,
+} from "./quran-llm";

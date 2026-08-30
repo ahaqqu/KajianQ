@@ -1,4 +1,5 @@
 import type {
+  AlignedPairInsert,
   DocChildInsert,
   RagStore,
   SimilarChild,
@@ -116,6 +117,33 @@ export function createNeonRagStore(
               embedding_primary = EXCLUDED.embedding_primary,
               embedding_fallback = EXCLUDED.embedding_fallback,
               metadata = EXCLUDED.metadata
+        RETURNING id
+      `) as { id: string }[];
+      return rows[0]?.id ?? id;
+    },
+
+    async upsertAlignedPair(input: AlignedPairInsert) {
+      const id = crypto.randomUUID();
+      // Idempotent upsert by provenance key (AGENTS.md rule 11): re-running
+      // ingestion with the same pair_key refreshes the tracks, citation, and
+      // morphology in place and returns the existing id, never duplicates.
+      // Column names are role-based (`text_primary`/`text_secondary`); the
+      // domain pack binds the roles to its language tracks at its boundary.
+      const rows = (await sql`
+        INSERT INTO aligned_pairs (id, pair_key, citation, text_primary, text_secondary, morphology)
+        VALUES (
+          ${id}, ${input.pairKey},
+          ${JSON.stringify(input.citation)}::jsonb,
+          ${input.textPrimary},
+          ${input.textSecondary},
+          ${JSON.stringify(input.morphology ?? [])}::jsonb
+        )
+        ON CONFLICT (pair_key) DO UPDATE
+          SET citation = EXCLUDED.citation,
+              text_primary = EXCLUDED.text_primary,
+              text_secondary = EXCLUDED.text_secondary,
+              morphology = EXCLUDED.morphology,
+              updated_at = now()
         RETURNING id
       `) as { id: string }[];
       return rows[0]?.id ?? id;

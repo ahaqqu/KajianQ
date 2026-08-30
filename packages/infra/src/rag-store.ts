@@ -80,6 +80,23 @@ export type DocChildInsert = PartialBy<
 >;
 
 /**
+ * An aligned source/target text pair with its per-token morphology — the
+ * seed unit a downstream terminology build consumes (ADR-0014). The shape is
+ * domain-agnostic: `citation` is the pair's opaque address, `textPrimary` is
+ * the canonical-evidence track and `textSecondary` the display track
+ * (ADR-0013 roles), and `morphology` is the verbatim per-token annotation.
+ */
+export type AlignedPairInsert = {
+  /** Caller-supplied provenance key — the store upserts on it (rule 11). */
+  pairKey: string;
+  citation: Record<string, unknown>;
+  textPrimary: string;
+  textSecondary: string;
+  /** Verbatim `MorphToken`-shaped annotation from the morphology source. */
+  morphology: readonly Record<string, unknown>[];
+};
+
+/**
  * Which embedding track a similarity search runs against. Named by role, not
  * by language: `primary` is the canonical evidence layer and `fallback` the
  * fusion layer (ADR-0013). KajianQ maps these roles onto its AR/ID language
@@ -106,6 +123,13 @@ export interface RagStore {
 
   /** Insert a child chunk tied to a parent, returning its persisted id. */
   insertDocChild(input: DocChildInsert): Promise<string>;
+
+  /**
+   * Upsert an aligned text pair (provenance-keyed, idempotent). Returns the
+   * persisted pair id — the reference downstream `lemma_evidence` rows hold
+   * (ADR-0014: the aligned pairs are the concept-graph build's seed source).
+   */
+  upsertAlignedPair(input: AlignedPairInsert): Promise<string>;
 
   /**
    * Nearest-neighbour similarity search over one embedding track. `filters`
