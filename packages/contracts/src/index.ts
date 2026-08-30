@@ -20,6 +20,11 @@ export {
   type AuthResponse,
 } from "./auth";
 export {
+  ZcodeHookPayloadSchema,
+  parseZcodeHookPayload,
+  type ZcodeHookPayload,
+} from "./zcode-hook";
+export {
   TemplateSyncManifestSchema,
   TemplateSyncStateSchema,
   parseTemplateSyncManifest,

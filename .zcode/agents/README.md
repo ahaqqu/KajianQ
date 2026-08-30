@@ -108,6 +108,36 @@ Ownership note: the skill path is template-owned (`.agents/` is an
 `.zcode/agents/` is unlisted in that map (project-owned), so this directory
 is where a fork customizes or extends it.
 
+## Iteration guardrail and stuck reports
+
+Implementer-class roles run under the mechanical iteration guardrail (issue
+#98): a workspace hook (`scripts/iteration-guardrail/`, wired in
+`.zcode/config.json`) counts failed verification cycles per session and
+**denies** verification reruns past progress-based caps — 3 failed cycles on
+the same failure, 8 failed cycles since the last successful verification
+(both configurable in `scripts/iteration-guardrail/config.json`). The hook
+fails open on its own internal errors and never blocks non-verification
+commands, so a checkpoint commit is always available. The manager's
+decision table for acting on a stuck report lives in the manager skill
+(`.agents/skills/manager/SKILL.md`, Reliability & supervision).
+
+### Stuck-report format (canonical)
+
+When the guardrail denies a verification rerun — or whenever an agent judges
+the loop stuck before the mechanical cap fires — it stops looping and reports
+a **stuck-report** to the manager, containing exactly:
+
+1. **Invariant under test** — the property the work must protect, stated so the receiver can verify it.
+2. **Exact current failure** — the verification command and the precise error output.
+3. **Attempted fixes** — every fix attempt, each with its outcome.
+4. **Ruled-out hypotheses** — what was already eliminated and how.
+5. **Checkpoint commit ref** — the work is committed to the branch **first**; escalation must never lose work.
+
+The receiver must be able to act on this without re-deriving the history.
+**Never fake done:** the completion criterion is unchanged by the guardrail —
+a PR must exist and all its checks must be green. A cap, a deny, or a
+stuck-report never substitutes for that evidence; escalate instead.
+
 ### Context budgets (defaults)
 
 Each phase above runs under a hard budget: **~150k billed input tokens or
