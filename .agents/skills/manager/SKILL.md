@@ -1,6 +1,6 @@
 ---
 name: manager
-description: Orchestrate the implement → review → fix loop as a supervising manager. Spawns an implementer subagent (guided-implementation) to produce a PR, monitors CI, spawns a reviewer subagent (code-review, posting findings via thermos-with-comments), relays findings to the implementer, supervises accept/reject/fix until CI is green, then summarizes and recommends next steps. User-invoked — type "manager <task>".
+description: Orchestrate the implement → review → fix loop as a supervising manager. Spawns an implementer subagent (guided-implementation) to produce a PR, verifies CI once at the implementer's completion report, spawns a reviewer subagent (code-review, posting findings via thermos-with-comments), relays findings to the implementer, supervises accept/reject/fix until CI is green, then summarizes and recommends next steps. User-invoked — type "manager <task>".
 disable-model-invocation: true
 source: project
 synced: 2026-08-29
@@ -45,7 +45,7 @@ The loop runs on any harness that can spawn a background subagent, continue it l
 
 ### 1. Dispatch A (implement)
 
-Choose the implementer type using the **dispatch decision** below, then spawn it in the background (per your harness adapter). The prompt must state: the task, the Definition of Done in `AGENTS.md`, that the completion criterion is **PR URL + `gh pr checks` green**, and that it must apply `guided-implementation`. For a `senior-implementer` dispatch, also require it to lead with the invariant and design-for-verification statement.
+Choose the implementer type using the **dispatch decision** below, then spawn it in the background (per your harness adapter). The prompt must state: the task, the Definition of Done in `AGENTS.md`, that **A owns CI green** — it watches its own checks and iterates on red until green, reporting completion only when the criterion **PR URL + `gh pr checks` green** holds (canonical statement: the CI protocol in Reliability & supervision; duplicated here because the dispatch prompt is what A actually reads) — and that it must apply `guided-implementation`. For a `senior-implementer` dispatch, also require it to lead with the invariant and design-for-verification statement.
 
 **Completion criterion (verified):** the implementer returns a PR URL; `gh pr view <url>` confirms the PR exists and is open.
 
@@ -60,11 +60,12 @@ Pick the implementer type by **label first, then judgment**, exactly once per ti
 
 The `model:` ticket labels are produced by the `to-tickets` skill when tickets are published (`.agents/skills/to-tickets/SKILL.md`); the manager consumes them, never invents them.
 
-### 2. Monitor A's CI
+### 2. Verify A's completion
 
-- Run `gh pr checks <pr> --watch`.
-- Green → proceed.
-- Red → send A the failing check name and `gh run view --log-failed` output verbatim via your adapter's continue mechanism. Resume the same A (its agent/subagent id) — do not spawn a new implementer unless A has crashed; a model-pinned dispatch that cannot be resumed respawns fresh carrying the logs, after the respawn intake check (see Reliability). Repeat until green or stall (see Reliability).
+A owns CI green (canonical statement: the CI protocol in Reliability & supervision — the duty is duplicated in this step, step 1, and step 4 so each reads standalone): it watches its own checks, iterates on red, and reports done only when the PR exists and all checks pass. You do not monitor CI between dispatches.
+
+- When A reports done, verify once, one-shot: `gh pr view <pr>` confirms the PR exists and is open; `gh pr checks <pr>` confirms every check green. No `--watch`, no scheduled automation, no polling.
+- Red at A's completion report → send A the failing check name and `gh run view --log-failed` output verbatim via your adapter's continue mechanism. Resume the same A (its agent/subagent id) — do not spawn a new implementer unless A has crashed; a model-pinned dispatch that cannot be resumed respawns fresh carrying the logs, after the respawn intake check (see Reliability). Repeat until A reports green or stalls (see Reliability).
 
 ### 3. Dispatch B (review)
 
@@ -82,10 +83,10 @@ Send A: B's full itemized report (verbatim), and these instructions:
 4. Post a **resolution report** as a PR comment listing each item ID, its disposition, and the commit that fixed it (for accepted items).
 5. Report back: PR URL, item dispositions, final `gh pr checks` status.
 
-### 5. Monitor A's fix loop
+### 5. Verify A's fix loop
 
 - Wait for A's resolution report comment (verify with `gh pr view --comments`).
-- Verify `gh pr checks <pr>` is green after A's fixes.
+- Verify `gh pr checks <pr>` is green after A's fixes (one-shot, per the CI protocol in Reliability & supervision — duplicated here).
 - If A rejects an item B flagged High, verify the rejection reasoning is concrete (a file:line + mechanism, or evidence C produced). If not, dispatch C to verify; if C's evidence supports B, instruct A to accept and fix.
 
 ### 6. Summarize and recommend
@@ -105,7 +106,7 @@ Produce the final user-facing summary:
 - **Objective verification over prose.** Every awaited artifact is verified independently (`gh pr view`, `gh pr checks`, `gh api`), not trusted from a subagent's message.
 - **Stall rule.** Configurable: `STALL_MINUTES` (default 30). If a background subagent produces no observable artifact within that window, send one "status?" ping via the continue mechanism. On continued stall, respawn the subagent fresh (new id) after the respawn intake check below, re-issuing the original prompt when no checkpoint exists. After two stalled attempts, escalate to the user.
 - **Respawn intake.** Before respawning fresh for a task whose earlier attempt died (stall respawn, orphan, provider failure, session kill), first recover prior progress so the respawn resumes instead of re-burning exploration from zero. Check, in order — no PR number is needed for any check, because the task branch is known from the dispatch: (1) **pushed commits** on the task branch — `git fetch` then `git log origin/<branch>`; (2) **uncommitted changes** in the task worktree — `git -C <worktree> status --short` (a dirty worktree means the dead attempt was mid-edit); (3) **open draft PR** — `gh pr list --head <branch> --state open --json number,title,isDraft`. Only after (3) locates a PR, read it with `gh pr view <pr>` for its head commit and details. Whatever you find is the **last checkpoint**: the respawn prompt must state it explicitly (branch, head commit, dirty files, PR URL) and instruct the subagent to continue from it — inspect the checkpoint before re-exploring, reuse existing commits, and push to the same branch/PR. Only when all three checks come up empty does the respawn get the original from-scratch prompt.
-- **CI protocol.** `gh pr checks --watch` is the only sanctioned CI-wait mechanism; do not poll in a tight loop.
+- **CI protocol.** **A owns CI green; the manager verifies once.** The implementer-class role (A, and A′ on test phases) watches its own PR's checks and iterates on red until green — with checkpoint commits — and reports completion only when all checks pass; this bullet is the canonical statement of the split, duplicated in A's dispatch prompt (step 1) and the fix-loop relay (step 4). The manager never monitors, watches, or schedules anything for CI: no `gh pr checks --watch`, no per-PR scheduled automation, no polling. The manager's only CI action is one-shot verification at A's completion report (step 2) — `gh pr view <pr>` open + `gh pr checks <pr>` green — plus a one-shot verbatim log relay to A when that report turns out red. The no-tight-polling rule is trivially satisfied: the manager never polls.
 - **Escalation.** Surface blockers (auth failures, repeated stalls, B-flagged-High rejections without evidence) to the user immediately. Do not silently absorb or decide them.
 
 ## Anti-patterns (do not do these)
