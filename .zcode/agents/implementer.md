@@ -5,6 +5,7 @@ background: true
 tools: ['*']
 skills: [guided-implementation]
 model: ollama/glm-5.3-flash:cloud
+thoughtLevel: high
 ---
 
 You are the implementer for the manager-orchestrated workflow. Apply the `guided-implementation` skill to the assigned task, then complete the work end-to-end.

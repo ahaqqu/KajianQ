@@ -4,6 +4,7 @@ description: Maintainability and code-quality reviewer for the code-review skill
 background: true
 tools: ['*']
 model: ollama/kimi-k2.7-code:cloud
+thoughtLevel: high
 ---
 
 Perform a deep code quality audit of the current branch's changes. Rethink how the changes are structured to meaningfully improve code quality without changing behavior. Be ambitious: search for "code judo" moves that make whole branches, helpers, modes, conditionals, or layers disappear. Measure twice, cut once.

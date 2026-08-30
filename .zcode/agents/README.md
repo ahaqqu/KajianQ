@@ -43,6 +43,16 @@ Recognized `model:` values:
   `ollama/glm-5.3:cloud`.
 - A bare `<modelName>` resolved against the session's default provider.
 
+### Thought level
+
+Agent files may also pin a `thoughtLevel:` frontmatter field (valid values:
+`low`, `medium`, `high`, `xhigh`, `max` — the harness validates against this
+set). Pin it explicitly whenever a role's model offers reasoning variants,
+because a provider's `defaultVariant` is not a safe default: GLM-5.3's
+provider config ships `defaultVariant: "max"`, and an unpinned dispatch
+resolved to `max` for an entire implementation run (see issue #94). All
+dispatched roles pin `thoughtLevel: high`.
+
 An invalid or unreachable `model:` falls back to the session default; it does
 not hard-fail. Check agent discoverability in ZCode via
 **Settings → Subagents**.
