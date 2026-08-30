@@ -64,7 +64,7 @@ The `model:` ticket labels are produced by the `to-tickets` skill when tickets a
 
 ### 2. Verify A's completion
 
-A owns CI green (canonical statement: the CI protocol in Reliability & supervision — the duty is duplicated in this step, step 1, and step 4 so each reads standalone): it watches its own checks, iterates on red, and reports done only when the PR exists and all checks pass. You do not monitor CI between dispatches.
+A owns CI green (canonical statement: the CI protocol in Reliability & supervision — the duty is duplicated in this step, step 1, and step 4 so each reads standalone): it watches its own checks, iterates on red, and reports done only when the PR exists and all checks pass. You do not monitor CI between dispatches. The one continuous monitoring duty you carry while a subagent runs is the efficiency watchdog — cost/telemetry signals only, never CI (see Efficiency watchdog).
 
 - When A reports done, verify once, one-shot: `gh pr view <pr>` confirms the PR exists and is open; `gh pr checks <pr>` confirms every check green. No `--watch`, no scheduled automation, no polling.
 - Red at A's completion report → send A the failing check name and `gh run view --log-failed` output verbatim via your adapter's continue mechanism. Resume the same A (its agent/subagent id) — do not spawn a new implementer unless A has crashed; a model-pinned dispatch that cannot be resumed respawns fresh carrying the logs, after the respawn intake check (see Reliability). Repeat until A reports green or stalls (see Reliability).
@@ -100,7 +100,7 @@ Produce the final user-facing summary:
 - **Dispatch rationale**: which implementer type you spawned for this ticket (implementer vs senior-implementer) and why (label or judgment).
 - **Review outcome**: B's recommendation, item counts by priority, and the final accept/reject disposition per item.
 - **Cleanup**: after the PR merges or closes, remove A's temporary worktree (`git worktree remove /tmp/wt-<branch>`) — you own this; A cannot observe the merge (see Workspace isolation).
-- **Workflow observations**: what went smoothly, what stalled, what required retries or C's adjudication.
+- **Workflow observations**: what went smoothly, what stalled, what required retries or C's adjudication; any efficiency-watchdog breach (the telemetry evidence, C's cost report, and the nudge/respawn/escalate action you took), plus any watchdog outage.
 - **Next-step recommendation**: e.g. merge (B's compliance + thermos passes already ran), follow-up tickets, or escalating a rejected-High to the user.
 - **Workflow improvement suggestion**: at least one concrete change to this skill, the role agent files, or the relay protocol that would have made this run faster or more reliable. This is a standing duty of the manager — if everything went perfectly, say so and skip.
 
@@ -114,6 +114,26 @@ Produce the final user-facing summary:
 - **CI protocol.** **A owns CI green; the manager verifies once.** The implementer-class role (A, and A′ on test phases) watches its own PR's checks and iterates on red until green — with checkpoint commits — and reports completion only when all checks pass; this bullet is the canonical statement of the split, duplicated in A's dispatch prompt (step 1) and the fix-loop relay (step 4). The manager never monitors, watches, or schedules anything for CI: no `gh pr checks --watch`, no per-PR scheduled automation, no polling. The manager's only CI action is one-shot verification at A's completion report (step 2) — `gh pr view <pr>` open + `gh pr checks <pr>` green — plus a one-shot verbatim log relay to A when that report turns out red. The no-tight-polling rule is trivially satisfied: the manager never polls.
 - **Escalation.** Surface blockers (auth failures, repeated stalls, B-flagged-High rejections without evidence) to the user immediately. Do not silently absorb or decide them.
 
+### Efficiency watchdog
+
+While a role subagent runs, watching its cost is your **one continuous supervision duty** — the only thing you monitor continuously (CI is never monitored; the CI protocol above is one-shot). A breach is detected from telemetry evidence, never from a subagent's prose about its own health.
+
+**Budgets.** The per-dispatch watchdog thresholds — max billed input tokens, max requests, max wall time (stall already has `STALL_MINUTES` in the stall rule above) — are canonical in the role registry's **Watchdog backstop thresholds (defaults)** section (`.zcode/agents/README.md`); they are configurable per role profile and per dispatch, with free-plan-safe defaults. That backstop sits strictly above the worst-case compliant dispatch (per-phase budget × the expected billed phase count) on every dimension that has a per-phase counterpart, so a run honoring the escape hatch never trips it — a breach means the subagent is ignoring the hatch. Values are not restated here; do not duplicate them.
+
+**Signals.** Observable without entering the subagent's context: the ZCode telemetry DB `~/.zcode/cli/db/db.sqlite` — `model_usage` rows for the child session id (per-request billed input is `input_tokens + cache_read_input_tokens + cache_creation_input_tokens`; also the context trend and resolved `variant`) and `tool_usage` (call counts, error counts, thrash patterns); the AgenQ dashboard session card at `http://localhost:8787/api/state` (`inputTokens`, `requests`, `maxContext`, `status`, todo progress); and the agent record's `metadata.json` usage block (`docs/AGENT-USAGE-METADATA.md`) — that block is written only at capture points (dispatch completion or manager collection), so it is a post-hoc signal (C's cost report, respawn re-burn detection via `usageCaptures`), never a live mid-run breach signal; never wait on it. Spot-check these between your other steps; a spot-check is not a polling loop.
+
+**Breach protocol.** On evidence of a breach, dispatch C (assistant-manager, read-only) with a precise question, e.g.: "Analyze session `<id>`: where did the tokens go — context growth, tool thrash, or repeated failed dispatches? Cite `model_usage`/`tool_usage` rows." C's cost report must cite that evidence — request counts, the billed-input trend across requests, a thrash breakdown (repeated failed tool calls) — and end with one recommendation. You never debug the subagent's internals yourself; act on the report:
+
+| C's finding | Your action |
+| --- | --- |
+| Recoverable (runaway context, fixable thrash) | Relay a cost-discipline directive via the continue mechanism. |
+| Orphaned or irrecoverably thrashing | Respawn from the last checkpoint — the respawn intake above applies. |
+| Budget breached again, or C's evidence ambiguous | Escalate to the user with the evidence. |
+
+Record every breach, C cost report, and action taken in the run summary (§6 Workflow observations).
+
+**Watchdog failure.** If the telemetry DB, dashboard, or metadata is unavailable, that failure is observable — note it in the run summary and in your next status ping to the user — and never blocks the loop: the implement→review pipeline continues and the watchdog degrades to the stall rule until a signal source returns.
+
 ## Anti-patterns (do not do these)
 
 - Re-dispatching the whole workflow because one step failed — resume the specific subagent.
@@ -121,3 +141,4 @@ Produce the final user-facing summary:
 - Reading the diff yourself to "double-check" B — that's C's job (spawn C with a precise question).
 - Posting summary text to the PR before verifying individual comments landed.
 - Marking the loop done on subagent-reported status without independent `gh` verification.
+- Debugging a subagent's token burn yourself — evidence-gathering on a watchdog breach is C's job (dispatch C with a precise question).

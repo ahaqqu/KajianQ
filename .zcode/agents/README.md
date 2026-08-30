@@ -122,6 +122,43 @@ past the budget is the anti-pattern. The manager restates this clause in
 every implementer-class dispatch prompt (`.agents/skills/manager/SKILL.md`,
 §1 Dispatch).
 
+### Watchdog backstop thresholds (defaults)
+
+The manager's efficiency watchdog (`.agents/skills/manager/SKILL.md`,
+Reliability & supervision → Efficiency watchdog) independently watches every
+dispatched role subagent from telemetry and acts on a breach. These registry
+defaults are the canonical values; a role profile (`.zcode/agents/<role>.md`)
+or an individual dispatch may override them tighter, never looser:
+
+| Per-dispatch budget | Default |
+| --- | --- |
+| Billed input tokens (`input_tokens + cache_read_input_tokens + cache_creation_input_tokens`) | ~5M |
+| Requests (`model_usage` rows) | ~600 |
+| Wall time | ~120 min |
+| Stall | `STALL_MINUTES` (manager skill, default 30) |
+
+A dispatch spans three billed phases (implement → test loop → report; the
+handoff between them is a context boundary, not a billed phase), so every
+dimension with a per-phase counterpart must sit strictly above the
+worst-case compliant dispatch — per-phase cap × 3. Per dimension: billed
+input ~5M is ~11× the worst case (~450k); requests ~600 sit strictly above
+the worst case (3 × ~150 = ~450) — the rule is that the request backstop
+must exceed the per-phase request cap × the expected billed phase count,
+never equal or undercut it; wall time has no per-phase counterpart, so no
+such arithmetic applies and ~120 min is a free-plan-safe ceiling for a
+typical dispatch, not a margin over a per-phase budget. A subagent honoring
+the escape hatch hands off long before a breach, so a breach is evidence
+the subagent is ignoring the hatch (or that a respawn is re-burning). Detection is from telemetry evidence — the ZCode
+telemetry DB `~/.zcode/cli/db/db.sqlite` (`model_usage` / `tool_usage`),
+the AgenQ dashboard (`http://localhost:8787/api/state`), or the agent
+record's `metadata.json` usage block (`docs/AGENT-USAGE-METADATA.md`;
+capture-time-only — post-hoc, never a live mid-run signal) —
+never from subagent prose. On a breach the manager dispatches the
+assistant-manager (role C, read-only) to analyze why, then nudges the
+subagent via the continue mechanism, respawns it from its last checkpoint,
+or escalates to the owner. Watchdog failure (DB or dashboard unavailable) is
+observable and never blocks the main loop.
+
 ## Role registry
 
 This directory is the role-file home the ZCode harness parses (see the
