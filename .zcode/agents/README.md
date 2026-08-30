@@ -108,6 +108,20 @@ Ownership note: the skill path is template-owned (`.agents/` is an
 `.zcode/agents/` is unlisted in that map (project-owned), so this directory
 is where a fork customizes or extends it.
 
+### Context budgets (defaults)
+
+Each phase above runs under a hard budget: **~150k billed input tokens or
+~150 requests, whichever is hit first**. These are the registry defaults for
+the implementer-class roles; a role profile (`.zcode/agents/<role>.md`) or
+an individual dispatch may override them tighter. When a phase passes its
+budget, the subagent does not keep expanding context — it makes a checkpoint
+commit, pushes the branch, and hands off: to a fresh scoped context carrying
+the last checkpoint, or back to the manager through its normal report
+channel. A budget handoff is compliance, not failure; silently continuing
+past the budget is the anti-pattern. The manager restates this clause in
+every implementer-class dispatch prompt (`.agents/skills/manager/SKILL.md`,
+§1 Dispatch).
+
 ## Role registry
 
 This directory is the role-file home the ZCode harness parses (see the
