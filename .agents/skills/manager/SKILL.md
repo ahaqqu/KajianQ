@@ -75,13 +75,14 @@ Spawn the reviewer role (per your harness adapter) in the background. It applies
 
 ### 4. Relay findings to A
 
-Send A: B's full itemized report (verbatim), and these instructions:
+Send A: B's full itemized report (verbatim) including each item's posted review-comment ID, and these instructions:
 
-1. For each item, reply to its review comment with **accept** or **reject** and one-sentence reasoning (`gh api repos/{owner}/{repo}/pulls/comments/{comment_id}/replies -f body=…`).
-2. For every accepted item, apply the fix; re-run `bun run check && bun run test && bun run size-limit` locally.
-3. Keep CI green; push fixes to the same branch.
-4. Post a **resolution report** as a PR comment listing each item ID, its disposition, and the commit that fixed it (for accepted items).
-5. Report back: PR URL, item dispositions, final `gh pr checks` status.
+1. For each item, post its disposition as a **threaded reply on that item's original review comment** — never a separate PR/issue comment or a reply on the summary thread: `gh api repos/{owner}/{repo}/pulls/<pr>/comments/<comment_id>/replies -f body=…` (the route requires the PR number in the path — the ID-only form `pulls/comments/{id}/replies` 404s). The reply body is **accept** or **reject** plus one-sentence reasoning.
+2. **Verify every reply landed** before reporting: `gh api repos/{owner}/{repo}/pulls/<pr>/comments` shows each finding's comment with a reply whose `in_reply_to_id` matches that finding's comment ID. A disposition that is not a threaded reply on the original comment does not count.
+3. For every accepted item, apply the fix; re-run `bun run check && bun run test && bun run size-limit` locally.
+4. Keep CI green; push fixes to the same branch.
+5. Post a **resolution report** as a PR comment listing each item ID, its disposition, the threaded reply (comment ID), and the commit that fixed it (for accepted items).
+6. Report back: PR URL, item dispositions, final `gh pr checks` status.
 
 ### 5. Verify A's fix loop
 
