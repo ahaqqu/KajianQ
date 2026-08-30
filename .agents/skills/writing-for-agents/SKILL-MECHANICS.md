@@ -20,3 +20,12 @@ The invocation cut of splitting (the sequence cut lives in `SKILL.md`): split of
 ## Router skills
 
 When user-invoked skills multiply past what you can remember, that piled-up cognitive load is cured by a **router skill**: one user-invoked skill that names the others and when to reach for each, so the human has one skill to remember instead of many. It can only hint, never fire them: user-invoked skills have no description, so nothing but the human can reach them.
+
+## Multiple harnesses
+
+A project can run its agentic skills on more than one harness (this repo: ZCode and DeepSeek Harness). The writing rules generalize there:
+
+- **Cut on the adapter boundary, and only there.** Per-harness mechanics (spawn/resume/model/isolation) go into a per-harness **adapter file**, reached by a router pointer in the shared body that the agent resolves from its own spawn tools (see the `manager` skill's *Harness adapters* router → `ZCODE-ADAPTER.md` / `DSH-ADAPTER.md`) — so a session loads only its own branch. The loop itself, the shared role config, and workflow steps stay single-sourced: splitting behavior forks the protocol and every future change gets made twice. A harness-specific mechanic stated in the shared body is a variance bug: runs on the other harness take a path the text does not describe.
+- **One configurable fact, one file.** A role's persona and model pin live in the agent-definition file the harness parses. A harness that parses no such files can still honor the same file through a documented dispatch rule — read the value at dispatch, translate it per the declared mapping, fall back visibly when the value cannot run — written next to a pointer to the file it reads, named as the source of truth (`.zcode/agents/` stays the pin home for every harness).
+- **Verified ≠ documented.** A harness claim (a tool's parameters, a model id routing, a nested spawn) is verified only by running it on the installed harness: record the probe and its date, and keep fixing until what the document claims is what runs. An unverified recipe documented as supported is a false completion criterion.
+- **A harness gap is a config fix, not a skill note.** When the harness cannot execute a configured value — a model id that fails to resolve — fix the harness's own configuration and re-probe until the real value runs. Rerouting the value per harness, or documenting fallback status inside skills, forks the truth: skills carry no routing or fallback tables; the probe evidence lives with the change's decision record, outside the skill.

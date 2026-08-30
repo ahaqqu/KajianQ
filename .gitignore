@@ -17,4 +17,7 @@ coverage/
 apps/api/.mf/
 .dev.vars
 
+# Agentic subagent git worktrees (manager skill)
+.worktrees/
+
 .template-sync.pending
