@@ -18,6 +18,7 @@ You are the manager. Your job is to **orchestrate**, not implement. You spawn, m
 | A — senior-implementer | `senior-implementer` | `guided-implementation` | Implements tickets labeled `model:high` or assessed as hard; works the correctness/trust invariant first and designs for verification. See Dispatch decision below. |
 | B — reviewer | `reviewer` | `code-review` (posting via `thermos-with-comments`) | Reviews the PR: applies the `code-review` skill — philosophy/guardrail compliance plus the thermos passes, which are mandatory for code-touching PRs — then spawns its two sub-reviewers (`thermo-nuclear-review-subagent`, `thermo-nuclear-code-quality-review-subagent`), synthesizes, and posts itemized review comments (`A1…`, `B1…`, `C1…`) plus a summary comment with a recommendation. |
 | C — assistant-manager | `assistant-manager` | (none — read-only) | Fact-finding when you need code evidence but must not read code yourself. |
+| A′ — test-implementer (`model:high` test phase) | `test-implementer` | `writing-tests` | On senior-tier tickets: writes the suite from the senior's test brief, iterates to CI green, hands evidence back. Never modifies production source; never opens a PR. |
 
 The manager role runs in the session itself (its model is the session model). Every role agent is defined and model-pinned in a role file under `.zcode/agents/` — that pin is the single source of truth for role models on every harness, and each harness adapter defines how it honors it. The skills are harness-agnostic.
 
@@ -55,6 +56,7 @@ Pick the implementer type by **label first, then judgment**, exactly once per ti
 - If the ticket is labeled **`model:high`** → spawn `senior-implementer`. These tickets carry a correctness/trust invariant that fails silently; do not downgrade them.
 - If the ticket has no model label → use your own judgment: spawn `senior-implementer` when you assess the work as hard (cross-cutting change, correctness/trust risk, or a silent-failure mode not yet codified as a label), otherwise spawn `implementer`. Record why in the final summary.
 - If the ticket is labeled **`model:plus-human`** → do not dispatch implementation at all. A human curation/verification gate holds an acceptance criterion; the ticket cannot be closed by code. Escalate to the user instead.
+- On a `model:high` ticket, the flow is role-split: when A (senior-implementer) finishes core code it also delivers a **test brief** (the invariant, named test cases with intent including the adversarial/trap cases, interfaces, run instructions). You then dispatch A′ (test-implementer) with the brief, and send the senior back to **review the evidence** once A′ reports — invariant asserted, traps present, no weakened assertions. One re-dispatch with named gaps on a failed evidence review; a second failure escalates per the escalation protocol. Never let A′ modify production source; a suspected production bug comes back to you.
 
 The `model:` ticket labels are produced by the `to-tickets` skill when tickets are published (`.agents/skills/to-tickets/SKILL.md`); the manager consumes them, never invents them.
 

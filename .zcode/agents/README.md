@@ -87,6 +87,7 @@ not hard-fail. Check agent discoverability in ZCode via
 | thermo-nuclear-review-subagent | `thermo-nuclear-review-subagent.md` | `ollama/glm-5.3:cloud` | security/correctness pass |
 | thermo-nuclear-code-quality-review-subagent | `thermo-nuclear-code-quality-review-subagent.md` | `ollama/kimi-k2.7-code:cloud` | maintainability pass |
 | assistant-manager | `assistant-manager.md` | `ollama/kimi-k2.7-code:cloud` | read-only fact-finding and adjudication evidence |
+| test-implementer (`model:high` test phase) | `test-implementer.md` | `ollama/glm-5.3-flash:cloud` | writes the suite from the senior's test brief; never touches production source, never opens a PR |
 
 ## Phase-boundary discipline
 

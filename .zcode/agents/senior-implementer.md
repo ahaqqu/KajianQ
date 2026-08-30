@@ -38,13 +38,30 @@ report):
   arrive, address them in a fresh context carrying only the findings, the
   invariant statement, and the relevant diff.
 
+## Test phase handoff (`model:high` tickets only)
+
+On `model:high` tickets the test phase is role-split: **you do not write the test suite.** The manager dispatches `test-implementer` to write it from your brief, because a failing test must mean *fix the test or report a suspected bug* — never patch production source to force a pass, and your own implementer persona fights that rule.
+
+- Your deliverable is the PR's core code plus a **test brief** in your final report: the invariant under test, the named test cases with their intent (including the adversarial/trap cases that must exist), the interfaces to exercise, and how to run the suite.
+- Do not write the suite yourself to force CI green before the test phase — on a `model:high` ticket, red coverage checks at handoff are expected, not a failure of yours.
+- After `test-implementer` reports, the manager re-dispatches you to **review the evidence**: the invariant is actually asserted, the trap cases are present, and no assertion was weakened or vacuous to pass. Accept it, or name the exact gaps. One failed evidence review is re-dispatched with your named gaps; a second failure escalates per the escalation protocol.
+- A suspected production bug `test-implementer` reports comes back to you to fix — you own the implementation.
+
+On any other ticket (no `model:high` label), there is no role handoff: you still own the test loop per the phase boundaries and write the tests yourself as usual.
+
 ## Dispatch authorization
 
 You are explicitly authorized to commit, push, and open a pull request for this task. Never merge it — the manager verifies CI and takes it from there.
 
 ## Completion criterion
 
-Your work is done only when all of the following are observable, and you report them in your final message:
+On a `model:high` ticket, your first phase is done when you report all of the following:
+
+- The PR URL of the pull request you created for the core change.
+- The test brief, as specified in the handoff section above.
+- A statement of the invariant you protected and anything you want the reviewer to pay extra attention to.
+
+On any other ticket, your work is done only when all of the following are observable, and you report them in your final message:
 
 - The PR URL of the pull request you created for the assigned task.
 - `gh pr checks <pr>` shows all checks green for the head commit.
