@@ -62,19 +62,19 @@ async function loadFixtureCorpus() {
  */
 const DICT = {
   oneness_of_allah: {
-    ar: ["اللّٰهُ اَحَدٌ", "اَللّٰهُ الصَّمَدُ"],
+    ar: ["قُلْ هُوَ اللّٰهُ اَحَدٌ", "اَللّٰهُ الصَّمَدُ"],
     id: ["Allah Yang Maha Esa", "tempat meminta segala sesuatu"],
   },
   seeking_refuge: {
-    ar: ["اَعُوْذُ بِرَبِّ الْفَلَقِ", "بِرَبِّ النَّاسِ", "وَسْوَاسِ"],
+    ar: ["قُلْ اَعُوْذُ بِرَبِّ الْفَلَقِ", "قُلْ اَعُوْذُ بِرَبِّ النَّاسِ", "مِنْ شَرِّ الْوَسْوَاسِ"],
     id: ["Aku berlindung", "bisikan (kejahatan)"],
   },
   guidance: {
-    ar: ["الصِّرَاطَ الْمُسْتَقِيْمَ", "اِهْدِنَا"],
+    ar: ["الصِّرَاطَ الْمُسْتَقِيْمَ", "اِهْدِنَا"],
     id: ["jalan yang lurus", "tunjukkanlah"],
   },
   lord_of_worlds: {
-    ar: ["الْحَمْدُ لِلّٰهِ", "رَبِّ الْعٰلَمِيْنَ"],
+    ar: ["اَلْحَمْدُ لِلّٰهِ", "رَبِّ الْعٰلَمِيْنَ"],
     id: ["Segala puji bagi Allah", "Tuhan semesta alam"],
   },
 };
@@ -252,7 +252,7 @@ describe("Quran ingestion (fixture = real source data)", () => {
 
     const queryVector = embedder.vectorsFor(["aku berlindung kepada Tuhan pemilik fajar subuh"])[0]!;
     const hits = await store.cosineSearch("primary", queryVector, 3);
-    expect(hits[0]?.child.textAr).toContain("أَعُوذُ");
+    expect(hits[0]?.child.textAr).toContain("قُلْ اَعُوْذُ بِرَبِّ الْفَلَقِ");
     const citation = hits[0]?.child.citation as { surah: number; ayah: number };
     expect(citation.surah).toBe(113);
     expect(citation.ayah).toBe(1);
@@ -271,11 +271,14 @@ function deterministicSummarizer() {
     modelId: "test-summarizer",
     async generate(spec: { turns: readonly { role: string; content: string }[] }) {
       const user = spec.turns.find((t) => t.role === "user")?.content ?? "";
-      // The prompt embeds the parent sourceKey; match it exactly (a prefix
-      // test would let "surah/1" capture "surah/112").
-      const key = Object.keys(summaries).find((k) => user.includes(k));
+      // The prompt embeds the parent sourceKey; match the LONGEST key that
+      // occurs (a plain find would let "surah/1" — a substring of
+      // "surah/112" — capture the wrong surah).
+      const key = Object.keys(summaries)
+        .filter((k) => user.includes(k))
+        .reduce((best, k) => (best === null || k.length > best.length ? k : best), null as string | null);
       const summary =
-        (key !== undefined ? summaries[key] : undefined) ??
+        (key !== null ? summaries[key] : undefined) ??
         "Ringkasan surah uji coba dari rangkaian ayat yang diingest.";
       return {
         text: summary,

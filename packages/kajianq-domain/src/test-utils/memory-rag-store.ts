@@ -21,7 +21,11 @@ export function createMemoryRagStore(): RagStore & {
   /** All stored aligned pairs (test introspection). */
   allPairs: () => AlignedPairInsert[];
   /** Direct cosine search helper for assertions. */
-  cosineSearch: (track: "primary" | "fallback", query: readonly number[], limit: number) => SimilarChild[];
+  cosineSearch: (
+    track: "primary" | "fallback",
+    query: readonly number[],
+    limit: number,
+  ) => Promise<readonly SimilarChild[]>;
 } {
   const parents = new Map<string, DocParentInsert & { id: string }>();
   const parentByKey = new Map<string, string>();
@@ -121,6 +125,6 @@ export function createMemoryRagStore(): RagStore & {
     allChildren: () => [...children.values()],
     allParents: () => [...parents.values()],
     allPairs: () => [...pairs.values()],
-    cosineSearch: (track, query, limit) => store.similaritySearch(track, query, { limit }),
+    cosineSearch: async (track, query, limit) => store.similaritySearch(track, query, { limit }),
   };
 }

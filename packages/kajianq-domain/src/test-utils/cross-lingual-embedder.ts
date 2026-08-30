@@ -51,9 +51,11 @@ function jitter(vec: readonly number[], amount: number): number[] {
 }
 
 function longestContains(text: string, terms: readonly string[]): string | null {
+  const hay = text.toLowerCase();
   let best: string | null = null;
   for (const term of terms) {
-    if (text.includes(term) && (best === null || term.length > best.length)) best = term;
+    const needle = term.toLowerCase();
+    if (hay.includes(needle) && (best === null || needle.length > best.length)) best = term;
   }
   return best;
 }
