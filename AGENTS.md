@@ -26,7 +26,7 @@ These apply to every role and every task. Each bullet names the skill that carri
 - **Decisions** — hard-to-reverse, surprising, trade-off decisions get an ADR in `adr/` (numbered to continue the existing sequence) before or with the implementing PR. Never relitigate an accepted ADR in code comments; amend the ADR instead. Respect the go/no-go gates recorded in ADRs.
 - **Living documents** — a PR that changes what `SPECS.md` describes (architecture §3, data layer §3.5/§4, cost §5, plan §7, product scope §2) updates those sections in the same PR, and any new ADR gets its row in the spec's §8 Record of Decisions. `INITIAL_IDEA.md` is frozen history — never update it.
 - **Datasets** — update `NOTICES/DATASETS.md` when a dataset or corpus resource is touched.
-- **Language** — technical docs and code in English; UI copy Indonesian-first (externalized `en`/`id`).
+- **Language** — all agent communication with the user is in English, without exception; technical docs and code in English; UI copy Indonesian-first (externalized `en`/`id`).
 
 ## The agentic workflow
 
