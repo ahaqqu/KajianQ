@@ -44,7 +44,7 @@ VITE_SENTRY_DSN=… bun run build        # web errors-only; Session Replay is op
 
 ## Keep in sync with template updates
 
-Template changes (skills, guardrails, workflows, docs) flow into forked projects via `scripts/template-sync/cli.mjs`. `template-sync.json` declares ownership: **overwrite** paths are template-owned and enforced — `bun run template-gate` (CI) fails on any drift, and syncs always take the template version; **merge** paths (`apps/`, `packages/`, `package.json`, `README.md`, `CONTEXT.md`) merge normally; unlisted paths are project-owned and never synced.
+Template changes (skills, guardrails, workflows, docs) flow into forked projects via `scripts/template-sync/cli.mjs`. `template-sync.json` declares ownership: **overwrite** paths are template-owned and enforced — forks inherit the template-shipped files, syncs always take the template version, and `bun run template-gate` (CI) fails when a fork modifies or deletes one; fork *additions* under overwrite directories (e.g. your own skills in `.agents/skills/`) are allowed and stay green — only template-shipped files are enforced; **merge** paths (`apps/`, `packages/`, `package.json`, `README.md`, `CONTEXT.md`) merge normally; unlisted paths are project-owned and never synced.
 
 ```bash
 bun run template-sync init     # add + fetch the upstream remote (once)
