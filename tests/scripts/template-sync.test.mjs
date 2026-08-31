@@ -3,11 +3,6 @@ import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync, existsSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync, execSync } from "node:child_process";
-// The expected machinery shape has ONE test-side source of truth (review B3
-// on PR #127): the shared builder; the wrapper below still asserts the
-// builder's output through the gate so a divergence fails loudly.
-import { writeMachineryFixture, roleBody, MODEL_PIN } from "./helpers/zcode-machinery-fixture.mjs";
-import { checkZcodeMachinery } from "../../scripts/zcode-machinery-check.mjs";
 
 const ROOT = process.cwd();
 const CLI = `${ROOT}/scripts/template-sync/cli.mjs`;
@@ -61,14 +56,6 @@ function makeFork(upstream) {
   return dir;
 }
 
-// Minimal template-shaped .zcode/ machinery (issue #125): the gate command
-// (`check`) hard-fails without it, the way a fork that has not yet synced the
-// now-template-owned .zcode/ would fail.
-function writeZcodeMachinery(dir) {
-  writeMachineryFixture(dir);
-  expect(checkZcodeMachinery(dir).errors).toEqual([]);
-}
-
 describe("template-sync CLI", () => {
   let upstream;
   let fork;
@@ -93,7 +80,6 @@ describe("template-sync CLI", () => {
       merge: ["README.md"],
     }));
     writeFileSync(`${fork}/project.txt`, "project file\n");
-    writeZcodeMachinery(fork);
     commit(fork, "add manifest");
   });
 
@@ -115,21 +101,6 @@ describe("template-sync CLI", () => {
     expect(out).toContain("gate passed");
   });
 
-  it("check fails when the .zcode/ machinery is missing (issue #125)", () => {
-    // The hook wiring and role pins are template-owned: a fork that has not
-    // inherited them fails the gate with the restore hint, not silently.
-    run(fork, "init", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
-    run(fork, "update --ref=v1.0.0", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
-    rmSync(`${fork}/.zcode`, { recursive: true, force: true });
-    expect(() =>
-      run(fork, "check", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` }),
-    ).toThrow(/machinery gate failed/);
-    // Restoring the machinery (what `template-sync update` would do) is green.
-    writeZcodeMachinery(fork);
-    const out = run(fork, "check", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
-    expect(out).toContain("gate passed");
-  });
-
   it("check fails when a template-owned file drifts", () => {
     run(fork, "init", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
     run(fork, "update --ref=v1.0.0", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
@@ -139,47 +110,6 @@ describe("template-sync CLI", () => {
     ).toThrow();
   });
 
-  it("check allows fork-added .zcode/ files but flags template-shipped ones (baseline-scoped drift, review A1)", () => {
-    // Issue #125 makes .zcode/ template-owned, but .zcode/ is also the
-    // documented fork extension point (.zcode/agents/README.md sanctions
-    // fork-added roles). Drift there is therefore baseline-scoped: only
-    // files the template baseline ships can be drift; fork additions —
-    // committed role files, local hook scripts, even untracked drafts —
-    // must keep the gate green (and unblock syncs).
-    writeMachineryFixture(upstream);
-    commit(upstream, "ship .zcode");
-    git(upstream, "tag v1.1.0");
-
-    // The fork opts .zcode/ into overwrite (what adopting issue #125 looks
-    // like) while carrying its own machinery — identical to the template's.
-    writeFileSync(`${fork}/template-sync.json`, JSON.stringify({
-      upstream: `${upstream}`,
-      overwrite: ["AGENTS.md", ".zcode"],
-      merge: ["README.md"],
-    }));
-    commit(fork, "opt .zcode into overwrite");
-    run(fork, "init", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
-    run(fork, "update --ref=v1.1.0", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
-    expect(run(fork, "check", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` })).toContain("gate passed");
-
-    // A fork-added role (validated shape) and an untracked local hook are
-    // sanctioned: the drift gate ignores them, the machinery gate passes
-    // them (fork-added roles need a concrete pin, any valid thoughtLevel).
-    writeFileSync(`${fork}/.zcode/agents/fork-role.md`, roleBody(MODEL_PIN, "medium"));
-    commit(fork, "fork-added role");
-    writeFileSync(`${fork}/.zcode/local-hook.mjs`, "// fork-local hook draft\n");
-    expect(run(fork, "check", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` })).toContain("gate passed");
-
-    // Modifying a file the template baseline ships is still drift.
-    writeFileSync(
-      `${fork}/.zcode/agents/implementer.md`,
-      `${roleBody(MODEL_PIN)}\n<!-- fork edit to a template-owned file -->\n`,
-    );
-    expect(() =>
-      run(fork, "check", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` }),
-    ).toThrow(/gate failed/);
-  });
-
   it("scopes drift to the template baseline for ALL overwrite paths — fork additions under overwrite dirs stay green (generalizes review A1)", () => {
     // A live fork-sync run (KajianQ) flagged ~20 fork-added files under
     // overwrite directories (`.agents/skills/`, `.github/workflows/`,
@@ -187,29 +117,24 @@ describe("template-sync CLI", () => {
     // documented fork-extension story. Drift on every overwrite path is
     // therefore baseline-scoped: only files the template baseline actually
     // ships can be drift (their modification or deletion); fork additions
-    // are sanctioned extensions. `.zcode/` is covered here through the same
-    // generalized filter (review B1 on PR #128) — the pre-PR code carried a
-    // separate `.zcode/` special case, and this assertion red-on-regression
-    // if that special-casing is ever reintroduced.
+    // are sanctioned extensions (review B1 on PR #128; the pre-PR code
+    // carried a `.zcode/` special case since removed with its overwrite
+    // ownership).
     writeFile(`${upstream}/.agents/skills/upstream-skill/SKILL.md`, "template skill\n");
     writeFile(`${upstream}/.github/workflows/ci.yml`, "template workflow\n");
     commit(upstream, "ship agents + workflows");
     git(upstream, "tag v1.3.0");
 
-    // The fork opts the directories into overwrite (including `.zcode/`)
-    // and carries fork-added files: a committed skill, an untracked
-    // workflow, a fork-added role file under `.zcode/`, and a fork-added
-    // file in a dir the template ships nothing under. The machinery was
-    // already installed by beforeEach; the fork-added role needs a valid
-    // shape (concrete pin) so the machinery gate stays green.
+    // The fork opts the directories into overwrite and carries fork-added
+    // files: a committed skill, an untracked workflow, and a fork-added
+    // file in a dir the template ships nothing under.
     writeFileSync(`${fork}/template-sync.json`, JSON.stringify({
       upstream: `${upstream}`,
-      overwrite: ["AGENTS.md", ".agents/skills/", ".github/workflows/", ".zcode"],
+      overwrite: ["AGENTS.md", ".agents/skills/", ".github/workflows/"],
       merge: ["README.md"],
     }));
     writeFile(`${fork}/.agents/skills/fork-skill/SKILL.md`, "fork skill\n");
     writeFile(`${fork}/.github/workflows/fork.yml`, "fork workflow\n");
-    writeFile(`${fork}/.zcode/agents/fork-role.md`, roleBody(MODEL_PIN, "medium"));
     commit(fork, "fork additions under overwrite dirs");
     run(fork, "init", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
     run(fork, "update --ref=v1.3.0", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
@@ -483,7 +408,6 @@ describe("template-sync CLI", () => {
       overwrite: ["AGENTS.md"],
       merge: ["README.md"],
     }));
-    writeZcodeMachinery(dir);
     commit(dir, "tree-copy bootstrap");
 
     run(dir, "init", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
