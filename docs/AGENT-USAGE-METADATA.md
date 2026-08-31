@@ -14,7 +14,7 @@ with nothing surfacing it).
 | --- | --- | --- |
 | `scripts/agent-usage-metadata/hook.mjs` | Hook entrypoint the runtime spawns with the payload JSON on stdin. | `overwrite` — forks inherit updates |
 | `scripts/agent-usage-metadata/lib.mjs` | Pure logic: payload contract, `model_usage` row summation, guarded metadata merge. | `overwrite` — forks inherit updates |
-| `.zcode/config.json` | Workspace hook config: enables configuration-file hooks and wires the capture points (see below). | unlisted — project-owned, replicate (below) |
+| `.zcode/config.json` | Workspace hook config: enables configuration-file hooks and wires the capture points (see below). | `overwrite` since issue #125 — forks inherit the wiring via sync; `bun run template-gate` fails when it is missing or altered |
 | `tests/scripts/agent-usage-metadata.test.mjs` | Unit + subprocess tests for every acceptance criterion. | unlisted — project-owned, replicate (below) |
 | `docs/AGENT-USAGE-METADATA.md` | This document. | unlisted — project-owned, replicate (below) |
 

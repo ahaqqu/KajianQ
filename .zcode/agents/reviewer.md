@@ -4,7 +4,7 @@ description: Reviewer for the manager-orchestrated agentic workflow. Use when th
 background: true
 tools: ['*']
 skills: [code-review, thermos-with-comments]
-model: ollama/kimi-k2.7-code:cloud
+model: builtin:zai-start-plan/GLM-5.3-Flash
 thoughtLevel: high
 ---
 

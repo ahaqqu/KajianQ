@@ -3,6 +3,7 @@
   "overwrite": [
     ".agents/",
     ".github/workflows/",
+    ".zcode/",
     "AGENTS.md",
     "docs/ARCHITECTURE.md",
     "docs/BOOTSTRAP_PROMPT.md",

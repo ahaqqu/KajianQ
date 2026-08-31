@@ -9,6 +9,13 @@ export function validateFlag(name, value) {
   }
 }
 
+/** True when a file lives under `.zcode/` — the one overwrite directory that
+ * is also a documented fork extension point (fork-added role files, local
+ * hook scripts; see .zcode/agents/README.md). */
+function isZcodePath(file) {
+  return file === ".zcode" || file.startsWith(".zcode/");
+}
+
 export function drift({ git, manifest }, baseline) {
   const paths = manifest.overwrite;
   if (!paths.length) return [];
@@ -28,7 +35,20 @@ export function drift({ git, manifest }, baseline) {
     untracked.status === 0 && untracked.stdout
       ? untracked.stdout.trim().split("\n").map((p) => `A\t${p}`)
       : [];
-  return [...lines, ...extra].filter(Boolean);
+  // `.zcode/` drift is baseline-scoped (review A1 on PR #127): fork-added
+  // files under it are sanctioned, so only files the template baseline
+  // actually ships can be drift there — their modification or deletion.
+  // Fork-added role files and local hook scripts (committed or untracked)
+  // must not red the gate or block a sync. Every other overwrite path keeps
+  // whole-path ownership: any difference from the baseline is drift.
+  const inBaseline = (file) =>
+    git(["cat-file", "-e", `${baseline}:${file}`]).status === 0;
+  return [...lines, ...extra]
+    .filter(Boolean)
+    .filter((entry) => {
+      const file = entry.split("\t").pop();
+      return !isZcodePath(file) || inBaseline(file);
+    });
 }
 
 export function baseline({ gitOut, remote, state, log }) {

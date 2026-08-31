@@ -3,7 +3,7 @@ name: assistant-manager
 description: Fact-finding assistant for the manager. Read-only code inspection to resolve reviewer/implementer disagreements, verify claims, or extract facts the manager needs without reading code itself.
 background: true
 tools: [Read, Glob, Grep, Bash]
-model: ollama/kimi-k2.7-code:cloud
+model: builtin:zai-start-plan/GLM-5.3-Flash
 thoughtLevel: high
 ---
 

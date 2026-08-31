@@ -4,7 +4,7 @@ description: Implementer for the manager-orchestrated agentic workflow. Use when
 background: true
 tools: ['*']
 skills: [guided-implementation]
-model: ollama/glm-5.3-flash:cloud
+model: builtin:zai-start-plan/GLM-5.3-Flash
 thoughtLevel: high
 ---
 

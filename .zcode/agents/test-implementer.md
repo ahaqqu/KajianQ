@@ -4,7 +4,7 @@ description: Test implementer for the manager-orchestrated workflow. Used on mod
 background: true
 tools: ['*']
 skills: [writing-tests]
-model: ollama/glm-5.3-flash:cloud
+model: builtin:zai-start-plan/GLM-5.3-Flash
 thoughtLevel: high
 ---
 

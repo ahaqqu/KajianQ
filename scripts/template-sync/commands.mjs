@@ -9,6 +9,7 @@ import {
   resolveRef,
 } from "./git.mjs";
 import { isManifestPath, isOverwritePath } from "./manifest.mjs";
+import { runMachineryGate } from "../zcode-machinery-check.mjs";
 import { clearPending, readPending, writeState } from "./state.mjs";
 import { baseline, commitState, drift, stageState, validateFlag } from "./sync.mjs";
 
@@ -103,9 +104,16 @@ export function createCommands(ctx) {
     return 0;
   };
 
+  // Machinery gate (issue #125): the .zcode/ hook wiring and role pins are
+  // template-owned, so every run — template repo or fork — must carry them
+  // intact. Hard failures (wiring shape, concrete pins, thoughtLevel) gate
+  // here, where CI can run; the environment-dependent layer (whether a pin
+  // resolves in the local ZCode provider config) is only visible as drift
+  // warnings, from `bun run zcode:preflight`.
   const cmdCheck = () => {
+    if (!runMachineryGate(cwd, log)) return 1;
     if (isTemplateRepo({ gitOut, remote, manifest, env })) {
-      log.info("template repo detected; gate skipped");
+      log.info("template repo detected; drift gate skipped");
       return 0;
     }
     ensureRemote({ git, gitOk, gitOut, remote, log, manifest, env });
@@ -230,6 +238,14 @@ export function createCommands(ctx) {
           `resolving template-owned conflicts failed:\n${r.stderr}`,
         );
       }
+      // Visible clobber (review B1 on PR #127): overwrite-path conflicts —
+      // including a first sync's .zcode/ add/add — resolve to the template's
+      // version, silently destroying fork-local customizations unless the
+      // sync output says so.
+      log.info("resolved template-owned conflicts with the template's version", {
+        paths: overwriteConflicts,
+        hint: "overwrite paths are template-owned; a fork re-pins .zcode/ models via ~/.zcode/agents/<role>.md (survives syncs)",
+      });
     }
 
     // A tree-copy fork (bootstrapped without shared git history) turns every

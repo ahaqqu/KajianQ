@@ -3,7 +3,7 @@ name: thermo-nuclear-review-subagent
 description: Security and correctness reviewer for the code-review skill's thermos depth (thermos / thermos-with-comments). Audits a PR branch for bugs, breaking changes, security vulnerabilities, devex regressions, and feature-gate leaks with extreme rigor.
 background: true
 tools: ['*']
-model: ollama/glm-5.3:cloud
+model: builtin:zai-start-plan/GLM-5.3-Flash
 thoughtLevel: high
 ---
 

@@ -20,28 +20,48 @@ supplying their own role-agent definitions.
 
 Every role ships **pinned by default**: each agent file carries a
 `model: <providerId>/<modelName>` field, so the workflow runs on the same
-models everywhere unless you override it.
+models everywhere unless you override it. The committed pins all name the
+**caching provider channel** `builtin:zai-start-plan/GLM-5.3-Flash` — the
+channel telemetry proves performs prompt caching at scale (225M cache-read
+tokens across ~3K requests, versus zero cache reads on the ollama channel in
+the same window; issue #125). Dispatching through a non-caching channel with
+these role bodies is the single largest avoidable cost in the workflow.
 
 Resolution order (used by ZCode):
 
-1. **User override:** `~/.zcode/agents/<role>.md` (wins — best place for
-   personal model choices that shouldn't be committed to the repo).
-2. **Project pin:** `<repo>/.zcode/agents/<role>.md` (edit the files in
-   this directory to change a per-project choice).
+1. **User override:** `~/.zcode/agents/<role>.md` (wins — **the sanctioned
+   per-fork mechanism**: `.zcode/` is template-owned (`overwrite` in
+   `template-sync.json`), so editing this directory's files in a fork fails
+   `bun run template-gate`; re-pin a model here instead).
+2. **Project pin:** `<repo>/.zcode/agents/<role>.md` (template-owned; the
+   pins below).
 3. **Template default:** the pinned `model:` in these files (table below).
 
+**Mid-session pin caveat:** pin changes — committed or in user scope — only
+reach *new* spawns after a client restart; the client caches its provider
+registry and role definitions from startup, so a pin edited mid-session
+keeps dispatching on the old channel until restart (observed live, issues
+#110/#125).
+
 The two sub-reviewer agents are children of `reviewer`. They are pinned
-separately by default; delete a sub-reviewer's `model:` field to make it
-inherit the coordinator's model instead.
+separately by default; a user-scope override that drops a sub-reviewer's
+`model:` field makes it inherit the coordinator's model instead.
 
-Recognized `model:` values:
+Recognized `model:` values (the gate rejects everything but the concrete
+ref — `bun run zcode:preflight` / `bun run template-gate`):
 
-- `inherit` — explicitly inherit the session default (equivalent to omitting
-  the field).
-- `lite` — the harness's configured lite model (cheaper tier).
 - `<providerId>/<modelName>` — a concrete provider/model ref, e.g.
-  `ollama/glm-5.3:cloud`.
-- A bare `<modelName>` resolved against the session's default provider.
+  `builtin:zai-start-plan/GLM-5.3-Flash`. **The only accepted form.**
+- `inherit` — explicitly inherit the session default; rejected in committed
+  role files now that the template ships concrete pins (issue #125).
+- `lite` — no verified provider mapping; rejected.
+- A bare `<modelName>` — resolved against the session's default provider,
+  which no static gate can verify; rejected.
+- A concrete ref naming a **known-stale, non-caching channel** (currently
+  `ollama/*`) — rejected in committed role files: the template pins the
+  caching channel, and the only sanctioned per-fork model mechanism is the
+  user-scope override, so a committed stale-channel pin is always a
+  regression (issue #125).
 
 ### Thought level
 
@@ -61,33 +81,42 @@ the routing label — a dispatch can never fall through to the channel's
 the pin prevents: senior-implementer resolved to `max` for all 280 requests
 (issues #94/#96).
 
-The pin is machine-checked: `bun run zcode:preflight` fails when any role file
-in this directory omits `thoughtLevel:`, pins a value outside the validated
-set, or — for the six dispatched roles above — pins anything other than
-`high`, so the "all dispatched roles pin `thoughtLevel: high`" claim above is
-blocking, not prose. Forks inherit this gate (it lives in template-owned
-`scripts/`) but own this directory: a fork-added role file must carry a
+The pin is machine-checked, and the check is a hard gate (`bun run
+zcode:preflight` and `bun run template-gate` both fail — issue #125 moved
+the machinery checks into template-gate so CI enforces them) when any role
+file in this directory omits `thoughtLevel:`, pins a value outside the
+validated set, or — for the six dispatched roles above — pins anything other
+than `high`, so the "all dispatched roles pin `thoughtLevel: high`" claim
+above is blocking, not prose. A fork-added role file must carry a
 `thoughtLevel:` pin (any validated value; the dispatched role names must pin
-`high`) or the preflight fails. (The gate checks the config the client loads,
-not the running client — after a real dispatch, recorded evidence of the
-resolved variant is the telemetry DB's variant column, per issue #96.)
+`high`) and a concrete `model:` pin, or the gate fails. (Whether a `model:`
+pin *resolves in the local provider config* is a separate, environment-
+dependent check: `zcode:preflight` reports a non-resolving pin as a visible
+drift warning and still exits 0, because CI has no `~/.zcode/v2/config.json`;
+after a real dispatch, recorded evidence of the resolved variant is the
+telemetry DB's variant column, per issue #96.)
 
-An invalid or unreachable `model:` falls back to the session default; it does
-not hard-fail. Check agent discoverability in ZCode via
+An invalid or unreachable `model:` falls back to the session default at
+spawn time; it does not hard-fail. Check agent discoverability in ZCode via
 **Settings → Subagents**.
 
 ### Pinned defaults per role
 
+All committed pins name the caching channel `builtin:zai-start-plan/GLM-5.3-Flash`
+(issue #125: one concrete pin per role, single channel — the tiering below is
+now expressed by `thoughtLevel` and role scope, not by separate model ids;
+re-pin per role via the user-scope override if a fork needs different tiers).
+
 | Role | Agent file | Pinned model | Rationale |
 | --- | --- | --- | --- |
 | manager | (the session's own model — the manager is the session agent) | session model | orchestrates, never implements |
-| implementer (default) | `implementer.md` | `ollama/glm-5.3-flash:cloud` | fast tier — does most of the regular-complexity work |
-| senior-implementer (hard/`model:high`) | `senior-implementer.md` | `ollama/glm-5.3:cloud` | stronger tier — tickets where failure is silent (validators, trap questions, sample audits); do not downgrade |
-| reviewer (coordinator) | `reviewer.md` | `ollama/kimi-k2.7-code:cloud` | coordinates the review and posts findings |
-| thermo-nuclear-review-subagent | `thermo-nuclear-review-subagent.md` | `ollama/glm-5.3:cloud` | security/correctness pass |
-| thermo-nuclear-code-quality-review-subagent | `thermo-nuclear-code-quality-review-subagent.md` | `ollama/kimi-k2.7-code:cloud` | maintainability pass |
-| assistant-manager | `assistant-manager.md` | `ollama/kimi-k2.7-code:cloud` | read-only fact-finding and adjudication evidence |
-| test-implementer (`model:high` test phase) | `test-implementer.md` | `ollama/glm-5.3-flash:cloud` | writes the suite from the senior's test brief; never touches production source, never opens a PR |
+| implementer (default) | `implementer.md` | `builtin:zai-start-plan/GLM-5.3-Flash` | caching channel; does most of the regular-complexity work |
+| senior-implementer (hard/`model:high`) | `senior-implementer.md` | `builtin:zai-start-plan/GLM-5.3-Flash` | caching channel; tickets where failure is silent (validators, trap questions, sample audits) — do not downgrade `thoughtLevel` |
+| reviewer (coordinator) | `reviewer.md` | `builtin:zai-start-plan/GLM-5.3-Flash` | coordinates the review and posts findings |
+| thermo-nuclear-review-subagent | `thermo-nuclear-review-subagent.md` | `builtin:zai-start-plan/GLM-5.3-Flash` | security/correctness pass |
+| thermo-nuclear-code-quality-review-subagent | `thermo-nuclear-code-quality-review-subagent.md` | `builtin:zai-start-plan/GLM-5.3-Flash` | maintainability pass |
+| assistant-manager | `assistant-manager.md` | `builtin:zai-start-plan/GLM-5.3-Flash` | read-only fact-finding and adjudication evidence |
+| test-implementer (`model:high` test phase) | `test-implementer.md` | `builtin:zai-start-plan/GLM-5.3-Flash` | writes the suite from the senior's test brief; never touches production source, never opens a PR |
 
 ## Phase-boundary discipline
 
@@ -105,8 +134,11 @@ as explicit phases. Follow all three boundaries:
 
 Ownership note: the skill path is template-owned (`.agents/` is an
 `overwrite` entry in `template-sync.json`), so forks inherit the discipline;
-`.zcode/agents/` is unlisted in that map (project-owned), so this directory
-is where a fork customizes or extends it.
+this directory is template-owned too (`.zcode/` joined `overwrite` in issue
+#125 — the hook wiring and the role pins are machinery, not per-project
+content), so forks inherit it wholesale and re-pin models via the user-scope
+override (`~/.zcode/agents/<role>.md`), never by editing these files
+(`bun run template-gate` fails on that drift).
 
 ## Iteration guardrail and stuck reports
 
