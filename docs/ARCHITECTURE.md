@@ -261,8 +261,7 @@ Root `package.json` scripts are the single source of truth for gates:
 | `bun run size-limit` | bundle budget (&lt;200 KB gzipped JS) |
 | `bun run agentic-limits` | file-size / import-count caps |
 | `bun run truth` | no dependency without an importer |
-| `bun run template-gate` | template-owned files undrifted (modifying or deleting a template-shipped overwrite file; fork additions under overwrite dirs are allowed); `.zcode/` machinery intact (hook wiring, role pins — issue #125) |
-| `bun run zcode:preflight` | ZCode role pins resolve in the local provider config (drift warnings; machinery failures are hard) |
+| `bun run template-gate` | template-owned files undrifted (modifying or deleting a template-shipped overwrite file; fork additions under overwrite dirs are allowed) |
 | `bun run e2e` | Playwright-BDD against `wrangler dev` |
 | `bun run build` | build web + prepare worker |
 | `bun run dev` | local worker + web |

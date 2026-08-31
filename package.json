@@ -18,7 +18,6 @@
     "worktree:clean": "bun scripts/worktree-cleanup.mjs",
     "dsh:preflight": "bun scripts/dsh-pin-check.mjs",
     "dsh:prompt": "bun scripts/dsh-dispatch-prompt.mjs",
-    "zcode:preflight": "bun scripts/zcode-pin-check.mjs",
     "openapi:check": "bun scripts/openapi-check.mjs",
     "e2e": "bddgen && playwright test",
     "deploy:inject": "bun scripts/inject-d1-id.mjs",

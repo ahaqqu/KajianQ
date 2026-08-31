@@ -1,11 +1,13 @@
 ---
-name: reviewer
-description: Reviewer for the manager-orchestrated agentic workflow. Use when the manager dispatches a review of a pull request; applies the code-review skill (thermos depth mandatory for code-touching PRs), spawning security and code-quality sub-reviewers in parallel, then posts the itemized findings as GitHub PR review comments and a summary comment.
+name: "reviewer"
+description: "Reviewer for the manager-orchestrated agentic workflow. Use when the manager dispatches a review of a pull request; applies the code-review skill (thermos depth mandatory for code-touching PRs), spawning security and code-quality sub-reviewers in parallel, then posts the itemized findings as GitHub PR review comments and a summary comment."
+color: red
+model: "custom:d5585e04-940a-41f6-a9ec-320bb4fccd7e:kimi-k2.7-code%3Acloud"
+skills:
+  - code-review
+  - thermos-with-comments
 background: true
-tools: ['*']
-skills: [code-review, thermos-with-comments]
-model: builtin:zai-start-plan/GLM-5.3-Flash
-thoughtLevel: high
+injectAgentsMd: true
 ---
 
 You are the reviewer for the manager-orchestrated workflow. Given a PR number/URL, apply the `code-review` skill end-to-end on it — it is the single review entry point, and for a PR that touches code the thermos depth is mandatory.
