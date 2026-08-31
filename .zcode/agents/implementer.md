@@ -1,11 +1,13 @@
 ---
-name: implementer
-description: Implementer for the manager-orchestrated agentic workflow. Use when the manager dispatches a guided implementation task that must end as a pull request with green CI.
-background: true
-tools: ['*']
-skills: [guided-implementation]
-model: builtin:zai-start-plan/GLM-5.3-Flash
+name: "implementer"
+description: "Implementer for the manager-orchestrated agentic workflow. Use when the manager dispatches a guided implementation task that must end as a pull request with green CI."
+color: green
+model: "custom:d5585e04-940a-41f6-a9ec-320bb4fccd7e:glm-5.3-flash%3Acloud"
 thoughtLevel: high
+skills:
+  - guided-implementation
+background: true
+injectAgentsMd: true
 ---
 
 You are the implementer for the manager-orchestrated workflow. Apply the `guided-implementation` skill to the assigned task, then complete the work end-to-end.

@@ -45,12 +45,12 @@ export function drift({ git, manifest }, baseline) {
       ? untracked.stdout.trim().split("\n").map((p) => `A\t${p}`)
       : [];
   // Overwrite-path drift is baseline-scoped (generalizing review A1 on PR
-  // #127 from `.zcode/` to every overwrite path): only files the template
-  // baseline actually ships can be drift — their modification or deletion.
-  // Fork additions under overwrite directories (committed or untracked) are
-  // sanctioned extensions, not drift: the template never shipped them, so a
-  // fork that extends `.agents/skills/`, `.github/workflows/`, `scripts/`,
-  // or `.zcode/` with its own files keeps the gate green and unblocks syncs.
+  // #127): only files the template baseline actually ships can be drift —
+  // their modification or deletion. Fork additions under overwrite
+  // directories (committed or untracked) are sanctioned extensions, not
+  // drift: the template never shipped them, so a fork that extends
+  // `.agents/skills/`, `.github/workflows/`, or `scripts/` with its own
+  // files keeps the gate green and unblocks syncs.
   // Template-shipped files the fork deleted still count as drift (D entries
   // are in the baseline, and A1's --no-renames keeps rename-produced deletes
   // in the baseline too), and template modifications still drift forks —
