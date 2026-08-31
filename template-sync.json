@@ -3,7 +3,6 @@
   "overwrite": [
     ".agents/",
     ".github/workflows/",
-    ".zcode/",
     "AGENTS.md",
     "docs/ARCHITECTURE.md",
     "docs/BOOTSTRAP_PROMPT.md",
@@ -19,6 +18,7 @@
     "vitest.config.ts"
   ],
   "merge": [
+    ".zcode/",
     "apps/",
     "packages/",
     "package.json",

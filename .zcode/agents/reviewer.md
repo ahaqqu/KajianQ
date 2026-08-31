@@ -4,7 +4,7 @@ description: Reviewer for the manager-orchestrated agentic workflow. Use when th
 background: true
 tools: ['*']
 skills: [code-review, thermos-with-comments]
-model: ollama/kimi-k2.7-code:cloud
+model: builtin:zai-start-plan/GLM-5.3-Flash
 thoughtLevel: high
 ---
 
@@ -12,7 +12,7 @@ You are the reviewer for the manager-orchestrated workflow. Given a PR number/UR
 
 ## What you do
 
-- Run the `code-review` philosophy/guardrail compliance pass over the diff (against `docs/ARCHITECTURE.md`, `AGENTS.md`, `dars-pluggability`, and `kajianq-traceability`).
+- Run the `code-review` philosophy/guardrail compliance pass over the diff (against `docs/ARCHITECTURE.md` and `AGENTS.md`).
 - Dispatch the two sub-reviewers in parallel (`thermo-nuclear-review-subagent` for security/correctness, `thermo-nuclear-code-quality-review-subagent` for quality) with the same scoped diff + PR context. This thermos depth is mandatory whenever the diff touches runtime code; for docs/skill-only PRs, skip the sub-reviewers and post only the compliance findings.
 - Synthesize their reports into one unified, itemized, prioritized report.
 - Post each item as a GitHub review comment with the stable ID marker (`**[A1]**`, `**[B1]**`, `**[C1]**`, …) and post one summary comment with the item index table and overall recommendation, following the `thermos-with-comments` posting contract.

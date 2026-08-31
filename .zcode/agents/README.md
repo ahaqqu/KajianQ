@@ -20,28 +20,48 @@ supplying their own role-agent definitions.
 
 Every role ships **pinned by default**: each agent file carries a
 `model: <providerId>/<modelName>` field, so the workflow runs on the same
-models everywhere unless you override it.
+models everywhere unless you override it. The committed pins all name the
+**caching provider channel** `builtin:zai-start-plan/GLM-5.3-Flash` — the
+channel telemetry proves performs prompt caching at scale (225M cache-read
+tokens across ~3K requests, versus zero cache reads on the ollama channel in
+the same window; issue #125). Dispatching through a non-caching channel with
+these role bodies is the single largest avoidable cost in the workflow.
 
 Resolution order (used by ZCode):
 
-1. **User override:** `~/.zcode/agents/<role>.md` (wins — best place for
-   personal model choices that shouldn't be committed to the repo).
-2. **Project pin:** `<repo>/.zcode/agents/<role>.md` (edit the files in
-   this directory to change a per-project choice).
+1. **User override:** `~/.zcode/agents/<role>.md` (wins — **the sanctioned
+   per-fork mechanism**: `.zcode/` is template-owned (`overwrite` in
+   `template-sync.json`), so editing this directory's files in a fork fails
+   `bun run template-gate`; re-pin a model here instead).
+2. **Project pin:** `<repo>/.zcode/agents/<role>.md` (template-owned; the
+   pins below).
 3. **Template default:** the pinned `model:` in these files (table below).
 
+**Mid-session pin caveat:** pin changes — committed or in user scope — only
+reach *new* spawns after a client restart; the client caches its provider
+registry and role definitions from startup, so a pin edited mid-session
+keeps dispatching on the old channel until restart (observed live, issues
+#110/#125).
+
 The two sub-reviewer agents are children of `reviewer`. They are pinned
-separately by default; delete a sub-reviewer's `model:` field to make it
-inherit the coordinator's model instead.
+separately by default; a user-scope override that drops a sub-reviewer's
+`model:` field makes it inherit the coordinator's model instead.
 
-Recognized `model:` values:
+Recognized `model:` values (the gate rejects everything but the concrete
+ref — `bun run zcode:preflight` / `bun run template-gate`):
 
-- `inherit` — explicitly inherit the session default (equivalent to omitting
-  the field).
-- `lite` — the harness's configured lite model (cheaper tier).
 - `<providerId>/<modelName>` — a concrete provider/model ref, e.g.
-  `ollama/glm-5.3:cloud`.
-- A bare `<modelName>` resolved against the session's default provider.
+  `builtin:zai-start-plan/GLM-5.3-Flash`. **The only accepted form.**
+- `inherit` — explicitly inherit the session default; rejected in committed
+  role files now that the template ships concrete pins (issue #125).
+- `lite` — no verified provider mapping; rejected.
+- A bare `<modelName>` — resolved against the session's default provider,
+  which no static gate can verify; rejected.
+- A concrete ref naming a **known-stale, non-caching channel** (currently
+  `ollama/*`) — rejected in committed role files: the template pins the
+  caching channel, and the only sanctioned per-fork model mechanism is the
+  user-scope override, so a committed stale-channel pin is always a
+  regression (issue #125).
 
 ### Thought level
 
@@ -50,24 +70,159 @@ Agent files may also pin a `thoughtLevel:` frontmatter field (valid values:
 set). Pin it explicitly whenever a role's model offers reasoning variants,
 because a provider's `defaultVariant` is not a safe default: GLM-5.3's
 provider config ships `defaultVariant: "max"`, and an unpinned dispatch
-resolved to `max` in the observed run (see
-agentic-project-template#94). The review-side roles pin `thoughtLevel: high`.
+resolved to `max` for an entire implementation run (see issue #94). All
+dispatched roles pin `thoughtLevel: high`.
 
-An invalid or unreachable `model:` falls back to the session default; it does
-not hard-fail. Check agent discoverability in ZCode via
+**Why `high` for the implementer-class roles specifically:** ticket routing
+labels hard tickets `model:high`, which dispatches them to the
+senior-implementer. Its intended reasoning mode is `high`, so the pin matches
+the routing label — a dispatch can never fall through to the channel's
+`defaultVariant` (`max` for GLM-5.3). The observed #6 run is the counterexample
+the pin prevents: senior-implementer resolved to `max` for all 280 requests
+(issues #94/#96).
+
+The pin is machine-checked, and the check is a hard gate (`bun run
+zcode:preflight` and `bun run template-gate` both fail — issue #125 moved
+the machinery checks into template-gate so CI enforces them) when any role
+file in this directory omits `thoughtLevel:`, pins a value outside the
+validated set, or — for the six dispatched roles above — pins anything other
+than `high`, so the "all dispatched roles pin `thoughtLevel: high`" claim
+above is blocking, not prose. A fork-added role file must carry a
+`thoughtLevel:` pin (any validated value; the dispatched role names must pin
+`high`) and a concrete `model:` pin, or the gate fails. (Whether a `model:`
+pin *resolves in the local provider config* is a separate, environment-
+dependent check: `zcode:preflight` reports a non-resolving pin as a visible
+drift warning and still exits 0, because CI has no `~/.zcode/v2/config.json`;
+after a real dispatch, recorded evidence of the resolved variant is the
+telemetry DB's variant column, per issue #96.)
+
+An invalid or unreachable `model:` falls back to the session default at
+spawn time; it does not hard-fail. Check agent discoverability in ZCode via
 **Settings → Subagents**.
 
 ### Pinned defaults per role
 
+All committed pins name the caching channel `builtin:zai-start-plan/GLM-5.3-Flash`
+(issue #125: one concrete pin per role, single channel — the tiering below is
+now expressed by `thoughtLevel` and role scope, not by separate model ids;
+re-pin per role via the user-scope override if a fork needs different tiers).
+
 | Role | Agent file | Pinned model | Rationale |
 | --- | --- | --- | --- |
 | manager | (the session's own model — the manager is the session agent) | session model | orchestrates, never implements |
-| implementer (default) | `implementer.md` | `ollama/glm-5.3-flash:cloud` | fast tier — does most of the regular-complexity work |
-| senior-implementer (hard/`model:high`) | `senior-implementer.md` | `ollama/glm-5.3:cloud` | stronger tier — tickets where failure is silent (validators, trap questions, sample audits); do not downgrade |
-| reviewer (coordinator) | `reviewer.md` | `ollama/kimi-k2.7-code:cloud` | coordinates the review and posts findings |
-| thermo-nuclear-review-subagent | `thermo-nuclear-review-subagent.md` | `ollama/glm-5.3:cloud` | security/correctness pass |
-| thermo-nuclear-code-quality-review-subagent | `thermo-nuclear-code-quality-review-subagent.md` | `ollama/kimi-k2.7-code:cloud` | maintainability pass |
-| assistant-manager | `assistant-manager.md` | `ollama/kimi-k2.7-code:cloud` | read-only fact-finding and adjudication evidence |
+| implementer (default) | `implementer.md` | `builtin:zai-start-plan/GLM-5.3-Flash` | caching channel; does most of the regular-complexity work |
+| senior-implementer (hard/`model:high`) | `senior-implementer.md` | `builtin:zai-start-plan/GLM-5.3-Flash` | caching channel; tickets where failure is silent (validators, trap questions, sample audits) — do not downgrade `thoughtLevel` |
+| reviewer (coordinator) | `reviewer.md` | `builtin:zai-start-plan/GLM-5.3-Flash` | coordinates the review and posts findings |
+| thermo-nuclear-review-subagent | `thermo-nuclear-review-subagent.md` | `builtin:zai-start-plan/GLM-5.3-Flash` | security/correctness pass |
+| thermo-nuclear-code-quality-review-subagent | `thermo-nuclear-code-quality-review-subagent.md` | `builtin:zai-start-plan/GLM-5.3-Flash` | maintainability pass |
+| assistant-manager | `assistant-manager.md` | `builtin:zai-start-plan/GLM-5.3-Flash` | read-only fact-finding and adjudication evidence |
+| test-implementer (`model:high` test phase) | `test-implementer.md` | `builtin:zai-start-plan/GLM-5.3-Flash` | writes the suite from the senior's test brief; never touches production source, never opens a PR |
+
+## Phase-boundary discipline
+
+The implementer-class roles (`implementer`, `senior-implementer`) carry an
+operating discipline in their agent files, mirrored in the
+`guided-implementation` skill (`.agents/skills/guided-implementation/SKILL.md`,
+"Phase boundaries"): run **implement → handoff → test loop → report**
+as explicit phases. Follow all three boundaries:
+
+1. Checkpoint commit at every test-green point.
+2. Hand the verification loop to a fresh scoped context (compaction, where the
+   harness provides it, is equivalent) *before* entering test iteration.
+3. Address review findings in a fresh context *after* review, never in the
+   implementation context.
+
+Ownership note: the skill path is template-owned (`.agents/` is an
+`overwrite` entry in `template-sync.json`), so forks inherit the discipline;
+this directory is template-owned too (`.zcode/` joined `overwrite` in issue
+#125 — the hook wiring and the role pins are machinery, not per-project
+content), so forks inherit it wholesale and re-pin models via the user-scope
+override (`~/.zcode/agents/<role>.md`), never by editing these files
+(`bun run template-gate` fails on that drift).
+
+## Iteration guardrail and stuck reports
+
+Implementer-class roles run under the mechanical iteration guardrail (issue
+#98): a workspace hook (`scripts/iteration-guardrail/`, wired in
+`.zcode/config.json`) counts failed verification cycles per session and
+**denies** verification reruns past progress-based caps — 3 failed cycles on
+the same failure, 8 failed cycles since the last successful verification
+(both configurable in `scripts/iteration-guardrail/config.json`). The hook
+is scoped (issue #123) to subagent dispatches only — `scope:
+"subagents-only"` in the config, matching the observed `sess_subagent_agent_*`
+session-id convention — so interactive sessions are a full no-op. It fails
+open on its own internal errors and never blocks non-verification
+commands, so a checkpoint commit is always available. The manager's
+decision table for acting on a stuck report lives in the manager skill
+(`.agents/skills/manager/SKILL.md`, Reliability & supervision).
+
+### Stuck-report format (canonical)
+
+When the guardrail denies a verification rerun — or whenever an agent judges
+the loop stuck before the mechanical cap fires — it stops looping and reports
+a **stuck-report** to the manager, containing exactly:
+
+1. **Invariant under test** — the property the work must protect, stated so the receiver can verify it.
+2. **Exact current failure** — the verification command and the precise error output.
+3. **Attempted fixes** — every fix attempt, each with its outcome.
+4. **Ruled-out hypotheses** — what was already eliminated and how.
+5. **Checkpoint commit ref** — the work is committed to the branch **first**; escalation must never lose work.
+
+The receiver must be able to act on this without re-deriving the history.
+**Never fake done:** the completion criterion is unchanged by the guardrail —
+a PR must exist and all its checks must be green. A cap, a deny, or a
+stuck-report never substitutes for that evidence; escalate instead.
+
+### Context budgets (defaults)
+
+Each phase above runs under a hard budget: **~150k billed input tokens or
+~150 requests, whichever is hit first**. These are the registry defaults for
+the implementer-class roles; a role profile (`.zcode/agents/<role>.md`) or
+an individual dispatch may override them tighter. When a phase passes its
+budget, the subagent does not keep expanding context — it makes a checkpoint
+commit, pushes the branch, and hands off: to a fresh scoped context carrying
+the last checkpoint, or back to the manager through its normal report
+channel. A budget handoff is compliance, not failure; silently continuing
+past the budget is the anti-pattern. The manager restates this clause in
+every implementer-class dispatch prompt (`.agents/skills/manager/SKILL.md`,
+§1 Dispatch).
+
+### Watchdog backstop thresholds (defaults)
+
+The manager's efficiency watchdog (`.agents/skills/manager/SKILL.md`,
+Reliability & supervision → Efficiency watchdog) independently watches every
+dispatched role subagent from telemetry and acts on a breach. These registry
+defaults are the canonical values; a role profile (`.zcode/agents/<role>.md`)
+or an individual dispatch may override them tighter, never looser:
+
+| Per-dispatch budget | Default |
+| --- | --- |
+| Billed input tokens (`input_tokens + cache_read_input_tokens + cache_creation_input_tokens`) | ~5M |
+| Requests (`model_usage` rows) | ~600 |
+| Wall time | ~120 min |
+| Stall | `STALL_MINUTES` (manager skill, default 30) |
+
+A dispatch spans three billed phases (implement → test loop → report; the
+handoff between them is a context boundary, not a billed phase), so every
+dimension with a per-phase counterpart must sit strictly above the
+worst-case compliant dispatch — per-phase cap × 3. Per dimension: billed
+input ~5M is ~11× the worst case (~450k); requests ~600 sit strictly above
+the worst case (3 × ~150 = ~450) — the rule is that the request backstop
+must exceed the per-phase request cap × the expected billed phase count,
+never equal or undercut it; wall time has no per-phase counterpart, so no
+such arithmetic applies and ~120 min is a free-plan-safe ceiling for a
+typical dispatch, not a margin over a per-phase budget. A subagent honoring
+the escape hatch hands off long before a breach, so a breach is evidence
+the subagent is ignoring the hatch (or that a respawn is re-burning). Detection is from telemetry evidence — the ZCode
+telemetry DB `~/.zcode/cli/db/db.sqlite` (`model_usage` / `tool_usage`),
+the AgenQ dashboard (`http://localhost:8787/api/state`), or the agent
+record's `metadata.json` usage block (`docs/AGENT-USAGE-METADATA.md`;
+capture-time-only — post-hoc, never a live mid-run signal) —
+never from subagent prose. On a breach the manager dispatches the
+assistant-manager (role C, read-only) to analyze why, then nudges the
+subagent via the continue mechanism, respawns it from its last checkpoint,
+or escalates to the owner. Watchdog failure (DB or dashboard unavailable) is
+observable and never blocks the main loop.
 
 ## Role registry
 
@@ -95,5 +250,5 @@ give it an adapter that honors these pins through its own dispatch rule.
 
 This repo's second harness **DSH (DeepSeek Harness)** works exactly that way:
 its verified adapter — dispatch recipe for all six roles and the pin-routing
-rule — lives in `.agents/skills/manager/DSH-ADAPTER.md` (ADR-0023).
+rule — lives in `.agents/skills/manager/DSH-ADAPTER.md` (ADR-0005).
 
