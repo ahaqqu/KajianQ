@@ -1,24 +1,28 @@
 {
   "upstream": "https://github.com/ahaqqu/agentic-project-template.git",
   "overwrite": [
-    ".github/workflows/e2e.yml",
-    ".github/workflows/vuln-scan.yml",
-    ".github/workflows/dependabot-auto-merge.yml",
-    "scripts/template-sync/",
-    "scripts/check-agentic-limits.mjs",
-    "scripts/check-template-truth.mjs",
-    "scripts/openapi-check.mjs",
+    ".agents/",
+    ".github/workflows/",
+    ".zcode/",
+    "AGENTS.md",
+    "docs/ARCHITECTURE.md",
+    "docs/BOOTSTRAP_PROMPT.md",
+    "docs/ITERATION-GUARDRAIL.md",
+    "docs/QUOTA.md",
+    "docs/RUNBOOK_RESTORE.md",
     "flake.nix",
+    "playwright.config.ts",
+    "scripts/",
+    "template-sync.json",
     "tsconfig.base.json",
     "tsconfig.json",
     "vitest.config.ts"
   ],
   "merge": [
-    ".github/workflows/ci.yml",
-    ".github/workflows/staging.yml",
-    ".github/workflows/template-sync.yml",
-    ".github/zap-rules.tsv",
-    ".agents/skills/",
-    "packages/hardening"
+    "apps/",
+    "packages/",
+    "package.json",
+    "README.md",
+    "CONTEXT.md"
   ]
 }

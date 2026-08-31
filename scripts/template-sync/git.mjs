@@ -9,12 +9,24 @@ const DEFAULT_REMOTE = "upstream";
  * @param {{ cwd: string; log: import("@app/infra").Logger; remote?: string }} ctx
  */
 export function createGit({ cwd, log, remote = DEFAULT_REMOTE }) {
+  // -c core.quotePath=false (review A2 on PR #128): git's default octal
+  // quoting mangles non-ASCII paths in every command whose stdout is parsed
+  // into pathspecs or compared against paths (`diff --name-status`,
+  // `ls-files --others`, `ls-tree --name-only`, `diff --diff-filter=U`) —
+  // the quoted literal never matches the real path, so drift entries
+  // escaped the filter and sync reconciliation failed on pathspec lookup.
+  // One knob here keeps every call site byte-exact without per-call flags.
+  // --no-pager keeps spawned commands non-interactive.
   const git = (args) =>
-    spawnSync("git", ["--no-pager", ...args], {
-      cwd,
-      encoding: "utf8",
-      env: { ...process.env, GIT_PROTOCOL_FROM_USER: "false" },
-    });
+    spawnSync(
+      "git",
+      ["--no-pager", "-c", "core.quotePath=false", ...args],
+      {
+        cwd,
+        encoding: "utf8",
+        env: { ...process.env, GIT_PROTOCOL_FROM_USER: "false" },
+      },
+    );
 
   const gitOk = (args) => git(args).status === 0;
 

@@ -21,41 +21,58 @@ Under the manager-orchestrated loop, the `reviewer` role applies this skill and 
 ## Inputs
 
 - The pull request diff.
-- `docs/ARCHITECTURE.md` — verify the changes align with the principles (§1–§14, including the KajianQ amendments, e.g. §4 server-authoritative state).
-- `AGENTS.md` — universal guardrails and Definition of Done.
-- `.agents/skills/dars-pluggability/SKILL.md` and `.agents/skills/kajianq-traceability/SKILL.md` — the domain checklists and anti-pattern lists.
+- `docs/ARCHITECTURE.md` — verify the changes align with philosophy.
+- `AGENTS.md` — verify the changes comply with guardrails.
 
 ## Philosophy alignment
 
-Check the PR against the principles in `docs/ARCHITECTURE.md`. The KajianQ-specific ones that fail silently and deserve explicit verification:
+For each principle in `docs/ARCHITECTURE.md`, check if the PR upholds or violates it:
 
-- **Pluggable (§1)** — does the change work behind the seams (pipeline stages, `Provider`, `RagStore`, `ObjectStore`)? Is anything hardcoded that belongs in `model_configs` config?
-- **Traceable (§2)** — every new LLM call records model identity, tokens, latency, and cost to the trace; the UI renders persisted trace records, not ad hoc reconstructions.
-- **Cost (§3)** — price weighed in every model decision. Note the ADR-0009 amendment: paid LLM/embedding APIs are accepted in the critical path — do not flag them as violations, but verify the choice is recorded (config + ADR if surprising) and cost is traced per query.
-- **State (§4)** — server-authoritative; no client-side source of truth.
-- **Domain boundary (§14 + `dars-pluggability`)** — no Islamic-domain logic, vendor names, or direct SQL in engine packages.
-
-For the inherited principles (§5–§13), enumerate them from `docs/ARCHITECTURE.md` at review time and check the PR did not regress them — do not trust any summary in this file.
+- **Cost**: Does the PR add paid dependencies? Does it move compute to the edge that belongs on the client?
+- **Local-first**: Does the PR preserve CRDT merge semantics? Does it block the UI on network?
+- **Performance**: Does the PR increase bundle size? Does it add runtime CSS-in-JS?
+- **Cross-Platform**: Does the PR introduce platform-specific code?
+- **Polished**: Does the PR include i18n for `en` + `id`? Does it consider accessibility?
+- **Secure**: Does the PR touch auth, payments, or external boundaries without Valibot validation from `@app/contracts`?
+- **Observable**: Does the PR add logging without the Logger adapter?
+- **Maintainable**: Does the PR access `env.*` directly? Does it add Cloudflare-specific types to business logic? Does it change schema without migrations?
+- **Available**: Does the PR fail hard instead of degrading gracefully?
+- **Reliable**: Does the PR lack tests for changed logic? Does it reduce coverage?
+- **Reproducible**: Does the PR introduce tools not in the Nix flake?
+- **Agentic**: Are files small and self-describing? Are contracts clear?
 
 ## Guardrail compliance
 
-For each changed file, verify against `AGENTS.md` universal guardrails and the `guided-implementation` domain checklists:
+For each changed file, verify against `AGENTS.md` universal guardrails and the `guided-implementation` domain checklist:
 
-- External service access through adapters in `packages/infra`; no direct `env.*` access in business logic.
-- No vendor or model names outside `packages/infra` Provider adapters and `model_configs` config.
-- No direct DB client imports outside the `RagStore` adapter and migrations; schema changes follow the RagStore migration conventions.
-- New LLM calls traced (model identity, tokens, latency, cost); pipeline wiring through the `runPipeline` runner (`RunContext`), never hand-assembled traces (ADR-0021).
-- `text_raw` immutable; ingestion idempotent; Matn and Sharh never mixed in one chunk; disputed attributions quarantined or labeled.
-- User-facing strings externalized for `en` and `id`; logging via the Logger adapter, no `console.log`; secrets via `wrangler secret`, nothing committed.
-- Files 300 lines or fewer with 5 or fewer direct dependencies; trace/response shapes shared via `packages/contracts` (`@app/contracts`).
-- Run the Quick review scans from `dars-pluggability` (domain leakage, vendor names, direct SQL) — each hit is a refactor or a recorded ADR exception.
+- External service access uses adapters in `packages/infra`. No direct `env.*` access.
+- Routes have Valibot schemas in `packages/contracts` (`@app/contracts`), use `hono-openapi`, and are under `/v1/`.
+- Database changes include raw SQL migrations in `apps/api/migrations/`, client migrations in `packages/local-first`, and a `SCHEMA_VERSION` bump.
+- User-facing strings are externalized for `en` and `id`. No hardcoded copy.
+- Dates, numbers, and currency use the `Intl` API.
+- Styling uses Tailwind CSS only. No runtime CSS-in-JS.
+- Sync logic uses the custom LWW-element-set CRDT in `packages/local-first` (`mergeNotes`). Tinybase is not used.
+- Sync retries with exponential backoff; requests carry `schemaVersion` and `clientVersion`.
+- Logging uses the Logger adapter with structured JSON. No `console.log`.
+- SQL uses only standard features. No SQLite-specific or D1-specific extensions.
+- Session storage uses D1. No KV write-path.
+- Dependencies are free-tier compatible. No paid services in the critical path.
+- Secrets are injected via `wrangler secret`. Nothing committed to the repo.
+- Files are 300 lines or fewer with 5 or fewer direct dependencies.
+- Webhook handlers verify signatures before parsing; are idempotent.
+
+## Posting contract (any PR comment, incl. thermos findings)
+
+- **One individual review comment per finding.** Each finding exists as its own review comment carrying a stable ID; a summary comment may index the items but must never be the only place a finding exists. Dispositions thread on the original comment (see the manager skill §4).
+- **Line-anchored by default.** Any finding with a locatable anchor must be an inline review comment on its file and line, resolved via the diff (`gh pr diff --patch` → diff position), and must quote or reference the offending line so the thread is self-contained.
+- **PR-level fallback is justified, not silent.** Reserve PR-level comments for genuinely unanchorable findings (cross-cutting, process notes); the comment itself must open with the justification, e.g. "no single anchorable line: …".
+- **Stale pending-draft preflight.** GitHub allows one pending review per user per pull request (its 422 text: "user_id can only have one pending review per pull request"); a stale PENDING review draft under the authenticated account forces 422s on review-comment creation. Before posting itemized comments, list `gh api repos/{owner}/{repo}/pulls/{n}/reviews`, and delete any PENDING draft (`gh api -X DELETE repos/{owner}/{repo}/pulls/{n}/reviews/<review_id>`).
 
 ## Output
 
 Report:
-
-- Philosophy violations: which principle (cite the `docs/ARCHITECTURE.md` section), which file, and why.
-- Guardrail violations: which rule, which file and line.
+- Philosophy violations: which principle is violated, which file, and why.
+- Guardrail violations: which rule is broken, which file and line.
 - Thermo findings (when code was touched): the itemized report posted by thermos-with-comments (A/B/C IDs), merged and prioritized.
 - Approval or rejection with justification.
 
