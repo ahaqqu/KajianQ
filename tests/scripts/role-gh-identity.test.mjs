@@ -175,9 +175,12 @@ describe("parseRoleIdentityConfig (D)", () => {
     );
     const r = parseRoleIdentityConfig(shipped);
     expect(r.ok).toBe(true);
-    // TRAP: shipped default must be enforcement-OFF — the deny must never
-    // fire before the owner mints per-role tokens.
-    expect(r.config.enabled).toBe(false);
+    // The shipped config is enforcement-ON (enablement PR, post-ADR-0025):
+    // role identities are minted and the deny must fire for bare `gh`.
+    expect(r.config.enabled).toBe(true);
+    // TRAP: senior-implementer shares the implementer token file (both
+    // implementer-class roles post as one implementer account).
+    expect(r.config.roles["senior-implementer"].tokenFile).toBe(r.config.roles.implementer.tokenFile);
   });
 
   it("rejects a config missing `enabled`", () => {
@@ -301,15 +304,18 @@ describe("hook.mjs end-to-end (E)", () => {
     expect(out.hookSpecificOutput.permissionDecisionReason).toContain("gh-as implementer");
   });
 
-  it("parses the committed runtime-envelope fixture against the contract (drift net)", () => {
+  it("denies the committed runtime-envelope fixture under the shipped config (drift net)", () => {
+    // Post-enablement: the fixture (agent_type "reviewer" + bare gh command)
+    // must DENY under the shipped enforcement-on config — this is the
+    // live guarantee the whole mechanism exists to provide.
     const fixture = JSON.parse(readFileSync(
       new URL("../../scripts/role-gh-identity/fixtures/pre-tool-use-bash.json", import.meta.url).pathname,
       "utf8",
     ));
-    // The fixture is an enforcement-relevant shape (agent_type + gh command)
-    // but the shipped config is enforcement-off, so the hook must allow it.
     const r = runHook({}, fixture);
     expect(r.status).toBe(0);
-    expect(r.stdout).toBe("");
+    const out = JSON.parse(r.stdout);
+    expect(out.hookSpecificOutput.permissionDecision).toBe("deny");
+    expect(out.hookSpecificOutput.permissionDecisionReason).toContain("gh-as reviewer");
   });
 });

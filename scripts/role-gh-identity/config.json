@@ -1,11 +1,11 @@
 {
-  "enabled": false,
+  "enabled": true,
   "roles": {
     "implementer": {
       "tokenFile": "~/.config/kajianq/gh-identities/implementer.token"
     },
     "senior-implementer": {
-      "tokenFile": "~/.config/kajianq/gh-identities/senior-implementer.token"
+      "tokenFile": "~/.config/kajianq/gh-identities/implementer.token"
     },
     "reviewer": {
       "tokenFile": "~/.config/kajianq/gh-identities/reviewer.token"
