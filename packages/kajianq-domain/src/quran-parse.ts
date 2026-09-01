@@ -75,25 +75,17 @@ export type SurahListEntry = {
 };
 
 /**
- * Parse the surah-list companion file into surah metadata. `expected`
- * defaults to the full 114; subset runs (tests, `--limit`) pass their own
- * count so a truncated list still fails loudly.
+ * Parse the surah-list companion file into surah metadata. No count gate
+ * here: subset runs (tests, `--limit`) legitimately carry a partial list,
+ * and `buildCorpus` owns the count/coverage assertions against the ayah
+ * files actually being ingested.
  */
-export function parseSurahList(
-  json: unknown,
-  expected: number = TOTAL_SURAHS,
-): QuranSurahMeta[] {
+export function parseSurahList(json: unknown): QuranSurahMeta[] {
   if (typeof json !== "object" || json === null || Array.isArray(json)) {
     throw new Error("quran source: surah list is not a JSON object");
   }
   const record = json as Record<string, SurahListEntry>;
-  const entries = Object.values(record);
-  if (entries.length !== expected) {
-    throw new Error(
-      `quran source: expected ${expected} surah entries, got ${entries.length}`,
-    );
-  }
-  return entries.map((entry) => ({
+  return Object.values(record).map((entry) => ({
     number: entry.id ?? 0,
     name: entry.surat_rename ?? entry.surat_name ?? "",
     nameId: entry.surat_terjemahan ?? null,
@@ -108,7 +100,8 @@ export function parseSurahList(
  *
  * `expected` defaults to the full Tanzil corpus (114 surahs / 6,236 ayahs);
  * callers that intentionally ingest a subset (tests, `--limit` runs) pass
- * their own totals so the check stays exact for what is being ingested.
+ * their own totals so the check stays exact for what is being ingested —
+ * a genuinely truncated corpus still fails the `ayahs` count.
  */
 export function assertAyahIntegrity(
   ayahs: readonly QuranAyah[],

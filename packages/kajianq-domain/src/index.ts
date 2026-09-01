@@ -58,15 +58,14 @@ export {
   type SurahListEntry,
 } from "./quran-parse";
 export {
-  buildAlignedPairs,
   buildCorpus,
+  bundleQuranSources,
   corpusWordCountDiffs,
   quranSourceParser,
   type QuranCorpus,
 } from "./quran-ingest";
 export {
   archiveFingerprint,
-  fallbackSurahSummary,
   quranPairSink,
   surahSummarizer,
   type SummarizerProvider,

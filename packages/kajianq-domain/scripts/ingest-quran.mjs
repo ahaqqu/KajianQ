@@ -2,47 +2,49 @@
 /**
  * ingest-quran.mjs — the `ingest:quran` Bun CLI (issue #6).
  *
- *   bun run ingest:quran                          # full ingest (needs NEON_DATABASE_URL + GEMINI_API_KEY)
+ *   bun run ingest:quran                          # full ingest (needs NEON_DATABASE_URL + API keys)
  *   bun run ingest:quran -- --check               # integrity check only (no LLM/embedding spend)
  *   bun run ingest:quran -- --limit 5             # ingest only the first N surahs
  *
- * Pipeline (all off the request path, per spec §3.2):
- *   1. fetch sources (Uthmani Arabic + Indonesian translation per surah,
- *      surah list, Quranic Arabic Corpus morphology) — or reuse a local cache
- *      directory when set via QURAN_SOURCE_DIR (offline re-runs);
- *   2. archive the RAW bytes to R2 via the ObjectStore seam (config-driven,
- *      never committed to the repo — Kemenag redistribution is gated by
- *      human prerequisite #2, noted in NOTICES/DATASETS.md);
- *   3. parse + integrity-check (6,236 ayah, 114 surahs, morphology coverage);
- *   4. run the generic ingestion pipeline (`@app/rag-ingest`) with the domain
- *      parser, the cheap-tier summarizer, and the `embedder` role Provider;
- *   5. write the aligned pairs (concept-graph seed for #24) through the
+ * Thin composition root (B5): source acquisition lives in
+ * `source-acquisition.mjs`, R2 archival in `archive-store.mjs`; this file
+ * reads the env/config once, wires the seams, and delegates. Pipeline (all
+ * off the request path, per spec §3.2):
+ *   1. fetch sources (or reuse the QURAN_SOURCE_DIR cache, offline re-runs);
+ *   2. archive the RAW bytes to R2 via the ObjectStore seam (never committed
+ *      to the repo — Kemenag redistribution is gated by human prerequisite
+ *      #2, noted in NOTICES/DATASETS.md);
+ *   3. run the generic ingestion pipeline (`@app/rag-ingest`) — the domain
+ *      SourceParser re-parses + integrity-checks (6,236 ayah, 114 surahs,
+ *      morphology coverage) from the archived bundle inside the runner, so
+ *      the archived bytes are the single source of truth (A3);
+ *   4. write the aligned pairs (concept-graph seed for #24) through the
  *      RagStore aligned-pair seam;
- *   6. persist the IngestionReport to `eval_runs` (the report ledger) and
- *      print it.
+ *   5. persist the IngestionReport to `eval_runs` (the report ledger) via
+ *      the RagStore batch-report seam.
  *
  * Idempotency: parents upsert by sourceKey, children by (parentId, ordinal),
- * pairs by pairKey — re-running the script is safe by construction.
+ * pairs by pairKey, reports by run id — re-running the script is safe by
+ * construction.
  */
 import { neon } from "@neondatabase/serverless";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { createRagStore, loadProviderConfig, resolveRole } from "@app/infra";
-import { runIngestion } from "@app/rag-ingest";
-import { quranSourceParser, quranPairSink, surahSummarizer, buildCorpus, corpusWordCountDiffs } from "@app/kajianq-domain";
+import * as app from "@app/infra";
+import * as ingest from "@app/rag-ingest";
+import * as domain from "@app/kajianq-domain";
+import { acquireSources, archiveRawSources, createArchiveObjectStore } from "./archive-store.mjs";
 
 const resolve = (p) => new URL(p, `file://${process.cwd()}/`).pathname;
 
 // ---------------------------------------------------------------------------
-// Config (environment-driven; no vendor names in this script — the Provider
-// seam resolves models from the checked-in provider config).
+// Config: read once at the composition root. No vendor names live here —
+// provider roles and credentials are resolved through the config seam.
 // ---------------------------------------------------------------------------
-
-const SURAH_BASE = process.env.QURAN_SURAH_BASE_URL ?? "https://raw.githubusercontent.com/hangsbreaker/quran-json/main";
-const SURAH_LIST_URL = `${SURAH_BASE}/surah_list.json`;
+const SURAH_BASE =
+  process.env.QURAN_SURAH_BASE_URL ??
+  "https://raw.githubusercontent.com/hangsbreaker/quran-json/main";
 const MORPHOLOGY_URL =
   process.env.QURAN_MORPHOLOGY_URL ??
   "https://raw.githubusercontent.com/cltk/arabic_morphology_quranic-corpus/master/quranic-corpus-morphology-0.4.txt";
-const TOTAL_SURAHS = 114;
 const R2_PREFIX = "quran/tanzil-uthmani-kemenag";
 
 const args = process.argv.slice(2);
@@ -52,77 +54,11 @@ const LIMIT = (() => {
   return idx >= 0 ? Number(args[idx + 1]) : null;
 })();
 
+const logger = app.createLogger({ script: "ingest:quran" });
+
 function fail(msg) {
-  console.error(`ingest:quran: ${msg}`);
+  logger.error(msg);
   process.exit(1);
-}
-
-// ---------------------------------------------------------------------------
-// Source acquisition: fetch (or local cache) + raw archive to R2.
-// ---------------------------------------------------------------------------
-
-async function fetchOrCache(url, cacheFile) {
-  const cacheDir = process.env.QURAN_SOURCE_DIR;
-  if (cacheDir) {
-    try {
-      return await readFile(resolve(cacheDir, cacheFile), "utf8");
-    } catch {
-      // fall through to fetch
-    }
-  }
-  const res = await fetch(url);
-  if (!res.ok) fail(`fetch ${url} → ${res.status}`);
-  return res.text();
-}
-
-async function acquireSources() {
-  const surahCount = LIMIT ?? TOTAL_SURAHS;
-  const surahListText = await fetchOrCache(SURAH_LIST_URL, "surah_list.json");
-  const surahFiles = [];
-  for (let i = 1; i <= surahCount; i += 1) {
-    surahFiles.push(
-      await fetchOrCache(`${SURAH_BASE}/Surah/${i}.json`, `Surah/${i}.json`),
-    );
-    if (i % 20 === 0 || i === surahCount) console.log(`ingest:quran: fetched ${i}/${surahCount} surah files`);
-  }
-  const morphologyText = await fetchOrCache(MORPHOLOGY_URL, "morphology.txt");
-  return { surahListText, surahFiles, morphologyText };
-}
-
-/**
- * Archive the raw source bytes through the ObjectStore seam. Uses the R2
- * S3-compatible API from env credentials (like r2-verify.mjs) — the Worker's
- * bound bucket is not reachable from this CLI process. When R2 credentials
- * are absent the archive step is skipped and reported, never silently
- * faked: the run logs the skip and marks `archiveStored: false`.
- */
-async function archiveRawSources(sources) {
-  const accountId = process.env.R2_ACCOUNT_ID;
-  const accessKeyId = process.env.R2_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
-  const bucket = process.env.R2_BUCKET_STAGING ?? "kajianq-raw-staging";
-  if (!accountId || !accessKeyId || !secretAccessKey) {
-    console.log("ingest:quran: R2 credentials absent — raw archive NOT stored (archiveStored: false)");
-    return { stored: false, keys: [] };
-  }
-  const { S3Client, PutObjectCommand } = await import("@aws-sdk/client-s3");
-  const client = new S3Client({
-    region: "auto",
-    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
-    credentials: { accessKeyId, secretAccessKey },
-  });
-  const keys = [];
-  const puts = [
-    [`${R2_PREFIX}/surah_list.json`, sources.surahListText],
-    [`${R2_PREFIX}/morphology.txt`, sources.morphologyText],
-    ...sources.surahFiles.map((text, i) => [`${R2_PREFIX}/Surah/${i + 1}.json`, text]),
-  ];
-  for (const [key, body] of puts) {
-    await client.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: body }));
-    keys.push(key);
-  }
-  console.log(`ingest:quran: archived ${keys.length} raw source object(s) to R2 prefix ${R2_PREFIX}/`);
-  return { stored: true, keys };
 }
 
 // ---------------------------------------------------------------------------
@@ -132,66 +68,115 @@ async function archiveRawSources(sources) {
 const neonUrl = process.env.NEON_DATABASE_URL;
 if (!neonUrl) fail("NEON_DATABASE_URL is not set");
 
-console.log(`ingest:quran: ${CHECK_ONLY ? "integrity check only" : "full ingestion"} (limit: ${LIMIT ?? "all"})`);
-const sources = await acquireSources();
-
-const corpus = buildCorpus({
-  surahList: JSON.parse(sources.surahListText),
-  surahFiles: sources.surahFiles.map((t) => JSON.parse(t)),
-  morphologyText: sources.morphologyText,
+logger.info("starting", {
+  mode: CHECK_ONLY ? "integrity-check" : "full-ingestion",
+  limit: LIMIT ?? "all",
 });
 
-// -- Integrity checks (the fail-loudly gate; runs in every mode) ------------
-const diffs = corpusWordCountDiffs(corpus);
-console.log(
-  `ingest:quran: integrity OK — ${corpus.surahs.length} surahs, ${corpus.ayahs.length} ayahs, ` +
-    `morphology covers all ayahs; ${diffs.length} ayah(s) with segmentation diffs (reported, not merged)`,
+const sources = await acquireSources({
+  surahCount: LIMIT ?? domain.TOTAL_SURAHS,
+  log: logger,
+  surahListUrl: `${SURAH_BASE}/surah_list.json`,
+  surahFileUrl: `${SURAH_BASE}/Surah`,
+  morphologyUrl: MORPHOLOGY_URL,
+});
+const bundle = domain.bundleQuranSources(sources);
+
+// Integrity checks run in every mode, before any spend. With --limit only
+// the first LIMIT surah files are ingested — the expected ayah total is
+// computed from those files, and `buildCorpus` trims its metadata to the
+// ingested subset; a full run gates on the exact Tanzil totals.
+const parsedSurahFiles = sources.surahFiles.map((t) => JSON.parse(t));
+const expectedAyahs = parsedSurahFiles.reduce(
+  (sum, file) => sum + (Array.isArray(file) ? file.length : 0),
+  0,
 );
-if (diffs.length > 0) {
-  console.log(
-    `  segmentation diffs (first 10): ${diffs.slice(0, 10).map((d) => `${d.key} text=${d.textTokens}/corpus=${d.corpusWords}`).join(", ")}`,
-  );
-}
+const corpus = domain.buildCorpus(
+  {
+    surahList: JSON.parse(sources.surahListText),
+    surahFiles: parsedSurahFiles,
+    morphologyText: sources.morphologyText,
+  },
+  LIMIT ? { surahs: LIMIT, ayahs: expectedAyahs } : undefined,
+);
+
+const diffs = domain.corpusWordCountDiffs(corpus);
+logger.info("integrity OK", {
+  surahs: corpus.surahs.length,
+  ayahs: corpus.ayahs.length,
+  morphologyAyahs: corpus.morphology.size,
+  segmentationDiffs: diffs.length,
+});
 
 if (CHECK_ONLY) {
-  console.log("ingest:quran: --check passed — store untouched, no LLM/embedding spend");
+  logger.info("--check passed — store untouched, no LLM/embedding spend");
   process.exit(0);
 }
 
-// -- Archive raw bytes (immutability duty; AGENTS.md rule 11) --------------
-const archive = await archiveRawSources(sources);
-
-// -- Wire the seams ----------------------------------------------------------
-const store = createRagStore("neon", neon(neonUrl));
-const config = loadProviderConfig();
-const { provider: embedder } = resolveRole(config, "embedder", { env: process.env });
-const { provider: summarizerProvider, missingKeys } = resolveRole(config, "cheap", { env: process.env });
+// Wire seams once — one sql runner feeds both the RagStore and the report
+// path (C1: a single `neon()` handle per run).
+const sql = neon(neonUrl);
+const store = app.createRagStore("neon", sql, { logger });
+const config = app.loadProviderConfig();
+const { provider: embedder } = app.resolveRole(config, "embedder", { env: process.env });
+const { provider: summarizerProvider, missingKeys } = app.resolveRole(config, "cheap", {
+  env: process.env,
+});
 if (missingKeys.length > 0) {
-  console.log(`ingest:quran: summarizer role missing key(s) ${missingKeys.join(", ")} — surah summaries will fail; aborting`);
-  fail(`no API key for the cheap role (needed for surah summaries)`);
+  fail(`no API key for the cheap role (needed for surah summaries): ${missingKeys.join(", ")}`);
 }
 
-const cacheDir = process.env.QURAN_REPORT_DIR;
-if (cacheDir) await mkdir(cacheDir, { recursive: true });
-
-const result = await runIngestion(quranSourceParser(corpus), {
-  archiveKey: `${R2_PREFIX}`,
-  raw: new TextEncoder().encode(sources.surahFiles.join("\n")),
-}, {
-  store,
-  embedder,
-  summarizer: surahSummarizer(summarizerProvider),
-  pairSink: quranPairSink(store),
-  embedBatchSize: 96,
+// Archive raw bytes before persisting derived rows.
+const archive = await archiveRawSources({
+  sources,
+  store: createArchiveObjectStore(app.createS3ObjectStore),
+  prefix: R2_PREFIX,
+  bundle,
+  archiveFingerprint: domain.archiveFingerprint,
+  log: logger,
 });
 
-// -- Persist the report (the citable batch record, kajianq-traceability 4) ---
+const reportDir = process.env.QURAN_REPORT_DIR;
+if (reportDir) {
+  const fs = await import("node:fs/promises");
+  await fs.mkdir(reportDir, { recursive: true });
+}
+
+// The parser re-parses from the archived bundle (the single source of
+// truth); subset runs pass the exact expected totals, full runs rely on
+// the parser's full-corpus defaults. The report quotes the corpus numbers.
+const result = await ingest.runIngestion(
+  domain.quranSourceParser(
+    LIMIT ? expectedAyahs : undefined,
+    LIMIT ?? undefined,
+  ),
+  {
+    archiveKey: archive.prefix ?? R2_PREFIX,
+    raw: bundle,
+  },
+  {
+    store,
+    embedder,
+    summarizer: domain.surahSummarizer(summarizerProvider),
+    // Persisted pairs carry the domain's stable `quran-pair:N:M` address —
+    // the key #24's concept-graph build resolves against — rather than the
+    // runner's source-derived child key.
+    pairSink: domain.quranPairSink(store, (input) =>
+      domain.ayahPairId(Number(input.citation.surah), Number(input.citation.ayah)),
+    ),
+    embedBatchSize: 96,
+    writeBatchSize: 96,
+  },
+);
+
+// Persist the report through the RagStore batch-report seam.
 const report = {
   ...result.report,
   details: {
     ...result.report.details,
     archiveStored: archive.stored,
     archiveKeys: archive.keys.length,
+    archivePrefix: archive.prefix,
     surahs: corpus.surahs.length,
     ayahs: corpus.ayahs.length,
     morphologyAyahs: corpus.morphology.size,
@@ -199,21 +184,24 @@ const report = {
   },
 };
 
-const sql = neon(neonUrl);
-await sql`
-  INSERT INTO eval_runs (id, label, report)
-  VALUES (
-    ${crypto.randomUUID()},
-    ${`ingest:quran ${new Date().toISOString()}`},
-    ${JSON.stringify(report)}::jsonb
-  )
-`;
-if (cacheDir) {
-  await writeFile(resolve(cacheDir, `ingest-quran-${report.runId}.json`), JSON.stringify(report, null, 2));
+await store.insertEvalRun({
+  id: report.runId,
+  label: `ingest:quran ${new Date().toISOString()}`,
+  report,
+});
+
+if (reportDir) {
+  const fs = await import("node:fs/promises");
+  await fs.writeFile(
+    resolve(reportDir, `ingest-quran-${report.runId}.json`),
+    JSON.stringify(report, null, 2),
+  );
 }
 
-console.log(`ingest:quran: done — ${report.parentsWritten} surah parents, ${report.childrenWritten} ayah children`);
-console.log(
-  `ingest:quran: cost ${report.costMicroUsd} micro-USD across ${report.llmCalls.length} recorded LLM/embedding call(s)`,
-);
-console.log(`ingest:quran: report runId ${report.runId} persisted to eval_runs`);
+logger.info("done", {
+  parentsWritten: report.parentsWritten,
+  childrenWritten: report.childrenWritten,
+  costMicroUsd: report.costMicroUsd,
+  llmCalls: report.llmCalls.length,
+  runId: report.runId,
+});

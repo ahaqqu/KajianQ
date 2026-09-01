@@ -1,4 +1,4 @@
-import type { Trace } from "@app/contracts";
+import type { IngestionReport, Trace } from "@app/contracts";
 
 /**
  * RagStore — the single persistence seam (ADR-0008).
@@ -125,6 +125,15 @@ export interface RagStore {
   insertDocChild(input: DocChildInsert): Promise<string>;
 
   /**
+   * Insert a batch of child chunks in one call. Adapters may perform a
+   * multi-row upsert; callers must still use `insertDocChild` for single-row
+   * paths. The default implementation (for adapters that do not implement this
+   * method) is to fall back to serial `insertDocChild` calls — consumers of the
+   * seam never need to know whether batching is native.
+   */
+  insertDocChildren(batch: readonly DocChildInsert[]): Promise<readonly string[]>;
+
+  /**
    * Upsert an aligned text pair (provenance-keyed, idempotent). Returns the
    * persisted pair id — the reference downstream `lemma_evidence` rows hold
    * (ADR-0014: the aligned pairs are the concept-graph build's seed source).
@@ -213,4 +222,19 @@ export interface RagStore {
    * is a storage-reclamation concern, not a correctness one.
    */
   cleanupExpiredSessions(before?: Date): Promise<number>;
+
+  // -- Batch reports (kajianq-traceability rule 4) ---------------------------
+
+  /**
+   * Persist an `IngestionReport` (or any batch/eval report) to the report
+   * ledger (`eval_runs`). Idempotent by id: re-running with the same run id
+   * refreshes label and report in place. The report is stored verbatim as
+   * JSONB so the persisted trace remains the single source of truth.
+   */
+  insertEvalRun(input: {
+    /** Defaults to a fresh UUID. */
+    id?: string;
+    label?: string;
+    report: IngestionReport;
+  }): Promise<string>;
 }

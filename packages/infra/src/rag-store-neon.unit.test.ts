@@ -100,7 +100,7 @@ describe("rag-store-neon adapter (fake runner)", () => {
   it("insertDocChild upserts by (parent_id, ordinal) without overwriting text_raw", async () => {
     const sql = makeFakeSql();
     const store = createNeonRagStore(sql);
-    sql._setTag([{ id: "child-1" }]);
+    sql._setQuery([{ id: "child-1" }]);
     const id = await store.insertDocChild({
       parentId: "p",
       textRaw: "raw",
@@ -118,6 +118,62 @@ describe("rag-store-neon adapter (fake runner)", () => {
     expect(text).toContain("ON CONFLICT (parent_id, ordinal) DO UPDATE");
     // text_raw must NOT be in the UPDATE set (rule 13: immutable).
     expect(text).not.toMatch(/SET[^]*text_raw\s*=/);
+  });
+
+  it("insertDocChildren batches rows in a single query", async () => {
+    const sql = makeFakeSql();
+    const store = createNeonRagStore(sql);
+    sql._setQuery([{ id: "c1" }, { id: "c2" }]);
+    const ids = await store.insertDocChildren([
+      {
+        parentId: "p",
+        textRaw: "raw-1",
+        textAr: "ar-1",
+        textId: "id-1",
+        embeddingPrimary: VEC1536,
+        embeddingFallback: null,
+        ordinal: 0,
+        metadata: {},
+      },
+      {
+        parentId: "p",
+        textRaw: "raw-2",
+        textAr: "ar-2",
+        textId: "id-2",
+        embeddingPrimary: VEC1536,
+        embeddingFallback: null,
+        ordinal: 1,
+        metadata: {},
+      },
+    ]);
+    expect(ids).toEqual(["c1", "c2"]);
+    expect(sql._calls).toHaveLength(1);
+    const batchText = sql._calls[0]?.text ?? "";
+    const batchValues = sql._calls[0]?.values ?? [];
+    expect(batchValues).toHaveLength(20);
+    // Every placeholder in the text must be distinct, contiguous ($1..$20),
+    // and resolve to the right value — the id slot is first in each row.
+    const placeholders = [...batchText.matchAll(/\$\d+/g)].map((m) => m[0]);
+    expect(placeholders).toHaveLength(20);
+    expect(placeholders.map((p) => Number(p.slice(1)))).toEqual(
+      Array.from({ length: 20 }, (_, i) => i + 1),
+    );
+    // Row 1's bound values, in column order: id, parentId, textRaw, textAr, …
+    expect(typeof batchValues[0]).toBe("string");
+    expect(batchValues[1]).toBe("p");
+    expect(batchValues[2]).toBe("raw-1");
+    expect(batchValues[3]).toBe("ar-1");
+    // Row 2 starts at slot 11 (10 params per row): id, then parentId.
+    expect(typeof batchValues[10]).toBe("string");
+    expect(batchValues[11]).toBe("p");
+    expect(batchValues[12]).toBe("raw-2");
+    // JSON columns are cast in the SQL text, never inside a bound value.
+    expect(batchText).toContain("::jsonb");
+    for (const value of batchValues) {
+      expect(typeof value !== "string" || !value.endsWith("::jsonb")).toBe(true);
+    }
+    // text_raw must NOT be in the UPDATE set (rule 13: immutable).
+    expect(batchText).not.toMatch(/SET[^]*text_raw\s*=/);
   });
 
   it("insertDocChild rejects wrong-dimension embeddings before touching the DB", async () => {

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { runIngestion } from "@app/rag-ingest";
 import { createCrossLingualEmbedder } from "./test-utils/cross-lingual-embedder";
 import { createMemoryRagStore } from "./test-utils/memory-rag-store";
-import { buildCorpus, corpusWordCountDiffs, quranSourceParser } from "./quran-ingest";
+import { buildCorpus, bundleQuranSources, corpusWordCountDiffs, decodeQuranArchive, quranSourceParser } from "./quran-ingest";
 import { quranPairSink, surahSummarizer } from "./quran-llm";
 import { formatQuranCitation } from "./quran-source";
 
@@ -113,12 +113,50 @@ describe("Quran ingestion (fixture = real source data)", () => {
     expect(words.size).toBe(4);
   });
 
-  it("ingests through runIngestion: parents, children, both tracks, aligned pairs", async () => {
-    const corpus = await loadFixtureCorpus();
-    const store = createMemoryRagStore();
-    const result = await runIngestion(quranSourceParser(corpus, 22), {
+  async function loadFixtureBundle() {
+    return bundleQuranSources({
+      surahListText: await readFile(resolve(FIXTURES, "surah_list.json"), "utf8"),
+      surahFiles: await Promise.all([
+        readFile(resolve(FIXTURES, "surah_1.json"), "utf8"),
+        readFile(resolve(FIXTURES, "surah_112.json"), "utf8"),
+        readFile(resolve(FIXTURES, "surah_113.json"), "utf8"),
+        readFile(resolve(FIXTURES, "surah_114.json"), "utf8"),
+      ]),
+      morphologyText: await readFile(resolve(FIXTURES, "morphology.txt"), "utf8"),
+    });
+  }
+
+  it("bundle round-trips: decode(bundle(sources)) restores the exact source pieces", async () => {
+    const surahListText = await readFile(resolve(FIXTURES, "surah_list.json"), "utf8");
+    const surahFiles = await Promise.all([
+      readFile(resolve(FIXTURES, "surah_1.json"), "utf8"),
+      readFile(resolve(FIXTURES, "surah_112.json"), "utf8"),
+    ]);
+    const morphologyText = await readFile(resolve(FIXTURES, "morphology.txt"), "utf8");
+    const decoded = decodeQuranArchive({
       archiveKey: "quran/test-fixture",
-      raw: new TextEncoder().encode("fixture"),
+      raw: bundleQuranSources({ surahListText, surahFiles, morphologyText }),
+    });
+    expect(JSON.stringify(decoded.surahList)).toBe(JSON.stringify(JSON.parse(surahListText)));
+    expect(decoded.surahFiles).toEqual(surahFiles.map((t) => JSON.parse(t)));
+    expect(decoded.morphologyText).toBe(morphologyText);
+
+    // A bundle with more lines than its declared count is a layout mismatch —
+    // refuse it instead of silently parsing a subset.
+    const padded = new TextEncoder().encode(
+      `${["2", surahListText, JSON.stringify(morphologyText), ...surahFiles, "{}"].join("\n")}`,
+    );
+    expect(() =>
+      decodeQuranArchive({ archiveKey: "quran/test-fixture", raw: padded }),
+    ).toThrow(/trailing/);
+  });
+
+  it("ingests through runIngestion: parents, children, both tracks, aligned pairs", async () => {
+    const raw = await loadFixtureBundle();
+    const store = createMemoryRagStore();
+    const result = await runIngestion(quranSourceParser(22, 4), {
+      archiveKey: "quran/test-fixture",
+      raw,
     }, {
       store,
       embedder: createCrossLingualEmbedder(DICT),
@@ -135,7 +173,7 @@ describe("Quran ingestion (fixture = real source data)", () => {
     }
     // Aligned pairs — the seed rows for #24's concept-graph build.
     expect(store.allPairs()).toHaveLength(22);
-    const pair = store.allPairs().find((p) => p.pairKey === "quran-pair:112:1");
+    const pair = store.allPairs().find((p) => p.pairKey === "quran/tanzil-uthmani/surah/112:1");
     expect(pair?.textPrimary).toContain("قُلْ هُوَ");
     expect(pair?.textSecondary).toContain("Allah Yang Maha Esa");
     expect((pair?.morphology ?? []).length).toBeGreaterThan(0);
@@ -150,11 +188,11 @@ describe("Quran ingestion (fixture = real source data)", () => {
   });
 
   it("computes parent embeddings from summaries, not full text", async () => {
-    const corpus = await loadFixtureCorpus();
+    const raw = await loadFixtureBundle();
     const store = createMemoryRagStore();
-    await runIngestion(quranSourceParser(corpus, 22), {
+    await runIngestion(quranSourceParser(22, 4), {
       archiveKey: "quran/test-fixture",
-      raw: new TextEncoder().encode("fixture"),
+      raw,
     }, {
       store,
       embedder: createCrossLingualEmbedder(DICT),
@@ -167,12 +205,12 @@ describe("Quran ingestion (fixture = real source data)", () => {
   });
 
   it("is idempotent: re-running ingestion writes the same counts", async () => {
-    const corpus = await loadFixtureCorpus();
+    const raw = await loadFixtureBundle();
     const store = createMemoryRagStore();
     const run = () =>
-      runIngestion(quranSourceParser(corpus, 22), {
+      runIngestion(quranSourceParser(22, 4), {
         archiveKey: "quran/test-fixture",
-        raw: new TextEncoder().encode("fixture"),
+        raw,
       }, {
         store,
         embedder: createCrossLingualEmbedder(DICT),
@@ -202,12 +240,12 @@ describe("Quran ingestion (fixture = real source data)", () => {
   // -- The ADR-0013 cross-lingual smoke retrieval ---------------------------
 
   it("retrieves the correct Arabic ayah from an Indonesian meaning query (ID→AR, primary track)", async () => {
-    const corpus = await loadFixtureCorpus();
+    const raw = await loadFixtureBundle();
     const store = createMemoryRagStore();
     const embedder = createCrossLingualEmbedder(DICT);
-    await runIngestion(quranSourceParser(corpus, 22), {
+    await runIngestion(quranSourceParser(22, 4), {
       archiveKey: "quran/test-fixture",
-      raw: new TextEncoder().encode("fixture"),
+      raw,
     }, {
       store,
       embedder,
@@ -238,12 +276,12 @@ describe("Quran ingestion (fixture = real source data)", () => {
   });
 
   it("retrieves Al-Falaq 113:1 from a refuge-themed Indonesian query (ID→AR)", async () => {
-    const corpus = await loadFixtureCorpus();
+    const raw = await loadFixtureBundle();
     const store = createMemoryRagStore();
     const embedder = createCrossLingualEmbedder(DICT);
-    await runIngestion(quranSourceParser(corpus, 22), {
+    await runIngestion(quranSourceParser(22, 4), {
       archiveKey: "quran/test-fixture",
-      raw: new TextEncoder().encode("fixture"),
+      raw,
     }, {
       store,
       embedder,

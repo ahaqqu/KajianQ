@@ -56,13 +56,20 @@ export function createMemoryRagStore(): RagStore & {
       return id;
     },
     async insertDocChild(input) {
-      seq += 1;
-      const key = `${input.parentId}:${input.ordinal}`;
-      const existing = childByPos.get(key);
-      const id = existing ?? `c${seq}`;
-      if (!existing) childByPos.set(key, id);
-      children.set(id, { ...input, id });
-      return id;
+      return (await this.insertDocChildren([input]))[0] ?? `c${(seq += 1)}`;
+    },
+    async insertDocChildren(batch) {
+      const ids: string[] = [];
+      for (const input of batch) {
+        seq += 1;
+        const key = `${input.parentId}:${input.ordinal}`;
+        const existing = childByPos.get(key);
+        const id = existing ?? `c${seq}`;
+        if (!existing) childByPos.set(key, id);
+        children.set(id, { ...input, id });
+        ids.push(id);
+      }
+      return ids;
     },
     async upsertAlignedPair(input) {
       seq += 1;
@@ -117,6 +124,11 @@ export function createMemoryRagStore(): RagStore & {
     async deleteUserCascade() {},
     async cleanupExpiredSessions() {
       return 0;
+    },
+
+    async insertEvalRun(input) {
+      const id = input.id ?? `eval${(seq += 1)}`;
+      return id;
     },
   };
 

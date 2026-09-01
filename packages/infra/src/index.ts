@@ -8,6 +8,7 @@ export {
 export {
   createMemoryObjectStore,
   createR2ObjectStore,
+  createS3ObjectStore,
   type ObjectStore,
   type R2Like,
 } from "./object-store";

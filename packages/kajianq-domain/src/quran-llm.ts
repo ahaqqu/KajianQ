@@ -1,7 +1,6 @@
 import type { Provider, PromptSpec } from "@app/rag-core";
 import type { RagStore } from "@app/infra";
 import { createHash } from "node:crypto";
-import type { QuranSurahMeta } from "./quran-source";
 
 /**
  * Surah summaries, the aligned-pair sink, and archive fingerprinting — the
@@ -57,20 +56,21 @@ export function surahSummaryPrompt(input: {
   };
 }
 
-/** Deterministic fallback summary when no LLM is wired (integrity over prose). */
-export function fallbackSurahSummary(surah: QuranSurahMeta): string {
-  return `Surah ${surah.name} (${surah.number}) — ${surah.ayahCount} ayat${surah.nameId ? `, ${surah.nameId}` : ""}.`;
-}
-
 /**
  * The pair sink for `runIngestion`: writes each aligned (Arabic, Indonesian)
  * ayah pair with its morphology through the RagStore's aligned-pair seam
- * (ADR-0014: #24's concept-graph build consumes these rows). The pair key is
- * the domain's `quran-pair:surah:ayah`, so re-running ingestion upserts in
- * place instead of duplicating pairs.
+ * (ADR-0014: #24's concept-graph build consumes these rows). The pipeline
+ * supplies the pair key (the child's provenance `sourceKey`,
+ * `quran/tanzil-uthmani/surah/N:M`); passing it through verbatim keeps this
+ * sink decoupled from any one key format. The default CLI wiring passes
+ * `pairKeyFor` = `ayahPairId(citation.surah, citation.ayah)` so persisted
+ * rows use the domain's stable `quran-pair:N:M` address (the format #24's
+ * build and the citation validator resolve against) — a source-driven
+ * `sourceKey` would change if the source collection is ever renamed.
  */
 export function quranPairSink(
   store: Pick<RagStore, "upsertAlignedPair">,
+  pairKeyFor?: (input: { citation: Record<string, unknown> }) => string,
 ): (input: {
   pairKey: string;
   citation: Record<string, unknown>;
@@ -80,7 +80,7 @@ export function quranPairSink(
 }) => Promise<void> {
   return async (input) => {
     await store.upsertAlignedPair({
-      pairKey: `quran-pair:${String(input.citation.surah)}:${String(input.citation.ayah)}`,
+      pairKey: pairKeyFor?.(input) ?? input.pairKey,
       citation: input.citation,
       textPrimary: input.textPrimary,
       textSecondary: input.textSecondary,

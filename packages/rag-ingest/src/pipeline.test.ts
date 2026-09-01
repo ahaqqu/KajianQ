@@ -35,6 +35,9 @@ function fakeStore() {
       });
       return id;
     },
+    async insertDocChildren(batch) {
+      return Promise.all(batch.map((input) => this.insertDocChild(input)));
+    },
     async upsertAlignedPair(input) {
       const existing = pairs.get(input.pairKey);
       const id = typeof existing?.id === "string" ? existing.id : `pair${pairs.size + 1}`;
@@ -65,6 +68,9 @@ function fakeStore() {
     async deleteUserCascade() {},
     async cleanupExpiredSessions() {
       return 0;
+    },
+    async insertEvalRun(input) {
+      return input.id ?? `eval${(seq += 1)}`;
     },
   };
   return {

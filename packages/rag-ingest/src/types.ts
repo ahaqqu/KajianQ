@@ -80,6 +80,8 @@ export type IngestionDeps = {
   pairSink?: (input: AlignedPairInput) => Promise<void>;
   /** Batch size for embedding calls (per track). */
   embedBatchSize?: number;
+  /** Batch size for child/pair store writes. */
+  writeBatchSize?: number;
   now?: () => number;
 };
 

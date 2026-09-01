@@ -149,6 +149,8 @@ export async function runIngestion(
   let childrenWritten = 0;
   const childRows: DocChildInsert[] = [];
   const pairSources = collectPairSources(parents);
+  const pending: DocChildInsert[] = [];
+  const pendingPairs: AlignedPairInput[] = [];
 
   for (const parent of parents) {
     const parentId = await deps.store.insertDocParent(parent satisfies DocParentInsert);
@@ -182,7 +184,7 @@ export async function runIngestion(
   for (let i = 0; i < childRows.length; i += 1) {
     const row = childRows[i];
     if (!row) continue;
-    await deps.store.insertDocChild({
+    pending.push({
       ...row,
       embeddingPrimary: primaryVectors[i] ?? null,
       embeddingFallback: secondaryVectors ? (secondaryVectors[i] ?? null) : null,
@@ -190,8 +192,20 @@ export async function runIngestion(
     childrenWritten += 1;
     if (deps.pairSink) {
       const pair = pairSources.get(i);
-      if (pair !== undefined) await deps.pairSink(pair);
+      if (pair !== undefined) pendingPairs.push(pair);
     }
+  }
+
+  // Batch the store writes so the store adapter can use multi-row upserts.
+  // Pairs are not tied to the child write windows — they are drained on
+  // their own so the batching of one never silently drops or reorders the
+  // other (they coincide 1:1 today, but the seams are independent).
+  const writeBatchSize = deps.writeBatchSize ?? 64;
+  for (let i = 0; i < pending.length; i += writeBatchSize) {
+    await deps.store.insertDocChildren(pending.slice(i, i + writeBatchSize));
+  }
+  if (deps.pairSink) {
+    for (const pair of pendingPairs) await deps.pairSink(pair);
   }
 
   // Surah summaries attach to the parent via a metadata refresh — a single

@@ -13,8 +13,7 @@
     "@app/contracts": "workspace:*",
     "@app/infra": "workspace:*",
     "@app/rag-core": "workspace:*",
-    "@app/rag-ingest": "workspace:*",
-    "@neondatabase/serverless": "^1.1.0"
+    "@app/rag-ingest": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "26.2.0",
