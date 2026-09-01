@@ -38,6 +38,20 @@ changes reach new spawns only after a client restart. Removing a role
 file's `model:` field makes that role inherit its dispatcher's model (this
 is how a sub-reviewer can be made to share its coordinator's model).
 
+## Role GitHub identities
+
+Role subagents may be given dedicated GitHub identities (ADR-0025), enforced
+mechanically: the PreToolUse hook `scripts/role-gh-identity/hook.mjs` denies
+a bare `gh` call from a role with a configured identity and names the
+compliant form, `gh-as <role> <gh args…>`
+(`scripts/role-gh-identity/gh-as.mjs` — per-invocation `GH_TOKEN`, token
+files outside the repo). Enforcement is opt-in
+(`scripts/role-gh-identity/config.json`, `enabled: false` by default); the
+hook fails open on every internal error, and the manager session (no role)
+is never denied. A `gh-as` auth failure surfaces as an ordinary command
+failure — the manager relays and escalates it like any CI failure, never
+bypasses the wrapper.
+
 ## Implementer-class operating rules
 
 The implementer-class roles run under the mechanical iteration guardrail

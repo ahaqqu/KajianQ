@@ -303,6 +303,7 @@ Mitigations: top-k discipline (8–12 chunks, not 20), prompt caching for the st
 | `adr/0022` | Provider seam in `rag-core`, generic config-driven vendor adapters in `infra` (zero vendor names in engine `.ts`; vendor data lives in checked-in JSON); fallback chains; streaming with deferred cost |
 | `adr/0023` | Role-agent models resolve from `.zcode/agents/` pins on every harness — DSH reads the pin at dispatch (workflow mapping); a pin that fails to resolve is fixed in the DSH provider config (declare the model id), never rerouted |
 | `adr/0024` | Fork template-sync ownership: `template-sync.json` lists exactly the byte-identical shared baseline; fork prose (AGENTS.md, docs/ARCHITECTURE.md) and adapted workflows stay fork-owned by omission; `.zcode/` follows template PR #130 as a merge path; adapted files reviewed per template release |
+| `adr/0025` | Role-separated GitHub identities: a PreToolUse deny hook redirects role subagents' bare `gh` calls to a `gh-as <role>` wrapper (per-invocation `GH_TOKEN`, token files outside the repo, opt-in `enabled` flag, fail-open); `agent_type` joins the hook-envelope contract |
 
 Domain vocabulary: `CONTEXT.md`. Workflow after this spec: `to-spec` → `to-tickets` per the template's agentic pipeline.
 
