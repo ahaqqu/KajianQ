@@ -1,11 +1,10 @@
 /**
- * source-acquisition.mjs — Quran source fetching for the ingest CLI (issue #6).
+ * source-acquisition.mjs — source fetching for the ingest CLIs (issues #6, #7).
  *
- * Fetch (or reuse a local cache when QURAN_SOURCE_DIR is set) the three
- * source kinds: the surah list, one JSON file per surah, and the Quranic
- * Arabic Corpus morphology text. Fetches retry with exponential backoff and
- * run with bounded concurrency (B4): a transient 429/5xx or a network blip
- * must not fail a multi-minute ingestion run.
+ * Fetch (or reuse a local cache when the run's SOURCE_DIR env is set) remote
+ * source files: retry with exponential backoff, bounded concurrency (B4),
+ * and a hard per-fetch timeout — a transient 429/5xx or a network blip must
+ * not fail a multi-minute ingestion run.
  */
 
 const FETCH_BACKOFF_MS = [500, 1_000, 2_000, 4_000];
@@ -39,8 +38,7 @@ async function fetchWithRetry(url, attempt, log) {
   }
 }
 
-async function fetchOrCache(url, cacheFile, log) {
-  const cacheDir = process.env.QURAN_SOURCE_DIR;
+async function fetchOrCache(url, cacheFile, log, cacheDir) {
   if (cacheDir) {
     try {
       const { readFile } = await import("node:fs/promises");
@@ -56,37 +54,42 @@ async function fetchOrCache(url, cacheFile, log) {
 }
 
 /**
+ * Acquire a list of remote files: `{url, cacheFile}` entries fetched with
+ * bounded concurrency and order-stable results (position i of the result
+ * corresponds to entry i, whatever the batch timing). The shared cache dir
+ * comes from the caller (per-run env), keeping this helper run-agnostic.
+ */
+export async function acquireFiles(entries, { log, cacheDir }) {
+  const results = new Array(entries.length);
+  for (let i = 0; i < entries.length; i += FETCH_CONCURRENCY) {
+    const slice = entries.slice(i, i + FETCH_CONCURRENCY);
+    const batch = await Promise.all(
+      slice.map(({ url, cacheFile }) => fetchOrCache(url, cacheFile, log, cacheDir)),
+    );
+    for (const [j, text] of batch.entries()) {
+      results[i + j] = text;
+    }
+    log.info("fetched batch", { done: Math.min(i + slice.length, entries.length), total: entries.length });
+  }
+  return results;
+}
+
+/**
  * Acquire the Quran sources: the surah list, the first `surahCount` surah
  * files, and the morphology text. Returns the raw texts verbatim — parsing
  * and integrity-checking belong to the domain layer, not acquisition.
  */
 export async function acquireSources({ surahCount, log, surahListUrl, surahFileUrl, morphologyUrl }) {
-  const surahListText = await fetchOrCache(surahListUrl, "surah_list.json", log);
+  const cacheDir = process.env.QURAN_SOURCE_DIR;
+  const surahListText = await fetchOrCache(surahListUrl, "surah_list.json", log, cacheDir);
 
-  const surahFiles = [];
   const urls = Array.from({ length: surahCount }, (_, i) => ({
     url: `${surahListUrl.replace(/surah_list\.json$/, "")}Surah/${i + 1}.json`,
     cacheFile: `Surah/${i + 1}.json`,
-    index: i + 1,
   }));
 
-  for (let i = 0; i < urls.length; i += FETCH_CONCURRENCY) {
-    const slice = urls.slice(i, i + FETCH_CONCURRENCY);
-    const batch = await Promise.all(
-      slice.map(({ url, cacheFile }) => fetchOrCache(url, cacheFile, log)),
-    );
-    // Place each fetched text at its surah position (index is 1-based; the
-    // array is 0-based) so the corpus order never depends on batch timing.
-    for (const [j, text] of batch.entries()) {
-      const pos = slice[j]?.index;
-      if (pos === undefined) {
-        throw new Error(`fetch batch returned more results than requested at offset ${i}`);
-      }
-      surahFiles[pos - 1] = text;
-    }
-    log.info("fetched batch", { done: Math.min(i + slice.length, surahCount), total: surahCount });
-  }
+  const surahFiles = await acquireFiles(urls, { log, cacheDir });
 
-  const morphologyText = await fetchOrCache(morphologyUrl, "morphology.txt", log);
+  const morphologyText = await fetchOrCache(morphologyUrl, "morphology.txt", log, cacheDir);
   return { surahListText, surahFiles, morphologyText };
 }

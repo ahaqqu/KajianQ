@@ -70,3 +70,40 @@ export {
   surahSummarizer,
   type SummarizerProvider,
 } from "./quran-llm";
+export {
+  HADITH_COLLECTIONS,
+  HADITH_COLLECTION_NAMES,
+  formatHadithCitation,
+  hadithMetadata,
+  hadithPairId,
+  hadithSourceKey,
+  mapGrades,
+  parseHadithCitation,
+  type HadithCitation,
+  type HadithCollection,
+  type HadithRecord,
+  type HadithSourceType,
+} from "./hadith-source";
+export {
+  alignEditions,
+  assertHadithIntegrity,
+  gradeConsolidationStats,
+  parseHadithEdition,
+  type AlignmentStats,
+  type EditionHadith,
+  type HadithEdition,
+} from "./hadith-parse";
+export {
+  buildHadithCorpus,
+  bundleHadithSources,
+  corpusGradeStats,
+  decodeHadithArchive,
+  hadithSourceParser,
+  type HadithCorpus,
+} from "./hadith-ingest";
+export {
+  hadithPairKeyFor,
+  hadithPairSink,
+  hadithSectionSummarizer,
+  type HadithSummarizerProvider,
+} from "./hadith-llm";

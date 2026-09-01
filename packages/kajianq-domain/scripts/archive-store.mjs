@@ -1,6 +1,6 @@
 /**
  * archive-store.mjs — R2 raw-source archival + source-acquisition re-export
- * for the ingest CLI (issue #6). (One CLI-side I/O module keeps the
+ * for the ingest CLIs (issues #6, #7). (One CLI-side I/O module keeps the
  * composition root's import count within the agentic-limits cap.)
  *
  * Builds an ObjectStore adapter over R2's S3-compatible endpoint (A2: the
@@ -12,7 +12,7 @@
  */
 import { S3Client } from "@aws-sdk/client-s3";
 
-export { acquireSources } from "./source-acquisition.mjs";
+export { acquireFiles, acquireSources } from "./source-acquisition.mjs";
 
 /**
  * Build the archive ObjectStore from the R2 env credentials, or null when
@@ -39,6 +39,8 @@ export function createArchiveObjectStore(createS3ObjectStore) {
 /**
  * Archive the raw source texts under a fingerprinted prefix and return the
  * archive provenance (`stored`, `keys`, `prefix`) for the IngestionReport.
+ * `sources.editionFiles` (hadith runs) is an optional list of
+ * `[cacheFile, text]` pairs archived alongside the Quran-shaped fields.
  */
 export async function archiveRawSources({ sources, store, prefix, bundle, archiveFingerprint, log }) {
   if (!store) {
@@ -52,6 +54,7 @@ export async function archiveRawSources({ sources, store, prefix, bundle, archiv
     [`${keyPrefix}/surah_list.json`, sources.surahListText],
     [`${keyPrefix}/morphology.txt`, sources.morphologyText],
     ...sources.surahFiles.map((text, i) => [`${keyPrefix}/Surah/${i + 1}.json`, text]),
+    ...(sources.editionFiles ?? []).map(([name, text]) => [`${keyPrefix}/editions/${name}`, text]),
   ];
 
   for (const [key, body] of puts) {

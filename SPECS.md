@@ -197,9 +197,9 @@ Prompt/model config stays in files, reviewed via PRs — no UI editing in v1.
 | Quran (Uthmani + metadata) | Tanzil.net | TXT/XML/JSON | Public domain text; attribute |
 | Terjemahan ID | Kemenag via Tanzil | TXT | **Verify terms**; attribute (risk §7) |
 | Tafsir | Tanzil / Quran.com (Ibnu Katsir, Jalalayn, Tabari) | XML/JSON | Attribute; prefer public-domain editions |
-| Hadith ~50K | hadith-json (AhmedBaset) | JSON | Check repo license; attribute |
+| Hadith ~40K (v1) | fawazahmed0/hadith-api (ADR-0026) | JSON (ara-*/ind-* editions via jsDelivr) | Unlicense (public domain); attribute + sunnah.com upstream |
 | Hadith 650K w/ sanad | Sanadset (Kaggle) | CSV (v2, §9) | Check Kaggle terms; attribute |
-| Hadith API | Sunnah.com | JSON API | **API key request needed** (open task) |
+| Hadith API | Sunnah.com | JSON API | Key request no longer blocks #7 (ADR-0026); future enrichment only |
 | Kitab | Shamela `.bok` / OpenITI TEI | MDB / XML | Classical texts public domain; attribute Shamela/OpenITI |
 
 All attributions ship in `NOTICES/DATASETS.md` (MIT repo; notes.md requirement).
@@ -224,7 +224,7 @@ Mudawwanah (Sahnun 240H), Al-Umm (Syafi'i 204H), Syarh Aqidah Thahawiyah (321H),
 ### 4.4 Ingestion pipelines
 
 - **Quran (implemented, issue #6):** `bun run ingest:quran` — acquire Tanzil Uthmani Arabic + Kemenag Indonesian translation + Quranic Arabic Corpus morphology → raw bytes archived to R2 through the ObjectStore seam → the generic `runIngestion` runner (ADR-0021) owns parse + integrity check (6,236 ayah / 114 surah / morphology coverage; the domain `SourceParser` re-parses from the archived bundle, so the archived bytes are the single source of truth) → surah parents with cheap-tier LLM summaries (parent embedding computed from the summary, not full text) + per-ayah children (dual-track `embedding_ar` primary / `embedding_id` fallback per ADR-0013; lemma+root stored per Arabic token per ADR-0014; children written in batches through the RagStore `insertDocChildren` seam) → aligned (AR, ID) ayah pairs persisted for #24's concept-graph build (domain `quran-pair:N:M` key) → IngestionReport persisted to `eval_runs` through the RagStore `insertEvalRun` seam. Idempotent upserts (parents by `source_key`, children by `(parent_id, ordinal)`, pairs by `pair_key`, reports by run id); the CLI is a thin composition root — env access, provider resolution, and I/O all go through the `@app/infra` seams.
-- **Hadith:** parse → parent/child insert → LLM principle-tagging → embed → index. (v1.2 §6.1–6.2)
+- **Hadith (implemented, issue #7):** `bun run ingest:hadith` — acquire per-collection (ara-*, ind-*) editions of fawazahmed0/hadith-api (Unlicense; ADR-0026) → raw bytes archived to R2 through the ObjectStore seam → the generic `runIngestion` runner (ADR-0021) owns parse + integrity check (edition shape, ara/ind alignment on (book, `arabicnumber`) — unmatched pairs quarantined in the report, never force-merged) → per-(collection, book/section) parents with cheap-tier LLM summaries (parent embedding from the summary) + per-hadith children (dual-track per ADR-0013; the consolidated grade — dhaif-wins per ADR-0026 — is structured, filterable child metadata, raw per-grader array preserved; empty-ID entries yield `text_id: null`) → aligned (AR, ID) hadith pairs persisted for #24 (`hadith-pair:{collection}:{no}` key, `morphology: []` until the pre-#24 CAMeL Tools enrichment) → IngestionReport persisted to `eval_runs`. Citation renders `HR. Collection no. N (Grade)` from stored fields. Idempotent upserts; thin composition root over the `@app/infra` seams. LLM principle-tagging remains a later step (v1.2 §6.1–6.2).
 - **Kitab:** `.bok`→`.mdb` extraction script (Node `shamela` lib or `mdb-tools`) → clean (cheap tier) → metadata extract → principle tag → **translate to Indonesian (Qwen3 Max, labeled)** → hierarchical chunk (parent=bab + LLM summary; child=200–500-token paragraphs, never cut mid-sentence/sanad) → embed → insert. `text_raw` always preserved; originals archived to R2. (v1.2 §6.3 + ADR-0006)
 - **Principle Index:** curated seed → embed → auto concept-links to anchored ayat/hadith/kitab.
 
@@ -306,6 +306,7 @@ Mitigations: top-k discipline (8–12 chunks, not 20), prompt caching for the st
 | `adr/0023` | Role-agent models resolve from `.zcode/agents/` pins on every harness — DSH reads the pin at dispatch (workflow mapping); a pin that fails to resolve is fixed in the DSH provider config (declare the model id), never rerouted |
 | `adr/0024` | Fork template-sync ownership: `template-sync.json` lists exactly the byte-identical shared baseline; fork prose (AGENTS.md, docs/ARCHITECTURE.md) and adapted workflows stay fork-owned by omission; `.zcode/` follows template PR #130 as a merge path; adapted files reviewed per template release |
 | `adr/0025` | Role-separated GitHub identities: a PreToolUse deny hook redirects role subagents' bare `gh` calls to a `gh-as <role>` wrapper (per-invocation `GH_TOKEN`, token files outside the repo, opt-in `enabled` flag, fail-open); `agent_type` joins the hook-envelope contract |
+| `adr/0026` | Hadith v1 source: fawazahmed0/hadith-api (Unlicense, Arabic+Indonesian+grades, 7 collections) replaces hadith-json (unlicensed, ungraded); conservative dhaif-wins grade consolidation, `mutawatir` never self-asserted; Ahmad/Darimi gap accepted; sanad stays in `text_raw` (v2 per ADR-0012); CAMeL Tools morphology deferred to pre-#24 |
 
 Domain vocabulary: `CONTEXT.md`. Workflow after this spec: `to-spec` → `to-tickets` per the template's agentic pipeline.
 
