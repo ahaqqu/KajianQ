@@ -1,0 +1,16 @@
+{
+  "_meta": "Runtime-derived fixture (ADR-0025): reproduces the ZCode workspace-hook stdin envelope for PreToolUse on a subagent Bash dispatch, as serialized by the runtime's Claude-compatible hook-input builder. Carries agent_type (observed on subagent dispatches; the role-gh-identity hook's primary role-resolution channel) and a bare-gh command (the enforcement target). Purpose: CI parses this to catch contract drift from the live envelope. Derived from the runtime bundle's createClaudeCompatibleHookStdin, not yet live-captured in CI; replace with a redacted live capture when one is available.",
+  "agent_type": "reviewer",
+  "cwd": "/home/user/project",
+  "hook_event_name": "PreToolUse",
+  "permission_mode": "default",
+  "session_id": "sess_subagent_agent_fixture_roleghidentity",
+  "tool_input": {
+    "command": "gh pr view 123",
+    "timeout": 120000
+  },
+  "tool_name": "Bash",
+  "tool_use_id": "toolu_01FixtureRoleGh",
+  "traceId": "tr_fixture_0002",
+  "turnId": "urn_fixture_0002"
+}
