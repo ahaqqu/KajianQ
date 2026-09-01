@@ -1,4 +1,5 @@
 import type {
+  AlignedPairInsert,
   DocChildInsert,
   RagStore,
   SimilarChild,
@@ -11,10 +12,11 @@ import {
   randomToken,
   rowToChild,
   toVectorLiteral,
-  toVectorLiteralChecked,
   type ChildRow,
 } from "./rag-store-shared";
+
 import { buildSimilarityQuery } from "./rag-store-neon-query";
+import { buildBatchChildUpsert } from "./rag-store-neon-batch";
 import {
   DEFAULT_SLOW_QUERY_MS,
   instrumentRunner,
@@ -80,42 +82,40 @@ export function createNeonRagStore(
     },
 
     async insertDocChild(input: DocChildInsert) {
-      const id = input.id ?? crypto.randomUUID();
-      const embeddingPrimary = toVectorLiteralChecked(
-        input.embeddingPrimary,
-        CORPUS_EMBEDDING_DIM,
-      );
-      const embeddingFallback = toVectorLiteralChecked(
-        input.embeddingFallback,
-        CORPUS_EMBEDDING_DIM,
-      );
-      // Idempotent upsert by (parent_id, ordinal). text_raw is immutable
-      // (AGENTS.md rule 13): it is NOT in the UPDATE set — only the derived
-      // layers (translations, embeddings, citation, metadata) refresh.
-      // Column names are role-based (`embedding_primary`/`embedding_fallback`);
-      // KajianQ binds the roles to its AR/ID language tracks at the
-      // domain-pack boundary.
+      return (await this.insertDocChildren([input]))[0] ?? crypto.randomUUID();
+    },
+
+    async insertDocChildren(batch: readonly DocChildInsert[]) {
+      if (batch.length === 0) return [];
+      const { text, values, rowIds } = buildBatchChildUpsert(batch);
+      const rows = (await sql.query(text, values)) as { id: string }[];
+      // The single-row path falls back to the generated id when RETURNING is
+      // empty, preserving insertDocChild's upsert semantics.
+      return rows.map((r, i) => r.id ?? rowIds[i] ?? crypto.randomUUID());
+    },
+
+    async upsertAlignedPair(input: AlignedPairInsert) {
+      const id = crypto.randomUUID();
+      // Idempotent upsert by provenance key (AGENTS.md rule 11): re-running
+      // ingestion with the same pair_key refreshes the tracks, citation, and
+      // morphology in place and returns the existing id, never duplicates.
+      // Column names are role-based (`text_primary`/`text_secondary`); the
+      // domain pack binds the roles to its language tracks at its boundary.
       const rows = (await sql`
-        INSERT INTO doc_children (
-          id, parent_id, text_raw, text_ar, text_id, citation,
-          embedding_primary, embedding_fallback, ordinal, metadata
-        )
+        INSERT INTO aligned_pairs (id, pair_key, citation, text_primary, text_secondary, morphology)
         VALUES (
-          ${id}, ${input.parentId}, ${input.textRaw}, ${input.textAr},
-          ${input.textId},
-          ${JSON.stringify(input.citation ?? {})}::jsonb,
-          ${embeddingPrimary},
-          ${embeddingFallback},
-          ${input.ordinal},
-          ${JSON.stringify(input.metadata ?? {})}::jsonb
+          ${id}, ${input.pairKey},
+          ${JSON.stringify(input.citation)}::jsonb,
+          ${input.textPrimary},
+          ${input.textSecondary},
+          ${JSON.stringify(input.morphology ?? [])}::jsonb
         )
-        ON CONFLICT (parent_id, ordinal) DO UPDATE
-          SET text_ar = EXCLUDED.text_ar,
-              text_id = EXCLUDED.text_id,
-              citation = EXCLUDED.citation,
-              embedding_primary = EXCLUDED.embedding_primary,
-              embedding_fallback = EXCLUDED.embedding_fallback,
-              metadata = EXCLUDED.metadata
+        ON CONFLICT (pair_key) DO UPDATE
+          SET citation = EXCLUDED.citation,
+              text_primary = EXCLUDED.text_primary,
+              text_secondary = EXCLUDED.text_secondary,
+              morphology = EXCLUDED.morphology,
+              updated_at = now()
         RETURNING id
       `) as { id: string }[];
       return rows[0]?.id ?? id;
@@ -237,6 +237,25 @@ export function createNeonRagStore(
       // user_id FK, ADR-0007 amendment), so one delete removes the full
       // subtree — including the user's Q&A traces.
       await sql`DELETE FROM users WHERE id = ${userId}`;
+    },
+
+    async insertEvalRun(input) {
+      const id = input.id ?? crypto.randomUUID();
+      // Idempotent by run id: re-running the same ingestion run refreshes the
+      // label and report so the ledger stays the single source of truth.
+      const rows = (await sql`
+        INSERT INTO eval_runs (id, label, report)
+        VALUES (
+          ${id}, ${input.label ?? null},
+          ${JSON.stringify(input.report)}::jsonb
+        )
+        ON CONFLICT (id) DO UPDATE
+          SET label = EXCLUDED.label,
+              report = EXCLUDED.report,
+              created_at = now()
+        RETURNING id
+      `) as { id: string }[];
+      return rows[0]?.id ?? id;
     },
   };
 }

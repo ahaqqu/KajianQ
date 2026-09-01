@@ -101,6 +101,7 @@
       "version": "0.0.1",
       "bin": {
         "db-migrate": "./scripts/db-migrate.mjs",
+        "provider-smoke": "./scripts/provider-smoke.mjs",
       },
       "dependencies": {
         "@app/contracts": "workspace:*",
@@ -116,7 +117,14 @@
     "packages/kajianq-domain": {
       "name": "@app/kajianq-domain",
       "version": "0.0.1",
+      "dependencies": {
+        "@app/contracts": "workspace:*",
+        "@app/infra": "workspace:*",
+        "@app/rag-core": "workspace:*",
+        "@app/rag-ingest": "workspace:*",
+      },
       "devDependencies": {
+        "@types/node": "26.2.0",
         "typescript": "7.0.2",
       },
     },
@@ -134,6 +142,8 @@
       "name": "@app/rag-ingest",
       "version": "0.0.1",
       "dependencies": {
+        "@app/contracts": "workspace:*",
+        "@app/infra": "workspace:*",
         "@app/rag-core": "workspace:*",
       },
       "devDependencies": {

@@ -9,7 +9,14 @@
   "scripts": {
     "check": "tsc -p tsconfig.json --noEmit"
   },
+  "dependencies": {
+    "@app/contracts": "workspace:*",
+    "@app/infra": "workspace:*",
+    "@app/rag-core": "workspace:*",
+    "@app/rag-ingest": "workspace:*"
+  },
   "devDependencies": {
+    "@types/node": "26.2.0",
     "typescript": "7.0.2"
   }
 }

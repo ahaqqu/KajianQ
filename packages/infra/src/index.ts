@@ -8,6 +8,7 @@ export {
 export {
   createMemoryObjectStore,
   createR2ObjectStore,
+  createS3ObjectStore,
   type ObjectStore,
   type R2Like,
 } from "./object-store";
@@ -47,6 +48,7 @@ export {
   type ResolveOptions,
 } from "./providers/provider-factory";
 export {
+  type AlignedPairInsert,
   type DocChild,
   type DocChildInsert,
   type DocParent,
