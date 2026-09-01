@@ -25,6 +25,11 @@ drift guard cannot see them:
 - `playwright.config.ts`, `scripts/provision-cf.mjs` — D1-stripped (#54)
 - `.agents/skills/guided-implementation/SKILL.md` — carries the
   KajianQ/DARS domain checklist
+- `.agents/skills/code-review/SKILL.md` — philosophy/guardrail checks
+  against the KajianQ pillars (pluggability, traceability, price-disciplined
+  cost, server-authoritative state); the template's checklist assumes
+  local-first CRDT, D1 sessions, and zero-cost-only — all deviations here.
+  Template's "Posting contract" section is re-applied by hand on each sync.
 - `.agents/skills/to-tickets/SKILL.md` — fork-specific note pointing at
   project-owned routing surfaces
 - deleted: `docs/BOOTSTRAP_PROMPT.md`, `docs/QUOTA.md`,

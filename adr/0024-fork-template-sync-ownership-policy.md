@@ -31,7 +31,11 @@ real, *deliberate* fork adaptations:
   and its ADR-cited architecture rationale down to the template's generic
   variants.
 - **Fork-customized skills:** `guided-implementation` (the KajianQ/DARS
-  domain checklist) and `to-tickets` (fork model-routing pointer).
+  domain checklist), `code-review` (philosophy/guardrail checks against the
+  KajianQ pillars — pluggability, traceability, price-disciplined cost,
+  server-authoritative state; the template's checklist assumes local-first
+  CRDT, D1 sessions, and zero-cost-only, which are all deviations here), and
+  `to-tickets` (fork model-routing pointer).
 
 ## Decision
 
@@ -39,7 +43,7 @@ real, *deliberate* fork adaptations:
    byte-identical to the template** (the "shared baseline"), at file and
    subdirectory granularity (e.g. `.agents/skills/manager/`, not
    `.agents/`), not the template's whole-directory entries. Concretely:
-   all template skills except `guided-implementation`/`to-tickets`
+   all template skills except `guided-implementation`/`to-tickets`/`code-review`
    (fork-customized) and the two fork-added skills (which stay sanctioned
    additions regardless); the workflow scripts that carry no fork
    infrastructure; `scripts/template-sync/`, `scripts/iteration-guardrail/`,
