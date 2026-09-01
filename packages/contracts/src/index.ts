@@ -16,6 +16,11 @@ export {
   type TraceEventKind,
 } from "./trace";
 export {
+  ZcodeHookPayloadSchema,
+  parseZcodeHookPayload,
+  type ZcodeHookPayload,
+} from "./zcode-hook";
+export {
   TemplateSyncManifestSchema,
   TemplateSyncStateSchema,
   parseTemplateSyncManifest,

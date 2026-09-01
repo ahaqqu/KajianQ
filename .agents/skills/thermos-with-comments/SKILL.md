@@ -34,16 +34,17 @@ This skill is designed to run inside a `reviewer` coordinator subagent (`.zcode/
    - `file:line` anchor when the changed line is identifiable; otherwise a file + region.
    - Evidence (concrete code reference or behavior trace, no speculation).
    - Recommended fix.
-6. Post **one GitHub review comment per item**.
-   - Prefer line-anchored comments: resolve the diff position from `gh pr diff --patch`, then post via `gh api repos/{owner}/{repo}/pulls/{n}/comments -f body=… -f commit_id=<head-sha> -f path=<path> -F position=<diff-position>`.
-   - If the line cannot be anchored cleanly (file too large, position ambiguous), fall back to a **PR-level comment** via `gh api repos/{owner}/{repo}/issues/{n}/comments`. Never silently drop a finding because anchoring failed.
+6. **Stale pending-draft preflight.** GitHub allows one pending review per user per pull request (its 422 text: "user_id can only have one pending review per pull request"), so a stale PENDING review draft under the authenticated account forces 422s on review-comment creation. List `gh api repos/{owner}/{repo}/pulls/{n}/reviews` and delete any PENDING draft (`gh api -X DELETE repos/{owner}/{repo}/pulls/{n}/reviews/<review_id>`) before posting.
+7. Post **one GitHub review comment per item** — the summary never substitutes for it; every item must exist as an individual comment.
+   - **Mandatory line-anchoring**: every item with any locatable anchor is an inline review comment on its file and line — resolve the diff position from `gh pr diff --patch`, then post via `gh api repos/{owner}/{repo}/pulls/{n}/comments -f body=… -f commit_id=<head-sha> -f path=<path> -F position=<diff-position>`. Each comment quotes or references the offending line so the thread is self-contained.
+   - Fall back to a **PR-level comment** via `gh api repos/{owner}/{repo}/issues/{n}/comments` only for genuinely unanchorable findings (cross-cutting, process notes); the comment must open with the justification, e.g. "no single anchorable line: …". Never silently drop a finding because anchoring failed.
    - Verify each comment landed (`gh api repos/{owner}/{repo}/pulls/{n}/comments` or `gh pr view --comments`); the completion criterion for posting is "every item ID is present in the PR discussion".
-7. Post one **summary comment** (via `gh api repos/{owner}/{repo}/issues/{n}/comments`) with:
+8. Post one **summary comment** (via `gh api repos/{owner}/{repo}/issues/{n}/comments`) with:
    - An item index table: `ID | Priority | File | Short title` for every posted item.
    - An overall recommendation: `approve`, `request-changes`, or `escalate` (when evidence is inconclusive or the fix requires the author's judgment).
    - Per-item fix recommendations (the same text as each comment, in one place for triage).
    - A line stating that items can be addressed individually by ID, e.g. "Reply to individual comments with **accept** or **reject** plus reasoning. If you only want a subset fixed, instruct by ID, e.g. 'fix A1–A3, reject B2'."
-8. Return to the caller (the manager): the PR URL, the full itemized report (all IDs, priorities, files, one-line summaries), and the posted-comment verification result.
+9. Return to the caller (the manager): the PR URL, the full itemized report (all IDs, priorities, files, one-line summaries, and each item's posted review-comment ID so dispositions can thread on the original comment), and the posted-comment verification result.
 
 ## Comment body template (per item)
 
@@ -80,6 +81,7 @@ Reply to individual comments with **accept** or **reject** plus reasoning. To ap
 ## Critical rules
 
 - NEVER post a finding you have not traced end-to-end (same standard as the underlying thermo skills).
-- NEVER skip posting because anchoring failed — fall back to a PR-level comment.
+- NEVER skip posting because anchoring failed — justify the PR-level fallback in the comment itself.
+- NEVER let the summary be the only place a finding exists — each item is an individual, line-anchored review comment; the summary indexes.
 - NEVER renumber or reuse item IDs after publication.
 - If CI is red or the PR has unresolved merge conflicts, still post the review — but mark the recommendation `escalate` and say why.

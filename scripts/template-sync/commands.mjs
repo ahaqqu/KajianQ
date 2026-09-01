@@ -105,7 +105,7 @@ export function createCommands(ctx) {
 
   const cmdCheck = () => {
     if (isTemplateRepo({ gitOut, remote, manifest, env })) {
-      log.info("template repo detected; gate skipped");
+      log.info("template repo detected; drift gate skipped");
       return 0;
     }
     ensureRemote({ git, gitOk, gitOut, remote, log, manifest, env });
@@ -230,6 +230,13 @@ export function createCommands(ctx) {
           `resolving template-owned conflicts failed:\n${r.stderr}`,
         );
       }
+      // Visible clobber (review B1 on PR #127): overwrite-path conflicts
+      // resolve to the template's version, silently destroying fork-local
+      // customizations unless the sync output says so.
+      log.info("resolved template-owned conflicts with the template's version", {
+        paths: overwriteConflicts,
+        hint: "overwrite paths are template-owned; resolve by keeping the template's version or adapting your local copy",
+      });
     }
 
     // A tree-copy fork (bootstrapped without shared git history) turns every

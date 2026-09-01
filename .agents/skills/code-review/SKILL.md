@@ -2,7 +2,7 @@
 name: code-review
 description: Use when reviewing a pull request after it is created. The single review entry point — sets the review depth (normal for docs/skill-only changes, thermos mandatory for anything touching code) and verifies philosophy and guardrail compliance.
 source: project
-synced: 2026-08-29
+synced: 2026-08-31 (fork-adapted; template Posting contract section re-applied)
 ---
 
 # Code Review
@@ -49,6 +49,13 @@ For each changed file, verify against `AGENTS.md` universal guardrails and the `
 - User-facing strings externalized for `en` and `id`; logging via the Logger adapter, no `console.log`; secrets via `wrangler secret`, nothing committed.
 - Files 300 lines or fewer with 5 or fewer direct dependencies; trace/response shapes shared via `packages/contracts` (`@app/contracts`).
 - Run the Quick review scans from `dars-pluggability` (domain leakage, vendor names, direct SQL) — each hit is a refactor or a recorded ADR exception.
+
+## Posting contract (any PR comment, incl. thermos findings)
+
+- **One individual review comment per finding.** Each finding exists as its own review comment carrying a stable ID; a summary comment may index the items but must never be the only place a finding exists. Dispositions thread on the original comment (see the manager skill §4).
+- **Line-anchored by default.** Any finding with a locatable anchor must be an inline review comment on its file and line, resolved via the diff (`gh pr diff --patch` → diff position), and must quote or reference the offending line so the thread is self-contained.
+- **PR-level fallback is justified, not silent.** Reserve PR-level comments for genuinely unanchorable findings (cross-cutting, process notes); the comment itself must open with the justification, e.g. "no single anchorable line: …".
+- **Stale pending-draft preflight.** GitHub allows one pending review per user per pull request (its 422 text: "user_id can only have one pending review per pull request"); a stale PENDING review draft under the authenticated account forces 422s on review-comment creation. Before posting itemized comments, list `gh api repos/{owner}/{repo}/pulls/{n}/reviews`, and delete any PENDING draft (`gh api -X DELETE repos/{owner}/{repo}/pulls/{n}/reviews/<review_id>`).
 
 ## Output
 

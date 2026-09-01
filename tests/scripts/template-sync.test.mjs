@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, writeFileSync, rmSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync, execSync } from "node:child_process";
@@ -37,6 +37,12 @@ function setupRepo(name) {
 function commit(dir, msg) {
   git(dir, "add -A");
   git(dir, `commit -m "${msg}" --quiet`);
+}
+
+/** writeFileSync that creates parent directories. */
+function writeFile(file, data) {
+  mkdirSync(file.split("/").slice(0, -1).join("/"), { recursive: true });
+  writeFileSync(file, data);
 }
 
 function makeFork(upstream) {
@@ -102,6 +108,128 @@ describe("template-sync CLI", () => {
     expect(() =>
       run(fork, "check", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` }),
     ).toThrow();
+  });
+
+  it("scopes drift to the template baseline for ALL overwrite paths — fork additions under overwrite dirs stay green (generalizes review A1)", () => {
+    // A live fork-sync run (KajianQ) flagged ~20 fork-added files under
+    // overwrite directories (`.agents/skills/`, `.github/workflows/`,
+    // `scripts/`) as permanent `template-gate` drift, contradicting the
+    // documented fork-extension story. Drift on every overwrite path is
+    // therefore baseline-scoped: only files the template baseline actually
+    // ships can be drift (their modification or deletion); fork additions
+    // are sanctioned extensions (review B1 on PR #128; the pre-PR code
+    // carried a `.zcode/` special case since removed with its overwrite
+    // ownership).
+    writeFile(`${upstream}/.agents/skills/upstream-skill/SKILL.md`, "template skill\n");
+    writeFile(`${upstream}/.github/workflows/ci.yml`, "template workflow\n");
+    commit(upstream, "ship agents + workflows");
+    git(upstream, "tag v1.3.0");
+
+    // The fork opts the directories into overwrite and carries fork-added
+    // files: a committed skill, an untracked workflow, and a fork-added
+    // file in a dir the template ships nothing under.
+    writeFileSync(`${fork}/template-sync.json`, JSON.stringify({
+      upstream: `${upstream}`,
+      overwrite: ["AGENTS.md", ".agents/skills/", ".github/workflows/"],
+      merge: ["README.md"],
+    }));
+    writeFile(`${fork}/.agents/skills/fork-skill/SKILL.md`, "fork skill\n");
+    writeFile(`${fork}/.github/workflows/fork.yml`, "fork workflow\n");
+    commit(fork, "fork additions under overwrite dirs");
+    run(fork, "init", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
+    run(fork, "update --ref=v1.3.0", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
+    // An untracked fork draft in an overwrite dir is also sanctioned (the
+    // existing `update` requires a clean tree, so it lands after the sync).
+    writeFile(`${fork}/.agents/skills/fork-untracked/SKILL.md`, "fork draft\n");
+    expect(run(fork, "check", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` })).toContain("gate passed");
+
+    // Modifying a file the template baseline ships is still drift.
+    writeFileSync(`${fork}/.agents/skills/upstream-skill/SKILL.md`, "fork edit\n");
+    expect(() =>
+      run(fork, "check", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` }),
+    ).toThrow(/gate failed/);
+    git(fork, "checkout -- .agents/skills/upstream-skill/SKILL.md");
+
+    // Deleting a template-shipped overwrite file is still drift.
+    execSync(`git rm --quiet .github/workflows/ci.yml`, { cwd: fork });
+    commit(fork, "fork deletes template workflow");
+    expect(() =>
+      run(fork, "check", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` }),
+    ).toThrow(/gate failed/);
+    git(fork, "revert --no-edit HEAD");
+
+    // Renaming a template-shipped overwrite file away is still drift
+    // (review A1 on PR #128): rename detection must not transmute the
+    // in-baseline delete into an out-of-baseline add that escapes the
+    // filter. With --no-renames the rename reports D (in baseline → drift)
+    // plus A of the new path (not in baseline → sanctioned), so the gate
+    // must fail.
+    execSync(`git mv .github/workflows/ci.yml .github/workflows/renamed.yml`, { cwd: fork });
+    commit(fork, "fork renames template workflow away");
+    expect(() =>
+      run(fork, "check", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` }),
+    ).toThrow(/gate failed/);
+    git(fork, "revert --no-edit HEAD");
+  });
+
+  it("detects drift on non-ASCII template-shipped overwrite files (review A2 quotePath escape)", () => {
+    // core.quotePath (git default on) makes the drift diff emit non-ASCII
+    // paths octal-quoted (`"caf\303\251.yml"`); the quoted literal never
+    // matches a real baseline path, so modify/delete of such files escaped
+    // the filter silently. The drift listing must unquote (quotePath=false)
+    // and the gate must red on a fork edit of a non-ASCII-named
+    // template-shipped file.
+    writeFile(`${upstream}/.github/workflows/café.yml`, "template workflow\n");
+    commit(upstream, "ship non-ascii workflow");
+    git(upstream, "tag v1.4.0");
+
+    // The fork opts the workflows dir into overwrite before syncing.
+    writeFileSync(`${fork}/template-sync.json`, JSON.stringify({
+      upstream: `${upstream}`,
+      overwrite: ["AGENTS.md", ".github/workflows/"],
+      merge: ["README.md"],
+    }));
+    commit(fork, "opt workflows into overwrite");
+    run(fork, "init", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
+    run(fork, "update --ref=v1.4.0", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
+    expect(
+      run(fork, "check", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` }),
+    ).toContain("gate passed");
+
+    writeFileSync(`${fork}/.github/workflows/café.yml`, "fork edit\n");
+    expect(() =>
+      run(fork, "check", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` }),
+    ).toThrow(/gate failed/);
+  });
+
+  it("update auto-resolves overwrite-path add/add to the template's version (review B1)", () => {
+    // The template ADDS a file at a path the fork already carries under an
+    // overwrite dir. The fork opts the directory into overwrite, so this is
+    // a real overwrite-path add/add conflict which `update` must resolve to
+    // the template's version (visible clobber semantics) and leave the gate
+    // green — not hand back to the human and not keep the fork's copy
+    // (which is what the non-manifest --ours path would do).
+    writeFile(`${upstream}/.agents/skills/fork-skill/SKILL.md`, "template skill v2\n");
+    commit(upstream, "template adds a file the fork already has");
+    git(upstream, "tag v1.5.0");
+
+    writeFileSync(`${fork}/template-sync.json`, JSON.stringify({
+      upstream: `${upstream}`,
+      overwrite: ["AGENTS.md", ".agents/skills/"],
+      merge: ["README.md"],
+    }));
+    writeFile(`${fork}/.agents/skills/fork-skill/SKILL.md`, "fork skill\n");
+    commit(fork, "fork already carries the same path");
+
+    run(fork, "init", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
+    const out = run(fork, "update --ref=v1.5.0", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
+    expect(out).toContain("sync merged");
+    // Template version wins the add/add; the fork's copy is overwritten.
+    expect(readFileSync(`${fork}/.agents/skills/fork-skill/SKILL.md`, "utf8")).toBe(
+      "template skill v2\n",
+    );
+    const check = run(fork, "check", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
+    expect(check).toContain("gate passed");
   });
 
   it("update merges upstream changes into template-owned files", () => {
