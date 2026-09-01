@@ -28,3 +28,8 @@ export {
   type TemplateSyncManifest,
   type TemplateSyncState,
 } from "./template-sync";
+export {
+  RoleIdentityConfigSchema,
+  parseRoleIdentityConfig,
+  type RoleIdentityConfig,
+} from "./role-identity";

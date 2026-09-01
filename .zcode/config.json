@@ -15,6 +15,16 @@
               "enabled": true,
               "timeoutMs": 10000,
               "statusMessage": "Iteration guardrail: checking verification-loop caps"
+            },
+            {
+              "type": "process",
+              "command": "bun",
+              "args": [
+                "${ZCODE_PROJECT_DIR}/scripts/role-gh-identity/hook.mjs"
+              ],
+              "enabled": true,
+              "timeoutMs": 10000,
+              "statusMessage": "Role GH identity: checking role identity enforcement"
             }
           ]
         }

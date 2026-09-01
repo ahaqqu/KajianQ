@@ -13,6 +13,14 @@ const ToolFields = {
   tool_input: v.optional(v.unknown()),
 };
 
+// Subagent dispatches carry the dispatched agent type (`agent_type`, e.g.
+// "implementer") on the envelope — observed in the runtime's
+// createClaudeCompatibleHookStdin serialization (committed fixtures). Modeled
+// optional: interactive-session events have no agent_type.
+const AgentFields = {
+  agent_type: v.optional(NonEmptyString),
+};
+
 /**
  * ZCode workspace-hook stdin payloads, as delivered to `process` hooks
  * declared in `.zcode/config.json` (Claude-compatible envelope). Only the
@@ -30,17 +38,20 @@ export const ZcodeHookPayloadSchema = v.variant("hook_event_name", [
   v.object({
     hook_event_name: v.literal("PreToolUse"),
     ...ToolFields,
+    ...AgentFields,
     ...SessionFields,
   }),
   v.object({
     hook_event_name: v.literal("PostToolUse"),
     ...ToolFields,
+    ...AgentFields,
     tool_response: v.optional(v.unknown()),
     ...SessionFields,
   }),
   v.object({
     hook_event_name: v.literal("PostToolUseFailure"),
     ...ToolFields,
+    ...AgentFields,
     error: v.optional(v.object({ message: NonEmptyString })),
     is_interrupt: v.optional(v.boolean()),
     ...SessionFields,
