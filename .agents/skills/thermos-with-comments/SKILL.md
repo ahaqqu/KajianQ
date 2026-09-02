@@ -10,13 +10,13 @@ synced: 2026-08-29
 
 > **Library skill** — not an entry point. Reached only through the `code-review` skill (its thermos depth) and the manager's `reviewer` role.
 
-Use this skill when a review's findings must land on the PR as individually-referencable, itemized comments — the manager-orchestrated implement → review → fix loop, and the only thermos arm `code-review` ever calls. It runs the two thermo passes and posts the itemized report to the PR instead of synthesizing in chat, returning the same itemized report to the caller.
+Use this skill when a review's findings must land on the PR as individually-referencable, itemized comments — the manager-orchestrated implement → review → fix loop, and the only thermos arm `code-review` ever calls. It runs the two thermo passes (standards inherited from `thermo-nuclear-review/SKILL.md` and `thermo-nuclear-code-quality-review/SKILL.md`) and posts the itemized report to the PR instead of synthesizing in chat, returning the same itemized report to the caller.
 
 The review standards are inherited from `thermo-nuclear-review/SKILL.md` (security/correctness) and `thermo-nuclear-code-quality-review/SKILL.md` (maintainability). Load both into the dispatched subagents.
 
 ## Reviewer subagent types
 
-The manager's `reviewer` role (`.zcode/agents/reviewer.md`) applies this skill and dispatches two sub-reviewers in parallel: `subagent_type: "thermo-nuclear-review-subagent"` for security/correctness and `subagent_type: "thermo-nuclear-code-quality-review-subagent"` for maintainability. All three are defined as role agents in `.zcode/agents/` with per-role pinned models (see `.zcode/agents/README.md`); delete a sub-reviewer's `model:` field to make it inherit the `reviewer` coordinator's model. If a harness lacks these types, fall back to its generic subagent and inline the prompts from the two sibling skills.
+This skill is designed to run inside a `reviewer` coordinator subagent (`.zcode/agents/reviewer.md`), which dispatches two sub-reviewers in parallel: `subagent_type: "thermo-nuclear-review-subagent"` for security/correctness and `subagent_type: "thermo-nuclear-code-quality-review-subagent"` for maintainability. All three are defined as role agents in `.zcode/agents/` with per-role pinned models (see `.zcode/agents/README.md`); delete a sub-reviewer's `model:` field to make it inherit the `reviewer` coordinator's model. If a harness lacks these types, fall back to its generic subagent and inline the prompts from the two sibling skills.
 
 ## Workflow
 
