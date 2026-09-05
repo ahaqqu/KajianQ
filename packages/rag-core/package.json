@@ -10,7 +10,8 @@
     "check": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@app/contracts": "workspace:*"
+    "@app/contracts": "workspace:*",
+    "effect": "3.22.1"
   },
   "devDependencies": {
     "typescript": "7.0.2"
