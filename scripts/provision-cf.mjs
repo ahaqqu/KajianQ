@@ -9,16 +9,16 @@
  * URLs and setting the PROD_URL / STAGING_URL GitHub variables that the
  * deploy workflow's smoke tests consume.
  *
- * Physical names mirror apps/api/alchemy.run.ts. Requires CLOUDFLARE_API_TOKEN,
- * CLOUDFLARE_ACCOUNT_ID, and the five Worker secret values (SENTRY_DSN,
- * DASHSCOPE_API_KEY, DEEPSEEK_API_KEY, GEMINI_API_KEY, MOONSHOT_API_KEY) —
- * the bootstrap deploy binds them as `secret_text`, so Alchemy resolves them
- * at plan time (set as GitHub secrets; export them locally for a manual run).
- * The CI bootstrap scripts pass `--yes` because alchemy declines its own plan
- * on a non-interactive terminal and would exit 0 without applying anything.
- * The default GITHUB_TOKEN cannot write repository variables, so
- * when the variable step fails the script prints the exact `gh variable set`
- * commands instead.
+ * Physical names mirror apps/api/alchemy.run.ts. Requires CLOUDFLARE_API_TOKEN
+ * and CLOUDFLARE_ACCOUNT_ID. The five Worker secret values (SENTRY_DSN,
+ * DASHSCOPE_API_KEY, DEEPSEEK_API_KEY, GEMINI_API_KEY, MOONSHOT_API_KEY) are
+ * optional: the stack binds only the ones present in the environment
+ * (absent = feature disabled — ADR-0028), so export them or set the same-named
+ * GitHub secrets when those features are wanted. The CI bootstrap scripts
+ * pass `--yes` because alchemy declines its own plan on a non-interactive
+ * terminal and would exit 0 without applying anything. The default
+ * GITHUB_TOKEN cannot write repository variables, so when the variable step
+ * fails the script prints the exact `gh variable set` commands instead.
  *
  * Usage:
  *   bun scripts/provision-cf.mjs        (dispatch of provision.yml, or local)

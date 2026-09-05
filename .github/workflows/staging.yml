@@ -28,11 +28,6 @@ jobs:
           test -n "$CLOUDFLARE_API_TOKEN"
           test -n "$CLOUDFLARE_ACCOUNT_ID"
           test -n "$STAGING_URL"
-          test -n "$SENTRY_DSN"
-          test -n "$DASHSCOPE_API_KEY"
-          test -n "$DEEPSEEK_API_KEY"
-          test -n "$GEMINI_API_KEY"
-          test -n "$MOONSHOT_API_KEY"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -45,8 +40,9 @@ jobs:
       # Persistence is Neon Postgres behind RagStore (ADR-0008) — the template's
       # D1 migration/deploy:inject steps were removed when D1 was stripped (#3).
       # deploy:staging owns the web build; no separate build step (matches
-      # deploy.yml). The five secret env vars must resolve at alchemy plan
-      # time — the stack declares them as Config.redacted Worker bindings.
+      # deploy.yml). The five secret env vars are optional: the stack binds
+      # only the ones present (absent = feature disabled — ADR-0028), so they
+      # pass through unconditionally and nothing changes when secrets are set.
       - run: bun run deploy:staging
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

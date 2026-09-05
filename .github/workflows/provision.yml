@@ -4,10 +4,11 @@ on:
 
 # Fork-owned (removed from template-sync.json's overwrite list): delegates to
 # scripts/provision-cf.mjs, which runs the Alchemy `--adopt` bootstrap deploys
-# for prod and staging (ADR-0028) — the bootstrap binds the five Worker secrets
-# as `secret_text`, so Alchemy resolves them at plan time and they must be
-# passed through here. The template's D1-era version was superseded when D1
-# was stripped (#3) and wrangler retired (ADR-0028).
+# for prod and staging (ADR-0028). The five Worker secrets are passed through
+# but optional — the stack binds only the ones present (absent = feature
+# disabled — ADR-0028), so the require guard only checks Cloudflare access.
+# The template's D1-era version was superseded when D1 was stripped (#3) and
+# wrangler retired (ADR-0028).
 permissions:
   contents: read
 
@@ -24,11 +25,6 @@ jobs:
         run: |
           test -n "$CLOUDFLARE_API_TOKEN"
           test -n "$CLOUDFLARE_ACCOUNT_ID"
-          test -n "$SENTRY_DSN"
-          test -n "$DASHSCOPE_API_KEY"
-          test -n "$DEEPSEEK_API_KEY"
-          test -n "$GEMINI_API_KEY"
-          test -n "$MOONSHOT_API_KEY"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

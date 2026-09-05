@@ -15,8 +15,9 @@ jobs:
       # one-time `bun run deploy:bootstrap` (--adopt takeover + state-store
       # bootstrap) must have been run by an operator first; CI=true makes the
       # state store resolve its credentials from the Cloudflare Secrets Store.
-      # The five secret env vars must resolve at alchemy plan time — the stack
-      # declares them as Config.redacted bindings on the Worker.
+      # The five secret env vars are optional: the stack binds only the ones
+      # present (absent = feature disabled — ADR-0028), so the workflows pass
+      # them through unconditionally and stay unchanged when secrets are added.
       - run: bun run deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
