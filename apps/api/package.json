@@ -17,6 +17,7 @@
     "@app/contracts": "workspace:*",
     "@app/hardening": "workspace:*",
     "@app/infra": "workspace:*",
+    "@app/rag-core": "workspace:*",
     "@app/rate": "workspace:*",
     "@hono/standard-validator": "0.4.0",
     "@sentry/cloudflare": "10.70.0",
