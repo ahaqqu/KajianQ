@@ -49,3 +49,12 @@ KajianQ's trust model is: *a skeptical user or scholar can open any answer and s
 ## The generator's bound (ADR-0015)
 
 Traceability also covers *what the generator was not allowed to do.* When building or reviewing the Generator or its post-processing, check that the answer surfaces classical reasoning **as cited** (ta'lil, madzhab disagreement, applied Principles) and never synthesizes a new ruling to fill a gap. A "helpful" completion that closes a gap by inference is a trust violation the trace must make visible — if the answer would look different with a fully-traced prompt, the trace is lying by omission, and that is a defect on the same level as a missing citation.
+
+## Effect runtime (ADR-0027)
+
+The engine runs on Effect, but Effect changes nothing about this contract:
+
+- The trace sink is the `RunContext` Tag service (`yield* RunContext` → `run.record(event)`) — `RunContext.record` semantics carried over unchanged from ADR-0021. Never route events around it (no `Console.log`, no ad-hoc arrays in stages).
+- `Effect`'s own telemetry/OTel is ops observability and is **not** adopted; `TraceEvent` valibot records persisted via `RagStore.insertAnswerTrace` remain the single user-facing trace.
+- Interruption/cancellation (client cancels a stream) still owes its cost: an interrupted generation's deferred cost settles as a transport failure — record a cancellation event through the sink rather than dropping it (an interrupted call still spent vendor tokens).
+- Ingestion concurrency (`embedConcurrency`) changes only scheduling, never accounting: report cost must still equal the sum of recorded calls.
