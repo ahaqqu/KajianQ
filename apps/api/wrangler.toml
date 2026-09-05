@@ -1,3 +1,7 @@
+# Dev/e2e config only (`wrangler dev`): production and staging deploys are
+# declared in alchemy.run.ts and applied by Alchemy (ADR-0028). Keep bindings
+# in sync with alchemy.run.ts when adding one — production shape is what the
+# stack file declares.
 name = "kajianq-api"
 main = "src/index.ts"
 compatibility_date = "2025-07-01"

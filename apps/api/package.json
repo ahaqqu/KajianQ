@@ -7,7 +7,10 @@
     "dev": "wrangler dev -c wrangler.toml",
     "build": "wrangler deploy -c wrangler.toml --env=\"\" --dry-run --outdir=dist",
     "check": "tsc -p tsconfig.json --noEmit",
-    "deploy": "wrangler deploy -c wrangler.toml --env=\"\""
+    "deploy": "wrangler deploy -c wrangler.toml --env=\"\"",
+    "alchemy:deploy": "bun scripts/alchemy-preflight.mjs && alchemy deploy alchemy.run.ts --stage prod",
+    "alchemy:deploy:staging": "bun scripts/alchemy-preflight.mjs && alchemy deploy alchemy.run.ts --stage staging",
+    "alchemy:bootstrap": "bun scripts/alchemy-preflight.mjs && alchemy deploy alchemy.run.ts --stage prod --adopt"
   },
   "dependencies": {
     "@app/contracts": "workspace:*",
@@ -24,6 +27,10 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260816.1",
+    "@effect/platform-bun": "4.0.0-rc.112",
+    "@effect/platform-node": "4.0.0-rc.112",
+    "alchemy": "2.0.0-beta.76",
+    "effect": "4.0.0-rc.112",
     "typescript": "7.0.2",
     "wrangler": "4.123.0"
   }

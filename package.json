@@ -37,8 +37,10 @@
     "ingest:quran": "bun packages/kajianq-domain/scripts/ingest-quran.mjs",
     "ingest:hadith": "bun packages/kajianq-domain/scripts/ingest-hadith.mjs",
     "e2e": "bddgen && playwright test",
-    "deploy": "bun run build && wrangler deploy -c apps/api/wrangler.toml --env=\"\"",
-    "deploy:staging": "bun run build && wrangler deploy -c apps/api/wrangler.toml --env staging",
+    "deploy": "bun run build && bun run --filter '@app/api' alchemy:deploy",
+    "deploy:staging": "bun run build && bun run --filter '@app/api' alchemy:deploy:staging",
+    "deploy:bootstrap": "bun run build && bun run --filter '@app/api' alchemy:bootstrap",
+    "deploy:wrangler": "bun run build && wrangler deploy -c apps/api/wrangler.toml --env=\"\"",
     "deploy:temp": "bun run build && wrangler deploy -c apps/api/wrangler.toml --env=\"\" --temporary",
     "template-gate": "bun scripts/template-sync/cli.mjs check",
     "template-sync": "bun scripts/template-sync/cli.mjs"
