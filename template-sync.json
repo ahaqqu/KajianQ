@@ -20,7 +20,6 @@
     ".agents/skills/writing-tests/",
     ".github/workflows/dependabot-auto-merge.yml",
     ".github/workflows/e2e.yml",
-    ".github/workflows/provision.yml",
     ".github/workflows/vuln-scan.yml",
     ".github/zap-rules.tsv",
     "flake.nix",

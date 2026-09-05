@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "bun run build:web && bun run --filter @app/api dev",
     "build:web": "bun run --filter @app/web build",
-    "build": "bun run --filter @app/web build && bun run --filter @app/api build",
+    "build": "bun run build:web",
     "check": "tsc -p tsconfig.json && bun run --filter '@app/*' check",
     "test": "vitest run --coverage",
     "boundary": "bun scripts/check-boundary.mjs",
@@ -37,9 +37,12 @@
     "ingest:quran": "bun packages/kajianq-domain/scripts/ingest-quran.mjs",
     "ingest:hadith": "bun packages/kajianq-domain/scripts/ingest-hadith.mjs",
     "e2e": "bddgen && playwright test",
-    "deploy": "bun run build && wrangler deploy -c apps/api/wrangler.toml --env=\"\"",
-    "deploy:staging": "bun run build && wrangler deploy -c apps/api/wrangler.toml --env staging",
-    "deploy:temp": "bun run build && wrangler deploy -c apps/api/wrangler.toml --env=\"\" --temporary",
+    "deploy": "bun run build && bun run --filter '@app/api' alchemy:deploy",
+    "deploy:staging": "bun run build && bun run --filter '@app/api' alchemy:deploy:staging",
+    "deploy:bootstrap": "bun run build && bun run --filter '@app/api' alchemy:bootstrap",
+    "deploy:bootstrap:staging": "bun run build && bun run --filter '@app/api' alchemy:bootstrap:staging",
+    "deploy:bootstrap:ci": "bun run build && bun run --filter '@app/api' alchemy:bootstrap:ci",
+    "deploy:bootstrap:staging:ci": "bun run build && bun run --filter '@app/api' alchemy:bootstrap:staging:ci",
     "template-gate": "bun scripts/template-sync/cli.mjs check",
     "template-sync": "bun scripts/template-sync/cli.mjs"
   },
@@ -57,8 +60,7 @@
     "playwright-bdd": "9.2.0",
     "size-limit": "13.0.3",
     "typescript": "7.0.2",
-    "vitest": "4.1.10",
-    "wrangler": "4.123.0"
+    "vitest": "4.1.10"
   },
   "size-limit": [
     {

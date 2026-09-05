@@ -1,170 +1,135 @@
 #!/usr/bin/env bun
 /**
- * One-time provisioning: create Cloudflare R2 buckets and derive deploy URLs,
- * then print copy-pasteable `gh variable set` commands for the deploy pipeline.
+ * Provisioning entry point kept for the template-owned provision.yml
+ * (ADR-0028): cloud resources are owned by Alchemy, so this script only
+ * delegates to the same bootstrap deploys an operator would run —
+ * `alchemy deploy --adopt` for prod and staging, which adopts the
+ * wrangler-era resources on first use and no-ops on every run after — and
+ * then does the one piece Alchemy does not own: deriving the workers.dev
+ * URLs and setting the PROD_URL / STAGING_URL GitHub variables that the
+ * deploy workflow's smoke tests consume.
  *
- * Persistence is Neon Postgres behind the RagStore seam (ADR-0008) — there is
- * no D1 to create. Neon itself is provisioned by #4, outside this script.
+ * Physical names mirror apps/api/alchemy.run.ts. Requires CLOUDFLARE_API_TOKEN,
+ * CLOUDFLARE_ACCOUNT_ID, and the five Worker secret values (SENTRY_DSN,
+ * DASHSCOPE_API_KEY, DEEPSEEK_API_KEY, GEMINI_API_KEY, MOONSHOT_API_KEY) —
+ * the bootstrap deploy binds them as `secret_text`, so Alchemy resolves them
+ * at plan time (set as GitHub secrets; export them locally for a manual run).
+ * The CI bootstrap scripts pass `--yes` because alchemy declines its own plan
+ * on a non-interactive terminal and would exit 0 without applying anything.
+ * The default GITHUB_TOKEN cannot write repository variables, so
+ * when the variable step fails the script prints the exact `gh variable set`
+ * commands instead.
  *
- * Reads bucket/worker names from apps/api/wrangler.toml. Requires
- * CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID env vars (set as GitHub
- * secrets). The default GITHUB_TOKEN cannot write repository variables, so
- * after the first run you set PROD_URL / STAGING_URL once — the script prints
- * the exact commands. Locally (with `gh auth login`), it sets them itself.
+ * Usage:
+ *   bun scripts/provision-cf.mjs        (dispatch of provision.yml, or local)
  *
- * Usage (local):
- *   bun scripts/provision-cf.mjs
- *
- * Idempotent: an existing bucket is reused. Safe to re-run.
+ * Idempotent: safe to re-run.
  */
-import { readFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 
-const ROOT = process.cwd();
-const CONFIG_PATH = `${ROOT}/apps/api/wrangler.toml`;
+// Physical names pinned in apps/api/alchemy.run.ts (ADR-0028). Keep in sync.
+const NAMES = {
+  prodWorker: "kajianq-api",
+  stagingWorker: "kajianq-api-staging",
+};
 
-// Minimal TOML parser for the fields we need. wrangler.toml is simple enough
-// that a regex-based parse is reliable and avoids adding a TOML dependency.
-function parseWranglerToml(path) {
-  const text = readFileSync(path, "utf8");
-
-  const prodSection = text.split("[env.staging]")[0] ?? "";
-  const prodR2Match = prodSection.match(
-    /\[\[r2_buckets\]\][\s\S]*?bucket_name\s*=\s*"([^"]+)"/,
-  );
-
-  const stagingSection = text.split("[env.staging]")[1] ?? "";
-  const stagingR2Match = stagingSection.match(
-    /\[\[env\.staging\.r2_buckets\]\][\s\S]*?bucket_name\s*=\s*"([^"]+)"/,
-  );
-
-  const prodWorkerMatch = prodSection.match(/^name\s*=\s*"([^"]+)"/m);
-  const stagingWorkerMatch = stagingSection.match(/^name\s*=\s*"([^"]+)"/m);
-  if (!prodWorkerMatch)
-    throw new Error("Could not parse production worker name from wrangler.toml");
-  if (!stagingWorkerMatch)
-    throw new Error("Could not parse staging worker name from wrangler.toml");
-
-  return {
-    prodR2Name: prodR2Match?.[1] ?? null,
-    stagingR2Name: stagingR2Match?.[1] ?? null,
-    prodWorkerName: prodWorkerMatch[1],
-    stagingWorkerName: stagingWorkerMatch[1],
-  };
+function run(cmd) {
+  return execSync(cmd, { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
 }
 
-function run(cmd, { ignoreError = false } = {}) {
+function runReport(cmd, label) {
+  console.log(`\n== ${label}`);
   try {
-    return execSync(cmd, { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+    run(cmd);
+    console.log("done.");
+    return true;
   } catch (err) {
-    if (ignoreError) return null;
-    throw err;
-  }
-}
-
-/**
- * Create an R2 bucket, or do nothing if it already exists.
- * `wrangler r2 bucket create` errors with code 10004 if the bucket exists.
- */
-function ensureR2(name) {
-  if (!name) return;
-  try {
-    run(`bunx wrangler r2 bucket create "${name}"`);
-    console.log(`R2 "${name}" created.`);
-  } catch (err) {
-    const stderr = err.stderr?.toString() ?? err.message ?? "";
-    if (stderr.includes("already exists") || stderr.includes("10004")) {
-      console.log(`R2 "${name}" already exists — reusing.`);
-    } else {
-      throw err;
-    }
+    console.error(String(err.stderr ?? err.stdout ?? err.message ?? err).trim());
+    console.error(`FAILED: ${label}`);
+    return false;
   }
 }
 
 /** Set a GitHub variable via `gh` (works locally; fails with default Actions token). */
 function trySetGitHubVariable(name, value) {
   if (!process.env.GH_TOKEN && !process.env.GITHUB_TOKEN) return false;
-  const result = run(`echo "${value}" | gh variable set "${name}"`, {
-    ignoreError: true,
-  });
-  if (result === null) return false;
-  console.log(`GitHub variable "${name}" set.`);
-  return true;
+  try {
+    run(`echo "${value}" | gh variable set "${name}"`);
+    console.log(`GitHub variable "${name}" set.`);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Fetch the workers.dev subdomain so URLs are https://<worker>.<sub>.workers.dev */
-function fetchWorkersDevSubdomain(accountId, token) {
-  const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/subdomain`;
-  const out = run(`curl -sf -H "Authorization: Bearer ${token}" "${url}"`, {
-    ignoreError: true,
-  });
-  if (!out) return null;
+async function fetchWorkersDevSubdomain(accountId, token) {
+  // fetch (not curl) keeps the token off argv, where a failed execSync would
+  // echo it in the "Command failed: ..." message; failure resolves to null so
+  // provisioning continues and URLs are set manually instead.
   try {
-    return JSON.parse(out)?.result?.subdomain ?? null;
+    const res = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/subdomain`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!res.ok) return null;
+    const body = await res.json();
+    return body?.result?.subdomain ?? null;
   } catch {
     return null;
   }
 }
 
-function main() {
+async function main() {
   const token = process.env.CLOUDFLARE_API_TOKEN;
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
   if (!token) throw new Error("CLOUDFLARE_API_TOKEN is not set.");
   if (!accountId) throw new Error("CLOUDFLARE_ACCOUNT_ID is not set.");
 
-  const { prodR2Name, stagingR2Name, prodWorkerName, stagingWorkerName } =
-    parseWranglerToml(CONFIG_PATH);
-
-  console.log("Provisioning Cloudflare resources from wrangler.toml:");
-  if (prodR2Name) console.log(`  Production R2: ${prodR2Name}`);
-  if (stagingR2Name) console.log(`  Staging R2:    ${stagingR2Name}`);
-  console.log(`  Production worker: ${prodWorkerName}`);
-  console.log(`  Staging worker:    ${stagingWorkerName}`);
-  console.log("");
-
-  ensureR2(prodR2Name);
-  ensureR2(stagingR2Name);
+  // Cloud provisioning is delegated to Alchemy (adopts on first run, then no-ops).
+  // The `:ci` bootstrap variants pass `--yes`: on a non-interactive terminal
+  // alchemy declines its own plan and exits 0 without applying anything.
+  const prodOk = runReport("bun run deploy:bootstrap:ci", "Bootstrap prod (alchemy deploy --adopt)");
+  const stagingOk = runReport(
+    "bun run deploy:bootstrap:staging:ci",
+    "Bootstrap staging (alchemy deploy --adopt)",
+  );
 
   // Derive deploy URLs from worker names + workers.dev subdomain.
-  const subdomain = fetchWorkersDevSubdomain(accountId, token);
+  const subdomain = await fetchWorkersDevSubdomain(accountId, token);
   let prodUrl = null;
   let stagingUrl = null;
   if (subdomain) {
-    prodUrl = `https://${prodWorkerName}.${subdomain}.workers.dev`;
-    stagingUrl = `https://${stagingWorkerName}.${subdomain}.workers.dev`;
-    console.log(`  workers.dev subdomain: ${subdomain}`);
+    prodUrl = `https://${NAMES.prodWorker}.${subdomain}.workers.dev`;
+    stagingUrl = `https://${NAMES.stagingWorker}.${subdomain}.workers.dev`;
+    console.log(`\nworkers.dev subdomain: ${subdomain}`);
     console.log(`  PROD_URL:    ${prodUrl}`);
     console.log(`  STAGING_URL: ${stagingUrl}`);
   } else {
-    console.log("  ⚠️  Could not fetch workers.dev subdomain from Cloudflare API.");
-    console.log("     PROD_URL and STAGING_URL will need to be set manually.");
+    console.log("\n⚠️  Could not fetch workers.dev subdomain from Cloudflare API.");
+    console.log("   PROD_URL and STAGING_URL will need to be set manually.");
   }
-  console.log("");
 
   const prodVarSet = prodUrl ? trySetGitHubVariable("PROD_URL", prodUrl) : false;
   const stagingVarSet = stagingUrl
     ? trySetGitHubVariable("STAGING_URL", stagingUrl)
     : false;
 
-  console.log("Provisioning complete.");
-  if (prodUrl) console.log(`  PROD_URL                = ${prodUrl}`);
-  if (stagingUrl) console.log(`  STAGING_URL             = ${stagingUrl}`);
-  console.log("");
-
   const needManual = (prodUrl && !prodVarSet) || (stagingUrl && !stagingVarSet);
   if (needManual) {
-    console.log("⚠️  Some GitHub variables could not be auto-set.");
-    console.log("    Run these commands from a terminal with gh auth login:");
-    console.log("");
+    console.log("\n⚠️  Some GitHub variables could not be auto-set (GITHUB_TOKEN lacks");
+    console.log("    variable-write in Actions). From a terminal with gh auth login:");
     if (prodUrl && !prodVarSet)
       console.log(`      echo "${prodUrl}" | gh variable set PROD_URL --repo <owner/repo>`);
     if (stagingUrl && !stagingVarSet)
       console.log(`      echo "${stagingUrl}" | gh variable set STAGING_URL --repo <owner/repo>`);
-    console.log("");
-  } else {
-    console.log("All variables set. Next: push to main (or run the Staging");
-    console.log("workflow) to deploy staging; run Deploy production for prod.");
   }
+
+  if (!prodOk || !stagingOk) {
+    console.error("\nProvisioning incomplete: one or more bootstrap deploys failed.");
+    process.exit(1);
+  }
+  console.log("\nProvisioning complete.");
 }
 
-main();
+await main();

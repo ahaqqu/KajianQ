@@ -8,7 +8,7 @@ import { tickFixedWindow, type WindowState } from "./rate-limiter";
  * keeping state bounded to a single `{ count, start }` entry per active key.
  *
  * Adopting Workers must re-export this class from the Worker entrypoint and
- * bind it via `wrangler.toml` (see `packages/rate/README.md`).
+ * bind it via the Alchemy stack file (see `packages/rate/README.md`).
  */
 export class RateLimiterDo extends DurableObject {
   /** RPC: atomic check-and-increment against a fixed window. */

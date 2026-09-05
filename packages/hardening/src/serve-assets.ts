@@ -20,7 +20,7 @@ const IMMUTABLE_CACHE = "public, max-age=31536000, immutable";
 
 /**
  * SPA fallback for the final catch-all route. Route every request through
- * the Hono stack first (wrangler `run_worker_first = true`), then call this
+ * the Hono stack first (Alchemy `runWorkerFirst: true`), then call this
  * from the catch-all so the SPA gets the same security headers, CORS, and
  * rate limiting as the API. Content-hashed assets are served `immutable`;
  * HTML keeps the platform's revalidating default so deploys pick up new

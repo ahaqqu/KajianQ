@@ -1,7 +1,7 @@
 name: "Smoke health check"
 description: >-
   Retry an HTTP smoke check until the response body matches a pattern.
-  Cloudflare edge propagation can lag a few seconds after `wrangler deploy`
+  Cloudflare edge propagation can lag a few seconds after a deploy
   returns, so deploy pipelines wait and retry rather than failing transiently
   on a stale isolate (issue #49: one implementation, fork-owned).
 inputs:

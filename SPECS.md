@@ -134,6 +134,8 @@ External APIs: Gemini / Qwen / DeepSeek / Kimi  (Provider interface; ADR-0009)
 
 Ingestion and eval harness run as **Bun CLI scripts** (local/CI), never on Workers. Neon free tier covers small scale; backups managed. Deliberate deviation from the template's D1 — the Smart Router needs SQL metadata filtering + pgvector HNSW + tsvector, which D1/Vectorize cannot express.
 
+**Provisioning & deploys (ADR-0028):** the Cloudflare topology (Worker, R2 bucket, Durable Object binding, static assets, vars/secrets) is declared as code in `apps/api/alchemy.run.ts` and applied with Alchemy (v2, Effect-native IaC) — `bun run deploy` / `deploy:staging` per stage, physical names pinned to the wrangler-era resources, one-time `deploy:bootstrap` (`--adopt`) takeover. The same stack file drives local dev and e2e (`alchemy dev`: workerd + virtual R2/DO on port 8787, no cloud credentials); wrangler is retired. Neon stays provisioned outside the deploy tooling.
+
 ### 3.3 The DARS pipeline (Smart Router)
 
 1. **Intent & Principle detection** (cheap tier) → JSON: `category, subcategory, madzhab, needs_principle, principle_tags, query_type (factual|ruling|analogy|comparison|history|aqidah), confidence, reasoning`.
@@ -310,6 +312,7 @@ Mitigations: top-k discipline (8–12 chunks, not 20), prompt caching for the st
 | `adr/0025` | Role-separated GitHub identities: a PreToolUse deny hook redirects role subagents' bare `gh` calls to a `gh-as <role>` wrapper (per-invocation `GH_TOKEN`, token files outside the repo, opt-in `enabled` flag, fail-open); `agent_type` joins the hook-envelope contract |
 | `adr/0026` | Hadith v1 source: fawazahmed0/hadith-api (Unlicense, Arabic+Indonesian+grades, 7 collections) replaces hadith-json (unlicensed, ungraded); conservative dhaif-wins grade consolidation, `mutawatir` never self-asserted; Ahmad/Darimi gap accepted; sanad stays in `text_raw` (v2 per ADR-0012); CAMeL Tools morphology deferred to pre-#24. Amended 2026-09-05: weak-class vocabulary enumerated (Mawdu/Batil/Mursal weak, Marfoo not, Mauquf/Maqtu attribution-scope); empty-Arabic rows quarantined (`emptyPrimary`), not run-aborting |
 | `adr/0027` | Effect (v3) adopted in engine packages + `apps/api` only — typed error channels, `Schedule` retry, `Scope` lifecycle, `Stream` interruption; amends ADR-0021's revisit trigger; Workers spike as go/no-go gate; valibot + Hono edge + plain-TS frontend unchanged; Effect Schema/`@effect/rpc` not adopted |
+| `adr/0028` | Alchemy (v2, Effect-native IaC) owns the whole Worker lifecycle via `apps/api/alchemy.run.ts` — deploys (pinned physical names, one-time `--adopt` bootstrap, `Cloudflare.state()` store) and local dev/e2e (`alchemy dev`: workerd + virtual resources, wrangler retired); Neon stays external; deploy.yml's dead D1 steps removed |
 
 Domain vocabulary: `CONTEXT.md`. Workflow after this spec: `to-spec` → `to-tickets` per the template's agentic pipeline.
 

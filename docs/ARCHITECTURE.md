@@ -145,7 +145,9 @@ Gated by: axe audits (serious/critical violations fail the run).
 Every external boundary is validated. Sessions are anonymous Bearer tokens —
 stored in **Postgres via the RagStore seam** (deviation from the template's
 D1; ADR-0017, which also rejects hosted identity for v1). No custom crypto.
-Secrets injected via `wrangler secret`; nothing sensitive in the repository.
+Secrets are declared in `apps/api/alchemy.run.ts` as `Config.redacted` and land
+as Cloudflare `secret_text` bindings at deploy time (values come from the
+operator's environment / GitHub secrets — never the repository).
 Account deletion cascades across all data stores, including `answer_traces`
 (ADR-0007 amendment).
 
@@ -316,7 +318,7 @@ Root `package.json` scripts are the single source of truth for gates:
 | `bun run agentic-limits` | file-size / import-count caps |
 | `bun run truth` | no dependency without an importer |
 | `bun run size-limit` | bundle budget (<200 KB gzipped) |
-| `bun run e2e` | Playwright-BDD against `wrangler dev` |
+| `bun run e2e` | Playwright-BDD against `alchemy dev` (local workerd) |
 | `bun run template-gate` | fails on drift of template-owned files |
 | `bun run build` / `dev` / `deploy` / `deploy:staging` | build, local dev, deploys |
 

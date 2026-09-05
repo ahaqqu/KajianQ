@@ -17,6 +17,9 @@ coverage/
 apps/api/.mf/
 .dev.vars
 
+# Alchemy local stage state (deploy tooling state; ADR-0028)
+.alchemy/
+
 # Agentic subagent git worktrees (manager skill)
 .worktrees/
 

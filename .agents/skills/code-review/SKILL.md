@@ -43,7 +43,7 @@ For each changed file, verify against `AGENTS.md` universal guardrails and the `
 - No direct DB client imports outside the `RagStore` adapter and migrations; schema changes follow the RagStore migration conventions.
 - New LLM calls traced (model identity, tokens, latency, cost); pipeline wiring through the `runPipeline` runner (`RunContext`), never hand-assembled traces.
 - `text_raw` immutable; ingestion idempotent; Matn and Sharh never mixed in one chunk; disputed attributions quarantined or labeled.
-- User-facing strings externalized for `en` and `id`; logging via the Logger adapter, no `console.log`; secrets via `wrangler secret`, nothing committed.
+- User-facing strings externalized for `en` and `id`; logging via the Logger adapter, no `console.log`; secrets via Alchemy `secret_text` bindings (ADR-0028), nothing committed.
 - Files 300 lines or fewer with 5 or fewer direct dependencies; trace/response shapes shared via `packages/contracts` (`@app/contracts`).
 - Run the Quick review scans from `dars-pluggability` (domain leakage, vendor names, direct SQL) — each hit is a refactor or a recorded ADR exception.
 
