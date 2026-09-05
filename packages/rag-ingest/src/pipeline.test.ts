@@ -190,7 +190,12 @@ describe("runIngestion", () => {
 
   it("stores the LLM parent summary and embeds parents from summaries", async () => {
     const f = fakeStore();
-    const summarizer = vi.fn(async (input: { sourceKey: string }) => `summary ${input.sourceKey}`);
+    const summarizer = vi.fn(
+      async (input: { sourceKey: string }) => ({
+        summary: `summary ${input.sourceKey}`,
+        cost: { modelId: "test-summarizer", tokensIn: 1, tokensOut: 1, latencyMs: 1, costMicroUsd: 2 },
+      }),
+    );
     await runIngestion(
       async () => twoParents(),
       { archiveKey: "archive/key", raw: new Uint8Array() },
@@ -199,6 +204,27 @@ describe("runIngestion", () => {
     expect(summarizer).toHaveBeenCalledTimes(2);
     const p1 = f.parents().find((p) => p.title === "One");
     expect((p1?.metadata as Record<string, unknown>)?.summary).toBe("summary src/1");
+  });
+
+  it("records the summarizer's LLM calls into the report's cost (review A6)", async () => {
+    const f = fakeStore();
+    const result = await runIngestion(
+      async () => twoParents(),
+      { archiveKey: "archive/key", raw: new Uint8Array() },
+      {
+        store: f.store,
+        embedder: fakeProvider(),
+        summarizer: async (input: { sourceKey: string }) => ({
+          summary: `summary ${input.sourceKey}`,
+          cost: { modelId: "test-summarizer", tokensIn: 1, tokensOut: 1, latencyMs: 1, costMicroUsd: 7 },
+        }),
+      },
+    );
+    const summarizerCalls = result.report.llmCalls.filter((c) => c.modelId === "test-summarizer");
+    expect(summarizerCalls).toHaveLength(2); // one per parent
+    // Embedding cost (6: primary + secondary batches, see the first test)
+    // plus the two 7-micro summaries = 20.
+    expect(result.report.costMicroUsd).toBe(6 + 2 * 7);
   });
 
   it("rejects a parser that emits duplicate parent keys (fail loudly, never dupe)", async () => {
@@ -236,7 +262,14 @@ describe("runIngestion", () => {
       runIngestion(
         async () => twoParents(),
         { archiveKey: "k", raw: new Uint8Array() },
-        { store: f.store, embedder: fakeProvider(), summarizer: async () => "" },
+        {
+          store: f.store,
+          embedder: fakeProvider(),
+          summarizer: async () => ({
+            summary: "",
+            cost: { modelId: "t", tokensIn: 0, tokensOut: 0, latencyMs: 0, costMicroUsd: 0 },
+          }),
+        },
       ),
     ).rejects.toThrow(/empty summary/);
   });

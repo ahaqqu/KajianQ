@@ -31,9 +31,9 @@ import { neon } from "@neondatabase/serverless";
 import * as app from "@app/infra";
 import * as ingest from "@app/rag-ingest";
 import * as domain from "@app/kajianq-domain";
-import { acquireSources, archiveRawSources, createArchiveObjectStore } from "./archive-store.mjs";
+import { acquireSources, archiveRawSources, createArchiveObjectStore, resolveFromCwd } from "./archive-store.mjs";
 
-const resolve = (p) => new URL(p, `file://${process.cwd()}/`).pathname;
+const resolve = resolveFromCwd;
 
 // ---------------------------------------------------------------------------
 // Config: read once at the composition root. No vendor names live here —
@@ -51,7 +51,12 @@ const args = process.argv.slice(2);
 const CHECK_ONLY = args.includes("--check");
 const LIMIT = (() => {
   const idx = args.indexOf("--limit");
-  return idx >= 0 ? Number(args[idx + 1]) : null;
+  if (idx < 0) return null;
+  const n = Number(args[idx + 1]);
+  // Same strict validation as ingest:hadith (review A7) — `0` must not mean
+  // "full corpus" via falsiness, non-integers must not yield empty ingests.
+  if (!Number.isInteger(n) || n < 1) return NaN;
+  return n;
 })();
 
 const logger = app.createLogger({ script: "ingest:quran" });
@@ -59,6 +64,10 @@ const logger = app.createLogger({ script: "ingest:quran" });
 function fail(msg) {
   logger.error(msg);
   process.exit(1);
+}
+
+if (Number.isNaN(LIMIT)) {
+  fail("--limit must be an integer >= 1");
 }
 
 // ---------------------------------------------------------------------------

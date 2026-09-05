@@ -47,13 +47,16 @@ export type SourceInput = {
  * The domain-supplied summarizer for parent documents: parents carry LLM
  * summaries and parent embeddings are computed *from the summary*, not the
  * full text (issue #6 AC). Receives an opaque domain title + child texts; the
- * engine treats the prompt as the domain's business.
+ * engine treats the prompt as the domain's business. Returns the call's
+ * CostRecord alongside the summary so the pipeline's collector records it —
+ * the report's cost is the sum of every recorded call, and an LLM call whose
+ * cost is dropped is a traceability defect (review A6).
  */
 export type ParentSummarizer = (input: {
   sourceKey: string;
   title: string | null;
   childTexts: readonly string[];
-}) => Promise<string>;
+}) => Promise<{ summary: string; cost: CostRecord }>;
 
 /** An aligned (primary, secondary) pair handed to the run's optional sink. */
 export type AlignedPairInput = {
