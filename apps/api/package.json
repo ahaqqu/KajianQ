@@ -8,7 +8,8 @@
     "check": "tsc -p tsconfig.json --noEmit",
     "alchemy:deploy": "bun scripts/alchemy-preflight.mjs && alchemy deploy alchemy.run.ts --stage prod",
     "alchemy:deploy:staging": "bun scripts/alchemy-preflight.mjs && alchemy deploy alchemy.run.ts --stage staging",
-    "alchemy:bootstrap": "bun scripts/alchemy-preflight.mjs && alchemy deploy alchemy.run.ts --stage prod --adopt"
+    "alchemy:bootstrap": "bun scripts/alchemy-preflight.mjs && alchemy deploy alchemy.run.ts --stage prod --adopt",
+    "alchemy:bootstrap:staging": "bun scripts/alchemy-preflight.mjs && alchemy deploy alchemy.run.ts --stage staging --adopt"
   },
   "dependencies": {
     "@app/contracts": "workspace:*",
