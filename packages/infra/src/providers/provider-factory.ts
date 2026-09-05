@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Schedule, type Duration } from "effect";
 import {
   ProviderError,
   type EmbedSpec,
@@ -24,6 +24,8 @@ export type ResolveOptions = {
   env: Record<string, string | undefined>;
   fetchImpl?: FetchLike;
   timeoutMs?: number;
+  /** Per-kind backoff schedule; defaults to `defaultRetrySchedule`. */
+  retrySchedule?: Schedule.Schedule<unknown, ProviderError>;
 };
 
 /** Build the concrete adapter for one parsed candidate. */
@@ -62,6 +64,33 @@ type WiredCandidate = {
   personalDataAllowed: boolean;
 };
 
+/**
+ * Per-kind retry policy for one candidate (ADR-0027 need 2: the fallback
+ * wrapper previously had no backoff at all). A `rate_limited` candidate backs
+ * off slower and fewer times (the vendor asked us to slow down); transport
+ * and server faults retry faster; `bad_request`/`exhausted` never retry.
+ * Tests inject a faster schedule via `ResolveOptions.retrySchedule`.
+ */
+export const perKindRetrySchedule = (
+  rateLimitedBase: Duration.DurationInput,
+  faultBase: Duration.DurationInput,
+): Schedule.Schedule<unknown, ProviderError> =>
+  Schedule.union(
+    Schedule.exponential(rateLimitedBase, 2).pipe(
+      Schedule.compose(Schedule.recurs(2)),
+      Schedule.whileInput((err: ProviderError) => err.kind === "rate_limited"),
+    ),
+    Schedule.exponential(faultBase, 2).pipe(
+      Schedule.compose(Schedule.recurs(3)),
+      Schedule.whileInput(
+        (err: ProviderError) => isRetryable(err.kind) && err.kind !== "rate_limited",
+      ),
+    ),
+  );
+
+export const defaultRetrySchedule: Schedule.Schedule<unknown, ProviderError> =
+  perKindRetrySchedule("500 millis", "50 millis");
+
 class FallbackProvider implements Provider {
   /**
    * The primary candidate's model id — wiring metadata only. Per-call cost
@@ -75,6 +104,7 @@ class FallbackProvider implements Provider {
     private readonly role: string,
     private readonly candidates: readonly WiredCandidate[],
     private readonly missingKeys: readonly string[],
+    private readonly retrySchedule: Schedule.Schedule<unknown, ProviderError> = defaultRetrySchedule,
   ) {
     this.modelId = candidates[0]?.provider.modelId ?? role;
   }
@@ -125,15 +155,18 @@ class FallbackProvider implements Provider {
           new ProviderError({ kind: "bad_request", message: `role "${this.role}": no candidates wired` }),
         );
       }
+      const schedule = this.retrySchedule;
+      const retried = (candidate: WiredCandidate): Effect.Effect<A, ProviderError> =>
+        op(candidate.provider).pipe(Effect.retry({ schedule: schedule as Schedule.Schedule<unknown, ProviderError> }));
       const rest = eligible.slice(1);
       const chain = rest.reduce<Effect.Effect<A, ProviderError>>(
         (acc, candidate) =>
           acc.pipe(
             Effect.catchAll((err) =>
-              isRetryable(err.kind) ? op(candidate.provider) : Effect.fail(err),
+              isRetryable(err.kind) ? retried(candidate) : Effect.fail(err),
             ),
           ),
-        op(first.provider),
+        retried(first),
       );
       return chain.pipe(
         Effect.catchAll((lastError) =>
@@ -196,7 +229,7 @@ export function resolveRole(
     });
   }
   return {
-    provider: new FallbackProvider(config, role, wired, missingKeys),
+    provider: new FallbackProvider(config, role, wired, missingKeys, opts.retrySchedule),
     missingKeys,
   };
 }
