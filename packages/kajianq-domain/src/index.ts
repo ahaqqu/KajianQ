@@ -11,13 +11,17 @@
  * consumption arrive with the corpus and Smart Router tickets.
  */
 
+import type { Grade } from "./hadith-source";
+
 /** One of the four Sunni legal schools (CONTEXT.md "Madzhab"). */
 export const MADZHABS = ["hanafi", "maliki", "syafii", "hambali"] as const;
 export type Madzhab = (typeof MADZHABS)[number];
 
-/** Hadith authenticity classification (CONTEXT.md "Grade"). */
-export const GRADES = ["mutawatir", "sahih", "hasan", "dhaif"] as const;
-export type Grade = (typeof GRADES)[number];
+/**
+ * Hadith authenticity classification (CONTEXT.md "Grade"). Owned by
+ * `hadith-source.ts` (review B1: no barrel self-imports); re-exported here.
+ */
+export { GRADES, type Grade } from "./hadith-source";
 
 /** Body of a work vs. commentary on it (CONTEXT.md "Matn"/"Sharh"). */
 export type TextLayer = "matn" | "sharh";
@@ -77,6 +81,8 @@ export {
   hadithMetadata,
   hadithPairId,
   hadithSourceKey,
+  isHadithCollection,
+  isWeakGrade,
   mapGrades,
   parseHadithCitation,
   type HadithCitation,
@@ -87,7 +93,6 @@ export {
 export {
   alignEditions,
   assertHadithIntegrity,
-  gradeConsolidationStats,
   parseHadithEdition,
   type AlignmentStats,
   type EditionHadith,
@@ -98,6 +103,7 @@ export {
   bundleHadithSources,
   corpusGradeStats,
   decodeHadithArchive,
+  gradeConsolidationStats,
   hadithSourceParser,
   type HadithCorpus,
 } from "./hadith-ingest";

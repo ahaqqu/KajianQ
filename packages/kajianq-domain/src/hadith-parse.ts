@@ -20,7 +20,12 @@ import {
  * (`text_raw` is immutable, AGENTS.md rule 11).
  */
 
-/** One hadith entry of an edition JSON file. */
+/**
+ * One hadith entry of an edition JSON file, after normalization: the source
+ * ships `hadithnumber`/`arabicnumber` as JSON numbers (all collections,
+ * verified against the live editions — review A1), and the parser accepts
+ * both numbers and strings, normalizing to strings.
+ */
 export type EditionHadith = {
   hadithnumber: string;
   arabicnumber: string;
@@ -49,6 +54,12 @@ export type AlignmentStats = {
   aligned: number;
   /** Arabic entries whose Indonesian text is empty (textId = null). */
   emptySecondary: number;
+  /**
+   * Arabic entries with genuinely empty Arabic text, quarantined (skipped,
+   * never ingested — review A2): the source ships them (86 in ara-nasai,
+   * 29 in ara-malik, muslim's book-0 rows).
+   */
+  emptyPrimary: number;
   /** Book/number pairs missing from one edition (quarantine-listed). */
   unmatched: { collection: HadithCollection; key: string; side: "arabic" | "indonesian" }[];
 };
@@ -67,7 +78,7 @@ export function parseHadithEdition(
       sections?: Record<string, string>;
       section_details?: Record<
         string,
-        { hadithnumber_first?: string; hadithnumber_last?: string; arabicnumber_first?: string; arabicnumber_last?: string }
+        { hadithnumber_first?: string | number; hadithnumber_last?: string | number; arabicnumber_first?: string | number; arabicnumber_last?: string | number }
       >;
     };
     hadiths?: unknown;
@@ -87,38 +98,64 @@ export function parseHadithEdition(
     { first: string; last: string; arabicFirst: string; arabicLast: string }
   >();
   for (const [k, d] of Object.entries(root.metadata.section_details ?? {})) {
+    // The source ships these as numbers (byte-true fixtures); normalize.
     sectionDetails.set(Number(k), {
-      first: d.hadithnumber_first ?? "",
-      last: d.hadithnumber_last ?? "",
-      arabicFirst: d.arabicnumber_first ?? "",
-      arabicLast: d.arabicnumber_last ?? "",
+      first: d.hadithnumber_first !== undefined ? String(d.hadithnumber_first) : "",
+      last: d.hadithnumber_last !== undefined ? String(d.hadithnumber_last) : "",
+      arabicFirst: d.arabicnumber_first !== undefined ? String(d.arabicnumber_first) : "",
+      arabicLast: d.arabicnumber_last !== undefined ? String(d.arabicnumber_last) : "",
     });
   }
   const hadiths = root.hadiths.map((row): EditionHadith => {
     if (typeof row !== "object" || row === null) {
       throw new Error(`hadith source: ${collection}/${language} hadith row is not an object`);
     }
-    const h = row as Partial<EditionHadith>;
+    const h = row as {
+      hadithnumber?: unknown;
+      arabicnumber?: unknown;
+      text?: unknown;
+      grades?: unknown;
+      reference?: unknown;
+    };
+    const ref = h.reference as { book?: unknown; hadith?: unknown } | null | undefined;
     if (
-      typeof h.hadithnumber !== "string" ||
-      typeof h.arabicnumber !== "string" ||
+      (typeof h.hadithnumber !== "string" && typeof h.hadithnumber !== "number") ||
+      (h.arabicnumber !== undefined &&
+        typeof h.arabicnumber !== "string" &&
+        typeof h.arabicnumber !== "number") ||
       typeof h.text !== "string" ||
       !Array.isArray(h.grades) ||
-      typeof h.reference !== "object" ||
-      h.reference === null ||
-      typeof h.reference.book !== "number"
+      typeof ref !== "object" ||
+      ref === null ||
+      typeof ref.book !== "number"
     ) {
       throw new Error(`hadith source: ${collection}/${language} hadith row missing required fields`);
     }
+    const hadithnumber = String(h.hadithnumber);
+    // muslim's book-0 rows lack arabicnumber entirely — fall back to the
+    // edition's own hadithnumber (the alignment's fallback join key).
+    const arabicnumber = h.arabicnumber === undefined ? hadithnumber : String(h.arabicnumber);
     return {
-      hadithnumber: h.hadithnumber,
-      arabicnumber: h.arabicnumber,
+      hadithnumber,
+      arabicnumber,
       text: h.text,
-      grades: h.grades.filter(
-        (g): g is { name: string; grade: string } =>
-          typeof g === "object" && g !== null && typeof g.name === "string" && typeof g.grade === "string",
-      ),
-      reference: { book: h.reference.book, hadith: h.reference.hadith ?? h.hadithnumber },
+      // Malformed grade entries are shape drift — throw, never silently
+      // discard source data (review B4). The live editions ship
+      // well-formed {name, grade} entries on every row.
+      grades: h.grades.map((g): { name: string; grade: string } => {
+        if (
+          typeof g !== "object" ||
+          g === null ||
+          typeof (g as { name?: unknown }).name !== "string" ||
+          typeof (g as { grade?: unknown }).grade !== "string"
+        ) {
+          throw new Error(
+            `hadith source: ${collection}/${language} ${hadithnumber} has a malformed grade entry`,
+          );
+        }
+        return g as { name: string; grade: string };
+      }),
+      reference: { book: ref.book, hadith: (ref.hadith as string | number | undefined) ?? hadithnumber },
     };
   });
   return { collection, language, sections, sectionDetails, hadiths };
@@ -137,7 +174,7 @@ export function alignEditions(
   indonesian: HadithEdition,
 ): { records: HadithRecord[]; stats: AlignmentStats } {
   assertSameCollection(arabic, indonesian);
-  const stats: AlignmentStats = { aligned: 0, emptySecondary: 0, unmatched: [] };
+  const stats: AlignmentStats = { aligned: 0, emptySecondary: 0, emptyPrimary: 0, unmatched: [] };
   const byBookNo = new Map<string, EditionHadith>();
   for (const h of indonesian.hadiths) {
     const key = `${h.reference.book}:${h.arabicnumber}`;
@@ -153,12 +190,26 @@ export function alignEditions(
     // Arabic numbering (the Indonesian edition mirrors one or the other).
     const key = `${h.reference.book}:${h.arabicnumber}`;
     const fallbackKey = `${h.reference.book}:${h.hadithnumber}`;
-    const id = byBookNo.get(key) ?? (fallbackKey !== key ? byBookNo.get(fallbackKey) : undefined);
-    if (id === undefined) {
+    const matchedKey = byBookNo.has(key)
+      ? key
+      : fallbackKey !== key && byBookNo.has(fallbackKey)
+        ? fallbackKey
+        : null;
+    // Empty-Arabic rows are quarantined, not ingested (review A2): the
+    // source genuinely ships them (86 in ara-nasai, 29 in ara-malik,
+    // muslim's book-0 rows). Consume the Indonesian counterpart so it is
+    // not double-counted as unmatched.
+    if (h.text.trim().length === 0) {
+      stats.emptyPrimary += 1;
+      if (matchedKey !== null) byBookNo.delete(matchedKey);
+      continue;
+    }
+    const id = matchedKey === null ? undefined : byBookNo.get(matchedKey);
+    if (id === undefined || matchedKey === null) {
       stats.unmatched.push({ collection: arabic.collection, key, side: "indonesian" });
       continue;
     }
-    byBookNo.delete(id === byBookNo.get(key) ? key : fallbackKey);
+    byBookNo.delete(matchedKey);
     records.push(toRecord(arabic, h, id, stats));
   }
   // Indonesian entries left over have no Arabic counterpart.
@@ -198,13 +249,15 @@ function toRecord(
 }
 
 /**
- * Integrity check (issue #7 AC): every ingested record has Arabic text, a
- * positive book number, and a non-empty hadith number; no duplicate
- * (collection, hadithNo) keys; and, when `expected` gives a per-collection
- * count gate, the ingested counts match exactly. Throws on the first
- * violation — a truncated parse must fail loudly, never ingest silently.
- * Unmatched entries are NOT a gate here: they are counted upstream and
- * surfaced in the report (quarantine, not force-merge).
+ * Integrity check (issue #7 AC): every ingested record has a positive book
+ * number and a non-empty hadith number; no duplicate (collection, hadithNo)
+ * keys; and, when `expected` gives a per-collection count gate, the ingested
+ * counts match exactly. Throws on the first violation — a truncated parse
+ * must fail loudly, never ingest silently. The empty-Arabic gate stays as
+ * defense in depth, but alignment quarantines empty-primary rows upstream
+ * (review A2), so it never fires on the real corpus. Unmatched entries are
+ * NOT a gate here: they are counted upstream and surfaced in the report
+ * (quarantine, not force-merge).
  */
 export function assertHadithIntegrity(
   records: readonly HadithRecord[],
@@ -241,30 +294,4 @@ export function assertHadithIntegrity(
       }
     }
   }
-}
-
-/**
- * Grade-consolidation summary for the ingestion report: how many records are
- * graded at all, how many the dhaif-wins policy demoted to `dhaif`, and how
- * many carry no grades (grade = null, never fabricated).
- */
-export function gradeConsolidationStats(records: readonly HadithRecord[]): {
-  graded: number;
-  dhaifWins: number;
-  ungraded: number;
-} {
-  let graded = 0;
-  let dhaifWins = 0;
-  let ungraded = 0;
-  for (const r of records) {
-    if (r.grades.length === 0) {
-      ungraded += 1;
-      continue;
-    }
-    graded += 1;
-    if (r.grades.some((g) => /daif|dhaif|munkar|shadh|mansukh|marfoo/i.test(g.grade))) {
-      dhaifWins += 1;
-    }
-  }
-  return { graded, dhaifWins, ungraded };
 }

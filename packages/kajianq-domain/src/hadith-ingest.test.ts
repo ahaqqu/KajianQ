@@ -106,8 +106,8 @@ describe("hadith ingestion (fixture = real source data)", () => {
     expect(store.allChildren()).toHaveLength(7);
 
     // Both embedding tracks written for every child; the empty-secondary
-    // hadiths (3, 5) keep textId null — never fabricated — while their
-    // primary track is embedded normally.
+    // hadith (5 — genuinely empty in the source) keeps textId null — never
+    // fabricated — while its primary track is embedded normally.
     for (const child of store.allChildren()) {
       expect(child.embeddingPrimary).not.toBeNull();
       expect(child.textAr.trim().length).toBeGreaterThan(0);
@@ -118,8 +118,9 @@ describe("hadith ingestion (fixture = real source data)", () => {
       }
     }
 
-    // Aligned pairs — seed rows for #24 (pairs only where both tracks exist (5 of 7: hadiths 3 & 5 have empty ID text)).
-    expect(store.allPairs()).toHaveLength(5);
+    // Aligned pairs — seed rows for #24 (pairs only where both tracks exist
+    // (6 of 7: hadith 5 has empty ID text in the source)).
+    expect(store.allPairs()).toHaveLength(6);
     const pair = store.allPairs().find((p) => p.pairKey === "hadith-pair:abudawud:1");
     // Substring taken verbatim from the fixture (Arabic diacritics must be
     // byte-exact, so the assertion string is derived, not hand-typed).
@@ -131,11 +132,16 @@ describe("hadith ingestion (fixture = real source data)", () => {
     expect(pair?.textSecondary).toContain("Telah menceritakan kepada kami");
     expect(pair?.morphology).toEqual([]);
 
-    // Every costed call recorded: the report's cost equals the sum of calls.
+    // Every costed call recorded — including the summarizer's (review A6:
+    // the parent-summary LLM call is part of the report's cost, never
+    // dropped) — so the report's cost equals the sum of calls.
     expect(result.report.llmCalls.length).toBeGreaterThan(0);
+    const summarizerCalls = result.report.llmCalls.filter((c) => c.modelId === "test-summarizer");
+    expect(summarizerCalls).toHaveLength(1); // one parent, one summary call
     expect(result.report.costMicroUsd).toBe(
       result.report.llmCalls.reduce((s, c) => s + c.costMicroUsd, 0),
     );
+    expect(result.report.costMicroUsd).toBeGreaterThanOrEqual(5);
   });
 
   it("attaches the consolidated grade as filterable metadata (dhaif-wins on real disagreement)", async () => {
@@ -173,7 +179,7 @@ describe("hadith ingestion (fixture = real source data)", () => {
     await ingestFixture(store);
     expect(store.allParents()).toHaveLength(1);
     expect(store.allChildren()).toHaveLength(7);
-    expect(store.allPairs()).toHaveLength(5);
+    expect(store.allPairs()).toHaveLength(6);
   });
 
   // -- The ADR-0013 cross-lingual smoke retrieval, hadith corpus ------------

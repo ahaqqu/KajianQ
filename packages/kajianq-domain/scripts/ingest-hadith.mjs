@@ -31,9 +31,9 @@ import { neon } from "@neondatabase/serverless";
 import * as app from "@app/infra";
 import * as ingest from "@app/rag-ingest";
 import * as domain from "@app/kajianq-domain";
-import { acquireFiles, archiveRawSources, createArchiveObjectStore } from "./archive-store.mjs";
+import { acquireFiles, archiveRawSources, createArchiveObjectStore, resolveFromCwd } from "./archive-store.mjs";
 
-const resolve = (p) => new URL(p, `file://${process.cwd()}/`).pathname;
+const resolve = resolveFromCwd;
 
 // ---------------------------------------------------------------------------
 // Config: read once at the composition root. No vendor names live here —
@@ -48,7 +48,13 @@ const args = process.argv.slice(2);
 const CHECK_ONLY = args.includes("--check");
 const LIMIT = (() => {
   const idx = args.indexOf("--limit");
-  return idx >= 0 ? Number(args[idx + 1]) : null;
+  if (idx < 0) return null;
+  const n = Number(args[idx + 1]);
+  // Strict validation (review A7): `0` must not mean "full corpus" via
+  // falsiness, and a non-integer must not yield empty collections with a
+  // success report via `slice(0, NaN)`.
+  if (!Number.isInteger(n) || n < 1) return NaN;
+  return n;
 })();
 
 const logger = app.createLogger({ script: "ingest:hadith" });
@@ -56,6 +62,10 @@ const logger = app.createLogger({ script: "ingest:hadith" });
 function fail(msg) {
   logger.error(msg);
   process.exit(1);
+}
+
+if (Number.isNaN(LIMIT)) {
+  fail("--limit must be an integer >= 1");
 }
 
 // ---------------------------------------------------------------------------
@@ -105,6 +115,12 @@ const corpus = domain.buildHadithCorpus({
 const gradeStats = domain.corpusGradeStats(corpus);
 const unmatched = [...corpus.alignment.values()].reduce((n, s) => n + s.unmatched.length, 0);
 const emptySecondary = [...corpus.alignment.values()].reduce((n, s) => n + s.emptySecondary, 0);
+const emptyPrimary = [...corpus.alignment.values()].reduce((n, s) => n + s.emptyPrimary, 0);
+// Quarantined = everything rejected rather than ingested (contracts field:
+// "chunks rejected by validation — quarantined, never force-merged"):
+// unmatched pairs and empty-Arabic rows. Empty-secondary rows are ingested
+// with text_id: null, so they are surfaced separately, not here (review C1).
+const quarantined = unmatched + emptyPrimary;
 logger.info("integrity OK", {
   collections: collections.length,
   hadith: corpus.records.length,
@@ -112,6 +128,7 @@ logger.info("integrity OK", {
   gradeDhaifWins: gradeStats.dhaifWins,
   gradeUngraded: gradeStats.ungraded,
   emptySecondary,
+  emptyPrimary,
   unmatched,
 });
 
@@ -181,6 +198,7 @@ const result = await ingest.runIngestion(
 // Persist the report through the RagStore batch-report seam.
 const report = {
   ...result.report,
+  quarantined,
   details: {
     ...result.report.details,
     archiveStored: archive.stored,
@@ -192,6 +210,7 @@ const report = {
     gradeDhaifWins: gradeStats.dhaifWins,
     gradeUngraded: gradeStats.ungraded,
     emptySecondary,
+    emptyPrimary,
     unmatched,
   },
 };

@@ -2,7 +2,6 @@ import type { SourceInput, SourceParser } from "@app/rag-ingest";
 import {
   alignEditions,
   assertHadithIntegrity,
-  gradeConsolidationStats,
   parseHadithEdition,
   type AlignmentStats,
 } from "./hadith-parse";
@@ -10,6 +9,8 @@ import {
   HADITH_COLLECTION_NAMES,
   hadithMetadata,
   hadithSourceKey,
+  isHadithCollection,
+  mapGrades,
   type HadithCollection,
   type HadithRecord,
 } from "./hadith-source";
@@ -34,6 +35,9 @@ export type HadithCorpus = {
 
 /**
  * Parse + integrity-check the combined editions (throws on any violation).
+ * Every edition key is validated against the collection registry up front
+ * (review B5), and the Indonesian map must mirror the Arabic one exactly —
+ * extra or missing editions are a composition error, not a silent subset.
  * `expected` lets subset runs (tests, `--limit`) gate the per-collection
  * counts they actually ingest; full runs pass the full expected counts from
  * the CLI. Unmatched pairs are surfaced in the stats, never force-merged.
@@ -42,15 +46,30 @@ export function buildHadithCorpus(
   input: { arabic: Record<string, unknown>; indonesian: Record<string, unknown> },
   expected?: Partial<Record<HadithCollection, number>>,
 ): HadithCorpus {
+  const arabicKeys = Object.keys(input.arabic);
+  if (arabicKeys.length === 0) {
+    throw new Error("hadith ingestion: no Arabic editions in input");
+  }
+  for (const key of [...arabicKeys, ...Object.keys(input.indonesian)]) {
+    if (!isHadithCollection(key)) {
+      throw new Error(`hadith ingestion: unknown hadith collection "${key}"`);
+    }
+  }
+  for (const key of arabicKeys) {
+    if (!(key in input.indonesian)) {
+      throw new Error(`hadith ingestion: ${key} has no Indonesian edition`);
+    }
+  }
+  for (const key of Object.keys(input.indonesian)) {
+    if (!(key in input.arabic)) {
+      throw new Error(`hadith ingestion: ${key} has an Indonesian edition but no Arabic edition`);
+    }
+  }
   const records: HadithRecord[] = [];
   const alignment = new Map<HadithCollection, AlignmentStats>();
-  for (const collection of Object.keys(input.arabic) as HadithCollection[]) {
+  for (const collection of arabicKeys as HadithCollection[]) {
     const arabic = parseHadithEdition(collection, "arabic", input.arabic[collection]);
-    const indonesianText = input.indonesian[collection];
-    if (indonesianText === undefined) {
-      throw new Error(`hadith ingestion: ${collection} has no Indonesian edition`);
-    }
-    const indonesian = parseHadithEdition(collection, "indonesian", indonesianText);
+    const indonesian = parseHadithEdition(collection, "indonesian", input.indonesian[collection]);
     const { records: aligned, stats } = alignEditions(arabic, indonesian);
     alignment.set(collection, stats);
     records.push(...aligned);
@@ -220,6 +239,35 @@ export function hadithSourceParser(
     }
     return parents;
   };
+}
+
+/**
+ * Grade-consolidation summary for the ingestion report: how many records are
+ * graded at all, how many the dhaif-wins policy demoted to `dhaif`, and how
+ * many carry no grades (grade = null, never fabricated). Lives here (the
+ * report layer) rather than the parser module, but consolidates through the
+ * same `mapGrades` the stored metadata gets (review B2: one policy, one
+ * implementation — stats can never disagree with the chunks).
+ */
+export function gradeConsolidationStats(records: readonly HadithRecord[]): {
+  graded: number;
+  dhaifWins: number;
+  ungraded: number;
+} {
+  let graded = 0;
+  let dhaifWins = 0;
+  let ungraded = 0;
+  for (const r of records) {
+    if (r.grades.length === 0) {
+      ungraded += 1;
+      continue;
+    }
+    graded += 1;
+    if (mapGrades(r.grades) === "dhaif") {
+      dhaifWins += 1;
+    }
+  }
+  return { graded, dhaifWins, ungraded };
 }
 
 /**

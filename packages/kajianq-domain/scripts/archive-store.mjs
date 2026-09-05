@@ -12,7 +12,7 @@
  */
 import { S3Client } from "@aws-sdk/client-s3";
 
-export { acquireFiles, acquireSources } from "./source-acquisition.mjs";
+export { acquireFiles, acquireSources, resolveFromCwd } from "./source-acquisition.mjs";
 
 /**
  * Build the archive ObjectStore from the R2 env credentials, or null when

@@ -1,4 +1,5 @@
 import type { Provider, PromptSpec } from "@app/rag-core";
+import type { CostRecord } from "@app/contracts";
 import type { RagStore } from "@app/infra";
 import { createHash } from "node:crypto";
 
@@ -16,20 +17,22 @@ export type SummarizerProvider = Provider;
  * The LLM-backed parent summarizer: summarizes the surah's ayahs (Arabic
  * primary + Indonesian secondary shown to the model) into the summary that
  * the parent's embedding is computed from (issue #6 AC: parent embeddings
- * from summaries, not full text). The call's CostRecord is returned inside
- * the Provider result and recorded by the pipeline's collector
- * (kajianq-traceability rule 2: every LLM call leaves model/tokens/cost).
+ * from summaries, not full text). Returns the call's CostRecord alongside
+ * the summary so the pipeline's collector records it (kajianq-traceability
+ * rule 2: every LLM call leaves model/tokens/cost; review A6).
  */
-export function surahSummarizer(
-  provider: SummarizerProvider,
-): (input: { sourceKey: string; title: string | null; childTexts: readonly string[] }) => Promise<string> {
+export function surahSummarizer(provider: SummarizerProvider): (input: {
+  sourceKey: string;
+  title: string | null;
+  childTexts: readonly string[];
+}) => Promise<{ summary: string; cost: CostRecord }> {
   return async (input) => {
     const result = await provider.generate(surahSummaryPrompt(input));
     const summary = result.text.trim();
     if (summary.length === 0) {
       throw new Error(`quran ingestion: empty summary for ${input.sourceKey}`);
     }
-    return summary;
+    return { summary, cost: result.cost };
   };
 }
 

@@ -11,7 +11,20 @@ const FETCH_BACKOFF_MS = [500, 1_000, 2_000, 4_000];
 const FETCH_CONCURRENCY = 8;
 const FETCH_TIMEOUT_MS = 30_000;
 
-const resolve = (p) => new URL(p, `file://${process.cwd()}/`).pathname;
+import { resolve as resolvePath } from "node:path";
+
+/**
+ * Variadic path join against the process cwd, for cache/report paths
+ * (review A5: the old single-arg URL-based helper silently dropped extra
+ * segments — `resolve(dir, file)` returned the bare dir, and both the
+ * cache reads and report writes crashed with EISDIR). Exported so the CLIs
+ * share one implementation without growing their import count.
+ */
+export function resolveFromCwd(...ps) {
+  return resolvePath(process.cwd(), ...ps);
+}
+
+const resolve = resolveFromCwd;
 
 async function fetchWithRetry(url, attempt, log) {
   const controller = new AbortController();

@@ -4,9 +4,9 @@ import { resolve } from "node:path";
 import {
   alignEditions,
   assertHadithIntegrity,
-  gradeConsolidationStats,
   parseHadithEdition,
 } from "./hadith-parse";
+import { gradeConsolidationStats } from "./hadith-ingest";
 import {
   HADITH_COLLECTIONS,
   formatHadithCitation,
@@ -60,8 +60,28 @@ describe("hadith grade consolidation (ADR-0025 dhaif-wins)", () => {
   it("maps the weak-grade vocabulary and never fabricates a grade", () => {
     expect(mapGrades([{ name: "X", grade: "Munkar" }])).toBe("dhaif");
     expect(mapGrades([{ name: "X", grade: "Very Daif" }])).toBe("dhaif");
+    expect(mapGrades([{ name: "X", grade: "Sanad Daif" }])).toBe("dhaif");
+    // Real weak classes that previously fell through (review A3).
+    expect(mapGrades([{ name: "X", grade: "Mawdu" }])).toBe("dhaif");
+    expect(mapGrades([{ name: "X", grade: "Batil" }])).toBe("dhaif");
+    expect(mapGrades([{ name: "X", grade: "Sahih Isnaad Mursal" }])).toBe("dhaif");
+    // Mawdu beats a grader's Hasan (review A3: ibnmajah:2736).
+    expect(
+      mapGrades([
+        { name: "X", grade: "Mawdu" },
+        { name: "Y", grade: "Hasan" },
+      ]),
+    ).toBe("dhaif");
     expect(mapGrades([{ name: "X", grade: "Sahih Muslim" }])).toBe("sahih");
     expect(mapGrades([{ name: "X", grade: "Isnaad Hasan" }])).toBe("hasan");
+    // Attribution-scope classes combine with positive grades and are NOT
+    // defects ("Mauquf Sahih" is graded sahih-as-mauquf in the source).
+    expect(mapGrades([{ name: "X", grade: "Mauquf Sahih" }])).toBe("sahih");
+    expect(mapGrades([{ name: "X", grade: "Maqtu Daif" }])).toBe("dhaif");
+    // Bare Maqtu/Mauquf carry no class at all — null, never fabricated.
+    expect(mapGrades([{ name: "X", grade: "Maqtu" }])).toBeNull();
+    // Marfoo is an elevated chain, not a defect (review A3) — no longer weak.
+    expect(mapGrades([{ name: "X", grade: "Marfoo" }])).toBeNull();
     expect(mapGrades([])).toBeNull();
     expect(mapGrades([{ name: "X", grade: "Mash-hoor" }])).toBeNull();
     // mutawatir is never self-asserted from this source's vocabulary.
@@ -103,6 +123,31 @@ describe("hadith citation format (CONTEXT.md: HR. Bukhari no. 573 (Sahih))", () 
     expect(formatHadithCitation(parsed)).toBe(label);
     expect(parseHadithCitation("QS. 2:255")).toBeNull();
     expect(parseHadithCitation("HR. Unknown no. 1")).toBeNull();
+  });
+
+  it("round-trips every registered collection, including multi-word names (review A4)", () => {
+    for (const collection of HADITH_COLLECTIONS) {
+      const label = formatHadithCitation({ collection, hadithNo: "12" });
+      const parsed = parseHadithCitation(label);
+      expect(parsed).not.toBeNull();
+      expect(parsed?.collection).toBe(collection);
+      expect(parsed?.hadithNo).toBe("12");
+      // Round-trip with the grade suffix too.
+      const graded = formatHadithCitation({ collection, hadithNo: "12", grade: "sahih" });
+      expect(parseHadithCitation(graded)?.grade).toBe("sahih");
+    }
+    // The two multi-word display names explicitly (previously returned null).
+    expect(parseHadithCitation("HR. Abu Dawud no. 4 (Sahih)")).toEqual({
+      sourceType: "hadith",
+      collection: "abudawud",
+      hadithNo: "4",
+      grade: "sahih",
+    });
+    expect(parseHadithCitation("HR. Ibn Majah no. 12")).toEqual({
+      sourceType: "hadith",
+      collection: "ibnmajah",
+      hadithNo: "12",
+    });
   });
 
   it("writes filterable child metadata", () => {
@@ -160,18 +205,88 @@ describe("hadith edition parsing + alignment (real fixture slices)", () => {
     const arabic = parseHadithEdition("abudawud", "arabic", JSON.parse(arabicText));
     const indonesian = parseHadithEdition("abudawud", "indonesian", JSON.parse(indonesianText));
     const { records, stats } = alignEditions(arabic, indonesian);
-    // The slice carries two empty-Indonesian entries (3 zeroed for the test,
-    // 5 genuinely empty in the source — a real Shadh narration quirk) —
-    // tolerated as textId: null, surfaced in stats, never fabricated.
+    // The slice's hadith 5 is GENUINELY empty in the source (a real Shadh
+    // narration quirk) — tolerated as textId: null, surfaced in stats,
+    // never fabricated.
     expect(records).toHaveLength(7);
-    expect(stats.aligned).toBe(5);
-    expect(stats.emptySecondary).toBe(2);
+    expect(stats.aligned).toBe(6);
+    expect(stats.emptySecondary).toBe(1);
     expect(stats.unmatched).toHaveLength(0);
-    const no3 = records.find((r) => r.hadithNo === "3");
-    expect(no3?.textId).toBeNull();
-    expect(no3?.textAr.trim().length).toBeGreaterThan(0);
     const no5 = records.find((r) => r.hadithNo === "5");
     expect(no5?.textId).toBeNull();
+    expect(no5?.textAr.trim().length).toBeGreaterThan(0);
+  });
+
+  it("accepts the source's numeric hadithnumber/arabicnumber (review A1)", async () => {
+    // The fixture is byte-true: the source ships JSON numbers, not strings.
+    const raw = JSON.parse(await readFile(resolve(FIXTURES, "ara-abudawud-slice.json"), "utf8")) as {
+      hadiths: { hadithnumber: number | string }[];
+    };
+    expect(typeof raw.hadiths[0]!.hadithnumber).toBe("number");
+    const edition = parseHadithEdition("abudawud", "arabic", raw);
+    expect(edition.hadiths[0]!.hadithnumber).toBe("1");
+    expect(edition.hadiths[0]!.arabicnumber).toBe("1");
+    // muslim's book-0 rows lack arabicnumber entirely — falls back to the
+    // edition's own hadithnumber (the alignment's fallback join key).
+    const edition2 = parseHadithEdition("muslim", "arabic", {
+      metadata: {},
+      hadiths: [{ hadithnumber: 3, text: "matn", grades: [], reference: { book: 0, hadith: 3 } }],
+    });
+    expect(edition2.hadiths[0]).toMatchObject({ hadithnumber: "3", arabicnumber: "3" });
+  });
+
+  it("throws on a malformed grade entry instead of dropping it (review B4)", () => {
+    expect(() =>
+      parseHadithEdition("abudawud", "arabic", {
+        metadata: {},
+        hadiths: [
+          {
+            hadithnumber: 1,
+            arabicnumber: 1,
+            text: "matn",
+            grades: [{ name: "Al-Albani" }],
+            reference: { book: 1, hadith: 1 },
+          },
+        ],
+      }),
+    ).toThrow(/malformed grade entry/);
+    expect(() =>
+      parseHadithEdition("abudawud", "arabic", {
+        metadata: {},
+        hadiths: [
+          {
+            hadithnumber: 1,
+            arabicnumber: 1,
+            text: "matn",
+            grades: [{ name: "X", grade: 5 }],
+            reference: { book: 1, hadith: 1 },
+          },
+        ],
+      }),
+    ).toThrow(/malformed grade entry/);
+  });
+
+  it("quarantines empty-Arabic rows instead of aborting (review A2)", async () => {
+    const { arabicText } = await loadSlices();
+    const arabic = parseHadithEdition("abudawud", "arabic", JSON.parse(arabicText));
+    const indonesian = parseHadithEdition("abudawud", "indonesian", {
+      metadata: { sections: { "1": "Purification" }, section_details: {} },
+      hadiths: arabic.hadiths.map((h) => ({
+        ...h,
+        text: `terjemahan ${h.hadithnumber}`,
+        grades: [],
+      })),
+    });
+    // Zero out the Arabic text of hadith 5 (as the source genuinely ships
+    // for many rows: 86 in ara-nasai, 29 in ara-malik).
+    arabic.hadiths = arabic.hadiths.map((h) =>
+      h.hadithnumber === "5" ? { ...h, text: "" } : h,
+    );
+    const { records, stats } = alignEditions(arabic, indonesian);
+    expect(records.map((r) => r.hadithNo)).not.toContain("5");
+    expect(stats.emptyPrimary).toBe(1);
+    // The Indonesian counterpart was consumed, not reported unmatched.
+    expect(stats.unmatched).toHaveLength(0);
   });
 
   it("quarantines unmatched entries instead of force-merging", async () => {
@@ -232,6 +347,25 @@ describe("hadith corpus build", () => {
     expect(() =>
       buildHadithCorpus({ arabic: { abudawud: JSON.parse(arabicText) }, indonesian: {} }),
     ).toThrow(/no Indonesian edition/);
+  });
+
+  it("validates edition-map keys up front (review B5)", async () => {
+    const { arabicText, indonesianText } = await loadSlices();
+    // An unregistered collection code is rejected before parsing.
+    expect(() =>
+      buildHadithCorpus({
+        arabic: { "not-a-collection": JSON.parse(arabicText) },
+        indonesian: { "not-a-collection": JSON.parse(indonesianText) },
+      }),
+    ).toThrow(/unknown hadith collection/);
+    // An extra Indonesian key with no Arabic counterpart is a composition
+    // error, not a silently skipped edition.
+    expect(() =>
+      buildHadithCorpus({
+        arabic: { abudawud: JSON.parse(arabicText) },
+        indonesian: { abudawud: JSON.parse(indonesianText), bukhari: {} },
+      }),
+    ).toThrow(/no Arabic edition/);
   });
 
   it("registers exactly the seven v1 collections", () => {

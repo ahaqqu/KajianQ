@@ -57,10 +57,11 @@ function assertWellFormed(parents: readonly ParsedParent[]): void {
 async function summarizeParents(
   parents: readonly ParsedParent[],
   summarizer: ParentSummarizer,
+  costs: CostCollector,
 ): Promise<Map<string, string>> {
   const summaries = new Map<string, string>();
   for (const parent of parents) {
-    const summary = await summarizer({
+    const { summary, cost } = await summarizer({
       sourceKey: parent.sourceKey,
       title: parent.title,
       // Summary input is the child texts; the summary becomes the embedded
@@ -70,6 +71,9 @@ async function summarizeParents(
     if (summary.trim().length === 0) {
       throw new Error(`ingestion: summarizer returned empty summary for "${parent.sourceKey}"`);
     }
+    // The summarizer's LLM call is costed like every other call — the
+    // report's cost equals the sum of recorded calls (review A6).
+    costs.record(cost);
     summaries.set(parent.sourceKey, summary);
   }
   return summaries;
@@ -143,7 +147,9 @@ export async function runIngestion(
   assertWellFormed(parents);
 
   const summaries =
-    deps.summarizer === null ? null : await summarizeParents(parents, deps.summarizer);
+    deps.summarizer === null
+      ? null
+      : await summarizeParents(parents, deps.summarizer, costs);
 
   const parentIds: string[] = [];
   let childrenWritten = 0;

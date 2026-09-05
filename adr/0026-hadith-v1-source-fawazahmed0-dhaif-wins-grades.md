@@ -1,6 +1,6 @@
 # ADR-0026 — Hadith v1 source: fawazahmed0/hadith-api with conservative dhaif-wins grade consolidation
 
-- **Status:** Accepted (2026-09-01)
+- **Status:** Accepted (2026-09-01); Amended (2026-09-05 — weak-class vocabulary enumerated, review A3/C4)
 - **Context:** Ticket #7 (hadith ingestion) needed a v1 data source; the ticket's listed candidates each had a blocker (Sunnah.com API key pending in #2, AhmedBaset/hadith-json unlicensed and grade-less, Sanadset v2-only)
 - **Deciders:** repo owner (source decision + conservative grade policy confirmed 2026-09-01)
 - **Supersedes:** nothing; amends the SPECS §4.1 source table (hadith-json row replaced)
@@ -50,20 +50,46 @@ and per-chain grades remain v2 (ADR-0012, Sanadset).
    acquisition/archive seams; the Sunnah.com key request (issue #2) stays
    open for future enrichment but no longer blocks #7.
 2. **Conservative dhaif-wins grade consolidation** into the CONTEXT.md
-   4-value vocabulary: any grader asserting a weak class
-   (Daif/Munkar/Shadh/…) makes the hadith `dhaif`; otherwise the weakest
-   positive class wins (Hasan-class → `hasan` beats Sahih-class → `sahih`,
-   because "Hasan Sahih" and "Sahih Lighairihi" are weaker than plain
-   Sahih). Empty grades → `null`, never fabricated. `mutawatir` is never
-   self-asserted from this source. The full per-grader array is preserved in
-   child metadata for trace transparency. Rationale: dhaif material is
-   always flagged at retrieval, so under-grading is the safe failure mode;
-   over-grading would silently upgrade weak evidence in a trust-first
-   product.
+   4-value vocabulary: any grader asserting a weak class makes the hadith
+   `dhaif`; otherwise the weakest positive class wins (Hasan-class → `hasan`
+   beats Sahih-class → `sahih`, because "Hasan Sahih" and "Sahih
+   Lighairihi" are weaker than plain Sahih). Empty grades → `null`, never
+   fabricated. `mutawatir` is never self-asserted from this source. The
+   full per-grader array is preserved in child metadata for trace
+   transparency. Rationale: dhaif material is always flagged at retrieval,
+   so under-grading is the safe failure mode; over-grading would silently
+   upgrade weak evidence in a trust-first product.
+
+   **Amendment (2026-09-05, review A3/C4) — the weak-class list is
+   explicit**, verified against the live editions' grade vocabulary:
+
+   - **Weak (→ `dhaif`):** `Daif` (all compounds — "Very Daif", "Daif
+     Isnaad", "Sanad Daif", …), `Munkar`, `Shadh`, `Mansukh`, `Mawdu`
+     (fabricated), `Batil`, `Mursal` (missing-Companion chain — an
+     "Isnaad Sahih Mursal" grading is self-contradictory, so the defect
+     wins).
+   - **Not weak:** `Marfoo` (an elevated chain, not a defect — it never
+     demotes). `Mauquf`/`Muquf`/`Maqtu` are attribution-scope classes, not
+     defects: they combine freely with positive grades in the source
+     ("Mauquf Sahih" is the most common form), so they are excluded from
+     the weak list; a *bare* `Maqtu`/`Mauquf` (no positive class attached)
+     consolidates to `null` (ungraded, surfaced via the report), never
+     upgraded to sahih/hasan and never forced to `dhaif`. When paired with
+     a genuine defect ("Maqtu Daif") the defect token fires dhaif-wins
+     anyway.
+
 3. **Unmatched ara/ind pairs are quarantined in the report, never
    force-merged** (AGENTS.md data-integrity rule); empty Indonesian text
    yields `text_id: null` (surfaced in the report, common for Shadh
    narrations in the source).
+
+   **Amendment (2026-09-05, review A2):** rows with genuinely empty Arabic
+   text are quarantined, not ingested — the source ships them at scale
+   (86 in ara-nasai, 29 in ara-malik, muslim's book-0 rows), so gating on
+   them aborts the whole run. They are skipped during alignment (their
+   Indonesian counterpart is consumed, not reported unmatched) and counted
+   in the report's `emptyPrimary` stat, which feeds the report's
+   `quarantined` count alongside unmatched pairs.
 4. **CAMeL Tools lemmatization (ADR-0014) is deferred** to a pre-#24
    enrichment step; hadith aligned pairs carry `morphology: []` in v1 (the
    field is optional per contracts). Ticket #7 does not add a Python

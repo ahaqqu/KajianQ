@@ -1,6 +1,7 @@
 import type { Provider, PromptSpec } from "@app/rag-core";
+import type { CostRecord } from "@app/contracts";
 import type { RagStore } from "@app/infra";
-import { HADITH_COLLECTION_NAMES, type HadithCollection } from "./hadith-source";
+import { isHadithCollection } from "./hadith-source";
 
 /**
  * Section summaries and the aligned-pair sink — the LLM-facing half of the
@@ -17,20 +18,23 @@ export type HadithSummarizerProvider = Provider;
  * The LLM-backed parent summarizer: summarizes a (collection, book/section)
  * parent's hadiths (Arabic primary + Indonesian secondary shown to the
  * model) into the summary the parent's embedding is computed from (issue #7
- * AC: parent embeddings from summaries, not full text). The call's
- * CostRecord is returned inside the Provider result and recorded by the
- * pipeline's collector (kajianq-traceability rule 2).
+ * AC: parent embeddings from summaries, not full text). Returns the call's
+ * CostRecord alongside the summary so the pipeline's collector records it
+ * (kajianq-traceability rule 2; review A6 — the cost is part of the report's
+ * sum of calls, never dropped).
  */
-export function hadithSectionSummarizer(
-  provider: HadithSummarizerProvider,
-): (input: { sourceKey: string; title: string | null; childTexts: readonly string[] }) => Promise<string> {
+export function hadithSectionSummarizer(provider: HadithSummarizerProvider): (input: {
+  sourceKey: string;
+  title: string | null;
+  childTexts: readonly string[];
+}) => Promise<{ summary: string; cost: CostRecord }> {
   return async (input) => {
     const result = await provider.generate(hadithSectionSummaryPrompt(input));
     const summary = result.text.trim();
     if (summary.length === 0) {
       throw new Error(`hadith ingestion: empty summary for ${input.sourceKey}`);
     }
-    return summary;
+    return { summary, cost: result.cost };
   };
 }
 
@@ -91,10 +95,9 @@ export function hadithPairSink(
 
 /** Default pair-key resolver over a hadith citation (stable domain address). */
 export function hadithPairKeyFor(input: { citation: Record<string, unknown> }): string {
-  const c = input.citation as { collection?: HadithCollection; hadithNo?: string };
-  const collection =
-    c.collection !== undefined && HADITH_COLLECTION_NAMES[c.collection] !== undefined
-      ? c.collection
-      : "unknown";
+  const c = input.citation as { collection?: unknown; hadithNo?: unknown };
+  // Validate against the collection registry itself, not the display-name
+  // map (review B3): an unregistered code degrades explicitly to "unknown".
+  const collection = isHadithCollection(c.collection) ? c.collection : "unknown";
   return `hadith-pair:${collection}:${c.hadithNo ?? "?"}`;
 }

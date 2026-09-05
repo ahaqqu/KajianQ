@@ -1,5 +1,3 @@
-import { GRADES, type Grade } from "./index";
-
 /**
  * KajianQ hadith ingestion — domain pack source model (#7).
  *
@@ -20,6 +18,15 @@ import { GRADES, type Grade } from "./index";
 export type HadithSourceType = "hadith";
 
 /**
+ * Hadith authenticity classification (CONTEXT.md "Grade"). Owned here — the
+ * grades the hadith consolidation produces — so `hadith-source.ts` never
+ * imports from its own barrel (circular runtime imports, review B1);
+ * `index.ts` re-exports it.
+ */
+export const GRADES = ["mutawatir", "sahih", "hasan", "dhaif"] as const;
+export type Grade = (typeof GRADES)[number];
+
+/**
  * The v1 collections (ADR-0025): the source provides Arabic + Indonesian
  * editions with per-grader grades for these seven. Musnad Ahmad and Sunan
  * ad-Darimi are absent from the source and are documented, not force-merged
@@ -36,6 +43,11 @@ export const HADITH_COLLECTIONS = [
 ] as const;
 
 export type HadithCollection = (typeof HADITH_COLLECTIONS)[number];
+
+/** Narrow an unknown value to a registered v1 collection code. */
+export function isHadithCollection(value: unknown): value is HadithCollection {
+  return typeof value === "string" && (HADITH_COLLECTIONS as readonly string[]).includes(value);
+}
 
 /** Display names for the collection registry (citation + parent titles). */
 export const HADITH_COLLECTION_NAMES: Record<HadithCollection, string> = {
@@ -80,9 +92,25 @@ export type HadithCitation = {
 };
 
 /**
+ * The weak-class vocabulary of the source's grade strings (verified against
+ * the live editions, ADR-0026 amendment 2026-09-05): any occurrence of one
+ * of these tokens makes the hadith `dhaif`. `Mauquf`/`Muquf`/`Maqtu` are
+ * deliberately absent — they are attribution-scope classes that combine with
+ * positive grades ("Mauquf Sahih"), not defects; `Marfoo` is an elevated
+ * chain, not a defect (review A3). Single source of truth — both `mapGrades`
+ * and the report stats go through it (review B2).
+ */
+const WEAK_GRADE_RE = /daif|dhaif|munkar|shadh|mansukh|mawdu|batil|mursal/i;
+
+/** Whether one source grade string asserts a weak class (dhaif-wins). */
+export function isWeakGrade(grade: string): boolean {
+  return WEAK_GRADE_RE.test(grade);
+}
+
+/**
  * Consolidate the source's per-grader grades into the single filterable
  * `Grade` (CONTEXT.md vocabulary), conservative dhaif-wins (ADR-0025): any
- * grader asserting a weak class (Daif/Munkar/Shadh/…) makes the hadith
+ * grader asserting a weak class (Daif/Munkar/Shadh/Mawdu/…) makes the hadith
  * `dhaif` — under-grading is the safe failure mode because dhaif material is
  * always flagged at retrieval. Otherwise the strongest agreed positive
  * rating wins (hasan beats sahih: "Hasan Sahih" and "Sahih Lighairihi" are
@@ -94,7 +122,7 @@ export function mapGrades(
 ): Grade | null {
   if (grades.length === 0) return null;
   const joined = grades.map((g) => g.grade).join(" | ");
-  if (/daif|dhaif|munkar|shadh|mansukh|marfoo/i.test(joined)) return "dhaif";
+  if (isWeakGrade(joined)) return "dhaif";
   if (/hasan/i.test(joined)) return "hasan";
   if (/sahih|moutabar|mu'alla/i.test(joined)) return "sahih";
   return null;
@@ -110,9 +138,11 @@ export function formatHadithCitation(
   return c.grade ? `${base} (${capitalize(c.grade)})` : base;
 }
 
-/** Parse an `HR. Collection no. N (Grade)?` label back into its citation. */
+/** Parse an `HR. Collection no. N (Grade)?` label back into its citation.
+ The collection name matches the registry's display names, including
+ multi-word ones ("Abu Dawud", "Ibn Majah" — review A4). */
 export function parseHadithCitation(label: string): HadithCitation | null {
-  const match = /^HR\.\s*(\w+) no\. (\S+?)(?: \((\w+)\))?$/.exec(label.trim());
+  const match = /^HR\.\s*(.+?) no\. (\S+?)(?: \((\w+)\))?$/.exec(label.trim());
   if (!match) return null;
   const collection = (Object.keys(HADITH_COLLECTION_NAMES) as HadithCollection[]).find(
     (c) => HADITH_COLLECTION_NAMES[c] === match[1],
