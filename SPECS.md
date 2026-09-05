@@ -115,6 +115,8 @@ scripts/      # Ingestion & eval CLI (Bun, run off-Workers)
 
 **Stage communication:** in-process typed interfaces between packages (modular monolith) — no HTTP between pipeline stages. Per notes.md: simple and maintainable wins; extract a service only when a second consumer actually appears.
 
+**Composition & effect runtime (ADR-0027):** engine packages (`rag-core`, `rag-ingest`, `eval`) and `apps/api` adopt Effect (v3, pinned) as the typed effect runtime — seam signatures return `Effect<A, E, R>`, `RunContext` maps to tagged services, `runPipeline` owns a `Scope`, provider fallback uses `Effect.retry` schedules, and SSE deltas are `Stream` with interruption propagation. The HTTP edge stays Hono + hono-openapi (`Effect.runPromise` bridge), valibot remains the only schema vocabulary (Effect Schema is not adopted), and the frontend stays plain TypeScript (React Query + valibot) — Effect is never exposed over the API contract. Gate: the Workers-runtime spike (bundle size, cold start, tsgo typecheck) must pass before the migration PRs land.
+
 **Fork guardrail amendment (ADR-0009):** the template's "never add paid services to the critical path" is amended — paid LLM/embedding APIs *are* the critical path of a RAG product. Price must be weighed in every model decision; cost is traced per query; free tiers are used where quality allows.
 
 ### 3.2 Runtime topology (ADR-0008)
@@ -307,6 +309,7 @@ Mitigations: top-k discipline (8–12 chunks, not 20), prompt caching for the st
 | `adr/0024` | Fork template-sync ownership: `template-sync.json` lists exactly the byte-identical shared baseline; fork prose (AGENTS.md, docs/ARCHITECTURE.md) and adapted workflows stay fork-owned by omission; `.zcode/` follows template PR #130 as a merge path; adapted files reviewed per template release |
 | `adr/0025` | Role-separated GitHub identities: a PreToolUse deny hook redirects role subagents' bare `gh` calls to a `gh-as <role>` wrapper (per-invocation `GH_TOKEN`, token files outside the repo, opt-in `enabled` flag, fail-open); `agent_type` joins the hook-envelope contract |
 | `adr/0026` | Hadith v1 source: fawazahmed0/hadith-api (Unlicense, Arabic+Indonesian+grades, 7 collections) replaces hadith-json (unlicensed, ungraded); conservative dhaif-wins grade consolidation, `mutawatir` never self-asserted; Ahmad/Darimi gap accepted; sanad stays in `text_raw` (v2 per ADR-0012); CAMeL Tools morphology deferred to pre-#24. Amended 2026-09-05: weak-class vocabulary enumerated (Mawdu/Batil/Mursal weak, Marfoo not, Mauquf/Maqtu attribution-scope); empty-Arabic rows quarantined (`emptyPrimary`), not run-aborting |
+| `adr/0027` | Effect (v3) adopted in engine packages + `apps/api` only — typed error channels, `Schedule` retry, `Scope` lifecycle, `Stream` interruption; amends ADR-0021's revisit trigger; Workers spike as go/no-go gate; valibot + Hono edge + plain-TS frontend unchanged; Effect Schema/`@effect/rpc` not adopted |
 
 Domain vocabulary: `CONTEXT.md`. Workflow after this spec: `to-spec` → `to-tickets` per the template's agentic pipeline.
 
