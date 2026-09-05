@@ -40,8 +40,8 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       # Retry logic lives in the reusable composite action (issue #49):
-      # Cloudflare edge propagation can lag a few seconds after wrangler
-      # deploy returns, so wait and retry rather than failing transiently.
+      # Cloudflare edge propagation can lag a few seconds after the deploy
+      # returns, so wait and retry rather than failing transiently.
       - name: Smoke health
         uses: ./.github/actions/smoke-health
         with:

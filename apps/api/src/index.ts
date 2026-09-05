@@ -3,7 +3,8 @@ import { RateLimiterDo } from "@app/rate/durable";
 import { createApi } from "./app";
 import type { WorkerBindings } from "./env";
 
-// Wrangler registers Durable Object classes re-exported from the entrypoint.
+// The Durable Object class must be re-exported from the entrypoint; Alchemy
+// derives the namespace registration from the script's exports (ADR-0028).
 export { RateLimiterDo };
 
 const api = createApi();

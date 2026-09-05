@@ -71,7 +71,7 @@ For each area the plan touches, verify compliance before writing code.
 ### Security
 
 - [ ] Valibot validates every external input boundary.
-- [ ] Secrets injected via `wrangler secret` — never committed.
+- [ ] Secrets bound at deploy via Alchemy `Config.redacted` (`secret_text` in `alchemy.run.ts`, ADR-0028) — never committed.
 - [ ] `secure-headers` middleware applied; CORS locked to known origins.
 
 ### Testing
