@@ -1,12 +1,13 @@
-import type {
-  EmbedSpec,
-  EmbeddingResult,
-  GenerationResult,
-  PromptSpec,
-  Provider,
-  StreamHandle,
+import { Effect } from "effect";
+import {
+  ProviderError,
+  type EmbedSpec,
+  type EmbeddingResult,
+  type GenerationResult,
+  type PromptSpec,
+  type Provider,
+  type StreamHandle,
 } from "@app/rag-core";
-import { ProviderError } from "@app/rag-core";
 import type { ProviderConfig } from "./provider-config";
 import { resolveChain } from "./provider-config";
 import { createChatCompletionsProvider, isRetryable, type FetchLike } from "./chat-completions-adapter";
@@ -40,10 +41,10 @@ function buildCandidate(
     // The missing-key filter in resolveRole is the single source of truth;
     // this guard keeps buildCandidate safe for any future direct caller —
     // an empty key would send a bare "Bearer " header to the vendor.
-    throw new ProviderError(
-      "bad_request",
-      `candidate ${candidate.vendor}:${candidate.modelId} has no API key (${candidate.vendorConfig.apiKeyEnv})`,
-    );
+    throw new ProviderError({
+      kind: "bad_request",
+      message: `candidate ${candidate.vendor}:${candidate.modelId} has no API key (${candidate.vendorConfig.apiKeyEnv})`,
+    });
   }
   return createChatCompletionsProvider({
     vendor: candidate.vendorConfig,
@@ -83,58 +84,83 @@ class FallbackProvider implements Provider {
    * candidates whose vendor disallows it (free tiers — ADR-0009: never
    * route personal data through free tiers).
    */
-  private eligibleFor(spec: { personalData?: boolean }): readonly WiredCandidate[] {
-    if (!spec.personalData) return this.candidates;
+  private eligibleEffectFor(
+    spec: { personalData?: boolean },
+  ): Effect.Effect<readonly WiredCandidate[], ProviderError> {
+    if (!spec.personalData) return Effect.succeed(this.candidates);
     const eligible = this.candidates.filter((c) => c.personalDataAllowed);
     if (eligible.length === 0 && this.candidates.length > 0) {
-      throw new ProviderError(
-        "bad_request",
-        `role "${this.role}": personal-data call but no candidate allows personal data ` +
-          `(candidates: ${this.candidates.map((c) => c.provider.modelId).join(", ")})`,
+      return Effect.fail(
+        new ProviderError({
+          kind: "bad_request",
+          message: `role "${this.role}": personal-data call but no candidate allows personal data ` +
+            `(candidates: ${this.candidates.map((c) => c.provider.modelId).join(", ")})`,
+        }),
       );
     }
-    return eligible;
+    return Effect.succeed(eligible);
   }
 
-  private async withFallback<T>(
-    eligible: readonly WiredCandidate[],
-    op: (p: Provider) => Promise<T>,
-  ): Promise<T> {
-    if (eligible.length === 0) {
-      throw new ProviderError(
-        "bad_request",
-        `role "${this.role}": no candidate has an API key (missing: ${this.missingKeys.join(", ")})`,
-      );
-    }
-    let lastError: ProviderError | undefined;
-    for (const candidate of eligible) {
-      try {
-        return await op(candidate.provider);
-      } catch (err) {
-        if (err instanceof ProviderError && isRetryable(err.kind)) {
-          lastError = err;
-          continue;
-        }
-        throw err;
+  /**
+   * Walk the chain in order: a retryable failure (transport, 429, 5xx) moves
+   * to the next candidate; anything else fails immediately. An exhausted
+   * chain fails with a typed `ProviderError` listing the candidates attempted.
+   * (Per-kind backoff schedules arrive with the infra phase of ADR-0027.)
+   */
+  private withFallback<A>(
+    op: (p: Provider) => Effect.Effect<A, ProviderError>,
+  ): (eligible: readonly WiredCandidate[]) => Effect.Effect<A, ProviderError> {
+    return (eligible) => {
+      if (eligible.length === 0) {
+        return Effect.fail(
+          new ProviderError({
+            kind: "bad_request",
+            message: `role "${this.role}": no candidate has an API key (missing: ${this.missingKeys.join(", ")})`,
+          }),
+        );
       }
-    }
-    throw new ProviderError(
-      "exhausted",
-      `role "${this.role}": all candidates failed (last: ${lastError?.message ?? "unknown"})`,
-      eligible.map((c) => c.provider.modelId),
-    );
+      const first = eligible[0];
+      if (first === undefined) {
+        return Effect.fail(
+          new ProviderError({ kind: "bad_request", message: `role "${this.role}": no candidates wired` }),
+        );
+      }
+      const rest = eligible.slice(1);
+      const chain = rest.reduce<Effect.Effect<A, ProviderError>>(
+        (acc, candidate) =>
+          acc.pipe(
+            Effect.catchAll((err) =>
+              isRetryable(err.kind) ? op(candidate.provider) : Effect.fail(err),
+            ),
+          ),
+        op(first.provider),
+      );
+      return chain.pipe(
+        Effect.catchAll((lastError) =>
+          isRetryable(lastError.kind)
+            ? Effect.fail(
+                new ProviderError({
+                  kind: "exhausted",
+                  message: `role "${this.role}": all candidates failed (last: ${lastError.message})`,
+                  candidates: eligible.map((c) => c.provider.modelId),
+                }),
+              )
+            : Effect.fail(lastError),
+        ),
+      );
+    };
   }
 
-  async generate(spec: PromptSpec): Promise<GenerationResult> {
-    return this.withFallback(this.eligibleFor(spec), (p) => p.generate(spec));
+  generate(spec: PromptSpec): Effect.Effect<GenerationResult, ProviderError> {
+    return Effect.flatMap(this.eligibleEffectFor(spec), this.withFallback((p) => p.generate(spec)));
   }
 
-  async stream(spec: PromptSpec): Promise<StreamHandle> {
-    return this.withFallback(this.eligibleFor(spec), (p) => p.stream(spec));
+  stream(spec: PromptSpec): Effect.Effect<StreamHandle, ProviderError> {
+    return Effect.flatMap(this.eligibleEffectFor(spec), this.withFallback((p) => p.stream(spec)));
   }
 
-  async embed(spec: EmbedSpec): Promise<EmbeddingResult> {
-    return this.withFallback(this.eligibleFor(spec), (p) => p.embed(spec));
+  embed(spec: EmbedSpec): Effect.Effect<EmbeddingResult, ProviderError> {
+    return Effect.flatMap(this.eligibleEffectFor(spec), this.withFallback((p) => p.embed(spec)));
   }
 }
 

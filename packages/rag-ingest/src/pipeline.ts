@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import type { DocChildInsert, DocParentInsert } from "@app/infra";
 import { CostCollector } from "./types";
 import type {
@@ -92,7 +93,7 @@ async function embedBatched(
   const vectors: (readonly number[])[] = [];
   for (let i = 0; i < texts.length; i += batchSize) {
     const batch = texts.slice(i, i + batchSize);
-    const result = await deps.embedder.embed({ texts: batch });
+    const result = await Effect.runPromise(deps.embedder.embed({ texts: batch }));
     if (result.vectors.length !== batch.length) {
       throw new Error(
         `ingestion: embedder returned ${result.vectors.length} vectors for ${batch.length} texts`,

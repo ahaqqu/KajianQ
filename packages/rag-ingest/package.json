@@ -12,7 +12,8 @@
   "dependencies": {
     "@app/contracts": "workspace:*",
     "@app/infra": "workspace:*",
-    "@app/rag-core": "workspace:*"
+    "@app/rag-core": "workspace:*",
+    "effect": "3.22.1"
   },
   "devDependencies": {
     "typescript": "7.0.2"

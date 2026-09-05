@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import type { Provider } from "@app/rag-core";
 
 /**
@@ -87,10 +88,9 @@ export function createCrossLingualEmbedder(
   };
   return {
     modelId: "test-cross-lingual",
-    async embed(spec) {
-      const vectors = spec.texts.map(embed);
-      return {
-        vectors,
+    embed: (spec) =>
+      Effect.sync(() => ({
+        vectors: spec.texts.map(embed),
         cost: {
           modelId: "test-cross-lingual",
           tokensIn: spec.texts.length,
@@ -98,14 +98,9 @@ export function createCrossLingualEmbedder(
           latencyMs: 0,
           costMicroUsd: 0,
         },
-      };
-    },
-    async generate() {
-      throw new Error("cross-lingual test embedder does not generate");
-    },
-    async stream() {
-      throw new Error("cross-lingual test embedder does not stream");
-    },
+      })),
+    generate: () => Effect.die("cross-lingual test embedder does not generate"),
+    stream: () => Effect.die("cross-lingual test embedder does not stream"),
     vectorsFor: (texts) => texts.map(embed),
   };
 }

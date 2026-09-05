@@ -7,6 +7,7 @@ import { createMemoryRagStore } from "./test-utils/memory-rag-store";
 import { buildCorpus, bundleQuranSources, corpusWordCountDiffs, decodeQuranArchive, quranSourceParser } from "./quran-ingest";
 import { quranPairSink, surahSummarizer } from "./quran-llm";
 import { formatQuranCitation } from "./quran-source";
+import { Effect } from "effect";
 
 /**
  * INTEGRATION TEST — issue #6's design-for-verification core.
@@ -307,33 +308,30 @@ function deterministicSummarizer() {
   };
   return {
     modelId: "test-summarizer",
-    async generate(spec: { turns: readonly { role: string; content: string }[] }) {
-      const user = spec.turns.find((t) => t.role === "user")?.content ?? "";
-      // The prompt embeds the parent sourceKey; match the LONGEST key that
-      // occurs (a plain find would let "surah/1" — a substring of
-      // "surah/112" — capture the wrong surah).
-      const key = Object.keys(summaries)
-        .filter((k) => user.includes(k))
-        .reduce((best, k) => (best === null || k.length > best.length ? k : best), null as string | null);
-      const summary =
-        (key !== null ? summaries[key] : undefined) ??
-        "Ringkasan surah uji coba dari rangkaian ayat yang diingest.";
-      return {
-        text: summary,
-        cost: {
-          modelId: "test-summarizer",
-          tokensIn: 64,
-          tokensOut: 24,
-          latencyMs: 3,
-          costMicroUsd: 5,
-        },
-      };
-    },
-    async stream() {
-      throw new Error("test summarizer does not stream");
-    },
-    async embed() {
-      throw new Error("test summarizer does not embed");
-    },
+    generate: (spec: { turns: readonly { role: string; content: string }[] }) =>
+      Effect.sync(() => {
+        const user = spec.turns.find((t) => t.role === "user")?.content ?? "";
+        // The prompt embeds the parent sourceKey; match the LONGEST key that
+        // occurs (a plain find would let "surah/1" — a substring of
+        // "surah/112" — capture the wrong surah).
+        const key = Object.keys(summaries)
+          .filter((k) => user.includes(k))
+          .reduce((best, k) => (best === null || k.length > best.length ? k : best), null as string | null);
+        const summary =
+          (key !== null ? summaries[key] : undefined) ??
+          "Ringkasan surah uji coba dari rangkaian ayat yang diingest.";
+        return {
+          text: summary,
+          cost: {
+            modelId: "test-summarizer",
+            tokensIn: 64,
+            tokensOut: 24,
+            latencyMs: 3,
+            costMicroUsd: 5,
+          },
+        };
+      }),
+    stream: () => Effect.die("test summarizer does not stream"),
+    embed: () => Effect.die("test summarizer does not embed"),
   };
 }

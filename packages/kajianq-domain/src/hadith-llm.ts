@@ -2,6 +2,7 @@ import type { Provider, PromptSpec } from "@app/rag-core";
 import type { CostRecord } from "@app/contracts";
 import type { RagStore } from "@app/infra";
 import { isHadithCollection } from "./hadith-source";
+import { Effect } from "effect";
 
 /**
  * Section summaries and the aligned-pair sink — the LLM-facing half of the
@@ -29,7 +30,7 @@ export function hadithSectionSummarizer(provider: HadithSummarizerProvider): (in
   childTexts: readonly string[];
 }) => Promise<{ summary: string; cost: CostRecord }> {
   return async (input) => {
-    const result = await provider.generate(hadithSectionSummaryPrompt(input));
+    const result = await Effect.runPromise(provider.generate(hadithSectionSummaryPrompt(input)));
     const summary = result.text.trim();
     if (summary.length === 0) {
       throw new Error(`hadith ingestion: empty summary for ${input.sourceKey}`);
