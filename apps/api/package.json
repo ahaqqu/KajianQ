@@ -6,10 +6,12 @@
   "scripts": {
     "dev": "CI=1 CLOUDFLARE_API_TOKEN=local-only CLOUDFLARE_ACCOUNT_ID=00000000000000000000000000000000 alchemy dev",
     "check": "tsc -p tsconfig.json --noEmit",
-    "alchemy:deploy": "bun scripts/alchemy-preflight.mjs && alchemy deploy alchemy.run.ts --stage prod",
-    "alchemy:deploy:staging": "bun scripts/alchemy-preflight.mjs && alchemy deploy alchemy.run.ts --stage staging",
+    "alchemy:deploy": "bun scripts/alchemy-preflight.mjs && alchemy deploy alchemy.run.ts --stage prod --yes",
+    "alchemy:deploy:staging": "bun scripts/alchemy-preflight.mjs && alchemy deploy alchemy.run.ts --stage staging --yes",
     "alchemy:bootstrap": "bun scripts/alchemy-preflight.mjs && alchemy deploy alchemy.run.ts --stage prod --adopt",
-    "alchemy:bootstrap:staging": "bun scripts/alchemy-preflight.mjs && alchemy deploy alchemy.run.ts --stage staging --adopt"
+    "alchemy:bootstrap:staging": "bun scripts/alchemy-preflight.mjs && alchemy deploy alchemy.run.ts --stage staging --adopt",
+    "alchemy:bootstrap:ci": "bun scripts/alchemy-preflight.mjs && alchemy deploy alchemy.run.ts --stage prod --adopt --yes",
+    "alchemy:bootstrap:staging:ci": "bun scripts/alchemy-preflight.mjs && alchemy deploy alchemy.run.ts --stage staging --adopt --yes"
   },
   "dependencies": {
     "@app/contracts": "workspace:*",

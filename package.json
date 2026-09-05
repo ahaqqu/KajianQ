@@ -41,6 +41,8 @@
     "deploy:staging": "bun run build && bun run --filter '@app/api' alchemy:deploy:staging",
     "deploy:bootstrap": "bun run build && bun run --filter '@app/api' alchemy:bootstrap",
     "deploy:bootstrap:staging": "bun run build && bun run --filter '@app/api' alchemy:bootstrap:staging",
+    "deploy:bootstrap:ci": "bun run build && bun run --filter '@app/api' alchemy:bootstrap:ci",
+    "deploy:bootstrap:staging:ci": "bun run build && bun run --filter '@app/api' alchemy:bootstrap:staging:ci",
     "template-gate": "bun scripts/template-sync/cli.mjs check",
     "template-sync": "bun scripts/template-sync/cli.mjs"
   },

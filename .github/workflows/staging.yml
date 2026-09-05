@@ -23,22 +23,39 @@ jobs:
         with:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
-      - run: bun run build
       - name: Require secrets
         run: |
           test -n "$CLOUDFLARE_API_TOKEN"
           test -n "$CLOUDFLARE_ACCOUNT_ID"
           test -n "$STAGING_URL"
+          test -n "$SENTRY_DSN"
+          test -n "$DASHSCOPE_API_KEY"
+          test -n "$DEEPSEEK_API_KEY"
+          test -n "$GEMINI_API_KEY"
+          test -n "$MOONSHOT_API_KEY"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           STAGING_URL: ${{ vars.STAGING_URL }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MOONSHOT_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}
       # Persistence is Neon Postgres behind RagStore (ADR-0008) — the template's
       # D1 migration/deploy:inject steps were removed when D1 was stripped (#3).
+      # deploy:staging owns the web build; no separate build step (matches
+      # deploy.yml). The five secret env vars must resolve at alchemy plan
+      # time — the stack declares them as Config.redacted Worker bindings.
       - run: bun run deploy:staging
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MOONSHOT_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}
       # Retry logic lives in the reusable composite action (issue #49):
       # Cloudflare edge propagation can lag a few seconds after the deploy
       # returns, so wait and retry rather than failing transiently.

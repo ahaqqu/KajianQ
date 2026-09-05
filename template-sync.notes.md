@@ -21,7 +21,10 @@ drift guard cannot see them:
   (template's generic variants must never be adopted wholesale; #105's
   first attempt did and was reverted)
 - `.github/workflows/ci.yml`, `staging.yml`, `deploy.yml`,
-  `template-sync.yml` — Neon/Cloudflare/bun-1.4 fork infrastructure
+  `provision.yml`, `template-sync.yml` — Neon/Cloudflare/bun-1.4 fork
+  infrastructure (`provision.yml` was removed from the overwrite list when
+  ADR-0028's bootstrap needed the five Worker secrets passed through as env;
+  the template's D1-era flow it shipped is gone)
 - `playwright.config.ts`, `scripts/provision-cf.mjs` — D1-stripped (#54)
 - `.agents/skills/guided-implementation/SKILL.md` — carries the
   KajianQ/DARS domain checklist

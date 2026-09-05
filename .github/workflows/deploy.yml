@@ -15,10 +15,17 @@ jobs:
       # one-time `bun run deploy:bootstrap` (--adopt takeover + state-store
       # bootstrap) must have been run by an operator first; CI=true makes the
       # state store resolve its credentials from the Cloudflare Secrets Store.
+      # The five secret env vars must resolve at alchemy plan time — the stack
+      # declares them as Config.redacted bindings on the Worker.
       - run: bun run deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MOONSHOT_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}
       # Retry logic lives in the reusable composite action (issue #49):
       # Cloudflare edge propagation can lag a few seconds after the deploy
       # returns, so wait and retry rather than failing transiently.

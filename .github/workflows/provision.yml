@@ -2,11 +2,12 @@ name: Provision Cloudflare resources
 on:
   workflow_dispatch:
 
-# Creates D1 databases and R2 buckets from wrangler.toml names, then
-# prints the D1 UUIDs as copy-pasteable `gh secret set` commands.
-# The default GITHUB_TOKEN cannot write repository secrets, so the
-# D1_DATABASE_ID / D1_DATABASE_ID_STAGING secrets must be set once
-# after the first run — see the workflow output for exact commands.
+# Fork-owned (removed from template-sync.json's overwrite list): delegates to
+# scripts/provision-cf.mjs, which runs the Alchemy `--adopt` bootstrap deploys
+# for prod and staging (ADR-0028) — the bootstrap binds the five Worker secrets
+# as `secret_text`, so Alchemy resolves them at plan time and they must be
+# passed through here. The template's D1-era version was superseded when D1
+# was stripped (#3) and wrangler retired (ADR-0028).
 permissions:
   contents: read
 
@@ -23,11 +24,26 @@ jobs:
         run: |
           test -n "$CLOUDFLARE_API_TOKEN"
           test -n "$CLOUDFLARE_ACCOUNT_ID"
+          test -n "$SENTRY_DSN"
+          test -n "$DASHSCOPE_API_KEY"
+          test -n "$DEEPSEEK_API_KEY"
+          test -n "$GEMINI_API_KEY"
+          test -n "$MOONSHOT_API_KEY"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      - name: Provision D1 + R2
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MOONSHOT_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}
+      - name: Bootstrap Alchemy stages + set deploy URL variables
         run: bun scripts/provision-cf.mjs
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MOONSHOT_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}

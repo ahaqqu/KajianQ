@@ -9,9 +9,14 @@
  * URLs and setting the PROD_URL / STAGING_URL GitHub variables that the
  * deploy workflow's smoke tests consume.
  *
- * Physical names mirror apps/api/alchemy.run.ts. Requires
- * CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID env vars (set as GitHub
- * secrets). The default GITHUB_TOKEN cannot write repository variables, so
+ * Physical names mirror apps/api/alchemy.run.ts. Requires CLOUDFLARE_API_TOKEN,
+ * CLOUDFLARE_ACCOUNT_ID, and the five Worker secret values (SENTRY_DSN,
+ * DASHSCOPE_API_KEY, DEEPSEEK_API_KEY, GEMINI_API_KEY, MOONSHOT_API_KEY) —
+ * the bootstrap deploy binds them as `secret_text`, so Alchemy resolves them
+ * at plan time (set as GitHub secrets; export them locally for a manual run).
+ * The CI bootstrap scripts pass `--yes` because alchemy declines its own plan
+ * on a non-interactive terminal and would exit 0 without applying anything.
+ * The default GITHUB_TOKEN cannot write repository variables, so
  * when the variable step fails the script prints the exact `gh variable set`
  * commands instead.
  *
@@ -58,30 +63,40 @@ function trySetGitHubVariable(name, value) {
 }
 
 /** Fetch the workers.dev subdomain so URLs are https://<worker>.<sub>.workers.dev */
-function fetchWorkersDevSubdomain(accountId, token) {
-  const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/subdomain`;
-  const out = execSync(
-    `curl -sf -H "Authorization: Bearer ${token}" "${url}"`,
-    { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] },
-  );
-  return JSON.parse(out)?.result?.subdomain ?? null;
+async function fetchWorkersDevSubdomain(accountId, token) {
+  // fetch (not curl) keeps the token off argv, where a failed execSync would
+  // echo it in the "Command failed: ..." message; failure resolves to null so
+  // provisioning continues and URLs are set manually instead.
+  try {
+    const res = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/subdomain`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!res.ok) return null;
+    const body = await res.json();
+    return body?.result?.subdomain ?? null;
+  } catch {
+    return null;
+  }
 }
 
-function main() {
+async function main() {
   const token = process.env.CLOUDFLARE_API_TOKEN;
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
   if (!token) throw new Error("CLOUDFLARE_API_TOKEN is not set.");
   if (!accountId) throw new Error("CLOUDFLARE_ACCOUNT_ID is not set.");
 
   // Cloud provisioning is delegated to Alchemy (adopts on first run, then no-ops).
-  const prodOk = runReport("bun run deploy:bootstrap", "Bootstrap prod (alchemy deploy --adopt)");
+  // The `:ci` bootstrap variants pass `--yes`: on a non-interactive terminal
+  // alchemy declines its own plan and exits 0 without applying anything.
+  const prodOk = runReport("bun run deploy:bootstrap:ci", "Bootstrap prod (alchemy deploy --adopt)");
   const stagingOk = runReport(
-    "bun run deploy:bootstrap:staging",
+    "bun run deploy:bootstrap:staging:ci",
     "Bootstrap staging (alchemy deploy --adopt)",
   );
 
   // Derive deploy URLs from worker names + workers.dev subdomain.
-  const subdomain = fetchWorkersDevSubdomain(accountId, token);
+  const subdomain = await fetchWorkersDevSubdomain(accountId, token);
   let prodUrl = null;
   let stagingUrl = null;
   if (subdomain) {
@@ -117,4 +132,4 @@ function main() {
   console.log("\nProvisioning complete.");
 }
 
-main();
+await main();
