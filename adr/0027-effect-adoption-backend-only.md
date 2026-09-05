@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-09-05). Amends ADR-0021 (pipeline runner: hand-rolled typed seams with a deferred framework revisit trigger). Decision input: a repo-wide migration review (2026-09-05) comparing "Effect everywhere" against "Effect in the backend only".
+Accepted (2026-09-05). Amends ADR-0021 (pipeline runner: hand-rolled typed seams with a deferred framework revisit trigger). Decision input: a repo-wide migration review (2026-09-05) comparing "Effect everywhere" against "Effect in the backend only". The §2 Workers gate passed on 2026-09-05 (Appendix A), with one packaging amendment (Effect lives in the engine packages; `apps/api` bridges via `@app/rag-core` re-exports).
 
 ## Context
 
@@ -41,3 +41,23 @@ Effect (v3) was chosen over cordis and over more hand-rolling because it is runt
 - Effect v4 leaves RC: evaluate the upgrade as a normal dependency bump, not a re-decision.
 - A second DARS consumer or a forking project rejects Effect: the seams remain HTTP/JSON + valibot at every package boundary, so a fork can swap the engine's internals without touching `apps/` contracts.
 - The frontend ships the chat UI and develops a demonstrated need Effect uniquely solves (e.g., complex client-side stream orchestration) with measured bundle headroom: revisit decision 5 with a new ADR.
+
+## Appendix A — §2 gate executed (2026-09-05): PASSED, with one packaging amendment
+
+The go/no-go spike ran against the Workers runtime as required. Artifacts: `packages/rag-core/src/effect-spike.ts` + its test — one program covering the four needs (typed `Data.TaggedError` channel, `Effect.retry` over an exponential `Schedule`, a `Context.Tag` service provided via `Layer`, a `Stream` built from a `ReadableStream` with interruption-capable consumption) plus the valibot `Effect.try` interop point, pinned to `effect@3.22.1` (latest v3.x; v4 remains RC), typechecked under the repo's strict base tsconfig and run under vitest/bun via `Effect.runPromise`.
+
+**Gate measurements** (worker entry `apps/api/src/index.ts` with the spike module in its import graph; baseline = `main` without Effect; wrangler 4.123.0, `--dry-run --outdir` for bundle size, local workerd `wrangler dev` + timed `/v1/health` for cold start, `tsc -p apps/api/tsconfig.json --noEmit` ×3 for tsgo):
+
+| Gate | Baseline | With Effect v3 | Verdict |
+| --- | --- | --- | --- |
+| tsgo typecheck latency (apps/api) | 1.02–1.23 s | 1.09–1.34 s | **pass** — no regression |
+| Cold start (first request) | 30 ms | 21 ms | **pass** — no regression |
+| Steady-state request | ~4 ms | ~4–5 ms | **pass** |
+| Worker bundle | 2567 KiB / 483 KiB gzip | 3584 KiB / 677 KiB gzip | **pass** — recorded; see note |
+
+Notes:
+
+- **Bundle delta is larger than the §5 estimate.** The spike's tree-shaken usage costs ~+194 KiB gzip under esbuild (wrangler's bundler), not "tens of KB". The backend has no size-limit gate (the 200 KB gate covers the web bundle only, unchanged at 125.22 kB) and the Workers paid-tier limit is 10 MB gzip, so this is not a gate failure — but the estimate in decision 5's rationale was optimistic for the backend. The production deploy path bundles with rolldown (alchemy, ADR-0028), which tree-shakes better than esbuild; the esbuild figure is an upper bound until the first migrated `alchemy deploy`.
+- **Packaging amendment to decision 1 (letter only).** `effect@3` must **not** be declared in `apps/api`'s package.json: Bun resolves alchemy's `effect >= 4.0.0-rc.112` peer dependency to apps/api's declaration, hijacking the deploy tooling onto v3 (observed: one alchemy store instance re-linked to v3, and `alchemy.run.ts` fails to typecheck against v3 — alchemy's API is v4-shaped). Effect v3 is therefore a dependency of the engine packages (`rag-core`, `infra`, `rag-ingest`, `eval`) only; both versions coexist in Bun's store with correct per-package resolution. `apps/api` handlers still bridge via `Effect.runPromise` (decision 3 unchanged), importing it through `@app/rag-core`'s re-exports rather than a direct `effect` dependency. Every substantive goal of decision 1 is unaffected; only the dependency edge moves.
+- **Gate mechanics follow ADR-0028, not the wrangler.toml-era wording.** wrangler was used here purely as the measurement harness (the §2 text predates ADR-0028); production bundling/deploy is alchemy's.
+- Verdict: **the migration proceeds** (phases: rag-core → infra → api → rag-ingest/eval, one PR each). The spike module stays as a tested reference for the four Effect patterns the migration standardizes on; it is deleted only if a revisit trigger fires.
