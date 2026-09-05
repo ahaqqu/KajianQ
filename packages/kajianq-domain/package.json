@@ -15,7 +15,8 @@
     "@app/rag-core": "workspace:*",
     "@app/rag-ingest": "workspace:*",
     "@aws-sdk/client-s3": "^3.1127.0",
-    "@neondatabase/serverless": "^1.1.0"
+    "@neondatabase/serverless": "^1.1.0",
+    "effect": "3.22.1"
   },
   "devDependencies": {
     "@types/node": "26.2.0",

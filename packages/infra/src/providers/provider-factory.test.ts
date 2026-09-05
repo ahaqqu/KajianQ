@@ -1,8 +1,23 @@
+import { Cause, Effect, Option } from "effect";
 import { describe, expect, it } from "vitest";
 import { ProviderError } from "@app/rag-core";
 import type { FetchLike } from "./chat-completions-adapter";
 import { resolveRole } from "./provider-factory";
 import { chatBody, configWith, jsonResponse } from "./test-fixtures";
+
+
+/** Run an effect that must fail, returning the typed failure itself. */
+async function runFail<A>(effect: Effect.Effect<A, ProviderError, never>): Promise<ProviderError> {
+  const exit = await Effect.runPromiseExit(effect);
+  const failure =
+    exit._tag === "Failure" ? Cause.failureOption(exit.cause) : Option.none<ProviderError>();
+  if (Option.isSome(failure)) return failure.value;
+  throw new Error("expected the effect to fail");
+}
+
+/** Run an effect that must succeed, returning its value. */
+const runOk = <A>(effect: Effect.Effect<A, ProviderError, never>): Promise<A> =>
+  Effect.runPromise(effect);
 
 describe("fallback chain", () => {
   function makeFetch(statusByModel: Record<string, number>): FetchLike {
@@ -20,7 +35,7 @@ describe("fallback chain", () => {
       env: { TEST_KEY: "a", ALT_KEY: "b" },
       fetchImpl: makeFetch({ "m-chat": 429 }),
     });
-    const result = await provider.generate({ turns: [{ role: "user", content: "hi" }] });
+    const result = await runOk(provider.generate({ turns: [{ role: "user", content: "hi" }] }));
     expect(result.text).toBe("hello there");
     expect(result.cost.modelId).toBe("alt-chat"); // the fallback, not the first
   });
@@ -31,7 +46,7 @@ describe("fallback chain", () => {
       env: { TEST_KEY: "a", ALT_KEY: "b" },
       fetchImpl: makeFetch({ "m-chat": 503 }),
     });
-    const result = await provider.generate({ turns: [{ role: "user", content: "hi" }] });
+    const result = await runOk(provider.generate({ turns: [{ role: "user", content: "hi" }] }));
     expect(result.cost.modelId).toBe("alt-chat");
   });
 
@@ -47,7 +62,7 @@ describe("fallback chain", () => {
       env: { TEST_KEY: "a", ALT_KEY: "b" },
       fetchImpl,
     });
-    const result = await provider.generate({ turns: [{ role: "user", content: "hi" }] });
+    const result = await runOk(provider.generate({ turns: [{ role: "user", content: "hi" }] }));
     expect(result.text).toBe("hello there");
     expect(result.cost.modelId).toBe("alt-chat");
     expect(calls).toBe(2);
@@ -59,12 +74,10 @@ describe("fallback chain", () => {
       env: { TEST_KEY: "a", ALT_KEY: "b" },
       fetchImpl: makeFetch({ "m-chat": 500, "alt-chat": 503 }),
     });
-    const err = await provider
-      .generate({ turns: [{ role: "user", content: "hi" }] })
-      .catch((e: unknown) => e);
+    const err = await runFail(provider.generate({ turns: [{ role: "user", content: "hi" }] }));
     expect(err).toBeInstanceOf(ProviderError);
-    expect((err as ProviderError).kind).toBe("exhausted");
-    expect((err as ProviderError).candidates).toEqual(["m-chat", "alt-chat"]);
+    expect(err.kind).toBe("exhausted");
+    expect(err.candidates).toEqual(["m-chat", "alt-chat"]);
   });
 
   it("non-retryable failures do not consume the chain", async () => {
@@ -78,9 +91,8 @@ describe("fallback chain", () => {
       env: { TEST_KEY: "a", ALT_KEY: "b" },
       fetchImpl,
     });
-    await expect(
-      provider.generate({ turns: [{ role: "user", content: "hi" }] }),
-    ).rejects.toMatchObject({ kind: "bad_request" });
+    const err = await runFail(provider.generate({ turns: [{ role: "user", content: "hi" }] }));
+    expect(err.kind).toBe("bad_request");
     expect(calls).toBe(1);
   });
 
@@ -91,16 +103,15 @@ describe("fallback chain", () => {
       fetchImpl: makeFetch({}),
     });
     expect(missingKeys).toEqual(["ALT_KEY"]);
-    const result = await provider.generate({ turns: [{ role: "user", content: "hi" }] });
+    const result = await runOk(provider.generate({ turns: [{ role: "user", content: "hi" }] }));
     expect(result.text).toBe("hello there");
   });
 
   it("a role with no keyed candidates fails with the missing env names", async () => {
     const config = configWith(["test:m-chat", "alt:alt-chat"]);
     const { provider } = resolveRole(config, "cheap", { env: {} });
-    await expect(
-      provider.generate({ turns: [{ role: "user", content: "hi" }] }),
-    ).rejects.toThrow(/missing: TEST_KEY, ALT_KEY/);
+    const err = await runFail(provider.generate({ turns: [{ role: "user", content: "hi" }] }));
+    expect(err.message).toMatch(/missing: TEST_KEY, ALT_KEY/);
   });
 
   it("an unknown role throws at wiring time", () => {
@@ -122,10 +133,12 @@ describe("fallback chain", () => {
       env: { TEST_KEY: "a", ALT_KEY: "b" },
       fetchImpl,
     });
-    const result = await provider.generate({
-      turns: [{ role: "user", content: "hi" }],
-      personalData: true,
-    });
+    const result = await runOk(
+      provider.generate({
+        turns: [{ role: "user", content: "hi" }],
+        personalData: true,
+      }),
+    );
     // Only the allowed candidate was called — the free tier was never hit.
     expect(requestedModels).toEqual(["alt-chat"]);
     expect(result.cost.modelId).toBe("alt-chat");
@@ -140,9 +153,11 @@ describe("fallback chain", () => {
       env: { TEST_KEY: "a" },
       fetchImpl,
     });
-    await expect(
+    const err = await runFail(
       provider.generate({ turns: [{ role: "user", content: "hi" }], personalData: true }),
-    ).rejects.toMatchObject({ kind: "bad_request", name: "ProviderError" });
+    );
+    expect(err.kind).toBe("bad_request");
+    expect(err._tag).toBe("ProviderError");
   });
 
   it("a non-personal call still uses the free-tier first candidate", async () => {
@@ -156,7 +171,7 @@ describe("fallback chain", () => {
       env: { TEST_KEY: "a", ALT_KEY: "b" },
       fetchImpl,
     });
-    const result = await provider.generate({ turns: [{ role: "user", content: "hi" }] });
+    const result = await runOk(provider.generate({ turns: [{ role: "user", content: "hi" }] }));
     expect(requestedModels).toEqual(["m-chat"]);
     expect(result.cost.modelId).toBe("m-chat");
   });

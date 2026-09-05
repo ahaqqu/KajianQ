@@ -1,7 +1,6 @@
 import { Effect } from "effect";
 import { parseTrace, type TraceEvent } from "@app/contracts";
-import { RunContext } from "./context";
-import type { RunConfig, RunContextService } from "./context";
+import { RunContext, type RunConfig, type RunContextService } from "./context";
 import { StageError } from "./errors";
 import type {
   Answer,

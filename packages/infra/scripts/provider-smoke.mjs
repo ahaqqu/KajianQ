@@ -16,6 +16,7 @@
  * with the second candidate's model id. The drill is fully synthetic — it
  * never touches the network or spends money.
  */
+import { Effect } from "effect";
 import { loadProviderConfig, parseCandidateKey, resolveRole } from "../src/index";
 
 const config = loadProviderConfig();
@@ -62,12 +63,12 @@ for (const { role, call } of SMOKED_ROLES) {
   try {
     let result;
     if (call === "embed") {
-      result = await provider.embed({ texts: ["smoke test"], dimensions: 1536 });
+      result = await Effect.runPromise(provider.embed({ texts: ["smoke test"], dimensions: 1536 }));
       if (result.vectors.length !== 1 || result.vectors[0].length === 0) {
         throw new Error("embedding returned an empty vector");
       }
     } else {
-      result = await provider.generate(PROMPT);
+      result = await Effect.runPromise(provider.generate(PROMPT));
       if (!result.text || result.text.trim().length === 0) {
         throw new Error("generate returned empty text");
       }
@@ -117,7 +118,7 @@ try {
     env: process.env,
     fetchImpl: syntheticFetch,
   });
-  const result = await provider.generate(PROMPT);
+  const result = await Effect.runPromise(provider.generate(PROMPT));
   if (result.cost.modelId === firstModel) {
     throw new Error(
       `fallback did not trigger: answered by first candidate ${firstModel}`,
