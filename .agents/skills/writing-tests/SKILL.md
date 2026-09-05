@@ -82,3 +82,13 @@ Tests are done when:
 - [ ] Property tests for webhook handlers assert idempotency on random payloads.
 - [ ] BDD scenarios exist for every new user-facing flow, including offline and error states.
 - [ ] `bun run test` passes with coverage above 80% on changed files.
+
+## Effect programs (ADR-0027)
+
+Engine code returns `Effect` values; tests run them via `Effect.runPromise` / `Effect.runPromiseExit` under vitest (no `@effect/vitest`, no test-clock dependency — inject `now`/fakes through the same seams production uses):
+
+- **Success path:** `await Effect.runPromise(effect)` — or the promise-level bridge under test (`runPipelinePromise`).
+- **Failure path:** `const exit = await Effect.runPromiseExit(effect)` then `Cause.failureOption(exit.cause)` — assert on the typed error (`_tag`, `kind`, `stage`), never on the `FiberFailure` wrapper.
+- **Services:** provide tags with `Effect.provideService` / a `Layer` (see `packages/rag-core/src/effect-spike.test.ts`); a `Context.Tag` service in tests is a plain object (see `packages/rag-core/src/run.test.ts` for the `RunContext` pattern).
+- **Exemplars:** `packages/rag-core/src/run.test.ts` (stages as Effects, finalizers, config threading), `packages/infra/src/providers/sse-stream.test.ts` (Stream interruption via `Effect.runFork` + `Fiber.interrupt`), `packages/infra/src/providers/provider-factory.test.ts` (fast injected retry schedules).
+- **Keep retry schedules fast:** inject `perKindRetrySchedule("1 millis", "1 millis")` in tests; never sleep through real backoff.

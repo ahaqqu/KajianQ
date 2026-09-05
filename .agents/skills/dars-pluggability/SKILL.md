@@ -61,3 +61,14 @@ Each hit is either a refactor or a conscious, recorded exception in an ADR. Ther
 - A new table accessed via raw SQL "just for this ticket" — the adapter grows or the ticket is wrong.
 - A `Router` implementation that calls a specific vendor SDK — it must hold a `Provider` reference injected at wiring time.
 - A corpus-wide entity-graph/GraphRAG dependency slipped into `rag-ingest` or `rag-core` as a new package — ADR-0016 requires bounded curated structures and an ADR behind the four-part gate; a dependency change is not a decision record.
+
+## Effect runtime (ADR-0027)
+
+The engine's seams are now `Effect<A, E, R>`-shaped. When building or reviewing adapters and wiring:
+
+- **Signatures say the failure modes.** `Provider` methods return `Effect<A, ProviderError>`; stage methods return `StageEffect<A>` = `Effect<A, StageError, RunContext | Scope>`. Map raw failures at the seam (`toStageError(stage, ...)`, the adapter's `catch` mapping) — a failure that escapes untyped is a boundary defect.
+- **Per-run resources go through the run's `Scope`** (`Effect.addFinalizer` inside a stage), not ad-hoc `defer` arrays; the runner owns the scope. Adapter-level lifecycle (closing HTTP agents, connections) belongs to the wiring layer's `Layer` finalizers when stages are Layer-wired.
+- **Config still resolves models.** Effect changes the plumbing, not the rule: no vendor or model names in engine code, model ids arrive as opaque strings from `model_configs`, and personal-data filtering stays in the fallback chain (ADR-0009).
+- **Retry policy is per-kind `Schedule`s** on the fallback chain (`defaultRetrySchedule` / `perKindRetrySchedule`), injectable via `ResolveOptions.retrySchedule` — do not hand-roll `try/catch` retry loops around provider calls.
+- **Bounded concurrency is opt-in at the knob** (e.g. `IngestionDeps.embedConcurrency` via `Effect.forEach`), never an unbounded `Promise.all` over a batch.
+- The HTTP edge stays Hono; apps bridge via `@app/rag-core/interop` (`runPipelinePromise`, `engineStreamToWeb`) — `apps/api` carries no direct `effect` dependency (Appendix A: Bun would resolve alchemy's `effect@4-rc` peer to it).
