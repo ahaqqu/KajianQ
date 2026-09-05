@@ -83,6 +83,11 @@ async function summarizeParents(
 /**
  * Embed texts in batches, collecting cost per call. Returns row-aligned
  * vectors; empty input performs no call and records no cost.
+ *
+ * Batches run under `Effect.forEach` with `deps.embedConcurrency` (default 1:
+ * fully serial). Results stay row-aligned regardless of concurrency, and a
+ * batch whose vector count mismatches fails the whole run — a partially
+ * embedded child row must never be written.
  */
 async function embedBatched(
   deps: IngestionDeps,
@@ -90,19 +95,28 @@ async function embedBatched(
   costs: CostCollector,
 ): Promise<readonly (readonly number[])[]> {
   const batchSize = deps.embedBatchSize ?? 64;
-  const vectors: (readonly number[])[] = [];
+  const batches: (readonly string[])[] = [];
   for (let i = 0; i < texts.length; i += batchSize) {
-    const batch = texts.slice(i, i + batchSize);
-    const result = await Effect.runPromise(deps.embedder.embed({ texts: batch }));
-    if (result.vectors.length !== batch.length) {
-      throw new Error(
-        `ingestion: embedder returned ${result.vectors.length} vectors for ${batch.length} texts`,
-      );
-    }
-    costs.record(result.cost);
-    vectors.push(...result.vectors);
+    batches.push(texts.slice(i, i + batchSize));
   }
-  return vectors;
+  const embedOne = (batch: readonly string[]) =>
+    Effect.gen(function* () {
+      const result = yield* deps.embedder.embed({ texts: batch });
+      if (result.vectors.length !== batch.length) {
+        return yield* Effect.fail(
+          new Error(
+            `ingestion: embedder returned ${result.vectors.length} vectors for ${batch.length} texts`,
+          ),
+        );
+      }
+      costs.record(result.cost);
+      return result.vectors;
+    });
+  const concurrency = deps.embedConcurrency ?? 1;
+  const batchVectors = await Effect.runPromise(
+    Effect.forEach(batches, embedOne, { concurrency }),
+  );
+  return batchVectors.flat();
 }
 
 /** Collect the aligned pairs a parsed child list implies (rows with a secondary track). */

@@ -172,6 +172,119 @@ describe("runIngestion", () => {
     expect(result.report.details?.embeddedSecondaryTrack).toBe(true);
   });
 
+  it("embedConcurrency > 1 runs batches in parallel while keeping rows aligned", async () => {
+    const f = fakeStore();
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const slowEmbedder: Provider = {
+      modelId: "fake-embedder",
+      embed: (spec) =>
+        Effect.gen(function* () {
+          inFlight += 1;
+          maxInFlight = Math.max(maxInFlight, inFlight);
+          yield* Effect.sleep("10 millis");
+          inFlight -= 1;
+          return {
+            vectors: spec.texts.map((text) => [text.length, 1]),
+            cost: {
+              modelId: "fake-embedder",
+              tokensIn: spec.texts.length,
+              tokensOut: 0,
+              latencyMs: 10,
+              costMicroUsd: spec.texts.length,
+            },
+          };
+        }),
+      generate: () => Effect.die("not used"),
+      stream: () => Effect.die("not used"),
+    };
+    // 8 children of distinct lengths → 2 batches per track at batchSize 4.
+    const parents: ParsedParent[] = [
+      {
+        sourceKey: "src/a",
+        title: null,
+        metadata: {},
+        children: Array.from({ length: 8 }, (_, i) => ({
+          sourceKey: `src/a/${i}`,
+          textRaw: `raw ${i}`,
+          textPrimary: `primary text ${i} `.repeat(i + 1),
+          textSecondary: `sekunder ${i}`,
+          citation: {},
+          metadata: {},
+        })),
+      },
+    ];
+    const written: Record<string, unknown>[] = [];
+    const store: RagStore = {
+      ...f.store,
+      async insertDocChildren(batch) {
+        written.push(...batch.map((row) => ({ ...row })));
+        return f.store.insertDocChildren(batch);
+      },
+    };
+    const result = await runIngestion(
+      async () => parents,
+      { archiveKey: "archive/key", raw: new Uint8Array() },
+      { store, embedder: slowEmbedder, summarizer: null, embedBatchSize: 4, embedConcurrency: 2 },
+    );
+    expect(maxInFlight).toBe(2); // bounded, and actually parallel
+    expect(result.report.childrenWritten).toBe(8);
+    // Row alignment survived concurrent batches: vector[0] is the text length.
+    for (const row of written) {
+      expect(row.embeddingPrimary).toEqual([(row.textAr as string).length, 1]);
+      expect(row.embeddingFallback).toEqual([(row.textId as string).length, 1]);
+    }
+  });
+
+  it("defaults to serial embedding when embedConcurrency is unset", async () => {
+    const f = fakeStore();
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const slowEmbedder: Provider = {
+      modelId: "fake-embedder",
+      embed: (spec) =>
+        Effect.gen(function* () {
+          inFlight += 1;
+          maxInFlight = Math.max(maxInFlight, inFlight);
+          yield* Effect.sleep("5 millis");
+          inFlight -= 1;
+          return {
+            vectors: spec.texts.map(() => [1]),
+            cost: {
+              modelId: "fake-embedder",
+              tokensIn: spec.texts.length,
+              tokensOut: 0,
+              latencyMs: 5,
+              costMicroUsd: spec.texts.length,
+            },
+          };
+        }),
+      generate: () => Effect.die("not used"),
+      stream: () => Effect.die("not used"),
+    };
+    const parents: ParsedParent[] = [
+      {
+        sourceKey: "src/a",
+        title: null,
+        metadata: {},
+        children: Array.from({ length: 4 }, (_, i) => ({
+          sourceKey: `src/a/${i}`,
+          textRaw: `raw ${i}`,
+          textPrimary: `primary ${i}`,
+          textSecondary: null,
+          citation: {},
+          metadata: {},
+        })),
+      },
+    ];
+    await runIngestion(
+      async () => parents,
+      { archiveKey: "archive/key", raw: new Uint8Array() },
+      { store: f.store, embedder: slowEmbedder, summarizer: null, embedBatchSize: 2 },
+    );
+    expect(maxInFlight).toBe(1);
+  });
+
   it("is idempotent: re-running produces no duplicate parents or children", async () => {
     const f = fakeStore();
     const run = () =>
