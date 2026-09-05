@@ -1,4 +1,5 @@
 import { Cause, Effect, Option } from "effect";
+import { perKindRetrySchedule } from "./provider-factory";
 import { describe, expect, it } from "vitest";
 import { ProviderError } from "@app/rag-core";
 import type { FetchLike } from "./chat-completions-adapter";
@@ -19,6 +20,10 @@ async function runFail<A>(effect: Effect.Effect<A, ProviderError, never>): Promi
 const runOk = <A>(effect: Effect.Effect<A, ProviderError, never>): Promise<A> =>
   Effect.runPromise(effect);
 
+
+/** Fast per-kind schedule so retry tests do not sleep for real backoff. */
+const fastSchedule = perKindRetrySchedule("1 millis", "1 millis");
+
 describe("fallback chain", () => {
   function makeFetch(statusByModel: Record<string, number>): FetchLike {
     return async (_url, init) => {
@@ -34,6 +39,7 @@ describe("fallback chain", () => {
     const { provider } = resolveRole(config, "cheap", {
       env: { TEST_KEY: "a", ALT_KEY: "b" },
       fetchImpl: makeFetch({ "m-chat": 429 }),
+      retrySchedule: fastSchedule,
     });
     const result = await runOk(provider.generate({ turns: [{ role: "user", content: "hi" }] }));
     expect(result.text).toBe("hello there");
@@ -45,12 +51,13 @@ describe("fallback chain", () => {
     const { provider } = resolveRole(config, "cheap", {
       env: { TEST_KEY: "a", ALT_KEY: "b" },
       fetchImpl: makeFetch({ "m-chat": 503 }),
+      retrySchedule: fastSchedule,
     });
     const result = await runOk(provider.generate({ turns: [{ role: "user", content: "hi" }] }));
     expect(result.cost.modelId).toBe("alt-chat");
   });
 
-  it("falls forward on transport errors", async () => {
+  it("retries a transient transport failure on the same candidate before falling forward", async () => {
     let calls = 0;
     const fetchImpl: FetchLike = async () => {
       calls += 1;
@@ -64,8 +71,29 @@ describe("fallback chain", () => {
     });
     const result = await runOk(provider.generate({ turns: [{ role: "user", content: "hi" }] }));
     expect(result.text).toBe("hello there");
-    expect(result.cost.modelId).toBe("alt-chat");
+    // The retry hit the SAME candidate (call 2 succeeded) — no fallback.
+    expect(result.cost.modelId).toBe("m-chat");
     expect(calls).toBe(2);
+  });
+
+  it("falls forward after a candidate's retry schedule exhausts", async () => {
+    let calls = 0;
+    const fetchImpl: FetchLike = async (_url, init) => {
+      calls += 1;
+      const model = (JSON.parse(init.body) as { model: string }).model;
+      if (model === "m-chat") throw new TypeError("network down"); // transport kind
+      return jsonResponse(chatBody());
+    };
+    const config = configWith(["test:m-chat", "alt:alt-chat"]);
+    const { provider } = resolveRole(config, "cheap", {
+      env: { TEST_KEY: "a", ALT_KEY: "b" },
+      fetchImpl,
+      retrySchedule: fastSchedule,
+    });
+    const result = await runOk(provider.generate({ turns: [{ role: "user", content: "hi" }] }));
+    // 1 initial + 3 scheduled retries on m-chat, then the fallback answered.
+    expect(calls).toBe(5);
+    expect(result.cost.modelId).toBe("alt-chat");
   });
 
   it("exhausted chain throws a typed error listing candidates", async () => {
@@ -73,6 +101,7 @@ describe("fallback chain", () => {
     const { provider } = resolveRole(config, "cheap", {
       env: { TEST_KEY: "a", ALT_KEY: "b" },
       fetchImpl: makeFetch({ "m-chat": 500, "alt-chat": 503 }),
+      retrySchedule: fastSchedule,
     });
     const err = await runFail(provider.generate({ turns: [{ role: "user", content: "hi" }] }));
     expect(err).toBeInstanceOf(ProviderError);
@@ -101,6 +130,7 @@ describe("fallback chain", () => {
     const { provider, missingKeys } = resolveRole(config, "cheap", {
       env: { TEST_KEY: "a" }, // ALT_KEY missing
       fetchImpl: makeFetch({}),
+      retrySchedule: fastSchedule,
     });
     expect(missingKeys).toEqual(["ALT_KEY"]);
     const result = await runOk(provider.generate({ turns: [{ role: "user", content: "hi" }] }));

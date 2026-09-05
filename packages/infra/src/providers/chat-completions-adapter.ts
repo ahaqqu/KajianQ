@@ -9,8 +9,14 @@ import {
   type StreamHandle,
 } from "@app/rag-core";
 import type { ModelConfig, VendorConfig } from "./provider-config";
-import { computeCost } from "./chat-cost";
-import { estimateTokens, wrapSseStream } from "./sse-stream";
+import { estimateTokens, streamSse } from "./sse-stream";
+import {
+  type ChatRequest,
+  type ChatResponse,
+  type EmbedResponse,
+  computeCost,
+  readError,
+} from "./chat-wire";
 
 /**
  * The generic chat-completions REST adapter (ADR-0022): one protocol
@@ -41,42 +47,6 @@ export function errorKindForStatus(status: number): "rate_limited" | "server" | 
 /** True when the fallback wrapper should try the next candidate. */
 export function isRetryable(kind: string): boolean {
   return kind === "transport" || kind === "rate_limited" || kind === "server";
-}
-
-/** Chat-completions wire request body (one shape for generate/stream). */
-interface ChatRequest {
-  model: string;
-  messages: { role: string; content: string }[];
-  stream: boolean;
-  [key: string]: unknown;
-}
-
-/** Wire-level chat-completions response (the fields we consume). */
-interface ChatResponse {
-  choices?: { message?: { content?: string }; text?: string }[];
-  usage?: {
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    total_tokens?: number;
-  };
-  error?: { message?: string; code?: string };
-}
-
-/** Wire-level embeddings response. */
-interface EmbedResponse {
-  data?: { embedding?: number[] }[];
-  usage?: { prompt_tokens?: number; total_tokens?: number };
-  error?: { message?: string; code?: string };
-}
-
-async function readError(res: Response): Promise<string> {
-  let detail = "";
-  try {
-    detail = await res.text();
-  } catch {
-    // Body unreadable — the status line is all we have.
-  }
-  return `HTTP ${res.status}${detail ? `: ${detail.slice(0, 300)}` : ""}`;
 }
 
 export type ChatCompletionsOptions = {
@@ -118,7 +88,7 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
     authorization: `Bearer ${apiKey}`,
   };
 
-  async function post(path: string, body: unknown): Promise<Response> {
+  async function post(path: string, body: unknown, external?: AbortSignal): Promise<Response> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -126,7 +96,8 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
         method: "POST",
         headers,
         body: JSON.stringify(body),
-        signal: controller.signal,
+        // `external` aborts when the caller's fiber is interrupted (ADR-0027).
+        signal: external ? AbortSignal.any([external, controller.signal]) : controller.signal,
       });
     } catch (err) {
       throw new ProviderError({ kind: "transport", message: `request to ${vendor.baseUrl}${path} failed: ${String(err)}` });
@@ -151,21 +122,22 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
    * below wraps them into the seam's `Effect<A, ProviderError>` channel. */
   type ProviderWire = {
     readonly modelId: string;
-    generate(spec: PromptSpec): Promise<GenerationResult>;
-    stream(spec: PromptSpec): Promise<StreamHandle>;
-    embed(spec: EmbedSpec): Promise<EmbeddingResult>;
+    /** `signal` aborts the in-flight fetch when the caller's fiber is interrupted. */
+    generate(spec: PromptSpec, signal?: AbortSignal): Promise<GenerationResult>;
+    stream(spec: PromptSpec, signal?: AbortSignal): Promise<StreamHandle>;
+    embed(spec: EmbedSpec, signal?: AbortSignal): Promise<EmbeddingResult>;
   };
 
   const wire: ProviderWire = {
     modelId,
 
-    async generate(spec: PromptSpec): Promise<GenerationResult> {
+    async generate(spec: PromptSpec, signal?: AbortSignal): Promise<GenerationResult> {
       if (!model.capabilities.includes("generate")) {
         throw new ProviderError({ kind: "bad_request", message: `model ${modelId} does not support generate` });
       }
       const body = buildChatRequest(modelId, spec, false);
       const started = Date.now();
-      const res = await post("/chat/completions", body);
+      const res = await post("/chat/completions", body, signal);
       await assertOk(res, "/chat/completions");
       const json = (await res.json()) as ChatResponse;
       const text = json.choices?.[0]?.message?.content ?? json.choices?.[0]?.text ?? "";
@@ -194,13 +166,26 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
       };
     },
 
-    async stream(spec: PromptSpec): Promise<StreamHandle> {
+    async stream(spec: PromptSpec, signal?: AbortSignal): Promise<StreamHandle> {
       if (!model.capabilities.includes("stream")) {
         throw new ProviderError({ kind: "bad_request", message: `model ${modelId} does not support stream` });
       }
       const body = buildChatRequest(modelId, spec, true);
       const started = Date.now();
-      const res = await post("/chat/completions", body);
+      // The controller outlives the initial fetch: cancelling the deltas
+      // stream aborts the body read (ADR-0027 interruption propagation).
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      const res = await post("/chat/completions", body, signal)
+        .finally(() => clearTimeout(timer))
+        .catch((err: unknown) => {
+          throw err instanceof ProviderError
+            ? err
+            : new ProviderError({
+                kind: "transport",
+                message: `request to ${vendor.baseUrl}/chat/completions failed: ${String(err)}`,
+              });
+        });
       await assertOk(res, "/chat/completions (stream)");
       if (!res.body) {
         throw new ProviderError({ kind: "transport", message: "stream response has no body" });
@@ -212,30 +197,31 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
       // is wall clock to the end of iteration, so a slow consumer inflates
       // it (deliberate; eager buffering rejected as complexity for a
       // Trace-only metric). Deltas surface as a `Stream` whose interruption
-      // cuts the underlying SSE iteration (ADR-0027).
-      const raw = wrapSseStream(res.body, (usage, charCount) => {
+      // aborts the in-flight fetch (ADR-0027).
+      const raw = streamSse(
+        res.body,
+        (usage, charCount) => {
         const metered =
           typeof usage?.prompt_tokens === "number" && typeof usage?.completion_tokens === "number";
         const tokensIn = metered
           ? usage!.prompt_tokens!
           : spec.turns.reduce((n, t) => n + estimateTokens(t.content.length), 0);
         const tokensOut = metered ? usage!.completion_tokens! : estimateTokens(charCount);
-        return computeCost(
-          modelId,
-          model.priceMicroUsdPerMTok,
-          tokensIn,
-          tokensOut,
-          Date.now() - started,
-          !metered,
-        );
-      });
-      return {
-        deltas: Stream.fromAsyncIterable(raw.deltas, toProviderError),
-        cost: () => Effect.tryPromise({ try: () => raw.cost(), catch: toProviderError }),
-      };
+          return computeCost(
+            modelId,
+            model.priceMicroUsdPerMTok,
+            tokensIn,
+            tokensOut,
+            Date.now() - started,
+            !metered,
+          );
+        },
+        () => controller.abort(),
+      );
+      return raw;
     },
 
-    async embed(spec: EmbedSpec): Promise<EmbeddingResult> {
+    async embed(spec: EmbedSpec, signal?: AbortSignal): Promise<EmbeddingResult> {
       if (!model.capabilities.includes("embed")) {
         throw new ProviderError({ kind: "bad_request", message: `model ${modelId} does not support embed` });
       }
@@ -247,7 +233,7 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
           : {}),
       };
       const started = Date.now();
-      const res = await post("/embeddings", body);
+      const res = await post("/embeddings", body, signal);
       await assertOk(res, "/embeddings");
       const json = (await res.json()) as EmbedResponse;
       const vectors = (json.data ?? []).map((d) => d.embedding ?? []);
@@ -287,9 +273,14 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
 
   const provider: Provider = {
     modelId,
-    generate: (spec) => Effect.tryPromise({ try: () => wire.generate(spec), catch: toProviderError }),
-    stream: (spec) => Effect.tryPromise({ try: () => wire.stream(spec), catch: toProviderError }),
-    embed: (spec) => Effect.tryPromise({ try: () => wire.embed(spec), catch: toProviderError }),
+    // `signal` aborts the in-flight fetch when the caller's fiber is
+    // interrupted (ADR-0027 need 4: interruption reaches the provider).
+    generate: (spec) =>
+      Effect.tryPromise({ try: (signal) => wire.generate(spec, signal), catch: toProviderError }),
+    stream: (spec) =>
+      Effect.tryPromise({ try: (signal) => wire.stream(spec, signal), catch: toProviderError }),
+    embed: (spec) =>
+      Effect.tryPromise({ try: (signal) => wire.embed(spec, signal), catch: toProviderError }),
   };
 
   return provider;
