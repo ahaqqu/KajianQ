@@ -1,8 +1,11 @@
+import { Effect } from "effect";
 import { parseTrace, type TraceEvent } from "@app/contracts";
+import { RunContext } from "./context";
+import type { RunConfig, RunContextService } from "./context";
+import { StageError } from "./errors";
 import type {
   Answer,
   Assembler,
-  AssembledContext,
   Chunk,
   DefaultFilters,
   Draft,
@@ -12,7 +15,6 @@ import type {
   Reviewer,
   Router,
 } from "./pipeline";
-import type { Disposer, RunConfig, RunContext } from "./context";
 
 /** The five wired pipeline stages, one of each (ADR-0005). */
 export type PipelineStages<TFilters extends Record<string, unknown> = DefaultFilters> = {
@@ -30,37 +32,35 @@ export type RunOptions = {
 };
 
 /**
- * Walk the five stages in order and assemble the full Trace (ADR-0021).
+ * Walk the five stages in order and assemble the full Trace (ADR-0021, ADR-0027).
  *
- * The runner is the single place that owns the run: it creates the
- * `RunContext` (config + trace sink + disposal scope), emits the deterministic
- * stage-boundary events (`intent`, `subquery`, `retrieval`, `assembly`) from
- * stage results, validates the assembled trace, and tears down deferred
- * resources LIFO — even when a stage throws.
+ * The runner is the single place that owns the run: it opens the run's
+ * `Scope` (per-run `Effect.addFinalizer` teardown, LIFO, even when a stage
+ * fails or the fiber is interrupted), provides the `RunContext` service
+ * (config + trace sink + clock), emits the deterministic stage-boundary
+ * events (`intent`, `subquery`, `retrieval`, `assembly`) from stage results,
+ * and validates the assembled trace. A stage failure surfaces as its
+ * `StageError`; the caller bridges to a promise via `Effect.runPromise`.
  */
-export async function runPipeline<TFilters extends Record<string, unknown> = DefaultFilters>(
+export const runPipeline = <TFilters extends Record<string, unknown> = DefaultFilters>(
   stages: PipelineStages<TFilters>,
   query: Query<TFilters>,
   config: RunConfig<TFilters> = {},
   options: RunOptions = {},
-): Promise<Answer> {
+): Effect.Effect<Answer, StageError> => {
   const now = options.now ?? Date.now;
   const events: TraceEvent[] = [];
-  const disposers: Disposer[] = [];
 
-  const run: RunContext<TFilters> = {
+  const run: RunContextService = {
     config,
     now,
     record: (event) => {
       events.push(event);
     },
-    defer: (disposer) => {
-      disposers.push(disposer);
-    },
   };
 
-  try {
-    const routed = await stages.router.route(query, run);
+  const program = Effect.gen(function* () {
+    const routed = yield* stages.router.route(query);
     events.push({
       stage: "router",
       kind: "intent",
@@ -76,7 +76,7 @@ export async function runPipeline<TFilters extends Record<string, unknown> = Def
       });
     }
 
-    const chunks = await stages.retriever.retrieve(routed, run);
+    const chunks = yield* stages.retriever.retrieve(routed);
     events.push({
       stage: "retriever",
       kind: "retrieval",
@@ -84,7 +84,7 @@ export async function runPipeline<TFilters extends Record<string, unknown> = Def
       at: now(),
     });
 
-    const context = await stages.assembler.assemble(query, chunks, run);
+    const context = yield* stages.assembler.assemble(query, chunks);
     events.push({
       stage: "assembler",
       kind: "assembly",
@@ -92,23 +92,24 @@ export async function runPipeline<TFilters extends Record<string, unknown> = Def
       at: now(),
     });
 
-    const draft = await stages.generator.generate(context, run);
-    const finalDraft = await stages.reviewer.review(draft, context, run);
+    const draft: Draft = yield* stages.generator.generate(context);
+    const finalDraft = yield* stages.reviewer.review(draft, context);
 
-    const trace = parseTrace({
-      id: options.traceId ?? crypto.randomUUID(),
-      createdAt: now(),
-      events,
+    const trace = yield* Effect.try({
+      try: () =>
+        parseTrace({
+          id: options.traceId ?? crypto.randomUUID(),
+          createdAt: now(),
+          events,
+        }),
+      catch: (cause): StageError => new StageError({ stage: "pipeline", cause }),
     });
 
     return { text: finalDraft.text, trace };
-  } finally {
-    for (let i = disposers.length - 1; i >= 0; i -= 1) {
-      const disposer = disposers[i];
-      if (disposer) await disposer();
-    }
-  }
-}
+  });
+
+  return program.pipe(Effect.provideService(RunContext, run), Effect.scoped);
+};
 
 /** Project a Chunk into the retrieval event's typed chunk reference. */
 function toChunkRef(

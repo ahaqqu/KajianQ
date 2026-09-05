@@ -1,5 +1,9 @@
+import { Cause, Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import { totalCostMicroUsd } from "@app/contracts";
+import { RunContext } from "./context";
+import type { RunConfig } from "./context";
+import { StageError } from "./errors";
 import { runPipeline, type PipelineStages } from "./run";
 import type {
   AssembledContext,
@@ -9,7 +13,6 @@ import type {
   Query,
   RoutedQuery,
 } from "./pipeline";
-import type { RunConfig } from "./context";
 
 const query: Query<DefaultFilters> = { text: "a question" };
 const config: RunConfig<DefaultFilters> = {
@@ -40,21 +43,22 @@ function makeStages(
 ): PipelineStages<DefaultFilters> {
   return {
     router: {
-      route: async () => routed("factual", ["sub1", "sub2"]),
+      route: () => Effect.succeed(routed("factual", ["sub1", "sub2"])),
     },
     retriever: {
-      retrieve: async () => [
-        { id: "c1", text: "evidence", score: 0.5, rankDense: 1, rankSparse: 2 },
-      ],
+      retrieve: () =>
+        Effect.succeed([
+          { id: "c1", text: "evidence", score: 0.5, rankDense: 1, rankSparse: 2 },
+        ]),
     },
     assembler: {
-      assemble: async (_q, chunks) => contextFor(chunks),
+      assemble: (_q, chunks) => Effect.succeed(contextFor(chunks)),
     },
     generator: {
-      generate: async () => draft,
+      generate: () => Effect.succeed(draft),
     },
     reviewer: {
-      review: async (d) => d,
+      review: (d) => Effect.succeed(d),
     },
     ...overrides,
   };
@@ -62,10 +66,9 @@ function makeStages(
 
 describe("runPipeline", () => {
   it("walks the five stages and emits deterministic events in order", async () => {
-    const result = await runPipeline(makeStages(), query, config, {
-      traceId: "t",
-      now: () => 0,
-    });
+    const result = await Effect.runPromise(
+      runPipeline(makeStages(), query, config, { traceId: "t", now: () => 0 }),
+    );
     expect(result.text).toBe("the answer");
     expect(result.trace.events.map((e) => e.kind)).toEqual([
       "intent",
@@ -76,41 +79,51 @@ describe("runPipeline", () => {
     ]);
   });
 
-  it("threads the run config to every stage", async () => {
-    const seen: RunConfig<DefaultFilters>[] = [];
+  it("provides the run config to every stage through the RunContext service", async () => {
+    const seen: RunConfig<Record<string, unknown>>[] = [];
+    const stageWithConfig = () =>
+      Effect.gen(function* () {
+        const run = yield* RunContext;
+        seen.push(run.config);
+      });
     const stages = makeStages({
       router: {
-        route: async (_q, run) => {
-          seen.push(run.config);
-          return routed("factual", []);
-        },
+        route: () =>
+          Effect.gen(function* () {
+            yield* stageWithConfig();
+            return routed("factual", []);
+          }),
       },
       retriever: {
-        retrieve: async (_r, run) => {
-          seen.push(run.config);
-          return [];
-        },
+        retrieve: () =>
+          Effect.gen(function* () {
+            yield* stageWithConfig();
+            return [];
+          }),
       },
       assembler: {
-        assemble: async (_q, chunks, run) => {
-          seen.push(run.config);
-          return contextFor(chunks);
-        },
+        assemble: (_q, chunks) =>
+          Effect.gen(function* () {
+            yield* stageWithConfig();
+            return contextFor(chunks);
+          }),
       },
       generator: {
-        generate: async (_ctx, run) => {
-          seen.push(run.config);
-          return draft;
-        },
+        generate: () =>
+          Effect.gen(function* () {
+            yield* stageWithConfig();
+            return draft;
+          }),
       },
       reviewer: {
-        review: async (d, _ctx, run) => {
-          seen.push(run.config);
-          return d;
-        },
+        review: (d) =>
+          Effect.gen(function* () {
+            yield* stageWithConfig();
+            return d;
+          }),
       },
     });
-    await runPipeline(stages, query, config, { traceId: "t", now: () => 0 });
+    await Effect.runPromise(runPipeline(stages, query, config, { traceId: "t", now: () => 0 }));
     expect(seen).toHaveLength(5);
     for (const s of seen) expect(s).toBe(config);
   });
@@ -118,85 +131,101 @@ describe("runPipeline", () => {
   it("records stage-emitted llm_call cost and refusal reason", async () => {
     const stages = makeStages({
       generator: {
-        generate: async (_ctx, run) => {
-          run.record({
-            stage: "generator",
-            kind: "llm_call",
-            cost: { modelId: "m", tokensIn: 1, tokensOut: 2, latencyMs: 3, costMicroUsd: 40 },
-            at: run.now(),
-          });
-          return draft;
-        },
+        generate: () =>
+          Effect.gen(function* () {
+            const run = yield* RunContext;
+            run.record({
+              stage: "generator",
+              kind: "llm_call",
+              cost: { modelId: "m", tokensIn: 1, tokensOut: 2, latencyMs: 3, costMicroUsd: 40 },
+              at: run.now(),
+            });
+            return draft;
+          }),
       },
       reviewer: {
-        review: async (d, _ctx, run) => {
-          run.record({
-            stage: "reviewer",
-            kind: "refusal",
-            reason: "insufficient evidence",
-            at: run.now(),
-          });
-          return d;
-        },
+        review: (d) =>
+          Effect.gen(function* () {
+            const run = yield* RunContext;
+            run.record({
+              stage: "reviewer",
+              kind: "refusal",
+              reason: "insufficient evidence",
+              at: run.now(),
+            });
+            return d;
+          }),
       },
     });
-    const result = await runPipeline(stages, query, {}, { traceId: "t", now: () => 1 });
+    const result = await Effect.runPromise(
+      runPipeline(stages, query, {}, { traceId: "t", now: () => 1 }),
+    );
     expect(totalCostMicroUsd(result.trace)).toBe(40);
     const refusal = result.trace.events.find((e) => e.kind === "refusal");
     expect(refusal).toMatchObject({ stage: "reviewer", reason: "insufficient evidence" });
   });
 
-  it("runs deferred disposers in reverse registration order", async () => {
+  it("runs per-run finalizers in reverse registration order", async () => {
     const order: string[] = [];
     const stages = makeStages({
       retriever: {
-        retrieve: async (_r, run) => {
-          run.defer(() => {
-            order.push("first");
-          });
-          run.defer(() => {
-            order.push("second");
-          });
-          return [];
-        },
+        retrieve: () =>
+          Effect.gen(function* () {
+            yield* Effect.addFinalizer(() => Effect.sync(() => order.push("first")));
+            yield* Effect.addFinalizer(() => Effect.sync(() => order.push("second")));
+            return [];
+          }),
       },
     });
-    await runPipeline(stages, query, {}, { traceId: "t", now: () => 0 });
+    await Effect.runPromise(runPipeline(stages, query, {}, { traceId: "t", now: () => 0 }));
     expect(order).toEqual(["second", "first"]);
   });
 
-  it("awaits async disposers and disposes even when a stage throws", async () => {
+  it("awaits async finalizers and disposes even when a stage fails", async () => {
     const order: string[] = [];
     const stages = makeStages({
       generator: {
-        generate: async (_ctx, run) => {
-          run.defer(async () => {
-            await Promise.resolve();
-            order.push("cleanup");
-          });
-          throw new Error("boom");
-        },
+        generate: () =>
+          Effect.gen(function* () {
+            yield* Effect.addFinalizer(() =>
+              Effect.promise(async () => {
+                await Promise.resolve();
+                order.push("cleanup");
+              }),
+            );
+            return yield* Effect.fail(
+              new StageError({ stage: "generator", cause: new Error("boom") }),
+            );
+          }),
       },
     });
-    await expect(
-      runPipeline(stages, query, {}, { traceId: "t", now: () => 0 }),
-    ).rejects.toThrow("boom");
+    const exit = await Effect.runPromiseExit(runPipeline(stages, query, {}, { traceId: "t", now: () => 0 }));
     expect(order).toEqual(["cleanup"]);
+    const failure = exit._tag === "Failure" ? Cause.failureOption(exit.cause) : undefined;
+    expect(failure).toBeDefined();
+    if (failure && failure._tag === "Some") {
+      const err = failure.value;
+      expect(err).toBeInstanceOf(StageError);
+      expect(err.stage).toBe("generator");
+      expect((err.cause as Error).message).toBe("boom");
+    }
   });
 
   it("omits undefined chunk ranks from the retrieval event", async () => {
     const stages = makeStages({
       retriever: {
-        retrieve: async () => [{ id: "c0", text: "bare" }],
+        retrieve: () => Effect.succeed([{ id: "c0", text: "bare" }]),
       },
     });
-    const result = await runPipeline(stages, query, {}, { traceId: "t", now: () => 0 });
+    const result = await Effect.runPromise(
+      runPipeline(stages, query, {}, { traceId: "t", now: () => 0 }),
+    );
     const retrieval = result.trace.events.find((e) => e.kind === "retrieval");
     expect(retrieval).toMatchObject({ detail: { chunks: [{ id: "c0" }] } });
   });
 
   it("defaults the trace id and clock when options are omitted", async () => {
-    const result = await runPipeline(makeStages(), query, config);
+    const result = await Effect.runPromise(runPipeline(makeStages(), query, config));
     expect(result.trace.id.length).toBeGreaterThan(0);
     expect(result.trace.events.length).toBeGreaterThan(0);
   });

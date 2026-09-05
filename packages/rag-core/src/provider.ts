@@ -1,4 +1,6 @@
+import { Data } from "effect";
 import type { CostRecord } from "@app/contracts";
+import type { Effect, Stream } from "effect";
 
 /** Why a Provider call failed — retryable means "try the next candidate". */
 export type ProviderErrorKind =
@@ -14,26 +16,17 @@ export type ProviderErrorKind =
   | "exhausted";
 
 /**
- * The typed failure of a Provider call (and of an exhausted fallback chain).
+ * The typed failure of a Provider call (and of an exhausted fallback chain),
+ * travelling in the Effect `E` channel (ADR-0027) — a caller's signatures say
+ * so instead of discovering failure modes by reading implementations.
  * `candidates` on an `exhausted` error lists the model ids attempted, in
  * order, so the failure is traceable without a Trace event of its own.
  */
-export class ProviderError extends Error {
+export class ProviderError extends Data.TaggedError("ProviderError")<{
   readonly kind: ProviderErrorKind;
-  /** Model ids attempted, in order — set on `exhausted`. */
-  readonly candidates: readonly string[] | undefined;
-
-  constructor(
-    kind: ProviderErrorKind,
-    message: string,
-    candidates?: readonly string[],
-  ) {
-    super(message);
-    this.name = "ProviderError";
-    this.kind = kind;
-    this.candidates = candidates;
-  }
-}
+  readonly message: string;
+  readonly candidates?: readonly string[];
+}> {}
 
 /** The text prompt and parameters for a generation or stream call. */
 export type PromptSpec = {
@@ -56,15 +49,16 @@ export type GenerationResult = {
 };
 
 /**
- * A streamed generation: an async iterator of text deltas plus the call's
- * `CostRecord`, which can only be read once the stream completes (ADR-0022).
- * The caller must record the resolved cost through the run's trace sink —
- * dropping it is a rule-4 defect (untraced LLM call).
+ * A streamed generation (ADR-0022, ADR-0027): a `Stream` of text deltas —
+ * whose failure channel is `ProviderError` and whose interruption propagates
+ * into the provider fetch — plus the call's `CostRecord`, which resolves only
+ * once the stream completes. The caller must record the resolved cost through
+ * the run's trace sink — dropping it is a rule-4 defect (untraced LLM call).
  */
 export type StreamHandle = {
-  deltas: AsyncIterable<string>;
-  /** Resolves when the stream ends; rejects if the stream failed mid-flight. */
-  cost: () => Promise<CostRecord>;
+  deltas: Stream.Stream<string, ProviderError>;
+  /** Resolves when the stream ends; fails with `ProviderError` mid-flight. */
+  cost: () => Effect.Effect<CostRecord, ProviderError>;
 };
 
 /** The input to an embedding call and the dimensionality it asks for. */
@@ -83,17 +77,17 @@ export type EmbeddingResult = {
 };
 
 /**
- * The single seam for all LLM/embedding calls (ADR-0009, ADR-0022). Model
- * identity arrives as an opaque string resolved from config at wiring time —
- * the interface never names a vendor. Implementations live behind it in
- * `packages/infra`; every method returns the call's `CostRecord` so the
+ * The single seam for all LLM/embedding calls (ADR-0009, ADR-0022, ADR-0027).
+ * Model identity arrives as an opaque string resolved from config at wiring
+ * time — the interface never names a vendor. Implementations live behind it
+ * in `packages/infra`; every method returns the call's `CostRecord` so the
  * caller can record tokens/latency/model/cost into the run's trace (AGENTS.md
  * rule 4).
  */
 export interface Provider {
   /** Which model this instance calls — recorded into every CostRecord. */
   readonly modelId: string;
-  generate(spec: PromptSpec): Promise<GenerationResult>;
-  stream(spec: PromptSpec): Promise<StreamHandle>;
-  embed(spec: EmbedSpec): Promise<EmbeddingResult>;
+  generate(spec: PromptSpec): Effect.Effect<GenerationResult, ProviderError>;
+  stream(spec: PromptSpec): Effect.Effect<StreamHandle, ProviderError>;
+  embed(spec: EmbedSpec): Effect.Effect<EmbeddingResult, ProviderError>;
 }

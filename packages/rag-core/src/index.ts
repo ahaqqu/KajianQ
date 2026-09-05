@@ -11,13 +11,15 @@ export {
   type Reviewer,
   type RoutedQuery,
   type Router,
+  type StageEffect,
   type Turn,
 } from "./pipeline";
 export {
-  type Disposer,
   type RunConfig,
-  type RunContext,
+  RunContext,
+  type RunContextService,
 } from "./context";
+export { StageError, toStageError, type StageRequirements } from "./errors";
 export {
   type EmbedSpec,
   type EmbeddingResult,

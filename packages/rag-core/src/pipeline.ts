@@ -1,13 +1,10 @@
 import type { Trace } from "@app/contracts";
-import type { RunContext } from "./context";
+import type { Effect, Scope } from "effect";
+import type { DefaultFilters, RunContext } from "./context";
+import type { StageError } from "./errors";
 
-/**
- * Caller-chosen filter dimensions, passed through untouched. The engine is
- * generic over the filter shape so a domain pack can type its own dimensions
- * (e.g. `Query<KajianQFilters>`) instead of erasing them into an open string
- * map — the Retriever then gets typed filter access, not string re-casts.
- */
-export type DefaultFilters = Record<string, string | readonly string[]>;
+/** Re-exported so stage authors import the filter vocabulary from one module. */
+export type { DefaultFilters } from "./context";
 
 /**
  * A question moving through the pipeline. Generic over `TFilters` so the
@@ -76,20 +73,25 @@ export type Answer = {
 };
 
 /**
+ * A stage method's full effect shape: failure is a typed `StageError`, and
+ * the requirement channel carries the run's `RunContext` service (config,
+ * clock, trace sink) plus the run's `Scope` for per-run finalizers (ADR-0027).
+ */
+export type StageEffect<A> = Effect.Effect<A, StageError, RunContext | Scope.Scope>;
+
+/**
  * Router: intent & principle detection, query decomposition, source routing.
  * Not a mere classifier. Implementations hold an injected Provider; they never
- * name a vendor. Receives the run so it can record `llm_call` cost and defer
- * per-run resources.
+ * name a vendor. Accesses the run through the `RunContext` Tag so it can
+ * record `llm_call` cost and register per-run finalizers via `Effect.addFinalizer`.
  */
 export interface Router<TFilters extends Record<string, unknown> = DefaultFilters> {
-  route(query: Query<TFilters>, run: RunContext<TFilters>): Promise<RoutedQuery<TFilters>>;
-  dispose?(): void | Promise<void>;
+  route(query: Query<TFilters>): StageEffect<RoutedQuery<TFilters>>;
 }
 
 /** Retriever: hybrid search over the store, fused and scored. */
 export interface Retriever<TFilters extends Record<string, unknown> = DefaultFilters> {
-  retrieve(routed: RoutedQuery<TFilters>, run: RunContext<TFilters>): Promise<readonly Chunk[]>;
-  dispose?(): void | Promise<void>;
+  retrieve(routed: RoutedQuery<TFilters>): StageEffect<readonly Chunk[]>;
 }
 
 /**
@@ -97,12 +99,7 @@ export interface Retriever<TFilters extends Record<string, unknown> = DefaultFil
  * ordered turn list; the Generator owns final prompt assembly.
  */
 export interface Assembler<TFilters extends Record<string, unknown> = DefaultFilters> {
-  assemble(
-    query: Query<TFilters>,
-    chunks: readonly Chunk[],
-    run: RunContext<TFilters>,
-  ): Promise<AssembledContext<TFilters>>;
-  dispose?(): void | Promise<void>;
+  assemble(query: Query<TFilters>, chunks: readonly Chunk[]): StageEffect<AssembledContext<TFilters>>;
 }
 
 /**
@@ -112,8 +109,7 @@ export interface Assembler<TFilters extends Record<string, unknown> = DefaultFil
  * records tokens/latency/cost into the run's trace (ADR-0018, ADR-0007).
  */
 export interface Generator<TFilters extends Record<string, unknown> = DefaultFilters> {
-  generate(context: AssembledContext<TFilters>, run: RunContext<TFilters>): Promise<Draft>;
-  dispose?(): void | Promise<void>;
+  generate(context: AssembledContext<TFilters>): StageEffect<Draft>;
 }
 
 /**
@@ -122,10 +118,5 @@ export interface Generator<TFilters extends Record<string, unknown> = DefaultFil
  * the run's sink.
  */
 export interface Reviewer<TFilters extends Record<string, unknown> = DefaultFilters> {
-  review(
-    draft: Draft,
-    context: AssembledContext<TFilters>,
-    run: RunContext<TFilters>,
-  ): Promise<Draft>;
-  dispose?(): void | Promise<void>;
+  review(draft: Draft, context: AssembledContext<TFilters>): StageEffect<Draft>;
 }
