@@ -5,53 +5,30 @@
  *
  * Persistence is Neon Postgres behind the RagStore seam (ADR-0008) — there is
  * no D1 to create. Neon itself is provisioned by #4, outside this script.
+ * Bucket/worker physical names mirror apps/api/alchemy.run.ts (ADR-0028),
+ * which owns provisioning going forward — this script remains only because
+ * the template-owned provision.yml invokes it.
  *
- * Reads bucket/worker names from apps/api/wrangler.toml. Requires
- * CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID env vars (set as GitHub
- * secrets). The default GITHUB_TOKEN cannot write repository variables, so
- * after the first run you set PROD_URL / STAGING_URL once — the script prints
- * the exact commands. Locally (with `gh auth login`), it sets them itself.
+ * Requires CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID env vars (set as
+ * GitHub secrets). The default GITHUB_TOKEN cannot write repository variables,
+ * so after the first run you set PROD_URL / STAGING_URL once — the script
+ * prints the exact commands. Locally (with `gh auth login`), it sets them
+ * itself.
  *
  * Usage (local):
  *   bun scripts/provision-cf.mjs
  *
  * Idempotent: an existing bucket is reused. Safe to re-run.
  */
-import { readFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 
-const ROOT = process.cwd();
-const CONFIG_PATH = `${ROOT}/apps/api/wrangler.toml`;
-
-// Minimal TOML parser for the fields we need. wrangler.toml is simple enough
-// that a regex-based parse is reliable and avoids adding a TOML dependency.
-function parseWranglerToml(path) {
-  const text = readFileSync(path, "utf8");
-
-  const prodSection = text.split("[env.staging]")[0] ?? "";
-  const prodR2Match = prodSection.match(
-    /\[\[r2_buckets\]\][\s\S]*?bucket_name\s*=\s*"([^"]+)"/,
-  );
-
-  const stagingSection = text.split("[env.staging]")[1] ?? "";
-  const stagingR2Match = stagingSection.match(
-    /\[\[env\.staging\.r2_buckets\]\][\s\S]*?bucket_name\s*=\s*"([^"]+)"/,
-  );
-
-  const prodWorkerMatch = prodSection.match(/^name\s*=\s*"([^"]+)"/m);
-  const stagingWorkerMatch = stagingSection.match(/^name\s*=\s*"([^"]+)"/m);
-  if (!prodWorkerMatch)
-    throw new Error("Could not parse production worker name from wrangler.toml");
-  if (!stagingWorkerMatch)
-    throw new Error("Could not parse staging worker name from wrangler.toml");
-
-  return {
-    prodR2Name: prodR2Match?.[1] ?? null,
-    stagingR2Name: stagingR2Match?.[1] ?? null,
-    prodWorkerName: prodWorkerMatch[1],
-    stagingWorkerName: stagingWorkerMatch[1],
-  };
-}
+// Physical names pinned in apps/api/alchemy.run.ts (ADR-0028). Keep in sync.
+const NAMES = {
+  prodR2: "kajianq-raw",
+  stagingR2: "kajianq-raw-staging",
+  prodWorker: "kajianq-api",
+  stagingWorker: "kajianq-api-staging",
+};
 
 function run(cmd, { ignoreError = false } = {}) {
   try {
@@ -63,22 +40,26 @@ function run(cmd, { ignoreError = false } = {}) {
 }
 
 /**
- * Create an R2 bucket, or do nothing if it already exists.
- * `wrangler r2 bucket create` errors with code 10004 if the bucket exists.
+ * Create an R2 bucket via the Cloudflare API, or do nothing if it exists
+ * (the API reports error code 10004 for a duplicate name).
  */
-function ensureR2(name) {
-  if (!name) return;
-  try {
-    run(`bunx wrangler r2 bucket create "${name}"`);
+async function ensureR2(accountId, token, name) {
+  const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/r2/buckets`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (res.ok) {
     console.log(`R2 "${name}" created.`);
-  } catch (err) {
-    const stderr = err.stderr?.toString() ?? err.message ?? "";
-    if (stderr.includes("already exists") || stderr.includes("10004")) {
-      console.log(`R2 "${name}" already exists — reusing.`);
-    } else {
-      throw err;
-    }
+    return;
   }
+  const code = body?.errors?.[0]?.code;
+  if (code === 10004 || JSON.stringify(body).includes("already exists")) {
+    console.log(`R2 "${name}" already exists — reusing.`);
+    return;
+  }
+  throw new Error(`R2 create failed for "${name}": HTTP ${res.status} ${JSON.stringify(body)}`);
 }
 
 /** Set a GitHub variable via `gh` (works locally; fails with default Actions token). */
@@ -106,32 +87,29 @@ function fetchWorkersDevSubdomain(accountId, token) {
   }
 }
 
-function main() {
+async function main() {
   const token = process.env.CLOUDFLARE_API_TOKEN;
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
   if (!token) throw new Error("CLOUDFLARE_API_TOKEN is not set.");
   if (!accountId) throw new Error("CLOUDFLARE_ACCOUNT_ID is not set.");
 
-  const { prodR2Name, stagingR2Name, prodWorkerName, stagingWorkerName } =
-    parseWranglerToml(CONFIG_PATH);
-
-  console.log("Provisioning Cloudflare resources from wrangler.toml:");
-  if (prodR2Name) console.log(`  Production R2: ${prodR2Name}`);
-  if (stagingR2Name) console.log(`  Staging R2:    ${stagingR2Name}`);
-  console.log(`  Production worker: ${prodWorkerName}`);
-  console.log(`  Staging worker:    ${stagingWorkerName}`);
+  console.log("Provisioning Cloudflare resources (names mirror alchemy.run.ts):");
+  console.log(`  Production R2: ${NAMES.prodR2}`);
+  console.log(`  Staging R2:    ${NAMES.stagingR2}`);
+  console.log(`  Production worker: ${NAMES.prodWorker}`);
+  console.log(`  Staging worker:    ${NAMES.stagingWorker}`);
   console.log("");
 
-  ensureR2(prodR2Name);
-  ensureR2(stagingR2Name);
+  await ensureR2(accountId, token, NAMES.prodR2);
+  await ensureR2(accountId, token, NAMES.stagingR2);
 
   // Derive deploy URLs from worker names + workers.dev subdomain.
   const subdomain = fetchWorkersDevSubdomain(accountId, token);
   let prodUrl = null;
   let stagingUrl = null;
   if (subdomain) {
-    prodUrl = `https://${prodWorkerName}.${subdomain}.workers.dev`;
-    stagingUrl = `https://${stagingWorkerName}.${subdomain}.workers.dev`;
+    prodUrl = `https://${NAMES.prodWorker}.${subdomain}.workers.dev`;
+    stagingUrl = `https://${NAMES.stagingWorker}.${subdomain}.workers.dev`;
     console.log(`  workers.dev subdomain: ${subdomain}`);
     console.log(`  PROD_URL:    ${prodUrl}`);
     console.log(`  STAGING_URL: ${stagingUrl}`);

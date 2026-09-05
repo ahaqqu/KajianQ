@@ -25,19 +25,17 @@ This package exists so forked projects inherit the limiter through
 ## Adopting in a forked Worker
 
 1. Dependency: add `"@app/rate": "workspace:*"` to the API package.
-2. Entrypoint: re-export the class so Wrangler can register it —
+2. Entrypoint: re-export the class from the Worker entrypoint —
    `export { RateLimiterDo } from "@app/rate/durable";`
-3. `wrangler.toml`:
+3. Binding (Alchemy stack file, ADR-0028):
 
-   ```toml
-   [[durable_objects.bindings]]
-   name = "RATE_LIMITER"
-   class_name = "RateLimiterDo"
-
-   [[migrations]]
-   tag = "v1"
-   new_sqlite_classes = ["RateLimiterDo"]
+   ```ts
+   RATE_LIMITER: Cloudflare.DurableObject("RATE_LIMITER", {
+     className: "RateLimiterDo",
+   }),
    ```
+
+   Alchemy derives the class migration automatically (SQLite-backed).
 
 4. Middleware (inside the request path):
 

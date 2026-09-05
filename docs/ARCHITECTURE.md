@@ -318,7 +318,7 @@ Root `package.json` scripts are the single source of truth for gates:
 | `bun run agentic-limits` | file-size / import-count caps |
 | `bun run truth` | no dependency without an importer |
 | `bun run size-limit` | bundle budget (<200 KB gzipped) |
-| `bun run e2e` | Playwright-BDD against `wrangler dev` |
+| `bun run e2e` | Playwright-BDD against `alchemy dev` (local workerd) |
 | `bun run template-gate` | fails on drift of template-owned files |
 | `bun run build` / `dev` / `deploy` / `deploy:staging` | build, local dev, deploys |
 

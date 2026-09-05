@@ -20,8 +20,7 @@ export default defineConfig({
   webServer: process.env.E2E_BASE_URL
     ? undefined
     : {
-        command:
-          "bun run build && bunx wrangler dev -c apps/api/wrangler.toml --ip 127.0.0.1 --port 8787",
+        command: "bun run build && bun run --filter '@app/api' dev",
         url: "http://127.0.0.1:8787/v1/health",
         reuseExistingServer: !process.env.CI,
         timeout: 180_000,
