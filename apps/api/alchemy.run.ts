@@ -18,15 +18,22 @@ const env =
     .process?.env ?? {};
 const isDev = env.ALCHEMY_DEV === "true";
 
-// Secrets were applied out-of-band via `wrangler secret` before Alchemy took
-// over; declaring them here re-binds them as `secret_text` on deploy, so the
-// wrangler-era values are superseded without ever passing through the repo.
-// Local runs omit them: the foundation-shell routes never touch providers.
-const SENTRY_DSN = Config.redacted("SENTRY_DSN");
-const DASHSCOPE_API_KEY = Config.redacted("DASHSCOPE_API_KEY");
-const DEEPSEEK_API_KEY = Config.redacted("DEEPSEEK_API_KEY");
-const GEMINI_API_KEY = Config.redacted("GEMINI_API_KEY");
-const MOONSHOT_API_KEY = Config.redacted("MOONSHOT_API_KEY");
+// Secrets bind only when present in the deploy environment (`secret_text`);
+// absent or empty means the feature stays disabled — Sentry off, vendor-backed
+// chat routes unavailable — and no binding is written, so an unset deploy can
+// never overwrite a live secret with an empty value (owner decision, ADR-0028).
+// Local dev binds none: the foundation-shell routes never touch providers.
+const SECRET_NAMES = [
+  "SENTRY_DSN",
+  "DASHSCOPE_API_KEY",
+  "DEEPSEEK_API_KEY",
+  "GEMINI_API_KEY",
+  "MOONSHOT_API_KEY",
+] as const;
+
+const secretBindings = Object.fromEntries(
+  SECRET_NAMES.filter((name) => env[name]).map((name) => [name, Config.redacted(name)] as const),
+);
 
 const ASSETS = {
   directory: "../web/dist",
@@ -109,15 +116,7 @@ export default Stack(
         }),
         APP_ENV: topology.appEnv,
         ALLOWED_ORIGINS: "",
-        ...(topology.withSecrets
-          ? {
-              SENTRY_DSN,
-              DASHSCOPE_API_KEY,
-              DEEPSEEK_API_KEY,
-              GEMINI_API_KEY,
-              MOONSHOT_API_KEY,
-            }
-          : {}),
+        ...(topology.withSecrets ? secretBindings : {}),
       },
     });
 
