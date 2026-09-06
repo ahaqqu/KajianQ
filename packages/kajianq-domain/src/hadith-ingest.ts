@@ -202,7 +202,7 @@ export function hadithSourceParser(
     const corpus = buildHadithCorpus(decoded, expected);
     const byBook = groupByBook(corpus.records);
     const parents = [];
-    for (const [key, records] of byBook) {
+    for (const [, records] of byBook) {
       const first = records[0];
       if (first === undefined) continue;
       const title =

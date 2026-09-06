@@ -134,7 +134,7 @@ function buildChatRequest(
     model: modelId,
     messages: spec.turns.map((t) => ({ role: t.role, content: t.content })),
     stream,
-    ...(spec.options ?? {}),
+    ...spec.options,
   };
 }
 

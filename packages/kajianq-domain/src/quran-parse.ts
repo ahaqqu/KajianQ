@@ -169,7 +169,11 @@ export function parseMorphology(text: string): Map<string, MorphToken[]> {
     const [, surahS, ayahS, wordS, segmentS] = locMatch;
     const lemma = /(?:^|\|)LEM:([^|]+)/.exec(features ?? "")?.[1];
     const root = /(?:^|\|)ROOT:([^|]+)/.exec(features ?? "")?.[1];
-    const type = /^STEM/.test(features ?? "") ? "STEM" : /^SUFFIX/.test(features ?? "") ? "SUFFIX" : "PREFIX";
+    const type = (features ?? "").startsWith("STEM")
+      ? "STEM"
+      : (features ?? "").startsWith("SUFFIX")
+        ? "SUFFIX"
+        : "PREFIX";
     const key = `${Number(surahS)}:${Number(ayahS)}`;
     const list = byAyah.get(key) ?? [];
     list.push({

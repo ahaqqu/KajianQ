@@ -1,7 +1,5 @@
 import * as v from "valibot";
 
-const NonEmptyString = v.pipe(v.string(), v.minLength(1));
-
 /**
  * Configuration contract for the role-gh-identity workspace hook
  * (`scripts/role-gh-identity/`), loaded from its `config.json`

@@ -16,7 +16,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { evaluateIdentityCall, invokesBareGh, GH_AS_WRAPPER, resolveRole } from "../../scripts/role-gh-identity/lib.mjs";

@@ -4,7 +4,6 @@ import {
   ayahMetadata,
   surahSourceKey,
   TOTAL_AYAHS,
-  TOTAL_SURAHS,
   type QuranAyah,
   type QuranSurahMeta,
 } from "./quran-source";

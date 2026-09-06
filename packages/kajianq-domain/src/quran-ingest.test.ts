@@ -179,7 +179,7 @@ describe("Quran ingestion (fixture = real source data)", () => {
     expect((pair?.morphology ?? []).length).toBeGreaterThan(0);
     // Children keep chapter context: their citation names the surah+ayah.
     const child = store.allChildren().find((c) => (c.metadata as { surah?: number }).surah === 112);
-    expect((child?.citation as { surah?: number }).surah).toBe(112);
+    expect((child?.citation as { surah?: number } | undefined)?.surah).toBe(112);
     // Every costed call recorded: the report's cost equals the sum of calls.
     expect(result.report.llmCalls.length).toBeGreaterThan(0);
     expect(result.report.costMicroUsd).toBe(
@@ -200,8 +200,8 @@ describe("Quran ingestion (fixture = real source data)", () => {
     });
     // The parent metadata carries the summary and the embedding source marker.
     const parent = store.allParents().find((p) => p.sourceKey === "quran/tanzil-uthmani/surah/112");
-    expect((parent?.metadata as Record<string, unknown>).summary).toContain("Al-Ikhlas");
-    expect((parent?.metadata as Record<string, unknown>).summaryEmbeddedFrom).toBe("summary");
+    expect((parent?.metadata as Record<string, unknown> | undefined)?.summary).toContain("Al-Ikhlas");
+    expect((parent?.metadata as Record<string, unknown> | undefined)?.summaryEmbeddedFrom).toBe("summary");
   });
 
   it("is idempotent: re-running ingestion writes the same counts", async () => {

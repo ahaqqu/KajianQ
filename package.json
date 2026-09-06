@@ -12,6 +12,8 @@
     "build": "bun run build:web",
     "check": "tsc -p tsconfig.json && bun run --filter '@app/*' check",
     "test": "vitest run --coverage",
+    "lint": "vp check",
+    "fmt": "vp fmt",
     "boundary": "bun scripts/check-boundary.mjs",
     "size-limit": "size-limit",
     "agentic-limits": "bun scripts/check-agentic-limits.mjs",
@@ -60,6 +62,7 @@
     "playwright-bdd": "9.2.0",
     "size-limit": "13.0.3",
     "typescript": "7.0.2",
+    "vite-plus": "0.3.0",
     "vitest": "4.1.11"
   },
   "size-limit": [

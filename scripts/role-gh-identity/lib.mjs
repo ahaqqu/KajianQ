@@ -101,7 +101,7 @@ export function evaluateIdentityCall({ command, role, config }) {
   return { deny: true, reason: buildDenyReason(role, entry) };
 }
 
-function buildDenyReason(role, entry) {
+function buildDenyReason(role, _entry) {
   return [
     `ROLE GH IDENTITY: this session runs as role "${role}", which has a dedicated GitHub identity. Bare \`gh\` calls would post as the owner's personal account.`,
     "",

@@ -102,7 +102,7 @@ describe("hadith ingestion (fixture = real source data)", () => {
     expect(result.parentIds).toHaveLength(1);
     const parent = store.allParents().find((p) => p.sourceKey === hadithSourceKey("abudawud", 1));
     expect(parent?.title).toBe("Abu Dawud — Purification (Kitab Al-Taharah)");
-    expect((parent?.metadata as Record<string, unknown>).sourceType).toBe("hadith");
+    expect((parent?.metadata as Record<string, unknown> | undefined)?.sourceType).toBe("hadith");
     expect(store.allChildren()).toHaveLength(7);
 
     // Both embedding tracks written for every child; the empty-secondary
@@ -169,8 +169,8 @@ describe("hadith ingestion (fixture = real source data)", () => {
     const store = createMemoryRagStore();
     await ingestFixture(store);
     const parent = store.allParents().find((p) => p.sourceKey === hadithSourceKey("abudawud", 1));
-    expect((parent?.metadata as Record<string, unknown>).summary).toContain("Thaharah");
-    expect((parent?.metadata as Record<string, unknown>).summaryEmbeddedFrom).toBe("summary");
+    expect((parent?.metadata as Record<string, unknown> | undefined)?.summary).toContain("Thaharah");
+    expect((parent?.metadata as Record<string, unknown> | undefined)?.summaryEmbeddedFrom).toBe("summary");
   });
 
   it("is idempotent: re-running ingestion writes the same counts", async () => {

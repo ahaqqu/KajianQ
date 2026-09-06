@@ -2,10 +2,8 @@ import { parseTrace, type TraceEvent } from "@app/contracts";
 import type {
   Answer,
   Assembler,
-  AssembledContext,
   Chunk,
   DefaultFilters,
-  Draft,
   Generator,
   Query,
   Retriever,

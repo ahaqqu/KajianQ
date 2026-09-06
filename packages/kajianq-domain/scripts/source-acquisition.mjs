@@ -73,7 +73,7 @@ async function fetchOrCache(url, cacheFile, log, cacheDir) {
  * comes from the caller (per-run env), keeping this helper run-agnostic.
  */
 export async function acquireFiles(entries, { log, cacheDir }) {
-  const results = new Array(entries.length);
+  const results = Array.from({ length: entries.length });
   for (let i = 0; i < entries.length; i += FETCH_CONCURRENCY) {
     const slice = entries.slice(i, i + FETCH_CONCURRENCY);
     const batch = await Promise.all(
@@ -92,7 +92,7 @@ export async function acquireFiles(entries, { log, cacheDir }) {
  * files, and the morphology text. Returns the raw texts verbatim — parsing
  * and integrity-checking belong to the domain layer, not acquisition.
  */
-export async function acquireSources({ surahCount, log, surahListUrl, surahFileUrl, morphologyUrl }) {
+export async function acquireSources({ surahCount, log, surahListUrl, _surahFileUrl, morphologyUrl }) {
   const cacheDir = process.env.QURAN_SOURCE_DIR;
   const surahListText = await fetchOrCache(surahListUrl, "surah_list.json", log, cacheDir);
 
