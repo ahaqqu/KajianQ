@@ -55,7 +55,9 @@ jobs:
         with:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
-      - run: bunx vitest run --no-file-parallelism packages/infra/src/rag-store-neon.test.ts
+      # vp is the single test runner (ADR-0029): vp resolves from
+      # node_modules/.bin, no setup-vp step needed here.
+      - run: bunx vp test run --no-file-parallelism packages/infra/src/rag-store-neon.test.ts
         env:
           NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
 
