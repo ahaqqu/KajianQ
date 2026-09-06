@@ -48,12 +48,12 @@ The go/no-go spike ran against the Workers runtime as required. Artifacts: `pack
 
 **Gate measurements** (worker entry `apps/api/src/index.ts` with the spike module in its import graph; baseline = `main` without Effect; wrangler 4.123.0, `--dry-run --outdir` for bundle size, local workerd `wrangler dev` + timed `/v1/health` for cold start, `tsc -p apps/api/tsconfig.json --noEmit` ×3 for tsgo):
 
-| Gate | Baseline | With Effect v3 | Verdict |
-| --- | --- | --- | --- |
-| tsgo typecheck latency (apps/api) | 1.02–1.23 s | 1.09–1.34 s | **pass** — no regression |
-| Cold start (first request) | 30 ms | 21 ms | **pass** — no regression |
-| Steady-state request | ~4 ms | ~4–5 ms | **pass** |
-| Worker bundle | 2567 KiB / 483 KiB gzip | 3584 KiB / 677 KiB gzip | **pass** — recorded; see note |
+| Gate                              | Baseline                | With Effect v3          | Verdict                       |
+| --------------------------------- | ----------------------- | ----------------------- | ----------------------------- |
+| tsgo typecheck latency (apps/api) | 1.02–1.23 s             | 1.09–1.34 s             | **pass** — no regression      |
+| Cold start (first request)        | 30 ms                   | 21 ms                   | **pass** — no regression      |
+| Steady-state request              | ~4 ms                   | ~4–5 ms                 | **pass**                      |
+| Worker bundle                     | 2567 KiB / 483 KiB gzip | 3584 KiB / 677 KiB gzip | **pass** — recorded; see note |
 
 Notes:
 

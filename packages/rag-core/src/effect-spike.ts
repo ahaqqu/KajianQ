@@ -1,13 +1,5 @@
 import { parseTrace } from "@app/contracts";
-import {
-  Context,
-  Data,
-  Effect,
-  Layer,
-  Ref,
-  Schedule,
-  Stream,
-} from "effect";
+import { Context, Data, Effect, Layer, Ref, Schedule, Stream } from "effect";
 
 /**
  * ADR-0027 §2 go/no-go spike (Workers gate). One program exercising the four
@@ -37,31 +29,34 @@ export class EffectSpikeError extends Data.TaggedError("EffectSpikeError")<{
 }> {}
 
 /** ADR-0021 `RunContext.now` responsibility, mapped to a `Context.Tag`. */
-export class SpikeClock extends Context.Tag("app/spike/SpikeClock")<SpikeClock, {
-  readonly now: () => number;
-}>() {}
+export class SpikeClock extends Context.Tag("app/spike/SpikeClock")<
+  SpikeClock,
+  {
+    readonly now: () => number;
+  }
+>() {}
 
 /**
  * A lifecycle-managed resource: acquired when the layer builds, released when
  * the scope closes. The release signal is observable so tests can assert the
  * release actually ran (ADR-0027 decision 3, "Scope lifecycle").
  */
-export class SpikeResource extends Context.Tag("app/spike/SpikeResource")<SpikeResource, {
-  /** Increments the resource's usage count. */
-  readonly use: Effect.Effect<void>;
-  /** Observed `true` only after the scope released the resource. */
-  readonly released: Effect.Effect<boolean>;
-}>() {}
+export class SpikeResource extends Context.Tag("app/spike/SpikeResource")<
+  SpikeResource,
+  {
+    /** Increments the resource's usage count. */
+    readonly use: Effect.Effect<void>;
+    /** Observed `true` only after the scope released the resource. */
+    readonly released: Effect.Effect<boolean>;
+  }
+>() {}
 
 /** `Layer.scoped` acquire/release around a `Ref`-held release flag. */
 export const spikeResourceLayer: Layer.Layer<SpikeResource> = Layer.scoped(
   SpikeResource,
   Effect.gen(function* () {
     const released = yield* Ref.make(false);
-    const open = yield* Effect.acquireRelease(
-      Ref.make(0),
-      () => Ref.set(released, true),
-    );
+    const open = yield* Effect.acquireRelease(Ref.make(0), () => Ref.set(released, true));
     return {
       use: Ref.updateAndGet(open, (n) => n + 1).pipe(Effect.asVoid),
       released: Ref.get(released),
@@ -89,16 +84,20 @@ export const flakyCall = (
           Effect.flatMap((attempt) =>
             attempt <= failures
               ? Effect.fail(
-                new EffectSpikeError({
-                  kind: "rate_limited",
-                  message: `attempt ${attempt}`,
-                }),
-              )
+                  new EffectSpikeError({
+                    kind: "rate_limited",
+                    message: `attempt ${attempt}`,
+                  }),
+                )
               : Effect.succeed(`ok on attempt ${attempt}`),
           ),
         ),
         { schedule: retrySchedule },
-      ).pipe(Effect.flatMap((answer) => Effect.map(Ref.get(attempts), (attempts) => ({ answer, attempts })))),
+      ).pipe(
+        Effect.flatMap((answer) =>
+          Effect.map(Ref.get(attempts), (attempts) => ({ answer, attempts })),
+        ),
+      ),
     ),
   );
 
@@ -139,7 +138,10 @@ export const parseTraceEffect = (
   Effect.try({
     try: () => parseTrace(raw),
     catch: (cause): EffectSpikeError =>
-      new EffectSpikeError({ kind: "contract", message: `trace contract rejected: ${String(cause)}` }),
+      new EffectSpikeError({
+        kind: "contract",
+        message: `trace contract rejected: ${String(cause)}`,
+      }),
   });
 
 /**
@@ -147,7 +149,9 @@ export const parseTraceEffect = (
  * a delta stream, parse a trace contract, and touch the scoped resource —
  * one `Effect.gen` pipeline.
  */
-export const spikeProgram = (failures: number): Effect.Effect<
+export const spikeProgram = (
+  failures: number,
+): Effect.Effect<
   {
     answer: string;
     attempts: number;
