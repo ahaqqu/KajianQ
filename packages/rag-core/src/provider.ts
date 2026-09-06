@@ -1,5 +1,7 @@
 import { Data } from "effect";
 import type { CostRecord } from "@app/contracts";
+
+export type { CostRecord };
 import type { Effect, Stream } from "effect";
 
 /** Why a Provider call failed — retryable means "try the next candidate". */

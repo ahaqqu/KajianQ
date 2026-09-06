@@ -17,6 +17,7 @@ export {
 export { type RunConfig, RunContext, type RunContextService } from "./context";
 export { StageError, toStageError, type StageRequirements } from "./errors";
 export {
+  type CostRecord,
   type EmbedSpec,
   type EmbeddingResult,
   type GenerationResult,

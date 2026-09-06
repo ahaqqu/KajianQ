@@ -81,5 +81,7 @@ export const perKindRetrySchedule = (
 };
 
 /** The checked-in default retry policy (see the policy shape above). */
-export const defaultRetrySchedule: Schedule.Schedule<unknown, ProviderError> =
-  perKindRetrySchedule("500 millis", "50 millis");
+export const defaultRetrySchedule: Schedule.Schedule<unknown, ProviderError> = perKindRetrySchedule(
+  "500 millis",
+  "50 millis",
+);

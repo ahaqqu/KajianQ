@@ -1,5 +1,6 @@
 import { Effect, type Schedule } from "effect";
 import {
+  type CostRecord,
   ProviderError,
   type EmbedSpec,
   type EmbeddingResult,
@@ -8,10 +9,8 @@ import {
   type Provider,
   type StreamHandle,
 } from "@app/rag-core";
-import type { CostRecord } from "@app/contracts";
 import { defaultRetrySchedule } from "./retry-schedule";
-import type { ProviderConfig } from "./provider-config";
-import { resolveChain } from "./provider-config";
+import { resolveChain, type ProviderConfig } from "./provider-config";
 import {
   createChatCompletionsProvider,
   isRetryable,
@@ -78,7 +77,6 @@ type WiredCandidate = {
   personalDataAllowed: boolean;
 };
 
-
 class FallbackProvider implements Provider {
   /**
    * The primary candidate's model id — wiring metadata only. Per-call cost
@@ -92,7 +90,10 @@ class FallbackProvider implements Provider {
     private readonly role: string,
     private readonly candidates: readonly WiredCandidate[],
     private readonly missingKeys: readonly string[],
-    private readonly retrySchedule: Schedule.Schedule<unknown, ProviderError> = defaultRetrySchedule,
+    private readonly retrySchedule: Schedule.Schedule<
+      unknown,
+      ProviderError
+    > = defaultRetrySchedule,
   ) {
     this.modelId = candidates[0]?.provider.modelId ?? role;
   }

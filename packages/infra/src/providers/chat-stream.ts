@@ -1,7 +1,7 @@
 import { Cause, Effect, Exit, Option, Stream } from "effect";
 import { ProviderError, type StreamHandle } from "@app/rag-core";
 import type { CostRecord } from "@app/contracts";
-import { computeCost, estimateTokens, withAttemptCost } from "./chat-cost";
+import { computeCost, estimateTokens, withAttemptCost } from "./chat-wire";
 import { readSseStream, type StreamOutcome, type StreamUsage } from "./sse-stream";
 
 /**
