@@ -186,9 +186,7 @@ export function streamHandle(input: {
                 settleFromExit(exit);
               }),
           ).pipe(
-            Effect.andThen(
-              Effect.tryPromise({ try: () => costPromise, catch: toProviderError }),
-            ),
+            Effect.andThen(Effect.tryPromise({ try: () => costPromise, catch: toProviderError })),
           );
         }
         // Deltas were consumed but the stream is still mid-flight: the

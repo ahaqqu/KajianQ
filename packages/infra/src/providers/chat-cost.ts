@@ -35,3 +35,16 @@ export function computeCost(
     estimated,
   };
 }
+
+/** True when a wire-reported token count is a usable metered value. */
+function isMetered(tokens: number | undefined): boolean {
+  return typeof tokens === "number" && Number.isFinite(tokens) && tokens >= 0;
+}
+
+/** True when the vendor reported a complete, usable usage block. */
+export function isUsageMetered(usage: {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+}): boolean {
+  return isMetered(usage.prompt_tokens) && isMetered(usage.completion_tokens);
+}

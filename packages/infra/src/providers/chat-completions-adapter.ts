@@ -9,7 +9,7 @@ import {
   type StreamHandle,
 } from "@app/rag-core";
 import type { ModelConfig, VendorConfig } from "./provider-config";
-import { computeCost, estimateTokens } from "./chat-cost";
+import { computeCost, estimateTokens, isUsageMetered } from "./chat-cost";
 import { streamHandle } from "./chat-stream";
 
 /**
@@ -184,22 +184,14 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
       await assertOk(res, "/chat/completions");
       const json = (await res.json()) as ChatResponse;
       const text = json.choices?.[0]?.message?.content ?? json.choices?.[0]?.text ?? "";
-      const meteredIn = json.usage?.prompt_tokens;
-      const meteredOut = json.usage?.completion_tokens;
-      const isMetered =
-        typeof meteredIn === "number" &&
-        Number.isFinite(meteredIn) &&
-        meteredIn >= 0 &&
-        typeof meteredOut === "number" &&
-        Number.isFinite(meteredOut) &&
-        meteredOut >= 0;
+      const isMetered = isUsageMetered(json.usage ?? {});
       // Where the vendor reports no usage, estimate from chars and mark the
       // record estimated (ADR-0022) — a trace must never present an estimate
       // as metered.
       const tokensIn = isMetered
-        ? meteredIn!
+        ? json.usage!.prompt_tokens!
         : spec.turns.reduce((n, t) => n + estimateTokens(t.content.length), 0);
-      const tokensOut = isMetered ? meteredOut! : 0;
+      const tokensOut = isMetered ? json.usage!.completion_tokens! : 0;
       return {
         text,
         cost: computeCost(
@@ -276,11 +268,9 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
       // estimate from input chars (~4 chars/token) — never the text count,
       // which would understate cost by orders of magnitude — and mark the
       // record estimated (ADR-0022).
-      const meteredIn = json.usage?.prompt_tokens;
-      const isMetered =
-        typeof meteredIn === "number" && Number.isFinite(meteredIn) && meteredIn >= 0;
+      const isMetered = isUsageMetered(json.usage ?? {});
       const tokensIn = isMetered
-        ? meteredIn!
+        ? json.usage!.prompt_tokens!
         : spec.texts.reduce((n, t) => n + estimateTokens(t.length), 0);
       return {
         vectors,
