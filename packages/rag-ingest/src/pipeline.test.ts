@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { RagStore } from "@app/infra";
 import type { Provider } from "@app/rag-core";
-import { runIngestion } from "./pipeline";
+import { EmbedMisalignment, runIngestion } from "./pipeline";
 import type { ParsedParent } from "./types";
-import { Effect } from "effect";
+import { Cause, Effect } from "effect";
 
 /** In-memory RagStore fake: idempotent by sourceKey / (parentId, ordinal). */
 function fakeStore() {
@@ -170,6 +170,235 @@ describe("runIngestion", () => {
     expect(result.report.parentsWritten).toBe(2);
     expect(result.report.costMicroUsd).toBe(6);
     expect(result.report.details?.embeddedSecondaryTrack).toBe(true);
+  });
+
+  it("embedConcurrency > 1 runs batches in parallel while keeping rows aligned", async () => {
+    const f = fakeStore();
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const slowEmbedder: Provider = {
+      modelId: "fake-embedder",
+      embed: (spec) =>
+        Effect.gen(function* () {
+          inFlight += 1;
+          maxInFlight = Math.max(maxInFlight, inFlight);
+          yield* Effect.sleep("10 millis");
+          inFlight -= 1;
+          return {
+            vectors: spec.texts.map((text) => [text.length, 1]),
+            cost: {
+              modelId: "fake-embedder",
+              tokensIn: spec.texts.length,
+              tokensOut: 0,
+              latencyMs: 10,
+              costMicroUsd: spec.texts.length,
+            },
+          };
+        }),
+      generate: () => Effect.die("not used"),
+      stream: () => Effect.die("not used"),
+    };
+    // 8 children of distinct lengths → 2 batches per track at batchSize 4.
+    const parents: ParsedParent[] = [
+      {
+        sourceKey: "src/a",
+        title: null,
+        metadata: {},
+        children: Array.from({ length: 8 }, (_, i) => ({
+          sourceKey: `src/a/${i}`,
+          textRaw: `raw ${i}`,
+          textPrimary: `primary text ${i} `.repeat(i + 1),
+          textSecondary: `sekunder ${i}`,
+          citation: {},
+          metadata: {},
+        })),
+      },
+    ];
+    const written: Record<string, unknown>[] = [];
+    const store: RagStore = {
+      ...f.store,
+      async insertDocChildren(batch) {
+        written.push(...batch.map((row) => ({ ...row })));
+        return f.store.insertDocChildren(batch);
+      },
+    };
+    const result = await runIngestion(
+      async () => parents,
+      { archiveKey: "archive/key", raw: new Uint8Array() },
+      { store, embedder: slowEmbedder, summarizer: null, embedBatchSize: 4, embedConcurrency: 2 },
+    );
+    expect(maxInFlight).toBe(2); // bounded, and actually parallel
+    expect(result.report.childrenWritten).toBe(8);
+    // Row alignment survived concurrent batches: vector[0] is the text length.
+    for (const row of written) {
+      expect(row.embeddingPrimary).toEqual([(row.textAr as string).length, 1]);
+      expect(row.embeddingFallback).toEqual([(row.textId as string).length, 1]);
+    }
+  });
+
+  it("defaults to serial embedding when embedConcurrency is unset", async () => {
+    const f = fakeStore();
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const slowEmbedder: Provider = {
+      modelId: "fake-embedder",
+      embed: (spec) =>
+        Effect.gen(function* () {
+          inFlight += 1;
+          maxInFlight = Math.max(maxInFlight, inFlight);
+          yield* Effect.sleep("5 millis");
+          inFlight -= 1;
+          return {
+            vectors: spec.texts.map(() => [1]),
+            cost: {
+              modelId: "fake-embedder",
+              tokensIn: spec.texts.length,
+              tokensOut: 0,
+              latencyMs: 5,
+              costMicroUsd: spec.texts.length,
+            },
+          };
+        }),
+      generate: () => Effect.die("not used"),
+      stream: () => Effect.die("not used"),
+    };
+    const parents: ParsedParent[] = [
+      {
+        sourceKey: "src/a",
+        title: null,
+        metadata: {},
+        children: Array.from({ length: 4 }, (_, i) => ({
+          sourceKey: `src/a/${i}`,
+          textRaw: `raw ${i}`,
+          textPrimary: `primary ${i}`,
+          textSecondary: null,
+          citation: {},
+          metadata: {},
+        })),
+      },
+    ];
+    await runIngestion(
+      async () => parents,
+      { archiveKey: "archive/key", raw: new Uint8Array() },
+      { store: f.store, embedder: slowEmbedder, summarizer: null, embedBatchSize: 2 },
+    );
+    expect(maxInFlight).toBe(1);
+  });
+
+  it("a misaligned batch under concurrency fails the run, records its cost, and interrupts in-flight siblings", async () => {
+    const f = fakeStore();
+    const aborted: string[] = [];
+    const flakyEmbedder: Provider = {
+      modelId: "fake-embedder",
+      embed: (spec) =>
+        spec.texts[0] === "primary 2"
+          ? // Misaligned response: a real billed call with the wrong shape.
+            Effect.succeed({
+              vectors: spec.texts.map(() => [1]).slice(0, spec.texts.length - 1),
+              cost: {
+                modelId: "fake-embedder",
+                tokensIn: spec.texts.length,
+                tokensOut: 0,
+                latencyMs: 5,
+                costMicroUsd: spec.texts.length,
+              },
+            })
+          : Effect.sleep("20 millis").pipe(
+              Effect.flatMap(() =>
+                Effect.succeed({
+                  vectors: spec.texts.map(() => [1]),
+                  cost: {
+                    modelId: "fake-embedder",
+                    tokensIn: spec.texts.length,
+                    tokensOut: 0,
+                    latencyMs: 20,
+                    costMicroUsd: spec.texts.length,
+                  },
+                }),
+              ),
+              // Track fail-fast sibling interruption: an in-flight batch's
+              // exit is interruption-only (no typed failure of its own).
+              Effect.onExit((exit) =>
+                Effect.sync(() => {
+                  if (exit._tag === "Failure" && Cause.isInterruptedOnly(exit.cause))
+                    if (spec.texts[0] !== undefined) aborted.push(spec.texts[0]);
+                }),
+              ),
+            ),
+      generate: () => Effect.die("not used"),
+      stream: () => Effect.die("not used"),
+    };
+    const parents: ParsedParent[] = [
+      {
+        sourceKey: "src/a",
+        title: null,
+        metadata: {},
+        children: Array.from({ length: 6 }, (_, i) => ({
+          sourceKey: `src/a/${i}`,
+          textRaw: `raw ${i}`,
+          textPrimary: `primary ${i}`,
+          textSecondary: null,
+          citation: {},
+          metadata: {},
+        })),
+      },
+    ];
+    // The run rejects with the typed EmbedMisalignment wrapped in a
+    // FiberFailure; unwrap the cause (Effect stows it on a module symbol,
+    // not a plain property) and assert its shape.
+    let rejection: unknown;
+    try {
+      await runIngestion(
+        async () => parents,
+        { archiveKey: "archive/key", raw: new Uint8Array() },
+        {
+          store: f.store,
+          embedder: flakyEmbedder,
+          summarizer: null,
+          embedBatchSize: 2,
+          embedConcurrency: 3,
+        },
+      );
+    } catch (err) {
+      rejection = err;
+    }
+    expect(rejection).toBeDefined();
+    const causeSym = Object.getOwnPropertySymbols(rejection as object).find(
+      (sym) => sym.description === "effect/Runtime/FiberFailure/Cause",
+    );
+    expect(causeSym).toBeDefined();
+    const cause = causeSym
+      ? (rejection as Record<symbol, Cause.Cause<EmbedMisalignment>>)[causeSym]
+      : undefined;
+    expect(cause).toBeDefined();
+    const failure = cause ? Cause.failureOption(cause) : undefined;
+    if (failure !== undefined && failure._tag === "Some") {
+      expect(failure.value._tag).toBe("EmbedMisalignment");
+      expect(failure.value.expected).toBe(2);
+      expect(failure.value.received).toBe(1);
+    }
+    // Fail-fast interrupted in-flight siblings (their scope finalizers ran).
+    expect(aborted.length).toBeGreaterThan(0);
+    // No children written for a failed run.
+    expect(f.children()).toHaveLength(0);
+  });
+
+  it("rejects non-positive or non-integer embedConcurrency at the boundary (C2)", async () => {
+    const f = fakeStore();
+    await expect(
+      runIngestion(
+        async () => twoParents(),
+        { archiveKey: "archive/key", raw: new Uint8Array() },
+        { store: f.store, embedder: fakeProvider(), summarizer: null, embedConcurrency: 0 },
+      ),
+    ).rejects.toThrow(RangeError);
+    await expect(
+      runIngestion(
+        async () => twoParents(),
+        { archiveKey: "archive/key", raw: new Uint8Array() },
+        { store: f.store, embedder: fakeProvider(), summarizer: null, embedConcurrency: 1.5 },
+      ),
+    ).rejects.toThrow(/must be a positive integer/);
   });
 
   it("is idempotent: re-running produces no duplicate parents or children", async () => {

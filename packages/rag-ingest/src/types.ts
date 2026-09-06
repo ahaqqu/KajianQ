@@ -83,6 +83,17 @@ export type IngestionDeps = {
   pairSink?: (input: AlignedPairInput) => Promise<void>;
   /** Batch size for embedding calls (per track). */
   embedBatchSize?: number;
+  /**
+   * Max embedding batches in flight (ADR-0027: bounded, rate-limit-aware
+   * concurrency via `Effect.forEach`). Defaults to 1 — fully serial, the
+   * historical behavior; raise to parallelize batches against vendors whose
+   * rate limits allow it. Rate limiting itself is the Provider seam's job
+   * (per-kind backoff schedules in the fallback chain). Must be a positive
+   * integer; `<= 1` runs serial. `runIngestion` validates this at the
+   * boundary and fails loudly on non-positive or non-integer values instead
+   * of silently degrading to serial.
+   */
+  embedConcurrency?: number;
   /** Batch size for child/pair store writes. */
   writeBatchSize?: number;
   now?: () => number;

@@ -1,5 +1,16 @@
-import { Effect } from "effect";
+import { Data, Effect } from "effect";
 import type { DocChildInsert, DocParentInsert } from "@app/infra";
+
+/**
+ * A batch's vector count did not match its text count — the embedder
+ * violated the seam contract. Tagged (B1): callers narrow on it, the
+ * signature says what fails, and it satisfies the typed-error standard
+ * phases 1-3 established (ADR-0027 need 1).
+ */
+export class EmbedMisalignment extends Data.TaggedError("EmbedMisalignment")<{
+  readonly expected: number;
+  readonly received: number;
+}> {}
 import { CostCollector } from "./types";
 import type {
   AlignedPairInput,
@@ -81,6 +92,11 @@ async function summarizeParents(
 /**
  * Embed texts in batches, collecting cost per call. Returns row-aligned
  * vectors; empty input performs no call and records no cost.
+ *
+ * Batches run under `Effect.forEach` with `deps.embedConcurrency` (default 1:
+ * fully serial). Results stay row-aligned regardless of concurrency, and a
+ * batch whose vector count mismatches fails the whole run — a partially
+ * embedded child row must never be written.
  */
 async function embedBatched(
   deps: IngestionDeps,
@@ -88,19 +104,30 @@ async function embedBatched(
   costs: CostCollector,
 ): Promise<readonly (readonly number[])[]> {
   const batchSize = deps.embedBatchSize ?? 64;
-  const vectors: (readonly number[])[] = [];
+  const batches: (readonly string[])[] = [];
   for (let i = 0; i < texts.length; i += batchSize) {
-    const batch = texts.slice(i, i + batchSize);
-    const result = await Effect.runPromise(deps.embedder.embed({ texts: batch }));
-    if (result.vectors.length !== batch.length) {
-      throw new Error(
-        `ingestion: embedder returned ${result.vectors.length} vectors for ${batch.length} texts`,
-      );
-    }
-    costs.record(result.cost);
-    vectors.push(...result.vectors);
+    batches.push(texts.slice(i, i + batchSize));
   }
-  return vectors;
+  const embedOne = (batch: readonly string[]) =>
+    Effect.gen(function* () {
+      const result = yield* deps.embedder.embed({ texts: batch });
+      // Record-then-validate (traceability rule 4): a misaligned response is
+      // still a billed vendor call — its cost reaches the collector before
+      // the shape check fails the run.
+      costs.record(result.cost);
+      if (result.vectors.length !== batch.length) {
+        return yield* Effect.fail(
+          new EmbedMisalignment({
+            expected: batch.length,
+            received: result.vectors.length,
+          }),
+        );
+      }
+      return result.vectors;
+    });
+  const concurrency = deps.embedConcurrency ?? 1;
+  const batchVectors = await Effect.runPromise(Effect.forEach(batches, embedOne, { concurrency }));
+  return batchVectors.flat();
 }
 
 /** Collect the aligned pairs a parsed child list implies (rows with a secondary track). */
@@ -139,6 +166,14 @@ export async function runIngestion(
   input: { archiveKey: string; raw: Uint8Array },
   deps: IngestionDeps,
 ): Promise<{ report: import("@app/contracts").IngestionReport; parentIds: readonly string[] }> {
+  const concurrency = deps.embedConcurrency ?? 1;
+  if (!Number.isInteger(concurrency) || concurrency < 1) {
+    // Fail loudly (C2): a misconfiguration (0 = "unlimited"?) must never
+    // silently degrade to serial — effect@3.22.1 would run it sequential.
+    throw new RangeError(
+      `ingestion: embedConcurrency must be a positive integer, got ${concurrency}`,
+    );
+  }
   const now = deps.now ?? Date.now;
   const startedAt = now();
   const costs = new CostCollector();
