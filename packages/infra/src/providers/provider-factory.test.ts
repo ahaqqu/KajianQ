@@ -98,16 +98,14 @@ describe("fallback chain", () => {
   it("a role with no keyed candidates fails with the missing env names", async () => {
     const config = configWith(["test:m-chat", "alt:alt-chat"]);
     const { provider } = resolveRole(config, "cheap", { env: {} });
-    await expect(
-      provider.generate({ turns: [{ role: "user", content: "hi" }] }),
-    ).rejects.toThrow(/missing: TEST_KEY, ALT_KEY/);
+    await expect(provider.generate({ turns: [{ role: "user", content: "hi" }] })).rejects.toThrow(
+      /missing: TEST_KEY, ALT_KEY/,
+    );
   });
 
   it("an unknown role throws at wiring time", () => {
     const config = configWith(["test:m-chat"]);
-    expect(() => resolveRole(config, "nope", { env: {} })).toThrow(
-      /unknown role "nope"/,
-    );
+    expect(() => resolveRole(config, "nope", { env: {} })).toThrow(/unknown role "nope"/);
   });
 
   it("a personal-data call skips disallowed (free-tier) candidates and falls forward", async () => {

@@ -1,8 +1,4 @@
-import {
-  createRootRoute,
-  createRoute,
-  createRouter,
-} from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import { HomePage } from "./components/HomePage";
 import { Shell } from "./components/Shell";
 import { useLocale } from "./lib/i18n";

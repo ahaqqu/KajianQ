@@ -30,11 +30,11 @@ full stuck-report escalation instruction.
 
 `scripts/iteration-guardrail/config.json`:
 
-| Cap | Default | Meaning |
-| --- | --- | --- |
-| `sameFailureCap` | 3 | Failed cycles on the same failure signature before reruns are denied. |
-| `distinctFailureCap` | 8 | Failed cycles since the last successful verification before reruns are denied. |
-| `verificationPatterns` | (see file) | Substring regexes classifying a `Bash` command as a verification command. |
+| Cap                    | Default    | Meaning                                                                        |
+| ---------------------- | ---------- | ------------------------------------------------------------------------------ |
+| `sameFailureCap`       | 3          | Failed cycles on the same failure signature before reruns are denied.          |
+| `distinctFailureCap`   | 8          | Failed cycles since the last successful verification before reruns are denied. |
+| `verificationPatterns` | (see file) | Substring regexes classifying a `Bash` command as a verification command.      |
 
 The hook loads the config on every event, so edits take effect immediately;
 invalid fields fall back to defaults (fail-open) with a structured warning on
@@ -46,13 +46,13 @@ The guardrail applies to the manager workflow's **subagent dispatches only**;
 interactive sessions (e.g. `/goal`) are never touched. The decision is a regex
 match on the hook payload's `session_id`, configured alongside the caps:
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `scope` | `subagents-only` | `subagents-only` guards only matching sessions; `all` guards every session (pre-#123 behavior). Any other value degrades to the default. |
-| `subagentSessionPattern` | `^sess_subagent_agent_` | Regex a `session_id` must match to be guarded under `subagents-only`. |
+| Field                    | Default                 | Meaning                                                                                                                                  |
+| ------------------------ | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `scope`                  | `subagents-only`        | `subagents-only` guards only matching sessions; `all` guards every session (pre-#123 behavior). Any other value degrades to the default. |
+| `subagentSessionPattern` | `^sess_subagent_agent_` | Regex a `session_id` must match to be guarded under `subagents-only`.                                                                    |
 
-**Observed-convention caveat.** `^sess_subagent_agent_` is an *observed
-harness convention*, not a documented contract (making the runtime's
+**Observed-convention caveat.** `^sess_subagent_agent_` is an _observed
+harness convention_, not a documented contract (making the runtime's
 session-id shape a contract is a ZCode-client matter). A wrong or stale
 pattern fails **open silently**: out-of-scope sessions get no counting and no
 deny — exactly as if the hook were not installed (full no-op: no state
@@ -81,12 +81,12 @@ before the scope gate existed.)
 
 ## Wiring (`.zcode/config.json`)
 
-| Event | Matcher | Role |
-| --- | --- | --- |
-| `PreToolUse` | `Bash` | Evaluate the caps; deny a verification rerun past them. |
-| `PostToolUse` | `Bash` | Record the verification outcome (`status`/`exitCode` from the tool response). |
-| `PostToolUse` | `Edit\|Write` | Record a fix attempt (state change). |
-| `PostToolUseFailure` | `Bash` | Harness-level tool failure counts as a failed cycle (cancelled calls never count). |
+| Event                | Matcher       | Role                                                                               |
+| -------------------- | ------------- | ---------------------------------------------------------------------------------- |
+| `PreToolUse`         | `Bash`        | Evaluate the caps; deny a verification rerun past them.                            |
+| `PostToolUse`        | `Bash`        | Record the verification outcome (`status`/`exitCode` from the tool response).      |
+| `PostToolUse`        | `Edit\|Write` | Record a fix attempt (state change).                                               |
+| `PostToolUseFailure` | `Bash`        | Harness-level tool failure counts as a failed cycle (cancelled calls never count). |
 
 First enablement requires hook trust (`zcode hooks trust grant` or the desktop
 review flow), same as any workspace hook.

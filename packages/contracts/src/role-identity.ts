@@ -1,7 +1,5 @@
 import * as v from "valibot";
 
-const NonEmptyString = v.pipe(v.string(), v.minLength(1));
-
 /**
  * Configuration contract for the role-gh-identity workspace hook
  * (`scripts/role-gh-identity/`), loaded from its `config.json`
@@ -25,10 +23,7 @@ export const RoleIdentityConfigSchema = v.object({
   roles: v.record(
     v.string(),
     v.object({
-      tokenFile: v.pipe(
-        v.string(),
-        v.minLength(1),
-      ),
+      tokenFile: v.pipe(v.string(), v.minLength(1)),
     }),
   ),
   identitiesFile: v.optional(v.string()),
@@ -37,9 +32,9 @@ export const RoleIdentityConfigSchema = v.object({
 export type RoleIdentityConfig = v.InferOutput<typeof RoleIdentityConfigSchema>;
 
 /** Never throws; `ok: false` means "not a valid role-identity config". */
-export function parseRoleIdentityConfig(raw: unknown):
-  | { ok: true; config: RoleIdentityConfig }
-  | { ok: false; reason: string } {
+export function parseRoleIdentityConfig(
+  raw: unknown,
+): { ok: true; config: RoleIdentityConfig } | { ok: false; reason: string } {
   const result = v.safeParse(RoleIdentityConfigSchema, raw);
   if (result.success) return { ok: true, config: result.output };
   return {

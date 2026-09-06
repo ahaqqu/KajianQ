@@ -2,10 +2,8 @@ import { parseTrace, type TraceEvent } from "@app/contracts";
 import type {
   Answer,
   Assembler,
-  AssembledContext,
   Chunk,
   DefaultFilters,
-  Draft,
   Generator,
   Query,
   Retriever,
@@ -111,9 +109,12 @@ export async function runPipeline<TFilters extends Record<string, unknown> = Def
 }
 
 /** Project a Chunk into the retrieval event's typed chunk reference. */
-function toChunkRef(
-  chunk: Chunk,
-): { id: string; score?: number; rankDense?: number; rankSparse?: number } {
+function toChunkRef(chunk: Chunk): {
+  id: string;
+  score?: number;
+  rankDense?: number;
+  rankSparse?: number;
+} {
   const ref: { id: string; score?: number; rankDense?: number; rankSparse?: number } = {
     id: chunk.id,
   };

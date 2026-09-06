@@ -31,7 +31,12 @@ import { neon } from "@neondatabase/serverless";
 import * as app from "@app/infra";
 import * as ingest from "@app/rag-ingest";
 import * as domain from "@app/kajianq-domain";
-import { acquireSources, archiveRawSources, createArchiveObjectStore, resolveFromCwd } from "./archive-store.mjs";
+import {
+  acquireSources,
+  archiveRawSources,
+  createArchiveObjectStore,
+  resolveFromCwd,
+} from "./archive-store.mjs";
 
 const resolve = resolveFromCwd;
 
@@ -86,7 +91,6 @@ const sources = await acquireSources({
   surahCount: LIMIT ?? domain.TOTAL_SURAHS,
   log: logger,
   surahListUrl: `${SURAH_BASE}/surah_list.json`,
-  surahFileUrl: `${SURAH_BASE}/Surah`,
   morphologyUrl: MORPHOLOGY_URL,
 });
 const bundle = domain.bundleQuranSources(sources);
@@ -155,10 +159,7 @@ if (reportDir) {
 // truth); subset runs pass the exact expected totals, full runs rely on
 // the parser's full-corpus defaults. The report quotes the corpus numbers.
 const result = await ingest.runIngestion(
-  domain.quranSourceParser(
-    LIMIT ? expectedAyahs : undefined,
-    LIMIT ?? undefined,
-  ),
+  domain.quranSourceParser(LIMIT ? expectedAyahs : undefined, LIMIT ?? undefined),
   {
     archiveKey: archive.prefix ?? R2_PREFIX,
     raw: bundle,

@@ -31,7 +31,12 @@ import { neon } from "@neondatabase/serverless";
 import * as app from "@app/infra";
 import * as ingest from "@app/rag-ingest";
 import * as domain from "@app/kajianq-domain";
-import { acquireFiles, archiveRawSources, createArchiveObjectStore, resolveFromCwd } from "./archive-store.mjs";
+import {
+  acquireFiles,
+  archiveRawSources,
+  createArchiveObjectStore,
+  resolveFromCwd,
+} from "./archive-store.mjs";
 
 const resolve = resolveFromCwd;
 
@@ -75,7 +80,7 @@ if (Number.isNaN(LIMIT)) {
 const neonUrl = process.env.NEON_DATABASE_URL;
 if (!neonUrl && !CHECK_ONLY) fail("NEON_DATABASE_URL is not set");
 
-const collections = (LIMIT ? domain.HADITH_COLLECTIONS.slice(0, LIMIT) : domain.HADITH_COLLECTIONS);
+const collections = LIMIT ? domain.HADITH_COLLECTIONS.slice(0, LIMIT) : domain.HADITH_COLLECTIONS;
 logger.info("starting", {
   mode: CHECK_ONLY ? "integrity-check" : "full-ingestion",
   collections,

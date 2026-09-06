@@ -12,10 +12,7 @@ export interface Logger {
 
 export type LogSink = (line: string) => void;
 
-export function createLogger(
-  base: LogFields = {},
-  sink: LogSink = defaultSink,
-): Logger {
+export function createLogger(base: LogFields = {}, sink: LogSink = defaultSink): Logger {
   const emit = (level: LogLevel, msg: string, fields?: LogFields) => {
     sink(
       JSON.stringify({

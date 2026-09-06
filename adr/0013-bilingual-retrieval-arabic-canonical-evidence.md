@@ -48,28 +48,28 @@ Better than A or B, but it treats translation as a peer of the original. The pro
 
 ## Proposed language stack
 
-| Layer | Language | Rationale |
-|---|---|---|
-| User query | Indonesian / English | Matches user. |
-| Query expansion (#24) | Indonesian + Arabic variants | Glossary maps terms (`surga → jannah, firdaus`) without replacing the original query. |
-| Retrieval index | Arabic primary; Indonesian optional fallback | Cross-lingual embedding should find Arabic evidence from an Indonesian query. |
-| Evidence in LLM context | Arabic | Preserves citation fidelity, sanad, and scholarly terminology. |
-| System prompts / structured reasoning | English | Usually gives crisper JSON, guardrails, and formatting. |
-| Generated answer | Indonesian | User-first requirement from spec #1. |
-| Citations | Arabic | `QS. Surah:Ayah`, `HR. Book no. N (Grade)`, `Kitab, Author, Vol:Page:Bab`. |
+| Layer                                 | Language                                     | Rationale                                                                             |
+| ------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------- |
+| User query                            | Indonesian / English                         | Matches user.                                                                         |
+| Query expansion (#24)                 | Indonesian + Arabic variants                 | Glossary maps terms (`surga → jannah, firdaus`) without replacing the original query. |
+| Retrieval index                       | Arabic primary; Indonesian optional fallback | Cross-lingual embedding should find Arabic evidence from an Indonesian query.         |
+| Evidence in LLM context               | Arabic                                       | Preserves citation fidelity, sanad, and scholarly terminology.                        |
+| System prompts / structured reasoning | English                                      | Usually gives crisper JSON, guardrails, and formatting.                               |
+| Generated answer                      | Indonesian                                   | User-first requirement from spec #1.                                                  |
+| Citations                             | Arabic                                       | `QS. Surah:Ayah`, `HR. Book no. N (Grade)`, `Kitab, Author, Vol:Page:Bab`.            |
 
 ## Affected tickets and spec sections
 
-| Ticket / doc | Current assumption | Proposed amendment |
-|---|---|---|
-| Spec #1, §Implementation Decisions (retrieval) | Hybrid dense + sparse; embedding model `gemini-embedding-001` gated by benchmark on real corpus. | Benchmark metric is explicit: Indonesian query → Arabic chunk recall, plus Arabic baseline. |
-| #4 (Neon schema) | Single `VECTOR(1536)` on chunks (language unspecified). | Add `text_ar`, `embedding_ar` as canonical; `text_id`, `embedding_id` as **built-from-the-start** fallback/fusion track (not optional). Keep `text_raw`. The dual index is built up front so the retrieval-layer choice is switchable without re-embedding. |
-| #6, #7 (Quran/hadith ingestion) | Arabic + Indonesian stored; concatenated for embedding. | Ingest Arabic as primary evidence. Indonesian translation is secondary metadata. |
-| #9 (embedding benchmark) | Compare models on real corpus. | **Go/no-go gate.** Compare at least `gemini-embedding-001` and `gemini-embedding-2` on ID→AR and AR→AR recall over the real corpus. The retrieval-layer choice (AR-only vs. ID-fallback fusion) is decided by these numbers. |
-| #10 (chat pipeline) | Citation validator checks retrieved chunks. | Validator checks against `text_ar`; generator sees Arabic evidence. |
-| #21 (kitab tracer) | LLM-translated chunks stored alongside Arabic. | Sharh/matn separation and grading happen on Arabic text; translation is downstream display only. |
-| #24 (terminology glossary) | ID↔AR variant map for expansion. | Same, but framed strictly as query enrichment that never replaces the original query. |
-| #25 (Deep Think) | Draft answer → gap detection → re-retrieve. | Reasoning may be in English; candidate pool stays Arabic. Coverage report counts Arabic passages examined/used. |
+| Ticket / doc                                   | Current assumption                                                                               | Proposed amendment                                                                                                                                                                                                                                          |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Spec #1, §Implementation Decisions (retrieval) | Hybrid dense + sparse; embedding model `gemini-embedding-001` gated by benchmark on real corpus. | Benchmark metric is explicit: Indonesian query → Arabic chunk recall, plus Arabic baseline.                                                                                                                                                                 |
+| #4 (Neon schema)                               | Single `VECTOR(1536)` on chunks (language unspecified).                                          | Add `text_ar`, `embedding_ar` as canonical; `text_id`, `embedding_id` as **built-from-the-start** fallback/fusion track (not optional). Keep `text_raw`. The dual index is built up front so the retrieval-layer choice is switchable without re-embedding. |
+| #6, #7 (Quran/hadith ingestion)                | Arabic + Indonesian stored; concatenated for embedding.                                          | Ingest Arabic as primary evidence. Indonesian translation is secondary metadata.                                                                                                                                                                            |
+| #9 (embedding benchmark)                       | Compare models on real corpus.                                                                   | **Go/no-go gate.** Compare at least `gemini-embedding-001` and `gemini-embedding-2` on ID→AR and AR→AR recall over the real corpus. The retrieval-layer choice (AR-only vs. ID-fallback fusion) is decided by these numbers.                                |
+| #10 (chat pipeline)                            | Citation validator checks retrieved chunks.                                                      | Validator checks against `text_ar`; generator sees Arabic evidence.                                                                                                                                                                                         |
+| #21 (kitab tracer)                             | LLM-translated chunks stored alongside Arabic.                                                   | Sharh/matn separation and grading happen on Arabic text; translation is downstream display only.                                                                                                                                                            |
+| #24 (terminology glossary)                     | ID↔AR variant map for expansion.                                                                 | Same, but framed strictly as query enrichment that never replaces the original query.                                                                                                                                                                       |
+| #25 (Deep Think)                               | Draft answer → gap detection → re-retrieve.                                                      | Reasoning may be in English; candidate pool stays Arabic. Coverage report counts Arabic passages examined/used.                                                                                                                                             |
 
 ## Relationship to existing ADRs
 

@@ -23,11 +23,7 @@ export class ProviderError extends Error {
   /** Model ids attempted, in order — set on `exhausted`. */
   readonly candidates: readonly string[] | undefined;
 
-  constructor(
-    kind: ProviderErrorKind,
-    message: string,
-    candidates?: readonly string[],
-  ) {
+  constructor(kind: ProviderErrorKind, message: string, candidates?: readonly string[]) {
     super(message);
     this.name = "ProviderError";
     this.kind = kind;

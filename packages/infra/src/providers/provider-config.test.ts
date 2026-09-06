@@ -60,9 +60,6 @@ describe("provider config", () => {
       roles: { cheap: { chain: ["test:m-chat", "alt:alt-chat"] } },
     };
     const chain = resolveChain(config, "cheap");
-    expect(chain.map((c) => `${c.vendor}:${c.modelId}`)).toEqual([
-      "test:m-chat",
-      "alt:alt-chat",
-    ]);
+    expect(chain.map((c) => `${c.vendor}:${c.modelId}`)).toEqual(["test:m-chat", "alt:alt-chat"]);
   });
 });

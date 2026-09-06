@@ -10,11 +10,13 @@ import type { ApiEnv } from "../env";
 export function onError(err: unknown, c: Context<ApiEnv>): Response {
   Sentry.captureException(err);
   const ctx = c.get("ctx");
-  const logger = ctx?.logger ?? createLogger({
-    service: "api",
-    env: c.env.APP_ENV ?? "development",
-    correlationId: c.get("correlationId"),
-  });
+  const logger =
+    ctx?.logger ??
+    createLogger({
+      service: "api",
+      env: c.env.APP_ENV ?? "development",
+      correlationId: c.get("correlationId"),
+    });
   logger.error("request.unhandled", {
     path: c.req.path,
     error: err instanceof Error ? err.message : String(err),

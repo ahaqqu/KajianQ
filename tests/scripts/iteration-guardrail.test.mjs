@@ -9,7 +9,15 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { test as fcTest, fc } from "@fast-check/vitest";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -27,12 +35,11 @@ import {
   normalizeOutput,
   outcomeFromToolResponse,
 } from "../../scripts/iteration-guardrail/lib.mjs";
-import {
-  parseZcodeHookPayload,
-} from "../../packages/contracts/src/zcode-hook";
+import { parseZcodeHookPayload } from "../../packages/contracts/src/zcode-hook";
 
 const CMD = "bun run test";
-const FAIL_OUT = "FAIL tests/auth.test.ts > auth > rejects an expired token\n  expected 401 to be 200";
+const FAIL_OUT =
+  "FAIL tests/auth.test.ts > auth > rejects an expired token\n  expected 401 to be 200";
 
 // The shipped defaults (3/8), in the compiled shape isVerificationCommand
 // and evaluateDeny consume — mirrors what hook.mjs's loadConfig produces.
@@ -89,7 +96,11 @@ describe("progress-based counting (lib.mjs, pure)", () => {
     state = fail(state);
     state = fail(state);
     expect(evaluateDeny(state, defaultCfg)).not.toBeNull();
-    state = applyVerificationResult(state, { command: CMD, outcome: "success", outputText: "Test Files  5 passed" });
+    state = applyVerificationResult(state, {
+      command: CMD,
+      outcome: "success",
+      outputText: "Test Files  5 passed",
+    });
     expect(evaluateDeny(state, defaultCfg)).toBeNull();
     expect(state.sameFailStreak).toBe(0);
     expect(state.failCyclesSinceSuccess).toBe(0);
@@ -103,14 +114,23 @@ describe("progress-based counting (lib.mjs, pure)", () => {
     // Bare-retry counting requires command identity.
     let state = emptyState();
     for (const pr of [120, 121, 122]) {
-      state = fail(state, { command: `gh pr checks ${pr}`, outputText: "Some checks were not successful" });
+      state = fail(state, {
+        command: `gh pr checks ${pr}`,
+        outputText: "Some checks were not successful",
+      });
       expect(state.sameFailStreak, `pr ${pr}`).toBe(1);
       expect(evaluateDeny(state, defaultCfg), `pr ${pr}`).toBeNull();
     }
     // ...while same-command flake retries (no edit between) still increment:
     // nothing changed, so a different result is flake, not progress.
-    state = fail(state, { command: "gh pr checks 122", outputText: "Some checks were not successful (2 failed)" });
-    state = fail(state, { command: "gh pr checks 122", outputText: "Some checks were not successful (3 failed)" });
+    state = fail(state, {
+      command: "gh pr checks 122",
+      outputText: "Some checks were not successful (2 failed)",
+    });
+    state = fail(state, {
+      command: "gh pr checks 122",
+      outputText: "Some checks were not successful (3 failed)",
+    });
     expect(state.sameFailStreak).toBe(3);
     expect(evaluateDeny(state, defaultCfg)).toEqual({ cap: "sameFailureCap", count: 3, limit: 3 });
   });
@@ -149,7 +169,11 @@ describe("progress-based counting (lib.mjs, pure)", () => {
     }
     state = applyStateChange(state);
     state = fail(state, { outputText: "FAIL distinct-8 > unique error" });
-    expect(evaluateDeny(state, defaultCfg)).toEqual({ cap: "distinctFailureCap", count: 8, limit: 8 });
+    expect(evaluateDeny(state, defaultCfg)).toEqual({
+      cap: "distinctFailureCap",
+      count: 8,
+      limit: 8,
+    });
   });
 
   it("interrupted/cancelled calls are never evidence", () => {
@@ -172,7 +196,14 @@ describe("progress-based counting (lib.mjs, pure)", () => {
     // Applying an indeterminate outcome leaves the state UNCHANGED.
     let state = fail(emptyState());
     const before = { ...state };
-    for (const response of [{ status: "cancelled" }, null, "junk", [], { status: "completed" }, {}]) {
+    for (const response of [
+      { status: "cancelled" },
+      null,
+      "junk",
+      [],
+      { status: "completed" },
+      {},
+    ]) {
       state = applyVerificationResult(state, {
         command: CMD,
         outcome: outcomeFromToolResponse(response),
@@ -187,7 +218,9 @@ describe("progress-based counting (lib.mjs, pure)", () => {
     expect(outcomeFromToolResponse({ exitCode: 1 })).toBe("failed"); // status omitted
     expect(outcomeFromToolResponse({ status: "failed" })).toBe("failed");
     expect(outcomeFromToolResponse({ status: "timed_out" })).toBe("failed");
-    expect(outcomeFromToolResponse({ timedOut: true, status: "completed", exitCode: 0 })).toBe("failed");
+    expect(outcomeFromToolResponse({ timedOut: true, status: "completed", exitCode: 0 })).toBe(
+      "failed",
+    );
     expect(outcomeFromToolResponse({ status: "completed", exitCode: 0 })).toBe("success");
     expect(outcomeFromToolResponse({ exitCode: 0 })).toBe("success");
     // Success requires POSITIVE exitCode evidence (review A3): a failure
@@ -206,7 +239,8 @@ describe("progress-based counting (lib.mjs, pure)", () => {
 // ---------------------------------------------------------------------------
 describe("failure signature determinism (lib.mjs)", () => {
   it("volatile tokens are normalized away (durations, timestamps, ANSI, whitespace, tmp paths)", () => {
-    const run1 = "FAIL auth.test.ts: expected 1 to be 2 (1.23s) log /tmp/cache-1/out.log at 2026-08-30T01:02:03.000Z";
+    const run1 =
+      "FAIL auth.test.ts: expected 1 to be 2 (1.23s) log /tmp/cache-1/out.log at 2026-08-30T01:02:03.000Z";
     const run2 =
       "\x1B[31mFAIL\x1B[0m auth.test.ts:   expected 1 to be 2   (345ms) log /tmp/cache-22/other.log at 2026-08-31T09:10:11Z";
     expect(normalizeOutput(run1)).toBe(normalizeOutput(run2));
@@ -244,7 +278,23 @@ describe("failure signature determinism (lib.mjs)", () => {
   });
   fcTest.prop([volatileJitter])(
     "property: two runs of the same failing command sign identically over generated volatile jitter",
-    ({ seconds, millis, tmpA, tmpB, epochSeconds, pidA, pidB, clockA, clockB, epochMillisA, epochMillisB, memA, memB, counterA, counterB }) => {
+    ({
+      seconds,
+      millis,
+      tmpA,
+      tmpB,
+      epochSeconds,
+      pidA,
+      pidB,
+      clockA,
+      clockB,
+      epochMillisA,
+      epochMillisB,
+      memA,
+      memB,
+      counterA,
+      counterB,
+    }) => {
       const iso = (s) => new Date(s * 1000).toISOString();
       const runA = `FAIL auth.test.ts: expected 1 to be 2  at /tmp/${tmpA}  after ${seconds}.${seconds % 10}s  at ${iso(epochSeconds)}  pid=${pidA}  since ${renderClock(clockA)}  epoch ${epochMillisA}  heap ${memA} MiB  try [${counterA}]`;
       const runB = `FAIL auth.test.ts: expected 1 to be 2  at /tmp/${tmpB}  after ${millis}ms  at ${iso(epochSeconds + 1)}  pid=${pidB}  since ${renderClock(clockB)}  epoch ${epochMillisB}  heap ${memB}.${memB % 10} KiB  try [${counterB}]`;
@@ -258,8 +308,10 @@ describe("failure signature determinism (lib.mjs)", () => {
     // the streak increments. If volatile tokens made the same failure read
     // as a fresh signature, every fix-fail cycle would look like progress
     // and the same-failure cap would be unreachable.
-    const runA = "FAIL auth.test.ts > token expired (pid=4242) at 01:02:03 ts 1767139200000 heap 1.5 MiB attempt [1]";
-    const runB = "FAIL auth.test.ts > token expired (pid=98765) at 10:11:12 ts 1767140200000 heap 512.0 KiB attempt [7]";
+    const runA =
+      "FAIL auth.test.ts > token expired (pid=4242) at 01:02:03 ts 1767139200000 heap 1.5 MiB attempt [1]";
+    const runB =
+      "FAIL auth.test.ts > token expired (pid=98765) at 10:11:12 ts 1767140200000 heap 512.0 KiB attempt [7]";
     expect(failureSignature(CMD, runA)).toBe(failureSignature(CMD, runB));
     let state = fail(emptyState(), { outputText: runA });
     state = applyStateChange(state);
@@ -276,9 +328,13 @@ describe("failure signature determinism (lib.mjs)", () => {
   it("signature binds command + output", () => {
     // Rerunning a DIFFERENT verification command on the same error text is
     // not the same cycle...
-    expect(failureSignature("bun run test", FAIL_OUT)).not.toBe(failureSignature("bun run check", FAIL_OUT));
+    expect(failureSignature("bun run test", FAIL_OUT)).not.toBe(
+      failureSignature("bun run check", FAIL_OUT),
+    );
     // ...but whitespace-only differences in the command do not change identity.
-    expect(failureSignature("bun   run test", FAIL_OUT)).toBe(failureSignature("bun run test", FAIL_OUT));
+    expect(failureSignature("bun   run test", FAIL_OUT)).toBe(
+      failureSignature("bun run test", FAIL_OUT),
+    );
   });
 });
 
@@ -293,7 +349,11 @@ describe("config and state hardening (lib.mjs)", () => {
     // deny under that cap.
     const tightSame = normalizeConfig({ sameFailureCap: 1, distinctFailureCap: 8 }).config;
     expect(tightSame.sameFailureCap).not.toBe(defaultCfg.sameFailureCap);
-    expect(evaluateDeny(fail(emptyState()), tightSame)).toEqual({ cap: "sameFailureCap", count: 1, limit: 1 });
+    expect(evaluateDeny(fail(emptyState()), tightSame)).toEqual({
+      cap: "sameFailureCap",
+      count: 1,
+      limit: 1,
+    });
 
     const tightDistinct = normalizeConfig({ sameFailureCap: 8, distinctFailureCap: 2 }).config;
     expect(tightDistinct.distinctFailureCap).not.toBe(defaultCfg.distinctFailureCap);
@@ -301,7 +361,11 @@ describe("config and state hardening (lib.mjs)", () => {
     state = fail(state, { outputText: "FAIL distinct-a" });
     state = applyStateChange(state);
     state = fail(state, { outputText: "FAIL distinct-b" });
-    expect(evaluateDeny(state, tightDistinct)).toEqual({ cap: "distinctFailureCap", count: 2, limit: 2 });
+    expect(evaluateDeny(state, tightDistinct)).toEqual({
+      cap: "distinctFailureCap",
+      count: 2,
+      limit: 2,
+    });
   });
 
   it("TRAP: corrupt config degrades to defaults, never throws", () => {
@@ -313,7 +377,10 @@ describe("config and state hardening (lib.mjs)", () => {
     }
     // Invalid cap values fall back per field.
     for (const cap of [0, -1, 2.5, "3", null]) {
-      const { config, degraded } = normalizeConfig({ sameFailureCap: cap, distinctFailureCap: cap });
+      const { config, degraded } = normalizeConfig({
+        sameFailureCap: cap,
+        distinctFailureCap: cap,
+      });
       expect(degraded).toContain("sameFailureCap");
       expect(degraded).toContain("distinctFailureCap");
       expect(config.sameFailureCap).toBe(defaultCfg.sameFailureCap);
@@ -339,8 +406,12 @@ describe("config and state hardening (lib.mjs)", () => {
   // degraded config is classification-ready.
   it("TRAP: a degraded config is still usable for classification", () => {
     expect(isVerificationCommand("bun run test", normalizeConfig(null).config)).toBe(true);
-    expect(isVerificationCommand("bun run test", normalizeConfig({ verificationPatterns: [] }).config)).toBe(true);
-    expect(isVerificationCommand("bun run test", normalizeConfig({ sameFailureCap: 0 }).config)).toBe(true);
+    expect(
+      isVerificationCommand("bun run test", normalizeConfig({ verificationPatterns: [] }).config),
+    ).toBe(true);
+    expect(
+      isVerificationCommand("bun run test", normalizeConfig({ sameFailureCap: 0 }).config),
+    ).toBe(true);
   });
 
   it("TRAP: corrupt state fails open at the shape check", () => {
@@ -371,7 +442,9 @@ describe("config and state hardening (lib.mjs)", () => {
 describe("deny message content (lib.mjs)", () => {
   function denyLevelState() {
     let state = emptyState();
-    state = fail(state, { outputText: "FAIL auth.test.ts > token expired (expected 200, got 401)" });
+    state = fail(state, {
+      outputText: "FAIL auth.test.ts > token expired (expected 200, got 401)",
+    });
     state = fail(state);
     state = fail(state);
     return state;
@@ -394,7 +467,9 @@ describe("deny message content (lib.mjs)", () => {
     expect(reason).toContain("Never fake done");
     expect(reason).toContain("PR must exist and all its checks must be green");
     // Which cap was breached, with count and limit.
-    expect(reason).toContain(`sameFailureCap: ${breach.count} failed cycles >= limit ${breach.limit}`);
+    expect(reason).toContain(
+      `sameFailureCap: ${breach.count} failed cycles >= limit ${breach.limit}`,
+    );
     // The failure signature and the config path for tuning.
     expect(reason).toContain(state.lastSignature);
     expect(reason).toContain("scripts/iteration-guardrail/config.json");
@@ -602,7 +677,10 @@ describe("hook.mjs subprocess (fail-open and deny at the process boundary)", () 
     expect(notJson.stdout).toBe("");
     expect(notJson.stderr).toContain("skip_corrupt_state");
     // JSON that parses but fails shape validation:
-    writeFileSync(stateFileFor(env, SESSION_A), JSON.stringify({ schemaVersion: 1, state: { hello: "wrong shape" } }));
+    writeFileSync(
+      stateFileFor(env, SESSION_A),
+      JSON.stringify({ schemaVersion: 1, state: { hello: "wrong shape" } }),
+    );
     const wrongShape = runHook(preToolUse(SESSION_A, CMD), env);
     expect(wrongShape.status).toBe(0);
     expect(wrongShape.stdout).toBe("");
@@ -612,7 +690,11 @@ describe("hook.mjs subprocess (fail-open and deny at the process boundary)", () 
 
   it("fail-open on malformed stdin and contract-rejected payloads", () => {
     const env = newEnv();
-    for (const raw of ['garbage{{', "", JSON.stringify({ hook_event_name: "Stop", session_id: SESSION_A })]) {
+    for (const raw of [
+      "garbage{{",
+      "",
+      JSON.stringify({ hook_event_name: "Stop", session_id: SESSION_A }),
+    ]) {
       const r = runHook(raw, env);
       expect(r.status, `payload: ${JSON.stringify(raw)}`).toBe(0);
       expect(r.stdout, `payload: ${JSON.stringify(raw)}`).toBe("");
@@ -666,14 +748,22 @@ describe("hook.mjs subprocess (fail-open and deny at the process boundary)", () 
 
   it("non-verification commands pass through and write no state", () => {
     const env = newEnv();
-    const pre = runHook(preToolUse(SESSION_A, 'git commit -m "checkpoint: stuck-report evidence"'), env);
+    const pre = runHook(
+      preToolUse(SESSION_A, 'git commit -m "checkpoint: stuck-report evidence"'),
+      env,
+    );
     expect(pre.status).toBe(0);
     expect(pre.stdout).toBe("");
     expect(existsSync(stateFileFor(env, SESSION_A)), "PreToolUse must not write state").toBe(false);
-    const post = runHook(postBash(SESSION_A, "git push origin HEAD", failedResponse(FAIL_OUT)), env);
+    const post = runHook(
+      postBash(SESSION_A, "git push origin HEAD", failedResponse(FAIL_OUT)),
+      env,
+    );
     expect(post.status).toBe(0);
     expect(post.stderr).not.toContain("verification_result");
-    expect(existsSync(stateFileFor(env, SESSION_A)), "PostToolUse must not write state").toBe(false);
+    expect(existsSync(stateFileFor(env, SESSION_A)), "PostToolUse must not write state").toBe(
+      false,
+    );
   });
 
   it("an Edit event records a fix attempt: progress is allowed, bare retries deny", () => {
@@ -703,7 +793,14 @@ describe("hook.mjs subprocess (fail-open and deny at the process boundary)", () 
   it("PostToolUseFailure (non-interrupt) counts: deny reachable without any PostToolUse event", () => {
     const env = newEnv();
     for (let i = 0; i < 3; i++) {
-      const r = runHook(postFailure(SESSION_A, CMD, "hook failed: bun exited with code 1 (missing module @app/contracts)"), env);
+      const r = runHook(
+        postFailure(
+          SESSION_A,
+          CMD,
+          "hook failed: bun exited with code 1 (missing module @app/contracts)",
+        ),
+        env,
+      );
       expect(r.status).toBe(0);
       expect(r.stderr).toContain("verification_failure_event");
     }
@@ -760,7 +857,12 @@ describe("hook payload contract (packages/contracts/src/zcode-hook.ts)", () => {
   // envelope contract drifts from what the runtime actually delivers, these
   // parses fail.
   const FIXTURES = new URL("../../scripts/iteration-guardrail/fixtures/", import.meta.url).pathname;
-  const FIXTURE_NAMES = ["pre-tool-use-bash", "post-tool-use-bash-failed", "post-tool-use-edit", "post-tool-use-failure"];
+  const FIXTURE_NAMES = [
+    "pre-tool-use-bash",
+    "post-tool-use-bash-failed",
+    "post-tool-use-edit",
+    "post-tool-use-failure",
+  ];
 
   function readFixture(name) {
     return JSON.parse(readFileSync(join(FIXTURES, `${name}.json`), "utf8"));
