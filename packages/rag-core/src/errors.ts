@@ -1,6 +1,9 @@
 import { Data, Effect, type Scope } from "effect";
 import type { Stage } from "@app/contracts";
 import type { RunContext } from "./context";
+import { ProviderError } from "./provider";
+
+export { ProviderError };
 
 /**
  * The stage-level failure that travels in a pipeline stage's `E` channel
