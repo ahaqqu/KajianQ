@@ -90,8 +90,8 @@ export {
   type HadithRecord,
   type HadithSourceType,
 } from "./hadith-source";
+export { alignEditions } from "./hadith-align";
 export {
-  alignEditions,
   assertHadithIntegrity,
   parseHadithEdition,
   type AlignmentStats,

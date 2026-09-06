@@ -1,10 +1,6 @@
 import type { SourceInput, SourceParser } from "@app/rag-ingest";
-import {
-  alignEditions,
-  assertHadithIntegrity,
-  parseHadithEdition,
-  type AlignmentStats,
-} from "./hadith-parse";
+import { alignEditions } from "./hadith-align";
+import { assertHadithIntegrity, parseHadithEdition, type AlignmentStats } from "./hadith-parse";
 import {
   HADITH_COLLECTION_NAMES,
   hadithMetadata,

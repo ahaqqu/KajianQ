@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { alignEditions, assertHadithIntegrity, parseHadithEdition } from "./hadith-parse";
+import { alignEditions } from "./hadith-align";
+import { assertHadithIntegrity, parseHadithEdition } from "./hadith-parse";
 import { gradeConsolidationStats } from "./hadith-ingest";
 import {
   HADITH_COLLECTIONS,
