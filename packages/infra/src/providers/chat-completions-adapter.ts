@@ -9,7 +9,7 @@ import {
   type StreamHandle,
 } from "@app/rag-core";
 import type { ModelConfig, VendorConfig } from "./provider-config";
-import { computeCost, estimateTokens, isUsageMetered } from "./chat-cost";
+import { computeCost, estimateTokens, isGenerationMetered, isPromptMetered } from "./chat-cost";
 import { streamHandle } from "./chat-stream";
 
 /**
@@ -184,7 +184,7 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
       await assertOk(res, "/chat/completions");
       const json = (await res.json()) as ChatResponse;
       const text = json.choices?.[0]?.message?.content ?? json.choices?.[0]?.text ?? "";
-      const isMetered = isUsageMetered(json.usage ?? {});
+      const isMetered = isGenerationMetered(json.usage ?? {});
       // Where the vendor reports no usage, estimate from chars and mark the
       // record estimated (ADR-0022) — a trace must never present an estimate
       // as metered.
@@ -268,7 +268,7 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
       // estimate from input chars (~4 chars/token) — never the text count,
       // which would understate cost by orders of magnitude — and mark the
       // record estimated (ADR-0022).
-      const isMetered = isUsageMetered(json.usage ?? {});
+      const isMetered = isPromptMetered(json.usage ?? {});
       const tokensIn = isMetered
         ? json.usage!.prompt_tokens!
         : spec.texts.reduce((n, t) => n + estimateTokens(t.length), 0);

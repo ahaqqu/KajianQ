@@ -41,10 +41,15 @@ function isMetered(tokens: number | undefined): boolean {
   return typeof tokens === "number" && Number.isFinite(tokens) && tokens >= 0;
 }
 
-/** True when the vendor reported a complete, usable usage block. */
-export function isUsageMetered(usage: {
+/** True when the vendor reported a complete generation usage block. */
+export function isGenerationMetered(usage: {
   prompt_tokens?: number;
   completion_tokens?: number;
 }): boolean {
   return isMetered(usage.prompt_tokens) && isMetered(usage.completion_tokens);
+}
+
+/** True when the vendor reported metered prompt tokens (embeddings meter prompt only). */
+export function isPromptMetered(usage: { prompt_tokens?: number }): boolean {
+  return isMetered(usage.prompt_tokens);
 }
