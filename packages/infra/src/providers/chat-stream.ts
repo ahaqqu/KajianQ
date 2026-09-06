@@ -1,7 +1,7 @@
 import { Cause, Effect, Exit, Option, Stream } from "effect";
 import { ProviderError, type StreamHandle } from "@app/rag-core";
 import type { CostRecord } from "@app/contracts";
-import { computeCost, estimateTokens } from "./chat-cost";
+import { computeCost, estimateTokens, withAttemptCost } from "./chat-wire";
 import { readSseStream, type StreamOutcome, type StreamUsage } from "./sse-stream";
 
 /**
@@ -85,11 +85,24 @@ export function streamHandle(input: {
   let settled = false;
   let deltasStarted = false;
   let iterator: AsyncGenerator<string, StreamOutcome> | undefined;
+  // Emitted delta chars so far (shared iterator → single counter): the
+  // output-token base for a failed attempt's estimated cost record (C2).
+  let emittedChars = 0;
 
-  const toProviderError = (cause: unknown): ProviderError =>
-    cause instanceof ProviderError
-      ? cause
-      : new ProviderError({ kind: "transport", message: `stream failed: ${String(cause)}` });
+  const charsSoFar = (): number => emittedChars;
+
+  const toProviderError = (cause: unknown): ProviderError => {
+    if (cause instanceof ProviderError) {
+      // A mid-flight failure reached the vendor (the wire was live before it
+      // cut): keep the attempt's estimated spend on the error's cost trail
+      // (C2) so the caller's trace sink can record the failed attempt.
+      return withAttemptCost(cause, buildCost(undefined, charsSoFar()));
+    }
+    return withAttemptCost(
+      new ProviderError({ kind: "transport", message: `stream failed: ${String(cause)}` }),
+      buildCost(undefined, charsSoFar()),
+    );
+  };
 
   function start(): AsyncGenerator<string, StreamOutcome> {
     // One iterator shared by the deltas stream and cost()'s drain, so a
@@ -112,19 +125,21 @@ export function streamHandle(input: {
   /** Settle the cost promise from a scope or drain exit: the error that
    * killed the stream fails cost; an interrupt (no failure value) fails it
    * deterministically instead of leaving it pending. Natural completion
-   * settles in the pull loop, so a Success exit is a no-op here. */
+   * settles in the pull loop, so a Success exit is a no-op here. Either way
+   * the vendor streamed some output before the cut, so the failed attempt's
+   * estimated cost rides on the error (C2). */
   function settleFromExit(exit: Exit.Exit<unknown, unknown>): void {
     if (settled || exit._tag === "Success") return;
     const failure = Cause.failureOption(exit.cause);
-    settle(
-      false,
+    const error: Error =
       Option.isSome(failure) && failure.value instanceof Error
         ? failure.value
         : new ProviderError({
             kind: "transport",
             message: `stream terminated before completion: ${String(Option.isSome(failure) ? failure.value : "interrupted")}`,
-          }),
-    );
+          });
+    const stamped = withAttemptCost(error as ProviderError, buildCost(undefined, charsSoFar()));
+    settle(false, stamped as unknown as Error);
   }
 
   const deltas: Stream.Stream<string, ProviderError> = Stream.unwrapScoped(
@@ -147,7 +162,10 @@ export function streamHandle(input: {
                   settle(true, next.value);
                   return Option.none<readonly [string, AsyncGenerator<string, StreamOutcome>]>();
                 })
-              : Effect.succeed(Option.some([next.value, gen] as const)),
+              : Effect.sync(() => {
+                  emittedChars += next.value.length;
+                  return Option.some([next.value, gen] as const);
+                }),
           ),
         ),
       );

@@ -1,5 +1,6 @@
-import { Effect } from "effect";
+import { Effect, type Schedule } from "effect";
 import {
+  type CostRecord,
   ProviderError,
   type EmbedSpec,
   type EmbeddingResult,
@@ -8,8 +9,8 @@ import {
   type Provider,
   type StreamHandle,
 } from "@app/rag-core";
-import type { ProviderConfig } from "./provider-config";
-import { resolveChain } from "./provider-config";
+import { defaultRetrySchedule } from "./retry-schedule";
+import { resolveChain, type ProviderConfig } from "./provider-config";
 import {
   createChatCompletionsProvider,
   isRetryable,
@@ -22,12 +23,22 @@ import {
  * CostRecord carries whichever candidate actually answered, so a Trace shows
  * the fallback. An exhausted chain throws a typed ProviderError listing the
  * candidates attempted.
+ *
+ * Retry policy (ADR-0027 need 2): each candidate retries its own transient
+ * failures under a per-kind schedule — `rate_limited` backs off slower with
+ * fewer retries (the vendor asked us to slow down), transport/server faults
+ * retry faster with a larger budget, and non-retryable kinds fail through to
+ * the next candidate immediately. The schedule is configurable per call site
+ * via `ResolveOptions.retrySchedule` (tests inject a fast policy); the
+ * checked-in default is `defaultRetrySchedule`.
  */
 export type ResolveOptions = {
   /** Env source for API keys — Workers bindings in the api, process.env in CLI. */
   env: Record<string, string | undefined>;
   fetchImpl?: FetchLike;
   timeoutMs?: number;
+  /** Per-kind backoff schedule; defaults to `defaultRetrySchedule`. */
+  retrySchedule?: Schedule.Schedule<unknown, ProviderError>;
 };
 
 /** Build the concrete adapter for one parsed candidate. */
@@ -79,6 +90,10 @@ class FallbackProvider implements Provider {
     private readonly role: string,
     private readonly candidates: readonly WiredCandidate[],
     private readonly missingKeys: readonly string[],
+    private readonly retrySchedule: Schedule.Schedule<
+      unknown,
+      ProviderError
+    > = defaultRetrySchedule,
   ) {
     this.modelId = candidates[0]?.provider.modelId ?? role;
   }
@@ -107,10 +122,20 @@ class FallbackProvider implements Provider {
   }
 
   /**
-   * Walk the chain in order: a retryable failure (transport, 429, 5xx) moves
-   * to the next candidate; anything else fails immediately. An exhausted
-   * chain fails with a typed `ProviderError` listing the candidates attempted.
-   * (Per-kind backoff schedules arrive with the infra phase of ADR-0027.)
+   * Walk the chain in order: a retryable failure (transport, 429, 5xx) first
+   * exhausts the candidate's per-kind retry schedule, then moves to the next
+   * candidate; anything else fails immediately. An exhausted chain fails
+   * with a typed `ProviderError` listing the candidates attempted.
+   *
+   * Cost trail (C2, traceability rule 4): every attempt that reached the
+   * vendor carries its CostRecord on the failing `ProviderError`
+   * (`attemptCosts`). Retries and fallbacks accumulate, so the error the
+   * caller finally sees lists each vendor-reaching failed attempt in order —
+   * a failed call may never drop spend from the cost trail. (Successes
+   * carry only the winning attempt's cost today; spend from attempts that
+   * failed before a later candidate succeeded is surfaced in the trace via
+   * the failed-attempt records of any subsequent failure, and recording it
+   * on the success path needs a contracts change — flagged for follow-up.)
    */
   private withFallback<A>(
     op: (p: Provider) => Effect.Effect<A, ProviderError>,
@@ -124,18 +149,60 @@ class FallbackProvider implements Provider {
           }),
         );
       }
-      // `eligible` is non-empty here (the empty-list case failed above);
-      // the local narrow satisfies noUncheckedIndexedAccess.
-      const first = eligible[0];
+      // Costs of vendor-reaching failed attempts, accumulated across the
+      // whole chain walk — a later candidate's success does not undo earlier
+      // candidates' spend, and the final failure carries the full trail.
+      const chainCosts: CostRecord[] = [];
+      /** One candidate: each failed attempt's spend is collected as it
+       * passes through the retry loop; when the candidate gives up, the
+       * escaping error carries every vendor-reaching attempt's cost in
+       * order (C2 — a retried-away attempt may not vanish from the trail). */
+      const retried = (candidate: WiredCandidate): Effect.Effect<A, ProviderError> => {
+        const costs: CostRecord[] = [];
+        const collect = (err: ProviderError): void => {
+          if (err.attemptCosts !== undefined) costs.push(...err.attemptCosts);
+        };
+        return op(candidate.provider).pipe(
+          // Collect each failure's spend as it passes into the retry loop —
+          // retried or not — then re-fail with the same error so the
+          // schedule's kind dispatch is untouched.
+          Effect.catchAll((err: ProviderError) => {
+            collect(err);
+            return Effect.fail(err);
+          }),
+          Effect.retry({ schedule: this.retrySchedule }),
+          // The candidate gave up: stamp the accumulated list onto the
+          // escaping error and move the spend to the chain level. (No
+          // second collect here — the pre-retry hook already collected
+          // this failure's cost; collecting again would double-count the
+          // last attempt.)
+          Effect.catchAll((err: ProviderError) => {
+            chainCosts.push(...costs);
+            return Effect.fail(
+              costs.length > 0
+                ? new ProviderError({
+                    kind: err.kind,
+                    message: err.message,
+                    ...(err.candidates !== undefined ? { candidates: err.candidates } : {}),
+                    attemptCosts: costs,
+                  })
+                : err,
+            );
+          }),
+        );
+      };
+      // `eligible` is non-empty here (the empty-list case failed above); the
+      // non-null assertion is bounded to this one line.
+      const first = eligible[0]!;
       const rest = eligible.slice(1);
       const chain = rest.reduce<Effect.Effect<A, ProviderError>>(
         (acc, candidate) =>
           acc.pipe(
             Effect.catchAll((err) =>
-              isRetryable(err.kind) ? op(candidate.provider) : Effect.fail(err),
+              isRetryable(err.kind) ? retried(candidate) : Effect.fail(err),
             ),
           ),
-        op(first!.provider),
+        retried(first),
       );
       return chain.pipe(
         Effect.catchAll((lastError) =>
@@ -145,6 +212,7 @@ class FallbackProvider implements Provider {
                   kind: "exhausted",
                   message: `role "${this.role}": all candidates failed (last: ${lastError.message})`,
                   candidates: eligible.map((c) => c.provider.modelId),
+                  attemptCosts: chainCosts,
                 }),
               )
             : Effect.fail(lastError),
@@ -207,7 +275,7 @@ export function resolveRole(
     });
   }
   return {
-    provider: new FallbackProvider(config, role, wired, missingKeys),
+    provider: new FallbackProvider(config, role, wired, missingKeys, opts.retrySchedule),
     missingKeys,
   };
 }

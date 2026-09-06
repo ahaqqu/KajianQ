@@ -9,8 +9,17 @@ import {
   type StreamHandle,
 } from "@app/rag-core";
 import type { ModelConfig, VendorConfig } from "./provider-config";
-import { computeCost, estimateTokens, isGenerationMetered, isPromptMetered } from "./chat-cost";
 import { streamHandle } from "./chat-stream";
+import {
+  buildChatRequest,
+  computeCost,
+  embedWire,
+  estimateTokens,
+  isGenerationMetered,
+  readError,
+  withAttemptCost,
+  type ChatResponse,
+} from "./chat-wire";
 
 /**
  * The generic chat-completions REST adapter (ADR-0022): one protocol
@@ -43,42 +52,6 @@ export function isRetryable(kind: string): boolean {
   return kind === "transport" || kind === "rate_limited" || kind === "server";
 }
 
-/** Chat-completions wire request body (one shape for generate/stream). */
-interface ChatRequest {
-  model: string;
-  messages: { role: string; content: string }[];
-  stream: boolean;
-  [key: string]: unknown;
-}
-
-/** Wire-level chat-completions response (the fields we consume). */
-interface ChatResponse {
-  choices?: { message?: { content?: string }; text?: string }[];
-  usage?: {
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    total_tokens?: number;
-  };
-  error?: { message?: string; code?: string };
-}
-
-/** Wire-level embeddings response. */
-interface EmbedResponse {
-  data?: { embedding?: number[] }[];
-  usage?: { prompt_tokens?: number; total_tokens?: number };
-  error?: { message?: string; code?: string };
-}
-
-async function readError(res: Response): Promise<string> {
-  let detail = "";
-  try {
-    detail = await res.text();
-  } catch {
-    // Body unreadable — the status line is all we have.
-  }
-  return `HTTP ${res.status}${detail ? `: ${detail.slice(0, 300)}` : ""}`;
-}
-
 export type ChatCompletionsOptions = {
   vendor: VendorConfig;
   modelId: string;
@@ -93,16 +66,6 @@ export type ChatCompletionsOptions = {
  * Build a Provider that speaks the chat-completions wire against
  * `vendor.baseUrl` with `modelId`. All vendor identity is config data.
  */
-
-/** Assemble the chat-completions request body shared by generate/stream. */
-function buildChatRequest(modelId: string, spec: PromptSpec, stream: boolean): ChatRequest {
-  return {
-    model: modelId,
-    messages: spec.turns.map((t) => ({ role: t.role, content: t.content })),
-    stream,
-    ...spec.options,
-  };
-}
 
 export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Provider {
   const { vendor, modelId, model, apiKey } = opts;
@@ -121,6 +84,22 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
           kind: "transport",
           message: `request to ${vendor.baseUrl} failed: ${String(cause)}`,
         });
+
+  /**
+   * Estimated prompt-token cost of a failed attempt that reached the vendor
+   * (C2): the vendor saw the full prompt, so its input spend is real even
+   * though no completion came back. Estimated from request chars and marked
+   * `estimated` — never metered (ADR-0022).
+   */
+  const attemptCost = (startedAt: number, promptChars: number) =>
+    computeCost(
+      modelId,
+      model.priceMicroUsdPerMTok,
+      estimateTokens(promptChars),
+      0,
+      Date.now() - startedAt,
+      true,
+    );
 
   async function post(
     path: string,
@@ -147,17 +126,41 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
     }
   }
 
-  async function assertOk(res: Response, path: string): Promise<void> {
+  /**
+   * Fail on an HTTP error status. The vendor was reached and answered — the
+   * attempt's estimated input spend rides on the error (`attemptCosts`, C2)
+   * so the caller's trace sink can record it; a failed attempt may never
+   * vanish from the cost trail.
+   */
+  async function assertOk(
+    res: Response,
+    path: string,
+    attempt: { startedAt: number; promptChars: number },
+  ): Promise<void> {
     if (!res.ok) {
       // Include the vendor's error body (capped) — "quota exceeded" or a
       // safety refusal in the message is the difference between a retry
       // and a config fix.
-      throw new ProviderError({
-        kind: errorKindForStatus(res.status),
-        message: `${path} failed: ${await readError(res)}`,
-      });
+      throw withAttemptCost(
+        new ProviderError({
+          kind: errorKindForStatus(res.status),
+          message: `${path} failed: ${await readError(res)}`,
+        }),
+        attemptCost(attempt.startedAt, attempt.promptChars),
+      );
     }
   }
+
+  // The embeddings wire lives in embed-wire.ts (agentic size limit); the
+  // deps below close over this adapter's vendor config and cost helpers.
+  const embed = embedWire({
+    modelId,
+    priceIn: model.priceMicroUsdPerMTok.in,
+    ...(model.dimensions != null ? { dimensions: model.dimensions } : {}),
+    post: (body) => post("/embeddings", body),
+    assertOk,
+    attemptCost,
+  });
 
   /** The wire-level implementation returns promises; the `Provider` surface
    * below wraps them into the seam's `Effect<A, ProviderError>` channel. */
@@ -180,9 +183,28 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
       }
       const body = buildChatRequest(modelId, spec, false);
       const started = Date.now();
+      // What the vendor saw of the prompt — the estimate base for a failed
+      // attempt's input cost (C2).
+      const attempt = {
+        startedAt: started,
+        promptChars: spec.turns.reduce((n, t) => n + t.content.length, 0),
+      };
       const res = await post("/chat/completions", body);
-      await assertOk(res, "/chat/completions");
-      const json = (await res.json()) as ChatResponse;
+      await assertOk(res, "/chat/completions", attempt);
+      // A 200 whose body fails to parse is still a vendor-reaching attempt:
+      // the vendor charged for the prompt (and any completion it produced).
+      let json: ChatResponse;
+      try {
+        json = (await res.json()) as ChatResponse;
+      } catch (err) {
+        throw withAttemptCost(
+          new ProviderError({
+            kind: "transport",
+            message: `chat/completions returned 200 but the body did not parse: ${String(err)}`,
+          }),
+          attemptCost(attempt.startedAt, attempt.promptChars),
+        );
+      }
       const text = json.choices?.[0]?.message?.content ?? json.choices?.[0]?.text ?? "";
       const isMetered = isGenerationMetered(json.usage ?? {});
       // Where the vendor reports no usage, estimate from chars and mark the
@@ -214,14 +236,23 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
       }
       const body = buildChatRequest(modelId, spec, true);
       const started = Date.now();
+      const attempt = {
+        startedAt: started,
+        promptChars: spec.turns.reduce((n, t) => n + t.content.length, 0),
+      };
       // The controller outlives post(): the deltas stream's scope finalizer
       // (chat-stream.ts) aborts it, cutting the wire when the consumer
       // interrupts or stops consuming early.
       const controller = new AbortController();
       const res = await post("/chat/completions", body, controller);
-      await assertOk(res, "/chat/completions (stream)");
+      await assertOk(res, "/chat/completions (stream)", attempt);
       if (!res.body) {
-        throw new ProviderError({ kind: "transport", message: "stream response has no body" });
+        // 200 with no body: the vendor was reached, so the prompt spend is
+        // real (C2) even though nothing could be streamed.
+        throw withAttemptCost(
+          new ProviderError({ kind: "transport", message: "stream response has no body" }),
+          attemptCost(attempt.startedAt, attempt.promptChars),
+        );
       }
       return streamHandle({
         body: res.body,
@@ -231,10 +262,7 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
         // Where the vendor reports no streamed usage, prompt tokens are
         // estimated (~4 chars/token); chat-stream.ts marks the record
         // estimated — never presented as metered (ADR-0022).
-        promptTokensInEstimate: spec.turns.reduce(
-          (n, t) => n + estimateTokens(t.content.length),
-          0,
-        ),
+        promptTokensInEstimate: estimateTokens(attempt.promptChars),
         startedAt: started,
       });
     },
@@ -246,43 +274,7 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
           message: `model ${modelId} does not support embed`,
         });
       }
-      const body = {
-        model: modelId,
-        input: spec.texts,
-        ...(spec.dimensions != null && model.dimensions != null
-          ? { dimensions: spec.dimensions }
-          : {}),
-      };
-      const started = Date.now();
-      const res = await post("/embeddings", body);
-      await assertOk(res, "/embeddings");
-      const json = (await res.json()) as EmbedResponse;
-      const vectors = (json.data ?? []).map((d) => d.embedding ?? []);
-      if (vectors.length !== spec.texts.length) {
-        throw new ProviderError({
-          kind: "server",
-          message: `embeddings returned ${vectors.length} vectors for ${spec.texts.length} texts`,
-        });
-      }
-      // Embeddings meter prompt tokens only. Where the vendor reports none,
-      // estimate from input chars (~4 chars/token) — never the text count,
-      // which would understate cost by orders of magnitude — and mark the
-      // record estimated (ADR-0022).
-      const isMetered = isPromptMetered(json.usage ?? {});
-      const tokensIn = isMetered
-        ? json.usage!.prompt_tokens!
-        : spec.texts.reduce((n, t) => n + estimateTokens(t.length), 0);
-      return {
-        vectors,
-        cost: computeCost(
-          modelId,
-          model.priceMicroUsdPerMTok,
-          tokensIn,
-          0,
-          Date.now() - started,
-          !isMetered,
-        ),
-      };
+      return embed(spec);
     },
   };
 

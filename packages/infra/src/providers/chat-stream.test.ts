@@ -87,11 +87,18 @@ describe("streamHandle", () => {
   });
 
   it("a stream failing mid-flight fails the deltas stream and the cost effect", async () => {
+    // The wire delivers one delta, then cuts: the attempt reached the vendor
+    // and produced partial output before failing.
+    let reads = 0;
+    const encoder = new TextEncoder();
     const body = new ReadableStream<Uint8Array>({
-      start(controller) {
-        const encoder = new TextEncoder();
-        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"Hel"}}]}\n\n'));
-        controller.error(new Error("wire cut"));
+      pull(controller) {
+        reads += 1;
+        if (reads === 1) {
+          controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"Hel"}}]}\n\n'));
+        } else {
+          throw new Error("wire cut");
+        }
       },
     });
     const handle = makeHandle(body);
@@ -99,7 +106,17 @@ describe("streamHandle", () => {
     expect(deltasExit._tag).toBe("Failure");
     const costExit = await Effect.runPromiseExit(handle.cost());
     expect(costExit._tag).toBe("Failure");
-    expect(failureOf(costExit).kind).toBe("transport");
+    const costError = failureOf(costExit);
+    expect(costError.kind).toBe("transport");
+    // C2: the attempt reached the vendor (a delta flowed before the wire
+    // cut), so the failure carries the attempt's estimated cost — prompt
+    // estimate plus the partial output — for the trace sink. The spend may
+    // not vanish from the cost trail.
+    expect(costError.attemptCosts).toBeDefined();
+    expect(costError.attemptCosts).toHaveLength(1);
+    expect(costError.attemptCosts![0]!.tokensIn).toBe(2); // promptTokensInEstimate
+    expect(costError.attemptCosts![0]!.tokensOut).toBe(1); // ceil(3 chars/4)
+    expect(costError.attemptCosts![0]!.estimated).toBe(true);
   });
 
   it("interrupting the deltas stream aborts the provider fetch", async () => {
