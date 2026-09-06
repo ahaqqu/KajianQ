@@ -7,6 +7,7 @@ import { createMemoryRagStore } from "./test-utils/memory-rag-store";
 import { bundleHadithSources, decodeHadithArchive, hadithSourceParser } from "./hadith-ingest";
 import { hadithPairKeyFor, hadithPairSink, hadithSectionSummarizer } from "./hadith-llm";
 import { formatHadithCitation, hadithSourceKey } from "./hadith-source";
+import { Effect } from "effect";
 
 /**
  * INTEGRATION TEST — issue #7's design-for-verification core.
@@ -234,9 +235,9 @@ describe("hadith ingestion (fixture = real source data)", () => {
 function deterministicSummarizer() {
   return {
     modelId: "test-summarizer",
-    async generate(spec: { turns: readonly { role: string; content: string }[] }) {
+    generate: (spec: { turns: readonly { role: string; content: string }[] }) => {
       void spec;
-      return {
+      return Effect.succeed({
         text: "Bab Thaharah — hadits-hadits tentang bersuci sebelum shalat.",
         cost: {
           modelId: "test-summarizer",
@@ -245,13 +246,9 @@ function deterministicSummarizer() {
           latencyMs: 3,
           costMicroUsd: 5,
         },
-      };
+      });
     },
-    async stream() {
-      throw new Error("test summarizer does not stream");
-    },
-    async embed() {
-      throw new Error("test summarizer does not embed");
-    },
+    stream: () => Effect.die("test summarizer does not stream"),
+    embed: () => Effect.die("test summarizer does not embed"),
   };
 }

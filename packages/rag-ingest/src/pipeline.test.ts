@@ -3,6 +3,7 @@ import type { RagStore } from "@app/infra";
 import type { Provider } from "@app/rag-core";
 import { runIngestion } from "./pipeline";
 import type { ParsedParent } from "./types";
+import { Effect } from "effect";
 
 /** In-memory RagStore fake: idempotent by sourceKey / (parentId, ordinal). */
 function fakeStore() {
@@ -85,28 +86,25 @@ function fakeStore() {
 function fakeProvider(dim = 8): Provider {
   return {
     modelId: "fake-embedder",
-    async embed(spec) {
-      const vectors = spec.texts.map((text) => {
-        const seed = [...text].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 997, 7);
-        return Array.from({ length: dim }, (_, i) => ((seed + i) % 17) / 17);
-      });
-      return {
-        vectors,
-        cost: {
-          modelId: "fake-embedder",
-          tokensIn: spec.texts.length,
-          tokensOut: 0,
-          latencyMs: 1,
-          costMicroUsd: spec.texts.length,
-        },
-      };
-    },
-    async generate() {
-      throw new Error("not used");
-    },
-    async stream() {
-      throw new Error("not used");
-    },
+    embed: (spec) =>
+      Effect.sync(() => {
+        const vectors = spec.texts.map((text) => {
+          const seed = [...text].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 997, 7);
+          return Array.from({ length: dim }, (_, i) => ((seed + i) % 17) / 17);
+        });
+        return {
+          vectors,
+          cost: {
+            modelId: "fake-embedder",
+            tokensIn: spec.texts.length,
+            tokensOut: 0,
+            latencyMs: 1,
+            costMicroUsd: spec.texts.length,
+          },
+        };
+      }),
+    generate: () => Effect.die("not used"),
+    stream: () => Effect.die("not used"),
   };
 }
 

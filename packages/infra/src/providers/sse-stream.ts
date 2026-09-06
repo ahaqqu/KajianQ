@@ -1,12 +1,8 @@
-import type { CostRecord } from "@app/contracts";
-import { ProviderError } from "@app/rag-core";
-
 /**
- * SSE stream parsing for the chat-completions adapter, split out to keep the
- * adapter under the agentic size limit. Parses `data:` lines, surfaces text
- * deltas, and resolves the call's CostRecord when the stream completes —
- * estimated when the vendor reports no streamed usage (ADR-0022: an estimate
- * must never be presented as metered).
+ * SSE wire-format parsing for the chat-completions adapter: reads `data:`
+ * lines off the response body and yields content deltas. Cost settlement and
+ * cancellation live in `chat-stream.ts`; this module knows nothing about
+ * either — its contract is deltas in, usage + char count out.
  */
 
 export interface StreamUsage {
@@ -79,91 +75,4 @@ export async function* readSseStream(
   const delta = processLine(buffer);
   if (delta !== undefined) yield delta;
   return { usage, charCount };
-}
-
-/** Token estimate heuristic where no usage was reported (~4 chars/token). */
-export function estimateTokens(chars: number): number {
-  return Math.ceil(chars / 4);
-}
-
-/**
- * Wrap an SSE stream into deltas + deferred cost. `cost()` never deadlocks:
- * if `deltas` was never consumed, it drains the remainder internally
- * (discarding text) so the promise settles; if consumption is in progress,
- * it simply awaits completion. A mid-flight failure rejects the cost promise
- * so a caller awaiting cost sees the error.
- */
-export function wrapSseStream(
-  body: ReadableStream<Uint8Array>,
-  buildCost: (outcome: StreamUsage | undefined, charCount: number) => CostRecord,
-): {
-  deltas: AsyncIterable<string>;
-  cost: () => Promise<CostRecord>;
-} {
-  let costResolve: (cost: CostRecord) => void;
-  let costReject: (err: unknown) => void;
-  const costPromise = new Promise<CostRecord>((resolveCost, rejectCost) => {
-    costResolve = resolveCost;
-    costReject = rejectCost;
-  });
-  let settled = false;
-  let deltasStarted = false;
-  let iterator: AsyncGenerator<string, StreamOutcome> | undefined;
-
-  function settle(done: boolean, value?: StreamOutcome | Error): void {
-    if (settled) return;
-    settled = true;
-    if (done && value && "usage" in value) {
-      costResolve(buildCost(value.usage, value.charCount));
-    } else if (value instanceof Error) {
-      costReject(value);
-    }
-  }
-
-  function start(): AsyncGenerator<string, StreamOutcome> {
-    if (!iterator) iterator = readSseStream(body);
-    return iterator;
-  }
-
-  async function* deltas(): AsyncIterable<string> {
-    deltasStarted = true;
-    const it = start();
-    try {
-      while (true) {
-        const next = await it.next();
-        if (next.done) {
-          settle(true, next.value);
-          return;
-        }
-        yield next.value;
-      }
-    } catch (err) {
-      settle(false, new ProviderError("transport", `stream failed mid-flight: ${String(err)}`));
-      throw err;
-    }
-  }
-
-  async function cost(): Promise<CostRecord> {
-    // If deltas were never consumed, drain the remainder (text discarded) so
-    // the cost promise settles instead of deadlocking. When a consumer is
-    // mid-iteration it owns the generator — racing it here would steal its
-    // next delta — so cost() only awaits the promise it will settle.
-    if (!settled && !deltasStarted) {
-      const it = start();
-      deltasStarted = true; // cost() now owns the generator
-      while (true) {
-        const next = await it.next();
-        if (next.done) {
-          settle(true, next.value);
-          break;
-        }
-      }
-    }
-    return costPromise;
-  }
-
-  return {
-    deltas: deltas(),
-    cost,
-  };
 }

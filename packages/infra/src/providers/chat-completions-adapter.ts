@@ -1,21 +1,23 @@
-import type { CostRecord } from "@app/contracts";
-import type {
-  EmbedSpec,
-  EmbeddingResult,
-  GenerationResult,
-  PromptSpec,
-  Provider,
-  StreamHandle,
+import { Effect } from "effect";
+import {
+  ProviderError,
+  type EmbedSpec,
+  type EmbeddingResult,
+  type GenerationResult,
+  type PromptSpec,
+  type Provider,
+  type StreamHandle,
 } from "@app/rag-core";
-import { ProviderError } from "@app/rag-core";
 import type { ModelConfig, VendorConfig } from "./provider-config";
-import { estimateTokens, wrapSseStream } from "./sse-stream";
+import { computeCost, estimateTokens, isGenerationMetered, isPromptMetered } from "./chat-cost";
+import { streamHandle } from "./chat-stream";
 
 /**
  * The generic chat-completions REST adapter (ADR-0022): one protocol
  * implementation covering every vendor whose API speaks the chat-completions
- * wire. It contains no vendor or model names — endpoint, auth, model id,
- * and prices all arrive as config data. `fetch` is injectable for tests.
+ * wire. It contains no vendor or model names — endpoint, auth, model id, and
+ * prices all arrive as config data. `fetch` is injectable so tests drive the
+ * wire without a network.
  */
 
 /** Injectable fetch, so tests fake the wire and the smoke script uses the real one. */
@@ -39,41 +41,6 @@ export function errorKindForStatus(status: number): "rate_limited" | "server" | 
 /** True when the fallback wrapper should try the next candidate. */
 export function isRetryable(kind: string): boolean {
   return kind === "transport" || kind === "rate_limited" || kind === "server";
-}
-
-/** Micro-USD per MTok → micro-USD per token, keeping integer math exact. */
-function microUsdPerToken(perMTok: number): number {
-  // 1 MTok = 1e6 tokens, 1 USD = 1e6 micro-USD → perMTok micro-USD per MTok
-  // equals perMTok/1e6 micro-USD per token. Prices are integers in micro-USD
-  // per MTok; per-token cost may be fractional, so we keep a rational and
-  // round at the end via Math.ceil on the total (never under-report cost).
-  return perMTok / 1_000_000;
-}
-
-/** A finite, non-negative number — what a metered token count must be. */
-function isNonNegNumber(n: unknown): n is number {
-  return typeof n === "number" && Number.isFinite(n) && n >= 0;
-}
-
-function computeCost(
-  modelId: string,
-  price: { in: number; out: number },
-  tokensIn: number,
-  tokensOut: number,
-  latencyMs: number,
-  estimated = false,
-): CostRecord {
-  const exact = tokensIn * microUsdPerToken(price.in) + tokensOut * microUsdPerToken(price.out);
-  return {
-    modelId,
-    tokensIn,
-    tokensOut,
-    latencyMs: Math.round(latencyMs),
-    // Ceil so a metered-looking cost can never under-report (a fraction of a
-    // micro-USD rounds up, never down).
-    costMicroUsd: Math.ceil(exact),
-    estimated,
-  };
 }
 
 /** Chat-completions wire request body (one shape for generate/stream). */
@@ -122,6 +89,11 @@ export type ChatCompletionsOptions = {
   timeoutMs?: number;
 };
 
+/**
+ * Build a Provider that speaks the chat-completions wire against
+ * `vendor.baseUrl` with `modelId`. All vendor identity is config data.
+ */
+
 /** Assemble the chat-completions request body shared by generate/stream. */
 function buildChatRequest(modelId: string, spec: PromptSpec, stream: boolean): ChatRequest {
   return {
@@ -132,10 +104,6 @@ function buildChatRequest(modelId: string, spec: PromptSpec, stream: boolean): C
   };
 }
 
-/**
- * Build a Provider that speaks the chat-completions wire against
- * `vendor.baseUrl` with `modelId`. All vendor identity is config data.
- */
 export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Provider {
   const { vendor, modelId, model, apiKey } = opts;
   const doFetch = opts.fetchImpl ?? ((input, init) => fetch(input, init));
@@ -146,8 +114,21 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
     authorization: `Bearer ${apiKey}`,
   };
 
-  async function post(path: string, body: unknown): Promise<Response> {
-    const controller = new AbortController();
+  const toProviderError = (cause: unknown): ProviderError =>
+    cause instanceof ProviderError
+      ? cause
+      : new ProviderError({
+          kind: "transport",
+          message: `request to ${vendor.baseUrl} failed: ${String(cause)}`,
+        });
+
+  async function post(
+    path: string,
+    body: unknown,
+    // Supplied by stream() so the deltas stream's scope finalizer can abort
+    // the wire after post() returns (the controller outlives the fetch).
+    controller: AbortController = new AbortController(),
+  ): Promise<Response> {
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       return await doFetch(`${vendor.baseUrl}${path}`, {
@@ -157,10 +138,10 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
         signal: controller.signal,
       });
     } catch (err) {
-      throw new ProviderError(
-        "transport",
-        `request to ${vendor.baseUrl}${path} failed: ${String(err)}`,
-      );
+      throw new ProviderError({
+        kind: "transport",
+        message: `request to ${vendor.baseUrl}${path} failed: ${String(err)}`,
+      });
     } finally {
       clearTimeout(timer);
     }
@@ -171,19 +152,31 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
       // Include the vendor's error body (capped) — "quota exceeded" or a
       // safety refusal in the message is the difference between a retry
       // and a config fix.
-      throw new ProviderError(
-        errorKindForStatus(res.status),
-        `${path} failed: ${await readError(res)}`,
-      );
+      throw new ProviderError({
+        kind: errorKindForStatus(res.status),
+        message: `${path} failed: ${await readError(res)}`,
+      });
     }
   }
 
-  const provider: Provider = {
+  /** The wire-level implementation returns promises; the `Provider` surface
+   * below wraps them into the seam's `Effect<A, ProviderError>` channel. */
+  type ProviderWire = {
+    readonly modelId: string;
+    generate(spec: PromptSpec): Promise<GenerationResult>;
+    stream(spec: PromptSpec): Promise<StreamHandle>;
+    embed(spec: EmbedSpec): Promise<EmbeddingResult>;
+  };
+
+  const wire: ProviderWire = {
     modelId,
 
     async generate(spec: PromptSpec): Promise<GenerationResult> {
       if (!model.capabilities.includes("generate")) {
-        throw new ProviderError("bad_request", `model ${modelId} does not support generate`);
+        throw new ProviderError({
+          kind: "bad_request",
+          message: `model ${modelId} does not support generate`,
+        });
       }
       const body = buildChatRequest(modelId, spec, false);
       const started = Date.now();
@@ -191,16 +184,14 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
       await assertOk(res, "/chat/completions");
       const json = (await res.json()) as ChatResponse;
       const text = json.choices?.[0]?.message?.content ?? json.choices?.[0]?.text ?? "";
-      const meteredIn = json.usage?.prompt_tokens;
-      const meteredOut = json.usage?.completion_tokens;
-      const isMetered = isNonNegNumber(meteredIn) && isNonNegNumber(meteredOut);
+      const isMetered = isGenerationMetered(json.usage ?? {});
       // Where the vendor reports no usage, estimate from chars and mark the
       // record estimated (ADR-0022) — a trace must never present an estimate
       // as metered.
       const tokensIn = isMetered
-        ? meteredIn!
+        ? json.usage!.prompt_tokens!
         : spec.turns.reduce((n, t) => n + estimateTokens(t.content.length), 0);
-      const tokensOut = isMetered ? meteredOut! : 0;
+      const tokensOut = isMetered ? json.usage!.completion_tokens! : 0;
       return {
         text,
         cost: computeCost(
@@ -216,43 +207,44 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
 
     async stream(spec: PromptSpec): Promise<StreamHandle> {
       if (!model.capabilities.includes("stream")) {
-        throw new ProviderError("bad_request", `model ${modelId} does not support stream`);
+        throw new ProviderError({
+          kind: "bad_request",
+          message: `model ${modelId} does not support stream`,
+        });
       }
       const body = buildChatRequest(modelId, spec, true);
       const started = Date.now();
-      const res = await post("/chat/completions", body);
+      // The controller outlives post(): the deltas stream's scope finalizer
+      // (chat-stream.ts) aborts it, cutting the wire when the consumer
+      // interrupts or stops consuming early.
+      const controller = new AbortController();
+      const res = await post("/chat/completions", body, controller);
       await assertOk(res, "/chat/completions (stream)");
       if (!res.body) {
-        throw new ProviderError("transport", "stream response has no body");
+        throw new ProviderError({ kind: "transport", message: "stream response has no body" });
       }
-
-      // Cost resolves only when the stream ends (ADR-0022); where the vendor
-      // reports no streamed usage, tokens are estimated (~4 chars/token) and
-      // the record is marked estimated — never presented as metered. Latency
-      // is wall clock to the end of iteration, so a slow consumer inflates
-      // it (deliberate; eager buffering rejected as complexity for a
-      // Trace-only metric).
-      return wrapSseStream(res.body, (usage, charCount) => {
-        const metered =
-          typeof usage?.prompt_tokens === "number" && typeof usage?.completion_tokens === "number";
-        const tokensIn = metered
-          ? usage!.prompt_tokens!
-          : spec.turns.reduce((n, t) => n + estimateTokens(t.content.length), 0);
-        const tokensOut = metered ? usage!.completion_tokens! : estimateTokens(charCount);
-        return computeCost(
-          modelId,
-          model.priceMicroUsdPerMTok,
-          tokensIn,
-          tokensOut,
-          Date.now() - started,
-          !metered,
-        );
+      return streamHandle({
+        body: res.body,
+        abort: () => controller.abort(),
+        modelId,
+        price: model.priceMicroUsdPerMTok,
+        // Where the vendor reports no streamed usage, prompt tokens are
+        // estimated (~4 chars/token); chat-stream.ts marks the record
+        // estimated — never presented as metered (ADR-0022).
+        promptTokensInEstimate: spec.turns.reduce(
+          (n, t) => n + estimateTokens(t.content.length),
+          0,
+        ),
+        startedAt: started,
       });
     },
 
     async embed(spec: EmbedSpec): Promise<EmbeddingResult> {
       if (!model.capabilities.includes("embed")) {
-        throw new ProviderError("bad_request", `model ${modelId} does not support embed`);
+        throw new ProviderError({
+          kind: "bad_request",
+          message: `model ${modelId} does not support embed`,
+        });
       }
       const body = {
         model: modelId,
@@ -267,19 +259,18 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
       const json = (await res.json()) as EmbedResponse;
       const vectors = (json.data ?? []).map((d) => d.embedding ?? []);
       if (vectors.length !== spec.texts.length) {
-        throw new ProviderError(
-          "server",
-          `embeddings returned ${vectors.length} vectors for ${spec.texts.length} texts`,
-        );
+        throw new ProviderError({
+          kind: "server",
+          message: `embeddings returned ${vectors.length} vectors for ${spec.texts.length} texts`,
+        });
       }
       // Embeddings meter prompt tokens only. Where the vendor reports none,
       // estimate from input chars (~4 chars/token) — never the text count,
       // which would understate cost by orders of magnitude — and mark the
       // record estimated (ADR-0022).
-      const meteredIn = json.usage?.prompt_tokens;
-      const isMetered = isNonNegNumber(meteredIn);
+      const isMetered = isPromptMetered(json.usage ?? {});
       const tokensIn = isMetered
-        ? meteredIn!
+        ? json.usage!.prompt_tokens!
         : spec.texts.reduce((n, t) => n + estimateTokens(t.length), 0);
       return {
         vectors,
@@ -293,6 +284,14 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
         ),
       };
     },
+  };
+
+  const provider: Provider = {
+    modelId,
+    generate: (spec) =>
+      Effect.tryPromise({ try: () => wire.generate(spec), catch: toProviderError }),
+    stream: (spec) => Effect.tryPromise({ try: () => wire.stream(spec), catch: toProviderError }),
+    embed: (spec) => Effect.tryPromise({ try: () => wire.embed(spec), catch: toProviderError }),
   };
 
   return provider;
