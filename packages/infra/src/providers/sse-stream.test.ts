@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readSseStream, wrapSseStream } from "./sse-stream";
+import { readSseStream } from "./sse-stream";
 
 function sseBody(chunks: string[]): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
@@ -63,39 +63,5 @@ describe("readSseStream", () => {
     );
     const deltas = await collect(it);
     expect(deltas).toEqual(["ok"]);
-  });
-});
-
-describe("wrapSseStream", () => {
-  const buildCost = (usage: { prompt_tokens?: number } | undefined, charCount: number) => ({
-    modelId: "m",
-    tokensIn: usage?.prompt_tokens ?? 0,
-    tokensOut: charCount,
-    latencyMs: 1,
-    costMicroUsd: 1,
-    estimated: usage === undefined,
-  });
-
-  it("cost() resolves without consuming deltas (no deadlock)", async () => {
-    const handle = wrapSseStream(
-      sseBody([
-        'data: {"choices":[{"delta":{"content":"ignored"}}]}\n\n',
-        'data: {"usage":{"prompt_tokens":7,"completion_tokens":3}}\n\n',
-      ]),
-      buildCost as never,
-    );
-    const cost = await handle.cost(); // must not hang
-    expect(cost.tokensIn).toBe(7);
-  });
-
-  it("cost() resolves after deltas are fully consumed", async () => {
-    const handle = wrapSseStream(
-      sseBody(['data: {"choices":[{"delta":{"content":"abc"}}]}\n\n', "data: [DONE]\n\n"]),
-      buildCost as never,
-    );
-    const text = (await collect(handle.deltas)).join("");
-    expect(text).toBe("abc");
-    const cost = await handle.cost();
-    expect(cost.estimated).toBe(true); // no usage chunk
   });
 });

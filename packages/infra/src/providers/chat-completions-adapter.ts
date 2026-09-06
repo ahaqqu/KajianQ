@@ -1,4 +1,4 @@
-import { Effect, Stream } from "effect";
+import { Effect } from "effect";
 import {
   ProviderError,
   type EmbedSpec,
@@ -9,8 +9,8 @@ import {
   type StreamHandle,
 } from "@app/rag-core";
 import type { ModelConfig, VendorConfig } from "./provider-config";
-import { computeCost } from "./chat-cost";
-import { estimateTokens, wrapSseStream } from "./sse-stream";
+import { computeCost, estimateTokens } from "./chat-cost";
+import { streamHandle } from "./chat-stream";
 
 /**
  * The generic chat-completions REST adapter (ADR-0022): one protocol
@@ -114,8 +114,21 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
     authorization: `Bearer ${apiKey}`,
   };
 
-  async function post(path: string, body: unknown): Promise<Response> {
-    const controller = new AbortController();
+  const toProviderError = (cause: unknown): ProviderError =>
+    cause instanceof ProviderError
+      ? cause
+      : new ProviderError({
+          kind: "transport",
+          message: `request to ${vendor.baseUrl} failed: ${String(cause)}`,
+        });
+
+  async function post(
+    path: string,
+    body: unknown,
+    // Supplied by stream() so the deltas stream's scope finalizer can abort
+    // the wire after post() returns (the controller outlives the fetch).
+    controller: AbortController = new AbortController(),
+  ): Promise<Response> {
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       return await doFetch(`${vendor.baseUrl}${path}`, {
@@ -209,39 +222,29 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
       }
       const body = buildChatRequest(modelId, spec, true);
       const started = Date.now();
-      const res = await post("/chat/completions", body);
+      // The controller outlives post(): the deltas stream's scope finalizer
+      // (chat-stream.ts) aborts it, cutting the wire when the consumer
+      // interrupts or stops consuming early.
+      const controller = new AbortController();
+      const res = await post("/chat/completions", body, controller);
       await assertOk(res, "/chat/completions (stream)");
       if (!res.body) {
         throw new ProviderError({ kind: "transport", message: "stream response has no body" });
       }
-
-      // Cost resolves only when the stream ends (ADR-0022); where the vendor
-      // reports no streamed usage, tokens are estimated (~4 chars/token) and
-      // the record is marked estimated — never presented as metered. Latency
-      // is wall clock to the end of iteration, so a slow consumer inflates
-      // it (deliberate; eager buffering rejected as complexity for a
-      // Trace-only metric). Deltas surface as a `Stream` whose interruption
-      // cuts the underlying SSE iteration (ADR-0027).
-      const raw = wrapSseStream(res.body, (usage, charCount) => {
-        const metered =
-          typeof usage?.prompt_tokens === "number" && typeof usage?.completion_tokens === "number";
-        const tokensIn = metered
-          ? usage!.prompt_tokens!
-          : spec.turns.reduce((n, t) => n + estimateTokens(t.content.length), 0);
-        const tokensOut = metered ? usage!.completion_tokens! : estimateTokens(charCount);
-        return computeCost(
-          modelId,
-          model.priceMicroUsdPerMTok,
-          tokensIn,
-          tokensOut,
-          Date.now() - started,
-          !metered,
-        );
+      return streamHandle({
+        body: res.body,
+        abort: () => controller.abort(),
+        modelId,
+        price: model.priceMicroUsdPerMTok,
+        // Where the vendor reports no streamed usage, prompt tokens are
+        // estimated (~4 chars/token); chat-stream.ts marks the record
+        // estimated — never presented as metered (ADR-0022).
+        promptTokensInEstimate: spec.turns.reduce(
+          (n, t) => n + estimateTokens(t.content.length),
+          0,
+        ),
+        startedAt: started,
       });
-      return {
-        deltas: Stream.fromAsyncIterable(raw.deltas, toProviderError),
-        cost: () => Effect.tryPromise({ try: () => raw.cost(), catch: toProviderError }),
-      };
     },
 
     async embed(spec: EmbedSpec): Promise<EmbeddingResult> {
@@ -292,14 +295,6 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
       };
     },
   };
-
-  const toProviderError = (cause: unknown): ProviderError =>
-    cause instanceof ProviderError
-      ? cause
-      : new ProviderError({
-          kind: "transport",
-          message: `request to ${vendor.baseUrl} failed: ${String(cause)}`,
-        });
 
   const provider: Provider = {
     modelId,

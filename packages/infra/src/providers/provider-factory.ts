@@ -124,15 +124,9 @@ class FallbackProvider implements Provider {
           }),
         );
       }
+      // `eligible` is non-empty here (the empty-list case failed above);
+      // the local narrow satisfies noUncheckedIndexedAccess.
       const first = eligible[0];
-      if (first === undefined) {
-        return Effect.fail(
-          new ProviderError({
-            kind: "bad_request",
-            message: `role "${this.role}": no candidates wired`,
-          }),
-        );
-      }
       const rest = eligible.slice(1);
       const chain = rest.reduce<Effect.Effect<A, ProviderError>>(
         (acc, candidate) =>
@@ -141,7 +135,7 @@ class FallbackProvider implements Provider {
               isRetryable(err.kind) ? op(candidate.provider) : Effect.fail(err),
             ),
           ),
-        op(first.provider),
+        op(first!.provider),
       );
       return chain.pipe(
         Effect.catchAll((lastError) =>

@@ -1,22 +1,8 @@
-import { Cause, Effect, Option } from "effect";
 import { describe, expect, it } from "vitest";
 import { ProviderError } from "@app/rag-core";
 import type { FetchLike } from "./chat-completions-adapter";
 import { resolveRole } from "./provider-factory";
-import { chatBody, configWith, jsonResponse } from "./test-fixtures";
-
-/** Run an effect that must fail, returning the typed failure itself. */
-async function runFail<A>(effect: Effect.Effect<A, ProviderError, never>): Promise<ProviderError> {
-  const exit = await Effect.runPromiseExit(effect);
-  const failure =
-    exit._tag === "Failure" ? Cause.failureOption(exit.cause) : Option.none<ProviderError>();
-  if (Option.isSome(failure)) return failure.value;
-  throw new Error("expected the effect to fail");
-}
-
-/** Run an effect that must succeed, returning its value. */
-const runOk = <A>(effect: Effect.Effect<A, ProviderError, never>): Promise<A> =>
-  Effect.runPromise(effect);
+import { chatBody, configWith, jsonResponse, runFail, runOk } from "./test-fixtures";
 
 describe("fallback chain", () => {
   function makeFetch(statusByModel: Record<string, number>): FetchLike {

@@ -6,8 +6,8 @@ import {
   isRetryable,
   type FetchLike,
 } from "./chat-completions-adapter";
-import { chatBody, jsonResponse, testVendor } from "./test-fixtures";
-import type { ProviderError, StreamHandle } from "@app/rag-core";
+import { chatBody, jsonResponse, runFail, testVendor } from "./test-fixtures";
+import type { StreamHandle } from "@app/rag-core";
 
 function makeProvider(modelId: "m-chat" | "m-embed", fetchImpl: FetchLike, apiKey = "k-1") {
   return createChatCompletionsProvider({
@@ -24,15 +24,6 @@ async function consume(handle: StreamHandle) {
   const chunks = await Effect.runPromise(Stream.runCollect(handle.deltas));
   const cost = await Effect.runPromise(handle.cost());
   return { text: Array.from(chunks).join(""), cost };
-}
-
-/** Run an effect that must fail, returning the typed failure itself. */
-async function runFail<A>(effect: Effect.Effect<A, ProviderError, never>): Promise<ProviderError> {
-  const exit = await Effect.runPromiseExit(effect);
-  const failure =
-    exit._tag === "Failure" ? Cause.failureOption(exit.cause) : Option.none<ProviderError>();
-  if (Option.isSome(failure)) return failure.value;
-  throw new Error("expected the effect to fail");
 }
 
 describe("chat-completions adapter", () => {
@@ -224,11 +215,14 @@ describe("chat-completions adapter", () => {
     const exit = await Effect.runPromiseExit(Stream.runCollect(handle.deltas));
     expect(exit._tag).toBe("Failure");
     const costExit = await Effect.runPromiseExit(handle.cost());
+    expect(costExit._tag).toBe("Failure");
+    // The mid-flight failure fails cost with a typed transport ProviderError.
     const costFailure =
-      costExit._tag === "Failure"
-        ? Cause.failureOption(costExit.cause)
-        : Option.none<ProviderError>();
+      costExit._tag === "Failure" ? Cause.failureOption(costExit.cause) : Option.none();
     expect(Option.isSome(costFailure)).toBe(true);
-    if (Option.isSome(costFailure)) expect(costFailure.value.kind).toBe("transport");
+    if (Option.isSome(costFailure)) {
+      expect(costFailure.value._tag).toBe("ProviderError");
+      expect(costFailure.value.kind).toBe("transport");
+    }
   });
 });

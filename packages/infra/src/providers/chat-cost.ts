@@ -1,5 +1,10 @@
 import type { CostRecord } from "@app/contracts";
 
+/** Token estimate heuristic where the vendor reports no usage (~4 chars/token). */
+export function estimateTokens(chars: number): number {
+  return Math.ceil(chars / 4);
+}
+
 /** Micro-USD per MTok → micro-USD per token, keeping integer math exact. */
 function microUsdPerToken(perMTok: number): number {
   // 1 MTok = 1e6 tokens, 1 USD = 1e6 micro-USD → perMTok micro-USD per MTok
