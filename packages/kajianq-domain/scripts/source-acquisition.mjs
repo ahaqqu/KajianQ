@@ -95,13 +95,7 @@ export async function acquireFiles(entries, { log, cacheDir }) {
  * files, and the morphology text. Returns the raw texts verbatim — parsing
  * and integrity-checking belong to the domain layer, not acquisition.
  */
-export async function acquireSources({
-  surahCount,
-  log,
-  surahListUrl,
-  _surahFileUrl,
-  morphologyUrl,
-}) {
+export async function acquireSources({ surahCount, log, surahListUrl, morphologyUrl }) {
   const cacheDir = process.env.QURAN_SOURCE_DIR;
   const surahListText = await fetchOrCache(surahListUrl, "surah_list.json", log, cacheDir);
 

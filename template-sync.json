@@ -36,5 +36,12 @@
     "tsconfig.json",
     "vitest.config.ts"
   ],
-  "merge": [".zcode/", "apps/", "packages/", "package.json", "README.md", "CONTEXT.md"]
+  "merge": [
+    ".zcode/",
+    "apps/",
+    "packages/",
+    "package.json",
+    "README.md",
+    "CONTEXT.md"
+  ]
 }

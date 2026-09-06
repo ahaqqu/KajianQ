@@ -91,7 +91,6 @@ const sources = await acquireSources({
   surahCount: LIMIT ?? domain.TOTAL_SURAHS,
   log: logger,
   surahListUrl: `${SURAH_BASE}/surah_list.json`,
-  surahFileUrl: `${SURAH_BASE}/Surah`,
   morphologyUrl: MORPHOLOGY_URL,
 });
 const bundle = domain.bundleQuranSources(sources);

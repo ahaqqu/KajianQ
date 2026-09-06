@@ -46,6 +46,16 @@ vitest.config.ts
 packages/kajianq-domain/src/fixtures/
 scripts/role-gh-identity/fixtures/
 scripts/iteration-guardrail/fixtures/
+
+# Out of Oxfmt's corpus by parser absence (vp fmt --check bun.lock matches
+# nothing) — commented entry kept as the marker if that ever changes; lint
+# excludes it as well.
+# bun.lock
+
+# Merge-sensitive manifests and harness config (`.zcode/` follows the
+# template as a merge path, ADR-0024): reformatting them shows up as
+# fork-side edits in the next template-sync merge diff.
+template-sync.json
 .zcode/
 
 # Frozen history (AGENTS.md: "INITIAL_IDEA.md is frozen history — never
