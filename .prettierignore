@@ -1,6 +1,10 @@
 # Template-owned files must stay byte-identical to upstream
 # (template-sync.json `overwrite`). Keep aligned with the
-# lint.ignorePatterns derived from template-sync.json in vite.config.ts.
+# lint.ignorePatterns derived from template-sync.json in vite.config.ts —
+# vp's fmt stage cannot read that derived config (Oxfmt only honors
+# .prettierignore/.gitignore), so this list is a manual mirror. The
+# blocking `template-gate` CI check is the backstop: if these lists ever
+# drift, it fails on template-owned file drift.
 .agents/skills/agentic-workflow/
 .agents/skills/diagnosing-bugs/
 .agents/skills/domain-modeling/
@@ -36,7 +40,10 @@ tsconfig.base.json
 tsconfig.json
 vitest.config.ts
 
-# Raw source fixtures are byte-exact copies of source data (AGENTS.md
-# data-integrity rules) — formatters must never touch them.
-**/fixtures/**
+# Byte-exact copies of source data (AGENTS.md data-integrity rules) —
+# formatters must never touch them. These are the only byte-exact fixture
+# dirs in the repo; hand-written test data elsewhere stays linted/formatted.
+packages/kajianq-domain/src/fixtures/
+scripts/role-gh-identity/fixtures/
+scripts/iteration-guardrail/fixtures/
 .zcode/

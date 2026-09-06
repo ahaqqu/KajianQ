@@ -1,10 +1,9 @@
 import { HADITH_COLLECTIONS, type HadithCollection, type HadithRecord } from "./hadith-source";
 
 /**
- * Parsers for the hadith corpus sources (#7), all keyed to the source's own
- * numbering (ADR-0025: the alignment key between the Arabic and Indonesian
- * editions is the edition's `arabicnumber` within a `reference.book` — the
- * number pair, not fuzzy text matching, is the authoritative join).
+ * Parsers for the hadith corpus sources (#7): decode and normalize one
+ * edition file at a time. The parsed `arabicnumber`/`reference.book` pair
+ * is what cross-edition alignment consumes (`hadith-align.ts`, ADR-0025).
  *
  * Upstream format (fawazahmed0/hadith-api editions, Unlicense): one JSON
  * file per edition with `metadata.sections` (book number → title),
@@ -42,22 +41,6 @@ export type HadithEdition = {
     { first: string; last: string; arabicFirst: string; arabicLast: string }
   >;
   hadiths: EditionHadith[];
-};
-
-/** Alignment stats for the report — surfaced, never force-merged. */
-export type AlignmentStats = {
-  /** Records with both tracks non-empty. */
-  aligned: number;
-  /** Arabic entries whose Indonesian text is empty (textId = null). */
-  emptySecondary: number;
-  /**
-   * Arabic entries with genuinely empty Arabic text, quarantined (skipped,
-   * never ingested — review A2): the source ships them (86 in ara-nasai,
-   * 29 in ara-malik, muslim's book-0 rows).
-   */
-  emptyPrimary: number;
-  /** Book/number pairs missing from one edition (quarantine-listed). */
-  unmatched: { collection: HadithCollection; key: string; side: "arabic" | "indonesian" }[];
 };
 
 /** Parse one edition file (throws on shape drift). */

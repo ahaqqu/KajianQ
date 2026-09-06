@@ -1,5 +1,21 @@
-import type { AlignmentStats, EditionHadith, HadithEdition } from "./hadith-parse";
-import type { HadithRecord } from "./hadith-source";
+import type { EditionHadith, HadithEdition } from "./hadith-parse";
+import type { HadithCollection, HadithRecord } from "./hadith-source";
+
+/** Alignment stats for the report — surfaced, never force-merged. */
+export type AlignmentStats = {
+  /** Records with both tracks non-empty. */
+  aligned: number;
+  /** Arabic entries whose Indonesian text is empty (textId = null). */
+  emptySecondary: number;
+  /**
+   * Arabic entries with genuinely empty Arabic text, quarantined (skipped,
+   * never ingested — review A2): the source ships them (86 in ara-nasai,
+   * 29 in ara-malik, muslim's book-0 rows).
+   */
+  emptyPrimary: number;
+  /** Book/number pairs missing from one edition (quarantine-listed). */
+  unmatched: { collection: HadithCollection; key: string; side: "arabic" | "indonesian" }[];
+};
 
 /**
  * Join the Arabic and Indonesian editions of one collection on
