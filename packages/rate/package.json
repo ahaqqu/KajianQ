@@ -11,7 +11,7 @@
     "check": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "5.20260819.1",
+    "@cloudflare/workers-types": "5.20260826.1",
     "typescript": "7.0.2"
   }
 }

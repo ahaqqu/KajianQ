@@ -74,10 +74,7 @@ export type DocChild = {
  * Row-shaped insert: `id`/`createdAt` are store-generated and `citation`
  * defaults to `{}` (see {@link DocChild.citation}).
  */
-export type DocChildInsert = PartialBy<
-  DocChild,
-  "id" | "createdAt" | "citation"
->;
+export type DocChildInsert = PartialBy<DocChild, "id" | "createdAt" | "citation">;
 
 /**
  * An aligned source/target text pair with its per-token morphology — the
@@ -163,21 +160,14 @@ export interface RagStore {
    * trace cascade-delete with its owner on anonymous self-deletion
    * (ADR-0007 amendment).
    */
-  insertAnswerTrace(input: {
-    messageId: string;
-    userId: string;
-    trace: Trace;
-  }): Promise<string>;
+  insertAnswerTrace(input: { messageId: string; userId: string; trace: Trace }): Promise<string>;
 
   /** Fetch a persisted Trace by answer message id. */
   getAnswerTraceByMessage(messageId: string): Promise<Trace | null>;
 
   // -- Chat (v1 conversational surface) ------------------------------------
 
-  createChatSession(input: {
-    userId: string;
-    metadata?: Record<string, unknown>;
-  }): Promise<string>;
+  createChatSession(input: { userId: string; metadata?: Record<string, unknown> }): Promise<string>;
 
   insertChatMessage(input: {
     sessionId: string;

@@ -47,4 +47,3 @@ describe("createLogger", () => {
     spy.mockRestore();
   });
 });
-

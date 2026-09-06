@@ -22,7 +22,7 @@ The spec (`SPECS.md` §1.5 hard boundaries, §2.2 quality/safety policy, §3.3 p
 
 Reshape the `rag-core` pipeline interfaces, in one non-breaking-for-callers change (no implementation exists yet):
 
-1. **`AssembledContext` carries structured `Turn[]`, not a `prompt: string`.** A `Turn` is `{ role: string; content: string }` — minimal and generic. The Assembler owns context *selection and ordering* (Principles first, then evidence); the Generator owns final prompt assembly to the `Provider`. The engine treats `role` as opaque — the domain pack names the roles its prompt templates use.
+1. **`AssembledContext` carries structured `Turn[]`, not a `prompt: string`.** A `Turn` is `{ role: string; content: string }` — minimal and generic. The Assembler owns context _selection and ordering_ (Principles first, then evidence); the Generator owns final prompt assembly to the `Provider`. The engine treats `role` as opaque — the domain pack names the roles its prompt templates use.
 
 2. **`AssembledContext` carries the `RoutedQuery`.** `query: RoutedQuery<TFilters>` threads `intent`, `subQueries`, and `filters` through to the Generator and Reviewer, so the system-prompt branch and citation discipline have typed access without re-parsing.
 

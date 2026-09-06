@@ -46,9 +46,7 @@ function assertWellFormed(parents: readonly ParsedParent[]): void {
       }
       const ordinal = child.ordinal ?? i;
       if (ordinals.has(ordinal)) {
-        throw new Error(
-          `ingestion: parent "${parent.sourceKey}" has duplicate ordinal ${ordinal}`,
-        );
+        throw new Error(`ingestion: parent "${parent.sourceKey}" has duplicate ordinal ${ordinal}`);
       }
       ordinals.add(ordinal);
     });
@@ -148,9 +146,7 @@ export async function runIngestion(
   assertWellFormed(parents);
 
   const summaries =
-    deps.summarizer === null
-      ? null
-      : await summarizeParents(parents, deps.summarizer, costs);
+    deps.summarizer === null ? null : await summarizeParents(parents, deps.summarizer, costs);
 
   const parentIds: string[] = [];
   let childrenWritten = 0;
@@ -178,7 +174,11 @@ export async function runIngestion(
   }
 
   // Embed both tracks in child order, then upsert children with vectors.
-  const primaryVectors = await embedBatched(deps, childRows.map((c) => c.textAr), costs);
+  const primaryVectors = await embedBatched(
+    deps,
+    childRows.map((c) => c.textAr),
+    costs,
+  );
   const hasSecondary = childRows.some((c) => c.textId !== null);
   const secondaryVectors = hasSecondary
     ? await embedBatched(

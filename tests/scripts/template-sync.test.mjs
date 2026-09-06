@@ -74,11 +74,14 @@ describe("template-sync CLI", () => {
 
     // Fork: clone upstream, add project-specific manifest.
     fork = makeFork(upstream);
-    writeFileSync(`${fork}/template-sync.json`, JSON.stringify({
-      upstream: `${upstream}`,
-      overwrite: ["AGENTS.md"],
-      merge: ["README.md"],
-    }));
+    writeFileSync(
+      `${fork}/template-sync.json`,
+      JSON.stringify({
+        upstream: `${upstream}`,
+        overwrite: ["AGENTS.md"],
+        merge: ["README.md"],
+      }),
+    );
     writeFileSync(`${fork}/project.txt`, "project file\n");
     commit(fork, "add manifest");
   });
@@ -105,9 +108,7 @@ describe("template-sync CLI", () => {
     run(fork, "init", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
     run(fork, "update --ref=v1.0.0", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
     writeFileSync(`${fork}/AGENTS.md`, "drift\n");
-    expect(() =>
-      run(fork, "check", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` }),
-    ).toThrow();
+    expect(() => run(fork, "check", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` })).toThrow();
   });
 
   it("scopes drift to the template baseline for ALL overwrite paths — fork additions under overwrite dirs stay green (generalizes review A1)", () => {
@@ -128,11 +129,14 @@ describe("template-sync CLI", () => {
     // The fork opts the directories into overwrite and carries fork-added
     // files: a committed skill, an untracked workflow, and a fork-added
     // file in a dir the template ships nothing under.
-    writeFileSync(`${fork}/template-sync.json`, JSON.stringify({
-      upstream: `${upstream}`,
-      overwrite: ["AGENTS.md", ".agents/skills/", ".github/workflows/"],
-      merge: ["README.md"],
-    }));
+    writeFileSync(
+      `${fork}/template-sync.json`,
+      JSON.stringify({
+        upstream: `${upstream}`,
+        overwrite: ["AGENTS.md", ".agents/skills/", ".github/workflows/"],
+        merge: ["README.md"],
+      }),
+    );
     writeFile(`${fork}/.agents/skills/fork-skill/SKILL.md`, "fork skill\n");
     writeFile(`${fork}/.github/workflows/fork.yml`, "fork workflow\n");
     commit(fork, "fork additions under overwrite dirs");
@@ -145,17 +149,17 @@ describe("template-sync CLI", () => {
 
     // Modifying a file the template baseline ships is still drift.
     writeFileSync(`${fork}/.agents/skills/upstream-skill/SKILL.md`, "fork edit\n");
-    expect(() =>
-      run(fork, "check", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` }),
-    ).toThrow(/gate failed/);
+    expect(() => run(fork, "check", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` })).toThrow(
+      /gate failed/,
+    );
     git(fork, "checkout -- .agents/skills/upstream-skill/SKILL.md");
 
     // Deleting a template-shipped overwrite file is still drift.
     execSync(`git rm --quiet .github/workflows/ci.yml`, { cwd: fork });
     commit(fork, "fork deletes template workflow");
-    expect(() =>
-      run(fork, "check", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` }),
-    ).toThrow(/gate failed/);
+    expect(() => run(fork, "check", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` })).toThrow(
+      /gate failed/,
+    );
     git(fork, "revert --no-edit HEAD");
 
     // Renaming a template-shipped overwrite file away is still drift
@@ -166,9 +170,9 @@ describe("template-sync CLI", () => {
     // must fail.
     execSync(`git mv .github/workflows/ci.yml .github/workflows/renamed.yml`, { cwd: fork });
     commit(fork, "fork renames template workflow away");
-    expect(() =>
-      run(fork, "check", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` }),
-    ).toThrow(/gate failed/);
+    expect(() => run(fork, "check", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` })).toThrow(
+      /gate failed/,
+    );
     git(fork, "revert --no-edit HEAD");
   });
 
@@ -184,22 +188,23 @@ describe("template-sync CLI", () => {
     git(upstream, "tag v1.4.0");
 
     // The fork opts the workflows dir into overwrite before syncing.
-    writeFileSync(`${fork}/template-sync.json`, JSON.stringify({
-      upstream: `${upstream}`,
-      overwrite: ["AGENTS.md", ".github/workflows/"],
-      merge: ["README.md"],
-    }));
+    writeFileSync(
+      `${fork}/template-sync.json`,
+      JSON.stringify({
+        upstream: `${upstream}`,
+        overwrite: ["AGENTS.md", ".github/workflows/"],
+        merge: ["README.md"],
+      }),
+    );
     commit(fork, "opt workflows into overwrite");
     run(fork, "init", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
     run(fork, "update --ref=v1.4.0", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
-    expect(
-      run(fork, "check", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` }),
-    ).toContain("gate passed");
+    expect(run(fork, "check", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` })).toContain("gate passed");
 
     writeFileSync(`${fork}/.github/workflows/café.yml`, "fork edit\n");
-    expect(() =>
-      run(fork, "check", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` }),
-    ).toThrow(/gate failed/);
+    expect(() => run(fork, "check", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` })).toThrow(
+      /gate failed/,
+    );
   });
 
   it("update auto-resolves overwrite-path add/add to the template's version (review B1)", () => {
@@ -213,11 +218,14 @@ describe("template-sync CLI", () => {
     commit(upstream, "template adds a file the fork already has");
     git(upstream, "tag v1.5.0");
 
-    writeFileSync(`${fork}/template-sync.json`, JSON.stringify({
-      upstream: `${upstream}`,
-      overwrite: ["AGENTS.md", ".agents/skills/"],
-      merge: ["README.md"],
-    }));
+    writeFileSync(
+      `${fork}/template-sync.json`,
+      JSON.stringify({
+        upstream: `${upstream}`,
+        overwrite: ["AGENTS.md", ".agents/skills/"],
+        merge: ["README.md"],
+      }),
+    );
     writeFile(`${fork}/.agents/skills/fork-skill/SKILL.md`, "fork skill\n");
     commit(fork, "fork already carries the same path");
 
@@ -269,11 +277,14 @@ describe("template-sync CLI", () => {
     git(dir, `remote add upstream ${upstream}`);
     writeFileSync(`${dir}/AGENTS.md`, "template agents v3\n");
     writeFileSync(`${dir}/README.md`, "my fork readme\n");
-    writeFileSync(`${dir}/template-sync.json`, JSON.stringify({
-      upstream: `${upstream}`,
-      overwrite: ["AGENTS.md"],
-      merge: ["README.md"],
-    }));
+    writeFileSync(
+      `${dir}/template-sync.json`,
+      JSON.stringify({
+        upstream: `${upstream}`,
+        overwrite: ["AGENTS.md"],
+        merge: ["README.md"],
+      }),
+    );
     commit(dir, "tree-copy bootstrap");
 
     run(dir, "init", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
@@ -308,11 +319,14 @@ describe("template-sync CLI", () => {
     // Overwrite file matches upstream v1.0.0; merge file is fork-customized.
     writeFileSync(`${dir}/AGENTS.md`, "template agents\n");
     writeFileSync(`${dir}/README.md`, "my fork readme\n");
-    writeFileSync(`${dir}/template-sync.json`, JSON.stringify({
-      upstream: `${upstream}`,
-      overwrite: ["AGENTS.md"],
-      merge: ["README.md"],
-    }));
+    writeFileSync(
+      `${dir}/template-sync.json`,
+      JSON.stringify({
+        upstream: `${upstream}`,
+        overwrite: ["AGENTS.md"],
+        merge: ["README.md"],
+      }),
+    );
     commit(dir, "tree-copy bootstrap");
 
     // Advance upstream's overwrite file.
@@ -386,11 +400,14 @@ describe("template-sync CLI", () => {
   });
 
   it("normalizes GitHub SSH upstream to HTTPS for git operations", () => {
-    writeFileSync(`${fork}/template-sync.json`, JSON.stringify({
-      upstream: "git@github.com:ahaqqu/agentic-project-template.git",
-      overwrite: ["AGENTS.md"],
-      merge: ["README.md"],
-    }));
+    writeFileSync(
+      `${fork}/template-sync.json`,
+      JSON.stringify({
+        upstream: "git@github.com:ahaqqu/agentic-project-template.git",
+        overwrite: ["AGENTS.md"],
+        merge: ["README.md"],
+      }),
+    );
     commit(fork, "ssh upstream");
     // The env override proves the mechanism works; the manifest itself is SSH.
     const out = run(fork, "init", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
@@ -403,11 +420,14 @@ describe("template-sync CLI", () => {
     const dir = setupRepo("treecopy-");
     git(dir, `remote add upstream ${upstream}`);
     writeFileSync(`${dir}/AGENTS.md`, "template agents\n");
-    writeFileSync(`${dir}/template-sync.json`, JSON.stringify({
-      upstream: `${upstream}`,
-      overwrite: ["AGENTS.md"],
-      merge: ["README.md"],
-    }));
+    writeFileSync(
+      `${dir}/template-sync.json`,
+      JSON.stringify({
+        upstream: `${upstream}`,
+        overwrite: ["AGENTS.md"],
+        merge: ["README.md"],
+      }),
+    );
     commit(dir, "tree-copy bootstrap");
 
     run(dir, "init", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
@@ -425,11 +445,14 @@ describe("template-sync CLI", () => {
     const dir = setupRepo("drifted-");
     git(dir, `remote add upstream ${upstream}`);
     writeFileSync(`${dir}/AGENTS.md`, "drifted content\n");
-    writeFileSync(`${dir}/template-sync.json`, JSON.stringify({
-      upstream: `${upstream}`,
-      overwrite: ["AGENTS.md"],
-      merge: ["README.md"],
-    }));
+    writeFileSync(
+      `${dir}/template-sync.json`,
+      JSON.stringify({
+        upstream: `${upstream}`,
+        overwrite: ["AGENTS.md"],
+        merge: ["README.md"],
+      }),
+    );
     commit(dir, "drifted bootstrap");
 
     run(dir, "init", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });
@@ -444,11 +467,14 @@ describe("template-sync CLI", () => {
     const dir = setupRepo("idempotent-");
     git(dir, `remote add upstream ${upstream}`);
     writeFileSync(`${dir}/AGENTS.md`, "template agents\n");
-    writeFileSync(`${dir}/template-sync.json`, JSON.stringify({
-      upstream: `${upstream}`,
-      overwrite: ["AGENTS.md"],
-      merge: ["README.md"],
-    }));
+    writeFileSync(
+      `${dir}/template-sync.json`,
+      JSON.stringify({
+        upstream: `${upstream}`,
+        overwrite: ["AGENTS.md"],
+        merge: ["README.md"],
+      }),
+    );
     commit(dir, "bootstrap");
 
     run(dir, "init", { TEMPLATE_SYNC_UPSTREAM: `${upstream}` });

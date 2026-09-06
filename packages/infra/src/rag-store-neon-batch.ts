@@ -28,10 +28,7 @@ export function buildBatchChildUpsert(batch: readonly DocChildInsert[]): {
     .map((input) => {
       const id = input.id ?? crypto.randomUUID();
       rowIds.push(id);
-      const embeddingPrimary = toVectorLiteralChecked(
-        input.embeddingPrimary,
-        CORPUS_EMBEDDING_DIM,
-      );
+      const embeddingPrimary = toVectorLiteralChecked(input.embeddingPrimary, CORPUS_EMBEDDING_DIM);
       const embeddingFallback = toVectorLiteralChecked(
         input.embeddingFallback,
         CORPUS_EMBEDDING_DIM,

@@ -10,10 +10,7 @@ export type ApiInit = Omit<RequestInit, "headers" | "signal"> & {
   signal?: AbortSignal | undefined;
 };
 
-export async function apiFetch(
-  path: `/${string}`,
-  init: ApiInit = {},
-): Promise<Response> {
+export async function apiFetch(path: `/${string}`, init: ApiInit = {}): Promise<Response> {
   const { token, signal, ...rest } = init;
   const headers: Record<string, string> = {
     "X-Correlation-Id": crypto.randomUUID(),

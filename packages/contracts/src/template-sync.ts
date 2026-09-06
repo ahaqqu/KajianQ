@@ -13,14 +13,10 @@ export const TemplateSyncManifestSchema = v.object({
   merge: v.array(PathSchema),
 });
 
-export type TemplateSyncManifest = v.InferOutput<
-  typeof TemplateSyncManifestSchema
->;
+export type TemplateSyncManifest = v.InferOutput<typeof TemplateSyncManifestSchema>;
 
 /** Parse and validate a template-sync manifest object. */
-export function parseTemplateSyncManifest(
-  raw: unknown,
-): TemplateSyncManifest {
+export function parseTemplateSyncManifest(raw: unknown): TemplateSyncManifest {
   return v.parse(TemplateSyncManifestSchema, raw);
 }
 

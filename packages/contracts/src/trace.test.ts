@@ -1,12 +1,7 @@
 import { fc, test as fcTest } from "@fast-check/vitest";
 import { describe, expect, it } from "vitest";
 import * as v from "valibot";
-import {
-  TraceSchema,
-  parseTrace,
-  totalCostMicroUsd,
-  type TraceEvent,
-} from "./trace";
+import { TraceSchema, parseTrace, totalCostMicroUsd, type TraceEvent } from "./trace";
 
 const costArb = fc.record({
   modelId: fc.string({ minLength: 1 }),

@@ -20,9 +20,7 @@ export function Shell() {
     <LocaleCtx.Provider value={locale}>
       <div className="mx-auto min-h-screen max-w-lg px-4 py-8">
         <nav className="mb-6 flex flex-wrap items-center gap-3 text-sm">
-          <span className="font-semibold text-sky-400">
-            {t(locale, "appTitle")}
-          </span>
+          <span className="font-semibold text-sky-400">{t(locale, "appTitle")}</span>
           <label className="ml-auto flex items-center gap-2 text-slate-300">
             <span>{t(locale, "localeLabel")}</span>
             <select

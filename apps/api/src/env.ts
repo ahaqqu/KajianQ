@@ -47,5 +47,8 @@ export function allowedOrigins(raw: string | undefined): string[] {
   if (!raw || raw.trim() === "") {
     return [];
   }
-  return raw.split(",").map((s) => s.trim()).filter(Boolean);
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }

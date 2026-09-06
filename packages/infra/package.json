@@ -2,19 +2,16 @@
   "name": "@app/infra",
   "version": "0.0.1",
   "private": true,
-  "type": "module",
-  "exports": {
-    ".": "./src/index.ts"
-  },
   "bin": {
     "db-migrate": "./scripts/db-migrate.mjs",
     "provider-smoke": "./scripts/provider-smoke.mjs"
   },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "check": "tsc -p tsconfig.json --noEmit"
-  },
-  "devDependencies": {
-    "typescript": "7.0.2"
   },
   "dependencies": {
     "@app/contracts": "workspace:*",
@@ -23,5 +20,8 @@
     "@neondatabase/serverless": "^1.1.0",
     "effect": "3.22.1",
     "valibot": "1.4.2"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
   }
 }

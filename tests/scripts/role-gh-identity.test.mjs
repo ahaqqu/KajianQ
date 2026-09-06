@@ -16,10 +16,15 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { evaluateIdentityCall, invokesBareGh, GH_AS_WRAPPER, resolveRole } from "../../scripts/role-gh-identity/lib.mjs";
+import {
+  evaluateIdentityCall,
+  invokesBareGh,
+  GH_AS_WRAPPER,
+  resolveRole,
+} from "../../scripts/role-gh-identity/lib.mjs";
 import { parseRoleIdentityConfig } from "../../packages/contracts/src/role-identity";
 
 const ENFORCED_CONFIG = parseRoleIdentityConfig({
@@ -116,7 +121,15 @@ describe("resolveRole (B)", () => {
   });
 
   it("returns null when the lookup throws (fail-open)", () => {
-    expect(resolveRole({}, () => { throw new Error("scan error"); }, "sess_x")).toBeNull();
+    expect(
+      resolveRole(
+        {},
+        () => {
+          throw new Error("scan error");
+        },
+        "sess_x",
+      ),
+    ).toBeNull();
   });
 
   it("returns null when the lookup result has no usable role", () => {
@@ -134,8 +147,14 @@ describe("resolveRole (B)", () => {
 // ---------------------------------------------------------------------------
 describe("evaluateIdentityCall (C)", () => {
   const denyCases = [
-    ["bare gh from configured role", { command: "gh pr view 123", role: "reviewer", config: ENFORCED_CONFIG }],
-    ["evasive compound from configured role", { command: "bun run check && gh pr checks 9", role: "implementer", config: ENFORCED_CONFIG }],
+    [
+      "bare gh from configured role",
+      { command: "gh pr view 123", role: "reviewer", config: ENFORCED_CONFIG },
+    ],
+    [
+      "evasive compound from configured role",
+      { command: "bun run check && gh pr checks 9", role: "implementer", config: ENFORCED_CONFIG },
+    ],
   ];
   it.each(denyCases)("denies: %s", (_name, args) => {
     const verdict = evaluateIdentityCall(args);
@@ -148,11 +167,27 @@ describe("evaluateIdentityCall (C)", () => {
   });
 
   const allowCases = [
-    ["enforcement disabled", { command: "gh pr view 123", role: "reviewer", config: { ...ENFORCED_CONFIG, enabled: false } }],
+    [
+      "enforcement disabled",
+      {
+        command: "gh pr view 123",
+        role: "reviewer",
+        config: { ...ENFORCED_CONFIG, enabled: false },
+      },
+    ],
     ["role unresolvable", { command: "gh pr view 123", role: null, config: ENFORCED_CONFIG }],
-    ["role has no configured identity", { command: "gh pr view 123", role: "assistant-manager", config: ENFORCED_CONFIG }],
-    ["command uses the wrapper", { command: "gh-as reviewer pr view 123", role: "reviewer", config: ENFORCED_CONFIG }],
-    ["command has no gh at all", { command: "bun run check", role: "implementer", config: ENFORCED_CONFIG }],
+    [
+      "role has no configured identity",
+      { command: "gh pr view 123", role: "assistant-manager", config: ENFORCED_CONFIG },
+    ],
+    [
+      "command uses the wrapper",
+      { command: "gh-as reviewer pr view 123", role: "reviewer", config: ENFORCED_CONFIG },
+    ],
+    [
+      "command has no gh at all",
+      { command: "bun run check", role: "implementer", config: ENFORCED_CONFIG },
+    ],
     ["config missing entirely", { command: "gh pr view 123", role: "reviewer", config: null }],
   ];
   it.each(allowCases)("allows: %s", (_name, args) => {
@@ -161,7 +196,9 @@ describe("evaluateIdentityCall (C)", () => {
 
   it("allows an empty role entry (tokenFile dropped) — fail-open", () => {
     const config = { enabled: true, roles: { reviewer: {} } };
-    expect(evaluateIdentityCall({ command: "gh pr view 1", role: "reviewer", config })).toEqual({ deny: false });
+    expect(evaluateIdentityCall({ command: "gh pr view 1", role: "reviewer", config })).toEqual({
+      deny: false,
+    });
   });
 });
 
@@ -171,7 +208,10 @@ describe("evaluateIdentityCall (C)", () => {
 describe("parseRoleIdentityConfig (D)", () => {
   it("parses the shipped config.json", () => {
     const shipped = JSON.parse(
-      readFileSync(new URL("../../scripts/role-gh-identity/config.json", import.meta.url).pathname, "utf8"),
+      readFileSync(
+        new URL("../../scripts/role-gh-identity/config.json", import.meta.url).pathname,
+        "utf8",
+      ),
     );
     const r = parseRoleIdentityConfig(shipped);
     expect(r.ok).toBe(true);
@@ -180,7 +220,9 @@ describe("parseRoleIdentityConfig (D)", () => {
     expect(r.config.enabled).toBe(true);
     // TRAP: senior-implementer shares the implementer token file (both
     // implementer-class roles post as one implementer account).
-    expect(r.config.roles["senior-implementer"].tokenFile).toBe(r.config.roles.implementer.tokenFile);
+    expect(r.config.roles["senior-implementer"].tokenFile).toBe(
+      r.config.roles.implementer.tokenFile,
+    );
   });
 
   it("rejects a config missing `enabled`", () => {
@@ -216,7 +258,9 @@ describe("hook.mjs end-to-end (E)", () => {
   });
 
   let tmp;
-  afterEach(() => { if (tmp) rmSync(tmp, { recursive: true, force: true }); });
+  afterEach(() => {
+    if (tmp) rmSync(tmp, { recursive: true, force: true });
+  });
 
   function runHook(env, payload) {
     return spawnSync("bun", [HOOK], {
@@ -229,10 +273,13 @@ describe("hook.mjs end-to-end (E)", () => {
   it("denies a configured role's bare gh call with the wrapper redirect", () => {
     tmp = mkdtempSync(join(tmpdir(), "role-identity-"));
     const configPath = join(tmp, "config.json");
-    writeFileSync(configPath, JSON.stringify({
-      enabled: true,
-      roles: { reviewer: { tokenFile: join(tmp, "r.token") } },
-    }));
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        enabled: true,
+        roles: { reviewer: { tokenFile: join(tmp, "r.token") } },
+      }),
+    );
     const r = runHook({ ZCODE_ROLE_IDENTITY_CONFIG: configPath }, ENVELOPE());
     expect(r.status).toBe(0);
     const out = JSON.parse(r.stdout);
@@ -243,7 +290,10 @@ describe("hook.mjs end-to-end (E)", () => {
   it("allows the same call when enforcement is disabled (shipped default)", () => {
     tmp = mkdtempSync(join(tmpdir(), "role-identity-"));
     const configPath = join(tmp, "config.json");
-    writeFileSync(configPath, JSON.stringify({ enabled: false, roles: { reviewer: { tokenFile: "x" } } }));
+    writeFileSync(
+      configPath,
+      JSON.stringify({ enabled: false, roles: { reviewer: { tokenFile: "x" } } }),
+    );
     const r = runHook({ ZCODE_ROLE_IDENTITY_CONFIG: configPath }, ENVELOPE());
     expect(r.status).toBe(0);
     expect(r.stdout).toBe("");
@@ -258,8 +308,15 @@ describe("hook.mjs end-to-end (E)", () => {
   it("fails open on unreadable stdin (junk)", () => {
     tmp = mkdtempSync(join(tmpdir(), "role-identity-"));
     const configPath = join(tmp, "config.json");
-    writeFileSync(configPath, JSON.stringify({ enabled: true, roles: { reviewer: { tokenFile: "x" } } }));
-    const r = spawnSync("bun", [HOOK], { input: "not json", encoding: "utf8", env: { ...process.env, ZCODE_ROLE_IDENTITY_CONFIG: configPath } });
+    writeFileSync(
+      configPath,
+      JSON.stringify({ enabled: true, roles: { reviewer: { tokenFile: "x" } } }),
+    );
+    const r = spawnSync("bun", [HOOK], {
+      input: "not json",
+      encoding: "utf8",
+      env: { ...process.env, ZCODE_ROLE_IDENTITY_CONFIG: configPath },
+    });
     expect(r.status).toBe(0);
     expect(r.stdout).toBe("");
   });
@@ -267,15 +324,31 @@ describe("hook.mjs end-to-end (E)", () => {
   it("fails open on a non-Bash event and a Bash event without a command", () => {
     tmp = mkdtempSync(join(tmpdir(), "role-identity-"));
     const configPath = join(tmp, "config.json");
-    writeFileSync(configPath, JSON.stringify({ enabled: true, roles: { reviewer: { tokenFile: "x" } } }));
-    const edit = runHook({ ZCODE_ROLE_IDENTITY_CONFIG: configPath }, {
-      hook_event_name: "PostToolUse", tool_name: "Edit", session_id: "s", tool_input: { file_path: "/x" },
-    });
+    writeFileSync(
+      configPath,
+      JSON.stringify({ enabled: true, roles: { reviewer: { tokenFile: "x" } } }),
+    );
+    const edit = runHook(
+      { ZCODE_ROLE_IDENTITY_CONFIG: configPath },
+      {
+        hook_event_name: "PostToolUse",
+        tool_name: "Edit",
+        session_id: "s",
+        tool_input: { file_path: "/x" },
+      },
+    );
     expect(edit.status).toBe(0);
     expect(edit.stdout).toBe("");
-    const noCmd = runHook({ ZCODE_ROLE_IDENTITY_CONFIG: configPath }, {
-      hook_event_name: "PreToolUse", tool_name: "Bash", agent_type: "reviewer", session_id: "s", tool_input: {},
-    });
+    const noCmd = runHook(
+      { ZCODE_ROLE_IDENTITY_CONFIG: configPath },
+      {
+        hook_event_name: "PreToolUse",
+        tool_name: "Bash",
+        agent_type: "reviewer",
+        session_id: "s",
+        tool_input: {},
+      },
+    );
     expect(noCmd.status).toBe(0);
     expect(noCmd.stdout).toBe("");
   });
@@ -285,19 +358,30 @@ describe("hook.mjs end-to-end (E)", () => {
     const agentsDir = join(tmp, "agents");
     mkdirSync(join(agentsDir, "sess_parent"), { recursive: true });
     mkdirSync(join(agentsDir, "sess_parent", "agent_abc"), { recursive: true });
-    writeFileSync(join(agentsDir, "sess_parent", "agent_abc", "metadata.json"), JSON.stringify({
-      agentId: "agent_abc",
-      childSessionId: "sess_subagent_agent_abc",
-      profileSnapshot: { name: "implementer" },
-    }));
+    writeFileSync(
+      join(agentsDir, "sess_parent", "agent_abc", "metadata.json"),
+      JSON.stringify({
+        agentId: "agent_abc",
+        childSessionId: "sess_subagent_agent_abc",
+        profileSnapshot: { name: "implementer" },
+      }),
+    );
     const configPath = join(tmp, "config.json");
-    writeFileSync(configPath, JSON.stringify({
-      enabled: true,
-      roles: { implementer: { tokenFile: join(tmp, "i.token") } },
-    }));
-    const r = runHook({ ZCODE_ROLE_IDENTITY_CONFIG: configPath, ZCODE_AGENTS_DIR: agentsDir }, {
-      ...ENVELOPE(), agent_type: undefined, session_id: "sess_subagent_agent_abc",
-    });
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        enabled: true,
+        roles: { implementer: { tokenFile: join(tmp, "i.token") } },
+      }),
+    );
+    const r = runHook(
+      { ZCODE_ROLE_IDENTITY_CONFIG: configPath, ZCODE_AGENTS_DIR: agentsDir },
+      {
+        ...ENVELOPE(),
+        agent_type: undefined,
+        session_id: "sess_subagent_agent_abc",
+      },
+    );
     expect(r.status).toBe(0);
     const out = JSON.parse(r.stdout);
     expect(out.hookSpecificOutput.permissionDecision).toBe("deny");
@@ -308,10 +392,13 @@ describe("hook.mjs end-to-end (E)", () => {
     // Post-enablement: the fixture (agent_type "reviewer" + bare gh command)
     // must DENY under the shipped enforcement-on config — this is the
     // live guarantee the whole mechanism exists to provide.
-    const fixture = JSON.parse(readFileSync(
-      new URL("../../scripts/role-gh-identity/fixtures/pre-tool-use-bash.json", import.meta.url).pathname,
-      "utf8",
-    ));
+    const fixture = JSON.parse(
+      readFileSync(
+        new URL("../../scripts/role-gh-identity/fixtures/pre-tool-use-bash.json", import.meta.url)
+          .pathname,
+        "utf8",
+      ),
+    );
     const r = runHook({}, fixture);
     expect(r.status).toBe(0);
     const out = JSON.parse(r.stdout);

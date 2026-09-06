@@ -6,7 +6,7 @@ Accepted (2026-08-23). Amends the auth approach inherited from `agentic-project-
 
 ## Context
 
-The v1 spec (`SPECS.md` §3.1) chose *anonymous-session auth (matches anonymous feedback)*: users ask questions, receive cited answers, and give anonymous thumbs + trace-anchored flags (ADR-0007). There are no user accounts, no login, no OAuth, and no email/password in v1. The template's session implementation was D1-backed; #3 removed it when D1 was stripped, and amended #4 to re-land sessions Postgres-backed behind the RagStore seam (ADR-0008).
+The v1 spec (`SPECS.md` §3.1) chose _anonymous-session auth (matches anonymous feedback)_: users ask questions, receive cited answers, and give anonymous thumbs + trace-anchored flags (ADR-0007). There are no user accounts, no login, no OAuth, and no email/password in v1. The template's session implementation was D1-backed; #3 removed it when D1 was stripped, and amended #4 to re-land sessions Postgres-backed behind the RagStore seam (ADR-0008).
 
 During #4 planning, a question surfaced: should KajianQ use **Neon Auth** (Neon's "Managed Better Auth" — a hosted identity product offering OAuth, email/password, JWT, and session management, with auth state in a `neon_auth` schema accessed via Neon's own REST API/SDK) instead of rolling anonymous sessions in the KajianQ schema?
 
@@ -18,9 +18,9 @@ During #4 planning, a question surfaced: should KajianQ use **Neon Auth** (Neon'
 
 1. **Neon Auth solves a problem KajianQ v1 does not have.** It is an identity provider for "who are you" — OAuth, email/password, user accounts. KajianQ v1 only needs "give this browser a 30-day Bearer token so feedback and rate limits persist." A hosted identity product is materially more machinery than the anonymous model the spec selected.
 
-2. **It bypasses the RagStore seam (ADR-0008), a non-negotiable rule.** All database access goes through the `RagStore` adapter. Neon Auth's SDK reads/writes the `neon_auth` schema through its *own* REST API, outside the adapter — a second persistence path and a seam violation. Using it faithfully breaks the rule; using only its schema through RagStore defeats the point of the product.
+2. **It bypasses the RagStore seam (ADR-0008), a non-negotiable rule.** All database access goes through the `RagStore` adapter. Neon Auth's SDK reads/writes the `neon_auth` schema through its _own_ REST API, outside the adapter — a second persistence path and a seam violation. Using it faithfully breaks the rule; using only its schema through RagStore defeats the point of the product.
 
-3. **It couples auth to Neon, breaking pluggability.** ADR-0008 placed Neon *behind an adapter* precisely so swapping Neon for another Postgres (or SQLite) changes only the adapter. Neon Auth is a Neon-specific product; swapping the database would force an auth rewrite. Anonymous sessions in owned tables travel with the schema.
+3. **It couples auth to Neon, breaking pluggability.** ADR-0008 placed Neon _behind an adapter_ precisely so swapping Neon for another Postgres (or SQLite) changes only the adapter. Neon Auth is a Neon-specific product; swapping the database would force an auth rewrite. Anonymous sessions in owned tables travel with the schema.
 
 4. **Beta and a new billing dimension.** Neon Auth is in Beta (a trust risk on a foundation carrying a `model:high` correctness invariant) and bills by Monthly Active Users — a cost axis for tokens that are currently free to mint. ADR-0009 already records that price is weighed in every model/service decision; adding a billed identity layer for anonymous sessions fails that test.
 

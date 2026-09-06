@@ -4,8 +4,4 @@ export {
   installSecurityHeaders,
   type HardeningOptions,
 } from "./security-headers";
-export {
-  serveAssets,
-  type AssetFetcher,
-  type ServeAssetsOptions,
-} from "./serve-assets";
+export { serveAssets, type AssetFetcher, type ServeAssetsOptions } from "./serve-assets";

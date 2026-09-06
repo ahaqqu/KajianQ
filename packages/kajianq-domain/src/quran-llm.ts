@@ -22,7 +22,9 @@ export type SummarizerProvider = Provider;
  * the summary so the pipeline's collector records it (kajianq-traceability
  * rule 2: every LLM call leaves model/tokens/cost; review A6).
  */
-export function surahSummarizer(provider: SummarizerProvider): (input: {
+export function surahSummarizer(
+  provider: SummarizerProvider,
+): (input: {
   sourceKey: string;
   title: string | null;
   childTexts: readonly string[];

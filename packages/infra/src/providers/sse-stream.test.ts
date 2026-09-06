@@ -36,10 +36,7 @@ describe("readSseStream", () => {
 
   it("parses JSON spanning chunk boundaries", async () => {
     const it = readSseStream(
-      sseBody([
-        'data: {"choices":[{"delta":{"con',
-        'tent":"split"}}]}\n\n',
-      ]),
+      sseBody(['data: {"choices":[{"delta":{"con', 'tent":"split"}}]}\n\n']),
     );
     const deltas = await collect(it);
     expect(deltas).toEqual(["split"]);
