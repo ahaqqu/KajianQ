@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "dev": "vp dev",
+    "build": "tsc -p tsconfig.json --noEmit && vp build",
     "check": "tsc -p tsconfig.json --noEmit",
-    "preview": "vite preview"
+    "preview": "vp preview"
   },
   "dependencies": {
     "@app/contracts": "workspace:*",

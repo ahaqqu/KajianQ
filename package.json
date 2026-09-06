@@ -11,7 +11,7 @@
     "build:web": "bun run --filter @app/web build",
     "build": "bun run build:web",
     "check": "tsc -p tsconfig.json && bun run --filter '@app/*' check",
-    "test": "vitest run --coverage",
+    "test": "vp test run --coverage",
     "lint": "vp check",
     "fmt": "vp fmt",
     "boundary": "bun scripts/check-boundary.mjs",
