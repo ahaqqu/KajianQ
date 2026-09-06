@@ -1,9 +1,10 @@
 import { readFileSync } from "node:fs";
 import { defineConfig } from "vite-plus";
 
-// Vite+ (vp) owns lint (Oxlint), format (Oxfmt), and type-aware checking.
-// Scope is ADR-0029: the check layer only — builds stay on Vite, tests on
-// Vitest under Bun, deploys on Alchemy (apps/api is not a Vite project).
+// Vite+ (vp) owns the check layer (lint via Oxlint, format via Oxfmt) plus
+// the web dev/build/test surface (ADR-0029): apps/web scripts and the root
+// test run via vp. apps/api stays bun + Alchemy (ADR-0027/0028); bun stays
+// package manager and script router.
 //
 // Template-owned files (template-sync.json `overwrite`) must stay
 // byte-identical to upstream, so they are excluded from both lint (here)
