@@ -1,5 +1,16 @@
-import { Effect } from "effect";
+import { Data, Effect } from "effect";
 import type { DocChildInsert, DocParentInsert } from "@app/infra";
+
+/**
+ * A batch's vector count did not match its text count — the embedder
+ * violated the seam contract. Tagged (B1): callers narrow on it, the
+ * signature says what fails, and it satisfies the typed-error standard
+ * phases 1-3 established (ADR-0027 need 1).
+ */
+export class EmbedMisalignment extends Data.TaggedError("EmbedMisalignment")<{
+  readonly expected: number;
+  readonly received: number;
+}> {}
 import { CostCollector } from "./types";
 import type {
   AlignedPairInput,
@@ -46,9 +57,7 @@ function assertWellFormed(parents: readonly ParsedParent[]): void {
       }
       const ordinal = child.ordinal ?? i;
       if (ordinals.has(ordinal)) {
-        throw new Error(
-          `ingestion: parent "${parent.sourceKey}" has duplicate ordinal ${ordinal}`,
-        );
+        throw new Error(`ingestion: parent "${parent.sourceKey}" has duplicate ordinal ${ordinal}`);
       }
       ordinals.add(ordinal);
     });
@@ -102,20 +111,22 @@ async function embedBatched(
   const embedOne = (batch: readonly string[]) =>
     Effect.gen(function* () {
       const result = yield* deps.embedder.embed({ texts: batch });
+      // Record-then-validate (traceability rule 4): a misaligned response is
+      // still a billed vendor call — its cost reaches the collector before
+      // the shape check fails the run.
+      costs.record(result.cost);
       if (result.vectors.length !== batch.length) {
         return yield* Effect.fail(
-          new Error(
-            `ingestion: embedder returned ${result.vectors.length} vectors for ${batch.length} texts`,
-          ),
+          new EmbedMisalignment({
+            expected: batch.length,
+            received: result.vectors.length,
+          }),
         );
       }
-      costs.record(result.cost);
       return result.vectors;
     });
   const concurrency = deps.embedConcurrency ?? 1;
-  const batchVectors = await Effect.runPromise(
-    Effect.forEach(batches, embedOne, { concurrency }),
-  );
+  const batchVectors = await Effect.runPromise(Effect.forEach(batches, embedOne, { concurrency }));
   return batchVectors.flat();
 }
 
@@ -155,6 +166,14 @@ export async function runIngestion(
   input: { archiveKey: string; raw: Uint8Array },
   deps: IngestionDeps,
 ): Promise<{ report: import("@app/contracts").IngestionReport; parentIds: readonly string[] }> {
+  const concurrency = deps.embedConcurrency ?? 1;
+  if (!Number.isInteger(concurrency) || concurrency < 1) {
+    // Fail loudly (C2): a misconfiguration (0 = "unlimited"?) must never
+    // silently degrade to serial — effect@3.22.1 would run it sequential.
+    throw new RangeError(
+      `ingestion: embedConcurrency must be a positive integer, got ${concurrency}`,
+    );
+  }
   const now = deps.now ?? Date.now;
   const startedAt = now();
   const costs = new CostCollector();
@@ -162,9 +181,7 @@ export async function runIngestion(
   assertWellFormed(parents);
 
   const summaries =
-    deps.summarizer === null
-      ? null
-      : await summarizeParents(parents, deps.summarizer, costs);
+    deps.summarizer === null ? null : await summarizeParents(parents, deps.summarizer, costs);
 
   const parentIds: string[] = [];
   let childrenWritten = 0;
@@ -192,7 +209,11 @@ export async function runIngestion(
   }
 
   // Embed both tracks in child order, then upsert children with vectors.
-  const primaryVectors = await embedBatched(deps, childRows.map((c) => c.textAr), costs);
+  const primaryVectors = await embedBatched(
+    deps,
+    childRows.map((c) => c.textAr),
+    costs,
+  );
   const hasSecondary = childRows.some((c) => c.textId !== null);
   const secondaryVectors = hasSecondary
     ? await embedBatched(
