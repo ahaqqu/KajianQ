@@ -1,9 +1,4 @@
-import type {
-  AlignedPairInsert,
-  DocChildInsert,
-  RagStore,
-  SimilarChild,
-} from "./rag-store";
+import type { AlignedPairInsert, DocChildInsert, RagStore, SimilarChild } from "./rag-store";
 import {
   assertEmbedding,
   CORPUS_EMBEDDING_DIM,
@@ -54,14 +49,10 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days, per ADR-0017.
  * and the migrations. Pass `opts.logger` to get slow-query/error ops logging
  * (`rag-store-neon-logging.ts`); omitted, the adapter stays silent.
  */
-export function createNeonRagStore(
-  rawSql: SqlRunner,
-  opts: NeonRagStoreOptions = {},
-): RagStore {
+export function createNeonRagStore(rawSql: SqlRunner, opts: NeonRagStoreOptions = {}): RagStore {
   const logger = opts.logger ?? null;
   const slowQueryMs = opts.slowQueryMs ?? DEFAULT_SLOW_QUERY_MS;
-  const sql =
-    logger === null ? rawSql : instrumentRunner(rawSql, logger, slowQueryMs);
+  const sql = logger === null ? rawSql : instrumentRunner(rawSql, logger, slowQueryMs);
   return {
     async insertDocParent(input) {
       const id = input.id ?? crypto.randomUUID();

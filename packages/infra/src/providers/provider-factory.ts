@@ -9,7 +9,11 @@ import type {
 import { ProviderError } from "@app/rag-core";
 import type { ProviderConfig } from "./provider-config";
 import { resolveChain } from "./provider-config";
-import { createChatCompletionsProvider, isRetryable, type FetchLike } from "./chat-completions-adapter";
+import {
+  createChatCompletionsProvider,
+  isRetryable,
+  type FetchLike,
+} from "./chat-completions-adapter";
 
 /**
  * The fallback chain wrapper (ADR-0022): one Provider that walks a role's

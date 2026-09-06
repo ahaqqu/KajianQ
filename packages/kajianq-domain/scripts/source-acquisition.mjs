@@ -82,7 +82,10 @@ export async function acquireFiles(entries, { log, cacheDir }) {
     for (const [j, text] of batch.entries()) {
       results[i + j] = text;
     }
-    log.info("fetched batch", { done: Math.min(i + slice.length, entries.length), total: entries.length });
+    log.info("fetched batch", {
+      done: Math.min(i + slice.length, entries.length),
+      total: entries.length,
+    });
   }
   return results;
 }
@@ -92,7 +95,13 @@ export async function acquireFiles(entries, { log, cacheDir }) {
  * files, and the morphology text. Returns the raw texts verbatim — parsing
  * and integrity-checking belong to the domain layer, not acquisition.
  */
-export async function acquireSources({ surahCount, log, surahListUrl, _surahFileUrl, morphologyUrl }) {
+export async function acquireSources({
+  surahCount,
+  log,
+  surahListUrl,
+  _surahFileUrl,
+  morphologyUrl,
+}) {
   const cacheDir = process.env.QURAN_SOURCE_DIR;
   const surahListText = await fetchOrCache(surahListUrl, "surah_list.json", log, cacheDir);
 

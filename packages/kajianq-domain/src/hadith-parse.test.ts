@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import {
-  alignEditions,
-  assertHadithIntegrity,
-  parseHadithEdition,
-} from "./hadith-parse";
+import { alignEditions, assertHadithIntegrity, parseHadithEdition } from "./hadith-parse";
 import { gradeConsolidationStats } from "./hadith-ingest";
 import {
   HADITH_COLLECTIONS,
@@ -39,8 +35,7 @@ describe("hadith grade consolidation (ADR-0025 dhaif-wins)", () => {
   it("maps every real grade class in the fixture: dhaif wins, hasan beats sahih", async () => {
     const { arabicText } = await loadSlices();
     const edition = parseHadithEdition("abudawud", "arabic", JSON.parse(arabicText));
-    const gradesOf = (n: string) =>
-      edition.hadiths.find((h) => h.hadithnumber === n)?.grades ?? [];
+    const gradesOf = (n: string) => edition.hadiths.find((h) => h.hadithnumber === n)?.grades ?? [];
     // n=1: Hasan Sahih ×2 + Sahih Lighairihi + Isnaad Hasan → hasan (the
     // weaker class wins over plain Sahih).
     expect(mapGrades(gradesOf("1"))).toBe("hasan");
@@ -92,9 +87,33 @@ describe("hadith grade consolidation (ADR-0025 dhaif-wins)", () => {
 
   it("summarizes consolidation stats over a record set", () => {
     const records = [
-      { collection: "abudawud", hadithNo: "1", bookNo: 1, bookName: null, textAr: "a", textId: null, grades: [{ name: "A", grade: "Sahih" }] },
-      { collection: "abudawud", hadithNo: "2", bookNo: 1, bookName: null, textAr: "b", textId: null, grades: [{ name: "A", grade: "Daif" }] },
-      { collection: "abudawud", hadithNo: "3", bookNo: 1, bookName: null, textAr: "c", textId: null, grades: [] },
+      {
+        collection: "abudawud",
+        hadithNo: "1",
+        bookNo: 1,
+        bookName: null,
+        textAr: "a",
+        textId: null,
+        grades: [{ name: "A", grade: "Sahih" }],
+      },
+      {
+        collection: "abudawud",
+        hadithNo: "2",
+        bookNo: 1,
+        bookName: null,
+        textAr: "b",
+        textId: null,
+        grades: [{ name: "A", grade: "Daif" }],
+      },
+      {
+        collection: "abudawud",
+        hadithNo: "3",
+        bookNo: 1,
+        bookName: null,
+        textAr: "c",
+        textId: null,
+        grades: [],
+      },
     ] as const;
     expect(gradeConsolidationStats(records)).toEqual({ graded: 2, dhaifWins: 1, ungraded: 1 });
   });
@@ -102,9 +121,9 @@ describe("hadith grade consolidation (ADR-0025 dhaif-wins)", () => {
 
 describe("hadith citation format (CONTEXT.md: HR. Bukhari no. 573 (Sahih))", () => {
   it("formats with and without grade", () => {
-    expect(
-      formatHadithCitation({ collection: "bukhari", hadithNo: "573", grade: "sahih" }),
-    ).toBe("HR. Bukhari no. 573 (Sahih)");
+    expect(formatHadithCitation({ collection: "bukhari", hadithNo: "573", grade: "sahih" })).toBe(
+      "HR. Bukhari no. 573 (Sahih)",
+    );
     expect(formatHadithCitation({ collection: "muslim", hadithNo: "12" })).toBe(
       "HR. Muslim no. 12",
     );
@@ -189,9 +208,9 @@ describe("hadith edition parsing + alignment (real fixture slices)", () => {
     expect(() => parseHadithEdition("abudawud", "arabic", { metadata: null, hadiths: [] })).toThrow(
       /no metadata/,
     );
-    expect(() => parseHadithEdition("abudawud", "arabic", { metadata: {}, hadiths: "nope" })).toThrow(
-      /hadiths array/,
-    );
+    expect(() =>
+      parseHadithEdition("abudawud", "arabic", { metadata: {}, hadiths: "nope" }),
+    ).toThrow(/hadiths array/);
     expect(() =>
       parseHadithEdition("abudawud", "arabic", {
         metadata: {},
@@ -219,7 +238,9 @@ describe("hadith edition parsing + alignment (real fixture slices)", () => {
 
   it("accepts the source's numeric hadithnumber/arabicnumber (review A1)", async () => {
     // The fixture is byte-true: the source ships JSON numbers, not strings.
-    const raw = JSON.parse(await readFile(resolve(FIXTURES, "ara-abudawud-slice.json"), "utf8")) as {
+    const raw = JSON.parse(
+      await readFile(resolve(FIXTURES, "ara-abudawud-slice.json"), "utf8"),
+    ) as {
       hadiths: { hadithnumber: number | string }[];
     };
     expect(typeof raw.hadiths[0]!.hadithnumber).toBe("number");
@@ -279,9 +300,7 @@ describe("hadith edition parsing + alignment (real fixture slices)", () => {
     });
     // Zero out the Arabic text of hadith 5 (as the source genuinely ships
     // for many rows: 86 in ara-nasai, 29 in ara-malik).
-    arabic.hadiths = arabic.hadiths.map((h) =>
-      h.hadithnumber === "5" ? { ...h, text: "" } : h,
-    );
+    arabic.hadiths = arabic.hadiths.map((h) => (h.hadithnumber === "5" ? { ...h, text: "" } : h));
     const { records, stats } = alignEditions(arabic, indonesian);
     expect(records.map((r) => r.hadithNo)).not.toContain("5");
     expect(stats.emptyPrimary).toBe(1);
@@ -295,17 +314,17 @@ describe("hadith edition parsing + alignment (real fixture slices)", () => {
     // An Indonesian edition missing hadith 17 leaves an unmatched ara entry.
     const indonesian = parseHadithEdition("abudawud", "indonesian", {
       metadata: { sections: { "1": "Purification" }, section_details: {} },
-      hadiths: arabic.hadiths.filter((h) => h.hadithnumber !== "17").map((h) => ({
-        ...h,
-        text: "terjemahan",
-        grades: [],
-      })),
+      hadiths: arabic.hadiths
+        .filter((h) => h.hadithnumber !== "17")
+        .map((h) => ({
+          ...h,
+          text: "terjemahan",
+          grades: [],
+        })),
     });
     const { records, stats } = alignEditions(arabic, indonesian);
     expect(records).toHaveLength(6);
-    expect(stats.unmatched).toEqual([
-      { collection: "abudawud", key: "1:17", side: "indonesian" },
-    ]);
+    expect(stats.unmatched).toEqual([{ collection: "abudawud", key: "1:17", side: "indonesian" }]);
   });
 
   it("asserts integrity: empty arabic, duplicates, count gates", async () => {
@@ -315,9 +334,9 @@ describe("hadith edition parsing + alignment (real fixture slices)", () => {
     const { records } = alignEditions(arabic, indonesian);
     expect(() => assertHadithIntegrity(records, { abudawud: 7 })).not.toThrow();
     expect(() => assertHadithIntegrity(records, { abudawud: 6 })).toThrow(/expected 6/);
-    expect(() =>
-      assertHadithIntegrity([...records, { ...records[0]! }], undefined),
-    ).toThrow(/duplicate/);
+    expect(() => assertHadithIntegrity([...records, { ...records[0]! }], undefined)).toThrow(
+      /duplicate/,
+    );
     const bad = records.map((r, i) => (i === 0 ? { ...r, textAr: "  " } : r));
     expect(() => assertHadithIntegrity(bad, undefined)).toThrow(/no Arabic text/);
   });

@@ -6,23 +6,23 @@ grounded in original Arabic sources: the Quran (Uthmani), hadith (with
 transmission chains and grades), and classical kitab written before 600 H —
 fiqh, aqidah, tasawuf, and history.
 
-It runs on **DARS** (*Dynamic Automated RAG Solution*) — a generic,
+It runs on **DARS** (_Dynamic Automated RAG Solution_) — a generic,
 domain-agnostic answer engine (ingestion, Smart Router, retrieval, generation,
 evaluation). The engine itself is deliberately neutral: every piece of
 Islamic-domain knowledge lives in its own clearly separated layer.
 
 ## The moat — what makes KajianQ different
 
-| Feature | Typical market | KajianQ |
-|---|---|---|
-| Sources | Quran + Bukhari/Muslim | + pre-600 H kitab (Mudawwanah, Al-Umm, Ihya, Tabari, …) |
-| Corpus language | Modern translations | Original Arabic + clearly labeled machine translation |
-| Chat language | English/Arabic-first | **Indonesian-first** + English |
-| Citations | Partial | Strict: `QS. Surah:Ayah` · `HR. Book no. (Grade)` · `Kitab, Author, Vol:Page:Bab` |
-| Madzhab | Opaque | Filterable & comparable; Syafi'i-weighted with transparent gaps |
-| Reasoning | Naive RAG | Principle-aware: general maxims retrieved alongside rulings |
-| Transparency | Black box | Full user-facing Trace of how each answer was built |
-| Data quality | Raw import | Cleaned, translated, and validated before it ships |
+| Feature         | Typical market         | KajianQ                                                                           |
+| --------------- | ---------------------- | --------------------------------------------------------------------------------- |
+| Sources         | Quran + Bukhari/Muslim | + pre-600 H kitab (Mudawwanah, Al-Umm, Ihya, Tabari, …)                           |
+| Corpus language | Modern translations    | Original Arabic + clearly labeled machine translation                             |
+| Chat language   | English/Arabic-first   | **Indonesian-first** + English                                                    |
+| Citations       | Partial                | Strict: `QS. Surah:Ayah` · `HR. Book no. (Grade)` · `Kitab, Author, Vol:Page:Bab` |
+| Madzhab         | Opaque                 | Filterable & comparable; Syafi'i-weighted with transparent gaps                   |
+| Reasoning       | Naive RAG              | Principle-aware: general maxims retrieved alongside rulings                       |
+| Transparency    | Black box              | Full user-facing Trace of how each answer was built                               |
+| Data quality    | Raw import             | Cleaned, translated, and validated before it ships                                |
 
 ## Principles
 
@@ -66,7 +66,7 @@ Islamic-domain knowledge lives in its own clearly separated layer.
 4. Never silently machine-translate — kitab translations are labeled, with the
    Arabic always shown.
 5. Dhaif hadith is always flagged with a warning.
-6. Never derive a new ruling — classical reasoning is surfaced *as cited*;
+6. Never derive a new ruling — classical reasoning is surfaced _as cited_;
    insufficient evidence means refusal, not synthesis.
 7. No corpus-wide inferred knowledge graphs — knowledge ships as bounded,
    curated, human-reviewed structures.
@@ -96,14 +96,14 @@ in the app, never hidden.
 
 For readers who want the full picture, the working documents are open:
 
-| Question | Document |
-|---|---|
-| What is the architecture and plan *now*? | [`SPECS.md`](SPECS.md) — the living spec |
-| Why is it built this way? | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — stable design rationale |
-| Is it working? (success factors & metrics) | [`docs/SUCCESS_FACTORS_AND_METRICS.md`](docs/SUCCESS_FACTORS_AND_METRICS.md) |
-| How is it developed? (working rules, incl. AI agents) | [`AGENTS.md`](AGENTS.md) |
-| What do the domain words mean? (Kitab, Madzhab, Isnad…) | [`CONTEXT.md`](CONTEXT.md) |
-| Where did the idea start? (original v1.2 spec, frozen) | [`INITIAL_IDEA.md`](INITIAL_IDEA.md) |
+| Question                                                | Document                                                                     |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| What is the architecture and plan _now_?                | [`SPECS.md`](SPECS.md) — the living spec                                     |
+| Why is it built this way?                               | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — stable design rationale     |
+| Is it working? (success factors & metrics)              | [`docs/SUCCESS_FACTORS_AND_METRICS.md`](docs/SUCCESS_FACTORS_AND_METRICS.md) |
+| How is it developed? (working rules, incl. AI agents)   | [`AGENTS.md`](AGENTS.md)                                                     |
+| What do the domain words mean? (Kitab, Madzhab, Isnad…) | [`CONTEXT.md`](CONTEXT.md)                                                   |
+| Where did the idea start? (original v1.2 spec, frozen)  | [`INITIAL_IDEA.md`](INITIAL_IDEA.md)                                         |
 
 ## Data sources & attribution
 

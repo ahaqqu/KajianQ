@@ -14,8 +14,7 @@ import { localState, Stack, Stage } from "alchemy";
 // (the state layer is chosen before the stack effect runs), off the ambient
 // process object, since this module must typecheck under workers-types.
 const env =
-  (globalThis as { process?: { env: Record<string, string | undefined> } })
-    .process?.env ?? {};
+  (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env ?? {};
 const isDev = env.ALCHEMY_DEV === "true";
 
 // Secrets bind only when present in the deploy environment (`secret_text`);

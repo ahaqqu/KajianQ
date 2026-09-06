@@ -39,9 +39,7 @@ function assertSecurityHeaders(res: Response) {
   expect(res.headers.get("X-Frame-Options")).toBe("SAMEORIGIN");
   expect(res.headers.get("Cross-Origin-Opener-Policy")).toBe("same-origin");
   expect(res.headers.get("Cross-Origin-Resource-Policy")).toBe("same-origin");
-  expect(res.headers.get("Permissions-Policy")).toBe(
-    "camera=(), microphone=(), geolocation=()",
-  );
+  expect(res.headers.get("Permissions-Policy")).toBe("camera=(), microphone=(), geolocation=()");
   expect(res.headers.get("Strict-Transport-Security")).toContain("max-age=");
 }
 
@@ -81,17 +79,13 @@ describe("createApi routes", () => {
       { headers: { Origin: "http://localhost:8787" } },
       corsEnv,
     );
-    expect(ok.headers.get("Access-Control-Allow-Origin")).toBe(
-      "http://localhost:8787",
-    );
+    expect(ok.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:8787");
     const bad = await api.request(
       "/v1/health",
       { headers: { Origin: "https://evil.example" } },
       corsEnv,
     );
-    expect(bad.headers.get("Access-Control-Allow-Origin")).not.toBe(
-      "https://evil.example",
-    );
+    expect(bad.headers.get("Access-Control-Allow-Origin")).not.toBe("https://evil.example");
   });
 
   it("blocks cross-origin requests when ALLOWED_ORIGINS is empty", async () => {
@@ -126,9 +120,7 @@ describe("createApi routes", () => {
   it("serves content-hashed assets with immutable caching", async () => {
     const res = await createApi().request("/assets/index-CTkTHNJp.js", {}, env);
     expect(res.status).toBe(200);
-    expect(res.headers.get("Cache-Control")).toBe(
-      "public, max-age=31536000, immutable",
-    );
+    expect(res.headers.get("Cache-Control")).toBe("public, max-age=31536000, immutable");
     assertSecurityHeaders(res);
   });
 });
@@ -161,9 +153,7 @@ describe("generated OpenAPI doc", () => {
     ].sort();
     expect(registered.length).toBeGreaterThan(0);
     const documented = Object.entries(doc.paths)
-      .flatMap(([path, methods]) =>
-        Object.keys(methods).map((m) => `${m.toUpperCase()} ${path}`),
-      )
+      .flatMap(([path, methods]) => Object.keys(methods).map((m) => `${m.toUpperCase()} ${path}`))
       .sort();
     expect(documented).toEqual(registered);
   });

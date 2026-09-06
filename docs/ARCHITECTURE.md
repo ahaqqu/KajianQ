@@ -114,7 +114,7 @@ migration path.
 Gated by: RagStore adapter tests (idempotent upserts, immutable `text_raw`);
 cascade-delete tests.
 
-## 5. Performance — fast on slow hardware *(inherited)*
+## 5. Performance — fast on slow hardware _(inherited)_
 
 The initial JS bundle is under 200 KB gzipped. Non-critical code is
 lazy-loaded by route. CSS is build-time only via Tailwind — no runtime
@@ -122,7 +122,7 @@ CSS-in-JS. Large datasets (traces, admin lists) are windowed or paginated.
 
 Gated by: `bun run size-limit` (currently ~125 kB).
 
-## 6. Cross-platform — one codebase, every device *(inherited)*
+## 6. Cross-platform — one codebase, every device _(inherited)_
 
 A React 19 PWA: installable, mobile-first, updated through a Service Worker
 with a versioned precache and update-prompt flow. The app shell is served via
@@ -131,7 +131,7 @@ to the **shell only** — product features are online (see §4).
 
 Gated by: Playwright-BDD E2E smoke.
 
-## 7. Polished — looks good and feels right *(inherited)*
+## 7. Polished — looks good and feels right _(inherited)_
 
 Responsive from mobile to desktop; information-dense layouts without excessive
 whitespace (an explicit user preference, spec §2.3); optimistic interactions;
@@ -140,7 +140,7 @@ accessibility built in (axe audits gate the BDD suite); copy externalized en/id
 
 Gated by: axe audits (serious/critical violations fail the run).
 
-## 8. Secure — defense in depth *(inherited mechanics, amended seams)*
+## 8. Secure — defense in depth _(inherited mechanics, amended seams)_
 
 Every external boundary is validated. Sessions are anonymous Bearer tokens —
 stored in **Postgres via the RagStore seam** (deviation from the template's
@@ -162,15 +162,15 @@ Account deletion cascades across all data stores, including `answer_traces`
   `.github/zap-rules.tsv` with an inline justification; staging runs with
   `fail_action: true`.
 
-| Layer | Tool | When |
-|---|---|---|
-| Static analysis | Semgrep | Every PR |
-| Dependency vulnerabilities | OSV-Scanner | Every PR |
-| Secret scanning | gitleaks | Every PR |
-| Dynamic security scan | OWASP ZAP Baseline | Every main merge against staging |
-| API fuzzing | Schemathesis | Every main merge against staging |
+| Layer                      | Tool               | When                             |
+| -------------------------- | ------------------ | -------------------------------- |
+| Static analysis            | Semgrep            | Every PR                         |
+| Dependency vulnerabilities | OSV-Scanner        | Every PR                         |
+| Secret scanning            | gitleaks           | Every PR                         |
+| Dynamic security scan      | OWASP ZAP Baseline | Every main merge against staging |
+| API fuzzing                | Schemathesis       | Every main merge against staging |
 
-## 9. Observable — easy to monitor *(inherited)*
+## 9. Observable — easy to monitor _(inherited)_
 
 Every layer emits structured data: Cloudflare Analytics for infrastructure,
 Workers Logs for structured JSON logs with correlation IDs, Sentry
@@ -181,7 +181,7 @@ user- and admin-visible, not just logs.
 
 Gated by: structured-log and correlation-ID tests in CI.
 
-## 10. Maintainable — easy to evolve *(inherited, extended by DARS)*
+## 10. Maintainable — easy to evolve _(inherited, extended by DARS)_
 
 Workers are stateless. All external service interactions pass through adapter
 interfaces (`packages/infra`, `packages/rate`, `packages/hardening`) — business
@@ -224,7 +224,7 @@ so swapping the RagStore adapter swaps the backend.
 └── adr/                        # numbered to continue the sequence
 ```
 
-## 11. Available — degrade, don't crash *(inherited, adapted)*
+## 11. Available — degrade, don't crash _(inherited, adapted)_
 
 On flaky networks the API fails with typed errors and the UI surfaces them;
 Sentry and other opt-in services degrade silently when unconfigured. Neon is
@@ -236,7 +236,7 @@ ObjectStore seam remains the place a real backup/export lands if adopted.
 Gated by: post-deploy smoke tests (`staging.yml`, `deploy.yml`) and blocking
 ZAP/Schemathesis against staging.
 
-## 12. Reliable — verified before it ships *(inherited + Golden Set)*
+## 12. Reliable — verified before it ships _(inherited + Golden Set)_
 
 Contracts, types, and tests exist before code. Coverage is enforced by a gate.
 Property tests verify adapters and handlers. BDD specs describe user-facing
@@ -247,21 +247,21 @@ cross-madzhab differences, refusal cases) — deterministic citation validity,
 cross-vendor faithfulness judging, full suite gating every release plus
 nightly, cost-capped smoke per PR.
 
-| Layer | Tool | Required when |
-|---|---|---|
-| Unit | Vitest | All business logic, schemas, store queries |
-| Property | fast-check | Adapter invariants (idempotency, immutability) |
-| E2E/BDD | Playwright-BDD | User-facing flows (+ axe accessibility) |
-| Golden Set | `packages/eval` | Release gate + nightly; cost-capped smoke per PR |
-| Bundle | size-limit | Every PR |
-| API fuzz / DAST | Schemathesis / ZAP | Every main merge against staging |
-| Security | Semgrep + OSV-Scanner + gitleaks | Every PR |
-| Boundary | `scripts/check-boundary.mjs` | Every PR |
+| Layer           | Tool                             | Required when                                    |
+| --------------- | -------------------------------- | ------------------------------------------------ |
+| Unit            | Vitest                           | All business logic, schemas, store queries       |
+| Property        | fast-check                       | Adapter invariants (idempotency, immutability)   |
+| E2E/BDD         | Playwright-BDD                   | User-facing flows (+ axe accessibility)          |
+| Golden Set      | `packages/eval`                  | Release gate + nightly; cost-capped smoke per PR |
+| Bundle          | size-limit                       | Every PR                                         |
+| API fuzz / DAST | Schemathesis / ZAP               | Every main merge against staging                 |
+| Security        | Semgrep + OSV-Scanner + gitleaks | Every PR                                         |
+| Boundary        | `scripts/check-boundary.mjs`     | Every PR                                         |
 
 Coverage gate: 80% lines/functions/statements, 70% branches over logic globs
 (packages, API, web lib) — UI components are covered by BDD + axe instead.
 
-## 13. Reproducible — same environment everywhere *(inherited)*
+## 13. Reproducible — same environment everywhere _(inherited)_
 
 CI pins the Bun version (1.4.0) to match local dev (mise). The template's
 `flake.nix` dev shell is dormant — a nix-based toolchain unification was
@@ -271,7 +271,7 @@ tooling. Do not activate it without a new owner decision; the file stays
 because it is template-owned (`template-gate` fails if it drifts or is
 deleted locally). One command onboarding, no "works on my machine".
 
-## 14. Agentic — built for autonomous development *(inherited + boundary)*
+## 14. Agentic — built for autonomous development _(inherited + boundary)_
 
 Any agent can understand and modify any module without reading everything:
 files ≤300 lines with ≤5 direct imports, typed contracts at every boundary,
@@ -284,53 +284,53 @@ Gated by: `bun run agentic-limits`, `bun run truth`, `bun run boundary`.
 
 ## 15. Technology choices
 
-| Layer | Choice | Rationale |
-|---|---|---|
-| Platform | Cloudflare Workers + Static Assets + R2 | Unified free tier for the serving path; stateless compute at the edge. |
-| Database | **Neon Postgres + pgvector behind `RagStore`** | Smart Router needs vector HNSW + tsvector + rich SQL filtering — D1/Vectorize cannot express it (ADR-0008). Dual 1536-dim vector schema sized in ADR-0020. |
-| API framework | Hono + hono-openapi | Valibot route definitions produce validation, TS types, OpenAPI 3.1. |
-| Auth | **Anonymous sessions in Postgres (RagStore)** | 30-day Bearer tokens; full erasure cascade; hosted identity rejected for v1 (ADR-0017). |
-| Migrations | Raw SQL per owning package | Engine (`packages/infra/migrations`), product (`apps/api/migrations`), concept graph (`packages/kajianq-domain/migrations`) — engine schema stays domain-agnostic (ADR-0014 amendment, ADR-0019). |
-| LLM / embeddings | `Provider` interface; allowlist Gemini/Kimi/DeepSeek/Qwen; `model_configs` per stage | ADR-0009; paid critical path accepted with price discipline; every call traced. |
-| Pipeline | `packages/rag-core`: Router → Retriever → Assembler → Generator → Reviewer + `runPipeline` | Typed seams, single trace collection point (ADR-0021). |
-| Domain pack | `packages/kajianq-domain` | Zero Islamic-domain logic in engine packages (AGENTS.md rule 1). |
-| Storage | R2 via ObjectStore adapter | Raw Shamela exports and `text_raw` backups (ADR-0008). |
-| Rate limiting | `@app/rate` (Durable Objects) | Inherited template package; global counter per key. |
-| Hardening | `@app/hardening` | Shared CSP/headers policy; ZAP-suppression workflow. |
-| Client state | TanStack Query over `/v1` API | **No offline store** — `@app/local-first` dropped with D1 (spec §3.1). |
-| Routing / UI | TanStack Router; shadcn/ui + Tailwind | Inherited. |
-| PWA | vite-plugin-pwa | Shell precache + update prompt; data requires network. |
-| i18n | Build-time en/id translations | Indonesian-first product (spec). |
-| Trace contract | `packages/contracts`: `Trace`/`TraceEvent`/`CostRecord` | One shape for pipeline, PWA, admin, eval (ADR-0007 amendments). |
-| Evaluation | `packages/eval` + Golden Set | Versioned test sets; #9 embedding benchmark is the retrieval go/no-go gate. |
-| Payments | Deferred | Not in KajianQ v1; template guidance (Xendit/Polar behind one adapter) stands if ever adopted. |
-| Tooling | Bun scripts; TypeScript strict; Nix optional | Inherited. |
+| Layer            | Choice                                                                                     | Rationale                                                                                                                                                                                         |
+| ---------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Platform         | Cloudflare Workers + Static Assets + R2                                                    | Unified free tier for the serving path; stateless compute at the edge.                                                                                                                            |
+| Database         | **Neon Postgres + pgvector behind `RagStore`**                                             | Smart Router needs vector HNSW + tsvector + rich SQL filtering — D1/Vectorize cannot express it (ADR-0008). Dual 1536-dim vector schema sized in ADR-0020.                                        |
+| API framework    | Hono + hono-openapi                                                                        | Valibot route definitions produce validation, TS types, OpenAPI 3.1.                                                                                                                              |
+| Auth             | **Anonymous sessions in Postgres (RagStore)**                                              | 30-day Bearer tokens; full erasure cascade; hosted identity rejected for v1 (ADR-0017).                                                                                                           |
+| Migrations       | Raw SQL per owning package                                                                 | Engine (`packages/infra/migrations`), product (`apps/api/migrations`), concept graph (`packages/kajianq-domain/migrations`) — engine schema stays domain-agnostic (ADR-0014 amendment, ADR-0019). |
+| LLM / embeddings | `Provider` interface; allowlist Gemini/Kimi/DeepSeek/Qwen; `model_configs` per stage       | ADR-0009; paid critical path accepted with price discipline; every call traced.                                                                                                                   |
+| Pipeline         | `packages/rag-core`: Router → Retriever → Assembler → Generator → Reviewer + `runPipeline` | Typed seams, single trace collection point (ADR-0021).                                                                                                                                            |
+| Domain pack      | `packages/kajianq-domain`                                                                  | Zero Islamic-domain logic in engine packages (AGENTS.md rule 1).                                                                                                                                  |
+| Storage          | R2 via ObjectStore adapter                                                                 | Raw Shamela exports and `text_raw` backups (ADR-0008).                                                                                                                                            |
+| Rate limiting    | `@app/rate` (Durable Objects)                                                              | Inherited template package; global counter per key.                                                                                                                                               |
+| Hardening        | `@app/hardening`                                                                           | Shared CSP/headers policy; ZAP-suppression workflow.                                                                                                                                              |
+| Client state     | TanStack Query over `/v1` API                                                              | **No offline store** — `@app/local-first` dropped with D1 (spec §3.1).                                                                                                                            |
+| Routing / UI     | TanStack Router; shadcn/ui + Tailwind                                                      | Inherited.                                                                                                                                                                                        |
+| PWA              | vite-plugin-pwa                                                                            | Shell precache + update prompt; data requires network.                                                                                                                                            |
+| i18n             | Build-time en/id translations                                                              | Indonesian-first product (spec).                                                                                                                                                                  |
+| Trace contract   | `packages/contracts`: `Trace`/`TraceEvent`/`CostRecord`                                    | One shape for pipeline, PWA, admin, eval (ADR-0007 amendments).                                                                                                                                   |
+| Evaluation       | `packages/eval` + Golden Set                                                               | Versioned test sets; #9 embedding benchmark is the retrieval go/no-go gate.                                                                                                                       |
+| Payments         | Deferred                                                                                   | Not in KajianQ v1; template guidance (Xendit/Polar behind one adapter) stands if ever adopted.                                                                                                    |
+| Tooling          | Bun scripts; TypeScript strict; Nix optional                                               | Inherited.                                                                                                                                                                                        |
 
 ## 16. Tooling
 
 Root `package.json` scripts are the single source of truth for gates:
 
-| Script | Purpose |
-|---|---|
-| `bun run check` | typecheck (root + all packages) |
-| `bun run test` | unit + property tests (coverage gate) |
-| `bun run boundary` | engine domain/vendor/SQL boundary gate |
-| `bun run agentic-limits` | file-size / import-count caps |
-| `bun run truth` | no dependency without an importer |
-| `bun run size-limit` | bundle budget (<200 KB gzipped) |
-| `bun run e2e` | Playwright-BDD against `alchemy dev` (local workerd) |
-| `bun run template-gate` | fails on drift of template-owned files |
-| `bun run build` / `dev` / `deploy` / `deploy:staging` | build, local dev, deploys |
+| Script                                                | Purpose                                              |
+| ----------------------------------------------------- | ---------------------------------------------------- |
+| `bun run check`                                       | typecheck (root + all packages)                      |
+| `bun run test`                                        | unit + property tests (coverage gate)                |
+| `bun run boundary`                                    | engine domain/vendor/SQL boundary gate               |
+| `bun run agentic-limits`                              | file-size / import-count caps                        |
+| `bun run truth`                                       | no dependency without an importer                    |
+| `bun run size-limit`                                  | bundle budget (<200 KB gzipped)                      |
+| `bun run e2e`                                         | Playwright-BDD against `alchemy dev` (local workerd) |
+| `bun run template-gate`                               | fails on drift of template-owned files               |
+| `bun run build` / `dev` / `deploy` / `deploy:staging` | build, local dev, deploys                            |
 
 ## 17. Which document answers which question
 
-| Question | Document |
-|---|---|
-| Why is it built this way? (stable rationale) | `docs/ARCHITECTURE.md` — this file |
-| What is the architecture and plan *now*? | `SPECS.md` (living, rule 16) |
-| What rules must agents follow? | `AGENTS.md` |
-| What do the domain words mean? | `CONTEXT.md` |
-| What was decided, when, and why? | `adr/` (0005 onward) |
+| Question                                           | Document                              |
+| -------------------------------------------------- | ------------------------------------- |
+| Why is it built this way? (stable rationale)       | `docs/ARCHITECTURE.md` — this file    |
+| What is the architecture and plan _now_?           | `SPECS.md` (living, rule 16)          |
+| What rules must agents follow?                     | `AGENTS.md`                           |
+| What do the domain words mean?                     | `CONTEXT.md`                          |
+| What was decided, when, and why?                   | `adr/` (0005 onward)                  |
 | Is it working? (factors, metrics, failure signals) | `docs/SUCCESS_FACTORS_AND_METRICS.md` |
 
 When this document and `SPECS.md` disagree, `SPECS.md` wins (it is the living

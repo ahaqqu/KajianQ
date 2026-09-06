@@ -155,7 +155,9 @@ export function decodeHadithArchive(input: SourceInput): {
       );
     }
     if (collections.includes(parsed.collection)) {
-      throw new Error(`hadith ingestion: archive bundle has duplicate collection ${parsed.collection}`);
+      throw new Error(
+        `hadith ingestion: archive bundle has duplicate collection ${parsed.collection}`,
+      );
     }
     collections.push(parsed.collection);
     arabic[parsed.collection] = parsed.arabic;
@@ -275,8 +277,6 @@ export function gradeConsolidationStats(records: readonly HadithRecord[]): {
  * hadith are graded, how many the dhaif-wins policy demoted, how many are
  * ungraded (grade = null, never fabricated).
  */
-export function corpusGradeStats(
-  corpus: HadithCorpus,
-): ReturnType<typeof gradeConsolidationStats> {
+export function corpusGradeStats(corpus: HadithCorpus): ReturnType<typeof gradeConsolidationStats> {
   return gradeConsolidationStats(corpus.records);
 }

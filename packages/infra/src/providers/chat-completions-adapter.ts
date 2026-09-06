@@ -59,8 +59,7 @@ function computeCost(
   latencyMs: number,
   estimated = false,
 ): CostRecord {
-  const exact =
-    tokensIn * microUsdPerToken(price.in) + tokensOut * microUsdPerToken(price.out);
+  const exact = tokensIn * microUsdPerToken(price.in) + tokensOut * microUsdPerToken(price.out);
   return {
     modelId,
     tokensIn,
@@ -125,11 +124,7 @@ export type ChatCompletionsOptions = {
  */
 
 /** Assemble the chat-completions request body shared by generate/stream. */
-function buildChatRequest(
-  modelId: string,
-  spec: PromptSpec,
-  stream: boolean,
-): ChatRequest {
+function buildChatRequest(modelId: string, spec: PromptSpec, stream: boolean): ChatRequest {
   return {
     model: modelId,
     messages: spec.turns.map((t) => ({ role: t.role, content: t.content })),
@@ -159,7 +154,10 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
         signal: controller.signal,
       });
     } catch (err) {
-      throw new ProviderError("transport", `request to ${vendor.baseUrl}${path} failed: ${String(err)}`);
+      throw new ProviderError(
+        "transport",
+        `request to ${vendor.baseUrl}${path} failed: ${String(err)}`,
+      );
     } finally {
       clearTimeout(timer);
     }
@@ -193,8 +191,12 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
       const meteredIn = json.usage?.prompt_tokens;
       const meteredOut = json.usage?.completion_tokens;
       const isMetered =
-        typeof meteredIn === "number" && Number.isFinite(meteredIn) && meteredIn >= 0 &&
-        typeof meteredOut === "number" && Number.isFinite(meteredOut) && meteredOut >= 0;
+        typeof meteredIn === "number" &&
+        Number.isFinite(meteredIn) &&
+        meteredIn >= 0 &&
+        typeof meteredOut === "number" &&
+        Number.isFinite(meteredOut) &&
+        meteredOut >= 0;
       // Where the vendor reports no usage, estimate from chars and mark the
       // record estimated (ADR-0022) — a trace must never present an estimate
       // as metered.
@@ -278,7 +280,8 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
       // which would understate cost by orders of magnitude — and mark the
       // record estimated (ADR-0022).
       const meteredIn = json.usage?.prompt_tokens;
-      const isMetered = typeof meteredIn === "number" && Number.isFinite(meteredIn) && meteredIn >= 0;
+      const isMetered =
+        typeof meteredIn === "number" && Number.isFinite(meteredIn) && meteredIn >= 0;
       const tokensIn = isMetered
         ? meteredIn!
         : spec.texts.reduce((n, t) => n + estimateTokens(t.length), 0);

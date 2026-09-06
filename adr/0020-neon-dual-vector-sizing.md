@@ -23,12 +23,12 @@ nail bytes.
 
 ### Corpus shape (v1)
 
-| Source            | Rows (child chunks) | Notes                                       |
-|-------------------|--------------------:|---------------------------------------------|
-| Quran             |        ~6,236       | 1 ayah ≈ 1 child                            |
-| Hadith            |       ~650,000      | 1 hadith ≈ 1 child                          |
-| Kitab (~10 books) |        ~5,000       | ~10 books × ~500 pages, ~1 page ≈ 1 child   |
-| **Total**         |      **~661,000**   | rounded up to ~700K for headroom            |
+| Source            | Rows (child chunks) | Notes                                     |
+| ----------------- | ------------------: | ----------------------------------------- |
+| Quran             |              ~6,236 | 1 ayah ≈ 1 child                          |
+| Hadith            |            ~650,000 | 1 hadith ≈ 1 child                        |
+| Kitab (~10 books) |              ~5,000 | ~10 books × ~500 pages, ~1 page ≈ 1 child |
+| **Total**         |        **~661,000** | rounded up to ~700K for headroom          |
 
 ### Storage per row
 
@@ -59,7 +59,7 @@ Sanity check against a conservative split:
    here so the trade-off is visible: the "dual index from the start" amendment
    roughly **doubles** vector storage vs. the single-index starting point the
    original ticket assumed.
-2. **Staging/dev branches carry a *sampled* corpus** during #6/#7 bring-up,
+2. **Staging/dev branches carry a _sampled_ corpus** during #6/#7 bring-up,
    not the full ~660K rows; that fits Neon's free tier (~0.5 GiB/branch)
    comfortably during development.
 3. **Production sizes for the full corpus on the Launch tier or above.**
@@ -76,13 +76,13 @@ Sanity check against a conservative split:
      index, so any reclaim targets indexes first.
   2. **The fallback track is optional at query time.** If #9's benchmark
      shows primary-only retrieval meets the recall bar, the
-     `embedding_fallback` *index* can be dropped (data column kept) to
+     `embedding_fallback` _index_ can be dropped (data column kept) to
      reclaim ~5 GiB without re-embedding — the fallback data stays, only the
      ANN path is removed. That is a one-line migration, reversible, and is
      exactly the "switchable without re-ingestion" property ADR-0013's
      amendment bought.
 - This fork's amended dependency guardrail (ADR-0009 amendment: paid LLM APIs
-  accepted on the critical path) does not automatically cover *storage*;
+  accepted on the critical path) does not automatically cover _storage_;
   storage cost stays an explicit line item reviewed at production bring-up.
 - Runbook-level sizing checks belong in `docs/` (or the infra README); this
   ADR holds only the decision and its numbers.

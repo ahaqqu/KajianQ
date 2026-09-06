@@ -80,7 +80,9 @@ function makeMetadataLookup(agentsDir) {
       for (const agent of agents.filter((a) => a.startsWith("agent_"))) {
         let parsed;
         try {
-          parsed = JSON.parse(readFileSync(join(agentsDir, parent, agent, "metadata.json"), "utf8"));
+          parsed = JSON.parse(
+            readFileSync(join(agentsDir, parent, agent, "metadata.json"), "utf8"),
+          );
         } catch {
           continue;
         }
@@ -121,7 +123,12 @@ function main() {
   try {
     const configPath =
       process.env.ZCODE_ROLE_IDENTITY_CONFIG ||
-      join(process.env.ZCODE_PROJECT_DIR || process.cwd(), "scripts", "role-gh-identity", "config.json");
+      join(
+        process.env.ZCODE_PROJECT_DIR || process.cwd(),
+        "scripts",
+        "role-gh-identity",
+        "config.json",
+      );
     const parsed = parseRoleIdentityConfig(JSON.parse(readFileSync(configPath, "utf8")));
     if (!parsed.ok) {
       emit("skip_invalid_config", { reason: parsed.reason });

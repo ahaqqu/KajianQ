@@ -13,6 +13,7 @@
 ## 1. Visi & Differentiasi
 
 ### 1.1 Masalah yang Dipecahkan
+
 - Chatbot Islam yang ada umumnya fokus Quran + Hadith Shahih (Bukhari & Muslim) saja.
 - Jarang yang menyentuh **kitab fikih, aqidah, tasawuf, dan sejarah pra-600 H** secara mendalam.
 - Citation sering tidak ketat — tidak menyebut juz, halaman, atau tingkat keabsahan hadith.
@@ -21,16 +22,17 @@
 - **Data kitab klasik berantakan** — OCR Shamela sering corrupt, header/footer bercampur, pengarang salah. Developer yang tidak paham Arab sulit validasi manual.
 
 ### 1.2 Differentiasi (Moat)
-| Fitur | Pasar Umum | Proyek Ini |
-|-------|------------|------------|
-| **Sumber** | Quran + Bukhari/Muslim | **+ Kitab pra-600 H** (Mudawwanah, Al-Umm, Ihya, Tabari, Syarh Aqidah Thahawiyah, dll) |
-| **Bahasa Korpus** | Terjemahan modern | **Teks asli Arab** + terjemahan klasik (jika ada) |
-| **Bahasa Chat** | English/Arabic | **Indonesia + Inggris** |
-| **Citation** | Sebagian ada | **Ketat: Surat:Ayat, HR. Kitab No. (Grade), Kitab:Jilid:Halaman:Bab** |
-| **Madzhab** | Tidak transparan | **User bisa filter/query per madzhab** (Hanafi, Maliki, Syafi'i, Hambali) |
-| **Sanad** | Tidak ada | **Metadata sanad/tingkat hadith** tersedia untuk verifikasi |
-| **Smart Router** | Klasifikasi sederhana | **Multi-hop reasoning + principle-aware retrieval** |
-| **Data Quality** | Raw import | **LLM-validated cleaning pipeline** untuk teks Arab |
+
+| Fitur             | Pasar Umum             | Proyek Ini                                                                             |
+| ----------------- | ---------------------- | -------------------------------------------------------------------------------------- |
+| **Sumber**        | Quran + Bukhari/Muslim | **+ Kitab pra-600 H** (Mudawwanah, Al-Umm, Ihya, Tabari, Syarh Aqidah Thahawiyah, dll) |
+| **Bahasa Korpus** | Terjemahan modern      | **Teks asli Arab** + terjemahan klasik (jika ada)                                      |
+| **Bahasa Chat**   | English/Arabic         | **Indonesia + Inggris**                                                                |
+| **Citation**      | Sebagian ada           | **Ketat: Surat:Ayat, HR. Kitab No. (Grade), Kitab:Jilid:Halaman:Bab**                  |
+| **Madzhab**       | Tidak transparan       | **User bisa filter/query per madzhab** (Hanafi, Maliki, Syafi'i, Hambali)              |
+| **Sanad**         | Tidak ada              | **Metadata sanad/tingkat hadith** tersedia untuk verifikasi                            |
+| **Smart Router**  | Klasifikasi sederhana  | **Multi-hop reasoning + principle-aware retrieval**                                    |
+| **Data Quality**  | Raw import             | **LLM-validated cleaning pipeline** untuk teks Arab                                    |
 
 ---
 
@@ -145,6 +147,7 @@ Raw Data (Shamela .bok / OCR / PDF / JSON)
 ## 3. Smart Router: Strategi Lengkap
 
 Router dalam sistem ini bukan sekadar klasifikasi kategori. Router adalah **orkestrator retrieval** yang memutuskan:
+
 1. **Apa** yang harus dicari
 2. **Di mana** harus mencari
 3. **Seberapa luas** konteks yang dibutuhkan
@@ -168,25 +171,27 @@ Router dalam sistem ini bukan sekadar klasifikasi kategori. Router adalah **orke
 ```
 
 **Kategori `query_type`:**
-| Tipe | Definisi | Contoh | Strategi Retrieval |
-|------|----------|--------|-------------------|
-| **factual** | Fakta langsung dari sumber | "Berapa rakaat shalat maghrib?" | Quran/Hadith index saja |
-| **ruling** | Hukum spesifik | "Hukum shalat orang sakit?" | Kitab fikih + Hadith + Principle (yusr) |
-| **analogy** | Butuh prinsip umum untuk memahami detail | "Kenapa shalat tidak boleh terlalu sulit?" | **Principle index wajib** + Kitab + Hadith |
-| **comparison** | Perbandingan antar madzhab | "Beda pendapat Imam Malik dan Syafi'i tentang wudhu?" | Kitab index dengan filter madzhab |
-| **history** | Konteks sejarah | "Kapan shalat lima waktu diwajibkan?" | Sejarah index + Hadith |
-| **aqidah** | Keyakinan | "Sifat Allah dalam ayat Kursi?" | Quran + Aqidah index |
+
+| Tipe           | Definisi                                 | Contoh                                                | Strategi Retrieval                         |
+| -------------- | ---------------------------------------- | ----------------------------------------------------- | ------------------------------------------ |
+| **factual**    | Fakta langsung dari sumber               | "Berapa rakaat shalat maghrib?"                       | Quran/Hadith index saja                    |
+| **ruling**     | Hukum spesifik                           | "Hukum shalat orang sakit?"                           | Kitab fikih + Hadith + Principle (yusr)    |
+| **analogy**    | Butuh prinsip umum untuk memahami detail | "Kenapa shalat tidak boleh terlalu sulit?"            | **Principle index wajib** + Kitab + Hadith |
+| **comparison** | Perbandingan antar madzhab               | "Beda pendapat Imam Malik dan Syafi'i tentang wudhu?" | Kitab index dengan filter madzhab          |
+| **history**    | Konteks sejarah                          | "Kapan shalat lima waktu diwajibkan?"                 | Sejarah index + Hadith                     |
+| **aqidah**     | Keyakinan                                | "Sifat Allah dalam ayat Kursi?"                       | Quran + Aqidah index                       |
 
 **Principle Tags yang Dideteksi:**
-| Tag | Prinsip | Sumber Kunci |
-|-----|---------|--------------|
-| `yusr` | Kemudahan dalam agama | QS. 2:185, 2:286; HR. Bukhari 39 |
-| `rahmah` | Islam sebagai rahmat | QS. 21:107 |
-| `masyaqqah` | Kesulitan membawa kemudahan | Prinsip ushul fikih |
-| `dharar` | Madharat dihapuskan | Prinsip ushul fikih |
-| `umum_balwa` | Kesulitan umum memaafkan | Prinsip ushul fikih |
-| `istihsan` | Keutamaan hati nurani | Prinsip ushul fikih (Hanafi) |
-| `sad_zari` | Menutup jalan ke arah keburukan | Prinsip ushul fikih |
+
+| Tag          | Prinsip                         | Sumber Kunci                     |
+| ------------ | ------------------------------- | -------------------------------- |
+| `yusr`       | Kemudahan dalam agama           | QS. 2:185, 2:286; HR. Bukhari 39 |
+| `rahmah`     | Islam sebagai rahmat            | QS. 21:107                       |
+| `masyaqqah`  | Kesulitan membawa kemudahan     | Prinsip ushul fikih              |
+| `dharar`     | Madharat dihapuskan             | Prinsip ushul fikih              |
+| `umum_balwa` | Kesulitan umum memaafkan        | Prinsip ushul fikih              |
+| `istihsan`   | Keutamaan hati nurani           | Prinsip ushul fikih (Hanafi)     |
+| `sad_zari`   | Menutup jalan ke arah keburukan | Prinsip ushul fikih              |
 
 ### 3.2 Stage 2: Query Decomposition (Multi-Hop)
 
@@ -205,6 +210,7 @@ Sub-query 4 (hadith): "hadith agama ini mudah tidak menyulitkan"
 ```
 
 **Aturan Decomposition:**
+
 - Selalu generate **1 sub-query faktual** (detail hukum)
 - Jika `needs_principle=true`, generate **1 sub-query principle**
 - Jika kategori `fikih`, generate **1 sub-query dalil Qurani**
@@ -214,19 +220,20 @@ Sub-query 4 (hadith): "hadith agama ini mudah tidak menyulitkan"
 
 Berdasarkan intent, router memutuskan **kombinasi index** yang di-query:
 
-| Intent | Index yang Di-query | Priority |
-|--------|---------------------|----------|
-| Factual Quran | `quran_child` + `quran_parent` | Quran saja |
-| Factual Hadith | `hadith_child` + `hadith_parent` | Hadith Sahih > Hasan |
-| Ruling Fikih | `kitab_child` + `hadith_child` + `principle` | Kitab madzhab > Hadith > Principle |
-| Analogy | `principle` + `kitab_child` + `hadith_child` + `quran_child` | **Principle dulu**, baru detail |
-| Comparison | `kitab_child` (madzhab A) + `kitab_child` (madzhab B) | Parallel retrieve |
-| History | `kitab_child` (sejarah) + `hadith_child` | Sejarah > Hadith |
+| Intent         | Index yang Di-query                                          | Priority                           |
+| -------------- | ------------------------------------------------------------ | ---------------------------------- |
+| Factual Quran  | `quran_child` + `quran_parent`                               | Quran saja                         |
+| Factual Hadith | `hadith_child` + `hadith_parent`                             | Hadith Sahih > Hasan               |
+| Ruling Fikih   | `kitab_child` + `hadith_child` + `principle`                 | Kitab madzhab > Hadith > Principle |
+| Analogy        | `principle` + `kitab_child` + `hadith_child` + `quran_child` | **Principle dulu**, baru detail    |
+| Comparison     | `kitab_child` (madzhab A) + `kitab_child` (madzhab B)        | Parallel retrieve                  |
+| History        | `kitab_child` (sejarah) + `hadith_child`                     | Sejarah > Hadith                   |
 
 **Metadata Filter yang Diterapkan:**
+
 ```sql
 -- Contoh: Ruling Fikih Syafi'i
-WHERE source_type = 'kitab' 
+WHERE source_type = 'kitab'
   AND madzhab = 'syafii'
   AND category = 'fikih'
 
@@ -263,6 +270,7 @@ Layer 5: CONCEPT LINKS (jika ada)
 ```
 
 **Relevance Scoring (RRF Hybrid):**
+
 ```
 dense_rank   = vector_search(query_embedding, top_k=100)   -- pgvector
 sparse_rank  = bm25_search(query_text, top_k=100)         -- PostgreSQL FTS
@@ -284,13 +292,14 @@ hierarchy_bonus:
 
 ### 4.1 Quran (Teks Arab Uthmani + Metadata)
 
-| Sumber | URL | Format | Lisensi |
-|--------|-----|--------|---------|
-| **Tanzil** | https://tanzil.net/download/ | TXT, XML, JSON | Bebas (public domain teks) |
-| **Quran.com API** | https://api.quran.com | JSON | Open untuk non-komersial |
-| **The Quran App Dataset** | https://github.com/The-Quran-Project/The-Quran-App/tree/main/dataset | JSON | Open source |
+| Sumber                    | URL                                                                  | Format         | Lisensi                    |
+| ------------------------- | -------------------------------------------------------------------- | -------------- | -------------------------- |
+| **Tanzil**                | https://tanzil.net/download/                                         | TXT, XML, JSON | Bebas (public domain teks) |
+| **Quran.com API**         | https://api.quran.com                                                | JSON           | Open untuk non-komersial   |
+| **The Quran App Dataset** | https://github.com/The-Quran-Project/The-Quran-App/tree/main/dataset | JSON           | Open source                |
 
 **Yang didownload:**
+
 - Teks Uthmani per ayat (Arab)
 - Metadata: nomor surah, ayah, juz, hizb, rubu, page_madinah
 - Terjemahan Indonesia (Kemenag) & English (Sahih International)
@@ -298,43 +307,45 @@ hierarchy_bonus:
 
 ### 4.2 Hadith (Teks Arab + Metadata)
 
-| Sumber | URL | Format | Catatan |
-|--------|-----|--------|---------|
-| **hadith-json** (GitHub — AhmedBaset) | https://github.com/AhmedBaset/hadith-json | JSON | **50.884 hadith** dari 17 kitab. Arabic + English. |
-| **HuggingFace — meeAtif/hadith_datasets** | https://huggingface.co/datasets/meeAtif/hadith_datasets | JSON, CSV | 6 kitab utama. Arabic + English + grading. |
-| **Sanadset** | https://www.kaggle.com/datasets/fahd09/hadith-narrators-dataset | CSV | **650K hadith** dengan sanad & matn di-tag. |
-| **Sunnah.com API** | https://sunnah.com | JSON (API) | 20+ koleksi. Butuh API key via GitHub issue. |
+| Sumber                                    | URL                                                             | Format     | Catatan                                            |
+| ----------------------------------------- | --------------------------------------------------------------- | ---------- | -------------------------------------------------- |
+| **hadith-json** (GitHub — AhmedBaset)     | https://github.com/AhmedBaset/hadith-json                       | JSON       | **50.884 hadith** dari 17 kitab. Arabic + English. |
+| **HuggingFace — meeAtif/hadith_datasets** | https://huggingface.co/datasets/meeAtif/hadith_datasets         | JSON, CSV  | 6 kitab utama. Arabic + English + grading.         |
+| **Sanadset**                              | https://www.kaggle.com/datasets/fahd09/hadith-narrators-dataset | CSV        | **650K hadith** dengan sanad & matn di-tag.        |
+| **Sunnah.com API**                        | https://sunnah.com                                              | JSON (API) | 20+ koleksi. Butuh API key via GitHub issue.       |
 
 **Yang didownload:**
+
 - Matn hadith dalam bahasa Arab asli
 - Metadata: kitab, bab, nomor hadith, tingkat (Sahih/Hasan/Dhaif), periwayat
 - Terjemahan English/Indonesia (jika tersedia)
 
 ### 4.3 Kitab Klasik Pra-600 H (Bahasa Asli Penulis)
 
-| Sumber | URL | Format | Catatan |
-|--------|-----|--------|---------|
-| **Al-Maktaba al-Shamela** | https://shamela.ws | `.bok` (MS Access MDB) | **17.000–29.000 buku**. Corpus teks Islam terbesar. |
-| **Shamela Mirror** | https://archive.org/details/MaktabaShamelaWin10.7z | `.7z` | Mirror Internet Archive. |
-| **Shamela Parser (Node.js)** | https://github.com/ragaeeb/shamela | TypeScript | Library parse dan ekstrak teks. |
-| **OpenITI** | https://openiti.org | TEI XML | Corpus akademik teks Islam. |
+| Sumber                       | URL                                                | Format                 | Catatan                                             |
+| ---------------------------- | -------------------------------------------------- | ---------------------- | --------------------------------------------------- |
+| **Al-Maktaba al-Shamela**    | https://shamela.ws                                 | `.bok` (MS Access MDB) | **17.000–29.000 buku**. Corpus teks Islam terbesar. |
+| **Shamela Mirror**           | https://archive.org/details/MaktabaShamelaWin10.7z | `.7z`                  | Mirror Internet Archive.                            |
+| **Shamela Parser (Node.js)** | https://github.com/ragaeeb/shamela                 | TypeScript             | Library parse dan ekstrak teks.                     |
+| **OpenITI**                  | https://openiti.org                                | TEI XML                | Corpus akademik teks Islam.                         |
 
 **Kitab Prioritas Pra-600 H:**
 
-| Kitab | Pengarang | Wafat | Bidang | Madzhab |
-|-------|-----------|-------|--------|---------|
-| Al-Mudawwanah al-Kubra | Sahnun | 240 H | Fikih | Maliki |
-| Al-Umm | Imam Syafi'i | 204 H | Fikih | Syafi'i |
-| Syarh Aqidah Thahawiyah | Imam Thahawi | 321 H | Aqidah | Hanafi |
-| Ihya Ulumuddin | Imam Ghazali | 505 H | Tasawuf | Syafi'i |
-| Tarikh ar-Rusul wa al-Muluk | Imam Tabari | 310 H | Sejarah | — |
-| Al-Kamil fi at-Tarikh | Ibn Atsir | 630 H | Sejarah | — |
-| Al-Muwatha' | Imam Malik | 179 H | Hadith/Fikih | Maliki |
-| Musnad Imam Ahmad | Imam Ahmad | 241 H | Hadith | Hambali |
-| Sunan ad-Darimi | Imam Darimi | 255 H | Hadith | — |
-| Tahdzib al-Akhlaq | Ibn Miskawayh | 421 H | Akhlak | — |
+| Kitab                       | Pengarang     | Wafat | Bidang       | Madzhab |
+| --------------------------- | ------------- | ----- | ------------ | ------- |
+| Al-Mudawwanah al-Kubra      | Sahnun        | 240 H | Fikih        | Maliki  |
+| Al-Umm                      | Imam Syafi'i  | 204 H | Fikih        | Syafi'i |
+| Syarh Aqidah Thahawiyah     | Imam Thahawi  | 321 H | Aqidah       | Hanafi  |
+| Ihya Ulumuddin              | Imam Ghazali  | 505 H | Tasawuf      | Syafi'i |
+| Tarikh ar-Rusul wa al-Muluk | Imam Tabari   | 310 H | Sejarah      | —       |
+| Al-Kamil fi at-Tarikh       | Ibn Atsir     | 630 H | Sejarah      | —       |
+| Al-Muwatha'                 | Imam Malik    | 179 H | Hadith/Fikih | Maliki  |
+| Musnad Imam Ahmad           | Imam Ahmad    | 241 H | Hadith       | Hambali |
+| Sunan ad-Darimi             | Imam Darimi   | 255 H | Hadith       | —       |
+| Tahdzib al-Akhlaq           | Ibn Miskawayh | 421 H | Akhlak       | —       |
 
 **Catatan Penting:**
+
 - Format `.bok` = file MS Access (`.mdb`) yang di-rename.
 - Bisa diparse dengan `pyodbc` / `mdb-tools` atau library `ragaeeb/shamela`.
 - Banyak kitab di Shamela adalah edisi modern atau syarh ulama abad 7–10 H. Verifikasi tahun asli matn.
@@ -342,13 +353,14 @@ hierarchy_bonus:
 
 ### 4.4 Tafsir
 
-| Sumber | URL | Format |
-|--------|-----|--------|
-| **Tanzil Tafsir** | https://tanzil.net/download/ | XML/JSON |
-| **Quran.com Tafsir API** | https://api.quran.com | JSON |
-| **Altafsir.com** | https://altafsir.com | Web (scraping manual) |
+| Sumber                   | URL                          | Format                |
+| ------------------------ | ---------------------------- | --------------------- |
+| **Tanzil Tafsir**        | https://tanzil.net/download/ | XML/JSON              |
+| **Quran.com Tafsir API** | https://api.quran.com        | JSON                  |
+| **Altafsir.com**         | https://altafsir.com         | Web (scraping manual) |
 
 **Tafsir Prioritas:**
+
 - Tafsir Ibnu Katsir
 - Tafsir Al-Jalalayn
 - Tafsir At-Tabari (Jami' al-Bayan)
@@ -356,11 +368,13 @@ hierarchy_bonus:
 ### 4.5 Principle Index (Buat Sendiri)
 
 Principle Index tidak tersedia sebagai dataset siap pakai. Harus dibangun manual dari:
+
 1. **Ayat-ayat prinsip** di Quran (extract dari Tanzil)
 2. **Hadith-hadith prinsip** (extract dari hadith-json)
 3. **Kaidah ushul fikih** (input manual dari kitab Ushul Fikih klasik)
 
 **Contoh Entry Principle Index:**
+
 ```json
 {
   "principle_tag": "yusr",
@@ -395,7 +409,7 @@ CREATE TABLE doc_parents (
     metadata JSONB                          -- Flexible metadata
 );
 
-CREATE INDEX idx_doc_parents_embedding ON doc_parents 
+CREATE INDEX idx_doc_parents_embedding ON doc_parents
 USING hnsw (embedding vector_cosine_ops);
 ```
 
@@ -445,7 +459,7 @@ CREATE TABLE doc_children (
 );
 
 -- Index HNSW untuk similarity search
-CREATE INDEX idx_doc_children_embedding ON doc_children 
+CREATE INDEX idx_doc_children_embedding ON doc_children
 USING hnsw (embedding vector_cosine_ops)
 WITH (m = 16, ef_construction = 64);
 
@@ -457,13 +471,13 @@ CREATE INDEX idx_children_collection ON doc_children(source_collection);
 CREATE INDEX idx_children_principle_tags ON doc_children USING gin(principle_tags);
 
 -- Full-text search (BM25 via tsvector)
-CREATE INDEX idx_children_arabic_fts ON doc_children 
+CREATE INDEX idx_children_arabic_fts ON doc_children
 USING gin(to_tsvector('arabic', COALESCE(text_cleaned_ar, text_raw)));
 
-CREATE INDEX idx_children_indonesia_fts ON doc_children 
+CREATE INDEX idx_children_indonesia_fts ON doc_children
 USING gin(to_tsvector('indonesian', text_indonesia));
 
-CREATE INDEX idx_children_english_fts ON doc_children 
+CREATE INDEX idx_children_english_fts ON doc_children
 USING gin(to_tsvector('english', text_english));
 ```
 
@@ -486,7 +500,7 @@ CREATE TABLE principle_index (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_principle_embedding ON principle_index 
+CREATE INDEX idx_principle_embedding ON principle_index
 USING hnsw (embedding vector_cosine_ops);
 ```
 
@@ -535,35 +549,38 @@ CREATE TABLE chat_messages (
 ## 6. Pipeline Data (Data Ingestion)
 
 ### 6.1 Quran
+
 ```
-Tanzil (TXT/XML) 
-  → Parse per ayat 
+Tanzil (TXT/XML)
+  → Parse per ayat
   → Insert PARENT: per Surah (isi surah lengkap)
   → Insert CHILD: per Ayat (text_arabic, metadata surah/ayah/juz/page)
-  → Fetch tafsir per ayat 
-  → Concatenate "Arab || Indonesia" 
+  → Fetch tafsir per ayat
+  → Concatenate "Arab || Indonesia"
   → Embed dengan Cohere multilingual
   → Update embedding
 ```
 
 ### 6.2 Hadith
+
 ```
-hadith-json (JSON) 
-  → Parse per hadith 
+hadith-json (JSON)
+  → Parse per hadith
   → Insert PARENT: per Bab (kumpulkan semua hadith dalam bab)
   → Insert CHILD: per Hadith (matn_arabic, book, chapter, number, grade, narrator)
   → [LLM Haiku] Tag principle_tags (auto-detect dari keyword matn)
-  → Concatenate "Arab || Indonesia" 
+  → Concatenate "Arab || Indonesia"
   → Embed dengan Cohere
   → Update embedding
 ```
 
 ### 6.3 Kitab Klasik (Paling Kompleks — dengan LLM Cleaning)
+
 ```
-Shamela (.bok files) 
-  → Rename .bok → .mdb 
-  → Parse dengan Python (pyodbc / mdb-tools) atau Node.js (shamela lib) 
-  → Filter: hanya kitab pra-600 H 
+Shamela (.bok files)
+  → Rename .bok → .mdb
+  → Parse dengan Python (pyodbc / mdb-tools) atau Node.js (shamela lib)
+  → Filter: hanya kitab pra-600 H
   → [LLM Haiku] Step 1: Clean text_raw → text_cleaned_ar
       "Bersihkan teks Arab. Hapus header/footer/nomor halaman."
   → [LLM Haiku] Step 2: Extract metadata (pengarang, bab, jenis teks)
@@ -571,12 +588,13 @@ Shamela (.bok files)
   → Hierarchical chunking:
       PARENT: Bab / Fasal lengkap → [LLM Haiku] Generate summary + summary_id
       CHILD:  Paragraf (200-500 token, jangan potong kalimat/sanad)
-  → Concatenate "text_cleaned_ar || text_indonesia" 
+  → Concatenate "text_cleaned_ar || text_indonesia"
   → Embed dengan Cohere
   → Insert ke doc_parents + doc_children
 ```
 
 ### 6.4 Principle Index (Manual / Semi-Auto)
+
 ```
 Extract ayat prinsip dari Quran (manual list QS)
   → Extract hadith prinsip dari hadith-json (filter by keyword)
@@ -590,32 +608,34 @@ Extract ayat prinsip dari Quran (manual list QS)
 
 ## 7. Stack Teknis
 
-| Layer | Teknologi | Alasan |
-|-------|-----------|--------|
-| **Vector DB** | PostgreSQL + pgvector (Supabase / Neon) | Gratis tier tersedia, SQL native, metadata filtering kuat, cukup untuk <1M vector |
-| **Embedding API** | Cohere `embed-multilingual-v3` | Arabic-Indonesia-English terbaik, 1024 dimensi, harga kompetitif |
-| **LLM Router** | Claude 3.5 Haiku API | Murah ($0.80/1M input), cepat, cukup untuk JSON classification |
-| **LLM Query Expansion** | Claude 3.5 Haiku API | Murah, cukup untuk dekomposisi query |
-| **LLM Data Cleaning** | Claude 3.5 Haiku API | Murah, cukup untuk cleaning Arab + ekstraksi metadata |
-| **LLM Generator** | Claude 3.5 Sonnet API | Patuh instruksi terbaik, citation akurat, context 200K |
-| **Alternative LLM** | Gemini 1.5 Pro API | Context 1-2M, cocok kalau retrieve chunk panjang |
-| **Alternative LLM** | Qwen2.5-Max API | Murah, Arabic/Indonesia sangat kuat |
-| **Backend** | Python (FastAPI) | Ringan, async, mudah integrasi PostgreSQL |
-| **Frontend** | Next.js / Streamlit | Next.js untuk produksi, Streamlit untuk prototype |
-| **Hosting** | Vercel (frontend) + Railway/Render (backend) | Murah, managed, tanpa GPU |
-| **OCR (opsional)** | PaddleOCR Arabic / Tesseract | Kalau ada PDF scan kitab klasik |
+| Layer                   | Teknologi                                    | Alasan                                                                            |
+| ----------------------- | -------------------------------------------- | --------------------------------------------------------------------------------- |
+| **Vector DB**           | PostgreSQL + pgvector (Supabase / Neon)      | Gratis tier tersedia, SQL native, metadata filtering kuat, cukup untuk <1M vector |
+| **Embedding API**       | Cohere `embed-multilingual-v3`               | Arabic-Indonesia-English terbaik, 1024 dimensi, harga kompetitif                  |
+| **LLM Router**          | Claude 3.5 Haiku API                         | Murah ($0.80/1M input), cepat, cukup untuk JSON classification                    |
+| **LLM Query Expansion** | Claude 3.5 Haiku API                         | Murah, cukup untuk dekomposisi query                                              |
+| **LLM Data Cleaning**   | Claude 3.5 Haiku API                         | Murah, cukup untuk cleaning Arab + ekstraksi metadata                             |
+| **LLM Generator**       | Claude 3.5 Sonnet API                        | Patuh instruksi terbaik, citation akurat, context 200K                            |
+| **Alternative LLM**     | Gemini 1.5 Pro API                           | Context 1-2M, cocok kalau retrieve chunk panjang                                  |
+| **Alternative LLM**     | Qwen2.5-Max API                              | Murah, Arabic/Indonesia sangat kuat                                               |
+| **Backend**             | Python (FastAPI)                             | Ringan, async, mudah integrasi PostgreSQL                                         |
+| **Frontend**            | Next.js / Streamlit                          | Next.js untuk produksi, Streamlit untuk prototype                                 |
+| **Hosting**             | Vercel (frontend) + Railway/Render (backend) | Murah, managed, tanpa GPU                                                         |
+| **OCR (opsional)**      | PaddleOCR Arabic / Tesseract                 | Kalau ada PDF scan kitab klasik                                                   |
 
 ---
 
 ## 8. Plan Implementasi (Phased)
 
 ### Phase 0: Foundation (Minggu 1)
+
 - [ ] Daftar akun: Supabase, Cohere, Anthropic
 - [ ] Download dataset: Tanzil Quran, hadith-json
 - [ ] Setup PostgreSQL + pgvector di Supabase
 - [ ] Buat tabel: doc_parents, doc_children, principle_index, concept_links, chat_sessions, chat_messages
 
 ### Phase 1: Quran + Hadith MVP (Minggu 2–3)
+
 - [ ] Parse & insert Quran (parent=Surah, child=Ayat)
 - [ ] Parse & insert Hadith (parent=Bab, child=Hadith)
 - [ ] Build embedding pipeline (Cohere API — concatenate Arab+Indonesia)
@@ -628,6 +648,7 @@ Extract ayat prinsip dari Quran (manual list QS)
 **Deliverable:** Chatbot yang bisa jawab pertanyaan Quran & Hadith dengan citation.
 
 ### Phase 2: Smart Router + Principle Index (Minggu 4–5)
+
 - [ ] Build Principle Index (input manual 10-20 prinsip utama)
 - [ ] Build Smart Router Stage 2 (query decomposition)
 - [ ] Build Smart Router Stage 3 (source routing)
@@ -638,6 +659,7 @@ Extract ayat prinsip dari Quran (manual list QS)
 **Deliverable:** Chatbot bisa jawab dengan prinsip umum + detail fikih.
 
 ### Phase 3: Kitab Klasik Pra-600 H + LLM Cleaning (Minggu 6–8)
+
 - [ ] Download Shamela Standard (4 GB)
 - [ ] Eksplorasi metadata, filter kitab pra-600 H
 - [ ] Script ekstraksi .bok → teks mentah
@@ -650,6 +672,7 @@ Extract ayat prinsip dari Quran (manual list QS)
 **Deliverable:** Chatbot bisa jawab dari kitab klasik dengan citation halaman/bab.
 
 ### Phase 4: Polish & Scale (Minggu 9–10)
+
 - [ ] Hybrid retrieval tuning (RRF parameter optimization)
 - [ ] Re-ranker (cross-encoder API atau LLM-based scoring)
 - [ ] Chat history & context awareness
@@ -771,7 +794,7 @@ Teks:
 Kamu adalah asisten pengetahuan Islam klasik. Aturan mutlak:
 
 1. JAWAB HANYA berdasarkan dokumen yang diberikan dalam context.
-2. Jika dokumen tidak cukup, jawab: "Maaf, saya belum menemukan dalil yang cukup 
+2. Jika dokumen tidak cukup, jawab: "Maaf, saya belum menemukan dalil yang cukup
    untuk pertanyaan ini dalam sumber yang tersedia."
 3. Jangan pernah berfatwa atau memberikan pendapat pribadi.
 4. Prioritas sumber: Quran → Hadith Mutawatir/Sahih → Hadith Hasan → Tafsir → Kitab Fikih/Aqidah.
@@ -783,7 +806,7 @@ Kamu adalah asisten pengetahuan Islam klasik. Aturan mutlak:
 7. Jika hadith dhaif, beri peringatan: "Hadith ini dinilai dhaif oleh para ulama."
 8. Bahasa jawaban: sesuaikan dengan bahasa pertanyaan user (Indonesia atau English).
 9. Sertakan teks Arab asli untuk ayat dan hadith yang dikutip.
-10. Jika context menyertakan prinsip umum (kemudahan, rahmat), gunakan sebagai 
+10. Jika context menyertakan prinsip umum (kemudahan, rahmat), gunakan sebagai
     "lensa" untuk menjelaskan detail fikih. Jangan biarkan jawaban terdengar kering/teknis.
 11. Akhiri dengan disclaimer: "Untuk fatwa spesifik, silakan konsultasi ulama setempat."
 ```
@@ -792,38 +815,38 @@ Kamu adalah asisten pengetahuan Islam klasik. Aturan mutlak:
 
 ## 10. Safety & Quality Control
 
-| Layer | Mekanisme |
-|-------|-----------|
-| **Source Grounding** | LLM hanya boleh kutip dari context yang diberikan. Prompt eksplisit. |
-| **Citation Validator** | Post-process: cek apakah ayat/hadith yang dikutip benar ada di retrieved chunks. |
-| **Hadith Grade Flag** | Kalau grade='Dhaif' atau tidak ada, tampilkan peringatan. |
-| **Contradiction Handler** | Kalau retrieve 2 sumber bertentangan (beda madzhab), sebutkan keduanya. |
-| **Principle Consistency** | Cek apakah jawaban selaras dengan prinsip umum yang di-retrieve. |
-| **Toxic/Bias Filter** | Hindari jawaban yang menyerang madzhab/organisasi tertentu. |
-| **Disclaimer** | Selalu akhiri dengan disclaimer fatwa. |
+| Layer                     | Mekanisme                                                                        |
+| ------------------------- | -------------------------------------------------------------------------------- |
+| **Source Grounding**      | LLM hanya boleh kutip dari context yang diberikan. Prompt eksplisit.             |
+| **Citation Validator**    | Post-process: cek apakah ayat/hadith yang dikutip benar ada di retrieved chunks. |
+| **Hadith Grade Flag**     | Kalau grade='Dhaif' atau tidak ada, tampilkan peringatan.                        |
+| **Contradiction Handler** | Kalau retrieve 2 sumber bertentangan (beda madzhab), sebutkan keduanya.          |
+| **Principle Consistency** | Cek apakah jawaban selaras dengan prinsip umum yang di-retrieve.                 |
+| **Toxic/Bias Filter**     | Hindari jawaban yang menyerang madzhab/organisasi tertentu.                      |
+| **Disclaimer**            | Selalu akhiri dengan disclaimer fatwa.                                           |
 
 ---
 
 ## 11. Estimasi Biaya (API-Only, per 1.000 query)
 
-| Komponen | Biaya per 1K query | Keterangan |
-|----------|-------------------|------------|
-| **Embedding** (Cohere) | ~$0.15 | 20 chunk × 1K query = 20K embeddings |
-| **LLM Router** (Claude Haiku) | ~$0.30 | Intent detection + query decomposition |
-| **LLM Generator** (Claude Sonnet) | ~$2.50 | Context panjang (~80K token dengan principle+parent) |
-| **PostgreSQL** (Supabase) | $0 (gratis tier) | Sampai 500MB–1GB |
-| **Hosting** (Vercel + Render) | $0–$7/bulan | Tier gratis cukup untuk MVP |
-| **Total per 1K query** | **~$2.95** | Bisa turun dengan caching & query optimization |
+| Komponen                          | Biaya per 1K query | Keterangan                                           |
+| --------------------------------- | ------------------ | ---------------------------------------------------- |
+| **Embedding** (Cohere)            | ~$0.15             | 20 chunk × 1K query = 20K embeddings                 |
+| **LLM Router** (Claude Haiku)     | ~$0.30             | Intent detection + query decomposition               |
+| **LLM Generator** (Claude Sonnet) | ~$2.50             | Context panjang (~80K token dengan principle+parent) |
+| **PostgreSQL** (Supabase)         | $0 (gratis tier)   | Sampai 500MB–1GB                                     |
+| **Hosting** (Vercel + Render)     | $0–$7/bulan        | Tier gratis cukup untuk MVP                          |
+| **Total per 1K query**            | **~$2.95**         | Bisa turun dengan caching & query optimization       |
 
 ### Biaya One-Time: LLM Data Cleaning (Kitab Klasik)
 
-| Tahap | Token per Kitab | Biaya per Kitab (Haiku) |
-|-------|-----------------|------------------------|
-| Text Cleaning | ~100K-300K | ~$0.10-0.30 |
-| Metadata Extraction | ~50K-100K | ~$0.05-0.10 |
-| Principle Tagging | ~50K-100K | ~$0.05-0.10 |
-| **Total per Kitab** | | **~$0.20-0.50** |
-| **10 Kitab** | | **~$2-5 total** |
+| Tahap               | Token per Kitab | Biaya per Kitab (Haiku) |
+| ------------------- | --------------- | ----------------------- |
+| Text Cleaning       | ~100K-300K      | ~$0.10-0.30             |
+| Metadata Extraction | ~50K-100K       | ~$0.05-0.10             |
+| Principle Tagging   | ~50K-100K       | ~$0.05-0.10             |
+| **Total per Kitab** |                 | **~$0.20-0.50**         |
+| **10 Kitab**        |                 | **~$2-5 total**         |
 
 Sangat murah dibanding data berantakan di production.
 
@@ -831,36 +854,36 @@ Sangat murah dibanding data berantakan di production.
 
 ## 12. Risiko & Mitigasi
 
-| Risiko | Mitigasi |
-|--------|----------|
-| **OCR/ekstraksi kitab Shamela tidak bersih** | LLM Haiku cleaning pipeline + manual sampling 100 chunk |
-| **Halusinasi LLM mengarang ayat/hadith** | Strict prompt + citation validator + hanya jawab dari retrieved context |
-| **Terjemahan tafsir berhak cipta** | Untuk MVP, gunakan terjemahan public domain atau buat terjemahan sendiri |
-| **Kitab pra-600 H sulit diverifikasi tahun** | Cross-check dengan OpenITI metadata dan ensiklopedi ulama klasik |
-| **Principle Index tidak lengkap** | Mulai dengan 10-20 prinsip utama, expand secara iteratif |
-| **Query Arabic → retrieve dokumen Arab** | Cohere multilingual embedding menangani cross-lingual; test dengan benchmark |
-| **Biaya API tinggi untuk query panjang** | Cache embedding, gunakan Haiku untuk router, optimasi context window |
-| **LLM cleaning salah interpretasi teks Arab** | Simpan `text_raw` sebagai backup; review sampling manual via translator |
+| Risiko                                        | Mitigasi                                                                     |
+| --------------------------------------------- | ---------------------------------------------------------------------------- |
+| **OCR/ekstraksi kitab Shamela tidak bersih**  | LLM Haiku cleaning pipeline + manual sampling 100 chunk                      |
+| **Halusinasi LLM mengarang ayat/hadith**      | Strict prompt + citation validator + hanya jawab dari retrieved context      |
+| **Terjemahan tafsir berhak cipta**            | Untuk MVP, gunakan terjemahan public domain atau buat terjemahan sendiri     |
+| **Kitab pra-600 H sulit diverifikasi tahun**  | Cross-check dengan OpenITI metadata dan ensiklopedi ulama klasik             |
+| **Principle Index tidak lengkap**             | Mulai dengan 10-20 prinsip utama, expand secara iteratif                     |
+| **Query Arabic → retrieve dokumen Arab**      | Cohere multilingual embedding menangani cross-lingual; test dengan benchmark |
+| **Biaya API tinggi untuk query panjang**      | Cache embedding, gunakan Haiku untuk router, optimasi context window         |
+| **LLM cleaning salah interpretasi teks Arab** | Simpan `text_raw` sebagai backup; review sampling manual via translator      |
 
 ---
 
 ## 13. Appendix: Daftar Kitab Prioritas untuk Phase 3
 
-| # | Kitab | Pengarang | Wafat | Bidang | Status |
-|---|-------|-----------|-------|--------|--------|
-| 1 | Al-Mudawwanah al-Kubra | Sahnun | 240 H | Fikih | ⭐ Prioritas |
-| 2 | Al-Umm | Imam Syafi'i | 204 H | Fikih | ⭐ Prioritas |
-| 3 | Syarh Aqidah Thahawiyah | Imam Thahawi | 321 H | Aqidah | ⭐ Prioritas |
-| 4 | Ihya Ulumuddin | Imam Ghazali | 505 H | Tasawuf | ⭐ Prioritas |
-| 5 | Tarikh ath-Thabari | Imam Tabari | 310 H | Sejarah | ⭐ Prioritas |
-| 6 | Al-Kamil fi at-Tarikh | Ibn Atsir | 630 H | Sejarah | ⭐ Prioritas |
-| 7 | Al-Muwatha' | Imam Malik | 179 H | Hadith/Fikih | ⭐ Prioritas |
-| 8 | Musnad Imam Ahmad | Imam Ahmad | 241 H | Hadith | ⭐ Prioritas |
-| 9 | Sunan ad-Darimi | Imam Darimi | 255 H | Hadith | ⭐ Prioritas |
-| 10 | Tahdzib al-Akhlaq | Ibn Miskawayh | 421 H | Akhlak | ⭐ Prioritas |
-| 11 | Al-Mabsut (bagian) | Imam Sarakhsi | 483 H | Fikih | Medium |
-| 12 | Al-Hidayah | Al-Marghinani | 593 H | Fikih | Medium |
+| #   | Kitab                   | Pengarang     | Wafat | Bidang       | Status       |
+| --- | ----------------------- | ------------- | ----- | ------------ | ------------ |
+| 1   | Al-Mudawwanah al-Kubra  | Sahnun        | 240 H | Fikih        | ⭐ Prioritas |
+| 2   | Al-Umm                  | Imam Syafi'i  | 204 H | Fikih        | ⭐ Prioritas |
+| 3   | Syarh Aqidah Thahawiyah | Imam Thahawi  | 321 H | Aqidah       | ⭐ Prioritas |
+| 4   | Ihya Ulumuddin          | Imam Ghazali  | 505 H | Tasawuf      | ⭐ Prioritas |
+| 5   | Tarikh ath-Thabari      | Imam Tabari   | 310 H | Sejarah      | ⭐ Prioritas |
+| 6   | Al-Kamil fi at-Tarikh   | Ibn Atsir     | 630 H | Sejarah      | ⭐ Prioritas |
+| 7   | Al-Muwatha'             | Imam Malik    | 179 H | Hadith/Fikih | ⭐ Prioritas |
+| 8   | Musnad Imam Ahmad       | Imam Ahmad    | 241 H | Hadith       | ⭐ Prioritas |
+| 9   | Sunan ad-Darimi         | Imam Darimi   | 255 H | Hadith       | ⭐ Prioritas |
+| 10  | Tahdzib al-Akhlaq       | Ibn Miskawayh | 421 H | Akhlak       | ⭐ Prioritas |
+| 11  | Al-Mabsut (bagian)      | Imam Sarakhsi | 483 H | Fikih        | Medium       |
+| 12  | Al-Hidayah              | Al-Marghinani | 593 H | Fikih        | Medium       |
 
 ---
 
-*Dokumen ini adalah living document. Update seiring progress development.*
+_Dokumen ini adalah living document. Update seiring progress development._

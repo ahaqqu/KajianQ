@@ -76,9 +76,7 @@ export function buildCorpus(
     // whose file is present would silently drop its metadata).
     for (const ayah of ayahs) {
       if (!surahs.some((s) => s.number === ayah.surah)) {
-        throw new Error(
-          `quran integrity: surah ${ayah.surah} has ayah files but no list entry`,
-        );
+        throw new Error(`quran integrity: surah ${ayah.surah} has ayah files but no list entry`);
       }
     }
     const subsetSurahs = surahs.filter((s) => ingested.has(s.number));

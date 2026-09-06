@@ -1,8 +1,4 @@
-import {
-  HADITH_COLLECTIONS,
-  type HadithCollection,
-  type HadithRecord,
-} from "./hadith-source";
+import { HADITH_COLLECTIONS, type HadithCollection, type HadithRecord } from "./hadith-source";
 
 /**
  * Parsers for the hadith corpus sources (#7), all keyed to the source's own
@@ -78,7 +74,12 @@ export function parseHadithEdition(
       sections?: Record<string, string>;
       section_details?: Record<
         string,
-        { hadithnumber_first?: string | number; hadithnumber_last?: string | number; arabicnumber_first?: string | number; arabicnumber_last?: string | number }
+        {
+          hadithnumber_first?: string | number;
+          hadithnumber_last?: string | number;
+          arabicnumber_first?: string | number;
+          arabicnumber_last?: string | number;
+        }
       >;
     };
     hadiths?: unknown;
@@ -129,7 +130,9 @@ export function parseHadithEdition(
       ref === null ||
       typeof ref.book !== "number"
     ) {
-      throw new Error(`hadith source: ${collection}/${language} hadith row missing required fields`);
+      throw new Error(
+        `hadith source: ${collection}/${language} hadith row missing required fields`,
+      );
     }
     const hadithnumber = String(h.hadithnumber);
     // muslim's book-0 rows lack arabicnumber entirely — fall back to the
@@ -155,7 +158,10 @@ export function parseHadithEdition(
         }
         return g as { name: string; grade: string };
       }),
-      reference: { book: ref.book, hadith: (ref.hadith as string | number | undefined) ?? hadithnumber },
+      reference: {
+        book: ref.book,
+        hadith: (ref.hadith as string | number | undefined) ?? hadithnumber,
+      },
     };
   });
   return { collection, language, sections, sectionDetails, hadiths };
@@ -221,10 +227,14 @@ export function alignEditions(
 
 function assertSameCollection(a: HadithEdition, b: HadithEdition): void {
   if (a.collection !== b.collection) {
-    throw new Error(`hadith source: aligning editions of different collections (${a.collection} vs ${b.collection})`);
+    throw new Error(
+      `hadith source: aligning editions of different collections (${a.collection} vs ${b.collection})`,
+    );
   }
   if (a.language !== "arabic" || b.language !== "indonesian") {
-    throw new Error(`hadith source: align needs (arabic, indonesian) editions, got (${a.language}, ${b.language})`);
+    throw new Error(
+      `hadith source: align needs (arabic, indonesian) editions, got (${a.language}, ${b.language})`,
+    );
   }
 }
 
@@ -273,7 +283,9 @@ export function assertHadithIntegrity(
       throw new Error(`hadith integrity: ${r.collection} record with empty hadith number`);
     }
     if (!Number.isInteger(r.bookNo) || r.bookNo < 0) {
-      throw new Error(`hadith integrity: ${r.collection} ${r.hadithNo} has invalid book number ${r.bookNo}`);
+      throw new Error(
+        `hadith integrity: ${r.collection} ${r.hadithNo} has invalid book number ${r.bookNo}`,
+      );
     }
     if (r.textAr.trim().length === 0) {
       throw new Error(`hadith integrity: ${r.collection} ${r.hadithNo} has no Arabic text`);

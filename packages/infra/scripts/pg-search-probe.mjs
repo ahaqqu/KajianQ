@@ -48,9 +48,7 @@ async function hasTsvectorConfigs() {
 }
 
 const extensions = await availableExtensions();
-const byName = Object.fromEntries(
-  extensions.map((e) => [e.name, e]),
-);
+const byName = Object.fromEntries(extensions.map((e) => [e.name, e]));
 
 const report = {
   probedAt: new Date().toISOString(),
