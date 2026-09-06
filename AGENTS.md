@@ -81,7 +81,7 @@ Tickets carry model routing labels applied by the `to-tickets` skill and consume
 
 ## Definition of Done
 
-- [ ] All CI gates green: `bun run check`, `bun run test`, `bun run boundary`, `bun run size-limit`, `bun run agentic-limits`, `bun run truth`, `bun run openapi:check`, `bun run template-gate`, plus security scans.
+- [ ] All CI gates green: `bun run check`, `bun run lint`, `bun run test`, `bun run boundary`, `bun run size-limit`, `bun run agentic-limits`, `bun run truth`, `bun run openapi:check`, `bun run template-gate`, plus security scans.
 - [ ] Domain boundary holds: the verification scans in `.agents/skills/dars-pluggability/SKILL.md` return only allowed hits.
 - [ ] Traceability holds: any new LLM call records model/tokens/cost to a trace; any new persisted answer path writes a trace record the UI can render. Checklist: `.agents/skills/kajianq-traceability/SKILL.md`.
 - [ ] Contracts written before implementation; pipeline wiring goes through the `runPipeline` runner — never hand-assembled traces or ad hoc stage wiring (ADR-0021).
