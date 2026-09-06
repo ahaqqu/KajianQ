@@ -47,3 +47,7 @@ packages/kajianq-domain/src/fixtures/
 scripts/role-gh-identity/fixtures/
 scripts/iteration-guardrail/fixtures/
 .zcode/
+
+# Frozen history (AGENTS.md: "INITIAL_IDEA.md is frozen history — never
+# update it"). Formatting counts as an update; keep it byte-identical.
+INITIAL_IDEA.md
