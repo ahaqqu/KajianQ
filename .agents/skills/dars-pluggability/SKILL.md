@@ -72,3 +72,16 @@ The engine's seams are now `Effect<A, E, R>`-shaped. When building or reviewing 
 - **Retry policy is per-kind `Schedule`s** on the fallback chain (`defaultRetrySchedule` / `perKindRetrySchedule`), injectable via `ResolveOptions.retrySchedule` — do not hand-roll `try/catch` retry loops around provider calls.
 - **Bounded concurrency is opt-in at the knob** (e.g. `IngestionDeps.embedConcurrency` via `Effect.forEach`), never an unbounded `Promise.all` over a batch.
 - The HTTP edge stays Hono; apps bridge via `@app/rag-core/interop` (`runPipelinePromise`, `engineStreamToWeb`) — `apps/api` carries no direct `effect` dependency (Appendix A: Bun would resolve alchemy's `effect@4-rc` peer to it).
+
+## Effect-era tests (ADR-0027)
+
+Engine code returns `Effect` values; tests run them via `Effect.runPromise` / `Effect.runPromiseExit` under vitest (no `@effect/vitest`, no test-clock dependency — inject `now`/fakes through the same seams production uses):
+
+- **Success path:** `await Effect.runPromise(effect)` — or the promise-level bridge under test (`runPipelinePromise`).
+- **Failure path:** `const exit = await Effect.runPromiseExit(effect)` then `Cause.failureOption(exit.cause)` — assert on the typed error (`_tag`, `kind`, `stage`), never on the `FiberFailure` wrapper (its `message` is the opaque "An error has occurred"; the cause rides a module symbol).
+- **Services:** provide tags with `Effect.provideService` / a `Layer` (see `packages/rag-core/src/effect-spike.test.ts`); a `Context.Tag` service in tests is a plain object (see `packages/rag-core/src/run.test.ts` for the `RunContext` pattern).
+- **Interruption semantics (probed on effect@3.22.1):** `Fiber.interrupt` must be _run_ as an Effect; interruption-tracking callbacks attach via `.pipe(Effect.onExit(...))` + `Cause.isInterruptedOnly` — `yield* Effect.onExit(...)` inside `Effect.gen` does not register.
+- **Exemplars:** `packages/rag-core/src/run.test.ts` (stages as Effects, finalizers, config threading), `packages/infra/src/providers/chat-stream.test.ts` (abort + deferred-cost settlement), `packages/infra/src/providers/provider-factory.test.ts` (fast injected retry schedules).
+- **Keep retry schedules fast:** inject `perKindRetrySchedule("1 millis", "1 millis")` in tests; never sleep through real backoff.
+
+(Home note: this section lives in a fork-owned skill because `.agents/skills/writing-tests/` is template-owned — byte-identical to the upstream baseline per ADR-0024; Effect-era test guidance belongs to this repo's fork-owned surface.)
