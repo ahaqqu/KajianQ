@@ -3,9 +3,7 @@ export interface ConfigStore {
   set(key: string, value: string): Promise<void>;
 }
 
-export function createMemoryConfigStore(
-  initial: Record<string, string> = {},
-): ConfigStore {
+export function createMemoryConfigStore(initial: Record<string, string> = {}): ConfigStore {
   const map = new Map(Object.entries(initial));
 
   return {

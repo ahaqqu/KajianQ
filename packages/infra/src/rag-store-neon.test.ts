@@ -26,9 +26,7 @@ let store: RagStore;
 let cleanup: () => Promise<void>;
 
 function vec(dim: number, seed: number): number[] {
-  return Array.from({ length: dim }, (_, i) =>
-    Math.sin(seed * 1000 + i * 0.01),
-  );
+  return Array.from({ length: dim }, (_, i) => Math.sin(seed * 1000 + i * 0.01));
 }
 
 run("RagStore contract (real Neon)", () => {

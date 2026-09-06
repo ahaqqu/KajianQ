@@ -1,10 +1,6 @@
 import type { SourceInput, SourceParser } from "@app/rag-ingest";
-import {
-  alignEditions,
-  assertHadithIntegrity,
-  parseHadithEdition,
-  type AlignmentStats,
-} from "./hadith-parse";
+import { alignEditions, type AlignmentStats } from "./hadith-align";
+import { assertHadithIntegrity, parseHadithEdition } from "./hadith-parse";
 import {
   HADITH_COLLECTION_NAMES,
   hadithMetadata,
@@ -155,7 +151,9 @@ export function decodeHadithArchive(input: SourceInput): {
       );
     }
     if (collections.includes(parsed.collection)) {
-      throw new Error(`hadith ingestion: archive bundle has duplicate collection ${parsed.collection}`);
+      throw new Error(
+        `hadith ingestion: archive bundle has duplicate collection ${parsed.collection}`,
+      );
     }
     collections.push(parsed.collection);
     arabic[parsed.collection] = parsed.arabic;
@@ -202,7 +200,7 @@ export function hadithSourceParser(
     const corpus = buildHadithCorpus(decoded, expected);
     const byBook = groupByBook(corpus.records);
     const parents = [];
-    for (const [key, records] of byBook) {
+    for (const [, records] of byBook) {
       const first = records[0];
       if (first === undefined) continue;
       const title =
@@ -275,8 +273,6 @@ export function gradeConsolidationStats(records: readonly HadithRecord[]): {
  * hadith are graded, how many the dhaif-wins policy demoted, how many are
  * ungraded (grade = null, never fabricated).
  */
-export function corpusGradeStats(
-  corpus: HadithCorpus,
-): ReturnType<typeof gradeConsolidationStats> {
+export function corpusGradeStats(corpus: HadithCorpus): ReturnType<typeof gradeConsolidationStats> {
   return gradeConsolidationStats(corpus.records);
 }

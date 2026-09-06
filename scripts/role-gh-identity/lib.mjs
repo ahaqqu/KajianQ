@@ -72,7 +72,11 @@ export function invokesBareGh(command) {
 export function resolveRole(payload, metadataLookup, sessionId) {
   const t = payload?.agent_type;
   if (typeof t === "string" && t.length > 0) return t;
-  if (typeof metadataLookup !== "function" || typeof sessionId !== "string" || sessionId.length === 0) {
+  if (
+    typeof metadataLookup !== "function" ||
+    typeof sessionId !== "string" ||
+    sessionId.length === 0
+  ) {
     return null;
   }
   try {
@@ -96,12 +100,13 @@ export function evaluateIdentityCall({ command, role, config }) {
   if (!config?.enabled) return { deny: false };
   if (typeof role !== "string" || role.length === 0) return { deny: false };
   const entry = config.roles?.[role];
-  if (!entry || typeof entry.tokenFile !== "string" || entry.tokenFile.length === 0) return { deny: false };
+  if (!entry || typeof entry.tokenFile !== "string" || entry.tokenFile.length === 0)
+    return { deny: false };
   if (!invokesBareGh(command)) return { deny: false };
   return { deny: true, reason: buildDenyReason(role, entry) };
 }
 
-function buildDenyReason(role, entry) {
+function buildDenyReason(role, _entry) {
   return [
     `ROLE GH IDENTITY: this session runs as role "${role}", which has a dedicated GitHub identity. Bare \`gh\` calls would post as the owner's personal account.`,
     "",

@@ -33,7 +33,7 @@ Effect (v3) was chosen over cordis and over more hand-rolling because it is runt
 - Engine purity holds structurally: `effect` is domain- and vendor-neutral, so the boundary gate needs no rule changes and no exemptions; the `truth` gate is satisfied by the migration PRs' importers.
 - The agentic-limits gate (≤300 lines, ≤5 direct imports per file) applies to Effect-style files like any other; `Effect.gen` pipelines are expected to fit, with file splits preferred over exemptions.
 - Learning curve is a real cost: every contributor to engine packages needs Effect fluency. Mitigated by the seam-first architecture — the API edge, frontend, and domain pack stay readable without it.
-- ADR-0021's revisit trigger is satisfied *for Effect specifically* by this ADR (the second-consumer and introspection conditions are waived as no longer relevant to the decision; the Workers-proof condition is retained as the §2 gate). Adoption of any *further* framework layer (`@effect/platform` server, `@effect/rpc`) still requires its own ADR.
+- ADR-0021's revisit trigger is satisfied _for Effect specifically_ by this ADR (the second-consumer and introspection conditions are waived as no longer relevant to the decision; the Workers-proof condition is retained as the §2 gate). Adoption of any _further_ framework layer (`@effect/platform` server, `@effect/rpc`) still requires its own ADR.
 
 ## Revisit triggers
 

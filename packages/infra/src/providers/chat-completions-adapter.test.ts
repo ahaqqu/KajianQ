@@ -155,10 +155,9 @@ describe("chat-completions adapter", () => {
   });
 
   it("stream without usage reports an estimated cost (never metered-zero)", async () => {
-    const sse = [
-      'data: {"choices":[{"delta":{"content":"abcdefgh"}}]}',
-      "data: [DONE]",
-    ].join("\n\n");
+    const sse = ['data: {"choices":[{"delta":{"content":"abcdefgh"}}]}', "data: [DONE]"].join(
+      "\n\n",
+    );
     const fetchImpl: FetchLike = async () =>
       new Response(sse, { status: 200, headers: { "content-type": "text/event-stream" } });
     const provider = makeProvider("m-chat", fetchImpl);

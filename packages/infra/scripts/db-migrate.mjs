@@ -35,11 +35,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const DEFAULT_MIGRATIONS_DIR = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "migrations",
-);
+const DEFAULT_MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "migrations");
 
 // Active migrations directory; overridden by `--dir`. One shared ledger
 // (schema_migrations) covers all dirs — migration *names* are unique across
@@ -73,9 +69,7 @@ function parseArgs(argv) {
 /** Names of up-migration files in order, e.g. ["0001_init.sql", ...]. */
 async function listMigrations() {
   const files = await readdir(MIGRATIONS_DIR);
-  return files
-    .filter((f) => /^\d+_.+\.sql$/.test(f) && !f.endsWith(".down.sql"))
-    .sort();
+  return files.filter((f) => /^\d+_.+\.sql$/.test(f) && !f.endsWith(".down.sql")).sort();
 }
 
 /** Strip the file's own BEGIN/COMMIT wrapper — the runner owns the transaction. */
@@ -97,9 +91,7 @@ async function ensureLedger(client) {
 
 async function appliedNames(client) {
   await ensureLedger(client);
-  const { rows } = await client.query(
-    `SELECT name FROM schema_migrations ORDER BY name`,
-  );
+  const { rows } = await client.query(`SELECT name FROM schema_migrations ORDER BY name`);
   return new Set(rows.map((r) => r.name));
 }
 
@@ -161,12 +153,7 @@ async function down(client, step) {
       fail(`missing rollback file for ${file} (expected ${downName})`);
     }
     console.log(`down: rolling back ${file} …`);
-    await applyFile(
-      client,
-      downName,
-      `DELETE FROM schema_migrations WHERE name = $1`,
-      [file],
-    );
+    await applyFile(client, downName, `DELETE FROM schema_migrations WHERE name = $1`, [file]);
     console.log(`down: rolled back  ${file}`);
   }
 }
@@ -199,8 +186,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(
-    `db-migrate: ${err instanceof Error ? err.message : String(err)}`,
-  );
+  console.error(`db-migrate: ${err instanceof Error ? err.message : String(err)}`);
   process.exit(1);
 });

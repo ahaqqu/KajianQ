@@ -178,9 +178,9 @@ describe("runPipeline", () => {
         },
       },
     });
-    await expect(
-      runPipeline(stages, query, {}, { traceId: "t", now: () => 0 }),
-    ).rejects.toThrow("boom");
+    await expect(runPipeline(stages, query, {}, { traceId: "t", now: () => 0 })).rejects.toThrow(
+      "boom",
+    );
     expect(order).toEqual(["cleanup"]);
   });
 

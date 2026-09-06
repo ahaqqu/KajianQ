@@ -27,7 +27,7 @@ The product promise (spec §1.5, ADR-0007): **never hide the machinery.** Tracea
 
 ## When writing or reviewing code, ask
 
-- If this answer is wrong, can the admin reconstruct *exactly* why from persisted records alone — no server logs, no re-running?
+- If this answer is wrong, can the admin reconstruct _exactly_ why from persisted records alone — no server logs, no re-running?
 - Does every new LLM call inside a loop get aggregated into the parent trace (or its own linked trace), or does it vanish?
 - If a user flags "irrelevant chunk" or "wrong citation" at a trace anchor, does the stored payload make that element identifiable without guessing?
 - Does the cost number on this run equal the sum of its recorded LLM calls? (If not, one call is untraced.)
@@ -44,8 +44,8 @@ The product promise (spec §1.5, ADR-0007): **never hide the machinery.** Tracea
 
 ## The litmus test
 
-KajianQ's trust model is: *a skeptical user or scholar can open any answer and see everything the system used to produce it, and the owner can turn every failure report into a regression test.* If your change makes that sentence harder to keep, the change is wrong — regardless of how much simpler the code looks.
+KajianQ's trust model is: _a skeptical user or scholar can open any answer and see everything the system used to produce it, and the owner can turn every failure report into a regression test._ If your change makes that sentence harder to keep, the change is wrong — regardless of how much simpler the code looks.
 
 ## The generator's bound (ADR-0015)
 
-Traceability also covers *what the generator was not allowed to do.* When building or reviewing the Generator or its post-processing, check that the answer surfaces classical reasoning **as cited** (ta'lil, madzhab disagreement, applied Principles) and never synthesizes a new ruling to fill a gap. A "helpful" completion that closes a gap by inference is a trust violation the trace must make visible — if the answer would look different with a fully-traced prompt, the trace is lying by omission, and that is a defect on the same level as a missing citation.
+Traceability also covers _what the generator was not allowed to do._ When building or reviewing the Generator or its post-processing, check that the answer surfaces classical reasoning **as cited** (ta'lil, madzhab disagreement, applied Principles) and never synthesizes a new ruling to fill a gap. A "helpful" completion that closes a gap by inference is a trust violation the trace must make visible — if the answer would look different with a fully-traced prompt, the trace is lying by omission, and that is a defect on the same level as a missing citation.

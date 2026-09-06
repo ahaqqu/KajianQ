@@ -19,15 +19,15 @@
     "@app/infra": "workspace:*",
     "@app/rate": "workspace:*",
     "@hono/standard-validator": "0.4.0",
-    "@sentry/cloudflare": "10.70.0",
+    "@sentry/cloudflare": "10.71.0",
     "@standard-community/standard-json": "0.3.5",
     "@standard-community/standard-openapi": "0.2.9",
     "@valibot/to-json-schema": "1.7.1",
-    "hono": "4.13.2",
+    "hono": "4.13.5",
     "hono-openapi": "1.3.1"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "5.20260816.1",
+    "@cloudflare/workers-types": "5.20260826.1",
     "@effect/platform-bun": "4.0.0-rc.112",
     "@effect/platform-node": "4.0.0-rc.112",
     "alchemy": "2.0.0-beta.76",

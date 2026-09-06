@@ -3,6 +3,8 @@ name: "senior-implementer"
 description: "Senior implementer for the manager-orchestrated agentic workflow. Use for tickets the manager assesses as hard, or tickets explicitly labeled for high-reasoning implementation (e.g. `model:high`) — these carry correctness/trust invariants that fail silently. Do not downgrade these to the regular implementer."
 color: green
 model: "custom:d5585e04-940a-41f6-a9ec-320bb4fccd7e:glm-5.3%3Acloud"
+tools:
+  - "*"
 thoughtLevel: high
 skills:
   - guided-implementation
