@@ -35,3 +35,8 @@ scripts/worktree-cleanup.mjs
 tsconfig.base.json
 tsconfig.json
 vitest.config.ts
+
+# Raw source fixtures are byte-exact copies of source data (AGENTS.md
+# data-integrity rules) — formatters must never touch them.
+**/fixtures/**
+.zcode/

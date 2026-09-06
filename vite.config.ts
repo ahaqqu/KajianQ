@@ -22,6 +22,12 @@ export default defineConfig({
       "**/coverage/**",
       "**/test-results/**",
       "**/playwright-report/**",
+      // Raw source fixtures are byte-exact copies of source data
+      // (AGENTS.md data-integrity rules) — formatters must never touch them.
+      "**/fixtures/**",
+      // Harness config follows the template as a merge path (ADR-0024);
+      // keep it out of the formatting/lint corpus to avoid merge churn.
+      ".zcode/**",
       "bun.lock",
       ...templateOwned.map((p) => (p.endsWith("/") ? `${p}**` : p)),
     ],
