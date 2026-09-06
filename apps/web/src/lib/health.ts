@@ -1,13 +1,8 @@
-import {
-  HealthResponseSchema,
-  type HealthResponse,
-} from "@app/contracts";
+import { HealthResponseSchema, type HealthResponse } from "@app/contracts";
 import * as v from "valibot";
 import { apiFetch } from "./api";
 
-export async function fetchHealth(
-  signal?: AbortSignal,
-): Promise<HealthResponse> {
+export async function fetchHealth(signal?: AbortSignal): Promise<HealthResponse> {
   const res = await apiFetch("/health", { signal });
   if (!res.ok) {
     throw new Error(`health_http_${res.status}`);

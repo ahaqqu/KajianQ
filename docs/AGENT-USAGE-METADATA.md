@@ -10,13 +10,13 @@ with nothing surfacing it).
 
 ## Pieces
 
-| Path | Role | template-sync ownership |
-| --- | --- | --- |
-| `scripts/agent-usage-metadata/hook.mjs` | Hook entrypoint the runtime spawns with the payload JSON on stdin. | `overwrite` — forks inherit updates |
-| `scripts/agent-usage-metadata/lib.mjs` | Pure logic: payload contract, `model_usage` row summation, guarded metadata merge. | `overwrite` — forks inherit updates |
-| `.zcode/config.json` | Workspace hook config: enables configuration-file hooks and wires the capture points (see below). | `merge` — forks inherit the wiring via sync and may customize it locally |
-| `tests/scripts/agent-usage-metadata.test.mjs` | Unit + subprocess tests for every acceptance criterion. | unlisted — project-owned, replicate (below) |
-| `docs/AGENT-USAGE-METADATA.md` | This document. | unlisted — project-owned, replicate (below) |
+| Path                                          | Role                                                                                              | template-sync ownership                                                  |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `scripts/agent-usage-metadata/hook.mjs`       | Hook entrypoint the runtime spawns with the payload JSON on stdin.                                | `overwrite` — forks inherit updates                                      |
+| `scripts/agent-usage-metadata/lib.mjs`        | Pure logic: payload contract, `model_usage` row summation, guarded metadata merge.                | `overwrite` — forks inherit updates                                      |
+| `.zcode/config.json`                          | Workspace hook config: enables configuration-file hooks and wires the capture points (see below). | `merge` — forks inherit the wiring via sync and may customize it locally |
+| `tests/scripts/agent-usage-metadata.test.mjs` | Unit + subprocess tests for every acceptance criterion.                                           | unlisted — project-owned, replicate (below)                              |
+| `docs/AGENT-USAGE-METADATA.md`                | This document.                                                                                    | unlisted — project-owned, replicate (below)                              |
 
 ## Capture points
 
@@ -53,7 +53,7 @@ preserved verbatim.
   input tokens; capture 2 after continuation: 2 requests / 21,395 input
   tokens, matching the DB exactly).
 - **Idempotency.** Each capture carries a stable fingerprint (request counts
-  + token sums); re-capturing the same DB state does not duplicate history.
+  - token sums); re-capturing the same DB state does not duplicate history.
 - **Never corrupts.** `metadata.json` is parsed and validated before any
   write and writes are atomic (temp file + rename in the target directory).
   An unparseable record is never written into — the capture is skipped with

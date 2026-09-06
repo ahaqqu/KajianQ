@@ -4,7 +4,13 @@ import { describe, expect, it } from "vitest";
 import { runIngestion } from "@app/rag-ingest";
 import { createCrossLingualEmbedder } from "./test-utils/cross-lingual-embedder";
 import { createMemoryRagStore } from "./test-utils/memory-rag-store";
-import { buildCorpus, bundleQuranSources, corpusWordCountDiffs, decodeQuranArchive, quranSourceParser } from "./quran-ingest";
+import {
+  buildCorpus,
+  bundleQuranSources,
+  corpusWordCountDiffs,
+  decodeQuranArchive,
+  quranSourceParser,
+} from "./quran-ingest";
 import { quranPairSink, surahSummarizer } from "./quran-llm";
 import { formatQuranCitation } from "./quran-source";
 import { Effect } from "effect";
@@ -147,23 +153,27 @@ describe("Quran ingestion (fixture = real source data)", () => {
     const padded = new TextEncoder().encode(
       `${["2", surahListText, JSON.stringify(morphologyText), ...surahFiles, "{}"].join("\n")}`,
     );
-    expect(() =>
-      decodeQuranArchive({ archiveKey: "quran/test-fixture", raw: padded }),
-    ).toThrow(/trailing/);
+    expect(() => decodeQuranArchive({ archiveKey: "quran/test-fixture", raw: padded })).toThrow(
+      /trailing/,
+    );
   });
 
   it("ingests through runIngestion: parents, children, both tracks, aligned pairs", async () => {
     const raw = await loadFixtureBundle();
     const store = createMemoryRagStore();
-    const result = await runIngestion(quranSourceParser(22, 4), {
-      archiveKey: "quran/test-fixture",
-      raw,
-    }, {
-      store,
-      embedder: createCrossLingualEmbedder(DICT),
-      summarizer: surahSummarizer(deterministicSummarizer()),
-      pairSink: quranPairSink(store),
-    });
+    const result = await runIngestion(
+      quranSourceParser(22, 4),
+      {
+        archiveKey: "quran/test-fixture",
+        raw,
+      },
+      {
+        store,
+        embedder: createCrossLingualEmbedder(DICT),
+        summarizer: surahSummarizer(deterministicSummarizer()),
+        pairSink: quranPairSink(store),
+      },
+    );
 
     expect(result.parentIds).toHaveLength(4);
     expect(store.allChildren()).toHaveLength(22);
@@ -180,7 +190,7 @@ describe("Quran ingestion (fixture = real source data)", () => {
     expect((pair?.morphology ?? []).length).toBeGreaterThan(0);
     // Children keep chapter context: their citation names the surah+ayah.
     const child = store.allChildren().find((c) => (c.metadata as { surah?: number }).surah === 112);
-    expect((child?.citation as { surah?: number }).surah).toBe(112);
+    expect((child?.citation as { surah?: number } | undefined)?.surah).toBe(112);
     // Every costed call recorded: the report's cost equals the sum of calls.
     expect(result.report.llmCalls.length).toBeGreaterThan(0);
     expect(result.report.costMicroUsd).toBe(
@@ -191,33 +201,45 @@ describe("Quran ingestion (fixture = real source data)", () => {
   it("computes parent embeddings from summaries, not full text", async () => {
     const raw = await loadFixtureBundle();
     const store = createMemoryRagStore();
-    await runIngestion(quranSourceParser(22, 4), {
-      archiveKey: "quran/test-fixture",
-      raw,
-    }, {
-      store,
-      embedder: createCrossLingualEmbedder(DICT),
-      summarizer: surahSummarizer(deterministicSummarizer()),
-    });
+    await runIngestion(
+      quranSourceParser(22, 4),
+      {
+        archiveKey: "quran/test-fixture",
+        raw,
+      },
+      {
+        store,
+        embedder: createCrossLingualEmbedder(DICT),
+        summarizer: surahSummarizer(deterministicSummarizer()),
+      },
+    );
     // The parent metadata carries the summary and the embedding source marker.
     const parent = store.allParents().find((p) => p.sourceKey === "quran/tanzil-uthmani/surah/112");
-    expect((parent?.metadata as Record<string, unknown>).summary).toContain("Al-Ikhlas");
-    expect((parent?.metadata as Record<string, unknown>).summaryEmbeddedFrom).toBe("summary");
+    expect((parent?.metadata as Record<string, unknown> | undefined)?.summary).toContain(
+      "Al-Ikhlas",
+    );
+    expect((parent?.metadata as Record<string, unknown> | undefined)?.summaryEmbeddedFrom).toBe(
+      "summary",
+    );
   });
 
   it("is idempotent: re-running ingestion writes the same counts", async () => {
     const raw = await loadFixtureBundle();
     const store = createMemoryRagStore();
     const run = () =>
-      runIngestion(quranSourceParser(22, 4), {
-        archiveKey: "quran/test-fixture",
-        raw,
-      }, {
-        store,
-        embedder: createCrossLingualEmbedder(DICT),
-        summarizer: surahSummarizer(deterministicSummarizer()),
-        pairSink: quranPairSink(store),
-      });
+      runIngestion(
+        quranSourceParser(22, 4),
+        {
+          archiveKey: "quran/test-fixture",
+          raw,
+        },
+        {
+          store,
+          embedder: createCrossLingualEmbedder(DICT),
+          summarizer: surahSummarizer(deterministicSummarizer()),
+          pairSink: quranPairSink(store),
+        },
+      );
     await run();
     await run();
     expect(store.allParents()).toHaveLength(4);
@@ -244,14 +266,18 @@ describe("Quran ingestion (fixture = real source data)", () => {
     const raw = await loadFixtureBundle();
     const store = createMemoryRagStore();
     const embedder = createCrossLingualEmbedder(DICT);
-    await runIngestion(quranSourceParser(22, 4), {
-      archiveKey: "quran/test-fixture",
-      raw,
-    }, {
-      store,
-      embedder,
-      summarizer: surahSummarizer(deterministicSummarizer()),
-    });
+    await runIngestion(
+      quranSourceParser(22, 4),
+      {
+        archiveKey: "quran/test-fixture",
+        raw,
+      },
+      {
+        store,
+        embedder,
+        summarizer: surahSummarizer(deterministicSummarizer()),
+      },
+    );
 
     // A well-known ayah queried by Indonesian MEANING — Al-Ikhlas 112:1.
     const indonesianQuery = "ayat tentang Allah Yang Maha Esa";
@@ -266,11 +292,13 @@ describe("Quran ingestion (fixture = real source data)", () => {
     expect(top.child.textAr).toContain("قُلْ هُوَ");
     // Citation metadata renders as the user-facing label.
     const citation = top.child.citation as { surah: number; ayah: number; sourceType: string };
-    expect(formatQuranCitation({
-      sourceType: "quran",
-      surah: citation.surah,
-      ayah: citation.ayah,
-    })).toBe("QS. 112:1");
+    expect(
+      formatQuranCitation({
+        sourceType: "quran",
+        surah: citation.surah,
+        ayah: citation.ayah,
+      }),
+    ).toBe("QS. 112:1");
     // The hit's rank/score provenance is present for the Trace.
     expect(top.rankDense).toBe(1);
     expect(top.distance).toBeLessThan(0.5);
@@ -280,16 +308,22 @@ describe("Quran ingestion (fixture = real source data)", () => {
     const raw = await loadFixtureBundle();
     const store = createMemoryRagStore();
     const embedder = createCrossLingualEmbedder(DICT);
-    await runIngestion(quranSourceParser(22, 4), {
-      archiveKey: "quran/test-fixture",
-      raw,
-    }, {
-      store,
-      embedder,
-      summarizer: surahSummarizer(deterministicSummarizer()),
-    });
+    await runIngestion(
+      quranSourceParser(22, 4),
+      {
+        archiveKey: "quran/test-fixture",
+        raw,
+      },
+      {
+        store,
+        embedder,
+        summarizer: surahSummarizer(deterministicSummarizer()),
+      },
+    );
 
-    const queryVector = embedder.vectorsFor(["aku berlindung kepada Tuhan pemilik fajar subuh"])[0]!;
+    const queryVector = embedder.vectorsFor([
+      "aku berlindung kepada Tuhan pemilik fajar subuh",
+    ])[0]!;
     const hits = await store.cosineSearch("primary", queryVector, 3);
     expect(hits[0]?.child.textAr).toContain("قُلْ اَعُوْذُ بِرَبِّ الْفَلَقِ");
     const citation = hits[0]?.child.citation as { surah: number; ayah: number };
@@ -316,7 +350,10 @@ function deterministicSummarizer() {
         // "surah/112" — capture the wrong surah).
         const key = Object.keys(summaries)
           .filter((k) => user.includes(k))
-          .reduce((best, k) => (best === null || k.length > best.length ? k : best), null as string | null);
+          .reduce(
+            (best, k) => (best === null || k.length > best.length ? k : best),
+            null as string | null,
+          );
         const summary =
           (key !== null ? summaries[key] : undefined) ??
           "Ringkasan surah uji coba dari rangkaian ayat yang diingest.";

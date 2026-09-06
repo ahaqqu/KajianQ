@@ -9,9 +9,7 @@ describe("i18n", () => {
   });
 
   it("keeps en and id key sets in parity", () => {
-    expect(Object.keys(messages.id).sort()).toEqual(
-      Object.keys(messages.en).sort(),
-    );
+    expect(Object.keys(messages.id).sort()).toEqual(Object.keys(messages.en).sort());
   });
 
   it("formats dates via Intl", () => {

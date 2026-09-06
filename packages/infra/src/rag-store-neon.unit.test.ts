@@ -232,9 +232,9 @@ describe("rag-store-neon adapter (fake runner)", () => {
   it("similaritySearch rejects a bad-dimension embedding before querying", async () => {
     const sql = makeFakeSql();
     const store = createNeonRagStore(sql);
-    await expect(
-      store.similaritySearch("primary", [0.1], { limit: 5 }),
-    ).rejects.toThrow(/dimension mismatch/);
+    await expect(store.similaritySearch("primary", [0.1], { limit: 5 })).rejects.toThrow(
+      /dimension mismatch/,
+    );
     expect(sql._calls.find((c) => c.kind === "query")).toBeUndefined();
   });
 
@@ -419,8 +419,8 @@ describe("rag-store-factory: createRagStore", () => {
     const sql = makeFakeSql();
     // Simulates a provider joined to RagStoreProvider without a case in the
     // switch: the default branch must fail loudly, not silently return.
-    expect(() =>
-      createRagStore("memory" as "neon", sql),
-    ).toThrow(/no RagStore adapter for provider: memory/);
+    expect(() => createRagStore("memory" as "neon", sql)).toThrow(
+      /no RagStore adapter for provider: memory/,
+    );
   });
 });

@@ -41,21 +41,13 @@ describe("worker sentry wiring", () => {
   });
 
   it("boots and serves health without a DSN", async () => {
-    const res = await worker.fetch(
-      new Request("https://x/v1/health"),
-      env,
-      undefined as never,
-    );
+    const res = await worker.fetch(new Request("https://x/v1/health"), env, undefined as never);
     expect(res.status).toBe(200);
     expect(captureException).not.toHaveBeenCalled();
   });
 
   it("passes non-API paths through to assets", async () => {
-    const res = await worker.fetch(
-      new Request("https://x/chat"),
-      env,
-      undefined as never,
-    );
+    const res = await worker.fetch(new Request("https://x/chat"), env, undefined as never);
     expect(await res.text()).toBe("spa");
   });
 });

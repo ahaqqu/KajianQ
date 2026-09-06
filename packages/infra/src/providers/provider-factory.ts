@@ -1,4 +1,4 @@
-import { Effect, Schedule, type Duration } from "effect";
+import { Effect, type Schedule } from "effect";
 import {
   ProviderError,
   type EmbedSpec,
@@ -8,9 +8,15 @@ import {
   type Provider,
   type StreamHandle,
 } from "@app/rag-core";
+import type { CostRecord } from "@app/contracts";
+import { defaultRetrySchedule } from "./retry-schedule";
 import type { ProviderConfig } from "./provider-config";
 import { resolveChain } from "./provider-config";
-import { createChatCompletionsProvider, isRetryable, type FetchLike } from "./chat-completions-adapter";
+import {
+  createChatCompletionsProvider,
+  isRetryable,
+  type FetchLike,
+} from "./chat-completions-adapter";
 
 /**
  * The fallback chain wrapper (ADR-0022): one Provider that walks a role's
@@ -18,6 +24,14 @@ import { createChatCompletionsProvider, isRetryable, type FetchLike } from "./ch
  * CostRecord carries whichever candidate actually answered, so a Trace shows
  * the fallback. An exhausted chain throws a typed ProviderError listing the
  * candidates attempted.
+ *
+ * Retry policy (ADR-0027 need 2): each candidate retries its own transient
+ * failures under a per-kind schedule — `rate_limited` backs off slower with
+ * fewer retries (the vendor asked us to slow down), transport/server faults
+ * retry faster with a larger budget, and non-retryable kinds fail through to
+ * the next candidate immediately. The schedule is configurable per call site
+ * via `ResolveOptions.retrySchedule` (tests inject a fast policy); the
+ * checked-in default is `defaultRetrySchedule`.
  */
 export type ResolveOptions = {
   /** Env source for API keys — Workers bindings in the api, process.env in CLI. */
@@ -64,32 +78,6 @@ type WiredCandidate = {
   personalDataAllowed: boolean;
 };
 
-/**
- * Per-kind retry policy for one candidate (ADR-0027 need 2: the fallback
- * wrapper previously had no backoff at all). A `rate_limited` candidate backs
- * off slower and fewer times (the vendor asked us to slow down); transport
- * and server faults retry faster; `bad_request`/`exhausted` never retry.
- * Tests inject a faster schedule via `ResolveOptions.retrySchedule`.
- */
-export const perKindRetrySchedule = (
-  rateLimitedBase: Duration.DurationInput,
-  faultBase: Duration.DurationInput,
-): Schedule.Schedule<unknown, ProviderError> =>
-  Schedule.union(
-    Schedule.exponential(rateLimitedBase, 2).pipe(
-      Schedule.compose(Schedule.recurs(2)),
-      Schedule.whileInput((err: ProviderError) => err.kind === "rate_limited"),
-    ),
-    Schedule.exponential(faultBase, 2).pipe(
-      Schedule.compose(Schedule.recurs(3)),
-      Schedule.whileInput(
-        (err: ProviderError) => isRetryable(err.kind) && err.kind !== "rate_limited",
-      ),
-    ),
-  );
-
-export const defaultRetrySchedule: Schedule.Schedule<unknown, ProviderError> =
-  perKindRetrySchedule("500 millis", "50 millis");
 
 class FallbackProvider implements Provider {
   /**
@@ -114,16 +102,17 @@ class FallbackProvider implements Provider {
    * candidates whose vendor disallows it (free tiers — ADR-0009: never
    * route personal data through free tiers).
    */
-  private eligibleEffectFor(
-    spec: { personalData?: boolean },
-  ): Effect.Effect<readonly WiredCandidate[], ProviderError> {
+  private eligibleEffectFor(spec: {
+    personalData?: boolean;
+  }): Effect.Effect<readonly WiredCandidate[], ProviderError> {
     if (!spec.personalData) return Effect.succeed(this.candidates);
     const eligible = this.candidates.filter((c) => c.personalDataAllowed);
     if (eligible.length === 0 && this.candidates.length > 0) {
       return Effect.fail(
         new ProviderError({
           kind: "bad_request",
-          message: `role "${this.role}": personal-data call but no candidate allows personal data ` +
+          message:
+            `role "${this.role}": personal-data call but no candidate allows personal data ` +
             `(candidates: ${this.candidates.map((c) => c.provider.modelId).join(", ")})`,
         }),
       );
@@ -132,10 +121,20 @@ class FallbackProvider implements Provider {
   }
 
   /**
-   * Walk the chain in order: a retryable failure (transport, 429, 5xx) moves
-   * to the next candidate; anything else fails immediately. An exhausted
-   * chain fails with a typed `ProviderError` listing the candidates attempted.
-   * (Per-kind backoff schedules arrive with the infra phase of ADR-0027.)
+   * Walk the chain in order: a retryable failure (transport, 429, 5xx) first
+   * exhausts the candidate's per-kind retry schedule, then moves to the next
+   * candidate; anything else fails immediately. An exhausted chain fails
+   * with a typed `ProviderError` listing the candidates attempted.
+   *
+   * Cost trail (C2, traceability rule 4): every attempt that reached the
+   * vendor carries its CostRecord on the failing `ProviderError`
+   * (`attemptCosts`). Retries and fallbacks accumulate, so the error the
+   * caller finally sees lists each vendor-reaching failed attempt in order —
+   * a failed call may never drop spend from the cost trail. (Successes
+   * carry only the winning attempt's cost today; spend from attempts that
+   * failed before a later candidate succeeded is surfaced in the trace via
+   * the failed-attempt records of any subsequent failure, and recording it
+   * on the success path needs a contracts change — flagged for follow-up.)
    */
   private withFallback<A>(
     op: (p: Provider) => Effect.Effect<A, ProviderError>,
@@ -149,15 +148,51 @@ class FallbackProvider implements Provider {
           }),
         );
       }
-      const first = eligible[0];
-      if (first === undefined) {
-        return Effect.fail(
-          new ProviderError({ kind: "bad_request", message: `role "${this.role}": no candidates wired` }),
+      // Costs of vendor-reaching failed attempts, accumulated across the
+      // whole chain walk — a later candidate's success does not undo earlier
+      // candidates' spend, and the final failure carries the full trail.
+      const chainCosts: CostRecord[] = [];
+      /** One candidate: each failed attempt's spend is collected as it
+       * passes through the retry loop; when the candidate gives up, the
+       * escaping error carries every vendor-reaching attempt's cost in
+       * order (C2 — a retried-away attempt may not vanish from the trail). */
+      const retried = (candidate: WiredCandidate): Effect.Effect<A, ProviderError> => {
+        const costs: CostRecord[] = [];
+        const collect = (err: ProviderError): void => {
+          if (err.attemptCosts !== undefined) costs.push(...err.attemptCosts);
+        };
+        return op(candidate.provider).pipe(
+          // Collect each failure's spend as it passes into the retry loop —
+          // retried or not — then re-fail with the same error so the
+          // schedule's kind dispatch is untouched.
+          Effect.catchAll((err: ProviderError) => {
+            collect(err);
+            return Effect.fail(err);
+          }),
+          Effect.retry({ schedule: this.retrySchedule }),
+          // The candidate gave up: stamp the accumulated list onto the
+          // escaping error and move the spend to the chain level. (No
+          // second collect here — the pre-retry hook already collected
+          // this failure's cost; collecting again would double-count the
+          // last attempt.)
+          Effect.catchAll((err: ProviderError) => {
+            chainCosts.push(...costs);
+            return Effect.fail(
+              costs.length > 0
+                ? new ProviderError({
+                    kind: err.kind,
+                    message: err.message,
+                    ...(err.candidates !== undefined ? { candidates: err.candidates } : {}),
+                    attemptCosts: costs,
+                  })
+                : err,
+            );
+          }),
         );
-      }
-      const schedule = this.retrySchedule;
-      const retried = (candidate: WiredCandidate): Effect.Effect<A, ProviderError> =>
-        op(candidate.provider).pipe(Effect.retry({ schedule: schedule as Schedule.Schedule<unknown, ProviderError> }));
+      };
+      // `eligible` is non-empty here (the empty-list case failed above); the
+      // non-null assertion is bounded to this one line.
+      const first = eligible[0]!;
       const rest = eligible.slice(1);
       const chain = rest.reduce<Effect.Effect<A, ProviderError>>(
         (acc, candidate) =>
@@ -176,6 +211,7 @@ class FallbackProvider implements Provider {
                   kind: "exhausted",
                   message: `role "${this.role}": all candidates failed (last: ${lastError.message})`,
                   candidates: eligible.map((c) => c.provider.modelId),
+                  attemptCosts: chainCosts,
                 }),
               )
             : Effect.fail(lastError),
@@ -185,15 +221,24 @@ class FallbackProvider implements Provider {
   }
 
   generate(spec: PromptSpec): Effect.Effect<GenerationResult, ProviderError> {
-    return Effect.flatMap(this.eligibleEffectFor(spec), this.withFallback((p) => p.generate(spec)));
+    return Effect.flatMap(
+      this.eligibleEffectFor(spec),
+      this.withFallback((p) => p.generate(spec)),
+    );
   }
 
   stream(spec: PromptSpec): Effect.Effect<StreamHandle, ProviderError> {
-    return Effect.flatMap(this.eligibleEffectFor(spec), this.withFallback((p) => p.stream(spec)));
+    return Effect.flatMap(
+      this.eligibleEffectFor(spec),
+      this.withFallback((p) => p.stream(spec)),
+    );
   }
 
   embed(spec: EmbedSpec): Effect.Effect<EmbeddingResult, ProviderError> {
-    return Effect.flatMap(this.eligibleEffectFor(spec), this.withFallback((p) => p.embed(spec)));
+    return Effect.flatMap(
+      this.eligibleEffectFor(spec),
+      this.withFallback((p) => p.embed(spec)),
+    );
   }
 }
 

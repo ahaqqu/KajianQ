@@ -5,7 +5,7 @@ KajianQ is an open-source Islamic classical-knowledge chatbot for the Indonesian
 ## Language
 
 **DARS**:
-The generic, domain-agnostic RAG engine (ingestion, routing, retrieval, generation, evaluation), shipped as workspace packages under `packages/`. Engine code must contain no Islamic-domain logic. Backronym: "Dynamic Automated RAG Solution"; also evokes Arabic *dars* (lesson/study session).
+The generic, domain-agnostic RAG engine (ingestion, routing, retrieval, generation, evaluation), shipped as workspace packages under `packages/`. Engine code must contain no Islamic-domain logic. Backronym: "Dynamic Automated RAG Solution"; also evokes Arabic _dars_ (lesson/study session).
 _Avoid_: platform, framework, core
 
 **KajianQ**:
@@ -33,7 +33,7 @@ A hadith's authenticity classification: `mutawatir | sahih | hasan | dhaif`. Dha
 _Avoid_: score, rating
 
 **Principle**:
-A general Islamic legal/ethical maxim (e.g., *yusr* "ease", *rahmah* "mercy", *dharar* "harm must be removed") used as an interpretive lens when answering why/analogy questions.
+A general Islamic legal/ethical maxim (e.g., _yusr_ "ease", _rahmah_ "mercy", _dharar_ "harm must be removed") used as an interpretive lens when answering why/analogy questions.
 _Avoid_: value, theme, concept (ambiguous)
 
 **Principle Index**:

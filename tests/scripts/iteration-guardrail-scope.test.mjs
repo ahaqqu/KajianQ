@@ -13,7 +13,15 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -37,7 +45,13 @@ describe("scope config and decision (lib.mjs, pure)", () => {
   it("TRAP: non-matching session ids are never guarded under the default scope", () => {
     // The named fixtures from the issue: fixture envelopes and human-looking
     // interactive session ids must all fall outside the guardrail.
-    for (const id of ["sess_fixture_pretooluse", "sess_guardrail_a", "sess_human_abc", "goal-session", ""]) {
+    for (const id of [
+      "sess_fixture_pretooluse",
+      "sess_guardrail_a",
+      "sess_human_abc",
+      "goal-session",
+      "",
+    ]) {
       expect(isSubagentSession(cfg, id), JSON.stringify(id)).toBe(false);
     }
     // Missing identity is already handled upstream (skip_no_session), but the
@@ -184,7 +198,10 @@ describe("hook.mjs scope gate (process boundary)", () => {
     }
     const edit = runHook(postEdit(HUMAN), env);
     expect(edit.status).toBe(0);
-    expect(existsSync(stateFileFor(env, HUMAN)), "no counting state file for a non-matching session").toBe(false);
+    expect(
+      existsSync(stateFileFor(env, HUMAN)),
+      "no counting state file for a non-matching session",
+    ).toBe(false);
     const rerun = runHook(preToolUse(HUMAN, CMD), env);
     expect(rerun.status).toBe(0);
     expect(rerun.stdout).toBe(""); // no deny JSON

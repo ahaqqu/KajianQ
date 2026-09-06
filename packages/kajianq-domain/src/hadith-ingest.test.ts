@@ -62,15 +62,19 @@ const DICT = {
 
 async function ingestFixture(store: ReturnType<typeof createMemoryRagStore>) {
   const raw = await loadFixtureBundle();
-  return runIngestion(hadithSourceParser({ abudawud: 7 }), {
-    archiveKey: "hadith/test-fixture",
-    raw,
-  }, {
-    store,
-    embedder: createCrossLingualEmbedder(DICT),
-    summarizer: hadithSectionSummarizer(deterministicSummarizer()),
-    pairSink: hadithPairSink(store, hadithPairKeyFor),
-  });
+  return runIngestion(
+    hadithSourceParser({ abudawud: 7 }),
+    {
+      archiveKey: "hadith/test-fixture",
+      raw,
+    },
+    {
+      store,
+      embedder: createCrossLingualEmbedder(DICT),
+      summarizer: hadithSectionSummarizer(deterministicSummarizer()),
+      pairSink: hadithPairSink(store, hadithPairKeyFor),
+    },
+  );
 }
 
 describe("hadith ingestion (fixture = real source data)", () => {
@@ -90,9 +94,9 @@ describe("hadith ingestion (fixture = real source data)", () => {
     const padded = new TextEncoder().encode(
       `2\n${JSON.stringify({ collection: "abudawud", arabic: JSON.parse(arabicText), indonesian: JSON.parse(indonesianText) })}\n`,
     );
-    expect(() =>
-      decodeHadithArchive({ archiveKey: "hadith/test-fixture", raw: padded }),
-    ).toThrow(/expected 2 edition line/);
+    expect(() => decodeHadithArchive({ archiveKey: "hadith/test-fixture", raw: padded })).toThrow(
+      /expected 2 edition line/,
+    );
   });
 
   it("ingests through runIngestion: parents per book, children with grade metadata, aligned pairs", async () => {
@@ -103,7 +107,7 @@ describe("hadith ingestion (fixture = real source data)", () => {
     expect(result.parentIds).toHaveLength(1);
     const parent = store.allParents().find((p) => p.sourceKey === hadithSourceKey("abudawud", 1));
     expect(parent?.title).toBe("Abu Dawud — Purification (Kitab Al-Taharah)");
-    expect((parent?.metadata as Record<string, unknown>).sourceType).toBe("hadith");
+    expect((parent?.metadata as Record<string, unknown> | undefined)?.sourceType).toBe("hadith");
     expect(store.allChildren()).toHaveLength(7);
 
     // Both embedding tracks written for every child; the empty-secondary
@@ -149,9 +153,7 @@ describe("hadith ingestion (fixture = real source data)", () => {
     const store = createMemoryRagStore();
     await ingestFixture(store);
     const gradeOf = (n: string) =>
-      (store
-        .allChildren()
-        .find((c) => (c.metadata as Record<string, unknown>).hadithNo === n)
+      (store.allChildren().find((c) => (c.metadata as Record<string, unknown>).hadithNo === n)
         ?.metadata ?? {}) as Record<string, unknown>;
     // Real Abu Dawud 2: Sahih, Sahih, Sahih Lighairihi, Daif (Zubair Ali
     // Zai) → dhaif wins.
@@ -170,8 +172,12 @@ describe("hadith ingestion (fixture = real source data)", () => {
     const store = createMemoryRagStore();
     await ingestFixture(store);
     const parent = store.allParents().find((p) => p.sourceKey === hadithSourceKey("abudawud", 1));
-    expect((parent?.metadata as Record<string, unknown>).summary).toContain("Thaharah");
-    expect((parent?.metadata as Record<string, unknown>).summaryEmbeddedFrom).toBe("summary");
+    expect((parent?.metadata as Record<string, unknown> | undefined)?.summary).toContain(
+      "Thaharah",
+    );
+    expect((parent?.metadata as Record<string, unknown> | undefined)?.summaryEmbeddedFrom).toBe(
+      "summary",
+    );
   });
 
   it("is idempotent: re-running ingestion writes the same counts", async () => {
@@ -189,14 +195,18 @@ describe("hadith ingestion (fixture = real source data)", () => {
     const store = createMemoryRagStore();
     const embedder = createCrossLingualEmbedder(DICT);
     const raw = await loadFixtureBundle();
-    await runIngestion(hadithSourceParser({ abudawud: 7 }), {
-      archiveKey: "hadith/test-fixture",
-      raw,
-    }, {
-      store,
-      embedder,
-      summarizer: hadithSectionSummarizer(deterministicSummarizer()),
-    });
+    await runIngestion(
+      hadithSourceParser({ abudawud: 7 }),
+      {
+        archiveKey: "hadith/test-fixture",
+        raw,
+      },
+      {
+        store,
+        embedder,
+        summarizer: hadithSectionSummarizer(deterministicSummarizer()),
+      },
+    );
 
     // The Ibn Umar hadith (Abu Dawud 14) queried by Indonesian MEANING.
     const queryVector = embedder.vectorsFor([

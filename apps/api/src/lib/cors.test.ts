@@ -5,13 +5,13 @@ const ALLOWLIST = ["http://localhost:8787", "https://app.example"];
 
 describe("resolveCorsOrigin", () => {
   it("falls back to the first allowlisted origin when no Origin header", () => {
-    expect(resolveCorsOrigin(undefined, "https://api.example/v1/health", ALLOWLIST))
-      .toBe("http://localhost:8787");
+    expect(resolveCorsOrigin(undefined, "https://api.example/v1/health", ALLOWLIST)).toBe(
+      "http://localhost:8787",
+    );
   });
 
   it("falls back to empty string (block) when the allowlist is empty", () => {
-    expect(resolveCorsOrigin(undefined, "https://api.example/v1/health", []))
-      .toBe("");
+    expect(resolveCorsOrigin(undefined, "https://api.example/v1/health", [])).toBe("");
   });
 
   it("echoes an allowlisted origin", () => {
@@ -33,7 +33,6 @@ describe("resolveCorsOrigin", () => {
   });
 
   it("rejects when the request URL is malformed", () => {
-    expect(resolveCorsOrigin("https://evil.example", "not a url", ALLOWLIST))
-      .toBe("");
+    expect(resolveCorsOrigin("https://evil.example", "not a url", ALLOWLIST)).toBe("");
   });
 });

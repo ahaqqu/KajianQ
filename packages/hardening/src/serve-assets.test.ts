@@ -22,10 +22,7 @@ describe("serveAssets", () => {
   });
 
   it("serves ASSETS untouched for non-API paths", async () => {
-    const res = await serveAssets(
-      request("/chat"),
-      assetFetcher("<html>spa</html>"),
-    );
+    const res = await serveAssets(request("/chat"), assetFetcher("<html>spa</html>"));
     expect(res.status).toBe(200);
     expect(res.headers.get("Cache-Control")).toBeNull();
     expect(await res.text()).toBe("<html>spa</html>");
@@ -36,9 +33,7 @@ describe("serveAssets", () => {
       request("/assets/index-Bx1k2.js"),
       assetFetcher("console.log(1)", "text/javascript"),
     );
-    expect(res.headers.get("Cache-Control")).toBe(
-      "public, max-age=31536000, immutable",
-    );
+    expect(res.headers.get("Cache-Control")).toBe("public, max-age=31536000, immutable");
     expect(await res.text()).toBe("console.log(1)");
   });
 
@@ -48,18 +43,14 @@ describe("serveAssets", () => {
     };
     const res = await serveAssets(request("/assets/index-Bx1k2.js"), revalidated);
     expect(res.status).toBe(304);
-    expect(res.headers.get("Cache-Control")).toBe(
-      "public, max-age=31536000, immutable",
-    );
+    expect(res.headers.get("Cache-Control")).toBe("public, max-age=31536000, immutable");
   });
 
   it("honors custom API and immutable prefixes", async () => {
     const res = await serveAssets(request("/cdn/x.js"), assetFetcher("1"), {
       immutablePrefixes: ["/cdn/"],
     });
-    expect(res.headers.get("Cache-Control")).toBe(
-      "public, max-age=31536000, immutable",
-    );
+    expect(res.headers.get("Cache-Control")).toBe("public, max-age=31536000, immutable");
     const api = await serveAssets(request("/api/v1/x"), assetFetcher("<html>"), {
       apiPrefixes: ["/api/"],
     });

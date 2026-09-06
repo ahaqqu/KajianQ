@@ -24,7 +24,9 @@ export type HadithSummarizerProvider = Provider;
  * (kajianq-traceability rule 2; review A6 — the cost is part of the report's
  * sum of calls, never dropped).
  */
-export function hadithSectionSummarizer(provider: HadithSummarizerProvider): (input: {
+export function hadithSectionSummarizer(
+  provider: HadithSummarizerProvider,
+): (input: {
   sourceKey: string;
   title: string | null;
   childTexts: readonly string[];

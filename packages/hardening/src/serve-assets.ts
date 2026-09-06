@@ -32,19 +32,11 @@ export async function serveAssets(
   opts: ServeAssetsOptions = {},
 ): Promise<Response> {
   const { pathname } = new URL(request.url);
-  if (
-    (opts.apiPrefixes ?? DEFAULT_API_PREFIXES).some((p) =>
-      pathname.startsWith(p),
-    )
-  ) {
+  if ((opts.apiPrefixes ?? DEFAULT_API_PREFIXES).some((p) => pathname.startsWith(p))) {
     return Response.json({ error: "not_found" }, { status: 404 });
   }
   const res = await assets.fetch(request);
-  if (
-    !(opts.immutablePrefixes ?? DEFAULT_IMMUTABLE_PREFIXES).some((p) =>
-      pathname.startsWith(p),
-    )
-  ) {
+  if (!(opts.immutablePrefixes ?? DEFAULT_IMMUTABLE_PREFIXES).some((p) => pathname.startsWith(p))) {
     return res;
   }
   const headers = new Headers(res.headers);
