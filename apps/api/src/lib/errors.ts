@@ -25,6 +25,20 @@ const ENGINE_BODIES: { [S in EngineStatus]: string } = {
 };
 
 /**
+ * Status per `ProviderErrorKind`, total over the kind union
+ * (compiler-proven): `rate_limited` → 429, every other kind → 502.
+ * `engineErrorStatus` and `onError` both derive from this map, so a future
+ * kind cannot silently fall out of the mapping.
+ */
+const KIND_STATUSES: { [K in ProviderErrorKind]: EngineStatus } = {
+  rate_limited: 429,
+  bad_request: 502,
+  transport: 502,
+  server: 502,
+  exhausted: 502,
+};
+
+/**
  * The vendor's `Retry-After` isn't plumbed through the `Provider` seam (the
  * engine never sees vendor headers), so the mapped 429 carries a conservative
  * fixed back-off for well-behaved clients.
@@ -82,7 +96,7 @@ export function onError(err: unknown, c: Context<ApiEnv>): Response {
   // Typed engine failures (ADR-0027) map onto honest statuses before the
   // generic 500 — a vendor outage is a 502, not an internal error.
   if (engine) {
-    const status = engineErrorStatus(err);
+    const status = KIND_STATUSES[engine.kind];
     if (!LOG_ONLY_KINDS.has(engine.kind)) Sentry.captureException(err);
     logger.warn("request.upstream_failure", {
       path: c.req.path,
@@ -117,7 +131,7 @@ export function onError(err: unknown, c: Context<ApiEnv>): Response {
 export function engineErrorStatus(err: unknown): EngineStatus | undefined {
   const provider = providerCauseOf(err);
   if (!provider) return undefined;
-  return provider.kind === "rate_limited" ? 429 : 502;
+  return KIND_STATUSES[provider.kind];
 }
 
 /** Unwrap `StageError` (stage + cause) down to its `ProviderError`, if any. */
