@@ -33,7 +33,7 @@ Effect (v3) was chosen over cordis and over more hand-rolling because it is runt
 - Engine purity holds structurally: `effect` is domain- and vendor-neutral, so the boundary gate needs no rule changes and no exemptions; the `truth` gate is satisfied by the migration PRs' importers.
 - The agentic-limits gate (≤300 lines, ≤5 direct imports per file) applies to Effect-style files like any other; `Effect.gen` pipelines are expected to fit, with file splits preferred over exemptions.
 - Learning curve is a real cost: every contributor to engine packages needs Effect fluency. Mitigated by the seam-first architecture — the API edge, frontend, and domain pack stay readable without it.
-- ADR-0021's revisit trigger is satisfied *for Effect specifically* by this ADR (the second-consumer and introspection conditions are waived as no longer relevant to the decision; the Workers-proof condition is retained as the §2 gate). Adoption of any *further* framework layer (`@effect/platform` server, `@effect/rpc`) still requires its own ADR.
+- ADR-0021's revisit trigger is satisfied _for Effect specifically_ by this ADR (the second-consumer and introspection conditions are waived as no longer relevant to the decision; the Workers-proof condition is retained as the §2 gate). Adoption of any _further_ framework layer (`@effect/platform` server, `@effect/rpc`) still requires its own ADR.
 
 ## Revisit triggers
 
@@ -48,12 +48,12 @@ The go/no-go spike ran against the Workers runtime as required. Artifacts: `pack
 
 **Gate measurements** (worker entry `apps/api/src/index.ts` with the spike module in its import graph; baseline = `main` without Effect; wrangler 4.123.0, `--dry-run --outdir` for bundle size, local workerd `wrangler dev` + timed `/v1/health` for cold start, `tsc -p apps/api/tsconfig.json --noEmit` ×3 for tsgo):
 
-| Gate | Baseline | With Effect v3 | Verdict |
-| --- | --- | --- | --- |
-| tsgo typecheck latency (apps/api) | 1.02–1.23 s | 1.09–1.34 s | **pass** — no regression |
-| Cold start (first request) | 30 ms | 21 ms | **pass** — no regression |
-| Steady-state request | ~4 ms | ~4–5 ms | **pass** |
-| Worker bundle | 2567 KiB / 483 KiB gzip | 3584 KiB / 677 KiB gzip | **pass** — recorded; see note |
+| Gate                              | Baseline                | With Effect v3          | Verdict                       |
+| --------------------------------- | ----------------------- | ----------------------- | ----------------------------- |
+| tsgo typecheck latency (apps/api) | 1.02–1.23 s             | 1.09–1.34 s             | **pass** — no regression      |
+| Cold start (first request)        | 30 ms                   | 21 ms                   | **pass** — no regression      |
+| Steady-state request              | ~4 ms                   | ~4–5 ms                 | **pass**                      |
+| Worker bundle                     | 2567 KiB / 483 KiB gzip | 3584 KiB / 677 KiB gzip | **pass** — recorded; see note |
 
 Notes:
 

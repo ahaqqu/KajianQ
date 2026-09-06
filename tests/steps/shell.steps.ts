@@ -29,17 +29,13 @@ Then("I see the home page in Bahasa Indonesia", async ({ page }) => {
 
 Then("the page has no serious accessibility violations", async ({ page }) => {
   const { violations } = await new AxeBuilder({ page }).analyze();
-  const blocking = violations.filter(
-    (v) => v.impact === "serious" || v.impact === "critical",
-  );
+  const blocking = violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   // Serious/critical axe violations fail the suite. The mapped summary (rule +
   // target selectors) surfaces in the assertion diff for triage.
   expect(
     blocking.map(
       (v) =>
-        `${v.impact}: ${v.id} — ${v.help} @ ${v.nodes
-          .map((n) => n.target.join(","))
-          .join(" | ")}`,
+        `${v.impact}: ${v.id} — ${v.help} @ ${v.nodes.map((n) => n.target.join(",")).join(" | ")}`,
     ),
   ).toEqual([]);
 });

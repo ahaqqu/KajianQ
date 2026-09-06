@@ -49,16 +49,12 @@ export function assertEmbedding(
 ): asserts vec is readonly number[] | null {
   if (vec === null || vec === undefined) return;
   if (vec.length !== dim) {
-    throw new RangeError(
-      `embedding dimension mismatch: expected ${dim}, got ${vec.length}`,
-    );
+    throw new RangeError(`embedding dimension mismatch: expected ${dim}, got ${vec.length}`);
   }
   for (let i = 0; i < vec.length; i += 1) {
     const x = vec[i];
     if (typeof x !== "number" || !Number.isFinite(x)) {
-      throw new RangeError(
-        `embedding component ${i} is not a finite number: ${String(x)}`,
-      );
+      throw new RangeError(`embedding component ${i} is not a finite number: ${String(x)}`);
     }
   }
 }
@@ -156,10 +152,7 @@ export function randomToken(): string {
 }
 
 export async function hashToken(token: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(token),
-  );
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
   return Array.from(new Uint8Array(digest))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");

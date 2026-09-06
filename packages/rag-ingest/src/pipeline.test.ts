@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { RagStore } from "@app/infra";
 import type { Provider } from "@app/rag-core";
-import { runIngestion } from "./pipeline";
+import { EmbedMisalignment, runIngestion } from "./pipeline";
 import type { ParsedParent } from "./types";
-import { Effect } from "effect";
+import { Cause, Effect } from "effect";
 
 /** In-memory RagStore fake: idempotent by sourceKey / (parentId, ordinal). */
 function fakeStore() {
@@ -285,6 +285,122 @@ describe("runIngestion", () => {
     expect(maxInFlight).toBe(1);
   });
 
+  it("a misaligned batch under concurrency fails the run, records its cost, and interrupts in-flight siblings", async () => {
+    const f = fakeStore();
+    const aborted: string[] = [];
+    const flakyEmbedder: Provider = {
+      modelId: "fake-embedder",
+      embed: (spec) =>
+        spec.texts[0] === "primary 2"
+          ? // Misaligned response: a real billed call with the wrong shape.
+            Effect.succeed({
+              vectors: spec.texts.map(() => [1]).slice(0, spec.texts.length - 1),
+              cost: {
+                modelId: "fake-embedder",
+                tokensIn: spec.texts.length,
+                tokensOut: 0,
+                latencyMs: 5,
+                costMicroUsd: spec.texts.length,
+              },
+            })
+          : Effect.sleep("20 millis").pipe(
+              Effect.flatMap(() =>
+                Effect.succeed({
+                  vectors: spec.texts.map(() => [1]),
+                  cost: {
+                    modelId: "fake-embedder",
+                    tokensIn: spec.texts.length,
+                    tokensOut: 0,
+                    latencyMs: 20,
+                    costMicroUsd: spec.texts.length,
+                  },
+                }),
+              ),
+              // Track fail-fast sibling interruption: an in-flight batch's
+              // exit is interruption-only (no typed failure of its own).
+              Effect.onExit((exit) =>
+                Effect.sync(() => {
+                  if (exit._tag === "Failure" && Cause.isInterruptedOnly(exit.cause))
+                    if (spec.texts[0] !== undefined) aborted.push(spec.texts[0]);
+                }),
+              ),
+            ),
+      generate: () => Effect.die("not used"),
+      stream: () => Effect.die("not used"),
+    };
+    const parents: ParsedParent[] = [
+      {
+        sourceKey: "src/a",
+        title: null,
+        metadata: {},
+        children: Array.from({ length: 6 }, (_, i) => ({
+          sourceKey: `src/a/${i}`,
+          textRaw: `raw ${i}`,
+          textPrimary: `primary ${i}`,
+          textSecondary: null,
+          citation: {},
+          metadata: {},
+        })),
+      },
+    ];
+    // The run rejects with the typed EmbedMisalignment wrapped in a
+    // FiberFailure; unwrap the cause (Effect stows it on a module symbol,
+    // not a plain property) and assert its shape.
+    let rejection: unknown;
+    try {
+      await runIngestion(
+        async () => parents,
+        { archiveKey: "archive/key", raw: new Uint8Array() },
+        {
+          store: f.store,
+          embedder: flakyEmbedder,
+          summarizer: null,
+          embedBatchSize: 2,
+          embedConcurrency: 3,
+        },
+      );
+    } catch (err) {
+      rejection = err;
+    }
+    expect(rejection).toBeDefined();
+    const causeSym = Object.getOwnPropertySymbols(rejection as object).find(
+      (sym) => sym.description === "effect/Runtime/FiberFailure/Cause",
+    );
+    expect(causeSym).toBeDefined();
+    const cause = causeSym
+      ? (rejection as Record<symbol, Cause.Cause<EmbedMisalignment>>)[causeSym]
+      : undefined;
+    expect(cause).toBeDefined();
+    const failure = cause ? Cause.failureOption(cause) : undefined;
+    if (failure !== undefined && failure._tag === "Some") {
+      expect(failure.value._tag).toBe("EmbedMisalignment");
+      expect(failure.value.expected).toBe(2);
+      expect(failure.value.received).toBe(1);
+    }
+    // Fail-fast interrupted in-flight siblings (their scope finalizers ran).
+    expect(aborted.length).toBeGreaterThan(0);
+    // No children written for a failed run.
+    expect(f.children()).toHaveLength(0);
+  });
+
+  it("rejects non-positive or non-integer embedConcurrency at the boundary (C2)", async () => {
+    const f = fakeStore();
+    await expect(
+      runIngestion(
+        async () => twoParents(),
+        { archiveKey: "archive/key", raw: new Uint8Array() },
+        { store: f.store, embedder: fakeProvider(), summarizer: null, embedConcurrency: 0 },
+      ),
+    ).rejects.toThrow(RangeError);
+    await expect(
+      runIngestion(
+        async () => twoParents(),
+        { archiveKey: "archive/key", raw: new Uint8Array() },
+        { store: f.store, embedder: fakeProvider(), summarizer: null, embedConcurrency: 1.5 },
+      ),
+    ).rejects.toThrow(/must be a positive integer/);
+  });
+
   it("is idempotent: re-running produces no duplicate parents or children", async () => {
     const f = fakeStore();
     const run = () =>
@@ -301,12 +417,16 @@ describe("runIngestion", () => {
 
   it("stores the LLM parent summary and embeds parents from summaries", async () => {
     const f = fakeStore();
-    const summarizer = vi.fn(
-      async (input: { sourceKey: string }) => ({
-        summary: `summary ${input.sourceKey}`,
-        cost: { modelId: "test-summarizer", tokensIn: 1, tokensOut: 1, latencyMs: 1, costMicroUsd: 2 },
-      }),
-    );
+    const summarizer = vi.fn(async (input: { sourceKey: string }) => ({
+      summary: `summary ${input.sourceKey}`,
+      cost: {
+        modelId: "test-summarizer",
+        tokensIn: 1,
+        tokensOut: 1,
+        latencyMs: 1,
+        costMicroUsd: 2,
+      },
+    }));
     await runIngestion(
       async () => twoParents(),
       { archiveKey: "archive/key", raw: new Uint8Array() },
@@ -327,7 +447,13 @@ describe("runIngestion", () => {
         embedder: fakeProvider(),
         summarizer: async (input: { sourceKey: string }) => ({
           summary: `summary ${input.sourceKey}`,
-          cost: { modelId: "test-summarizer", tokensIn: 1, tokensOut: 1, latencyMs: 1, costMicroUsd: 7 },
+          cost: {
+            modelId: "test-summarizer",
+            tokensIn: 1,
+            tokensOut: 1,
+            latencyMs: 1,
+            costMicroUsd: 7,
+          },
         }),
       },
     );

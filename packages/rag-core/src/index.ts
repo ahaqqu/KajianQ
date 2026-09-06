@@ -14,13 +14,10 @@ export {
   type StageEffect,
   type Turn,
 } from "./pipeline";
-export {
-  type RunConfig,
-  RunContext,
-  type RunContextService,
-} from "./context";
+export { type RunConfig, RunContext, type RunContextService } from "./context";
 export { StageError, toStageError, type StageRequirements } from "./errors";
 export {
+  type CostRecord,
   type EmbedSpec,
   type EmbeddingResult,
   type GenerationResult,
@@ -30,8 +27,4 @@ export {
   type Provider,
   type StreamHandle,
 } from "./provider";
-export {
-  runPipeline,
-  type PipelineStages,
-  type RunOptions,
-} from "./run";
+export { runPipeline, type PipelineStages, type RunOptions } from "./run";

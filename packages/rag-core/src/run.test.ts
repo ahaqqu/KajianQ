@@ -1,9 +1,10 @@
 import { Cause, Effect } from "effect";
-import { describe, expect, it } from "vitest";
-import { totalCostMicroUsd } from "@app/contracts";
+import { describe, expect, it, vi } from "vitest";
+import { totalCostMicroUsd, type CostRecord } from "@app/contracts";
 import { RunContext } from "./context";
 import type { RunConfig } from "./context";
 import { StageError } from "./errors";
+import { ProviderError } from "./provider";
 import { runPipeline, type PipelineStages } from "./run";
 import type {
   AssembledContext,
@@ -47,9 +48,7 @@ function makeStages(
     },
     retriever: {
       retrieve: () =>
-        Effect.succeed([
-          { id: "c1", text: "evidence", score: 0.5, rankDense: 1, rankSparse: 2 },
-        ]),
+        Effect.succeed([{ id: "c1", text: "evidence", score: 0.5, rankDense: 1, rankSparse: 2 }]),
     },
     assembler: {
       assemble: (_q, chunks) => Effect.succeed(contextFor(chunks)),
@@ -199,7 +198,9 @@ describe("runPipeline", () => {
           }),
       },
     });
-    const exit = await Effect.runPromiseExit(runPipeline(stages, query, {}, { traceId: "t", now: () => 0 }));
+    const exit = await Effect.runPromiseExit(
+      runPipeline(stages, query, {}, { traceId: "t", now: () => 0 }),
+    );
     expect(order).toEqual(["cleanup"]);
     const failure = exit._tag === "Failure" ? Cause.failureOption(exit.cause) : undefined;
     expect(failure).toBeDefined();
@@ -228,5 +229,49 @@ describe("runPipeline", () => {
     const result = await Effect.runPromise(runPipeline(makeStages(), query, config));
     expect(result.trace.id.length).toBeGreaterThan(0);
     expect(result.trace.events.length).toBeGreaterThan(0);
+  });
+
+  it("records failed vendor attempts' costs into the failed-run trace (C3)", async () => {
+    const attemptCosts: CostRecord[] = [
+      { modelId: "m1", tokensIn: 10, tokensOut: 0, latencyMs: 5, costMicroUsd: 7, estimated: true },
+      { modelId: "m2", tokensIn: 20, tokensOut: 0, latencyMs: 6, costMicroUsd: 9, estimated: true },
+    ];
+    const onFailedTrace = vi.fn();
+    const stages = makeStages({
+      generator: {
+        generate: () =>
+          Effect.fail(
+            new StageError({
+              stage: "generator",
+              cause: new ProviderError({
+                kind: "exhausted",
+                message: "all failed",
+                candidates: ["m1", "m2"],
+                attemptCosts,
+              }),
+            }),
+          ),
+      },
+    });
+    await Effect.runPromiseExit(
+      runPipeline(stages, query, config, { traceId: "t", now: () => 0, onFailedTrace }),
+    );
+    expect(onFailedTrace).toHaveBeenCalledTimes(1);
+    const trace = onFailedTrace.mock.calls[0]?.[0];
+    expect(trace.id).toBe("t");
+    const llmCalls = trace.events.filter((e: { kind: string }) => e.kind === "llm_call");
+    expect(llmCalls.map((e: { cost?: { costMicroUsd: number } }) => e.cost?.costMicroUsd)).toEqual([
+      7, 9,
+    ]);
+    expect(llmCalls.every((e: { stage: string }) => e.stage === "generator")).toBe(true);
+    expect(totalCostMicroUsd(trace)).toBe(16);
+  });
+
+  it("does not invoke onFailedTrace on a successful run", async () => {
+    const onFailedTrace = vi.fn();
+    await Effect.runPromise(
+      runPipeline(makeStages(), query, config, { traceId: "t", now: () => 0, onFailedTrace }),
+    );
+    expect(onFailedTrace).not.toHaveBeenCalled();
   });
 });

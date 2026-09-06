@@ -52,14 +52,22 @@ describe("parseHookPayload", () => {
       tool_use_id: "call_1",
       tool_input: { task_id: AGENT_ID },
     });
-    expect(parseHookPayload(withPrefix)).toEqual({ ok: true, event: "task-output", agentId: AGENT_ID });
+    expect(parseHookPayload(withPrefix)).toEqual({
+      ok: true,
+      event: "task-output",
+      agentId: AGENT_ID,
+    });
     const bareId = JSON.stringify({
       hook_event_name: "PostToolUse",
       tool_name: "TaskOutput",
       tool_use_id: "call_1",
       tool_input: { task_id: "test" },
     });
-    expect(parseHookPayload(bareId)).toEqual({ ok: true, event: "task-output", agentId: "agent_test" });
+    expect(parseHookPayload(bareId)).toEqual({
+      ok: true,
+      event: "task-output",
+      agentId: "agent_test",
+    });
   });
 
   it("accepts an Agent PostToolUse payload as a dispatch-completion capture", () => {
@@ -69,7 +77,11 @@ describe("parseHookPayload", () => {
       tool_use_id: "call_9",
       tool_input: { subagent_type: "implementer" },
     });
-    expect(parseHookPayload(raw)).toEqual({ ok: true, event: "agent-dispatch", toolUseId: "call_9" });
+    expect(parseHookPayload(raw)).toEqual({
+      ok: true,
+      event: "agent-dispatch",
+      toolUseId: "call_9",
+    });
   });
 
   it("rejects Stop payloads: not a capture point (dead in this runtime)", () => {
@@ -80,12 +92,28 @@ describe("parseHookPayload", () => {
   it("rejects non-JSON, non-object, unknown events, and missing fields", () => {
     expect(parseHookPayload("not json").ok).toBe(false);
     expect(parseHookPayload("[1,2]").ok).toBe(false);
-    expect(parseHookPayload(JSON.stringify({ hook_event_name: "PostToolUse", session_id: SESSION })).ok).toBe(false);
     expect(
-      parseHookPayload(JSON.stringify({ hook_event_name: "PostToolUse", tool_name: "TaskOutput", tool_use_id: "c", tool_input: {} })).ok,
+      parseHookPayload(JSON.stringify({ hook_event_name: "PostToolUse", session_id: SESSION })).ok,
     ).toBe(false);
     expect(
-      parseHookPayload(JSON.stringify({ hook_event_name: "PostToolUse", tool_name: "Bash", tool_use_id: "c", tool_input: {} })).ok,
+      parseHookPayload(
+        JSON.stringify({
+          hook_event_name: "PostToolUse",
+          tool_name: "TaskOutput",
+          tool_use_id: "c",
+          tool_input: {},
+        }),
+      ).ok,
+    ).toBe(false);
+    expect(
+      parseHookPayload(
+        JSON.stringify({
+          hook_event_name: "PostToolUse",
+          tool_name: "Bash",
+          tool_use_id: "c",
+          tool_input: {},
+        }),
+      ).ok,
     ).toBe(false);
   });
 });
@@ -94,7 +122,14 @@ describe("computeUsageTotals", () => {
   it("sums token columns and request counts across rows", () => {
     const rows = [
       row(),
-      row({ status: "error", input_tokens: 30, output_tokens: 0, reasoning_tokens: 0, cache_read_input_tokens: 0, completed_at: null }),
+      row({
+        status: "error",
+        input_tokens: 30,
+        output_tokens: 0,
+        reasoning_tokens: 0,
+        cache_read_input_tokens: 0,
+        completed_at: null,
+      }),
     ];
     const totals = computeUsageTotals(SESSION, rows, "2026-08-30T00:00:00.000Z");
     expect(totals.requestCount).toBe(2);
@@ -115,7 +150,9 @@ describe("computeUsageTotals", () => {
   });
 
   it("zero wall time when nothing completed", () => {
-    expect(computeUsageTotals(SESSION, [row({ status: "running", completed_at: null })], "x").wallTimeMs).toBe(0);
+    expect(
+      computeUsageTotals(SESSION, [row({ status: "running", completed_at: null })], "x").wallTimeMs,
+    ).toBe(0);
   });
 
   it("breaks usage down per model", () => {
@@ -148,7 +185,14 @@ describe("mergeUsageIntoMetadata", () => {
     const base = computeUsageTotals(SESSION, [row()], "x");
     const cacheOnlyGrowth = computeUsageTotals(
       SESSION,
-      [row({ cache_read_input_tokens: 51, reasoning_tokens: 3, started_at: 900, completed_at: 7000 })],
+      [
+        row({
+          cache_read_input_tokens: 51,
+          reasoning_tokens: 3,
+          started_at: 900,
+          completed_at: 7000,
+        }),
+      ],
       "x",
     );
     expect(captureFingerprint(cacheOnlyGrowth)).not.toBe(captureFingerprint(base));
@@ -158,7 +202,10 @@ describe("mergeUsageIntoMetadata", () => {
     const first = mergeUsageIntoMetadata(metadataText(), totals);
     const resumedTotals = computeUsageTotals(
       SESSION,
-      [row(), row({ input_tokens: 200, output_tokens: 20, started_at: 90000, completed_at: 95000 })],
+      [
+        row(),
+        row({ input_tokens: 200, output_tokens: 20, started_at: 90000, completed_at: 95000 }),
+      ],
       "2026-08-30T00:01:00.000Z",
     );
     const second = mergeUsageIntoMetadata(serializeMetadata(first), resumedTotals);
@@ -230,7 +277,9 @@ describe("hook.mjs subprocess (entrypoint as the runtime runs it)", () => {
     db.exec(`create table model_usage (id text primary key, session_id text, provider_id text, model_id text, status text,
       started_at integer, completed_at integer, duration_ms integer, input_tokens integer, output_tokens integer,
       reasoning_tokens integer, cache_creation_input_tokens integer, cache_read_input_tokens integer, computed_total_tokens integer)`);
-    db.prepare("insert into model_usage values ('r1','sess_subagent_agent_probe','p','m','completed',1000,6000,5000,100,10,2,0,50,162)").run();
+    db.prepare(
+      "insert into model_usage values ('r1','sess_subagent_agent_probe','p','m','completed',1000,6000,5000,100,10,2,0,50,162)",
+    ).run();
     db.close();
   });
   afterAll(() => rmSync(env, { recursive: true, force: true }));
@@ -251,7 +300,14 @@ describe("hook.mjs subprocess (entrypoint as the runtime runs it)", () => {
 
   it("TaskOutput capture: usage lands in metadata and repeats are idempotent", () => {
     const metaPath = join(env, "agents", "sess_parent", "agent_probe", "metadata.json");
-    writeFileSync(metaPath, JSON.stringify({ agentId: "agent_probe", childSessionId: "sess_subagent_agent_probe", status: "completed" }));
+    writeFileSync(
+      metaPath,
+      JSON.stringify({
+        agentId: "agent_probe",
+        childSessionId: "sess_subagent_agent_probe",
+        status: "completed",
+      }),
+    );
     const first = runHook(taskOutputPayload);
     expect(first.status).toBe(0);
     expect(first.stderr).toContain("usage_recorded");
@@ -268,12 +324,15 @@ describe("hook.mjs subprocess (entrypoint as the runtime runs it)", () => {
 
   it("Agent (foreground) capture: parentToolUseId match records usage (B1)", () => {
     const metaPath = join(env, "agents", "sess_parent", "agent_probe", "metadata.json");
-    writeFileSync(metaPath, JSON.stringify({
-      agentId: "agent_probe",
-      childSessionId: "sess_subagent_agent_probe",
-      parentToolUseId: "call_probe_fg",
-      status: "completed",
-    }));
+    writeFileSync(
+      metaPath,
+      JSON.stringify({
+        agentId: "agent_probe",
+        childSessionId: "sess_subagent_agent_probe",
+        parentToolUseId: "call_probe_fg",
+        status: "completed",
+      }),
+    );
     const r = runHook(agentPayload);
     expect(r.status).toBe(0);
     expect(r.stderr).toContain("usage_recorded");
@@ -283,7 +342,9 @@ describe("hook.mjs subprocess (entrypoint as the runtime runs it)", () => {
   it("Stop payload: validated no-op with observable skip, nothing written (A1/B1)", () => {
     const metaPath = join(env, "agents", "sess_parent", "agent_probe", "metadata.json");
     const before = readFileSync(metaPath, "utf8");
-    const r = runHook(JSON.stringify({ hook_event_name: "Stop", session_id: "sess_subagent_agent_probe" }));
+    const r = runHook(
+      JSON.stringify({ hook_event_name: "Stop", session_id: "sess_subagent_agent_probe" }),
+    );
     expect(r.status).toBe(0);
     expect(r.stderr).toContain("skip_payload");
     expect(readFileSync(metaPath, "utf8")).toBe(before);
@@ -303,7 +364,11 @@ describe("hook.mjs subprocess (entrypoint as the runtime runs it)", () => {
 
   it("missing telemetry DB: exits 1, logs, metadata untouched", () => {
     const metaPath = join(env, "agents", "sess_parent", "agent_probe", "metadata.json");
-    const valid = JSON.stringify({ agentId: "agent_probe", childSessionId: "sess_subagent_agent_probe", status: "completed" });
+    const valid = JSON.stringify({
+      agentId: "agent_probe",
+      childSessionId: "sess_subagent_agent_probe",
+      status: "completed",
+    });
     writeFileSync(metaPath, valid);
     const r = runHook(taskOutputPayload, { ZCODE_DB_PATH: join(env, "missing.sqlite") });
     expect(r.status).toBe(1);

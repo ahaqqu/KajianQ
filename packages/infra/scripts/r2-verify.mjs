@@ -60,9 +60,7 @@ console.log(`r2-verify: read    OK`);
 const listed = await client.send(
   new ListObjectsV2Command({ Bucket: BUCKET, Prefix: "infra-verify/" }),
 );
-console.log(
-  `r2-verify: listed  ${(listed.Contents ?? []).length} key(s) under infra-verify/`,
-);
+console.log(`r2-verify: listed  ${(listed.Contents ?? []).length} key(s) under infra-verify/`);
 
 await client.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
 console.log(`r2-verify: deleted ${key}`);

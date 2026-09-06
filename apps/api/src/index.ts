@@ -10,11 +10,7 @@ export { RateLimiterDo };
 const api = createApi();
 
 const handler = {
-  async fetch(
-    request: Request,
-    env: WorkerBindings,
-    ctx: unknown,
-  ): Promise<Response> {
+  async fetch(request: Request, env: WorkerBindings, ctx: unknown): Promise<Response> {
     // All requests flow through the Hono stack so CSP, CORS, rate-limit,
     // correlation-id, and the typed error handler apply to the SPA as well.
     // The catch-all route at the bottom of createApi serves ASSETS for

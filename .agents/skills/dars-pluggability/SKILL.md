@@ -13,12 +13,12 @@ The DARS engine is a reusable, domain-agnostic RAG engine. KajianQ is a domain p
 
 Know which seam you are standing on before writing code:
 
-| Seam | Interface lives in | Implementations live in | What varies behind it |
-|---|---|---|---|
-| Pipeline stages | `packages/rag-core` | stage implementations per app wiring | Router, Retriever, Assembler, Generator, Reviewer |
-| LLM / embedding vendors | `Provider` in `packages/rag-core` or `packages/infra` | vendor adapters in `packages/infra` | Gemini, Kimi, DeepSeek, Qwen (allowlist per ADR-0009) |
-| Persistence | `RagStore` in `packages/infra` | Neon Postgres + pgvector adapter | vectors, metadata filters, chat, traces, feedback, Golden Set |
-| Blob storage | `ObjectStore` in `packages/infra` | Cloudflare R2 | raw source archives, `text_raw` backups |
+| Seam                    | Interface lives in                                    | Implementations live in              | What varies behind it                                         |
+| ----------------------- | ----------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------- |
+| Pipeline stages         | `packages/rag-core`                                   | stage implementations per app wiring | Router, Retriever, Assembler, Generator, Reviewer             |
+| LLM / embedding vendors | `Provider` in `packages/rag-core` or `packages/infra` | vendor adapters in `packages/infra`  | Gemini, Kimi, DeepSeek, Qwen (allowlist per ADR-0009)         |
+| Persistence             | `RagStore` in `packages/infra`                        | Neon Postgres + pgvector adapter     | vectors, metadata filters, chat, traces, feedback, Golden Set |
+| Blob storage            | `ObjectStore` in `packages/infra`                     | Cloudflare R2                        | raw source archives, `text_raw` backups                       |
 
 Stages communicate **in-process** through typed interfaces — no HTTP between pipeline stages.
 

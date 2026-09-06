@@ -3,7 +3,7 @@
 Adapters the engine and apps consume; engine code never imports a database or
 vendor client directly (ADR-0008, ADR-0009). What lives here:
 
-- **`RagStore`** — (landed in #4) the single seam for all *engine* structured
+- **`RagStore`** — (landed in #4) the single seam for all _engine_ structured
   persistence: corpus chunks with dual embeddings, Traces, chat, anonymous
   sessions, feedback, the generic eval run/result ledger, and model configs.
   `rag-store.ts` defines the interface; `rag-store-neon.ts` is the Neon
@@ -64,7 +64,7 @@ else may hold a DB client or query (`check-boundary.mjs` enforces this).
 ## Migrations (db-migrate)
 
 Three migration sets share one Neon database and one `schema_migrations`
-ledger; migration *names* are unique across sets. Apply order is engine →
+ledger; migration _names_ are unique across sets. Apply order is engine →
 domain → product (the sets are FK-independent, so any order works).
 
 ```sh

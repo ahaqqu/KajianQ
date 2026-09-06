@@ -13,7 +13,7 @@ GitHub's TOS permits one human operating multiple accounts; the constraint is me
 1. **`gh auth switch` per dispatch** — rejected: the auth state is process-global, and the manager runs implementer and reviewer subagents in parallel background dispatches. Parallel roles would race each other's account switches.
 2. **Per-invocation `GH_TOKEN` through a wrapper (`gh-as <role> <gh args…>`)** — chosen: each `gh` invocation carries its own identity, parallel roles never interfere, and the manager session (no role) keeps the owner's default identity.
 
-A wrapper alone is an *instruction* — an agent that misses it silently posts under the wrong identity, which is exactly the failure class the owner asked to avoid (same reasoning as issue #98: mechanical guardrails over prose). The owner explicitly rejected instruction-only enforcement.
+A wrapper alone is an _instruction_ — an agent that misses it silently posts under the wrong identity, which is exactly the failure class the owner asked to avoid (same reasoning as issue #98: mechanical guardrails over prose). The owner explicitly rejected instruction-only enforcement.
 
 ## Verified runtime facts (probed 2026-09-01)
 

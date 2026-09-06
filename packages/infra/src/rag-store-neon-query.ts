@@ -31,10 +31,7 @@ const SIMILARITY_COLUMNS: Record<RetrievalTrack, string> = {
  * filter a key slot and an array slot, assigned from a running counter (so
  * the arithmetic stays local and auditable rather than magic offsets).
  */
-export function buildSimilarityQuery(
-  track: RetrievalTrack,
-  filterCount: number,
-): string {
+export function buildSimilarityQuery(track: RetrievalTrack, filterCount: number): string {
   const column = SIMILARITY_COLUMNS[track];
   const select = `
   SELECT id, parent_id, text_raw, text_ar, text_id, citation,

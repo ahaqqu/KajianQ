@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import * as v from "valibot";
-import {
-  TemplateSyncManifestSchema,
-  TemplateSyncStateSchema,
-} from "./template-sync";
+import { TemplateSyncManifestSchema, TemplateSyncStateSchema } from "./template-sync";
 
 describe("TemplateSyncManifestSchema", () => {
   it("accepts a valid manifest", () => {

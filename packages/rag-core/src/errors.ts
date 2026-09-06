@@ -1,6 +1,9 @@
 import { Data, Effect, type Scope } from "effect";
 import type { Stage } from "@app/contracts";
 import type { RunContext } from "./context";
+import { ProviderError } from "./provider";
+
+export { ProviderError };
 
 /**
  * The stage-level failure that travels in a pipeline stage's `E` channel
@@ -25,8 +28,6 @@ export const toStageError = <A, E>(
   stage: Stage,
   effect: Effect.Effect<A, E, StageRequirements>,
 ): Effect.Effect<A, StageError, StageRequirements> =>
-  Effect.mapError(
-    effect,
-    (cause): StageError =>
-      cause instanceof StageError ? cause : new StageError({ stage, cause }),
+  Effect.mapError(effect, (cause): StageError =>
+    cause instanceof StageError ? cause : new StageError({ stage, cause }),
   );

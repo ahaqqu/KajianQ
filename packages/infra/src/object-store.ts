@@ -8,8 +8,7 @@ export interface ObjectStore {
 export function createMemoryObjectStore(): ObjectStore {
   const map = new Map<string, Uint8Array>();
   const enc = new TextEncoder();
-  const toBytes = (v: Uint8Array | string) =>
-    typeof v === "string" ? enc.encode(v) : v;
+  const toBytes = (v: Uint8Array | string) => (typeof v === "string" ? enc.encode(v) : v);
 
   return {
     async put(key, value) {
@@ -80,9 +79,9 @@ export function createS3ObjectStore(client: S3Like, bucket: string): ObjectStore
     async get(key) {
       const { GetObjectCommand, S3ServiceException } = await import("@aws-sdk/client-s3");
       try {
-        const res = (await client.send(
-          new GetObjectCommand({ Bucket: bucket, Key: key }),
-        )) as { Body?: { transformToByteArray(): Promise<Uint8Array> } };
+        const res = (await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }))) as {
+          Body?: { transformToByteArray(): Promise<Uint8Array> };
+        };
         if (!res.Body) return null;
         return await res.Body.transformToByteArray();
       } catch (err) {

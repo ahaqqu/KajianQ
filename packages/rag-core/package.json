@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./effect-spike": "./src/effect-spike.ts",
     "./interop": "./src/interop.ts"
   },
   "scripts": {
