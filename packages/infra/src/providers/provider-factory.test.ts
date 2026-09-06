@@ -5,7 +5,6 @@ import type { FetchLike } from "./chat-completions-adapter";
 import { resolveRole } from "./provider-factory";
 import { chatBody, configWith, jsonResponse } from "./test-fixtures";
 
-
 /** Run an effect that must fail, returning the typed failure itself. */
 async function runFail<A>(effect: Effect.Effect<A, ProviderError, never>): Promise<ProviderError> {
   const exit = await Effect.runPromiseExit(effect);
@@ -116,9 +115,7 @@ describe("fallback chain", () => {
 
   it("an unknown role throws at wiring time", () => {
     const config = configWith(["test:m-chat"]);
-    expect(() => resolveRole(config, "nope", { env: {} })).toThrow(
-      /unknown role "nope"/,
-    );
+    expect(() => resolveRole(config, "nope", { env: {} })).toThrow(/unknown role "nope"/);
   });
 
   it("a personal-data call skips disallowed (free-tier) candidates and falls forward", async () => {

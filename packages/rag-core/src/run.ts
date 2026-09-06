@@ -7,6 +7,7 @@ import type {
   Assembler,
   Chunk,
   DefaultFilters,
+  Draft,
   Generator,
   Query,
   Retriever,

@@ -18,8 +18,7 @@ export function computeCost(
   latencyMs: number,
   estimated = false,
 ): CostRecord {
-  const exact =
-    tokensIn * microUsdPerToken(price.in) + tokensOut * microUsdPerToken(price.out);
+  const exact = tokensIn * microUsdPerToken(price.in) + tokensOut * microUsdPerToken(price.out);
   return {
     modelId,
     tokensIn,

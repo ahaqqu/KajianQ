@@ -26,7 +26,6 @@ async function consume(handle: StreamHandle) {
   return { text: Array.from(chunks).join(""), cost };
 }
 
-
 /** Run an effect that must fail, returning the typed failure itself. */
 async function runFail<A>(effect: Effect.Effect<A, ProviderError, never>): Promise<ProviderError> {
   const exit = await Effect.runPromiseExit(effect);
@@ -177,10 +176,9 @@ describe("chat-completions adapter", () => {
   });
 
   it("stream without usage reports an estimated cost (never metered-zero)", async () => {
-    const sse = [
-      'data: {"choices":[{"delta":{"content":"abcdefgh"}}]}',
-      "data: [DONE]",
-    ].join("\n\n");
+    const sse = ['data: {"choices":[{"delta":{"content":"abcdefgh"}}]}', "data: [DONE]"].join(
+      "\n\n",
+    );
     const fetchImpl: FetchLike = async () =>
       new Response(sse, { status: 200, headers: { "content-type": "text/event-stream" } });
     const provider = makeProvider("m-chat", fetchImpl);

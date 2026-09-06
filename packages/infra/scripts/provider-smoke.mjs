@@ -31,9 +31,7 @@ const SMOKED_ROLES = [
 ];
 
 const PROMPT = {
-  turns: [
-    { role: "user", content: "Reply with the single word: ready" },
-  ],
+  turns: [{ role: "user", content: "Reply with the single word: ready" }],
 };
 
 function microUsd(cost) {
@@ -42,10 +40,12 @@ function microUsd(cost) {
 
 function row(name, status, detail) {
   const statusTag =
-    status === "ok" ? "\x1b[32mOK\x1b[0m" : status === "not-run" ? "\x1b[33mNOT RUN\x1b[0m" : "\x1b[31mFAIL\x1b[0m";
-  console.log(
-    `  ${name.padEnd(34)} ${statusTag.padEnd(20)} ${detail ?? ""}`,
-  );
+    status === "ok"
+      ? "\x1b[32mOK\x1b[0m"
+      : status === "not-run"
+        ? "\x1b[33mNOT RUN\x1b[0m"
+        : "\x1b[31mFAIL\x1b[0m";
+  console.log(`  ${name.padEnd(34)} ${statusTag.padEnd(20)} ${detail ?? ""}`);
 }
 
 let failures = 0;
@@ -91,48 +91,46 @@ const missingCheap = config.roles.cheap.chain
 if (missingCheap.length > 0) {
   row("cheap fallback", "not-run", `missing ${missingCheap.join(", ")}`);
 } else {
-try {
-  // Fully synthetic fetch: 429 for the first cheap candidate, a canned 200
-  // with usage for the fallback. The drill verifies the chain mechanism
-  // only — it never touches the network or spends money (the role drill
-  // above intentionally does when keys are present).
-  const first = config.roles.cheap.chain[0];
-  const firstModel = parseCandidateKey(first)[1];
-  const syntheticFetch = async (_url, init) => {
-    const body = JSON.parse(init.body);
-    if (body.model === firstModel) {
-      return new Response(JSON.stringify({ error: { message: "forced 429" } }), {
-        status: 429,
-        headers: { "content-type": "application/json" },
-      });
+  try {
+    // Fully synthetic fetch: 429 for the first cheap candidate, a canned 200
+    // with usage for the fallback. The drill verifies the chain mechanism
+    // only — it never touches the network or spends money (the role drill
+    // above intentionally does when keys are present).
+    const first = config.roles.cheap.chain[0];
+    const firstModel = parseCandidateKey(first)[1];
+    const syntheticFetch = async (_url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.model === firstModel) {
+        return new Response(JSON.stringify({ error: { message: "forced 429" } }), {
+          status: 429,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          choices: [{ message: { content: "fallback ok" } }],
+          usage: { prompt_tokens: 3, completion_tokens: 2 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    const { provider } = resolveRole(config, "cheap", {
+      env: process.env,
+      fetchImpl: syntheticFetch,
+    });
+    const result = await Effect.runPromise(provider.generate(PROMPT));
+    if (result.cost.modelId === firstModel) {
+      throw new Error(`fallback did not trigger: answered by first candidate ${firstModel}`);
     }
-    return new Response(
-      JSON.stringify({
-        choices: [{ message: { content: "fallback ok" } }],
-        usage: { prompt_tokens: 3, completion_tokens: 2 },
-      }),
-      { status: 200, headers: { "content-type": "application/json" } },
+    row(
+      "cheap fallback",
+      "ok",
+      `failed ${firstModel} → answered by ${result.cost.modelId}  (synthetic, no spend)`,
     );
-  };
-  const { provider } = resolveRole(config, "cheap", {
-    env: process.env,
-    fetchImpl: syntheticFetch,
-  });
-  const result = await Effect.runPromise(provider.generate(PROMPT));
-  if (result.cost.modelId === firstModel) {
-    throw new Error(
-      `fallback did not trigger: answered by first candidate ${firstModel}`,
-    );
+  } catch (err) {
+    failures += 1;
+    row("cheap fallback", "fail", String(err?.message ?? err));
   }
-  row(
-    "cheap fallback",
-    "ok",
-    `failed ${firstModel} → answered by ${result.cost.modelId}  (synthetic, no spend)`,
-  );
-} catch (err) {
-  failures += 1;
-  row("cheap fallback", "fail", String(err?.message ?? err));
-}
 }
 
 if (failures > 0) {

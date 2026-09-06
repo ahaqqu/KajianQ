@@ -138,7 +138,13 @@ export function wrapSseStream(
         yield next.value;
       }
     } catch (err) {
-      settle(false, new ProviderError({ kind: "transport", message: `stream failed mid-flight: ${String(err)}` }));
+      settle(
+        false,
+        new ProviderError({
+          kind: "transport",
+          message: `stream failed mid-flight: ${String(err)}`,
+        }),
+      );
       throw err;
     }
   }

@@ -88,16 +88,17 @@ class FallbackProvider implements Provider {
    * candidates whose vendor disallows it (free tiers — ADR-0009: never
    * route personal data through free tiers).
    */
-  private eligibleEffectFor(
-    spec: { personalData?: boolean },
-  ): Effect.Effect<readonly WiredCandidate[], ProviderError> {
+  private eligibleEffectFor(spec: {
+    personalData?: boolean;
+  }): Effect.Effect<readonly WiredCandidate[], ProviderError> {
     if (!spec.personalData) return Effect.succeed(this.candidates);
     const eligible = this.candidates.filter((c) => c.personalDataAllowed);
     if (eligible.length === 0 && this.candidates.length > 0) {
       return Effect.fail(
         new ProviderError({
           kind: "bad_request",
-          message: `role "${this.role}": personal-data call but no candidate allows personal data ` +
+          message:
+            `role "${this.role}": personal-data call but no candidate allows personal data ` +
             `(candidates: ${this.candidates.map((c) => c.provider.modelId).join(", ")})`,
         }),
       );
@@ -126,7 +127,10 @@ class FallbackProvider implements Provider {
       const first = eligible[0];
       if (first === undefined) {
         return Effect.fail(
-          new ProviderError({ kind: "bad_request", message: `role "${this.role}": no candidates wired` }),
+          new ProviderError({
+            kind: "bad_request",
+            message: `role "${this.role}": no candidates wired`,
+          }),
         );
       }
       const rest = eligible.slice(1);
@@ -156,15 +160,24 @@ class FallbackProvider implements Provider {
   }
 
   generate(spec: PromptSpec): Effect.Effect<GenerationResult, ProviderError> {
-    return Effect.flatMap(this.eligibleEffectFor(spec), this.withFallback((p) => p.generate(spec)));
+    return Effect.flatMap(
+      this.eligibleEffectFor(spec),
+      this.withFallback((p) => p.generate(spec)),
+    );
   }
 
   stream(spec: PromptSpec): Effect.Effect<StreamHandle, ProviderError> {
-    return Effect.flatMap(this.eligibleEffectFor(spec), this.withFallback((p) => p.stream(spec)));
+    return Effect.flatMap(
+      this.eligibleEffectFor(spec),
+      this.withFallback((p) => p.stream(spec)),
+    );
   }
 
   embed(spec: EmbedSpec): Effect.Effect<EmbeddingResult, ProviderError> {
-    return Effect.flatMap(this.eligibleEffectFor(spec), this.withFallback((p) => p.embed(spec)));
+    return Effect.flatMap(
+      this.eligibleEffectFor(spec),
+      this.withFallback((p) => p.embed(spec)),
+    );
   }
 }
 
