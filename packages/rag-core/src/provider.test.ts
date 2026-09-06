@@ -81,7 +81,13 @@ describe("Provider seam", () => {
     const gen = await Effect.runPromise(
       provider.generate({ turns: [{ role: "user", content: "q" }] }),
     );
-    run.record({ stage, kind: "llm_call", detail: { purpose: "generate" }, cost: gen.cost, at: run.now() });
+    run.record({
+      stage,
+      kind: "llm_call",
+      detail: { purpose: "generate" },
+      cost: gen.cost,
+      at: run.now(),
+    });
 
     const trace = parseTrace({ id: "t1", createdAt: run.now(), events });
     expect(trace.events).toHaveLength(1);

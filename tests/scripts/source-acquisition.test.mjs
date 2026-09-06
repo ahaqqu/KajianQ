@@ -30,12 +30,12 @@ async function withTempDir(fn) {
 describe("acquireFiles cache-dir mode (review A5)", () => {
   it("reads `cacheDir/cacheFile`, not the cache dir itself", async () => {
     await withTempDir(async (dir) => {
-      writeFileSync(join(dir, "ara-bukhari.json"), "{\"ok\":true}");
+      writeFileSync(join(dir, "ara-bukhari.json"), '{"ok":true}');
       const texts = await acquireFiles(
         [{ url: "https://example.invalid/ara-bukhari.json", cacheFile: "ara-bukhari.json" }],
         { log: QUIET_LOG, cacheDir: dir },
       );
-      expect(texts).toEqual(["{\"ok\":true}"]);
+      expect(texts).toEqual(['{"ok":true}']);
     });
   });
 

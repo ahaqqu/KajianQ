@@ -1,5 +1,7 @@
 import { Data } from "effect";
 import type { CostRecord } from "@app/contracts";
+
+export type { CostRecord };
 import type { Effect, Stream } from "effect";
 
 /** Why a Provider call failed — retryable means "try the next candidate". */
@@ -21,11 +23,24 @@ export type ProviderErrorKind =
  * so instead of discovering failure modes by reading implementations.
  * `candidates` on an `exhausted` error lists the model ids attempted, in
  * order, so the failure is traceable without a Trace event of its own.
+ *
+ * `attemptCosts` is the traceability payload for vendor-reaching failures
+ * (AGENTS.md rule 4): every attempt that reached the vendor but then failed
+ * still consumed real tokens/bandwidth, so each such failed attempt carries
+ * its estimated CostRecord here. A caller whose LLM call fails must record
+ * these through the run's trace sink — an attempt that reached the vendor
+ * may never vanish from the cost trail. Only attempts known to have reached
+ * the vendor appear (a rejected request or a missing key never did).
  */
 export class ProviderError extends Data.TaggedError("ProviderError")<{
   readonly kind: ProviderErrorKind;
   readonly message: string;
   readonly candidates?: readonly string[];
+  /**
+   * One estimated CostRecord per vendor-reaching failed attempt, in the
+   * order the attempts happened (across retries and fallbacks alike).
+   */
+  readonly attemptCosts?: readonly CostRecord[];
 }> {}
 
 /** The text prompt and parameters for a generation or stream call. */

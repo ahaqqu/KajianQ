@@ -13,7 +13,7 @@ aggressively template-owned: `.agents/`, `.github/workflows/`, `AGENTS.md`,
 `docs/ARCHITECTURE.md`, `playwright.config.ts`, `scripts/` wholesale, and
 since #125/. PR #130 of the template reversed only `.zcode/` (overwrite →
 merge). Enforcing that full list here fails `bun run template-gate` on 14
-real, *deliberate* fork adaptations:
+real, _deliberate_ fork adaptations:
 
 - **Fork-deleted template runbooks:** `docs/BOOTSTRAP_PROMPT.md`,
   `docs/QUOTA.md`, `docs/RUNBOOK_RESTORE.md` (D1/Cloudflare-specific; the
@@ -49,7 +49,7 @@ real, *deliberate* fork adaptations:
    infrastructure; `scripts/template-sync/`, `scripts/iteration-guardrail/`,
    `scripts/agent-usage-metadata/` and the reusable check scripts;
    tsconfig triplet, `vitest.config.ts`, `flake.nix`, `.github/zap-rules.tsv`.
-   `template-sync.json` itself is fork-owned (it *is* the fork's map).
+   `template-sync.json` itself is fork-owned (it _is_ the fork's map).
 2. **`.zcode/` follows the template's PR #130:** a `merge` path (never
    overwrite). Forks inherit template updates and may customize locally;
    this fork keeps its role-file pins on its ZCode custom-provider channel

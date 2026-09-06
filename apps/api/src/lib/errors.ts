@@ -27,11 +27,13 @@ export function onError(err: unknown, c: Context<ApiEnv>): Response {
     return c.json({ error: "upstream" }, engineStatus as 400 | 429 | 502);
   }
   const ctx = c.get("ctx");
-  const logger = ctx?.logger ?? createLogger({
-    service: "api",
-    env: c.env.APP_ENV ?? "development",
-    correlationId: c.get("correlationId"),
-  });
+  const logger =
+    ctx?.logger ??
+    createLogger({
+      service: "api",
+      env: c.env.APP_ENV ?? "development",
+      correlationId: c.get("correlationId"),
+    });
   logger.error("request.unhandled", {
     path: c.req.path,
     error: err instanceof Error ? err.message : String(err),

@@ -21,10 +21,7 @@ describe("fetchHealth", () => {
   });
 
   it("throws on non-ok", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({ ok: false, status: 500 }),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 500 }));
     await expect(fetchHealth()).rejects.toThrow("health_http_500");
     vi.unstubAllGlobals();
   });

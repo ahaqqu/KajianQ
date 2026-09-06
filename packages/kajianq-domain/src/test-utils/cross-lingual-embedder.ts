@@ -80,9 +80,7 @@ export function createCrossLingualEmbedder(
     if (cached) return cached;
     const concept = conceptFor(text, dict);
     const vec =
-      concept === null
-        ? hashToUnit(`noise:${text}`, dim)
-        : jitter(hashToUnit(concept, dim), 0.02);
+      concept === null ? hashToUnit(`noise:${text}`, dim) : jitter(hashToUnit(concept, dim), 0.02);
     cache.set(text, vec);
     return vec;
   };

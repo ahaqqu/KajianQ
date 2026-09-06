@@ -1,25 +1,9 @@
-import { Cause, Effect, Option } from "effect";
-import { perKindRetrySchedule } from "./provider-factory";
+import { resolveRole } from "./provider-factory";
+import { perKindRetrySchedule } from "./retry-schedule";
 import { describe, expect, it } from "vitest";
 import { ProviderError } from "@app/rag-core";
 import type { FetchLike } from "./chat-completions-adapter";
-import { resolveRole } from "./provider-factory";
-import { chatBody, configWith, jsonResponse } from "./test-fixtures";
-
-
-/** Run an effect that must fail, returning the typed failure itself. */
-async function runFail<A>(effect: Effect.Effect<A, ProviderError, never>): Promise<ProviderError> {
-  const exit = await Effect.runPromiseExit(effect);
-  const failure =
-    exit._tag === "Failure" ? Cause.failureOption(exit.cause) : Option.none<ProviderError>();
-  if (Option.isSome(failure)) return failure.value;
-  throw new Error("expected the effect to fail");
-}
-
-/** Run an effect that must succeed, returning its value. */
-const runOk = <A>(effect: Effect.Effect<A, ProviderError, never>): Promise<A> =>
-  Effect.runPromise(effect);
-
+import { chatBody, configWith, jsonResponse, runFail, runOk } from "./test-fixtures";
 
 /** Fast per-kind schedule so retry tests do not sleep for real backoff. */
 const fastSchedule = perKindRetrySchedule("1 millis", "1 millis");
@@ -96,6 +80,124 @@ describe("fallback chain", () => {
     expect(result.cost.modelId).toBe("alt-chat");
   });
 
+  it("per-kind retry budgets do not bleed across error kinds", async () => {
+    // Review A2 regression pin: rate_limited allows 2 retries, transport 3.
+    // A mixed sequence must leave each kind its full own budget — errors of
+    // one kind may not consume the other kind's retries.
+    const script: ReadonlyArray<"transport" | "rate_limited"> = [
+      "transport",
+      "transport",
+      "rate_limited",
+      "rate_limited",
+      "rate_limited",
+    ];
+    let calls = 0;
+    const fetchImpl: FetchLike = async () => {
+      const step = script[calls];
+      calls += 1;
+      if (step === "transport") throw new TypeError("network down");
+      return jsonResponse({ error: { message: "slow down" } }, 429);
+    };
+    const config = configWith(["test:m-chat"]); // single candidate: no fallback
+    const { provider } = resolveRole(config, "cheap", {
+      env: { TEST_KEY: "a" },
+      fetchImpl,
+      retrySchedule: fastSchedule,
+    });
+    const err = await runFail(provider.generate({ turns: [{ role: "user", content: "hi" }] }));
+    // 1 initial + 2 transport retries + 2 rate_limited retries = 5 calls;
+    // the third 429 finds its rate_limited budget exhausted. With the old
+    // whileInput/union schedule this was 4 (the two transport faults had
+    // already stepped the rate_limited arm, leaving the first 429 with zero
+    // retries).
+    expect(calls).toBe(5);
+    expect(err.kind).toBe("exhausted");
+  });
+
+  it("non-retryable kinds never retry on the same candidate", async () => {
+    let calls = 0;
+    const fetchImpl: FetchLike = async () => {
+      calls += 1;
+      return jsonResponse({ error: { message: "unauthorized" } }, 401);
+    };
+    const config = configWith(["test:m-chat"]);
+    const { provider } = resolveRole(config, "cheap", {
+      env: { TEST_KEY: "a" },
+      fetchImpl,
+      retrySchedule: fastSchedule,
+    });
+    const err = await runFail(provider.generate({ turns: [{ role: "user", content: "hi" }] }));
+    expect(err.kind).toBe("bad_request");
+    expect(calls).toBe(1);
+  });
+
+  it("a vendor-reaching failed attempt carries its estimated cost (C2)", async () => {
+    // The vendor answered 401 — the attempt reached it, so its input spend
+    // must ride on the error for the caller's trace sink (traceability
+    // rule 4: a failed attempt may never vanish from the cost trail).
+    const config = configWith(["test:m-chat"]);
+    const { provider } = resolveRole(config, "cheap", {
+      env: { TEST_KEY: "a" },
+      fetchImpl: async () => jsonResponse({ error: { message: "unauthorized" } }, 401),
+    });
+    const err = await runFail(provider.generate({ turns: [{ role: "user", content: "hi" }] }));
+    expect(err.attemptCosts).toBeDefined();
+    expect(err.attemptCosts).toHaveLength(1);
+    const cost = err.attemptCosts![0]!;
+    expect(cost.modelId).toBe("m-chat");
+    expect(cost.tokensIn).toBeGreaterThan(0);
+    expect(cost.estimated).toBe(true); // an estimate, never metered (ADR-0022)
+    expect(cost.costMicroUsd).toBeGreaterThan(0);
+  });
+
+  it("retries accumulate every vendor-reaching attempt's cost into the final error", async () => {
+    // 429s on the first candidate (vendor reached, asked us to slow down),
+    // then the fallback answers. The failed attempts' spend must survive.
+    let calls = 0;
+    const fetchImpl: FetchLike = async (_url, init) => {
+      calls += 1;
+      const model = (JSON.parse(init.body) as { model: string }).model;
+      if (model === "m-chat") return jsonResponse({ error: { message: "slow down" } }, 429);
+      return jsonResponse(chatBody());
+    };
+    const config = configWith(["test:m-chat", "alt:alt-chat"]);
+    const { provider } = resolveRole(config, "cheap", {
+      env: { TEST_KEY: "a", ALT_KEY: "b" },
+      fetchImpl,
+      retrySchedule: fastSchedule,
+    });
+    const result = await runOk(provider.generate({ turns: [{ role: "user", content: "hi" }] }));
+    expect(result.cost.modelId).toBe("alt-chat");
+    expect(calls).toBe(4); // 1 initial + 2 rate_limited retries + 1 fallback
+  });
+
+  it("an exhausted chain's error lists every vendor-reaching attempt's cost", async () => {
+    let calls = 0;
+    const fetchImpl: FetchLike = async () => {
+      calls += 1;
+      return jsonResponse({ error: { message: "boom" } }, 503);
+    };
+    const config = configWith(["test:m-chat", "alt:alt-chat"]);
+    const { provider } = resolveRole(config, "cheap", {
+      env: { TEST_KEY: "a", ALT_KEY: "b" },
+      fetchImpl,
+      retrySchedule: fastSchedule,
+    });
+    const err = await runFail(provider.generate({ turns: [{ role: "user", content: "hi" }] }));
+    // (1 initial + 3 server retries) per candidate × 2 candidates = 8
+    // attempts, all vendor-reaching; the exhausted error carries one cost
+    // record per attempt.
+    expect(err.kind).toBe("exhausted");
+    expect(calls).toBe(8);
+    expect(err.attemptCosts).toHaveLength(8);
+    expect(new Set(err.attemptCosts!.map((c) => c.modelId))).toEqual(
+      new Set(["m-chat", "alt-chat"]),
+    );
+    for (const cost of err.attemptCosts!) {
+      expect(cost.estimated).toBe(true);
+    }
+  });
+
   it("exhausted chain throws a typed error listing candidates", async () => {
     const config = configWith(["test:m-chat", "alt:alt-chat"]);
     const { provider } = resolveRole(config, "cheap", {
@@ -146,9 +248,7 @@ describe("fallback chain", () => {
 
   it("an unknown role throws at wiring time", () => {
     const config = configWith(["test:m-chat"]);
-    expect(() => resolveRole(config, "nope", { env: {} })).toThrow(
-      /unknown role "nope"/,
-    );
+    expect(() => resolveRole(config, "nope", { env: {} })).toThrow(/unknown role "nope"/);
   });
 
   it("a personal-data call skips disallowed (free-tier) candidates and falls forward", async () => {

@@ -301,12 +301,16 @@ describe("runIngestion", () => {
 
   it("stores the LLM parent summary and embeds parents from summaries", async () => {
     const f = fakeStore();
-    const summarizer = vi.fn(
-      async (input: { sourceKey: string }) => ({
-        summary: `summary ${input.sourceKey}`,
-        cost: { modelId: "test-summarizer", tokensIn: 1, tokensOut: 1, latencyMs: 1, costMicroUsd: 2 },
-      }),
-    );
+    const summarizer = vi.fn(async (input: { sourceKey: string }) => ({
+      summary: `summary ${input.sourceKey}`,
+      cost: {
+        modelId: "test-summarizer",
+        tokensIn: 1,
+        tokensOut: 1,
+        latencyMs: 1,
+        costMicroUsd: 2,
+      },
+    }));
     await runIngestion(
       async () => twoParents(),
       { archiveKey: "archive/key", raw: new Uint8Array() },
@@ -327,7 +331,13 @@ describe("runIngestion", () => {
         embedder: fakeProvider(),
         summarizer: async (input: { sourceKey: string }) => ({
           summary: `summary ${input.sourceKey}`,
-          cost: { modelId: "test-summarizer", tokensIn: 1, tokensOut: 1, latencyMs: 1, costMicroUsd: 7 },
+          cost: {
+            modelId: "test-summarizer",
+            tokensIn: 1,
+            tokensOut: 1,
+            latencyMs: 1,
+            costMicroUsd: 7,
+          },
         }),
       },
     );

@@ -32,31 +32,21 @@ describe("installSecurityHeaders", () => {
     expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(res.headers.get("X-Frame-Options")).toBe("SAMEORIGIN");
     expect(res.headers.get("Cross-Origin-Opener-Policy")).toBe("same-origin");
-    expect(res.headers.get("Cross-Origin-Resource-Policy")).toBe(
-      "same-origin",
-    );
-    expect(res.headers.get("Strict-Transport-Security")).toContain(
-      "max-age=",
-    );
+    expect(res.headers.get("Cross-Origin-Resource-Policy")).toBe("same-origin");
+    expect(res.headers.get("Strict-Transport-Security")).toContain("max-age=");
     expect(res.headers.get("Referrer-Policy")).toBe("no-referrer");
   });
 
   it("sets a deny-by-default Permissions-Policy", async () => {
     const res = await appWith().request("/probe");
-    expect(res.headers.get("Permissions-Policy")).toBe(
-      "camera=(), microphone=(), geolocation=()",
-    );
+    expect(res.headers.get("Permissions-Policy")).toBe("camera=(), microphone=(), geolocation=()");
   });
 
   it("leaves COEP unset unless opted in", async () => {
     const off = await appWith().request("/probe");
     expect(off.headers.get("Cross-Origin-Embedder-Policy")).toBeNull();
-    const on = await appWith({ crossOriginEmbedderPolicy: true }).request(
-      "/probe",
-    );
-    expect(on.headers.get("Cross-Origin-Embedder-Policy")).toBe(
-      "require-corp",
-    );
+    const on = await appWith({ crossOriginEmbedderPolicy: true }).request("/probe");
+    expect(on.headers.get("Cross-Origin-Embedder-Policy")).toBe("require-corp");
   });
 
   it("merges CSP overrides over the defaults", async () => {
