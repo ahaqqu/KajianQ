@@ -24,7 +24,12 @@ function expandHome(p) {
 
 const CONFIG_PATH =
   process.env.ZCODE_ROLE_IDENTITY_CONFIG ||
-  join(process.env.ZCODE_PROJECT_DIR || process.cwd(), "scripts", "role-gh-identity", "config.json");
+  join(
+    process.env.ZCODE_PROJECT_DIR || process.cwd(),
+    "scripts",
+    "role-gh-identity",
+    "config.json",
+  );
 
 function fail(message) {
   process.stderr.write(`gh-as: ${message}\n`);

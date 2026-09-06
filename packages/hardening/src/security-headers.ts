@@ -5,9 +5,7 @@ import { secureHeaders } from "hono/secure-headers";
 type SecureHeadersOptions = NonNullable<Parameters<typeof secureHeaders>[0]>;
 
 /** CSP directives every forked project ships by default. */
-export const DEFAULT_CSP: NonNullable<
-  SecureHeadersOptions["contentSecurityPolicy"]
-> = {
+export const DEFAULT_CSP: NonNullable<SecureHeadersOptions["contentSecurityPolicy"]> = {
   defaultSrc: ["'self'"],
   scriptSrc: ["'self'"],
   // Documented trade-off: Vite injects styles at build time; tightening to
@@ -28,9 +26,7 @@ export const DEFAULT_CSP: NonNullable<
  * Deny-by-default Permissions-Policy (ZAP 10063). Apps that need device
  * APIs override it per project.
  */
-export const DEFAULT_PERMISSIONS_POLICY: NonNullable<
-  SecureHeadersOptions["permissionsPolicy"]
-> = {
+export const DEFAULT_PERMISSIONS_POLICY: NonNullable<SecureHeadersOptions["permissionsPolicy"]> = {
   camera: [],
   microphone: [],
   geolocation: [],
@@ -63,9 +59,7 @@ export function installSecurityHeaders<E extends Env>(
     secureHeaders({
       contentSecurityPolicy: { ...DEFAULT_CSP, ...opts.contentSecurityPolicy },
       permissionsPolicy: opts.permissionsPolicy ?? DEFAULT_PERMISSIONS_POLICY,
-      ...(opts.crossOriginEmbedderPolicy
-        ? { crossOriginEmbedderPolicy: "require-corp" }
-        : {}),
+      ...(opts.crossOriginEmbedderPolicy ? { crossOriginEmbedderPolicy: "require-corp" } : {}),
     }),
   );
 }

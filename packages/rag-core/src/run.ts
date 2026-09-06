@@ -111,9 +111,12 @@ export const runPipeline = <TFilters extends Record<string, unknown> = DefaultFi
 };
 
 /** Project a Chunk into the retrieval event's typed chunk reference. */
-function toChunkRef(
-  chunk: Chunk,
-): { id: string; score?: number; rankDense?: number; rankSparse?: number } {
+function toChunkRef(chunk: Chunk): {
+  id: string;
+  score?: number;
+  rankDense?: number;
+  rankSparse?: number;
+} {
   const ref: { id: string; score?: number; rankDense?: number; rankSparse?: number } = {
     id: chunk.id,
   };

@@ -46,7 +46,7 @@ and per-chain grades remain v2 (ADR-0012, Sanadset).
 ## Decision
 
 1. **v1 hadith source is `fawazahmed0/hadith-api`** (Unlicense), fetched as
-   per-collection (ara-*, ind-*) edition files through the existing
+   per-collection (ara-_, ind-_) edition files through the existing
    acquisition/archive seams; the Sunnah.com key request (issue #2) stays
    open for future enrichment but no longer blocks #7.
 2. **Conservative dhaif-wins grade consolidation** into the CONTEXT.md
@@ -72,7 +72,7 @@ and per-chain grades remain v2 (ADR-0012, Sanadset).
      demotes). `Mauquf`/`Muquf`/`Maqtu` are attribution-scope classes, not
      defects: they combine freely with positive grades in the source
      ("Mauquf Sahih" is the most common form), so they are excluded from
-     the weak list; a *bare* `Maqtu`/`Mauquf` (no positive class attached)
+     the weak list; a _bare_ `Maqtu`/`Mauquf` (no positive class attached)
      consolidates to `null` (ungraded, surfaced via the report), never
      upgraded to sahih/hasan and never forced to `dhaif`. When paired with
      a genuine defect ("Maqtu Daif") the defect token fires dhaif-wins
@@ -90,6 +90,7 @@ and per-chain grades remain v2 (ADR-0012, Sanadset).
    Indonesian counterpart is consumed, not reported unmatched) and counted
    in the report's `emptyPrimary` stat, which feeds the report's
    `quarantined` count alongside unmatched pairs.
+
 4. **CAMeL Tools lemmatization (ADR-0014) is deferred** to a pre-#24
    enrichment step; hadith aligned pairs carry `morphology: []` in v1 (the
    field is optional per contracts). Ticket #7 does not add a Python

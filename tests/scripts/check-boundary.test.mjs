@@ -25,9 +25,7 @@ describe("boundary gate rules", () => {
     const file = "packages/rag-core/src/sample.ts";
 
     it("does not flag 'hasAnnotation' (substring of 'hasan')", () => {
-      expect(
-        sourceLineViolations("function hasAnnotation(x: string) {}", file, RULES),
-      ).toEqual([]);
+      expect(sourceLineViolations("function hasAnnotation(x: string) {}", file, RULES)).toEqual([]);
     });
 
     it("does not flag 'chasan' (substring of 'hasan')", () => {
@@ -35,18 +33,14 @@ describe("boundary gate rules", () => {
     });
 
     it("does not flag common build-tool identifiers ('webpack', 'postcss')", () => {
-      expect(
-        sourceLineViolations("import webpack from 'webpack';", file, RULES),
-      ).toEqual([]);
-      expect(
-        sourceLineViolations("import postcss from 'postcss';", file, RULES),
-      ).toEqual([]);
+      expect(sourceLineViolations("import webpack from 'webpack';", file, RULES)).toEqual([]);
+      expect(sourceLineViolations("import postcss from 'postcss';", file, RULES)).toEqual([]);
     });
 
     it("still flags a real standalone domain term 'hasan'", () => {
-      expect(
-        sourceLineViolations("// grade: hasan", file, RULES),
-      ).toContain("Islamic-domain identifier in an engine package");
+      expect(sourceLineViolations("// grade: hasan", file, RULES)).toContain(
+        "Islamic-domain identifier in an engine package",
+      );
     });
 
     it("still flags 'sanad', 'isnad', 'sharh', 'matn' as whole words", () => {
@@ -59,15 +53,15 @@ describe("boundary gate rules", () => {
 
     it("still flags the longer unanchored domain terms (e.g. 'quranic')", () => {
       // 'quran' is left unanchored so suffixed forms stay caught.
-      expect(
-        sourceLineViolations("// a quranic reference", file, RULES),
-      ).toContain("Islamic-domain identifier in an engine package");
+      expect(sourceLineViolations("// a quranic reference", file, RULES)).toContain(
+        "Islamic-domain identifier in an engine package",
+      );
     });
 
     it("flags a vendor name in engine TS source", () => {
-      expect(
-        sourceLineViolations("const model = 'gemini-1.5-pro';", file, RULES),
-      ).toContain("vendor or model name outside config");
+      expect(sourceLineViolations("const model = 'gemini-1.5-pro';", file, RULES)).toContain(
+        "vendor or model name outside config",
+      );
     });
 
     it("flags a direct DB-client import in engine TS source", () => {

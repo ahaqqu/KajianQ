@@ -116,9 +116,7 @@ export function sourceLineViolations(line, file, rules = compileRules()) {
  * `exempt` does not apply to dependency names.
  */
 export function dependencyViolations(depNames, rules = compileRules(), pkgFile) {
-  const depRules = rules.filter(
-    (r) => r.deps && !(pkgFile && r.pkgExempt.has(pkgFile)),
-  );
+  const depRules = rules.filter((r) => r.deps && !(pkgFile && r.pkgExempt.has(pkgFile)));
   const hits = [];
   for (const name of depNames) {
     for (const rule of depRules) {
@@ -145,16 +143,13 @@ function engineSourceFiles() {
 function enginePackageJsons() {
   const out = execFileSync(
     "git",
-    [
-      "ls-files",
-      "--cached",
-      "--others",
-      "--exclude-standard",
-      ...ENGINE_PKG_ROOTS,
-    ],
+    ["ls-files", "--cached", "--others", "--exclude-standard", ...ENGINE_PKG_ROOTS],
     { encoding: "utf8" },
   );
-  return out.split("\n").filter(Boolean).filter((f) => PKG_JSON_RE.test(f));
+  return out
+    .split("\n")
+    .filter(Boolean)
+    .filter((f) => PKG_JSON_RE.test(f));
 }
 
 function dependencyNames(pkg) {
@@ -178,9 +173,7 @@ function main() {
     text.split("\n").forEach((line, i) => {
       for (const name of sourceLineViolations(line, file, rules)) {
         violations += 1;
-        console.error(
-          `boundary: ${file}:${i + 1} — ${name}\n  ${line.trim()}`,
-        );
+        console.error(`boundary: ${file}:${i + 1} — ${name}\n  ${line.trim()}`);
       }
     });
   }
@@ -188,9 +181,7 @@ function main() {
   for (const file of enginePackageJsons()) {
     for (const hit of dependencyViolations(dependencyNames(file), rules, file)) {
       violations += 1;
-      console.error(
-        `boundary: ${file} — ${hit.rule} (dependency "${hit.name}")`,
-      );
+      console.error(`boundary: ${file} — ${hit.rule} (dependency "${hit.name}")`);
     }
   }
 
@@ -205,9 +196,6 @@ function main() {
 }
 
 // Run only when invoked as a script, not when imported by tests.
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main();
 }

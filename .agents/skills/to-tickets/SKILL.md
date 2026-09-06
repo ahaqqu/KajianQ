@@ -67,7 +67,7 @@ Publish the approved tickets. **How** depends on the project's issue tracker —
 
 #### Model routing labels
 
-Apply a **model routing label** to every published ticket so downstream agents (see `.agents/skills/manager/SKILL.md`) dispatch the right implementation model. The label states a *requirement* (`model:high` is a floor — do not downgrade), not a cost ceiling:
+Apply a **model routing label** to every published ticket so downstream agents (see `.agents/skills/manager/SKILL.md`) dispatch the right implementation model. The label states a _requirement_ (`model:high` is a floor — do not downgrade), not a cost ceiling:
 
 - **`model:high`** — an acceptance criterion whose failure would be silent on a medium tier: a check the implementation can nominally "pass" while missing the point (e.g. a validator that must reject adversarial input, a trap question that must stay unguessable, an audit against a known-good sample).
 - **`model:plus-human`** — an acceptance criterion requires **owner verification or human review/curation**. Code alone never closes the ticket.

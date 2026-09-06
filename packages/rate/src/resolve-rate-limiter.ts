@@ -29,9 +29,7 @@ const memoryLimiter = createMemoryRateLimiter();
  * the in-memory fallback. Accepts any env structurally — the Worker
  * composition root passes its full bindings object.
  */
-export function resolveRateLimiter(env: {
-  RATE_LIMITER?: RateLimiterNamespace;
-}): RateLimiter {
+export function resolveRateLimiter(env: { RATE_LIMITER?: RateLimiterNamespace }): RateLimiter {
   const namespace = env.RATE_LIMITER;
   if (namespace) {
     return createDurableObjectRateLimiter((key) =>

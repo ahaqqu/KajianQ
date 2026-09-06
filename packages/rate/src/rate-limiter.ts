@@ -44,9 +44,7 @@ export type MemoryRateLimiterOptions = {
  * enforcement. Bounded to `maxKeys` entries: expired windows are pruned and,
  * when still at capacity, the oldest active window is evicted.
  */
-export function createMemoryRateLimiter(
-  options: MemoryRateLimiterOptions = {},
-): RateLimiter {
+export function createMemoryRateLimiter(options: MemoryRateLimiterOptions = {}): RateLimiter {
   const maxKeys = options.maxKeys ?? 10_000;
   const now = options.now ?? Date.now;
   const map = new Map<string, WindowState>();

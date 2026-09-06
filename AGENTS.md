@@ -8,7 +8,7 @@ For philosophy and rationale, see `docs/ARCHITECTURE.md`. For the living archite
 
 Two projects in one monorepo (ADR-0005):
 
-- **DARS** (*Dynamic Automated RAG Solution*) — the generic, domain-agnostic RAG engine: workspace packages under `packages/` (`rag-core`, `rag-ingest`, `eval`, `contracts`, `infra`). When DARS matures it may live in its own repo (`github.com/ahaqqu/DARS`); until the second consumer exists, this file governs it here.
+- **DARS** (_Dynamic Automated RAG Solution_) — the generic, domain-agnostic RAG engine: workspace packages under `packages/` (`rag-core`, `rag-ingest`, `eval`, `contracts`, `infra`). When DARS matures it may live in its own repo (`github.com/ahaqqu/DARS`); until the second consumer exists, this file governs it here.
 - **KajianQ** — the product: an Islamic classical-knowledge chatbot under `apps/` plus the domain pack `packages/kajianq-domain`.
 
 **Read first, in this order:** `CONTEXT.md` (domain glossary — its vocabulary is normative: use defined terms exactly, never invent synonyms; new domain terms are added to `CONTEXT.md` in the same PR that introduces them) → `SPECS.md` (the sections your task touches) → the ADRs that touch your task → your GitHub issue's acceptance criteria (your definition of done).
@@ -32,7 +32,7 @@ These apply to every role and every task. Each bullet names the skill that carri
 
 For the recommended end-to-end pipeline and when to use each skill, invoke the `agentic-workflow` skill (`.agents/skills/agentic-workflow/SKILL.md`). It maps the design → spec → tickets → plan → implementation → tests → PR → review → ship sequence without duplicating each skill's content.
 
-For autonomous, multi-agent orchestration of the implement → review → fix loop, invoke the `manager` skill (`.agents/skills/manager/SKILL.md`). It spawns role subagents (implementer, reviewer, assistant-manager), monitors until the PR is green, relays itemized review findings, and recommends next steps. Role models are configured in `.zcode/agents/`; the manager skill's *Harness adapters* router loads the per-harness dispatch adapter (and its routing rules) for your harness.
+For autonomous, multi-agent orchestration of the implement → review → fix loop, invoke the `manager` skill (`.agents/skills/manager/SKILL.md`). It spawns role subagents (implementer, reviewer, assistant-manager), monitors until the PR is green, relays itemized review findings, and recommends next steps. Role models are configured in `.zcode/agents/`; the manager skill's _Harness adapters_ router loads the per-harness dispatch adapter (and its routing rules) for your harness.
 
 ## Prior to implementation
 
@@ -81,7 +81,7 @@ Tickets carry model routing labels applied by the `to-tickets` skill and consume
 
 ## Definition of Done
 
-- [ ] All CI gates green: `bun run check`, `bun run test`, `bun run boundary`, `bun run size-limit`, `bun run agentic-limits`, `bun run truth`, `bun run openapi:check`, `bun run template-gate`, plus security scans.
+- [ ] All CI gates green: `bun run check`, `bun run lint`, `bun run test`, `bun run boundary`, `bun run size-limit`, `bun run agentic-limits`, `bun run truth`, `bun run openapi:check`, `bun run template-gate`, plus security scans.
 - [ ] Domain boundary holds: the verification scans in `.agents/skills/dars-pluggability/SKILL.md` return only allowed hits.
 - [ ] Traceability holds: any new LLM call records model/tokens/cost to a trace; any new persisted answer path writes a trace record the UI can render. Checklist: `.agents/skills/kajianq-traceability/SKILL.md`.
 - [ ] Contracts written before implementation; pipeline wiring goes through the `runPipeline` runner — never hand-assembled traces or ad hoc stage wiring (ADR-0021).

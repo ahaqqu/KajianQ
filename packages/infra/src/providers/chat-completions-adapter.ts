@@ -1,4 +1,4 @@
-import { Effect, Stream } from "effect";
+import { Effect } from "effect";
 import {
   ProviderError,
   type EmbedSpec,
@@ -9,13 +9,16 @@ import {
   type StreamHandle,
 } from "@app/rag-core";
 import type { ModelConfig, VendorConfig } from "./provider-config";
-import { estimateTokens, streamSse } from "./sse-stream";
+import { streamHandle } from "./chat-stream";
 import {
-  type ChatRequest,
-  type ChatResponse,
-  type EmbedResponse,
+  buildChatRequest,
   computeCost,
+  embedWire,
+  estimateTokens,
+  isGenerationMetered,
   readError,
+  withAttemptCost,
+  type ChatResponse,
 } from "./chat-wire";
 
 /**
@@ -64,20 +67,6 @@ export type ChatCompletionsOptions = {
  * `vendor.baseUrl` with `modelId`. All vendor identity is config data.
  */
 
-/** Assemble the chat-completions request body shared by generate/stream. */
-function buildChatRequest(
-  modelId: string,
-  spec: PromptSpec,
-  stream: boolean,
-): ChatRequest {
-  return {
-    model: modelId,
-    messages: spec.turns.map((t) => ({ role: t.role, content: t.content })),
-    stream,
-    ...(spec.options ?? {}),
-  };
-}
-
 export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Provider {
   const { vendor, modelId, model, apiKey } = opts;
   const doFetch = opts.fetchImpl ?? ((input, init) => fetch(input, init));
@@ -88,71 +77,143 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
     authorization: `Bearer ${apiKey}`,
   };
 
-  async function post(path: string, body: unknown, external?: AbortSignal): Promise<Response> {
-    const controller = new AbortController();
+  const toProviderError = (cause: unknown): ProviderError =>
+    cause instanceof ProviderError
+      ? cause
+      : new ProviderError({
+          kind: "transport",
+          message: `request to ${vendor.baseUrl} failed: ${String(cause)}`,
+        });
+
+  /**
+   * Estimated prompt-token cost of a failed attempt that reached the vendor
+   * (C2): the vendor saw the full prompt, so its input spend is real even
+   * though no completion came back. Estimated from request chars and marked
+   * `estimated` — never metered (ADR-0022).
+   */
+  const attemptCost = (startedAt: number, promptChars: number) =>
+    computeCost(
+      modelId,
+      model.priceMicroUsdPerMTok,
+      estimateTokens(promptChars),
+      0,
+      Date.now() - startedAt,
+      true,
+    );
+
+  async function post(
+    path: string,
+    body: unknown,
+    // Supplied by stream() so the deltas stream's scope finalizer can abort
+    // the wire after post() returns (the controller outlives the fetch).
+    controller: AbortController = new AbortController(),
+  ): Promise<Response> {
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       return await doFetch(`${vendor.baseUrl}${path}`, {
         method: "POST",
         headers,
         body: JSON.stringify(body),
-        // `external` aborts when the caller's fiber is interrupted (ADR-0027).
-        signal: external ? AbortSignal.any([external, controller.signal]) : controller.signal,
+        signal: controller.signal,
       });
     } catch (err) {
-      throw new ProviderError({ kind: "transport", message: `request to ${vendor.baseUrl}${path} failed: ${String(err)}` });
+      throw new ProviderError({
+        kind: "transport",
+        message: `request to ${vendor.baseUrl}${path} failed: ${String(err)}`,
+      });
     } finally {
       clearTimeout(timer);
     }
   }
 
-  async function assertOk(res: Response, path: string): Promise<void> {
+  /**
+   * Fail on an HTTP error status. The vendor was reached and answered — the
+   * attempt's estimated input spend rides on the error (`attemptCosts`, C2)
+   * so the caller's trace sink can record it; a failed attempt may never
+   * vanish from the cost trail.
+   */
+  async function assertOk(
+    res: Response,
+    path: string,
+    attempt: { startedAt: number; promptChars: number },
+  ): Promise<void> {
     if (!res.ok) {
       // Include the vendor's error body (capped) — "quota exceeded" or a
       // safety refusal in the message is the difference between a retry
       // and a config fix.
-      throw new ProviderError({
-        kind: errorKindForStatus(res.status),
-        message: `${path} failed: ${await readError(res)}`,
-      });
+      throw withAttemptCost(
+        new ProviderError({
+          kind: errorKindForStatus(res.status),
+          message: `${path} failed: ${await readError(res)}`,
+        }),
+        attemptCost(attempt.startedAt, attempt.promptChars),
+      );
     }
   }
+
+  // The embeddings wire lives in embed-wire.ts (agentic size limit); the
+  // deps below close over this adapter's vendor config and cost helpers.
+  const embed = embedWire({
+    modelId,
+    priceIn: model.priceMicroUsdPerMTok.in,
+    ...(model.dimensions != null ? { dimensions: model.dimensions } : {}),
+    post: (body) => post("/embeddings", body),
+    assertOk,
+    attemptCost,
+  });
 
   /** The wire-level implementation returns promises; the `Provider` surface
    * below wraps them into the seam's `Effect<A, ProviderError>` channel. */
   type ProviderWire = {
     readonly modelId: string;
-    /** `signal` aborts the in-flight fetch when the caller's fiber is interrupted. */
-    generate(spec: PromptSpec, signal?: AbortSignal): Promise<GenerationResult>;
-    stream(spec: PromptSpec, signal?: AbortSignal): Promise<StreamHandle>;
-    embed(spec: EmbedSpec, signal?: AbortSignal): Promise<EmbeddingResult>;
+    generate(spec: PromptSpec): Promise<GenerationResult>;
+    stream(spec: PromptSpec): Promise<StreamHandle>;
+    embed(spec: EmbedSpec): Promise<EmbeddingResult>;
   };
 
   const wire: ProviderWire = {
     modelId,
 
-    async generate(spec: PromptSpec, signal?: AbortSignal): Promise<GenerationResult> {
+    async generate(spec: PromptSpec): Promise<GenerationResult> {
       if (!model.capabilities.includes("generate")) {
-        throw new ProviderError({ kind: "bad_request", message: `model ${modelId} does not support generate` });
+        throw new ProviderError({
+          kind: "bad_request",
+          message: `model ${modelId} does not support generate`,
+        });
       }
       const body = buildChatRequest(modelId, spec, false);
       const started = Date.now();
-      const res = await post("/chat/completions", body, signal);
-      await assertOk(res, "/chat/completions");
-      const json = (await res.json()) as ChatResponse;
+      // What the vendor saw of the prompt — the estimate base for a failed
+      // attempt's input cost (C2).
+      const attempt = {
+        startedAt: started,
+        promptChars: spec.turns.reduce((n, t) => n + t.content.length, 0),
+      };
+      const res = await post("/chat/completions", body);
+      await assertOk(res, "/chat/completions", attempt);
+      // A 200 whose body fails to parse is still a vendor-reaching attempt:
+      // the vendor charged for the prompt (and any completion it produced).
+      let json: ChatResponse;
+      try {
+        json = (await res.json()) as ChatResponse;
+      } catch (err) {
+        throw withAttemptCost(
+          new ProviderError({
+            kind: "transport",
+            message: `chat/completions returned 200 but the body did not parse: ${String(err)}`,
+          }),
+          attemptCost(attempt.startedAt, attempt.promptChars),
+        );
+      }
       const text = json.choices?.[0]?.message?.content ?? json.choices?.[0]?.text ?? "";
-      const meteredIn = json.usage?.prompt_tokens;
-      const meteredOut = json.usage?.completion_tokens;
-      const isMetered =
-        typeof meteredIn === "number" && Number.isFinite(meteredIn) && meteredIn >= 0 &&
-        typeof meteredOut === "number" && Number.isFinite(meteredOut) && meteredOut >= 0;
+      const isMetered = isGenerationMetered(json.usage ?? {});
       // Where the vendor reports no usage, estimate from chars and mark the
       // record estimated (ADR-0022) — a trace must never present an estimate
       // as metered.
       const tokensIn = isMetered
-        ? meteredIn!
+        ? json.usage!.prompt_tokens!
         : spec.turns.reduce((n, t) => n + estimateTokens(t.content.length), 0);
-      const tokensOut = isMetered ? meteredOut! : 0;
+      const tokensOut = isMetered ? json.usage!.completion_tokens! : 0;
       return {
         text,
         cost: computeCost(
@@ -166,121 +227,63 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Pro
       };
     },
 
-    async stream(spec: PromptSpec, signal?: AbortSignal): Promise<StreamHandle> {
+    async stream(spec: PromptSpec): Promise<StreamHandle> {
       if (!model.capabilities.includes("stream")) {
-        throw new ProviderError({ kind: "bad_request", message: `model ${modelId} does not support stream` });
+        throw new ProviderError({
+          kind: "bad_request",
+          message: `model ${modelId} does not support stream`,
+        });
       }
       const body = buildChatRequest(modelId, spec, true);
       const started = Date.now();
-      // The controller outlives the initial fetch: cancelling the deltas
-      // stream aborts the body read (ADR-0027 interruption propagation).
+      const attempt = {
+        startedAt: started,
+        promptChars: spec.turns.reduce((n, t) => n + t.content.length, 0),
+      };
+      // The controller outlives post(): the deltas stream's scope finalizer
+      // (chat-stream.ts) aborts it, cutting the wire when the consumer
+      // interrupts or stops consuming early.
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
-      const res = await post("/chat/completions", body, signal)
-        .finally(() => clearTimeout(timer))
-        .catch((err: unknown) => {
-          throw err instanceof ProviderError
-            ? err
-            : new ProviderError({
-                kind: "transport",
-                message: `request to ${vendor.baseUrl}/chat/completions failed: ${String(err)}`,
-              });
-        });
-      await assertOk(res, "/chat/completions (stream)");
+      const res = await post("/chat/completions", body, controller);
+      await assertOk(res, "/chat/completions (stream)", attempt);
       if (!res.body) {
-        throw new ProviderError({ kind: "transport", message: "stream response has no body" });
+        // 200 with no body: the vendor was reached, so the prompt spend is
+        // real (C2) even though nothing could be streamed.
+        throw withAttemptCost(
+          new ProviderError({ kind: "transport", message: "stream response has no body" }),
+          attemptCost(attempt.startedAt, attempt.promptChars),
+        );
       }
-
-      // Cost resolves only when the stream ends (ADR-0022); where the vendor
-      // reports no streamed usage, tokens are estimated (~4 chars/token) and
-      // the record is marked estimated — never presented as metered. Latency
-      // is wall clock to the end of iteration, so a slow consumer inflates
-      // it (deliberate; eager buffering rejected as complexity for a
-      // Trace-only metric). Deltas surface as a `Stream` whose interruption
-      // aborts the in-flight fetch (ADR-0027).
-      const raw = streamSse(
-        res.body,
-        (usage, charCount) => {
-        const metered =
-          typeof usage?.prompt_tokens === "number" && typeof usage?.completion_tokens === "number";
-        const tokensIn = metered
-          ? usage!.prompt_tokens!
-          : spec.turns.reduce((n, t) => n + estimateTokens(t.content.length), 0);
-        const tokensOut = metered ? usage!.completion_tokens! : estimateTokens(charCount);
-          return computeCost(
-            modelId,
-            model.priceMicroUsdPerMTok,
-            tokensIn,
-            tokensOut,
-            Date.now() - started,
-            !metered,
-          );
-        },
-        () => controller.abort(),
-      );
-      return raw;
+      return streamHandle({
+        body: res.body,
+        abort: () => controller.abort(),
+        modelId,
+        price: model.priceMicroUsdPerMTok,
+        // Where the vendor reports no streamed usage, prompt tokens are
+        // estimated (~4 chars/token); chat-stream.ts marks the record
+        // estimated — never presented as metered (ADR-0022).
+        promptTokensInEstimate: estimateTokens(attempt.promptChars),
+        startedAt: started,
+      });
     },
 
-    async embed(spec: EmbedSpec, signal?: AbortSignal): Promise<EmbeddingResult> {
+    async embed(spec: EmbedSpec): Promise<EmbeddingResult> {
       if (!model.capabilities.includes("embed")) {
-        throw new ProviderError({ kind: "bad_request", message: `model ${modelId} does not support embed` });
-      }
-      const body = {
-        model: modelId,
-        input: spec.texts,
-        ...(spec.dimensions != null && model.dimensions != null
-          ? { dimensions: spec.dimensions }
-          : {}),
-      };
-      const started = Date.now();
-      const res = await post("/embeddings", body, signal);
-      await assertOk(res, "/embeddings");
-      const json = (await res.json()) as EmbedResponse;
-      const vectors = (json.data ?? []).map((d) => d.embedding ?? []);
-      if (vectors.length !== spec.texts.length) {
         throw new ProviderError({
-          kind: "server",
-          message: `embeddings returned ${vectors.length} vectors for ${spec.texts.length} texts`,
+          kind: "bad_request",
+          message: `model ${modelId} does not support embed`,
         });
       }
-      // Embeddings meter prompt tokens only. Where the vendor reports none,
-      // estimate from input chars (~4 chars/token) — never the text count,
-      // which would understate cost by orders of magnitude — and mark the
-      // record estimated (ADR-0022).
-      const meteredIn = json.usage?.prompt_tokens;
-      const isMetered = typeof meteredIn === "number" && Number.isFinite(meteredIn) && meteredIn >= 0;
-      const tokensIn = isMetered
-        ? meteredIn!
-        : spec.texts.reduce((n, t) => n + estimateTokens(t.length), 0);
-      return {
-        vectors,
-        cost: computeCost(
-          modelId,
-          model.priceMicroUsdPerMTok,
-          tokensIn,
-          0,
-          Date.now() - started,
-          !isMetered,
-        ),
-      };
+      return embed(spec);
     },
   };
 
-  const toProviderError = (cause: unknown): ProviderError =>
-    cause instanceof ProviderError
-      ? cause
-      : new ProviderError({ kind: "transport", message: `request to ${vendor.baseUrl} failed: ${String(cause)}` });
-
   const provider: Provider = {
     modelId,
-    // `signal` aborts the in-flight fetch when the caller's fiber is
-    // interrupted (ADR-0027 need 4: interruption reaches the provider).
     generate: (spec) =>
-      Effect.tryPromise({ try: (signal) => wire.generate(spec, signal), catch: toProviderError }),
-    stream: (spec) =>
-      Effect.tryPromise({ try: (signal) => wire.stream(spec, signal), catch: toProviderError }),
-    embed: (spec) =>
-      Effect.tryPromise({ try: (signal) => wire.embed(spec, signal), catch: toProviderError }),
+      Effect.tryPromise({ try: () => wire.generate(spec), catch: toProviderError }),
+    stream: (spec) => Effect.tryPromise({ try: () => wire.stream(spec), catch: toProviderError }),
+    embed: (spec) => Effect.tryPromise({ try: () => wire.embed(spec), catch: toProviderError }),
   };
 
   return provider;

@@ -99,7 +99,10 @@ export interface Retriever<TFilters extends Record<string, unknown> = DefaultFil
  * ordered turn list; the Generator owns final prompt assembly.
  */
 export interface Assembler<TFilters extends Record<string, unknown> = DefaultFilters> {
-  assemble(query: Query<TFilters>, chunks: readonly Chunk[]): StageEffect<AssembledContext<TFilters>>;
+  assemble(
+    query: Query<TFilters>,
+    chunks: readonly Chunk[],
+  ): StageEffect<AssembledContext<TFilters>>;
 }
 
 /**

@@ -32,15 +32,8 @@ export type NeonRagStoreOptions = {
  * and logging-then-rethrowing failures. Fields are bounded to `{op, ms}` by
  * design; the error object itself is not serialized into fields.
  */
-export function instrumentRunner(
-  sql: SqlRunner,
-  logger: Logger,
-  slowQueryMs: number,
-): SqlRunner {
-  const timed = async (
-    op: string,
-    run: () => Promise<unknown[]>,
-  ): Promise<unknown[]> => {
+export function instrumentRunner(sql: SqlRunner, logger: Logger, slowQueryMs: number): SqlRunner {
+  const timed = async (op: string, run: () => Promise<unknown[]>): Promise<unknown[]> => {
     const startedAt = Date.now();
     try {
       const rows = await run();
@@ -59,9 +52,7 @@ export function instrumentRunner(
   };
   const instrumented = ((strings, ...values) =>
     timed("template", () => sql(strings, ...values))) as SqlRunner;
-  instrumented.query = (text, params) =>
-    timed("query", () => sql.query(text, params));
-  instrumented.transaction = (queries) =>
-    timed("transaction", () => sql.transaction(queries));
+  instrumented.query = (text, params) => timed("query", () => sql.query(text, params));
+  instrumented.transaction = (queries) => timed("transaction", () => sql.transaction(queries));
   return instrumented;
 }

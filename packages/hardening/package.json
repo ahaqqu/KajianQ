@@ -9,11 +9,11 @@
   "scripts": {
     "check": "tsc -p tsconfig.json --noEmit"
   },
-  "peerDependencies": {
-    "hono": ">=4.13.0 <5"
-  },
   "devDependencies": {
     "hono": ">=4.13.0 <5",
     "typescript": "7.0.2"
+  },
+  "peerDependencies": {
+    "hono": ">=4.13.0 <5"
   }
 }

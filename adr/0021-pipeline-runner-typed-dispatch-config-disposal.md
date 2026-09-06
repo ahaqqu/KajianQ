@@ -6,20 +6,20 @@ Accepted (2026-08-26). Records the composition decision for the DARS engine and 
 
 ## Context
 
-DARS's two design principles — *pluggable by configuration* and *traceable by design* — are close in shape to the plugin meta-framework `cordis` (vendored by the DeepSeek Harness as `@deepseek-ai/cordis`): a service/plugin graph composed from config layers, with an event bus and an introspectable effect tree. The resemblance is real but at the *philosophy* level, not the *domain* level: cordis composes an agent harness; DARS composes a RAG pipeline.
+DARS's two design principles — _pluggable by configuration_ and _traceable by design_ — are close in shape to the plugin meta-framework `cordis` (vendored by the DeepSeek Harness as `@deepseek-ai/cordis`): a service/plugin graph composed from config layers, with an event bus and an introspectable effect tree. The resemblance is real but at the _philosophy_ level, not the _domain_ level: cordis composes an agent harness; DARS composes a RAG pipeline.
 
 Two constraints argue against adopting cordis the framework today:
 
-1. **ADR-0005's anti-platform caution** — reusability is enforced by package boundaries, "not by building a platform prematurely." DARS has exactly one consumer. Cordis is a full runtime (fibers, isolation scopes, intercept trees, effect metadata), and its traceability primitives (`internal/dispatch`, `getEffects()`) describe *live wiring*, not the persisted per-answer `answer_traces` the product requires — that typed, versioned contract still has to be built either way.
-2. **The engine's typed-seam promise** — AGENTS.md §1.1 promises *typed interfaces in `rag-core`*; cordis keys services by string with types via module augmentation, which weakens the compile-time boundary the boundary-lint relies on.
+1. **ADR-0005's anti-platform caution** — reusability is enforced by package boundaries, "not by building a platform prematurely." DARS has exactly one consumer. Cordis is a full runtime (fibers, isolation scopes, intercept trees, effect metadata), and its traceability primitives (`internal/dispatch`, `getEffects()`) describe _live wiring_, not the persisted per-answer `answer_traces` the product requires — that typed, versioned contract still has to be built either way.
+2. **The engine's typed-seam promise** — AGENTS.md §1.1 promises _typed interfaces in `rag-core`_; cordis keys services by string with types via module augmentation, which weakens the compile-time boundary the boundary-lint relies on.
 
-So we adopt cordis's *three ideas* into the existing hand-rolled typed seams, and defer the framework behind a revisit trigger.
+So we adopt cordis's _three ideas_ into the existing hand-rolled typed seams, and defer the framework behind a revisit trigger.
 
 ## Decision
 
 1. **Typed dispatch.** A `runPipeline(stages, query, config)` in `packages/rag-core` walks Router → Retriever → Assembler → Generator → Reviewer, emits the deterministic stage-boundary `TraceEvent`s (`intent`, `subquery`, `retrieval`, `assembly`) from stage results, and validates + assembles the final `Trace` in one place. Stages append what the runner cannot observe (`llm_call`, `refusal`, `review`) through the run's sink.
 2. **Per-run config isolation.** A `RunConfig<TFilters>` (opaque per-stage model ids + filters; no vendor names) is threaded to every stage through a `RunContext` — a plain per-request config object, the hand-rolled equivalent of cordis's `isolate()`.
-3. **Lifecycle/disposal.** Each stage interface gains an optional `dispose?()`; the runner provides a per-run `defer()` scope torn down LIFO on completion *and* on failure.
+3. **Lifecycle/disposal.** Each stage interface gains an optional `dispose?()`; the runner provides a per-run `defer()` scope torn down LIFO on completion _and_ on failure.
 
 This amends ADR-0018: stage methods gain a `run: RunContext` parameter, and `Generator`/`Reviewer` now return a `Draft` (`{ text }`) instead of `Answer` — the runner owns the final `Trace`. `Answer` remains the runner's output shape.
 

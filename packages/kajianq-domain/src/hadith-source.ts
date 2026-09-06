@@ -117,9 +117,7 @@ export function isWeakGrade(grade: string): boolean {
  * weaker than plain Sahih). Empty grades → null, never fabricated;
  * `mutawatir` is never self-asserted from this source.
  */
-export function mapGrades(
-  grades: readonly { name: string; grade: string }[],
-): Grade | null {
+export function mapGrades(grades: readonly { name: string; grade: string }[]): Grade | null {
   if (grades.length === 0) return null;
   const joined = grades.map((g) => g.grade).join(" | ");
   if (isWeakGrade(joined)) return "dhaif";
@@ -130,9 +128,7 @@ export function mapGrades(
 
 /** Format the user-facing citation label (CONTEXT.md): `HR. Bukhari no. 573 (Sahih)`.
  Grade suffix omitted when ungraded. */
-export function formatHadithCitation(
-  c: Omit<HadithCitation, "sourceType">,
-): string {
+export function formatHadithCitation(c: Omit<HadithCitation, "sourceType">): string {
   const collection = HADITH_COLLECTION_NAMES[c.collection] ?? c.collection;
   const base = `HR. ${collection} no. ${c.hadithNo}`;
   return c.grade ? `${base} (${capitalize(c.grade)})` : base;

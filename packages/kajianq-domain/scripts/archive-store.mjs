@@ -42,7 +42,14 @@ export function createArchiveObjectStore(createS3ObjectStore) {
  * `sources.editionFiles` (hadith runs) is an optional list of
  * `[cacheFile, text]` pairs archived alongside the Quran-shaped fields.
  */
-export async function archiveRawSources({ sources, store, prefix, bundle, archiveFingerprint, log }) {
+export async function archiveRawSources({
+  sources,
+  store,
+  prefix,
+  bundle,
+  archiveFingerprint,
+  log,
+}) {
   if (!store) {
     log.warn("R2 credentials absent — raw archive NOT stored", { archiveStored: false });
     return { stored: false, keys: [] };

@@ -25,8 +25,6 @@ export const toStageError = <A, E>(
   stage: Stage,
   effect: Effect.Effect<A, E, StageRequirements>,
 ): Effect.Effect<A, StageError, StageRequirements> =>
-  Effect.mapError(
-    effect,
-    (cause): StageError =>
-      cause instanceof StageError ? cause : new StageError({ stage, cause }),
+  Effect.mapError(effect, (cause): StageError =>
+    cause instanceof StageError ? cause : new StageError({ stage, cause }),
   );

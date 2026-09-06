@@ -89,7 +89,10 @@ async function main() {
   // Cloud provisioning is delegated to Alchemy (adopts on first run, then no-ops).
   // The `:ci` bootstrap variants pass `--yes`: on a non-interactive terminal
   // alchemy declines its own plan and exits 0 without applying anything.
-  const prodOk = runReport("bun run deploy:bootstrap:ci", "Bootstrap prod (alchemy deploy --adopt)");
+  const prodOk = runReport(
+    "bun run deploy:bootstrap:ci",
+    "Bootstrap prod (alchemy deploy --adopt)",
+  );
   const stagingOk = runReport(
     "bun run deploy:bootstrap:staging:ci",
     "Bootstrap staging (alchemy deploy --adopt)",
@@ -111,9 +114,7 @@ async function main() {
   }
 
   const prodVarSet = prodUrl ? trySetGitHubVariable("PROD_URL", prodUrl) : false;
-  const stagingVarSet = stagingUrl
-    ? trySetGitHubVariable("STAGING_URL", stagingUrl)
-    : false;
+  const stagingVarSet = stagingUrl ? trySetGitHubVariable("STAGING_URL", stagingUrl) : false;
 
   const needManual = (prodUrl && !prodVarSet) || (stagingUrl && !stagingVarSet);
   if (needManual) {

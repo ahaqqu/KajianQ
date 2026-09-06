@@ -47,9 +47,7 @@ function makeStages(
     },
     retriever: {
       retrieve: () =>
-        Effect.succeed([
-          { id: "c1", text: "evidence", score: 0.5, rankDense: 1, rankSparse: 2 },
-        ]),
+        Effect.succeed([{ id: "c1", text: "evidence", score: 0.5, rankDense: 1, rankSparse: 2 }]),
     },
     assembler: {
       assemble: (_q, chunks) => Effect.succeed(contextFor(chunks)),
@@ -199,7 +197,9 @@ describe("runPipeline", () => {
           }),
       },
     });
-    const exit = await Effect.runPromiseExit(runPipeline(stages, query, {}, { traceId: "t", now: () => 0 }));
+    const exit = await Effect.runPromiseExit(
+      runPipeline(stages, query, {}, { traceId: "t", now: () => 0 }),
+    );
     expect(order).toEqual(["cleanup"]);
     const failure = exit._tag === "Failure" ? Cause.failureOption(exit.cause) : undefined;
     expect(failure).toBeDefined();
