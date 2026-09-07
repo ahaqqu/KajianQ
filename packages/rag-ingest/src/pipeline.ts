@@ -199,11 +199,11 @@ export async function runIngestion(
   const pairSources = collectPairSources(parents);
   const pending: DocChildInsert[] = [];
   const pendingPairs: AlignedPairInput[] = [];
-  // Local alias: the exported bridge, reused below.
-  const runStore = runStoreEffect;
 
   for (const parent of parents) {
-    const parentId = await runStore(deps.store.insertDocParent(parent satisfies DocParentInsert));
+    const parentId = await runStoreEffect(
+      deps.store.insertDocParent(parent satisfies DocParentInsert),
+    );
     parentIds.push(parentId);
     parent.children.forEach((child, i) => {
       childRows.push({
@@ -256,7 +256,7 @@ export async function runIngestion(
   // other (they coincide 1:1 today, but the seams are independent).
   const writeBatchSize = deps.writeBatchSize ?? 64;
   for (let i = 0; i < pending.length; i += writeBatchSize) {
-    await runStore(deps.store.insertDocChildren(pending.slice(i, i + writeBatchSize)));
+    await runStoreEffect(deps.store.insertDocChildren(pending.slice(i, i + writeBatchSize)));
   }
   if (deps.pairSink) {
     for (const pair of pendingPairs) await deps.pairSink(pair);
@@ -269,7 +269,7 @@ export async function runIngestion(
     for (const parent of parents) {
       const summary = summaries.get(parent.sourceKey);
       if (summary === undefined) continue;
-      await runStore(
+      await runStoreEffect(
         deps.store.insertDocParent({
           ...parent,
           metadata: { ...parent.metadata, summary, summaryEmbeddedFrom: "summary" },

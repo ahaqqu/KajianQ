@@ -1,6 +1,5 @@
-import { Effect } from "effect";
 import type { RagStore } from "./rag-store";
-import { sqlEffect, type SqlRunner } from "./rag-store-neon-errors";
+import type { SqlRunner } from "./rag-store-neon-errors";
 import { neonStoreMethods } from "./rag-store-neon-parts";
 import {
   DEFAULT_SLOW_QUERY_MS,
@@ -29,42 +28,15 @@ export type { SqlRunner };
  * the seam is Effect-signatured — every method returns
  * `Effect<A, StoreError>`; driver failures are classified inside the
  * adapter). `sql` is the driver's query object, injected so configuration
- * stays in the caller. All executable SQL in the repository lives in the
- * Neon adapter surface (`rag-store-neon-corpus/-session/-trace/-query/
- * -batch.ts`) and the migrations. Pass `opts.logger` to get slow-query/error
- * ops logging (`rag-store-neon-logging.ts`); omitted, the adapter stays
- * silent.
+ * stays in the caller. Pure composition root: every method delegates to the
+ * concern modules (`rag-store-neon-corpus/-eval/-session/-trace/-query/
+ * -batch.ts`) — all executable SQL in the repository lives there and in the
+ * migrations. Pass `opts.logger` to get slow-query/error ops logging
+ * (`rag-store-neon-logging.ts`); omitted, the adapter stays silent.
  */
 export function createNeonRagStore(rawSql: SqlRunner, opts: NeonRagStoreOptions = {}): RagStore {
   const logger = opts.logger ?? null;
   const slowQueryMs = opts.slowQueryMs ?? DEFAULT_SLOW_QUERY_MS;
   const sql = logger === null ? rawSql : instrumentRunner(rawSql, logger, slowQueryMs);
-  return {
-    ...neonStoreMethods(sql),
-
-    insertEvalRun(input) {
-      const id = input.id ?? crypto.randomUUID();
-      // Idempotent by run id: re-running the same ingestion run refreshes the
-      // label and report so the ledger stays the single source of truth.
-      return Effect.map(
-        sqlEffect(
-          sql,
-          () =>
-            sql`
-          INSERT INTO eval_runs (id, label, report)
-          VALUES (
-            ${id}, ${input.label ?? null},
-            ${JSON.stringify(input.report)}::jsonb
-          )
-          ON CONFLICT (id) DO UPDATE
-            SET label = EXCLUDED.label,
-                report = EXCLUDED.report,
-                created_at = now()
-          RETURNING id
-        ` as Promise<{ id: string }[]>,
-        ),
-        (rows) => rows[0]?.id ?? id,
-      );
-    },
-  };
+  return neonStoreMethods(sql);
 }

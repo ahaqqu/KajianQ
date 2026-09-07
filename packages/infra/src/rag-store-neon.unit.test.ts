@@ -441,6 +441,36 @@ describe("rag-store-neon adapter (fake runner)", () => {
     expect(err.kind).toBe("transport");
     expect(err.cause).toBeInstanceOf(TypeError);
   });
+
+  it("classifies schema drift (42703/42P01) as config, not constraint", async () => {
+    for (const code of ["42703", "42P01"]) {
+      const sql = makeBoomSql(() =>
+        Object.assign(new Error(`column "x" does not exist`), {
+          name: "NeonDbError",
+          code,
+        }),
+      );
+      const store = createNeonRagStore(sql);
+      const err = await runFail(
+        store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }),
+      );
+      expect(err.kind).toBe("config");
+    }
+  });
+
+  it("does not SQLSTATE-classify non-Neon errors that carry a string code (B1 guard)", async () => {
+    // A Node-style ErrnoException carries `code: string` but is NOT a
+    // Neon/Postgres error — it must fall to the closed transport default,
+    // never reach the SQLSTATE table.
+    const sql = makeBoomSql(() =>
+      Object.assign(new Error("connect ECONNREFUSED"), {
+        code: "23505", // collides with unique_violation on purpose
+      }),
+    );
+    const store = createNeonRagStore(sql);
+    const err = await runFail(store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }));
+    expect(err.kind).toBe("transport");
+  });
 });
 
 describe("rag-store-neon adapter: optional ops logging", () => {

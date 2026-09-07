@@ -60,6 +60,12 @@ const SQLSTATE_KINDS: Record<string, "config" | "constraint" | "not_found"> = {
   "28000": "config", // insufficient_privilege / bad credentials
   "3D000": "config", // invalid_catalog_name (no such database)
   "08P01": "config", // protocol_violation
+  // Config-class: the store itself is misconfigured.
+  // Schema-drift codes are config, not constraint: an undefined column/table
+  // means the deployed schema does not match the code's expectations — the
+  // fix is a migration, not a data change.
+  "42703": "config", // undefined_column (schema drifted)
+  "42P01": "config", // undefined_table (schema drifted)
   // Constraint-class: deterministic data rejection — fix the data, no retry.
   "23505": "constraint", // unique_violation
   "23503": "constraint", // foreign_key_violation
@@ -71,18 +77,28 @@ const SQLSTATE_KINDS: Record<string, "config" | "constraint" | "not_found"> = {
   "22P03": "constraint", // invalid_binary_representation
   "22003": "constraint", // numeric_value_out_of_range
   "22012": "constraint", // division_by_zero
-  "42703": "constraint", // undefined_column (schema drifted vs input shape)
-  "42P01": "constraint", // undefined_table (schema drifted)
   "42883": "constraint", // undefined_function
   // Not-found: the requested row does not exist (when null is not the answer).
   P0002: "not_found", // PLpgSQL raise 'not found'
 };
 
-/** True when the exception is an HTTP-driver DB error by field shape. */
+/**
+ * True when the exception is a Neon/Postgres DB error by field shape.
+ *
+ * Deliberately discriminating (ADR-0027 decision 7): SQLSTATE codes are
+ * only interpreted on errors that carry a Neon/Postgres-specific marker —
+ * the driver's `NeonDbError`/`DatabaseError` name, or a `severity` field
+ * (both driver paths set it; no non-Postgres exception does). Bare
+ * `code: string` alone is NOT sufficient — Node system errors
+ * (`ErrnoException`), fetch failures, and AWS-like exceptions all carry a
+ * string `code` that must not reach the SQLSTATE table; those fall through
+ * to the closed `transport` default.
+ */
 function isNeonDbError(cause: unknown): cause is Error & { code?: string; name?: string } {
   if (!(cause instanceof Error)) return false;
-  const named = cause as { name?: string; code?: unknown };
-  return named.name === "NeonDbError" || typeof named.code === "string";
+  const named = cause as { name?: string; code?: unknown; severity?: unknown };
+  const driverNamed = named.name === "NeonDbError" || named.name === "DatabaseError";
+  return driverNamed && (typeof named.code === "string" || "severity" in named);
 }
 
 /**
@@ -91,9 +107,14 @@ function isNeonDbError(cause: unknown): cause is Error & { code?: string; name?:
  * errors → closed default `transport`. The original always rides in `cause`.
  */
 export function neonErrorToStoreError(cause: unknown): StoreError {
-  // Client-aborted fetch: the caller interrupted — a transport-class
-  // failure (Effect's interruption channel handles the semantic; the
-  // message check keeps an AbortError from being misfiled).
+  // Caller-aborted fetch: the caller (or Effect's interruption channel)
+  // cancelled the operation. It maps to the closed default `transport`
+  // because the taxonomy has no dedicated `cancelled` kind (ADR-0027
+  // decision 7 — a new kind is a seam-contract change requiring an ADR
+  // amendment); consumers retrying `transport` may see a rare retry of a
+  // cancelled operation, which is harmless (the query is idempotent or
+  // guarded by upsert keys). Documented here so the classification is not
+  // underdocumented.
   if (cause instanceof Error && cause.name === "AbortError") {
     return new StoreError({ kind: "transport", cause });
   }
@@ -134,19 +155,31 @@ export function neonErrorToStoreError(cause: unknown): StoreError {
  * second consumer, e.g. `void pending.catch(...)`) executes the same SQL
  * twice: harmless for idempotent upserts, but a `createChatSession`/INSERT
  * with a fresh PK collides with itself (23505) — a silent, order-dependent
- * failure. If the fiber is interrupted mid-flight, the un-awaited promise
- * is left to settle unobserved (the driver's fetch has no abort channel
- * here; a settled-with-no-consumer promise can no longer produce an
- * unhandled rejection once the fiber's await has been abandoned... it can,
- * so guard it: `onInterrupt` attaches one final no-op catch — the ONE
- * extra consumer — to retire the in-flight query without re-execution).
+ * failure.
+ *
+ * Interruption guard: if the fiber is interrupted mid-flight, the awaited
+ * native promise is abandoned and its eventual rejection would be
+ * unobserved. The guard below attaches ONE no-op `catch` to the native
+ * promise that was already produced by the single invocation — attaching a
+ * handler to a settled (or settling) native promise never re-executes the
+ * query (only the lazy NeonQueryPromise re-executes, and the guard never
+ * touches it). This retires a mid-flight rejection without changing the
+ * fiber's own outcome.
  */
 export function sqlEffect<A>(
   sql: SqlRunner,
   op: (sql: SqlRunner) => Promise<A>,
 ): Effect.Effect<A, StoreError> {
   return Effect.tryPromise({
-    try: () => op(sql),
+    try: () => {
+      const pending = op(sql);
+      // One no-op consumer on the already-invoked native promise: retires a
+      // rejection when the awaiting fiber has been interrupted. Safe — a
+      // native promise tolerates multiple consumers; only the LAZY driver
+      // promise re-executes on a second consumer, and this is not it.
+      pending.catch(() => {});
+      return pending;
+    },
     catch: neonErrorToStoreError,
   });
 }

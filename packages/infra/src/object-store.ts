@@ -1,5 +1,11 @@
 import { Effect } from "effect";
 import { StoreError, type StoreErrorKind } from "@app/rag-core";
+// Static import, not a dynamic one: the S3 adapter is CLI-only
+// (`createS3ObjectStore` has no Worker caller — R2-backed Workers use
+// `createR2ObjectStore`), so bundler dead-code elimination keeps the SDK
+// out of the Worker bundle. Verified by the `size-limit` gate on
+// `apps/web/dist` and the absence of any Worker-path caller.
+import { S3ServiceException } from "@aws-sdk/client-s3";
 
 /**
  * ObjectStore — the blob persistence seam (ADR-0008), Effect-signatured
@@ -75,19 +81,16 @@ export function createR2ObjectStore(bucket: R2Like): ObjectStore {
         // The body is a resource: consume it via acquireRelease so a
         // mid-read failure or interruption still runs the release path
         // (ADR-0027 decision 7 — download/upload streams release via
-        // Scope). The binding exposes no explicit close, so release is a
-        // best-effort detach that never masks the original failure.
+        // Scope). The R2 binding exposes no explicit close and its body
+        // needs no teardown, so the release is intentionally `Effect.void`
+        // on every exit — acquireRelease is kept for the seam's Scope
+        // contract, not for a hidden cleanup.
         return yield* Effect.acquireRelease(
           Effect.tryPromise({
             try: () => obj.arrayBuffer(),
             catch: toR2StoreError,
           }),
-          (_buf, exit) =>
-            exit._tag === "Success"
-              ? Effect.void
-              : Effect.sync(() => {
-                  void obj;
-                }),
+          () => Effect.void,
         ).pipe(Effect.map((buf) => new Uint8Array(buf)));
       }).pipe(Effect.scoped),
     delete: (key) =>
@@ -112,17 +115,19 @@ export type S3Like = {
 
 /**
  * Map a thrown S3 SDK exception into the `StoreError` taxonomy
- * (ADR-0027 decision 7). Classification is exhaustive over the vendor's
- * observable failure surface with a closed default (`transport`) — the
- * `cause` always carries the original exception for audit. NoSuchKey and
- * timeouts map to their kinds; the 4xx-class names map to `config`
+ * (ADR-0027 decision 7). Synchronous by design — the SDK's
+ * `S3ServiceException` comes from the single top-level import, so no
+ * per-error dynamic import races under concurrent failures.
+ * Classification is exhaustive over the vendor's observable failure
+ * surface with a closed default (`transport`) — the `cause` always carries
+ * the original exception for audit. NoSuchKey and timeouts map to their
+ * kinds; the 4xx-class names map to `config`
  * (credentials/bucket-naming/access — deterministic, fix-the-config) or
  * `constraint` (payload-shape — deterministic, fix-the-data); the S3 SDK
  * surfaces 5xx/credential-expiry as generic transport-level shapes, which
  * fall to the default.
  */
-async function toS3StoreError(cause: unknown): Promise<StoreError> {
-  const { S3ServiceException } = await import("@aws-sdk/client-s3");
+function toS3StoreError(cause: unknown): StoreError {
   const name =
     cause instanceof S3ServiceException || cause instanceof Error ? cause.name : undefined;
   const message = cause instanceof Error ? cause.message : String(cause);
@@ -155,7 +160,7 @@ async function toS3StoreError(cause: unknown): Promise<StoreError> {
   return new StoreError({ kind: "transport", cause });
 }
 
-/** tryPromise over an S3 command; the async mapper keeps the SDK import dynamic. */
+/** tryPromise over an S3 command; the sync mapper needs no import dance. */
 function s3Command<A>(run: () => Promise<A>): Effect.Effect<A, StoreError> {
   return Effect.tryPromise({
     try: () => toS3StoreErrorWith(run),
@@ -164,12 +169,12 @@ function s3Command<A>(run: () => Promise<A>): Effect.Effect<A, StoreError> {
   });
 }
 
-/** Run the command, letting the async mapper classify a thrown exception. */
+/** Run the command, letting the sync mapper classify a thrown exception. */
 async function toS3StoreErrorWith<A>(run: () => Promise<A>): Promise<A> {
   try {
     return await run();
   } catch (cause) {
-    throw await toS3StoreError(cause);
+    throw toS3StoreError(cause);
   }
 }
 
@@ -207,22 +212,28 @@ export function createS3ObjectStore(client: S3Like, bucket: string): ObjectStore
             } | null>,
         );
         if (!res || !res.Body) return null;
-        // The S3 body is a resource with a real release path: consume it
-        // inside a Scope via acquireRelease, and on mid-read failure or
-        // interruption call `destroy()` so the underlying socket is
-        // released (ADR-0027 decision 7). NoSuchKey arrives as a failure
-        // — mapped to `not_found` and surfaced, never swallowed.
+        // The S3 body is a resource with a real release path: acquire it
+        // inside a Scope (Effect.addFinalizer runs the release on success,
+        // mid-read failure, and interruption alike — acquireRelease's
+        // release only runs after a successful acquire, but here the body
+        // is acquired when the GetObject command succeeds) and call
+        // `destroy()` so the underlying socket is released (ADR-0027
+        // decision 7). `destroy` is documented as synchronous (Node stream
+        // teardown) and invoked inside `Effect.try` so a release throw
+        // surfaces as a `transport` StoreError rather than crashing the
+        // release fiber. NoSuchKey arrives as a failure — mapped to
+        // `not_found` and surfaced, never swallowed.
         const body = res.Body;
-        return yield* Effect.acquireRelease(
-          s3Command(() => body.transformToByteArray()),
-          (_bytes, exit) =>
-            exit._tag === "Success"
-              ? Effect.void
-              : Effect.sync(() => {
-                  const maybe = body as { destroy?: unknown };
-                  if (typeof maybe.destroy === "function") maybe.destroy();
-                }),
+        yield* Effect.addFinalizer((_exit) =>
+          Effect.try({
+            try: () => {
+              const maybe = body as { destroy?: unknown };
+              if (typeof maybe.destroy === "function") maybe.destroy();
+            },
+            catch: (c) => new StoreError({ kind: "transport", cause: c }),
+          }).pipe(Effect.asVoid, Effect.ignore),
         );
+        return yield* s3Command(() => body.transformToByteArray());
       }).pipe(Effect.scoped),
     delete: (key) =>
       Effect.gen(function* () {
