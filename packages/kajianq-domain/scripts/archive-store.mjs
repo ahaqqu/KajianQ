@@ -11,6 +11,8 @@
  * silently faked.
  */
 import { S3Client } from "@aws-sdk/client-s3";
+// Effect bridge for the Effect-shaped ObjectStore seam (ADR-0027 decision 7).
+import { Effect } from "effect";
 
 export { acquireFiles, acquireSources, resolveFromCwd } from "./source-acquisition.mjs";
 
@@ -65,7 +67,9 @@ export async function archiveRawSources({
   ];
 
   for (const [key, body] of puts) {
-    await store.put(key, body);
+    // Off-Workers bridge: the ObjectStore seam is Effect-shaped (ADR-0027
+    // decision 7); runPromise joins it to the CLI's await here.
+    await Effect.runPromise(store.put(key, body));
   }
   log.info("archived raw source object(s)", { count: puts.length, prefix: keyPrefix });
   return { stored: true, keys: puts.map(([key]) => key), prefix: keyPrefix };

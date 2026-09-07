@@ -16,6 +16,7 @@ export {
 } from "./pipeline";
 export { type RunConfig, RunContext, type RunContextService } from "./context";
 export { StageError, toStageError, type StageRequirements } from "./errors";
+export { StoreError, type StoreErrorKind } from "./store-error";
 export {
   type CostRecord,
   type EmbedSpec,

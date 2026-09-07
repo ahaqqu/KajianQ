@@ -10,6 +10,11 @@ export { createMemoryConfigStore, type ConfigStore } from "./config-store";
 export { createNeonRagStore } from "./rag-store-neon";
 export { type NeonRagStoreOptions } from "./rag-store-neon-logging";
 export { createRagStore, type RagStoreProvider } from "./rag-store-factory";
+// The engine's closed store-failure taxonomy (ADR-0027 decision 7) —
+// defined in @app/rag-core, re-exported here so seam consumers need only
+// the @app/infra import surface. Consumers switch on `kind`, never on
+// adapter or vendor classes.
+export { StoreError, type StoreErrorKind } from "@app/rag-core";
 export {
   loadProviderConfig,
   parseCandidateKey,

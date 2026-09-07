@@ -7,7 +7,7 @@
  * through the `SourceParser` seam, never named here.
  */
 
-export { runIngestion } from "./pipeline";
+export { runIngestion, runStoreEffect } from "./pipeline";
 export {
   CostCollector,
   type AlignedPairInput,

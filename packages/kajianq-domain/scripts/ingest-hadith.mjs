@@ -220,11 +220,16 @@ const report = {
   },
 };
 
-await store.insertEvalRun({
-  id: report.runId,
-  label: `ingest:hadith ${new Date().toISOString()}`,
-  report,
-});
+// Off-Workers bridge: the store seam is Effect-shaped (ADR-0027 decision 7);
+// runStoreEffect joins it to the CLI's top-level await here, in the
+// composition root — the same bridge the ingestion runner uses.
+await ingest.runStoreEffect(
+  store.insertEvalRun({
+    id: report.runId,
+    label: `ingest:hadith ${new Date().toISOString()}`,
+    report,
+  }),
+);
 
 if (reportDir) {
   const fs = await import("node:fs/promises");

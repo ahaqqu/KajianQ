@@ -12,66 +12,76 @@ function fakeStore() {
   const pairs = new Map<string, Record<string, unknown>>();
   let seq = 0;
   const store: RagStore = {
-    async insertDocParent(input) {
-      seq += 1;
-      const existing = parents.get(input.sourceKey);
-      const id = existing?.id ?? `p${seq}`;
-      parents.set(input.sourceKey, {
-        id,
-        title: input.title,
-        metadata: input.metadata,
+    insertDocParent(input) {
+      return Effect.sync(() => {
+        seq += 1;
+        const existing = parents.get(input.sourceKey);
+        const id = existing?.id ?? `p${seq}`;
+        parents.set(input.sourceKey, {
+          id,
+          title: input.title,
+          metadata: input.metadata,
+        });
+        return id;
       });
-      return id;
     },
-    async insertDocChild(input) {
-      seq += 1;
-      const key = `${input.parentId}:${input.ordinal}`;
-      const id = (children.get(key)?.id as string | undefined) ?? `c${seq}`;
-      children.set(key, {
-        id,
-        textRaw: input.textRaw,
-        textAr: input.textAr,
-        textId: input.textId ?? null,
-        ordinal: input.ordinal,
+    insertDocChild(input) {
+      return Effect.map(this.insertDocChildren([input]), (ids) => ids[0] ?? `c${seq}`);
+    },
+    insertDocChildren(batch) {
+      return Effect.forEach(batch, (input) =>
+        Effect.sync(() => {
+          seq += 1;
+          const key = `${input.parentId}:${input.ordinal}`;
+          const id = (children.get(key)?.id as string | undefined) ?? `c${seq}`;
+          children.set(key, {
+            id,
+            textRaw: input.textRaw,
+            textAr: input.textAr,
+            textId: input.textId ?? null,
+            ordinal: input.ordinal,
+          });
+          return id;
+        }),
+      );
+    },
+    upsertAlignedPair(input) {
+      return Effect.sync(() => {
+        const existing = pairs.get(input.pairKey);
+        const id = typeof existing?.id === "string" ? existing.id : `pair${pairs.size + 1}`;
+        pairs.set(input.pairKey, { id, ...input });
+        return id;
       });
-      return id;
     },
-    async insertDocChildren(batch) {
-      return Promise.all(batch.map((input) => this.insertDocChild(input)));
+    similaritySearch() {
+      return Effect.succeed([]);
     },
-    async upsertAlignedPair(input) {
-      const existing = pairs.get(input.pairKey);
-      const id = typeof existing?.id === "string" ? existing.id : `pair${pairs.size + 1}`;
-      pairs.set(input.pairKey, { id, ...input });
-      return id;
+    insertAnswerTrace() {
+      return Effect.succeed("");
     },
-    async similaritySearch() {
-      return [];
+    getAnswerTraceByMessage() {
+      return Effect.succeed(null);
     },
-    async insertAnswerTrace() {
-      return "";
+    createChatSession() {
+      return Effect.succeed("");
     },
-    async getAnswerTraceByMessage() {
-      return null;
+    insertChatMessage() {
+      return Effect.succeed("");
     },
-    async createChatSession() {
-      return "";
+    createSession() {
+      return Effect.succeed({ userId: "", sessionId: "", token: "", expiresAt: 0 });
     },
-    async insertChatMessage() {
-      return "";
+    resolveUserId() {
+      return Effect.succeed(null);
     },
-    async createSession() {
-      return { userId: "", sessionId: "", token: "", expiresAt: 0 };
+    deleteUserCascade() {
+      return Effect.void;
     },
-    async resolveUserId() {
-      return null;
+    cleanupExpiredSessions() {
+      return Effect.succeed(0);
     },
-    async deleteUserCascade() {},
-    async cleanupExpiredSessions() {
-      return 0;
-    },
-    async insertEvalRun(input) {
-      return input.id ?? `eval${(seq += 1)}`;
+    insertEvalRun(input) {
+      return Effect.succeed(input.id ?? `eval${(seq += 1)}`);
     },
   };
   return {
@@ -217,7 +227,7 @@ describe("runIngestion", () => {
     const written: Record<string, unknown>[] = [];
     const store: RagStore = {
       ...f.store,
-      async insertDocChildren(batch) {
+      insertDocChildren(batch) {
         written.push(...batch.map((row) => ({ ...row })));
         return f.store.insertDocChildren(batch);
       },

@@ -2,13 +2,15 @@
 name: "assistant-manager"
 description: "Fact-finding assistant for the manager. Read-only code inspection to resolve reviewer/implementer disagreements, verify claims, or extract facts the manager needs without reading code itself."
 color: yellow
-model: "custom:d5585e04-940a-41f6-a9ec-320bb4fccd7e:kimi-k2.7-code%3Acloud"
-thoughtLevel: enabled
+model: "custom:d5585e04-940a-41f6-a9ec-320bb4fccd7e:glm-5.3-flash%3Acloud"
+thoughtLevel: high
 tools:
   - Read
   - Glob
   - Grep
   - Bash
+  - WebFetch
+  - WebSearch
 background: true
 injectAgentsMd: true
 ---

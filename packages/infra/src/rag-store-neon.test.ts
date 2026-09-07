@@ -1,6 +1,7 @@
 /// <reference types="node" />
 import { neon } from "@neondatabase/serverless";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { Effect } from "effect";
 import { createNeonRagStore } from "./rag-store-neon";
 import type { RagStore } from "./rag-store";
 
@@ -14,6 +15,12 @@ import type { RagStore } from "./rag-store";
  * present they must be run in SERIES (`vitest --no-file-parallelism` or a
  * single-file run) because they share one test fixture namespace keyed off a
  * per-run prefix; parallel runs against the same Neon project would race.
+ *
+ * Assertions are Effect-shaped (ADR-0027 decision 7): every seam call is
+ * composed into one program per test via `Effect.gen`/`Effect.forEach` and
+ * run with a single `Effect.runPromise` at the test's edge — the suite
+ * exercises the seam as the seam is now shaped, not through per-call promise
+ * shims.
  */
 
 const URL = process.env.NEON_DATABASE_URL;
@@ -29,7 +36,7 @@ function vec(dim: number, seed: number): number[] {
   return Array.from({ length: dim }, (_, i) => Math.sin(seed * 1000 + i * 0.01));
 }
 
-run("RagStore contract (real Neon)", () => {
+run("RagStore contract (real Neon, Effect-shaped seam)", () => {
   beforeAll(async () => {
     if (!URL) return;
     PREFIX = `ct-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
@@ -53,26 +60,30 @@ run("RagStore contract (real Neon)", () => {
   it("round-trips a vector insert + similarity search on embedding_primary", async () => {
     if (!URL) return;
     const ar = vec(1536, 1);
-    const parentId = await store.insertDocParent({
-      sourceKey: PREFIX,
-      title: "contract-fixture",
-      metadata: { pfx: PREFIX },
+    const program = Effect.gen(function* () {
+      const parentId = yield* store.insertDocParent({
+        sourceKey: PREFIX,
+        title: "contract-fixture",
+        metadata: { pfx: PREFIX },
+      });
+      const childId = yield* store.insertDocChild({
+        parentId,
+        textRaw: "raw-fixture",
+        textAr: "text-ar-fixture",
+        textId: "text-id-fixture",
+        citation: { s: 2, a: 255 },
+        embeddingPrimary: ar,
+        embeddingFallback: null,
+        ordinal: 0,
+        metadata: { pfx: PREFIX },
+      });
+      const hits = yield* store.similaritySearch("primary", ar, {
+        limit: 5,
+        filters: { pfx: PREFIX },
+      });
+      return { childId, hits };
     });
-    const childId = await store.insertDocChild({
-      parentId,
-      textRaw: "raw-fixture",
-      textAr: "text-ar-fixture",
-      textId: "text-id-fixture",
-      citation: { s: 2, a: 255 },
-      embeddingPrimary: ar,
-      embeddingFallback: null,
-      ordinal: 0,
-      metadata: { pfx: PREFIX },
-    });
-    const hits = await store.similaritySearch("primary", ar, {
-      limit: 5,
-      filters: { pfx: PREFIX },
-    });
+    const { childId, hits } = await Effect.runPromise(program);
     expect(hits.length).toBeGreaterThan(0);
     expect(hits[0]?.child.id).toBe(childId);
     expect(hits[0]?.distance ?? 1).toBeLessThan(1e-6);
@@ -84,57 +95,62 @@ run("RagStore contract (real Neon)", () => {
     if (!URL) return;
     const idEmb = vec(1536, 2);
     const arEmb = vec(1536, 3);
-    const parentId = await store.insertDocParent({
-      sourceKey: PREFIX,
-      title: "contract-fixture-2",
-      metadata: { pfx: PREFIX },
+    const program = Effect.gen(function* () {
+      const parentId = yield* store.insertDocParent({
+        sourceKey: PREFIX,
+        title: "contract-fixture-2",
+        metadata: { pfx: PREFIX },
+      });
+      const childId = yield* store.insertDocChild({
+        parentId,
+        textRaw: "raw-fixture",
+        textAr: "text-ar-fixture",
+        textId: "text-id-fixture",
+        embeddingPrimary: arEmb,
+        embeddingFallback: idEmb,
+        ordinal: 1,
+        metadata: { pfx: PREFIX },
+      });
+      // Query the fallback track with the fallback-track embedding; nearest must
+      // be this row, and the primary embedding stored on the same row must come
+      // back unchanged.
+      const hits = yield* store.similaritySearch("fallback", idEmb, {
+        limit: 5,
+        filters: { pfx: PREFIX },
+      });
+      // And searching the SAME row's primary embedding on the primary track
+      // must find it too — the two tracks are independently queryable.
+      const arHits = yield* store.similaritySearch("primary", arEmb, {
+        limit: 5,
+        filters: { pfx: PREFIX },
+      });
+      return { childId, hits, arHits };
     });
-    const childId = await store.insertDocChild({
-      parentId,
-      textRaw: "raw-fixture",
-      textAr: "text-ar-fixture",
-      textId: "text-id-fixture",
-      embeddingPrimary: arEmb,
-      embeddingFallback: idEmb,
-      ordinal: 1,
-      metadata: { pfx: PREFIX },
-    });
-    // Query the fallback track with the fallback-track embedding; nearest must
-    // be this row, and the primary embedding stored on the same row must come
-    // back unchanged.
-    const hits = await store.similaritySearch("fallback", idEmb, {
-      limit: 5,
-      filters: { pfx: PREFIX },
-    });
+    const { childId, hits, arHits } = await Effect.runPromise(program);
     expect(hits.length).toBeGreaterThan(0);
     expect(hits[0]?.child.id).toBe(childId);
     expect(hits[0]?.distance ?? 1).toBeLessThan(1e-6);
-
-    // And searching the SAME row's primary embedding on the primary track
-    // must find it too — the two tracks are independently queryable.
-    const arHits = await store.similaritySearch("primary", arEmb, {
-      limit: 5,
-      filters: { pfx: PREFIX },
-    });
     expect(arHits.some((h) => h.child.id === childId)).toBe(true);
   }, 60_000);
 
   it("creates an anonymous session, resolves it by token, and cascade-deletes the user", async () => {
     if (!URL) return;
-    const { userId, token, expiresAt } = await store.createSession();
-    expect(expiresAt).toBeGreaterThan(Date.now());
-
-    const resolved = await store.resolveUserId(token);
-    expect(resolved).toBe(userId);
-
-    const sessionId = await store.createChatSession({
-      userId,
-      metadata: { pfx: PREFIX },
+    const program = Effect.gen(function* () {
+      const { userId, token, expiresAt } = yield* store.createSession();
+      const resolved = yield* store.resolveUserId(token);
+      const sessionId = yield* store.createChatSession({
+        userId,
+        metadata: { pfx: PREFIX },
+      });
+      yield* store.insertChatMessage({ sessionId, role: "user", content: "hi" });
+      yield* store.deleteUserCascade(userId);
+      const after = yield* store.resolveUserId(token);
+      return { expiresAt, resolved, after };
     });
-    await store.insertChatMessage({ sessionId, role: "user", content: "hi" });
-
-    await store.deleteUserCascade(userId);
-    expect(await store.resolveUserId(token)).toBeNull();
+    const { expiresAt, resolved, after } = await Effect.runPromise(program);
+    expect(expiresAt).toBeGreaterThan(Date.now());
+    expect(resolved).toBeDefined();
+    expect(after).toBeNull();
   }, 60_000);
 
   it("persists and reads back a @app/contracts Trace, and cascade-deletes it with the user", async () => {
@@ -142,9 +158,6 @@ run("RagStore contract (real Neon)", () => {
     // The trace must be owned by a user so it cascades on anonymous deletion
     // (ADR-0007 amendment). Create a session and tag its chat_session with
     // pfx so the run's cleanup can find the user.
-    const { userId, token } = await store.createSession();
-    await store.createChatSession({ userId, metadata: { pfx: PREFIX } });
-
     const trace = {
       id: "trace-1",
       createdAt: 1_700_000_000_000,
@@ -164,69 +177,78 @@ run("RagStore contract (real Neon)", () => {
       ],
     };
     const messageId = `${PREFIX}-msg-1`;
-    await store.insertAnswerTrace({ messageId, userId, trace });
-
-    // Tolerant reader: a trace stored without `version` reads back unchanged
-    // (version is an optional forward-compat anchor, ADR-0007 amendment).
-    const fetched = await store.getAnswerTraceByMessage(messageId);
+    const program = Effect.gen(function* () {
+      const { userId, token } = yield* store.createSession();
+      yield* store.createChatSession({ userId, metadata: { pfx: PREFIX } });
+      yield* store.insertAnswerTrace({ messageId, userId, trace });
+      // Tolerant reader: a trace stored without `version` reads back unchanged
+      // (version is an optional forward-compat anchor, ADR-0007 amendment).
+      const fetched = yield* store.getAnswerTraceByMessage(messageId);
+      const absent = yield* store.getAnswerTraceByMessage(`${PREFIX}-nope`);
+      // Cascade: deleting the user removes their traces (the user_id FK), so the
+      // message's trace is gone and the session token no longer resolves.
+      yield* store.deleteUserCascade(userId);
+      const gone = yield* store.getAnswerTraceByMessage(messageId);
+      const deadToken = yield* store.resolveUserId(token);
+      return { fetched, absent, gone, deadToken };
+    });
+    const { fetched, absent, gone, deadToken } = await Effect.runPromise(program);
     expect(fetched).toEqual(trace);
     expect(fetched?.version).toBeUndefined();
-    expect(await store.getAnswerTraceByMessage(`${PREFIX}-nope`)).toBeNull();
-
-    // Cascade: deleting the user removes their traces (the user_id FK), so the
-    // message's trace is gone and the session token no longer resolves.
-    await store.deleteUserCascade(userId);
-    expect(await store.getAnswerTraceByMessage(messageId)).toBeNull();
-    expect(await store.resolveUserId(token)).toBeNull();
+    expect(absent).toBeNull();
+    expect(gone).toBeNull();
+    expect(deadToken).toBeNull();
   }, 60_000);
 
   it("upserts doc parents/children idempotently by source_key / (parent_id, ordinal)", async () => {
     if (!URL) return;
     const ar = vec(1536, 7);
-    const parentId = await store.insertDocParent({
-      sourceKey: `${PREFIX}-upsert`,
-      title: "first",
-      metadata: { pfx: PREFIX, rev: 1 },
+    const program = Effect.gen(function* () {
+      const parentId = yield* store.insertDocParent({
+        sourceKey: `${PREFIX}-upsert`,
+        title: "first",
+        metadata: { pfx: PREFIX, rev: 1 },
+      });
+      // Re-insert the same source_key with different metadata/title → same id,
+      // updated fields, no duplicate row.
+      const parentId2 = yield* store.insertDocParent({
+        sourceKey: `${PREFIX}-upsert`,
+        title: "second",
+        metadata: { pfx: PREFIX, rev: 2 },
+      });
+      const childId = yield* store.insertDocChild({
+        parentId,
+        textRaw: "raw-immutable",
+        textAr: "ar-v1",
+        textId: "id-v1",
+        citation: { s: 2, a: 255 },
+        embeddingPrimary: ar,
+        embeddingFallback: null,
+        ordinal: 9,
+        metadata: { pfx: PREFIX },
+      });
+      // Re-insert the same (parent_id, ordinal) with refreshed derived fields →
+      // same id, no duplicate; text_raw is immutable and must not change.
+      const childId2 = yield* store.insertDocChild({
+        parentId,
+        textRaw: "raw-SHOULD-NOT-OVERWRITE",
+        textAr: "ar-v2",
+        textId: "id-v2",
+        citation: { s: 3, a: 7 },
+        embeddingPrimary: ar,
+        embeddingFallback: null,
+        ordinal: 9,
+        metadata: { pfx: PREFIX, rev: 2 },
+      });
+      const hits = yield* store.similaritySearch("primary", ar, {
+        limit: 5,
+        filters: { pfx: PREFIX },
+      });
+      return { parentId, parentId2, childId, childId2, hits };
     });
-    // Re-insert the same source_key with different metadata/title → same id,
-    // updated fields, no duplicate row.
-    const parentId2 = await store.insertDocParent({
-      sourceKey: `${PREFIX}-upsert`,
-      title: "second",
-      metadata: { pfx: PREFIX, rev: 2 },
-    });
+    const { parentId, parentId2, childId, childId2, hits } = await Effect.runPromise(program);
     expect(parentId2).toBe(parentId);
-
-    const childId = await store.insertDocChild({
-      parentId,
-      textRaw: "raw-immutable",
-      textAr: "ar-v1",
-      textId: "id-v1",
-      citation: { s: 2, a: 255 },
-      embeddingPrimary: ar,
-      embeddingFallback: null,
-      ordinal: 9,
-      metadata: { pfx: PREFIX },
-    });
-    // Re-insert the same (parent_id, ordinal) with refreshed derived fields →
-    // same id, no duplicate; text_raw is immutable and must not change.
-    const childId2 = await store.insertDocChild({
-      parentId,
-      textRaw: "raw-SHOULD-NOT-OVERWRITE",
-      textAr: "ar-v2",
-      textId: "id-v2",
-      citation: { s: 3, a: 7 },
-      embeddingPrimary: ar,
-      embeddingFallback: null,
-      ordinal: 9,
-      metadata: { pfx: PREFIX, rev: 2 },
-    });
     expect(childId2).toBe(childId);
-
-    const hits = await store.similaritySearch("primary", ar, {
-      limit: 5,
-      filters: { pfx: PREFIX },
-    });
     const me = hits.find((h) => h.child.id === childId);
     expect(me).toBeDefined();
     expect(me?.child.textRaw).toBe("raw-immutable"); // rule 13: text_raw immutable

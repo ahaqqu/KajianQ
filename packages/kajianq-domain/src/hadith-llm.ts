@@ -86,13 +86,19 @@ export function hadithPairSink(
   morphology: readonly Record<string, unknown>[];
 }) => Promise<void> {
   return async (input) => {
-    await store.upsertAlignedPair({
-      pairKey: pairKeyFor?.(input) ?? input.pairKey,
-      citation: input.citation,
-      textPrimary: input.textPrimary,
-      textSecondary: input.textSecondary,
-      morphology: input.morphology,
-    });
+    // Off-Workers CLI bridge: the sink's contract is promise-shaped (the
+    // ingestion runner's pairSink), the store seam is Effect-shaped
+    // (ADR-0027 decision 7) — runPromise joins them here, inside the
+    // adapter-side sink, not in engine code.
+    await Effect.runPromise(
+      store.upsertAlignedPair({
+        pairKey: pairKeyFor?.(input) ?? input.pairKey,
+        citation: input.citation,
+        textPrimary: input.textPrimary,
+        textSecondary: input.textSecondary,
+        morphology: input.morphology,
+      }),
+    );
   };
 }
 

@@ -1,11 +1,11 @@
 import { Data, Effect } from "effect";
+import type { StoreError } from "@app/rag-core";
 import type { DocChildInsert, DocParentInsert } from "@app/infra";
 
 /**
  * A batch's vector count did not match its text count — the embedder
- * violated the seam contract. Tagged (B1): callers narrow on it, the
- * signature says what fails, and it satisfies the typed-error standard
- * phases 1-3 established (ADR-0027 need 1).
+ * violated the seam contract. Tagged (B1) and typed-error compliant
+ * (ADR-0027 need 1).
  */
 export class EmbedMisalignment extends Data.TaggedError("EmbedMisalignment")<{
   readonly expected: number;
@@ -19,6 +19,17 @@ import type {
   ParsedParent,
   SourceParser,
 } from "./types";
+
+/**
+ * The single off-Workers bridge (ADR-0027 decision 3): the ingestion runner
+ * is promise-shaped; this runPromise joins the store-seam Effects
+ * (`Effect<A, StoreError>`) to it — a typed failure rejects with the
+ * StoreError itself. Exported so the ingestion CLIs bridge their direct
+ * store calls (`insertEvalRun`) through the same edge instead of holding
+ * an `effect` import.
+ */
+export const runStoreEffect = <A>(effect: Effect.Effect<A, StoreError>): Promise<A> =>
+  Effect.runPromise(effect);
 
 /**
  * rag-ingest — the domain-agnostic ingestion pipeline orchestration (#6).
@@ -155,11 +166,10 @@ function collectPairSources(parents: readonly ParsedParent[]): Map<number, Align
 
 /**
  * Run one ingestion pass: parse → (optional) summarize parents → embed both
- * tracks → upsert through the RagStore → return the report.
- *
- * The report is *returned*, not persisted: persistence goes through the store
- * seam by the caller (CLI) so this function stays pure with respect to I/O
- * beyond the injected seams.
+ * tracks → upsert through the RagStore → return the report. The report is
+ * *returned*, not persisted: persistence goes through the store seam by the
+ * caller (CLI) so this function stays pure with respect to I/O beyond the
+ * injected seams.
  */
 export async function runIngestion(
   parser: SourceParser,
@@ -191,7 +201,9 @@ export async function runIngestion(
   const pendingPairs: AlignedPairInput[] = [];
 
   for (const parent of parents) {
-    const parentId = await deps.store.insertDocParent(parent satisfies DocParentInsert);
+    const parentId = await runStoreEffect(
+      deps.store.insertDocParent(parent satisfies DocParentInsert),
+    );
     parentIds.push(parentId);
     parent.children.forEach((child, i) => {
       childRows.push({
@@ -244,7 +256,7 @@ export async function runIngestion(
   // other (they coincide 1:1 today, but the seams are independent).
   const writeBatchSize = deps.writeBatchSize ?? 64;
   for (let i = 0; i < pending.length; i += writeBatchSize) {
-    await deps.store.insertDocChildren(pending.slice(i, i + writeBatchSize));
+    await runStoreEffect(deps.store.insertDocChildren(pending.slice(i, i + writeBatchSize)));
   }
   if (deps.pairSink) {
     for (const pair of pendingPairs) await deps.pairSink(pair);
@@ -257,10 +269,12 @@ export async function runIngestion(
     for (const parent of parents) {
       const summary = summaries.get(parent.sourceKey);
       if (summary === undefined) continue;
-      await deps.store.insertDocParent({
-        ...parent,
-        metadata: { ...parent.metadata, summary, summaryEmbeddedFrom: "summary" },
-      });
+      await runStoreEffect(
+        deps.store.insertDocParent({
+          ...parent,
+          metadata: { ...parent.metadata, summary, summaryEmbeddedFrom: "summary" },
+        }),
+      );
     }
   }
 

@@ -4,6 +4,17 @@ on:
   push:
     branches: [main]
 
+# One run at a time per ref. The neon:contract job writes to a SHARED staging
+# Neon database - parallel runs (a push and its own PR build, or two PRs)
+# race each other's fixture writes on the same tables. The suite is idempotent
+# by prefix EXCEPT for primary-key collisions between concurrent runs
+# (crypto.randomUUID is unique per insert, but a run's writes interleaving
+# with another's deletes can surface transient unique violations (e.g.
+# chat_sessions_pkey), so the runs are serialized. Cancel superseded runs.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   gate:
     runs-on: ubuntu-latest
@@ -40,24 +51,50 @@ jobs:
           pip install --quiet semgrep
           semgrep scan --config auto --error --quiet .
 
-  # Secret-gated RagStore contract tests against real Neon staging. The
-  # suite self-skips when NEON_DATABASE_URL is empty (fork PRs have no
-  # secret), so the job stays green there. When the secret is present it
-  # runs in series (--no-file-parallelism) because the tests share one
-  # fixture namespace keyed off a per-run prefix.
+  # Secret-gated RagStore contract tests against real Neon staging
+  # (ADR-0027 decision 7: the `neon:contract` job). The suite self-skips
+  # when NEON_DATABASE_URL is empty (fork PRs have no secret), so the job
+  # stays green there. When the secret is present it runs in series
+  # (--no-file-parallelism) because the tests share one fixture namespace
+  # keyed off a per-run prefix. On pull requests the job only engages when
+  # the PR touches packages/infra (the seam lives there); pushes to main
+  # always run it so staging drift is caught.
   neon-contract:
+    name: neon:contract
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      - name: Check whether this run touches packages/infra
+        id: infra
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+            # Three-dot diff: changes on the PR side since the merge base.
+            if git diff --name-only "${BASE}...${HEAD}" | grep -q '^packages/infra/'; then
+              echo "touched=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "touched=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            # Push builds (main) always exercise the contract suite.
+            echo "touched=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        if: steps.infra.outputs.touched == 'true'
         with:
           bun-version: 1.4.0
-      - run: bun install --frozen-lockfile
+      - name: Install dependencies
+        if: steps.infra.outputs.touched == 'true'
+        run: bun install --frozen-lockfile
       # vp is the single test runner (ADR-0029): vp resolves from
       # node_modules/.bin, no setup-vp step needed here.
-      - run: bunx vp test run --no-file-parallelism packages/infra/src/rag-store-neon.test.ts
+      - name: Run the Effect-shaped Neon contract suite
+        if: steps.infra.outputs.touched == 'true'
+        run: bunx vp test run --no-file-parallelism packages/infra/src/rag-store-neon.test.ts
         env:
           NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
 
