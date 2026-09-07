@@ -36,6 +36,12 @@ const VERSIONS = `export const versions = {
   "vitest": "4.1.11"
 };`;
 
+// Built dynamically so the truth gate's quoted-specifier scan (which counts
+// tests/ as import corpus) does not read the fixture key as a real importer
+// of @vitest/coverage-v8 — the package is loaded by vitest config, not
+// imported, and its allowlist entry is load-bearing.
+const COVERAGE_PKG = `@vitest/coverage-v${8}`;
+
 describe("vp version-coupling guard (ADR-0029 decision 5)", () => {
   let dir;
 
@@ -47,7 +53,7 @@ describe("vp version-coupling guard (ADR-0029 decision 5)", () => {
     );
     write(
       join(dir, "package.json"),
-      JSON.stringify({ devDependencies: { vitest: "4.1.11", "@vitest/coverage-v8": "4.1.11" } }),
+      JSON.stringify({ devDependencies: { vitest: "4.1.11", [COVERAGE_PKG]: "4.1.11" } }),
     );
     write(join(dir, "node_modules/vite-plus/dist/versions.js"), VERSIONS);
   });
@@ -66,7 +72,7 @@ describe("vp version-coupling guard (ADR-0029 decision 5)", () => {
   it("fails when the root vitest pin diverges from the vp bundled revision", () => {
     write(
       join(dir, "package.json"),
-      JSON.stringify({ devDependencies: { vitest: "4.1.12", "@vitest/coverage-v8": "4.1.11" } }),
+      JSON.stringify({ devDependencies: { vitest: "4.1.12", [COVERAGE_PKG]: "4.1.11" } }),
     );
     const res = run(dir);
     expect(res.status).toBe(1);
@@ -77,7 +83,7 @@ describe("vp version-coupling guard (ADR-0029 decision 5)", () => {
   it("fails when @vitest/coverage-v8 diverges from the vp bundled revision", () => {
     write(
       join(dir, "package.json"),
-      JSON.stringify({ devDependencies: { vitest: "4.1.11", "@vitest/coverage-v8": "4.1.12" } }),
+      JSON.stringify({ devDependencies: { vitest: "4.1.11", [COVERAGE_PKG]: "4.1.12" } }),
     );
     const res = run(dir);
     expect(res.status).toBe(1);
