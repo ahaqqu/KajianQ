@@ -150,21 +150,21 @@ export function neonErrorToStoreError(cause: unknown): StoreError {
  * driver's query function returns a LAZY query promise (NeonQueryPromise) whose
  * `.then`/`.catch`/`.finally` each fire a fresh HTTP query — it is not a
  * settled promise. The operation must therefore be invoked exactly once,
- * *inside* the `try` factory, so the fiber's single await is the only
- * consumer. Eagerly starting the promise outside (or attaching a detached
- * second consumer, e.g. `void pending.catch(...)`) executes the same SQL
- * twice: harmless for idempotent upserts, but a `createChatSession`/INSERT
- * with a fresh PK collides with itself (23505) — a silent, order-dependent
- * failure.
+ * *inside* the `try` factory. Eagerly starting the promise outside, or
+ * attaching a second consumer to the lazy promise itself (e.g.
+ * `void pending.catch(...)`), executes the same SQL twice CONCURRENTLY:
+ * harmless for idempotent upserts, but a plain INSERT with a caller-supplied
+ * PK collides with itself (23505) — a silent, order-dependent failure.
  *
- * Interruption guard: if the fiber is interrupted mid-flight, the awaited
- * native promise is abandoned and its eventual rejection would be
- * unobserved. The guard below attaches ONE no-op `catch` to the native
- * promise that was already produced by the single invocation — attaching a
- * handler to a settled (or settling) native promise never re-executes the
- * query (only the lazy NeonQueryPromise re-executes, and the guard never
- * touches it). This retires a mid-flight rejection without changing the
- * fiber's own outcome.
+ * Interruption guard (A1): the fiber's await must not be the ONLY consumer of
+ * the in-flight query — if the fiber is interrupted, the rejection would be
+ * unobserved. The guard adopts the thenable into a native promise with
+ * exactly ONE `execute` call (`Promise.resolve(pending)` invokes `.then`
+ * once), then attaches a no-op `catch` to that NATIVE promise — attaching a
+ * handler to a native promise never re-executes the query. Both the guard and
+ * Effect's await consume the same native promise, so the driver sees exactly
+ * one execution per operation, and a mid-flight rejection after interruption
+ * is retired without becoming an unhandled rejection.
  */
 export function sqlEffect<A>(
   sql: SqlRunner,
@@ -173,12 +173,14 @@ export function sqlEffect<A>(
   return Effect.tryPromise({
     try: () => {
       const pending = op(sql);
-      // One no-op consumer on the already-invoked native promise: retires a
-      // rejection when the awaiting fiber has been interrupted. Safe — a
-      // native promise tolerates multiple consumers; only the LAZY driver
-      // promise re-executes on a second consumer, and this is not it.
-      pending.catch(() => {});
-      return pending;
+      // Adopt the (possibly lazy) driver promise into a native one with
+      // exactly one execution, then share it between the guard and the
+      // awaiting fiber. `Promise.resolve` on a thenable calls `.then` once —
+      // the single execution — and the result is a plain promise: attaching
+      // further consumers to it is free.
+      const native = Promise.resolve(pending) as Promise<A>;
+      native.catch(() => {});
+      return native;
     },
     catch: neonErrorToStoreError,
   });

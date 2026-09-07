@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Cause, Effect, Exit, Option } from "effect";
 import type { StoreError } from "@app/rag-core";
 import { createNeonRagStore, type SqlRunner } from "./rag-store-neon";
+import { sqlEffect } from "./rag-store-neon-errors";
 import { createRagStore } from "./rag-store-factory";
 import type { Logger, LogFields } from "./logger";
 import type { Trace } from "@app/contracts";
@@ -470,6 +471,52 @@ describe("rag-store-neon adapter (fake runner)", () => {
     const store = createNeonRagStore(sql);
     const err = await runFail(store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }));
     expect(err.kind).toBe("transport");
+  });
+});
+
+describe("sqlEffect execution-semantics guard (A1)", () => {
+  it("executes a lazy thenable exactly once while the guard still observes rejections", async () => {
+    // Simulates the Neon driver's lazy NeonQueryPromise: every consumer of
+    // the LAZY promise fires a fresh execution. The guard must adopt it into
+    // a native promise with exactly one execution — never attach a second
+    // consumer to the lazy promise itself (PR #132 review A1 + CI regression:
+    // double execution raced a plain INSERT into a PK violation).
+    let executions = 0;
+    class LazyThenable {
+      then(onF: (v: unknown) => unknown, onR?: (e: unknown) => unknown) {
+        executions += 1;
+        return Promise.resolve([]).then(onF, onR);
+      }
+    }
+    const sql = (() => new LazyThenable()) as unknown as SqlRunner;
+    await runOk(sqlEffect(sql, (s) => (s as unknown as (s2: SqlRunner) => Promise<unknown>)(s)));
+    expect(executions).toBe(1);
+  });
+
+  it("retires a rejection that settles after the awaiting fiber is gone (no unhandled rejection)", async () => {
+    let settled = false;
+    class LazyThenable {
+      then(onF: (v: unknown) => unknown, onR?: (e: unknown) => unknown) {
+        void new Promise((_res, rej) =>
+          setTimeout(() => {
+            settled = true;
+            rej(new Error("late rejection"));
+          }, 20),
+        ).then(onF, onR);
+        return Promise.resolve([]);
+      }
+    }
+    const sql = (() => new LazyThenable()) as unknown as SqlRunner;
+    const eff = sqlEffect(sql, (s) => (s as unknown as (s2: SqlRunner) => Promise<unknown>)(s));
+    const abandoned = Effect.runPromise(eff).then(
+      () => "ok",
+      () => "failed",
+    );
+    // The awaiting fiber sees the immediate success path; the late rejection
+    // is observed by the interruption guard, not as an unhandled rejection.
+    expect(await abandoned).toBe("failed");
+    await new Promise((r) => setTimeout(r, 60));
+    expect(settled).toBe(true);
   });
 });
 
