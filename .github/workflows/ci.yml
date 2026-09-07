@@ -5,11 +5,11 @@ on:
     branches: [main]
 
 # One run at a time per ref. The neon:contract job writes to a SHARED staging
-# Neon database — parallel runs (a push and its own PR build, or two PRs)
+# Neon database - parallel runs (a push and its own PR build, or two PRs)
 # race each other's fixture writes on the same tables. The suite is idempotent
 # by prefix EXCEPT for primary-key collisions between concurrent runs
 # (crypto.randomUUID is unique per insert, but a run's writes interleaving
-# with another's deletes can surface transient unique violations, e.g.
+# with another's deletes can surface transient unique violations (e.g.
 # chat_sessions_pkey), so the runs are serialized. Cancel superseded runs.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
