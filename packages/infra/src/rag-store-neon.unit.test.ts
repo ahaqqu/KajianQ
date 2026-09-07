@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { Cause, Effect, Exit, Option } from "effect";
+import type { StoreError } from "@app/rag-core";
 import { createNeonRagStore, type SqlRunner } from "./rag-store-neon";
 import { createRagStore } from "./rag-store-factory";
 import type { Logger, LogFields } from "./logger";
@@ -11,7 +13,25 @@ import type { Trace } from "@app/contracts";
  * wiring, row mapping — line coverage that the secret-gated contract suite
  * (rag-store-neon.test.ts) cannot provide in the default gate job. The fake
  * records what the adapter asked the driver to do and feeds back canned rows.
+ *
+ * Assertions are Effect-shaped (ADR-0027 decision 7): seam calls are run via
+ * `Effect.runPromise`/`Effect.runPromiseExit`, and failure assertions check
+ * the `StoreError` kind + cause — never a thrown exception class.
  */
+
+/** Run a store effect that must succeed, returning its value. */
+const runOk = <A>(effect: Effect.Effect<A, StoreError>): Promise<A> =>
+  Effect.runPromise(effect);
+
+/** Run a store effect that must fail, returning the typed StoreError. */
+async function runFail<A>(effect: Effect.Effect<A, StoreError>): Promise<StoreError> {
+  const exit = await Effect.runPromiseExit(effect);
+  const failure = Exit.isFailure(exit)
+    ? Cause.failureOption(exit.cause)
+    : Option.none<StoreError>();
+  if (Option.isSome(failure)) return failure.value;
+  throw new Error("expected the effect to fail");
+}
 
 /** Uniform shape so access sites don't need per-variant narrowing. */
 type Recorded = { kind: string; text: string; values: unknown[]; queries?: unknown[] };
@@ -55,6 +75,15 @@ function makeFakeSql() {
   return sql;
 }
 
+/** Fake runner whose tag/query/transaction calls reject with the given error. */
+function makeBoomSql(error: () => unknown): SqlRunner {
+  const boom = Object.assign(() => Promise.reject(error()), {
+    query: () => Promise.reject(error()),
+    transaction: () => Promise.reject(error()),
+  }) as SqlRunner;
+  return boom;
+}
+
 const VEC1536 = Array.from({ length: 1536 }, (_, i) => Math.sin(i * 0.01));
 
 /** Recording fake Logger so tests can assert the adapter's ops logging. */
@@ -86,14 +115,16 @@ describe("rag-store-neon adapter (fake runner)", () => {
     const sql = makeFakeSql();
     const store = createNeonRagStore(sql);
     sql._setTag([{ id: "from-db" }]);
-    const id = await store.insertDocParent({ sourceKey: "k", title: "t", metadata: { a: 1 } });
+    const id = await runOk(store.insertDocParent({ sourceKey: "k", title: "t", metadata: { a: 1 } }));
     expect(id).toBe("from-db");
     expect(sql._calls[0]?.text).toContain("INSERT INTO doc_parents");
     expect(sql._calls[0]?.text).toContain("ON CONFLICT (source_key) DO UPDATE");
 
     // No RETURNING row → fall back to the caller-supplied/generated id.
     sql._setTag([]);
-    const id2 = await store.insertDocParent({ sourceKey: "k2", title: null, metadata: {} });
+    const id2 = await runOk(
+      store.insertDocParent({ sourceKey: "k2", title: null, metadata: {} }),
+    );
     expect(typeof id2).toBe("string");
   });
 
@@ -101,16 +132,18 @@ describe("rag-store-neon adapter (fake runner)", () => {
     const sql = makeFakeSql();
     const store = createNeonRagStore(sql);
     sql._setQuery([{ id: "child-1" }]);
-    const id = await store.insertDocChild({
-      parentId: "p",
-      textRaw: "raw",
-      textAr: "ar",
-      textId: "id",
-      embeddingPrimary: VEC1536,
-      embeddingFallback: null,
-      ordinal: 0,
-      metadata: {},
-    });
+    const id = await runOk(
+      store.insertDocChild({
+        parentId: "p",
+        textRaw: "raw",
+        textAr: "ar",
+        textId: "id",
+        embeddingPrimary: VEC1536,
+        embeddingFallback: null,
+        ordinal: 0,
+        metadata: {},
+      }),
+    );
     expect(id).toBe("child-1");
     const text = sql._calls[0]?.text ?? "";
     expect(text).toContain("INSERT INTO doc_children");
@@ -124,28 +157,30 @@ describe("rag-store-neon adapter (fake runner)", () => {
     const sql = makeFakeSql();
     const store = createNeonRagStore(sql);
     sql._setQuery([{ id: "c1" }, { id: "c2" }]);
-    const ids = await store.insertDocChildren([
-      {
-        parentId: "p",
-        textRaw: "raw-1",
-        textAr: "ar-1",
-        textId: "id-1",
-        embeddingPrimary: VEC1536,
-        embeddingFallback: null,
-        ordinal: 0,
-        metadata: {},
-      },
-      {
-        parentId: "p",
-        textRaw: "raw-2",
-        textAr: "ar-2",
-        textId: "id-2",
-        embeddingPrimary: VEC1536,
-        embeddingFallback: null,
-        ordinal: 1,
-        metadata: {},
-      },
-    ]);
+    const ids = await runOk(
+      store.insertDocChildren([
+        {
+          parentId: "p",
+          textRaw: "raw-1",
+          textAr: "ar-1",
+          textId: "id-1",
+          embeddingPrimary: VEC1536,
+          embeddingFallback: null,
+          ordinal: 0,
+          metadata: {},
+        },
+        {
+          parentId: "p",
+          textRaw: "raw-2",
+          textAr: "ar-2",
+          textId: "id-2",
+          embeddingPrimary: VEC1536,
+          embeddingFallback: null,
+          ordinal: 1,
+          metadata: {},
+        },
+      ]),
+    );
     expect(ids).toEqual(["c1", "c2"]);
     expect(sql._calls).toHaveLength(1);
     const batchText = sql._calls[0]?.text ?? "";
@@ -176,10 +211,10 @@ describe("rag-store-neon adapter (fake runner)", () => {
     expect(batchText).not.toMatch(/SET[^]*text_raw\s*=/);
   });
 
-  it("insertDocChild rejects wrong-dimension embeddings before touching the DB", async () => {
+  it("insertDocChild rejects wrong-dimension embeddings before touching the DB (constraint kind)", async () => {
     const sql = makeFakeSql();
     const store = createNeonRagStore(sql);
-    await expect(
+    const err = await runFail(
       store.insertDocChild({
         parentId: "p",
         textRaw: "raw",
@@ -190,7 +225,10 @@ describe("rag-store-neon adapter (fake runner)", () => {
         ordinal: 0,
         metadata: {},
       }),
-    ).rejects.toThrow(/dimension mismatch/);
+    );
+    // Taxonomy: a bad vector is constraint-class, cause wraps the original.
+    expect(err.kind).toBe("constraint");
+    expect((err.cause as Error).message).toMatch(/dimension mismatch/);
     expect(sql._calls).toHaveLength(0);
   });
 
@@ -214,10 +252,12 @@ describe("rag-store-neon adapter (fake runner)", () => {
         rank_dense: 1,
       },
     ]);
-    const hits = await store.similaritySearch("primary", VEC1536, {
-      limit: 5,
-      filters: { pfx: "x", kind: ["a", "b"] },
-    });
+    const hits = await runOk(
+      store.similaritySearch("primary", VEC1536, {
+        limit: 5,
+        filters: { pfx: "x", kind: ["a", "b"] },
+      }),
+    );
     expect(hits).toHaveLength(1);
     expect(hits[0]?.child.id).toBe("c1");
     expect(hits[0]?.distance).toBe(0.25);
@@ -229,19 +269,46 @@ describe("rag-store-neon adapter (fake runner)", () => {
     expect(q?.values).toHaveLength(6);
   });
 
-  it("similaritySearch rejects a bad-dimension embedding before querying", async () => {
+  it("similaritySearch rejects a bad-dimension embedding before querying (constraint kind)", async () => {
     const sql = makeFakeSql();
     const store = createNeonRagStore(sql);
-    await expect(store.similaritySearch("primary", [0.1], { limit: 5 })).rejects.toThrow(
-      /dimension mismatch/,
-    );
+    const err = await runFail(store.similaritySearch("primary", [0.1], { limit: 5 }));
+    expect(err.kind).toBe("constraint");
+    expect((err.cause as Error).message).toMatch(/dimension mismatch/);
     expect(sql._calls.find((c) => c.kind === "query")).toBeUndefined();
+  });
+
+  it("similaritySearch fails constraint-class on a corrupt stored vector", async () => {
+    const sql = makeFakeSql();
+    const store = createNeonRagStore(sql);
+    sql._setQuery([
+      {
+        id: "c1",
+        parent_id: "p1",
+        text_raw: "raw",
+        text_ar: "ar",
+        text_id: "id",
+        citation: { s: 2 },
+        embedding_primary: "[1,abc]",
+        embedding_fallback: null,
+        ordinal: 3,
+        metadata: {},
+        created_at: "2023-11-14T22:13:20.000Z",
+        distance: 0.25,
+        rank_dense: 1,
+      },
+    ]);
+    const err = await runFail(store.similaritySearch("primary", VEC1536, { limit: 5 }));
+    expect(err.kind).toBe("constraint");
+    expect((err.cause as Error).message).toMatch(/unexpected vector component/);
   });
 
   it("insertAnswerTrace validates the Trace and stores user_id", async () => {
     const sql = makeFakeSql();
     const store = createNeonRagStore(sql);
-    const id = await store.insertAnswerTrace({ messageId: "m1", userId: "u1", trace: sampleTrace });
+    const id = await runOk(
+      store.insertAnswerTrace({ messageId: "m1", userId: "u1", trace: sampleTrace }),
+    );
     expect(typeof id).toBe("string");
     const text = sql._calls[0]?.text ?? "";
     expect(text).toContain("INSERT INTO answer_traces");
@@ -249,30 +316,53 @@ describe("rag-store-neon adapter (fake runner)", () => {
     expect(sql._calls[0]?.values).toContain("u1");
   });
 
+  it("insertAnswerTrace fails constraint-class on a malformed Trace", async () => {
+    const sql = makeFakeSql();
+    const store = createNeonRagStore(sql);
+    const err = await runFail(
+      store.insertAnswerTrace({
+        messageId: "m1",
+        userId: "u1",
+        // Missing required trace fields — contract rejection.
+        trace: { events: "not-an-array" } as unknown as Trace,
+      }),
+    );
+    expect(err.kind).toBe("constraint");
+    expect(sql._calls).toHaveLength(0);
+  });
+
   it("getAnswerTraceByMessage returns null when absent and the parsed Trace when present", async () => {
     const sql = makeFakeSql();
     const store = createNeonRagStore(sql);
     sql._setTag([]);
-    expect(await store.getAnswerTraceByMessage("none")).toBeNull();
+    expect(await runOk(store.getAnswerTraceByMessage("none"))).toBeNull();
     sql._setTag([{ trace: sampleTrace }]);
-    const got = await store.getAnswerTraceByMessage("m1");
+    const got = await runOk(store.getAnswerTraceByMessage("m1"));
     expect(got).toEqual(sampleTrace);
     expect(sql._calls[0]?.text).toContain("SELECT trace FROM answer_traces");
+  });
+
+  it("getAnswerTraceByMessage fails constraint-class on a corrupt persisted trace", async () => {
+    const sql = makeFakeSql();
+    const store = createNeonRagStore(sql);
+    sql._setTag([{ trace: { id: 42 } }]);
+    const err = await runFail(store.getAnswerTraceByMessage("m1"));
+    expect(err.kind).toBe("constraint");
   });
 
   it("createChatSession and insertChatMessage issue the right inserts", async () => {
     const sql = makeFakeSql();
     const store = createNeonRagStore(sql);
-    await store.createChatSession({ userId: "u1", metadata: { k: 1 } });
+    await runOk(store.createChatSession({ userId: "u1", metadata: { k: 1 } }));
     expect(sql._calls[0]?.text).toContain("INSERT INTO chat_sessions");
-    await store.insertChatMessage({ sessionId: "s1", role: "user", content: "hi" });
+    await runOk(store.insertChatMessage({ sessionId: "s1", role: "user", content: "hi" }));
     expect(sql._calls[1]?.text).toContain("INSERT INTO chat_messages");
   });
 
   it("createSession writes users + sessions in one atomic transaction", async () => {
     const sql = makeFakeSql();
     const store = createNeonRagStore(sql);
-    const out = await store.createSession();
+    const out = await runOk(store.createSession());
     expect(out.userId).toEqual(expect.any(String));
     expect(out.token.length).toBeGreaterThanOrEqual(40);
     expect(out.expiresAt).toBeGreaterThan(Date.now() - 1000);
@@ -291,9 +381,9 @@ describe("rag-store-neon adapter (fake runner)", () => {
     const sql = makeFakeSql();
     const store = createNeonRagStore(sql);
     sql._setTag([{ user_id: "u1" }]);
-    expect(await store.resolveUserId("tok")).toBe("u1");
+    expect(await runOk(store.resolveUserId("tok"))).toBe("u1");
     sql._setTag([]);
-    expect(await store.resolveUserId("tok")).toBeNull();
+    expect(await runOk(store.resolveUserId("tok"))).toBeNull();
     expect(sql._calls[0]?.text).toContain("expires_at > now()");
   });
 
@@ -301,7 +391,7 @@ describe("rag-store-neon adapter (fake runner)", () => {
     const sql = makeFakeSql();
     const store = createNeonRagStore(sql);
     sql._setTag([{ id: "a" }, { id: "b" }, { id: "c" }]);
-    const n = await store.cleanupExpiredSessions();
+    const n = await runOk(store.cleanupExpiredSessions());
     expect(n).toBe(3);
     expect(sql._calls[0]?.text).toContain("DELETE FROM sessions WHERE expires_at <=");
   });
@@ -309,30 +399,69 @@ describe("rag-store-neon adapter (fake runner)", () => {
   it("deleteUserCascade deletes from users (cascade does the rest)", async () => {
     const sql = makeFakeSql();
     const store = createNeonRagStore(sql);
-    await store.deleteUserCascade("u1");
+    await runOk(store.deleteUserCascade("u1"));
     expect(sql._calls[0]?.text).toContain("DELETE FROM users WHERE id =");
+  });
+
+  it("classifies a NeonDbError unique violation as constraint (taxonomy, ADR-0027 d7)", async () => {
+    const sql = makeBoomSql(() =>
+      Object.assign(new Error("duplicate key value violates unique constraint"), {
+        name: "NeonDbError",
+        code: "23505",
+      }),
+    );
+    const store = createNeonRagStore(sql);
+    const err = await runFail(
+      store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }),
+    );
+    expect(err.kind).toBe("constraint");
+    expect((err.cause as { code?: string }).code).toBe("23505");
+  });
+
+  it("classifies an auth failure (28P01) as config, not transport", async () => {
+    const sql = makeBoomSql(() =>
+      Object.assign(new Error("authentication failed"), {
+        name: "NeonDbError",
+        code: "28P01",
+      }),
+    );
+    const store = createNeonRagStore(sql);
+    const err = await runFail(
+      store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }),
+    );
+    expect(err.kind).toBe("config");
+  });
+
+  it("classifies a driver timeout message as timeout", async () => {
+    const sql = makeBoomSql(() => new Error("fetch timed out"));
+    const store = createNeonRagStore(sql);
+    const err = await runFail(
+      store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }),
+    );
+    expect(err.kind).toBe("timeout");
+  });
+
+  it("classifies an unknown network failure as transport (closed default)", async () => {
+    const sql = makeBoomSql(() => new TypeError("fetch failed"));
+    const store = createNeonRagStore(sql);
+    const err = await runFail(
+      store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }),
+    );
+    expect(err.kind).toBe("transport");
+    expect(err.cause).toBeInstanceOf(TypeError);
   });
 });
 
 describe("rag-store-neon adapter: optional ops logging", () => {
-  it("propagates the original error untouched when no logger is configured", async () => {
-    let tagReturn: unknown[] | null = null;
-    const boom = Object.assign(
-      () => {
-        if (tagReturn === null) return Promise.reject(new Error("db down"));
-        return Promise.resolve(tagReturn);
-      },
-      {
-        query: () => Promise.resolve([]),
-        transaction: () => Promise.resolve([]),
-      },
-    ) as SqlRunner;
-    // No opts at all: the adapter must behave exactly as before the logging
-    // knob existed — the raw driver error surfaces, nothing wraps it.
-    const store = createNeonRagStore(boom);
-    await expect(
+  it("propagates the original as cause, classified transport, when no logger is configured", async () => {
+    const store = createNeonRagStore(makeBoomSql(() => new Error("db down")));
+    const err = await runFail(
       store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }),
-    ).rejects.toThrow(/^db down$/);
+    );
+    // A generic Error carries no SQLSTATE/shape → transport (closed default),
+    // with the original vendor error verbatim in cause.
+    expect(err.kind).toBe("transport");
+    expect((err.cause as Error).message).toBe("db down");
   });
 
   it("warns on slow queries with only {op, ms} fields, no SQL text or values", async () => {
@@ -343,7 +472,7 @@ describe("rag-store-neon adapter: optional ops logging", () => {
       slowQueryMs: 0, // every query is "slow" → deterministic assertion
     });
     sql._setTag([{ id: "x" }]);
-    await store.insertDocParent({ sourceKey: "k", title: null, metadata: {} });
+    await runOk(store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }));
     const warns = fake.calls.filter((c) => c.level === "warn");
     expect(warns).toHaveLength(1);
     expect(warns[0]?.msg).toBe("rag_store.slow_query");
@@ -353,23 +482,16 @@ describe("rag-store-neon adapter: optional ops logging", () => {
     expect(Object.keys(warns[0]?.fields ?? {}).sort()).toEqual(["ms", "op"]);
   });
 
-  it("logs errors and rethrows when a query fails", async () => {
+  it("logs errors and fails with the classified StoreError when a query fails", async () => {
     const fake = makeFakeLogger();
-    let tagReturn: unknown[] | null = null;
-    const boom = Object.assign(
-      () => {
-        if (tagReturn === null) return Promise.reject(new Error("db down"));
-        return Promise.resolve(tagReturn);
-      },
-      {
-        query: () => Promise.resolve([]),
-        transaction: () => Promise.resolve([]),
-      },
-    ) as SqlRunner;
-    const store = createNeonRagStore(boom, { logger: fake.logger });
-    await expect(
+    const store = createNeonRagStore(makeBoomSql(() => new Error("db down")), {
+      logger: fake.logger,
+    });
+    const err = await runFail(
       store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }),
-    ).rejects.toThrow(/db down/);
+    );
+    expect(err.kind).toBe("transport");
+    expect((err.cause as Error).message).toBe("db down");
     const errs = fake.calls.filter((c) => c.level === "error");
     expect(errs).toHaveLength(1);
     expect(errs[0]?.msg).toBe("rag_store.query_failed");
@@ -384,7 +506,7 @@ describe("rag-store-neon adapter: optional ops logging", () => {
       slowQueryMs: Number.MAX_SAFE_INTEGER,
     });
     sql._setTag([{ id: "x" }]);
-    await store.insertDocParent({ sourceKey: "k", title: null, metadata: {} });
+    await runOk(store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }));
     expect(fake.calls).toHaveLength(0);
   });
 });
@@ -394,11 +516,13 @@ describe("rag-store-factory: createRagStore", () => {
     const sql = makeFakeSql();
     const store = createRagStore("neon", sql);
     sql._setTag([{ id: "p1" }]);
-    const id = await store.insertDocParent({
-      sourceKey: "k",
-      title: null,
-      metadata: {},
-    });
+    const id = await runOk(
+      store.insertDocParent({
+        sourceKey: "k",
+        title: null,
+        metadata: {},
+      }),
+    );
     expect(id).toBe("p1");
     expect(sql._calls[0]?.text).toContain("INSERT INTO doc_parents");
   });
@@ -411,7 +535,7 @@ describe("rag-store-factory: createRagStore", () => {
       slowQueryMs: 0,
     });
     sql._setTag([{ id: "p1" }]);
-    await store.insertDocParent({ sourceKey: "k", title: null, metadata: {} });
+    await runOk(store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }));
     expect(fake.calls.some((c) => c.msg === "rag_store.slow_query")).toBe(true);
   });
 
@@ -419,6 +543,8 @@ describe("rag-store-factory: createRagStore", () => {
     const sql = makeFakeSql();
     // Simulates a provider joined to RagStoreProvider without a case in the
     // switch: the default branch must fail loudly, not silently return.
+    // Factory selection is constructor-time wiring, not a seam call — a
+    // throw here is not an error kind crossing the store seam.
     expect(() => createRagStore("memory" as "neon", sql)).toThrow(
       /no RagStore adapter for provider: memory/,
     );
