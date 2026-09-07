@@ -20,7 +20,7 @@ These apply to every role and every task. Each bullet names the skill that carri
 - **Pluggable by design** — every external dependency and every pipeline stage is replaceable by configuration first, and by code changes when deep customization is needed. Work behind the existing seams (`Provider`, `RagStore`, `ObjectStore`, the pipeline stage interfaces); if no seam exists and you need one, add the seam first. Checklist: `.agents/skills/dars-pluggability/SKILL.md`.
 - **Traceable by design** — never hide the machinery (a hard product boundary, not a nice-to-have). Every LLM call records model identity, tokens, latency, and cost on the trace of the answer/run that triggered it; user-visible data structures come from persisted trace records. Checklist: `.agents/skills/kajianq-traceability/SKILL.md`.
 - **Engine purity** — engine packages (`rag-core`, `rag-ingest`, `eval`, `contracts`, `infra`, `rate`, `hardening`) contain zero Islamic-domain logic, zero vendor or model names, and no direct database access (only the `RagStore` adapter and migrations touch SQL). Checklist: `dars-pluggability`.
-- **Reuse** — shared, project-agnostic logic lives in a dedicated `packages/<name>` workspace package, never `apps/`. `packages/` is the template-sync merge path that forks inherit; `apps/` is the per-project composition root that each fork owns and customizes.
+- **Reuse** — shared, project-agnostic logic lives in a dedicated `packages/<name>` workspace package, never `apps/`. `packages/` is the shared-engine merge path; `apps/` is the per-project composition root that each fork owns and customizes.
 - **Data integrity** — never overwrite raw source data (`text_raw` and original exports are immutable; cleaning/translation writes new fields); re-runnable ingestion is idempotent; Matn and Sharh are never mixed in one chunk; disputed attributions are quarantined or labeled, never force-merged.
 - **Cost discipline** — price is weighed in every model decision; model choice per stage comes from config (`model_configs`) only. Vendor allowlist and the paid-API amendment: ADR-0009.
 - **Decisions** — hard-to-reverse, surprising, trade-off decisions get an ADR in `adr/` (numbered to continue the existing sequence) before or with the implementing PR. Never relitigate an accepted ADR in code comments; amend the ADR instead. Respect the go/no-go gates recorded in ADRs.
@@ -81,7 +81,7 @@ Tickets carry model routing labels applied by the `to-tickets` skill and consume
 
 ## Definition of Done
 
-- [ ] All CI gates green: `bun run check`, `bun run lint`, `bun run test`, `bun run boundary`, `bun run size-limit`, `bun run agentic-limits`, `bun run truth`, `bun run openapi:check`, `bun run template-gate`, plus security scans.
+- [ ] All CI gates green: `bun run check`, `bun run lint`, `bun run test`, `bun run boundary`, `bun run size-limit`, `bun run agentic-limits`, `bun run openapi:check`, plus security scans.
 - [ ] Domain boundary holds: the verification scans in `.agents/skills/dars-pluggability/SKILL.md` return only allowed hits.
 - [ ] Traceability holds: any new LLM call records model/tokens/cost to a trace; any new persisted answer path writes a trace record the UI can render. Checklist: `.agents/skills/kajianq-traceability/SKILL.md`.
 - [ ] Contracts written before implementation; pipeline wiring goes through the `runPipeline` runner — never hand-assembled traces or ad hoc stage wiring (ADR-0021).

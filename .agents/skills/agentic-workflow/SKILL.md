@@ -22,12 +22,12 @@ For bug fixes, start with `diagnosing-bugs` before any implementation phase, the
 
 ## When to skip / loop
 
-| Situation | Adjustment |
-|---|---|
-| Trivial fix (typo, one-liner) | Skip `grill-with-docs`, `to-spec`, `to-tickets`, `plan-review`. Go straight to `guided-implementation` or `pr-creation`. |
-| Design already approved / spec exists | Skip `grill-with-docs` and `to-spec`. Start at `to-tickets` or `plan-review`. |
-| Hot bug in production | Start at `diagnosing-bugs`. Skip long spec work; produce a minimal repro + regression test, then PR. |
-| Existing ADRs cover the area | Use the glossary and ADRs from `grill-with-docs`; you may not need a new ADR. |
+| Situation                             | Adjustment                                                                                                               |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Trivial fix (typo, one-liner)         | Skip `grill-with-docs`, `to-spec`, `to-tickets`, `plan-review`. Go straight to `guided-implementation` or `pr-creation`. |
+| Design already approved / spec exists | Skip `grill-with-docs` and `to-spec`. Start at `to-tickets` or `plan-review`.                                            |
+| Hot bug in production                 | Start at `diagnosing-bugs`. Skip long spec work; produce a minimal repro + regression test, then PR.                     |
+| Existing ADRs cover the area          | Use the glossary and ADRs from `grill-with-docs`; you may not need a new ADR.                                            |
 
 ## Phase-by-phase entry point
 
@@ -56,10 +56,13 @@ For bug fixes, start with `diagnosing-bugs` before any implementation phase, the
    - Validate against `AGENTS.md` Definition of Done before opening.
 
 8. **Review the PR** — load `.agents/skills/code-review/SKILL.md`.
-   - It is the single review entry point. Depth is determined by the change: a PR that touches code is reviewed at thermos depth (mandatory — both thermo passes); docs/skill-only changes may skip thermos.
+   - It is the single review entry point. Depth is determined by the change: a PR that touches code is reviewed at thermos depth (mandatory — the reviewer runs both thermo passes itself); docs/skill-only changes may skip thermos.
 
-9. **Ship** — load `.agents/skills/ship/SKILL.md`.
-   - Staging → BDD → DAST → fuzz → production → smoke tests → cleanup.
+9. **Fix review findings** — managed by the manager skill's `fixer` role.
+   - The fixer (not the original implementer) owns accepting/rejecting each item and applying accepted fixes.
+
+10. **Ship** — load `.agents/skills/ship/SKILL.md`.
+    - Staging → BDD → DAST → fuzz → production → smoke tests → cleanup.
 
 ## Always-in-force rules
 

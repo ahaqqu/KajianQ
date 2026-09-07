@@ -1,10 +1,9 @@
 name: Staging
 # Deploy to the Cloudflare staging environment on every merge to main, and
 # on demand (workflow_dispatch) for rollbacks/re-runs. The push trigger was
-# briefly dropped in #53 when the template-sync --ours resolution re-introduced
-# D1 steps D1 was already stripped from this fork in #3 (ADR-0008); the
-# workflow below is the fork-owned version (Neon-backed, no D1, no
-# /v1/session) and is listed in template-sync.json's `merge` set accordingly.
+# briefly dropped in #53 when a template-sync --ours resolution re-introduced
+# D1 steps; D1 was already stripped from this fork in #3 (ADR-0008). The
+# workflow below is project-owned (Neon-backed, no D1, no /v1/session).
 on:
   push:
     branches: [main]

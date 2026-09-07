@@ -22,9 +22,7 @@ async function main() {
 
   const doc = await res.json();
   if (doc.openapi !== "3.1.0") {
-    console.error(
-      `openapi:check failed: expected openapi 3.1.0, got ${doc.openapi}`,
-    );
+    console.error(`openapi:check failed: expected openapi 3.1.0, got ${doc.openapi}`);
     process.exit(1);
   }
 
@@ -37,9 +35,7 @@ async function main() {
   ].sort();
 
   const documented = Object.entries(doc.paths)
-    .flatMap(([path, methods]) =>
-      Object.keys(methods).map((m) => `${m.toUpperCase()} ${path}`),
-    )
+    .flatMap(([path, methods]) => Object.keys(methods).map((m) => `${m.toUpperCase()} ${path}`))
     .sort();
 
   const registeredJson = JSON.stringify(registered);
@@ -54,9 +50,7 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(
-    `openapi:check OK (${registered.length} /v1 routes, OpenAPI ${doc.openapi})`,
-  );
+  console.log(`openapi:check OK (${registered.length} /v1 routes, OpenAPI ${doc.openapi})`);
 }
 
 main().catch((err) => {

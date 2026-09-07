@@ -2,20 +2,19 @@
 
 The manager skill (`SKILL.md`) is harness-neutral; this file is its **DSH (DeepSeek Harness) adapter** and the single home for DSH dispatch mechanics, model routing, and their verification. Load it only when running the manager loop on DSH. The role pins live in `.zcode/agents/<role>.md` — the single source of truth for role models on every harness; this file defines how DSH honors them.
 
-Verified against the installed DSH by live probes (2026-08-29): foreground and background (continuable) spawn, `send_message` continuation, nested spawns **including from workflow children** (the reviewer pattern), and per-agent model overrides via `workflow`.
+Verified against the installed DSH by live probes (2026-08-29): foreground and background (continuable) spawn, `send_message` continuation, nested spawns, and per-agent model overrides via `workflow`.
 
-## Dispatch recipe — all six roles
+## Dispatch recipe — all roles
 
-DSH has no named agent types and no agent-definition files, so the role definition travels in the prompt — assembled by script, never by hand. `bun run dsh:prompt --role <role> (--task <text> | --task-file <path>)` prints the complete standalone prompt: the role body from `.zcode/agents/<role>.md` (the single source of truth) — including, where the role opens PRs, the "Dispatch authorization" section carried in the role file itself. Pass stdout verbatim to `subagent` — the agent opens no role files.
+DSH has no named agent types and no agent-definition files, so the role definition travels in the prompt — assembled by script, never by hand. `bun run dsh:prompt --role <role> (--task <text> | --task-file <path>)` prints the complete standalone prompt: the role body from `.zcode/agents/<role>.md` (the single source of truth). Pass stdout verbatim to `subagent` — the agent opens no role files.
 
-| Role | DSH dispatch |
-| --- | --- |
-| A — implementer | generic `subagent`, background (durable id); prompt assembled by `bun run dsh:prompt --role implementer --task <task>`. Continue with `send_message` for the CI-fix relay (a workflow-pinned dispatch respawns fresh instead — see Model routing). |
-| A — senior-implementer | same; prompt assembled by `bun run dsh:prompt --role senior-implementer` — the invariant-first lead is in the role body. |
-| B — reviewer | generic `subagent`, background; prompt assembled by `bun run dsh:prompt --role reviewer --task <pr-context>`. It spawns its two sub-reviewers itself (nested spawn verified). |
-| sub-reviewer (security) | child generic `subagent` with the baseline prompt from `thermo-nuclear-review/SKILL.md` inlined (or `bun run dsh:prompt --role thermo-nuclear-review-subagent`) — DSH has no subagent types for them; this is the fallback `thermos-with-comments` already allows. |
-| sub-reviewer (quality) | child generic `subagent` with the baseline prompt from `thermo-nuclear-code-quality-review/SKILL.md` inlined (or the matching `--role`). |
-| C — assistant-manager | generic `subagent`, background; prompt assembled by `bun run dsh:prompt --role assistant-manager --task <question>`. Read-only is enforced by the role body's constraints — DSH exposes no per-call tool filter. |
+| Role                   | DSH dispatch                                                                                                                                                                                                                                       |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A — implementer        | generic `subagent`, background (durable id); prompt assembled by `bun run dsh:prompt --role implementer --task <task>`. Continue with `send_message` for the CI-fix relay (a workflow-pinned dispatch respawns fresh instead — see Model routing). |
+| A — senior-implementer | same; prompt assembled by `bun run dsh:prompt --role senior-implementer` — the invariant-first lead is in the role body.                                                                                                                           |
+| B — reviewer           | generic `subagent`, background; prompt assembled by `bun run dsh:prompt --role reviewer --task <pr-context>`. The reviewer runs both thermo passes itself; no sub-reviewers are spawned.                                                           |
+| C — fixer              | generic `subagent`, background; prompt assembled by `bun run dsh:prompt --role fixer --task <findings-report>`. It owns the worktree/branch and applies accepted review items.                                                                     |
+| D — assistant-manager  | generic `subagent`, background; prompt assembled by `bun run dsh:prompt --role assistant-manager --task <question>`. Read-only is enforced by the role body's constraints — DSH exposes no per-call tool filter.                                   |
 
 ## Mechanics
 
@@ -27,7 +26,7 @@ DSH has no named agent types and no agent-definition files, so the role definiti
 
 The pin in each role file's frontmatter is the single source of truth, and the DSH adapter honors it for **every** dispatch. Before model-pinned dispatch, verify resolution with the preflight gate `bun run dsh:preflight` — it reads every role pin from `.zcode/agents/` and checks each model id against the DSH provider's declared models (`~/.dsh/settings.yaml`) and the ollama.com catalog, exiting non-zero with the exact fix when one cannot resolve. `bun run dsh:preflight --fix` auto-appends missing declarations for ids the catalog serves — atomically, with a timestamped backup beside the original; an id the catalog does not serve is a pin or provider change, which `--fix` never writes: fix the pin or the provider, never reroute. Green gate, then dispatch — plain `subagent` (continuable) when the pinned model equals the session model, otherwise a `workflow` `agent()` call. The `subagent` tool itself has no per-call model override — children inherit the session model. Pins are never rerouted to a different model: the exit code, not a routing table, is what the routing claim rests on.
 
-Verified on this install (2026-08-29): `bun run dsh:preflight` resolves all six role pins, including after simulating a removed declaration (`--fix` re-declared the id and preflight went green again). Workflow children are one-shot — a model-pinned implementer cannot be resumed with `send_message`; when its CI goes red, spawn a fresh workflow agent carrying the failing logs. Nested spawn works from `workflow` children too (probe-verified), so the reviewer keeps dispatching its two sub-reviewers wherever it runs.
+Verified on this install (2026-08-29): `bun run dsh:preflight` resolves all role pins. Workflow children are one-shot — a model-pinned implementer cannot be resumed with `send_message`; when its CI goes red, spawn a fresh workflow agent carrying the failing logs.
 
 Pin-channel note (2026-08-31, issue #125): role pins have moved channels since (this project now pins through the ZCode custom-provider channel). When running the loop on DSH, re-establish pin resolution first — declare/serve the pinned id in `~/.dsh/settings.yaml` if the ollama.com catalog carries it; otherwise it is a pin or provider change to adjudicate with the owner, never a silent reroute — then run `bun run dsh:preflight` before any model-pinned dispatch.
 

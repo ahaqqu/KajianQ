@@ -9,11 +9,9 @@ two thermo-nuclear sub-reviewers, posting findings via `thermos-with-comments`.
 | Role | File | Purpose |
 | --- | --- | --- |
 | implementer (default) | `implementer.md` | regular guided implementation, end-to-end to a green PR |
-| senior-implementer | `senior-implementer.md` | hard / `model:high` tickets — correctness invariants that fail silently |
-| test-implementer | `test-implementer.md` | on `model:high` tickets, writes the suite from the senior's test brief; never touches production source, never opens a PR |
-| reviewer (coordinator) | `reviewer.md` | applies `code-review` end-to-end and posts itemized findings |
-| thermo-nuclear-review-subagent | `thermo-nuclear-review-subagent.md` | security/correctness pass |
-| thermo-nuclear-code-quality-review-subagent | `thermo-nuclear-code-quality-review-subagent.md` | maintainability pass |
+| senior-implementer | `senior-implementer.md` | hard / `model:high` tickets — correctness/trust invariants that fail silently; also writes the tests |
+| fixer | `fixer.md` | owns review feedback: accepts/rejects each thermos item, applies accepted fixes, keeps CI green |
+| reviewer | `reviewer.md` | applies `code-review` end-to-end and runs both thermos passes itself; posts itemized findings |
 | assistant-manager | `assistant-manager.md` | read-only fact-finding and adjudication evidence |
 
 The manager is the session agent itself — it has no role file.

@@ -12,6 +12,7 @@ Detailed guidance for implementing and modifying payment flows. Load this skill 
 ## Architecture
 
 Payments are handled through a single Payments adapter interface that abstracts both providers:
+
 - **Xendit**: Indonesia-focused (QRIS, virtual accounts, e-wallets, IDR)
 - **Polar MoR**: Global (cards, wallets, worldwide sales tax/VAT handling)
 
@@ -24,6 +25,7 @@ Providers MUST charge per-transaction fees only; do not introduce fixed-cost pai
 Webhook handlers MUST be idempotent. The same webhook delivered twice must not double-apply.
 
 Signature verification MUST happen before JSON parsing:
+
 - Xendit: verify callback token
 - Polar: verify webhook secret
 

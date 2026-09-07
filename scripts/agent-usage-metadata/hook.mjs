@@ -35,7 +35,18 @@
 // Environment overrides (used by tests): ZCODE_DB_PATH, ZCODE_AGENTS_DIR,
 // ZCODE_AGENT_USAGE_LOG.
 
-import { appendFileSync, closeSync, fsyncSync, openSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync, unlinkSync } from "node:fs";
+import {
+  appendFileSync,
+  closeSync,
+  fsyncSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+  unlinkSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -177,7 +188,10 @@ function atomicWrite(filePath, content) {
 // write. Returns the process exit code.
 function captureUsage(record, dbPath) {
   if (!record.childSessionId) {
-    emit("error_metadata_guard", { path: record.path, reason: "agent record has no childSessionId" });
+    emit("error_metadata_guard", {
+      path: record.path,
+      reason: "agent record has no childSessionId",
+    });
     return 1;
   }
   const usage = queryUsageRows(dbPath, record.childSessionId);
@@ -199,7 +213,11 @@ function captureUsage(record, dbPath) {
     const freshText = readFileSync(record.path, "utf8");
     nextText = serializeMetadata(mergeUsageIntoMetadata(freshText, totals));
   } catch (e) {
-    emit("error_metadata_guard", { sessionId: record.childSessionId, path: record.path, reason: e.message });
+    emit("error_metadata_guard", {
+      sessionId: record.childSessionId,
+      path: record.path,
+      reason: e.message,
+    });
     return 1;
   }
   try {

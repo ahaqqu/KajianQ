@@ -10,10 +10,7 @@ export default defineConfig({
         // Durable Object class) resolve it to a minimal stub instead.
         find: /^cloudflare:workers$/,
         replacement: fileURLToPath(
-          new URL(
-            "./packages/rate/src/test-utils/durable-object-stub.ts",
-            import.meta.url,
-          ),
+          new URL("./packages/rate/src/test-utils/durable-object-stub.ts", import.meta.url),
         ),
       },
     ],
@@ -31,11 +28,7 @@ export default defineConfig({
       // web lib layer. UI (components/**) and entry bootstraps (main.tsx)
       // are covered by Playwright-BDD + axe, not unit tests. Adding a logic
       // module under these globs means covering it — no curated opt-out.
-      include: [
-        "packages/**/src/**/*.ts",
-        "apps/api/src/**/*.ts",
-        "apps/web/src/lib/**/*.ts",
-      ],
+      include: ["packages/**/src/**/*.ts", "apps/api/src/**/*.ts", "apps/web/src/lib/**/*.ts"],
       exclude: [
         "**/*.{test,prop.test}.ts",
         "**/index.ts",

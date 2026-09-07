@@ -25,7 +25,16 @@
 // Environment overrides (used by tests): ZCODE_GUARDRAIL_CONFIG (config path),
 // ZCODE_GUARDRAIL_STATE_DIR (state dir), ZCODE_SESSION_ID, ZCODE_PROJECT_DIR.
 
-import { mkdirSync, readFileSync, writeFileSync, renameSync, unlinkSync, openSync, closeSync, fsyncSync } from "node:fs";
+import {
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  renameSync,
+  unlinkSync,
+  openSync,
+  closeSync,
+  fsyncSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
@@ -140,7 +149,9 @@ function saveState(statePath, state) {
 // command, so Edit/Write events stay silent even when the config is
 // degraded. `statePath` enables the scope-intent cache (review A1).
 function loadConfig(notify = true, statePath = null) {
-  const path = process.env.ZCODE_GUARDRAIL_CONFIG || join(dirname(fileURLToPath(import.meta.url)), "config.json");
+  const path =
+    process.env.ZCODE_GUARDRAIL_CONFIG ||
+    join(dirname(fileURLToPath(import.meta.url)), "config.json");
   let raw;
   try {
     raw = JSON.parse(readFileSync(path, "utf8"));
@@ -153,8 +164,16 @@ function loadConfig(notify = true, statePath = null) {
     const cached = statePath ? loadScopeFields(statePath) : null;
     if (cached) {
       const rescued = normalizeConfig(cached);
-      if (notify) emit("warn_scope_degraded", { path, reason: e.message, fallback: "last-known-good scope intent" });
-      return { config: rescued.config, degraded: ["unreadable config file (scope intent preserved)"] };
+      if (notify)
+        emit("warn_scope_degraded", {
+          path,
+          reason: e.message,
+          fallback: "last-known-good scope intent",
+        });
+      return {
+        config: rescued.config,
+        degraded: ["unreadable config file (scope intent preserved)"],
+      };
     }
     if (notify) emit("warn_config", { path, reason: e.message, fallback: "built-in defaults" });
     return { config: defaultConfig(), degraded: ["unreadable config file"] };
@@ -168,7 +187,11 @@ function loadConfig(notify = true, statePath = null) {
       if (cached) {
         const rescued = normalizeConfig({ ...raw, ...cached });
         if (notify) {
-          emit("warn_scope_degraded", { path, degraded: normalized.degraded, fallback: "last-known-good scope intent" });
+          emit("warn_scope_degraded", {
+            path,
+            degraded: normalized.degraded,
+            fallback: "last-known-good scope intent",
+          });
         }
         return { config: rescued.config, degraded: rescued.degraded };
       }
@@ -177,7 +200,11 @@ function loadConfig(notify = true, statePath = null) {
     }
   }
   if (normalized.degraded.length > 0 && notify) {
-    emit("warn_config", { path, degraded: normalized.degraded, fallback: "defaults for degraded fields" });
+    emit("warn_config", {
+      path,
+      degraded: normalized.degraded,
+      fallback: "defaults for degraded fields",
+    });
   }
   return normalized;
 }
@@ -240,7 +267,12 @@ async function main() {
     }
     const breach = evaluateDeny(ctx.state, ctx.config);
     if (breach) {
-      emit("deny", { sessionId, breach, signature: ctx.state.lastSignature, streak: ctx.state.sameFailStreak });
+      emit("deny", {
+        sessionId,
+        breach,
+        signature: ctx.state.lastSignature,
+        streak: ctx.state.sameFailStreak,
+      });
       process.stdout.write(`${buildDenyOutput(buildDenyReason(ctx.state, ctx.config, breach))}\n`);
       return 0;
     }
@@ -261,7 +293,10 @@ async function main() {
         ? `${payload.tool_response.stderr ?? ""}\n${payload.tool_response.stdout ?? ""}`
         : "";
     emit("verification_result", { sessionId, outcome, command: ctx.command.slice(0, 200) });
-    saveState(statePath, applyVerificationResult(ctx.state, { command: ctx.command, outcome, outputText }));
+    saveState(
+      statePath,
+      applyVerificationResult(ctx.state, { command: ctx.command, outcome, outputText }),
+    );
     return 0;
   }
 

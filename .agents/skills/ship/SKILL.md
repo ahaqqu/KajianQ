@@ -151,6 +151,7 @@ wrangler d1 execute <staging-db> --env staging --command "DELETE FROM widgets WH
 ## Completion criterion
 
 Deploy is done when:
+
 - [ ] Staging health check returns 200.
 - [ ] All BDD scenarios pass against staging.
 - [ ] OWASP ZAP reports zero High/Medium findings.

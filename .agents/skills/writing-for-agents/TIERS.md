@@ -9,10 +9,10 @@ Every skill is one of two tiers, defined by **who may start it** — never by di
 - **Entry skill** — startable on its own: the user types it, an orchestrator dispatches it, or the agent auto-fires it from a trigger-rich description. Entry skills are what the project's instruction file (e.g. `AGENTS.md`) indexes.
 - **Library skill** — reached only through a parent: an entry skill's step, a role agent, or a spawned agent's dispatch. Never started directly. Mechanics:
   - First line of the body, right under the title: `> **Library skill** — not an entry point. Reached only through <parents>.` The pointer's **wording** is the mechanism — naming the parents is what makes agents route correctly.
-  - **Description stripped of trigger phrases** — it states what the skill *is* and who loads it, never "Use when…". No triggers, no autonomous firing.
+  - **Description stripped of trigger phrases** — it states what the skill _is_ and who loads it, never "Use when…". No triggers, no autonomous firing.
   - **Not indexed in the instruction file** — referenced only by relative path from its parents. Invariant: the library header's presence, not any directory, decides the tier.
   - `disable-model-invocation: true` only when nothing auto-loads it — verify first that the consumers that need it (e.g. a role agent's `skills:` field) still load a flagged skill.
-- **Vendored skills** — synced from an upstream source — are exempt from *body* edits: keep the body byte-faithful so upstream syncs stay trivial, and declare their tier at the consumption sites (the parent skills and role agents that reach them) instead.
+- **Vendored skills** — synced from an upstream source — are exempt from _body_ edits: keep the body byte-faithful so upstream syncs stay trivial, and declare their tier at the consumption sites (the parent skills and role agents that reach them) instead.
 
 ## Provenance fields
 
@@ -23,4 +23,4 @@ Every `SKILL.md` frontmatter declares where the skill came from and its sync sta
 - `modified:` — `true` when this repo's copy intentionally diverges from `source` (adaptation or override); `false` when byte-identical to it. Omit for `source: project`.
 - `synced:` — date the copy was last compared against `source`/`upstream`. A staleness check is: fetch the current upstream, diff, update `synced`.
 
-Provenance frontmatter is the *only* addition permitted to a vendored skill's frontmatter/body contract: never edit a vendored body, and never add fields whose loss a sync would make ambiguous.
+Provenance frontmatter is the _only_ addition permitted to a vendored skill's frontmatter/body contract: never edit a vendored body, and never add fields whose loss a sync would make ambiguous.

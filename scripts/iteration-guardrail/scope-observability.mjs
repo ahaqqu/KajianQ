@@ -49,7 +49,10 @@ export function warnZeroMatchOnce(emit, markerPath, sessionId, config) {
   try {
     if (existsSync(markerPath)) return; // already warned this session
     mkdirSync(dirname(markerPath), { recursive: true, mode: 0o700 });
-    writeFileSync(markerPath, JSON.stringify({ schemaVersion: 1, warnedAt: new Date().toISOString() }));
+    writeFileSync(
+      markerPath,
+      JSON.stringify({ schemaVersion: 1, warnedAt: new Date().toISOString() }),
+    );
     emit("warn_scope_zero_match", {
       sessionId,
       scope: config.scope,

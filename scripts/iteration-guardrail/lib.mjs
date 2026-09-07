@@ -292,4 +292,3 @@ export function evaluateDeny(state, config) {
 // Deny-message construction lives in messages.mjs (review B1 split);
 // re-exported here so consumers and tests keep a single import surface.
 export { buildDenyOutput, buildDenyReason } from "./messages.mjs";
-

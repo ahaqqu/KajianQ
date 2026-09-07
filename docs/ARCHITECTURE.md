@@ -11,11 +11,12 @@ plan — the current package tree, data layer, cost model, and phased plan — s
 [`SPECS.md`](../SPECS.md) (AGENTS.md §2 rule 16). Decisions live in
 `adr/` (0005 onward, numbered to continue the sequence); vocabulary in [`CONTEXT.md`](../CONTEXT.md).
 
-This fork descends from `agentic-project-template`. Its `docs/ARCHITECTURE.md`
-was **deliberately not synced** (docs/ is fork-owned in `template-sync.json`):
-two of its foundational pillars are superseded here by decision, and it predates
-DARS entirely. This file keeps the template's pillar structure, marks each
-pillar **Inherited** or **Deviated**, and cites the ADR behind every deviation.
+This project was originally forked from `agentic-project-template`, but
+mechanical template-sync has been retired (ADR-0030). Its `docs/ARCHITECTURE.md`
+is project-owned and was never synced wholesale: two of the template's
+foundational pillars are superseded here by decision, and it predates DARS
+entirely. This file keeps the template's pillar structure, marks each pillar
+**Inherited** or **Deviated**, and cites the ADR behind every deviation.
 It is stable rationale, not a changelog — when a change makes this document
 wrong, update it in the same PR (rule 16 applies to this file too).
 
@@ -153,8 +154,8 @@ Account deletion cascades across all data stores, including `answer_traces`
 
 - **Rate limiting** — `@app/rate` (`packages/rate`): one Durable Object per
   key in production (global across isolates and POPs, alarm-based eviction);
-  bounded in-memory fallback for local dev/tests only. Inherited from the
-  template as a template-sync merge path.
+  bounded in-memory fallback for local dev/tests only. Originally inherited
+  from the template; now project-owned (ADR-0030).
 - **Secure headers** — `@app/hardening` (`packages/hardening`): one shared
   CSP/COOP/CORP/HSTS/Permissions-Policy policy; every request (API and SPA)
   flows through the Hono stack, so headers, CORS, and rate limiting cover
@@ -212,10 +213,10 @@ so swapping the RagStore adapter swaps the backend.
 │   ├── rag-core/               # DARS: pipeline interfaces + runPipeline
 │   ├── rag-ingest/             # DARS: parsers (Tanzil, hadith-json, Shamela), cleaning/translation, chunking
 │   ├── eval/                   # DARS: benchmark harness, Golden Set runner, judges
-│   ├── rate/                   # @app/rate — RateLimiter adapters (template merge path)
-│   ├── hardening/              # @app/hardening — security headers, ASSETS serving (template merge path)
+  │   ├── rate/                   # @app/rate — RateLimiter adapters
+  │   ├── hardening/              # @app/hardening — security headers, ASSETS serving
 │   └── kajianq-domain/         # THE domain pack: all Islamic-domain logic (+ concept-graph migrations)
-├── scripts/                    # check-boundary, agentic-limits, template-truth, openapi-check…
+├── scripts/                    # check-boundary, agentic-limits, openapi-check…
 ├── docs/ARCHITECTURE.md        # ← this file (stable "why")
 ├── SPECS.md                    # living architecture & plan (rule 16)
 ├── AGENTS.md                   # normative rules for agents
@@ -268,8 +269,8 @@ CI pins the Bun version (1.4.0) to match local dev (mise). The template's
 evaluated and rejected by the owner (2026-08-28), because prod runs on
 Cloudflare and the dev-shell parity value was judged too small for the added
 tooling. Do not activate it without a new owner decision; the file stays
-because it is template-owned (`template-gate` fails if it drifts or is
-deleted locally). One command onboarding, no "works on my machine".
+because it remains part of the original template tooling. One command
+onboarding, no "works on my machine".
 
 ## 14. Agentic — built for autonomous development _(inherited + boundary)_
 
@@ -280,7 +281,7 @@ explicit shallow dependencies, self-describing structure. The fork adds the
 Islamic-domain logic — domain vocabulary, prompts, and concept graphs live in
 `packages/kajianq-domain` and `apps/` only (AGENTS.md rule 1, ADR-0019).
 
-Gated by: `bun run agentic-limits`, `bun run truth`, `bun run boundary`.
+Gated by: `bun run agentic-limits`, `bun run boundary`.
 
 ## 15. Technology choices
 
@@ -316,10 +317,8 @@ Root `package.json` scripts are the single source of truth for gates:
 | `bun run test`                                        | unit + property tests (coverage gate)                |
 | `bun run boundary`                                    | engine domain/vendor/SQL boundary gate               |
 | `bun run agentic-limits`                              | file-size / import-count caps                        |
-| `bun run truth`                                       | no dependency without an importer                    |
 | `bun run size-limit`                                  | bundle budget (<200 KB gzipped)                      |
 | `bun run e2e`                                         | Playwright-BDD against `alchemy dev` (local workerd) |
-| `bun run template-gate`                               | fails on drift of template-owned files               |
 | `bun run build` / `dev` / `deploy` / `deploy:staging` | build, local dev, deploys                            |
 
 ## 17. Which document answers which question

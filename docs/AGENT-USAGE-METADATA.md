@@ -10,13 +10,13 @@ with nothing surfacing it).
 
 ## Pieces
 
-| Path                                          | Role                                                                                              | template-sync ownership                                                  |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `scripts/agent-usage-metadata/hook.mjs`       | Hook entrypoint the runtime spawns with the payload JSON on stdin.                                | `overwrite` — forks inherit updates                                      |
-| `scripts/agent-usage-metadata/lib.mjs`        | Pure logic: payload contract, `model_usage` row summation, guarded metadata merge.                | `overwrite` — forks inherit updates                                      |
-| `.zcode/config.json`                          | Workspace hook config: enables configuration-file hooks and wires the capture points (see below). | `merge` — forks inherit the wiring via sync and may customize it locally |
-| `tests/scripts/agent-usage-metadata.test.mjs` | Unit + subprocess tests for every acceptance criterion.                                           | unlisted — project-owned, replicate (below)                              |
-| `docs/AGENT-USAGE-METADATA.md`                | This document.                                                                                    | unlisted — project-owned, replicate (below)                              |
+| Path                                          | Role                                                                                              |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `scripts/agent-usage-metadata/hook.mjs`       | Hook entrypoint the runtime spawns with the payload JSON on stdin.                                |
+| `scripts/agent-usage-metadata/lib.mjs`        | Pure logic: payload contract, `model_usage` row summation, guarded metadata merge.                |
+| `.zcode/config.json`                          | Workspace hook config: enables configuration-file hooks and wires the capture points (see below). |
+| `tests/scripts/agent-usage-metadata.test.mjs` | Unit + subprocess tests for every acceptance criterion.                                           |
+| `docs/AGENT-USAGE-METADATA.md`                | This document.                                                                                    |
 
 ## Capture points
 
@@ -69,10 +69,9 @@ Workspace hooks are per-workspace and trust-gated by the harness (project
 hook files execute code). After syncing this template:
 
 1. Ensure `.zcode/config.json` (committed) is present in the workspace root.
-2. Copy the unlisted paths the fork's sync does not carry (see the ownership
-   column above): `.zcode/config.json` (minus any fork-local additions),
-   `tests/scripts/agent-usage-metadata.test.mjs`, and this document —
-   `scripts/agent-usage-metadata/` arrives via `scripts/` sync.
+2. Copy the unlisted paths: `.zcode/config.json` (minus any fork-local
+   additions), `tests/scripts/agent-usage-metadata.test.mjs`, and this
+   document — `scripts/agent-usage-metadata/` arrives via `scripts/` copy.
 3. Grant trust once per workspace — either approve the harness's trust review
    in the desktop app, or pretrust the declarations from the CLI:
 
