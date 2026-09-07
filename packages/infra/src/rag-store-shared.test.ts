@@ -15,7 +15,9 @@ import {
 /** Run a pure validation effect that must fail; returns the typed failure. */
 async function failWith(effect: Effect.Effect<unknown, StoreError>): Promise<StoreError> {
   const exit = await Effect.runPromiseExit(effect);
-  const failure = Exit.isFailure(exit) ? Cause.failureOption(exit.cause) : Option.none<StoreError>();
+  const failure = Exit.isFailure(exit)
+    ? Cause.failureOption(exit.cause)
+    : Option.none<StoreError>();
   if (Option.isSome(failure)) return failure.value;
   throw new Error("expected the effect to fail");
 }
@@ -73,7 +75,10 @@ describe("rag-store-shared: embedding validation", () => {
   });
 
   it("checkEmbedding rejects non-finite components as constraint StoreError", async () => {
-    for (const bad of [[1, Number.NaN, 3], [1, Number.POSITIVE_INFINITY, 3]]) {
+    for (const bad of [
+      [1, Number.NaN, 3],
+      [1, Number.POSITIVE_INFINITY, 3],
+    ]) {
       const err = await failWith(checkEmbedding(bad, 3));
       expect(err.kind).toBe("constraint");
       expect((err.cause as Error).message).toMatch(/finite number/);

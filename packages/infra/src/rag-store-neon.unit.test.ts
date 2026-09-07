@@ -20,8 +20,7 @@ import type { Trace } from "@app/contracts";
  */
 
 /** Run a store effect that must succeed, returning its value. */
-const runOk = <A>(effect: Effect.Effect<A, StoreError>): Promise<A> =>
-  Effect.runPromise(effect);
+const runOk = <A>(effect: Effect.Effect<A, StoreError>): Promise<A> => Effect.runPromise(effect);
 
 /** Run a store effect that must fail, returning the typed StoreError. */
 async function runFail<A>(effect: Effect.Effect<A, StoreError>): Promise<StoreError> {
@@ -115,16 +114,16 @@ describe("rag-store-neon adapter (fake runner)", () => {
     const sql = makeFakeSql();
     const store = createNeonRagStore(sql);
     sql._setTag([{ id: "from-db" }]);
-    const id = await runOk(store.insertDocParent({ sourceKey: "k", title: "t", metadata: { a: 1 } }));
+    const id = await runOk(
+      store.insertDocParent({ sourceKey: "k", title: "t", metadata: { a: 1 } }),
+    );
     expect(id).toBe("from-db");
     expect(sql._calls[0]?.text).toContain("INSERT INTO doc_parents");
     expect(sql._calls[0]?.text).toContain("ON CONFLICT (source_key) DO UPDATE");
 
     // No RETURNING row → fall back to the caller-supplied/generated id.
     sql._setTag([]);
-    const id2 = await runOk(
-      store.insertDocParent({ sourceKey: "k2", title: null, metadata: {} }),
-    );
+    const id2 = await runOk(store.insertDocParent({ sourceKey: "k2", title: null, metadata: {} }));
     expect(typeof id2).toBe("string");
   });
 
@@ -411,9 +410,7 @@ describe("rag-store-neon adapter (fake runner)", () => {
       }),
     );
     const store = createNeonRagStore(sql);
-    const err = await runFail(
-      store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }),
-    );
+    const err = await runFail(store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }));
     expect(err.kind).toBe("constraint");
     expect((err.cause as { code?: string }).code).toBe("23505");
   });
@@ -426,27 +423,21 @@ describe("rag-store-neon adapter (fake runner)", () => {
       }),
     );
     const store = createNeonRagStore(sql);
-    const err = await runFail(
-      store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }),
-    );
+    const err = await runFail(store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }));
     expect(err.kind).toBe("config");
   });
 
   it("classifies a driver timeout message as timeout", async () => {
     const sql = makeBoomSql(() => new Error("fetch timed out"));
     const store = createNeonRagStore(sql);
-    const err = await runFail(
-      store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }),
-    );
+    const err = await runFail(store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }));
     expect(err.kind).toBe("timeout");
   });
 
   it("classifies an unknown network failure as transport (closed default)", async () => {
     const sql = makeBoomSql(() => new TypeError("fetch failed"));
     const store = createNeonRagStore(sql);
-    const err = await runFail(
-      store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }),
-    );
+    const err = await runFail(store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }));
     expect(err.kind).toBe("transport");
     expect(err.cause).toBeInstanceOf(TypeError);
   });
@@ -455,9 +446,7 @@ describe("rag-store-neon adapter (fake runner)", () => {
 describe("rag-store-neon adapter: optional ops logging", () => {
   it("propagates the original as cause, classified transport, when no logger is configured", async () => {
     const store = createNeonRagStore(makeBoomSql(() => new Error("db down")));
-    const err = await runFail(
-      store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }),
-    );
+    const err = await runFail(store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }));
     // A generic Error carries no SQLSTATE/shape → transport (closed default),
     // with the original vendor error verbatim in cause.
     expect(err.kind).toBe("transport");
@@ -484,12 +473,13 @@ describe("rag-store-neon adapter: optional ops logging", () => {
 
   it("logs errors and fails with the classified StoreError when a query fails", async () => {
     const fake = makeFakeLogger();
-    const store = createNeonRagStore(makeBoomSql(() => new Error("db down")), {
-      logger: fake.logger,
-    });
-    const err = await runFail(
-      store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }),
+    const store = createNeonRagStore(
+      makeBoomSql(() => new Error("db down")),
+      {
+        logger: fake.logger,
+      },
     );
+    const err = await runFail(store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }));
     expect(err.kind).toBe("transport");
     expect((err.cause as Error).message).toBe("db down");
     const errs = fake.calls.filter((c) => c.level === "error");

@@ -1,6 +1,31 @@
 import { Effect } from "effect";
 import { StoreError } from "@app/rag-core";
-import type { SqlRunner } from "./rag-store-neon";
+
+/**
+ * The Neon serverless driver's query surface, loosely typed.
+ *
+ * The adapter only awaits results and validates row shapes itself, so the
+ * runner type is intentionally `unknown[]`-shaped rather than generic: this
+ * avoids fighting the driver's heavy generics while still letting the real
+ * driver query handle be passed directly, and keeps the adapter
+ * unit-testable against a fake that returns canned rows. `transaction`
+ * mirrors the Neon HTTP driver's non-interactive transaction primitive, used
+ * so multi-statement writes (e.g. createSession) are atomic.
+ *
+ * The type lives here — the shared base of the adapter's split modules —
+ * and `rag-store-neon.ts` re-exports it as the adapter's historical import
+ * surface, so external importers are unaffected by the file split.
+ */
+export type SqlRunner = {
+  (strings: TemplateStringsArray, ...values: unknown[]): Promise<unknown[]>;
+  query(text: string, params?: unknown[]): Promise<unknown[]>;
+  // `any` here is deliberate: the Neon HTTP driver's `transaction()` accepts
+  // a union of an array of its own query-promise type OR a callback, and the
+  // adapter only ever passes an array of the call-signature's `Promise<unknown[]>`.
+  // A precise signature would force callers into a cast; `any` keeps the
+  // already-loose runner assignable from the real driver handle.
+  transaction(queries: any[]): Promise<any>;
+};
 
 /**
  * Vendor-exception → `StoreError` mapping for the Neon adapter
@@ -13,11 +38,11 @@ import type { SqlRunner } from "./rag-store-neon";
  * The Neon serverless driver surfaces:
  * - `NeonDbError` (HTTP-driver path): carries Postgres error fields —
  *   `code` (SQLSTATE), `severity`, `constraint`, `table`.
- * - `DatabaseError` (WebSocket path, `@neondatabase/serverless` re-exports
- *   the node-postgres error shape): same `code`/`constraint` fields.
- *   PostgresError is the superSet name users know; both are handled here by
- *   field shape, not by class identity, so the mapping survives driver
- *   version churn.
+ * - `DatabaseError` (WebSocket path; the driver re-exports the
+ *   node-postgres error shape): same `code`/`constraint` fields.
+ *   PostgresError is the name users know for that shape; both are handled
+ *   here by field shape, not by class identity, so the mapping survives
+ *   driver version churn.
  * - Network-level `TypeError`/`DOMException` from the underlying `fetch`
  *   (transport/abort).
  */
@@ -50,7 +75,7 @@ const SQLSTATE_KINDS: Record<string, "config" | "constraint" | "not_found"> = {
   "42P01": "constraint", // undefined_table (schema drifted)
   "42883": "constraint", // undefined_function
   // Not-found: the requested row does not exist (when null is not the answer).
-  "P0002": "not_found", // PLpgSQL raise 'not found'
+  P0002: "not_found", // PLpgSQL raise 'not found'
 };
 
 /** True when the exception is an HTTP-driver DB error by field shape. */
@@ -85,7 +110,9 @@ export function neonErrorToStoreError(cause: unknown): StoreError {
     // non-2xx before any SQL ran: bad connection string) — config, not
     // transport: retrying with the same URL fails identically.
     const message = cause.message;
-    if (/fetch returned|connection string|invalid connection|ECONNREFUSED|ENOTFOUND/i.test(message)) {
+    if (
+      /fetch returned|connection string|invalid connection|ECONNREFUSED|ENOTFOUND/i.test(message)
+    ) {
       return new StoreError({ kind: "config", cause });
     }
   }

@@ -136,9 +136,7 @@ export interface RagStore {
    * method) is to fall back to serial `insertDocChild` calls — consumers of the
    * seam never need to know whether batching is native.
    */
-  insertDocChildren(
-    batch: readonly DocChildInsert[],
-  ): Effect.Effect<readonly string[], StoreError>;
+  insertDocChildren(batch: readonly DocChildInsert[]): Effect.Effect<readonly string[], StoreError>;
 
   /**
    * Upsert an aligned text pair (provenance-keyed, idempotent). Returns the

@@ -27,8 +27,7 @@ export function createMemoryObjectStore(): ObjectStore {
     put: (key, value) => Effect.sync(() => void map.set(key, toBytes(value))),
     get: (key) => Effect.sync(() => map.get(key) ?? null),
     delete: (key) => Effect.sync(() => void map.delete(key)),
-    list: (prefix = "") =>
-      Effect.sync(() => [...map.keys()].filter((k) => k.startsWith(prefix))),
+    list: (prefix = "") => Effect.sync(() => [...map.keys()].filter((k) => k.startsWith(prefix))),
   };
 }
 
@@ -175,10 +174,7 @@ async function toS3StoreErrorWith<A>(run: () => Promise<A>): Promise<A> {
 }
 
 /** Load the SDK command classes; a failed dynamic import is config-class. */
-const importSdk = (): Effect.Effect<
-  typeof import("@aws-sdk/client-s3"),
-  StoreError
-> =>
+const importSdk = (): Effect.Effect<typeof import("@aws-sdk/client-s3"), StoreError> =>
   Effect.tryPromise({
     try: () => import("@aws-sdk/client-s3"),
     catch: (c) => new StoreError({ kind: "config", cause: c }),
@@ -202,11 +198,14 @@ export function createS3ObjectStore(client: S3Like, bucket: string): ObjectStore
     get: (key) =>
       Effect.gen(function* () {
         const { GetObjectCommand } = yield* importSdk();
-        const res = yield* s3Command<
-          { Body?: { transformToByteArray(): Promise<Uint8Array> } | undefined } | null
-        >(() => client.send(new GetObjectCommand({ Bucket: bucket, Key: key })) as Promise<
-          { Body?: { transformToByteArray(): Promise<Uint8Array> } | undefined } | null
-        >);
+        const res = yield* s3Command<{
+          Body?: { transformToByteArray(): Promise<Uint8Array> } | undefined;
+        } | null>(
+          () =>
+            client.send(new GetObjectCommand({ Bucket: bucket, Key: key })) as Promise<{
+              Body?: { transformToByteArray(): Promise<Uint8Array> } | undefined;
+            } | null>,
+        );
         if (!res || !res.Body) return null;
         // The S3 body is a resource with a real release path: consume it
         // inside a Scope via acquireRelease, and on mid-read failure or
@@ -228,9 +227,7 @@ export function createS3ObjectStore(client: S3Like, bucket: string): ObjectStore
     delete: (key) =>
       Effect.gen(function* () {
         const { DeleteObjectCommand } = yield* importSdk();
-        yield* s3Command(() =>
-          client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })),
-        );
+        yield* s3Command(() => client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })));
       }).pipe(Effect.asVoid),
     list: (prefix = "") =>
       Effect.gen(function* () {

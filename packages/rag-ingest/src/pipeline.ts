@@ -22,6 +22,18 @@ import type {
 } from "./types";
 
 /**
+ * The single off-Workers bridge (ADR-0027 decision 3): the ingestion runner
+ * is a promise-shaped batch program, and this runPromise composes the
+ * store-seam Effects (`Effect<A, StoreError>`) into that program — a typed
+ * failure rejects the run with the StoreError itself. Exported so the
+ * ingestion CLIs (promise-shaped composition roots) bridge their direct
+ * store calls — `insertEvalRun`, the pair sinks' upstream — through the
+ * same edge instead of each holding an `effect` import.
+ */
+export const runStoreEffect = <A>(effect: Effect.Effect<A, StoreError>): Promise<A> =>
+  Effect.runPromise(effect);
+
+/**
  * rag-ingest — the domain-agnostic ingestion pipeline orchestration (#6).
  *
  * Source parsing is domain work and arrives through the `SourceParser` seam
@@ -190,17 +202,11 @@ export async function runIngestion(
   const pairSources = collectPairSources(parents);
   const pending: DocChildInsert[] = [];
   const pendingPairs: AlignedPairInput[] = [];
-  // The single off-Workers bridge (ADR-0027 decision 3): the runner is a
-  // promise-shaped batch program, and this runPromise composes the
-  // store-seam Effects (Effect<A, StoreError>) into that program — a typed
-  // failure rejects the run with the StoreError itself.
-  const runStore = <A>(effect: Effect.Effect<A, StoreError>): Promise<A> =>
-    Effect.runPromise(effect);
+  // Local alias: the exported bridge, reused below.
+  const runStore = runStoreEffect;
 
   for (const parent of parents) {
-    const parentId = await runStore(
-      deps.store.insertDocParent(parent satisfies DocParentInsert),
-    );
+    const parentId = await runStore(deps.store.insertDocParent(parent satisfies DocParentInsert));
     parentIds.push(parentId);
     parent.children.forEach((child, i) => {
       childRows.push({

@@ -38,6 +38,16 @@ fully silent). Executable SQL lives only in
 `rag-store-neon.ts`, `rag-store-neon-query.ts`, and the migrations; nothing
 else may hold a DB client or query (`check-boundary.mjs` enforces this).
 
+**The seam is Effect-signatured (ADR-0027 decision 7):** every
+`RagStore`/`ObjectStore` method returns `Effect<A, StoreError>` and no error
+kind travels via `throw` across the seam. `StoreError` is the engine's
+closed tagged-union taxonomy (`transport`, `timeout`, `constraint`,
+`not_found`, `config` — defined in `@app/rag-core`, re-exported here), each
+kind wrapping the original vendor exception in `cause`. Consumers switch on
+`kind`, never on adapter or vendor classes. Off-Workers callers bridge with
+`Effect.runPromise` at their composition root; the ingestion runner's
+bridge (`@app/rag-ingest` pipeline) is the canonical one.
+
 - Anonymous sessions per ADR-0017: `createSession()` mints a 30-day Bearer
   token (stored SHA-256-hashed only) and writes the user + session rows in one
   atomic Neon HTTP transaction; `resolveUserId(token)` resolves it (rejects
@@ -134,8 +144,11 @@ bun packages/infra/scripts/r2-verify.mjs   # R2 read/write from the CLI env (AC)
 
 `src/rag-store-neon.test.ts` is an integration suite against a real Neon
 database. It is **skipped unless `NEON_DATABASE_URL` is set**, so the default
-`bun run test` job stays green without the secret. In CI these run in a
-separate, secret-gated job with `--no-file-parallelism` (they share one
-fixture namespace keyed off a per-run prefix, so parallel files would race).
-The pure query builder (`rag-store-neon-query.ts`) and helpers
+`bun run test` job stays green without the secret. In CI these run in the
+secret-gated `neon:contract` job — which engages on every PR touching
+`packages/infra` — with `--no-file-parallelism` (the tests share one fixture
+namespace keyed off a per-run prefix, so parallel files would race). The
+suite is Effect-shaped (ADR-0027 decision 7): each test composes its seam
+calls into one `Effect.gen` program with a single `Effect.runPromise` at the
+test's edge. The pure query builder (`rag-store-neon-query.ts`) and helpers
 (`rag-store-shared.ts`) are unit-tested and run in every environment.

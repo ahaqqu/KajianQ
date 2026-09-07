@@ -96,9 +96,7 @@ export function toVectorLiteralChecked(
 }
 
 /** Parse one row's vector column (pg wire string or array form). */
-export function parseVectorLiteral(
-  value: unknown,
-): Effect.Effect<number[] | null, StoreError> {
+export function parseVectorLiteral(value: unknown): Effect.Effect<number[] | null, StoreError> {
   return Effect.suspend(() => {
     if (value === null || value === undefined) return Effect.succeed<number[] | null>(null);
     if (Array.isArray(value)) {

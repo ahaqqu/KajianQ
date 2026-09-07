@@ -150,6 +150,7 @@ export function createMemoryRagStore(): RagStore & {
     allChildren: () => [...children.values()],
     allParents: () => [...parents.values()],
     allPairs: () => [...pairs.values()],
-    cosineSearch: (track, query, limit) => Effect.runPromise(store.similaritySearch(track, query, { limit })),
+    cosineSearch: (track, query, limit) =>
+      Effect.runPromise(store.similaritySearch(track, query, { limit })),
   };
 }
