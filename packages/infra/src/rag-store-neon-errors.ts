@@ -126,7 +126,7 @@ export function neonErrorToStoreError(cause: unknown): StoreError {
  * taxonomy (ADR-0027 decision 7).
  *
  * Execution-semantics note (driver-coupled, load-bearing): the Neon HTTP
- * driver's `neon()` query function returns a LAZY `NeonQueryPromise` whose
+ * driver's query function returns a LAZY query promise (NeonQueryPromise) whose
  * `.then`/`.catch`/`.finally` each fire a fresh HTTP query — it is not a
  * settled promise. The operation must therefore be invoked exactly once,
  * *inside* the `try` factory, so the fiber's single await is the only
