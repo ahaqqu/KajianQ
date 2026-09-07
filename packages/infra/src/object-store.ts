@@ -54,7 +54,6 @@ export function createR2ObjectStore(bucket: R2Like): ObjectStore {
 }
 
 export type S3Like = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   send(command: any): Promise<unknown>;
 };
 

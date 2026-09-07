@@ -38,6 +38,5 @@ export function createLogger(base: LogFields = {}, sink: LogSink = defaultSink):
 
 function defaultSink(line: string): void {
   // Workers runtime captures stdout; structured JSON only.
-  // eslint-disable-next-line no-console -- sink boundary for Logger adapter
   console.log(line);
 }
