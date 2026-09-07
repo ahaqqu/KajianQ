@@ -174,7 +174,12 @@ describe("template-sync CLI", () => {
       /gate failed/,
     );
     git(fork, "revert --no-edit HEAD");
-  });
+    // The A1 scenario spawns a long cascade of git subprocesses (init,
+    // update, repeated check/revert cycles); solo it settles in ~2.5s, but
+    // under full-suite parallel load it can exceed vitest's 5s default —
+    // an environment artifact, not an assertion failure. Widen the budget
+    // so the flake margin covers load, without touching the assertions.
+  }, 20_000);
 
   it("detects drift on non-ASCII template-shipped overwrite files (review A2 quotePath escape)", () => {
     // core.quotePath (git default on) makes the drift diff emit non-ASCII

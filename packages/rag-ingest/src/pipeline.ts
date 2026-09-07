@@ -4,9 +4,8 @@ import type { DocChildInsert, DocParentInsert } from "@app/infra";
 
 /**
  * A batch's vector count did not match its text count — the embedder
- * violated the seam contract. Tagged (B1): callers narrow on it, the
- * signature says what fails, and it satisfies the typed-error standard
- * phases 1-3 established (ADR-0027 need 1).
+ * violated the seam contract. Tagged (B1) and typed-error compliant
+ * (ADR-0027 need 1).
  */
 export class EmbedMisalignment extends Data.TaggedError("EmbedMisalignment")<{
   readonly expected: number;
@@ -23,12 +22,11 @@ import type {
 
 /**
  * The single off-Workers bridge (ADR-0027 decision 3): the ingestion runner
- * is a promise-shaped batch program, and this runPromise composes the
- * store-seam Effects (`Effect<A, StoreError>`) into that program — a typed
- * failure rejects the run with the StoreError itself. Exported so the
- * ingestion CLIs (promise-shaped composition roots) bridge their direct
- * store calls — `insertEvalRun`, the pair sinks' upstream — through the
- * same edge instead of each holding an `effect` import.
+ * is promise-shaped; this runPromise joins the store-seam Effects
+ * (`Effect<A, StoreError>`) to it — a typed failure rejects with the
+ * StoreError itself. Exported so the ingestion CLIs bridge their direct
+ * store calls (`insertEvalRun`) through the same edge instead of holding
+ * an `effect` import.
  */
 export const runStoreEffect = <A>(effect: Effect.Effect<A, StoreError>): Promise<A> =>
   Effect.runPromise(effect);
@@ -168,11 +166,10 @@ function collectPairSources(parents: readonly ParsedParent[]): Map<number, Align
 
 /**
  * Run one ingestion pass: parse → (optional) summarize parents → embed both
- * tracks → upsert through the RagStore → return the report.
- *
- * The report is *returned*, not persisted: persistence goes through the store
- * seam by the caller (CLI) so this function stays pure with respect to I/O
- * beyond the injected seams.
+ * tracks → upsert through the RagStore → return the report. The report is
+ * *returned*, not persisted: persistence goes through the store seam by the
+ * caller (CLI) so this function stays pure with respect to I/O beyond the
+ * injected seams.
  */
 export async function runIngestion(
   parser: SourceParser,
