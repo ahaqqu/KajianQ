@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import type {
   AlignedPairInsert,
   DocChildInsert,
@@ -12,6 +13,10 @@ import type {
  * the Neon adapter (parents by sourceKey, children by parent+ordinal, pairs
  * by pairKey), so idempotency assertions run against the real contract, and
  * similaritySearch ranks by genuine cosine distance, not stub ordering.
+ *
+ * Effect-signatured like the real seam (ADR-0027 decision 7): every method
+ * returns `Effect<A, StoreError>` — test assertions stay Effect-shaped, not
+ * bridge-shimmed.
  */
 export function createMemoryRagStore(): RagStore & {
   /** All stored children (test introspection). */
@@ -47,88 +52,96 @@ export function createMemoryRagStore(): RagStore & {
   };
 
   const store: RagStore = {
-    async insertDocParent(input) {
-      seq += 1;
-      const existing = parentByKey.get(input.sourceKey);
-      const id = existing ?? `p${seq}`;
-      if (!existing) parentByKey.set(input.sourceKey, id);
-      parents.set(id, { ...input, id });
-      return id;
-    },
-    async insertDocChild(input) {
-      return (await this.insertDocChildren([input]))[0] ?? `c${(seq += 1)}`;
-    },
-    async insertDocChildren(batch) {
-      const ids: string[] = [];
-      for (const input of batch) {
+    insertDocParent(input) {
+      return Effect.sync(() => {
         seq += 1;
-        const key = `${input.parentId}:${input.ordinal}`;
-        const existing = childByPos.get(key);
-        const id = existing ?? `c${seq}`;
-        if (!existing) childByPos.set(key, id);
-        children.set(id, { ...input, id });
-        ids.push(id);
-      }
-      return ids;
+        const existing = parentByKey.get(input.sourceKey);
+        const id = existing ?? `p${seq}`;
+        if (!existing) parentByKey.set(input.sourceKey, id);
+        parents.set(id, { ...input, id });
+        return id;
+      });
     },
-    async upsertAlignedPair(input) {
-      seq += 1;
-      const existing = pairs.get(input.pairKey);
-      const id = existing?.id ?? `pair${seq}`;
-      pairs.set(input.pairKey, { ...input, id });
-      return id;
+    insertDocChild(input) {
+      return Effect.map(this.insertDocChildren([input]), (ids) => ids[0] ?? `c${(seq += 1)}`);
     },
-    async similaritySearch(track, embedding, opts) {
-      const vec = track === "primary" ? "embeddingPrimary" : "embeddingFallback";
-      const rows = [...children.values()]
-        .filter((c) => c[vec] !== null && c[vec] !== undefined)
-        .map((c) => ({
-          child: {
-            id: c.id,
-            parentId: c.parentId,
-            textRaw: c.textRaw,
-            textAr: c.textAr,
-            textId: c.textId ?? null,
-            citation: c.citation ?? {},
-            embeddingPrimary: c.embeddingPrimary ?? null,
-            embeddingFallback: c.embeddingFallback ?? null,
-            ordinal: c.ordinal,
-            metadata: c.metadata ?? {},
-            createdAt: 0,
-          },
-          distance: 1 - cosine(embedding, (c[vec] ?? []) as readonly number[]),
-        }))
-        .sort((a, b) => a.distance - b.distance)
-        .slice(0, opts.limit)
-        .map((hit, i) => ({ ...hit, rankDense: i + 1 }));
-      return rows satisfies SimilarChild[];
+    insertDocChildren(batch) {
+      return Effect.sync(() => {
+        const ids: string[] = [];
+        for (const input of batch) {
+          seq += 1;
+          const key = `${input.parentId}:${input.ordinal}`;
+          const existing = childByPos.get(key);
+          const id = existing ?? `c${seq}`;
+          if (!existing) childByPos.set(key, id);
+          children.set(id, { ...input, id });
+          ids.push(id);
+        }
+        return ids;
+      });
     },
-    async insertAnswerTrace() {
-      throw new Error("not needed in ingestion tests");
+    upsertAlignedPair(input) {
+      return Effect.sync(() => {
+        seq += 1;
+        const existing = pairs.get(input.pairKey);
+        const id = existing?.id ?? `pair${seq}`;
+        pairs.set(input.pairKey, { ...input, id });
+        return id;
+      });
     },
-    async getAnswerTraceByMessage() {
-      return null;
+    similaritySearch(track, embedding, opts) {
+      return Effect.sync(() => {
+        const vec = track === "primary" ? "embeddingPrimary" : "embeddingFallback";
+        const rows = [...children.values()]
+          .filter((c) => c[vec] !== null && c[vec] !== undefined)
+          .map((c) => ({
+            child: {
+              id: c.id,
+              parentId: c.parentId,
+              textRaw: c.textRaw,
+              textAr: c.textAr,
+              textId: c.textId ?? null,
+              citation: c.citation ?? {},
+              embeddingPrimary: c.embeddingPrimary ?? null,
+              embeddingFallback: c.embeddingFallback ?? null,
+              ordinal: c.ordinal,
+              metadata: c.metadata ?? {},
+              createdAt: 0,
+            },
+            distance: 1 - cosine(embedding, (c[vec] ?? []) as readonly number[]),
+          }))
+          .sort((a, b) => a.distance - b.distance)
+          .slice(0, opts.limit)
+          .map((hit, i) => ({ ...hit, rankDense: i + 1 }));
+        return rows satisfies SimilarChild[];
+      });
     },
-    async createChatSession() {
-      throw new Error("not needed in ingestion tests");
+    insertAnswerTrace() {
+      return Effect.die(new Error("not needed in ingestion tests"));
     },
-    async insertChatMessage() {
-      throw new Error("not needed in ingestion tests");
+    getAnswerTraceByMessage() {
+      return Effect.succeed(null);
     },
-    async createSession() {
-      throw new Error("not needed in ingestion tests");
+    createChatSession() {
+      return Effect.die(new Error("not needed in ingestion tests"));
     },
-    async resolveUserId() {
-      return null;
+    insertChatMessage() {
+      return Effect.die(new Error("not needed in ingestion tests"));
     },
-    async deleteUserCascade() {},
-    async cleanupExpiredSessions() {
-      return 0;
+    createSession() {
+      return Effect.die(new Error("not needed in ingestion tests"));
     },
-
-    async insertEvalRun(input) {
-      const id = input.id ?? `eval${(seq += 1)}`;
-      return id;
+    resolveUserId() {
+      return Effect.succeed(null);
+    },
+    deleteUserCascade() {
+      return Effect.void;
+    },
+    cleanupExpiredSessions() {
+      return Effect.succeed(0);
+    },
+    insertEvalRun(input) {
+      return Effect.succeed(input.id ?? `eval${(seq += 1)}`);
     },
   };
 
@@ -137,6 +150,6 @@ export function createMemoryRagStore(): RagStore & {
     allChildren: () => [...children.values()],
     allParents: () => [...parents.values()],
     allPairs: () => [...pairs.values()],
-    cosineSearch: async (track, query, limit) => store.similaritySearch(track, query, { limit }),
+    cosineSearch: (track, query, limit) => Effect.runPromise(store.similaritySearch(track, query, { limit })),
   };
 }

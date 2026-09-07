@@ -1,4 +1,5 @@
 import { Data, Effect } from "effect";
+import type { StoreError } from "@app/rag-core";
 import type { DocChildInsert, DocParentInsert } from "@app/infra";
 
 /**
@@ -189,9 +190,17 @@ export async function runIngestion(
   const pairSources = collectPairSources(parents);
   const pending: DocChildInsert[] = [];
   const pendingPairs: AlignedPairInput[] = [];
+  // The single off-Workers bridge (ADR-0027 decision 3): the runner is a
+  // promise-shaped batch program, and this runPromise composes the
+  // store-seam Effects (Effect<A, StoreError>) into that program — a typed
+  // failure rejects the run with the StoreError itself.
+  const runStore = <A>(effect: Effect.Effect<A, StoreError>): Promise<A> =>
+    Effect.runPromise(effect);
 
   for (const parent of parents) {
-    const parentId = await deps.store.insertDocParent(parent satisfies DocParentInsert);
+    const parentId = await runStore(
+      deps.store.insertDocParent(parent satisfies DocParentInsert),
+    );
     parentIds.push(parentId);
     parent.children.forEach((child, i) => {
       childRows.push({
@@ -244,7 +253,7 @@ export async function runIngestion(
   // other (they coincide 1:1 today, but the seams are independent).
   const writeBatchSize = deps.writeBatchSize ?? 64;
   for (let i = 0; i < pending.length; i += writeBatchSize) {
-    await deps.store.insertDocChildren(pending.slice(i, i + writeBatchSize));
+    await runStore(deps.store.insertDocChildren(pending.slice(i, i + writeBatchSize)));
   }
   if (deps.pairSink) {
     for (const pair of pendingPairs) await deps.pairSink(pair);
@@ -257,10 +266,12 @@ export async function runIngestion(
     for (const parent of parents) {
       const summary = summaries.get(parent.sourceKey);
       if (summary === undefined) continue;
-      await deps.store.insertDocParent({
-        ...parent,
-        metadata: { ...parent.metadata, summary, summaryEmbeddedFrom: "summary" },
-      });
+      await runStore(
+        deps.store.insertDocParent({
+          ...parent,
+          metadata: { ...parent.metadata, summary, summaryEmbeddedFrom: "summary" },
+        }),
+      );
     }
   }
 

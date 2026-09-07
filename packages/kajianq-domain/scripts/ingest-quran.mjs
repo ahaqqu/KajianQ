@@ -28,6 +28,8 @@
  * construction.
  */
 import { neon } from "@neondatabase/serverless";
+// Effect bridge for the Effect-shaped store seam (ADR-0027 decision 7).
+import { Effect } from "effect";
 import * as app from "@app/infra";
 import * as ingest from "@app/rag-ingest";
 import * as domain from "@app/kajianq-domain";
@@ -194,11 +196,16 @@ const report = {
   },
 };
 
-await store.insertEvalRun({
-  id: report.runId,
-  label: `ingest:quran ${new Date().toISOString()}`,
-  report,
-});
+// Off-Workers bridge: the store seam is Effect-shaped (ADR-0027 decision 7);
+// runPromise joins it to the CLI's top-level await here, in the composition
+// root — the same bridge the ingestion runner uses.
+await Effect.runPromise(
+  store.insertEvalRun({
+    id: report.runId,
+    label: `ingest:quran ${new Date().toISOString()}`,
+    report,
+  }),
+);
 
 if (reportDir) {
   const fs = await import("node:fs/promises");

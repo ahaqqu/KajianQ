@@ -1,7 +1,11 @@
+import type { Effect } from "effect";
 import type { IngestionReport, Trace } from "@app/contracts";
+import type { StoreError } from "@app/rag-core";
 
 /**
- * RagStore — the single persistence seam (ADR-0008).
+ * RagStore — the single persistence seam (ADR-0008), Effect-signatured
+ * (ADR-0027 decision 7): every method returns `Effect<A, StoreError>` and
+ * no error kind travels via `throw` across the seam.
  *
  * Every structured-data access in the system goes through this interface;
  * engine packages and apps never hold a database client or SQL. The Neon
@@ -14,6 +18,10 @@ import type { IngestionReport, Trace } from "@app/contracts";
  * the domain pack and arrives here only as *values* inside `metadata` or
  * `filters`, never as names in this file.
  */
+export type { StoreError };
+
+/** The failure type of every RagStore method — see `@app/rag-core`'s closed taxonomy. */
+export type StoreFailure = StoreError;
 
 /**
  * Make the given keys of `T` optional while leaving every other property —
@@ -115,11 +123,11 @@ export type SimilarChild = {
 export interface RagStore {
   // -- Corpus ------------------------------------------------------------
 
-  /** Insert a parent document, returning its persisted id. */
-  insertDocParent(input: DocParentInsert): Promise<string>;
+  /** Insert a parent document, returning the effect of its persisted id. */
+  insertDocParent(input: DocParentInsert): Effect.Effect<string, StoreError>;
 
-  /** Insert a child chunk tied to a parent, returning its persisted id. */
-  insertDocChild(input: DocChildInsert): Promise<string>;
+  /** Insert a child chunk tied to a parent, returning the effect of its persisted id. */
+  insertDocChild(input: DocChildInsert): Effect.Effect<string, StoreError>;
 
   /**
    * Insert a batch of child chunks in one call. Adapters may perform a
@@ -128,14 +136,17 @@ export interface RagStore {
    * method) is to fall back to serial `insertDocChild` calls — consumers of the
    * seam never need to know whether batching is native.
    */
-  insertDocChildren(batch: readonly DocChildInsert[]): Promise<readonly string[]>;
+  insertDocChildren(
+    batch: readonly DocChildInsert[],
+  ): Effect.Effect<readonly string[], StoreError>;
 
   /**
    * Upsert an aligned text pair (provenance-keyed, idempotent). Returns the
-   * persisted pair id — the reference downstream `lemma_evidence` rows hold
-   * (ADR-0014: the aligned pairs are the concept-graph build's seed source).
+   * effect of the persisted pair id — the reference downstream
+   * `lemma_evidence` rows hold (ADR-0014: the aligned pairs are the
+   * concept-graph build's seed source).
    */
-  upsertAlignedPair(input: AlignedPairInsert): Promise<string>;
+  upsertAlignedPair(input: AlignedPairInsert): Effect.Effect<string, StoreError>;
 
   /**
    * Nearest-neighbour similarity search over one embedding track. `filters`
@@ -149,7 +160,7 @@ export interface RagStore {
       limit: number;
       filters?: Record<string, string | readonly string[]>;
     },
-  ): Promise<readonly SimilarChild[]>;
+  ): Effect.Effect<readonly SimilarChild[], StoreError>;
 
   // -- Traces (ADR-0007) ---------------------------------------------------
 
@@ -160,14 +171,21 @@ export interface RagStore {
    * trace cascade-delete with its owner on anonymous self-deletion
    * (ADR-0007 amendment).
    */
-  insertAnswerTrace(input: { messageId: string; userId: string; trace: Trace }): Promise<string>;
+  insertAnswerTrace(input: {
+    messageId: string;
+    userId: string;
+    trace: Trace;
+  }): Effect.Effect<string, StoreError>;
 
   /** Fetch a persisted Trace by answer message id. */
-  getAnswerTraceByMessage(messageId: string): Promise<Trace | null>;
+  getAnswerTraceByMessage(messageId: string): Effect.Effect<Trace | null, StoreError>;
 
   // -- Chat (v1 conversational surface) ------------------------------------
 
-  createChatSession(input: { userId: string; metadata?: Record<string, unknown> }): Promise<string>;
+  createChatSession(input: {
+    userId: string;
+    metadata?: Record<string, unknown>;
+  }): Effect.Effect<string, StoreError>;
 
   insertChatMessage(input: {
     sessionId: string;
@@ -176,7 +194,7 @@ export interface RagStore {
     /** Link to the persisted Trace, when this message produced one. */
     answerTraceId?: string | null;
     metadata?: Record<string, unknown>;
-  }): Promise<string>;
+  }): Effect.Effect<string, StoreError>;
 
   // -- Anonymous sessions (ADR-0017) ----------------------------------------
 
@@ -185,25 +203,28 @@ export interface RagStore {
    * session in one step, returning the raw token to hand to the client.
    * The token is stored hashed; plaintext leaves the store exactly once.
    */
-  createSession(): Promise<{
-    userId: string;
-    sessionId: string;
-    token: string;
-    expiresAt: number;
-  }>;
+  createSession(): Effect.Effect<
+    {
+      userId: string;
+      sessionId: string;
+      token: string;
+      expiresAt: number;
+    },
+    StoreError
+  >;
 
   /**
    * Resolve a Bearer token to its owning user id. Returns null for unknown
    * or expired sessions so the caller can map it to a 401.
    */
-  resolveUserId(token: string): Promise<string | null>;
+  resolveUserId(token: string): Effect.Effect<string | null, StoreError>;
 
   /**
    * Delete a user and everything they own (sessions, chat sessions and their
    * messages, feedback, and the user's answer traces) via cascade. Anonymous
    * self-deletion endpoint in #10. Trace cascade is the ADR-0007 amendment.
    */
-  deleteUserCascade(userId: string): Promise<void>;
+  deleteUserCascade(userId: string): Effect.Effect<void, StoreError>;
 
   /**
    * Delete session rows whose TTL has passed. Returns the count removed.
@@ -211,7 +232,7 @@ export interface RagStore {
    * unbounded; `resolveUserId` already rejects expired rows on read, so this
    * is a storage-reclamation concern, not a correctness one.
    */
-  cleanupExpiredSessions(before?: Date): Promise<number>;
+  cleanupExpiredSessions(before?: Date): Effect.Effect<number, StoreError>;
 
   // -- Batch reports (kajianq-traceability rule 4) ---------------------------
 
@@ -226,5 +247,5 @@ export interface RagStore {
     id?: string;
     label?: string;
     report: IngestionReport;
-  }): Promise<string>;
+  }): Effect.Effect<string, StoreError>;
 }
