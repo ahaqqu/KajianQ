@@ -43,3 +43,24 @@ Canonical terms beyond `CONTEXT.md`, captured per the domain-modeling discipline
 **Context:** LLM provisioning (ops)
 **Definition:** The CLI that exercises every keyed vendor through the Provider seam (generate + embed), prints a per-call cost table, and drills the fallback chain; vendors without an env key are reported `NOT RUN` without failing the run.
 **Also known as:** provider smoke test, vendor check
+
+### RagStore
+
+**Type:** entity (interface)
+**Context:** persistence (engine seam)
+**Definition:** The single structured-data persistence seam (`packages/infra`, contract per ADR-0008) for docs, chunks, traces, and sessions; Effect-signatured (`Effect<A, StoreError, R>`) per ADR-0027 decision 7, with SQL confined to the Neon adapter and migrations.
+**Also known as:** store (rejected — ambiguous with ObjectStore), database layer (rejected — implies consumers know SQL)
+
+### ObjectStore
+
+**Type:** entity (interface)
+**Context:** persistence (engine seam)
+**Definition:** The blob persistence seam (`packages/infra`) for raw exports and large artifacts; Effect-signatured per ADR-0027 decision 7, with vendor details (R2/S3) confined to adapters.
+**Also known as:** blob store, file store (rejected — nothing is file-shaped at the seam)
+
+### StoreError
+
+**Type:** value object (tagged error union)
+**Context:** persistence (engine seam)
+**Definition:** The typed error channel of RagStore/ObjectStore — a closed kind set (`transport`, `timeout`, `constraint`, `not_found`, `config`) with the wrapped original in `cause`; defined in `packages/rag-core` (engine owns its seam vocabulary, mirroring `ProviderErrorKind`), mapped from vendor exceptions inside adapters.
+**Also known as:** DB error, storage exception (rejected — leaks vendor types to consumers)
