@@ -122,30 +122,31 @@ export function neonErrorToStoreError(cause: unknown): StoreError {
 }
 
 /**
- * Run one SQL operation as an Effect with Scope-wired resource release
- * (ADR-0027 decision 7): a Neon HTTP query is an in-flight fetch — a
- * resource that must release when the surrounding Scope unwinds on
- * interruption or failure, and whose rejection is classified into the
- * `StoreError` taxonomy at this seam. The scope is internal to the
- * operation: the caller sees `Effect<A, StoreError>` (no R requirement);
- * the operation's own scope still unwinds on caller-side interruption
- * because the fiber is interrupted as a whole.
+ * Run one SQL operation as an Effect, classified into the `StoreError`
+ * taxonomy (ADR-0027 decision 7).
+ *
+ * Execution-semantics note (driver-coupled, load-bearing): the Neon HTTP
+ * driver's `neon()` query function returns a LAZY `NeonQueryPromise` whose
+ * `.then`/`.catch`/`.finally` each fire a fresh HTTP query — it is not a
+ * settled promise. The operation must therefore be invoked exactly once,
+ * *inside* the `try` factory, so the fiber's single await is the only
+ * consumer. Eagerly starting the promise outside (or attaching a detached
+ * second consumer, e.g. `void pending.catch(...)`) executes the same SQL
+ * twice: harmless for idempotent upserts, but a `createChatSession`/INSERT
+ * with a fresh PK collides with itself (23505) — a silent, order-dependent
+ * failure. If the fiber is interrupted mid-flight, the un-awaited promise
+ * is left to settle unobserved (the driver's fetch has no abort channel
+ * here; a settled-with-no-consumer promise can no longer produce an
+ * unhandled rejection once the fiber's await has been abandoned... it can,
+ * so guard it: `onInterrupt` attaches one final no-op catch — the ONE
+ * extra consumer — to retire the in-flight query without re-execution).
  */
 export function sqlEffect<A>(
   sql: SqlRunner,
   op: (sql: SqlRunner) => Promise<A>,
 ): Effect.Effect<A, StoreError> {
-  return Effect.suspend(() => {
-    const pending = op(sql);
-    // The in-flight fetch releases when the fiber unwinds: interruption
-    // (defect channel) stops the awaiting fiber, and the promise — already
-    // detached from any caller — settles or rejects into the void via the
-    // no-op catch (no unhandled rejection). The runner is never left
-    // awaiting on the seam's behalf.
-    void pending.catch(() => {});
-    return Effect.tryPromise({
-      try: () => pending,
-      catch: neonErrorToStoreError,
-    });
+  return Effect.tryPromise({
+    try: () => op(sql),
+    catch: neonErrorToStoreError,
   });
 }
