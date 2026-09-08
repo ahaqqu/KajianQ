@@ -13,13 +13,13 @@ Generate correct, guardrail-compliant tests at the right layer. Load this skill 
 
 Pick the right test layer before writing anything. The table from `docs/ARCHITECTURE.md` §10 is authoritative:
 
-| What you're testing                                                                        | Tool                  | Needs                                                         |
-| ------------------------------------------------------------------------------------------ | --------------------- | ------------------------------------------------------------- |
-| Business logic, Valibot schemas, store queries, adapter logic, route handlers in isolation | Vitest (unit)         | Mock adapters; test the contract, not the implementation      |
-| Engine programs and seam logic (Effect signatures)                                         | Vitest + `Effect.runPromise` | Run the Effect program under test; mock adapters behind the seam |
-| Logic with laws (schema invariants, cost accounting, merge/CRDT logic if ever reintroduced) | fast-check (property) | Randomly generated inputs; laws that must hold for all inputs |
-| User-facing flows, PWA lifecycle                                                           | Playwright-BDD        | Full stack running against `alchemy dev` (local workerd); real browser |
-| Bundle size                                                                                | size-limit            | Every PR                                                      |
+| What you're testing                                                                         | Tool                         | Needs                                                                  |
+| ------------------------------------------------------------------------------------------- | ---------------------------- | ---------------------------------------------------------------------- |
+| Business logic, Valibot schemas, store queries, adapter logic, route handlers in isolation  | Vitest (unit)                | Mock adapters; test the contract, not the implementation               |
+| Engine programs and seam logic (Effect signatures)                                          | Vitest + `Effect.runPromise` | Run the Effect program under test; mock adapters behind the seam       |
+| Logic with laws (schema invariants, cost accounting, merge/CRDT logic if ever reintroduced) | fast-check (property)        | Randomly generated inputs; laws that must hold for all inputs          |
+| User-facing flows, PWA lifecycle                                                            | Playwright-BDD               | Full stack running against `alchemy dev` (local workerd); real browser |
+| Bundle size                                                                                 | size-limit                   | Every PR                                                               |
 
 If unsure, start at the highest feasible layer: BDD for user flows, property tests for logic with laws, unit tests for everything else.
 
