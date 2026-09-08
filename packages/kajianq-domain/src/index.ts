@@ -112,3 +112,36 @@ export {
   hadithSectionSummarizer,
   type HadithSummarizerProvider,
 } from "./hadith-llm";
+
+// -- Chat pipeline (#8): Smart Router stages over the DARS seams -----------
+// (Filter vocabulary (Madzhab/Grade/TextLayer/KajianQFilters) stays exported
+// from the top of this barrel — chat stages import it via ./filters.)
+export {
+  createKajianQRouter,
+  extractJsonObject,
+  ROUTER_SYSTEM_PROMPT,
+  type RouterProvider,
+} from "./chat-router";
+export {
+  createKajianQRetriever,
+  hierarchyBonus,
+  metadataFilters,
+  rrfFuse,
+  RRF_K,
+  HIERARCHY_BONUS,
+  type KajianQRetrieverDeps,
+  type RetrieverEmbedder,
+  type RetrieverStore,
+  type StoreBridge,
+} from "./chat-retriever";
+export { createKajianQAssembler } from "./chat-assembler";
+export { chatSystemPrompt, chatUserPrompt, type ChatLanguage } from "./chat-prompts";
+export { validateCitations, citationLabelsOf } from "./chat-citation-validator";
+export { createKajianQGenerator, type GeneratorProvider } from "./chat-generator";
+export { createKajianQReviewer, type ReviewerProvider } from "./chat-reviewer";
+export {
+  buildChatStages,
+  runChatPipeline,
+  type ChatPipelineDeps,
+  type RetrievedChunk,
+} from "./chat-pipeline";
