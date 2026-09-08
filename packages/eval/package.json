@@ -10,8 +10,10 @@
     "check": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@app/contracts": "workspace:*",
     "@app/rag-core": "workspace:*",
-    "effect": "3.22.1"
+    "effect": "3.22.1",
+    "valibot": "1.4.2"
   },
   "devDependencies": {
     "typescript": "7.0.2"
