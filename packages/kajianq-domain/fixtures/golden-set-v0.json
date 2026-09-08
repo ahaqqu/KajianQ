@@ -4,7 +4,7 @@
   "questions": [
     {
       "id": "gs-v0-001",
-      "question": "Apa maksud Ayat Kursi (QS. 2:255)?",
+      "question": "Apa maksud Ayat Kursi?",
       "language": "id",
       "expectedSourceTypes": ["quran"],
       "requiredCitations": ["QS. 2:255"],
@@ -40,7 +40,7 @@
     },
     {
       "id": "gs-v0-005",
-      "question": "Jelaskan makna QS. 112 (Al-Ikhlas)!",
+      "question": "Jelaskan makna Surat Al-Ikhlas!",
       "language": "id",
       "expectedSourceTypes": ["quran"],
       "requiredCitations": ["QS. 112:1"],
@@ -76,7 +76,7 @@
     },
     {
       "id": "gs-v0-009",
-      "question": "Jelaskan konsep ridha (kerelaan) dalam QS. 89:28!",
+      "question": "Jelaskan konsep ridha dalam QS. 89:28!",
       "language": "id",
       "expectedSourceTypes": ["quran"],
       "requiredCitations": ["QS. 89:28"],
