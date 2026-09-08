@@ -23,28 +23,6 @@ in `guided-implementation` (implement → handoff → test loop → report):
 - **Checkpoint commit at every test-green point.** The moment any gate passes
   locally (a test file, typecheck, lint), commit. Never leave the whole effort
   uncommitted while you keep iterating.
-- **Hand off before the test loop.** Before entering test-iteration, hand the
-  verification loop to a fresh scoped context — compaction, where the harness
-  provides it, is an equivalent fallback — so late requests do not pay for
-  early exploration.
-- **Fresh context before addressing review feedback.** After review findings
-  arrive, address them in a fresh context carrying only the findings and the
-  relevant diff, not the full implementation history.
-
-## Iteration guardrail and stuck reports
-
-A workspace hook (issue #98) mechanically denies verification reruns past
-progress-based caps (3 failed cycles on the same failure; 8 since the last
-successful verification; configurable in `scripts/iteration-guardrail/config.json`).
-When it denies you — or when you judge the loop stuck earlier — stop looping:
-commit your work to the branch (checkpoint first, always), then report a
-**stuck-report** to the manager: invariant under test, exact current failure,
-attempted fixes with outcomes, ruled-out hypotheses, checkpoint commit ref.
-Canonical format and rules: the role registry (`.zcode/agents/README.md`,
-"Stuck-report format") — restated here (duplication) because the deny message
-reaches you mid-loop, not the registry. Never fake done: the completion
-criterion (PR + checks green) is unchanged; a deny never authorizes reporting
-success without that evidence.
 
 ## Dispatch authorization
 
