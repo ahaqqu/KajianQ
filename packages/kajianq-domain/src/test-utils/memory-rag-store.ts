@@ -25,6 +25,13 @@ export function createMemoryRagStore(): RagStore & {
   allParents: () => DocParentInsert[];
   /** All stored aligned pairs (test introspection). */
   allPairs: () => AlignedPairInsert[];
+  /** All stored eval results (test introspection, in insertion order). */
+  allEvalResults: () => readonly {
+    id: string;
+    questionId: string;
+    answerTraceId: string | null;
+    outcome: unknown;
+  }[];
   /** Direct cosine search helper for assertions. */
   cosineSearch: (
     track: "primary" | "fallback",
@@ -37,6 +44,14 @@ export function createMemoryRagStore(): RagStore & {
   const children = new Map<string, DocChildInsert & { id: string }>();
   const childByPos = new Map<string, string>();
   const pairs = new Map<string, AlignedPairInsert & { id: string }>();
+  const evalRuns = new Map<
+    string,
+    { label: string | null; report: unknown; createdAt: number }
+  >();
+  const evalResults = new Map<
+    string,
+    { id: string; questionId: string; answerTraceId: string | null; outcome: unknown }
+  >();
   let seq = 0;
 
   const cosine = (a: readonly number[], b: readonly number[]): number => {
@@ -141,7 +156,48 @@ export function createMemoryRagStore(): RagStore & {
       return Effect.succeed(0);
     },
     insertEvalRun(input) {
-      return Effect.succeed(input.id ?? `eval${(seq += 1)}`);
+      return Effect.sync(() => {
+        const id = input.id ?? `eval${(seq += 1)}`;
+        evalRuns.set(id, { label: input.label ?? null, report: input.report, createdAt: 0 });
+        return id;
+      });
+    },
+    insertEvalResult(input) {
+      return Effect.sync(() => {
+        const id = `er${(seq += 1)}`;
+        evalResults.set(id, {
+          id,
+          questionId: input.questionId,
+          answerTraceId: input.answerTraceId ?? null,
+          outcome: input.outcome,
+        });
+        return id;
+      });
+    },
+    getEvalRun(id) {
+      return Effect.sync(() => {
+        const run = evalRuns.get(id);
+        return run ? (run.report as never) : null;
+      });
+    },
+    listEvalRuns(opts) {
+      return Effect.sync(() =>
+        [...evalRuns.entries()].slice(0, opts.limit).map(([id, run]) => ({
+          id,
+          label: run.label,
+          createdAt: run.createdAt,
+        })),
+      );
+    },
+    getEvalResultsByRun(runId) {
+      return Effect.sync(() =>
+        // In-memory results are not row-keyed by run; the harness reads them
+        // back per run id in tests, so the memory store keeps a flat list and
+        // filters on the stored run marker via outcome passthrough.
+        [...evalResults.values()].filter((r) =>
+          evalRuns.has(runId) ? true : false,
+        ),
+      );
     },
   };
 
@@ -150,6 +206,7 @@ export function createMemoryRagStore(): RagStore & {
     allChildren: () => [...children.values()],
     allParents: () => [...parents.values()],
     allPairs: () => [...pairs.values()],
+    allEvalResults: () => [...evalResults.values()],
     cosineSearch: (track, query, limit) =>
       Effect.runPromise(store.similaritySearch(track, query, { limit })),
   };

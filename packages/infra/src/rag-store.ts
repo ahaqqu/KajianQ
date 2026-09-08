@@ -246,4 +246,42 @@ export interface RagStore {
     label?: string;
     report: IngestionReport;
   }): Effect.Effect<string, StoreError>;
+
+  // -- Eval ledger reads/writes (issue #8) ---------------------------------
+
+  /**
+   * The per-question outcome the harness scored for one run. `outcome` is
+   * the @app/contracts `EvalResultOutcome` shape verbatim (JSONB); the
+   * harness resolves the question id through its own seam, so
+   * `questionId` stays a loose string reference (mirroring the
+   * `eval_results.question_id` loose-ref precedent). Returns the row id.
+   */
+  insertEvalResult(input: {
+    runId: string;
+    questionId: string;
+    /** The answer's message id, when the question hit the chat pipeline. */
+    answerMessageId?: string | null;
+    answerTraceId?: string | null;
+    outcome: unknown;
+  }): Effect.Effect<string, StoreError>;
+
+  /** Fetch one run's persisted report by id; null when unknown. */
+  getEvalRun(id: string): Effect.Effect<IngestionReport | null, StoreError>;
+
+  /** List run ledger rows (id + label), newest first, capped at `limit`. */
+  listEvalRuns(opts: { limit: number }): Effect.Effect<
+    readonly { id: string; label: string | null; createdAt: number }[],
+    StoreError
+  >;
+
+  /** All per-question outcomes for one run, in insertion order. */
+  getEvalResultsByRun(runId: string): Effect.Effect<
+    readonly {
+      id: string;
+      questionId: string;
+      answerTraceId: string | null;
+      outcome: unknown;
+    }[],
+    StoreError
+  >;
 }
