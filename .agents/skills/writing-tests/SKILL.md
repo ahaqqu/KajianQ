@@ -50,7 +50,11 @@ This repo ships no payments or sync layer (see `CONTEXT.md` / spec §3.1), so th
 ### Effect programs (Vitest + `Effect.runPromise`)
 
 - Engine packages (`rag-core`, `infra`, `rag-ingest`, `eval`) carry Effect-signatured seams; tests build the program with a fake adapter (hand-written object satisfying the interface), then run it under `Effect.runPromise` inside a normal Vitest `test()` (see the `rag-ingest` pipeline exemplar).
-- Assert on the typed error channel (`StoreError` kinds, `ProviderErrorKind`) by feeding the fake a failing dependency — failure modes are data now; test each kind, not just the happy path.
+- **Success path:** `await Effect.runPromise(effect)` — or the promise-level bridge under test (`runPipelinePromise`).
+- **Failure path:** `const exit = await Effect.runPromiseExit(effect)` then `Cause.failureOption(exit.cause)` — assert on the typed error (`_tag`, `kind`, `stage` — `StoreError` kinds, `ProviderErrorKind`), never on the `FiberFailure` wrapper (its `message` is the opaque "An error has occurred"; the cause rides a module symbol). Feed the fake a failing dependency to reach each failure kind — failure modes are data now; test each kind, not just the happy path.
+- **Services:** provide tags with `Effect.provideService` / a `Layer` (see `packages/rag-core/src/effect-spike.test.ts`); a `Context.Tag` service in tests is a plain object (see `packages/rag-core/src/run.test.ts` for the `RunContext` pattern). No `@effect/vitest`, no test-clock dependency — inject `now`/fakes through the same seams production uses.
+- **Interruption semantics (probed on effect@3.22.1):** `Fiber.interrupt` must be _run_ as an Effect; interruption-tracking callbacks attach via `.pipe(Effect.onExit(...))` + `Cause.isInterruptedOnly` — `yield* Effect.onExit(...)` inside `Effect.gen` does not register.
+- **Keep retry schedules fast:** inject `perKindRetrySchedule("1 millis", "1 millis")` in tests; never sleep through real backoff.
 
 ### Property tests (fast-check)
 

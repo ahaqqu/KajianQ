@@ -2,16 +2,15 @@
 name: kajianq-traceability
 description: Enforce traceable-by-design when building or reviewing KajianQ/DARS code. Use whenever you add or change anything that calls an LLM, retrieves chunks, assembles context, generates an answer, runs an ingestion/eval batch, or renders an answer — the trace must always show how the output was built.
 source: project
-synced: 2026-08-29
 ---
 
 # KajianQ Traceability
 
-The product promise (spec §1.5, ADR-0007): **never hide the machinery.** Traceability is a user-facing feature, an admin debugging tool, a feedback instrument, and the regression gate — all at once. This skill is the working checklist.
+The product promise (spec §1.5): **never hide the machinery.** Traceability is a user-facing feature, an admin debugging tool, a feedback instrument, and the regression gate — all at once. This skill is the working checklist.
 
 ## What must always be true
 
-1. **Every answer persists a full trace** (`answer_traces` per ADR-0007): router intent JSON, sub-queries, retrieved chunks with `rrf_score`/`rank_dense`/`rank_sparse`, routing filters, model identity, tokens in/out, latency, computed cost. The trace follows a shared typed contract — `Trace` / `TraceEvent` / `CostRecord` from `packages/contracts` — consumed identically by the pipeline, the PWA, admin, and the eval harness.
+1. **Every answer persists a full trace** (the `answer_traces` table): router intent JSON, sub-queries, retrieved chunks with `rrf_score`/`rank_dense`/`rank_sparse`, routing filters, model identity, tokens in/out, latency, computed cost. The trace follows a shared typed contract — `Trace` / `TraceEvent` / `CostRecord` from `packages/contracts` — consumed identically by the pipeline, the PWA, admin, and the eval harness.
 2. **Every LLM call is recorded** — model identity, tokens, latency, cost attach to the trace of the answer (or ingestion/eval run) that triggered it. An untraced LLM call is a defect on the same level as a crashing one.
 3. **UI renders persisted trace records** — never reconstructs pipeline internals ad hoc. The answer payload and the trace payload come from the same recorded run.
 4. **Batch jobs produce reports:** ingestion runs (chunk counts, sharh/matn separation audit, spot-check scores, quarantine counts, cost), eval runs (`eval_runs`/`eval_results` with metrics), glossary builds (extraction/cluster/review counts). Reports are stored, inspectable, and citable (release notes cite the eval run).
@@ -19,10 +18,10 @@ The product promise (spec §1.5, ADR-0007): **never hide the machinery.** Tracea
 
 ## Trace-shaped thinking for each pipeline area
 
-- **Smart Router stages 1–3:** every stage's JSON output (intent, sub-queries, routing decisions, applied filters) lands in the trace. Query Expansion candidates (ADR-0014) — both offered and selected terms — are recorded.
-- **Retrieval:** chunk ids with both dense and sparse ranks plus fused score. When the posture is ID-fallback fusion (per the #9 gate), per-track scores stay distinguishable.
-- **Assembly & generation:** final presentation order, assembled context size, cache hits, model identity, tokens, cost. Deep Think additionally records per-round coverage: passages examined vs. relevant vs. used (ADR-0011).
-- **Post-processing:** citation-validator verdict per citation, dhaif flags raised, refusal events with reason and stage (ADR-0015 — a refusal is first-class trace content, not silence). A suppressed or rewritten answer must leave a trace of why.
+- **Smart Router stages 1–3:** every stage's JSON output (intent, sub-queries, routing decisions, applied filters) lands in the trace. Query Expansion candidates — both offered and selected terms — are recorded.
+- **Retrieval:** chunk ids with both dense and sparse ranks plus fused score. When the posture is ID-fallback fusion (per the embedding-benchmark gate), per-track scores stay distinguishable.
+- **Assembly & generation:** final presentation order, assembled context size, cache hits, model identity, tokens, cost. Deep Think additionally records per-round coverage: passages examined vs. relevant vs. used.
+- **Post-processing:** citation-validator verdict per citation, dhaif flags raised, refusal events with reason and stage (a refusal is first-class trace content, not silence). A suppressed or rewritten answer must leave a trace of why.
 - **Feedback:** thumbs + trace-anchored flags store the element reference; accepted reports link to the Golden Set case they became.
 
 ## When writing or reviewing code, ask
@@ -46,15 +45,15 @@ The product promise (spec §1.5, ADR-0007): **never hide the machinery.** Tracea
 
 KajianQ's trust model is: _a skeptical user or scholar can open any answer and see everything the system used to produce it, and the owner can turn every failure report into a regression test._ If your change makes that sentence harder to keep, the change is wrong — regardless of how much simpler the code looks.
 
-## The generator's bound (ADR-0015)
+## The generator's bound
 
 Traceability also covers _what the generator was not allowed to do._ When building or reviewing the Generator or its post-processing, check that the answer surfaces classical reasoning **as cited** (ta'lil, madzhab disagreement, applied Principles) and never synthesizes a new ruling to fill a gap. A "helpful" completion that closes a gap by inference is a trust violation the trace must make visible — if the answer would look different with a fully-traced prompt, the trace is lying by omission, and that is a defect on the same level as a missing citation.
 
-## Effect runtime (ADR-0027)
+## Effect runtime
 
 The engine runs on Effect, but Effect changes nothing about this contract:
 
-- The trace sink is the `RunContext` Tag service (`yield* RunContext` → `run.record(event)`) — `RunContext.record` semantics carried over unchanged from ADR-0021. Never route events around it (no `Console.log`, no ad-hoc arrays in stages).
+- The trace sink is the `RunContext` Tag service (`yield* RunContext` → `run.record(event)`, defined in `packages/rag-core/src/context.ts`) — the runner (`runPipeline`) is the only provider of the tag and the single trace collection point. Never route events around it (no `Console.log`, no ad-hoc arrays in stages).
 - `Effect`'s own telemetry/OTel is ops observability and is **not** adopted; `TraceEvent` valibot records persisted via `RagStore.insertAnswerTrace` remain the single user-facing trace.
 - Interruption/cancellation (client cancels a stream) still owes its cost: an interrupted generation's deferred cost settles as a transport failure — record a cancellation event through the sink rather than dropping it (an interrupted call still spent vendor tokens).
 - Ingestion concurrency (`embedConcurrency`) changes only scheduling, never accounting: report cost must still equal the sum of recorded calls.
