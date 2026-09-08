@@ -12,7 +12,7 @@ synced: 2026-08-29
 
 Use this skill when a review's findings must land on the PR as individually-referencable, itemized comments — the manager-orchestrated implement → review → fix loop, and the only thermos arm `code-review` ever calls.
 
-The review standards are inherited from `thermo-nuclear-review/SKILL.md` (security/correctness) and `thermo-nuclear-code-quality-review/SKILL.md` (maintainability). The `reviewer` role runs both passes itself (ADR-0033) and applies this skill to post the results.
+The review standards are inherited from `thermo-nuclear-review/SKILL.md` (security/correctness) and `thermo-nuclear-code-quality-review/SKILL.md` (maintainability). The `reviewer` role runs both passes itself and applies this skill to post the results.
 
 ## Workflow
 

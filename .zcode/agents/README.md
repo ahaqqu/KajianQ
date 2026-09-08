@@ -3,8 +3,7 @@
 This directory holds the role-agent definitions the manager-orchestrated
 workflow dispatches. Each role is a defined subagent whose file carries its
 operating persona, frontmatter, and completion criterion. The `reviewer`
-applies the `code-review` skill end-to-end, runs both thermo passes itself per
-ADR-0033, and posts findings via `thermos-with-comments`.
+applies the `code-review` skill end-to-end, runs both thermo passes itself, and posts findings via `thermos-with-comments`.
 
 | Role                  | File                    | Purpose                                                                                              |
 | --------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------- |
@@ -32,7 +31,22 @@ A pin that fails to resolve fails the spawn with
 "Model provider is not configured: `<id>`". The fix lives in the client's
 provider config — never reroute a committed pin to a different model. Pin
 changes reach new spawns only after a client restart. Removing a role
-file's `model:` field makes that role inherit its dispatcher's model.
+file's `model:` field makes that role inherit its dispatcher's model (this
+is how a sub-reviewer can be made to share its coordinator's model).
+
+## Role GitHub identities
+
+Role subagents may be given dedicated GitHub identities, enforced
+mechanically: the PreToolUse hook `scripts/role-gh-identity/hook.mjs` denies
+a bare `gh` call from a role with a configured identity and names the
+compliant form, `gh-as <role> <gh args…>`
+(`scripts/role-gh-identity/gh-as.mjs` — per-invocation `GH_TOKEN`, token
+files outside the repo). Enforcement is opt-in
+(`scripts/role-gh-identity/config.json`, `enabled: false` by default); the
+hook fails open on every internal error, and the manager session (no role)
+is never denied. A `gh-as` auth failure surfaces as an ordinary command
+failure — the manager relays and escalates it like any CI failure, never
+bypasses the wrapper.
 
 ## Implementer-class operating rules
 
