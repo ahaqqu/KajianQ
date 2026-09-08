@@ -9,12 +9,7 @@
  * from the product (kajianq-domain's fixture), never named here.
  */
 
-export {
-  GoldenSetLoadError,
-  assertV0Shape,
-  loadGoldenSetJson,
-  parseGoldenSet,
-} from "./golden-set";
+export { GoldenSetLoadError, assertV0Shape, loadGoldenSetJson, parseGoldenSet } from "./golden-set";
 export {
   citationValidity,
   detectRefusal,

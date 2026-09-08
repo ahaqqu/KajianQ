@@ -27,11 +27,7 @@ export function neonEvalMethods(
   sql: SqlRunner,
 ): Pick<
   RagStore,
-  | "insertEvalRun"
-  | "insertEvalResult"
-  | "getEvalRun"
-  | "listEvalRuns"
-  | "getEvalResultsByRun"
+  "insertEvalRun" | "insertEvalResult" | "getEvalRun" | "listEvalRuns" | "getEvalResultsByRun"
 > {
   return {
     insertEvalRun(input) {

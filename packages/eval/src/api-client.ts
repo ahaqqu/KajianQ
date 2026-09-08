@@ -33,9 +33,7 @@ export type ChatClientInput = {
  * Parse one SSE frame stream into structured events. Exported for tests.
  * Handles the `event:`/`data:` field split; multi-line `data` joins with \n.
  */
-export async function consumeSseToText(
-  body: ReadableStream<Uint8Array>,
-): Promise<ChatSseResult> {
+export async function consumeSseToText(body: ReadableStream<Uint8Array>): Promise<ChatSseResult> {
   const decoder = new TextDecoder();
   let buffer = "";
   const events: { event: string; data: string }[] = [];

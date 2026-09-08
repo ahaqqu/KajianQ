@@ -1,6 +1,5 @@
 import { Effect } from "effect";
-import type { CostRecord } from "@app/contracts";
-import type { RagStore } from "@app/infra";
+
 import {
   type Answer,
   runPipeline,
@@ -10,17 +9,8 @@ import {
   type StageError,
 } from "@app/rag-core";
 import { createKajianQRouter, type RouterProvider } from "./chat-router";
-import {
-  createKajianQRetriever,
-  type RetrieverEmbedder,
-  type RetrieverStore,
-  type StoreBridge,
-} from "./chat-retriever";
-import { createKajianQAssembler } from "./chat-assembler";
-import { createKajianQGenerator, type GeneratorProvider } from "./chat-generator";
-import { createKajianQReviewer, type ReviewerProvider } from "./chat-reviewer";
-import type { KajianQFilters } from "./filters";
-import type { ChatLanguage } from "./chat-prompts";
+import { createKajianQRetriever, type RetrieverEmbedder, type StoreBridge } from "./chat-retriever";
+import { createChatTailStages, type GeneratorProvider, type ReviewerProvider } from "./chat-stages";
 
 /**
  * Pipeline composition for the KajianQ chat flow (#8): builds the five
@@ -35,36 +25,41 @@ export type ChatPipelineDeps = {
   generatorProvider: GeneratorProvider;
   reviewerProvider: ReviewerProvider | null;
   embedder: RetrieverEmbedder;
-  store: Pick<RagStore, "similaritySearch">;
+  store: Pick<import("@app/infra").RagStore, "similaritySearch">;
   /** Runs a store Effect to a promise (composition-root bridge). */
   bridge: StoreBridge;
-  language: ChatLanguage;
+  language: import("./chat-prompts").ChatLanguage;
   retrieverLimit?: number;
   /** Skip the reviewer LLM call (eval refusal cases, budget-capped runs). */
   skipReviewer?: boolean;
   /** Collector for LLM costs that ride the retrieval stage (embed call). */
-  onCost?: (cost: CostRecord) => void;
+  onCost?: (cost: import("@app/contracts").CostRecord) => void;
 };
 
-export function buildChatStages(deps: ChatPipelineDeps): PipelineStages<KajianQFilters> {
+export function buildChatStages(
+  deps: ChatPipelineDeps,
+): PipelineStages<import("./filters").KajianQFilters> {
   const router = createKajianQRouter(deps.routerProvider);
   const retriever = createKajianQRetriever({
-    store: deps.store as RetrieverStore,
+    store: deps.store as Parameters<typeof createKajianQRetriever>[0]["store"],
     embedder: deps.embedder,
     bridge: deps.bridge,
     ...(deps.retrieverLimit !== undefined ? { limit: deps.retrieverLimit } : {}),
     onEmbedCost: (cost) => deps.onCost?.(cost),
   });
-  const assembler = createKajianQAssembler();
-  const generator = createKajianQGenerator({
-    provider: deps.generatorProvider,
+  const tail = createChatTailStages({
+    generatorProvider: deps.generatorProvider,
+    reviewerProvider: deps.reviewerProvider,
     language: deps.language,
+    ...(deps.skipReviewer !== undefined ? { skipReviewer: deps.skipReviewer } : {}),
   });
-  const reviewer = createKajianQReviewer({
-    provider: deps.reviewerProvider,
-    ...(deps.skipReviewer !== undefined ? { skipLlm: deps.skipReviewer } : {}),
-  });
-  return { router, retriever, assembler, generator, reviewer };
+  return {
+    router,
+    retriever,
+    assembler: tail.assembler,
+    generator: tail.generator,
+    reviewer: tail.reviewer,
+  };
 }
 
 /**
@@ -74,8 +69,8 @@ export function buildChatStages(deps: ChatPipelineDeps): PipelineStages<KajianQF
  */
 export function runChatPipeline(
   deps: ChatPipelineDeps,
-  query: { text: string; filters?: KajianQFilters },
-  config: RunConfig<KajianQFilters> = {},
+  query: { text: string; filters?: import("./filters").KajianQFilters },
+  config: RunConfig<import("./filters").KajianQFilters> = {},
   options: RunOptions = {},
 ): Effect.Effect<Answer, import("@app/rag-core").StageError> {
   const stages = buildChatStages(deps);
@@ -88,7 +83,7 @@ export function runChatPipeline(
       options.onFailedTrace?.(trace);
     },
   };
-  return runPipeline<KajianQFilters>(stages, query, config, withCosts);
+  return runPipeline<import("./filters").KajianQFilters>(stages, query, config, withCosts);
 }
 
 /**
@@ -99,8 +94,8 @@ export function runChatPipeline(
  */
 export function runChatPipelinePromise(
   deps: ChatPipelineDeps,
-  query: { text: string; filters?: KajianQFilters },
-  config: RunConfig<KajianQFilters> = {},
+  query: { text: string; filters?: import("./filters").KajianQFilters },
+  config: RunConfig<import("./filters").KajianQFilters> = {},
   options: RunOptions = {},
 ): Promise<Answer> {
   return Effect.runPromise(runChatPipeline(deps, query, config, options));

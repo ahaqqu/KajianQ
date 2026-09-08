@@ -25,7 +25,9 @@ export function parseGoldenSet(raw: unknown, source = "inline"): GoldenSet {
   if (!parsed.success) {
     throw new GoldenSetLoadError(
       source,
-      parsed.issues.map((i) => `${i.path?.map((p) => String(p.key)).join(".") ?? "?"}: ${i.message}`),
+      parsed.issues.map(
+        (i) => `${i.path?.map((p) => String(p.key)).join(".") ?? "?"}: ${i.message}`,
+      ),
     );
   }
   return parsed.output;

@@ -22,7 +22,9 @@ export function retrievalRecall(
   sourceTypeOf: (chunkId: string) => string | undefined,
 ): number {
   if (expectedSourceTypes.length === 0) return 1;
-  const hit = new Set(expectedSourceTypes.filter((t) => retrieved.some((c) => sourceTypeOf(c.id) === t)));
+  const hit = new Set(
+    expectedSourceTypes.filter((t) => retrieved.some((c) => sourceTypeOf(c.id) === t)),
+  );
   return hit.size / expectedSourceTypes.length;
 }
 
@@ -31,10 +33,7 @@ export function retrievalRecall(
  * appear verbatim in the answer text. A question with no required citations
  * scores 1 (nothing to violate).
  */
-export function citationValidity(
-  requiredCitations: readonly string[],
-  answerText: string,
-): number {
+export function citationValidity(requiredCitations: readonly string[], answerText: string): number {
   if (requiredCitations.length === 0) return 1;
   const present = requiredCitations.filter((c) => answerText.includes(c)).length;
   return present / requiredCitations.length;

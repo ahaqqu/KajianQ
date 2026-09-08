@@ -1,6 +1,7 @@
 import * as neon from "@neondatabase/serverless";
 import { Effect } from "effect";
 import { createRagStore, loadProviderConfig, resolveRole, type RagStore } from "@app/infra";
+export { authGuard } from "./auth";
 
 /**
  * Env-bound wiring for the chat route (#8): the one place the Worker's
@@ -81,4 +82,40 @@ export function createProvidersFromEnv(env: Record<string, string | undefined>):
  */
 export function storeBridge(_store: RagStore): (effect: unknown) => Promise<unknown> {
   return (effect) => Effect.runPromise(effect as Effect.Effect<never, never>);
+}
+
+/** The wiring bundle a chat request needs (built per request from bindings). */
+export type ChatWiring = {
+  pipeline: Omit<import("@app/kajianq-domain").ChatPipelineDeps, "language">;
+  fullStore: RagStore;
+  runStore: (effect: unknown) => Promise<unknown>;
+};
+
+/**
+ * Build the chat wiring from the Worker bindings (providers + store + the
+ * store bridge). Throws (config-class) when the store is not configured; the
+ * route maps that to 503.
+ */
+export function buildChatWiring(env: Record<string, string | undefined>): ChatWiring {
+  const store = createRagStoreFromEnv(env);
+  const providers = createProvidersFromEnv(env);
+  return {
+    pipeline: {
+      routerProvider: providers.router,
+      generatorProvider: providers.generator,
+      reviewerProvider: providers.reviewer,
+      embedder: providers.embedder,
+      store,
+      bridge: storeBridge(
+        store,
+      ) as unknown as import("@app/kajianq-domain").ChatPipelineDeps["bridge"],
+    },
+    fullStore: store,
+    runStore: storeBridge(store),
+  };
+}
+
+/** The SSE frame wire format the eval harness consumes (meta/delta/done). */
+export function sseFrame(event: string, data: string): string {
+  return `event: ${event}\ndata: ${data}\n\n`;
 }

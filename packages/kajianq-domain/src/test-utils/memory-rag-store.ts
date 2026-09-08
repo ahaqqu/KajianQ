@@ -44,10 +44,7 @@ export function createMemoryRagStore(): RagStore & {
   const children = new Map<string, DocChildInsert & { id: string }>();
   const childByPos = new Map<string, string>();
   const pairs = new Map<string, AlignedPairInsert & { id: string }>();
-  const evalRuns = new Map<
-    string,
-    { label: string | null; report: unknown; createdAt: number }
-  >();
+  const evalRuns = new Map<string, { label: string | null; report: unknown; createdAt: number }>();
   const evalResults = new Map<
     string,
     { id: string; questionId: string; answerTraceId: string | null; outcome: unknown }
@@ -194,9 +191,7 @@ export function createMemoryRagStore(): RagStore & {
         // In-memory results are not row-keyed by run; the harness reads them
         // back per run id in tests, so the memory store keeps a flat list and
         // filters on the stored run marker via outcome passthrough.
-        [...evalResults.values()].filter((r) =>
-          evalRuns.has(runId) ? true : false,
-        ),
+        [...evalResults.values()].filter((r) => (evalRuns.has(runId) ? true : false)),
       );
     },
   };

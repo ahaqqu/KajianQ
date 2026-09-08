@@ -269,10 +269,9 @@ export interface RagStore {
   getEvalRun(id: string): Effect.Effect<IngestionReport | null, StoreError>;
 
   /** List run ledger rows (id + label), newest first, capped at `limit`. */
-  listEvalRuns(opts: { limit: number }): Effect.Effect<
-    readonly { id: string; label: string | null; createdAt: number }[],
-    StoreError
-  >;
+  listEvalRuns(opts: {
+    limit: number;
+  }): Effect.Effect<readonly { id: string; label: string | null; createdAt: number }[], StoreError>;
 
   /** All per-question outcomes for one run, in insertion order. */
   getEvalResultsByRun(runId: string): Effect.Effect<

@@ -40,8 +40,7 @@ export function createKajianQAssembler(): Assembler<KajianQFilters> {
         "assembler",
         Effect.sync(() => {
           const ordered = [...chunks].sort(
-            (a, b) =>
-              presentationRank(a) - presentationRank(b) || (b.score ?? 0) - (a.score ?? 0),
+            (a, b) => presentationRank(a) - presentationRank(b) || (b.score ?? 0) - (a.score ?? 0),
           );
           const context = ordered.map(renderChunk).join("\n\n");
           const ctx: AssembledContext<KajianQFilters> = {

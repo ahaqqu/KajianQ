@@ -37,10 +37,5 @@ export function chatSystemPrompt(language: ChatLanguage): string {
 
 /** The user turn: the routed question plus the assembled context. */
 export function chatUserPrompt(question: string, context: string): string {
-  return [
-    `Pertanyaan / Question: ${question}`,
-    "",
-    "Konteks / Context:",
-    context,
-  ].join("\n");
+  return [`Pertanyaan / Question: ${question}`, "", "Konteks / Context:", context].join("\n");
 }

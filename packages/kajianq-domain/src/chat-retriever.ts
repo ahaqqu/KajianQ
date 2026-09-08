@@ -1,11 +1,6 @@
 import { Effect } from "effect";
 import type { CostRecord } from "@app/contracts";
-import {
-  toStageError,
-  type Chunk,
-  type RoutedQuery,
-  type Retriever,
-} from "@app/rag-core";
+import { toStageError, type Chunk, type RoutedQuery, type Retriever } from "@app/rag-core";
 import type { StoreError } from "@app/rag-core";
 import type { KajianQFilters } from "./filters";
 
@@ -28,10 +23,9 @@ export const HIERARCHY_BONUS = {
 } as const;
 
 export type RetrieverEmbedder = {
-  embed(spec: { texts: readonly string[] }): Effect.Effect<
-    { vectors: readonly (readonly number[])[]; cost: CostRecord },
-    unknown
-  >;
+  embed(spec: {
+    texts: readonly string[];
+  }): Effect.Effect<{ vectors: readonly (readonly number[])[]; cost: CostRecord }, unknown>;
 };
 
 /** Wiring-level store role: search one track; filters are opaque metadata keys. */
@@ -40,7 +34,19 @@ export type RetrieverStore = {
     track: "primary" | "fallback",
     embedding: readonly number[],
     opts: { limit: number; filters?: Record<string, string> },
-  ): Effect.Effect<readonly { child: { id: string; textAr: string; textId: string | null; metadata: Record<string, unknown> }; distance: number; rankDense: number }[], StoreError>;
+  ): Effect.Effect<
+    readonly {
+      child: {
+        id: string;
+        textAr: string;
+        textId: string | null;
+        metadata: Record<string, unknown>;
+      };
+      distance: number;
+      rankDense: number;
+    }[],
+    StoreError
+  >;
 };
 
 /** Effect bridge the wiring injects (keeps this module free of runner imports). */
@@ -121,7 +127,8 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
             if (!vector) continue;
             for (const track of ["primary", "fallback"] as const) {
               const hits = yield* Effect.tryPromise({
-                try: () => deps.bridge(deps.store.similaritySearch(track, vector, { limit, filters })),
+                try: () =>
+                  deps.bridge(deps.store.similaritySearch(track, vector, { limit, filters })),
                 catch: (cause: unknown) => ({ cause }),
               });
               for (const hit of hits) {
@@ -129,7 +136,10 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
                   {
                     chunk: {
                       id: hit.child.id,
-                      text: track === "primary" ? hit.child.textAr : (hit.child.textId ?? hit.child.textAr),
+                      text:
+                        track === "primary"
+                          ? hit.child.textAr
+                          : (hit.child.textId ?? hit.child.textAr),
                       metadata: hit.child.metadata,
                       rankDense: hit.rankDense,
                     },

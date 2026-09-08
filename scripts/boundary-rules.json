@@ -22,7 +22,7 @@
     "flags": "i",
     "exts": ["ts", "tsx", "mts", "cts"],
     "deps": true,
-    "pkgExempt": ["packages/infra/package.json"],
+    "pkgExempt": ["packages/infra/package.json", "packages/eval/package.json"],
     "exempt": [
       "packages/infra/src/rag-store-neon.test.ts",
       "packages/infra/scripts/db-migrate.mjs",

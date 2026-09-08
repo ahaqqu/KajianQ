@@ -1,11 +1,6 @@
 import type { EvalResultOutcome, GoldenQuestion, GoldenSet } from "@app/contracts";
 import { Budget, BudgetExceededError } from "./budget";
-import {
-  citationValidity,
-  detectRefusal,
-  refusalCorrectness,
-  retrievalRecall,
-} from "./scorers";
+import { citationValidity, detectRefusal, refusalCorrectness, retrievalRecall } from "./scorers";
 import type { TraceEventLike } from "./harness-types";
 
 /**
@@ -76,10 +71,7 @@ export type HarnessRunResult = {
  * check budget. A transport failure marks the question skipped and keeps the
  * run going; a budget hit aborts the remaining questions (plan decision 4).
  */
-export async function runGoldenSet(
-  set: GoldenSet,
-  deps: HarnessDeps,
-): Promise<HarnessRunResult> {
+export async function runGoldenSet(set: GoldenSet, deps: HarnessDeps): Promise<HarnessRunResult> {
   const now = deps.now ?? Date.now;
   const startedAt = now();
   const results: HarnessQuestionResult[] = [];
