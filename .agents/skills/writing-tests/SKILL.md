@@ -13,12 +13,12 @@ Generate correct, guardrail-compliant tests at the right layer. Load this skill 
 
 Pick the right test layer before writing anything. The table from `docs/ARCHITECTURE.md` §10 is authoritative:
 
-| What you're testing | Tool | Needs |
-|---|---|---|
-| Business logic, Valibot schemas, store queries, adapter logic, route handlers in isolation | Vitest (unit) | Mock adapters; test the contract, not the implementation |
-| Sync merge, client migrations, webhook idempotency | fast-check (property) | Randomly generated inputs; laws that must hold for all inputs |
-| User-facing flows, offline-to-online sync, PWA lifecycle | Playwright-BDD | Full stack running against wrangler dev; real browser |
-| Bundle size | size-limit | Every PR |
+| What you're testing                                                                        | Tool                  | Needs                                                         |
+| ------------------------------------------------------------------------------------------ | --------------------- | ------------------------------------------------------------- |
+| Business logic, Valibot schemas, store queries, adapter logic, route handlers in isolation | Vitest (unit)         | Mock adapters; test the contract, not the implementation      |
+| Sync merge, client migrations, webhook idempotency                                         | fast-check (property) | Randomly generated inputs; laws that must hold for all inputs |
+| User-facing flows, offline-to-online sync, PWA lifecycle                                   | Playwright-BDD        | Full stack running against wrangler dev; real browser         |
+| Bundle size                                                                                | size-limit            | Every PR                                                      |
 
 If unsure, start at the highest feasible layer: BDD for user flows, property tests for logic with laws, unit tests for everything else.
 
@@ -26,16 +26,16 @@ If unsure, start at the highest feasible layer: BDD for user flows, property tes
 
 Each pattern below is exemplified by a real, CI-green file in this repo. Cite path, open it, and mirror its structure — schema of the test, mocking seam, naming — not its subject matter.
 
-| Pattern | Exemplary file |
-|---|---|
-| Valibot schema at the boundary: valid, empty, and type-invalid inputs | `packages/contracts/src/note.test.ts` |
-| Business logic over injected dependencies: clock injection and hand-written fakes | `packages/rate/src/rate-limiter.test.ts` |
-| Route handlers exercised directly at the unit layer | `apps/api/src/app.test.ts` |
-| Adapter implementation honoring its interface contract (incl. missing-key / delete paths) | `packages/infra/src/object-store.test.ts` |
-| Sync merge properties: idempotency, associativity, delete-wins | `packages/local-first/src/merge.prop.test.ts` |
-| Tombstone GC safety properties | `packages/local-first/src/tombstones.prop.test.ts` |
-| Client migration round-trip property | `packages/local-first/src/migrations.prop.test.ts` |
-| BDD feature file + step definitions for a user-facing flow | `tests/features/notes.feature` and `tests/steps/notes.steps.ts` |
+| Pattern                                                                                   | Exemplary file                                                  |
+| ----------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| Valibot schema at the boundary: valid, empty, and type-invalid inputs                     | `packages/contracts/src/note.test.ts`                           |
+| Business logic over injected dependencies: clock injection and hand-written fakes         | `packages/rate/src/rate-limiter.test.ts`                        |
+| Route handlers exercised directly at the unit layer                                       | `apps/api/src/app.test.ts`                                      |
+| Adapter implementation honoring its interface contract (incl. missing-key / delete paths) | `packages/infra/src/object-store.test.ts`                       |
+| Sync merge properties: idempotency, associativity, delete-wins                            | `packages/local-first/src/merge.prop.test.ts`                   |
+| Tombstone GC safety properties                                                            | `packages/local-first/src/tombstones.prop.test.ts`              |
+| Client migration round-trip property                                                      | `packages/local-first/src/migrations.prop.test.ts`              |
+| BDD feature file + step definitions for a user-facing flow                                | `tests/features/notes.feature` and `tests/steps/notes.steps.ts` |
 
 Webhook idempotency (same payload twice = same state as once) is a mandatory property whenever a consuming project adds payments — this template ships without payments (see `CONTEXT.md`), so it has no exemplary file yet; the first one written becomes the reference.
 
@@ -43,7 +43,7 @@ Webhook idempotency (same payload twice = same state as once) is a mandatory pro
 
 ### Unit tests (Vitest)
 
-- Every business logic module, Valibot schema, and adapter implementation gets one; write them in the test phase, once the module exists (see `guided-implementation` phase boundaries).
+- Every business logic module, Valibot schema, and adapter implementation gets one; write them in the test phase, once the module exists (see `guided-implementation` phase boundaries). On `model:high` tickets the senior-implementer writes tests as part of the same run.
 - Tests live beside the module they test: `src/foo.ts` → `src/foo.test.ts`.
 - Mock at adapter boundaries, not at function boundaries — the adapter interface is the test seam (see the rate-limiter exemplar).
 
@@ -76,6 +76,7 @@ Webhook idempotency (same payload twice = same state as once) is a mandatory pro
 ## Completion criterion
 
 Tests are done when:
+
 - [ ] Every changed module has a corresponding `*.test.ts` or `*.prop.test.ts` file.
 - [ ] Unit tests cover happy path, all error paths, and at least one edge case (empty, max, concurrent).
 - [ ] Property tests for sync merge assert idempotency, commutativity (including exact-timestamp ties), associativity, delete propagation, and GC safety.

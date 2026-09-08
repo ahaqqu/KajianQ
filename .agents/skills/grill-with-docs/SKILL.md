@@ -80,6 +80,7 @@ For each principle in `docs/ARCHITECTURE.md`, ask:
 ### Completeness check
 
 Every user action must have answers for:
+
 - The happy path (one sentence)
 - The auth check (who, what role)
 - The validation (what Valibot schema in `@app/contracts`, what edge cases)
@@ -90,6 +91,7 @@ Every user action must have answers for:
 ## Phase 3 — ADR
 
 Use the `domain-modeling` skill to write an Architecture Decision Record for any decision that is:
+
 - A structural tradeoff (two viable paths, one chosen)
 - A constraint the team must remember
 - A departure from `ARCHITECTURE.md` defaults
@@ -103,6 +105,7 @@ Use the `domain-modeling` skill to finalize `docs/GLOSSARY.md` — every noun an
 ## Completion criterion
 
 Grilling is done when:
+
 - [ ] Every architecture principle has been checked against the design.
 - [ ] Every design pressure question has a concrete answer (no "we'll figure it out later").
 - [ ] The glossary covers every noun and verb in the design with unambiguous definitions.

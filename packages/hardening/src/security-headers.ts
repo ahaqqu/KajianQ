@@ -48,7 +48,8 @@ export type HardeningOptions = {
  * Installs the shared security-header policy on the app: CSP, COOP/CORP,
  * HSTS, nosniff, X-Frame-Options, and Permissions-Policy (via Hono's
  * `secureHeaders`). One policy, owned by this package, so forked projects
- * inherit header hardening via template-sync instead of copying middleware.
+ * inherit header hardening by consuming the workspace package instead of
+ * copying middleware.
  */
 export function installSecurityHeaders<E extends Env>(
   api: Hono<E>,

@@ -5,9 +5,9 @@ adapter interface with two backends — a Durable Object (one per key, global
 across isolates and POPs, alarm-based eviction) and a bounded in-memory
 fallback (local dev / tests only, per-isolate).
 
-This package exists so forked projects inherit the limiter through
-`template-sync` (merge path `packages/`) instead of copy-pasting it from
-`apps/`. The Worker app keeps only composition-root glue.
+This package exists as a reusable workspace package so forked projects can
+consume it from `packages/` instead of copy-pasting it from `apps/`. The
+Worker app keeps only composition-root glue.
 
 ## Modules
 

@@ -30,11 +30,10 @@ function gitOk(args) {
 
 function ghPrState(branch) {
   try {
-    return execFileSync(
-      "gh",
-      ["pr", "view", branch, "--json", "state", "--jq", ".state"],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
-    ).trim();
+    return execFileSync("gh", ["pr", "view", branch, "--json", "state", "--jq", ".state"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
   } catch {
     return null;
   }
@@ -48,9 +47,7 @@ if (!existsSync(wtRoot)) {
   process.exit(0);
 }
 
-const base = gitOk(["rev-parse", "--verify", "--quiet", "origin/main"])
-  ? "origin/main"
-  : "main";
+const base = gitOk(["rev-parse", "--verify", "--quiet", "origin/main"]) ? "origin/main" : "main";
 
 let removed = 0;
 let kept = 0;
@@ -69,15 +66,13 @@ for (const slug of readdirSync(wtRoot).filter((n) => !n.startsWith("."))) {
   const prState = ghPrState(branch);
   let reason = null;
   if (prState === "MERGED") reason = "PR merged";
-  else if (gitOk(["merge-base", "--is-ancestor", branch, base]))
-    reason = "already in " + base;
+  else if (gitOk(["merge-base", "--is-ancestor", branch, base])) reason = "already in " + base;
   else if (
     gitOk(["rev-parse", "--verify", "--quiet", branch]) &&
     git(["rev-list", "--count", `${base}..${branch}`]) === "0"
   )
     reason = "no unique commits";
-  else if (!gitOk(["rev-parse", "--verify", "--quiet", branch]))
-    reason = "branch gone";
+  else if (!gitOk(["rev-parse", "--verify", "--quiet", branch])) reason = "branch gone";
 
   if (!reason) {
     console.log(`kept  ${slug}: ${branch} has unmerged work — finish or merge its PR first`);

@@ -17,9 +17,7 @@
     "boundary": "bun scripts/check-boundary.mjs",
     "size-limit": "size-limit",
     "agentic-limits": "bun scripts/check-agentic-limits.mjs",
-    "truth": "bun scripts/check-template-truth.mjs",
     "worktree:clean": "bun scripts/worktree-cleanup.mjs",
-    "dsh:preflight": "bun scripts/dsh-pin-check.mjs",
     "dsh:prompt": "bun scripts/dsh-dispatch-prompt.mjs",
     "openapi:check": "bun scripts/openapi-check.mjs",
     "db:up": "bun packages/infra/scripts/db-migrate.mjs up",
@@ -44,9 +42,7 @@
     "deploy:bootstrap": "bun run build && bun run --filter '@app/api' alchemy:bootstrap",
     "deploy:bootstrap:staging": "bun run build && bun run --filter '@app/api' alchemy:bootstrap:staging",
     "deploy:bootstrap:ci": "bun run build && bun run --filter '@app/api' alchemy:bootstrap:ci",
-    "deploy:bootstrap:staging:ci": "bun run build && bun run --filter '@app/api' alchemy:bootstrap:staging:ci",
-    "template-gate": "bun scripts/template-sync/cli.mjs check",
-    "template-sync": "bun scripts/template-sync/cli.mjs"
+    "deploy:bootstrap:staging:ci": "bun run build && bun run --filter '@app/api' alchemy:bootstrap:staging:ci"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",

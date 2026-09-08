@@ -2,8 +2,8 @@ name: Provision Cloudflare resources
 on:
   workflow_dispatch:
 
-# Fork-owned (removed from template-sync.json's overwrite list): delegates to
-# scripts/provision-cf.mjs, which runs the Alchemy `--adopt` bootstrap deploys
+# Project-owned: delegates to scripts/provision-cf.mjs, which runs the Alchemy
+# `--adopt` bootstrap deploys
 # for prod and staging (ADR-0028). The five Worker secrets are passed through
 # but optional — the stack binds only the ones present (absent = feature
 # disabled — ADR-0028), so the require guard only checks Cloudflare access.

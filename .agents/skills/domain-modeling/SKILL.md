@@ -9,7 +9,7 @@ modified: true
 
 # Domain Modeling
 
-Actively build and sharpen the project's domain model as you design. This is the *active* discipline — challenging terms, inventing edge-case scenarios, and writing the glossary and decisions down the moment they crystallise.
+Actively build and sharpen the project's domain model as you design. This is the _active_ discipline — challenging terms, inventing edge-case scenarios, and writing the glossary and decisions down the moment they crystallise.
 
 ## Inputs
 
@@ -105,6 +105,7 @@ Write the ADR under `adr/` and number it sequentially.
 ## Completion criterion
 
 Domain modeling is done when:
+
 - [ ] Every noun and verb in the design has an unambiguous definition in `docs/GLOSSARY.md`.
 - [ ] Every structural decision that meets the ADR threshold has an ADR, or a note explaining why it doesn't need one.
 - [ ] The user has reviewed and approved the glossary and ADRs.

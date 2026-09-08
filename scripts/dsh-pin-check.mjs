@@ -49,7 +49,9 @@ for (let i = 0; i < argv.length; i++) {
     if (!id) fail("--check requires a model id: --check <model-id>");
     extraIds.push(id);
   } else if (!a.startsWith("--")) {
-    fail(`unexpected argument "${a}" — extra ids are checked via --check <model-id>, never positionally`);
+    fail(
+      `unexpected argument "${a}" — extra ids are checked via --check <model-id>, never positionally`,
+    );
   }
 }
 
@@ -68,7 +70,13 @@ async function readPin(file) {
 
 /** `ollama/<model>:cloud` | `<model>` → a concrete model id. */
 function pinToModelId(raw) {
-  return raw.split("/").pop()?.replace(/:cloud$/, "").trim() ?? null;
+  return (
+    raw
+      .split("/")
+      .pop()
+      ?.replace(/:cloud$/, "")
+      .trim() ?? null
+  );
 }
 
 const indentOf = (line) => line.length - line.trimStart().length;
@@ -81,15 +89,21 @@ const indentOf = (line) => line.length - line.trimStart().length;
 function modelsBlock(lines) {
   const providerIdx = lines.findIndex((l) => l.trim() === `${PROVIDER}:`);
   if (providerIdx === -1)
-    fail(`no "${PROVIDER}:" provider block in ${SETTINGS} — declare the provider before pinning models against it`);
+    fail(
+      `no "${PROVIDER}:" provider block in ${SETTINGS} — declare the provider before pinning models against it`,
+    );
   const providerEnd = lines.findIndex(
     (l, i) => i > providerIdx && l.trim() && indentOf(l) <= indentOf(lines[providerIdx]),
   );
   const endOfProvider = providerEnd === -1 ? lines.length : providerEnd;
   const modelsIdx =
-    lines.slice(providerIdx + 1, endOfProvider).findIndex((l) => l.trim() === "models:") + providerIdx + 1;
+    lines.slice(providerIdx + 1, endOfProvider).findIndex((l) => l.trim() === "models:") +
+    providerIdx +
+    1;
   if (modelsIdx === providerIdx)
-    fail(`no "models:" list under the ${PROVIDER} provider in ${SETTINGS} — refusing to guess where to declare`);
+    fail(
+      `no "models:" list under the ${PROVIDER} provider in ${SETTINGS} — refusing to guess where to declare`,
+    );
   const modelsIndent = indentOf(lines[modelsIdx]);
   let end = modelsIdx + 1;
   for (let i = modelsIdx + 1; i < endOfProvider; i++) {
@@ -158,14 +172,20 @@ for (const file of roleFiles) {
   const role = file.replace(/\.md$/, "");
   const raw = await readPin(file);
   if (raw === null) {
-    console.log(`− ${role}: no pin — inherits the session model via plain subagent; nothing to check`);
+    console.log(
+      `− ${role}: no pin — inherits the session model via plain subagent; nothing to check`,
+    );
     continue;
   }
   const value = raw.trim();
   if (value === "lite")
-    fail(`${role}: pin value "lite" has no DSH mapping — make the pin concrete in .zcode/agents/${file}`);
+    fail(
+      `${role}: pin value "lite" has no DSH mapping — make the pin concrete in .zcode/agents/${file}`,
+    );
   if (value === "inherit") {
-    console.log(`− ${role}: inherit — resolves to the session model via plain subagent; nothing to check`);
+    console.log(
+      `− ${role}: inherit — resolves to the session model via plain subagent; nothing to check`,
+    );
     continue;
   }
   checks.push({ label: role, id: pinToModelId(value) });
@@ -226,7 +246,9 @@ if (failures > 0) {
     await writeFile(`${SETTINGS}.bak-${stamp}`, settingsText);
     await writeFile(`${SETTINGS}.tmp`, lines.join("\n"));
     await rename(`${SETTINGS}.tmp`, SETTINGS);
-    console.log(`ℹ backup at ${SETTINGS}.bak-${stamp}; re-run without --fix to confirm all pins resolve (hot-reload is async).`);
+    console.log(
+      `ℹ backup at ${SETTINGS}.bak-${stamp}; re-run without --fix to confirm all pins resolve (hot-reload is async).`,
+    );
   } else if (declarable.length > 0) {
     const mode = dryRun ? "would declare" : "run with --fix to declare";
     for (const id of declarable) {

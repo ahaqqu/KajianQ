@@ -28,14 +28,7 @@ const ROLES_DIR = join(import.meta.dir, "..", ".zcode", "agents");
 /** The manager's role set. The role argument is validated against this list —
  * a dispatch prompt carries commit/push/PR authority, so it is assembled only
  * from a known role file, never from an arbitrary path. */
-const ROLES = new Set([
-  "implementer",
-  "senior-implementer",
-  "reviewer",
-  "assistant-manager",
-  "thermo-nuclear-review-subagent",
-  "thermo-nuclear-code-quality-review-subagent",
-]);
+const ROLES = new Set(["implementer", "senior-implementer", "fixer", "reviewer"]);
 
 const argv = process.argv.slice(2);
 function argOf(flag) {
@@ -70,7 +63,9 @@ if (taskFile !== null) {
 }
 if (taskText === null) fail("one of --task or --task-file is required");
 if (!taskText.trim())
-  fail(`task text is empty — the task is the one per-run manager-authored input and cannot be blank (source: ${taskFile ?? "--task"})`);
+  fail(
+    `task text is empty — the task is the one per-run manager-authored input and cannot be blank (source: ${taskFile ?? "--task"})`,
+  );
 
 let roleBody;
 try {
@@ -78,10 +73,14 @@ try {
   const fm = text.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);
   roleBody = fm ? text.slice(fm[0].length) : text;
 } catch (error) {
-  fail(`cannot read the role file ${join(ROLES_DIR, `${role}.md`)} (${error.code ?? error.message})`);
+  fail(
+    `cannot read the role file ${join(ROLES_DIR, `${role}.md`)} (${error.code ?? error.message})`,
+  );
 }
 if (!roleBody.trim()) fail(`${role}.md carries no body`);
 
 const sections = [`## Task\n\n${taskText.trim()}`, `## Role definition\n\n${roleBody.trim()}`];
 process.stdout.write(sections.join("\n\n") + "\n");
-console.error(`ℹ dispatch prompt assembled for "${role}" (${sections.join("\n\n").length} chars) — pass stdout verbatim to \`subagent\``);
+console.error(
+  `ℹ dispatch prompt assembled for "${role}" (${sections.join("\n\n").length} chars) — pass stdout verbatim to \`subagent\``,
+);

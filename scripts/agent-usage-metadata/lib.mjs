@@ -130,8 +130,7 @@ export function computeUsageTotals(sessionId, rows, capturedAt) {
     models.set(modelKey, model);
   }
   totals.completedRequestCount = completedRequestCount;
-  totals.wallTimeMs =
-    wallEnd > wallStart && wallStart !== Infinity ? wallEnd - wallStart : 0;
+  totals.wallTimeMs = wallEnd > wallStart && wallStart !== Infinity ? wallEnd - wallStart : 0;
   totals.models = [...models.values()].sort((a, b) => b.requestCount - a.requestCount);
   totals.capturedAt = capturedAt;
   totals.capturedBy = USAGE_SOURCE;
