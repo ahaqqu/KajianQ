@@ -1,14 +1,14 @@
 import { Effect } from "effect";
-import type { Chunk } from "@app/rag-core";
+import type { CostRecord } from "@app/contracts";
+import type { RagStore } from "@app/infra";
 import {
-  runPipeline,
   type Answer,
+  runPipeline,
   type PipelineStages,
   type RunConfig,
   type RunOptions,
+  type StageError,
 } from "@app/rag-core";
-import type { RagStore, StoreError } from "@app/infra";
-import type { CostRecord } from "@app/contracts";
 import { createKajianQRouter, type RouterProvider } from "./chat-router";
 import {
   createKajianQRetriever,
@@ -91,7 +91,17 @@ export function runChatPipeline(
   return runPipeline<KajianQFilters>(stages, query, config, withCosts);
 }
 
-/** Chunk-shaped export for wiring tests (the retriever's output element). */
-export type RetrievedChunk = Chunk;
-
-export type { StoreError };
+/**
+ * Promise-shaped bridge for the HTTP edge (ADR-0027 decision 3: apps keep no
+ * direct effect dependency — the bridge lives in the domain, which owns the
+ * engine's effect version). Rejects with the typed `StageError`; a failed
+ * run's trace events still reach `onCost`/`onFailedTrace` via `withCosts`.
+ */
+export function runChatPipelinePromise(
+  deps: ChatPipelineDeps,
+  query: { text: string; filters?: KajianQFilters },
+  config: RunConfig<KajianQFilters> = {},
+  options: RunOptions = {},
+): Promise<Answer> {
+  return Effect.runPromise(runChatPipeline(deps, query, config, options));
+}

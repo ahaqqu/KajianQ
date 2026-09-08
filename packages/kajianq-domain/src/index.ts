@@ -142,6 +142,6 @@ export { createKajianQReviewer, type ReviewerProvider } from "./chat-reviewer";
 export {
   buildChatStages,
   runChatPipeline,
+  runChatPipelinePromise,
   type ChatPipelineDeps,
-  type RetrievedChunk,
 } from "./chat-pipeline";

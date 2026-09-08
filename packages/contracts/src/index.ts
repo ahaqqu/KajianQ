@@ -1,5 +1,13 @@
 export { HealthResponseSchema, type HealthResponse } from "./health";
 export {
+  ChatErrorSchema,
+  ChatMetaSchema,
+  ChatRequestSchema,
+  type ChatError,
+  type ChatMeta,
+  type ChatRequest,
+} from "./chat";
+export {
   EvalResultOutcomeSchema,
   EvalRunReportSchema,
   ExpectedBehaviorSchema,
