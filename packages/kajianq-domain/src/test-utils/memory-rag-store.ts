@@ -55,6 +55,7 @@ export function createMemoryRagStore(): RagStore & {
   const pairs = new Map<string, AlignedPairInsert & { id: string }>();
   const traces = new Map<string, unknown>();
   const sessions = new Map<string, string>();
+  const tokens = new Map<string, string>(); // token hash-standin → userId
   const chatMessages = new Map<
     string,
     { sessionId: string; role: string; content: string; answerTraceId: string | null }
@@ -180,12 +181,13 @@ export function createMemoryRagStore(): RagStore & {
       };
       return Effect.sync(() => {
         sessions.set(minted.sessionId, minted.userId);
+        tokens.set(minted.token, minted.userId);
         return minted;
       });
     },
     resolveUserId(token) {
-      // Fixed test token → the first minted user; anything else unknown.
-      const userId = token === "tok1" ? ([...sessions.values()][0] ?? null) : null;
+      // Tokens map to their minted user; unknown/expired → null.
+      const userId = tokens.get(token) ?? null;
       return Effect.sync(() => userId);
     },
     deleteUserCascade() {

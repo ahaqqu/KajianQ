@@ -56,17 +56,23 @@ export async function consumeSseToText(body: ReadableStream<Uint8Array>): Promis
       if (parsed.event === "delta") {
         deltas.push(parsed.data);
       } else if (parsed.event === "meta") {
-        try {
-          const meta = JSON.parse(parsed.data) as { messageId?: string; traceId?: string };
-          if (meta.messageId) messageId = meta.messageId;
-          if (meta.traceId) traceId = meta.traceId;
-        } catch {
-          // A malformed meta event is recorded but never crashes the run.
-        }
+        const meta = parseChatMeta(parsed.data);
+        if (meta.messageId) messageId = meta.messageId;
+        if (meta.traceId) traceId = meta.traceId;
       }
     }
   }
   return { text: deltas.join(""), messageId, traceId, events };
+}
+
+/** The parsed meta event payload (message/trace ids, null when absent). */
+export function parseChatMeta(data: string): { messageId: string | null; traceId: string | null } {
+  try {
+    const meta = JSON.parse(data) as { messageId?: string; traceId?: string };
+    return { messageId: meta.messageId ?? null, traceId: meta.traceId ?? null };
+  } catch {
+    return { messageId: null, traceId: null };
+  }
 }
 
 /** Parse one `event:`/`data:` frame. Returns null for comments/blanks. */

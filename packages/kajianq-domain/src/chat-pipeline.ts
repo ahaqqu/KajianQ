@@ -99,7 +99,7 @@ export function runChatPipeline(
  * so an app-side `Effect.runPromise` would run a foreign-runtime value).
  */
 export function runStoreEffect<A>(effect: unknown): Promise<A> {
-  return Effect.runPromise(effect as Parameters<typeof Effect.runPromise>[0]) as Promise<A>;
+  return Effect.runPromise(effect as never) as Promise<A>;
 }
 export function runChatPipelinePromise(
   deps: ChatPipelineDeps,

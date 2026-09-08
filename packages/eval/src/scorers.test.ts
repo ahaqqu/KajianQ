@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Budget, BudgetExceededError, budgetCapFromEnv } from "./budget";
-import {
-  citationValidity,
-  detectRefusal,
-  refusalCorrectness,
-  retrievalRecall,
-} from "./scorers";
+import { citationValidity, detectRefusal, refusalCorrectness, retrievalRecall } from "./scorers";
 import { scoreQuestion } from "./harness";
 import type { GoldenQuestion } from "@app/contracts";
 import type { TraceEventLike } from "./harness-types";
@@ -21,10 +16,8 @@ const question: GoldenQuestion = {
 
 describe("retrievalRecall", () => {
   it("scores 1 when every expected source type was retrieved", () => {
-    const recall = retrievalRecall(
-      ["source-a", "source-b"],
-      [{ id: "c1" }, { id: "c2" }],
-      (id) => (id === "c1" ? "source-a" : "source-b"),
+    const recall = retrievalRecall(["source-a", "source-b"], [{ id: "c1" }, { id: "c2" }], (id) =>
+      id === "c1" ? "source-a" : "source-b",
     );
     expect(recall).toBe(1);
   });
@@ -73,13 +66,21 @@ describe("refusalCorrectness", () => {
 
 describe("detectRefusal", () => {
   it("detects a trace refusal event", () => {
-    expect(detectRefusal([{ kind: "refusal" }], "", [])).toBe(true);
+    expect(detectRefusal([{ kind: "refusal", stage: "generator" }], "", [])).toBe(true);
   });
   it("detects a refusal marker in the text", () => {
-    expect(detectRefusal([], "tidak menemukan dalil yang memadai", ["tidak menemukan dalil yang memadai"])).toBe(true);
+    expect(
+      detectRefusal([], "tidak menemukan dalil yang memadai", [
+        "tidak menemukan dalil yang memadai",
+      ]),
+    ).toBe(true);
   });
   it("is false for a plain answer", () => {
-    expect(detectRefusal([{ kind: "retrieval" }], "a confident answer", ["no match"])).toBe(false);
+    expect(
+      detectRefusal([{ kind: "retrieval", stage: "retriever" }], "a confident answer", [
+        "no match",
+      ]),
+    ).toBe(false);
   });
 });
 
@@ -122,9 +123,14 @@ describe("scoreQuestion", () => {
       requiredCitations: [],
       expectedSourceTypes: [],
     };
-    const outcome = scoreQuestion(refuseCase, "cannot answer", [{ kind: "refusal" }], {
-      sourceTypeOf: () => undefined,
-    });
+    const outcome = scoreQuestion(
+      refuseCase,
+      "cannot answer",
+      [{ kind: "refusal", stage: "generator" }],
+      {
+        sourceTypeOf: () => undefined,
+      },
+    );
     expect(outcome.passed).toBe(true);
     expect(outcome.refused).toBe(true);
   });

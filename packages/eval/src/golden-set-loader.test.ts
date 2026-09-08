@@ -34,19 +34,15 @@ describe("parseGoldenSet", () => {
 
   it("rejects an unknown expectedBehavior", () => {
     expect(() =>
-      parseGoldenSet(
-        {
-          ...validSet,
-          questions: [{ ...validSet.questions[0], expectedBehavior: "shrug" }],
-        },
-      ),
+      parseGoldenSet({
+        ...validSet,
+        questions: [{ ...validSet.questions[0], expectedBehavior: "shrug" }],
+      }),
     ).toThrow(GoldenSetLoadError);
   });
 
   it("rejects a non-array questions field", () => {
-    expect(() => parseGoldenSet({ ...validSet, questions: "nope" })).toThrow(
-      GoldenSetLoadError,
-    );
+    expect(() => parseGoldenSet({ ...validSet, questions: "nope" })).toThrow(GoldenSetLoadError);
   });
 });
 
@@ -99,9 +95,7 @@ describe("assertV0Shape", () => {
       status: "v0-draft",
       questions: [q({ language: "en", tags: [] })],
     });
-    expect(() => assertV0Shape(set, { trapTag: "trap-x", minQuestions: 1 })).toThrow(
-      /Indonesian/,
-    );
+    expect(() => assertV0Shape(set, { trapTag: "trap-x", minQuestions: 1 })).toThrow(/Indonesian/);
   });
 
   it("rejects a fixture without the trap tag", () => {
@@ -111,7 +105,13 @@ describe("assertV0Shape", () => {
       questions: [q({ language: "id", tags: [] })],
     });
     expect(() =>
-      assertV0Shape(set, { trapTag: "trap-x", minIndonesian: 0, minRefusals: 0, minTraps: 1, minQuestions: 1 }),
+      assertV0Shape(set, {
+        trapTag: "trap-x",
+        minIndonesian: 0,
+        minRefusals: 0,
+        minTraps: 1,
+        minQuestions: 1,
+      }),
     ).toThrow(/trap/);
   });
 
@@ -122,7 +122,13 @@ describe("assertV0Shape", () => {
       questions: [q({ language: "id", tags: [] })],
     });
     expect(() =>
-      assertV0Shape(set, { trapTag: "trap-x", minIndonesian: 0, minRefusals: 1, minTraps: 0, minQuestions: 1 }),
+      assertV0Shape(set, {
+        trapTag: "trap-x",
+        minIndonesian: 0,
+        minRefusals: 1,
+        minTraps: 0,
+        minQuestions: 1,
+      }),
     ).toThrow(/refusal/);
   });
 });

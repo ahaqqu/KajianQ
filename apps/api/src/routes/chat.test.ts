@@ -15,13 +15,14 @@ import { createStubChatProviders } from "@app/kajianq-domain/test-utils/stub-cha
  * against the real route module — no Worker runtime, no vendor calls.
  */
 
-/** The memory store whose fixed test session token the auth guard accepts. */
-async function wiredStore() {
+/** A memory store wired with a minted test session; returns store + token. */
+async function wiredStore(): Promise<{
+  store: ReturnType<typeof createMemoryRagStore>;
+  token: string;
+}> {
   const store = createMemoryRagStore();
-  // Mint one session so `resolveUserId("tok1")` resolves (the store's test
-  // token convention: the first minted user owns the fixed token).
-  await runStoreEffect(store.createSession());
-  return store;
+  const session = await runStoreEffect<{ token: string }>(store.createSession());
+  return { store, token: session.token };
 }
 
 let currentStore: ReturnType<typeof createMemoryRagStore>;
@@ -62,8 +63,16 @@ function parseSse(text: string): { event: string; data: string }[] {
     .filter((f) => f.trim() !== "")
     .map((frame) => {
       const lines = frame.split("\n");
-      const event = lines.find((l) => l.startsWith("event:"))?.slice(6).trim() ?? "message";
-      const data = lines.find((l) => l.startsWith("data:"))?.slice(5).trim() ?? "";
+      const event =
+        lines
+          .find((l) => l.startsWith("event:"))
+          ?.slice(6)
+          .trim() ?? "message";
+      const data =
+        lines
+          .find((l) => l.startsWith("data:"))
+          ?.slice(5)
+          .trim() ?? "";
       return { event, data };
     });
 }
@@ -83,7 +92,7 @@ describe("POST /v1/chat", () => {
   });
 
   it("rejects an invalid body with 400", async () => {
-    currentStore = await wiredStore();
+    currentStore = (await wiredStore()).store;
     const res = await createApi().request(
       "/v1/chat",
       {
@@ -97,13 +106,13 @@ describe("POST /v1/chat", () => {
   });
 
   it("answers with an SSE stream and persists the trace", async () => {
-    const store = await wiredStore();
+    const { store, token } = await wiredStore();
     currentStore = store;
     const res = await createApi().request(
       "/v1/chat",
       {
         method: "POST",
-        headers: { "content-type": "application/json", authorization: "Bearer tok1" },
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
         body: JSON.stringify({ message: "Apa itu Ayat Kursi?" }),
       },
       env,

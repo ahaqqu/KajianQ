@@ -44,7 +44,13 @@ export function createStubChatProviders(overrides: StubChatProviderOverrides = {
         Effect.succeed({
           text:
             overrides.routerText ??
-            JSON.stringify({ intent: "factual", subQueries: ["q"], madzhab: "", grade: "", textLayer: "" }),
+            JSON.stringify({
+              intent: "factual",
+              subQueries: ["q"],
+              madzhab: "",
+              grade: "",
+              textLayer: "",
+            }),
           cost: cost("stub-router", 1),
         }),
     },

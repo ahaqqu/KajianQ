@@ -22,4 +22,9 @@ export type RetrievalLike = {
 };
 
 /** Any trace event shape (kind-discriminated) the harness inspects. */
-export type TraceEventLike = RetrievalLike;
+export type TraceEventLike = {
+  kind: string;
+  stage?: string;
+  detail?: { chunks?: ChunkRefLike[]; purpose?: string };
+  at?: number;
+};

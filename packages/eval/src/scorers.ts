@@ -1,4 +1,4 @@
-import type { ChunkRefLike, RetrievalLike } from "./harness-types";
+import type { ChunkRefLike, RetrievalLike, TraceEventLike } from "./harness-types";
 
 /**
  * Deterministic scorers (#8, spec §3.7): retrieval recall, citation validity,
@@ -58,7 +58,7 @@ export function refusalCorrectness(
  * refusal markers.
  */
 export function detectRefusal(
-  events: readonly { kind: string }[],
+  events: readonly TraceEventLike[],
   answerText: string,
   refusalMarkers: readonly string[],
 ): boolean {
