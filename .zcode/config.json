@@ -2,9 +2,7 @@
   "hooks": {
     "enabled": true,
     "events": {
-      "PreToolUse": [
-        
-      ],
+      "PreToolUse": [],
       "PostToolUse": [
         {
           "matcher": "Agent",
@@ -12,9 +10,7 @@
             {
               "type": "process",
               "command": "bun",
-              "args": [
-                "${ZCODE_PROJECT_DIR}/scripts/agent-usage-metadata/hook.mjs"
-              ],
+              "args": ["${ZCODE_PROJECT_DIR}/scripts/agent-usage-metadata/hook.mjs"],
               "enabled": true,
               "timeoutMs": 30000,
               "statusMessage": "Recording subagent token usage (dispatch completed)"
@@ -27,9 +23,7 @@
             {
               "type": "process",
               "command": "bun",
-              "args": [
-                "${ZCODE_PROJECT_DIR}/scripts/agent-usage-metadata/hook.mjs"
-              ],
+              "args": ["${ZCODE_PROJECT_DIR}/scripts/agent-usage-metadata/hook.mjs"],
               "enabled": true,
               "timeoutMs": 30000,
               "statusMessage": "Recording subagent token usage (result collected)"
@@ -37,8 +31,7 @@
           ]
         }
       ],
-      "PostToolUseFailure": [
-      ]
+      "PostToolUseFailure": []
     }
   }
 }

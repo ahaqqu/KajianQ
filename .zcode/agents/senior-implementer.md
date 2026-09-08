@@ -1,6 +1,6 @@
 ---
 name: "senior-implementer"
-description: "Senior implementer for the manager-orchestrated agentic workflow. Use for tickets the manager assesses as hard, or tickets explicitly labeled for high-reasoning implementation (e.g. `model:high`) — these carry correctness/trust invariants that fail silently."
+description: "Senior implementer for the manager-orchestrated agentic workflow. Use for tickets the manager assesses as hard, or tickets explicitly labeled for high-reasoning implementation (e.g. `model:high`) — these carry correctness/trust invariants that fail silently. Manager dispatch must honor `model:high` labels — never downgrade."
 color: green
 model: "custom:d5585e04-940a-41f6-a9ec-320bb4fccd7e:glm-5.3-flash%3Acloud"
 thoughtLevel: high
@@ -37,6 +37,13 @@ in `guided-implementation` (implement → handoff → test loop → report):
 - **Checkpoint commit at every test-green point.** The moment any gate passes
   locally (a test file, typecheck, lint), commit. Never leave the whole effort
   uncommitted while you keep iterating.
+- **Context budget handoff.** Each phase runs under the hard budget in
+  `.zcode/agents/README.md` (~150k billed input tokens or ~150 requests). When
+  the budget is hit, checkpoint, push, and hand off to a fresh scoped context
+  or back to the manager — do not continue in a bloated context.
+- **Stuck reports.** If the loop is stuck, commit your work, then report a
+  stuck-report to the manager using the canonical format in `.zcode/agents/README.md`.
+  A stuck report is never a substitute for the completion criterion.
 
 ## Dispatch authorization
 

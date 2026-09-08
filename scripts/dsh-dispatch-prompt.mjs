@@ -28,13 +28,7 @@ const ROLES_DIR = join(import.meta.dir, "..", ".zcode", "agents");
 /** The manager's role set. The role argument is validated against this list —
  * a dispatch prompt carries commit/push/PR authority, so it is assembled only
  * from a known role file, never from an arbitrary path. */
-const ROLES = new Set([
-  "implementer",
-  "senior-implementer",
-  "fixer",
-  "reviewer",
-  "assistant-manager",
-]);
+const ROLES = new Set(["implementer", "senior-implementer", "fixer", "reviewer"]);
 
 const argv = process.argv.slice(2);
 function argOf(flag) {

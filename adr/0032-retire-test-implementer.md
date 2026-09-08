@@ -31,6 +31,8 @@ The `model:high` flow split implementation and test authorship between `senior-i
 - **Fresh senior context for tests.** Rejected: still a handoff and still the same model; the real cost is coordination overhead, not author identity.
 - **Keep test-implementer but require stronger briefs.** Rejected: the owner observed that the overhead was structural, not a brief-quality problem.
 
+## Related simplifications
+
 ## Evidence of acceptance
 
 - `test-implementer.md` deleted; senior-implementer.md no longer references it; manager skill dispatch table removes A′.

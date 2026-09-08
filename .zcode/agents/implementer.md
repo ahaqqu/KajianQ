@@ -23,6 +23,13 @@ in `guided-implementation` (implement → handoff → test loop → report):
 - **Checkpoint commit at every test-green point.** The moment any gate passes
   locally (a test file, typecheck, lint), commit. Never leave the whole effort
   uncommitted while you keep iterating.
+- **Context budget handoff.** Each phase runs under the hard budget in
+  `.zcode/agents/README.md` (~150k billed input tokens or ~150 requests). When
+  the budget is hit, checkpoint, push, and hand off to a fresh scoped context
+  or back to the manager — do not continue in a bloated context.
+- **Stuck reports.** If the loop is stuck, commit your work, then report a
+  stuck-report to the manager using the canonical format in `.zcode/agents/README.md`.
+  A stuck report is never a substitute for the completion criterion.
 
 ## Dispatch authorization
 

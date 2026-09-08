@@ -16,15 +16,15 @@ Routing thermos review findings back to the original implementer for fix has bee
    - Post a threaded reply on the original review comment: `accept` or `reject` plus one-sentence reasoning.
    - Apply accepted fixes.
    - Keep CI green.
-4. **Rejected items require evidence.** If the fixer rejects a High-priority finding, it must cite a file:line mechanism or request assistant-manager fact-finding. The manager adjudicates.
+4. **Rejected items require evidence.** If the fixer rejects a High-priority finding, it must cite a concrete `file:line` mechanism. The manager adjudicates.
 5. **Worktree handoff.** The fixer works in the same PR branch. It either reattaches the original implementer's worktree (`/tmp/wt-<branch>`) or adds its own fresh worktree from the existing branch. The manager owns cleanup after merge/close, per the existing isolation rule.
 
 ## Consequences
 
 - Review feedback gets a fresh pair of eyes with no implementation sunk cost.
 - The original implementer is freed to start the next task sooner.
-- The fixer may need extra context on _why_ a change was made. It is responsible for reading commit messages and the PR description; the manager can dispatch the assistant-manager if history is unclear.
-- Role-separated GitHub identities (ADR-0025) now include `fixer`.
+- The fixer may need extra context on _why_ a change was made. It is responsible for reading commit messages and the PR description.
+- Role-separated GitHub identities (ADR-0025) are retired as part of this simplification.
 
 ## Alternatives considered
 

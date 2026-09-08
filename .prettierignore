@@ -1,18 +1,12 @@
-# Byte-exact copies of source data (AGENTS.md data-integrity rules) —
-# formatters must never touch them. These are the only byte-exact fixture
-# dirs in the repo; hand-written test data elsewhere stays linted/formatted.
-packages/kajianq-domain/src/fixtures/
-scripts/role-gh-identity/fixtures/
-scripts/iteration-guardrail/fixtures/
+# Build outputs
+apps/web/dist/
+packages/*/dist/
 
-# Out of Oxfmt's corpus by parser absence (vp fmt --check bun.lock matches
-# nothing) — commented entry kept as the marker if that ever changes; lint
-# excludes it as well.
-# bun.lock
+# Generated files
+apps/api/.mf/
 
-# Harness config is project-owned (ADR-0030).
-.zcode/
-
-# Frozen history (AGENTS.md: "INITIAL_IDEA.md is frozen history — never
-# update it"). Formatting counts as an update; keep it byte-identical.
+# Frozen historical documents
 INITIAL_IDEA.md
+
+# Imported data fixtures (byte-exact)
+packages/kajianq-domain/src/fixtures/*.json

@@ -43,7 +43,7 @@ Webhook idempotency (same payload twice = same state as once) is a mandatory pro
 
 ### Unit tests (Vitest)
 
-- Every business logic module, Valibot schema, and adapter implementation gets one; write them in the test phase, once the module exists (see `guided-implementation` phase boundaries). On `model:high` tickets the senior-implementer writes tests as part of the same run; there is no separate test-implementer role.
+- Every business logic module, Valibot schema, and adapter implementation gets one; write them in the test phase, once the module exists (see `guided-implementation` phase boundaries). On `model:high` tickets the senior-implementer writes tests as part of the same run.
 - Tests live beside the module they test: `src/foo.ts` → `src/foo.test.ts`.
 - Mock at adapter boundaries, not at function boundaries — the adapter interface is the test seam (see the rate-limiter exemplar).
 

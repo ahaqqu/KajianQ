@@ -18,7 +18,6 @@
     "size-limit": "size-limit",
     "agentic-limits": "bun scripts/check-agentic-limits.mjs",
     "worktree:clean": "bun scripts/worktree-cleanup.mjs",
-    "dsh:preflight": "bun scripts/dsh-pin-check.mjs",
     "dsh:prompt": "bun scripts/dsh-dispatch-prompt.mjs",
     "openapi:check": "bun scripts/openapi-check.mjs",
     "db:up": "bun packages/infra/scripts/db-migrate.mjs up",

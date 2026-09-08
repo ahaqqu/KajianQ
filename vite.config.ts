@@ -5,14 +5,9 @@ import { defineConfig } from "vite-plus";
 // test run via vp. apps/api stays bun + Alchemy (ADR-0027/0028); bun stays
 // package manager and script router.
 //
-// No template-sync manifest exists (ADR-0030); project-owned files are the
 // only ones in the lint/format corpus. Byte-exact fixture dirs are excluded
 // below.
-const byteExactFixtures = [
-  "packages/kajianq-domain/src/fixtures/**",
-  "scripts/role-gh-identity/fixtures/**",
-  "scripts/iteration-guardrail/fixtures/**",
-];
+const byteExactFixtures = ["packages/kajianq-domain/src/fixtures/**"];
 
 export default defineConfig({
   lint: {

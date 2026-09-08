@@ -21,9 +21,3 @@ export {
   type TraceEvent,
   type TraceEventKind,
 } from "./trace";
-export { ZcodeHookPayloadSchema, parseZcodeHookPayload, type ZcodeHookPayload } from "./zcode-hook";
-export {
-  RoleIdentityConfigSchema,
-  parseRoleIdentityConfig,
-  type RoleIdentityConfig,
-} from "./role-identity";
