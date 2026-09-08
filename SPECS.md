@@ -147,7 +147,7 @@ Ingestion and eval harness run as **Bun CLI scripts** (local/CI), never on Worke
 4. **Retrieval** — hybrid: pgvector HNSW dense + tsvector sparse (upgrade to ParadeDB `pg_search` true BM25 if the Neon plan allows) fused with **RRF (k=60)** + hierarchy bonuses (Quran +0.3, Sahih +0.25, Hasan +0.15, Kitab +0.1, Principle +0.2 on analogy).
 5. **Context assembly** — presentation order: Principles → Quran → Hadith → Kitab → concept links; parents contribute LLM summaries so children keep their chapter context.
 6. **Generation** (quality tier) — strict grounding system prompt (v1.2 §9.5 rules carried over), streaming.
-7. **Post-processing** — citation validator (deterministic), grade flags, disclaimer, ID/EN formatting; sampled faithfulness review enqueued.
+7. **Post-processing** — citation validator (deterministic), grade flags, disclaimer, ID/EN formatting; sampled faithfulness review enqueued. **Implemented (#8):** the five stages live in `packages/kajianq-domain/src/chat-*.ts` and are wired through the `runPipeline` runner by `runChatPipelinePromise`; `/v1/chat` (`apps/api/src/routes/chat.ts`) streams SSE from the first release (ADR-0034).
 
 ### 3.4 Providers & default model mix (2026-08, ADR-0009)
 
@@ -174,7 +174,7 @@ Carried over from v1.2 §5 with changes:
 - **New:** `aligned_pairs` — one row per aligned (Arabic, Indonesian) ayah pair (`pair_key`, `citation`, `text_primary`, `text_secondary`, `morphology` JSONB), written by Quran ingestion (issue #6); the seed corpus for #24's concept-graph build. Lives in the domain pack's migrations (`kajianq-domain`), per ADR-0014's amendment.
 - **New:** `answer_traces` (message_id, router intent JSONB, sub_queries JSONB, chunks JSONB `[{id, rrf_score, rank_dense, rank_sparse}]`, model, tokens_in/out, cost_usd, latency_ms) — powers the user Trace panel and admin.
 - **New:** `feedback` (message_id, rating, anchor_type `answer|chunk|citation|translation|grade`, anchor_id, category, free_text, status `pending|accepted|rejected`, created_at).
-- **New:** `golden_questions`, `eval_runs`, `eval_results` — Golden Set + harness results.
+- **New:** `golden_questions`, `eval_runs`, `eval_results` — Golden Set + harness results. **Implemented (#8):** the eval ledger read/write methods (`insertEvalRun`, `insertEvalResult`, `getEvalRun`, `listEvalRuns`, `getEvalResultsByRun`) are on the `RagStore` seam (`rag-store-neon-eval.ts`); per-question outcomes carry the @app/contracts `EvalResultOutcome` JSONB verbatim, and `question_id` stays a loose reference to the product's `golden_questions` table.
 - **New:** `model_configs` — registry of provider/model/role assignments (config files remain source of truth; table mirrors for admin display).
 
 ### 3.6 Admin (v1 scope)
@@ -189,9 +189,9 @@ Prompt/model config stays in files, reviewed via PRs — no UI editing in v1.
 
 ### 3.7 Integration testing (real, per notes.md)
 
-- **Golden Set**: ~50–100 ID/EN questions with expected source types, required citations, known traps (dhaif hadith, cross-madzhab differences, untranslated kitab, refusal cases).
-- **Metrics**: retrieval recall, citation validity (deterministic), faithfulness (cross-vendor judge).
-- **Cadence**: full suite gates every release + nightly; 5–10 query smoke per PR on free tier. Cost-capped; results in admin. Template's unit/property/BDD gates remain unchanged.
+- **Golden Set**: ~50–100 ID/EN questions with expected source types, required citations, known traps (dhaif hadith, cross-madzhab differences, untranslated kitab, refusal cases). **Implemented (#8):** `golden-set-v0` — 20 questions (17 ID, 2 refusal, 1 dhaif trap), Quran+hadith scope only until kitab ingestion lands; fixture at `packages/kajianq-domain/fixtures/golden-set-v0.json`, `status: "v0-draft"` until the owner signs the content off (the #8 curation gate is `model:plus-human`).
+- **Metrics**: retrieval recall, citation validity (deterministic), faithfulness (cross-vendor judge). **Implemented (#8):** recall is scored from the served pipeline's persisted answer trace (`retrieval` events), citation validity and refusal correctness are deterministic; the cross-vendor judge role is wired as the pipeline reviewer, and a standalone faithfulness judge over golden answers remains a later step. See ADR-0034.
+- **Cadence**: full suite gates every release + nightly; 5–10 query smoke per PR on free tier. Cost-capped; results in admin. Template's unit/property/BDD gates remain unchanged. **Implemented (#8):** `bun run eval:run` (`packages/eval/scripts/eval-run.mjs`) — hard `EVAL_BUDGET_MICRO_USD` cap covering harness + pipeline spend, per-question rows in `eval_results`, aggregate `EvalRunReport` in `eval_runs`.
 
 ---
 
@@ -321,6 +321,7 @@ Mitigations: top-k discipline (8–12 chunks, not 20), prompt caching for the st
 | `adr/0031` | Review feedback owned by a dedicated `fixer` role; fresh context accepts/rejects each thermos item and applies accepted fixes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `adr/0032` | Retire `senior-implementer`; `senior-implementer` writes core code and tests in one run on `model:high` tickets                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `adr/0033` | Reviewer absorbs both thermos passes (security/correctness + maintainability) to fit the three-concurrent-session provider limit                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `adr/0034` | Eval harness scores retrieval recall from persisted answer traces (no re-run), one `EVAL_BUDGET_MICRO_USD` accumulator caps harness + pipeline spend with fail-closed abort, and `/v1/chat` streams SSE (`meta`/`delta`/`done`) from day one — the eval client collapses the same stream the PWA consumes (#8)                                                                                                                                                                                                                                                                                                                                                                                           |
 
 Domain vocabulary: `CONTEXT.md`. Workflow after this spec: `to-spec` → `to-tickets` per the template's agentic pipeline.
 

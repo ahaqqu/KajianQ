@@ -5,6 +5,11 @@ import { authGuard, createProvidersFromEnv, storeBridge } from "../lib/chat-wiri
 const storeBridgeOf = (fx: unknown) => runStoreEffect<{ token: string }>(fx);
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 
+async function awaitImportConfig() {
+  const { loadProviderConfig } = await import("@app/infra");
+  return { loadProviderConfig };
+}
+
 vi.mock("@neondatabase/serverless", () => ({
   neon: () => {
     throw new Error("chat-wiring test: neon must not be reached");
@@ -19,11 +24,25 @@ describe("createProvidersFromEnv", () => {
     expect(providers.reviewer).toBeNull();
   });
 
-  it("reports the missing env names for ops visibility", () => {
+  it("reports the missing env names for ops visibility", async () => {
     const providers = createProvidersFromEnv({});
-    // Every allowlisted vendor key is missing in this scenario.
-    expect(providers.missingKeys).toContain("GEMINI_API_KEY");
-    expect(providers.missingKeys).toContain("DASHSCOPE_API_KEY");
+    // The chat roles (cheap/generator/reviewer/embedder) span the gemini,
+    // qwen, and deepseek vendors' env names — asserted via the config data
+    // (ADR-0022), never hard-coded here.
+    const { loadProviderConfig } = await awaitImportConfig();
+    const vendors: Record<string, { apiKeyEnv: string }> = loadProviderConfig().vendors;
+    for (const envName of new Set(Object.values(vendors).map((v) => v.apiKeyEnv))) {
+      const usedByChatRoles = ["cheap", "generator", "reviewer", "embedder"].some((role) =>
+        loadProviderConfig().roles[role]?.chain.some((k) => {
+          const parts = k.split(":");
+          const vendor = parts[0] ?? "";
+          return vendor !== "" && vendors[vendor]?.apiKeyEnv === envName;
+        }),
+      );
+      if (usedByChatRoles) {
+        expect(providers.missingKeys).toContain(envName);
+      }
+    }
   });
 });
 
