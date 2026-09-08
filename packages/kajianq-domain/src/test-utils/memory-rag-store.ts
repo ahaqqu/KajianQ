@@ -25,6 +25,15 @@ export function createMemoryRagStore(): RagStore & {
   allParents: () => DocParentInsert[];
   /** All stored aligned pairs (test introspection). */
   allPairs: () => AlignedPairInsert[];
+  /** All persisted answer traces keyed by message id (test introspection). */
+  allTraces: () => Map<string, unknown>;
+  /** All persisted chat messages (test introspection, insertion order). */
+  allChatMessages: () => readonly {
+    sessionId: string;
+    role: string;
+    content: string;
+    answerTraceId: string | null;
+  }[];
   /** All stored eval results (test introspection, in insertion order). */
   allEvalResults: () => readonly {
     id: string;
@@ -44,6 +53,12 @@ export function createMemoryRagStore(): RagStore & {
   const children = new Map<string, DocChildInsert & { id: string }>();
   const childByPos = new Map<string, string>();
   const pairs = new Map<string, AlignedPairInsert & { id: string }>();
+  const traces = new Map<string, unknown>();
+  const sessions = new Map<string, string>();
+  const chatMessages = new Map<
+    string,
+    { sessionId: string; role: string; content: string; answerTraceId: string | null }
+  >();
   const evalRuns = new Map<string, { label: string | null; report: unknown; createdAt: number }>();
   const evalResults = new Map<
     string,
@@ -128,23 +143,50 @@ export function createMemoryRagStore(): RagStore & {
         return rows satisfies SimilarChild[];
       });
     },
-    insertAnswerTrace() {
-      return Effect.die(new Error("not needed in ingestion tests"));
+    insertAnswerTrace(input) {
+      return Effect.sync(() => {
+        traces.set(input.messageId, input.trace);
+        return input.trace.id;
+      });
     },
-    getAnswerTraceByMessage() {
-      return Effect.succeed(null);
+    getAnswerTraceByMessage(messageId) {
+      return Effect.succeed((traces.get(messageId) as never) ?? null);
     },
-    createChatSession() {
-      return Effect.die(new Error("not needed in ingestion tests"));
+    createChatSession(input) {
+      return Effect.sync(() => {
+        const id = `sess${(seq += 1)}`;
+        sessions.set(id, input.userId);
+        return id;
+      });
     },
-    insertChatMessage() {
-      return Effect.die(new Error("not needed in ingestion tests"));
+    insertChatMessage(input) {
+      return Effect.sync(() => {
+        const id = `msg${(seq += 1)}`;
+        chatMessages.set(id, {
+          sessionId: input.sessionId,
+          role: input.role,
+          content: input.content,
+          answerTraceId: input.answerTraceId ?? null,
+        });
+        return id;
+      });
     },
     createSession() {
-      return Effect.die(new Error("not needed in ingestion tests"));
+      const minted = {
+        userId: `user${(seq += 1)}`,
+        sessionId: `s${(seq += 1)}`,
+        token: `tok${(seq += 1)}`,
+        expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
+      };
+      return Effect.sync(() => {
+        sessions.set(minted.sessionId, minted.userId);
+        return minted;
+      });
     },
-    resolveUserId() {
-      return Effect.succeed(null);
+    resolveUserId(token) {
+      // Fixed test token → the first minted user; anything else unknown.
+      const userId = token === "tok1" ? ([...sessions.values()][0] ?? null) : null;
+      return Effect.sync(() => userId);
     },
     deleteUserCascade() {
       return Effect.void;
@@ -201,6 +243,8 @@ export function createMemoryRagStore(): RagStore & {
     allChildren: () => [...children.values()],
     allParents: () => [...parents.values()],
     allPairs: () => [...pairs.values()],
+    allTraces: () => traces,
+    allChatMessages: () => [...chatMessages.values()],
     allEvalResults: () => [...evalResults.values()],
     cosineSearch: (track, query, limit) =>
       Effect.runPromise(store.similaritySearch(track, query, { limit })),

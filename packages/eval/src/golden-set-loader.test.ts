@@ -9,8 +9,8 @@ const validSet = {
       id: "q1",
       question: "test question",
       language: "id",
-      expectedSourceTypes: ["quran"],
-      requiredCitations: ["QS. 1:1"],
+      expectedSourceTypes: ["source-a"],
+      requiredCitations: ["label-1"],
       expectedBehavior: "answer",
     },
   ],
@@ -78,13 +78,13 @@ describe("assertV0Shape", () => {
         q({ language: "id", tags: [] }),
         q({ language: "en", tags: [] }),
         q({ language: "id", expectedBehavior: "refuse", tags: [] }),
-        q({ language: "id", tags: ["dhaif-trap"] }),
+        q({ language: "id", tags: ["trap-x"] }),
       ],
     });
     // Lower the bar for the unit test via the parameterized knobs.
     expect(() =>
       assertV0Shape(set, {
-        trapTag: "dhaif-trap",
+        trapTag: "trap-x",
         minIndonesian: 3,
         minRefusals: 1,
         minTraps: 1,
@@ -99,7 +99,7 @@ describe("assertV0Shape", () => {
       status: "v0-draft",
       questions: [q({ language: "en", tags: [] })],
     });
-    expect(() => assertV0Shape(set, { trapTag: "dhaif-trap", minQuestions: 1 })).toThrow(
+    expect(() => assertV0Shape(set, { trapTag: "trap-x", minQuestions: 1 })).toThrow(
       /Indonesian/,
     );
   });
@@ -111,7 +111,7 @@ describe("assertV0Shape", () => {
       questions: [q({ language: "id", tags: [] })],
     });
     expect(() =>
-      assertV0Shape(set, { trapTag: "dhaif-trap", minIndonesian: 0, minRefusals: 0, minTraps: 1, minQuestions: 1 }),
+      assertV0Shape(set, { trapTag: "trap-x", minIndonesian: 0, minRefusals: 0, minTraps: 1, minQuestions: 1 }),
     ).toThrow(/trap/);
   });
 
@@ -122,7 +122,7 @@ describe("assertV0Shape", () => {
       questions: [q({ language: "id", tags: [] })],
     });
     expect(() =>
-      assertV0Shape(set, { trapTag: "dhaif-trap", minIndonesian: 0, minRefusals: 1, minTraps: 0, minQuestions: 1 }),
+      assertV0Shape(set, { trapTag: "trap-x", minIndonesian: 0, minRefusals: 1, minTraps: 0, minQuestions: 1 }),
     ).toThrow(/refusal/);
   });
 });

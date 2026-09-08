@@ -143,5 +143,6 @@ export {
   buildChatStages,
   runChatPipeline,
   runChatPipelinePromise,
+  runStoreEffect,
   type ChatPipelineDeps,
 } from "./chat-pipeline";

@@ -92,6 +92,15 @@ export function runChatPipeline(
  * engine's effect version). Rejects with the typed `StageError`; a failed
  * run's trace events still reach `onCost`/`onFailedTrace` via `withCosts`.
  */
+
+/**
+ * Run one Effect-signatured store call to a promise — the single effect
+ * bridge the HTTP edge may use (the domain owns the engine's effect runtime,
+ * so an app-side `Effect.runPromise` would run a foreign-runtime value).
+ */
+export function runStoreEffect<A>(effect: unknown): Promise<A> {
+  return Effect.runPromise(effect as Parameters<typeof Effect.runPromise>[0]) as Promise<A>;
+}
 export function runChatPipelinePromise(
   deps: ChatPipelineDeps,
   query: { text: string; filters?: import("./filters").KajianQFilters },

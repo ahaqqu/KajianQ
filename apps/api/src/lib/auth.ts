@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { runStoreEffect } from "@app/kajianq-domain";
 import type { RagStore } from "@app/infra";
 import type { Context } from "hono";
 import type { Authed, ApiEnv } from "../env";
@@ -20,7 +20,7 @@ export async function authGuard(
   if (token === "") {
     return c.json({ error: "unauthorized" }, 401);
   }
-  const userId = (await Effect.runPromise(store.resolveUserId(token) as never)) as string | null;
+  const userId = (await runStoreEffect(store.resolveUserId(token))) as string | null;
   if (userId === null) {
     return c.json({ error: "unauthorized" }, 401);
   }

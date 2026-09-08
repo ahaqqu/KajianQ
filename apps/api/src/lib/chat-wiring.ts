@@ -1,5 +1,5 @@
 import * as neon from "@neondatabase/serverless";
-import { Effect } from "effect";
+import { runStoreEffect } from "@app/kajianq-domain";
 import { createRagStore, loadProviderConfig, resolveRole, type RagStore } from "@app/infra";
 export { authGuard } from "./auth";
 
@@ -81,7 +81,7 @@ export function createProvidersFromEnv(env: Record<string, string | undefined>):
  * promise-shaped helpers only.
  */
 export function storeBridge(_store: RagStore): (effect: unknown) => Promise<unknown> {
-  return (effect) => Effect.runPromise(effect as Effect.Effect<never, never>);
+  return (effect) => runStoreEffect(effect);
 }
 
 /** The wiring bundle a chat request needs (built per request from bindings). */

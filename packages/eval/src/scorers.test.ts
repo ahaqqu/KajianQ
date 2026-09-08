@@ -14,28 +14,28 @@ const question: GoldenQuestion = {
   id: "gs-test-1",
   question: "test question",
   language: "id",
-  expectedSourceTypes: ["quran", "hadith"],
-  requiredCitations: ["QS. 2:255"],
+  expectedSourceTypes: ["source-a", "source-b"],
+  requiredCitations: ["label-1"],
   expectedBehavior: "answer",
 };
 
 describe("retrievalRecall", () => {
   it("scores 1 when every expected source type was retrieved", () => {
     const recall = retrievalRecall(
-      ["quran", "hadith"],
+      ["source-a", "source-b"],
       [{ id: "c1" }, { id: "c2" }],
-      (id) => (id === "c1" ? "quran" : "hadith"),
+      (id) => (id === "c1" ? "source-a" : "source-b"),
     );
     expect(recall).toBe(1);
   });
 
   it("scores partially when only some expected types were retrieved", () => {
-    const recall = retrievalRecall(["quran", "hadith"], [{ id: "c1" }], () => "quran");
+    const recall = retrievalRecall(["source-a", "source-b"], [{ id: "c1" }], () => "source-a");
     expect(recall).toBe(0.5);
   });
 
   it("scores 0 when nothing expected was retrieved", () => {
-    const recall = retrievalRecall(["quran"], [{ id: "c1" }], () => "kitab");
+    const recall = retrievalRecall(["source-a"], [{ id: "c1" }], () => "source-c");
     expect(recall).toBe(0);
   });
 
@@ -47,11 +47,11 @@ describe("retrievalRecall", () => {
 
 describe("citationValidity", () => {
   it("scores 1 when all required citations appear in the answer", () => {
-    expect(citationValidity(["QS. 2:255", "HR. Bukhari no. 1"], "… QS. 2:255 … HR. Bukhari no. 1 …")).toBe(1);
+    expect(citationValidity(["label-1", "label-2"], "… label-1 … label-2 …")).toBe(1);
   });
 
   it("scores partially when a citation is missing", () => {
-    expect(citationValidity(["QS. 2:255", "HR. Bukhari no. 1"], "QS. 2:255 only")).toBe(0.5);
+    expect(citationValidity(["label-1", "label-2"], "label-1 only")).toBe(0.5);
   });
 
   it("scores 1 when no citations are required", () => {
@@ -91,8 +91,8 @@ describe("scoreQuestion", () => {
   };
 
   it("passes a fully correct answer", () => {
-    const outcome = scoreQuestion(question, "… QS. 2:255 …", [retrievalEvent], {
-      sourceTypeOf: (id) => (id === "c1" ? "quran" : "hadith"),
+    const outcome = scoreQuestion(question, "… label-1 …", [retrievalEvent], {
+      sourceTypeOf: (id) => (id === "c1" ? "source-a" : "source-b"),
     });
     expect(outcome.passed).toBe(true);
     expect(outcome.retrievalRecall).toBe(1);
@@ -101,14 +101,14 @@ describe("scoreQuestion", () => {
 
   it("fails when the required citation is missing", () => {
     const outcome = scoreQuestion(question, "no citation here", [retrievalEvent], {
-      sourceTypeOf: () => "quran",
+      sourceTypeOf: () => "source-a",
     });
     expect(outcome.passed).toBe(false);
     expect(outcome.citationValidity).toBe(0);
   });
 
   it("scores recall 0 when no retrieval event exists in the trace", () => {
-    const outcome = scoreQuestion(question, "QS. 2:255", [], {
+    const outcome = scoreQuestion(question, "label-1", [], {
       sourceTypeOf: () => undefined,
     });
     expect(outcome.retrievalRecall).toBe(0);
