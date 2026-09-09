@@ -51,9 +51,13 @@ bypasses the wrapper.
 ## Implementer-class operating rules
 
 The implementer-class roles follow the phase-boundary discipline from the
-`guided-implementation` skill. This section is the canonical contract the
-manager skill and the role files reference; role files point here rather
-than restating it.
+`guided-implementation` skill. Each role file is **self-contained**: it
+carries the full operating contract inline — phase boundaries, budget
+handoff, stuck-report format, workspace isolation, dispatch authorization —
+so a dispatched agent never needs a second file read. This section documents
+the same contract for the manager and human readers; the role files remain
+the operative copy. If you change the contract, change every role file in
+the same commit.
 
 ### Stuck-report format (canonical)
 
