@@ -1,6 +1,12 @@
 import * as neon from "@neondatabase/serverless";
 import { runStoreEffect } from "@app/kajianq-domain";
-import { createRagStore, loadProviderConfig, resolveRole, type RagStore } from "@app/infra";
+import {
+  createRagStore,
+  loadProviderConfig,
+  resolveRole,
+  type ProviderConfig,
+  type RagStore,
+} from "@app/infra";
 export { authGuard } from "./auth";
 
 /**
@@ -13,14 +19,30 @@ export { authGuard } from "./auth";
  */
 
 /**
- * Build the RagStore from the `DATABASE_URL` binding. Throws (config-class)
- * when the binding is missing — the route answers 503 rather than silently
- * degrading.
+ * A misconfigured chat wiring (thermo-review A7): typed so the route maps
+ * configuration failures to 503 while anything else falls through to the
+ * app's typed error handler — a bare `Error` + catch-all 503 used to mask
+ * adapter bugs as "not configured".
+ */
+export class ChatConfigError extends Error {
+  readonly missing?: string;
+  constructor(msg: string, missing?: string) {
+    super(msg);
+    this.name = "ChatConfigError";
+    if (missing !== undefined) this.missing = missing;
+  }
+}
+
+/**
+ * Build the RagStore from the `DATABASE_URL` binding. Throws a typed
+ * `ChatConfigError` (config-class) when the binding is missing — the route
+ * answers 503 rather than silently degrading; anything else propagates to
+ * the typed error handler.
  */
 export function createRagStoreFromEnv(env: { DATABASE_URL?: string }): RagStore {
   const url = env.DATABASE_URL;
   if (!url || url.trim() === "") {
-    throw new Error("chat route: DATABASE_URL is not bound");
+    throw new ChatConfigError("chat route: DATABASE_URL is not bound", "DATABASE_URL");
   }
   const sql = neon.neon(url);
   return createRagStore("neon", sql);
@@ -53,13 +75,20 @@ function roleHasKey(
 }
 
 /**
+ * The checked-in provider config is import-bounded and immutable at runtime
+ * (thermo-review B7): parse and validate it once at module load; the
+ * per-request path only resolves roles against the cached config.
+ */
+const CACHED_PROVIDER_CONFIG: ProviderConfig = loadProviderConfig();
+
+/**
  * Resolve the chat pipeline's provider roles from the checked-in config and
  * the Worker bindings. Roles without any keyed candidate resolve to a
  * Provider whose calls fail with a clear error — wiring never branches on
  * key presence.
  */
 export function createProvidersFromEnv(env: Record<string, string | undefined>): ChatProviders {
-  const config = loadProviderConfig();
+  const config = CACHED_PROVIDER_CONFIG;
   const missing = new Set<string>();
   const resolve = (role: string) => {
     const { provider, missingKeys } = resolveRole(config, role, { env });

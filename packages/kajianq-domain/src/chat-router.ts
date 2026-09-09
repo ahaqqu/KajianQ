@@ -28,13 +28,27 @@ export type RouterProvider = {
   }): Effect.Effect<{ text: string; cost: CostRecord }, unknown>;
 };
 
-/** Extract the first JSON object embedded in a model reply. */
+/**
+ * Extract the router LLM's JSON object (thermo-review C2): the reply must
+ * yield an object carrying the contract's keys — the old first-`{`-to-last-`}`
+ * slice accepted any stray-braced prose. `undefined` when extraction fails so
+ * the caller records the fallback instead of silently degrading.
+ */
 export function extractJsonObject(text: string): unknown {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
   if (start < 0 || end <= start) return undefined;
   try {
-    return JSON.parse(text.slice(start, end + 1));
+    const parsed: unknown = JSON.parse(text.slice(start, end + 1));
+    if (
+      parsed !== null &&
+      typeof parsed === "object" &&
+      "intent" in parsed &&
+      "subQueries" in parsed
+    ) {
+      return parsed;
+    }
+    return undefined;
   } catch {
     return undefined;
   }
@@ -56,15 +70,22 @@ export function createKajianQRouter(provider: RouterProvider): Router<KajianQFil
             })
             .pipe(Effect.mapError((cause) => ({ cause })));
           const call: CostRecord = reply.cost;
+          const extracted = extractJsonObject(reply.text);
           const parsed = Schema.decodeUnknownEither(RouterOutputSchema)(
-            extractJsonObject(reply.text),
+            extracted,
           );
           const out: RouterOutput =
             parsed._tag === "Right"
               ? parsed.right
-              : // Ungrounded model output falls back to a single factual
-                // sub-query over the raw question — retrieval still runs.
-                { intent: "factual", subQueries: [query.text] };
+              : // C2: an unparseable/mis-keyed router reply is recorded, not
+                // silently degraded — the fallback single factual sub-query
+                // is visible in the trace's `subquery` event.
+                run.record({
+                  stage: "router",
+                  kind: "subquery",
+                  detail: { text: query.text },
+                  at: run.now(),
+                }) ?? { intent: "factual", subQueries: [query.text] };
           run.record({
             stage: "router",
             kind: "llm_call",

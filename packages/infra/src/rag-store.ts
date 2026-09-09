@@ -185,6 +185,13 @@ export interface RagStore {
     metadata?: Record<string, unknown>;
   }): Effect.Effect<string, StoreError>;
 
+  /**
+   * Resolve a chat session's owning user id; null when the session does not
+   * exist (thermo-review A6: the chat route validates that a client-supplied
+   * `sessionId` belongs to the authenticated user before appending).
+   */
+  getChatSessionUser(sessionId: string): Effect.Effect<string | null, StoreError>;
+
   insertChatMessage(input: {
     sessionId: string;
     role: string;

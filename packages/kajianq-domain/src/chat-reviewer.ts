@@ -75,6 +75,7 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
             cost: reply.cost,
             at: run.now(),
           });
+          const verdict = parseReviewerVerdict(reply.text);
           run.record({
             stage: "reviewer",
             kind: "review",
@@ -82,10 +83,53 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
             at: run.now(),
           });
           void grounded;
+          // Thermo-review B5: the paid cross-vendor verdict actually gates —
+          // a `fail` converts the answer to the grounding insufficiency
+          // refusal (trace `refusal` event, recorded below via the
+          // generator-side convention) instead of being recorded and then
+          // discarded in favor of the deterministic warning alone.
+          if (verdict === "fail") {
+            run.record({
+              stage: "reviewer",
+              kind: "refusal",
+              reason: "reviewer: answer not supported by retrieved evidence",
+              at: run.now(),
+            });
+            return {
+              text: INSUFFICIENT_EVIDENCE_REFUSAL,
+            };
+          }
           return warnIfUngrounded(draft, ungrounded);
         }),
       ),
   };
+}
+
+/**
+ * The reviewer's fail-verdict refusal text — the generator's ID/EN
+ * insufficiency language so downstream refusal detection stays uniform.
+ */
+const INSUFFICIENT_EVIDENCE_REFUSAL = "tidak menemukan dalil yang memadai";
+
+/**
+ * Parse the reviewer LLM's `{"verdict": "pass" | "fail", ...}` reply
+ * (thermo-review B5): unparseable output is treated as `pass` — the
+ * deterministic citation validator still guards — never as silent approval
+ * of a known-bad answer.
+ */
+export function parseReviewerVerdict(text: string): "pass" | "fail" {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    try {
+      const parsed = JSON.parse(text.slice(start, end + 1)) as { verdict?: unknown };
+      if (parsed.verdict === "fail") return "fail";
+      if (parsed.verdict === "pass") return "pass";
+    } catch {
+      // fall through to the default
+    }
+  }
+  return /"verdict"\s*:\s*"fail"/.test(text) ? "fail" : "pass";
 }
 
 /** Surface ungrounded citations as a user-visible warning, never silently. */

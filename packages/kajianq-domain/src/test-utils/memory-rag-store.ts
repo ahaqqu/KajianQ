@@ -160,6 +160,10 @@ export function createMemoryRagStore(): RagStore & {
         return id;
       });
     },
+    // A6: ownership validation for client-supplied session ids.
+    getChatSessionUser(sessionId) {
+      return Effect.succeed(sessions.get(sessionId) ?? null);
+    },
     insertChatMessage(input) {
       return Effect.sync(() => {
         const id = `msg${(seq += 1)}`;

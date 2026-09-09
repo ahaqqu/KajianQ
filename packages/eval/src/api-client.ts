@@ -57,6 +57,11 @@ export async function consumeSseToText(body: ReadableStream<Uint8Array>): Promis
         deltas.push(parsed.data);
       } else if (parsed.event === "meta") {
         const meta = parseChatMeta(parsed.data);
+        if (meta.malformed !== undefined) {
+          // B6: a malformed meta frame is diagnosable, never swallowed —
+          // one bounded stderr warning per malformed frame.
+          console.warn(`eval: malformed SSE meta payload: ${meta.malformed}`);
+        }
         if (meta.messageId) messageId = meta.messageId;
         if (meta.traceId) traceId = meta.traceId;
       }
@@ -66,12 +71,22 @@ export async function consumeSseToText(body: ReadableStream<Uint8Array>): Promis
 }
 
 /** The parsed meta event payload (message/trace ids, null when absent). */
-export function parseChatMeta(data: string): { messageId: string | null; traceId: string | null } {
+export type ChatMetaParse =
+  | { messageId: string | null; traceId: string | null; malformed?: undefined }
+  | { messageId: null; traceId: null; malformed: string };
+
+/**
+ * Parse one `meta` frame payload. Thermo-review B6: a malformed payload is
+ * surfaced (with the raw data) instead of silently swallowed, so an operator
+ * can see why a run scored answers without trace ids.
+ */
+export function parseChatMeta(data: string): ChatMetaParse {
   try {
     const meta = JSON.parse(data) as { messageId?: string; traceId?: string };
     return { messageId: meta.messageId ?? null, traceId: meta.traceId ?? null };
   } catch {
-    return { messageId: null, traceId: null };
+    // Never silently discard: the raw payload rides along (bounded) for logs.
+    return { messageId: null, traceId: null, malformed: data.slice(0, 200) };
   }
 }
 
