@@ -4,9 +4,11 @@ on:
 
 # Project-owned: delegates to scripts/provision-cf.mjs, which runs the Alchemy
 # `--adopt` bootstrap deploys
-# for prod and staging (ADR-0028). The five Worker secrets are passed through
+# for prod and staging (ADR-0028). The Worker secret values are passed through
 # but optional — the stack binds only the ones present (absent = feature
 # disabled — ADR-0028), so the require guard only checks Cloudflare access.
+# NEON_DATABASE_URL becomes the Worker's DATABASE_URL binding (the chat
+# route's store; absent = chat disabled, 503 chat_not_configured).
 # The template's D1-era version was superseded when D1 was stripped (#3) and
 # wrangler retired (ADR-0028).
 permissions:
@@ -33,6 +35,7 @@ jobs:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MOONSHOT_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}
+          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
       - name: Bootstrap Alchemy stages + set deploy URL variables
         run: bun scripts/provision-cf.mjs
         env:
@@ -43,3 +46,4 @@ jobs:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MOONSHOT_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}
+          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}

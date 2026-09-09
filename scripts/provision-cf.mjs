@@ -10,8 +10,9 @@
  * deploy workflow's smoke tests consume.
  *
  * Physical names mirror apps/api/alchemy.run.ts. Requires CLOUDFLARE_API_TOKEN
- * and CLOUDFLARE_ACCOUNT_ID. The five Worker secret values (SENTRY_DSN,
- * DASHSCOPE_API_KEY, DEEPSEEK_API_KEY, GEMINI_API_KEY, MOONSHOT_API_KEY) are
+ * and CLOUDFLARE_ACCOUNT_ID. The Worker secret values (SENTRY_DSN,
+ * DASHSCOPE_API_KEY, DEEPSEEK_API_KEY, GEMINI_API_KEY, MOONSHOT_API_KEY, and
+ * NEON_DATABASE_URL — the chat route's DATABASE_URL binding, ADR-0035) are
  * optional: the stack binds only the ones present in the environment
  * (absent = feature disabled — ADR-0028), so export them or set the same-named
  * GitHub secrets when those features are wanted. The CI bootstrap scripts

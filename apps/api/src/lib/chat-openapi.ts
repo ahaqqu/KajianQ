@@ -15,8 +15,24 @@ export const CHAT_OPENAPI_DESCRIPTION = describeRoute({
       description: "SSE stream of answer deltas",
       content: { "text/event-stream": { schema: resolver(v.any()) } },
     },
+    400: {
+      description: "Invalid request body (invalid_json or invalid_request)",
+      content: { "application/json": { schema: resolver(v.any()) } },
+    },
     401: {
       description: "Unauthorized",
+      content: { "application/json": { schema: resolver(v.any()) } },
+    },
+    404: {
+      description: "Session not found or not owned by the authenticated user",
+      content: { "application/json": { schema: resolver(v.any()) } },
+    },
+    502: {
+      description: "Upstream provider failure (typed engine error channel)",
+      content: { "application/json": { schema: resolver(v.any()) } },
+    },
+    503: {
+      description: "Chat not configured — the DATABASE_URL binding is absent in this environment",
       content: { "application/json": { schema: resolver(v.any()) } },
     },
   },

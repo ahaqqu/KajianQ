@@ -15,9 +15,11 @@ jobs:
       # one-time `bun run deploy:bootstrap` (--adopt takeover + state-store
       # bootstrap) must have been run by an operator first; CI=true makes the
       # state store resolve its credentials from the Cloudflare Secrets Store.
-      # The five secret env vars are optional: the stack binds only the ones
+      # The secret env vars are optional: the stack binds only the ones
       # present (absent = feature disabled — ADR-0028), so the workflows pass
-      # them through unconditionally and stay unchanged when secrets are added.
+      # them through unconditionally and stay unchanged when secrets are
+      # added. NEON_DATABASE_URL becomes the Worker's DATABASE_URL binding;
+      # without it the chat route answers 503 chat_not_configured.
       - run: bun run deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -27,6 +29,7 @@ jobs:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MOONSHOT_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}
+          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
       # Retry logic lives in the reusable composite action (issue #49):
       # Cloudflare edge propagation can lag a few seconds after the deploy
       # returns, so wait and retry rather than failing transiently.
