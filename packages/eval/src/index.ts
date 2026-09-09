@@ -18,6 +18,7 @@ export {
   retrievalRecall,
 } from "./scorers";
 export { Budget, BudgetExceededError, budgetCapFromEnv } from "./budget";
+export { EvalConfigError, loadEvalRunConfig, type EvalRunConfig } from "./eval-config";
 export { consumeSseToText, postChatSse, type ChatSseResult } from "./api-client";
 export {
   runGoldenSet,

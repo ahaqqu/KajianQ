@@ -148,17 +148,20 @@ describe("runGoldenSet", () => {
       latencyMs: 5,
       costMicroUsd: 7,
     };
-    const { deps, getReport } = makeDeps({ traceEvents: () => [
-      { kind: "retrieval", stage: "retriever", detail: { chunks: [{ id: "c1" }] } },
-      { kind: "llm_call", stage: "generator", cost, detail: { purpose: "generate" } },
-    ] });
+    const { deps, getReport } = makeDeps({
+      traceEvents: () => [
+        { kind: "retrieval", stage: "retriever", detail: { chunks: [{ id: "c1" }] } },
+        { kind: "llm_call", stage: "generator", cost, detail: { purpose: "generate" } },
+      ],
+    });
     const result = await runGoldenSet(set, deps);
     const report = getReport() as { costMicroUsd: number; costs: { costMicroUsd: number }[] };
-    // B1: the report's costs come from the traces (2 scored questions hit the
-    // trace; the budget total is the caller's accumulator, still 0 here).
-    expect(report.costs).toHaveLength(2);
+    // B1: the report's costs come from the traces — all three questions
+    // scored (the skip path only fires on transport failure); the budget
+    // total is the caller's accumulator, still 0 here.
+    expect(report.costs).toHaveLength(3);
     expect(report.costs[0]?.costMicroUsd).toBe(7);
-    expect(report.costMicroUsd).toBe(result.results.length * 0);
+    expect(report.costMicroUsd).toBe(0);
   });
 
   it("marks a skipped (transport-failed) question with the explicit skipped flag (C1)", async () => {

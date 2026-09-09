@@ -1,5 +1,11 @@
 import { newRouter } from "../lib/guard";
-import { authGuard, buildChatWiring, sseFrame, ChatConfigError, type ChatWiring } from "../lib/chat-wiring";
+import {
+  authGuard,
+  buildChatWiring,
+  sseFrame,
+  ChatConfigError,
+  type ChatWiring,
+} from "../lib/chat-wiring";
 import { CHAT_OPENAPI_DESCRIPTION, parseChatRequest } from "../lib/chat-openapi";
 import { createLogger } from "@app/infra";
 import { runChatPipelinePromise } from "@app/kajianq-domain";

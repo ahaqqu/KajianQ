@@ -1,9 +1,4 @@
-import type {
-  EvalResultOutcome,
-  EvalRunReport,
-  GoldenQuestion,
-  GoldenSet,
-} from "@app/contracts";
+import type { EvalResultOutcome, EvalRunReport, GoldenQuestion, GoldenSet } from "@app/contracts";
 import { Budget, BudgetExceededError } from "./budget";
 import { citationValidity, detectRefusal, refusalCorrectness, retrievalRecall } from "./scorers";
 import type { CostRecordLike, TraceEventLike } from "./harness-types";

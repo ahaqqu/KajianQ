@@ -166,9 +166,12 @@ describe("budgetCapFromEnv", () => {
   it("parses an integer cap", () => {
     expect(budgetCapFromEnv("5000")).toBe(5000);
   });
-  it("is undefined when unset or empty", () => {
+  it("is undefined when unset (A1: an empty value now fails closed)", () => {
     expect(budgetCapFromEnv(undefined)).toBeUndefined();
-    expect(budgetCapFromEnv("")).toBeUndefined();
+  });
+  it("throws fail-fast on an empty/whitespace value (thermo-review A1)", () => {
+    expect(() => budgetCapFromEnv("")).toThrow(/set but empty/);
+    expect(() => budgetCapFromEnv("   ")).toThrow(/set but empty/);
   });
   it("rejects non-integer or negative caps", () => {
     expect(() => budgetCapFromEnv("1.5")).toThrow();

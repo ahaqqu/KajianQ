@@ -24,18 +24,25 @@ export type EvalRunConfig = {
 /** Thrown when the env is misconfigured; the CLI maps it to a fail-fast exit. */
 export class EvalConfigError extends Error {}
 
+/** Require a set, URL-shaped value with an http(s) scheme (the chat API origin). */
+function requireHttpUrl(name: string, raw: string | undefined): string {
+  const url = requireUrl(name, raw);
+  const scheme = new URL(url).protocol;
+  if (scheme !== "http:" && scheme !== "https:") {
+    throw new EvalConfigError(`${name} must be an http(s) URL, got "${raw}"`);
+  }
+  return url;
+}
+
+/** Require a set, syntactically-valid URL (any scheme — Neon is `postgres:`). */
 function requireUrl(name: string, raw: string | undefined): string {
   if (raw === undefined || raw.trim() === "") {
     throw new EvalConfigError(`${name} is not set`);
   }
-  let parsed: URL;
   try {
-    parsed = new URL(raw);
+    new URL(raw);
   } catch {
     throw new EvalConfigError(`${name} must be a valid URL, got "${raw}"`);
-  }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new EvalConfigError(`${name} must be an http(s) URL, got "${raw}"`);
   }
   return raw;
 }
@@ -59,13 +66,13 @@ function resolveGoldenSetPath(raw: string | undefined): string {
 }
 
 /**
- * Parse and validate the eval run env. Throws `EvalConfigError` naming the
+ * Parse and validate the eval run env (the binder — `process.env` on the
+ * CLI, a fixture object in tests — is passed in: an engine module never
+ * reaches for the ambient `process`). Throws `EvalConfigError` naming the
  * first misconfigured variable; never returns a partially-valid config.
  */
-export function loadEvalRunConfig(
-  env: Record<string, string | undefined> = process.env,
-): EvalRunConfig {
-  const apiBaseUrl = requireUrl("EVAL_API_BASE_URL", env.EVAL_API_BASE_URL);
+export function loadEvalRunConfig(env: Record<string, string | undefined>): EvalRunConfig {
+  const apiBaseUrl = requireHttpUrl("EVAL_API_BASE_URL", env.EVAL_API_BASE_URL);
   const apiToken = requireToken("EVAL_API_TOKEN", env.EVAL_API_TOKEN);
   const neonDatabaseUrl = requireUrl("NEON_DATABASE_URL", env.NEON_DATABASE_URL);
   const rawCap = env.EVAL_BUDGET_MICRO_USD;

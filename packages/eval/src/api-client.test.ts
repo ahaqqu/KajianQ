@@ -57,7 +57,11 @@ describe("parseChatMeta", () => {
       traceId: "t",
     });
   });
-  it("returns nulls for junk input", () => {
-    expect(parseChatMeta("junk")).toEqual({ messageId: null, traceId: null });
+  it("returns nulls + the bounded raw payload for junk input (B6)", () => {
+    expect(parseChatMeta("junk")).toEqual({
+      messageId: null,
+      traceId: null,
+      malformed: "junk",
+    });
   });
 });

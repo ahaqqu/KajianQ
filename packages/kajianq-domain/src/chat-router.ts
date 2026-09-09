@@ -71,21 +71,19 @@ export function createKajianQRouter(provider: RouterProvider): Router<KajianQFil
             .pipe(Effect.mapError((cause) => ({ cause })));
           const call: CostRecord = reply.cost;
           const extracted = extractJsonObject(reply.text);
-          const parsed = Schema.decodeUnknownEither(RouterOutputSchema)(
-            extracted,
-          );
+          const parsed = Schema.decodeUnknownEither(RouterOutputSchema)(extracted);
           const out: RouterOutput =
             parsed._tag === "Right"
               ? parsed.right
               : // C2: an unparseable/mis-keyed router reply is recorded, not
                 // silently degraded — the fallback single factual sub-query
                 // is visible in the trace's `subquery` event.
-                run.record({
+                (run.record({
                   stage: "router",
                   kind: "subquery",
                   detail: { text: query.text },
                   at: run.now(),
-                }) ?? { intent: "factual", subQueries: [query.text] };
+                }) ?? { intent: "factual", subQueries: [query.text] });
           run.record({
             stage: "router",
             kind: "llm_call",

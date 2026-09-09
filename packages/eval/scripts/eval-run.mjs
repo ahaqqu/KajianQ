@@ -26,12 +26,10 @@
  * the staging API to be serving.
  */
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { Effect } from "effect";
 import { neon } from "@neondatabase/serverless";
 import * as app from "@app/infra";
 import * as evalpkg from "@app/eval";
-import { loadEvalRunConfig } from "./eval-config.ts";
 
 function fail(msg) {
   console.error(`eval:run: ${msg}`);
@@ -41,7 +39,7 @@ function fail(msg) {
 // B2: the one validated, typed config seam — no ad hoc process.env reads.
 const config = (() => {
   try {
-    return loadEvalRunConfig(process.env);
+    return evalpkg.loadEvalRunConfig(process.env);
   } catch (err) {
     fail(err instanceof Error ? err.message : String(err));
   }
@@ -56,7 +54,9 @@ console.log(
 // v0 content bar (the trap-tag label is the domain's vocabulary). A2: the
 // path comes from the validated config (EVAL_GOLDEN_SET_PATH), not a
 // hard-coded cross-package URL.
-const fixturePath = resolve(process.cwd(), config.goldenSetPath);
+// A2: the path comes from the validated config; joined against the cwd
+// without a second import (the config guarantees a relative POSIX path).
+const fixturePath = `${process.cwd()}/${config.goldenSetPath}`;
 let fixture;
 try {
   fixture = evalpkg.loadGoldenSetJson(readFileSync(fixturePath, "utf8"), "golden-set-v0.json");
@@ -91,7 +91,8 @@ const REFUSAL_MARKERS = ["tidak menemukan dalil yang memadai", "could not find a
 
 const transport = {
   async ask(question) {
-    if (budget.wouldExceed()) throw new evalpkg.BudgetExceededError(config.budgetCapMicroUsd ?? 0, budget.total);
+    if (budget.wouldExceed())
+      throw new evalpkg.BudgetExceededError(config.budgetCapMicroUsd ?? 0, budget.total);
     const reply = await evalpkg.postChatSse({
       baseUrl: config.apiBaseUrl,
       token: config.apiToken,

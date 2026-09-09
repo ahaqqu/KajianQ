@@ -41,7 +41,7 @@ export function validateCitations(
   // Ungrounded detection: citation-shaped labels (a short "source: ref" form)
   // in the answer that exist in no retrieved chunk. Kept deliberately
   // format-agnostic: a label is anything quoted between citation brackets.
-  for (const match of answer.matchAll(/\[([^\[\]]+)\]/g)) {
+  for (const match of answer.matchAll(/\[([^[\]]+)\]/g)) {
     const label = (match[1] ?? "").trim();
     if (label === "" || known.has(label)) continue;
     if (!ungrounded.includes(label)) ungrounded.push(label);

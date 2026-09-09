@@ -51,7 +51,9 @@ export async function parseChatRequest(
   }
   const parsed = v.safeParse(ChatRequestSchema, body);
   if (!parsed.success) {
-    const detail = parsed.issues.map((i) => `${i.path?.join(".") ?? "<body>"}: ${i.message}`).join("; ");
+    const detail = parsed.issues
+      .map((i) => `${i.path?.join(".") ?? "<body>"}: ${i.message}`)
+      .join("; ");
     log?.warn("chat.body_invalid", { detail: detail.slice(0, 200) });
     return { success: false, error: "invalid_request", detail: detail.slice(0, 200) };
   }
