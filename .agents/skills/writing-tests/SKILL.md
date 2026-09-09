@@ -13,12 +13,13 @@ Generate correct, guardrail-compliant tests at the right layer. Load this skill 
 
 Pick the right test layer before writing anything. The table from `docs/ARCHITECTURE.md` §10 is authoritative:
 
-| What you're testing                                                                        | Tool                  | Needs                                                         |
-| ------------------------------------------------------------------------------------------ | --------------------- | ------------------------------------------------------------- |
-| Business logic, Valibot schemas, store queries, adapter logic, route handlers in isolation | Vitest (unit)         | Mock adapters; test the contract, not the implementation      |
-| Sync merge, client migrations, webhook idempotency                                         | fast-check (property) | Randomly generated inputs; laws that must hold for all inputs |
-| User-facing flows, offline-to-online sync, PWA lifecycle                                   | Playwright-BDD        | Full stack running against wrangler dev; real browser         |
-| Bundle size                                                                                | size-limit            | Every PR                                                      |
+| What you're testing                                                                         | Tool                         | Needs                                                                  |
+| ------------------------------------------------------------------------------------------- | ---------------------------- | ---------------------------------------------------------------------- |
+| Business logic, Valibot schemas, store queries, adapter logic, route handlers in isolation  | Vitest (unit)                | Mock adapters; test the contract, not the implementation               |
+| Engine programs and seam logic (Effect signatures)                                          | Vitest + `Effect.runPromise` | Run the Effect program under test; mock adapters behind the seam       |
+| Logic with laws (schema invariants, cost accounting, merge/CRDT logic if ever reintroduced) | fast-check (property)        | Randomly generated inputs; laws that must hold for all inputs          |
+| User-facing flows, PWA lifecycle                                                            | Playwright-BDD               | Full stack running against `alchemy dev` (local workerd); real browser |
+| Bundle size                                                                                 | size-limit                   | Every PR                                                               |
 
 If unsure, start at the highest feasible layer: BDD for user flows, property tests for logic with laws, unit tests for everything else.
 
@@ -28,16 +29,15 @@ Each pattern below is exemplified by a real, CI-green file in this repo. Cite pa
 
 | Pattern                                                                                   | Exemplary file                                                  |
 | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| Valibot schema at the boundary: valid, empty, and type-invalid inputs                     | `packages/contracts/src/note.test.ts`                           |
+| Valibot schema at the boundary + property laws over trace/cost shapes                     | `packages/contracts/src/trace.test.ts`                          |
 | Business logic over injected dependencies: clock injection and hand-written fakes         | `packages/rate/src/rate-limiter.test.ts`                        |
 | Route handlers exercised directly at the unit layer                                       | `apps/api/src/app.test.ts`                                      |
 | Adapter implementation honoring its interface contract (incl. missing-key / delete paths) | `packages/infra/src/object-store.test.ts`                       |
-| Sync merge properties: idempotency, associativity, delete-wins                            | `packages/local-first/src/merge.prop.test.ts`                   |
-| Tombstone GC safety properties                                                            | `packages/local-first/src/tombstones.prop.test.ts`              |
-| Client migration round-trip property                                                      | `packages/local-first/src/migrations.prop.test.ts`              |
-| BDD feature file + step definitions for a user-facing flow                                | `tests/features/notes.feature` and `tests/steps/notes.steps.ts` |
+| Effect-signatured adapter behind its seam: fake store, `Effect.runPromise` harness        | `packages/rag-ingest/src/pipeline.test.ts`                      |
+| Store-seam contract suite against real Postgres semantics                                 | `packages/infra/src/rag-store-neon.test.ts`                     |
+| BDD feature file + step definitions for a user-facing flow                                | `tests/features/shell.feature` and `tests/steps/shell.steps.ts` |
 
-Webhook idempotency (same payload twice = same state as once) is a mandatory property whenever a consuming project adds payments — this template ships without payments (see `CONTEXT.md`), so it has no exemplary file yet; the first one written becomes the reference.
+This repo ships no payments or sync layer (see `CONTEXT.md` / spec §3.1), so there are no webhook-idempotency or CRDT exemplars. If a consuming project ever adds one, the same property-test discipline below applies — the first file written becomes the reference.
 
 ## Layer conventions
 
@@ -47,10 +47,18 @@ Webhook idempotency (same payload twice = same state as once) is a mandatory pro
 - Tests live beside the module they test: `src/foo.ts` → `src/foo.test.ts`.
 - Mock at adapter boundaries, not at function boundaries — the adapter interface is the test seam (see the rate-limiter exemplar).
 
+### Effect programs (Vitest + `Effect.runPromise`)
+
+- Engine packages (`rag-core`, `infra`, `rag-ingest`, `eval`) carry Effect-signatured seams; tests build the program with a fake adapter (hand-written object satisfying the interface), then run it under `Effect.runPromise` inside a normal Vitest `test()` (see the `rag-ingest` pipeline exemplar).
+- **Success path:** `await Effect.runPromise(effect)` — or the promise-level bridge under test (`runPipelinePromise`).
+- **Failure path:** `const exit = await Effect.runPromiseExit(effect)` then `Cause.failureOption(exit.cause)` — assert on the typed error (`_tag`, `kind`, `stage` — `StoreError` kinds, `ProviderErrorKind`), never on the `FiberFailure` wrapper (its `message` is the opaque "An error has occurred"; the cause rides a module symbol). Feed the fake a failing dependency to reach each failure kind — failure modes are data now; test each kind, not just the happy path.
+- **Services:** provide tags with `Effect.provideService` / a `Layer` (see `packages/rag-core/src/effect-spike.test.ts`); a `Context.Tag` service in tests is a plain object (see `packages/rag-core/src/run.test.ts` for the `RunContext` pattern). No `@effect/vitest`, no test-clock dependency — inject `now`/fakes through the same seams production uses.
+- **Interruption semantics (probed on effect@3.22.1):** `Fiber.interrupt` must be _run_ as an Effect; interruption-tracking callbacks attach via `.pipe(Effect.onExit(...))` + `Cause.isInterruptedOnly` — `yield* Effect.onExit(...)` inside `Effect.gen` does not register.
+- **Keep retry schedules fast:** inject `perKindRetrySchedule("1 millis", "1 millis")` in tests; never sleep through real backoff.
+
 ### Property tests (fast-check)
 
-- Mandatory for sync merge logic, client migrations, and webhook handlers; the LWW-element-set CRDT laws (idempotency, commutativity including exact-timestamp ties, associativity, delete propagation, tombstone GC safety) are the `guided-implementation` guardrail.
-- Files are `*.prop.test.ts` beside the module; import `{ test, fc }` from `@fast-check/vitest`.
+- Mandatory for any logic with laws: schema invariants, cost/trace accounting, and any merge/CRDT logic a plan introduces. Files are `*.test.ts` or `*.prop.test.ts` beside the module; import `{ fc, test }` from `@fast-check/vitest` (see the trace exemplar).
 - The generator must exhaust the input space of the law — hand-picked values make it a unit test in `fc` syntax.
 
 ### BDD tests (Playwright-BDD)
@@ -61,7 +69,7 @@ Webhook idempotency (same payload twice = same state as once) is a mandatory pro
 
 ### Integration tests (adapter boundaries)
 
-- Adapter implementations also get integration tests that exercise the interface contract end to end: against real infrastructure (D1, R2) in CI, or mocks locally. The unit-layer contract shape is the `packages/infra/src/object-store.test.ts` exemplar; full-stack real-infra coverage rides the BDD layer (wrangler dev).
+- Adapter implementations also get integration tests that exercise the interface contract end to end: against real infrastructure (Neon Postgres, R2) in CI, or mocks locally. The unit-layer contract shape is the `packages/infra/src/object-store.test.ts` exemplar; the store-seam contract suite is `packages/infra/src/rag-store-neon.test.ts`; full-stack real-infra coverage rides the BDD layer (`alchemy dev` on local workerd).
 
 ## Guards
 
@@ -77,9 +85,8 @@ Webhook idempotency (same payload twice = same state as once) is a mandatory pro
 
 Tests are done when:
 
-- [ ] Every changed module has a corresponding `*.test.ts` or `*.prop.test.ts` file.
-- [ ] Unit tests cover happy path, all error paths, and at least one edge case (empty, max, concurrent).
-- [ ] Property tests for sync merge assert idempotency, commutativity (including exact-timestamp ties), associativity, delete propagation, and GC safety.
-- [ ] Property tests for webhook handlers assert idempotency on random payloads.
+- [ ] Every changed module has a corresponding test file (`*.test.ts` / `*.prop.test.ts`).
+- [ ] Unit tests cover happy path, all error paths (including every typed error kind on Effect seams), and at least one edge case (empty, max, concurrent).
+- [ ] Property tests exist for any logic with laws the plan introduced, asserting those laws on generated inputs.
 - [ ] BDD scenarios exist for every new user-facing flow, including offline and error states.
-- [ ] `bun run test` passes with coverage above 80% on changed files.
+- [ ] `bun run test` passes with coverage above 80% lines/functions/statements and 70% branches on changed files.

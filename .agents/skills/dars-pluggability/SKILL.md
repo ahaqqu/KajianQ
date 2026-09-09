@@ -2,7 +2,6 @@
 name: dars-pluggability
 description: Enforce pluggable-by-design when building or reviewing DARS/KajianQ code. Use whenever you add, change, or review a pipeline stage, provider call, persistence call, or package boundary in the KajianQ monorepo — especially anything touching packages/rag-core, rag-ingest, eval, infra, or contracts.
 source: project
-synced: 2026-08-29
 ---
 
 # DARS Pluggability
@@ -13,12 +12,12 @@ The DARS engine is a reusable, domain-agnostic RAG engine. KajianQ is a domain p
 
 Know which seam you are standing on before writing code:
 
-| Seam                    | Interface lives in                                    | Implementations live in              | What varies behind it                                         |
-| ----------------------- | ----------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------- |
-| Pipeline stages         | `packages/rag-core`                                   | stage implementations per app wiring | Router, Retriever, Assembler, Generator, Reviewer             |
-| LLM / embedding vendors | `Provider` in `packages/rag-core` or `packages/infra` | vendor adapters in `packages/infra`  | Gemini, Kimi, DeepSeek, Qwen (allowlist per ADR-0009)         |
-| Persistence             | `RagStore` in `packages/infra`                        | Neon Postgres + pgvector adapter     | vectors, metadata filters, chat, traces, feedback, Golden Set |
-| Blob storage            | `ObjectStore` in `packages/infra`                     | Cloudflare R2                        | raw source archives, `text_raw` backups                       |
+| Seam                    | Interface lives in                             | Implementations live in              | What varies behind it                                         |
+| ----------------------- | ---------------------------------------------- | ------------------------------------ | ------------------------------------------------------------- |
+| Pipeline stages         | `packages/rag-core` (`StageEffect` signatures) | stage implementations per app wiring | Router, Retriever, Assembler, Generator, Reviewer             |
+| LLM / embedding vendors | `Provider` in `packages/rag-core`              | vendor adapters in `packages/infra`  | Gemini, Kimi, DeepSeek, Qwen (config allowlist)               |
+| Persistence             | `RagStore` in `packages/infra`                 | Neon Postgres + pgvector adapter     | vectors, metadata filters, chat, traces, feedback, Golden Set |
+| Blob storage            | `ObjectStore` in `packages/infra`              | Cloudflare R2                        | raw source archives, `text_raw` backups                       |
 
 Stages communicate **in-process** through typed interfaces — no HTTP between pipeline stages.
 
@@ -60,28 +59,15 @@ Each hit is either a refactor or a conscious, recorded exception in an ADR. Ther
 - Prompt template strings embedded in `rag-core` stage code "temporarily" — they never leave.
 - A new table accessed via raw SQL "just for this ticket" — the adapter grows or the ticket is wrong.
 - A `Router` implementation that calls a specific vendor SDK — it must hold a `Provider` reference injected at wiring time.
-- A corpus-wide entity-graph/GraphRAG dependency slipped into `rag-ingest` or `rag-core` as a new package — ADR-0016 requires bounded curated structures and an ADR behind the four-part gate; a dependency change is not a decision record.
+- A corpus-wide entity-graph/GraphRAG dependency slipped into `rag-ingest` or `rag-core` as a new package — the engine requires bounded curated structures behind the four-part gate; a dependency change is not a decision record.
 
-## Effect runtime (ADR-0027)
+## Effect runtime
 
-The engine's seams are now `Effect<A, E, R>`-shaped. When building or reviewing adapters and wiring:
+The engine's seams are `Effect<A, E, R>`-shaped. When building or reviewing adapters and wiring:
 
-- **Signatures say the failure modes.** `Provider` methods return `Effect<A, ProviderError>`; stage methods return `StageEffect<A>` = `Effect<A, StageError, RunContext | Scope>`. Map raw failures at the seam (`toStageError(stage, ...)`, the adapter's `catch` mapping) — a failure that escapes untyped is a boundary defect.
+- **Signatures say the failure modes.** `Provider` methods return effects whose failure channel is `ProviderError` (defined in `packages/rag-core/src/provider.ts`); stage methods return `StageEffect<A>` = `Effect<A, StageError, RunContext | Scope>`. Persistence seams carry the closed `StoreError` taxonomy (`transport`/`timeout`/`constraint`/`not_found`/`config`, defined in `packages/rag-core/src/store-error.ts`, re-exported by `@app/infra`). Map raw failures at the seam (`toStageError(stage, ...)`, the adapter's `catch` mapping) — a failure that escapes untyped is a boundary defect, and no error kind may travel via `throw` across a seam.
 - **Per-run resources go through the run's `Scope`** (`Effect.addFinalizer` inside a stage), not ad-hoc `defer` arrays; the runner owns the scope. Adapter-level lifecycle (closing HTTP agents, connections) belongs to the wiring layer's `Layer` finalizers when stages are Layer-wired.
-- **Config still resolves models.** Effect changes the plumbing, not the rule: no vendor or model names in engine code, model ids arrive as opaque strings from `model_configs`, and personal-data filtering stays in the fallback chain (ADR-0009).
-- **Retry policy is per-kind `Schedule`s** on the fallback chain (`defaultRetrySchedule` / `perKindRetrySchedule`), injectable via `ResolveOptions.retrySchedule` — do not hand-roll `try/catch` retry loops around provider calls.
+- **Config still resolves models.** Effect changes the plumbing, not the rule: no vendor or model names in engine code, model ids arrive as opaque strings from `model_configs`, and personal-data filtering stays in the fallback chain.
+- **Retry policy is per-kind `Schedule`s** on the fallback chain (`defaultRetrySchedule` / `perKindRetrySchedule` in `packages/infra/src/providers/retry-schedule.ts`, injectable via `ResolveOptions.retrySchedule`) — do not hand-roll `try/catch` retry loops around provider calls.
 - **Bounded concurrency is opt-in at the knob** (e.g. `IngestionDeps.embedConcurrency` via `Effect.forEach`), never an unbounded `Promise.all` over a batch.
-- The HTTP edge stays Hono; apps bridge via `@app/rag-core/interop` (`runPipelinePromise`, `engineStreamToWeb`) — `apps/api` carries no direct `effect` dependency (Appendix A: Bun would resolve alchemy's `effect@4-rc` peer to it).
-
-## Effect-era tests (ADR-0027)
-
-Engine code returns `Effect` values; tests run them via `Effect.runPromise` / `Effect.runPromiseExit` under vitest (no `@effect/vitest`, no test-clock dependency — inject `now`/fakes through the same seams production uses):
-
-- **Success path:** `await Effect.runPromise(effect)` — or the promise-level bridge under test (`runPipelinePromise`).
-- **Failure path:** `const exit = await Effect.runPromiseExit(effect)` then `Cause.failureOption(exit.cause)` — assert on the typed error (`_tag`, `kind`, `stage`), never on the `FiberFailure` wrapper (its `message` is the opaque "An error has occurred"; the cause rides a module symbol).
-- **Services:** provide tags with `Effect.provideService` / a `Layer` (see `packages/rag-core/src/effect-spike.test.ts`); a `Context.Tag` service in tests is a plain object (see `packages/rag-core/src/run.test.ts` for the `RunContext` pattern).
-- **Interruption semantics (probed on effect@3.22.1):** `Fiber.interrupt` must be _run_ as an Effect; interruption-tracking callbacks attach via `.pipe(Effect.onExit(...))` + `Cause.isInterruptedOnly` — `yield* Effect.onExit(...)` inside `Effect.gen` does not register.
-- **Exemplars:** `packages/rag-core/src/run.test.ts` (stages as Effects, finalizers, config threading), `packages/infra/src/providers/chat-stream.test.ts` (abort + deferred-cost settlement), `packages/infra/src/providers/provider-factory.test.ts` (fast injected retry schedules).
-- **Keep retry schedules fast:** inject `perKindRetrySchedule("1 millis", "1 millis")` in tests; never sleep through real backoff.
-
-(Home note: this section lives in a fork-owned skill because `.agents/skills/writing-tests/` is template-owned — byte-identical to the upstream baseline per ADR-0024; Effect-era test guidance belongs to this repo's fork-owned surface.)
+- The HTTP edge stays Hono; apps bridge via `@app/rag-core/interop` (`runPipelinePromise`) and `@app/rag-core/interop-stream` (`engineStreamToWeb`). `apps/api` depends on `effect` only for Alchemy's deploy tooling peers (`effect@4-rc` in `apps/api` devDependencies) — engine code imports Effect from the engine packages' own `effect@3` pin, never mixes the two lines.
