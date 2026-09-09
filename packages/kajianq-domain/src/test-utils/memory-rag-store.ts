@@ -203,6 +203,15 @@ export function createMemoryRagStore(): RagStore & {
         return id;
       });
     },
+    // Thermo-review A3/A4: the harness upserts the final report by run id.
+    refreshEvalRun(runId, label, report) {
+      return Effect.sync(() => {
+        const run = evalRuns.get(runId);
+        if (run) {
+          evalRuns.set(runId, { ...run, label, report });
+        }
+      });
+    },
     insertEvalResult(input) {
       return Effect.sync(() => {
         const id = `er${(seq += 1)}`;

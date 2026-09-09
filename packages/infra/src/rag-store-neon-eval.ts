@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { parseIngestionReport, type IngestionReport } from "@app/contracts";
+import { parseEvalRunReport } from "@app/contracts";
 import type { RagStore } from "./rag-store";
 import { sqlEffect, type SqlRunner } from "./rag-store-neon-errors";
 
@@ -27,9 +27,36 @@ export function neonEvalMethods(
   sql: SqlRunner,
 ): Pick<
   RagStore,
-  "insertEvalRun" | "insertEvalResult" | "getEvalRun" | "listEvalRuns" | "getEvalResultsByRun"
+  | "insertEvalRun"
+  | "refreshEvalRun"
+  | "insertEvalResult"
+  | "getEvalRun"
+  | "listEvalRuns"
+  | "getEvalResultsByRun"
 > {
   return {
+    refreshEvalRun(runId, label, report) {
+      // Idempotent upsert by run id (same convention as insertEvalRun).
+      return Effect.as(
+        sqlEffect(
+          sql,
+          () =>
+            sql`
+          INSERT INTO eval_runs (id, label, report)
+          VALUES (
+            ${runId}, ${label ?? null},
+            ${JSON.stringify(report)}::jsonb
+          )
+          ON CONFLICT (id) DO UPDATE
+            SET label = EXCLUDED.label,
+                report = EXCLUDED.report,
+                created_at = now()
+        ` as Promise<unknown[]>,
+        ),
+        undefined,
+      );
+    },
+
     insertEvalRun(input) {
       const id = input.id ?? crypto.randomUUID();
       // Idempotent by run id: re-running the same ingestion run refreshes the
@@ -67,8 +94,11 @@ export function neonEvalMethods(
           )
           VALUES (
             ${id},
+            // A3: the harness always supplies a real run UUID now.
             ${input.runId}::uuid,
-            ${input.questionId}::uuid,
+            // B3: question ids are the contract's loose string references
+            // (fixture ids like "gs-v0-001" are not UUIDs).
+            ${input.questionId},
             ${input.answerTraceId ?? null},
             ${JSON.stringify(input.outcome)}::jsonb
           )
@@ -90,10 +120,11 @@ export function neonEvalMethods(
         (rows) => {
           const [row] = rows;
           if (!row) return null;
-          // Tolerant reader: the report is stored verbatim as JSONB; a
+          // A5: the eval ledger reads back the `EvalRunReport` shape it
+          // writes (was: the ingestion report — a type confusion). A
           // mis-shaped report is a data defect surfaced as a failed parse —
-          // never silently coerced into an empty report.
-          return parseIngestionReport(row.report);
+          // never silently coerced.
+          return parseEvalRunReport(row.report);
         },
       );
     },

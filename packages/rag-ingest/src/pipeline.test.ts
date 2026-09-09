@@ -83,6 +83,9 @@ function fakeStore() {
     insertEvalRun(input) {
       return Effect.succeed(input.id ?? `eval${(seq += 1)}`);
     },
+    refreshEvalRun() {
+      return Effect.succeed(void 0);
+    },
     insertEvalResult() {
       return Effect.succeed(`er${(seq += 1)}`);
     },

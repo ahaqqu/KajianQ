@@ -1,5 +1,5 @@
 import type { Effect } from "effect";
-import type { IngestionReport, Trace } from "@app/contracts";
+import type { EvalRunReport, IngestionReport, Trace } from "@app/contracts";
 import type { StoreError } from "@app/rag-core";
 
 /**
@@ -238,14 +238,28 @@ export interface RagStore {
    * Persist an `IngestionReport` (or any batch/eval report) to the report
    * ledger (`eval_runs`). Idempotent by id: re-running with the same run id
    * refreshes label and report in place. The report is stored verbatim as
-   * JSONB so the persisted trace remains the single source of truth.
+   * JSONB so the persisted trace remains the single source of truth. The
+   * eval harness (thermo-review A5) reads the eval-run rows back through
+   * `getEvalRun`, typed as the `EvalRunReport` it writes.
    */
   insertEvalRun(input: {
     /** Defaults to a fresh UUID. */
     id?: string;
     label?: string;
-    report: IngestionReport;
+    report: IngestionReport | EvalRunReport;
   }): Effect.Effect<string, StoreError>;
+
+  /**
+   * Idempotent upsert of the final eval report onto its run row
+   * (thermo-review A3/A4: the harness creates the run first, then refreshes
+   * the row with the completed `EvalRunReport` — no blank-runId writes, no
+   * caller-side stamping).
+   */
+  refreshEvalRun(
+    runId: string,
+    label: string,
+    report: EvalRunReport,
+  ): Effect.Effect<void, StoreError>;
 
   // -- Eval ledger reads/writes (issue #8) ---------------------------------
 
@@ -266,7 +280,7 @@ export interface RagStore {
   }): Effect.Effect<string, StoreError>;
 
   /** Fetch one run's persisted report by id; null when unknown. */
-  getEvalRun(id: string): Effect.Effect<IngestionReport | null, StoreError>;
+  getEvalRun(id: string): Effect.Effect<EvalRunReport | null, StoreError>;
 
   /** List run ledger rows (id + label), newest first, capped at `limit`. */
   listEvalRuns(opts: {
