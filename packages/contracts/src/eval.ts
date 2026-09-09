@@ -67,6 +67,12 @@ export const EvalResultOutcomeSchema = v.object({
   citationValidity: v.pipe(v.number(), v.minValue(0), v.maxValue(1)),
   /** Whether the scorer saw a refusal (a trace `refusal` event or refusal text). */
   refused: v.boolean(),
+  /**
+   * True when the question never scored (transport/scoring failure) —
+   * excluded from the report's scored means and never counted as a scored
+   * failure (thermo-review C1: the notes-prefix heuristic was brittle).
+   */
+  skipped: v.optional(v.boolean()),
   /** Optional note (e.g. which required citation was missing). */
   notes: v.optional(v.array(v.pipe(v.string(), v.minLength(1)))),
 });

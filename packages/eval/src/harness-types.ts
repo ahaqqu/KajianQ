@@ -21,10 +21,22 @@ export type RetrievalLike = {
   at?: number;
 };
 
+/** The event's cost record, structurally matching @app/contracts CostRecord. */
+export type CostRecordLike = {
+  modelId: string;
+  tokensIn: number;
+  tokensOut: number;
+  latencyMs: number;
+  costMicroUsd: number;
+  estimated?: boolean;
+};
+
 /** Any trace event shape (kind-discriminated) the harness inspects. */
 export type TraceEventLike = {
   kind: string;
   stage?: string;
   detail?: { chunks?: ChunkRefLike[]; purpose?: string };
+  /** The event's cost record (thermo-review B1: feeds the report's costs). */
+  cost?: CostRecordLike;
   at?: number;
 };

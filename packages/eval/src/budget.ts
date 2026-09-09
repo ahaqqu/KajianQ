@@ -54,9 +54,18 @@ export class Budget {
   }
 }
 
-/** Parse the env cap (micro-USD, integer). Absent/empty = unlimited. */
+/**
+ * Parse the env cap (micro-USD, integer). Fail-closed (ADR-0034 decision 2):
+ * only absent (unset) or an explicit `0` opt out of the cap — an empty or
+ * whitespace value is a misconfiguration and throws, never an unlimited run.
+ */
 export function budgetCapFromEnv(raw: string | undefined): number | undefined {
-  if (raw === undefined || raw.trim() === "") return undefined;
+  if (raw === undefined) return undefined;
+  if (raw.trim() === "") {
+    throw new Error(
+      "EVAL_BUDGET_MICRO_USD is set but empty — unset it or give a non-negative integer (0 = explicit opt-out)",
+    );
+  }
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 0) {
     throw new Error(`EVAL_BUDGET_MICRO_USD must be a non-negative integer, got "${raw}"`);
