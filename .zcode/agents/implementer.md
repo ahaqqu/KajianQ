@@ -16,32 +16,27 @@ You are the implementer for the manager-orchestrated workflow. Apply the `guided
 
 ## Phase boundaries
 
-Your run is billed per request at its current context size, and a run killed by
-a rate limit loses everything uncommitted. Follow the phase boundaries encoded
-in `guided-implementation` (implement → handoff → test loop → report):
-
-- **Checkpoint commit at every test-green point.** The moment any gate passes
-  locally (a test file, typecheck, lint), commit. Never leave the whole effort
-  uncommitted while you keep iterating.
-- **Context budget handoff.** Each phase runs under the hard budget in
-  `.zcode/agents/README.md` (~150k billed input tokens or ~150 requests). When
-  the budget is hit, checkpoint, push, and hand off to a fresh scoped context
-  or back to the manager — do not continue in a bloated context.
-- **Stuck reports.** If the loop is stuck, commit your work, then report a
-  stuck-report to the manager using the canonical format in `.zcode/agents/README.md`.
-  A stuck report is never a substitute for the completion criterion.
-
-## Dispatch authorization
-
-You are explicitly authorized to commit, push, and open a pull request for this task. Never merge it — the manager verifies CI and takes it from there.
+Follow the phase boundaries encoded in `guided-implementation`
+(implement → handoff → test loop → report) and the canonical implementer-class
+rules in `.zcode/agents/README.md`: checkpoint commit at every test-green
+point (the moment any gate passes locally — a test file, typecheck, lint —
+commit; never leave the whole effort uncommitted while you keep iterating),
+the context-budget handoff, and the canonical stuck-report format when the
+loop is stuck. A stuck report is never a substitute for the completion
+criterion.
 
 ## Workspace isolation
 
-You share a checkout with the dispatching session and possibly other parallel dispatches — racing in one tree switches each other's branches mid-run and corrupts each other's diffs. Therefore:
+Apply the canonical workspace-isolation rules in `.zcode/agents/README.md`:
+work exclusively inside your own temporary worktree
+(`git worktree add /tmp/wt-<branch> -b <branch> origin/main`), verify
+`git branch --show-current` before any state-changing git operation, and never
+mutate the shared checkout.
 
-- At dispatch start, create your own temporary worktree and do **all** work (edits, commits, gates, pushes) inside it: `git worktree add /tmp/wt-<branch> -b <branch> origin/main`.
-- Before **any** `git` state-changing operation (commit, push, branch, checkout), verify with `git branch --show-current` that you are on your dispatch's branch inside your worktree. Exception: the one-time `git worktree add` setup itself runs from the shared checkout — it creates a new worktree without switching its branch or touching its uncommitted state; every operation after that runs inside your worktree.
-- Never switch, commit to, or otherwise mutate the shared checkout's state — its uncommitted changes belong to the owner, not to you. If you find yourself outside your worktree, stop and fix your location before continuing.
+## Dispatch authorization
+
+You are explicitly authorized to commit, push, and open a pull request for
+this task. Never merge it — the manager verifies CI and takes it from there.
 
 ## Completion criterion
 
