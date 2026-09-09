@@ -62,6 +62,9 @@ function fakeStore() {
     getAnswerTraceByMessage() {
       return Effect.succeed(null);
     },
+    getChatSessionUser() {
+      return Effect.succeed(null);
+    },
     createChatSession() {
       return Effect.succeed("");
     },
@@ -82,6 +85,21 @@ function fakeStore() {
     },
     insertEvalRun(input) {
       return Effect.succeed(input.id ?? `eval${(seq += 1)}`);
+    },
+    refreshEvalRun() {
+      return Effect.succeed(void 0);
+    },
+    insertEvalResult() {
+      return Effect.succeed(`er${(seq += 1)}`);
+    },
+    getEvalRun() {
+      return Effect.succeed(null);
+    },
+    listEvalRuns() {
+      return Effect.succeed([]);
+    },
+    getEvalResultsByRun() {
+      return Effect.succeed([]);
     },
   };
   return {

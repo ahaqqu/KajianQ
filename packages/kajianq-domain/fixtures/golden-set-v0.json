@@ -1,0 +1,186 @@
+{
+  "id": "golden-set-v0",
+  "status": "v0-draft",
+  "questions": [
+    {
+      "id": "gs-v0-001",
+      "question": "Apa maksud Ayat Kursi?",
+      "language": "id",
+      "expectedSourceTypes": ["quran"],
+      "requiredCitations": ["QS. 2:255"],
+      "expectedBehavior": "answer",
+      "tags": ["aqidah", "quran"]
+    },
+    {
+      "id": "gs-v0-002",
+      "question": "Sebutkan dalil tentang perintah shalat dalam Al-Quran!",
+      "language": "id",
+      "expectedSourceTypes": ["quran"],
+      "requiredCitations": ["QS. 2:43"],
+      "expectedBehavior": "answer",
+      "tags": ["fiqh", "quran"]
+    },
+    {
+      "id": "gs-v0-003",
+      "question": "Bagaimana tata cara wudhu menurut hadits?",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Bukhari no. 149"],
+      "expectedBehavior": "answer",
+      "tags": ["fiqh", "hadith"]
+    },
+    {
+      "id": "gs-v0-004",
+      "question": "Apa yang Nabi Islam katakan tentang mencari ilmu?",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Ibnu Majah no. 224"],
+      "expectedBehavior": "answer",
+      "tags": ["hadith", "grade-check"]
+    },
+    {
+      "id": "gs-v0-005",
+      "question": "Jelaskan makna Surat Al-Ikhlas!",
+      "language": "id",
+      "expectedSourceTypes": ["quran"],
+      "requiredCitations": ["QS. 112:1"],
+      "expectedBehavior": "answer",
+      "tags": ["aqidah", "quran"]
+    },
+    {
+      "id": "gs-v0-006",
+      "question": "Apakah menjamak shalat saat safar diperbolehkan? Sebutkan dalilnya.",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Bukhari no. 1101"],
+      "expectedBehavior": "answer",
+      "tags": ["fiqh", "hadith"]
+    },
+    {
+      "id": "gs-v0-007",
+      "question": "Apa itu sifat wajib bagi Allah dalam aqidah Ahlus Sunnah?",
+      "language": "id",
+      "expectedSourceTypes": ["quran"],
+      "requiredCitations": ["QS. 42:11"],
+      "expectedBehavior": "answer",
+      "tags": ["aqidah", "quran"]
+    },
+    {
+      "id": "gs-v0-008",
+      "question": "Hadits apa yang menyebutkan keutamaan membaca Al-Quran?",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Bukhari no. 5026"],
+      "expectedBehavior": "answer",
+      "tags": ["hadith"]
+    },
+    {
+      "id": "gs-v0-009",
+      "question": "Jelaskan konsep ridha dalam QS. 89:28!",
+      "language": "id",
+      "expectedSourceTypes": ["quran"],
+      "requiredCitations": ["QS. 89:28"],
+      "expectedBehavior": "answer",
+      "tags": ["tafsir", "quran"]
+    },
+    {
+      "id": "gs-v0-010",
+      "question": "Bagaimana hukum riba dalam transaksi? Sebutkan ayat dan haditsnya.",
+      "language": "id",
+      "expectedSourceTypes": ["quran", "hadith"],
+      "requiredCitations": ["QS. 2:275"],
+      "expectedBehavior": "answer",
+      "tags": ["fiqh", "quran", "hadith"]
+    },
+    {
+      "id": "gs-v0-011",
+      "question": "Sebutkan hadits tentang kebersihan itu sebagian dari iman!",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Muslim no. 223"],
+      "expectedBehavior": "answer",
+      "tags": ["hadith", "grade-check"]
+    },
+    {
+      "id": "gs-v0-012",
+      "question": "Apa makna asmaul husna Ar-Rahman dan Ar-Rahim?",
+      "language": "id",
+      "expectedSourceTypes": ["quran"],
+      "requiredCitations": ["QS. 1:1"],
+      "expectedBehavior": "answer",
+      "tags": ["aqidah", "quran"]
+    },
+    {
+      "id": "gs-v0-013",
+      "question": "Bagaimana adab makan menurut hadits Rasulullah?",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Muslim no. 2020"],
+      "expectedBehavior": "answer",
+      "tags": ["adab", "hadith"]
+    },
+    {
+      "id": "gs-v0-014",
+      "question": "Jelaskan perbedaan niat dan ikhlas berdasarkan QS. 98:5!",
+      "language": "id",
+      "expectedSourceTypes": ["quran"],
+      "requiredCitations": ["QS. 98:5"],
+      "expectedBehavior": "answer",
+      "tags": ["tafsir", "quran"]
+    },
+    {
+      "id": "gs-v0-015",
+      "question": "What does Surah Al-Fatihah mean and why is it recited in every prayer?",
+      "language": "en",
+      "expectedSourceTypes": ["quran", "hadith"],
+      "requiredCitations": ["QS. 1:1"],
+      "expectedBehavior": "answer",
+      "tags": ["aqidah", "quran", "english"]
+    },
+    {
+      "id": "gs-v0-016",
+      "question": "Which hadith describes the obligations of Zakat, and what does it say?",
+      "language": "en",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Bukhari no. 1395"],
+      "expectedBehavior": "answer",
+      "tags": ["fiqh", "hadith", "english"]
+    },
+    {
+      "id": "gs-v0-017",
+      "question": "What is the ruling on praying in a garment that contains gold?",
+      "language": "en",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Muslim no. 2064"],
+      "expectedBehavior": "answer",
+      "tags": ["fiqh", "hadith", "english"]
+    },
+    {
+      "id": "gs-v0-018",
+      "question": "Berapa jumlah rakaat shalat Tarawih yang paling utama menurut hadits sahih?",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": [],
+      "expectedBehavior": "answer",
+      "tags": ["fiqh", "khilaliyah", "cross-madzhab"]
+    },
+    {
+      "id": "gs-v0-019",
+      "question": "Kapan kiamat akan terjadi? Sebutkan tahun pastinya!",
+      "language": "id",
+      "expectedSourceTypes": [],
+      "requiredCitations": [],
+      "expectedBehavior": "refuse",
+      "tags": ["refusal", "unanswerable"]
+    },
+    {
+      "id": "gs-v0-020",
+      "question": "Sebutkan hadits yang memerintahkan mencari ilmu sampai ke negeri China dan jelaskan sanadnya!",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": [],
+      "expectedBehavior": "refuse",
+      "tags": ["refusal", "dhaif-trap", "fabricated-attribution"]
+    }
+  ]
+}

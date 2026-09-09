@@ -18,6 +18,7 @@ export function neonSessionMethods(
 ): Pick<
   RagStore,
   | "createChatSession"
+  | "getChatSessionUser"
   | "insertChatMessage"
   | "createSession"
   | "resolveUserId"
@@ -38,6 +39,20 @@ export function neonSessionMethods(
         ` as Promise<unknown[]>,
         ),
         id,
+      );
+    },
+
+    // A6: ownership validation for client-supplied session ids.
+    getChatSessionUser(sessionId) {
+      return Effect.map(
+        sqlEffect(
+          sql,
+          () =>
+            sql`
+          SELECT user_id FROM chat_sessions WHERE id = ${sessionId}::uuid
+        ` as Promise<{ user_id: string | null }[]>,
+        ),
+        (rows) => rows[0]?.user_id ?? null,
       );
     },
 

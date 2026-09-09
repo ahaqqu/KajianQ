@@ -1,6 +1,7 @@
 import type { Effect } from "effect";
-import type { IngestionReport, Trace } from "@app/contracts";
+import type { Trace } from "@app/contracts";
 import type { StoreError } from "@app/rag-core";
+import type { RagStoreEvalLedger, RagStoreEvalRunWrite } from "./rag-store-eval-seam";
 
 /**
  * RagStore — the single persistence seam (ADR-0008), Effect-signatured
@@ -120,7 +121,7 @@ export type SimilarChild = {
   rankDense: number;
 };
 
-export interface RagStore {
+export interface RagStore extends RagStoreEvalRunWrite, RagStoreEvalLedger {
   // -- Corpus ------------------------------------------------------------
 
   /** Insert a parent document, returning the effect of its persisted id. */
@@ -185,6 +186,13 @@ export interface RagStore {
     metadata?: Record<string, unknown>;
   }): Effect.Effect<string, StoreError>;
 
+  /**
+   * Resolve a chat session's owning user id; null when the session does not
+   * exist (thermo-review A6: the chat route validates that a client-supplied
+   * `sessionId` belongs to the authenticated user before appending).
+   */
+  getChatSessionUser(sessionId: string): Effect.Effect<string | null, StoreError>;
+
   insertChatMessage(input: {
     sessionId: string;
     role: string;
@@ -231,19 +239,6 @@ export interface RagStore {
    * is a storage-reclamation concern, not a correctness one.
    */
   cleanupExpiredSessions(before?: Date): Effect.Effect<number, StoreError>;
-
-  // -- Batch reports (kajianq-traceability rule 4) ---------------------------
-
-  /**
-   * Persist an `IngestionReport` (or any batch/eval report) to the report
-   * ledger (`eval_runs`). Idempotent by id: re-running with the same run id
-   * refreshes label and report in place. The report is stored verbatim as
-   * JSONB so the persisted trace remains the single source of truth.
-   */
-  insertEvalRun(input: {
-    /** Defaults to a fresh UUID. */
-    id?: string;
-    label?: string;
-    report: IngestionReport;
-  }): Effect.Effect<string, StoreError>;
 }
+
+export type { RagStoreEvalLedger, RagStoreEvalRunWrite } from "./rag-store-eval-seam";

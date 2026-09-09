@@ -1,5 +1,27 @@
 export { HealthResponseSchema, type HealthResponse } from "./health";
 export {
+  ChatErrorSchema,
+  ChatMetaSchema,
+  ChatRequestSchema,
+  type ChatError,
+  type ChatMeta,
+  type ChatRequest,
+} from "./chat";
+export {
+  EvalResultOutcomeSchema,
+  EvalRunReportSchema,
+  ExpectedBehaviorSchema,
+  GoldenCitationSchema,
+  GoldenQuestionSchema,
+  GoldenSetSchema,
+  GoldenSourceSchema,
+  parseEvalRunReport,
+  type EvalResultOutcome,
+  type EvalRunReport,
+  type GoldenQuestion,
+  type GoldenSet,
+} from "./eval";
+export {
   IngestionReportSchema,
   AlignedPairSchema,
   MorphTokenSchema,

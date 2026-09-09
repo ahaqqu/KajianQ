@@ -617,3 +617,127 @@ describe("rag-store-factory: createRagStore", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// Eval ledger methods (thermo-review A3/A5/B3 fixes) — unit coverage for the
+// SQL construction and report parsing the secret-gated contract suite can't
+// provide in the default gate job.
+// ---------------------------------------------------------------------------
+
+import { parseEvalRunReport } from "@app/contracts";
+
+describe("Neon eval-ledger methods (unit, fake SQL)", () => {
+  it("insertEvalRun stores the label and the JSONB report, idempotent by id", async () => {
+    const sql = makeFakeSql();
+    const store = createNeonRagStore(sql);
+    sql._setTag([{ id: "run-1" }]);
+    const id = await runOk(
+      store.insertEvalRun({
+        label: "lbl",
+        report: { pending: true } as never,
+      }),
+    );
+    expect(id).toBe("run-1");
+    expect(sql._calls[0]?.text).toContain("INSERT INTO eval_runs");
+    expect(sql._calls[0]?.text).toContain("ON CONFLICT (id) DO UPDATE");
+  });
+
+  it("refreshEvalRun upserts the final report by run id (A3/A4)", async () => {
+    const sql = makeFakeSql();
+    const store = createNeonRagStore(sql);
+    await runOk(
+      store.refreshEvalRun("run-1", "lbl", {
+        runId: "run-1",
+        setId: "set",
+        startedAt: 1,
+        finishedAt: 2,
+        questions: 1,
+        passed: 1,
+        failed: 0,
+        skipped: 0,
+        meanRetrievalRecall: 1,
+        meanCitationValidity: 1,
+        costMicroUsd: 0,
+        budgetExceeded: false,
+        results: [],
+        costs: [],
+      }),
+    );
+    expect(sql._calls[0]?.text).toContain("INSERT INTO eval_runs");
+    expect(sql._calls[0]?.text).toContain("ON CONFLICT (id) DO UPDATE");
+    // B3: the question id is bound as a loose string, no ::uuid cast.
+  });
+
+  it("insertEvalResult binds questionId as a loose string, runId as uuid (B3)", async () => {
+    const sql = makeFakeSql();
+    const store = createNeonRagStore(sql);
+    await runOk(
+      store.insertEvalResult({
+        runId: "0e1b1e58-aaaa-4a86-b1e8-1a2b3c4d5e60",
+        questionId: "gs-v0-001",
+        answerTraceId: null,
+        outcome: { passed: true },
+      }),
+    );
+    expect(sql._calls[0]?.text).toContain("INSERT INTO eval_results");
+    // B3: runId is bound for the ::uuid cast, questionId stays the raw loose
+    // string reference — no ::uuid cast on it in the SQL text.
+    expect(sql._calls[0]?.values[1]).toBe("0e1b1e58-aaaa-4a86-b1e8-1a2b3c4d5e60");
+    expect(sql._calls[0]?.values[2]).toBe("gs-v0-001");
+  });
+
+  it("getEvalRun parses the stored report with parseEvalRunReport (A5)", async () => {
+    const sql = makeFakeSql();
+    const store = createNeonRagStore(sql);
+    const valid = parseEvalRunReport({
+      runId: "0e1b1e58-1a2b-3c4d-5e60-0e1b1e581a2b",
+      setId: "s",
+      startedAt: 1,
+      finishedAt: 2,
+      questions: 0,
+      passed: 0,
+      failed: 0,
+      skipped: 0,
+      meanRetrievalRecall: null,
+      meanCitationValidity: null,
+      costMicroUsd: 0,
+      budgetExceeded: false,
+      results: [],
+      costs: [],
+    });
+    sql._setTag([{ id: "run-1", label: "l", report: valid, created_at: new Date(0) }]);
+    const report = await runOk(store.getEvalRun("run-1"));
+    expect(report).toEqual(valid);
+  });
+
+  it("getEvalRun fails with a constraint-class error on a mis-shaped report (A5)", async () => {
+    const sql = makeFakeSql();
+    const store = createNeonRagStore(sql);
+    sql._setTag([
+      { id: "run-1", label: "l", report: { totally: "wrong" }, created_at: new Date(0) },
+    ]);
+    const exit = await Effect.runPromiseExit(store.getEvalRun("run-1"));
+    // The parse failure must be a typed StoreError on the error channel —
+    // never a thrown exception and never a silently coerced report.
+    expect(Exit.isFailure(exit)).toBe(true);
+  });
+
+  it("listEvalRuns maps snake_case rows", async () => {
+    const sql = makeFakeSql();
+    const store = createNeonRagStore(sql);
+    sql._setTag([{ id: "r1", label: "l", created_at: new Date(1700000000000) }]);
+    const rows = await runOk(store.listEvalRuns({ limit: 5 }));
+    expect(rows[0]).toMatchObject({ id: "r1", label: "l" });
+  });
+
+  it("getEvalResultsByRun maps snake_case outcome rows", async () => {
+    const sql = makeFakeSql();
+    const store = createNeonRagStore(sql);
+    sql._setTag([
+      { id: "er1", question_id: "gs-v0-001", answer_trace_id: null, outcome: { passed: true } },
+    ]);
+    const rows = await runOk(store.getEvalResultsByRun("run-1"));
+    expect(rows[0]?.questionId).toBe("gs-v0-001");
+    expect(rows[0]?.outcome).toEqual({ passed: true });
+  });
+});

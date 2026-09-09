@@ -34,6 +34,7 @@
     "db:status:all": "bun run db:status && bun run db:status:domain && bun run db:status:api",
     "db:probe:pg-search": "bun packages/infra/scripts/pg-search-probe.mjs",
     "provider:smoke": "bun packages/infra/scripts/provider-smoke.mjs",
+    "eval:run": "bun packages/eval/scripts/eval-run.mjs",
     "ingest:quran": "bun packages/kajianq-domain/scripts/ingest-quran.mjs",
     "ingest:hadith": "bun packages/kajianq-domain/scripts/ingest-hadith.mjs",
     "e2e": "bddgen && playwright test",

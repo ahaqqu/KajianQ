@@ -18,6 +18,17 @@ export type WorkerBindings = {
   RATE_LIMITER?: RateLimiterNamespace;
   ALLOWED_ORIGINS?: string;
   SENTRY_DSN?: string;
+  /** Neon connection string — the RagStore adapter's backing store (#4). */
+  DATABASE_URL?: string;
+  /**
+   * Provider API keys, bound by name from `models.json`'s `apiKeyEnv`
+   * entries (ADR-0009/ADR-0022). The wiring reads keys only through
+   * `resolveRole`'s env record — never vendor names here.
+   */
+  GEMINI_API_KEY?: string;
+  DASHSCOPE_API_KEY?: string;
+  DEEPSEEK_API_KEY?: string;
+  MOONSHOT_API_KEY?: string;
 };
 
 /**

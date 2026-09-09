@@ -90,12 +90,23 @@ describe("boundary gate rules", () => {
       const hits = dependencyViolations(
         ["@neondatabase/serverless"],
         RULES,
-        "packages/eval/package.json",
+        "packages/rag-core/package.json",
       );
       expect(hits).toContainEqual({
         name: "@neondatabase/serverless",
         rule: "direct database client outside the RagStore seam",
       });
+    });
+
+    it("does NOT flag the eval harness manifest's sanctioned DB dep", () => {
+      // packages/eval hosts the eval CLI — a RagStore-composing composition
+      // root like the ingestion CLIs, so its manifest is exempt too (#8).
+      const hits = dependencyViolations(
+        ["@neondatabase/serverless"],
+        RULES,
+        "packages/eval/package.json",
+      );
+      expect(hits).toEqual([]);
     });
 
     it("does NOT flag the infra adapter manifest's sanctioned DB dep", () => {

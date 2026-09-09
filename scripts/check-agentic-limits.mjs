@@ -38,7 +38,7 @@ for (const file of files) {
   if (lines > MAX_LINES) {
     violations.push(`${relative(ROOT, file)}: ${lines} lines > ${MAX_LINES}`);
   }
-  const importCount = [...text.matchAll(/^import\s+[^]*?\bfrom\s+['\"][^'\"]+['\"]/gm)].length;
+  const importCount = [...text.matchAll(/^import\s+[^]*?\bfrom\s+['"][^'"]+['"]/gm)].length;
   if (importCount > MAX_DEPS && !file.endsWith("index.ts")) {
     // index re-exports allowed higher
     if (!file.includes(`${join("src", "index.ts")}`)) {

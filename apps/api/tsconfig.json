@@ -1,8 +1,11 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "types": ["@cloudflare/workers-types"],
-    "lib": ["ESNext"]
+    "types": ["@cloudflare/workers-types", "node"],
+    "lib": ["ESNext"],
+    "paths": {
+      "@app/kajianq-domain/test-utils/*": ["../../packages/kajianq-domain/src/test-utils/*"]
+    }
   },
   "include": ["src", "alchemy.run.ts"]
 }
