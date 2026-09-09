@@ -10,6 +10,21 @@ import * as v from "valibot";
  */
 export const CHAT_OPENAPI_DESCRIPTION = describeRoute({
   summary: "Chat",
+  requestBody: {
+    required: true,
+    content: {
+      "application/json": {
+        // Pre-resolved here (not left as a `resolver(...)`): hono-openapi only
+        // resolves schemas in `responses` positions — a resolver left in a
+        // spec-level `requestBody` serializes as the opaque `{vendor: ...}`
+        // object, so consumers (schemathesis) see no body schema and generate
+        // body-less requests the route answers 400.
+        schema: await resolver(ChatRequestSchema)
+          .toOpenAPISchema()
+          .then((r) => r.schema),
+      },
+    },
+  },
   responses: {
     200: {
       description: "SSE stream of answer deltas",
@@ -33,6 +48,10 @@ export const CHAT_OPENAPI_DESCRIPTION = describeRoute({
     },
     503: {
       description: "Chat not configured — the DATABASE_URL binding is absent in this environment",
+      content: { "application/json": { schema: resolver(v.any()) } },
+    },
+    429: {
+      description: "Rate limited — the per-IP request budget for the window is exhausted",
       content: { "application/json": { schema: resolver(v.any()) } },
     },
   },

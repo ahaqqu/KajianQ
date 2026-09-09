@@ -1,4 +1,9 @@
-export { HealthResponseSchema, type HealthResponse } from "./health";
+export {
+  HealthResponseSchema,
+  HealthErrorSchema,
+  type HealthResponse,
+  type HealthError,
+} from "./health";
 export {
   ChatErrorSchema,
   ChatMetaSchema,

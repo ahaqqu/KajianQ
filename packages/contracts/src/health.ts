@@ -8,3 +8,10 @@ export const HealthResponseSchema = v.object({
 });
 
 export type HealthResponse = v.InferOutput<typeof HealthResponseSchema>;
+
+/** JSON error payload the global middleware answers with (rate limiting). */
+export const HealthErrorSchema = v.object({
+  error: v.pipe(v.string(), v.minLength(1)),
+});
+
+export type HealthError = v.InferOutput<typeof HealthErrorSchema>;
