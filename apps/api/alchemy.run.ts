@@ -22,6 +22,9 @@ const isDev = env.ALCHEMY_DEV === "true";
 // chat routes unavailable — and no binding is written, so an unset deploy can
 // never overwrite a live secret with an empty value (owner decision, ADR-0028).
 // Local dev binds none: the foundation-shell routes never touch providers.
+// DATABASE_URL binds from the NEON_DATABASE_URL secret (Neon stays external to
+// the stack — ADR-0028 decision 4); without it the chat route answers
+// 503 chat_not_configured (feature disabled, same rule).
 const SECRET_NAMES = [
   "SENTRY_DSN",
   "DASHSCOPE_API_KEY",
@@ -33,6 +36,14 @@ const SECRET_NAMES = [
 const secretBindings = Object.fromEntries(
   SECRET_NAMES.filter((name) => env[name]).map((name) => [name, Config.redacted(name)] as const),
 );
+
+/** The chat store's binding name → the repo secret that carries its value. */
+const DATABASE_URL_BINDING = "DATABASE_URL";
+const NEON_DATABASE_URL_SECRET = "NEON_DATABASE_URL";
+const databaseUrlBinding =
+  env[NEON_DATABASE_URL_SECRET] && env[NEON_DATABASE_URL_SECRET].trim() !== ""
+    ? { [DATABASE_URL_BINDING]: Config.redacted(NEON_DATABASE_URL_SECRET) }
+    : {};
 
 const ASSETS = {
   directory: "../web/dist",
@@ -115,7 +126,7 @@ export default Stack(
         }),
         APP_ENV: topology.appEnv,
         ALLOWED_ORIGINS: "",
-        ...(topology.withSecrets ? secretBindings : {}),
+        ...(topology.withSecrets ? { ...secretBindings, ...databaseUrlBinding } : {}),
       },
     });
 

@@ -27,6 +27,10 @@ jobs:
           test -n "$CLOUDFLARE_API_TOKEN"
           test -n "$CLOUDFLARE_ACCOUNT_ID"
           test -n "$STAGING_URL"
+          # /v1/chat is load-bearing on staging: without the database binding
+          # the route answers 503 chat_not_configured and the DAST step fails
+          # on the undocumented status (ADR-0028 revisit trigger).
+          test -n "$NEON_DATABASE_URL"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -36,12 +40,15 @@ jobs:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MOONSHOT_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}
+          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
       # Persistence is Neon Postgres behind RagStore (ADR-0008) — the template's
       # D1 migration/deploy:inject steps were removed when D1 was stripped (#3).
       # deploy:staging owns the web build; no separate build step (matches
-      # deploy.yml). The five secret env vars are optional: the stack binds
-      # only the ones present (absent = feature disabled — ADR-0028), so they
-      # pass through unconditionally and nothing changes when secrets are set.
+      # deploy.yml). The secret env vars are optional except NEON_DATABASE_URL
+      # (required above): the stack binds only the ones present (absent =
+      # feature disabled — ADR-0028), so they pass through unconditionally and
+      # nothing changes when secrets are set. NEON_DATABASE_URL becomes the
+      # Worker's DATABASE_URL binding in apps/api/alchemy.run.ts.
       - run: bun run deploy:staging
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -51,6 +58,7 @@ jobs:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MOONSHOT_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}
+          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
       # Retry logic lives in the reusable composite action (issue #49):
       # Cloudflare edge propagation can lag a few seconds after the deploy
       # returns, so wait and retry rather than failing transiently.
@@ -71,8 +79,10 @@ jobs:
         # schemathesis.toml suppresses unsupported_method (Cloudflare edge
         # returns 405 without Allow header — not our app's behavior). See the
         # config file for the justification comment.
-        # No bearer token: the current surface (OpenAPI + /v1/health) is
-        # unauthenticated. The guarded anonymous-session API returns in #10.
+        # No bearer token: the unauthenticated surface (401 on the guarded
+        # routes) is documented — /v1/chat returns 401 without a session,
+        # 503 chat_not_configured only when the DATABASE_URL binding is
+        # absent (required in CI above, so fuzzing always sees a live route).
         run: |
           pip install schemathesis
           schemathesis run "$STAGING_URL/openapi.json" \

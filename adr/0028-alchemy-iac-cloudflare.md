@@ -44,4 +44,5 @@ Alchemy (npm `alchemy`, Apache-2.0) is TypeScript-native IaC. The live `alchemy.
 - Provider API keys become needed in local dev (chat routes landing): bind them in the dev branch via `--env-file` (`Config.redacted`), never committed.
 - The chat routes land (issue #10) and the vendor keys / Sentry become load-bearing in staging/prod: promote the five secrets from optional to required — env guards in the stack plus `test -n` require-secrets checks in `deploy.yml`/`staging.yml`/`provision.yml` — and set them as GitHub secrets.
 - Staging needs database isolation: Neon via `Neon.Branch` gets its own ADR (data-integrity review first).
+- Fulfilled (ADR-0035, 2026-09-09): with `/v1/chat` landed, the Worker's `DATABASE_URL` binding now binds from the `NEON_DATABASE_URL` secret under the same bind-when-present rule, staging CI requires it, and the chat OpenAPI documents the 503.
 - CI state-store auth (`CI=true` + Cloudflare Secrets Store) proves flaky: fall back to a dedicated state-store token as a repo secret, or a Postgres state store.
