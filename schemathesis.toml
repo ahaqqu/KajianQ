@@ -14,3 +14,31 @@ enabled = false
 # adds noise without finding app bugs.
 [phases.coverage]
 unexpected-methods = []
+
+# 429 is a legitimate rejection of invalid data: the Worker's global per-IP
+# rate limiter (issues #79/#49) kicks in when a fuzz run's many requests
+# exhaust the 120/min window. Schemathesis's default expected-status list for
+# negative_data_rejection omits 429, so a mid-run window exhaustion would
+# report "invalid data was accepted" when the API actually rejected it.
+# The check stays enabled — 429 is merely added to the accepted rejections.
+[checks.negative_data_rejection]
+expected-statuses = [
+  "400",
+  "401",
+  "403",
+  "404",
+  "405",
+  "406",
+  "409",
+  "415",
+  "422",
+  "428",
+  "429",
+  "5xx",
+]
+
+# Same 429 rationale for the positive check: once the window is exhausted,
+# even a valid positive case gets the limiter's 429 — that is the documented,
+# correct behavior of a rate-limited API, not a rejected valid request.
+[checks.positive_data_acceptance]
+expected-statuses = ["2xx", "401", "403", "404", "409", "429", "5xx"]

@@ -1,4 +1,4 @@
-import { HealthResponseSchema, type HealthResponse } from "@app/contracts";
+import { HealthErrorSchema, HealthResponseSchema, type HealthResponse } from "@app/contracts";
 import { describeRoute, resolver } from "hono-openapi";
 import type { RequestContext } from "../env";
 import { newRouter } from "../lib/guard";
@@ -30,6 +30,12 @@ export const healthRoutes = newRouter().get(
       200: {
         description: "OK",
         content: { "application/json": { schema: resolver(HealthResponseSchema) } },
+      },
+      // The per-IP rate limiter is global middleware — health is not exempt,
+      // so a client that exhausts its window sees this on any route.
+      429: {
+        description: "Rate limited — the per-IP request budget for the window is exhausted",
+        content: { "application/json": { schema: resolver(HealthErrorSchema) } },
       },
     },
   }),
