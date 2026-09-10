@@ -115,7 +115,7 @@ try {
     ...(await runExpansionCases({
       evalpkg,
       provider: router,
-      cases: expansionSet,
+      cases: expansionSet.cases,
       budget,
       onCost,
     })),
