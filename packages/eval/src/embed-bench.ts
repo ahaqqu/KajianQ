@@ -246,3 +246,17 @@ export type BenchCostSink = {
 export function totalCostMicroUsd(costs: readonly CostRecordLike[]): number {
   return costs.reduce((sum, c) => sum + (c.costMicroUsd ?? 0), 0);
 }
+
+/**
+ * Extract the vendor's "Please retry in Ns" hint from a 429 message; null
+ * when the message carries none (the caller then uses its own backoff). A
+ * 1s margin is added to second-granularity hints so a boundary-crossing
+ * window doesn't immediately re-trip.
+ */
+export function retryInMs(message: string): number | null {
+  const m = /retry in ([0-9.]+)(ms|s)/.exec(message);
+  if (!m) return null;
+  const n = Number(m[1]);
+  if (!Number.isFinite(n)) return null;
+  return m[2] === "ms" ? Math.ceil(n) : Math.ceil(n * 1000) + 1_000;
+}

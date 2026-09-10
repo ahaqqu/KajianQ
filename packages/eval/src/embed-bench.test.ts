@@ -8,6 +8,7 @@ import {
   rankDocs,
   recallAtK,
   reciprocalRank,
+  retryInMs,
   scoreDirection,
   scoreExpansionCase,
   totalCostMicroUsd,
@@ -175,5 +176,20 @@ describe("totalCostMicroUsd", () => {
         { modelId: "b", tokensIn: 0, tokensOut: 0, latencyMs: 0, costMicroUsd: 7 },
       ]),
     ).toBe(12);
+  });
+});
+
+describe("retryInMs", () => {
+  it("parses the vendor's 'retry in Ns' hint with a 1s safety margin", () => {
+    expect(retryInMs("... Please retry in 47.791139144s.")).toBe(47_792 + 1_000);
+  });
+
+  it("parses millisecond hints", () => {
+    expect(retryInMs("retry in 250ms")).toBe(250);
+  });
+
+  it("returns null when no hint is present", () => {
+    expect(retryInMs("quota exhausted")).toBeNull();
+    expect(retryInMs("")).toBeNull();
   });
 });

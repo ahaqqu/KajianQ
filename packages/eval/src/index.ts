@@ -41,6 +41,7 @@ export {
   rankDocs,
   recallAtK,
   reciprocalRank,
+  retryInMs,
   scoreDirection,
   scoreExpansionCase,
   totalCostMicroUsd,

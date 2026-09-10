@@ -2,6 +2,8 @@ import { Effect } from "effect";
 import { loadProviderConfig, resolveRole, parseCandidateKey } from "@app/infra";
 import * as evalpkg from "@app/eval";
 
+const { retryInMs } = evalpkg;
+
 /**
  * Candidate wiring for the embedding-benchmark CLI (#9): each
  * `embedder-candidates` chain entry is resolved into its own
@@ -33,23 +35,12 @@ export function loadCandidates(config) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * Extract the vendor's "Please retry in Ns" hint from a 429 message; null
- * when the message carries none (the caller then uses its own backoff).
- */
-function retryInMs(message) {
-  const m = /retry in ([0-9.]+)(ms|s)/.exec(message);
-  if (!m) return null;
-  const n = Number(m[1]);
-  if (!Number.isFinite(n)) return null;
-  return m[2] === "ms" ? Math.ceil(n) : Math.ceil(n * 1000) + 1_000;
-}
-
-/**
  * Embed all texts in batches through a Provider, surfacing per-call costs.
  * The free tier's embed-content quota counts ITEMS per minute (not requests),
  * so pacing is item-aware: the delay between batches targets ~800 items/min
  * (`batchDelayMs` overrides), and a rate-limit failure backs off — preferring
- * the vendor's own "retry in Ns" hint, else a 30s doubling (up to 8 waits).
+ * the vendor's own "retry in Ns" hint (`retryInMs` from the engine module),
+ * else a 30s doubling (up to 8 waits).
  */
 export async function embedAll(provider, texts, { batchSize, dimensions, onCost, batchDelayMs }) {
   const delay = batchDelayMs ?? Math.max(1_000, Math.round((batchSize / 800) * 60_000));
