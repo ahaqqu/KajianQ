@@ -78,108 +78,73 @@
       {
         "caseId": "exp-001",
         "correct": true,
-        "picked": [
-          "الوُضُوء",
-          "التَّيَمُّم"
-        ],
+        "picked": ["الوُضُوء", "التَّيَمُّم"],
         "expectedTerm": "الوُضُوء"
       },
       {
         "caseId": "exp-002",
         "correct": true,
-        "picked": [
-          "الغُسْل"
-        ],
+        "picked": ["الغُسْل"],
         "expectedTerm": "الغُسْل"
       },
       {
         "caseId": "exp-003",
         "correct": true,
-        "picked": [
-          "الفِرْدَوْس",
-          "الجَنَّة"
-        ],
+        "picked": ["الفِرْدَوْس", "الجَنَّة"],
         "expectedTerm": "الفِرْدَوْس"
       },
       {
         "caseId": "exp-004",
         "correct": true,
-        "picked": [
-          "زَكَاةُ الفِطْر",
-          "الزَّكَاة"
-        ],
+        "picked": ["زَكَاةُ الفِطْر", "الزَّكَاة"],
         "expectedTerm": "زَكَاةُ الفِطْر"
       },
       {
         "caseId": "exp-005",
         "correct": true,
-        "picked": [
-          "صَلَاةُ الكُسُوف",
-          "الصَّلَاة"
-        ],
+        "picked": ["صَلَاةُ الكُسُوف", "الصَّلَاة"],
         "expectedTerm": "صَلَاةُ الكُسُوف"
       },
       {
         "caseId": "exp-006",
         "correct": true,
-        "picked": [
-          "القَضَاء",
-          "الفِدْيَة"
-        ],
+        "picked": ["القَضَاء", "الفِدْيَة"],
         "expectedTerm": "الفِدْيَة"
       },
       {
         "caseId": "exp-007",
         "correct": true,
-        "picked": [
-          "الشِّرْك",
-          "التَّوْحِيد"
-        ],
+        "picked": ["الشِّرْك", "التَّوْحِيد"],
         "expectedTerm": "الشِّرْك"
       },
       {
         "caseId": "exp-008",
         "correct": true,
-        "picked": [
-          "الخِتَان",
-          "الطَّهُور"
-        ],
+        "picked": ["الخِتَان", "الطَّهُور"],
         "expectedTerm": "الخِتَان"
       },
       {
         "caseId": "exp-009",
         "correct": true,
-        "picked": [
-          "الحَجّ",
-          "الإِحْرَام"
-        ],
+        "picked": ["الحَجّ", "الإِحْرَام"],
         "expectedTerm": "الحَجّ"
       },
       {
         "caseId": "exp-010",
         "correct": true,
-        "picked": [
-          "الرِّزْق",
-          "الحَلَال"
-        ],
+        "picked": ["الرِّزْق", "الحَلَال"],
         "expectedTerm": "الرِّزْق"
       },
       {
         "caseId": "exp-011",
         "correct": true,
-        "picked": [
-          "الطَّلَاق",
-          "النِّكَاح"
-        ],
+        "picked": ["الطَّلَاق", "النِّكَاح"],
         "expectedTerm": "الطَّلَاق"
       },
       {
         "caseId": "exp-012",
         "correct": true,
-        "picked": [
-          "لَيْلَةُ القَدْر",
-          "رَمَضَان"
-        ],
+        "picked": ["لَيْلَةُ القَدْر", "رَمَضَان"],
         "expectedTerm": "لَيْلَةُ القَدْر"
       }
     ]
