@@ -88,6 +88,7 @@
       "dependencies": {
         "@app/contracts": "workspace:*",
         "@app/infra": "workspace:*",
+        "@app/kajianq-domain": "workspace:*",
         "@app/rag-core": "workspace:*",
         "@neondatabase/serverless": "^1.1.0",
         "effect": "3.22.1",

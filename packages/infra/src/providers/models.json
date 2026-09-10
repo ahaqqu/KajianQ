@@ -20,6 +20,12 @@
           "capabilities": ["embed"],
           "dimensions": 1536,
           "priceMicroUsdPerMTok": { "in": 0, "out": 0 }
+        },
+        "gemini-embedding-2": {
+          "$comment": "#9 benchmark challenger — explicitly cross-lingual (100+ languages); incompatible embedding space with embedding-001, so adopting it is a clean-slate re-embed, not an upgrade. Dimensions verified 1536 on the OpenAI-compat endpoint.",
+          "capabilities": ["embed"],
+          "dimensions": 1536,
+          "priceMicroUsdPerMTok": { "in": 0, "out": 0 }
         }
       }
     },
@@ -85,8 +91,12 @@
     },
     "translation": { "chain": ["qwen:qwen3-max"] },
     "embedder": {
-      "$comment": "Pending the #9 embedding benchmark gate (AGENTS.md rule 10) — AR-only vs ID-fallback fusion is decided by its numbers, not here.",
+      "$comment": "Decided by the #9 embedding benchmark gate (ADR-0036): AR-only vs ID-fallback fusion is recorded there. The chain holds the gate's winner only — never both models, they are embedding-space-incompatible.",
       "chain": ["gemini:gemini-embedding-001"]
+    },
+    "embedder-candidates": {
+      "$comment": "#9 gate benchmark role: every candidate the benchmark compares, in one chain. Not for serving — the benchmark resolves each candidate directly from this chain (ADR-0022).",
+      "chain": ["gemini:gemini-embedding-001", "gemini:gemini-embedding-2"]
     }
   }
 }

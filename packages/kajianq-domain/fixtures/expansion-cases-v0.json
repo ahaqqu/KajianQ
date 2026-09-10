@@ -1,0 +1,173 @@
+{
+  "id": "expansion-cases-v0",
+  "cases": [
+    {
+      "id": "exp-001",
+      "query": "Bagaimana tata cara bersuci sebelum sholat?",
+      "slice": {
+        "concept": "ritual_purity",
+        "terms": [
+          { "lang": "ar", "term": "الوُضُوء", "gloss": "wudhu, bersuci kecil sebelum sholat" },
+          { "lang": "ar", "term": "الغُسْل", "gloss": "mandi wajib setelah junub" },
+          { "lang": "ar", "term": "التَّيَمُّم", "gloss": "bersuci dengan debu saat tak ada air" }
+        ]
+      },
+      "expectedTerm": "الوُضُوء",
+      "distractors": ["الغُسْل", "التَّيَمُّم"]
+    },
+    {
+      "id": "exp-002",
+      "query": "Apa hukum mandi wajib setelah junub?",
+      "slice": {
+        "concept": "ritual_purity",
+        "terms": [
+          { "lang": "ar", "term": "الوُضُوء", "gloss": "wudhu, bersuci kecil sebelum sholat" },
+          { "lang": "ar", "term": "الغُسْل", "gloss": "mandi wajib setelah junub" },
+          { "lang": "ar", "term": "التَّيَمُّم", "gloss": "bersuci dengan debu saat tak ada air" }
+        ]
+      },
+      "expectedTerm": "الغُسْل",
+      "distractors": ["الوُضُوء", "التَّيَمُّم"]
+    },
+    {
+      "id": "exp-003",
+      "query": "Keistimewaan surga firdaus menurut Al-Quran?",
+      "slice": {
+        "concept": "paradise",
+        "terms": [
+          { "lang": "ar", "term": "الجَنَّة", "gloss": "surga" },
+          { "lang": "ar", "term": "الفِرْدَوْس", "gloss": "puncak surga, tempat tertinggi" },
+          { "lang": "ar", "term": "النَّار", "gloss": "neraka" }
+        ]
+      },
+      "expectedTerm": "الفِرْدَوْس",
+      "distractors": ["الجَنَّة", "النَّار"]
+    },
+    {
+      "id": "exp-004",
+      "query": "Bagaimana tata cara zakat fitrah saat Ramadan?",
+      "slice": {
+        "concept": "zakat",
+        "terms": [
+          { "lang": "ar", "term": "الزَّكَاة", "gloss": "zakat harta" },
+          { "lang": "ar", "term": "زَكَاةُ الفِطْر", "gloss": "zakat fitrah sebelum Idul Fitri" },
+          { "lang": "ar", "term": "الصَّدَقَة", "gloss": "sedekah sukarela" }
+        ]
+      },
+      "expectedTerm": "زَكَاةُ الفِطْر",
+      "distractors": ["الزَّكَاة", "الصَّدَقَة"]
+    },
+    {
+      "id": "exp-005",
+      "query": "Tata cara sholat gerhana matahari?",
+      "slice": {
+        "concept": "prayer",
+        "terms": [
+          { "lang": "ar", "term": "الصَّلَاة", "gloss": "sholat" },
+          { "lang": "ar", "term": "صَلَاةُ الكُسُوف", "gloss": "sholat gerhana matahari" },
+          { "lang": "ar", "term": "صَلَاةُ الجُمُعَة", "gloss": "sholat Jumat" }
+        ]
+      },
+      "expectedTerm": "صَلَاةُ الكُسُوف",
+      "distractors": ["الصَّلَاة", "صَلَاةُ الجُمُعَة"]
+    },
+    {
+      "id": "exp-006",
+      "query": "Bagaimana hukum puasa orang yang sedang sakit?",
+      "slice": {
+        "concept": "fasting",
+        "terms": [
+          { "lang": "ar", "term": "الصِّيَام", "gloss": "puasa wajib Ramadan" },
+          { "lang": "ar", "term": "الفِدْيَة", "gloss": "denda bagi yang tak mampu puasa" },
+          { "lang": "ar", "term": "القَضَاء", "gloss": "mengqadha puasa yang tertinggal" }
+        ]
+      },
+      "expectedTerm": "الفِدْيَة",
+      "distractors": ["الصِّيَام", "القَضَاء"]
+    },
+    {
+      "id": "exp-007",
+      "query": "Apa itu syirik dalam aqidah Islam?",
+      "slice": {
+        "concept": "creed",
+        "terms": [
+          { "lang": "ar", "term": "التَّوْحِيد", "gloss": "menyekutukan Allah" },
+          { "lang": "ar", "term": "الشِّرْك", "gloss": "menyekutukan Allah, dosa besar" },
+          { "lang": "ar", "term": "الكُفْر", "gloss": "kekufuran" }
+        ]
+      },
+      "expectedTerm": "الشِّرْك",
+      "distractors": ["التَّوْحِيد", "الكُفْر"]
+    },
+    {
+      "id": "exp-008",
+      "query": "Apa itu khitan dalam syariat?",
+      "slice": {
+        "concept": "fitrah_practices",
+        "terms": [
+          { "lang": "ar", "term": "الخِتَان", "gloss": "khitan/sunat" },
+          { "lang": "ar", "term": "النِّكَاح", "gloss": "pernikahan" },
+          { "lang": "ar", "term": "الطَّهُور", "gloss": "bersuci" }
+        ]
+      },
+      "expectedTerm": "الخِتَان",
+      "distractors": ["النِّكَاح", "الطَّهُور"]
+    },
+    {
+      "id": "exp-009",
+      "query": "Tata cara melakukan haji di Makkah?",
+      "slice": {
+        "concept": "hajj",
+        "terms": [
+          { "lang": "ar", "term": "الحَجّ", "gloss": "haji ke Makkah" },
+          { "lang": "ar", "term": "العُمْرَة", "gloss": "umrah, haji kecil" },
+          { "lang": "ar", "term": "الإِحْرَام", "gloss": "niat ihram untuk haji/umrah" }
+        ]
+      },
+      "expectedTerm": "الحَجّ",
+      "distractors": ["العُمْرَة", "الإِحْرَام"]
+    },
+    {
+      "id": "exp-010",
+      "query": "Apa itu rizki yang halal dalam Islam?",
+      "slice": {
+        "concept": "sustenance",
+        "terms": [
+          { "lang": "ar", "term": "الرِّزْق", "gloss": "rezeki dari Allah" },
+          { "lang": "ar", "term": "الحَلَال", "gloss": "yang dibolehkan" },
+          { "lang": "ar", "term": "الحَرَام", "gloss": "yang dilarang" }
+        ]
+      },
+      "expectedTerm": "الرِّزْق",
+      "distractors": ["الحَلَال", "الحَرَام"]
+    },
+    {
+      "id": "exp-011",
+      "query": "Bagaimana prosedur talak dalam pernikahan?",
+      "slice": {
+        "concept": "marriage",
+        "terms": [
+          { "lang": "ar", "term": "النِّكَاح", "gloss": "pernikahan" },
+          { "lang": "ar", "term": "الطَّلَاق", "gloss": "perceraian" },
+          { "lang": "ar", "term": "الرُّجُوع", "gloss": "rujuk kembali" }
+        ]
+      },
+      "expectedTerm": "الطَّلَاق",
+      "distractors": ["النِّكَاح", "الرُّجُوع"]
+    },
+    {
+      "id": "exp-012",
+      "query": "Apa keutamaan malam Lailatul Qadar?",
+      "slice": {
+        "concept": "ramadan",
+        "terms": [
+          { "lang": "ar", "term": "لَيْلَةُ القَدْر", "gloss": "malam kemuliaan dalam Ramadan" },
+          { "lang": "ar", "term": "رَمَضَان", "gloss": "bulan puasa" },
+          { "lang": "ar", "term": "عِيدُ الفِطْر", "gloss": "hari raya Idul Fitri" }
+        ]
+      },
+      "expectedTerm": "لَيْلَةُ القَدْر",
+      "distractors": ["رَمَضَان", "عِيدُ الفِطْر"]
+    }
+  ]
+}
