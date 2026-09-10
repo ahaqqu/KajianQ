@@ -1,0 +1,196 @@
+{
+  "id": "embed-bench-v0",
+  "corpusFingerprint": "fnv1a64:478dc7ce1bae2d30:1500",
+  "corpusDocs": 1500,
+  "surahs": 114,
+  "hadithCollections": 7,
+  "probeSource": "fixture /home/ahaqqu/Projects/KajianQ/packages/kajianq-domain/fixtures/embed-bench-probes-v0.json",
+  "probes": {
+    "crossLingual": 200,
+    "monolingual": 200
+  },
+  "candidates": [
+    {
+      "modelId": "gemini-embedding-001",
+      "cells": [
+        {
+          "direction": "secondary→primary",
+          "queries": 200,
+          "recallAtK": 1,
+          "mrr": 1
+        },
+        {
+          "direction": "primary→primary",
+          "queries": 200,
+          "recallAtK": 1,
+          "mrr": 1
+        },
+        {
+          "direction": "secondary→secondary",
+          "queries": 0,
+          "recallAtK": null,
+          "mrr": null
+        }
+      ],
+      "costMicroUsd": 0,
+      "elapsedMs": 327105,
+      "gate": {
+        "crossLingualPass": true,
+        "monolingualPass": true,
+        "gatePass": true
+      }
+    },
+    {
+      "modelId": "gemini-embedding-2",
+      "cells": [
+        {
+          "direction": "secondary→primary",
+          "queries": 200,
+          "recallAtK": 1,
+          "mrr": 0.9975
+        },
+        {
+          "direction": "primary→primary",
+          "queries": 200,
+          "recallAtK": 1,
+          "mrr": 1
+        },
+        {
+          "direction": "secondary→secondary",
+          "queries": 0,
+          "recallAtK": null,
+          "mrr": null
+        }
+      ],
+      "costMicroUsd": 0,
+      "elapsedMs": 337026,
+      "gate": {
+        "crossLingualPass": true,
+        "monolingualPass": true,
+        "gatePass": true
+      }
+    }
+  ],
+  "expansion": {
+    "cases": 12,
+    "accuracy": 1,
+    "results": [
+      {
+        "caseId": "exp-001",
+        "correct": true,
+        "picked": [
+          "الوُضُوء",
+          "التَّيَمُّم"
+        ],
+        "expectedTerm": "الوُضُوء"
+      },
+      {
+        "caseId": "exp-002",
+        "correct": true,
+        "picked": [
+          "الغُسْل"
+        ],
+        "expectedTerm": "الغُسْل"
+      },
+      {
+        "caseId": "exp-003",
+        "correct": true,
+        "picked": [
+          "الفِرْدَوْس",
+          "الجَنَّة"
+        ],
+        "expectedTerm": "الفِرْدَوْس"
+      },
+      {
+        "caseId": "exp-004",
+        "correct": true,
+        "picked": [
+          "زَكَاةُ الفِطْر",
+          "الزَّكَاة"
+        ],
+        "expectedTerm": "زَكَاةُ الفِطْر"
+      },
+      {
+        "caseId": "exp-005",
+        "correct": true,
+        "picked": [
+          "صَلَاةُ الكُسُوف",
+          "الصَّلَاة"
+        ],
+        "expectedTerm": "صَلَاةُ الكُسُوف"
+      },
+      {
+        "caseId": "exp-006",
+        "correct": true,
+        "picked": [
+          "القَضَاء",
+          "الفِدْيَة"
+        ],
+        "expectedTerm": "الفِدْيَة"
+      },
+      {
+        "caseId": "exp-007",
+        "correct": true,
+        "picked": [
+          "الشِّرْك",
+          "التَّوْحِيد"
+        ],
+        "expectedTerm": "الشِّرْك"
+      },
+      {
+        "caseId": "exp-008",
+        "correct": true,
+        "picked": [
+          "الخِتَان",
+          "الطَّهُور"
+        ],
+        "expectedTerm": "الخِتَان"
+      },
+      {
+        "caseId": "exp-009",
+        "correct": true,
+        "picked": [
+          "الحَجّ",
+          "الإِحْرَام"
+        ],
+        "expectedTerm": "الحَجّ"
+      },
+      {
+        "caseId": "exp-010",
+        "correct": true,
+        "picked": [
+          "الرِّزْق",
+          "الحَلَال"
+        ],
+        "expectedTerm": "الرِّزْق"
+      },
+      {
+        "caseId": "exp-011",
+        "correct": true,
+        "picked": [
+          "الطَّلَاق",
+          "النِّكَاح"
+        ],
+        "expectedTerm": "الطَّلَاق"
+      },
+      {
+        "caseId": "exp-012",
+        "correct": true,
+        "picked": [
+          "لَيْلَةُ القَدْر",
+          "رَمَضَان"
+        ],
+        "expectedTerm": "لَيْلَةُ القَدْر"
+      }
+    ]
+  },
+  "gateFloors": {
+    "crossLingual": 0.7,
+    "monolingual": 0.75
+  },
+  "budget": {
+    "capMicroUsd": 5000000,
+    "totalMicroUsd": 12
+  },
+  "finishedAt": "2026-09-10T04:10:24.220Z"
+}

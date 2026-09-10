@@ -47,14 +47,70 @@ Numbers below cite the exact corpus fingerprint so re-runs are comparable.
 
 ## Decision
 
-> **[NUMBERS PENDING — this section is finalized with the report from the
-> full run before merge; the PR carries the JSON report verbatim.]**
+**Both floors are met; `gemini-embedding-001` ships as the default and the
+retrieval posture is AR-only serving with the ID-fallback track retained.**
+Run of 2026-09-10 04:10 WIB (paid tier), report at
+`packages/kajianq-domain/fixtures/embed-bench-results.json`:
 
-- Winning model: `gemini-embedding-001` (pending confirmation vs floors).
-- Retrieval posture: AR-only serving with the ID-fallback track retained
-  (dual-index schema per ADR-0013 amendment 1) — pending the numbers.
-- Re-embedding cost if `gemini-embedding-2` were adopted: full re-embed of
-  the corpus (embedding spaces incompatible); reported in the PR.
+| Candidate              | ID→AR (secondary→primary)                   | AR→AR (primary→primary)                    | Gate (≥0.70 / ≥0.75) |
+| ---------------------- | ------------------------------------------- | ------------------------------------------ | -------------------- |
+| `gemini-embedding-001` | recall@10 **1.000**, MRR **1.000** (n=200)  | recall@10 **1.000**, MRR **1.000** (n=200) | ✅ pass              |
+| `gemini-embedding-2`   | recall@10 **1.000**, MRR **0.9975** (n=200) | recall@10 **1.000**, MRR **1.000** (n=200) | ✅ pass              |
+
+Corpus: 1,500-doc deterministic stratified subset of the real v1 sources
+(6,236-ayah Tanzil/Kemenag Quran + 30,778 aligned hadith across the seven
+ADR-0026 collections), fingerprint `fnv1a64:478dc7ce1bae2d30:1500`. Probes:
+200 cross-lingual + 200 monolingual self-retrieval probes per model. Total
+recorded spend: **$0.000012** of the $5 cap (the vendor's OpenAI-compat
+endpoint reported no usage for these calls; the free-tier-priced config
+records 0).
+
+**Expansion micro-task (ADR-0014): 12/12 correct (accuracy 1.000)** — the
+cheap-tier router LLM picked the correct Arabic expansion term in every case,
+including contextual disambiguation (wudhu vs. ghusl vs. tayammum for purity
+queries; firdaus as the narrower pick inside the paradise slice; zakat
+al-fitr vs. zakat). ADR-0014's prompt-injection consumption design is
+de-risked at this sample size.
+
+### Interpretation — read the MRR, not just the recall
+
+Self-retrieval probes (a doc's own track text as the query) have a _ceiling_:
+the relevant doc trivially ranks high because the query text is identical to
+a corpus entry, so recall@10 saturating at 1.000 was the expected strong-model
+outcome and cannot by itself discriminate model quality. The discriminating
+statistic is MRR on the cross-lingual direction: `gemini-embedding-001` put
+its own AR doc at rank 1 for all 200 ID queries, `gemini-embedding-2` missed
+top-1 on 0.5% of them (MRR 0.9975). Both are comfortably past the floors;
+`gemini-embedding-001` retains the default on (a) equal gate pass, (b) equal
+or better cross-lingual MRR, (c) zero re-embedding cost — the whole corpus is
+already embedded in its space, while adopting `gemini-embedding-2` is a
+clean-slate re-embed (incompatible space) priced at ~$6.08 batch / $12.16
+standard for the current Quran+hadith corpus (both tracks).
+
+The sharper discriminative test (natural-language Indonesian _user_ queries —
+paraphrases, not verbatim doc text — against the AR corpus) lands with the
+Golden Set runs against the live pipeline (#8's harness), which exercises the
+full ID→AR path including query expansion. The floors defined in #9 are met
+as specified; the posture decision is made.
+
+### Retrieval posture
+
+**AR-only serving, ID-fallback track retained.** The cross-lingual floor
+passed with margin, so the primary (Arabic) track serves retrieval; the
+`embedding_fallback` column stays built and switchable without re-embedding
+(ADR-0013 amendment 1) for a future fusion posture if real-user paraphrase
+recall ever justifies it.
+
+### Config updates in the same commit
+
+- `embedder` role: `gemini-embedding-001` confirmed as the chain head.
+- **Live-API model-id correction (surfaced by this gate's expansion task):**
+  the API's chat-completions surface does not expose `gemini-3-flash` /
+  `gemini-3.1-pro` (404 — only the `-preview` ids exist on this account), so
+  the `cheap` and `reviewer` role pins now read `gemini-3-flash-preview` and
+  `gemini-3.1-pro-preview` (SPECS §3.4 updated). The ingestion-translation and
+  generator roles (Qwen) are unchanged; their DashScope key is absent in this
+  environment and out of this gate's scope.
 
 ## Consequences
 
