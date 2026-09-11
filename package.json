@@ -35,6 +35,7 @@
     "db:probe:pg-search": "bun packages/infra/scripts/pg-search-probe.mjs",
     "provider:smoke": "bun packages/infra/scripts/provider-smoke.mjs",
     "eval:run": "bun packages/eval/scripts/eval-run.mjs",
+    "eval:smoke": "bun packages/eval/scripts/eval-smoke.mjs",
     "eval:embed-bench": "bun packages/eval/scripts/embed-bench.mjs",
     "ingest:quran": "bun packages/kajianq-domain/scripts/ingest-quran.mjs",
     "ingest:hadith": "bun packages/kajianq-domain/scripts/ingest-hadith.mjs",
