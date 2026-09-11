@@ -22,6 +22,11 @@ export { Budget, BudgetExceededError, budgetCapFromEnv } from "./budget";
 export { EvalConfigError, loadEvalRunConfig, type EvalRunConfig } from "./eval-config";
 export { consumeSseToText, postChatSse, type ChatSseResult } from "./api-client";
 export {
+  REFUSAL_MARKERS,
+  createStagingHarness,
+  type StagingHarness,
+} from "./staging-harness";
+export {
   runGoldenSet,
   scoreQuestion,
   buildReport,

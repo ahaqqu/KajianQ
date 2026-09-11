@@ -54,7 +54,12 @@ export function createMemoryRagStore(): RagStore & {
   const childByPos = new Map<string, string>();
   const pairs = new Map<string, AlignedPairInsert & { id: string }>();
   const traces = new Map<string, unknown>();
-  const sessions = new Map<string, string>();
+  // Chat sessions (id → owner) and auth sessions (id → owner + TTL) are
+  // distinct tables in the real schema; keeping them distinct here lets the
+  // cleanup contract (A5) be exercised faithfully.
+  const chatSessions = new Map<string, string>();
+  const authSessions = new Map<string, { userId: string; expiresAt: number }>();
+  const users = new Map<string, { kind: string }>();
   const tokens = new Map<string, string>(); // token hash-standin → userId
   const chatMessages = new Map<
     string,
@@ -156,13 +161,13 @@ export function createMemoryRagStore(): RagStore & {
     createChatSession(input) {
       return Effect.sync(() => {
         const id = `sess${(seq += 1)}`;
-        sessions.set(id, input.userId);
+        chatSessions.set(id, input.userId);
         return id;
       });
     },
     // A6: ownership validation for client-supplied session ids.
     getChatSessionUser(sessionId) {
-      return Effect.succeed(sessions.get(sessionId) ?? null);
+      return Effect.succeed(chatSessions.get(sessionId) ?? null);
     },
     insertChatMessage(input) {
       return Effect.sync(() => {
@@ -201,7 +206,11 @@ export function createMemoryRagStore(): RagStore & {
         expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
       };
       return Effect.sync(() => {
-        sessions.set(minted.sessionId, minted.userId);
+        users.set(minted.userId, { kind: "anonymous" });
+        authSessions.set(minted.sessionId, {
+          userId: minted.userId,
+          expiresAt: minted.expiresAt,
+        });
         tokens.set(minted.token, minted.userId);
         return minted;
       });
@@ -211,11 +220,40 @@ export function createMemoryRagStore(): RagStore & {
       const userId = tokens.get(token) ?? null;
       return Effect.sync(() => userId);
     },
-    deleteUserCascade() {
-      return Effect.void;
+    deleteUserCascade(userId) {
+      // The FK cascade, modeled: the user row, their chat sessions, messages,
+      // and traces all go together.
+      return Effect.sync(() => {
+        users.delete(userId);
+        for (const [id, owner] of [...chatSessions]) if (owner === userId) chatSessions.delete(id);
+        for (const [id, session] of [...authSessions])
+          if (session.userId === userId) authSessions.delete(id);
+        for (const [messageId, trace] of [...traces]) {
+          if ((trace as { userId?: string }).userId === userId) traces.delete(messageId);
+        }
+      });
     },
-    cleanupExpiredSessions() {
-      return Effect.succeed(0);
+    // The real cleanup's contract (A5): expired sessions AND the anonymous
+    // users left with no session, in one call. Returns reclaimed user count.
+    cleanupExpiredSessions(before = new Date()) {
+      return Effect.sync(() => {
+        const cutoff = before.getTime();
+        for (const [id, session] of [...authSessions]) {
+          if (session.expiresAt <= cutoff) authSessions.delete(id);
+        }
+        let reclaimed = 0;
+        for (const [id, user] of [...users]) {
+          if (user.kind !== "anonymous") continue;
+          const stillHasSession = [...authSessions.values()].some((s) => s.userId === id);
+          if (!stillHasSession) {
+            users.delete(id);
+            for (const [chatId, owner] of [...chatSessions])
+              if (owner === id) chatSessions.delete(chatId);
+            reclaimed += 1;
+          }
+        }
+        return reclaimed;
+      });
     },
     insertEvalRun(input) {
       return Effect.sync(() => {

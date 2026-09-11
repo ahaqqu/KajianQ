@@ -5,6 +5,7 @@ import {
   createRagStore,
   loadProviderConfig,
   resolveRole,
+  type Logger,
   type ProviderConfig,
   type RagStore,
 } from "@app/infra";
@@ -132,6 +133,26 @@ export type ChatWiring = {
 };
 
 /**
+ * The store-only wiring the auth routes need (thermo-review A4): a store plus
+ * its bridge, with no provider roles resolved at all.
+ *
+ * Auth is not the chat pipeline. Session minting and anonymous self-deletion
+ * (ADR-0017's erasure right) must not be gated on an unrelated LLM role: a
+ * rotated reviewer key would otherwise take down token minting and erasure —
+ * and with it the eval harness's token mint. The reviewer-mandatory check
+ * stays on `buildChatWiring`, where the chat pipeline's config contract lives.
+ */
+export type StoreWiring = {
+  fullStore: RagStore;
+  runStore: (effect: unknown) => Promise<unknown>;
+};
+
+export function buildStoreWiring(env: { DATABASE_URL?: string }): StoreWiring {
+  const store = createRagStoreFromEnv(env);
+  return { fullStore: store, runStore: storeBridge(store) };
+}
+
+/**
  * Build the chat wiring from the Worker bindings (providers + store + the
  * store bridge). Throws (config-class) when the store is not configured or
  * when the reviewer role has no keyed candidate — the route maps both to 503.
@@ -163,6 +184,39 @@ export function buildChatWiring(env: Record<string, string | undefined>): ChatWi
     fullStore: store,
     runStore: storeBridge(store),
   };
+}
+
+/**
+ * The one place the wiring-to-503 posture lives (thermo-review B1): a typed
+ * `ChatConfigError` means "this route is not configured in this environment"
+ * and becomes a 503 with the route's own error code; anything else is a real
+ * fault and rethrows to the app's typed error handler with its cause logged.
+ * Three routes previously carried near-identical copies of this block, so a
+ * policy change had to be applied in three places.
+ */
+export function wiringOr503<W>(
+  build: () => W,
+  logger: Logger,
+  errorCode: string,
+): { wiring: W } | { response: Response } {
+  try {
+    return { wiring: build() };
+  } catch (err) {
+    if (err instanceof ChatConfigError) {
+      logger.warn("wiring.not_configured", { errorCode, missing: err.missing ?? "unknown" });
+      return { response: Response.json({ error: errorCode }, { status: 503 }) };
+    }
+    throw err;
+  }
+}
+
+/** The chat pipeline's wiring or its 503 (the reviewer role is mandatory). */
+export function chatWiringOr503(
+  env: Record<string, string | undefined>,
+  logger: Logger,
+  errorCode: string,
+): { wiring: ChatWiring } | { response: Response } {
+  return wiringOr503(() => buildChatWiring(env), logger, errorCode);
 }
 
 /**

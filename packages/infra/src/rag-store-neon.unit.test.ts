@@ -387,13 +387,24 @@ describe("rag-store-neon adapter (fake runner)", () => {
     expect(sql._calls[0]?.text).toContain("expires_at > now()");
   });
 
-  it("cleanupExpiredSessions returns the count of deleted rows", async () => {
+  it("cleanupExpiredSessions reclaims expired sessions AND orphaned users (A5)", async () => {
     const sql = makeFakeSql();
     const store = createNeonRagStore(sql);
-    sql._setTag([{ id: "a" }, { id: "b" }, { id: "c" }]);
+    // Neon's transaction() resolves one result per statement, in order: the
+    // sessions DELETE, then the users DELETE ... RETURNING id.
+    sql._setTxn([[{ id: "a" }, { id: "b" }], [{ id: "u1" }, { id: "u2" }, { id: "u3" }]]);
     const n = await runOk(store.cleanupExpiredSessions());
+    // The reported count is the reclaimed users — the storage-growth number.
     expect(n).toBe(3);
-    expect(sql._calls[0]?.text).toContain("DELETE FROM sessions WHERE expires_at <=");
+    const tx = sql._calls.find((c) => c.kind === "transaction");
+    expect(tx?.queries).toHaveLength(2);
+    const statements = sql._calls.filter((c) => c.kind === "tag").map((c) => c.text);
+    expect(statements[0]).toContain("DELETE FROM sessions WHERE expires_at <=");
+    // The orphan reclamation is the second statement and must scope to
+    // anonymous users with no remaining session (never a live user).
+    expect(statements[1]).toContain("DELETE FROM users");
+    expect(statements[1]).toContain("kind = 'anonymous'");
+    expect(statements[1]).toContain("NOT EXISTS (SELECT 1 FROM sessions");
   });
 
   it("deleteUserCascade deletes from users (cascade does the rest)", async () => {

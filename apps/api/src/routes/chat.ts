@@ -1,14 +1,8 @@
 import { newRouter } from "../lib/guard";
-import {
-  authGuard,
-  buildChatWiring,
-  sseFrame,
-  ChatConfigError,
-  type ChatWiring,
-} from "../lib/chat-wiring";
+import { authGuard, chatWiringOr503, sseFrame, type ChatWiring } from "../lib/chat-wiring";
 import { CHAT_OPENAPI_DESCRIPTION, parseChatRequest } from "../lib/chat-openapi";
 import { createLogger } from "@app/infra";
-import { runChatPipelinePromise } from "@app/kajianq-domain";
+import { runChatPipelinePromise, type ChatPipelineDeps } from "@app/kajianq-domain";
 
 /** The route's env, widened with the provider-key bindings the wiring reads. */
 type ChatEnv = import("../env").ApiEnv["Bindings"] & Record<string, string | undefined>;
@@ -50,17 +44,11 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
     correlationId: c.get("correlationId"),
   });
   let wiring: ChatWiring;
-  try {
-    wiring = buildChatWiring(env);
-  } catch (err) {
-    // A7: only a typed config failure is "not configured"; anything else
-    // (adapter bug, malformed URL, transient infra fault) falls through to
-    // the app's typed error handler with its cause logged, never masked.
-    if (err instanceof ChatConfigError) {
-      logger.warn("chat.not_configured", { missing: err.missing ?? "unknown" });
-      return c.json({ error: "chat_not_configured" }, 503);
-    }
-    throw err;
+  {
+    // B1: one shared wiring→503 posture (chat-wiring.ts), not a per-route copy.
+    const resolved = chatWiringOr503(env, logger, "chat_not_configured");
+    if ("response" in resolved) return resolved.response;
+    wiring = resolved.wiring;
   }
 
   const bodyParse = await parseChatRequest(c.req.raw, logger);
@@ -105,12 +93,14 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
   const deltas: string[] = [];
 
   const answer = await runChatPipelinePromise(
+    // B6: typed as the domain's own deps shape so the literal is
+    // compile-checked — no `as Parameters<…>` cast to hide a rename.
     {
       ...wiring.pipeline,
       language: req.language ?? "id",
       ...(history.length > 0 ? { history } : {}),
       onDelta: (delta: string) => deltas.push(delta),
-    } as Parameters<typeof runChatPipelinePromise>[0],
+    } satisfies ChatPipelineDeps,
     { text: req.message },
     {},
     {

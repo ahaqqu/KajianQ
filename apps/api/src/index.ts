@@ -1,5 +1,6 @@
 import * as Sentry from "@sentry/cloudflare";
 import { RateLimiterDo } from "@app/rate/durable";
+import { createLogger } from "@app/infra";
 import { createApi } from "./app";
 import { cleanupExpiredSessions } from "./lib/scheduled";
 import type { WorkerBindings } from "./env";
@@ -25,13 +26,24 @@ const handler = {
    * this handler is what Cloudflare invokes. `ctx.waitUntil` keeps the
    * invocation alive until the cleanup settles, so a slow Neon round-trip is
    * not cut short when the handler returns.
+   *
+   * The settled result is logged here (thermo-review A7) as well as inside the
+   * cleanup: Cloudflare marks the invocation succeeded the moment the handler
+   * returns, so without a handler-level completion line a promise that never
+   * settles leaves no cron-visible signal at all.
    */
   async scheduled(
     controller: { cron?: string; scheduledTime?: number },
     env: WorkerBindings,
     ctx: { waitUntil?: (p: Promise<unknown>) => void },
   ): Promise<void> {
-    const run = cleanupExpiredSessions(env as unknown as Record<string, string | undefined>);
+    const logger = createLogger({ service: "api", route: "scheduled" });
+    const run = cleanupExpiredSessions(
+      env as unknown as Record<string, string | undefined>,
+    ).then((result) => {
+      logger.debug("scheduled.done", { deleted: result.deleted, ok: result.ok });
+      return result;
+    });
     if (ctx?.waitUntil) {
       ctx.waitUntil(run);
       return;

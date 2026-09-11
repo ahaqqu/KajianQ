@@ -28,9 +28,6 @@
  * reporting a misleading pass — see the run instructions in SPECS §3.7.
  */
 import { readFileSync } from "node:fs";
-import { Effect } from "effect";
-import { neon } from "@neondatabase/serverless";
-import * as app from "@app/infra";
 import * as evalpkg from "@app/eval";
 
 function fail(msg) {
@@ -77,64 +74,17 @@ console.log(
   ].join("\n"),
 );
 
-const sql = neon(config.neonDatabaseUrl);
-const store = app.createNeonRagStore(sql);
-const runStore = (effect) => Effect.runPromise(effect);
-
-const sourceTypeByChunkId = new Map();
-{
-  const rows = await sql`SELECT id, metadata FROM doc_children WHERE metadata ? 'sourceType'`;
-  for (const row of rows) {
-    const meta = row.metadata ?? {};
-    if (typeof meta.sourceType === "string") sourceTypeByChunkId.set(row.id, meta.sourceType);
-  }
-}
-
-const REFUSAL_MARKERS = ["tidak menemukan dalil yang memadai", "could not find adequate evidence"];
-
-const transport = {
-  async ask(question) {
-    if (budget.wouldExceed())
-      throw new evalpkg.BudgetExceededError(config.budgetCapMicroUsd ?? 0, budget.total);
-    const reply = await evalpkg.postChatSse({
-      baseUrl: config.apiBaseUrl,
-      token: config.apiToken,
-      question: question.question,
-      language: question.language === "en" ? "en" : "id",
-    });
-    return { text: reply.text, messageId: reply.messageId, traceId: reply.traceId };
-  },
-};
-
-const traces = {
-  async eventsByMessage(messageId) {
-    const trace = await runStore(store.getAnswerTraceByMessage(messageId));
-    if (!trace) return null;
-    budget.add(trace.events.reduce((s, e) => s + (e.cost?.costMicroUsd ?? 0), 0));
-    budget.check();
-    return trace.events;
-  },
-};
-
-const ledger = {
-  async createRun(label, report) {
-    return runStore(store.insertEvalRun({ label, report }));
-  },
-  async refreshRun(runId, label, report) {
-    await runStore(store.insertEvalRun({ id: runId, label, report }));
-  },
-  async saveResult(runId, questionId, outcome, traceId) {
-    return runStore(store.insertEvalResult({ runId, questionId, answerTraceId: traceId, outcome }));
-  },
-};
+// B2: the staging bootstrap (store, sourceType scan, transport, traces,
+// ledger, refusal markers) is shared with eval:run — one copy, no drift.
+const harness = await evalpkg.createStagingHarness(config, budget);
 
 const label = config.runLabel ?? `${fixture.id}-smoke`;
 const result = await evalpkg.runGoldenSet(selection.set, {
-  transport,
-  traces,
-  ledger,
-  sourceTypeOf: (id) => sourceTypeByChunkId.get(id),
-  refusalMarkers: REFUSAL_MARKERS,
+  transport: harness.transport,
+  traces: harness.traces,
+  ledger: harness.ledger,
+  sourceTypeOf: harness.sourceTypeOf,
+  refusalMarkers: harness.refusalMarkers,
   label,
   budget,
 });

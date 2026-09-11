@@ -26,9 +26,6 @@
  * the staging API to be serving.
  */
 import { readFileSync } from "node:fs";
-import { Effect } from "effect";
-import { neon } from "@neondatabase/serverless";
-import * as app from "@app/infra";
 import * as evalpkg from "@app/eval";
 
 function fail(msg) {
@@ -68,80 +65,22 @@ console.log(
   `eval:run: golden set "${fixture.id}" — ${fixture.questions.length} questions, status ${fixture.status}`,
 );
 
-// Seams: the staging Neon store answers trace reads + the eval ledger.
-const sql = neon(config.neonDatabaseUrl);
-const store = app.createNeonRagStore(sql);
-const runStore = (effect) => Effect.runPromise(effect);
-
-// Chunk-id → sourceType resolver for retrieval recall: the trace's retrieval
-// events carry chunk ids (ADR-0007); the source-type labels live in the
-// chunks' metadata, loaded once here.
-const sourceTypeByChunkId = new Map();
-{
-  const rows = await sql`SELECT id, metadata FROM doc_children WHERE metadata ? 'sourceType'`;
-  for (const row of rows) {
-    const meta = row.metadata ?? {};
-    if (typeof meta.sourceType === "string") sourceTypeByChunkId.set(row.id, meta.sourceType);
-  }
-}
-
-// Refusal markers: the generator's ID/EN insufficiency language (the domain
-// pack's grounding prompts). A trace `refusal` event also detects.
-const REFUSAL_MARKERS = ["tidak menemukan dalil yang memadai", "could not find adequate evidence"];
-
-const transport = {
-  async ask(question) {
-    if (budget.wouldExceed())
-      throw new evalpkg.BudgetExceededError(config.budgetCapMicroUsd ?? 0, budget.total);
-    const reply = await evalpkg.postChatSse({
-      baseUrl: config.apiBaseUrl,
-      token: config.apiToken,
-      question: question.question,
-      language: question.language === "en" ? "en" : "id",
-    });
-    return { text: reply.text, messageId: reply.messageId, traceId: reply.traceId };
-  },
-};
-
-const traces = {
-  async eventsByMessage(messageId) {
-    const trace = await runStore(store.getAnswerTraceByMessage(messageId));
-    if (!trace) return null;
-    // Budget coverage (plan decision 4): the answer trace's event costs are
-    // the pipeline spend the harness triggered — count them into the cap.
-    budget.add(trace.events.reduce((s, e) => s + (e.cost?.costMicroUsd ?? 0), 0));
-    budget.check();
-    return trace.events;
-  },
-};
-
-// A9: the ledger adapter is a thin passthrough — the harness owns the run
-// lifecycle (createRun first, refreshRun for the final report), so no
-// report mutation and no double write here.
-const ledger = {
-  async createRun(label, report) {
-    return runStore(store.insertEvalRun({ label, report }));
-  },
-  async refreshRun(runId, label, report) {
-    await runStore(store.insertEvalRun({ id: runId, label, report }));
-  },
-  async saveResult(runId, questionId, outcome, traceId) {
-    return runStore(store.insertEvalResult({ runId, questionId, answerTraceId: traceId, outcome }));
-  },
-};
+// B2: the staging seams (store, sourceType scan, transport, traces, ledger,
+// refusal markers) come from the shared bootstrap — one copy, no drift.
+const harness = await evalpkg.createStagingHarness(config, budget);
 
 const harnessResult = await evalpkg.runGoldenSet(fixture, {
-  transport,
-  traces,
-  ledger,
-  sourceTypeOf: (id) => sourceTypeByChunkId.get(id),
-  refusalMarkers: REFUSAL_MARKERS,
+  transport: harness.transport,
+  traces: harness.traces,
+  ledger: harness.ledger,
+  sourceTypeOf: harness.sourceTypeOf,
+  refusalMarkers: harness.refusalMarkers,
   ...(config.runLabel !== undefined ? { label: config.runLabel } : {}),
   budget,
 });
 
 const r = harnessResult;
-const report = await runStore(store.getEvalRun(r.runId));
+const report = await harness.runStore(harness.store.getEvalRun(r.runId));
 const mean = (xs) => (xs.length === 0 ? null : xs.reduce((a, b) => a + b, 0) / xs.length);
 const scored = r.results.filter((x) => x.skipped !== true);
 console.log(

@@ -2,12 +2,16 @@ import { AnonymousSessionSchema, DeletedUserSchema, type AnonymousSession } from
 import { createLogger } from "@app/infra";
 import { describeRoute, resolver } from "hono-openapi";
 import { newRouter } from "../lib/guard";
-import { authGuard, buildChatWiring, ChatConfigError } from "../lib/chat-wiring";
+import { authGuard, buildStoreWiring, wiringOr503 } from "../lib/chat-wiring";
 
 /**
  * Anonymous-session auth routes (ADR-0017, ticket #10): mint a session, and
  * let its owner erase themselves. Both go through the `RagStore` seam — no
  * direct database access, no vendor identity SDK (ADR-0017's whole point).
+ *
+ * The wiring is store-only (thermo-review A4): these routes never touch the
+ * chat pipeline, so a missing LLM role cannot gate token minting or the
+ * self-deletion erasure right.
  *
  * `DELETE /v1/auth/me` is guarded: the Bearer token identifies the user, and
  * the cascade delete (sessions, chat sessions/messages, feedback, and the
@@ -69,19 +73,13 @@ export const authRoutes = newRouter()
       route: "auth",
       correlationId: c.get("correlationId"),
     });
-    let wiring;
-    try {
-      wiring = buildChatWiring(env);
-    } catch (err) {
-      // Same posture as /v1/chat: only a typed config failure is "not
-      // configured"; anything else is a real fault and falls through.
-      if (err instanceof ChatConfigError) {
-        logger.warn("auth.not_configured", { missing: err.missing ?? "unknown" });
-        return c.json({ error: "auth_not_configured" }, 503);
-      }
-      throw err;
-    }
-    const session = (await wiring.runStore(wiring.fullStore.createSession())) as AnonymousSession;
+    // A4: auth needs the store, not the chat pipeline — a missing reviewer key
+    // must not take down session minting (or the eval harness's token mint).
+    // B1: the typed-failure→503 posture is shared with the chat route.
+    const resolved = wiringOr503(() => buildStoreWiring(env), logger, "auth_not_configured");
+    if ("response" in resolved) return resolved.response;
+    const { fullStore, runStore } = resolved.wiring;
+    const session = (await runStore(fullStore.createSession())) as AnonymousSession;
     logger.info("auth.anonymous_created", { sessionId: session.sessionId });
     return c.json(session satisfies AnonymousSession);
   })
@@ -92,20 +90,13 @@ export const authRoutes = newRouter()
       route: "auth",
       correlationId: c.get("correlationId"),
     });
-    let wiring;
-    try {
-      wiring = buildChatWiring(env);
-    } catch (err) {
-      if (err instanceof ChatConfigError) {
-        logger.warn("auth.not_configured", { missing: err.missing ?? "unknown" });
-        return c.json({ error: "auth_not_configured" }, 503);
-      }
-      throw err;
-    }
-    const unauthorized = await authGuard(c, wiring.fullStore);
+    const resolved = wiringOr503(() => buildStoreWiring(env), logger, "auth_not_configured");
+    if ("response" in resolved) return resolved.response;
+    const { fullStore, runStore } = resolved.wiring;
+    const unauthorized = await authGuard(c, fullStore);
     if (unauthorized !== undefined) return unauthorized;
     const { userId } = c.get("authed");
-    await wiring.runStore(wiring.fullStore.deleteUserCascade(userId));
+    await runStore(fullStore.deleteUserCascade(userId));
     // No user id in the log line: the point of this endpoint is erasure.
     logger.info("auth.user_deleted");
     return c.json({ deleted: true } satisfies { deleted: true });

@@ -62,22 +62,27 @@ vi.mock("../lib/chat-wiring", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/chat-wiring")>();
   return {
     ...actual,
-    buildChatWiring: () => {
+    // B1: the route resolves its wiring through `chatWiringOr503`; the mock
+    // overrides that seam (the helper's own posture is covered in
+    // chat-wiring.test.ts), so these tests exercise the route, not config.
+    chatWiringOr503: () => {
       const store = currentStore;
       const providers = createStubChatProviders(currentOverrides);
       return {
-        pipeline: {
-          routerProvider: providers.routerProvider,
-          generatorProvider: providers.generatorProvider,
-          // The reviewer is non-optional on the chat path (#10); the stub
-          // passes, so the deterministic validator is what these tests probe.
-          reviewerProvider: providers.reviewerProvider,
-          embedder: providers.embedder,
-          store,
-          bridge: runStoreEffect,
+        wiring: {
+          pipeline: {
+            routerProvider: providers.routerProvider,
+            generatorProvider: providers.generatorProvider,
+            // The reviewer is non-optional on the chat path (#10); the stub
+            // passes, so the deterministic validator is what these tests probe.
+            reviewerProvider: providers.reviewerProvider,
+            embedder: providers.embedder,
+            store,
+            bridge: runStoreEffect,
+          },
+          fullStore: store,
+          runStore: runStoreEffect,
         },
-        fullStore: store,
-        runStore: runStoreEffect,
       };
     },
   };

@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
-import type { Chunk, Query, RoutedQuery } from "@app/rag-core";
+import { RunContext, type Chunk, type Query, type RoutedQuery } from "@app/rag-core";
 import { MACHINE_TRANSLATION_LABEL, createKajianQAssembler } from "./chat-assembler";
 import { createKajianQRetriever } from "./chat-retriever";
 import { createMemoryRagStore } from "./test-utils/memory-rag-store";
@@ -70,7 +70,15 @@ async function retrieve(
     subQueries: [{ text: "Apa itu Ayat Kursi?" }],
     filters: {},
   };
-  return Effect.runPromise(retriever.retrieve(routed));
+  // The stage's R channel is RunContext (the runner provides it in production);
+  // this test provides a minimal sink, mirroring the other stage tests.
+  return Effect.runPromise(
+    Effect.provideService(retriever.retrieve(routed) as never, RunContext, {
+      config: {},
+      now: () => 1,
+      record: () => {},
+    } as never) as never,
+  ) as Promise<readonly Chunk[]>;
 }
 
 function stubCost() {

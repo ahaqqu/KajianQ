@@ -257,10 +257,15 @@ export interface RagStore extends RagStoreEvalRunWrite, RagStoreEvalLedger {
   deleteUserCascade(userId: string): Effect.Effect<void, StoreError>;
 
   /**
-   * Delete session rows whose TTL has passed. Returns the count removed.
-   * Wire this to a periodic job (Worker cron) so `sessions` does not grow
-   * unbounded; `resolveUserId` already rejects expired rows on read, so this
-   * is a storage-reclamation concern, not a correctness one.
+   * Reclaim expired anonymous sessions: delete session rows whose TTL has
+   * passed AND the anonymous users left with no session (thermo-review A5 —
+   * the FK cascades user → session, never the reverse, so users and their
+   * chat/trace subtrees would otherwise accumulate forever). Returns the
+   * count of reclaimed users, the storage-growth number the cron reports.
+   *
+   * Wire this to a periodic job (Worker cron); `resolveUserId` already
+   * rejects expired rows on read, so this is a storage-reclamation concern,
+   * not a correctness one.
    */
   cleanupExpiredSessions(before?: Date): Effect.Effect<number, StoreError>;
 }

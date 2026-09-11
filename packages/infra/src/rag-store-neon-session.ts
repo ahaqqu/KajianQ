@@ -174,16 +174,37 @@ export function neonSessionMethods(
     },
 
     cleanupExpiredSessions(before = new Date()) {
+      // Two statements, one call (thermo-review A5): the expired token rows,
+      // and the anonymous users left with no session at all. The FK cascade
+      // runs user → session, never the reverse, so without the second DELETE
+      // every abandoned browser leaves a permanent `users` row plus its
+      // `chat_sessions`/`chat_messages`/`answer_traces` subtree — the exact
+      // unbounded growth this cleanup exists to prevent. Both run in one Neon
+      // transaction so a crash between them cannot strand a half-reclaimed
+      // user, and the returned count is the reclaimed users (the number the
+      // cron reports as storage reclaimed).
       return Effect.map(
-        sqlEffect(
-          sql,
-          () =>
+        sqlEffect(sql, () =>
+          sql.transaction([
             sql`
-          DELETE FROM sessions WHERE expires_at <= ${before.toISOString()}
-          RETURNING id
-        ` as Promise<{ id: string }[]>,
+              DELETE FROM sessions WHERE expires_at <= ${before.toISOString()}
+            `,
+            sql`
+              DELETE FROM users
+              WHERE kind = 'anonymous'
+                AND NOT EXISTS (SELECT 1 FROM sessions WHERE sessions.user_id = users.id)
+              RETURNING id
+            `,
+          ]),
         ),
-        (rows) => rows.length,
+        (results) => {
+          // Neon's transaction() resolves one result per statement, in order;
+          // the user-reclamation statement is the second. A driver that
+          // resolves differently is a contract violation, not a count to
+          // guess at — report 0 rather than a wrong number.
+          const users = Array.isArray(results) ? results[1] : undefined;
+          return Array.isArray(users) ? users.length : 0;
+        },
       );
     },
 

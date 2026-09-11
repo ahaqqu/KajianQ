@@ -18,8 +18,9 @@ vi.mock("../lib/chat-wiring", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/chat-wiring")>();
   return {
     ...actual,
-    buildChatWiring: () => ({
-      pipeline: {},
+    // A4: auth uses the store-only wiring — no provider roles are resolved on
+    // this path at all, so the mock supplies just the store and its bridge.
+    buildStoreWiring: () => ({
       fullStore: currentStore,
       runStore: runStoreEffect,
     }),
@@ -51,15 +52,13 @@ describe("POST /v1/auth/anonymous", () => {
   });
 
   it("answers 503 when the deployment is not configured (feature disabled)", async () => {
-    // The real wiring fails closed on a missing configuration: with no keys
-    // and no database binding, the first config failure is the reviewer role
-    // (the chat path's mandatory check), and with keys but no binding it is
-    // DATABASE_URL. Either way the route maps the typed failure to 503 rather
-    // than degrading.
-    const { buildChatWiring, ChatConfigError } =
+    // The store-only wiring fails closed on a missing database binding, and
+    // only on that: with no DATABASE_URL the route answers 503 rather than
+    // degrading.
+    const { buildStoreWiring, ChatConfigError } =
       await vi.importActual<typeof import("../lib/chat-wiring")>("../lib/chat-wiring");
-    expect(() => buildChatWiring({})).toThrow(ChatConfigError);
-    expect(() => buildChatWiring({ GEMINI_API_KEY: "k" })).toThrow(/DATABASE_URL is not bound/);
+    expect(() => buildStoreWiring({})).toThrow(ChatConfigError);
+    expect(() => buildStoreWiring({})).toThrow(/DATABASE_URL is not bound/);
   });
 });
 

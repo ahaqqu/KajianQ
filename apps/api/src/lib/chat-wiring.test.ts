@@ -3,9 +3,12 @@ import { runStoreEffect } from "@app/kajianq-domain";
 import {
   authGuard,
   buildChatWiring,
+  buildStoreWiring,
+  ChatConfigError,
   createProvidersFromEnv,
   sseFrame,
   storeBridge,
+  wiringOr503,
 } from "../lib/chat-wiring";
 
 const storeBridgeOf = (fx: unknown) => runStoreEffect<{ token: string }>(fx);
@@ -60,6 +63,68 @@ describe("buildChatWiring — the reviewer is mandatory on the chat path", () =>
     expect(() => buildChatWiring({ DATABASE_URL: "postgres://x" })).toThrow(
       /reviewer role has no keyed candidate/,
     );
+  });
+});
+
+describe("buildStoreWiring — auth's store-only entry (A4)", () => {
+  it("does not resolve or require any provider role", () => {
+    // The regression this pins: the auth routes used to build the full chat
+    // wiring, so a reviewer key that was absent or rotated out made session
+    // minting and anonymous self-deletion fail with a 503. With an env that
+    // has no keys at all, the store-only entry's ONLY possible complaint is
+    // the missing database binding — the reviewer check that fails
+    // `buildChatWiring` on the same env must not exist on this path.
+    expect(() => buildStoreWiring({})).toThrow(/DATABASE_URL is not bound/);
+    expect(() => buildStoreWiring({})).not.toThrow(/reviewer/);
+    expect(() => buildChatWiring({})).toThrow(/reviewer role has no keyed candidate/);
+  });
+
+  it("still fails closed when the store is not configured", () => {
+    expect(() => buildStoreWiring({})).toThrow(ChatConfigError);
+  });
+});
+
+describe("wiringOr503 — the shared 503 posture (B1)", () => {
+  /** A Logger that records warn calls and discards the rest. */
+  function recordingLogger(warnings: { msg: string; fields?: Record<string, unknown> }[]) {
+    const logger = {
+      child: () => logger,
+      debug: () => {},
+      info: () => {},
+      warn: (msg: string, fields?: Record<string, unknown>) => {
+        warnings.push(fields === undefined ? { msg } : { msg, fields });
+      },
+      error: () => {},
+    };
+    return logger;
+  }
+
+  it("maps a typed config failure to the route's error code at 503", () => {
+    const warnings: { msg: string; fields?: Record<string, unknown> }[] = [];
+    const result = wiringOr503(
+      () => {
+        throw new ChatConfigError("no binding", "DATABASE_URL");
+      },
+      recordingLogger(warnings),
+      "auth_not_configured",
+    );
+    expect("response" in result).toBe(true);
+    if ("response" in result) {
+      expect(result.response.status).toBe(503);
+    }
+    expect(warnings[0]?.fields?.["errorCode"]).toBe("auth_not_configured");
+  });
+
+  it("rethrows a non-config failure instead of masking it as not-configured", () => {
+    expect(() =>
+      wiringOr503(
+        () => {
+          throw new Error("adapter bug");
+        },
+        recordingLogger([]),
+        "chat_not_configured",
+      ),
+    ).toThrow("adapter bug");
   });
 });
 
