@@ -129,3 +129,53 @@ recall ever justifies it.
   tightly; the deterministic stride sampling keeps re-runs comparable.
 - **Separate query embedding pass**: rejected — self-retrieval probes reuse
   the corpus vectors, halving the spend while measuring the same alignment.
+
+## Amendment (2026-09-11): expansion micro-task scoring contract tightened post-review (PR #138, review item C2)
+
+This amendment records an owner decision made after PR #138 merged
+(commit `31f88fbd`). It changes no decision above; it makes an implicit
+contract explicit so the recorded expansion number and the merged scorer are
+not a silent trap.
+
+**(a) The scoring contract was tightened.** Post-review, the expansion
+micro-task scorer (`scoreExpansionCase` in `packages/eval/src/embed-bench-expansion.ts`,
+PR #138, review item C2) moved from the original **lenient contract** — the
+case passes if the expected term is present anywhere in the model's picks —
+to a **strict distractor-aware contract**:
+
+- Any distractor pick (trim/lowercase-normalized before comparison) alongside
+  the expected term **fails** the case, not just a distractor-only selection.
+- A distractor identical to the expected term is ignored — treated as a
+  fixture-authoring slip, not a model error.
+- A `parseError` always fails.
+
+All three paths are pinned by tests in `packages/eval/src/embed-bench.test.ts`.
+
+**(b) The recorded 12/12 was measured under the lenient contract and is NOT
+reproducible under the strict contract.** The checked-in run report
+(`packages/kajianq-domain/fixtures/embed-bench-results.json`) records
+expansion accuracy **1.000 (12/12)**, scored under the original
+expected-term-presence-only contract. Re-scoring the same recorded picks
+under the strict contract yields **1/12** — 11 of the 12 recorded picks
+include a contextual distractor alongside the expected term. This is
+expected and legitimate: the expansion prompt asked the model to pick 1–2
+terms, inviting exactly the contextual picks this ADR blesses above as
+contextual disambiguation (wudhu vs. ghusl vs. tayammum; firdaus; zakat
+al-fitr vs. zakat). The fixture is not re-measured retroactively; the
+strict-contract measurement begins with the next gate re-run.
+
+**(c) The strict contract is the intended posture; no gate re-run is forced
+now.** The owner decision (2026-09-11) keeps the merged strict scorer and
+defers the re-run deliberately — not budgetarily (a re-run costs fractions of
+a cent: the recorded run spent $0.000012 of the $5 cap). The next natural
+gate re-run, with the expansion prompt reworded to ask for **exactly the
+expected term** (removing the 1–2-terms invitation that produces legitimate
+contextual distractors), is the first strict-contract measurement.
+
+**(d) The go decision is unaffected.** The expansion micro-task has **no gate
+floor** — the gate floors are cross-lingual recall@10 ≥ 0.70 and monolingual
+recall@10 ≥ 0.75, both passed — so this contract change does not affect the
+recorded go decision (`gemini-embedding-001` confirmation) or the retrieval
+posture. The expansion number still feeds ADR-0014's consumption design
+qualitatively; its first strict-contract figure arrives with the next gate
+re-run.
