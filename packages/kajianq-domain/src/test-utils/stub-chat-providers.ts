@@ -3,6 +3,7 @@ import type { CostRecord } from "@app/contracts";
 import type { RouterProvider } from "../chat-router";
 import type { RetrieverEmbedder } from "../chat-retriever";
 import type { GeneratorProvider } from "../chat-generator";
+import type { ReviewerProvider } from "../chat-reviewer";
 
 /**
  * Stub chat pipeline providers for integration tests (#8, extended #10).
@@ -30,19 +31,16 @@ export type StubChatProviderOverrides = {
   answerText?: string;
   /** Explicit delta sequence (overrides `answerText` chunking). */
   streamDeltas?: readonly string[];
+  /** The reviewer stub's verdict (default `pass`). */
+  reviewerVerdict?: "pass" | "fail";
   /** Omit `stream` so the generator's non-streaming fallback is exercised. */
   noStream?: boolean;
-  /** Search hits per similaritySearch call (empty corpus by default). */
-  searchHits?: readonly {
-    child: { id: string; textAr: string; textId: string | null; metadata: Record<string, unknown> };
-    distance: number;
-    rankDense: number;
-  }[];
 };
 
 export function createStubChatProviders(overrides: StubChatProviderOverrides = {}): {
   routerProvider: RouterProvider;
   generatorProvider: GeneratorProvider;
+  reviewerProvider: ReviewerProvider;
   embedder: RetrieverEmbedder;
 } {
   const answerText = overrides.answerText ?? "Jawaban berdasar konteks.";
@@ -80,6 +78,15 @@ export function createStubChatProviders(overrides: StubChatProviderOverrides = {
         }),
     },
     generatorProvider,
+    // The cross-vendor reviewer stub: passes by default, so tests exercise the
+    // deterministic validator (the gate that must hold without any LLM).
+    reviewerProvider: {
+      generate: () =>
+        Effect.succeed({
+          text: JSON.stringify({ verdict: overrides.reviewerVerdict ?? "pass", reason: "stub" }),
+          cost: cost("stub-reviewer", 1),
+        }),
+    },
     embedder: {
       embed: () =>
         Effect.succeed({
