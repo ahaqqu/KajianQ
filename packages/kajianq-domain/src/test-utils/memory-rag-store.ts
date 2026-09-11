@@ -6,6 +6,7 @@ import type {
   RagStore,
   SimilarChild,
 } from "@app/infra";
+import { memoryEvalMethods } from "./memory-rag-store-eval";
 
 /**
  * In-memory RagStore with real cosine-distance similarity search — the test
@@ -71,6 +72,19 @@ export function createMemoryRagStore(): RagStore & {
     { id: string; questionId: string; answerTraceId: string | null; outcome: unknown }
   >();
   let seq = 0;
+
+  // The eval-ledger half lives in its own module (the agentic line cap), the
+  // same concern-split the Neon adapter uses; it shares these maps + the id
+  // sequence so both halves see one store state.
+  const evalState = {
+    evalRuns,
+    evalResults,
+    nextId: () => {
+      seq += 1;
+      return seq;
+    },
+  };
+  const evalMethods = memoryEvalMethods(evalState);
 
   const cosine = (a: readonly number[], b: readonly number[]): number => {
     let dot = 0;
@@ -255,57 +269,12 @@ export function createMemoryRagStore(): RagStore & {
         return reclaimed;
       });
     },
-    insertEvalRun(input) {
-      return Effect.sync(() => {
-        const id = input.id ?? `eval${(seq += 1)}`;
-        evalRuns.set(id, { label: input.label ?? null, report: input.report, createdAt: 0 });
-        return id;
-      });
-    },
-    // Thermo-review A3/A4: the harness upserts the final report by run id.
-    refreshEvalRun(runId, label, report) {
-      return Effect.sync(() => {
-        const run = evalRuns.get(runId);
-        if (run) {
-          evalRuns.set(runId, { ...run, label, report });
-        }
-      });
-    },
-    insertEvalResult(input) {
-      return Effect.sync(() => {
-        const id = `er${(seq += 1)}`;
-        evalResults.set(id, {
-          id,
-          questionId: input.questionId,
-          answerTraceId: input.answerTraceId ?? null,
-          outcome: input.outcome,
-        });
-        return id;
-      });
-    },
-    getEvalRun(id) {
-      return Effect.sync(() => {
-        const run = evalRuns.get(id);
-        return run ? (run.report as never) : null;
-      });
-    },
-    listEvalRuns(opts) {
-      return Effect.sync(() =>
-        [...evalRuns.entries()].slice(0, opts.limit).map(([id, run]) => ({
-          id,
-          label: run.label,
-          createdAt: run.createdAt,
-        })),
-      );
-    },
-    getEvalResultsByRun(runId) {
-      return Effect.sync(() =>
-        // In-memory results are not row-keyed by run; the harness reads them
-        // back per run id in tests, so the memory store keeps a flat list and
-        // filters on the stored run marker via outcome passthrough.
-        [...evalResults.values()].filter((r) => (evalRuns.has(runId) ? true : false)),
-      );
-    },
+    insertEvalRun: evalMethods.insertEvalRun,
+    refreshEvalRun: evalMethods.refreshEvalRun,
+    insertEvalResult: evalMethods.insertEvalResult,
+    getEvalRun: evalMethods.getEvalRun,
+    listEvalRuns: evalMethods.listEvalRuns,
+    getEvalResultsByRun: evalMethods.getEvalResultsByRun,
   };
 
   return {

@@ -27,6 +27,7 @@
  */
 import { readFileSync } from "node:fs";
 import * as evalpkg from "@app/eval";
+import { createStagingHarness } from "./staging-harness.mjs";
 
 function fail(msg) {
   console.error(`eval:run: ${msg}`);
@@ -67,7 +68,7 @@ console.log(
 
 // B2: the staging seams (store, sourceType scan, transport, traces, ledger,
 // refusal markers) come from the shared bootstrap — one copy, no drift.
-const harness = await evalpkg.createStagingHarness(config, budget);
+const harness = await createStagingHarness(config, budget);
 
 const harnessResult = await evalpkg.runGoldenSet(fixture, {
   transport: harness.transport,

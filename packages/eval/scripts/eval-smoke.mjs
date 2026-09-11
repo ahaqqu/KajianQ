@@ -29,6 +29,7 @@
  */
 import { readFileSync } from "node:fs";
 import * as evalpkg from "@app/eval";
+import { createStagingHarness } from "./staging-harness.mjs";
 
 function fail(msg) {
   console.error(`eval:smoke: ${msg}`);
@@ -76,7 +77,7 @@ console.log(
 
 // B2: the staging bootstrap (store, sourceType scan, transport, traces,
 // ledger, refusal markers) is shared with eval:run — one copy, no drift.
-const harness = await evalpkg.createStagingHarness(config, budget);
+const harness = await createStagingHarness(config, budget);
 
 const label = config.runLabel ?? `${fixture.id}-smoke`;
 const result = await evalpkg.runGoldenSet(selection.set, {
