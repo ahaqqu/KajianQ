@@ -66,6 +66,93 @@ function resolveGoldenSetPath(raw: string | undefined): string {
 }
 
 /**
+ * The default fixtures the benchmark CLI reads (overridable so a re-run can
+ * point at a new versioned set): the #9 probe/expansion pairs the domain
+ * pack authored against the real corpus.
+ */
+export const EMBED_BENCH_DEFAULT_PROBE_PATH =
+  "packages/kajianq-domain/fixtures/embed-bench-probes-v0.json";
+export const EMBED_BENCH_DEFAULT_EXPANSION_PATH =
+  "packages/kajianq-domain/fixtures/expansion-cases-v0.json";
+
+/** Validated, typed configuration for one `eval:embed-bench` invocation. */
+export type EmbedBenchConfig = {
+  /**
+   * The staging Neon store connection string — optional (thermo B5): the
+   * gate run is source-based and DB-free, so the URL is only validated for
+   * URL-shape when actually provided; undefined otherwise.
+   */
+  neonDatabaseUrl: string | undefined;
+  /** Hard spend cap in micro-USD (unset/0 = explicit opt-out). */
+  budgetCapMicroUsd: number | undefined;
+  /** Cap on the corpus's first source group (undefined = the domain's full set). */
+  groupACap: number | undefined;
+  /** Cap on the corpus's second source group (undefined = the domain's full set). */
+  groupBCap: number | undefined;
+  /**
+   * Total doc budget across groups (undefined = full corpus). The gate's
+   * free-tier item budget — embedded items count against the vendor's
+   * per-minute embed-content cap, so a bounded stratified subset is the
+   * practical gate corpus.
+   */
+  docBudget: number | undefined;
+  /** Embedding batch size (default 96; lower it under tight item quotas). */
+  batchSize: number | undefined;
+  /** Probe fixture path. */
+  probePath: string;
+  /** Expansion fixture path. */
+  expansionPath: string;
+  /** Output report path (JSON, defaults next to the fixtures). */
+  reportPath: string;
+};
+
+/**
+ * Parse and validate the embedding-benchmark env. Same binder discipline as
+ * `loadEvalRunConfig`: the caller passes the env record; a misconfiguration
+ * fails before any spend.
+ */
+export function loadEmbedBenchConfig(env: Record<string, string | undefined>): EmbedBenchConfig {
+  // Thermo B5: the benchmark never touches the store, so the URL is optional
+  // here (validated for shape only when supplied) — unlike `loadEvalRunConfig`,
+  // whose eval-run path reads persisted runs.
+  const neonDatabaseUrl =
+    env.NEON_DATABASE_URL !== undefined && env.NEON_DATABASE_URL.trim() !== ""
+      ? requireUrl("NEON_DATABASE_URL", env.NEON_DATABASE_URL)
+      : undefined;
+  const rawCap = env.EVAL_BUDGET_MICRO_USD;
+  let budgetCapMicroUsd: number | undefined;
+  if (rawCap !== undefined) {
+    const n = Number(rawCap.trim() === "" ? Number.NaN : rawCap);
+    if (!Number.isInteger(n) || n < 0) {
+      throw new EvalConfigError(
+        `EVAL_BUDGET_MICRO_USD must be a non-negative integer (0 = explicit opt-out), got "${rawCap}"`,
+      );
+    }
+    budgetCapMicroUsd = n;
+  }
+  const intOrUndefined = (name: string, raw: string | undefined): number | undefined => {
+    if (raw === undefined || raw.trim() === "") return undefined;
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 0) {
+      throw new EvalConfigError(`${name} must be a non-negative integer, got "${raw}"`);
+    }
+    return n;
+  };
+  return {
+    neonDatabaseUrl,
+    budgetCapMicroUsd,
+    groupACap: intOrUndefined("BENCH_GROUP_A", env.BENCH_GROUP_A),
+    groupBCap: intOrUndefined("BENCH_GROUP_B", env.BENCH_GROUP_B),
+    docBudget: intOrUndefined("BENCH_DOC_BUDGET", env.BENCH_DOC_BUDGET),
+    batchSize: intOrUndefined("BENCH_BATCH_SIZE", env.BENCH_BATCH_SIZE),
+    probePath: env.BENCH_PROBE_PATH?.trim() || EMBED_BENCH_DEFAULT_PROBE_PATH,
+    expansionPath: env.BENCH_EXPANSION_PATH?.trim() || EMBED_BENCH_DEFAULT_EXPANSION_PATH,
+    reportPath:
+      env.BENCH_REPORT_PATH?.trim() || "packages/kajianq-domain/fixtures/embed-bench-results.json",
+  };
+}
+
+/**
  * Parse and validate the eval run env (the binder — `process.env` on the
  * CLI, a fixture object in tests — is passed in: an engine module never
  * reaches for the ambient `process`). Throws `EvalConfigError` naming the

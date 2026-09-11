@@ -11,6 +11,22 @@ const FETCH_BACKOFF_MS = [500, 1_000, 2_000, 4_000];
 const FETCH_CONCURRENCY = 8;
 const FETCH_TIMEOUT_MS = 30_000;
 
+/**
+ * Default source roots and their env overrides (thermo A2 — the mirror URLs
+ * and env var names are domain vocabulary, so they live here beside the
+ * acquisition helper, not in engine-side scripts; mirrors recorded in
+ * NOTICES/DATASETS.md).
+ */
+export const QURAN_SURAH_BASE_URL =
+  process.env.QURAN_SURAH_BASE_URL ??
+  "https://raw.githubusercontent.com/hangsbreaker/quran-json/main";
+export const QURAN_MORPHOLOGY_URL =
+  process.env.QURAN_MORPHOLOGY_URL ??
+  "https://raw.githubusercontent.com/cltk/arabic_morphology_quranic-corpus/master/quranic-corpus-morphology-0.4.txt";
+export const HADITH_EDITIONS_BASE_URL =
+  process.env.HADITH_EDITIONS_BASE_URL ??
+  "https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions";
+
 import { resolve as resolvePath } from "node:path";
 
 /**

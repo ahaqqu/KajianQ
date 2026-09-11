@@ -113,6 +113,21 @@ export {
   type HadithSummarizerProvider,
 } from "./hadith-llm";
 
+// -- Embedding benchmark gate (#9, ADR-0013/0014) --------------------------
+export {
+  authorProbes,
+  benchDocIdHadith,
+  benchDocIdQuran,
+  corpusFingerprint,
+  hadithBenchDocs,
+  parseEditions,
+  quranBenchDocs,
+  stratifiedSubset,
+  strideSample,
+  type DomainBenchDoc,
+} from "./embed-bench-corpus";
+export { EXPANSION_SYSTEM_PROMPT, expansionUserPrompt } from "./embed-bench-prompts";
+
 // -- Chat pipeline (#8): Smart Router stages over the DARS seams -----------
 // (Filter vocabulary (Madzhab/Grade/TextLayer/KajianQFilters) stays exported
 // from the top of this barrel — chat stages import it via ./filters.)

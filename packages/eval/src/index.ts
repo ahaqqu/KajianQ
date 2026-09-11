@@ -32,3 +32,36 @@ export {
   type RunLedger,
 } from "./harness";
 export type { ChunkRefLike, RetrievalLike, TraceEventLike } from "./harness-types";
+export {
+  BENCH_K,
+  GATE_FLOORS,
+  cosineSimilarity,
+  evaluateGate,
+  parseExpansionSelection,
+  rankDocs,
+  recallAtK,
+  reciprocalRank,
+  retryInMs,
+  scoreDirection,
+  scoreExpansionCase,
+  totalCostMicroUsd,
+  type BenchCandidateResult,
+  type BenchCell,
+  type BenchDirection,
+  type BenchDoc,
+  type BenchQuery,
+  type ExpansionCase,
+  type ExpansionOutcome,
+} from "./embed-bench";
+export {
+  parseExpansionSet,
+  parseProbeSet,
+  type BenchProbeSet,
+  type ExpansionCaseSet,
+} from "./embed-bench-fixtures";
+export {
+  EMBED_BENCH_DEFAULT_EXPANSION_PATH,
+  EMBED_BENCH_DEFAULT_PROBE_PATH,
+  loadEmbedBenchConfig,
+  type EmbedBenchConfig,
+} from "./eval-config";

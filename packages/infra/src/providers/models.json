@@ -8,15 +8,21 @@
       "freeTier": true,
       "personalDataAllowed": false,
       "models": {
-        "gemini-3.1-pro": {
+        "gemini-3.1-pro-preview": {
           "capabilities": ["generate", "stream"],
           "priceMicroUsdPerMTok": { "in": 2000, "out": 12000 }
         },
-        "gemini-3-flash": {
+        "gemini-3-flash-preview": {
           "capabilities": ["generate", "stream"],
           "priceMicroUsdPerMTok": { "in": 500, "out": 3000 }
         },
         "gemini-embedding-001": {
+          "capabilities": ["embed"],
+          "dimensions": 1536,
+          "priceMicroUsdPerMTok": { "in": 0, "out": 0 }
+        },
+        "gemini-embedding-2": {
+          "$comment": "#9 benchmark challenger — explicitly cross-lingual (100+ languages); incompatible embedding space with embedding-001, so adopting it is a clean-slate re-embed, not an upgrade. Dimensions verified 1536 on the OpenAI-compat endpoint.",
           "capabilities": ["embed"],
           "dimensions": 1536,
           "priceMicroUsdPerMTok": { "in": 0, "out": 0 }
@@ -74,19 +80,23 @@
   },
   "roles": {
     "generator": { "chain": ["qwen:qwen3.7-max"] },
-    "reviewer": { "chain": ["gemini:gemini-3.1-pro"] },
+    "reviewer": { "chain": ["gemini:gemini-3.1-pro-preview"] },
     "reviewer-live": {
       "$comment": "Live-sample faithfulness review; cheap but not free-tier.",
-      "chain": ["gemini:gemini-3-flash"]
+      "chain": ["gemini:gemini-3-flash-preview"]
     },
     "cheap": {
-      "$comment": "Router stages 1-3, tagging, cleaning. Free tier first, paid fallback on provider failure (spec 3.4).",
-      "chain": ["gemini:gemini-3-flash", "deepseek:deepseek-v4-flash"]
+      "$comment": "Router stages 1-3, tagging, cleaning. Free tier first, paid fallback on provider failure (spec 3.4). The paid fallback is cost-traced per call (ADR-0009 amendment); any flow carrying personal or sensitive data must not ride the free-tier head — route it to the paid tail or a personal-data-allowed vendor (spec 3.4).",
+      "chain": ["gemini:gemini-3-flash-preview", "deepseek:deepseek-v4-flash"]
     },
     "translation": { "chain": ["qwen:qwen3-max"] },
     "embedder": {
-      "$comment": "Pending the #9 embedding benchmark gate (AGENTS.md rule 10) — AR-only vs ID-fallback fusion is decided by its numbers, not here.",
+      "$comment": "Decided by the #9 embedding benchmark gate (ADR-0036): AR-only vs ID-fallback fusion is recorded there. The chain holds the gate's winner only — never both models, they are embedding-space-incompatible.",
       "chain": ["gemini:gemini-embedding-001"]
+    },
+    "embedder-candidates": {
+      "$comment": "#9 gate benchmark role: every candidate the benchmark compares, in one chain. Not for serving — the benchmark resolves each candidate directly from this chain (ADR-0022).",
+      "chain": ["gemini:gemini-embedding-001", "gemini:gemini-embedding-2"]
     }
   }
 }

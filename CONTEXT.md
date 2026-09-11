@@ -72,6 +72,14 @@ _Avoid_: sanad (unqualified romanization drift), chain (unqualified)
 The relational structure of hadith narrators (rawi) and the Isnads they appear in, built from Sanadset in v2 and traversed with recursive SQL over Postgres. Not a graph database and not GraphRAG.
 _Avoid_: knowledge graph (implies GraphRAG-style entity extraction)
 
+**Embedding Benchmark**:
+The go/no-go gate harness (#9, ADR-0036) that compares candidate embedding models on ID→AR cross-lingual and AR→AR monolingual recall@10 over the real corpus, plus the ADR-0014 expansion micro-task (router LLM picks Arabic expansion terms from a glossary slice). Runs via `bun run eval:embed-bench`; results land in a versioned JSON report the ADR cites. Self-retrieval probes (a doc's own track text as query, reusing its track vector) measure the pure alignment of the embedding space.
+_Avoid_: leaderboard comparison (implies hosted benchmarks), recall test (unqualified — the gate measures specific directions with fixed floors)
+
+**Retrieval Posture**:
+The decided shape of the retrieval layer from the Embedding Benchmark: which embedding model serves as the `embedder` default and whether serving is AR-only or ID-fallback fusion over the dual-index schema. Recorded in ADR-0036; switchable without re-embedding (ADR-0013 amendment 1).
+_Avoid_: retrieval strategy (vague), embedding config (implies the whole provider config)
+
 ## Agentic pipeline
 
 Skill pipeline lives in `.agents/skills/` (router: `agentic-workflow`). Multi-agent orchestration lives in `manager` (spawns role subagents per phase; role models configured in `.zcode/agents/`). Reviews route through `code-review` — the single review entry point; thermos depth is mandatory for code-touching PRs, skippable only for docs/skill/non-code changes. Findings can be posted as itemized PR comments via `thermos-with-comments` (the manager's reviewer role). Domain guardrails that the skills enforce: `dars-pluggability` (pluggable-by-design) and `kajianq-traceability` (traceable-by-design). Reviewers must load both — `dars-pluggability` and `kajianq-traceability` — in addition to `code-review` when running the compliance pass over a diff.
