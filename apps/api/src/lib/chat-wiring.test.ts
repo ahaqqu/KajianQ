@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { runStoreEffect } from "@app/kajianq-domain";
-import { authGuard, createProvidersFromEnv, storeBridge } from "../lib/chat-wiring";
+import { authGuard, buildChatWiring, createProvidersFromEnv, sseFrame, storeBridge } from "../lib/chat-wiring";
 
 const storeBridgeOf = (fx: unknown) => runStoreEffect<{ token: string }>(fx);
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
@@ -15,6 +15,47 @@ vi.mock("@neondatabase/serverless", () => ({
     throw new Error("chat-wiring test: neon must not be reached");
   },
 }));
+
+describe("sseFrame — the wire format", () => {
+  it("emits one data line per line of a multi-line payload", () => {
+    // Regression: a raw newline inside a single `data:` payload creates a
+    // blank line, which terminates the frame — a spec-following client (the
+    // eval harness) then drops the rest of the answer.
+    const frame = sseFrame("delta", "line one\n\nline two");
+    expect(frame).toBe("event: delta\ndata: line one\ndata: \ndata: line two\n\n");
+    // The frame contains exactly one blank-line terminator, at the very end.
+    expect(frame.split("\n\n").length).toBe(2);
+    expect(frame.endsWith("\n\n")).toBe(true);
+  });
+
+  it("round-trips a multi-line payload through the eval client's parser semantics", () => {
+    const frame = sseFrame("delta", "a\nb");
+    const body = frame.slice(0, frame.length - 2);
+    const dataLines = body
+      .split("\n")
+      .filter((l) => l.startsWith("data:"))
+      .map((l) => l.slice(5).trimStart());
+    expect(dataLines.join("\n")).toBe("a\nb");
+  });
+
+  it("preserves trailing whitespace in a single-line payload", () => {
+    expect(sseFrame("delta", "word ")).toBe("event: delta\ndata: word \n\n");
+  });
+
+  it("emits a data line for an empty payload", () => {
+    expect(sseFrame("done", "{}")).toBe("event: done\ndata: {}\n\n");
+  });
+});
+
+describe("buildChatWiring — the reviewer is mandatory on the chat path", () => {
+  it("refuses to wire a chat path with no keyed reviewer candidate", () => {
+    // A reviewer-less chat path would silently serve unreviewed answers; the
+    // wiring fails closed instead (the route maps it to 503).
+    expect(() =>
+      buildChatWiring({ DATABASE_URL: "postgres://x" }),
+    ).toThrow(/reviewer role has no keyed candidate/);
+  });
+});
 
 describe("createProvidersFromEnv", () => {
   it("resolves every role from an empty env (calls fail, wiring never branches)", () => {

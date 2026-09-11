@@ -150,14 +150,16 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
   // never ships the vendor's text: the reviewer recorded a `refusal` event on
   // the trace (the same signal the eval harness reads), and the frames carry
   // the plain refusal instead. Otherwise the vendor's own delta sequence is
-  // replayed when it reproduces the validated text exactly, and the answer is
-  // chunked when generation did not stream (a non-streaming provider).
+  // replayed when it reproduces the delivered text; post-processing may have
+  // APPENDED deterministic rules (disclaimer, dhaif warning), which ride one
+  // trailing delta so the model's streamed text stays byte-identical on the
+  // wire. When generation did not stream at all, the text is chunked.
   const refused = answer.trace.events.some((e) => e.kind === "refusal");
   const streamed = deltas.join("");
   const frames = refused
     ? chunkText(answer.text)
-    : streamed === answer.text && deltas.length > 0
-      ? deltas
+    : streamed !== "" && answer.text.startsWith(streamed)
+      ? [...deltas, ...chunkText(answer.text.slice(streamed.length))]
       : chunkText(answer.text);
 
   const body = new ReadableStream<Uint8Array>({

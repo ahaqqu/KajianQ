@@ -25,21 +25,25 @@ export type SmokeSelection = {
 export type SmokeSelectOptions = {
   /** Maximum questions in the subset (default 5 — the spec's PR-time size). */
   size?: number;
-  /** Tag marking a trap question (product vocabulary, caller-supplied). */
+  /**
+   * Tag marking a trap question. Supplied by the caller (the product's
+   * vocabulary — the engine must not name it).
+   */
   trapTag?: string;
 };
 
 /**
  * Pick a representative smoke subset. Order of preference:
  *   1. one refusal case (the plain-refusal behaviour)
- *   2. one trap-tagged case (fabricated citation / weak grade)
+ *   2. one trap-tagged case (fabricated citation / weak grade), when a
+ *      `trapTag` is supplied
  *   3. one English case (language matching)
  *   4. one Indonesian answer case (the default path)
  *   5. remaining slots: the set's own order, skipping duplicates of the above
  */
 export function selectSmokeSubset(set: GoldenSet, opts: SmokeSelectOptions = {}): SmokeSelection {
   const size = Math.max(1, opts.size ?? 5);
-  const trapTag = opts.trapTag ?? "dhaif-trap";
+  const trapTag = opts.trapTag;
   const picked: GoldenQuestion[] = [];
   const reasons: { id: string; reason: string }[] = [];
   const taken = new Set<string>();
@@ -51,16 +55,16 @@ export function selectSmokeSubset(set: GoldenSet, opts: SmokeSelectOptions = {})
     reasons.push({ id: q.id, reason });
   };
 
-  const has = (q: GoldenQuestion, tag: string): boolean => (q.tags ?? []).includes(tag);
-
   take(
     set.questions.find((q) => q.expectedBehavior === "refuse"),
     "refusal coverage",
   );
-  take(
-    set.questions.find((q) => (q.tags ?? []).some((t) => t === trapTag)),
-    "trap coverage",
-  );
+  if (trapTag !== undefined && trapTag !== "") {
+    take(
+      set.questions.find((q) => (q.tags ?? []).includes(trapTag)),
+      "trap coverage",
+    );
+  }
   take(
     set.questions.find((q) => q.language === "en"),
     "English language coverage",

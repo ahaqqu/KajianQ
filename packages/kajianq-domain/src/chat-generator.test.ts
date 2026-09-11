@@ -134,12 +134,21 @@ describe("createKajianQGenerator — streaming", () => {
 describe("createKajianQReviewer — the deterministic gate", () => {
   const draft = (text: string): { text: string } => ({ text });
 
-  it("passes a grounded answer through unchanged", async () => {
-    const reviewer = createKajianQReviewer({ provider: null });
+  it("passes a grounded answer through, adding only the ulama disclaimer", async () => {
+    const reviewer = createKajianQReviewer({ provider: null, applyProductRules: false });
     const out = await runStage<{ text: string }>(
       reviewer.review(draft("Menurut QS. 2:255 …"), context([chunk("QS. 2:255")])),
     );
     expect(out.text).toBe("Menurut QS. 2:255 …");
+  });
+
+  it("adds the ulama disclaimer to a passed draft (product rule)", async () => {
+    const reviewer = createKajianQReviewer({ provider: null });
+    const out = await runStage<{ text: string }>(
+      reviewer.review(draft("Menurut QS. 2:255 …"), context([chunk("QS. 2:255")])),
+    );
+    expect(out.text).toContain("Menurut QS. 2:255 …");
+    expect(out.text).toContain("bukan fatwa");
   });
 
   it("refuses an ungrounded citation even with no LLM reviewer configured", async () => {
@@ -203,6 +212,7 @@ describe("createKajianQReviewer — the deterministic gate", () => {
             cost: cost("reviewer", 3),
           }),
       },
+      applyProductRules: false,
     });
     const out = await runStage<{ text: string }>(
       reviewer.review(draft("Grounded text QS. 2:255"), context([chunk("QS. 2:255")])),

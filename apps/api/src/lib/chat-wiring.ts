@@ -134,16 +134,18 @@ export type ChatWiring = {
  * when the reviewer role has no keyed candidate — the route maps both to 503.
  */
 export function buildChatWiring(env: Record<string, string | undefined>): ChatWiring {
-  const store = createRagStoreFromEnv(env);
   const providers = createProvidersFromEnv(env);
   if (providers.reviewer === null) {
     // Non-optional for the chat path: an unreviewed answer is not a lesser
-    // answer, it is an unverified one. Fail closed.
+    // answer, it is an unverified one. Fail closed. Checked before the store
+    // is constructed so the config error is reported as a config error rather
+    // than a store-construction failure.
     throw new ChatConfigError(
       "chat route: reviewer role has no keyed candidate — the cross-vendor faithfulness check is mandatory",
       providers.missingKeys.join(", ") || "reviewer",
     );
   }
+  const store = createRagStoreFromEnv(env);
   return {
     pipeline: {
       routerProvider: providers.router,
@@ -160,7 +162,17 @@ export function buildChatWiring(env: Record<string, string | undefined>): ChatWi
   };
 }
 
-/** The SSE frame wire format the eval harness consumes (meta/delta/done). */
+/**
+ * The SSE frame wire format the eval harness consumes (meta/delta/done).
+ *
+ * Multi-line data MUST be emitted as one `data:` line per line (the SSE spec):
+ * a raw newline inside a single `data:` payload produces a blank line, which
+ * terminates the frame — the remainder then arrives as a frame with no
+ * `data:` field and is dropped by a spec-following client. An answer that
+ * appends a rule after a blank line (the disclaimer, the dhaif warning) hits
+ * exactly that path, so the escaping is load-bearing, not cosmetic.
+ */
 export function sseFrame(event: string, data: string): string {
-  return `event: ${event}\ndata: ${data}\n\n`;
+  const lines = data.split("\n").map((line) => `data: ${line}`);
+  return `event: ${event}\n${lines.join("\n")}\n\n`;
 }

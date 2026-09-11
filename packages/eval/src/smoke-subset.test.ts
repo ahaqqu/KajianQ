@@ -15,28 +15,28 @@ const set: GoldenSet = {
   questions: [
     {
       id: "q-id-1",
-      question: "Apa maksud Ayat Kursi?",
+      question: "What does verse 2:255 say?",
       language: "id",
-      expectedSourceTypes: ["quran"],
-      requiredCitations: ["QS. 2:255"],
+      expectedSourceTypes: ["primary-source"],
+      requiredCitations: ["label-1"],
       expectedBehavior: "answer",
-      tags: ["aqidah"],
+      tags: ["topic-a"],
     },
     {
       id: "q-id-2",
-      question: "Hadits tentang niat?",
+      question: "A narration about intention?",
       language: "id",
-      expectedSourceTypes: ["hadith"],
+      expectedSourceTypes: ["secondary-source"],
       requiredCitations: [],
       expectedBehavior: "answer",
-      tags: ["hadith"],
+      tags: ["topic-b"],
     },
     {
       id: "q-en-1",
-      question: "What is Ayat Kursi?",
+      question: "What is verse 2:255?",
       language: "en",
-      expectedSourceTypes: ["quran"],
-      requiredCitations: ["QS. 2:255"],
+      expectedSourceTypes: ["primary-source"],
+      requiredCitations: ["label-1"],
       expectedBehavior: "answer",
       tags: ["english"],
     },
@@ -56,23 +56,23 @@ const set: GoldenSet = {
       expectedSourceTypes: [],
       requiredCitations: [],
       expectedBehavior: "refuse",
-      tags: ["refusal", "dhaif-trap", "fabricated-attribution"],
+      tags: ["refusal", "trap-tag", "fabricated-attribution"],
     },
     {
       id: "q-id-3",
       question: "Another Indonesian question",
       language: "id",
-      expectedSourceTypes: ["quran"],
+      expectedSourceTypes: ["primary-source"],
       requiredCitations: [],
       expectedBehavior: "answer",
-      tags: ["fiqh"],
+      tags: ["topic-c"],
     },
   ],
 };
 
 describe("selectSmokeSubset", () => {
   it("always includes a refusal, a trap, an English, and an Indonesian case", () => {
-    const { set: smoke } = selectSmokeSubset(set, { size: 5 });
+    const { set: smoke } = selectSmokeSubset(set, { size: 5, trapTag: "trap-tag" });
     const ids = smoke.questions.map((q) => q.id);
     expect(ids).toContain("q-refuse-1");
     expect(ids).toContain("q-trap-1");
@@ -84,7 +84,7 @@ describe("selectSmokeSubset", () => {
 
   it("honors the size budget", () => {
     expect(selectSmokeSubset(set, { size: 2 }).set.questions).toHaveLength(2);
-    expect(selectSmokeSubset(set, { size: 4 }).set.questions).toHaveLength(4);
+    expect(selectSmokeSubset(set, { size: 4, trapTag: "trap-tag" }).set.questions).toHaveLength(4);
     // Size larger than the set returns the whole set, never a padded duplicate.
     expect(selectSmokeSubset(set, { size: 99 }).set.questions).toHaveLength(set.questions.length);
   });
@@ -95,14 +95,14 @@ describe("selectSmokeSubset", () => {
   });
 
   it("is deterministic: same input yields the same subset and order", () => {
-    const a = selectSmokeSubset(set, { size: 4 });
-    const b = selectSmokeSubset(set, { size: 4 });
+    const a = selectSmokeSubset(set, { size: 4, trapTag: "trap-tag" });
+    const b = selectSmokeSubset(set, { size: 4, trapTag: "trap-tag" });
     expect(a.set.questions.map((q) => q.id)).toEqual(b.set.questions.map((q) => q.id));
     expect(a.reasons).toEqual(b.reasons);
   });
 
   it("reports why each question was picked", () => {
-    const { reasons } = selectSmokeSubset(set, { size: 4 });
+    const { reasons } = selectSmokeSubset(set, { size: 4, trapTag: "trap-tag" });
     expect(reasons[0]?.reason).toBe("refusal coverage");
     expect(reasons[1]?.reason).toBe("trap coverage");
     expect(reasons[2]?.reason).toBe("English language coverage");

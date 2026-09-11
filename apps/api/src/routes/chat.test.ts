@@ -93,9 +93,11 @@ const env = { ASSETS: { fetch } };
 
 /**
  * Parse SSE frames the way the eval client does (`packages/eval/src/api-client.ts`):
- * the `event:` name is trimmed, but a `data:` payload keeps its trailing
- * whitespace — SSE strips only the single optional space after the colon. A
- * `trim()` here would silently hide a delta-boundary bug where a space is lost.
+ * `event:` names are trimmed, a `data:` payload keeps its trailing whitespace
+ * (SSE strips only the single optional space after the colon), and a frame's
+ * multiple `data:` lines join with `\n` — which is how a multi-line answer
+ * survives the wire. A `trim()` here would hide a lost space; skipping the
+ * join would hide a truncated answer.
  */
 function parseSse(text: string): { event: string; data: string }[] {
   return text
@@ -108,12 +110,10 @@ function parseSse(text: string): { event: string; data: string }[] {
           .find((l) => l.startsWith("event:"))
           ?.slice(6)
           .trim() ?? "message";
-      const data =
-        lines
-          .find((l) => l.startsWith("data:"))
-          ?.slice(5)
-          .trimStart() ?? "";
-      return { event, data };
+      const dataLines = lines
+        .filter((l) => l.startsWith("data:"))
+        .map((l) => l.slice(5).trimStart());
+      return { event, data: dataLines.join("\n") };
     });
 }
 
@@ -220,7 +220,7 @@ describe("POST /v1/chat", () => {
     expect(assistant?.answerTraceId).toBe(meta.traceId);
   }, 15000);
 
-  it("replays the vendor's own delta sequence on the wire", async () => {
+  it("replays the vendor's own delta sequence, with appended rules as a trailing delta", async () => {
     const { store, token } = await wiredStore();
     currentStore = store;
     await seed(store);
@@ -229,9 +229,16 @@ describe("POST /v1/chat", () => {
 
     const { answer, frames } = await postChat(token, { message: "Apa itu Ayat Kursi?" });
     const deltas = frames.filter((f) => f.event === "delta");
-    expect(deltas.length).toBe(3);
-    expect(deltas.map((d) => d.data)).toEqual(["Menurut ", "QS. 2:255 ", "Allah Mahahidup."]);
-    expect(answer).toBe("Menurut QS. 2:255 Allah Mahahidup.");
+    // The vendor's three deltas, byte-identical, then the appended disclaimer.
+    expect(deltas.slice(0, 3).map((d) => d.data)).toEqual([
+      "Menurut ",
+      "QS. 2:255 ",
+      "Allah Mahahidup.",
+    ]);
+    expect(deltas.length).toBeGreaterThanOrEqual(3);
+    expect(deltas.map((d) => d.data).join("")).toBe(answer);
+    expect(answer.startsWith("Menurut QS. 2:255 Allah Mahahidup.")).toBe(true);
+    expect(answer).toContain("bukan fatwa");
   }, 15000);
 
   it("refuses an answer whose citation is not in the retrieved context (the #10 invariant)", async () => {

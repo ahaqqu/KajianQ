@@ -54,14 +54,17 @@ describe("POST /v1/auth/anonymous", () => {
     expect(userId).toBe(body.userId);
   });
 
-  it("answers 503 when the database binding is absent (feature disabled)", async () => {
-    // The real wiring throws ChatConfigError without DATABASE_URL; the mock
-    // bypasses it, so this asserts the route's own guard path via a real
-    // wiring build against an empty env.
-    const { buildChatWiring } = await vi.importActual<typeof import("../lib/chat-wiring")>(
-      "../lib/chat-wiring",
-    );
-    expect(() => buildChatWiring({})).toThrow(/DATABASE_URL is not bound/);
+  it("answers 503 when the deployment is not configured (feature disabled)", async () => {
+    // The real wiring fails closed on a missing configuration: with no keys
+    // and no database binding, the first config failure is the reviewer role
+    // (the chat path's mandatory check), and with keys but no binding it is
+    // DATABASE_URL. Either way the route maps the typed failure to 503 rather
+    // than degrading.
+    const { buildChatWiring, ChatConfigError } = await vi.importActual<
+      typeof import("../lib/chat-wiring")
+    >("../lib/chat-wiring");
+    expect(() => buildChatWiring({})).toThrow(ChatConfigError);
+    expect(() => buildChatWiring({ GEMINI_API_KEY: "k" })).toThrow(/DATABASE_URL is not bound/);
   });
 });
 
