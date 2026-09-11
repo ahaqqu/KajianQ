@@ -127,6 +127,21 @@ export const TraceEventSchema = v.variant("kind", [
     kind: v.literal("review"),
     detail: v.object({
       verdict: v.pipe(v.string(), v.minLength(1)),
+      /**
+       * The retrieved citation labels the answer actually cited (thermo-review
+       * B4): the deterministic gate's *pass* case, recorded so citation
+       * provenance is observable rather than discarded. Optional — older
+       * persisted traces predate it (ADR-0007: Trace only ever ADDS optional
+       * fields).
+       */
+      grounded: v.optional(v.array(v.string())),
+      /**
+       * True when the reviewer LLM's reply carried no readable verdict
+       * (thermo-review A3): distinguishes "reviewer passed" from "reviewer
+       * output was unusable" so the eval harness can count indeterminate
+       * reviews instead of reading both as a pass.
+       */
+      verdictParseFailed: v.optional(v.boolean()),
     }),
     cost: v.optional(CostRecordSchema),
     at: v.pipe(v.number(), v.integer()),

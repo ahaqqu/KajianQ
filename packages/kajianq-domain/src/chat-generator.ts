@@ -77,9 +77,10 @@ export function createKajianQGenerator(deps: KajianQGeneratorDeps): Generator<Ka
               ),
             },
           ];
+          const stream = deps.provider.stream;
           const streamed =
-            deps.provider.stream !== undefined
-              ? yield* streamDraft(deps, turns)
+            stream !== undefined
+              ? yield* streamDraft(deps, stream, turns)
               : yield* generateDraft(deps, turns);
           run.record({
             stage: "generator",
@@ -95,6 +96,10 @@ export function createKajianQGenerator(deps: KajianQGeneratorDeps): Generator<Ka
   };
 }
 
+/** The stage's typed failure wrapper: one place, not three inline wraps. */
+const mapCause = <A>(effect: Effect.Effect<A, unknown>): Effect.Effect<A, { cause: unknown }> =>
+  Effect.mapError(effect, (cause: unknown) => ({ cause }));
+
 /**
  * The non-streamed path: one `generate` call. Used when the provider exposes
  * no `stream` (a test double, a model whose capabilities omit streaming).
@@ -103,9 +108,10 @@ function generateDraft(
   deps: KajianQGeneratorDeps,
   turns: readonly { role: string; content: string }[],
 ): Effect.Effect<{ text: string; cost: CostRecord }, { cause: unknown }> {
-  return deps.provider.generate({ turns }).pipe(
-    Effect.map((reply) => ({ text: reply.text, cost: reply.cost })),
-    Effect.mapError((cause: unknown) => ({ cause })),
+  return mapCause(
+    deps.provider.generate({ turns }).pipe(
+      Effect.map((reply) => ({ text: reply.text, cost: reply.cost })),
+    ),
   );
 }
 
@@ -118,23 +124,28 @@ function generateDraft(
  * A mid-flight failure propagates as the stage's typed failure; the failed
  * attempts' estimated spend rides the error's `attemptCosts` and is recorded
  * by the runner (ADR-0027 C2), so a cut stream still shows in the cost trail.
+ *
+ * `stream` is non-optional here (thermo-review B5): the caller narrows the
+ * provider's optional method once, so the "stream exists" invariant is held
+ * by the parameter type rather than a `!` assertion.
  */
 function streamDraft(
   deps: KajianQGeneratorDeps,
+  stream: NonNullable<GeneratorProvider["stream"]>,
   turns: readonly { role: string; content: string }[],
 ): Effect.Effect<{ text: string; cost: CostRecord }, { cause: unknown }> {
   return Effect.gen(function* () {
-    const handle = yield* deps.provider.stream!({ turns }).pipe(
-      Effect.mapError((cause: unknown) => ({ cause })),
-    );
+    const handle = yield* mapCause(stream({ turns }));
     let text = "";
-    yield* Stream.runForEach(handle.deltas, (delta) =>
-      Effect.sync(() => {
-        text += delta;
-        deps.onDelta?.(delta);
-      }),
-    ).pipe(Effect.mapError((cause: unknown) => ({ cause })));
-    const cost = yield* handle.cost().pipe(Effect.mapError((cause: unknown) => ({ cause })));
+    yield* mapCause(
+      Stream.runForEach(handle.deltas, (delta) =>
+        Effect.sync(() => {
+          text += delta;
+          deps.onDelta?.(delta);
+        }),
+      ),
+    );
+    const cost = yield* mapCause(handle.cost());
     return { text, cost };
   });
 }

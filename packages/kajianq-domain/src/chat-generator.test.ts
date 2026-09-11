@@ -231,6 +231,107 @@ describe("createKajianQReviewer — the deterministic gate", () => {
     expect(out.text).toBe("tidak menemukan dalil yang memadai");
     expect(called).toBe(0);
   });
+
+  it("records grounded provenance on the review event (B4)", async () => {
+    const events: { kind: string; detail?: { grounded?: string[] } }[] = [];
+    const { RunContext } = await import("@app/rag-core");
+    const reviewer = createKajianQReviewer({
+      provider: {
+        generate: () =>
+          Effect.succeed({ text: '{"verdict":"pass"}', cost: cost("reviewer", 3) }),
+      },
+      applyProductRules: false,
+    });
+    await Effect.runPromise(
+      Effect.provideService(
+        reviewer.review(draft("Menurut QS. 2:255 …"), context([chunk("QS. 2:255")])) as never,
+        RunContext,
+        { config: {}, now: () => 1, record: (e: never) => events.push(e) } as never,
+      ) as never,
+    );
+    const review = events.find((e) => e.kind === "review");
+    expect(review?.detail?.grounded).toEqual(["QS. 2:255"]);
+  });
+
+  it("flags an unreadable reviewer verdict on the trace instead of silently passing (A3)", async () => {
+    const events: { kind: string; detail?: { verdictParseFailed?: boolean } }[] = [];
+    const { RunContext } = await import("@app/rag-core");
+    const reviewer = createKajianQReviewer({
+      provider: {
+        generate: () =>
+          Effect.succeed({
+            // Vendor rate-limit text: no verdict anywhere in the reply.
+            text: "Rate limit exceeded. Please retry later.",
+            cost: cost("reviewer", 3),
+          }),
+      },
+      applyProductRules: false,
+    });
+    const out = await Effect.runPromise(
+      Effect.provideService(
+        reviewer.review(draft("Menurut QS. 2:255 …"), context([chunk("QS. 2:255")])) as never,
+        RunContext,
+        { config: {}, now: () => 1, record: (e: never) => events.push(e) } as never,
+      ) as never,
+    ) as { text: string };
+    // The answer is still delivered (the deterministic gate passed), but the
+    // trace distinguishes "unreadable" from "reviewer passed".
+    expect(out.text).toContain("QS. 2:255");
+    const review = events.find((e) => e.kind === "review");
+    expect(review?.detail?.verdictParseFailed).toBe(true);
+  });
+
+  it("does not flag a readable verdict as unparseable", async () => {
+    const events: { kind: string; detail?: { verdictParseFailed?: boolean } }[] = [];
+    const { RunContext } = await import("@app/rag-core");
+    const reviewer = createKajianQReviewer({
+      provider: {
+        generate: () =>
+          Effect.succeed({ text: '{"verdict":"pass"}', cost: cost("reviewer", 3) }),
+      },
+      applyProductRules: false,
+    });
+    await Effect.runPromise(
+      Effect.provideService(
+        reviewer.review(draft("Menurut QS. 2:255 …"), context([chunk("QS. 2:255")])) as never,
+        RunContext,
+        { config: {}, now: () => 1, record: (e: never) => events.push(e) } as never,
+      ) as never,
+    );
+    const review = events.find((e) => e.kind === "review");
+    expect(review?.detail?.verdictParseFailed).toBeUndefined();
+  });
+});
+
+describe("parseReviewerVerdict", () => {
+  it("reads a well-formed JSON envelope", async () => {
+    const { parseReviewerVerdict } = await import("./chat-reviewer");
+    expect(parseReviewerVerdict('{"verdict":"fail","reason":"x"}')).toEqual({
+      verdict: "fail",
+      parseFailed: false,
+    });
+    expect(parseReviewerVerdict('{"verdict":"pass"}')).toEqual({
+      verdict: "pass",
+      parseFailed: false,
+    });
+  });
+
+  it("reads a raw-text verdict signal even when the envelope is truncated", async () => {
+    const { parseReviewerVerdict } = await import("./chat-reviewer");
+    expect(parseReviewerVerdict('{"verdict": "fail", "reason": "cut off')).toEqual({
+      verdict: "fail",
+      parseFailed: false,
+    });
+  });
+
+  it("marks text with no verdict at all as unparseable (never a silent pass)", async () => {
+    const { parseReviewerVerdict } = await import("./chat-reviewer");
+    expect(parseReviewerVerdict("Rate limit exceeded. Please retry later.")).toEqual({
+      verdict: "pass",
+      parseFailed: true,
+    });
+    expect(parseReviewerVerdict("")).toEqual({ verdict: "pass", parseFailed: true });
+  });
 });
 
 describe("runChatPipeline — end-to-end trace", () => {

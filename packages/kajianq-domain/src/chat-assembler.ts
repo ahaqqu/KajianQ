@@ -46,11 +46,10 @@ function renderChunk(chunk: Chunk): string {
   const label = citation !== "" ? ` [${citation}${grade}]` : "";
   // The evidence line: Arabic original first, then the display translation.
   // `chunk.text` is the track the retriever selected (ADR-0013: the primary
-  // track is the canonical Arabic evidence); `textId` carries the secondary
-  // translation when the store returned one. When the retriever fell back to
-  // the translation track, the Arabic original is not in hand and no label is
-  // emitted — the label must never claim a translation accompanies text that
-  // is already the original.
+  // track is the canonical Arabic evidence); the retriever also carries both
+  // text layers on the metadata (`textAr`/`textId`, thermo-review A1), so the
+  // label is emitted only when both layers are actually in hand — it must
+  // never claim a translation accompanies text that is already the original.
   const original = typeof meta["textAr"] === "string" ? meta["textAr"] : null;
   const translation = typeof meta["textId"] === "string" ? meta["textId"] : null;
   if (original !== null && original !== "" && translation !== null && translation !== "") {

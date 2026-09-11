@@ -53,11 +53,18 @@ export function citationLabelsOf(chunk: Chunk): string[] {
  * gate. Extending the validator for a new source type is a one-line addition.
  */
 const CITATION_GRAMMARS: readonly (() => RegExp)[] = [
-  // Quran: `QS. 2:255` or `QS. Al-Baqarah:255` (surah numeric or named).
-  () => /\bQS\.\s*[^\s:,[\]()]+\s*:\s*\d+/gi,
+  // Quran: `QS. 2:255` / `Q.S. 2:255` (both spellings Indonesian prose uses)
+  // or `QS. Al-Baqarah:255` (surah numeric or named).
+  () => /\bQ\.?S\.\s*[^\s:,[\]()]+\s*:\s*\d+/gi,
   // Hadith: `HR. Bukhari no. 573` / `HR. Ibn Majah no. 224 (Dhaif)`.
-  // Collection names may be multi-word ("Abu Dawud", "Ibn Majah").
-  () => /\bHR\.\s*[^\s,]+(?:\s+[^\s,]+)?\s+no\.\s*[^\s,;.)]+/gi,
+  // Collection names may be multi-word ("Abu Dawud", "Ibn Majah") and the
+  // long forms a model actually writes carry a collection-type prefix
+  // ("Sunan Abu Dawud", "Sunan an Nasai"), so up to four tokens are
+  // tolerated. Token classes exclude `.` and `,` so the match cannot run
+  // across a sentence boundary or swallow a list, and both the token length
+  // and the repetition count are bounded — no nested unbounded quantifier,
+  // so the pattern stays linear (ReDoS-safe) as required.
+  () => /\bHR\.\s*[^\s,.]{1,24}(?:\s+[^\s,.]{1,24}){0,3}\s+no\.\s*[^\s,;.)]+/gi,
   // Kitab (SPECS §2.1): `Al-Umm, Imam Syafi'i, Jilid 1, Hal. 102, Bab …`.
   // Kitab ingestion has not landed, so any such citation is ungrounded by
   // definition today — detecting it is the point, not an accident.
@@ -69,9 +76,19 @@ function stripGradeSuffix(label: string): string {
   return label.replace(/\s*\([^()]*\)\s*$/, "").trim();
 }
 
-/** Normalize a label for comparison: collapse whitespace, trim, drop grade. */
+/**
+ * Normalize a label for comparison: collapse whitespace, trim, drop grade,
+ * and canonicalize the Quran marker's dotted spelling (`Q.S.` → `QS.`).
+ *
+ * The spelling canonicalization matters because the grammar accepts both
+ * forms: a model that writes `Q.S. 2:255` for a chunk labeled `QS. 2:255` is
+ * citing the same address, and treating it as a different one would turn a
+ * *grounded* answer into a refusal. Fabricated addresses are unaffected —
+ * `Q.S. 9:99` still normalizes to `QS. 9:99`, which no retrieved chunk
+ * grounds.
+ */
 export function normalizeCitationLabel(label: string): string {
-  return stripGradeSuffix(label).replace(/\s+/g, " ").trim();
+  return stripGradeSuffix(label).replace(/\s+/g, " ").replace(/\bQ\.S\./g, "QS.").trim();
 }
 
 /**
@@ -115,7 +132,11 @@ export function validateCitations(
       if (normalized !== "") known.add(normalized);
     }
   }
-  const normalizedAnswer = answer.replace(/\s+/g, " ");
+  // The answer is canonicalized the same way as the labels, so a grounded
+  // address written with the dotted marker (`Q.S. 2:255` for a `QS. 2:255`
+  // chunk) still counts as grounded provenance rather than vanishing from
+  // the review trace's `grounded` list.
+  const normalizedAnswer = answer.replace(/\s+/g, " ").replace(/\bQ\.S\./g, "QS.");
   const grounded: string[] = [];
   for (const label of known) {
     if (normalizedAnswer.includes(label)) grounded.push(label);

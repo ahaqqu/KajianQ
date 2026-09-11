@@ -71,7 +71,15 @@ function hasDisclaimer(text: string): boolean {
 
 /** True when the text already carries a dhaif warning. */
 function hasWeakWarning(text: string): boolean {
-  return /dhaif|lemah/i.test(text);
+  // Anchored to the warning's own vocabulary (thermo-review A6): the previous
+  // `/dhaif|lemah/i` fired on any occurrence of those substrings — a model
+  // writing "lemah" in an unrelated sentence silently suppressed the required
+  // warning. `dhaif` is the technical term and stands alone; the ordinary
+  // Indonesian word `lemah` (word-bounded, so "memalemahkan" does not count)
+  // is only read as a weakness claim when it sits next to the thing it grades.
+  return /dhaif|\blemah(?:nya)?\b[^\n]{0,40}(?:hadits|hadis|dalil|riwayat)|(?:hadits|hadis|dalil|riwayat)[^\n]{0,40}\blemah(?:nya)?\b/i.test(
+    text,
+  );
 }
 
 /**
@@ -94,10 +102,9 @@ export function applyProductRules(
   if (contextHasTranslation(context) && !quotesTranslation(draft.text)) {
     // The label is a provenance claim about the text that follows it; if the
     // model dropped it, restore it as a standalone notice rather than
-    // guessing which line it belonged to.
-    parts.push(
-      language === "en" ? `[${MACHINE_TRANSLATION_LABEL}]` : `[${MACHINE_TRANSLATION_LABEL}]`,
-    );
+    // guessing which line it belonged to. The label is intentionally
+    // language-invariant (ADR-0006): one Indonesian constant, no EN variant.
+    parts.push(`[${MACHINE_TRANSLATION_LABEL}]`);
     applied.push("machine_translation_label");
   }
   if (!hasDisclaimer(draft.text)) {

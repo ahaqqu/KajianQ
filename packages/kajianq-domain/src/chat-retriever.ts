@@ -140,7 +140,19 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
                         track === "primary"
                           ? hit.child.textAr
                           : (hit.child.textId ?? hit.child.textAr),
-                      metadata: hit.child.metadata,
+                      // The two text layers ride the chunk metadata (thermo-review
+                      // A1): the assembler renders the Arabic original with the
+                      // labeled translation, and the store's text columns are the
+                      // only place those layers exist — without this merge the
+                      // ADR-0006 rule is dead on the real answer path and the
+                      // prompt silently claims an original it does not carry.
+                      metadata: {
+                        ...hit.child.metadata,
+                        textAr: hit.child.textAr,
+                        ...(hit.child.textId !== null && hit.child.textId !== ""
+                          ? { textId: hit.child.textId }
+                          : {}),
+                      },
                       rankDense: hit.rankDense,
                     },
                     rank: hit.rankDense,

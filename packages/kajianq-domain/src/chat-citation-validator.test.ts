@@ -81,6 +81,34 @@ describe("validateCitations — ungrounded direction (the trap cases)", () => {
     expect(ungrounded).toEqual(["HR. Bukhari no. 99999"]);
   });
 
+  it("catches a fabricated hadith written with a long collection name", () => {
+    // Thermo-review A2: models write the full collection form ("Sunan Abu
+    // Dawud"), which the original two-token grammar missed entirely — the
+    // fabricated citation sailed through the gate.
+    const { ungrounded } = validateCitations("HR. Sunan Abu Dawud no. 99999 menyebutkan …", [
+      chunk("HR. Abu Dawud no. 573"),
+    ]);
+    expect(ungrounded).toEqual(["HR. Sunan Abu Dawud no. 99999"]);
+  });
+
+  it("catches a fabricated hadith whose collection name is written with spaces", () => {
+    // The hyphenated `an-Nasai` matched the old grammar by luck; the spaced
+    // form did not.
+    const { ungrounded } = validateCitations("HR. Sunan an Nasai no. 99999 …", [
+      chunk("HR. Bukhari no. 573"),
+    ]);
+    expect(ungrounded).toEqual(["HR. Sunan an Nasai no. 99999"]);
+  });
+
+  it("catches a fabricated Quran citation written with the dotted Q.S. marker", () => {
+    // Thermo-review A2: `Q.S. n:n` is a common spelling in Indonesian
+    // religious prose and was not part of the grammar at all.
+    const { ungrounded } = validateCitations("Allah berfirman dalam Q.S. 9:99 tentang hal ini.", [
+      chunk("QS. 2:255"),
+    ]);
+    expect(ungrounded).toEqual(["QS. 9:99"]);
+  });
+
   it("catches a same-address citation with the WRONG number (near-miss fabrication)", () => {
     // The dangerous case: right collection, invented number.
     const { grounded, ungrounded } = validateCitations("HR. Bukhari no. 574 …", [

@@ -77,7 +77,6 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
         Effect.gen(function* () {
           const run = yield* RunContext;
           const { grounded, ungrounded } = validateCitations(draft.text, context.chunks);
-          void grounded;
 
           // The deterministic gate first, and unconditionally: a fabricated
           // citation is refused whether or not the reviewer LLM is wired.
@@ -130,11 +129,20 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
             cost: reply.cost,
             at: run.now(),
           });
-          const verdict = parseReviewerVerdict(reply.text);
+          const parsedVerdict = parseReviewerVerdict(reply.text);
+          const verdict = parsedVerdict.verdict;
           run.record({
             stage: "reviewer",
             kind: "review",
-            detail: { verdict: reply.text.slice(0, 200) },
+            detail: {
+              verdict: reply.text.slice(0, 200),
+              // B4: the deterministic gate's pass case is provenance too.
+              grounded,
+              // A3: an unreadable verdict is recorded as such — an operator
+              // (or the eval harness) can tell "reviewer passed" from
+              // "reviewer output was unusable" without reading the raw text.
+              ...(parsedVerdict.parseFailed ? { verdictParseFailed: true } : {}),
+            },
             at: run.now(),
           });
           // Thermo-review B5: the paid cross-vendor verdict actually gates —
@@ -167,22 +175,37 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
 }
 
 /**
- * Parse the reviewer LLM's `{"verdict": "pass" | "fail", ...}` reply
- * (thermo-review B5): unparseable output is treated as `pass` — the
- * deterministic citation validator already ran and its verdict was final —
- * never as silent approval of a known-bad answer.
+ * The reviewer LLM's parsed verdict, with the distinction the trace needs
+ * (thermo-review A3).
+ *
+ * `verdict` stays `pass` when the reply carried no readable verdict — the
+ * deterministic citation validator already ran and its verdict was final, and
+ * failing closed here would turn a vendor rate-limit message or a truncated
+ * envelope into a user-visible refusal. But `parseFailed` marks that case, so
+ * the review event records `verdictParseFailed: true` and an operator (or the
+ * eval harness) can count indeterminate reviews instead of reading them as
+ * genuine passes.
  */
-export function parseReviewerVerdict(text: string): "pass" | "fail" {
+export type ReviewerVerdict = {
+  verdict: "pass" | "fail";
+  /** True when no explicit `pass`/`fail` signal could be read from the reply. */
+  parseFailed: boolean;
+};
+
+export function parseReviewerVerdict(text: string): ReviewerVerdict {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
   if (start >= 0 && end > start) {
     try {
       const parsed = JSON.parse(text.slice(start, end + 1)) as { verdict?: unknown };
-      if (parsed.verdict === "fail") return "fail";
-      if (parsed.verdict === "pass") return "pass";
+      if (parsed.verdict === "fail") return { verdict: "fail", parseFailed: false };
+      if (parsed.verdict === "pass") return { verdict: "pass", parseFailed: false };
     } catch {
-      // fall through to the default
+      // fall through to the raw-text scan
     }
   }
-  return /"verdict"\s*:\s*"fail"/.test(text) ? "fail" : "pass";
+  if (/"verdict"\s*:\s*"fail"/.test(text)) return { verdict: "fail", parseFailed: false };
+  if (/"verdict"\s*:\s*"pass"/.test(text)) return { verdict: "pass", parseFailed: false };
+  // No readable verdict: not a pass we can attest to — an indeterminate one.
+  return { verdict: "pass", parseFailed: true };
 }

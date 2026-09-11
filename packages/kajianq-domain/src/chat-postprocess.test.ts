@@ -76,6 +76,41 @@ describe("applyProductRules", () => {
     expect(applied).not.toContain("dhaif_warning");
   });
 
+  it("still appends the warning when the answer merely contains the substring 'lemah'", () => {
+    // Thermo-review A6: the old `/dhaif|lemah/i` suppressed the warning on any
+    // occurrence — including an unrelated sentence — so a genuinely weak
+    // hadith shipped with the grade hidden. Suppression must require a
+    // weakness claim, not a shared substring.
+    const { applied, draft } = applyProductRules(
+      { text: "Angin malam ini terasa lemah, tetapi jawabannya tetap ini." },
+      context([chunk({ sourceType: "hadith", grade: "dhaif" })]),
+      "id",
+    );
+    expect(applied).toContain("dhaif_warning");
+    expect(draft.text).toContain(dhaifWarning("id"));
+  });
+
+  it("still appends the warning when the answer contains a word embedding 'lemah'", () => {
+    // "memalemahkan" contains the substring but is not a weakness claim.
+    const { applied } = applyProductRules(
+      { text: "Kondisi itu dapat memalemahkan semangat." },
+      context([chunk({ sourceType: "hadith", grade: "dhaif" })]),
+      "id",
+    );
+    expect(applied).toContain("dhaif_warning");
+  });
+
+  it("recognizes a weakness claim phrased with 'lemah' next to the hadith", () => {
+    // The other side of the boundary: a real weakness claim (the word grading
+    // the hadith) still suppresses the duplicate warning.
+    const { applied } = applyProductRules(
+      { text: "Riwayat ini lemah, sehingga tidak bisa dijadikan dalil." },
+      context([chunk({ sourceType: "hadith", grade: "dhaif" })]),
+      "id",
+    );
+    expect(applied).not.toContain("dhaif_warning");
+  });
+
   it("appends no dhaif warning when every retrieved hadith is strong", () => {
     const { applied, draft } = applyProductRules(
       { text: "Jawaban." },
