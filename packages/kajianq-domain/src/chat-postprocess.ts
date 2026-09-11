@@ -96,9 +96,7 @@ export function applyProductRules(
     // model dropped it, restore it as a standalone notice rather than
     // guessing which line it belonged to.
     parts.push(
-      language === "en"
-        ? `[${MACHINE_TRANSLATION_LABEL}]`
-        : `[${MACHINE_TRANSLATION_LABEL}]`,
+      language === "en" ? `[${MACHINE_TRANSLATION_LABEL}]` : `[${MACHINE_TRANSLATION_LABEL}]`,
     );
     applied.push("machine_translation_label");
   }

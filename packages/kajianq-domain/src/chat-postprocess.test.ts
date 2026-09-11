@@ -17,7 +17,10 @@ import type { KajianQFilters } from "./filters";
  * a refusal. These are the rules the answer cannot be trusted to remember.
  */
 
-const context = (chunks: readonly Chunk[], withTranslation = false): AssembledContext<KajianQFilters> => ({
+const context = (
+  chunks: readonly Chunk[],
+  withTranslation = false,
+): AssembledContext<KajianQFilters> => ({
   query: { intent: "q", subQueries: [{ text: "q" }], filters: {} },
   chunks,
   turns: [
@@ -103,11 +106,7 @@ describe("applyProductRules", () => {
   });
 
   it("appends no translation label when the context had no translation", () => {
-    const { applied } = applyProductRules(
-      { text: "Jawaban." },
-      context([chunk()], false),
-      "id",
-    );
+    const { applied } = applyProductRules({ text: "Jawaban." }, context([chunk()], false), "id");
     expect(applied).not.toContain("machine_translation_label");
   });
 

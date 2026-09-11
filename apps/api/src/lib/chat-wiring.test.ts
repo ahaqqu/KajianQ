@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { runStoreEffect } from "@app/kajianq-domain";
-import { authGuard, buildChatWiring, createProvidersFromEnv, sseFrame, storeBridge } from "../lib/chat-wiring";
+import {
+  authGuard,
+  buildChatWiring,
+  createProvidersFromEnv,
+  sseFrame,
+  storeBridge,
+} from "../lib/chat-wiring";
 
 const storeBridgeOf = (fx: unknown) => runStoreEffect<{ token: string }>(fx);
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
@@ -51,9 +57,9 @@ describe("buildChatWiring — the reviewer is mandatory on the chat path", () =>
   it("refuses to wire a chat path with no keyed reviewer candidate", () => {
     // A reviewer-less chat path would silently serve unreviewed answers; the
     // wiring fails closed instead (the route maps it to 503).
-    expect(() =>
-      buildChatWiring({ DATABASE_URL: "postgres://x" }),
-    ).toThrow(/reviewer role has no keyed candidate/);
+    expect(() => buildChatWiring({ DATABASE_URL: "postgres://x" })).toThrow(
+      /reviewer role has no keyed candidate/,
+    );
   });
 });
 

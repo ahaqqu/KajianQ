@@ -22,9 +22,7 @@ function chunk(label: string, extra: Record<string, unknown> = {}): Chunk {
 
 describe("validateCitations — grounded direction", () => {
   it("reports a retrieved label the answer cites", () => {
-    const { grounded, ungrounded } = validateCitations("Menurut QS. 2:255 …", [
-      chunk("QS. 2:255"),
-    ]);
+    const { grounded, ungrounded } = validateCitations("Menurut QS. 2:255 …", [chunk("QS. 2:255")]);
     expect(grounded).toEqual(["QS. 2:255"]);
     expect(ungrounded).toEqual([]);
   });
@@ -133,10 +131,9 @@ describe("validateCitations — false-positive guards (good answers stay answers
   it("ignores a bracketed non-citation marker", () => {
     // The dhaif warning uses brackets; treating it as a citation would convert
     // every dhaif answer into a refusal.
-    const { ungrounded } = validateCitations(
-      "Hadits ini dhaif.\n\n[Peringatan] Hadits lemah.",
-      [chunk("HR. Ibnu Majah no. 224")],
-    );
+    const { ungrounded } = validateCitations("Hadits ini dhaif.\n\n[Peringatan] Hadits lemah.", [
+      chunk("HR. Ibnu Majah no. 224"),
+    ]);
     expect(ungrounded).toEqual([]);
   });
 

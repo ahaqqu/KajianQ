@@ -103,12 +103,10 @@ function generateDraft(
   deps: KajianQGeneratorDeps,
   turns: readonly { role: string; content: string }[],
 ): Effect.Effect<{ text: string; cost: CostRecord }, { cause: unknown }> {
-  return deps.provider
-    .generate({ turns })
-    .pipe(
-      Effect.map((reply) => ({ text: reply.text, cost: reply.cost })),
-      Effect.mapError((cause: unknown) => ({ cause })),
-    );
+  return deps.provider.generate({ turns }).pipe(
+    Effect.map((reply) => ({ text: reply.text, cost: reply.cost })),
+    Effect.mapError((cause: unknown) => ({ cause })),
+  );
 }
 
 /**
@@ -136,9 +134,7 @@ function streamDraft(
         deps.onDelta?.(delta);
       }),
     ).pipe(Effect.mapError((cause: unknown) => ({ cause })));
-    const cost = yield* handle
-      .cost()
-      .pipe(Effect.mapError((cause: unknown) => ({ cause })));
+    const cost = yield* handle.cost().pipe(Effect.mapError((cause: unknown) => ({ cause })));
     return { text, cost };
   });
 }

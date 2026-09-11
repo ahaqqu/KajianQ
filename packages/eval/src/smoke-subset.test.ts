@@ -77,9 +77,9 @@ describe("selectSmokeSubset", () => {
     expect(ids).toContain("q-refuse-1");
     expect(ids).toContain("q-trap-1");
     expect(ids).toContain("q-en-1");
-    expect(smoke.questions.some((q) => q.language === "id" && q.expectedBehavior === "answer")).toBe(
-      true,
-    );
+    expect(
+      smoke.questions.some((q) => q.language === "id" && q.expectedBehavior === "answer"),
+    ).toBe(true);
   });
 
   it("honors the size budget", () => {

@@ -123,7 +123,10 @@ export function storeBridge(_store: RagStore): (effect: unknown) => Promise<unkn
 
 /** The wiring bundle a chat request needs (built per request from bindings). */
 export type ChatWiring = {
-  pipeline: Omit<import("@app/kajianq-domain").ChatPipelineDeps, "language" | "history" | "onDelta">;
+  pipeline: Omit<
+    import("@app/kajianq-domain").ChatPipelineDeps,
+    "language" | "history" | "onDelta"
+  >;
   fullStore: RagStore;
   runStore: (effect: unknown) => Promise<unknown>;
 };

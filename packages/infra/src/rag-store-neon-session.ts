@@ -99,15 +99,15 @@ export function neonSessionMethods(
           ) AS tail
           ORDER BY created_at ASC
         ` as Promise<
-          {
-            id: string;
-            session_id: string;
-            role: string;
-            content: string;
-            answer_trace_id: string | null;
-            created_at: string | Date;
-          }[]
-        >,
+              {
+                id: string;
+                session_id: string;
+                role: string;
+                content: string;
+                answer_trace_id: string | null;
+                created_at: string | Date;
+              }[]
+            >,
         ),
         (rows) =>
           rows.map((row) => ({

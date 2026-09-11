@@ -10,11 +10,7 @@
  */
 
 export { GoldenSetLoadError, assertV0Shape, loadGoldenSetJson, parseGoldenSet } from "./golden-set";
-export {
-  selectSmokeSubset,
-  type SmokeSelectOptions,
-  type SmokeSelection,
-} from "./smoke-subset";
+export { selectSmokeSubset, type SmokeSelectOptions, type SmokeSelection } from "./smoke-subset";
 export {
   citationValidity,
   detectRefusal,

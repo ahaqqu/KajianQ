@@ -37,11 +37,7 @@ const env = { ASSETS: { fetch } };
 describe("POST /v1/auth/anonymous", () => {
   it("mints a session and returns the token exactly once", async () => {
     currentStore = createMemoryRagStore();
-    const res = await createApi().request(
-      "/v1/auth/anonymous",
-      { method: "POST" },
-      env,
-    );
+    const res = await createApi().request("/v1/auth/anonymous", { method: "POST" }, env);
     expect(res.status).toBe(200);
     const body = (await res.json()) as AnonymousSession;
     expect(body.token).toBeTruthy();
@@ -60,9 +56,8 @@ describe("POST /v1/auth/anonymous", () => {
     // (the chat path's mandatory check), and with keys but no binding it is
     // DATABASE_URL. Either way the route maps the typed failure to 503 rather
     // than degrading.
-    const { buildChatWiring, ChatConfigError } = await vi.importActual<
-      typeof import("../lib/chat-wiring")
-    >("../lib/chat-wiring");
+    const { buildChatWiring, ChatConfigError } =
+      await vi.importActual<typeof import("../lib/chat-wiring")>("../lib/chat-wiring");
     expect(() => buildChatWiring({})).toThrow(ChatConfigError);
     expect(() => buildChatWiring({ GEMINI_API_KEY: "k" })).toThrow(/DATABASE_URL is not bound/);
   });

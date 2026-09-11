@@ -149,9 +149,11 @@ async function postChat(
     .filter((f) => f.event === "delta")
     .map((f) => f.data)
     .join("");
-  const meta = JSON.parse(
-    frames.find((f) => f.event === "meta")?.data ?? "{}",
-  ) as { sessionId: string; messageId: string; traceId: string };
+  const meta = JSON.parse(frames.find((f) => f.event === "meta")?.data ?? "{}") as {
+    sessionId: string;
+    messageId: string;
+    traceId: string;
+  };
   return { status: res.status, frames, answer, meta };
 }
 

@@ -1,5 +1,4 @@
 import { Effect, Stream } from "effect";
-import type { CostRecord } from "@app/contracts";
 import type { RouterProvider } from "../chat-router";
 import type { RetrieverEmbedder } from "../chat-retriever";
 import type { GeneratorProvider } from "../chat-generator";
@@ -18,13 +17,15 @@ import type { ReviewerProvider } from "../chat-reviewer";
  * `answerText` alone streams that text as a single delta.
  */
 
-const cost = (modelId: string, microUsd: number): CostRecord => ({
-  modelId,
-  tokensIn: 1,
-  tokensOut: 1,
-  latencyMs: 1,
-  costMicroUsd: microUsd,
-});
+/**
+ * The stub CostRecord: fixed tokens/latency, caller-chosen micro-USD. Typed by
+ * inference so this file needs no `@app/contracts` import (the agentic import
+ * cap counts every import, and the structural check happens where the stub is
+ * returned as a `GeneratorProvider`/`RouterProvider`).
+ */
+function cost(modelId: string, microUsd: number) {
+  return { modelId, tokensIn: 1, tokensOut: 1, latencyMs: 1, costMicroUsd: microUsd };
+}
 
 export type StubChatProviderOverrides = {
   routerText?: string;
@@ -96,5 +97,3 @@ export function createStubChatProviders(overrides: StubChatProviderOverrides = {
     },
   };
 }
-
-export { cost as stubCost };

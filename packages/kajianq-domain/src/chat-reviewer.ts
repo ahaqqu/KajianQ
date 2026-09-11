@@ -1,9 +1,9 @@
 import { Effect } from "effect";
-import type { CostRecord } from "@app/contracts";
 import {
   RunContext,
   toStageError,
   type AssembledContext,
+  type CostRecord,
   type Draft,
   type Reviewer,
 } from "@app/rag-core";

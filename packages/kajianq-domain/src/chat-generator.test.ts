@@ -25,7 +25,10 @@ const cost = (modelId: string, microUsd: number): CostRecord => ({
   costMicroUsd: microUsd,
 });
 
-const context = (chunks: readonly Chunk[], intent = "Apa itu Ayat Kursi?"): AssembledContext<KajianQFilters> => ({
+const context = (
+  chunks: readonly Chunk[],
+  intent = "Apa itu Ayat Kursi?",
+): AssembledContext<KajianQFilters> => ({
   query: { intent, subQueries: [{ text: intent }], filters: {} },
   chunks,
   turns: [{ role: "user", content: chunks.map((c) => c.text).join("\n") }],
@@ -100,15 +103,11 @@ describe("createKajianQGenerator — streaming", () => {
     });
     const { RunContext } = await import("@app/rag-core");
     await Effect.runPromise(
-      Effect.provideService(
-        gen.generate(context([])) as never,
-        RunContext,
-        {
-          config: {},
-          now: () => 1,
-          record: (e: { kind: string; cost?: CostRecord }) => events.push(e),
-        } as never,
-      ) as never,
+      Effect.provideService(gen.generate(context([])) as never, RunContext, {
+        config: {},
+        now: () => 1,
+        record: (e: { kind: string; cost?: CostRecord }) => events.push(e),
+      } as never) as never,
     );
     const llm = events.find((e) => e.kind === "llm_call");
     expect(llm?.cost?.modelId).toBe("stub-model");
@@ -165,11 +164,11 @@ describe("createKajianQReviewer — the deterministic gate", () => {
     const { RunContext } = await import("@app/rag-core");
     const reviewer = createKajianQReviewer({ provider: null });
     await Effect.runPromise(
-      Effect.provideService(
-        reviewer.review(draft("QS. 9:99"), context([])) as never,
-        RunContext,
-        { config: {}, now: () => 1, record: (e: never) => events.push(e) } as never,
-      ) as never,
+      Effect.provideService(reviewer.review(draft("QS. 9:99"), context([])) as never, RunContext, {
+        config: {},
+        now: () => 1,
+        record: (e: never) => events.push(e),
+      } as never) as never,
     );
     const refusal = events.find((e) => e.kind === "refusal");
     expect(refusal?.detail?.trigger).toBe("ungrounded_citation");
@@ -181,9 +180,7 @@ describe("createKajianQReviewer — the deterministic gate", () => {
       refusalText: (reason) =>
         reason === "ungrounded" ? "could not find adequate evidence" : "not supported",
     });
-    const out = await runStage<{ text: string }>(
-      reviewer.review(draft("QS. 9:99"), context([])),
-    );
+    const out = await runStage<{ text: string }>(reviewer.review(draft("QS. 9:99"), context([])));
     expect(out.text).toBe("could not find adequate evidence");
   });
 
@@ -230,9 +227,7 @@ describe("createKajianQReviewer — the deterministic gate", () => {
         },
       },
     });
-    const out = await runStage<{ text: string }>(
-      reviewer.review(draft("QS. 9:99"), context([])),
-    );
+    const out = await runStage<{ text: string }>(reviewer.review(draft("QS. 9:99"), context([])));
     expect(out.text).toBe("tidak menemukan dalil yang memadai");
     expect(called).toBe(0);
   });
@@ -269,9 +264,9 @@ describe("runChatPipeline — end-to-end trace", () => {
       ) as never,
     );
     const trace = (answer as { trace: { events: never[] } }).trace;
-    const retrieval = trace.events.find((e: never) => (e as { kind: string }).kind === "retrieval") as
-      | { detail: { chunks: { id: string; score?: number }[] } }
-      | undefined;
+    const retrieval = trace.events.find(
+      (e: never) => (e as { kind: string }).kind === "retrieval",
+    ) as { detail: { chunks: { id: string; score?: number }[] } } | undefined;
     expect(retrieval?.detail.chunks).toHaveLength(1);
     expect(retrieval?.detail.chunks[0]?.id).toBe("chunk-1");
     expect(typeof retrieval?.detail.chunks[0]?.score).toBe("number");
