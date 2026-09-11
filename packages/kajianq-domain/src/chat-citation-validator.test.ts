@@ -1,0 +1,182 @@
+import { describe, expect, it } from "vitest";
+import type { Chunk } from "@app/rag-core";
+import {
+  citationCandidatesIn,
+  citationLabelsOf,
+  normalizeCitationLabel,
+  validateCitations,
+} from "./chat-citation-validator";
+
+/**
+ * The deterministic citation validator (the #10 trust invariant). These tests
+ * are the adversarial half of the suite: they name the fabrication shapes a
+ * model actually produces and prove each one is caught. A weakening of any
+ * assertion here is a silent trust regression — the failure mode is a
+ * fabricated religious citation delivered as an answer.
+ */
+
+/** A retrieved chunk carrying one citation label. */
+function chunk(label: string, extra: Record<string, unknown> = {}): Chunk {
+  return { id: `c-${label}`, text: "evidence", metadata: { citation: label, ...extra } };
+}
+
+describe("validateCitations — grounded direction", () => {
+  it("reports a retrieved label the answer cites", () => {
+    const { grounded, ungrounded } = validateCitations("Menurut QS. 2:255 …", [
+      chunk("QS. 2:255"),
+    ]);
+    expect(grounded).toEqual(["QS. 2:255"]);
+    expect(ungrounded).toEqual([]);
+  });
+
+  it("treats a bracketed citation as the same citation as its prose form", () => {
+    const { grounded, ungrounded } = validateCitations("Menurut [QS. 2:255] …", [
+      chunk("QS. 2:255"),
+    ]);
+    expect(grounded).toEqual(["QS. 2:255"]);
+    expect(ungrounded).toEqual([]);
+  });
+
+  it("tolerates whitespace reflow in the answer", () => {
+    const { ungrounded } = validateCitations("Lihat QS.  2:255  ya", [chunk("QS. 2:255")]);
+    expect(ungrounded).toEqual([]);
+  });
+
+  it("counts a known address extended with a grade suffix as grounded", () => {
+    // The chunk's label carries no grade; the model added one. The address is
+    // what must be grounded, so this is not a fabrication.
+    const { ungrounded } = validateCitations("HR. Bukhari no. 573 (Sahih) menjelaskan …", [
+      chunk("HR. Bukhari no. 573"),
+    ]);
+    expect(ungrounded).toEqual([]);
+  });
+
+  it("reads multiple labels from one chunk's metadata array", () => {
+    const c: Chunk = { id: "x", text: "t", metadata: { citation: ["QS. 1:1", "QS. 1:2"] } };
+    expect(citationLabelsOf(c)).toEqual(["QS. 1:1", "QS. 1:2"]);
+    expect(validateCitations("QS. 1:2 saja", [c]).ungrounded).toEqual([]);
+  });
+
+  it("returns no labels for a chunk without a citation", () => {
+    expect(citationLabelsOf({ id: "x", text: "t" })).toEqual([]);
+    expect(citationLabelsOf({ id: "x", text: "t", metadata: { citation: "   " } })).toEqual([]);
+  });
+});
+
+describe("validateCitations — ungrounded direction (the trap cases)", () => {
+  it("catches a fabricated Quran citation in prose", () => {
+    const { ungrounded } = validateCitations("Allah berfirman dalam QS. 9:99 tentang hal ini.", [
+      chunk("QS. 2:255"),
+    ]);
+    expect(ungrounded).toEqual(["QS. 9:99"]);
+  });
+
+  it("catches a fabricated Quran citation in brackets", () => {
+    const { ungrounded } = validateCitations("… [QS. 9:99]", [chunk("QS. 2:255")]);
+    expect(ungrounded).toEqual(["QS. 9:99"]);
+  });
+
+  it("catches a fabricated hadith number", () => {
+    const { ungrounded } = validateCitations("HR. Bukhari no. 99999 menyebutkan …", [
+      chunk("HR. Bukhari no. 573"),
+    ]);
+    expect(ungrounded).toEqual(["HR. Bukhari no. 99999"]);
+  });
+
+  it("catches a same-address citation with the WRONG number (near-miss fabrication)", () => {
+    // The dangerous case: right collection, invented number.
+    const { grounded, ungrounded } = validateCitations("HR. Bukhari no. 574 …", [
+      chunk("HR. Bukhari no. 573"),
+    ]);
+    expect(grounded).toEqual([]);
+    expect(ungrounded).toEqual(["HR. Bukhari no. 574"]);
+  });
+
+  it("catches a fabricated citation when retrieval returned nothing at all", () => {
+    const { ungrounded } = validateCitations("QS. 2:255 menjelaskan …", []);
+    expect(ungrounded).toEqual(["QS. 2:255"]);
+  });
+
+  it("catches every fabricated citation, not just the first", () => {
+    const { ungrounded } = validateCitations("QS. 9:99 dan QS. 8:88 dan HR. Muslim no. 77777", [
+      chunk("QS. 2:255"),
+    ]);
+    expect(ungrounded).toContain("QS. 9:99");
+    expect(ungrounded).toContain("QS. 8:88");
+    expect(ungrounded).toContain("HR. Muslim no. 77777");
+  });
+
+  it("catches a multi-word collection name that is not in the corpus", () => {
+    const { ungrounded } = validateCitations("HR. Abu Dawud no. 1 …", []);
+    expect(ungrounded).toEqual(["HR. Abu Dawud no. 1"]);
+  });
+
+  it("treats a surah-name citation as unverifiable and therefore ungrounded", () => {
+    // The corpus's labels are numeric; a name cannot be checked, and the safe
+    // direction is a refusal rather than a wave-through.
+    const { ungrounded } = validateCitations("QS. Al-Baqarah:255 …", [chunk("QS. 2:255")]);
+    expect(ungrounded).toEqual(["QS. Al-Baqarah:255"]);
+  });
+
+  it("catches a Kitab citation (no kitab ingestion has landed)", () => {
+    const { ungrounded } = validateCitations("Al-Umm, Imam Syafi'i, Jilid 1, Hal. 102", []);
+    expect(ungrounded).toEqual(["Jilid 1, Hal. 102"]);
+  });
+
+  it("de-duplicates a citation repeated in the answer", () => {
+    const { ungrounded } = validateCitations("QS. 9:99 … lalu QS. 9:99 lagi", []);
+    expect(ungrounded).toEqual(["QS. 9:99"]);
+  });
+});
+
+describe("validateCitations — false-positive guards (good answers stay answers)", () => {
+  it("ignores a bracketed non-citation marker", () => {
+    // The dhaif warning uses brackets; treating it as a citation would convert
+    // every dhaif answer into a refusal.
+    const { ungrounded } = validateCitations(
+      "Hadits ini dhaif.\n\n[Peringatan] Hadits lemah.",
+      [chunk("HR. Ibnu Majah no. 224")],
+    );
+    expect(ungrounded).toEqual([]);
+  });
+
+  it("ignores bare numbers and ordinary prose", () => {
+    const { ungrounded } = validateCitations(
+      "Ada 255 ayat dalam surah ini, dan 2 di antaranya …",
+      [],
+    );
+    expect(ungrounded).toEqual([]);
+  });
+
+  it("ignores an unrelated HR. mention without a number", () => {
+    const { ungrounded } = validateCitations("HR. department said nothing.", []);
+    expect(ungrounded).toEqual([]);
+  });
+
+  it("ignores a surah:ayah-shaped span that lacks the QS. marker", () => {
+    const { ungrounded } = validateCitations("Lihat 2:255 untuk konteks.", []);
+    expect(ungrounded).toEqual([]);
+  });
+});
+
+describe("citationCandidatesIn", () => {
+  it("finds candidates in first-appearance order, de-duplicated", () => {
+    expect(citationCandidatesIn("QS. 2:255 then HR. Bukhari no. 1 then QS. 2:255")).toEqual([
+      "QS. 2:255",
+      "HR. Bukhari no. 1",
+    ]);
+  });
+
+  it("is order-independent across repeated calls (no shared regex state)", () => {
+    const text = "QS. 1:1 and QS. 2:2";
+    expect(citationCandidatesIn(text)).toEqual(citationCandidatesIn(text));
+  });
+});
+
+describe("normalizeCitationLabel", () => {
+  it("collapses whitespace and strips a trailing grade", () => {
+    expect(normalizeCitationLabel("  HR.   Bukhari  no.  573 (Sahih) ")).toBe(
+      "HR. Bukhari no. 573",
+    );
+  });
+});

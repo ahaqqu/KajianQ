@@ -1,4 +1,5 @@
 import { createLogger } from "@app/infra";
+import type { RagStore } from "@app/infra";
 import { createRagStoreFromEnv, ChatConfigError } from "./chat-wiring";
 
 /**
@@ -11,7 +12,9 @@ import { createRagStoreFromEnv, ChatConfigError } from "./chat-wiring";
  * cron expression lives in the deploy topology (`apps/api/alchemy.run.ts`).
  *
  * Kept out of `index.ts` so the behavior is unit-testable without a Worker
- * runtime: the entrypoint wires this function to Cloudflare's event shape.
+ * runtime: the entrypoint wires this function to Cloudflare's event shape,
+ * and `deps` lets a test inject the store + bridge (the production defaults
+ * are the real wiring).
  */
 
 export type ScheduledEnv = Record<string, string | undefined>;
@@ -22,15 +25,26 @@ export type ScheduledResult = {
   ok: boolean;
 };
 
+export type ScheduledDeps = {
+  /** Resolve the store from env; defaults to the real `RagStore` wiring. */
+  createStore?: (env: ScheduledEnv) => RagStore;
+  /** Bridge one store Effect to a promise; defaults to the domain's runner. */
+  runStore?: (effect: unknown) => Promise<unknown>;
+};
+
 /**
  * Delete session rows whose TTL has passed. Returns a summary rather than
  * throwing: the scheduled path has no client to fail to.
  */
-export async function cleanupExpiredSessions(env: ScheduledEnv): Promise<ScheduledResult> {
+export async function cleanupExpiredSessions(
+  env: ScheduledEnv,
+  deps: ScheduledDeps = {},
+): Promise<ScheduledResult> {
   const logger = createLogger({ service: "api", route: "scheduled" });
-  let store;
+  const createStore = deps.createStore ?? createRagStoreFromEnv;
+  let store: RagStore;
   try {
-    store = createRagStoreFromEnv(env);
+    store = createStore(env);
   } catch (err) {
     if (err instanceof ChatConfigError) {
       // No database binding in this environment (local dev, a stage without
@@ -42,9 +56,16 @@ export async function cleanupExpiredSessions(env: ScheduledEnv): Promise<Schedul
   }
   try {
     // The store's Effect signature bridges here through the domain's runner
-    // (the API's single effect bridge point, ADR-0027 decision 3).
-    const { runStoreEffect } = await import("@app/kajianq-domain");
-    const deleted = await runStoreEffect<number>(store.cleanupExpiredSessions());
+    // (the API's single effect bridge point, ADR-0027 decision 3). Imported
+    // lazily so the entrypoint's cold-start path does not pull the domain in.
+    const runStore = deps.runStore ?? (await import("@app/kajianq-domain")).runStoreEffect;
+    const deleted = await runStore(store.cleanupExpiredSessions());
+    if (typeof deleted !== "number") {
+      // A store that resolves to a non-number is a contract violation worth
+      // seeing, not a count to report as "0 cleaned".
+      logger.error("scheduled.cleanup_unexpected_result", { value: String(deleted) });
+      return { deleted: null, ok: false };
+    }
     logger.info("scheduled.sessions_cleaned", { deleted });
     return { deleted, ok: true };
   } catch (err) {
