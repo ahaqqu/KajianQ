@@ -14,8 +14,15 @@ import { validateCitations } from "./chat-citation-validator";
  * KajianQReviewer — stage 7 (spec §3.3): a cross-vendor LLM reviewer
  * (configured at wiring; this module never names one) plus the deterministic
  * citation validator. The reviewer's verdict and cost are recorded to the
- * run's trace sink; an ungrounded citation list appends a visible warning to
- * the answer (never silently dropped).
+ * run's trace sink.
+ *
+ * **The trust invariant (ticket #10):** an answer carrying a citation that no
+ * retrieved chunk grounds is *refused*, never delivered with a note. The
+ * deterministic validator runs on 100% of answers and its verdict is final —
+ * it does not depend on the reviewer LLM being configured, reachable, or
+ * well-behaved. A fabricated citation is the product's #1 stated risk
+ * (SPECS §2.2), and a warning appended to a fabricated answer still ships the
+ * fabrication to the user.
  */
 
 export type ReviewerProvider = {
@@ -29,9 +36,31 @@ export type KajianQReviewerDeps = {
   provider: ReviewerProvider | null;
   /** Skip the LLM call (refusal cases, cost-capped runs). */
   skipLlm?: boolean;
+  /** Refusal text for the active answer language. */
+  refusalText?: (reason: "ungrounded" | "reviewer") => string;
 };
 
+/** The default refusal language (the generator's ID/EN insufficiency text). */
+export const DEFAULT_REFUSALS = {
+  id: "tidak menemukan dalil yang memadai",
+  en: "could not find adequate evidence",
+} as const;
+
+/** The refusal text a language resolves to (kept next to the prompts). */
+export function refusalTextFor(
+  language: import("./chat-prompts").ChatLanguage,
+  reason: "ungrounded" | "reviewer",
+): string {
+  if (reason === "reviewer") {
+    return language === "en"
+      ? "the answer was not supported by the retrieved evidence"
+      : "jawaban tidak didukung oleh dalil yang ditemukan";
+  }
+  return language === "en" ? DEFAULT_REFUSALS.en : DEFAULT_REFUSALS.id;
+}
+
 export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<KajianQFilters> {
+  const refusal = deps.refusalText ?? ((reason) => refusalTextFor("id", reason));
   return {
     review: (draft: Draft, context: AssembledContext<KajianQFilters>) =>
       toStageError(
@@ -39,8 +68,25 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
         Effect.gen(function* () {
           const run = yield* RunContext;
           const { grounded, ungrounded } = validateCitations(draft.text, context.chunks);
+          void grounded;
+
+          // The deterministic gate first, and unconditionally: a fabricated
+          // citation is refused whether or not the reviewer LLM is wired.
+          // Recorded as a `refusal` event so the trace (and the eval harness's
+          // refusal detection) shows why the user got a refusal.
+          if (ungrounded.length > 0) {
+            run.record({
+              stage: "reviewer",
+              kind: "refusal",
+              detail: { trigger: "ungrounded_citation" },
+              reason: `citation(s) not present in retrieved context: ${ungrounded.join(", ")}`,
+              at: run.now(),
+            });
+            return { text: refusal("ungrounded") };
+          }
+
           if (deps.provider === null || deps.skipLlm === true) {
-            return warnIfUngrounded(draft, ungrounded);
+            return draft;
           }
           const reply = yield* deps.provider
             .generate({
@@ -82,12 +128,9 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
             detail: { verdict: reply.text.slice(0, 200) },
             at: run.now(),
           });
-          void grounded;
           // Thermo-review B5: the paid cross-vendor verdict actually gates —
           // a `fail` converts the answer to the grounding insufficiency
-          // refusal (trace `refusal` event, recorded below via the
-          // generator-side convention) instead of being recorded and then
-          // discarded in favor of the deterministic warning alone.
+          // refusal instead of being recorded and then discarded.
           if (verdict === "fail") {
             run.record({
               stage: "reviewer",
@@ -95,27 +138,19 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
               reason: "reviewer: answer not supported by retrieved evidence",
               at: run.now(),
             });
-            return {
-              text: INSUFFICIENT_EVIDENCE_REFUSAL,
-            };
+            return { text: refusal("reviewer") };
           }
-          return warnIfUngrounded(draft, ungrounded);
+          return draft;
         }),
       ),
   };
 }
 
 /**
- * The reviewer's fail-verdict refusal text — the generator's ID/EN
- * insufficiency language so downstream refusal detection stays uniform.
- */
-const INSUFFICIENT_EVIDENCE_REFUSAL = "tidak menemukan dalil yang memadai";
-
-/**
  * Parse the reviewer LLM's `{"verdict": "pass" | "fail", ...}` reply
  * (thermo-review B5): unparseable output is treated as `pass` — the
- * deterministic citation validator still guards — never as silent approval
- * of a known-bad answer.
+ * deterministic citation validator already ran and its verdict was final —
+ * never as silent approval of a known-bad answer.
  */
 export function parseReviewerVerdict(text: string): "pass" | "fail" {
   const start = text.indexOf("{");
@@ -130,12 +165,4 @@ export function parseReviewerVerdict(text: string): "pass" | "fail" {
     }
   }
   return /"verdict"\s*:\s*"fail"/.test(text) ? "fail" : "pass";
-}
-
-/** Surface ungrounded citations as a user-visible warning, never silently. */
-function warnIfUngrounded(draft: Draft, ungrounded: string[]): Draft {
-  if (ungrounded.length === 0) return draft;
-  return {
-    text: `${draft.text}\n\n[Peringatan] Sitasi tidak ditemukan dalam konteks: ${ungrounded.join(", ")}`,
-  };
 }

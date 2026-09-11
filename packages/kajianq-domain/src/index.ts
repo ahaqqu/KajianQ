@@ -149,11 +149,24 @@ export {
   type RetrieverStore,
   type StoreBridge,
 } from "./chat-retriever";
-export { createKajianQAssembler } from "./chat-assembler";
+export { createKajianQAssembler, MACHINE_TRANSLATION_LABEL } from "./chat-assembler";
 export { chatSystemPrompt, chatUserPrompt, type ChatLanguage } from "./chat-prompts";
-export { validateCitations, citationLabelsOf } from "./chat-citation-validator";
-export { createKajianQGenerator, type GeneratorProvider } from "./chat-generator";
-export { createKajianQReviewer, type ReviewerProvider } from "./chat-reviewer";
+export {
+  validateCitations,
+  citationLabelsOf,
+  citationCandidatesIn,
+} from "./chat-citation-validator";
+export {
+  createKajianQGenerator,
+  type GeneratorProvider,
+  type StreamHandleLike,
+} from "./chat-generator";
+export {
+  createKajianQReviewer,
+  refusalTextFor,
+  DEFAULT_REFUSALS,
+  type ReviewerProvider,
+} from "./chat-reviewer";
 export {
   buildChatStages,
   runChatPipeline,

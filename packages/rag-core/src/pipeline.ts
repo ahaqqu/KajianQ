@@ -15,6 +15,12 @@ export type Query<TFilters extends Record<string, unknown> = DefaultFilters> = {
   text: string;
   /** Caller-chosen filter dimensions, passed through untouched. */
   filters?: TFilters;
+  /**
+   * Prior conversation turns, oldest first (multi-turn chat — the ADR-0018
+   * amendment). The engine passes them through opaquely; the domain pack
+   * decides whether and how the Assembler renders them. Absent = single-turn.
+   */
+  history?: readonly Turn[];
 };
 
 /** A unit of retrieved evidence with its scoring provenance. */

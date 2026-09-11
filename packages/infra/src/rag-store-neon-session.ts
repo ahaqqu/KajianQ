@@ -20,6 +20,7 @@ export function neonSessionMethods(
   | "createChatSession"
   | "getChatSessionUser"
   | "insertChatMessage"
+  | "getChatMessages"
   | "createSession"
   | "resolveUserId"
   | "deleteUserCascade"
@@ -74,6 +75,49 @@ export function neonSessionMethods(
         ` as Promise<unknown[]>,
         ),
         id,
+      );
+    },
+
+    // Follow-up context (#10): the most recent `limit` messages of a session,
+    // returned in chronological order. The inner DESC + outer ASC takes a
+    // tail off the `(session_id, created_at)` index without sorting the whole
+    // session.
+    getChatMessages(sessionId, opts) {
+      const limit = opts?.limit ?? 20;
+      return Effect.map(
+        sqlEffect(
+          sql,
+          () =>
+            sql`
+          SELECT id, session_id, role, content, answer_trace_id, created_at
+          FROM (
+            SELECT id, session_id, role, content, answer_trace_id, created_at
+            FROM chat_messages
+            WHERE session_id = ${sessionId}::uuid
+            ORDER BY created_at DESC
+            LIMIT ${limit}
+          ) AS tail
+          ORDER BY created_at ASC
+        ` as Promise<
+          {
+            id: string;
+            session_id: string;
+            role: string;
+            content: string;
+            answer_trace_id: string | null;
+            created_at: string | Date;
+          }[]
+        >,
+        ),
+        (rows) =>
+          rows.map((row) => ({
+            id: row.id,
+            sessionId: row.session_id,
+            role: row.role,
+            content: row.content,
+            answerTraceId: row.answer_trace_id,
+            createdAt: new Date(row.created_at).getTime(),
+          })),
       );
     },
 

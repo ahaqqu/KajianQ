@@ -36,6 +36,7 @@ export {
 export { resolveRole, type ResolvedRole, type ResolveOptions } from "./providers/provider-factory";
 export {
   type AlignedPairInsert,
+  type ChatMessage,
   type DocChild,
   type DocChildInsert,
   type DocParent,

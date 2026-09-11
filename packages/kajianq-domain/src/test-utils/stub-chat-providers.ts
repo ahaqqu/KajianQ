@@ -1,17 +1,20 @@
-import { Effect } from "effect";
+import { Effect, Stream } from "effect";
 import type { CostRecord } from "@app/contracts";
 import type { RouterProvider } from "../chat-router";
 import type { RetrieverEmbedder } from "../chat-retriever";
 import type { GeneratorProvider } from "../chat-generator";
 
 /**
- * Stub chat pipeline providers for integration tests (#8). Built inside the
- * domain so the stubs use the engine's effect runtime — a test importing
- * `effect` from an app resolves a different version, and an Effect value
- * built there is "not a valid effect" for this package's runner.
+ * Stub chat pipeline providers for integration tests (#8, extended #10).
+ * Built inside the domain so the stubs use the engine's effect runtime — a
+ * test importing `effect` from an app resolves a different version, and an
+ * Effect value built there is "not a valid effect" for this package's runner.
  *
  * Deterministic: no vendor calls, fixed costs, one canned router JSON, one
- * canned answer that cites whatever the caller sets.
+ * canned answer that cites whatever the caller sets. The generator streams by
+ * default (the chat path's real shape); `streamDeltas` overrides the delta
+ * sequence so a test can prove the route re-emits vendor deltas, and setting
+ * `answerText` alone streams that text as a single delta.
  */
 
 const cost = (modelId: string, microUsd: number): CostRecord => ({
@@ -25,6 +28,10 @@ const cost = (modelId: string, microUsd: number): CostRecord => ({
 export type StubChatProviderOverrides = {
   routerText?: string;
   answerText?: string;
+  /** Explicit delta sequence (overrides `answerText` chunking). */
+  streamDeltas?: readonly string[];
+  /** Omit `stream` so the generator's non-streaming fallback is exercised. */
+  noStream?: boolean;
   /** Search hits per similaritySearch call (empty corpus by default). */
   searchHits?: readonly {
     child: { id: string; textAr: string; textId: string | null; metadata: Record<string, unknown> };
@@ -38,6 +45,24 @@ export function createStubChatProviders(overrides: StubChatProviderOverrides = {
   generatorProvider: GeneratorProvider;
   embedder: RetrieverEmbedder;
 } {
+  const answerText = overrides.answerText ?? "Jawaban berdasar konteks.";
+  const deltas = overrides.streamDeltas ?? [answerText];
+  const generatorProvider: GeneratorProvider = {
+    generate: () =>
+      Effect.succeed({
+        text: answerText,
+        cost: cost("stub-generator", 2),
+      }),
+    ...(overrides.noStream === true
+      ? {}
+      : {
+          stream: () =>
+            Effect.succeed({
+              deltas: Stream.fromIterable(deltas),
+              cost: () => Effect.succeed(cost("stub-generator", 2)),
+            }),
+        }),
+  };
   return {
     routerProvider: {
       generate: () =>
@@ -54,13 +79,7 @@ export function createStubChatProviders(overrides: StubChatProviderOverrides = {
           cost: cost("stub-router", 1),
         }),
     },
-    generatorProvider: {
-      generate: () =>
-        Effect.succeed({
-          text: overrides.answerText ?? "Jawaban berdasar konteks.",
-          cost: cost("stub-generator", 2),
-        }),
-    },
+    generatorProvider,
     embedder: {
       embed: () =>
         Effect.succeed({

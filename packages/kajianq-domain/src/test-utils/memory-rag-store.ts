@@ -176,6 +176,23 @@ export function createMemoryRagStore(): RagStore & {
         return id;
       });
     },
+    // Follow-up context (#10): the session's tail, oldest first — insertion
+    // order stands in for `created_at` (the memory store has no clock).
+    getChatMessages(sessionId, opts) {
+      return Effect.sync(() => {
+        const limit = opts?.limit ?? 20;
+        const all = [...chatMessages.entries()].map(([id, m], i) => ({
+          id,
+          sessionId: m.sessionId,
+          role: m.role,
+          content: m.content,
+          answerTraceId: m.answerTraceId,
+          createdAt: i,
+        }));
+        const tail = all.filter((m) => m.sessionId === sessionId).slice(-limit);
+        return tail;
+      });
+    },
     createSession() {
       const minted = {
         userId: `user${(seq += 1)}`,

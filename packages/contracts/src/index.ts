@@ -13,6 +13,12 @@ export {
   type ChatRequest,
 } from "./chat";
 export {
+  AnonymousSessionSchema,
+  DeletedUserSchema,
+  type AnonymousSession,
+  type DeletedUser,
+} from "./auth";
+export {
   EvalResultOutcomeSchema,
   EvalRunReportSchema,
   ExpectedBehaviorSchema,

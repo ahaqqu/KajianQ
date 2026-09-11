@@ -32,7 +32,19 @@ export type StoreFailure = StoreError;
  */
 type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
 
-/** A parent document — a coarse retrieval unit (a container of child chunks). */
+/** A persisted conversational turn, as the history reader returns it. */
+export type ChatMessage = {
+  id: string;
+  sessionId: string;
+  role: string;
+  content: string;
+  answerTraceId: string | null;
+  createdAt: number;
+};
+
+/**
+ * A parent document — a coarse retrieval unit (a container of child chunks).
+ */
 export type DocParent = {
   id: string;
   /** Caller-supplied provenance key, e.g. a source-collection identifier. */
@@ -201,6 +213,18 @@ export interface RagStore extends RagStoreEvalRunWrite, RagStoreEvalLedger {
     answerTraceId?: string | null;
     metadata?: Record<string, unknown>;
   }): Effect.Effect<string, StoreError>;
+
+  /**
+   * Read a chat session's prior messages, oldest first, for follow-up
+   * context (ticket #10: "follow-up questions within a session use
+   * conversation context"). `limit` caps the returned tail — the caller
+   * chooses how much history rides the prompt; the store returns the most
+   * recent `limit` messages in chronological order.
+   */
+  getChatMessages(
+    sessionId: string,
+    opts?: { limit?: number },
+  ): Effect.Effect<readonly ChatMessage[], StoreError>;
 
   // -- Anonymous sessions (ADR-0017) ----------------------------------------
 

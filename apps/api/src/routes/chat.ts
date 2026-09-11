@@ -13,17 +13,35 @@ import { runChatPipelinePromise } from "@app/kajianq-domain";
 /** The route's env, widened with the provider-key bindings the wiring reads. */
 type ChatEnv = import("../env").ApiEnv["Bindings"] & Record<string, string | undefined>;
 
-/**
- * POST /v1/chat (#8): the guarded, SSE-streamed chat surface. Validates the
- * body, resolves auth, creates the session, persists the user message, runs
- * the KajianQ pipeline through the engine runner, persists the answer trace +
- * assistant message, and streams the answer to the client. Every LLM call's
- * cost lands on the persisted trace (traceability rule 4) — the route never
- * hand-assembles one (ADR-0021). Effect bridging goes through the domain's
- * promise runner and the wiring's store bridge — no direct effect runtime
- * import here (ADR-0027 decision 3).
- */
+/** How many prior turns of a session ride the prompt (follow-up context). */
+const HISTORY_LIMIT = 10;
 
+/**
+ * POST /v1/chat (#10): the guarded, SSE-streamed chat surface. Validates the
+ * body, resolves auth, creates the session, persists the user message, loads
+ * the session's prior turns for follow-up context, runs the KajianQ pipeline
+ * through the engine runner, persists the answer trace + assistant message,
+ * and streams the answer to the client. Every LLM call's cost lands on the
+ * persisted trace (traceability rule 4) — the route never hand-assembles one
+ * (ADR-0021). Effect bridging goes through the domain's promise runner and
+ * the wiring's store bridge — no direct effect runtime import here (ADR-0027
+ * decision 3).
+ *
+ * Streaming and the citation gate (the ordering that matters): generation
+ * streams from the vendor through `Provider.stream`, so the answer is never
+ * buffered inside a single vendor round-trip, and the route re-emits the
+ * vendor's own delta sequence on the wire. The reviewer still sees the
+ * *complete* answer before any of it is delivered — the citation invariant is
+ * checked on the whole text — and a refused answer replaces the deltas with a
+ * single `refusal` frame carrying the plain refusal. A fabricated citation
+ * therefore never reaches the user as an answer, only as a refusal.
+ *
+ * The trade-off, stated plainly: this gives up time-to-first-token (deltas
+ * are replayed after validation rather than as they arrive) in exchange for
+ * never putting an unvalidated citation on the wire. For a product whose #1
+ * stated risk is hallucinated religious content, that is the correct side of
+ * the trade. It is recorded in SPECS §3.3 and flagged in the PR.
+ */
 export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION, async (c) => {
   const env = c.env as ChatEnv;
   const logger = createLogger({
@@ -70,15 +88,29 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
   } else {
     sessionId = (await runStore(store.createChatSession({ userId }))) as string;
   }
+
+  // Follow-up context: the session's prior turns, loaded BEFORE this question
+  // is persisted so the current message is not duplicated into its own
+  // history. A history-read failure is not fatal — the question is still
+  // answerable single-turn — but it is logged, never silently swallowed.
+  const history = await loadHistory(store, runStore, sessionId, logger);
+
   await runStore(store.insertChatMessage({ sessionId, role: "user", content: req.message }));
 
   const answerMessageId = crypto.randomUUID();
   const traceId = crypto.randomUUID();
 
+  // Vendor deltas as they are produced. They are replayed only after the
+  // reviewer validated the complete answer (see the module comment).
+  const deltas: string[] = [];
+
   const answer = await runChatPipelinePromise(
-    { ...wiring.pipeline, language: req.language ?? "id" } as Parameters<
-      typeof runChatPipelinePromise
-    >[0],
+    {
+      ...wiring.pipeline,
+      language: req.language ?? "id",
+      ...(history.length > 0 ? { history } : {}),
+      onDelta: (delta: string) => deltas.push(delta),
+    } as Parameters<typeof runChatPipelinePromise>[0],
     { text: req.message },
     {},
     {
@@ -114,9 +146,20 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
     }),
   );
 
-  // The engine pipeline is not streamed stage-by-stage yet; the SSE wire
-  // contract (meta → deltas → done) is in place from the start so the PWA
-  // and the eval harness consume it unchanged.
+  // The SSE wire contract (meta → deltas → done, ADR-0034). A refused answer
+  // never ships the vendor's text: the reviewer recorded a `refusal` event on
+  // the trace (the same signal the eval harness reads), and the frames carry
+  // the plain refusal instead. Otherwise the vendor's own delta sequence is
+  // replayed when it reproduces the validated text exactly, and the answer is
+  // chunked when generation did not stream (a non-streaming provider).
+  const refused = answer.trace.events.some((e) => e.kind === "refusal");
+  const streamed = deltas.join("");
+  const frames = refused
+    ? chunkText(answer.text)
+    : streamed === answer.text && deltas.length > 0
+      ? deltas
+      : chunkText(answer.text);
+
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
       const enc = new TextEncoder();
@@ -128,7 +171,9 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
           ),
         ),
       );
-      controller.enqueue(enc.encode(sseFrame("delta", answer.text)));
+      for (const delta of frames) {
+        controller.enqueue(enc.encode(sseFrame("delta", delta)));
+      }
       controller.enqueue(enc.encode(sseFrame("done", "{}")));
       controller.close();
     },
@@ -142,3 +187,34 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
     },
   });
 });
+
+/** Chunk text into SSE-sized deltas (non-streaming providers, refusals). */
+function chunkText(text: string, size = 512): string[] {
+  return text.match(new RegExp(`[\\s\\S]{1,${size}}`, "g")) ?? [];
+}
+
+/**
+ * Load the session's prior turns for follow-up context. Returns `[]` on a
+ * store failure (the question remains answerable) with a structured warning —
+ * a missing history must be visible in ops, never a silent quality drop.
+ */
+async function loadHistory(
+  store: ChatWiring["fullStore"],
+  runStore: ChatWiring["runStore"],
+  sessionId: string,
+  logger: ReturnType<typeof createLogger>,
+): Promise<{ role: string; content: string }[]> {
+  try {
+    const rows = (await runStore(store.getChatMessages(sessionId, { limit: HISTORY_LIMIT }))) as
+      | readonly { role: string; content: string }[]
+      | null;
+    if (!Array.isArray(rows)) return [];
+    return rows.map((m) => ({ role: m.role, content: m.content }));
+  } catch (err) {
+    logger.warn("chat.history_unavailable", {
+      sessionId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return [];
+  }
+}

@@ -71,6 +71,9 @@ function fakeStore() {
     insertChatMessage() {
       return Effect.succeed("");
     },
+    getChatMessages() {
+      return Effect.succeed([]);
+    },
     createSession() {
       return Effect.succeed({ userId: "", sessionId: "", token: "", expiresAt: 0 });
     },

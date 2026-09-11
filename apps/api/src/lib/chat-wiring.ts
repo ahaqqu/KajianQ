@@ -1,5 +1,6 @@
 import * as neon from "@neondatabase/serverless";
 import { runStoreEffect } from "@app/kajianq-domain";
+import type { Provider } from "@app/rag-core";
 import {
   createRagStore,
   loadProviderConfig,
@@ -10,7 +11,7 @@ import {
 export { authGuard } from "./auth";
 
 /**
- * Env-bound wiring for the chat route (#8): the one place the Worker's
+ * Env-bound wiring for the chat route (#10): the one place the Worker's
  * bindings become seams. Route handlers read `RagStore`/`Provider` — never
  * `env.*` (dars-pluggability: business logic accesses adapters through the
  * interface). This module is also the ONLY place in the API that imports the
@@ -50,10 +51,10 @@ export function createRagStoreFromEnv(env: { DATABASE_URL?: string }): RagStore 
 
 /** The provider roles the chat pipeline needs, resolved once per request. */
 export type ChatProviders = {
-  router: ReturnType<typeof resolveRole>["provider"];
-  generator: ReturnType<typeof resolveRole>["provider"];
-  reviewer: ReturnType<typeof resolveRole>["provider"] | null;
-  embedder: ReturnType<typeof resolveRole>["provider"];
+  router: Provider;
+  generator: Provider;
+  reviewer: Provider | null;
+  embedder: Provider;
   /** Env names whose keys were absent (ops visibility, never client-facing). */
   missingKeys: readonly string[];
 };
@@ -86,6 +87,13 @@ const CACHED_PROVIDER_CONFIG: ProviderConfig = loadProviderConfig();
  * the Worker bindings. Roles without any keyed candidate resolve to a
  * Provider whose calls fail with a clear error — wiring never branches on
  * key presence.
+ *
+ * The reviewer is the one role whose absence is a *configuration* failure,
+ * not a degradation: it carries the cross-vendor faithfulness check, and the
+ * chat path must not silently serve unreviewed answers (ticket #10 — the
+ * reviewer is non-optional for the chat path). `buildChatWiring` raises a
+ * typed `ChatConfigError` when no reviewer candidate is keyed, so the route
+ * answers 503 instead of quietly dropping the check.
  */
 export function createProvidersFromEnv(env: Record<string, string | undefined>): ChatProviders {
   const config = CACHED_PROVIDER_CONFIG;
@@ -115,19 +123,27 @@ export function storeBridge(_store: RagStore): (effect: unknown) => Promise<unkn
 
 /** The wiring bundle a chat request needs (built per request from bindings). */
 export type ChatWiring = {
-  pipeline: Omit<import("@app/kajianq-domain").ChatPipelineDeps, "language">;
+  pipeline: Omit<import("@app/kajianq-domain").ChatPipelineDeps, "language" | "history" | "onDelta">;
   fullStore: RagStore;
   runStore: (effect: unknown) => Promise<unknown>;
 };
 
 /**
  * Build the chat wiring from the Worker bindings (providers + store + the
- * store bridge). Throws (config-class) when the store is not configured; the
- * route maps that to 503.
+ * store bridge). Throws (config-class) when the store is not configured or
+ * when the reviewer role has no keyed candidate — the route maps both to 503.
  */
 export function buildChatWiring(env: Record<string, string | undefined>): ChatWiring {
   const store = createRagStoreFromEnv(env);
   const providers = createProvidersFromEnv(env);
+  if (providers.reviewer === null) {
+    // Non-optional for the chat path: an unreviewed answer is not a lesser
+    // answer, it is an unverified one. Fail closed.
+    throw new ChatConfigError(
+      "chat route: reviewer role has no keyed candidate — the cross-vendor faithfulness check is mandatory",
+      providers.missingKeys.join(", ") || "reviewer",
+    );
+  }
   return {
     pipeline: {
       routerProvider: providers.router,
