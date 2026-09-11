@@ -392,7 +392,10 @@ describe("rag-store-neon adapter (fake runner)", () => {
     const store = createNeonRagStore(sql);
     // Neon's transaction() resolves one result per statement, in order: the
     // sessions DELETE, then the users DELETE ... RETURNING id.
-    sql._setTxn([[{ id: "a" }, { id: "b" }], [{ id: "u1" }, { id: "u2" }, { id: "u3" }]]);
+    sql._setTxn([
+      [{ id: "a" }, { id: "b" }],
+      [{ id: "u1" }, { id: "u2" }, { id: "u3" }],
+    ]);
     const n = await runOk(store.cleanupExpiredSessions());
     // The reported count is the reclaimed users — the storage-growth number.
     expect(n).toBe(3);

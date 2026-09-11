@@ -88,9 +88,9 @@ function stubCost() {
 /** Assemble the retrieved chunks through the real assembler. */
 function assemble(chunks: readonly Chunk[]): string {
   const query: Query<KajianQFilters> = { text: "Apa itu Ayat Kursi?" };
-  const ctx = Effect.runSync(
-    createKajianQAssembler().assemble(query, chunks) as never,
-  ) as { turns: readonly { content: string }[] };
+  const ctx = Effect.runSync(createKajianQAssembler().assemble(query, chunks) as never) as {
+    turns: readonly { content: string }[];
+  };
   return ctx.turns.map((t) => t.content).join("\n");
 }
 

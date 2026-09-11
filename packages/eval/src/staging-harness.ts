@@ -73,10 +73,11 @@ export async function createStagingHarness(
   // chunks' metadata, loaded once here.
   const sourceTypeByChunkId = new Map<string, string>();
   {
-    const rows = (await sql`SELECT id, metadata FROM doc_children WHERE metadata ? 'sourceType'`) as {
-      id: string;
-      metadata?: { sourceType?: unknown } | null;
-    }[];
+    const rows =
+      (await sql`SELECT id, metadata FROM doc_children WHERE metadata ? 'sourceType'`) as {
+        id: string;
+        metadata?: { sourceType?: unknown } | null;
+      }[];
     for (const row of rows) {
       const meta = row.metadata ?? {};
       if (typeof meta.sourceType === "string") sourceTypeByChunkId.set(row.id, meta.sourceType);
@@ -104,9 +105,7 @@ export async function createStagingHarness(
       if (!trace) return null;
       // Budget coverage: the answer trace's event costs are the pipeline spend
       // the harness triggered — count them into the cap.
-      budget.add(
-        trace.events.reduce((sum, event) => sum + (event.cost?.costMicroUsd ?? 0), 0),
-      );
+      budget.add(trace.events.reduce((sum, event) => sum + (event.cost?.costMicroUsd ?? 0), 0));
       budget.check();
       return trace.events;
     },

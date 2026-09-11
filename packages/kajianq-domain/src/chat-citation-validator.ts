@@ -88,7 +88,10 @@ function stripGradeSuffix(label: string): string {
  * grounds.
  */
 export function normalizeCitationLabel(label: string): string {
-  return stripGradeSuffix(label).replace(/\s+/g, " ").replace(/\bQ\.S\./g, "QS.").trim();
+  return stripGradeSuffix(label)
+    .replace(/\s+/g, " ")
+    .replace(/\bQ\.S\./g, "QS.")
+    .trim();
 }
 
 /**

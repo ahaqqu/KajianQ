@@ -38,12 +38,12 @@ const handler = {
     ctx: { waitUntil?: (p: Promise<unknown>) => void },
   ): Promise<void> {
     const logger = createLogger({ service: "api", route: "scheduled" });
-    const run = cleanupExpiredSessions(
-      env as unknown as Record<string, string | undefined>,
-    ).then((result) => {
-      logger.debug("scheduled.done", { deleted: result.deleted, ok: result.ok });
-      return result;
-    });
+    const run = cleanupExpiredSessions(env as unknown as Record<string, string | undefined>).then(
+      (result) => {
+        logger.debug("scheduled.done", { deleted: result.deleted, ok: result.ok });
+        return result;
+      },
+    );
     if (ctx?.waitUntil) {
       ctx.waitUntil(run);
       return;

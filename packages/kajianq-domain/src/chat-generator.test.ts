@@ -237,8 +237,7 @@ describe("createKajianQReviewer — the deterministic gate", () => {
     const { RunContext } = await import("@app/rag-core");
     const reviewer = createKajianQReviewer({
       provider: {
-        generate: () =>
-          Effect.succeed({ text: '{"verdict":"pass"}', cost: cost("reviewer", 3) }),
+        generate: () => Effect.succeed({ text: '{"verdict":"pass"}', cost: cost("reviewer", 3) }),
       },
       applyProductRules: false,
     });
@@ -267,13 +266,13 @@ describe("createKajianQReviewer — the deterministic gate", () => {
       },
       applyProductRules: false,
     });
-    const out = await Effect.runPromise(
+    const out = (await Effect.runPromise(
       Effect.provideService(
         reviewer.review(draft("Menurut QS. 2:255 …"), context([chunk("QS. 2:255")])) as never,
         RunContext,
         { config: {}, now: () => 1, record: (e: never) => events.push(e) } as never,
       ) as never,
-    ) as { text: string };
+    )) as { text: string };
     // The answer is still delivered (the deterministic gate passed), but the
     // trace distinguishes "unreadable" from "reviewer passed".
     expect(out.text).toContain("QS. 2:255");
@@ -286,8 +285,7 @@ describe("createKajianQReviewer — the deterministic gate", () => {
     const { RunContext } = await import("@app/rag-core");
     const reviewer = createKajianQReviewer({
       provider: {
-        generate: () =>
-          Effect.succeed({ text: '{"verdict":"pass"}', cost: cost("reviewer", 3) }),
+        generate: () => Effect.succeed({ text: '{"verdict":"pass"}', cost: cost("reviewer", 3) }),
       },
       applyProductRules: false,
     });

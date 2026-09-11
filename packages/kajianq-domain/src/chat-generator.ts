@@ -109,9 +109,9 @@ function generateDraft(
   turns: readonly { role: string; content: string }[],
 ): Effect.Effect<{ text: string; cost: CostRecord }, { cause: unknown }> {
   return mapCause(
-    deps.provider.generate({ turns }).pipe(
-      Effect.map((reply) => ({ text: reply.text, cost: reply.cost })),
-    ),
+    deps.provider
+      .generate({ turns })
+      .pipe(Effect.map((reply) => ({ text: reply.text, cost: reply.cost }))),
   );
 }
 
