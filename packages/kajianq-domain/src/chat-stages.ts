@@ -32,6 +32,7 @@ export function createChatTailStages(deps: {
     reviewer: createKajianQReviewer({
       provider: deps.reviewerProvider,
       ...(deps.skipReviewer !== undefined ? { skipLlm: deps.skipReviewer } : {}),
+      language: deps.language,
       // The refusal the user sees is in their language (acceptance criterion:
       // answer language matches question language).
       refusalText: (reason) => refusalTextFor(deps.language, reason),

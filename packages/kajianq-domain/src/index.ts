@@ -168,6 +168,13 @@ export {
   type ReviewerProvider,
 } from "./chat-reviewer";
 export {
+  applyProductRules,
+  dhaifWarning,
+  ulamaDisclaimer,
+  hasWeakGradeChunk,
+  type ProductRulesResult,
+} from "./chat-postprocess";
+export {
   buildChatStages,
   runChatPipeline,
   runChatPipelinePromise,

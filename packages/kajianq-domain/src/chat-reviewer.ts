@@ -9,6 +9,7 @@ import {
 } from "@app/rag-core";
 import type { KajianQFilters } from "./filters";
 import { validateCitations } from "./chat-citation-validator";
+import { applyProductRules } from "./chat-postprocess";
 
 /**
  * KajianQReviewer — stage 7 (spec §3.3): a cross-vendor LLM reviewer
@@ -38,6 +39,14 @@ export type KajianQReviewerDeps = {
   skipLlm?: boolean;
   /** Refusal text for the active answer language. */
   refusalText?: (reason: "ungrounded" | "reviewer") => string;
+  /** Answer language — drives the deterministic post-processing text. */
+  language?: import("./chat-prompts").ChatLanguage;
+  /**
+   * Apply the deterministic product rules (dhaif warning, machine-translation
+   * label, ulama disclaimer) to a passed draft. Default on; a test or an eval
+   * refusal case can disable it.
+   */
+  applyProductRules?: boolean;
 };
 
 /** The default refusal language (the generator's ID/EN insufficiency text). */
@@ -86,7 +95,7 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
           }
 
           if (deps.provider === null || deps.skipLlm === true) {
-            return draft;
+            return withRules(draft, context);
           }
           const reply = yield* deps.provider
             .generate({
@@ -140,10 +149,21 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
             });
             return { text: refusal("reviewer") };
           }
-          return draft;
+          return withRules(draft, context);
         }),
       ),
   };
+
+  /**
+   * The deterministic product rules (spec §2.2, ticket #10): a passed draft
+   * gains the dhaif warning, the machine-translation label, and the ulama
+   * disclaimer when the model omitted them. Never applied to a refusal — the
+   * refusal is the honest answer, and decorating it would bury the reason.
+   */
+  function withRules(draft: Draft, context: AssembledContext<KajianQFilters>): Draft {
+    if (deps.applyProductRules === false) return draft;
+    return applyProductRules(draft, context, deps.language ?? "id").draft;
+  }
 }
 
 /**
