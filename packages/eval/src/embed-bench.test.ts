@@ -43,6 +43,23 @@ describe("rankDocs", () => {
     );
     expect(ranked.map((r) => r.id)).toEqual(["a", "b", "c"]);
   });
+
+  // Thermo B2: duplicate scores decide ranks via the id tie-break, so the
+  // metric is deterministic on every re-run even when vectors repeat (e.g.
+  // identical corpus texts) and the input order is adversarial.
+  it("is deterministic under duplicate scores regardless of input order", () => {
+    const vectors = [
+      { id: "d3", vector: [1, 0] },
+      { id: "d1", vector: [1, 0] },
+      { id: "d2", vector: [1, 0] },
+    ];
+    const first = rankDocs([1, 0], vectors);
+    expect(first.map((r) => r.id)).toEqual(["d1", "d2", "d3"]);
+    expect(first.map((r) => r.score)).toEqual([1, 1, 1]);
+    // Reversed input must produce the identical ranking.
+    const second = rankDocs([1, 0], [...vectors].reverse());
+    expect(second.map((r) => r.id)).toEqual(["d1", "d2", "d3"]);
+  });
 });
 
 describe("recallAtK / reciprocalRank", () => {
@@ -158,13 +175,48 @@ describe("parseExpansionSelection", () => {
     expect(parseExpansionSelection('{"terms": "not-array"}')).toEqual([]);
     expect(parseExpansionSelection('{"other": 1}')).toEqual([]);
   });
+
+  // Thermo B3: brace-balanced extraction — a code-fenced reply must not
+  // make the parser grab the fence braces, and a nested object inside the
+  // terms object must not swallow the span.
+  it("handles markdown-fenced replies without grabbing the fence", () => {
+    expect(parseExpansionSelection('```json\n{"terms": ["term"]}\n```')).toEqual(["term"]);
+    expect(
+      parseExpansionSelection('Sure:\n```\n{"terms": ["t1", "t2"]}\n```\n hope it helps!'),
+    ).toEqual(["t1", "t2"]);
+  });
+
+  it("scans to the balanced span when prose contains stray braces", () => {
+    expect(parseExpansionSelection('} stray { {"terms": ["ok"]} }')).toEqual(["ok"]);
+    expect(parseExpansionSelection('{"terms": ["nested {brace} ok"]}')).toEqual([
+      "nested {brace} ok",
+    ]);
+  });
+
+  it("keeps quotes inside strings from breaking the balanced scan", () => {
+    expect(parseExpansionSelection('{"terms": ["say \\"hi\\" now"]}')).toEqual(['say "hi" now']);
+  });
 });
 
 describe("scoreExpansionCase", () => {
   it("passes on exact term match and fails on distractor-only picks", () => {
-    expect(scoreExpansionCase({ picked: ["الوُضُوء"] }, "الوُضُوء")).toBe(true);
-    expect(scoreExpansionCase({ picked: ["الغُسْل"] }, "الوُضُوء")).toBe(false);
-    expect(scoreExpansionCase({ picked: [], parseError: "unparseable" }, "الوُضُوء")).toBe(false);
+    expect(scoreExpansionCase({ picked: ["الوُضُوء"] }, "الوُضُوء", ["الغُسْل"])).toBe(true);
+    expect(scoreExpansionCase({ picked: ["الغُسْل"] }, "الوُضُوء", ["الغُسْل"])).toBe(false);
+    expect(scoreExpansionCase({ picked: [], parseError: "unparseable" }, "الوُضُوء", ["الغُسْل"])).toBe(
+      false,
+    );
+  });
+
+  // Thermo C2: a selection that sweeps the distractors alongside the
+  // expected term is not a disambiguation — it fails the case.
+  it("fails when a distractor is picked alongside the expected term", () => {
+    expect(scoreExpansionCase({ picked: ["الوُضُوء", "الغُسْل"] }, "الوُضُوء", ["الغُسْل"])).toBe(false);
+  });
+
+  it("normalizes trim/case for the distractor comparison and ignores a self-equal distractor", () => {
+    expect(scoreExpansionCase({ picked: ["الوُضُوء", " الْغُسْل "] }, "الوُضُوء", ["الْغُسْل"])).toBe(false);
+    // A distractor accidentally equal to the expected term must not void the case.
+    expect(scoreExpansionCase({ picked: ["term"] }, "term", ["term"])).toBe(true);
   });
 });
 

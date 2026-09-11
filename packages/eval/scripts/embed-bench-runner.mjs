@@ -10,13 +10,18 @@ const { retryInMs } = evalpkg;
  * single-candidate config so every model is measured alone — never behind a
  * fallback chain that could silently substitute another model. Runs through
  * the Provider seam (ADR-0022); vendor names live only in models.json.
+ *
+ * Thermo A3: the env record is injected by the composition root (the CLI's
+ * `process.env`) — this module never reaches for the ambient `process`,
+ * matching the binder discipline `loadEmbedBenchConfig` follows; the key
+ * itself is read only inside `resolveRole`.
  */
-export function loadCandidates(config) {
+export function loadCandidates(config, env) {
   return config.roles["embedder-candidates"].chain.map((key) => {
     const [vendor, modelId] = parseCandidateKey(key);
     const vendorConfig = config.vendors[vendor];
     const apiKeyEnv = vendorConfig.apiKeyEnv;
-    const apiKey = process.env[apiKeyEnv];
+    const apiKey = env[apiKeyEnv];
     if (!apiKey) {
       throw new Error(`embed-bench: missing ${apiKeyEnv} for ${modelId}`);
     }
@@ -42,7 +47,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * the vendor's own "retry in Ns" hint (`retryInMs` from the engine module),
  * else a 30s doubling (up to 8 waits).
  */
-export async function embedAll(provider, texts, { batchSize, dimensions, onCost, batchDelayMs }) {
+export async function embedAll(
+  provider,
+  texts,
+  { batchSize, dimensions, onCost, batchDelayMs, log },
+) {
   const delay = batchDelayMs ?? Math.max(1_000, Math.round((batchSize / 800) * 60_000));
   const vectors = new Array(texts.length);
   let rateLimitStalls = 0;
@@ -69,9 +78,12 @@ export async function embedAll(provider, texts, { batchSize, dimensions, onCost,
         const hinted = retryInMs(message);
         const waitMs = hinted ?? 30_000 * 2 ** rateLimitStalls;
         rateLimitStalls += 1;
-        console.error(
-          `embed-bench: ${provider.modelId} rate limited — backing off ${Math.round(waitMs / 1000)}s (stall ${rateLimitStalls}/8)`,
-        );
+        log?.warn("rate limited — backing off", {
+          modelId: provider.modelId,
+          backoffMs: waitMs,
+          stall: rateLimitStalls,
+          maxStalls: 8,
+        });
         await sleep(waitMs);
       }
     }
@@ -93,26 +105,34 @@ export async function embedAll(provider, texts, { batchSize, dimensions, onCost,
  * router LLM to pick Arabic expansion terms from the glossary slice, parse
  * the selection, and score against the expected term. Every call's cost
  * lands in the caller's sink (traceability rule 2 — no untraced LLM call).
+ *
+ * Thermo A1: the system prompt and user-prompt shaping arrive as opaque
+ * strings from the domain pack (`EXPANSION_SYSTEM_PROMPT` /
+ * `expansionUserPrompt`) — this engine-side runner names no language and no
+ * domain. Thermo C2: a selection that picks any distractor term fails the
+ * case even when the expected term is also present.
  */
-export async function runExpansionCases({ evalpkg: ep, provider, cases, budget, onCost }) {
+export async function runExpansionCases({
+  evalpkg: ep,
+  provider,
+  cases,
+  budget,
+  onCost,
+  systemPrompt,
+  userPrompt,
+  log,
+}) {
   const results = [];
   for (const c of cases) {
     if (budget.wouldExceed()) {
-      console.error("embed-bench: budget cap hit — expansion task aborted");
+      log?.warn("budget cap hit — expansion task aborted");
       break;
     }
     const reply = await Effect.runPromise(
       provider.generate({
         turns: [
-          {
-            role: "system",
-            content:
-              'You select Arabic expansion terms for an Indonesian Islamic query from a glossary slice. Reply ONLY with JSON: {"terms": ["…"]} — pick 1-2 terms, verbatim from the slice.',
-          },
-          {
-            role: "user",
-            content: `Query: ${c.query}\nGlossary slice (JSON): ${JSON.stringify(c.slice)}\nArabic expansion terms:`,
-          },
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt(c.query, c.slice) },
         ],
       }),
     );
@@ -120,7 +140,11 @@ export async function runExpansionCases({ evalpkg: ep, provider, cases, budget, 
     const picked = ep.parseExpansionSelection(reply.text);
     results.push({
       caseId: c.id,
-      correct: ep.scoreExpansionCase({ picked }, c.expectedTerm),
+      correct: ep.scoreExpansionCase(
+        { picked, parseError: picked.length === 0 ? "empty selection" : undefined },
+        c.expectedTerm,
+        c.distractors,
+      ),
       picked,
       expectedTerm: c.expectedTerm,
     });
@@ -155,7 +179,11 @@ export async function runCandidates({
     const docPrimaryVecs = await embedAll(
       provider,
       allDocs.map((d) => d.textAr),
-      { batchSize, onCost },
+      {
+        batchSize,
+        onCost,
+        log,
+      },
     );
     const docSecondaryVecs = await embedAll(
       provider,
@@ -163,6 +191,7 @@ export async function runCandidates({
       {
         batchSize,
         onCost,
+        log,
       },
     );
     vectorByDocIdPrimary.clear();

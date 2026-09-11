@@ -86,7 +86,12 @@ export function corpusFingerprint(docs: readonly DomainBenchDoc[]): string {
   return `fnv1a64:${h.toString(16).padStart(16, "0")}:${docs.length}`;
 }
 
-export function strideSample<T>(items: readonly T[], count: number, seed: number): T[] {
+/**
+ * Deterministic stride sample: evenly-spaced items across the array (thermo
+ * B4 — the old `seed` parameter was declared but never used, implying a
+ * seeded randomness the function does not have; removed).
+ */
+export function strideSample<T>(items: readonly T[], count: number): T[] {
   if (count >= items.length) return [...items];
   if (count <= 0) return [];
   const stride = items.length / count;
@@ -117,7 +122,7 @@ export function stratifiedSubset(
   // One group short of its share? Hand the unused budget to the other.
   quranTarget = Math.min(quranDocs.length, targets.total - hadithTarget);
   hadithTarget = Math.min(hadithDocs.length, targets.total - quranTarget);
-  return [...strideSample(quranDocs, quranTarget, 5), ...strideSample(hadithDocs, hadithTarget, 6)];
+  return [...strideSample(quranDocs, quranTarget), ...strideSample(hadithDocs, hadithTarget)];
 }
 
 /**
@@ -140,17 +145,17 @@ export function authorProbes(
   idFallback: { id: string; text: string; relevantIds: string[] }[];
 } {
   const withId = docs.filter((d) => d.textId !== null && d.textId.length > 0);
-  const cross = strideSample(withId, counts.crossLingual, 1).map((d) => ({
+  const cross = strideSample(withId, counts.crossLingual).map((d) => ({
     id: `xl-${d.id}`,
     text: d.textId ?? "",
     relevantIds: [d.id],
   }));
-  const mono = strideSample(withId, counts.monolingual, 2).map((d) => ({
+  const mono = strideSample(withId, counts.monolingual).map((d) => ({
     id: `mono-${d.id}`,
     text: d.textAr,
     relevantIds: [d.id],
   }));
-  const idfb = strideSample(withId, counts.idTrack, 3).map((d) => ({
+  const idfb = strideSample(withId, counts.idTrack).map((d) => ({
     id: `idfb-${d.id}`,
     text: d.textId ?? "",
     relevantIds: [d.id],

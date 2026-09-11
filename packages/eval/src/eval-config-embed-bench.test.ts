@@ -16,9 +16,13 @@ describe("loadEmbedBenchConfig", () => {
     expect(config.expansionPath).toContain("expansion-cases-v0.json");
   });
 
-  it("fails fast on a missing or malformed Neon URL", () => {
-    expect(() => loadEmbedBenchConfig({})).toThrow(EvalConfigError);
+  // Thermo B5: the benchmark is DB-free — the URL is optional; a supplied
+  // value is still validated for URL shape.
+  it("treats the Neon URL as optional (DB-free run) but validates its shape when set", () => {
+    expect(loadEmbedBenchConfig({}).neonDatabaseUrl).toBeUndefined();
+    expect(loadEmbedBenchConfig({ NEON_DATABASE_URL: "  " }).neonDatabaseUrl).toBeUndefined();
     expect(() => loadEmbedBenchConfig({ NEON_DATABASE_URL: "not a url" })).toThrow(EvalConfigError);
+    expect(loadEmbedBenchConfig(base).neonDatabaseUrl).toBe(base.NEON_DATABASE_URL);
   });
 
   it("accepts 0 as an explicit opt-out budget but rejects negatives", () => {

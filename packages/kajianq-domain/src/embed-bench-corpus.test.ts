@@ -71,19 +71,19 @@ describe("corpusFingerprint", () => {
 describe("strideSample", () => {
   it("returns the full array when count >= length", () => {
     const items = [1, 2, 3];
-    expect(strideSample(items, 5, 1)).toEqual([1, 2, 3]);
-    expect(strideSample(items, 3, 1)).toEqual([1, 2, 3]);
+    expect(strideSample(items, 5)).toEqual([1, 2, 3]);
+    expect(strideSample(items, 3)).toEqual([1, 2, 3]);
   });
 
   it("returns an empty array for count <= 0", () => {
-    expect(strideSample([1, 2], 0, 1)).toEqual([]);
-    expect(strideSample([1, 2], -1, 1)).toEqual([]);
+    expect(strideSample([1, 2], 0)).toEqual([]);
+    expect(strideSample([1, 2], -1)).toEqual([]);
   });
 
   it("is deterministic and spreads across the array", () => {
     const items = Array.from({ length: 10 }, (_, i) => i);
-    const first = strideSample(items, 3, 1);
-    expect(first).toEqual(strideSample(items, 3, 1));
+    const first = strideSample(items, 3);
+    expect(first).toEqual(strideSample(items, 3));
     expect(new Set(first).size).toBe(3);
     expect(first[0]).not.toBe(first[1]);
   });

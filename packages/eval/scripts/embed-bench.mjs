@@ -6,8 +6,8 @@
  *   bun run eval:embed-bench
  *
  * Env (validated by loadEmbedBenchConfig before any spend):
- *   NEON_DATABASE_URL     required (validated shape; the run itself is
- *                         source-based and DB-free)
+ *   NEON_DATABASE_URL     optional (validated URL-shape when set; the run is
+ *                         source-based and DB-free — thermo B5)
  *   GEMINI_API_KEY        the vendor key every candidate needs (absent =
  *                         fail fast, never silently skip a candidate)
  *   EVAL_BUDGET_MICRO_USD optional hard spend cap in micro-USD
@@ -20,6 +20,11 @@
  * report written to BENCH_REPORT_PATH. The winning default lands in the
  * `embedder` role in the SAME commit as the report (AGENTS.md cost
  * discipline + recorded decision).
+ *
+ * Thermo B1: every line goes through the structured Logger adapter — no
+ * bare console output. Thermo C1: the expansion fixture is required (the
+ * micro-task is part of the ADR-0036 gate); a missing fixture is a hard
+ * failure, not a silent skip.
  */
 import * as app from "@app/infra";
 import * as evalpkg from "@app/eval";
@@ -36,7 +41,7 @@ import { loadCandidates, runCandidates, runExpansionCases } from "./embed-bench-
 const logger = app.createLogger({ script: "eval:embed-bench" });
 
 function fail(msg) {
-  console.error(`embed-bench: ${msg}`);
+  logger.error(msg);
   process.exit(1);
 }
 
@@ -49,9 +54,9 @@ const config = (() => {
 })();
 
 const budget = new evalpkg.Budget(config.budgetCapMicroUsd);
-console.log(
-  `embed-bench: budget ${config.budgetCapMicroUsd === undefined ? "uncapped" : `${config.budgetCapMicroUsd} micro-USD`}`,
-);
+logger.info("budget configured", {
+  budgetCapMicroUsd: config.budgetCapMicroUsd ?? null,
+});
 
 const groupACount = config.groupACap === undefined ? domain.TOTAL_SURAHS : config.groupACap;
 const groupBCount =
@@ -82,53 +87,62 @@ if (!providerConfig.roles["embedder-candidates"]) {
   fail("provider config has no embedder-candidates role");
 }
 
-const fmt = (v) => (v === null ? "n/a" : v.toFixed(3));
-const onCost = (cost) => {
-  budget.add(cost.costMicroUsd ?? 0);
-  budget.check();
-};
-const candidates = loadCandidates(providerConfig);
+const candidates = loadCandidates(providerConfig, process.env);
 const results = await runCandidates({
   evalpkg,
   candidates,
   allDocs,
   probes,
   batchSize: config.batchSize ?? 96,
-  onCost,
+  onCost: (cost) => {
+    budget.add(cost.costMicroUsd ?? 0);
+    budget.check();
+  },
   onCell: (modelId, cell) =>
-    console.log(
-      `  ${modelId}  ${cell.direction}  recall@10=${fmt(cell.recallAtK)}  mrr=${fmt(cell.mrr)}  (n=${cell.queries})`,
-    ),
+    logger.info("cell scored", {
+      modelId,
+      direction: cell.direction,
+      recallAtK: cell.recallAtK,
+      mrr: cell.mrr,
+      queries: cell.queries,
+    }),
   log: logger,
 });
-for (const r of results) console.log(`  ${r.modelId}  gate: ${JSON.stringify(r.gate)}`);
-
-// Expansion micro-task (ADR-0014): router LLM term selection.
-const expansionResults = [];
-try {
-  const expansionSet = evalpkg.parseExpansionSet(
-    readFixtureJson(fromCwd(config.expansionPath), config.expansionPath),
-    config.expansionPath,
-  );
-  const { provider: router } = app.resolveRole(providerConfig, "cheap", { env: process.env });
-  expansionResults.push(
-    ...(await runExpansionCases({
-      evalpkg,
-      provider: router,
-      cases: expansionSet.cases,
-      budget,
-      onCost,
-    })),
-  );
-} catch (err) {
-  if (err.code === "ENOENT") {
-    console.error(
-      `embed-bench: expansion fixture missing (${config.expansionPath}) — micro-task skipped`,
-    );
-  } else {
-    throw err;
-  }
+for (const r of results) {
+  logger.info("gate evaluated", { modelId: r.modelId, gate: r.gate });
 }
+
+// Expansion micro-task (ADR-0014): router LLM term selection. The fixture is
+// required (thermo C1 — ADR-0036's gate includes the micro-task; a missing
+// file is a hard failure), and the prompt template arrives opaque from the
+// domain pack (thermo A1).
+const expansionSet = (() => {
+  try {
+    return evalpkg.parseExpansionSet(
+      readFixtureJson(fromCwd(config.expansionPath), config.expansionPath),
+      config.expansionPath,
+    );
+  } catch (err) {
+    fail(
+      `expansion fixture unreadable/invalid (${config.expansionPath}): ` +
+        `${err instanceof Error ? err.message : String(err)} — the ADR-0014 micro-task is part of the gate`,
+    );
+  }
+})();
+const { provider: router } = app.resolveRole(providerConfig, "cheap", { env: process.env });
+const expansionResults = await runExpansionCases({
+  evalpkg,
+  provider: router,
+  cases: expansionSet.cases,
+  budget,
+  onCost: (cost) => {
+    budget.add(cost.costMicroUsd ?? 0);
+    budget.check();
+  },
+  systemPrompt: domain.EXPANSION_SYSTEM_PROMPT,
+  userPrompt: domain.expansionUserPrompt,
+  log: logger,
+});
 
 const expansionAccuracy =
   expansionResults.length === 0
@@ -155,20 +169,18 @@ const report = {
 
 writeReportFile(fromCwd(config.reportPath), report);
 
-const fmtCell = (r, d) => {
-  const cell = r.cells.find((c) => c.direction === d);
-  return cell === undefined || cell.recallAtK === null ? "n/a" : cell.recallAtK.toFixed(3);
-};
-console.log(
-  [
-    "",
-    "embed-bench summary",
-    `  corpus: ${allDocs.length} docs (fingerprint ${fingerprint})`,
-    ...results.map(
-      (r) =>
-        `  ${r.modelId}: gate=${r.gate.gatePass} xl=${fmtCell(r, "secondary→primary")} mono=${fmtCell(r, "primary→primary")}`,
-    ),
-    `  expansion accuracy: ${expansionAccuracy === null ? "n/a" : expansionAccuracy.toFixed(3)} (${expansionResults.length} cases)`,
-    `  cost: $${(budget.total / 1e6).toFixed(4)}  report: ${config.reportPath}`,
-  ].join("\n"),
-);
+logger.info("summary", {
+  corpusDocs: allDocs.length,
+  corpusFingerprint: fingerprint,
+  candidates: results.map((r) => ({
+    modelId: r.modelId,
+    gatePass: r.gate.gatePass,
+    crossLingualRecallAtK:
+      r.cells.find((c) => c.direction === "secondary→primary")?.recallAtK ?? null,
+    monolingualRecallAtK: r.cells.find((c) => c.direction === "primary→primary")?.recallAtK ?? null,
+  })),
+  expansionCases: expansionResults.length,
+  expansionAccuracy,
+  totalMicroUsd: budget.total,
+  reportPath: config.reportPath,
+});

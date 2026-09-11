@@ -1,5 +1,14 @@
 import type { CostRecordLike } from "./harness-types";
 
+// Expansion micro-task machinery split out (thermo B3/C2) to keep both modules
+// under the 300-line agentic limit; re-exported so the public surface is stable.
+export {
+  parseExpansionSelection,
+  scoreExpansionCase,
+  type ExpansionCase,
+  type ExpansionOutcome,
+} from "./embed-bench-expansion";
+
 /**
  * EmbeddingBenchmark (#9, ADR-0013/0014): the domain-agnostic measurement
  * machinery for the retrieval-posture gate. The engine owns the metric math
@@ -84,7 +93,9 @@ export function cosineSimilarity(a: readonly number[], b: readonly number[]): nu
 
 /**
  * Rank corpus ids by similarity to the query vector, best first. Pure and
- * deterministic — exported so tests pin the metric math.
+ * deterministic — exported so tests pin the metric math. Thermo B2: ties are
+ * broken by ascending id (localeCompare), so duplicate-score runs (e.g.
+ * repeated verbatim corpus texts) rank the same way on every re-run.
  */
 export function rankDocs(
   queryVector: readonly number[],
@@ -183,58 +194,6 @@ export function evaluateGate(result: { cells: readonly BenchCell[] }): {
     monolingualPass,
     gatePass: crossLingualPass && monolingualPass,
   };
-}
-
-/** One expansion micro-task case (ADR-0014): slice + query → correct term. */
-export type ExpansionCase = {
-  id: string;
-  /** The Indonesian query in natural user wording. */
-  query: string;
-  /** The verbalized glossary slice offered to the router LLM (opaque JSON). */
-  slice: unknown;
-  /** The Arabic expansion term a correct selection must include. */
-  expectedTerm: string;
-  /** Distractor Arabic terms from the same slice the model must not pick. */
-  distractors: readonly string[];
-};
-
-/** One expansion micro-task outcome. */
-export type ExpansionOutcome = {
-  caseId: string;
-  /** True when the model's selection includes the expected term. */
-  correct: boolean;
-  /** The raw terms the model picked (post-parse, lowercase-trimmed). */
-  picked: readonly string[];
-  /** Non-null when the model's reply could not be parsed into terms. */
-  parseError?: string;
-};
-
-/** Extract lowercase-trimmed Arabic terms from the model's JSON answer. */
-export function parseExpansionSelection(text: string): readonly string[] {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start < 0 || end <= start) return [];
-  try {
-    const parsed: unknown = JSON.parse(text.slice(start, end + 1));
-    if (typeof parsed !== "object" || parsed === null) return [];
-    const terms = (parsed as { terms?: unknown }).terms;
-    if (!Array.isArray(terms)) return [];
-    return terms
-      .filter((t): t is string => typeof t === "string")
-      .map((t) => t.trim().toLowerCase())
-      .filter((t) => t.length > 0);
-  } catch {
-    return [];
-  }
-}
-
-/** Score one expansion case: correct when any picked term equals expected. */
-export function scoreExpansionCase(
-  outcome: Pick<ExpansionOutcome, "picked" | "parseError">,
-  expectedTerm: string,
-): boolean {
-  if (outcome.parseError !== undefined) return false;
-  return outcome.picked.includes(expectedTerm.trim().toLowerCase());
 }
 
 /** Cost records collected across a benchmark run (traceability rule 2). */

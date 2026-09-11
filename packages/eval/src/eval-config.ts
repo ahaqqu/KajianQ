@@ -77,8 +77,12 @@ export const EMBED_BENCH_DEFAULT_EXPANSION_PATH =
 
 /** Validated, typed configuration for one `eval:embed-bench` invocation. */
 export type EmbedBenchConfig = {
-  /** The staging Neon store connection string (required). */
-  neonDatabaseUrl: string;
+  /**
+   * The staging Neon store connection string — optional (thermo B5): the
+   * gate run is source-based and DB-free, so the URL is only validated for
+   * URL-shape when actually provided; undefined otherwise.
+   */
+  neonDatabaseUrl: string | undefined;
   /** Hard spend cap in micro-USD (unset/0 = explicit opt-out). */
   budgetCapMicroUsd: number | undefined;
   /** Cap on the corpus's first source group (undefined = the domain's full set). */
@@ -108,7 +112,13 @@ export type EmbedBenchConfig = {
  * fails before any spend.
  */
 export function loadEmbedBenchConfig(env: Record<string, string | undefined>): EmbedBenchConfig {
-  const neonDatabaseUrl = requireUrl("NEON_DATABASE_URL", env.NEON_DATABASE_URL);
+  // Thermo B5: the benchmark never touches the store, so the URL is optional
+  // here (validated for shape only when supplied) — unlike `loadEvalRunConfig`,
+  // whose eval-run path reads persisted runs.
+  const neonDatabaseUrl =
+    env.NEON_DATABASE_URL !== undefined && env.NEON_DATABASE_URL.trim() !== ""
+      ? requireUrl("NEON_DATABASE_URL", env.NEON_DATABASE_URL)
+      : undefined;
   const rawCap = env.EVAL_BUDGET_MICRO_USD;
   let budgetCapMicroUsd: number | undefined;
   if (rawCap !== undefined) {

@@ -3,18 +3,31 @@
  * embed-bench-corpus.mjs — source acquisition + probe authoring for the
  * embedding-benchmark CLI (#9). One module owns the real-source fetch +
  * domain parse; the CLI owns config, embedding, scoring, and the report.
+ *
+ * Thermo A2: the source URLs, env var names, and their defaults are domain
+ * vocabulary — they are resolved by the domain pack's acquisition helper
+ * (kajianq-domain/scripts/source-acquisition.mjs), and this engine module
+ * receives only the resolved, opaque source entries plus the validated
+ * config shape. No mirror URL or env name appears engine-side.
  */
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve as resolvePath } from "node:path";
 import * as domain from "@app/kajianq-domain";
-import { acquireFiles, acquireSources } from "../../kajianq-domain/scripts/source-acquisition.mjs";
+import {
+  acquireFiles,
+  acquireSources,
+  QURAN_SURAH_BASE_URL,
+  QURAN_MORPHOLOGY_URL,
+  HADITH_EDITIONS_BASE_URL,
+} from "../../kajianq-domain/scripts/source-acquisition.mjs";
 
-const SURAH_BASE =
-  process.env.QURAN_SURAH_BASE_URL ??
-  "https://raw.githubusercontent.com/hangsbreaker/quran-json/main";
-const EDITIONS_BASE =
-  process.env.HADITH_EDITIONS_BASE_URL ??
-  "https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions";
+/** Build the edition fetch entries from the resolved mirror base (opaque urls). */
+export function hadithEditionEntries(collections, editionsBase = HADITH_EDITIONS_BASE_URL) {
+  return collections.flatMap((c) => [
+    { url: `${editionsBase}/ara-${c}.json`, cacheFile: `ara-${c}.json` },
+    { url: `${editionsBase}/ind-${c}.json`, cacheFile: `ind-${c}.json` },
+  ]);
+}
 
 /**
  * Fetch the real sources (QURAN_SOURCE_DIR / HADITH_SOURCE_DIR cache dirs
@@ -34,20 +47,15 @@ export async function buildBenchmarkCorpus({ groupACap, groupBCap, docBudget, lo
     const sources = await acquireSources({
       surahCount,
       log,
-      surahListUrl: `${SURAH_BASE}/surah_list.json`,
-      morphologyUrl:
-        process.env.QURAN_MORPHOLOGY_URL ??
-        "https://raw.githubusercontent.com/cltk/arabic_morphology_quranic-corpus/master/quranic-corpus-morphology-0.4.txt",
+      surahListUrl: `${QURAN_SURAH_BASE_URL}/surah_list.json`,
+      morphologyUrl: QURAN_MORPHOLOGY_URL,
     });
     const ayahs = sources.surahFiles.flatMap((t) => domain.parseSurahFile(JSON.parse(t)));
     quranDocs = domain.quranBenchDocs(ayahs);
     log.info("quran docs ready", { count: quranDocs.length });
   }
 
-  const editionEntries = collections.flatMap((c) => [
-    { url: `${EDITIONS_BASE}/ara-${c}.json`, cacheFile: `ara-${c}.json` },
-    { url: `${EDITIONS_BASE}/ind-${c}.json`, cacheFile: `ind-${c}.json` },
-  ]);
+  const editionEntries = hadithEditionEntries(collections);
   const editionTexts = await acquireFiles(editionEntries, {
     log,
     cacheDir: process.env.HADITH_SOURCE_DIR,
