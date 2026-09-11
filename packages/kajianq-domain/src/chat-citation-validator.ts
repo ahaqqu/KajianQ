@@ -43,23 +43,25 @@ export function citationLabelsOf(chunk: Chunk): string[] {
 }
 
 /**
- * The citation grammars the product renders (SPECS §2.1). Sources are strings
- * and compiled fresh per scan: a shared module-level `g` regex carries
- * `lastIndex` state between calls, which would make validation
- * order-dependent — a non-deterministic safety gate is no gate.
+ * The citation grammars the product renders (SPECS §2.1). Literal regexes, not
+ * strings compiled on the fly: a constructed regex is the ReDoS shape the
+ * security scan blocks, and there is nothing dynamic here to justify it.
  *
- * Extending the validator for a new source type is a one-line addition here.
+ * Each entry is a **factory** returning a fresh regex, because a shared
+ * module-level `g` regex carries `lastIndex` state between calls — which would
+ * make validation order-dependent, and a non-deterministic safety gate is no
+ * gate. Extending the validator for a new source type is a one-line addition.
  */
-const CITATION_GRAMMARS: readonly string[] = [
+const CITATION_GRAMMARS: readonly (() => RegExp)[] = [
   // Quran: `QS. 2:255` or `QS. Al-Baqarah:255` (surah numeric or named).
-  String.raw`\bQS\.\s*[^\s:,[\]()]+\s*:\s*\d+`,
+  () => /\bQS\.\s*[^\s:,[\]()]+\s*:\s*\d+/gi,
   // Hadith: `HR. Bukhari no. 573` / `HR. Ibn Majah no. 224 (Dhaif)`.
   // Collection names may be multi-word ("Abu Dawud", "Ibn Majah").
-  String.raw`\bHR\.\s*[^\s,]+(?:\s+[^\s,]+)?\s+no\.\s*[^\s,;.)]+`,
+  () => /\bHR\.\s*[^\s,]+(?:\s+[^\s,]+)?\s+no\.\s*[^\s,;.)]+/gi,
   // Kitab (SPECS §2.1): `Al-Umm, Imam Syafi'i, Jilid 1, Hal. 102, Bab …`.
   // Kitab ingestion has not landed, so any such citation is ungrounded by
   // definition today — detecting it is the point, not an accident.
-  String.raw`\bJilid\s+\d+\s*,\s*Hal\.\s*\d+`,
+  () => /\bJilid\s+\d+\s*,\s*Hal\.\s*\d+/gi,
 ];
 
 /** Strip the trailing `(Grade)` suffix the hadith formatter appends. */
@@ -81,9 +83,8 @@ export function normalizeCitationLabel(label: string): string {
 export function citationCandidatesIn(text: string): string[] {
   const found: string[] = [];
   const seen = new Set<string>();
-  for (const source of CITATION_GRAMMARS) {
-    const pattern = new RegExp(source, "gi");
-    for (const match of text.matchAll(pattern)) {
+  for (const makePattern of CITATION_GRAMMARS) {
+    for (const match of text.matchAll(makePattern())) {
       const label = normalizeCitationLabel(match[0]);
       if (label === "" || seen.has(label)) continue;
       seen.add(label);

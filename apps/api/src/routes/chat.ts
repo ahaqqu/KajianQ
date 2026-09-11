@@ -190,9 +190,19 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
   });
 });
 
-/** Chunk text into SSE-sized deltas (non-streaming providers, refusals). */
-function chunkText(text: string, size = 512): string[] {
-  return text.match(new RegExp(`[\\s\\S]{1,${size}}`, "g")) ?? [];
+/**
+ * Chunk text into SSE-sized deltas (non-streaming providers, refusals).
+ * A slice loop, not a built regex: the chunk size is a compile-time constant,
+ * and constructing a regex from a variable is the ReDoS pattern the security
+ * scan blocks (and needs no regex here).
+ */
+const CHUNK_SIZE = 512;
+function chunkText(text: string): string[] {
+  const chunks: string[] = [];
+  for (let i = 0; i < text.length; i += CHUNK_SIZE) {
+    chunks.push(text.slice(i, i + CHUNK_SIZE));
+  }
+  return chunks;
 }
 
 /**
