@@ -65,6 +65,13 @@ function fail(msg) {
   process.exit(1);
 }
 
+// Argument validation comes before environment validation: a bad flag must
+// report itself even when the environment is also incomplete (the CLI's
+// `--limit`/`--offset` contract is unit-tested that way).
+const selection = selectCollections(domain.HADITH_COLLECTIONS, RANGE);
+if (selection.error !== undefined) fail(selection.error);
+const collections = selection.collections;
+
 // ---------------------------------------------------------------------------
 // Main.
 // ---------------------------------------------------------------------------
@@ -72,9 +79,6 @@ function fail(msg) {
 const neonUrl = process.env.NEON_DATABASE_URL;
 if (!neonUrl && !CHECK_ONLY) fail("NEON_DATABASE_URL is not set");
 
-const selection = selectCollections(domain.HADITH_COLLECTIONS, RANGE);
-if (selection.error !== undefined) fail(selection.error);
-const collections = selection.collections;
 logger.info("starting", {
   mode: CHECK_ONLY ? "integrity-check" : "full-ingestion",
   collections,
