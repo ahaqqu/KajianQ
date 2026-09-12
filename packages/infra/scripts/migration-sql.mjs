@@ -19,9 +19,13 @@
  * comments and blank lines.
  */
 
+/** The two file-level transaction markers, as hardcoded regexes (`BEGIN;`/`COMMIT;`). */
+const BEGIN_MARKER = /^\s*BEGIN\s*;?\s*$/i;
+const COMMIT_MARKER = /^\s*COMMIT\s*;?\s*$/i;
+
 /** True when a line carries only the given transaction keyword (plus `;`). */
 function isTxnMarker(line, keyword) {
-  return new RegExp(`^\\s*${keyword}\\s*;?\\s*$`, "i").test(line);
+  return (keyword === "BEGIN" ? BEGIN_MARKER : COMMIT_MARKER).test(line);
 }
 
 /** True when a line carries no SQL: blank, or a `--` line comment. */
