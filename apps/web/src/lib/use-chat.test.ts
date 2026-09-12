@@ -23,7 +23,8 @@ const mocks = vi.hoisted(() => ({
   loadStoredSessionId: vi.fn<() => string | null>(),
   clearStoredSessionId: vi.fn(),
   rehydrateSession: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-  askChat: vi.fn<(body: unknown, handlers: { onDelta: (delta: string) => void }) => Promise<void>>(),
+  askChat:
+    vi.fn<(body: unknown, handlers: { onDelta: (delta: string) => void }) => Promise<void>>(),
 }));
 
 vi.mock("./chat-store", () => ({

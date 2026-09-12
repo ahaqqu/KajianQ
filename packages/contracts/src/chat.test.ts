@@ -118,9 +118,9 @@ describe("ChatSessionMessagesSchema", () => {
   });
 
   it("rejects a transcript whose truncated marker is missing (the tail must be visible, thermo-review A4)", () => {
-    expect(
-      v.safeParse(ChatSessionMessagesSchema, { sessionId: "s1", messages: [] }).success,
-    ).toBe(false);
+    expect(v.safeParse(ChatSessionMessagesSchema, { sessionId: "s1", messages: [] }).success).toBe(
+      false,
+    );
   });
 
   it("rejects an unknown role (roles are the product's two transcript roles)", () => {

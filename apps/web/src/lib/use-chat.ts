@@ -44,7 +44,12 @@ export function useChat(locale: "id" | "en") {
   const appliedTranscriptAtRef = useRef(0);
 
   useEffect(() => {
-    console.log("EFFECT", { busy, data: transcript.data === undefined ? "undef" : transcript.data === null ? "null" : "defined", dataUpdatedAt: transcript.dataUpdatedAt, marker: appliedTranscriptAtRef.current });
+    console.log("EFFECT", {
+      busy,
+      data: transcript.data === undefined ? "undef" : transcript.data === null ? "null" : "defined",
+      dataUpdatedAt: transcript.dataUpdatedAt,
+      marker: appliedTranscriptAtRef.current,
+    });
     if (transcript.isError) setError("load");
     if (transcript.data === undefined) return;
     // (thermo-review A1) A transcript (re)load must never clobber an

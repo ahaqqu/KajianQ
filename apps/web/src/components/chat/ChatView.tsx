@@ -108,10 +108,7 @@ export function ChatView({
         data-testid="message-list"
       >
         {transcriptTruncated && !busy && (
-          <p
-            data-testid="transcript-truncated"
-            className="px-1 pb-1 text-xs text-slate-500"
-          >
+          <p data-testid="transcript-truncated" className="px-1 pb-1 text-xs text-slate-500">
             {t(locale, "transcriptTruncated")}
           </p>
         )}
