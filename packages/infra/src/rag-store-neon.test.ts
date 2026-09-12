@@ -49,6 +49,7 @@ run("RagStore contract (real Neon, Effect-shaped seam)", () => {
         SELECT user_id FROM chat_sessions WHERE metadata->>'pfx' = ${PREFIX}
       )`;
       await sql`DELETE FROM answer_traces WHERE message_id LIKE ${PREFIX + "-%"}`;
+      await sql`DELETE FROM eval_runs WHERE label LIKE ${PREFIX + "-%"}`;
       await sql`DELETE FROM doc_parents WHERE source_key = ${PREFIX}`;
     };
   });
@@ -191,6 +192,28 @@ run("RagStore contract (real Neon, Effect-shaped seam)", () => {
         role: "assistant",
         content: "grounded answer",
         answerTraceId: storedTraceId,
+      });
+      // The eval ledger path (ADR-0034): a STRING question id ("gs-v0-019") and
+      // the stored trace id must both persist. This write was impossible for the
+      // project's entire history — a `//` note placed inside the SQL template
+      // made every statement a syntax error (42601) — and nothing covered it, so
+      // `eval_results` stayed empty while the spec claimed per-question rows.
+      const evalRunId = yield* store.insertEvalRun({
+        label: `${PREFIX}-run`,
+        report: {} as never,
+      });
+      yield* store.insertEvalResult({
+        runId: evalRunId,
+        questionId: "gs-v0-019",
+        answerTraceId: storedTraceId,
+        outcome: {
+          questionId: "gs-v0-019",
+          expectedBehavior: "refuse",
+          passed: true,
+          retrievalRecall: 1,
+          citationValidity: 1,
+          refused: true,
+        },
       });
       // Tolerant reader: a trace stored without `version` reads back unchanged
       // (version is an optional forward-compat anchor, ADR-0007 amendment).

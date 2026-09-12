@@ -84,6 +84,16 @@ export function neonEvalMethods(
 
     insertEvalResult(input) {
       const id = crypto.randomUUID();
+      // A3: the harness always supplies a real run UUID. B3: question ids are the
+      // contract's loose string references — fixture ids like "gs-v0-001" are not
+      // UUIDs, which is why the column is `text` (migration 0002).
+      //
+      // These notes live HERE, not inside the statement: text inside a tagged
+      // template is part of the SQL, and `//` is not a SQL comment, so an inline
+      // note reaches the server as `syntax error at or near ":"` (SQLSTATE
+      // 42601). That is exactly how `eval_results` stayed empty through every
+      // run — the ledger was never writable, and nothing caught it because no
+      // test inserted an eval result.
       return Effect.as(
         sqlEffect(
           sql,
@@ -94,10 +104,7 @@ export function neonEvalMethods(
           )
           VALUES (
             ${id},
-            // A3: the harness always supplies a real run UUID now.
             ${input.runId}::uuid,
-            // B3: question ids are the contract's loose string references
-            // (fixture ids like "gs-v0-001" are not UUIDs).
             ${input.questionId},
             ${input.answerTraceId ?? null},
             ${JSON.stringify(input.outcome)}::jsonb
