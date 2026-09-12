@@ -77,7 +77,14 @@ export function createKajianQGenerator(deps: KajianQGeneratorDeps): Generator<Ka
               ),
             },
           ];
-          const stream = deps.provider.stream;
+          // Bind the provider's own method before narrowing it. `Provider`
+          // methods are class members on the fallback chain, so extracting
+          // `stream` into a variable detaches `this` — and the chain's first
+          // act is `this.eligibleEffectFor(spec)`, which then dies with
+          // "Cannot read properties of undefined". Narrowing here (rather than
+          // a `!` inside the stage) still keeps the invariant in the type.
+          const provider = deps.provider;
+          const stream = provider.stream?.bind(provider);
           const streamed =
             stream !== undefined
               ? yield* streamDraft(deps, stream, turns)

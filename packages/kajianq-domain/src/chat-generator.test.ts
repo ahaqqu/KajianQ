@@ -75,6 +75,29 @@ describe("createKajianQGenerator — streaming", () => {
     expect(seen).toEqual(["Menurut ", "QS. 2:255", " …"]);
   });
 
+  it("calls the provider's stream with its receiver attached", async () => {
+    // Regression: the real fallback chain implements `stream` as a class method
+    // whose first act is `this.eligibleEffectFor(spec)`. Extracting it into a
+    // local (`const stream = deps.provider.stream`) detached `this`, so every
+    // streamed answer died with "Cannot read properties of undefined (reading
+    // 'eligibleEffectFor')". Object-literal stubs with arrow functions cannot
+    // catch this — the first live staging smoke did.
+    const provider = {
+      modelId: "bound-provider",
+      generate: () => Effect.die("generate must not be used when stream exists"),
+      stream: function (this: { modelId: string }) {
+        // Throws on a detached receiver, exactly like the real chain.
+        return Effect.succeed({
+          deltas: Stream.fromIterable([`ok:${this.modelId}`]),
+          cost: () => Effect.succeed(cost("bound-provider", 1)),
+        });
+      },
+    };
+    const gen = createKajianQGenerator({ provider: provider as never, language: "id" });
+    const draft = await runStage<{ text: string }>(gen.generate(context([chunk("QS. 2:255")])));
+    expect(draft.text).toBe("ok:bound-provider");
+  });
+
   it("falls back to a single generate call when the provider cannot stream", async () => {
     const gen = createKajianQGenerator({
       provider: {
