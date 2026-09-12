@@ -8,7 +8,7 @@ import {
   type Reviewer,
 } from "@app/rag-core";
 import type { KajianQFilters } from "./filters";
-import { citationLabelsOf, validateCitations } from "./chat-citation-validator";
+import { validateCitations } from "./chat-citation-validator";
 import { applyProductRules } from "./chat-postprocess";
 
 /**
@@ -73,6 +73,66 @@ export function refusalTextFor(
   return language === "en" ? DEFAULT_REFUSALS.en : DEFAULT_REFUSALS.id;
 }
 
+/**
+ * The reviewer's system prompt: the grounding rules for the cross-vendor gate.
+ * Exported with `buildReviewMessages` so a test or an offline probe exercises
+ * the exact prompt production sends.
+ */
+export const REVIEWER_SYSTEM_PROMPT = [
+  "You are a faithfulness reviewer for a grounded Islamic knowledge answer.",
+  "Given the question, the draft answer, and the retrieved evidence, reply with ONLY JSON:",
+  '{"verdict": "pass" | "fail", "reason": "..."}',
+  "The evidence is the exact context the answer was given: each block is the Arabic",
+  "original, the machine-translation label, the translation where the source has it,",
+  "and the block's own citation label.",
+  "Translating a quoted passage into the answer's language, quoting it, and naming the",
+  "citation labels the evidence itself carries are REQUIRED of the answer and are never",
+  "grounds for failure: a label that appears in the evidence is supported by definition,",
+  "and a translation of a quoted passage is not a new claim.",
+  "The question is the user's own wording. Using a term the QUESTION itself uses for a",
+  "passage the evidence contains (for example, presenting a retrieved verse as the one",
+  "the question names) is not an unsupported claim.",
+  "Fail ONLY when the answer asserts something the evidence does not support, contradicts",
+  "the evidence, or cites a source absent from the evidence.",
+].join("\n");
+
+/**
+ * The reviewer's evidence + draft turns. The evidence is the assembler's own
+ * context turn — the exact text the Generator was asked to answer from — so
+ * the gate cannot fail an answer for quoting what the prompt actually
+ * provided. It used to re-render `- ${chunk.text}`, which for a fallback-track
+ * hit is the translation only: the Generator saw the Arabic layer and the
+ * Reviewer rejected answers that quoted it as "absent from the evidence".
+ *
+ * The question rides along so the gate can tell the user's own term (a name
+ * the answer is entitled to reuse) from a claim the evidence does not carry.
+ *
+ * Using the assembled turn (rather than re-rendering the chunks) makes the
+ * parity structural: one source of truth, and history rides its own turn, so
+ * the last user turn is the evidence.
+ */
+export function buildReviewMessages(
+  context: AssembledContext<KajianQFilters>,
+  draftText: string,
+): { role: string; content: string }[] {
+  const evidence = context.turns.filter((turn) => turn.role === "user").at(-1)?.content ?? "";
+  return [
+    { role: "system", content: REVIEWER_SYSTEM_PROMPT },
+    {
+      role: "user",
+      content: [
+        `Question: ${context.query.intent}`,
+        "",
+        "Evidence:",
+        evidence,
+        "",
+        "Draft answer:",
+        draftText,
+      ].join("\n"),
+    },
+  ];
+}
+
 export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<KajianQFilters> {
   const refusal = deps.refusalText ?? ((reason) => refusalTextFor("id", reason));
   return {
@@ -102,46 +162,7 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
             return withRules(draft, context);
           }
           const reply = yield* deps.provider
-            .generate({
-              turns: [
-                {
-                  role: "system",
-                  content: [
-                    "You are a faithfulness reviewer for a grounded Islamic knowledge answer.",
-                    "Given the draft answer and the retrieved evidence, reply with ONLY JSON:",
-                    '{"verdict": "pass" | "fail", "reason": "..."}',
-                    "The evidence is raw source text (Arabic, plus Indonesian where the source has it).",
-                    "Translating a quoted passage into the answer's language, quoting it, and naming the",
-                    "citation labels the evidence itself carries are REQUIRED of the answer and are never",
-                    "grounds for failure: a label that appears in the evidence is supported by definition,",
-                    "and a translation of a quoted passage is not a new claim.",
-                    "Fail ONLY when the answer asserts something the evidence does not support, contradicts",
-                    "the evidence, or cites a source absent from the evidence.",
-                  ].join("\n"),
-                },
-                {
-                  role: "user",
-                  content: [
-                    "Evidence:",
-                    // Each chunk's own citation label is part of the evidence. It
-                    // used to be omitted, which made the reviewer structurally
-                    // unable to verify any citation: it saw only the raw text, so
-                    // "HR. Malik no. 185" looked unsupported on every question and
-                    // it failed every answer that cited a source — the exact
-                    // rejections the live smoke produced ("cites specific hadith
-                    // numbers … not present in the provided evidence").
-                    ...context.chunks.map((c) => {
-                      const labels = citationLabelsOf(c);
-                      const head = labels.length > 0 ? `[${labels.join("; ")}] ` : "";
-                      return `- ${head}${c.text}`;
-                    }),
-                    "",
-                    "Draft answer:",
-                    draft.text,
-                  ].join("\n"),
-                },
-              ],
-            })
+            .generate({ turns: buildReviewMessages(context, draft.text) })
             .pipe(Effect.mapError((cause: unknown) => ({ cause })));
           run.record({
             stage: "reviewer",

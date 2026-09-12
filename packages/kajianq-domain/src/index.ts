@@ -149,7 +149,11 @@ export {
   type RetrieverStore,
   type StoreBridge,
 } from "./chat-retriever";
-export { createKajianQAssembler, MACHINE_TRANSLATION_LABEL } from "./chat-assembler";
+export {
+  createKajianQAssembler,
+  MACHINE_TRANSLATION_LABEL,
+  renderEvidenceChunk,
+} from "./chat-assembler";
 export { chatSystemPrompt, chatUserPrompt, type ChatLanguage } from "./chat-prompts";
 export {
   validateCitations,
@@ -165,6 +169,9 @@ export {
   createKajianQReviewer,
   refusalTextFor,
   DEFAULT_REFUSALS,
+  buildReviewMessages,
+  REVIEWER_SYSTEM_PROMPT,
+  parseReviewerVerdict,
   type ReviewerProvider,
 } from "./chat-reviewer";
 export {

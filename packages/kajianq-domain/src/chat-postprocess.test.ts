@@ -208,7 +208,15 @@ describe("chatSystemPrompt — the grounding rules the model receives", () => {
   });
 
   it("forbids naming a citation that is not in the context (the fabrication rule)", () => {
-    expect(chatSystemPrompt("id")).toMatch(/Jangan pernah menyebut sitasi yang tidak ada/);
-    expect(chatSystemPrompt("en")).toMatch(/Never name a citation that is not in the context/);
+    expect(chatSystemPrompt("id")).toMatch(
+      /Jangan pernah menyebut sitasi yang tidak tercetak di konteks/,
+    );
+    expect(chatSystemPrompt("en")).toMatch(
+      /Never name a citation that is not printed in the context/,
+    );
+    // The memory-citation case that refused gs-v0-015: a well-known verse the
+    // model knows but the retrieval did not return is still a fabricated cite.
+    expect(chatSystemPrompt("id")).toMatch(/hafal dari luar konteks/);
+    expect(chatSystemPrompt("en")).toMatch(/know from memory/);
   });
 });

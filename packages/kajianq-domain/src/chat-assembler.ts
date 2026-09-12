@@ -38,11 +38,26 @@ function presentationRank(chunk: Chunk): number {
 /** The machine-translation label (ADR-0006). Domain vocabulary lives here. */
 export const MACHINE_TRANSLATION_LABEL = "Terjemahan mesin — lihat teks Arab asli";
 
-/** One evidence block as the prompt renders it. */
-function renderChunk(chunk: Chunk): string {
+/**
+ * One evidence block, exactly as the Generator's prompt renders it. Exported
+ * because the Reviewer must be shown the SAME evidence: its lines used to be
+ * `- ${chunk.text}`, which for a fallback-track hit is the Indonesian layer
+ * only, so the Reviewer failed answers that quoted the Arabic the Generator
+ * had (and the label) as "absent from the evidence". One renderer, two
+ * readers — the gate cannot disagree with the prompt about what was provided.
+ */
+export function renderEvidenceChunk(chunk: Chunk): string {
   const meta = (chunk.metadata ?? {}) as Record<string, unknown>;
   const citation = typeof meta["citation"] === "string" ? meta["citation"] : "";
-  const grade = typeof meta["grade"] === "string" ? ` (${meta["grade"]})` : "";
+  // The corpus citation already carries the grade for hadith ("HR. Malik no.
+  // 187 (Sahih)"); appending it again produced "(Sahih) (sahih)" in the label,
+  // which the Generator copied verbatim and the Reviewer then failed as a
+  // modified citation. Only add the grade when the label lacks it.
+  const gradeName = typeof meta["grade"] === "string" ? meta["grade"] : "";
+  const grade =
+    gradeName !== "" && !citation.toLowerCase().includes(gradeName.toLowerCase())
+      ? ` (${gradeName})`
+      : "";
   const label = citation !== "" ? ` [${citation}${grade}]` : "";
   // The evidence line: Arabic original first, then the display translation.
   // `chunk.text` is the track the retriever selected (ADR-0013: the primary
@@ -76,7 +91,7 @@ export function createKajianQAssembler(): Assembler<KajianQFilters> {
           const ordered = [...chunks].sort(
             (a, b) => presentationRank(a) - presentationRank(b) || (b.score ?? 0) - (a.score ?? 0),
           );
-          const context = ordered.map(renderChunk).join("\n\n");
+          const context = ordered.map(renderEvidenceChunk).join("\n\n");
           const history = historyOf(query);
           const preamble = renderHistory(history);
           const turns: Turn[] = [];

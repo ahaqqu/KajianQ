@@ -51,6 +51,14 @@ describe("the no-gloss rule", () => {
     expect(chatSystemPrompt("id")).toMatch(/glosarium/);
     expect(chatSystemPrompt("en")).toMatch(/glosses/);
   });
+
+  it("forbids asserting links between evidence items the context does not state", () => {
+    // Live smoke gs-v0-015: the reviewer failed a draft for claiming
+    // "HR. Malik no. 185 corresponds to QS. 15:87" — a relationship neither
+    // block states. An inferred link is an interpretation like any other.
+    expect(chatSystemPrompt("id")).toMatch(/hubungan antar-bukti/);
+    expect(chatSystemPrompt("en")).toMatch(/relationships between evidence items/);
+  });
 });
 
 /**
@@ -66,14 +74,21 @@ describe("the no-gloss rule", () => {
  * says the fact is unknown" loophole explicitly.
  */
 describe("the specific-fact refusal rule", () => {
-  it("makes a demanded-but-absent fact count as insufficient context, per language", () => {
-    expect(chatSystemPrompt("id")).toMatch(/fakta spesifik/);
-    expect(chatSystemPrompt("en")).toMatch(/specific fact/);
+  it("makes an absent specific item count as a missing answer, per language", () => {
+    expect(chatSystemPrompt("id")).toMatch(/ayat, hadits, angka, tahun, atau nama tertentu/);
+    expect(chatSystemPrompt("en")).toMatch(/a particular verse, hadith, number, year, or name/);
     // The loophole that gs-v0-019 exploited: the context says "no one knows".
-    expect(chatSystemPrompt("id")).toMatch(/hanya menyatakan bahwa fakta itu tidak diketahui/);
-    expect(chatSystemPrompt("en")).toMatch(/only says that the fact is unknown/);
+    expect(chatSystemPrompt("id")).toMatch(/hanya menyatakan bahwa hal itu tidak diketahui/);
+    expect(chatSystemPrompt("en")).toMatch(/only says that it is unknown/);
     // And it must still route to the exact sentence the detector matches.
     expect(chatSystemPrompt("id")).toContain(`"${DEFAULT_REFUSALS.id}"`);
     expect(chatSystemPrompt("en")).toContain(`"${DEFAULT_REFUSALS.en}"`);
+  });
+
+  it("guards the answer cases: present-subject questions must be answered", () => {
+    // Without this guard the refusal condition swallowed gs-v0-015 ("what does
+    // Surah Al-Fatihah mean…"), which is answerable from its evidence.
+    expect(chatSystemPrompt("id")).toMatch(/WAJIB dijawab dari konteks/);
+    expect(chatSystemPrompt("en")).toMatch(/MUST be answered from the context/);
   });
 });
