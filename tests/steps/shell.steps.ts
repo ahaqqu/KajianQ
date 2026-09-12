@@ -12,6 +12,14 @@ Then("I see the home title", async ({ page }) => {
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
 });
 
+When("I open the health page", async ({ page }) => {
+  await page.goto("/health");
+});
+
+Then("I see the chat composer", async ({ page }) => {
+  await expect(page.getByTestId("composer")).toBeVisible({ timeout: 15_000 });
+});
+
 Then("the health schema version is visible", async ({ page }) => {
   await expect(page.getByTestId("schema-version")).toBeVisible({
     timeout: 15_000,

@@ -1,5 +1,9 @@
 import * as v from "valibot";
-import { AnonymousSessionSchema, ChatSessionMessagesSchema } from "@app/contracts";
+import {
+  AnonymousSessionSchema,
+  ChatSessionMessagesSchema,
+  type ChatSessionMessages,
+} from "@app/contracts";
 import { apiFetch } from "./api";
 
 /**
@@ -92,4 +96,26 @@ export async function fetchSessionMessages(
   });
   if (!res.ok) throw new ChatApiError(errorKindOf(res.status), res.status);
   return v.parse(ChatSessionMessagesSchema, await res.json());
+}
+
+/**
+ * Reload-time rehydration: bootstraps a token when none is stored, retries
+ * a 401 once with a fresh anonymous session, and maps a 404 (the stored
+ * session was reclaimed) to null — a fresh start, not an error.
+ */
+export async function rehydrateSession(
+  sessionId: string,
+  signal?: AbortSignal,
+): Promise<ChatSessionMessages | null> {
+  const stored = loadStoredToken();
+  const token = stored ?? (await bootstrapAnonymousToken(signal));
+  try {
+    return await fetchSessionMessages(sessionId, token, signal);
+  } catch (err) {
+    if (err instanceof ChatApiError && err.status === 404) return null;
+    if (err instanceof ChatApiError && err.kind === "unauthorized") {
+      return fetchSessionMessages(sessionId, await bootstrapAnonymousToken(signal), signal);
+    }
+    throw err;
+  }
 }
