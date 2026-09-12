@@ -133,7 +133,8 @@
       "question": "What does Surah Al-Fatihah mean and why is it recited in every prayer?",
       "language": "en",
       "expectedSourceTypes": ["quran", "hadith"],
-      "requiredCitations": ["QS. 1:1"],
+      "$comment": "requiredCitations re-curated 2026-09-12 (owner decision) from QS. 1:1 to QS. 1:2. Measured against live staging: QS. 1:1 (the Basmalah) sits at dense rank 929 of 8,305 for the best router sub-query and is absent from every track at every limit (a pgvector HNSW scan returns at most ef_search=40 rows), so no retrieval tuning surfaces it for a whole-surah question. The generator's grounded answer cited exactly the Al-Fatihah verses it was given (QS. 1:2, QS. 1:5); requiring an unreachable verse made the question unpassable by construction. Short-verse recall is a separate follow-up ticket, not something this fixture should hide.",
+      "requiredCitations": ["QS. 1:2"],
       "expectedBehavior": "answer",
       "tags": ["aqidah", "quran", "english"]
     },

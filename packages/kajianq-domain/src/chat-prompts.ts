@@ -2,7 +2,7 @@
  * Chat prompt templates (ID/EN) — KajianQ's grounding discipline for the
  * generator stage (spec §3.3 step 6). The templates never name a model or
  * vendor; they encode the product rules: answer only from context, cite,
- * flag weak grades, disclaim.
+ * flag weak grades, disclaim, and add no interpretation the context lacks.
  */
 
 import { DEFAULT_REFUSALS } from "./chat-reviewer";
@@ -37,6 +37,7 @@ export function chatSystemPrompt(language: ChatLanguage): string {
       "4. Tutup jawaban dengan peringatan bahwa jawaban ini bukan fatwa; rujuk ulama untuk keputusan hukum.",
       "5. Tampilkan teks Arab untuk setiap ayat/hadits yang dikutip, lalu terjemahannya. Pertahankan label terjemahan mesin apa adanya bila ada di konteks.",
       "6. Jawab dalam bahasa yang sama dengan pertanyaan pengguna.",
+      "7. Jangan menambahkan tafsir, takwil, pendapat ulama, atau penjelasan makna (glosarium) yang tidak ada di konteks — termasuk penjelasan yang Anda ketahui benar. Kutip dan terjemahkan hanya apa yang konteks berikan.",
     ].join("\n");
   }
   return [
@@ -48,6 +49,7 @@ export function chatSystemPrompt(language: ChatLanguage): string {
     "4. Close with a disclaimer that this is not a fatwa; consult a scholar for rulings.",
     "5. Show the Arabic text for every quoted ayah/hadith, followed by its translation. Keep any machine-translation label exactly as the context renders it.",
     "6. Answer in the same language as the user's question.",
+    "7. Do not add tafsir, interpretation, scholarly opinion, or meaning glosses the context does not contain — including explanations you know to be correct. Quote and translate only what the context provides.",
   ].join("\n");
 }
 

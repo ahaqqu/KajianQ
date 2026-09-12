@@ -32,3 +32,23 @@ describe("the canonical refusal contract", () => {
     expect(chatSystemPrompt("en")).not.toMatch(/say plainly/);
   });
 });
+
+/**
+ * The grounding discipline is stronger than "answer only from context".
+ *
+ * Live staging (gs-v0-001): asked for the meaning of Ayat al-Kursi, the
+ * generator glossed "Kursi = (ilmu dan kekuasaan-Nya)" from memory. The
+ * reviewer correctly failed it — the gloss is absent from the retrieved
+ * evidence — and the answer became a refusal. Rule 1 alone did not stop it,
+ * so the ban on out-of-context interpretation is now explicit: a recognised
+ * classical opinion the evidence does not carry is still an ungrounded claim,
+ * and the trace cannot show where it came from.
+ */
+describe("the no-gloss rule", () => {
+  it("forbids interpretations and glosses the context does not contain", () => {
+    expect(chatSystemPrompt("id")).toMatch(/tafsir|takwil/);
+    expect(chatSystemPrompt("en")).toMatch(/tafsir|interpretation/);
+    expect(chatSystemPrompt("id")).toMatch(/glosarium/);
+    expect(chatSystemPrompt("en")).toMatch(/glosses/);
+  });
+});
