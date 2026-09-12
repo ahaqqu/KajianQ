@@ -120,6 +120,12 @@ When("I ask something the corpus cannot answer", async ({ page }) => {
 });
 
 When("I open a chat whose stored transcript was capped", async ({ page }) => {
+  // A capped transcript only ever shows through rehydration, and a fresh
+  // context boots with no session id (the rehydration query is disabled) —
+  // store the session id before the app boots.
+  await page.addInitScript(() => {
+    localStorage.setItem("kajianq.chat.sessionId", "sess-e2e");
+  });
   await openChatWithFixtures(page, ANSWER_FIXTURE, { ...TRANSCRIPT_FIXTURE, truncated: true });
 });
 
