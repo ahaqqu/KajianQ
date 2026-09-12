@@ -2,6 +2,8 @@ import { newRouter } from "../lib/guard";
 import {
   authGuard,
   buildChatWiring,
+  chunkFetcher,
+  citationsFrameFor,
   sseFrame,
   wiringOr503,
   type ChatWiring,
@@ -155,14 +157,15 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
     }),
   );
 
-  // The SSE wire contract (meta → deltas → done, ADR-0034). A refused answer
-  // never ships the vendor's text: the reviewer recorded a `refusal` event on
-  // the trace (the same signal the eval harness reads), and the frames carry
-  // the plain refusal instead. Otherwise the vendor's own delta sequence is
-  // replayed when it reproduces the delivered text; post-processing may have
-  // APPENDED deterministic rules (disclaimer, dhaif warning), which ride one
-  // trailing delta so the model's streamed text stays byte-identical on the
-  // wire. When generation did not stream at all, the text is chunked.
+  // The SSE wire contract (meta → deltas → citations → done, ADR-0034 +
+  // #11/ADR-0040). A refused answer never ships the vendor's text: the
+  // reviewer recorded a `refusal` event on the trace (the same signal the
+  // eval harness reads), and the frames carry the plain refusal instead.
+  // Otherwise the vendor's own delta sequence is replayed when it reproduces
+  // the delivered text; post-processing may have APPENDED deterministic rules
+  // (disclaimer, dhaif warning), which ride one trailing delta so the model's
+  // streamed text stays byte-identical on the wire. When generation did not
+  // stream at all, the text is chunked.
   const refused = answer.trace.events.some((e) => e.kind === "refusal");
   const streamed = deltas.join("");
   const frames = refused
@@ -170,6 +173,19 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
     : streamed !== "" && answer.text.startsWith(streamed)
       ? [...deltas, ...chunkText(answer.text.slice(streamed.length))]
       : chunkText(answer.text);
+
+  // The structured citation frame (#11, ADR-0040): derived from the trace
+  // that was JUST persisted above — the trace is the source of truth for
+  // which citations may exist — with display data joined from the store by
+  // the trace's own chunk ids. The client never re-implements the citation
+  // grammar, so a span the trace does not ground can never render as a chip.
+  const citations = await citationsFrameFor({
+    trace: answer.trace,
+    messageId: answerMessageId,
+    answerText: answer.text,
+    fetchChunks: chunkFetcher(store, runStore),
+    warn: (msg, fields) => logger.warn(msg, fields),
+  });
 
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -185,6 +201,7 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
       for (const delta of frames) {
         controller.enqueue(enc.encode(sseFrame("delta", delta)));
       }
+      controller.enqueue(enc.encode(sseFrame("citations", JSON.stringify(citations))));
       controller.enqueue(enc.encode(sseFrame("done", "{}")));
       controller.close();
     },

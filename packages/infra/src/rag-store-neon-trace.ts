@@ -13,7 +13,7 @@ import { sqlEffect, type SqlRunner } from "./rag-store-neon-errors";
  */
 export function neonTraceMethods(
   sql: SqlRunner,
-): Pick<RagStore, "insertAnswerTrace" | "getAnswerTraceByMessage"> {
+): Pick<RagStore, "insertAnswerTrace" | "getAnswerTraceByMessage" | "getAnswerTraceById"> {
   return {
     insertAnswerTrace(input) {
       // Trace contract violations are constraint-class: the input, not the
@@ -44,6 +44,28 @@ export function neonTraceMethods(
           ),
           id,
         ),
+      );
+    },
+
+    // The FK read (#11): `chat_messages.answer_trace_id` holds THIS column's
+    // id, so a transcript rehydrates its traces by row id, not message id.
+    getAnswerTraceById(id) {
+      return Effect.flatMap(
+        sqlEffect(
+          sql,
+          () =>
+            sql`
+          SELECT trace FROM answer_traces WHERE id = ${id}::uuid
+        ` as Promise<{ trace: unknown }[]>,
+        ),
+        (rows) => {
+          const [row] = rows;
+          if (!row) return Effect.succeed<Trace | null>(null);
+          return Effect.try({
+            try: () => parseTrace(row.trace) as Trace | null,
+            catch: constraintError,
+          });
+        },
       );
     },
 

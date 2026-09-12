@@ -10,6 +10,13 @@ import {
   type RagStore,
 } from "@app/infra";
 export { authGuard } from "./auth";
+// Re-exported so the chat route keeps its 5-import agentic cap (same pattern
+// as the authGuard re-export): the route imports one name from its lib hub.
+export {
+  citationsFrameFor,
+  chunkFetcher,
+  rehydrateTranscript,
+} from "./chat-citations";
 
 /**
  * Env-bound wiring for the chat route (#10): the one place the Worker's

@@ -26,11 +26,14 @@ async function main() {
     process.exit(1);
   }
 
+  // Hono's route table uses `:param`; hono-openapi documents `{param}`.
+  // Normalize both sides to the OpenAPI form so path parameters compare.
+  const toOpenApiPath = (path) => path.replace(/:([A-Za-z0-9_]+)/g, "{$1}");
   const registered = [
     ...new Set(
       api.routes
         .filter((r) => r.path.startsWith("/v1/") && r.method !== "ALL")
-        .map((r) => `${r.method} ${r.path}`),
+        .map((r) => `${r.method} ${toOpenApiPath(r.path)}`),
     ),
   ].sort();
 

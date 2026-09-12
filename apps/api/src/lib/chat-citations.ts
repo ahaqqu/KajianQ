@@ -1,10 +1,13 @@
 import {
   ChatCitationsFrameSchema,
+  ChatSessionMessagesSchema,
   type ChatCitation,
   type ChatCitationsFrame,
+  type ChatSessionMessage,
+  type ChatSessionMessages,
   type Trace,
 } from "@app/contracts";
-import type { DocChildById, RagStore } from "@app/infra";
+import type { ChatMessage, DocChildById, RagStore } from "@app/infra";
 import {
   citationCandidatesIn,
   citationLabelsOf,
@@ -157,4 +160,81 @@ export async function citationsFrameFor(input: {
     ChatCitationsFrameSchema,
     deriveCitationsFrame({ trace, messageId, answerText, chunksById: byId }),
   );
+}
+
+/**
+ * Rehydrate a full transcript (#11, ADR-0040): map persisted chat rows onto
+ * the rehydration contract, deriving each assistant message's citation frame
+ * from ITS persisted trace — the same derivation the live `citations` frame
+ * uses, so a rehydrated answer can show exactly the citations it may show
+ * live, and never one its trace does not ground. Display data is fetched in
+ * ONE store read for the whole transcript (the union of every trace's chunk
+ * refs). A trace that is missing, fails to load, or yields a contract-invalid
+ * frame degrades to a plain-text message — never to invented citations.
+ */
+export async function rehydrateTranscript(input: {
+  sessionId: string;
+  rows: readonly ChatMessage[];
+  /** Reads a trace by the message row's `answer_trace_id` (the FK value). */
+  getTrace: (traceId: string) => Promise<Trace | null>;
+  fetchChunks: CitationChunkSource;
+  warn: (msg: string, fields?: Record<string, string | number | boolean | null>) => void;
+}): Promise<ChatSessionMessages> {
+  const { sessionId, rows, getTrace, fetchChunks, warn } = input;
+  const traces = new Map<string, Trace>();
+  await Promise.all(
+    rows.map(async (row) => {
+      if (row.role !== "assistant" || row.answerTraceId === null) return;
+      let trace: Trace | null = null;
+      try {
+        trace = await getTrace(row.answerTraceId);
+      } catch (err) {
+        warn("chat.rehydration.trace_lookup_failed", {
+          messageId: row.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      if (trace !== null) traces.set(row.id, trace);
+    }),
+  );
+  const ids = new Set<string>();
+  for (const trace of traces.values()) {
+    for (const id of traceChunkIds(trace)) ids.add(id);
+  }
+  let chunksById = new Map<string, DocChildById>();
+  try {
+    const chunks = await fetchChunks([...ids]);
+    chunksById = new Map(chunks.map((c) => [c.id, c]));
+  } catch (err) {
+    warn("chat.rehydration.chunk_lookup_failed", {
+      sessionId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  const messages: ChatSessionMessage[] = rows.map((row) => {
+    // The route only ever writes the transcript's two roles.
+    const base = {
+      id: row.id,
+      role: row.role as ChatSessionMessage["role"],
+      content: row.content,
+      createdAt: row.createdAt,
+    };
+    const trace = traces.get(row.id);
+    if (trace === undefined) return base;
+    const parsed = v.safeParse(
+      ChatCitationsFrameSchema,
+      deriveCitationsFrame({
+        trace,
+        messageId: row.id,
+        answerText: row.content,
+        chunksById,
+      }),
+    );
+    if (!parsed.success) {
+      warn("chat.rehydration.invalid_frame", { messageId: row.id });
+      return base;
+    }
+    return { ...base, citations: parsed.output };
+  });
+  return v.parse(ChatSessionMessagesSchema, { sessionId, messages });
 }

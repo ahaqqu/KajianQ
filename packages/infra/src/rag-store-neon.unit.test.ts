@@ -764,6 +764,18 @@ describe("Neon eval-ledger methods (unit, fake SQL)", () => {
     expect(rows[0]?.outcome).toEqual({ passed: true });
   });
 
+  it("getAnswerTraceById reads by row id and parses the trace tolerantly", async () => {
+    const sql = makeFakeSql();
+    const store = createNeonRagStore(sql);
+    sql._setTag([{ trace: sampleTrace }]);
+    const trace = await runOk(store.getAnswerTraceById("row-1"));
+    expect(sql._calls[0]?.text).toContain("WHERE id = ?::uuid");
+    expect(trace?.id).toBe("t1");
+    // No row → null, not a failure.
+    sql._setTag([]);
+    expect(await runOk(store.getAnswerTraceById("missing"))).toBeNull();
+  });
+
   it("getDocChildrenByIds dedupes ids, strips vectors, and carries the parent title", async () => {
     const sql = makeFakeSql();
     const store = createNeonRagStore(sql);
