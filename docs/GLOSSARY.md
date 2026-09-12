@@ -85,3 +85,10 @@ Canonical terms beyond `CONTEXT.md`, captured per the domain-modeling discipline
 **Context:** verification (ops)
 **Definition:** A workflow run whose smoke result is cited as a pull request's evidence, distinguishable from probe and iteration runs by its deployed commit equalling the pull request head.
 **Also known as:** gate run, CI run (both rejected — neither implies the sha equality that makes the result evidence)
+
+### Corpus Snapshot
+
+**Type:** value object
+**Context:** ingestion (ops)
+**Definition:** A labelled, immutable, restorable copy of a corpus-bearing store taken at a named checkpoint — before or after a paid ingest — held at both a provider layer and as a portable dump plus manifest, so no single provider, plan change, or deletion can lose the corpus.
+**Also known as:** backup, dump (both rejected — "backup" hides the two-layer requirement, and "dump" names only the portable artifact rather than the checkpoint)
