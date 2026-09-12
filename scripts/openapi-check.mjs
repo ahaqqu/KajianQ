@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { createApi } from "../apps/api/src/app";
+import { toOpenApiPath } from "../apps/api/src/lib/openapi-path";
 
 /**
  * openapi-check.mjs
@@ -8,6 +9,10 @@ import { createApi } from "../apps/api/src/app";
  * with the registered Hono routes. The route coverage test in
  * apps/api/src/app.test.ts is the real gate; this script gives a quick local
  * command and a non-zero exit code when the doc is broken or drifting.
+ *
+ * Bun runs this script, so it imports the TS owner of the path normalization
+ * directly (thermo-review B3) — the same `toOpenApiPath` the coverage test
+ * uses, so the two checks cannot drift apart.
  */
 
 const env = { ASSETS: { fetch } };
@@ -26,9 +31,8 @@ async function main() {
     process.exit(1);
   }
 
-  // Hono's route table uses `:param`; hono-openapi documents `{param}`.
-  // Normalize both sides to the OpenAPI form so path parameters compare.
-  const toOpenApiPath = (path) => path.replace(/:([A-Za-z0-9_]+)/g, "{$1}");
+  // Hono's route table uses `:param`; hono-openapi documents `{param}` —
+  // normalized through the shared owner (thermo-review B3).
   const registered = [
     ...new Set(
       api.routes
