@@ -17,7 +17,10 @@ export default defineConfig({
     trace: "on-first-retry",
     // The PWA service worker's precache multiplies per-context requests
     // against the dev worker's per-IP rate limiter (120/min); these tests
-    // exercise app behavior, not SW mechanics (covered by the build).
+    // exercise app behavior, not SW mechanics. Known accepted gap (thermo-
+    // review C2, recorded in SPECS §2.3): with SWs blocked here and no SW
+    // unit test, the update-prompt flow (sw-update.tsx) is untested
+    // everywhere — registration compiling is all "the build" proves.
     serviceWorkers: "block",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],

@@ -33,7 +33,12 @@ import {
 
 type SessionEnv = import("../env").ApiEnv["Bindings"] & Record<string, string | undefined>;
 
-/** Transcript cap: a session is an anonymous conversation, not an archive. */
+/**
+ * Transcript cap: a session is an anonymous conversation, not an archive.
+ * The endpoint reads one row beyond the cap to DETECT truncation, so the
+ * client is told it is seeing a tail instead of silently losing the oldest
+ * turns (thermo-review A4).
+ */
 const MESSAGES_LIMIT = 200;
 
 const SESSION_MESSAGES_OPENAPI = describeRoute({
@@ -90,13 +95,19 @@ export const chatSessionRoutes = newRouter().get(
       return c.json({ error: "invalid_request" }, 404);
     }
 
-    const rows = (await runStore(
-      fullStore.getChatMessages(sessionId, { limit: MESSAGES_LIMIT }),
+    // One row past the cap answers "is there more?" without a count query.
+    // The store returns the newest tail in chronological (oldest-first)
+    // order, so the extra row is the single oldest message — drop it.
+    const fetched = (await runStore(
+      fullStore.getChatMessages(sessionId, { limit: MESSAGES_LIMIT + 1 }),
     )) as readonly ChatMessage[];
+    const truncated = fetched.length > MESSAGES_LIMIT;
+    const rows = truncated ? fetched.slice(1) : fetched;
 
     const payload: ChatSessionMessages = await rehydrateTranscript({
       sessionId,
       rows,
+      truncated,
       getTrace: async (traceId) =>
         (await runStore(fullStore.getAnswerTraceById(traceId))) as Trace | null,
       fetchChunks: chunkFetcher(fullStore, runStore),

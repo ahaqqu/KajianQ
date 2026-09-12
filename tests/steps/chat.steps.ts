@@ -44,6 +44,7 @@ const REFUSAL_FIXTURE = [
 
 const TRANSCRIPT_FIXTURE = {
   sessionId: "sess-e2e",
+  truncated: false,
   messages: [
     { id: "m0", role: "user", content: "Apa itu ayat kursi?", createdAt: 1_700_000_000_000 },
     {
@@ -74,10 +75,11 @@ const TRANSCRIPT_FIXTURE = {
 async function openChatWithFixtures(
   page: import("@playwright/test").Page,
   answerFixture: string,
+  transcriptFixture: Record<string, unknown> = TRANSCRIPT_FIXTURE,
 ): Promise<void> {
   await page.route("**/v1/auth/anonymous", (route) => route.fulfill({ json: SESSION }));
   await page.route("**/v1/chat/sessions/*/messages", (route) =>
-    route.fulfill({ json: TRANSCRIPT_FIXTURE }),
+    route.fulfill({ json: transcriptFixture }),
   );
   await page.route("**/v1/chat", async (route) => {
     // A short delay so the staged loading state is observably honest.
@@ -115,6 +117,14 @@ When("I ask something the corpus cannot answer", async ({ page }) => {
   await openChatWithFixtures(page, REFUSAL_FIXTURE);
   await page.getByTestId("composer").fill("Pertanyaan di luar cakupan?");
   await page.getByTestId("send").click();
+});
+
+When("I open a chat whose stored transcript was capped", async ({ page }) => {
+  await openChatWithFixtures(page, ANSWER_FIXTURE, { ...TRANSCRIPT_FIXTURE, truncated: true });
+});
+
+Then("the transcript says older messages are not shown", async ({ page }) => {
+  await expect(page.getByTestId("transcript-truncated")).toBeVisible();
 });
 
 Then("I see staged loading while the answer is prepared", async ({ page }) => {

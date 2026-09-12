@@ -20,6 +20,7 @@ export function ChatView({
   messages,
   busy,
   loadingTranscript,
+  transcriptTruncated,
   error,
   online,
   onSend,
@@ -29,6 +30,7 @@ export function ChatView({
   messages: readonly ChatSessionMessage[];
   busy: boolean;
   loadingTranscript: boolean;
+  transcriptTruncated: boolean;
   error: ChatViewError;
   online: boolean;
   onSend: (text: string) => void;
@@ -105,6 +107,14 @@ export function ChatView({
         className="flex-1 space-y-3 overflow-y-auto pr-1"
         data-testid="message-list"
       >
+        {transcriptTruncated && !busy && (
+          <p
+            data-testid="transcript-truncated"
+            className="px-1 pb-1 text-xs text-slate-500"
+          >
+            {t(locale, "transcriptTruncated")}
+          </p>
+        )}
         {messages.length === 0 && !loadingTranscript && !busy && <EmptyState locale={locale} />}
         {messages.map((message) => (
           <MessageCard key={message.id} message={message} />

@@ -217,12 +217,14 @@ export async function citationsFrameFor(input: {
 export async function rehydrateTranscript(input: {
   sessionId: string;
   rows: readonly ChatMessage[];
+  /** True when the rows were capped (the tail beyond the limit is omitted). */
+  truncated: boolean;
   /** Reads a trace by the message row's `answer_trace_id` (the FK value). */
   getTrace: (traceId: string) => Promise<Trace | null>;
   fetchChunks: CitationChunkSource;
   warn: Warn;
 }): Promise<ChatSessionMessages> {
-  const { sessionId, rows, getTrace, fetchChunks, warn } = input;
+  const { sessionId, rows, truncated, getTrace, fetchChunks, warn } = input;
   const traces = new Map<string, Trace>();
   await Promise.all(
     rows.map(async (row) => {
@@ -277,5 +279,5 @@ export async function rehydrateTranscript(input: {
     }
     return { ...base, citations: parsed.output };
   });
-  return v.parse(ChatSessionMessagesSchema, { sessionId, messages });
+  return v.parse(ChatSessionMessagesSchema, { sessionId, messages, truncated });
 }

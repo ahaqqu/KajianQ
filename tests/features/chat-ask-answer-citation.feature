@@ -31,6 +31,10 @@ Feature: Chat — ask, answer, citations, warnings, disclaimer
     And the answer renders with a citation chip
     And reloading restores the full transcript
 
+  Scenario: A capped transcript says older messages are not shown
+    When I open a chat whose stored transcript was capped
+    Then the transcript says older messages are not shown
+
   Scenario: The chat page has no serious accessibility violations
     When I open the chat and ask about ayat kursi
     And the answer renders with a citation chip

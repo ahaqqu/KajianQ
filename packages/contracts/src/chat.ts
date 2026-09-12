@@ -102,6 +102,12 @@ export type ChatSessionMessage = v.InferOutput<typeof ChatSessionMessageSchema>;
 export const ChatSessionMessagesSchema = v.object({
   sessionId: v.pipe(v.string(), v.minLength(1)),
   messages: v.array(ChatSessionMessageSchema),
+  /**
+   * True when the transcript was capped: the endpoint returns the newest
+   * tail and older messages are not included (thermo-review A4 — the client
+   * must be able to tell it is looking at a tail, never silently).
+   */
+  truncated: v.boolean(),
 });
 
 export type ChatSessionMessages = v.InferOutput<typeof ChatSessionMessagesSchema>;

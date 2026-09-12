@@ -38,6 +38,7 @@ export const messages = {
     errorUnavailable: "The service is temporarily unavailable. Please try again later.",
     errorGeneric: "Something went wrong. Please try again.",
     loadError: "Failed to load the conversation.",
+    transcriptTruncated: "Older messages are not shown — only the newest ones are kept.",
   },
   id: {
     appTitle: "KajianQ",
@@ -75,6 +76,7 @@ export const messages = {
     errorUnavailable: "Layanan sedang tidak tersedia. Coba lagi nanti.",
     errorGeneric: "Terjadi kesalahan. Silakan coba lagi.",
     loadError: "Gagal memuat percakapan.",
+    transcriptTruncated: "Pesan lebih lama tidak ditampilkan — hanya yang terbaru yang disimpan.",
   },
 } as const;
 

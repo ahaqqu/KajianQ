@@ -145,6 +145,7 @@ export function useChat(locale: "id" | "en") {
     error,
     online,
     loadingTranscript: transcript.isPending && sessionId !== null,
+    transcriptTruncated: transcript.data?.truncated ?? false,
     send,
     newSession,
   };

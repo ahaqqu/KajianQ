@@ -14,6 +14,7 @@ export function ChatPage({ locale }: { locale: "id" | "en" }) {
       messages={chat.messages}
       busy={chat.busy}
       loadingTranscript={chat.loadingTranscript}
+      transcriptTruncated={chat.transcriptTruncated}
       error={chat.error}
       online={chat.online}
       onSend={chat.send}

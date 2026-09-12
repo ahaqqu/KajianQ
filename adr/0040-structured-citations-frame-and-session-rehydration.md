@@ -113,5 +113,16 @@ the pipeline runner) or the citation gate's refusal semantics.
 - A chunk row deleted after an answer was persisted simply loses its chip
   (invariant by omission); a lost trace or an unreadable one degrades to a
   plain-text transcript, never to invented citations.
+- The rehydration transcript is capped (200 messages — a session is an
+  anonymous conversation, not an archive). The cap is VISIBLE, not silent:
+  `ChatSessionMessages.truncated` (detected by reading one row past the cap)
+  tells the client it is seeing the newest tail, and the UI says older
+  messages are not shown (thermo-review A4).
+- The UI's `machineTranslated` flag tracks the translation layer's PRESENCE,
+  matching the assembler's `MACHINE_TRANSLATION_LABEL` — a coupling enforced
+  by test, not by data. A human-checked translation layer in the corpus must
+  not land by data mutation alone: it needs a per-chunk provenance field
+  consumed by the derivation (and an ADR) before the flag's meaning may
+  change (thermo-review A3).
 - The one trust-sensitive review point: `deriveCitationsFrame` — the emitted
   set must remain exactly the cited-and-grounded intersection.

@@ -23,7 +23,7 @@ const mocks = vi.hoisted(() => ({
   loadStoredSessionId: vi.fn<() => string | null>(),
   clearStoredSessionId: vi.fn(),
   rehydrateSession: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-  askChat: vi.fn<(...args: unknown[]) => Promise<void>>(),
+  askChat: vi.fn<(body: unknown, handlers: { onDelta: (delta: string) => void }) => Promise<void>>(),
 }));
 
 vi.mock("./chat-store", () => ({
@@ -54,7 +54,11 @@ const OLD_MESSAGES: ChatSessionMessages["messages"] = [
   { id: "m0", role: "user", content: "Pertanyaan lama", createdAt: 1 },
   { id: "m1", role: "assistant", content: "Jawaban lama", createdAt: 2 },
 ];
-const OLD_TRANSCRIPT: ChatSessionMessages = { sessionId: "sess-1", messages: OLD_MESSAGES };
+const OLD_TRANSCRIPT: ChatSessionMessages = {
+  sessionId: "sess-1",
+  truncated: false,
+  messages: OLD_MESSAGES,
+};
 
 /** Fresh QueryClient per test: no cross-test cache leakage. */
 function makeWrapper(): (props: { children: ReactNode }) => ReactNode {

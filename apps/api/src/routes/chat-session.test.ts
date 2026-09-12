@@ -133,6 +133,7 @@ describe("GET /v1/chat/sessions/:id/messages", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       sessionId: string;
+      truncated: boolean;
       messages: {
         id: string;
         role: string;
@@ -147,6 +148,7 @@ describe("GET /v1/chat/sessions/:id/messages", () => {
       }[];
     };
     expect(body.sessionId).toBe(sessionId);
+    expect(body.truncated).toBe(false);
     expect(body.messages.map((m) => m.role)).toEqual(["user", "assistant"]);
 
     const [user, assistant] = body.messages;
@@ -162,6 +164,32 @@ describe("GET /v1/chat/sessions/:id/messages", () => {
         source: "Al-Baqarah",
       },
     ]);
+  }, 15000);
+
+  it("a transcript past the cap is marked truncated, never silently clipped (thermo-review A4)", async () => {
+    const { store, token } = await wiredStore();
+    await seed(store);
+    currentOverrides = { answerText: "Ayat Kursi adalah QS. 2:255." };
+    expect(await ask(token, { message: "Apa itu Ayat Kursi?" })).toBe(200);
+    const sessionId = (store.allChatMessages().at(0) as unknown as { sessionId: string }).sessionId;
+    // Push the session past the 200-message rehydration cap.
+    for (let i = 0; i < 199; i++) {
+      await runStoreEffect<string>(
+        store.insertChatMessage({ sessionId, role: "user", content: `extra ${i}` }),
+      );
+    }
+
+    const res = await getMessages(token, sessionId);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      truncated: boolean;
+      messages: { content: string }[];
+    };
+    expect(body.truncated).toBe(true);
+    expect(body.messages).toHaveLength(200);
+    // The oldest row — the first user question — is the one dropped, and the
+    // payload says so instead of presenting the tail as the whole transcript.
+    expect(body.messages[0]?.content).not.toBe("Apa itu Ayat Kursi?");
   }, 15000);
 
   it("a rehydrated refused answer carries refusal: true and no citations", async () => {

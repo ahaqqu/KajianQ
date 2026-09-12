@@ -96,6 +96,7 @@ describe("ChatSessionMessagesSchema", () => {
   it("accepts a transcript with a cited assistant turn and a plain user turn", () => {
     const parsed = v.parse(ChatSessionMessagesSchema, {
       sessionId: "s1",
+      truncated: false,
       messages: [
         { id: "m0", role: "user", content: "Apa itu ayat kursi?", createdAt: 1 },
         {
@@ -114,6 +115,12 @@ describe("ChatSessionMessagesSchema", () => {
     });
     expect(parsed.messages[0]?.citations).toBeUndefined();
     expect(parsed.messages[1]?.citations?.citations[0]?.label).toBe("QS. 2:255");
+  });
+
+  it("rejects a transcript whose truncated marker is missing (the tail must be visible, thermo-review A4)", () => {
+    expect(
+      v.safeParse(ChatSessionMessagesSchema, { sessionId: "s1", messages: [] }).success,
+    ).toBe(false);
   });
 
   it("rejects an unknown role (roles are the product's two transcript roles)", () => {

@@ -80,6 +80,7 @@ describe("fetchSessionMessages", () => {
           { id: "m0", role: "user", content: "q", createdAt: 1 },
           { id: "m1", role: "assistant", content: "a", createdAt: 2 },
         ],
+        truncated: false,
       });
     });
     const body = await fetchSessionMessages("sess-1", "tok");
@@ -94,7 +95,15 @@ describe("fetchSessionMessages", () => {
   });
 
   it("rejects a malformed transcript (contract is the boundary)", async () => {
-    stubFetch(() => Response.json({ sessionId: "s", messages: [{ id: "m0", role: "system" }] }));
+    stubFetch(() =>
+      Response.json({ sessionId: "s", truncated: false, messages: [{ id: "m0", role: "system" }] }),
+    );
+    const err = await fetchSessionMessages("sess-1", "tok").catch((e: unknown) => e);
+    expect(err).not.toBeInstanceOf(ChatApiError); // valibot throws, loudly
+  });
+
+  it("a transcript without the truncated marker fails the contract (thermo-review A4)", async () => {
+    stubFetch(() => Response.json({ sessionId: "s", messages: [] }));
     const err = await fetchSessionMessages("sess-1", "tok").catch((e: unknown) => e);
     expect(err).not.toBeInstanceOf(ChatApiError); // valibot throws, loudly
   });
