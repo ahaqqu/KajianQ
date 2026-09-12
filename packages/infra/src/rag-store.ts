@@ -98,6 +98,13 @@ export type DocChild = {
 export type DocChildInsert = PartialBy<DocChild, "id" | "createdAt" | "citation">;
 
 /**
+ * A child chunk read by id, with its parent document's display title. The
+ * title (e.g. a collection or surah display name) is what a UI shows as the
+ * passage's source reference; null when the parent row is gone.
+ */
+export type DocChildById = DocChild & { parentTitle: string | null };
+
+/**
  * An aligned source/target text pair with its per-token morphology — the
  * seed unit a downstream terminology build consumes (ADR-0014). The shape is
  * domain-agnostic: `citation` is the pair's opaque address, `textPrimary` is
@@ -181,6 +188,16 @@ export interface RagStore extends RagStoreEvalRunWrite, RagStoreEvalLedger {
       filters?: Record<string, string | readonly string[]>;
     },
   ): Effect.Effect<readonly SimilarChild[], StoreError>;
+
+  /**
+   * Fetch child chunks by id (deduplicated; absent ids are simply missing
+   * from the result). Like `similaritySearch`, the returned rows carry NO
+   * embeddings — the caller reads text/citation/metadata — plus the parent
+   * document's display title. The read behind the structured citation
+   * payload (#11): a trace's retrieval chunk refs resolve against this, so
+   * a citation's display data comes from the same store rows retrieval did.
+   */
+  getDocChildrenByIds(ids: readonly string[]): Effect.Effect<readonly DocChildById[], StoreError>;
 
   // -- Traces (ADR-0007) ---------------------------------------------------
 

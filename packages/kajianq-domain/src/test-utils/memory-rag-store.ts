@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import type {
   AlignedPairInsert,
+  DocChildById,
   DocChildInsert,
   DocParentInsert,
   RagStore,
@@ -10,32 +11,43 @@ import { memoryEvalMethods } from "./memory-rag-store-eval";
 
 /**
  * In-memory RagStore with real cosine-distance similarity search — the test
- * seam for ingestion + retrieval integration tests. Same upsert semantics as
- * the Neon adapter (parents by sourceKey, children by parent+ordinal, pairs
- * by pairKey), so idempotency assertions run against the real contract, and
- * similaritySearch ranks by genuine cosine distance, not stub ordering.
- *
- * Effect-signatured like the real seam (ADR-0027 decision 7): every method
- * returns `Effect<A, StoreError>` — test assertions stay Effect-shaped, not
- * bridge-shimmed.
+ * seam for ingestion/retrieval integration tests. Same upsert semantics as
+ * the Neon adapter and Effect-signatured like the real seam (ADR-0027).
  */
+
+/** Project a stored child insert to the read shape: no vectors, epoch-0 createdAt. */
+function toReadChild(
+  c: DocChildInsert & { id: string },
+  parentTitle: string | null = null,
+): DocChildById {
+  return {
+    id: c.id,
+    parentId: c.parentId,
+    textRaw: c.textRaw,
+    textAr: c.textAr,
+    textId: c.textId ?? null,
+    citation: c.citation ?? {},
+    embeddingPrimary: null,
+    embeddingFallback: null,
+    ordinal: c.ordinal,
+    metadata: c.metadata ?? {},
+    createdAt: 0,
+    parentTitle,
+  };
+}
+
 export function createMemoryRagStore(): RagStore & {
-  /** All stored children (test introspection). */
   allChildren: () => DocChildInsert[];
-  /** All stored parents (test introspection). */
   allParents: () => DocParentInsert[];
-  /** All stored aligned pairs (test introspection). */
   allPairs: () => AlignedPairInsert[];
   /** All persisted answer traces keyed by message id (test introspection). */
   allTraces: () => Map<string, unknown>;
-  /** All persisted chat messages (test introspection, insertion order). */
   allChatMessages: () => readonly {
     sessionId: string;
     role: string;
     content: string;
     answerTraceId: string | null;
   }[];
-  /** All stored eval results (test introspection, in insertion order). */
   allEvalResults: () => readonly {
     id: string;
     questionId: string;
@@ -48,6 +60,7 @@ export function createMemoryRagStore(): RagStore & {
     query: readonly number[],
     limit: number,
   ) => Promise<readonly SimilarChild[]>;
+
 } {
   const parents = new Map<string, DocParentInsert & { id: string }>();
   const parentByKey = new Map<string, string>();
@@ -56,8 +69,8 @@ export function createMemoryRagStore(): RagStore & {
   const pairs = new Map<string, AlignedPairInsert & { id: string }>();
   const traces = new Map<string, unknown>();
   // Chat sessions (id → owner) and auth sessions (id → owner + TTL) are
-  // distinct tables in the real schema; keeping them distinct here lets the
-  // cleanup contract (A5) be exercised faithfully.
+  // distinct maps, like the real tables, so the cleanup contract (A5) is
+  // exercised faithfully.
   const chatSessions = new Map<string, string>();
   const authSessions = new Map<string, { userId: string; expiresAt: number }>();
   const users = new Map<string, { kind: string }>();
@@ -74,15 +87,11 @@ export function createMemoryRagStore(): RagStore & {
   let seq = 0;
 
   // The eval-ledger half lives in its own module (the agentic line cap), the
-  // same concern-split the Neon adapter uses; it shares these maps + the id
-  // sequence so both halves see one store state.
+  // Neon adapter's concern-split; it shares these maps + id sequence.
   const evalState = {
     evalRuns,
     evalResults,
-    nextId: () => {
-      seq += 1;
-      return seq;
-    },
+    nextId: () => (seq += 1),
   };
   const evalMethods = memoryEvalMethods(evalState);
 
@@ -142,24 +151,7 @@ export function createMemoryRagStore(): RagStore & {
         const rows = [...children.values()]
           .filter((c) => c[vec] !== null && c[vec] !== undefined)
           .map((c) => ({
-            child: {
-              id: c.id,
-              parentId: c.parentId,
-              textRaw: c.textRaw,
-              textAr: c.textAr,
-              textId: c.textId ?? null,
-              citation: c.citation ?? {},
-              // Mirrors the Neon adapter's contract (`RagStore.similaritySearch`):
-              // a hit carries NO vectors. The search used them; re-shipping
-              // 1536 floats per hit is the payload that killed the live smoke's
-              // Worker, and a test double that returned them would let a
-              // consumer depend on something production never provides.
-              embeddingPrimary: null,
-              embeddingFallback: null,
-              ordinal: c.ordinal,
-              metadata: c.metadata ?? {},
-              createdAt: 0,
-            },
+            child: toReadChild(c),
             distance: 1 - cosine(embedding, (c[vec] ?? []) as readonly number[]),
           }))
           .sort((a, b) => a.distance - b.distance)
@@ -167,6 +159,17 @@ export function createMemoryRagStore(): RagStore & {
           .map((hit, i) => ({ ...hit, rankDense: i + 1 }));
         return rows satisfies SimilarChild[];
       });
+    },
+    // By-id read (#11): the citation payload's display-data lookup.
+    getDocChildrenByIds(ids) {
+      return Effect.sync(() =>
+        [...new Set(ids)].flatMap((id) => {
+          const c = children.get(id);
+          if (!c) return [];
+          const parent = parents.get(c.parentId);
+          return [toReadChild(c, parent?.title ?? null)];
+        }),
+      );
     },
     insertAnswerTrace(input) {
       return Effect.sync(() => {

@@ -763,4 +763,67 @@ describe("Neon eval-ledger methods (unit, fake SQL)", () => {
     expect(rows[0]?.questionId).toBe("gs-v0-001");
     expect(rows[0]?.outcome).toEqual({ passed: true });
   });
+
+  it("getDocChildrenByIds dedupes ids, strips vectors, and carries the parent title", async () => {
+    const sql = makeFakeSql();
+    const store = createNeonRagStore(sql);
+    sql._setQuery([
+      {
+        id: "c1",
+        parent_id: "p1",
+        text_raw: "raw",
+        text_ar: "ar",
+        text_id: "id",
+        citation: { sourceType: "quran", surah: 2, ayah: 255 },
+        embedding_primary: null,
+        embedding_fallback: null,
+        ordinal: 0,
+        metadata: { citation: "QS. 2:255" },
+        created_at: new Date(0),
+        parent_title: "Al-Baqarah",
+      },
+    ]);
+    const rows = await runOk(store.getDocChildrenByIds(["c1", "c1", "  "]));
+    // Dedupe: the driver saw one id; blank ids never reach the query.
+    expect(sql._calls[0]?.values).toEqual([["c1"]]);
+    expect(sql._calls[0]?.text).toContain("ANY($1::uuid[])");
+    expect(sql._calls[0]?.text).toContain("LEFT JOIN doc_parents");
+    const row = rows[0];
+    expect(row).toMatchObject({ id: "c1", parentTitle: "Al-Baqarah", textAr: "ar" });
+    // The embedding-stripping contract: null vectors, like similaritySearch.
+    expect(row?.embeddingPrimary).toBeNull();
+    expect(row?.embeddingFallback).toBeNull();
+  });
+
+  it("getDocChildrenByIds short-circuits to an empty result without a query", async () => {
+    const sql = makeFakeSql();
+    const store = createNeonRagStore(sql);
+    const rows = await runOk(store.getDocChildrenByIds([]));
+    expect(rows).toEqual([]);
+    expect(sql._calls).toEqual([]);
+  });
+
+  it("getDocChildrenByIds maps a null parent title to null", async () => {
+    const sql = makeFakeSql();
+    const store = createNeonRagStore(sql);
+    sql._setQuery([
+      {
+        id: "c2",
+        parent_id: "pX",
+        text_raw: "raw",
+        text_ar: "ar",
+        text_id: null,
+        citation: {},
+        embedding_primary: null,
+        embedding_fallback: null,
+        ordinal: 1,
+        metadata: {},
+        created_at: new Date(0),
+        parent_title: null,
+      },
+    ]);
+    const rows = await runOk(store.getDocChildrenByIds(["c2"]));
+    expect(rows[0]?.parentTitle).toBeNull();
+    expect(rows[0]?.textId).toBeNull();
+  });
 });

@@ -56,6 +56,9 @@ function fakeStore() {
     similaritySearch() {
       return Effect.succeed([]);
     },
+    getDocChildrenByIds() {
+      return Effect.succeed([]);
+    },
     insertAnswerTrace() {
       return Effect.succeed("");
     },
