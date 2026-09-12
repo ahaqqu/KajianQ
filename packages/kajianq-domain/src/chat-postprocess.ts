@@ -71,15 +71,15 @@ function hasDisclaimer(text: string): boolean {
 
 /** True when the text already carries a dhaif warning. */
 function hasWeakWarning(text: string): boolean {
-  // Anchored to the warning's own vocabulary (thermo-review A6): the previous
-  // `/dhaif|lemah/i` fired on any occurrence of those substrings — a model
-  // writing "lemah" in an unrelated sentence silently suppressed the required
-  // warning. `dhaif` is the technical term and stands alone; the ordinary
-  // Indonesian word `lemah` (word-bounded, so "memalemahkan" does not count)
-  // is only read as a weakness claim when it sits next to the thing it grades.
-  return /dhaif|\blemah(?:nya)?\b[^\n]{0,40}(?:hadits|hadis|dalil|riwayat)|(?:hadits|hadis|dalil|riwayat)[^\n]{0,40}\blemah(?:nya)?\b/i.test(
-    text,
-  );
+  // Anchored to the product's own warning vocabulary (thermo-review A6, then
+  // round-3 B4): the ±40-character proximity windows between `lemah` and a
+  // grading target were brittle in both directions — an unrelated "lemah"
+  // within the window suppressed the required warning, and a genuine weakness
+  // claim phrased just outside it duplicated it. The product owns the warning
+  // copy, so suppression matches the technical term `dhaif` plus the copy's
+  // own grade phrases; an informal "lemah" now gains the canonical warning,
+  // which is the deterministic rule doing its job, not a duplicate.
+  return /dhaif|berderajat lemah|graded weak/i.test(text);
 }
 
 /**

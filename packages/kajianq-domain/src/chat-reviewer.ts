@@ -74,6 +74,17 @@ export function refusalTextFor(
 }
 
 /**
+ * True when the draft IS the canonical insufficiency refusal the generator was
+ * instructed to emit verbatim (`chat-prompts.ts`). Both language markers are
+ * detected: the model may answer in the wrong language, and a refusal in
+ * either is still a refusal.
+ */
+export function isRefusalDraft(text: string): boolean {
+  const t = text.toLowerCase();
+  return t.includes(DEFAULT_REFUSALS.id) || t.includes(DEFAULT_REFUSALS.en);
+}
+
+/**
  * The reviewer's system prompt: the grounding rules for the cross-vendor gate.
  * Exported with `buildReviewMessages` so a test or an offline probe exercises
  * the exact prompt production sends.
@@ -156,6 +167,22 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
               at: run.now(),
             });
             return { text: refusal("ungrounded") };
+          }
+
+          // A generator-emitted refusal IS the refusal (round-3 A2): it must
+          // not pay a reviewer LLM call, must not gain the product rules (a
+          // disclaimer appended to a refusal buries the reason), and must be
+          // visible on the trace as a `refusal` event — the same signal the
+          // eval harness's refusal detection reads.
+          if (isRefusalDraft(draft.text)) {
+            run.record({
+              stage: "reviewer",
+              kind: "refusal",
+              detail: { trigger: "generator_refusal" },
+              reason: "generator emitted the canonical insufficiency refusal",
+              at: run.now(),
+            });
+            return { text: draft.text };
           }
 
           if (deps.provider === null || deps.skipLlm === true) {

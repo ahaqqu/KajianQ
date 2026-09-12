@@ -155,10 +155,14 @@ async function cmdVerify(label) {
   }
 
   const neonUrl = process.env.NEON_DATABASE_URL;
+  // Round-3 A5: the live counts are read up front and the headline reflects
+  // the verdict — a drifted snapshot must not print a "verified" banner, and
+  // the drift line must show what the live database actually holds next to
+  // what the manifest recorded (a bare manifest count is not diagnosable).
+  const live = neonUrl ? tableCounts(neonUrl) : null;
   let corpusDrift = [];
   let ledgerDrift = [];
-  if (neonUrl) {
-    const live = tableCounts(neonUrl);
+  if (live) {
     const changed = Object.entries(manifest.tableCounts).filter(([t, n]) => live[t] !== n);
     // Only the corpus must match: the ledger tables are append-only and change
     // as soon as any chat or smoke run touches the store, so treating their
@@ -167,24 +171,25 @@ async function cmdVerify(label) {
     corpusDrift = changed.filter(([t]) => isCorpusTable(t));
     ledgerDrift = changed.filter(([t]) => !isCorpusTable(t));
   }
+  const drifted = corpusDrift.length > 0;
   console.log(
     [
-      `db-snapshot: "${label}" verified`,
+      `db-snapshot: "${label}" ${drifted ? "CORPUS DRIFT — NOT verified" : "verified"}`,
       `  sha256    ${actual.slice(0, 16)}… matches the manifest`,
       `  size      ${(dump.length / 1024 / 1024).toFixed(1)} MB`,
-      neonUrl
-        ? corpusDrift.length === 0
-          ? "  corpus row counts match the live database"
-          : `  CORPUS DRIFT: ${corpusDrift.map(([t, n]) => `${t} manifest=${n}`).join(", ")}`
-        : "  (NEON_DATABASE_URL unset — integrity checked, live counts skipped)",
+      live === null
+        ? "  (NEON_DATABASE_URL unset — integrity checked, live counts skipped)"
+        : drifted
+          ? `  CORPUS DRIFT: ${corpusDrift.map(([t, n]) => `${t} manifest=${n} live=${live[t]}`).join(", ")}`
+          : "  corpus row counts match the live database",
       ...(ledgerDrift.length > 0
         ? [
-            `  ledger tables moved on (expected): ${ledgerDrift.map(([t, n]) => `${t} manifest=${n}`).join(", ")}`,
+            `  ledger tables moved on (expected): ${ledgerDrift.map(([t, n]) => `${t} manifest=${n} live=${live[t]}`).join(", ")}`,
           ]
         : []),
     ].join("\n"),
   );
-  if (corpusDrift.length > 0) process.exit(2);
+  if (drifted) process.exit(2);
 }
 
 async function cmdList() {

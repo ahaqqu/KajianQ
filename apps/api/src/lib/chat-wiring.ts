@@ -210,15 +210,6 @@ export function wiringOr503<W>(
   }
 }
 
-/** The chat pipeline's wiring or its 503 (the reviewer role is mandatory). */
-export function chatWiringOr503(
-  env: Record<string, string | undefined>,
-  logger: Logger,
-  errorCode: string,
-): { wiring: ChatWiring } | { response: Response } {
-  return wiringOr503(() => buildChatWiring(env), logger, errorCode);
-}
-
 /**
  * The SSE frame wire format the eval harness consumes (meta/delta/done).
  *

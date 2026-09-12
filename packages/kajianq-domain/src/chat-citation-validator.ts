@@ -53,18 +53,23 @@ export function citationLabelsOf(chunk: Chunk): string[] {
  * gate. Extending the validator for a new source type is a one-line addition.
  */
 const CITATION_GRAMMARS: readonly (() => RegExp)[] = [
-  // Quran: `QS. 2:255` / `Q.S. 2:255` (both spellings Indonesian prose uses)
-  // or `QS. Al-Baqarah:255` (surah numeric or named).
-  () => /\bQ\.?S\.\s*[^\s:,[\]()]+\s*:\s*\d+/gi,
-  // Hadith: `HR. Bukhari no. 573` / `HR. Ibn Majah no. 224 (Dhaif)`.
-  // Collection names may be multi-word ("Abu Dawud", "Ibn Majah") and the
-  // long forms a model actually writes carry a collection-type prefix
+  // Quran: `QS. 2:255` / `Q.S. 2:255` (both dotted spellings Indonesian prose
+  // uses) or `QS. Al-Baqarah:255` (surah numeric or named). The marker closes
+  // with a dot OR a space (round-3 A1): the dot-less `QS 2:255` is a common
+  // model spelling, and requiring the dot let a fabricated citation bypass the
+  // gate entirely. Requiring *some* separator keeps `QS2:255` (no boundary
+  // between marker and address) out of the grammar, as before.
+  () => /\bQ\.?S(?:\.|\s)\s*[^\s:,[\]()]+\s*:\s*\d+/gi,
+  // Hadith: `HR. Bukhari no. 573` / `HR. Ibn Majah no. 224 (Dhaif)`, and the
+  // dot-less `HR Bukhari no. 573` (round-3 A1, same rationale as the Quran
+  // marker). Collection names may be multi-word ("Abu Dawud", "Ibn Majah")
+  // and the long forms a model actually writes carry a collection-type prefix
   // ("Sunan Abu Dawud", "Sunan an Nasai"), so up to four tokens are
   // tolerated. Token classes exclude `.` and `,` so the match cannot run
   // across a sentence boundary or swallow a list, and both the token length
   // and the repetition count are bounded — no nested unbounded quantifier,
   // so the pattern stays linear (ReDoS-safe) as required.
-  () => /\bHR\.\s*[^\s,.]{1,24}(?:\s+[^\s,.]{1,24}){0,3}\s+no\.\s*[^\s,;.)]+/gi,
+  () => /\bHR(?:\.|\s)\s*[^\s,.]{1,24}(?:\s+[^\s,.]{1,24}){0,3}\s+no\.\s*[^\s,;.)]+/gi,
   // Kitab (SPECS §2.1): `Al-Umm, Imam Syafi'i, Jilid 1, Hal. 102, Bab …`.
   // Kitab ingestion has not landed, so any such citation is ungrounded by
   // definition today — detecting it is the point, not an accident.
@@ -77,28 +82,39 @@ function stripGradeSuffix(label: string): string {
 }
 
 /**
- * Normalize a label for comparison: collapse whitespace, trim, drop grade,
- * and canonicalize the Quran marker's dotted spelling (`Q.S.` → `QS.`).
+ * Canonicalize the citation markers' spelling to the product's `QS.` / `HR.`
+ * forms: the dotted `Q.S.` variant, and — since the grammars accept the
+ * dot-less spellings (round-3 A1) — the bare `QS` / `HR` forms. A model that
+ * writes `Q.S. 2:255` or `QS 2:255` for a chunk labeled `QS. 2:255` is citing
+ * the same address, and treating it as a different one would turn a *grounded*
+ * answer into a refusal. Fabricated addresses are unaffected — `Q.S. 9:99` and
+ * `QS 9:99` still normalize to `QS. 9:99`, which no retrieved chunk grounds.
  *
- * The spelling canonicalization matters because the grammar accepts both
- * forms: a model that writes `Q.S. 2:255` for a chunk labeled `QS. 2:255` is
- * citing the same address, and treating it as a different one would turn a
- * *grounded* answer into a refusal. Fabricated addresses are unaffected —
- * `Q.S. 9:99` still normalizes to `QS. 9:99`, which no retrieved chunk
- * grounds.
+ * The lookahead requires a following whitespace: a marker is only ever
+ * canonicalized when an address follows it (the grammars guarantee one), so an
+ * ordinary word ending in "QS"/"HR" is never touched.
+ */
+function canonicalizeMarkers(text: string): string {
+  return text.replace(/\bQ\.?S\.?(?=\s)/g, "QS.").replace(/\bHR\.?(?=\s)/g, "HR.");
+}
+
+/**
+ * Normalize a label for comparison: collapse whitespace, trim, drop grade,
+ * strip markdown emphasis, and canonicalize the marker spellings (`Q.S.` and
+ * `QS` → `QS.`, `HR` → `HR.`).
+ *
+ * The markdown-emphasis strip matters because the grammar stops at sentence
+ * punctuation but NOT at `*`/`_`/backticks, so a bolded citation
+ * (`**HR. Malik no. 18**`) reached the comparison with its markers attached
+ * and was reported UNGROUNDED. That false positive refused a grounded
+ * answer on the first live size-5 smoke (gs-v0-015).
  */
 export function normalizeCitationLabel(label: string): string {
-  return (
+  return canonicalizeMarkers(
     stripGradeSuffix(label)
-      // Markdown emphasis is presentation, not address: the grammar stops at
-      // sentence punctuation but NOT at `*`/`_`/backticks, so a bolded citation
-      // (`**HR. Malik no. 18**`) reached the comparison with its markers attached
-      // and was reported UNGROUNDED. That false positive refused a grounded
-      // answer on the first live size-5 smoke (gs-v0-015).
       .replace(/[*_`]+/g, "")
       .replace(/\s+/g, " ")
-      .replace(/\bQ\.S\./g, "QS.")
-      .trim()
+      .trim(),
   );
 }
 
@@ -144,10 +160,10 @@ export function validateCitations(
     }
   }
   // The answer is canonicalized the same way as the labels, so a grounded
-  // address written with the dotted marker (`Q.S. 2:255` for a `QS. 2:255`
-  // chunk) still counts as grounded provenance rather than vanishing from
-  // the review trace's `grounded` list.
-  const normalizedAnswer = answer.replace(/\s+/g, " ").replace(/\bQ\.S\./g, "QS.");
+  // address written with the dotted marker (`Q.S. 2:255`) or the dot-less
+  // spelling (`QS 2:255`) for a `QS. 2:255` chunk still counts as grounded
+  // provenance rather than vanishing from the review trace's `grounded` list.
+  const normalizedAnswer = canonicalizeMarkers(answer.replace(/\s+/g, " "));
   const grounded: string[] = [];
   for (const label of known) {
     if (normalizedAnswer.includes(label)) grounded.push(label);

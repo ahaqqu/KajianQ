@@ -45,7 +45,17 @@ const handler = {
       },
     );
     if (ctx?.waitUntil) {
-      ctx.waitUntil(run);
+      // Round-3 A3: a promise handed to `waitUntil` must not reject unhandled —
+      // a non-`ChatConfigError` store fault would vanish into the runtime with
+      // no completion line. The rejection is logged here and then swallowed on
+      // this path only; the `await` path below still propagates it.
+      ctx.waitUntil(
+        run.catch((err: unknown) => {
+          logger.error("scheduled.failed", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }),
+      );
       return;
     }
     await run;

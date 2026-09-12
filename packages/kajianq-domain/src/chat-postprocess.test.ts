@@ -100,11 +100,27 @@ describe("applyProductRules", () => {
     expect(applied).toContain("dhaif_warning");
   });
 
-  it("recognizes a weakness claim phrased with 'lemah' next to the hadith", () => {
-    // The other side of the boundary: a real weakness claim (the word grading
-    // the hadith) still suppresses the duplicate warning.
-    const { applied } = applyProductRules(
+  it("appends the canonical warning over an informal 'lemah' weakness claim", () => {
+    // Round-3 B4: suppression anchors to the product-owned warning copy plus
+    // the technical term, not to a ±40-char proximity window around the
+    // ordinary word "lemah" — the window was brittle in both directions. An
+    // informal claim now gains the canonical line: the deterministic rule
+    // doing its job, not a duplicate of the model's phrasing.
+    const { applied, draft } = applyProductRules(
       { text: "Riwayat ini lemah, sehingga tidak bisa dijadikan dalil." },
+      context([chunk({ sourceType: "hadith", grade: "dhaif" })]),
+      "id",
+    );
+    expect(applied).toContain("dhaif_warning");
+    expect(draft.text).toContain(dhaifWarning("id"));
+  });
+
+  it("suppresses on the warning copy's own grade phrase without the term 'dhaif'", () => {
+    // The copy phrases (`berderajat lemah` / `graded weak`) suppress too, so
+    // an answer restating the grade in the product's words is not decorated
+    // twice.
+    const { applied } = applyProductRules(
+      { text: "Hadits ini berderajat lemah, sehingga tidak dapat dijadikan dalil utama." },
       context([chunk({ sourceType: "hadith", grade: "dhaif" })]),
       "id",
     );

@@ -1,7 +1,13 @@
 import { newRouter } from "../lib/guard";
-import { authGuard, chatWiringOr503, sseFrame, type ChatWiring } from "../lib/chat-wiring";
+import {
+  authGuard,
+  buildChatWiring,
+  sseFrame,
+  wiringOr503,
+  type ChatWiring,
+} from "../lib/chat-wiring";
 import { CHAT_OPENAPI_DESCRIPTION, parseChatRequest } from "../lib/chat-openapi";
-import { createLogger } from "@app/infra";
+import { createLogger, type ChatMessage } from "@app/infra";
 import { runChatPipelinePromise, type ChatPipelineDeps } from "@app/kajianq-domain";
 
 /** The route's env, widened with the provider-key bindings the wiring reads. */
@@ -26,9 +32,12 @@ const HISTORY_LIMIT = 10;
  * buffered inside a single vendor round-trip, and the route re-emits the
  * vendor's own delta sequence on the wire. The reviewer still sees the
  * *complete* answer before any of it is delivered — the citation invariant is
- * checked on the whole text — and a refused answer replaces the deltas with a
- * single `refusal` frame carrying the plain refusal. A fabricated citation
- * therefore never reaches the user as an answer, only as a refusal.
+ * checked on the whole text — and a refused answer discards the vendor deltas
+ * entirely: the wire carries the plain refusal as ordinary `delta` frames
+ * (round-3 A4: there is no separate `refusal` event type — the refusal signal
+ * lives on the trace's `refusal` event, which the eval harness reads). A
+ * fabricated citation therefore never reaches the user as an answer, only as
+ * a refusal.
  *
  * The trade-off, stated plainly: this gives up time-to-first-token (deltas
  * are replayed after validation rather than as they arrive) in exchange for
@@ -46,7 +55,9 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
   let wiring: ChatWiring;
   {
     // B1: one shared wiring→503 posture (chat-wiring.ts), not a per-route copy.
-    const resolved = chatWiringOr503(env, logger, "chat_not_configured");
+    // Round-3 B1: the direct `wiringOr503` form, same as the auth route — the
+    // one-argument `chatWiringOr503` wrapper had a single caller.
+    const resolved = wiringOr503(() => buildChatWiring(env), logger, "chat_not_configured");
     if ("response" in resolved) return resolved.response;
     wiring = resolved.wiring;
   }
@@ -207,6 +218,12 @@ function chunkText(text: string): string[] {
  * Load the session's prior turns for follow-up context. Returns `[]` on a
  * store failure (the question remains answerable) with a structured warning —
  * a missing history must be visible in ops, never a silent quality drop.
+ *
+ * Round-3 B3: the bridge's result is cast to the store contract's declared
+ * return type (`getChatMessages` → `readonly ChatMessage[]`), not to an
+ * anonymous shape re-checked with `Array.isArray` — the contract is the
+ * boundary, and guessing past it hides a contract violation instead of
+ * surfacing one.
  */
 async function loadHistory(
   store: ChatWiring["fullStore"],
@@ -215,10 +232,9 @@ async function loadHistory(
   logger: ReturnType<typeof createLogger>,
 ): Promise<{ role: string; content: string }[]> {
   try {
-    const rows = (await runStore(store.getChatMessages(sessionId, { limit: HISTORY_LIMIT }))) as
-      | readonly { role: string; content: string }[]
-      | null;
-    if (!Array.isArray(rows)) return [];
+    const rows = (await runStore(
+      store.getChatMessages(sessionId, { limit: HISTORY_LIMIT }),
+    )) as readonly ChatMessage[];
     return rows.map((m) => ({ role: m.role, content: m.content }));
   } catch (err) {
     logger.warn("chat.history_unavailable", {

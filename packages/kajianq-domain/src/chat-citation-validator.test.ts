@@ -62,6 +62,24 @@ describe("validateCitations — grounded direction", () => {
     expect(ungrounded).toEqual([]);
   });
 
+  it("grounds a dot-less Quran citation against its dotted label", () => {
+    // Round-3 A1: `QS 2:255` is a common model spelling. The grammar must see
+    // it (the old dotted-only grammar missed it entirely) and normalization
+    // must match it to the chunk's dotted label — a grounded answer must not
+    // be refused for the spelling of its marker.
+    const { grounded, ungrounded } = validateCitations("Menurut QS 2:255 …", [chunk("QS. 2:255")]);
+    expect(grounded).toEqual(["QS. 2:255"]);
+    expect(ungrounded).toEqual([]);
+  });
+
+  it("grounds a dot-less hadith citation against its dotted label", () => {
+    const { grounded, ungrounded } = validateCitations("HR Bukhari no. 573 menyebutkan …", [
+      chunk("HR. Bukhari no. 573"),
+    ]);
+    expect(grounded).toEqual(["HR. Bukhari no. 573"]);
+    expect(ungrounded).toEqual([]);
+  });
+
   it("still refuses a fabricated address written in bold", () => {
     // The emphasis stripping must not turn the trap case into a pass.
     const { ungrounded } = validateCitations("**HR. Bukhari no. 99999** menyebutkan …", [
@@ -93,6 +111,22 @@ describe("validateCitations — ungrounded direction (the trap cases)", () => {
   it("catches a fabricated Quran citation in brackets", () => {
     const { ungrounded } = validateCitations("… [QS. 9:99]", [chunk("QS. 2:255")]);
     expect(ungrounded).toEqual(["QS. 9:99"]);
+  });
+
+  it("catches a fabricated Quran citation written without the trailing dot", () => {
+    // Round-3 A1: `QS 9:99` (dot-less) previously matched no grammar at all,
+    // so a common spelling of a fabricated citation bypassed the gate.
+    const { ungrounded } = validateCitations("Allah berfirman dalam QS 9:99 tentang hal ini.", [
+      chunk("QS. 2:255"),
+    ]);
+    expect(ungrounded).toEqual(["QS. 9:99"]);
+  });
+
+  it("catches a fabricated hadith written without the trailing dot", () => {
+    const { ungrounded } = validateCitations("HR Bukhari no. 99999 menyebutkan …", [
+      chunk("HR. Bukhari no. 573"),
+    ]);
+    expect(ungrounded).toEqual(["HR. Bukhari no. 99999"]);
   });
 
   it("catches a fabricated hadith number", () => {

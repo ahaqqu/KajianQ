@@ -129,3 +129,74 @@ describe("reviewer evidence rendering", () => {
     expect(captured.user).not.toContain("(Sahih) (sahih)");
   });
 });
+
+/**
+ * Round-3 A2: a generator-emitted refusal must short-circuit. The old flow ran
+ * the canonical refusal draft through the reviewer LLM (a paid call), appended
+ * the ulama disclaimer to it, and recorded no `refusal` event — contradicting
+ * the invariant that product rules are "never applied to a refusal" and
+ * hiding the refusal from the trace signal the eval harness reads.
+ */
+describe("generator-emitted refusal short-circuit", () => {
+  async function runRefusalReview(draftText: string): Promise<{
+    result: { text: string };
+    events: { kind: string; detail?: Record<string, unknown> }[];
+    providerCalled: boolean;
+  }> {
+    const events: { kind: string; detail?: Record<string, unknown> }[] = [];
+    let providerCalled = false;
+    const reviewer = createKajianQReviewer({
+      provider: {
+        generate: () => {
+          providerCalled = true;
+          return Effect.succeed({ text: '{"verdict": "pass", "reason": "-"}', cost: cost() });
+        },
+      },
+      // applyProductRules deliberately left at its default (on): the refusal
+      // must come out undecorated even with the rules enabled.
+      language: "id",
+    });
+    const result = (await Effect.runPromise(
+      Effect.provideService(
+        reviewer.review({ text: draftText } as never, await assembledContext()) as never,
+        RunContext,
+        {
+          config: {},
+          now: () => 1,
+          record: (e: { kind: string; detail?: Record<string, unknown> }) => events.push(e),
+        } as never,
+      ) as never,
+    )) as { text: string };
+    return { result, events, providerCalled };
+  }
+
+  it("returns the ID refusal verbatim with a refusal event and no reviewer call", async () => {
+    const refusal = "tidak menemukan dalil yang memadai";
+    const { result, events, providerCalled } = await runRefusalReview(refusal);
+    expect(result.text).toBe(refusal);
+    expect(providerCalled).toBe(false);
+    const refusalEvent = events.find((e) => e.kind === "refusal");
+    expect(refusalEvent).toBeDefined();
+    expect(refusalEvent?.detail?.["trigger"]).toBe("generator_refusal");
+    expect(events.some((e) => e.kind === "llm_call")).toBe(false);
+  });
+
+  it("returns the EN refusal verbatim and appends no disclaimer", async () => {
+    const refusal = "could not find adequate evidence";
+    const { result, events, providerCalled } = await runRefusalReview(refusal);
+    expect(result.text).toBe(refusal);
+    expect(providerCalled).toBe(false);
+    expect(result.text).not.toContain("bukan fatwa");
+    expect(result.text).not.toContain("not a fatwa");
+    expect(events.find((e) => e.kind === "refusal")).toBeDefined();
+  });
+
+  it("does not short-circuit an ordinary answer", async () => {
+    const { result, events, providerCalled } = await runRefusalReview(
+      "Jawaban dengan QS. 2:255 dan HR. Malik no. 185.",
+    );
+    expect(providerCalled).toBe(true);
+    expect(events.some((e) => e.kind === "refusal")).toBe(false);
+    expect(result.text).toContain("QS. 2:255");
+  });
+});

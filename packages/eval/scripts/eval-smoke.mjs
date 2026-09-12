@@ -26,23 +26,17 @@
  * A live run needs staging secrets (Cloudflare + Neon + vendor keys); when
  * they are absent the script fails fast with the missing name rather than
  * reporting a misleading pass — see the run instructions in SPECS §3.7.
+ *
+ * Round-3 B2: the config load, budget banner, fixture load, and summary
+ * printer are the shared CLI glue in `eval-cli.mjs` — one copy, no drift.
+ * This script keeps only what is genuinely its own: the subset selection and
+ * the failure exit policy.
  */
-import { readFileSync } from "node:fs";
 import * as evalpkg from "@app/eval";
 import { createStagingHarness } from "./staging-harness.mjs";
+import { createBudget, fail, loadConfig, loadFixture, printSummary } from "./eval-cli.mjs";
 
-function fail(msg) {
-  console.error(`eval:smoke: ${msg}`);
-  process.exit(1);
-}
-
-const config = (() => {
-  try {
-    return evalpkg.loadEvalRunConfig(process.env);
-  } catch (err) {
-    fail(err instanceof Error ? err.message : String(err));
-  }
-})();
+const config = loadConfig("eval:smoke", process.env);
 
 const size = (() => {
   const raw = process.env.EVAL_SMOKE_SIZE;
@@ -54,18 +48,8 @@ const size = (() => {
   return n;
 })();
 
-const budget = new evalpkg.Budget(config.budgetCapMicroUsd);
-console.log(
-  `eval:smoke: budget ${config.budgetCapMicroUsd === undefined ? "uncapped" : `${config.budgetCapMicroUsd} micro-USD`} (EVAL_BUDGET_MICRO_USD)`,
-);
-
-const fixturePath = `${process.cwd()}/${config.goldenSetPath}`;
-let fixture;
-try {
-  fixture = evalpkg.loadGoldenSetJson(readFileSync(fixturePath, "utf8"), "golden-set-v0.json");
-} catch (err) {
-  fail(err instanceof Error ? err.message : String(err));
-}
+const budget = createBudget("eval:smoke", config);
+const fixture = loadFixture("eval:smoke", config);
 
 const selection = evalpkg.selectSmokeSubset(fixture, { size, trapTag: "dhaif-trap" });
 console.log(
@@ -90,18 +74,15 @@ const result = await evalpkg.runGoldenSet(selection.set, {
   budget,
 });
 
-const scored = result.results.filter((x) => x.skipped !== true);
-const mean = (xs) => (xs.length === 0 ? null : xs.reduce((a, b) => a + b, 0) / xs.length);
-console.log(
-  [
-    "",
-    `eval:smoke summary — run ${result.runId}`,
-    `  questions: ${selection.set.questions.length}  passed: ${result.passed}  failed: ${result.failed}  skipped: ${result.skipped}`,
-    `  mean retrieval recall: ${mean(scored.map((x) => x.retrievalRecall))?.toFixed(3) ?? "n/a"}`,
-    `  mean citation validity: ${mean(scored.map((x) => x.citationValidity))?.toFixed(3) ?? "n/a"}`,
-    `  cost: ${(budget.total / 1e6).toFixed(6)} USD  budget exceeded: ${result.budgetExceeded}`,
-  ].join("\n"),
-);
+// The live budget is the settled figure here: a smoke run may abort on the
+// cap before the ledger row is written, and the run's own record would then
+// understate the spend.
+printSummary("eval:smoke", {
+  runId: result.runId,
+  questionCount: selection.set.questions.length,
+  result,
+  costMicroUsd: budget.total,
+});
 
 if (result.failed > 0 || result.skipped > 0) {
   console.error(
