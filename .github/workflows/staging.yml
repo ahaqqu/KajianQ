@@ -4,6 +4,14 @@ name: Staging
 # briefly dropped in #53 when a template-sync --ours resolution re-introduced
 # D1 steps; D1 was already stripped from this fork in #3 (ADR-0008). The
 # workflow below is project-owned (Neon-backed, no D1, no /v1/session).
+#
+# This workflow carries NO corpus-ingest job (ADR-0037). Loading the corpus
+# costs real money (embeddings + cheap-tier parent summaries) and about two
+# hours, so it is an operator-driven local action — `bun run ingest:quran` /
+# `bun run ingest:hadith` from the repo root against NEON_DATABASE_URL. A
+# money-spending job must never sit in the same workflow graph as this
+# evidence job: previously a failed ingest skipped the smoke entirely,
+# spending money and producing no evidence for it.
 on:
   push:
     branches: [main]
@@ -20,28 +28,6 @@ on:
         description: "Hard spend cap for the smoke run in micro-USD (1000000 = $1)"
         required: false
         default: "1000000"
-      # ONE-OFF operator action, never part of the routine path: a push to
-      # main deploys and smokes, it never ingests. Filling the store costs real
-      # money (cheap-tier parent summaries + embeddings) and about two hours, so
-      # it happens once per environment — the Neon store then persists across
-      # deploys the way production's does, and every ingest CLI is idempotent by
-      # construction (parents upsert by sourceKey, children by (parentId,
-      # ordinal), pairs by pairKey, reports by run id), so a re-dispatch is a
-      # safe repair rather than a rebuild.
-      ingest_corpus:
-        description: "ONE-OFF: ingest the corpus into staging (spends money, ~2 h)"
-        required: false
-        type: boolean
-        default: false
-      ingest_scope:
-        description: "Corpus to ingest when ingest_corpus is true"
-        required: false
-        type: choice
-        options:
-          - both
-          - quran
-          - hadith
-        default: "both"
 
 # Serialize staging runs: a push-to-main deploy and a manual dispatch would
 # otherwise race on the same Alchemy state and on the Neon ledger the smoke
@@ -57,145 +43,10 @@ permissions:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # One-off corpus ingest (workflow_dispatch with ingest_corpus, default off).
-  #
-  # Why this lives here and not in a workflow of its own: GitHub only resolves
-  # `workflow_dispatch` for workflow files that exist on the default branch, so
-  # a separate file could not be dispatched from a PR branch — and the first
-  # real ingest is exactly what a PR like this one needs. The opt-in input keeps
-  # the routine path (push to main) ingest-free.
-  #
-  # Why ingest is not "rebuilt" per deploy: the Neon store persists; this job
-  # exists because the corpus had never been ingested into staging at all (the
-  # only rows there were neon-contract fixtures, and `eval_runs` — where every
-  # ingest CLI writes its IngestionReport — was empty).
-  # ---------------------------------------------------------------------------
-  ingest:
-    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ingest_corpus == 'true' }}
-    runs-on: ubuntu-latest
-    # Full Quran (6,236 ayah) + 7 hadith collections: ~93k embedding items at
-    # the CLIs' serial batch size, plus ~500 cheap-tier parent summaries.
-    timeout-minutes: 300
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: 1.4.0
-      - run: bun install --frozen-lockfile
-      - name: Require ingest secrets
-        run: |
-          set -euo pipefail
-          test -n "$NEON_DATABASE_URL" || {
-            echo "::error::NEON_DATABASE_URL is unset — nothing to ingest into"
-            exit 1
-          }
-          # Embeddings (embedder role) and the parent summaries (cheap role,
-          # whose keyed fallback is DeepSeek when Gemini is rate-limited).
-          test -n "$GEMINI_API_KEY" || {
-            echo "::error::GEMINI_API_KEY is unset — the embedder role has no keyed candidate"
-            exit 1
-          }
-          if [ -z "$R2_ACCESS_KEY_ID" ] || [ -z "$R2_SECRET_ACCESS_KEY" ]; then
-            echo "::warning::R2 S3 credentials are absent — the raw-source archive step is skipped and the IngestionReport records archiveStored: false. Add R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY to store the raw bytes (the account id is taken from CLOUDFLARE_ACCOUNT_ID)."
-          fi
-        env:
-          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-      - name: Apply pending migrations
-        # Additive and versioned (schema_migrations), never a rebuild: staging
-        # was missing the domain set's 0002_aligned_pairs, which Quran ingestion
-        # writes to. `db:up:all` applies engine + domain + product sets.
-        run: bun run db:up:all
-        env:
-          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
-      - name: Ingest Quran (Tanzil Uthmani + Kemenag)
-        if: ${{ github.event.inputs.ingest_scope != 'hadith' }}
-        run: bun run ingest:quran
-        env:
-          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          # The R2 S3 endpoint is account-scoped, and the account id is already
-          # a secret here — only the S3 key pair has to be added.
-          R2_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_BUCKET_STAGING: kajianq-raw-staging
-      - name: Ingest hadith (fawazahmed0 editions)
-        # One collection per invocation. The ingestion runner embeds both
-        # tracks for a whole run and only then writes its children, so a single
-        # pass over all seven collections is all-or-nothing: a timeout or a
-        # rate-limit wall would cost the entire run and leave the store with no
-        # hadith at all. Per-collection passes commit as they go, so a failed
-        # or cancelled run resumes where it stopped (every write is an upsert
-        # keyed by sourceKey / (parentId, ordinal)), and the collection list
-        # stays domain-owned — read from the pack rather than hardcoded here.
-        if: ${{ github.event.inputs.ingest_scope != 'quran' }}
-        run: |
-          set -euo pipefail
-          total=$(cd packages/kajianq-domain && bun -e 'const { HADITH_COLLECTIONS } = await import("./src/index.ts"); console.log(HADITH_COLLECTIONS.length)')
-          echo "ingesting ${total} hadith collection(s), one per pass"
-          for i in $(seq 0 $((total - 1))); do
-            echo "::group::hadith collection pass $((i + 1))/${total} (offset ${i})"
-            bun run ingest:hadith -- --offset "${i}" --limit 1
-            echo "::endgroup::"
-          done
-        env:
-          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          R2_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_BUCKET_STAGING: kajianq-raw-staging
-      - name: Verify the corpus landed
-        # Positive evidence, not a green checkmark: the counts the smoke's
-        # retrieval recall will resolve against, plus the IngestionReports the
-        # CLIs persisted to eval_runs. The probe lives inside packages/infra —
-        # the workspace package that owns the Neon driver — because bun's
-        # isolated install does not link it at the repo root.
-        run: |
-          set -uo pipefail
-          cat > packages/infra/.corpus-status.mjs <<'EOF'
-          import { neon } from "@neondatabase/serverless";
-          const sql = neon(process.env.NEON_DATABASE_URL);
-          const parents = await sql`SELECT count(*)::int AS n FROM doc_parents`;
-          const chunks = await sql`SELECT metadata->>'sourceType' AS source_type, count(*)::int AS n FROM doc_children GROUP BY 1 ORDER BY 2 DESC`;
-          const reports = await sql`SELECT label, created_at FROM eval_runs ORDER BY created_at DESC LIMIT 5`;
-          const scope = process.env.INGEST_SCOPE ?? "both";
-          const lines = [
-            `doc_parents: ${parents[0].n}`,
-            `doc_children by sourceType: ${chunks.map((r) => `${r.source_type ?? "(none)"}=${r.n}`).join(", ")}`,
-            `recent ingest reports: ${reports.map((r) => `${r.label}@${new Date(r.created_at).toISOString()}`).join(" | ")}`,
-          ];
-          const types = new Set(chunks.map((r) => r.source_type));
-          const missing = [
-            ...(scope !== "hadith" && !types.has("quran") ? ["quran"] : []),
-            ...(scope !== "quran" && !types.has("hadith") ? ["hadith"] : []),
-          ];
-          if (missing.length > 0) lines.push(`INCOMPLETE — no ${missing.join(", ")} chunks landed`);
-          console.log(lines.join("\n"));
-          await import("node:fs").then(({ appendFileSync }) =>
-            appendFileSync(process.env.GITHUB_STEP_SUMMARY ?? "/dev/null", `### Corpus status\n\n\`\`\`\n${lines.join("\n")}\n\`\`\`\n`),
-          );
-          if (missing.length > 0) process.exit(1);
-          EOF
-          bun packages/infra/.corpus-status.mjs
-          rm -f packages/infra/.corpus-status.mjs
-        env:
-          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
-          INGEST_SCOPE: ${{ github.event.inputs.ingest_scope || 'both' }}
-
-  # ---------------------------------------------------------------------------
-  # Deploy + verify. Runs on every push to main and on dispatch; when the
-  # one-off ingest job is skipped (the normal case) this is the only job, and
-  # when it ran, the smoke must see the corpus it just landed.
+  # Deploy + verify. Runs on every push to main and on every dispatch. This is
+  # the evidence job: its Golden Set smoke step is what a PR cites.
   # ---------------------------------------------------------------------------
   staging:
-    needs: [ingest]
-    if: ${{ always() && needs.ingest.result != 'failure' && needs.ingest.result != 'cancelled' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

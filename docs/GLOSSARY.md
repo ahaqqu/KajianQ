@@ -64,3 +64,24 @@ Canonical terms beyond `CONTEXT.md`, captured per the domain-modeling discipline
 **Context:** persistence (engine seam)
 **Definition:** The typed error channel of RagStore/ObjectStore — a closed kind set (`transport`, `timeout`, `constraint`, `not_found`, `config`) with the wrapped original in `cause`; defined in `packages/rag-core` (engine owns its seam vocabulary, mirroring `ProviderErrorKind`), mapped from vendor exceptions inside adapters.
 **Also known as:** DB error, storage exception (rejected — leaks vendor types to consumers)
+
+### Ingestion Pass
+
+**Type:** command
+**Context:** ingestion (engine)
+**Definition:** One bounded execution of the ingestion pipeline over a declared collection range, which embeds and writes that range's children together; its cost is incurred once and is not recovered by re-running it.
+**Also known as:** ingest run, batch (both rejected — they hide that the scope is declared and that the cost is not self-healing)
+
+### Landed Collection
+
+**Type:** value object
+**Context:** ingestion (ops)
+**Definition:** A corpus collection whose children are verifiably present in the store in the count the source declares; the unit by which ingestion scope is decided and a remaining corpus is measured.
+**Also known as:** done collection, ingested collection (both rejected — "done" and "ingested" assert an intent that must instead be measured)
+
+### Evidence Run
+
+**Type:** event
+**Context:** verification (ops)
+**Definition:** A workflow run whose smoke result is cited as a pull request's evidence, distinguishable from probe and iteration runs by its deployed commit equalling the pull request head.
+**Also known as:** gate run, CI run (both rejected — neither implies the sha equality that makes the result evidence)

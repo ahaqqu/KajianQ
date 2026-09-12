@@ -80,8 +80,8 @@
   },
   "roles": {
     "generator": {
-      "$comment": "Cost posture decided 2026-09-12 (ADR-0009 amendment): the answer generator runs on the cheap tier — DeepSeek V4-Flash at $0.14/$0.28 per MTok vs Qwen3.7-Max's $2.50/$7.50 — because the trust invariant is carried by the deterministic citation gate and the cross-vendor reviewer, not by generator price. Qwen3.7-Max stays in the chain as the keyed failover (it is the documented quality head, promoted by reordering this list once DASHSCOPE_API_KEY is bound); a failover call is cost-traced like any other.",
-      "chain": ["deepseek:deepseek-v4-flash", "qwen:qwen3.7-max"]
+      "$comment": "Cost posture decided 2026-09-12 (ADR-0009 amendment): the answer generator runs on the cheap tier — DeepSeek V4-Flash at $0.14/$0.28 per MTok vs Qwen3.7-Max's $2.50/$7.50 — because the trust invariant is carried by the deterministic citation gate and the cross-vendor reviewer, not by generator price. The Qwen3.7-Max tail was REMOVED on 2026-09-12 (owner decision): DashScope is not provisioned and will not be, and resolveRole silently filters candidates whose apiKeyEnv is unset — so the chain advertised a failover that could never be wired. Single candidate, accepted single point of failure: a generator failure costs one <=$1 smoke re-run, not data. Re-adding a fallback means adding a candidate whose key is actually bound.",
+      "chain": ["deepseek:deepseek-v4-flash"]
     },
     "reviewer": {
       "$comment": "Cost posture decided 2026-09-12 (ADR-0009 amendment): #10 made the reviewer mandatory on EVERY answer, so the old cost model's 'reviewer on a 10% sample' no longer holds — Gemini 3 Flash Preview ($0.50/$3) replaces Gemini 3.1 Pro Preview ($2/$12) as the gate model. Cross-vendor separation from the DeepSeek generator is preserved. Promotion to 3.1 Pro is a one-line change once the Golden Set shows flash-level review lets bad answers through.",

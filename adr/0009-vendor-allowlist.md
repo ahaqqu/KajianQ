@@ -5,9 +5,12 @@ All LLM and embedding providers are restricted by user policy to Google Gemini, 
 ## Amendment (2026-09-12): generator and reviewer cost posture — DeepSeek V4-Flash + Gemini 3 Flash Preview
 
 **Decision.** The `generator` role's chain head moves to `deepseek:deepseek-v4-flash`
-($0.14/$0.28 per MTok) with `qwen:qwen3.7-max` retained as the keyed failover tail
-(the documented quality head, promoted by reordering one line once
-`DASHSCOPE_API_KEY` is bound). The `reviewer` role moves to
+($0.14/$0.28 per MTok). Its `qwen:qwen3.7-max` tail was **removed the same day**
+(owner decision, 2026-09-12): DashScope is not provisioned and will not be, and
+`resolveRole` silently filters candidates whose `apiKeyEnv` is unset — so the tail
+advertised a failover that could never be wired. The generator is therefore a
+single candidate and an accepted single point of failure (a failure costs one
+≤$1 smoke re-run, not data). The `reviewer` role moves to
 `gemini:gemini-3-flash-preview` ($0.50/$3). Both changes are config-only
 (`packages/infra/src/providers/models.json`); no code path branches on vendor or
 model identity, and every call still records its own `CostRecord` with the model
@@ -56,16 +59,19 @@ were exercised against the vendors' real endpoints, not assumed:
 posture: `bun run eval:run` (Golden Set, free-tier capped) must show it neither
 lets ungrounded citations through nor inflates refusals, and the PR-time
 `bun run eval:smoke` now runs against live staging on every Staging deploy. A
-regression in either direction reverts the chain heads — one line per role. The
-promotion paths stay recorded in SPECS §3.4's Alt column (`gemini-3.1-pro-preview`
-for the reviewer, `qwen3.7-max` for the generator).
+regression in either direction reverts the chain head — one line per role. The
+reviewer's promotion path stays recorded in SPECS §3.4's Alt column
+(`gemini-3.1-pro-preview`); restoring a generator fallback means **re-adding**
+`qwen3.7-max` to the chain _and_ binding `DASHSCOPE_API_KEY` — not reordering a
+list that no longer contains it.
 
 **Alternatives considered.**
 
 - **Buy a DashScope key, keep Qwen3.7-Max + Gemini 3.1 Pro.** Rejected for now as
   the default: $2.50/$7.50 generator and $2/$12 reviewer on every answer is ~15×
   the chosen pair, and the owner's stated posture is best-value rather than
-  quality-at-any-price. Remains available as a keyed failover/promotion.
+  quality-at-any-price. Remains a future promotion path only: the tail was removed
+  from the chain, so it must be re-added once a key is bound.
 - **Gemini generator + Gemini reviewer.** Rejected outright: it is same-vendor
   self-review, which is exactly the property ADR-0015's cross-vendor check exists
   to avoid — it would leave the reviewer gate formally intact and substantively
