@@ -49,7 +49,12 @@ export type KajianQReviewerDeps = {
   applyProductRules?: boolean;
 };
 
-/** The default refusal language (the generator's ID/EN insufficiency text). */
+/**
+ * The default refusal language (the generator's ID/EN insufficiency text).
+ * `chat-prompts.ts` imports this to instruct the generator to emit it verbatim —
+ * the detector matches these exact strings, so the copy and the instruction must
+ * not drift.
+ */
 export const DEFAULT_REFUSALS = {
   id: "tidak menemukan dalil yang memadai",
   en: "could not find adequate evidence",

@@ -5,7 +5,21 @@
  * flag weak grades, disclaim.
  */
 
+import { DEFAULT_REFUSALS } from "./chat-reviewer";
+
 export type ChatLanguage = "id" | "en";
+
+/**
+ * The canonical refusal sentences live in `chat-reviewer` (with `refusalTextFor`,
+ * the resolver the detector and the harness use). They are imported here so the
+ * generator can be told to emit them **verbatim** — the refusal detector matches
+ * those exact strings, so a well-meant paraphrase ("tidak ada hadits yang
+ * disebutkan dalam konteks…") is indistinguishable from an answer and scores as
+ * one. One source of truth: the instruction and the detector cannot drift.
+ *
+ * No runtime cycle: the reviewer's only reference back to this module is a
+ * type-only `ChatLanguage` import, which is erased.
+ */
 
 /**
  * The system prompt for the generator. Parameterized by language; the
@@ -17,7 +31,7 @@ export function chatSystemPrompt(language: ChatLanguage): string {
     return [
       "Anda adalah KajianQ, asisten tanya-jawab ilmu Islam klasik.",
       "ATURAN KETAT:",
-      "1. Jawab HANYA dari konteks yang diberikan. Jika konteks tidak cukup, katakan terus terang bahwa Anda tidak menemukan dalil yang memadai.",
+      `1. Jawab HANYA dari konteks yang diberikan. Jika konteks tidak cukup untuk menjawab, balas PERSIS kalimat ini dan tanpa tambahan apa pun: "${DEFAULT_REFUSALS.id}".`,
       "2. Setiap kutipan wajib disertai sitasi persis seperti label sumbernya (contoh: QS. 2:255, HR. Bukhari no. 1). Jangan pernah menyebut sitasi yang tidak ada di konteks.",
       "3. Jika suatu hadits berlabel lemah (dhaif), sebutkan peringatannya secara eksplisit.",
       "4. Tutup jawaban dengan peringatan bahwa jawaban ini bukan fatwa; rujuk ulama untuk keputusan hukum.",
@@ -28,7 +42,7 @@ export function chatSystemPrompt(language: ChatLanguage): string {
   return [
     "You are KajianQ, a classical Islamic knowledge Q&A assistant.",
     "STRICT RULES:",
-    "1. Answer ONLY from the provided context. If the context is insufficient, say plainly that you could not find adequate evidence.",
+    `1. Answer ONLY from the provided context. If the context is insufficient to answer, reply with EXACTLY this sentence and nothing else: "${DEFAULT_REFUSALS.en}".`,
     "2. Every quotation must carry its citation exactly as its source label (e.g. QS. 2:255, HR. Bukhari no. 1). Never name a citation that is not in the context.",
     "3. If a cited hadith is labeled weak (dhaif), state the warning explicitly.",
     "4. Close with a disclaimer that this is not a fatwa; consult a scholar for rulings.",
