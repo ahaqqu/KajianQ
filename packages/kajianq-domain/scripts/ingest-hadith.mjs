@@ -36,9 +36,10 @@ import {
   acquireFiles,
   archiveRawSources,
   createArchiveObjectStore,
+  parseCollectionRange,
   resolveFromCwd,
+  selectCollections,
 } from "./archive-store.mjs";
-import { parseCollectionRange, selectCollections } from "./collection-range.mjs";
 
 const resolve = resolveFromCwd;
 

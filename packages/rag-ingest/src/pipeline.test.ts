@@ -114,11 +114,12 @@ function fakeStore() {
 }
 
 /** Deterministic embedder: vector is the text hash repeated to a fixed dim. */
-function fakeProvider(dim = 8): Provider {
+function fakeProvider(dim = 8, seen?: string[][]): Provider {
   return {
     modelId: "fake-embedder",
     embed: (spec) =>
       Effect.sync(() => {
+        seen?.push([...spec.texts]);
         const vectors = spec.texts.map((text) => {
           const seed = [...text].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 997, 7);
           return Array.from({ length: dim }, (_, i) => ((seed + i) % 17) / 17);
@@ -194,13 +195,44 @@ describe("runIngestion", () => {
 
     expect(result.parentIds).toHaveLength(2);
     expect(f.children()).toHaveLength(3);
-    // Primary track embedded for all 3 children; secondary for all 3 rows
-    // (the null-secondary row embeds ""), so cost = 3 + 3 = 6 micro-USD.
+    // Primary track embedded for all 3 children; the secondary track only for
+    // the 2 rows that carry it (the null-secondary row is skipped, never sent
+    // as an empty part), so cost = 3 + 2 = 5 micro-USD.
     expect(result.report.llmCalls).toHaveLength(2);
     expect(result.report.childrenWritten).toBe(3);
     expect(result.report.parentsWritten).toBe(2);
-    expect(result.report.costMicroUsd).toBe(6);
+    expect(result.report.costMicroUsd).toBe(5);
     expect(result.report.details?.embeddedSecondaryTrack).toBe(true);
+  });
+
+  it("never sends an empty text to the embedder (the empty-Part 400)", async () => {
+    // Regression pin: the corpus legitimately contains rows with no
+    // secondary-language text, and the pipeline used to map `null` to `""` —
+    // which the vendor rejects with `400 … contains an empty Part`, failing the
+    // whole run after hours of embedding. The row keeps a null fallback vector.
+    const f = fakeStore();
+    const seen: string[][] = [];
+    const written: Record<string, unknown>[] = [];
+    const store: RagStore = {
+      ...f.store,
+      insertDocChildren(batch) {
+        for (const row of batch) written.push(row as unknown as Record<string, unknown>);
+        return f.store.insertDocChildren(batch);
+      },
+    };
+    const result = await runIngestion(
+      async () => twoParents(),
+      { archiveKey: "archive/key", raw: new Uint8Array() },
+      { store, embedder: fakeProvider(8, seen), summarizer: null },
+    );
+
+    expect(seen.flat().every((text) => text.trim() !== "")).toBe(true);
+    // Two batches: 3 primary texts + 2 secondary texts (not 3).
+    expect(seen.map((batch) => batch.length).sort()).toEqual([2, 3]);
+    const nullSecondary = written.find((c) => c.textId === null);
+    expect(nullSecondary?.embeddingFallback).toBeNull();
+    expect(nullSecondary?.embeddingPrimary).not.toBeNull();
+    expect(result.report.costMicroUsd).toBe(5);
   });
 
   it("embedConcurrency > 1 runs batches in parallel while keeping rows aligned", async () => {
@@ -490,9 +522,9 @@ describe("runIngestion", () => {
     );
     const summarizerCalls = result.report.llmCalls.filter((c) => c.modelId === "test-summarizer");
     expect(summarizerCalls).toHaveLength(2); // one per parent
-    // Embedding cost (6: primary + secondary batches, see the first test)
-    // plus the two 7-micro summaries = 20.
-    expect(result.report.costMicroUsd).toBe(6 + 2 * 7);
+    // Embedding cost (5: 3 primary + 2 secondary texts, see the first test)
+    // plus the two 7-micro summaries = 19.
+    expect(result.report.costMicroUsd).toBe(5 + 2 * 7);
   });
 
   it("rejects a parser that emits duplicate parent keys (fail loudly, never dupe)", async () => {
