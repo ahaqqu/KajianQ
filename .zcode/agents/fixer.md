@@ -2,8 +2,7 @@
 name: "fixer"
 description: "Dedicated role that owns review feedback fixes after the reviewer posts itemized findings. Reads the PR and thermos comments in a fresh context, accepts or rejects each item, applies accepted fixes, and keeps CI green."
 color: yellow
-model: "custom:d5585e04-940a-41f6-a9ec-320bb4fccd7e:glm-5.3-flash%3Acloud"
-thoughtLevel: high
+model: "custom:d5585e04-940a-41f6-a9ec-320bb4fccd7e:deepseek-v4.1-flash%3Acloud"
 tools:
   - "*"
 skills:

@@ -2,7 +2,8 @@
 name: "reviewer"
 description: "Reviewer for the manager-orchestrated agentic workflow. Runs both thermos passes (security/correctness + maintainability) itself, then posts itemized findings as GitHub review comments and a summary comment."
 color: red
-model: "custom:d5585e04-940a-41f6-a9ec-320bb4fccd7e:kimi-k2.7-code%3Acloud"
+model: "custom:d5585e04-940a-41f6-a9ec-320bb4fccd7e:glm-5.3-flash%3Acloud"
+thoughtLevel: high
 tools:
   - "*"
 skills:
