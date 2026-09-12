@@ -8,7 +8,7 @@ import {
   type Reviewer,
 } from "@app/rag-core";
 import type { KajianQFilters } from "./filters";
-import { validateCitations } from "./chat-citation-validator";
+import { citationLabelsOf, validateCitations } from "./chat-citation-validator";
 import { applyProductRules } from "./chat-postprocess";
 
 /**
@@ -123,7 +123,18 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
                   role: "user",
                   content: [
                     "Evidence:",
-                    ...context.chunks.map((c) => `- ${c.text}`),
+                    // Each chunk's own citation label is part of the evidence. It
+                    // used to be omitted, which made the reviewer structurally
+                    // unable to verify any citation: it saw only the raw text, so
+                    // "HR. Malik no. 185" looked unsupported on every question and
+                    // it failed every answer that cited a source — the exact
+                    // rejections the live smoke produced ("cites specific hadith
+                    // numbers … not present in the provided evidence").
+                    ...context.chunks.map((c) => {
+                      const labels = citationLabelsOf(c);
+                      const head = labels.length > 0 ? `[${labels.join("; ")}] ` : "";
+                      return `- ${head}${c.text}`;
+                    }),
                     "",
                     "Draft answer:",
                     draft.text,
