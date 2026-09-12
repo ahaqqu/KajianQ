@@ -124,8 +124,24 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_STAGING: kajianq-raw-staging
       - name: Ingest hadith (fawazahmed0 editions)
+        # One collection per invocation. The ingestion runner embeds both
+        # tracks for a whole run and only then writes its children, so a single
+        # pass over all seven collections is all-or-nothing: a timeout or a
+        # rate-limit wall would cost the entire run and leave the store with no
+        # hadith at all. Per-collection passes commit as they go, so a failed
+        # or cancelled run resumes where it stopped (every write is an upsert
+        # keyed by sourceKey / (parentId, ordinal)), and the collection list
+        # stays domain-owned — read from the pack rather than hardcoded here.
         if: ${{ github.event.inputs.ingest_scope != 'quran' }}
-        run: bun run ingest:hadith
+        run: |
+          set -euo pipefail
+          total=$(cd packages/kajianq-domain && bun -e 'const { HADITH_COLLECTIONS } = await import("./src/index.ts"); console.log(HADITH_COLLECTIONS.length)')
+          echo "ingesting ${total} hadith collection(s), one per pass"
+          for i in $(seq 0 $((total - 1))); do
+            echo "::group::hadith collection pass $((i + 1))/${total} (offset ${i})"
+            bun run ingest:hadith -- --offset "${i}" --limit 1
+            echo "::endgroup::"
+          done
         env:
           NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

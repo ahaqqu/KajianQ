@@ -5,6 +5,7 @@
  *   bun run ingest:hadith                          # full ingest (needs NEON_DATABASE_URL + API keys)
  *   bun run ingest:hadith -- --check               # integrity check only (no LLM/embedding spend)
  *   bun run ingest:hadith -- --limit 2             # ingest only the first N collections
+ *   bun run ingest:hadith -- --offset 3 --limit 1  # one collection per pass (resumable)
  *
  * Thin composition root (B5): source acquisition lives in
  * `source-acquisition.mjs`, R2 archival in `archive-store.mjs`; this file
@@ -37,6 +38,7 @@ import {
   createArchiveObjectStore,
   resolveFromCwd,
 } from "./archive-store.mjs";
+import { parseCollectionRange, selectCollections } from "./collection-range.mjs";
 
 const resolve = resolveFromCwd;
 
@@ -51,26 +53,16 @@ const R2_PREFIX = "hadith/fawazahmed0-hadith-api";
 
 const args = process.argv.slice(2);
 const CHECK_ONLY = args.includes("--check");
-const LIMIT = (() => {
-  const idx = args.indexOf("--limit");
-  if (idx < 0) return null;
-  const n = Number(args[idx + 1]);
-  // Strict validation (review A7): `0` must not mean "full corpus" via
-  // falsiness, and a non-integer must not yield empty collections with a
-  // success report via `slice(0, NaN)`.
-  if (!Number.isInteger(n) || n < 1) return NaN;
-  return n;
-})();
+// Range parsing rules (and their validation) live in collection-range.mjs so
+// they are unit-tested: a bad flag must fail loudly, never silently ingest
+// nothing (`slice(0, NaN)`) or the wrong slice via falsiness.
+const RANGE = parseCollectionRange(args);
 
 const logger = app.createLogger({ script: "ingest:hadith" });
 
 function fail(msg) {
   logger.error(msg);
   process.exit(1);
-}
-
-if (Number.isNaN(LIMIT)) {
-  fail("--limit must be an integer >= 1");
 }
 
 // ---------------------------------------------------------------------------
@@ -80,7 +72,9 @@ if (Number.isNaN(LIMIT)) {
 const neonUrl = process.env.NEON_DATABASE_URL;
 if (!neonUrl && !CHECK_ONLY) fail("NEON_DATABASE_URL is not set");
 
-const collections = LIMIT ? domain.HADITH_COLLECTIONS.slice(0, LIMIT) : domain.HADITH_COLLECTIONS;
+const selection = selectCollections(domain.HADITH_COLLECTIONS, RANGE);
+if (selection.error !== undefined) fail(selection.error);
+const collections = selection.collections;
 logger.info("starting", {
   mode: CHECK_ONLY ? "integrity-check" : "full-ingestion",
   collections,
