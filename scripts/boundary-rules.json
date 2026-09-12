@@ -3,51 +3,27 @@
     "name": "Islamic-domain identifier in an engine package",
     "pattern": "madzhab|madhhab|hadith|hadis|quran|qur'an|kitab|\\bisnad\\b|\\bsanad\\b|sahih|dhaif|\\bhasan\\b|mutawatir|hanafi|maliki|syafii|shafi|hambali|hanbali|tafsir|fiqh|aqidah|tasawuf|\\bsharh\\b|\\bmatn\\b|ayah",
     "flags": "i",
-    "exts": [
-      "ts",
-      "tsx",
-      "mts",
-      "cts",
-      "sql"
-    ],
+    "exts": ["ts", "tsx", "mts", "cts", "sql"],
     "deps": false,
     "justification": "CONTEXT.md vocabulary \u2014 engine packages must receive these as opaque inputs. The short substrings 'isnad', 'sanad', 'hasan', 'sharh', and 'matn' are word-boundary anchored so legitimate identifiers like 'hasAnnotation' or 'chasan' do not false-positive; the longer terms are left unanchored to also catch suffixed forms (e.g. 'quranic'). 'ayah' is included so a migration cannot encode Quran-verse references in the engine schema (the concept graph with ayah_pair_id lives in the domain pack, per the ADR-0014 amendment). The domain rule is NOT applied to package.json dependency names \u2014 only to source and SQL. ADR-0040 (#11): the shared chat citation contract carries the product's CONTEXT.md term as its wire flag name (`dhaifWarning`); the two contracts chat files are exempt file-scoped \u2014 values stay opaque strings, and no other engine file may carry domain vocabulary.",
-    "exempt": [
-      "packages/contracts/src/chat.test.ts",
-      "packages/contracts/src/chat.ts"
-    ]
+    "exempt": ["packages/contracts/src/chat.test.ts", "packages/contracts/src/chat.ts"]
   },
   {
     "name": "vendor or model name outside config",
     "pattern": "qwen|gemini|deepseek|kimi|moonshot|dashscope|anthropic|openai|cohere",
     "flags": "i",
-    "exts": [
-      "ts",
-      "tsx",
-      "mts",
-      "cts"
-    ],
+    "exts": ["ts", "tsx", "mts", "cts"],
     "deps": true,
-    "pkgExempt": [
-      "packages/infra/package.json"
-    ],
+    "pkgExempt": ["packages/infra/package.json"],
     "justification": "ADR-0009 vendor allowlist \u2014 vendor/model names appear only in model_configs and the Provider adapters in packages/infra. Also applied to engine package.json dependency names so a vendor SDK cannot be added to an engine package by config. The infra manifest is exempt because packages/infra is the sanctioned Provider adapter home."
   },
   {
     "name": "direct database client outside the RagStore seam",
     "pattern": "(@neondatabase|drizzle|\\bfrom\\s+[\"']pg[\"']|require\\([\"']pg[\"']\\)|import\\s*\\(\\s*[\"']pg[\"']\\s*\\)|new\\s+pg\\.|new\\s+Pool\\b|postgres\\(|neon\\(|createPool|\\.prepare\\()",
     "flags": "i",
-    "exts": [
-      "ts",
-      "tsx",
-      "mts",
-      "cts"
-    ],
+    "exts": ["ts", "tsx", "mts", "cts"],
     "deps": true,
-    "pkgExempt": [
-      "packages/infra/package.json",
-      "packages/eval/package.json"
-    ],
+    "pkgExempt": ["packages/infra/package.json", "packages/eval/package.json"],
     "exempt": [
       "packages/infra/src/rag-store-neon.test.ts",
       "packages/infra/scripts/db-migrate.mjs",
