@@ -163,6 +163,15 @@ export interface RagStore extends RagStoreEvalRunWrite, RagStoreEvalLedger {
    * Nearest-neighbour similarity search over one embedding track. `filters`
    * are exact-match against `metadata` JSONB keys, passed through untouched —
    * the store does not interpret their names.
+   *
+   * **A hit's embeddings are `null`.** The search used the vectors to order
+   * the rows and the caller reads ids/text/metadata, so returning them again
+   * is dead weight — and expensive dead weight: 1536 floats per hit is ~39 KB
+   * of text, which on an 8-search chat request meant ~3 MB over the wire and
+   * ~245k floats parsed inside the Worker (measured 2026-09-12; Cloudflare
+   * killed the request as `exceededResources`). The `DocChild` shape is kept
+   * so ids/text/citation/metadata stay one type; only the two vector fields
+   * are unpopulated by this method.
    */
   similaritySearch(
     track: RetrievalTrack,

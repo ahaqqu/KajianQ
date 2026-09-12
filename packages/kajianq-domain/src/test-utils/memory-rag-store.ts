@@ -149,8 +149,13 @@ export function createMemoryRagStore(): RagStore & {
               textAr: c.textAr,
               textId: c.textId ?? null,
               citation: c.citation ?? {},
-              embeddingPrimary: c.embeddingPrimary ?? null,
-              embeddingFallback: c.embeddingFallback ?? null,
+              // Mirrors the Neon adapter's contract (`RagStore.similaritySearch`):
+              // a hit carries NO vectors. The search used them; re-shipping
+              // 1536 floats per hit is the payload that killed the live smoke's
+              // Worker, and a test double that returned them would let a
+              // consumer depend on something production never provides.
+              embeddingPrimary: null,
+              embeddingFallback: null,
               ordinal: c.ordinal,
               metadata: c.metadata ?? {},
               createdAt: 0,

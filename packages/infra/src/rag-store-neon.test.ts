@@ -88,7 +88,12 @@ run("RagStore contract (real Neon, Effect-shaped seam)", () => {
     expect(hits.length).toBeGreaterThan(0);
     expect(hits[0]?.child.id).toBe(childId);
     expect(hits[0]?.distance ?? 1).toBeLessThan(1e-6);
-    expect(hits[0]?.child.embeddingPrimary).toHaveLength(1536);
+    // A hit carries no vectors: the search used them to order the rows and
+    // re-shipping them cost the Worker megabytes per chat request (see
+    // RagStore.similaritySearch). The stored vectors are still there — the
+    // insert round-trip proves that — this method just does not return them.
+    expect(hits[0]?.child.embeddingPrimary).toBeNull();
+    expect(hits[0]?.child.embeddingFallback).toBeNull();
     expect(hits[0]?.child.citation).toEqual({ s: 2, a: 255 });
   }, 60_000);
 

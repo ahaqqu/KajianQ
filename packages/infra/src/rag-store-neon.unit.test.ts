@@ -243,7 +243,9 @@ describe("rag-store-neon adapter (fake runner)", () => {
         text_ar: "ar",
         text_id: "id",
         citation: { s: 2 },
-        embedding_primary: "[0.1,0.2]",
+        // The real query selects `NULL::text` for both vector columns — see
+        // the payload regression in rag-store-neon-query.test.ts.
+        embedding_primary: null,
         embedding_fallback: null,
         ordinal: 3,
         metadata: { pfx: "x" },
@@ -262,9 +264,11 @@ describe("rag-store-neon adapter (fake runner)", () => {
     expect(hits[0]?.child.id).toBe("c1");
     expect(hits[0]?.distance).toBe(0.25);
     expect(hits[0]?.rankDense).toBe(1);
-    expect(hits[0]?.child.embeddingPrimary).toEqual([0.1, 0.2]);
+    expect(hits[0]?.child.embeddingPrimary).toBeNull();
+    expect(hits[0]?.child.embeddingFallback).toBeNull();
     const q = sql._calls.find((c) => c.kind === "query");
     expect(q?.text).toContain("embedding_primary <=> $1::vector");
+    expect(q?.text).toContain("NULL::text AS embedding_primary");
     // $1 embedding, $2 limit, then per filter key+array → 2 filters = params 3..6.
     expect(q?.values).toHaveLength(6);
   });
