@@ -27,7 +27,12 @@ export function CitationSheet({
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-40 flex items-end" role="dialog" aria-modal="true" aria-label={citation.label}>
+    <div
+      className="fixed inset-0 z-40 flex items-end"
+      role="dialog"
+      aria-modal="true"
+      aria-label={citation.label}
+    >
       <button
         type="button"
         aria-label={t(locale, "closeSheet")}
@@ -42,14 +47,17 @@ export function CitationSheet({
           <span className="rounded-full bg-sky-500/15 px-2 py-0.5 font-mono text-xs text-sky-300">
             {citation.label}
           </span>
-          {citation.grade !== undefined && (
-            <GradeBadge grade={citation.grade} />
-          )}
+          {citation.grade !== undefined && <GradeBadge grade={citation.grade} />}
         </div>
         <p className="mb-1 text-xs uppercase tracking-wide text-slate-400">
           {t(locale, "arabicOriginal")}
         </p>
-        <p dir="rtl" lang="ar" data-testid="citation-arabic" className="mb-3 text-right font-serif text-lg leading-loose text-slate-100">
+        <p
+          dir="rtl"
+          lang="ar"
+          data-testid="citation-arabic"
+          className="mb-3 text-right font-serif text-lg leading-loose text-slate-100"
+        >
           {citation.arabic}
         </p>
         {citation.translation !== undefined && (
@@ -80,11 +88,12 @@ export function CitationSheet({
 /** Grade badge: the weak grade must be visually unmissable (spec §2.2). */
 export function GradeBadge({ grade }: { grade: string }) {
   const weak = grade.toLowerCase() === "dhaif";
-  const tone = weak
-    ? "bg-rose-500/20 text-rose-300"
-    : "bg-emerald-500/15 text-emerald-300";
+  const tone = weak ? "bg-rose-500/20 text-rose-300" : "bg-emerald-500/15 text-emerald-300";
   return (
-    <span data-testid="grade-badge" className={`rounded-full px-2 py-0.5 text-xs font-medium ${tone}`}>
+    <span
+      data-testid="grade-badge"
+      className={`rounded-full px-2 py-0.5 text-xs font-medium ${tone}`}
+    >
       {grade}
     </span>
   );

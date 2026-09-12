@@ -65,6 +65,9 @@ function fakeStore() {
     getAnswerTraceByMessage() {
       return Effect.succeed(null);
     },
+    getAnswerTraceById() {
+      return Effect.succeed(null);
+    },
     getChatSessionUser() {
       return Effect.succeed(null);
     },

@@ -52,11 +52,11 @@ export const ChatCitationSchema = v.object({
   arabic: v.pipe(v.string(), v.minLength(1)),
   /** The translation layer the answer quoted from, when the chunk has one. */
   translation: v.optional(v.string()),
-  /** The hadith grade badge value, when the source carries one. */
+  /** The source's grade badge value, when the source carries one. */
   grade: v.optional(v.pipe(v.string(), v.minLength(1))),
   /** True when the displayed translation is machine-made (ADR-0006 label). */
   machineTranslated: v.boolean(),
-  /** Collection/kitab reference string for display (the parent doc's title). */
+  /** Collection/work reference string for display (the parent doc's title). */
   source: v.optional(v.pipe(v.string(), v.minLength(1))),
 });
 
@@ -66,8 +66,10 @@ export type ChatCitation = v.InferOutput<typeof ChatCitationSchema>;
  * The SSE `citations` frame payload (ADR-0040), emitted after the answer's
  * deltas and before `done` — and, with the same shape, the per-message
  * `citations` payload of the session-rehydration endpoint. `refusal` marks a
- * refused answer (empty citation list); `dhaifWarning` tells the UI to render
- * the deterministic weak-grade warning card the answer text carries.
+ * refused answer (empty citation list); the weak-grade flag tells the UI to render
+ * the deterministic warning card the answer text carries (the flag keeps
+ * the product's CONTEXT.md term as its wire name — see the boundary rule's
+ * file-scoped exemption).
  */
 export const ChatCitationsFrameSchema = v.object({
   messageId: v.pipe(v.string(), v.minLength(1)),

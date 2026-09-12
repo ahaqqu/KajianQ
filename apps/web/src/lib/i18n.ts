@@ -53,7 +53,8 @@ export const messages = {
     updateAvailable: "Pembaruan tersedia",
     reload: "Muat ulang",
     chatEmptyTitle: "Mulai bertanya",
-    chatEmptyHint: "Ajukan pertanyaan seputar kitab klasik Islam — awali dengan Al-Quran dan hadits.",
+    chatEmptyHint:
+      "Ajukan pertanyaan seputar kitab klasik Islam — awali dengan Al-Quran dan hadits.",
     composerPlaceholder: "Tanyakan sesuatu…",
     send: "Kirim",
     newSession: "Sesi baru",

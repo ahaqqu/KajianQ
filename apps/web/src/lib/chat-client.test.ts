@@ -90,11 +90,9 @@ describe("askChat", () => {
     const fetchFn = stubFetchSequence([
       new Response(JSON.stringify({ error: "rate_limited" }), { status: 429 }),
     ]);
-    const err = await askChat(
-      { message: "q", sessionId: null, language: "id" },
-      {},
-      "tok-1",
-    ).catch((e: unknown) => e);
+    const err = await askChat({ message: "q", sessionId: null, language: "id" }, {}, "tok-1").catch(
+      (e: unknown) => e,
+    );
     expect(fetchFn).toHaveBeenCalledTimes(1);
     expect((err as Error).name).toBe("ChatApiError");
     expect((err as { kind: string }).kind).toBe("rate_limited");
@@ -102,7 +100,12 @@ describe("askChat", () => {
 
   it("a malformed citations frame is skipped; the streamed answer stands", async () => {
     stubFetchSequence([
-      sseResponse([META, "event: delta\ndata: jawaban\n\n", "event: citations\ndata: {broken\n\n", "event: done\ndata: {}\n\n"]),
+      sseResponse([
+        META,
+        "event: delta\ndata: jawaban\n\n",
+        "event: citations\ndata: {broken\n\n",
+        "event: done\ndata: {}\n\n",
+      ]),
     ]);
     const seen: string[] = [];
     await askChat(

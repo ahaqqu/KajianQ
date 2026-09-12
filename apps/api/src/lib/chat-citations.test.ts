@@ -37,11 +37,7 @@ function traceWithChunks(ids: string[], extra: Trace["events"] = []): Trace {
 }
 
 /** A DocChildById display row with the given citation label in metadata. */
-function chunk(
-  id: string,
-  label: string,
-  overrides: Partial<DocChildById> = {},
-): DocChildById {
+function chunk(id: string, label: string, overrides: Partial<DocChildById> = {}): DocChildById {
   return {
     id,
     parentId: `parent-${id}`,
@@ -69,15 +65,18 @@ const frameOf = (trace: Trace, text: string, chunks: readonly DocChildById[]) =>
 
 describe("traceChunkIds", () => {
   it("extracts retrieval chunk refs in order, deduplicated, ignoring other events", () => {
-    const trace = traceWithChunks(["c1", "c2"], [
-      { stage: "router", kind: "intent", detail: { intent: "i" }, at: 0 },
-      {
-        stage: "retriever",
-        kind: "retrieval",
-        detail: { chunks: [{ id: "c1" }] },
-        at: 2,
-      },
-    ]);
+    const trace = traceWithChunks(
+      ["c1", "c2"],
+      [
+        { stage: "router", kind: "intent", detail: { intent: "i" }, at: 0 },
+        {
+          stage: "retriever",
+          kind: "retrieval",
+          detail: { chunks: [{ id: "c1" }] },
+          at: 2,
+        },
+      ],
+    );
     expect(traceChunkIds(trace)).toEqual(["c1", "c2"]);
   });
 
@@ -105,9 +104,11 @@ describe("deriveCitationsFrame — the invariant, adversarial shapes", () => {
   });
 
   it("never emits a fabricated span that no trace chunk grounds", () => {
-    const frame = frameOf(traceWithChunks(["c1"]), "Palsu: [QS. 9:99] dan [HR. Bukhari no. 99999].", [
-      chunk("c1", "QS. 2:255"),
-    ]);
+    const frame = frameOf(
+      traceWithChunks(["c1"]),
+      "Palsu: [QS. 9:99] dan [HR. Bukhari no. 99999].",
+      [chunk("c1", "QS. 2:255")],
+    );
     expect(frame.citations).toEqual([]);
   });
 
@@ -128,17 +129,13 @@ describe("deriveCitationsFrame — the invariant, adversarial shapes", () => {
   });
 
   it("matches a chunk label carrying a grade suffix and surfaces the grade badge", () => {
-    const frame = frameOf(
-      traceWithChunks(["h1"]),
-      "Diriwayatkan [HR. Malik no. 18].",
-      [
-        chunk("h1", "HR. Malik no. 18 (Sahih)", {
-          metadata: { citation: "HR. Malik no. 18 (Sahih)", grade: "sahih" },
-          textId: null,
-          parentTitle: "Al-Muwatta",
-        }),
-      ],
-    );
+    const frame = frameOf(traceWithChunks(["h1"]), "Diriwayatkan [HR. Malik no. 18].", [
+      chunk("h1", "HR. Malik no. 18 (Sahih)", {
+        metadata: { citation: "HR. Malik no. 18 (Sahih)", grade: "sahih" },
+        textId: null,
+        parentTitle: "Al-Muwatta",
+      }),
+    ]);
     expect(frame.citations).toHaveLength(1);
     expect(frame.citations[0]).toMatchObject({
       label: "HR. Malik no. 18",
@@ -150,9 +147,10 @@ describe("deriveCitationsFrame — the invariant, adversarial shapes", () => {
   });
 
   it("a refused answer carries no citations even when its text has citation spans", () => {
-    const trace = traceWithChunks(["c1"], [
-      { stage: "reviewer", kind: "refusal", reason: "ungrounded citation", at: 3 },
-    ]);
+    const trace = traceWithChunks(
+      ["c1"],
+      [{ stage: "reviewer", kind: "refusal", reason: "ungrounded citation", at: 3 }],
+    );
     const frame = frameOf(trace, "Maaf, [QS. 2:255] tidak dapat saya pastikan.", [
       chunk("c1", "QS. 2:255"),
     ]);
@@ -189,27 +187,30 @@ describe("deriveCitationsFrame — the invariant, adversarial shapes", () => {
   });
 
   it("two chunks both cited yield two citations, each resolved to its own chunk", () => {
-    const frame = frameOf(
-      traceWithChunks(["c1", "c2"]),
-      "[QS. 2:255] dan [QS. 112:1].",
-      [chunk("c1", "QS. 2:255"), chunk("c2", "QS. 112:1", { textId: null })],
-    );
+    const frame = frameOf(traceWithChunks(["c1", "c2"]), "[QS. 2:255] dan [QS. 112:1].", [
+      chunk("c1", "QS. 2:255"),
+      chunk("c2", "QS. 112:1", { textId: null }),
+    ]);
     expect(frame.citations.map((c) => c.label)).toEqual(["QS. 2:255", "QS. 112:1"]);
     expect(frame.citations[1]?.machineTranslated).toBe(false);
   });
 
   it("the dhaifWarning flag tracks the canonical warning line (ID and EN)", () => {
-    const idFrame = frameOf(traceWithChunks(["c1"]), "x [Peringatan] Hadits yang dikutip berderajat lemah (dhaif); tidak dapat dijadikan dalil utama.", [
-      chunk("c1", "QS. 2:255"),
-    ]);
-    expect(idFrame.dhaifWarning).toBe(true);
-    const enFrame = frameOf(traceWithChunks(["c1"]), "[Warning] The cited hadith is graded weak (dhaif); it may not be used as a primary proof.", [
-      chunk("c1", "QS. 2:255"),
-    ]);
-    expect(enFrame.dhaifWarning).toBe(true);
-    expect(frameOf(traceWithChunks(["c1"]), "Jawaban biasa.", [chunk("c1", "QS. 2:255")]).dhaifWarning).toBe(
-      false,
+    const idFrame = frameOf(
+      traceWithChunks(["c1"]),
+      "x [Peringatan] Hadits yang dikutip berderajat lemah (dhaif); tidak dapat dijadikan dalil utama.",
+      [chunk("c1", "QS. 2:255")],
     );
+    expect(idFrame.dhaifWarning).toBe(true);
+    const enFrame = frameOf(
+      traceWithChunks(["c1"]),
+      "[Warning] The cited hadith is graded weak (dhaif); it may not be used as a primary proof.",
+      [chunk("c1", "QS. 2:255")],
+    );
+    expect(enFrame.dhaifWarning).toBe(true);
+    expect(
+      frameOf(traceWithChunks(["c1"]), "Jawaban biasa.", [chunk("c1", "QS. 2:255")]).dhaifWarning,
+    ).toBe(false);
   });
 });
 
@@ -232,9 +233,10 @@ describe("citationsFrameFor — the route-level wrapper", () => {
 
   it("a refused answer never touches the store", async () => {
     const fetchChunks = vi.fn(async () => [chunk("c1", "QS. 2:255")]);
-    const trace = traceWithChunks(["c1"], [
-      { stage: "reviewer", kind: "refusal", reason: "r", at: 3 },
-    ]);
+    const trace = traceWithChunks(
+      ["c1"],
+      [{ stage: "reviewer", kind: "refusal", reason: "r", at: 3 }],
+    );
     const frame = await citationsFrameFor({
       trace,
       messageId: "m1",

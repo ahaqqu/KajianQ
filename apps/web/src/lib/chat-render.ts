@@ -21,14 +21,15 @@ export const MACHINE_TRANSLATION_LABEL = "Terjemahan mesin — lihat teks Arab a
  * so wording tweaks cannot silently stop the blocks from peeling.
  */
 export const WARNING_MARKERS = ["[Peringatan]", "[Warning]"] as const;
-export const DISCLAIMER_MARKERS = ["Jawaban ini bukan fatwa", "This answer is not a fatwa"] as const;
+export const DISCLAIMER_MARKERS = [
+  "Jawaban ini bukan fatwa",
+  "This answer is not a fatwa",
+] as const;
 
 /** A rule paragraph is one short line; anything longer is answer prose. */
 const RULE_LINE_MAX = 200;
 
-export type AnswerSegment =
-  | { kind: "text"; text: string }
-  | { kind: "citation"; label: string };
+export type AnswerSegment = { kind: "text"; text: string } | { kind: "citation"; label: string };
 
 /**
  * Split the answer text into plain-text and citation-chip segments. A chip

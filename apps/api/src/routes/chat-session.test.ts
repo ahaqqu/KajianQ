@@ -174,7 +174,11 @@ describe("GET /v1/chat/sessions/:id/messages", () => {
 
     const res = await getMessages(token, sessionId);
     const body = (await res.json()) as {
-      messages: { role: string; content: string; citations?: { refusal: boolean; citations: unknown[] } }[];
+      messages: {
+        role: string;
+        content: string;
+        citations?: { refusal: boolean; citations: unknown[] };
+      }[];
     };
     const assistant = body.messages.at(1);
     expect(assistant?.content).toBe("tidak menemukan dalil yang memadai");

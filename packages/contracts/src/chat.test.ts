@@ -26,13 +26,13 @@ describe("ChatCitationSchema", () => {
   it("accepts a fully populated citation", () => {
     const parsed = v.parse(ChatCitationSchema, {
       ...CITATION,
-      grade: "sahih",
+      grade: "graded",
     });
     expect(parsed.label).toBe("QS. 2:255");
-    expect(parsed.grade).toBe("sahih");
+    expect(parsed.grade).toBe("graded");
   });
 
-  it("accepts a Quran citation with no grade and no translation", () => {
+  it("accepts a citation with no grade and no translation", () => {
     const parsed = v.parse(ChatCitationSchema, {
       label: "QS. 112:1",
       arabic: "قُلْ هُوَ اللَّهُ أَحَدٌ",
@@ -102,7 +102,12 @@ describe("ChatSessionMessagesSchema", () => {
           id: "m1",
           role: "assistant",
           content: "Ayat kursi adalah [QS. 2:255].",
-          citations: { messageId: "m1", citations: [CITATION], refusal: false, dhaifWarning: false },
+          citations: {
+            messageId: "m1",
+            citations: [CITATION],
+            refusal: false,
+            dhaifWarning: false,
+          },
           createdAt: 2,
         },
       ],

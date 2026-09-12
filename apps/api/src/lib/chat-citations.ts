@@ -45,17 +45,14 @@ export function traceChunkIds(trace: Trace): string[] {
 }
 
 /** Display-data fetcher over the store seam (the bridge stays at the edge). */
-export type CitationChunkSource = (
-  ids: readonly string[],
-) => Promise<readonly DocChildById[]>;
+export type CitationChunkSource = (ids: readonly string[]) => Promise<readonly DocChildById[]>;
 
 /** Bind a {@link CitationChunkSource} to a wired store + its Effect bridge. */
 export function chunkFetcher(
   store: Pick<RagStore, "getDocChildrenByIds">,
   runStore: (effect: unknown) => Promise<unknown>,
 ): CitationChunkSource {
-  return async (ids) =>
-    (await runStore(store.getDocChildrenByIds(ids))) as readonly DocChildById[];
+  return async (ids) => (await runStore(store.getDocChildrenByIds(ids))) as readonly DocChildById[];
 }
 
 /** The chunk's citation labels, normalized exactly as the gate normalizes. */

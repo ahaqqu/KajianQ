@@ -77,23 +77,39 @@ export function ChatView({
       </div>
 
       {!online && (
-        <p role="alert" data-testid="offline-banner" className="mb-2 rounded-lg bg-slate-800 px-3 py-2 text-xs text-amber-300">
+        <p
+          role="alert"
+          data-testid="offline-banner"
+          className="mb-2 rounded-lg bg-slate-800 px-3 py-2 text-xs text-amber-300"
+        >
           {t(locale, "offlineBanner")}
         </p>
       )}
       {error !== null && (
-        <p role="alert" data-testid="chat-error" className="mb-2 rounded-lg bg-rose-500/15 px-3 py-2 text-xs text-rose-200">
+        <p
+          role="alert"
+          data-testid="chat-error"
+          className="mb-2 rounded-lg bg-rose-500/15 px-3 py-2 text-xs text-rose-200"
+        >
           {error === "load" ? t(locale, "loadError") : errorCopy(locale, error)}
         </p>
       )}
 
-      <div ref={listRef} className="flex-1 space-y-3 overflow-y-auto pr-1" data-testid="message-list">
+      <div
+        ref={listRef}
+        className="flex-1 space-y-3 overflow-y-auto pr-1"
+        data-testid="message-list"
+      >
         {messages.length === 0 && !loadingTranscript && !busy && <EmptyState locale={locale} />}
         {messages.map((message) => (
           <MessageCard key={message.id} message={message} />
         ))}
         {busy && (
-          <p data-testid="staged-loading" aria-live="polite" className="px-1 text-xs text-slate-400">
+          <p
+            data-testid="staged-loading"
+            aria-live="polite"
+            className="px-1 text-xs text-slate-400"
+          >
             {t(locale, STAGE_KEYS[stage]!)}
           </p>
         )}

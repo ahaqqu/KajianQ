@@ -144,11 +144,13 @@ describe("generated OpenAPI doc", () => {
 
   it("covers every registered /v1 route exactly (no doc drift)", async () => {
     const { api, doc } = await getDoc();
+    // Hono's route table uses `:param`; hono-openapi documents `{param}` —
+    // normalize both sides (same normalization as scripts/openapi-check.mjs).
     const registered = [
       ...new Set(
         api.routes
           .filter((r) => r.path.startsWith("/v1/") && r.method !== "ALL")
-          .map((r) => `${r.method} ${r.path}`),
+          .map((r) => `${r.method} ${r.path.replace(/:([A-Za-z0-9_]+)/g, "{$1}")}`),
       ),
     ].sort();
     expect(registered.length).toBeGreaterThan(0);

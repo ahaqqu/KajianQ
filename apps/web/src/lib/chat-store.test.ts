@@ -11,9 +11,7 @@ import {
 
 /** fetch stub returning a canned Response. */
 function stubFetch(handler: (url: string, init: RequestInit) => Response | Promise<Response>) {
-  const fn = vi.fn(async (url: string | URL, init: RequestInit = {}) =>
-    handler(String(url), init),
-  );
+  const fn = vi.fn(async (url: string | URL, init: RequestInit = {}) => handler(String(url), init));
   vi.stubGlobal("fetch", fn);
   return fn;
 }

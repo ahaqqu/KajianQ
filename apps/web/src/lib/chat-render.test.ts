@@ -61,7 +61,8 @@ describe("splitAnswerBlocks", () => {
   });
 
   it("peels warning then disclaimer (EN copy) in one pass", () => {
-    const warning = "[Warning] The cited hadith is graded weak (dhaif); it may not be used as a primary proof.";
+    const warning =
+      "[Warning] The cited hadith is graded weak (dhaif); it may not be used as a primary proof.";
     const disclaimer = "This answer is not a fatwa; consult a scholar for legal rulings.";
     const split = splitAnswerBlocks(["Jawaban.", warning, disclaimer].join("\n\n"));
     expect(split.body).toBe("Jawaban.");

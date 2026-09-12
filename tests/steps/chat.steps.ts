@@ -75,9 +75,7 @@ async function openChatWithFixtures(
   page: import("@playwright/test").Page,
   answerFixture: string,
 ): Promise<void> {
-  await page.route("**/v1/auth/anonymous", (route) =>
-    route.fulfill({ json: SESSION }),
-  );
+  await page.route("**/v1/auth/anonymous", (route) => route.fulfill({ json: SESSION }));
   await page.route("**/v1/chat/sessions/*/messages", (route) =>
     route.fulfill({ json: TRANSCRIPT_FIXTURE }),
   );
@@ -121,7 +119,9 @@ When("I ask something the corpus cannot answer", async ({ page }) => {
 
 Then("I see staged loading while the answer is prepared", async ({ page }) => {
   await expect(page.getByTestId("staged-loading")).toBeVisible();
-  await expect(page.getByTestId("staged-loading")).toContainText(/Mengambil konteks|Menyusun jawaban/);
+  await expect(page.getByTestId("staged-loading")).toContainText(
+    /Mengambil konteks|Menyusun jawaban/,
+  );
 });
 
 Then("the answer renders with a citation chip", async ({ page }) => {
@@ -174,7 +174,8 @@ Then("the chat page has no serious accessibility violations", async ({ page }) =
   const blocking = violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   expect(
     blocking.map(
-      (v) => `${v.impact}: ${v.id} — ${v.help} @ ${v.nodes.map((n) => n.target.join(",")).join(" | ")}`,
+      (v) =>
+        `${v.impact}: ${v.id} — ${v.help} @ ${v.nodes.map((n) => n.target.join(",")).join(" | ")}`,
     ),
   ).toEqual([]);
 });

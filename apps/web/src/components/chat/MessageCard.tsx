@@ -32,7 +32,9 @@ export function MessageCard({ message }: { message: ChatSessionMessage }) {
   // The card shows the answer's own warning line when the deterministic
   // rule appended it; the frame's dhaifWarning flag drives the card even
   // when the line is missing from the (rehydrated) text.
-  const warning = split.warning ?? (message.citations?.dhaifWarning === true ? t(locale, "dhaifWarningCard") : null);
+  const warning =
+    split.warning ??
+    (message.citations?.dhaifWarning === true ? t(locale, "dhaifWarningCard") : null);
 
   return (
     <article data-testid="message-assistant" className="max-w-[95%] space-y-1">

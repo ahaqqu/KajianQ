@@ -786,7 +786,7 @@ describe("Neon eval-ledger methods (unit, fake SQL)", () => {
         text_raw: "raw",
         text_ar: "ar",
         text_id: "id",
-        citation: { sourceType: "quran", surah: 2, ayah: 255 },
+        citation: { sourceType: "s1", unit: 2, part: 255 },
         embedding_primary: null,
         embedding_fallback: null,
         ordinal: 0,

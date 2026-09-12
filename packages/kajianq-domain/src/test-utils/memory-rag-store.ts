@@ -10,9 +10,8 @@ import type {
 import { memoryEvalMethods } from "./memory-rag-store-eval";
 
 /**
- * In-memory RagStore with real cosine-distance similarity search — the test
- * seam for ingestion/retrieval integration tests. Same upsert semantics as
- * the Neon adapter and Effect-signatured like the real seam (ADR-0027).
+ * In-memory RagStore with real cosine search — the test seam. Same upsert
+ * semantics as the Neon adapter, Effect-signatured like the seam (ADR-0027).
  */
 
 /** Project a stored child insert to the read shape: no vectors, epoch-0 createdAt. */
@@ -60,7 +59,6 @@ export function createMemoryRagStore(): RagStore & {
     query: readonly number[],
     limit: number,
   ) => Promise<readonly SimilarChild[]>;
-
 } {
   const parents = new Map<string, DocParentInsert & { id: string }>();
   const parentByKey = new Map<string, string>();
@@ -68,13 +66,12 @@ export function createMemoryRagStore(): RagStore & {
   const childByPos = new Map<string, string>();
   const pairs = new Map<string, AlignedPairInsert & { id: string }>();
   const traces = new Map<string, unknown>();
-  // Chat sessions (id → owner) and auth sessions (id → owner + TTL) are
-  // distinct maps, like the real tables, so the cleanup contract (A5) is
-  // exercised faithfully.
+  const traceRows = new Map<string, unknown>();
+  // Chat/auth sessions are distinct maps, like the real tables (A5).
   const chatSessions = new Map<string, string>();
   const authSessions = new Map<string, { userId: string; expiresAt: number }>();
   const users = new Map<string, { kind: string }>();
-  const tokens = new Map<string, string>(); // token hash-standin → userId
+  const tokens = new Map<string, string>(); // hash-standin → userId
   const chatMessages = new Map<
     string,
     { sessionId: string; role: string; content: string; answerTraceId: string | null }
@@ -86,8 +83,7 @@ export function createMemoryRagStore(): RagStore & {
   >();
   let seq = 0;
 
-  // The eval-ledger half lives in its own module (the agentic line cap), the
-  // Neon adapter's concern-split; it shares these maps + id sequence.
+  // The eval-ledger half lives in its own module, sharing this state.
   const evalState = {
     evalRuns,
     evalResults,
@@ -160,7 +156,6 @@ export function createMemoryRagStore(): RagStore & {
         return rows satisfies SimilarChild[];
       });
     },
-    // By-id read (#11): the citation payload's display-data lookup.
     getDocChildrenByIds(ids) {
       return Effect.sync(() =>
         [...new Set(ids)].flatMap((id) => {
@@ -174,11 +169,15 @@ export function createMemoryRagStore(): RagStore & {
     insertAnswerTrace(input) {
       return Effect.sync(() => {
         traces.set(input.messageId, input.trace);
+        traceRows.set(input.trace.id as string, input.trace); // row id = FK key
         return input.trace.id;
       });
     },
     getAnswerTraceByMessage(messageId) {
       return Effect.succeed((traces.get(messageId) as never) ?? null);
+    },
+    getAnswerTraceById(id) {
+      return Effect.succeed((traceRows.get(id) as never) ?? null);
     },
     createChatSession(input) {
       return Effect.sync(() => {

@@ -12,7 +12,9 @@ function streamOf(...chunks: string[]): ReadableStream<Uint8Array> {
   });
 }
 
-async function collect(body: ReadableStream<Uint8Array>): Promise<{ event: string; data: string }[]> {
+async function collect(
+  body: ReadableStream<Uint8Array>,
+): Promise<{ event: string; data: string }[]> {
   const frames: { event: string; data: string }[] = [];
   for await (const frame of parseSseStream(body)) frames.push(frame);
   return frames;

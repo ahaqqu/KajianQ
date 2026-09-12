@@ -67,10 +67,9 @@ describe("validateCitations — grounded direction", () => {
     // no. 18]` produced a phantom `HR. Malik no. 18]` candidate that no chunk
     // grounds, so the gate refused a correctly grounded answer. Found by the
     // citation-payload derivation (#11), which resolves these same spans.
-    const { grounded, ungrounded } = validateCitations(
-      "Hadits [HR. Malik no. 18] berbunyi …",
-      [chunk("HR. Malik no. 18")],
-    );
+    const { grounded, ungrounded } = validateCitations("Hadits [HR. Malik no. 18] berbunyi …", [
+      chunk("HR. Malik no. 18"),
+    ]);
     expect(grounded).toEqual(["HR. Malik no. 18"]);
     expect(ungrounded).toEqual([]);
   });

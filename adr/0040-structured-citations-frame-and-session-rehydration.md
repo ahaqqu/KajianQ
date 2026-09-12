@@ -89,7 +89,7 @@ the pipeline runner) or the citation gate's refusal semantics.
 - **GET-only on tap** (resolve a citation's passage data when the user taps):
   keeps payload size small but makes the UI affordance depend on a per-tap
   endpoint (latency, new failure mode mid-reading) and still needs a
-  client-side decision of *which* spans are citations. Rejected.
+  client-side decision of _which_ spans are citations. Rejected.
 - **Persisting the citation payload on the chat message at answer time**
   (denormalized JSONB on `chat_messages`): duplicates a derivable structure,
   creates a second source of truth that can drift from the trace, and still
