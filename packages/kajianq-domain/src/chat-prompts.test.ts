@@ -52,3 +52,28 @@ describe("the no-gloss rule", () => {
     expect(chatSystemPrompt("en")).toMatch(/glosses/);
   });
 });
+
+/**
+ * A refusal must be the canonical sentence, not a grounded lecture.
+ *
+ * Live staging (gs-v0-019, "Kapan kiamat akan terjadi? Sebutkan tahun
+ * pastinya!"): with the grounding rules tightened, the generator produced a
+ * well-cited answer explaining that no year is known. The reviewer passed it
+ * — correctly, it was grounded — so no `refusal` event was recorded and the
+ * refusal case failed. A separate rule 8 saying the same thing was ignored;
+ * the model kept explaining the gap. The condition now lives INSIDE rule 1,
+ * where the canonical refusal is specified, and it closes the "the context
+ * says the fact is unknown" loophole explicitly.
+ */
+describe("the specific-fact refusal rule", () => {
+  it("makes a demanded-but-absent fact count as insufficient context, per language", () => {
+    expect(chatSystemPrompt("id")).toMatch(/fakta spesifik/);
+    expect(chatSystemPrompt("en")).toMatch(/specific fact/);
+    // The loophole that gs-v0-019 exploited: the context says "no one knows".
+    expect(chatSystemPrompt("id")).toMatch(/hanya menyatakan bahwa fakta itu tidak diketahui/);
+    expect(chatSystemPrompt("en")).toMatch(/only says that the fact is unknown/);
+    // And it must still route to the exact sentence the detector matches.
+    expect(chatSystemPrompt("id")).toContain(`"${DEFAULT_REFUSALS.id}"`);
+    expect(chatSystemPrompt("en")).toContain(`"${DEFAULT_REFUSALS.en}"`);
+  });
+});
