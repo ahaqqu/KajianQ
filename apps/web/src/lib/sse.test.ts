@@ -53,6 +53,31 @@ describe("parseSseStream", () => {
     expect(frames[0]?.data).toBe("split");
   });
 
+  it("treats mixed line-ending delimiters (\\n\\r\\n, \\r\\n\\n) as frame boundaries", async () => {
+    // Spec-legal terminator mixes that contain none of the contiguous
+    // legacy delimiters — without normalization the frames glue together.
+    for (const delimiter of ["\n\r\n", "\r\n\n", "\n\r\n"]) {
+      const frames = await collect(
+        streamOf(`event: delta\ndata: x${delimiter}`, "event: done\ndata: {}\n\n"),
+      );
+      expect(frames.map((f) => f.event)).toEqual(["delta", "done"]);
+      expect(frames[0]?.data).toBe("x");
+    }
+    const crFrames = await collect(
+      streamOf("event: delta\r\ndata: x\r\r", "event: done\r\ndata: {}\r\r"),
+    );
+    expect(crFrames.map((f) => f.event)).toEqual(["delta", "done"]);
+  });
+
+  it("carries a trailing \\r across a chunk boundary (a split \\r\\n stays one line break)", async () => {
+    // Without the carry the split pair normalizes into a blank line and
+    // splits the multi-line data payload into two frames.
+    const frames = await collect(
+      streamOf("event: delta\ndata: baris1\r", "\ndata: baris2\r\n\r\n"),
+    );
+    expect(frames).toEqual([{ event: "delta", data: "baris1\nbaris2" }]);
+  });
+
   it("yields unknown frame types (the consumer decides what to ignore)", async () => {
     const frames = await collect(streamOf("event: future_thing\ndata: x\n\n"));
     expect(frames).toEqual([{ event: "future_thing", data: "x" }]);
