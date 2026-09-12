@@ -34,6 +34,18 @@ export type ChatPipelineDeps = {
   skipReviewer?: boolean;
   /** Collector for LLM costs that ride the retrieval stage (embed call). */
   onCost?: (cost: import("@app/contracts").CostRecord) => void;
+  /**
+   * Streamed-generation observation hook (ticket #10): each delta as the
+   * vendor produces it. The draft is still the full text — the reviewer gates
+   * the whole answer before any of it is delivered.
+   */
+  onDelta?: (delta: string) => void;
+  /**
+   * Prior conversation turns for follow-up questions (ticket #10), oldest
+   * first. Rides the engine's `Query.history` and is rendered by the
+   * assembler; absent = single-turn.
+   */
+  history?: readonly { role: string; content: string }[];
 };
 
 export function buildChatStages(
@@ -52,6 +64,7 @@ export function buildChatStages(
     reviewerProvider: deps.reviewerProvider,
     language: deps.language,
     ...(deps.skipReviewer !== undefined ? { skipReviewer: deps.skipReviewer } : {}),
+    ...(deps.onDelta !== undefined ? { onDelta: deps.onDelta } : {}),
   });
   return {
     router,
@@ -74,6 +87,13 @@ export function runChatPipeline(
   options: RunOptions = {},
 ): Effect.Effect<Answer, import("@app/rag-core").StageError> {
   const stages = buildChatStages(deps);
+  // Follow-up context rides `Query.history` (the ADR-0018 amendment); it is
+  // attached here, not on the deps, so one deps object can serve a whole
+  // session while each question carries its own history window.
+  const withHistory = {
+    ...query,
+    ...(deps.history !== undefined ? { history: deps.history } : {}),
+  };
   const withCosts: RunOptions = {
     ...options,
     onFailedTrace: (trace) => {
@@ -83,7 +103,7 @@ export function runChatPipeline(
       options.onFailedTrace?.(trace);
     },
   };
-  return runPipeline<import("./filters").KajianQFilters>(stages, query, config, withCosts);
+  return runPipeline<import("./filters").KajianQFilters>(stages, withHistory, config, withCosts);
 }
 
 /**

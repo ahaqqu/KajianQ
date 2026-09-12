@@ -102,6 +102,15 @@ describe("trace contract", () => {
         at: 3,
       },
       {
+        // Filter relaxation: an inferred filter that matched nothing was dropped
+        // and the search retried unfiltered. Recorded, never silent. The example
+        // keys stay domain-neutral — this is an engine package.
+        stage: "retriever",
+        kind: "filter_relaxed",
+        detail: { dropped: { layer: "commentary" }, track: "primary" },
+        at: 3,
+      },
+      {
         stage: "assembler",
         kind: "assembly",
         detail: { turnCount: 2, chunkCount: 1 },
@@ -118,7 +127,7 @@ describe("trace contract", () => {
       { stage: "generator", kind: "refusal", reason: "insufficient evidence", at: 7 },
     ];
     const trace = parseTrace({ id: "t", createdAt: 0, events });
-    expect(trace.events).toHaveLength(7);
+    expect(trace.events).toHaveLength(8);
   });
 
   it("rejects an unknown kind", () => {

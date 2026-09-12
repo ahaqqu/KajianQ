@@ -32,7 +32,19 @@ export type StoreFailure = StoreError;
  */
 type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
 
-/** A parent document — a coarse retrieval unit (a container of child chunks). */
+/** A persisted conversational turn, as the history reader returns it. */
+export type ChatMessage = {
+  id: string;
+  sessionId: string;
+  role: string;
+  content: string;
+  answerTraceId: string | null;
+  createdAt: number;
+};
+
+/**
+ * A parent document — a coarse retrieval unit (a container of child chunks).
+ */
 export type DocParent = {
   id: string;
   /** Caller-supplied provenance key, e.g. a source-collection identifier. */
@@ -151,6 +163,15 @@ export interface RagStore extends RagStoreEvalRunWrite, RagStoreEvalLedger {
    * Nearest-neighbour similarity search over one embedding track. `filters`
    * are exact-match against `metadata` JSONB keys, passed through untouched —
    * the store does not interpret their names.
+   *
+   * **A hit's embeddings are `null`.** The search used the vectors to order
+   * the rows and the caller reads ids/text/metadata, so returning them again
+   * is dead weight — and expensive dead weight: 1536 floats per hit is ~39 KB
+   * of text, which on an 8-search chat request meant ~3 MB over the wire and
+   * ~245k floats parsed inside the Worker (measured 2026-09-12; Cloudflare
+   * killed the request as `exceededResources`). The `DocChild` shape is kept
+   * so ids/text/citation/metadata stay one type; only the two vector fields
+   * are unpopulated by this method.
    */
   similaritySearch(
     track: RetrievalTrack,
@@ -202,6 +223,18 @@ export interface RagStore extends RagStoreEvalRunWrite, RagStoreEvalLedger {
     metadata?: Record<string, unknown>;
   }): Effect.Effect<string, StoreError>;
 
+  /**
+   * Read a chat session's prior messages, oldest first, for follow-up
+   * context (ticket #10: "follow-up questions within a session use
+   * conversation context"). `limit` caps the returned tail — the caller
+   * chooses how much history rides the prompt; the store returns the most
+   * recent `limit` messages in chronological order.
+   */
+  getChatMessages(
+    sessionId: string,
+    opts?: { limit?: number },
+  ): Effect.Effect<readonly ChatMessage[], StoreError>;
+
   // -- Anonymous sessions (ADR-0017) ----------------------------------------
 
   /**
@@ -233,10 +266,15 @@ export interface RagStore extends RagStoreEvalRunWrite, RagStoreEvalLedger {
   deleteUserCascade(userId: string): Effect.Effect<void, StoreError>;
 
   /**
-   * Delete session rows whose TTL has passed. Returns the count removed.
-   * Wire this to a periodic job (Worker cron) so `sessions` does not grow
-   * unbounded; `resolveUserId` already rejects expired rows on read, so this
-   * is a storage-reclamation concern, not a correctness one.
+   * Reclaim expired anonymous sessions: delete session rows whose TTL has
+   * passed AND the anonymous users left with no session (thermo-review A5 —
+   * the FK cascades user → session, never the reverse, so users and their
+   * chat/trace subtrees would otherwise accumulate forever). Returns the
+   * count of reclaimed users, the storage-growth number the cron reports.
+   *
+   * Wire this to a periodic job (Worker cron); `resolveUserId` already
+   * rejects expired rows on read, so this is a storage-reclamation concern,
+   * not a correctness one.
    */
   cleanupExpiredSessions(before?: Date): Effect.Effect<number, StoreError>;
 }

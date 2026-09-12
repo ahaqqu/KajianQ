@@ -6,6 +6,8 @@ Accepted (2026-08-23). Bounds the `Generator`/`Assembler`/`Reviewer` interfaces 
 
 Amended (2026-08-26, ADR-0021): stage methods gain a `run: RunContext` parameter (single trace collection point + per-run disposal), and `Generator`/`Reviewer` now return a `Draft` (`{ text }`) instead of `Answer` — the runner owns the final `Trace`. No implementation existed yet at the time of the amendment, so the change is non-breaking for callers.
 
+Amended (2026-09-11, #10): `Query<TFilters>` gains an optional `history?: readonly Turn[]` — prior conversation turns, oldest first, passed through opaquely by the engine and rendered (or ignored) by the domain pack's Assembler. This is the "multi-turn chat may amend this ADR" case the original text anticipated. The field is additive and optional: a single-turn caller is unchanged, no stage signature moved, and the engine still names no role or history semantics — KajianQ's Assembler decides how a prior turn appears in the prompt. Rationale for the engine carrying it rather than the app re-threading it: `runPipeline` passes the caller's `Query` to the Assembler unchanged, so a domain pack that reads history from a field on `Query` needs no engine change at all, whereas an app-side side-channel (a closure over mutable state, a second assembler) would either break the runner's single-collection-point discipline or fork the assembler per call site.
+
 ## Context
 
 The foundation PR (#36) shipped the five pipeline interfaces in `packages/rag-core/src/pipeline.ts`. A thermos review flagged two shapes that would force breaking changes once #5/#6 implement against them:

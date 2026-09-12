@@ -243,7 +243,9 @@ describe("rag-store-neon adapter (fake runner)", () => {
         text_ar: "ar",
         text_id: "id",
         citation: { s: 2 },
-        embedding_primary: "[0.1,0.2]",
+        // The real query selects `NULL::text` for both vector columns — see
+        // the payload regression in rag-store-neon-query.test.ts.
+        embedding_primary: null,
         embedding_fallback: null,
         ordinal: 3,
         metadata: { pfx: "x" },
@@ -262,9 +264,11 @@ describe("rag-store-neon adapter (fake runner)", () => {
     expect(hits[0]?.child.id).toBe("c1");
     expect(hits[0]?.distance).toBe(0.25);
     expect(hits[0]?.rankDense).toBe(1);
-    expect(hits[0]?.child.embeddingPrimary).toEqual([0.1, 0.2]);
+    expect(hits[0]?.child.embeddingPrimary).toBeNull();
+    expect(hits[0]?.child.embeddingFallback).toBeNull();
     const q = sql._calls.find((c) => c.kind === "query");
     expect(q?.text).toContain("embedding_primary <=> $1::vector");
+    expect(q?.text).toContain("NULL::text AS embedding_primary");
     // $1 embedding, $2 limit, then per filter key+array → 2 filters = params 3..6.
     expect(q?.values).toHaveLength(6);
   });
@@ -309,11 +313,16 @@ describe("rag-store-neon adapter (fake runner)", () => {
     const id = await runOk(
       store.insertAnswerTrace({ messageId: "m1", userId: "u1", trace: sampleTrace }),
     );
-    expect(typeof id).toBe("string");
     const text = sql._calls[0]?.text ?? "";
     expect(text).toContain("INSERT INTO answer_traces");
     expect(text).toContain("user_id");
     expect(sql._calls[0]?.values).toContain("u1");
+    // The returned id must be the id actually inserted: callers persist
+    // dependent rows against it (`chat_messages.answer_trace_id` FKs to this
+    // column), and it need not equal `trace.id` — the column is `uuid` while
+    // the contract allows any non-empty string.
+    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    expect(sql._calls[0]?.values?.[0]).toBe(id);
   });
 
   it("insertAnswerTrace fails constraint-class on a malformed Trace", async () => {
@@ -387,13 +396,27 @@ describe("rag-store-neon adapter (fake runner)", () => {
     expect(sql._calls[0]?.text).toContain("expires_at > now()");
   });
 
-  it("cleanupExpiredSessions returns the count of deleted rows", async () => {
+  it("cleanupExpiredSessions reclaims expired sessions AND orphaned users (A5)", async () => {
     const sql = makeFakeSql();
     const store = createNeonRagStore(sql);
-    sql._setTag([{ id: "a" }, { id: "b" }, { id: "c" }]);
+    // Neon's transaction() resolves one result per statement, in order: the
+    // sessions DELETE, then the users DELETE ... RETURNING id.
+    sql._setTxn([
+      [{ id: "a" }, { id: "b" }],
+      [{ id: "u1" }, { id: "u2" }, { id: "u3" }],
+    ]);
     const n = await runOk(store.cleanupExpiredSessions());
+    // The reported count is the reclaimed users — the storage-growth number.
     expect(n).toBe(3);
-    expect(sql._calls[0]?.text).toContain("DELETE FROM sessions WHERE expires_at <=");
+    const tx = sql._calls.find((c) => c.kind === "transaction");
+    expect(tx?.queries).toHaveLength(2);
+    const statements = sql._calls.filter((c) => c.kind === "tag").map((c) => c.text);
+    expect(statements[0]).toContain("DELETE FROM sessions WHERE expires_at <=");
+    // The orphan reclamation is the second statement and must scope to
+    // anonymous users with no remaining session (never a live user).
+    expect(statements[1]).toContain("DELETE FROM users");
+    expect(statements[1]).toContain("kind = 'anonymous'");
+    expect(statements[1]).toContain("NOT EXISTS (SELECT 1 FROM sessions");
   });
 
   it("deleteUserCascade deletes from users (cascade does the rest)", async () => {

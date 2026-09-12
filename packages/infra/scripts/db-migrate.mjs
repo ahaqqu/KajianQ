@@ -34,6 +34,7 @@ import { Pool } from "@neondatabase/serverless";
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { stripTxnMarkers } from "./migration-sql.mjs";
 
 const DEFAULT_MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "migrations");
 
@@ -70,14 +71,6 @@ function parseArgs(argv) {
 async function listMigrations() {
   const files = await readdir(MIGRATIONS_DIR);
   return files.filter((f) => /^\d+_.+\.sql$/.test(f) && !f.endsWith(".down.sql")).sort();
-}
-
-/** Strip the file's own BEGIN/COMMIT wrapper — the runner owns the transaction. */
-function stripTxnMarkers(sql) {
-  return sql
-    .split("\n")
-    .filter((l) => !/^\s*(BEGIN|COMMIT)\s*;?\s*$/i.test(l))
-    .join("\n");
 }
 
 async function ensureLedger(client) {

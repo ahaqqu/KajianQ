@@ -51,3 +51,37 @@ describe("worker sentry wiring", () => {
     expect(await res.text()).toBe("spa");
   });
 });
+
+describe("worker scheduled handler (ADR-0017, #10)", () => {
+  it("is exported alongside fetch so the cron trigger has a target", () => {
+    expect(typeof (worker as { scheduled?: unknown }).scheduled).toBe("function");
+  });
+
+  it("runs the session cleanup without a database binding and does not throw", async () => {
+    const waits: Promise<unknown>[] = [];
+    await expect(
+      (
+        worker as unknown as {
+          scheduled: (
+            controller: { cron: string },
+            env: unknown,
+            ctx: { waitUntil: (p: Promise<unknown>) => void },
+          ) => Promise<void>;
+        }
+      ).scheduled({ cron: "17 3 * * *" }, env, { waitUntil: (p) => waits.push(p) }),
+    ).resolves.toBeUndefined();
+    // The cleanup settles via waitUntil, so the invocation is not cut short.
+    expect(waits).toHaveLength(1);
+    await expect(Promise.all(waits)).resolves.toBeDefined();
+  });
+
+  it("awaits the cleanup when the runtime provides no waitUntil", async () => {
+    await expect(
+      (
+        worker as unknown as {
+          scheduled: (controller: { cron: string }, env: unknown, ctx: unknown) => Promise<void>;
+        }
+      ).scheduled({ cron: "17 3 * * *" }, env, {}),
+    ).resolves.toBeUndefined();
+  });
+});

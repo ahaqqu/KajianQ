@@ -39,4 +39,17 @@ describe("rag-store-neon-query: buildSimilarityQuery", () => {
     expect(q).not.toContain("pfx");
     expect(q).not.toContain("metadata->>'pfx'");
   });
+
+  it("does not ship the embedding vectors back (the Worker payload defect)", () => {
+    // Regression, live smoke gs-v0-002: selecting the vectors cost ~390 KB of
+    // float text per 10-hit search; a chat request ran 8 searches and parsed
+    // ~245k floats, and Cloudflare killed it as `exceededResources`. A hit's
+    // embeddings are null by contract — nothing reads them.
+    for (const track of ["primary", "fallback"] as const) {
+      const q = buildSimilarityQuery(track, 0);
+      expect(q).toContain("NULL::text AS embedding_primary");
+      expect(q).toContain("NULL::text AS embedding_fallback");
+      expect(q).not.toMatch(/embedding_(primary|fallback)::text/);
+    }
+  });
 });

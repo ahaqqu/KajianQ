@@ -56,6 +56,15 @@ const COMPATIBILITY = {
   flags: ["nodejs_compat"],
 };
 
+/**
+ * Cron triggers (ADR-0017, ticket #10): the Worker's scheduled handler
+ * reclaims expired anonymous sessions. Cloudflare evaluates cron expressions
+ * in UTC; 03:17 nightly keeps the job off the top of the hour (the busiest
+ * slot on the platform) and outside the deploy window. Applied to both stages
+ * — the staging store accumulates sessions from eval runs too.
+ */
+const CRONS = ["17 3 * * *"];
+
 // One topology description for both modes, so every binding is written
 // exactly once. Dev pins the local dev server and leaves resources virtual;
 // cloud pins physical names per stage and binds the five secrets.
@@ -118,6 +127,7 @@ export default Stack(
       main: "./src/index.ts",
       compatibility: COMPATIBILITY,
       assets: ASSETS,
+      crons: [...CRONS],
       ...(topology.dev ? { dev: topology.dev } : {}),
       env: {
         BUCKET: bucket,

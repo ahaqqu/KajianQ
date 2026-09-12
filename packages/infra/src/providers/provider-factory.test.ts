@@ -1,5 +1,10 @@
 import { resolveRole } from "./provider-factory";
-import { perKindRetrySchedule } from "./retry-schedule";
+import {
+  BATCH_RETRY_BUDGETS,
+  batchRetrySchedule,
+  defaultRetrySchedule,
+  perKindRetrySchedule,
+} from "./retry-schedule";
 import { describe, expect, it } from "vitest";
 import { ProviderError } from "@app/rag-core";
 import type { FetchLike } from "./chat-completions-adapter";
@@ -112,6 +117,35 @@ describe("fallback chain", () => {
     // retries).
     expect(calls).toBe(5);
     expect(err.kind).toBe("exhausted");
+  });
+
+  it("a batch call site's retry budget rides out a rate-limit wall (ingest regression)", async () => {
+    // The staging corpus ingest died on its **first** embedding batch: the
+    // interactive default gives a 429 ≈1.5 s of backoff, which cannot outlast
+    // a vendor's per-minute window, so the whole run was thrown away. The
+    // batch policy is the same per-kind schedule with a longer budget; this
+    // pins the mechanism on a fast clock (1 ms bases instead of 5 s) — 1
+    // initial call + 5 rate-limited retries = 6 before the chain gives up,
+    // versus 3 with the interactive default pinned above.
+    const batchLike = perKindRetrySchedule("1 millis", "1 millis", BATCH_RETRY_BUDGETS);
+    let calls = 0;
+    const fetchImpl: FetchLike = async () => {
+      calls += 1;
+      return jsonResponse({ error: { message: "quota exceeded" } }, 429);
+    };
+    const config = configWith(["test:m-chat"]); // single candidate: no fallback
+    const { provider } = resolveRole(config, "cheap", {
+      env: { TEST_KEY: "a" },
+      fetchImpl,
+      retrySchedule: batchLike,
+    });
+    const err = await runFail(provider.generate({ turns: [{ role: "user", content: "hi" }] }));
+    expect(calls).toBe(1 + BATCH_RETRY_BUDGETS.rateLimitedRetries);
+    expect(err.kind).toBe("exhausted");
+    // The two policies must stay distinct: the batch one silently becoming the
+    // interactive one is exactly the failure this test exists to catch.
+    expect(batchRetrySchedule).not.toBe(defaultRetrySchedule);
+    expect(BATCH_RETRY_BUDGETS.rateLimitedRetries).toBeGreaterThan(2);
   });
 
   it("non-retryable kinds never retry on the same candidate", async () => {

@@ -1,23 +1,17 @@
-import { Data, Effect } from "effect";
+import { Effect } from "effect";
 import type { StoreError } from "@app/rag-core";
 import type { DocChildInsert, DocParentInsert } from "@app/infra";
-
-/**
- * A batch's vector count did not match its text count — the embedder
- * violated the seam contract. Tagged (B1) and typed-error compliant
- * (ADR-0027 need 1).
- */
-export class EmbedMisalignment extends Data.TaggedError("EmbedMisalignment")<{
-  readonly expected: number;
-  readonly received: number;
-}> {}
-import { CostCollector } from "./types";
-import type {
-  AlignedPairInput,
-  IngestionDeps,
-  ParentSummarizer,
-  ParsedParent,
-  SourceParser,
+import { embedTracks } from "./embed-tracks";
+// Re-exported so the module that defines the pipeline's typed failure stays
+// the pipeline's public surface (tests and callers import it from here).
+export { EmbedMisalignment } from "./embed-tracks";
+import {
+  CostCollector,
+  type AlignedPairInput,
+  type IngestionDeps,
+  type ParentSummarizer,
+  type ParsedParent,
+  type SourceParser,
 } from "./types";
 
 /**
@@ -100,47 +94,6 @@ async function summarizeParents(
   return summaries;
 }
 
-/**
- * Embed texts in batches, collecting cost per call. Returns row-aligned
- * vectors; empty input performs no call and records no cost.
- *
- * Batches run under `Effect.forEach` with `deps.embedConcurrency` (default 1:
- * fully serial). Results stay row-aligned regardless of concurrency, and a
- * batch whose vector count mismatches fails the whole run — a partially
- * embedded child row must never be written.
- */
-async function embedBatched(
-  deps: IngestionDeps,
-  texts: readonly string[],
-  costs: CostCollector,
-): Promise<readonly (readonly number[])[]> {
-  const batchSize = deps.embedBatchSize ?? 64;
-  const batches: (readonly string[])[] = [];
-  for (let i = 0; i < texts.length; i += batchSize) {
-    batches.push(texts.slice(i, i + batchSize));
-  }
-  const embedOne = (batch: readonly string[]) =>
-    Effect.gen(function* () {
-      const result = yield* deps.embedder.embed({ texts: batch });
-      // Record-then-validate (traceability rule 4): a misaligned response is
-      // still a billed vendor call — its cost reaches the collector before
-      // the shape check fails the run.
-      costs.record(result.cost);
-      if (result.vectors.length !== batch.length) {
-        return yield* Effect.fail(
-          new EmbedMisalignment({
-            expected: batch.length,
-            received: result.vectors.length,
-          }),
-        );
-      }
-      return result.vectors;
-    });
-  const concurrency = deps.embedConcurrency ?? 1;
-  const batchVectors = await Effect.runPromise(Effect.forEach(batches, embedOne, { concurrency }));
-  return batchVectors.flat();
-}
-
 /** Collect the aligned pairs a parsed child list implies (rows with a secondary track). */
 function collectPairSources(parents: readonly ParsedParent[]): Map<number, AlignedPairInput> {
   const sources = new Map<number, AlignedPairInput>();
@@ -220,28 +173,18 @@ export async function runIngestion(
     });
   }
 
-  // Embed both tracks in child order, then upsert children with vectors.
-  const primaryVectors = await embedBatched(
-    deps,
-    childRows.map((c) => c.textAr),
-    costs,
-  );
-  const hasSecondary = childRows.some((c) => c.textId !== null);
-  const secondaryVectors = hasSecondary
-    ? await embedBatched(
-        deps,
-        childRows.map((c) => c.textId ?? ""),
-        costs,
-      )
-    : null;
+  // Embed both tracks in child order, then upsert children with vectors. The
+  // per-track rules (only rows that actually carry text are embedded; a null
+  // track keeps a null vector) live in embed-tracks.ts.
+  const { primaryByRow, secondaryByRow } = await embedTracks(deps, childRows, costs);
 
   for (let i = 0; i < childRows.length; i += 1) {
     const row = childRows[i];
     if (!row) continue;
     pending.push({
       ...row,
-      embeddingPrimary: primaryVectors[i] ?? null,
-      embeddingFallback: secondaryVectors ? (secondaryVectors[i] ?? null) : null,
+      embeddingPrimary: primaryByRow?.get(i) ?? null,
+      embeddingFallback: secondaryByRow?.get(i) ?? null,
     });
     childrenWritten += 1;
     if (deps.pairSink) {
@@ -290,7 +233,8 @@ export async function runIngestion(
       costMicroUsd: costs.costMicroUsd,
       llmCalls: [...costs.calls],
       details: {
-        embeddedSecondaryTrack: hasSecondary,
+        // True when at least one row carried a secondary track to embed.
+        embeddedSecondaryTrack: secondaryByRow !== null,
         parserParents: parents.length,
       },
     },

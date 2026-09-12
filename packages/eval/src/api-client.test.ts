@@ -35,6 +35,29 @@ describe("consumeSseToText", () => {
     expect(result.text).toBe("line1\nline2");
   });
 
+  it("strips one leading space after the colon, not all leading whitespace", async () => {
+    // The route emits `data: ${line}`, so a delta that itself begins with a
+    // space arrives as two spaces after the colon. Only the first is the SSE
+    // field separator; the second belongs to the answer.
+    const { body } = sseResponse(["event: delta\ndata:  indented\n\n"]);
+    const result = await consumeSseToText(body);
+    expect(result.text).toBe(" indented");
+  });
+
+  it("keeps a citation intact when the route splits it across deltas", async () => {
+    // Live-staging regression (gs-v0-002): the vendor streamed "QS." and
+    // " 2:43" as separate deltas. `trimStart()` dropped the space, the harness
+    // reassembled "QS.2:43", and a correctly cited answer scored
+    // citationValidity 0 while the persisted answer and the reviewer both
+    // held the true text.
+    const { body } = sseResponse([
+      "event: delta\ndata: dalil QS.\n\n",
+      "event: delta\ndata:  2:43 tentang shalat\n\n",
+    ]);
+    const result = await consumeSseToText(body);
+    expect(result.text).toBe("dalil QS. 2:43 tentang shalat");
+  });
+
   it("ignores comment frames and blank frames", async () => {
     const { body } = sseResponse([": keep-alive\n\n", "event: delta\ndata: x\n\n"]);
     const result = await consumeSseToText(body);

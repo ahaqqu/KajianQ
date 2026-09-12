@@ -3,27 +3,48 @@ import {
   authGuard,
   buildChatWiring,
   sseFrame,
-  ChatConfigError,
+  wiringOr503,
   type ChatWiring,
 } from "../lib/chat-wiring";
 import { CHAT_OPENAPI_DESCRIPTION, parseChatRequest } from "../lib/chat-openapi";
-import { createLogger } from "@app/infra";
-import { runChatPipelinePromise } from "@app/kajianq-domain";
+import { createLogger, type ChatMessage } from "@app/infra";
+import { runChatPipelinePromise, type ChatPipelineDeps } from "@app/kajianq-domain";
 
 /** The route's env, widened with the provider-key bindings the wiring reads. */
 type ChatEnv = import("../env").ApiEnv["Bindings"] & Record<string, string | undefined>;
 
-/**
- * POST /v1/chat (#8): the guarded, SSE-streamed chat surface. Validates the
- * body, resolves auth, creates the session, persists the user message, runs
- * the KajianQ pipeline through the engine runner, persists the answer trace +
- * assistant message, and streams the answer to the client. Every LLM call's
- * cost lands on the persisted trace (traceability rule 4) — the route never
- * hand-assembles one (ADR-0021). Effect bridging goes through the domain's
- * promise runner and the wiring's store bridge — no direct effect runtime
- * import here (ADR-0027 decision 3).
- */
+/** How many prior turns of a session ride the prompt (follow-up context). */
+const HISTORY_LIMIT = 10;
 
+/**
+ * POST /v1/chat (#10): the guarded, SSE-streamed chat surface. Validates the
+ * body, resolves auth, creates the session, persists the user message, loads
+ * the session's prior turns for follow-up context, runs the KajianQ pipeline
+ * through the engine runner, persists the answer trace + assistant message,
+ * and streams the answer to the client. Every LLM call's cost lands on the
+ * persisted trace (traceability rule 4) — the route never hand-assembles one
+ * (ADR-0021). Effect bridging goes through the domain's promise runner and
+ * the wiring's store bridge — no direct effect runtime import here (ADR-0027
+ * decision 3).
+ *
+ * Streaming and the citation gate (the ordering that matters): generation
+ * streams from the vendor through `Provider.stream`, so the answer is never
+ * buffered inside a single vendor round-trip, and the route re-emits the
+ * vendor's own delta sequence on the wire. The reviewer still sees the
+ * *complete* answer before any of it is delivered — the citation invariant is
+ * checked on the whole text — and a refused answer discards the vendor deltas
+ * entirely: the wire carries the plain refusal as ordinary `delta` frames
+ * (round-3 A4: there is no separate `refusal` event type — the refusal signal
+ * lives on the trace's `refusal` event, which the eval harness reads). A
+ * fabricated citation therefore never reaches the user as an answer, only as
+ * a refusal.
+ *
+ * The trade-off, stated plainly: this gives up time-to-first-token (deltas
+ * are replayed after validation rather than as they arrive) in exchange for
+ * never putting an unvalidated citation on the wire. For a product whose #1
+ * stated risk is hallucinated religious content, that is the correct side of
+ * the trade. It is recorded in SPECS §3.3 and flagged in the PR.
+ */
 export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION, async (c) => {
   const env = c.env as ChatEnv;
   const logger = createLogger({
@@ -32,17 +53,13 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
     correlationId: c.get("correlationId"),
   });
   let wiring: ChatWiring;
-  try {
-    wiring = buildChatWiring(env);
-  } catch (err) {
-    // A7: only a typed config failure is "not configured"; anything else
-    // (adapter bug, malformed URL, transient infra fault) falls through to
-    // the app's typed error handler with its cause logged, never masked.
-    if (err instanceof ChatConfigError) {
-      logger.warn("chat.not_configured", { missing: err.missing ?? "unknown" });
-      return c.json({ error: "chat_not_configured" }, 503);
-    }
-    throw err;
+  {
+    // B1: one shared wiring→503 posture (chat-wiring.ts), not a per-route copy.
+    // Round-3 B1: the direct `wiringOr503` form, same as the auth route — the
+    // one-argument `chatWiringOr503` wrapper had a single caller.
+    const resolved = wiringOr503(() => buildChatWiring(env), logger, "chat_not_configured");
+    if ("response" in resolved) return resolved.response;
+    wiring = resolved.wiring;
   }
 
   const bodyParse = await parseChatRequest(c.req.raw, logger);
@@ -70,15 +87,31 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
   } else {
     sessionId = (await runStore(store.createChatSession({ userId }))) as string;
   }
+
+  // Follow-up context: the session's prior turns, loaded BEFORE this question
+  // is persisted so the current message is not duplicated into its own
+  // history. A history-read failure is not fatal — the question is still
+  // answerable single-turn — but it is logged, never silently swallowed.
+  const history = await loadHistory(store, runStore, sessionId, logger);
+
   await runStore(store.insertChatMessage({ sessionId, role: "user", content: req.message }));
 
   const answerMessageId = crypto.randomUUID();
   const traceId = crypto.randomUUID();
 
+  // Vendor deltas as they are produced. They are replayed only after the
+  // reviewer validated the complete answer (see the module comment).
+  const deltas: string[] = [];
+
   const answer = await runChatPipelinePromise(
-    { ...wiring.pipeline, language: req.language ?? "id" } as Parameters<
-      typeof runChatPipelinePromise
-    >[0],
+    // B6: typed as the domain's own deps shape so the literal is
+    // compile-checked — no `as Parameters<…>` cast to hide a rename.
+    {
+      ...wiring.pipeline,
+      language: req.language ?? "id",
+      ...(history.length > 0 ? { history } : {}),
+      onDelta: (delta: string) => deltas.push(delta),
+    } satisfies ChatPipelineDeps,
     { text: req.message },
     {},
     {
@@ -102,21 +135,42 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
   );
 
   // Persist the settled answer trace + assistant message, then stream.
-  await runStore(
+  //
+  // The stored row id comes from the store, never from `answer.trace.id`: the
+  // column is `uuid` while the contract's id is any non-empty string, so the
+  // two cannot always agree. Three things depend on the STORED id —
+  // `chat_messages.answer_trace_id` and the eval ledger's
+  // `eval_results.answer_trace_id` (both FK this column), and the SSE `meta`
+  // frame the eval harness reads its ledger id from. Assuming `trace.id` broke
+  // the write path and surfaced as a 500 on every answer.
+  const storedTraceId = (await runStore(
     store.insertAnswerTrace({ messageId: answerMessageId, userId, trace: answer.trace }),
-  );
+  )) as string;
   await runStore(
     store.insertChatMessage({
       sessionId,
       role: "assistant",
       content: answer.text,
-      answerTraceId: answer.trace.id,
+      answerTraceId: storedTraceId,
     }),
   );
 
-  // The engine pipeline is not streamed stage-by-stage yet; the SSE wire
-  // contract (meta → deltas → done) is in place from the start so the PWA
-  // and the eval harness consume it unchanged.
+  // The SSE wire contract (meta → deltas → done, ADR-0034). A refused answer
+  // never ships the vendor's text: the reviewer recorded a `refusal` event on
+  // the trace (the same signal the eval harness reads), and the frames carry
+  // the plain refusal instead. Otherwise the vendor's own delta sequence is
+  // replayed when it reproduces the delivered text; post-processing may have
+  // APPENDED deterministic rules (disclaimer, dhaif warning), which ride one
+  // trailing delta so the model's streamed text stays byte-identical on the
+  // wire. When generation did not stream at all, the text is chunked.
+  const refused = answer.trace.events.some((e) => e.kind === "refusal");
+  const streamed = deltas.join("");
+  const frames = refused
+    ? chunkText(answer.text)
+    : streamed !== "" && answer.text.startsWith(streamed)
+      ? [...deltas, ...chunkText(answer.text.slice(streamed.length))]
+      : chunkText(answer.text);
+
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
       const enc = new TextEncoder();
@@ -124,11 +178,13 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
         enc.encode(
           sseFrame(
             "meta",
-            JSON.stringify({ sessionId, messageId: answerMessageId, traceId: answer.trace.id }),
+            JSON.stringify({ sessionId, messageId: answerMessageId, traceId: storedTraceId }),
           ),
         ),
       );
-      controller.enqueue(enc.encode(sseFrame("delta", answer.text)));
+      for (const delta of frames) {
+        controller.enqueue(enc.encode(sseFrame("delta", delta)));
+      }
       controller.enqueue(enc.encode(sseFrame("done", "{}")));
       controller.close();
     },
@@ -142,3 +198,49 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
     },
   });
 });
+
+/**
+ * Chunk text into SSE-sized deltas (non-streaming providers, refusals).
+ * A slice loop, not a built regex: the chunk size is a compile-time constant,
+ * and constructing a regex from a variable is the ReDoS pattern the security
+ * scan blocks (and needs no regex here).
+ */
+const CHUNK_SIZE = 512;
+function chunkText(text: string): string[] {
+  const chunks: string[] = [];
+  for (let i = 0; i < text.length; i += CHUNK_SIZE) {
+    chunks.push(text.slice(i, i + CHUNK_SIZE));
+  }
+  return chunks;
+}
+
+/**
+ * Load the session's prior turns for follow-up context. Returns `[]` on a
+ * store failure (the question remains answerable) with a structured warning —
+ * a missing history must be visible in ops, never a silent quality drop.
+ *
+ * Round-3 B3: the bridge's result is cast to the store contract's declared
+ * return type (`getChatMessages` → `readonly ChatMessage[]`), not to an
+ * anonymous shape re-checked with `Array.isArray` — the contract is the
+ * boundary, and guessing past it hides a contract violation instead of
+ * surfacing one.
+ */
+async function loadHistory(
+  store: ChatWiring["fullStore"],
+  runStore: ChatWiring["runStore"],
+  sessionId: string,
+  logger: ReturnType<typeof createLogger>,
+): Promise<{ role: string; content: string }[]> {
+  try {
+    const rows = (await runStore(
+      store.getChatMessages(sessionId, { limit: HISTORY_LIMIT }),
+    )) as readonly ChatMessage[];
+    return rows.map((m) => ({ role: m.role, content: m.content }));
+  } catch (err) {
+    logger.warn("chat.history_unavailable", {
+      sessionId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return [];
+  }
+}

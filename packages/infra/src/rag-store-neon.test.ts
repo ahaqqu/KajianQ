@@ -49,6 +49,7 @@ run("RagStore contract (real Neon, Effect-shaped seam)", () => {
         SELECT user_id FROM chat_sessions WHERE metadata->>'pfx' = ${PREFIX}
       )`;
       await sql`DELETE FROM answer_traces WHERE message_id LIKE ${PREFIX + "-%"}`;
+      await sql`DELETE FROM eval_runs WHERE label LIKE ${PREFIX + "-%"}`;
       await sql`DELETE FROM doc_parents WHERE source_key = ${PREFIX}`;
     };
   });
@@ -87,7 +88,12 @@ run("RagStore contract (real Neon, Effect-shaped seam)", () => {
     expect(hits.length).toBeGreaterThan(0);
     expect(hits[0]?.child.id).toBe(childId);
     expect(hits[0]?.distance ?? 1).toBeLessThan(1e-6);
-    expect(hits[0]?.child.embeddingPrimary).toHaveLength(1536);
+    // A hit carries no vectors: the search used them to order the rows and
+    // re-shipping them cost the Worker megabytes per chat request (see
+    // RagStore.similaritySearch). The stored vectors are still there — the
+    // insert round-trip proves that — this method just does not return them.
+    expect(hits[0]?.child.embeddingPrimary).toBeNull();
+    expect(hits[0]?.child.embeddingFallback).toBeNull();
     expect(hits[0]?.child.citation).toEqual({ s: 2, a: 255 });
   }, 60_000);
 
@@ -179,8 +185,41 @@ run("RagStore contract (real Neon, Effect-shaped seam)", () => {
     const messageId = `${PREFIX}-msg-1`;
     const program = Effect.gen(function* () {
       const { userId, token } = yield* store.createSession();
-      yield* store.createChatSession({ userId, metadata: { pfx: PREFIX } });
-      yield* store.insertAnswerTrace({ messageId, userId, trace });
+      const chatSessionId = yield* store.createChatSession({ userId, metadata: { pfx: PREFIX } });
+      const storedTraceId = yield* store.insertAnswerTrace({ messageId, userId, trace });
+      // `chat_messages.answer_trace_id` FKs `answer_traces(id)`, so it must
+      // carry the id the store RETURNED — not `trace.id`, which the uuid column
+      // cannot always hold. The route assumed `trace.id`, so every assistant
+      // message write failed with a foreign-key violation and every answer
+      // surfaced as a 500.
+      yield* store.insertChatMessage({
+        sessionId: chatSessionId,
+        role: "assistant",
+        content: "grounded answer",
+        answerTraceId: storedTraceId,
+      });
+      // The eval ledger path (ADR-0034): a STRING question id ("gs-v0-019") and
+      // the stored trace id must both persist. This write was impossible for the
+      // project's entire history — a `//` note placed inside the SQL template
+      // made every statement a syntax error (42601) — and nothing covered it, so
+      // `eval_results` stayed empty while the spec claimed per-question rows.
+      const evalRunId = yield* store.insertEvalRun({
+        label: `${PREFIX}-run`,
+        report: {} as never,
+      });
+      yield* store.insertEvalResult({
+        runId: evalRunId,
+        questionId: "gs-v0-019",
+        answerTraceId: storedTraceId,
+        outcome: {
+          questionId: "gs-v0-019",
+          expectedBehavior: "refuse",
+          passed: true,
+          retrievalRecall: 1,
+          citationValidity: 1,
+          refused: true,
+        },
+      });
       // Tolerant reader: a trace stored without `version` reads back unchanged
       // (version is an optional forward-compat anchor, ADR-0007 amendment).
       const fetched = yield* store.getAnswerTraceByMessage(messageId);

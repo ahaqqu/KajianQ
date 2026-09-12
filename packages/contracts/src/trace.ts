@@ -111,6 +111,24 @@ export const TraceEventSchema = v.variant("kind", [
     at: v.pipe(v.number(), v.integer()),
   }),
   v.object({
+    stage: v.literal("retriever"),
+    kind: v.literal("filter_relaxed"),
+    detail: v.object({
+      /**
+       * The inferred filters a search dropped because they matched nothing.
+       * Recorded so a relaxation is VISIBLE machinery, never a silent fallback
+       * (traceability rule): the router's filters are hints inferred by a cheap
+       * model, and an inferred hint that empties the result set makes the answer
+       * ungrounded — so the search is retried without it, and the trace says so.
+       */
+      dropped: v.record(v.string(), v.string()),
+      /** Which embedding track the relaxation applied to. */
+      track: v.pipe(v.string(), v.minLength(1)),
+    }),
+    cost: v.optional(CostRecordSchema),
+    at: v.pipe(v.number(), v.integer()),
+  }),
+  v.object({
     stage: StageSchema,
     kind: v.literal("llm_call"),
     detail: v.optional(
@@ -127,6 +145,21 @@ export const TraceEventSchema = v.variant("kind", [
     kind: v.literal("review"),
     detail: v.object({
       verdict: v.pipe(v.string(), v.minLength(1)),
+      /**
+       * The retrieved citation labels the answer actually cited (thermo-review
+       * B4): the deterministic gate's *pass* case, recorded so citation
+       * provenance is observable rather than discarded. Optional — older
+       * persisted traces predate it (ADR-0007: Trace only ever ADDS optional
+       * fields).
+       */
+      grounded: v.optional(v.array(v.string())),
+      /**
+       * True when the reviewer LLM's reply carried no readable verdict
+       * (thermo-review A3): distinguishes "reviewer passed" from "reviewer
+       * output was unusable" so the eval harness can count indeterminate
+       * reviews instead of reading both as a pass.
+       */
+      verdictParseFailed: v.optional(v.boolean()),
     }),
     cost: v.optional(CostRecordSchema),
     at: v.pipe(v.number(), v.integer()),

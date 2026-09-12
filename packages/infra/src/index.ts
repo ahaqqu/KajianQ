@@ -34,8 +34,18 @@ export {
   type ChatCompletionsOptions,
 } from "./providers/chat-completions-adapter";
 export { resolveRole, type ResolvedRole, type ResolveOptions } from "./providers/provider-factory";
+// Retry policies for the two call-site shapes: interactive (default) and
+// offline batch jobs, which must ride out a vendor's per-minute window
+// instead of giving up after ≈1.5 s (see retry-schedule.ts).
+export {
+  batchRetrySchedule,
+  defaultRetrySchedule,
+  perKindRetrySchedule,
+  type RetryBudgets,
+} from "./providers/retry-schedule";
 export {
   type AlignedPairInsert,
+  type ChatMessage,
   type DocChild,
   type DocChildInsert,
   type DocParent,

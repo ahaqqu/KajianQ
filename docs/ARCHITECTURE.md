@@ -231,8 +231,13 @@ On flaky networks the API fails with typed errors and the UI surfaces them;
 Sentry and other opt-in services degrade silently when unconfigured. Neon is
 the durable copy: point-in-time recovery replaces the template's D1 Time
 Travel, and a restore drill is a consuming-project runbook (the template's
-`RUNBOOK_RESTORE.md` / `QUOTA.md` were intentionally not brought over). The
-ObjectStore seam remains the place a real backup/export lands if adopted.
+`RUNBOOK_RESTORE.md` / `QUOTA.md` were intentionally not brought over). PITR
+alone is not sufficient protection for the corpus — the free plan offers a
+6-hour window and a single manual snapshot — so the corpus layer is bracketed
+by snapshots at two independent layers: a provider snapshot plus a portable
+`pg_dump` + manifest written through the ObjectStore (`bun run db:snapshot`,
+ADR-0038). The ObjectStore is therefore where the real backup/export lands, and
+`db:snapshot restore-plan` prints the exact restore commands.
 
 Gated by: post-deploy smoke tests (`staging.yml`, `deploy.yml`) and blocking
 ZAP/Schemathesis against staging.

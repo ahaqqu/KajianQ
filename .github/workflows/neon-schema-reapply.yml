@@ -4,13 +4,21 @@ name: Re-apply Neon engine schema
 # eval/model_configs/users/sessions) on the shared Neon database pointed to
 # by NEON_DATABASE_URL.
 #
+# DATA LOSS WARNING: those tables now hold the *ingested corpus* and the eval
+# ledger. The corpus is loaded by a one-off, money-spending ingestion run
+# locally by an operator (ADR-0037 — the Staging workflow carries no ingest
+# job) and nothing rebuilds it automatically — a reapply drops every chunk,
+# every aligned pair's source rows and every eval run. Run this only when a
+# pre-production engine-migration edit forces it, and re-ingest afterwards.
+#
 # Purpose: the engine initial migration is edited IN PLACE while
 # pre-production (fix-forward process, see README "Production bring-up" and
 # PR #62/#72). After such an edit the shared staging schema no longer matches
 # the repo, which fails the neon-contract CI job with 42703
 # (column does not exist). Run this once after the edit so staging matches
 # the source of truth again — the same tear-down-and-reapply that PR #62 did
-# by hand. Domain/product migration sets are NOT touched.
+# by hand. Domain/product migration sets are NOT touched (so `aligned_pairs`
+# survives), but the engine set's corpus tables do not.
 on:
   workflow_dispatch:
 

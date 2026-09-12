@@ -30,6 +30,14 @@ type KindBudget = {
   maxRetries: number;
 };
 
+/** Per-kind retry counts; the interactive defaults are the fallbacks. */
+export type RetryBudgets = {
+  /** Retries for `rate_limited` (default 2 — ≈1.5 s of backoff). */
+  rateLimitedRetries?: number;
+  /** Retries for `transport`/`server` (default 3). */
+  faultRetries?: number;
+};
+
 /**
  * Per-kind retry policy for one candidate. A `rate_limited` candidate backs
  * off slower and fewer times (the vendor asked us to slow down); transport
@@ -48,21 +56,22 @@ type KindBudget = {
 export const perKindRetrySchedule = (
   rateLimitedBase: Duration.DurationInput,
   faultBase: Duration.DurationInput,
+  budgets: RetryBudgets = {},
 ): Schedule.Schedule<unknown, ProviderError> => {
-  const budgets: readonly KindBudget[] = [
-    { kinds: ["rate_limited"], base: rateLimitedBase, maxRetries: 2 },
-    { kinds: ["transport", "server"], base: faultBase, maxRetries: 3 },
+  const perKind: readonly KindBudget[] = [
+    { kinds: ["rate_limited"], base: rateLimitedBase, maxRetries: budgets.rateLimitedRetries ?? 2 },
+    { kinds: ["transport", "server"], base: faultBase, maxRetries: budgets.faultRetries ?? 3 },
   ];
   // State: one attempt counter per budget, indexed by budget. A kind that
   // matches no budget has no counter and never retries.
   return Schedule.makeWithState<ReadonlyArray<number>, ProviderError, unknown>(
-    budgets.map(() => 0),
+    perKind.map(() => 0),
     (now, err, counts) => {
-      const index = budgets.findIndex((b) => b.kinds.includes(err.kind));
+      const index = perKind.findIndex((b) => b.kinds.includes(err.kind));
       if (index < 0) {
         return Effect.succeed([counts, undefined, ScheduleDecision.done] as const);
       }
-      const budget = budgets[index];
+      const budget = perKind[index];
       const attempt = counts[index] ?? 0;
       if (budget === undefined || attempt >= budget.maxRetries) {
         return Effect.succeed([counts, undefined, ScheduleDecision.done] as const);
@@ -84,4 +93,37 @@ export const perKindRetrySchedule = (
 export const defaultRetrySchedule: Schedule.Schedule<unknown, ProviderError> = perKindRetrySchedule(
   "500 millis",
   "50 millis",
+);
+
+/**
+ * The batch-job retry policy (`ResolveOptions.retrySchedule` at an offline
+ * call site: the corpus ingest CLIs).
+ *
+ * Why it differs from the interactive default: to a chat request a 429 means
+ * "come back later", and ≈1.5 s of backoff is the right answer — a user is
+ * waiting. To a batch job the same 429 usually means "you hit the vendor's
+ * per-minute window", which clears in tens of seconds; giving up after 1.5 s
+ * throws the whole run away. That is not hypothetical: the staging corpus
+ * ingest died on its **first** embedding batch when the free tier's
+ * per-minute token window was exceeded, after roughly 1.5 s of retries.
+ *
+ * Budget: a rate-limited candidate gets 5 s, 10 s, 20 s, 40 s, 80 s — 155 s of
+ * backoff, which rides out a per-minute window while still failing a genuine
+ * quota exhaustion (a daily cap, a revoked plan) in minutes rather than
+ * hanging. Transport/server faults keep a short base with one extra try.
+ */
+/**
+ * The batch policy's per-kind budgets, as data: a test can pin the numbers
+ * without sleeping through 155 s of real backoff, and an operator can read the
+ * policy without decoding the schedule combinator.
+ */
+export const BATCH_RETRY_BUDGETS: Required<RetryBudgets> = {
+  rateLimitedRetries: 5,
+  faultRetries: 5,
+};
+
+export const batchRetrySchedule: Schedule.Schedule<unknown, ProviderError> = perKindRetrySchedule(
+  "5 seconds",
+  "250 millis",
+  BATCH_RETRY_BUDGETS,
 );

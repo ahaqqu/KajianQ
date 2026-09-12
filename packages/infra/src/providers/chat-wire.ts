@@ -194,11 +194,16 @@ export function embedWire(deps: EmbedWireDeps) {
     const body = {
       model: deps.modelId,
       input: spec.texts,
-      // Requested output dimensions where both the caller asked and the
-      // model supports truncation (MRL).
-      ...(spec.dimensions != null && deps.dimensions != null
-        ? { dimensions: spec.dimensions }
-        : {}),
+      // Output dimensionality: the model's *configured* `dimensions` is the
+      // default, not a hint. The corpus schema is built around it (ADR-0013
+      // dual-track `VECTOR(1536)`, ADR-0036) and the RagStore adapter rejects
+      // any vector of another length — while a live embedding endpoint answers
+      // with the model's native size unless asked otherwise (a 3072-dimension
+      // vector against a 1536-dimension schema), which failed the first real
+      // corpus ingest with `embedding dimension mismatch: expected 1536, got
+      // 3072`. A caller may still override per call where it deliberately
+      // compares candidates (the #9 benchmark passes its own value).
+      ...(deps.dimensions != null ? { dimensions: spec.dimensions ?? deps.dimensions } : {}),
     };
     const started = Date.now();
     const attempt = {

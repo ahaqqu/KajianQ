@@ -4,16 +4,48 @@ name: Staging
 # briefly dropped in #53 when a template-sync --ours resolution re-introduced
 # D1 steps; D1 was already stripped from this fork in #3 (ADR-0008). The
 # workflow below is project-owned (Neon-backed, no D1, no /v1/session).
+#
+# This workflow carries NO corpus-ingest job (ADR-0037). Loading the corpus
+# costs real money (embeddings + cheap-tier parent summaries) and about two
+# hours, so it is an operator-driven local action — `bun run ingest:quran` /
+# `bun run ingest:hadith` from the repo root against NEON_DATABASE_URL. A
+# money-spending job must never sit in the same workflow graph as this
+# evidence job: previously a failed ingest skipped the smoke entirely,
+# spending money and producing no evidence for it.
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      # Operator knobs for the Golden Set smoke (SPECS §3.7). On a push these
+      # are empty, so the env fallbacks on the smoke step apply the spec
+      # defaults (5 questions, $1 cap).
+      eval_smoke_size:
+        description: "Golden Set smoke subset size (questions; spec default 5)"
+        required: false
+        default: "5"
+      eval_budget_micro_usd:
+        description: "Hard spend cap for the smoke run in micro-USD (1000000 = $1)"
+        required: false
+        default: "1000000"
+
+# Serialize staging runs: a push-to-main deploy and a manual dispatch would
+# otherwise race on the same Alchemy state and on the Neon ledger the smoke
+# writes (eval_runs/eval_results/answer_traces). CI's neon-contract job is
+# serialized for the same reason. A deploy is never cancelled mid-flight.
+concurrency:
+  group: staging
+  cancel-in-progress: false
 
 permissions:
   contents: read
   issues: write
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # Deploy + verify. Runs on every push to main and on every dispatch. This is
+  # the evidence job: its Golden Set smoke step is what a PR cites.
+  # ---------------------------------------------------------------------------
   staging:
     runs-on: ubuntu-latest
     steps:
@@ -31,6 +63,20 @@ jobs:
           # the route answers 503 chat_not_configured and the DAST step fails
           # on the undocumented status (ADR-0028 revisit trigger).
           test -n "$NEON_DATABASE_URL"
+          # The two keys the chat pipeline cannot degrade without, now that the
+          # Golden Set smoke runs here (ADR-0009 amendment 2026-09-12):
+          # DEEPSEEK_API_KEY is the generator role's chain head, GEMINI_API_KEY
+          # the embedder (retrieval) and the mandatory cross-vendor reviewer.
+          # A missing one would surface as an opaque 5xx mid-smoke, so it fails
+          # here instead, naming the role.
+          test -n "$DEEPSEEK_API_KEY" || {
+            echo "::error::DEEPSEEK_API_KEY is unset — the generator role has no keyed candidate"
+            exit 1
+          }
+          test -n "$GEMINI_API_KEY" || {
+            echo "::error::GEMINI_API_KEY is unset — the embedder and the mandatory reviewer role have no keyed candidate"
+            exit 1
+          }
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -44,10 +90,10 @@ jobs:
       # Persistence is Neon Postgres behind RagStore (ADR-0008) — the template's
       # D1 migration/deploy:inject steps were removed when D1 was stripped (#3).
       # deploy:staging owns the web build; no separate build step (matches
-      # deploy.yml). The secret env vars are optional except NEON_DATABASE_URL
-      # (required above): the stack binds only the ones present (absent =
-      # feature disabled — ADR-0028), so they pass through unconditionally and
-      # nothing changes when secrets are set. NEON_DATABASE_URL becomes the
+      # deploy.yml). The secret env vars bind only when present (absent =
+      # feature disabled — ADR-0028), so they pass through unconditionally:
+      # NEON_DATABASE_URL and the two provider keys below are required by the
+      # step above, the rest are optional. NEON_DATABASE_URL becomes the
       # Worker's DATABASE_URL binding in apps/api/alchemy.run.ts.
       - run: bun run deploy:staging
         env:
@@ -67,6 +113,65 @@ jobs:
         with:
           name: Health
           url: ${{ vars.STAGING_URL }}/v1/health
+      # The PR-time behavioural gate (SPECS §3.7, ticket #10): a deterministic
+      # stratified slice of the Golden Set — refusal, dhaif trap, English, and
+      # Indonesian cases — answered by the *deployed* Worker and scored from its
+      # persisted answer traces through the same harness and ledger as eval:run.
+      # It exits non-zero on any failure or skip, so a staging deploy that breaks
+      # grounded answering or the refusal gate cannot go green.
+      #
+      # The harness authenticates as an anonymous user (ADR-0017) — the same
+      # public route the PWA uses, so the token is minted here rather than
+      # carried as a secret. Edge propagation can lag a deploy, hence the retry;
+      # the token is masked so it never lands in the log.
+      - name: Mint anonymous eval session
+        id: eval-token
+        run: |
+          set -uo pipefail
+          attempt=1
+          while [ "$attempt" -le 5 ]; do
+            if body=$(curl -sf -X POST "$STAGING_URL/v1/auth/anonymous"); then
+              token=$(printf '%s' "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+              if [ -n "$token" ]; then
+                echo "::add-mask::$token"
+                echo "token=$token" >> "$GITHUB_OUTPUT"
+                echo "minted an anonymous session on attempt ${attempt}"
+                exit 0
+              fi
+            fi
+            echo "anonymous session attempt ${attempt}/5 failed; waiting 5s for edge propagation..."
+            sleep 5
+            attempt=$((attempt + 1))
+          done
+          echo "::error::could not mint an anonymous session from ${STAGING_URL}/v1/auth/anonymous"
+          exit 1
+        env:
+          STAGING_URL: ${{ vars.STAGING_URL }}
+      - name: Golden Set smoke
+        # The summary is written to the job page even when the smoke fails —
+        # that is the evidence a reviewer reads, so it must not be skipped by
+        # the failing exit code. The log is kept locally and teed to the job.
+        run: |
+          set -uo pipefail
+          bun run eval:smoke 2>&1 | tee /tmp/eval-smoke.log
+          status=${PIPESTATUS[0]}
+          {
+            echo "### Golden Set smoke — staging"
+            echo ""
+            echo '```'
+            tail -n 30 /tmp/eval-smoke.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+        env:
+          EVAL_API_BASE_URL: ${{ vars.STAGING_URL }}
+          EVAL_API_TOKEN: ${{ steps.eval-token.outputs.token }}
+          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+          # Fail-closed spend cap (ADR-0034): unset would be an explicit opt-out,
+          # so the workflow always sets one. 1000000 micro-USD = $1 per run.
+          EVAL_BUDGET_MICRO_USD: ${{ github.event.inputs.eval_budget_micro_usd || '1000000' }}
+          EVAL_SMOKE_SIZE: ${{ github.event.inputs.eval_smoke_size || '5' }}
+          EVAL_RUN_LABEL: staging-smoke-${{ github.sha }}
       - name: ZAP baseline
         uses: zaproxy/action-baseline@de8ad967d3548d44ef623df22cf95c3b0baf8b25 # v0.15.0
         with:

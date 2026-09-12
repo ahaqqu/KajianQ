@@ -122,6 +122,39 @@ describe("chat-completions adapter", () => {
     expect(bodies[0]?.dimensions).toBe(8);
   });
 
+  it("embed requests the configured dimensions when the caller does not ask", async () => {
+    // Regression pin for the first real corpus ingest: a live embedding
+    // endpoint returns its native size (3072) unless `dimensions` is sent, and
+    // the store rejects anything but the schema's 1536. Every in-repo caller
+    // that omits `spec.dimensions` — the ingestion pipeline, the chat
+    // retriever — must therefore get the model's configured dimensionality,
+    // not the vendor's default.
+    const bodies: Record<string, unknown>[] = [];
+    const fetchImpl: FetchLike = async (_url, init) => {
+      bodies.push(JSON.parse(init.body));
+      return jsonResponse({ data: [{ embedding: [0.1, 0.2] }] });
+    };
+    const provider = makeProvider("m-embed", fetchImpl);
+
+    await Effect.runPromise(provider.embed({ texts: ["a"] }));
+
+    // The fixture's m-embed declares dimensions: 8.
+    expect(bodies[0]?.dimensions).toBe(8);
+  });
+
+  it("embed lets an explicit caller dimension win over the configured one", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const fetchImpl: FetchLike = async (_url, init) => {
+      bodies.push(JSON.parse(init.body));
+      return jsonResponse({ data: [{ embedding: [0.1, 0.2] }] });
+    };
+    const provider = makeProvider("m-embed", fetchImpl);
+
+    await Effect.runPromise(provider.embed({ texts: ["a"], dimensions: 4 }));
+
+    expect(bodies[0]?.dimensions).toBe(4);
+  });
+
   it("embed without usage estimates tokens from chars, never the text count", async () => {
     const fetchImpl: FetchLike = async () =>
       jsonResponse({ data: [{ embedding: [0.1] }, { embedding: [0.2] }] });
