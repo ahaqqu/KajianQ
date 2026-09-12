@@ -49,6 +49,27 @@ describe("validateCitations — grounded direction", () => {
     expect(ungrounded).toEqual([]);
   });
 
+  it("ignores markdown emphasis wrapped around a citation", () => {
+    // Regression, found on the first live size-5 smoke: the hadith grammar stops
+    // at sentence punctuation but not at `*`, so `**HR. Malik no. 18**` reached
+    // the comparison with its markers attached, was reported ungrounded, and the
+    // deterministic gate refused a correctly grounded answer (gs-v0-015).
+    const { grounded, ungrounded } = validateCitations(
+      "Menurut **HR. Malik no. 18**, puasa dalam perjalanan …",
+      [chunk("HR. Malik no. 18")],
+    );
+    expect(grounded).toEqual(["HR. Malik no. 18"]);
+    expect(ungrounded).toEqual([]);
+  });
+
+  it("still refuses a fabricated address written in bold", () => {
+    // The emphasis stripping must not turn the trap case into a pass.
+    const { ungrounded } = validateCitations("**HR. Bukhari no. 99999** menyebutkan …", [
+      chunk("HR. Bukhari no. 573"),
+    ]);
+    expect(ungrounded).toEqual(["HR. Bukhari no. 99999"]);
+  });
+
   it("reads multiple labels from one chunk's metadata array", () => {
     const c: Chunk = { id: "x", text: "t", metadata: { citation: ["QS. 1:1", "QS. 1:2"] } };
     expect(citationLabelsOf(c)).toEqual(["QS. 1:1", "QS. 1:2"]);

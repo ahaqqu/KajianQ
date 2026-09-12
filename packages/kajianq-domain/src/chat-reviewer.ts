@@ -110,8 +110,13 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
                     "You are a faithfulness reviewer for a grounded Islamic knowledge answer.",
                     "Given the draft answer and the retrieved evidence, reply with ONLY JSON:",
                     '{"verdict": "pass" | "fail", "reason": "..."}',
-                    "Fail when the answer claims something the evidence does not support,",
-                    "or cites a source not present in the evidence.",
+                    "The evidence is raw source text (Arabic, plus Indonesian where the source has it).",
+                    "Translating a quoted passage into the answer's language, quoting it, and naming the",
+                    "citation labels the evidence itself carries are REQUIRED of the answer and are never",
+                    "grounds for failure: a label that appears in the evidence is supported by definition,",
+                    "and a translation of a quoted passage is not a new claim.",
+                    "Fail ONLY when the answer asserts something the evidence does not support, contradicts",
+                    "the evidence, or cites a source absent from the evidence.",
                   ].join("\n"),
                 },
                 {
@@ -140,7 +145,12 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
             stage: "reviewer",
             kind: "review",
             detail: {
-              verdict: reply.text.slice(0, 200),
+              // The reviewer's full reply, not a prefix: truncating it at 200
+              // chars cut every rejection reason mid-sentence, which is exactly
+              // the text an operator needs to judge whether a refusal was
+              // correct (the first live size-5 smoke could only be diagnosed
+              // from partial sentences).
+              verdict: reply.text,
               // B4: the deterministic gate's pass case is provenance too.
               grounded,
               // A3: an unreadable verdict is recorded as such — an operator

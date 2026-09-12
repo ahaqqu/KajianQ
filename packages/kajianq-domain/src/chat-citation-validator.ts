@@ -88,10 +88,18 @@ function stripGradeSuffix(label: string): string {
  * grounds.
  */
 export function normalizeCitationLabel(label: string): string {
-  return stripGradeSuffix(label)
-    .replace(/\s+/g, " ")
-    .replace(/\bQ\.S\./g, "QS.")
-    .trim();
+  return (
+    stripGradeSuffix(label)
+      // Markdown emphasis is presentation, not address: the grammar stops at
+      // sentence punctuation but NOT at `*`/`_`/backticks, so a bolded citation
+      // (`**HR. Malik no. 18**`) reached the comparison with its markers attached
+      // and was reported UNGROUNDED. That false positive refused a grounded
+      // answer on the first live size-5 smoke (gs-v0-015).
+      .replace(/[*_`]+/g, "")
+      .replace(/\s+/g, " ")
+      .replace(/\bQ\.S\./g, "QS.")
+      .trim()
+  );
 }
 
 /**
