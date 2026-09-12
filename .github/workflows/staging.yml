@@ -8,13 +8,176 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      # Operator knobs for the Golden Set smoke (SPECS §3.7). On a push these
+      # are empty, so the env fallbacks on the smoke step apply the spec
+      # defaults (5 questions, $1 cap).
+      eval_smoke_size:
+        description: "Golden Set smoke subset size (questions; spec default 5)"
+        required: false
+        default: "5"
+      eval_budget_micro_usd:
+        description: "Hard spend cap for the smoke run in micro-USD (1000000 = $1)"
+        required: false
+        default: "1000000"
+      # ONE-OFF operator action, never part of the routine path: a push to
+      # main deploys and smokes, it never ingests. Filling the store costs real
+      # money (cheap-tier parent summaries + embeddings) and about two hours, so
+      # it happens once per environment — the Neon store then persists across
+      # deploys the way production's does, and every ingest CLI is idempotent by
+      # construction (parents upsert by sourceKey, children by (parentId,
+      # ordinal), pairs by pairKey, reports by run id), so a re-dispatch is a
+      # safe repair rather than a rebuild.
+      ingest_corpus:
+        description: "ONE-OFF: ingest the corpus into staging (spends money, ~2 h)"
+        required: false
+        type: boolean
+        default: false
+      ingest_scope:
+        description: "Corpus to ingest when ingest_corpus is true"
+        required: false
+        type: choice
+        options:
+          - both
+          - quran
+          - hadith
+        default: "both"
+
+# Serialize staging runs: a push-to-main deploy and a manual dispatch would
+# otherwise race on the same Alchemy state and on the Neon ledger the smoke
+# writes (eval_runs/eval_results/answer_traces). CI's neon-contract job is
+# serialized for the same reason. A deploy is never cancelled mid-flight.
+concurrency:
+  group: staging
+  cancel-in-progress: false
 
 permissions:
   contents: read
   issues: write
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # One-off corpus ingest (workflow_dispatch with ingest_corpus, default off).
+  #
+  # Why this lives here and not in a workflow of its own: GitHub only resolves
+  # `workflow_dispatch` for workflow files that exist on the default branch, so
+  # a separate file could not be dispatched from a PR branch — and the first
+  # real ingest is exactly what a PR like this one needs. The opt-in input keeps
+  # the routine path (push to main) ingest-free.
+  #
+  # Why ingest is not "rebuilt" per deploy: the Neon store persists; this job
+  # exists because the corpus had never been ingested into staging at all (the
+  # only rows there were neon-contract fixtures, and `eval_runs` — where every
+  # ingest CLI writes its IngestionReport — was empty).
+  # ---------------------------------------------------------------------------
+  ingest:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ingest_corpus == 'true' }}
+    runs-on: ubuntu-latest
+    # Full Quran (6,236 ayah) + 7 hadith collections: ~93k embedding items at
+    # the CLIs' serial batch size, plus ~500 cheap-tier parent summaries.
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.0
+      - run: bun install --frozen-lockfile
+      - name: Require ingest secrets
+        run: |
+          set -euo pipefail
+          test -n "$NEON_DATABASE_URL" || {
+            echo "::error::NEON_DATABASE_URL is unset — nothing to ingest into"
+            exit 1
+          }
+          # Embeddings (embedder role) and the parent summaries (cheap role,
+          # whose keyed fallback is DeepSeek when Gemini is rate-limited).
+          test -n "$GEMINI_API_KEY" || {
+            echo "::error::GEMINI_API_KEY is unset — the embedder role has no keyed candidate"
+            exit 1
+          }
+          if [ -z "$R2_ACCESS_KEY_ID" ] || [ -z "$R2_SECRET_ACCESS_KEY" ]; then
+            echo "::warning::R2 S3 credentials are absent — the raw-source archive step is skipped and the IngestionReport records archiveStored: false. Add R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY to store the raw bytes (the account id is taken from CLOUDFLARE_ACCOUNT_ID)."
+          fi
+        env:
+          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      - name: Apply pending migrations
+        # Additive and versioned (schema_migrations), never a rebuild: staging
+        # was missing the domain set's 0002_aligned_pairs, which Quran ingestion
+        # writes to. `db:up:all` applies engine + domain + product sets.
+        run: bun run db:up:all
+        env:
+          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+      - name: Ingest Quran (Tanzil Uthmani + Kemenag)
+        if: ${{ github.event.inputs.ingest_scope != 'hadith' }}
+        run: bun run ingest:quran
+        env:
+          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          # The R2 S3 endpoint is account-scoped, and the account id is already
+          # a secret here — only the S3 key pair has to be added.
+          R2_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_STAGING: kajianq-raw-staging
+      - name: Ingest hadith (fawazahmed0 editions)
+        if: ${{ github.event.inputs.ingest_scope != 'quran' }}
+        run: bun run ingest:hadith
+        env:
+          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_STAGING: kajianq-raw-staging
+      - name: Verify the corpus landed
+        # Positive evidence, not a green checkmark: the counts the smoke's
+        # retrieval recall will resolve against, plus the IngestionReports the
+        # CLIs persisted to eval_runs.
+        run: |
+          set -uo pipefail
+          cat > .corpus-status.mjs <<'EOF'
+          import { neon } from "@neondatabase/serverless";
+          const sql = neon(process.env.NEON_DATABASE_URL);
+          const parents = await sql`SELECT count(*)::int AS n FROM doc_parents`;
+          const chunks = await sql`SELECT metadata->>'sourceType' AS source_type, count(*)::int AS n FROM doc_children GROUP BY 1 ORDER BY 2 DESC`;
+          const reports = await sql`SELECT label, created_at FROM eval_runs ORDER BY created_at DESC LIMIT 5`;
+          const scope = process.env.INGEST_SCOPE ?? "both";
+          const lines = [
+            `doc_parents: ${parents[0].n}`,
+            `doc_children by sourceType: ${chunks.map((r) => `${r.source_type ?? "(none)"}=${r.n}`).join(", ")}`,
+            `recent ingest reports: ${reports.map((r) => `${r.label}@${new Date(r.created_at).toISOString()}`).join(" | ")}`,
+          ];
+          const types = new Set(chunks.map((r) => r.source_type));
+          const missing = [
+            ...(scope !== "hadith" && !types.has("quran") ? ["quran"] : []),
+            ...(scope !== "quran" && !types.has("hadith") ? ["hadith"] : []),
+          ];
+          if (missing.length > 0) lines.push(`INCOMPLETE — no ${missing.join(", ")} chunks landed`);
+          console.log(lines.join("\n"));
+          await import("node:fs").then(({ appendFileSync }) =>
+            appendFileSync(process.env.GITHUB_STEP_SUMMARY ?? "/dev/null", `### Corpus status\n\n\`\`\`\n${lines.join("\n")}\n\`\`\`\n`),
+          );
+          if (missing.length > 0) process.exit(1);
+          EOF
+          bun .corpus-status.mjs
+          rm -f .corpus-status.mjs
+        env:
+          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+          INGEST_SCOPE: ${{ github.event.inputs.ingest_scope || 'both' }}
+
+  # ---------------------------------------------------------------------------
+  # Deploy + verify. Runs on every push to main and on dispatch; when the
+  # one-off ingest job is skipped (the normal case) this is the only job, and
+  # when it ran, the smoke must see the corpus it just landed.
+  # ---------------------------------------------------------------------------
   staging:
+    needs: [ingest]
+    if: ${{ always() && needs.ingest.result != 'failure' && needs.ingest.result != 'cancelled' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -31,6 +194,20 @@ jobs:
           # the route answers 503 chat_not_configured and the DAST step fails
           # on the undocumented status (ADR-0028 revisit trigger).
           test -n "$NEON_DATABASE_URL"
+          # The two keys the chat pipeline cannot degrade without, now that the
+          # Golden Set smoke runs here (ADR-0009 amendment 2026-09-12):
+          # DEEPSEEK_API_KEY is the generator role's chain head, GEMINI_API_KEY
+          # the embedder (retrieval) and the mandatory cross-vendor reviewer.
+          # A missing one would surface as an opaque 5xx mid-smoke, so it fails
+          # here instead, naming the role.
+          test -n "$DEEPSEEK_API_KEY" || {
+            echo "::error::DEEPSEEK_API_KEY is unset — the generator role has no keyed candidate"
+            exit 1
+          }
+          test -n "$GEMINI_API_KEY" || {
+            echo "::error::GEMINI_API_KEY is unset — the embedder and the mandatory reviewer role have no keyed candidate"
+            exit 1
+          }
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -44,10 +221,10 @@ jobs:
       # Persistence is Neon Postgres behind RagStore (ADR-0008) — the template's
       # D1 migration/deploy:inject steps were removed when D1 was stripped (#3).
       # deploy:staging owns the web build; no separate build step (matches
-      # deploy.yml). The secret env vars are optional except NEON_DATABASE_URL
-      # (required above): the stack binds only the ones present (absent =
-      # feature disabled — ADR-0028), so they pass through unconditionally and
-      # nothing changes when secrets are set. NEON_DATABASE_URL becomes the
+      # deploy.yml). The secret env vars bind only when present (absent =
+      # feature disabled — ADR-0028), so they pass through unconditionally:
+      # NEON_DATABASE_URL and the two provider keys below are required by the
+      # step above, the rest are optional. NEON_DATABASE_URL becomes the
       # Worker's DATABASE_URL binding in apps/api/alchemy.run.ts.
       - run: bun run deploy:staging
         env:
@@ -67,6 +244,65 @@ jobs:
         with:
           name: Health
           url: ${{ vars.STAGING_URL }}/v1/health
+      # The PR-time behavioural gate (SPECS §3.7, ticket #10): a deterministic
+      # stratified slice of the Golden Set — refusal, dhaif trap, English, and
+      # Indonesian cases — answered by the *deployed* Worker and scored from its
+      # persisted answer traces through the same harness and ledger as eval:run.
+      # It exits non-zero on any failure or skip, so a staging deploy that breaks
+      # grounded answering or the refusal gate cannot go green.
+      #
+      # The harness authenticates as an anonymous user (ADR-0017) — the same
+      # public route the PWA uses, so the token is minted here rather than
+      # carried as a secret. Edge propagation can lag a deploy, hence the retry;
+      # the token is masked so it never lands in the log.
+      - name: Mint anonymous eval session
+        id: eval-token
+        run: |
+          set -uo pipefail
+          attempt=1
+          while [ "$attempt" -le 5 ]; do
+            if body=$(curl -sf -X POST "$STAGING_URL/v1/auth/anonymous"); then
+              token=$(printf '%s' "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+              if [ -n "$token" ]; then
+                echo "::add-mask::$token"
+                echo "token=$token" >> "$GITHUB_OUTPUT"
+                echo "minted an anonymous session on attempt ${attempt}"
+                exit 0
+              fi
+            fi
+            echo "anonymous session attempt ${attempt}/5 failed; waiting 5s for edge propagation..."
+            sleep 5
+            attempt=$((attempt + 1))
+          done
+          echo "::error::could not mint an anonymous session from ${STAGING_URL}/v1/auth/anonymous"
+          exit 1
+        env:
+          STAGING_URL: ${{ vars.STAGING_URL }}
+      - name: Golden Set smoke
+        # The summary is written to the job page even when the smoke fails —
+        # that is the evidence a reviewer reads, so it must not be skipped by
+        # the failing exit code. The log is kept locally and teed to the job.
+        run: |
+          set -uo pipefail
+          bun run eval:smoke 2>&1 | tee /tmp/eval-smoke.log
+          status=${PIPESTATUS[0]}
+          {
+            echo "### Golden Set smoke — staging"
+            echo ""
+            echo '```'
+            tail -n 30 /tmp/eval-smoke.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+        env:
+          EVAL_API_BASE_URL: ${{ vars.STAGING_URL }}
+          EVAL_API_TOKEN: ${{ steps.eval-token.outputs.token }}
+          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+          # Fail-closed spend cap (ADR-0034): unset would be an explicit opt-out,
+          # so the workflow always sets one. 1000000 micro-USD = $1 per run.
+          EVAL_BUDGET_MICRO_USD: ${{ github.event.inputs.eval_budget_micro_usd || '1000000' }}
+          EVAL_SMOKE_SIZE: ${{ github.event.inputs.eval_smoke_size || '5' }}
+          EVAL_RUN_LABEL: staging-smoke-${{ github.sha }}
       - name: ZAP baseline
         uses: zaproxy/action-baseline@de8ad967d3548d44ef623df22cf95c3b0baf8b25 # v0.15.0
         with:
