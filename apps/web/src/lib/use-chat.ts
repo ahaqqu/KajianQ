@@ -14,7 +14,10 @@ import {
  * (TanStack Query over the rehydration endpoint), a streaming-native live
  * turn, session id + token persistence, and the typed error surface. The
  * session id state feeds ONLY the mount-time rehydration; a live turn's
- * session id rides a ref so the query never clobbers a streaming answer.
+ * session id rides a ref so the query never clobbers a streaming answer —
+ * and neither does its `messages` result: a transcript (re)load that resolves
+ * while a turn is in flight is discarded, never applied over the optimistic
+ * turns (thermo-review A1).
  */
 
 export type ChatError = "rate_limited" | "unavailable" | "generic" | "load" | null;
@@ -35,18 +38,38 @@ export function useChat(locale: "id" | "en") {
     queryFn: ({ signal }) => rehydrateSession(sessionId!, signal),
   });
 
+  // `dataUpdatedAt` of the transcript result this effect last applied — or
+  // discarded because a turn was in flight. One ref gives the effect its
+  // apply-exactly-once rule across the busy flips that re-run it.
+  const appliedTranscriptAtRef = useRef(0);
+
   useEffect(() => {
-    if (transcript.data !== undefined) {
-      setMessages(transcript.data?.messages ?? []);
-      if (transcript.data === null) {
-        // The stored session was reclaimed server-side: start clean.
-        clearStoredSessionId();
-        liveSessionRef.current = null;
-        setSessionId(null);
-      }
-    }
+    console.log("EFFECT", { busy, data: transcript.data === undefined ? "undef" : transcript.data === null ? "null" : "defined", dataUpdatedAt: transcript.dataUpdatedAt, marker: appliedTranscriptAtRef.current });
     if (transcript.isError) setError("load");
-  }, [transcript.data, transcript.isError]);
+    if (transcript.data === undefined) return;
+    // (thermo-review A1) A transcript (re)load must never clobber an
+    // in-flight streaming turn: the optimistic turns it would overwrite are
+    // the live answer's only body, and the stream's patches key on their
+    // ids. A result that resolves mid-turn is DISCARDED — not deferred —
+    // because it was fetched before the turn's write, so applying it after
+    // the turn would hide the completed turn instead.
+    if (busy) {
+      console.log("DISCARD", transcript.dataUpdatedAt);
+      appliedTranscriptAtRef.current = transcript.dataUpdatedAt;
+      return;
+    }
+    // Apply each result exactly once: the busy flips re-run this effect
+    // without new data.
+    if (transcript.dataUpdatedAt <= appliedTranscriptAtRef.current) return;
+    appliedTranscriptAtRef.current = transcript.dataUpdatedAt;
+    setMessages(transcript.data?.messages ?? []);
+    if (transcript.data === null) {
+      // The stored session was reclaimed server-side: start clean.
+      clearStoredSessionId();
+      liveSessionRef.current = null;
+      setSessionId(null);
+    }
+  }, [busy, transcript.data, transcript.dataUpdatedAt, transcript.isError]);
 
   useEffect(() => {
     const sync = (): void => setOnline(window.navigator.onLine);

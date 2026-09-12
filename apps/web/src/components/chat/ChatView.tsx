@@ -58,7 +58,12 @@ export function ChatView({
 
   const submit = (): void => {
     const text = draft.trim();
-    if (text === "" || busy) return;
+    // `loadingTranscript` is part of the guard (thermo-review A1): a send
+    // inside the rehydration window would append optimistic turns that the
+    // resolving transcript cannot contain. The hook's effect also discards
+    // any mid-turn transcript result; this keeps the race unreachable from
+    // the UI in the first place.
+    if (text === "" || busy || loadingTranscript) return;
     setDraft("");
     onSend(text);
   };
@@ -141,7 +146,7 @@ export function ChatView({
         <button
           type="submit"
           data-testid="send"
-          disabled={busy || draft.trim() === ""}
+          disabled={busy || loadingTranscript || draft.trim() === ""}
           className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 disabled:opacity-50"
         >
           {t(locale, "send")}
