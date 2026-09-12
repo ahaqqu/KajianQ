@@ -1,7 +1,13 @@
 import { Effect } from "effect";
 import type { CostRecord } from "@app/contracts";
-import { toStageError, type Chunk, type RoutedQuery, type Retriever } from "@app/rag-core";
-import type { StoreError } from "@app/rag-core";
+import {
+  RunContext,
+  toStageError,
+  type Chunk,
+  type RoutedQuery,
+  type Retriever,
+  type StoreError,
+} from "@app/rag-core";
 import type { KajianQFilters } from "./filters";
 
 /**
@@ -121,16 +127,43 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
             .pipe(Effect.mapError((cause) => ({ cause })));
           if (deps.onEmbedCost) deps.onEmbedCost(embedded.cost);
           const filters = metadataFilters(routed.filters);
+          const hasFilters = Object.keys(filters).length > 0;
           const lists: TrackHit[][] = [];
           for (let i = 0; i < routed.subQueries.length; i += 1) {
             const vector = embedded.vectors[i];
             if (!vector) continue;
             for (const track of ["primary", "fallback"] as const) {
-              const hits = yield* Effect.tryPromise({
-                try: () =>
-                  deps.bridge(deps.store.similaritySearch(track, vector, { limit, filters })),
-                catch: (cause: unknown) => ({ cause }),
-              });
+              const search = (withFilters: Record<string, string>) =>
+                Effect.tryPromise({
+                  try: () =>
+                    deps.bridge(
+                      deps.store.similaritySearch(track, vector, { limit, filters: withFilters }),
+                    ),
+                  catch: (cause: unknown) => ({ cause }),
+                });
+              let hits = yield* search(filters);
+              // Filter relaxation. The router's filters are HINTS inferred by a
+              // cheap model, and the prompt already tells it to leave unconstrained
+              // attributes empty — which it does not reliably do (observed: a
+              // Quran question routed with `textLayer: "sharh"`). A hint that
+              // matches nothing empties the context, and an empty context makes
+              // the answer uncitable and ungrounded, which is far worse than a
+              // relaxed search. So an empty result means the hint was wrong, not
+              // strict: retry once without it — and record the drop, because the
+              // trace is the product's trust surface, not a place to hide a
+              // fallback.
+              if (hits.length === 0 && hasFilters) {
+                hits = yield* search({});
+                if (hits.length > 0) {
+                  const run = yield* RunContext;
+                  run.record({
+                    stage: "retriever",
+                    kind: "filter_relaxed",
+                    detail: { dropped: filters, track },
+                    at: run.now(),
+                  });
+                }
+              }
               for (const hit of hits) {
                 lists.push([
                   {

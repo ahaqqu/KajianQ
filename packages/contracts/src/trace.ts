@@ -111,6 +111,24 @@ export const TraceEventSchema = v.variant("kind", [
     at: v.pipe(v.number(), v.integer()),
   }),
   v.object({
+    stage: v.literal("retriever"),
+    kind: v.literal("filter_relaxed"),
+    detail: v.object({
+      /**
+       * The inferred filters a search dropped because they matched nothing.
+       * Recorded so a relaxation is VISIBLE machinery, never a silent fallback
+       * (traceability rule): the router's filters are hints inferred by a cheap
+       * model, and an inferred hint that empties the result set makes the answer
+       * ungrounded — so the search is retried without it, and the trace says so.
+       */
+      dropped: v.record(v.string(), v.string()),
+      /** Which embedding track the relaxation applied to. */
+      track: v.pipe(v.string(), v.minLength(1)),
+    }),
+    cost: v.optional(CostRecordSchema),
+    at: v.pipe(v.number(), v.integer()),
+  }),
+  v.object({
     stage: StageSchema,
     kind: v.literal("llm_call"),
     detail: v.optional(
