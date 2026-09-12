@@ -2,7 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import fc from "fast-check";
 import type { Trace } from "@app/contracts";
 import type { DocChildById } from "@app/infra";
-import { normalizeCitationLabel } from "@app/kajianq-domain";
+import type { Chunk } from "@app/rag-core";
+import {
+  MACHINE_TRANSLATION_LABEL,
+  normalizeCitationLabel,
+  renderEvidenceChunk,
+  runStoreEffect,
+} from "@app/kajianq-domain";
+import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 import {
   chunkFetcher,
   citationsFrameFor,
@@ -259,23 +266,57 @@ describe("citationsFrameFor — the route-level wrapper", () => {
     expect(frame.citations).toHaveLength(1);
   });
 
-  it("chunkFetcher bridges the store seam to the display fetcher", async () => {
-    const calls: unknown[] = [];
-    const fetchChunks = chunkFetcher(
-      {
-        getDocChildrenByIds: (ids) => {
-          calls.push(ids);
-          return { pipe: undefined, effect: true, ids } as never;
-        },
-      },
-      async (effect) => {
-        const ids = (effect as { ids: readonly string[] }).ids;
-        return ids.map((id) => chunk(id, "QS. 2:255"));
-      },
+  it("chunkFetcher bridges the store seam through the typed StoreBridge", async () => {
+    // The real memory store and the real domain bridge run the seam
+    // end-to-end: the typed bridge (thermo-review B2) needs no casts, and
+    // wiring a wrong store call here would not compile.
+    const store = createMemoryRagStore();
+    const parentId = await runStoreEffect<string>(
+      store.insertDocParent({ sourceKey: "quran/test", title: "Sumber Tampilan", metadata: {} }),
     );
-    const rows = await fetchChunks(["c1", "c2"]);
-    expect(calls).toEqual([["c1", "c2"]]);
-    expect(rows.map((r) => r.id)).toEqual(["c1", "c2"]);
+    const childId = await runStoreEffect<string>(
+      store.insertDocChild({
+        parentId,
+        textRaw: "raw",
+        textAr: "النص العربي",
+        textId: "Terjemahan Indonesia.",
+        embeddingPrimary: [1, 0, 0],
+        embeddingFallback: null,
+        ordinal: 0,
+        metadata: { citation: "QS. 2:255" },
+      }),
+    );
+    const fetchChunks = chunkFetcher(store, runStoreEffect);
+    const rows = await fetchChunks([childId]);
+    expect(rows.map((r) => r.id)).toEqual([childId]);
+    expect(rows[0]).toMatchObject({ textAr: "النص العربي", parentTitle: "Sumber Tampilan" });
+  });
+
+  it("the wire flag agrees with the assembler's machine-translation label (thermo-review A3)", () => {
+    // The chunk's layer values as the assembler's evidence renderer sees
+    // them (both layers ride the metadata) and as the citation derive sees
+    // them (textId column) — the same logical chunk.
+    const bothLayers = chunk("c1", "QS. 2:255");
+    const evidence: Chunk = {
+      id: "c1",
+      text: bothLayers.textAr,
+      metadata: { citation: "QS. 2:255", textAr: bothLayers.textAr, textId: bothLayers.textId },
+    };
+    expect(renderEvidenceChunk(evidence)).toContain(MACHINE_TRANSLATION_LABEL);
+    const frame = frameOf(traceWithChunks(["c1"]), "Ayat [QS. 2:255].", [bothLayers]);
+    expect(frame.citations[0]?.machineTranslated).toBe(true);
+
+    // Arabic original only: neither surface claims a translation at all.
+    const arabicOnly = chunk("c2", "QS. 112:1", { textId: null });
+    const arabicEvidence: Chunk = {
+      id: "c2",
+      text: arabicOnly.textAr,
+      metadata: { citation: "QS. 112:1", textAr: arabicOnly.textAr },
+    };
+    expect(renderEvidenceChunk(arabicEvidence)).not.toContain(MACHINE_TRANSLATION_LABEL);
+    const bare = frameOf(traceWithChunks(["c2"]), "Ayat [QS. 112:1].", [arabicOnly]).citations[0];
+    expect("translation" in bare!).toBe(false);
+    expect(bare?.machineTranslated).toBe(false);
   });
 });
 

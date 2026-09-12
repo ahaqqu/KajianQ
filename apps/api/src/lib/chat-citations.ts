@@ -13,6 +13,7 @@ import {
   citationLabelsOf,
   dhaifWarning as dhaifWarningLine,
   normalizeCitationLabel,
+  type StoreBridge,
 } from "@app/kajianq-domain";
 import * as v from "valibot";
 
@@ -47,12 +48,20 @@ export function traceChunkIds(trace: Trace): string[] {
 /** Display-data fetcher over the store seam (the bridge stays at the edge). */
 export type CitationChunkSource = (ids: readonly string[]) => Promise<readonly DocChildById[]>;
 
-/** Bind a {@link CitationChunkSource} to a wired store + its Effect bridge. */
+/** The structured-warning callback both derivation entries share. */
+type Warn = (msg: string, fields?: Record<string, string | number | boolean | null>) => void;
+
+/**
+ * Bind a {@link CitationChunkSource} to a wired store + its Effect bridge.
+ * The bridge is the domain's typed `StoreBridge` (thermo-review B2): a wrong
+ * store call wired here fails to compile instead of degrading to an empty
+ * citation list at runtime.
+ */
 export function chunkFetcher(
   store: Pick<RagStore, "getDocChildrenByIds">,
-  runStore: (effect: unknown) => Promise<unknown>,
+  runStore: StoreBridge,
 ): CitationChunkSource {
-  return async (ids) => (await runStore(store.getDocChildrenByIds(ids))) as readonly DocChildById[];
+  return async (ids) => runStore(store.getDocChildrenByIds(ids));
 }
 
 /** The chunk's citation labels, normalized exactly as the gate normalizes. */
@@ -72,9 +81,15 @@ function toCitation(label: string, chunk: DocChildById): ChatCitation {
     arabic: chunk.textAr,
     ...(translation !== undefined ? { translation } : {}),
     ...(typeof grade === "string" && grade !== "" ? { grade } : {}),
-    // The assembler labels every chunk rendered with both layers, so the
-    // translation the answer quoted from is machine-made exactly when a
-    // translation layer exists at all (ADR-0006 as implemented).
+    // Provenance honesty (thermo-review A3): this flag must agree with the
+    // prompt's label. The assembler renders every chunk that carries both
+    // layers with `MACHINE_TRANSLATION_LABEL` (ADR-0006), so the translation
+    // the answer quoted from is machine-made exactly when a translation
+    // layer exists — a coupling ENFORCED BY TEST (chat-citations.test.ts
+    // pins the flag to the assembler's label for the same layer values).
+    // A human-checked translation layer must not land by mutating corpus
+    // data alone: it needs a per-chunk provenance field consumed here (and
+    // an ADR) before this flag may say anything different.
     machineTranslated: translation !== undefined,
     ...(chunk.parentTitle !== null && chunk.parentTitle !== ""
       ? { source: chunk.parentTitle }
@@ -125,6 +140,42 @@ export function deriveCitationsFrame(input: {
 }
 
 /**
+ * The refusal early-return both derivation paths share (thermo-review B1):
+ * a refused answer carries no citations — the refusal text is not a cited
+ * answer.
+ */
+function refusalFrame(messageId: string): ChatCitationsFrame {
+  return { messageId, citations: [], refusal: true, dhaifWarning: false };
+}
+
+/**
+ * The shared degrade-and-derive fetch (thermo-review B1): resolve display
+ * rows for the given chunk ids, degrading to an EMPTY map on failure — never
+ * a fabricated one — with the caller's structured warning. One owner for the
+ * policy, so a change to it (e.g. a structured warning field on the frame)
+ * cannot be made in one entry point and forgotten in the other.
+ */
+async function chunksByIdOrEmpty(input: {
+  ids: readonly string[];
+  fetchChunks: CitationChunkSource;
+  warn: Warn;
+  warnKey: string;
+  warnFields: Record<string, string | number | boolean | null>;
+}): Promise<ReadonlyMap<string, DocChildById>> {
+  try {
+    const chunks = await input.fetchChunks(input.ids);
+    return new Map<string, DocChildById>(chunks.map((c) => [c.id, c]));
+  } catch (err) {
+    // Degrade honestly: no chips, not wrong chips. Ops sees why.
+    input.warn(input.warnKey, {
+      ...input.warnFields,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return new Map<string, DocChildById>();
+  }
+}
+
+/**
  * The route-level entry: derive the frame from the just-persisted trace,
  * resolving display data through the store seam. A store-read failure
  * degrades to an empty citation list (never a fabricated one) with a
@@ -136,26 +187,20 @@ export async function citationsFrameFor(input: {
   messageId: string;
   answerText: string;
   fetchChunks: CitationChunkSource;
-  warn: (msg: string, fields?: Record<string, string | number | boolean | null>) => void;
+  warn: Warn;
 }): Promise<ChatCitationsFrame> {
   const { trace, messageId, answerText, fetchChunks, warn } = input;
-  if (trace.events.some((event) => event.kind === "refusal")) {
-    return { messageId, citations: [], refusal: true, dhaifWarning: false };
-  }
-  let chunks: readonly DocChildById[] = [];
-  try {
-    chunks = await fetchChunks(traceChunkIds(trace));
-  } catch (err) {
-    // Degrade honestly: no chips, not wrong chips. Ops sees why.
-    warn("chat.citations.chunk_lookup_failed", {
-      messageId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-  const byId = new Map<string, DocChildById>(chunks.map((c) => [c.id, c]));
+  if (trace.events.some((event) => event.kind === "refusal")) return refusalFrame(messageId);
+  const chunksById = await chunksByIdOrEmpty({
+    ids: traceChunkIds(trace),
+    fetchChunks,
+    warn,
+    warnKey: "chat.citations.chunk_lookup_failed",
+    warnFields: { messageId },
+  });
   return v.parse(
     ChatCitationsFrameSchema,
-    deriveCitationsFrame({ trace, messageId, answerText, chunksById: byId }),
+    deriveCitationsFrame({ trace, messageId, answerText, chunksById }),
   );
 }
 
@@ -175,7 +220,7 @@ export async function rehydrateTranscript(input: {
   /** Reads a trace by the message row's `answer_trace_id` (the FK value). */
   getTrace: (traceId: string) => Promise<Trace | null>;
   fetchChunks: CitationChunkSource;
-  warn: (msg: string, fields?: Record<string, string | number | boolean | null>) => void;
+  warn: Warn;
 }): Promise<ChatSessionMessages> {
   const { sessionId, rows, getTrace, fetchChunks, warn } = input;
   const traces = new Map<string, Trace>();
@@ -198,16 +243,15 @@ export async function rehydrateTranscript(input: {
   for (const trace of traces.values()) {
     for (const id of traceChunkIds(trace)) ids.add(id);
   }
-  let chunksById = new Map<string, DocChildById>();
-  try {
-    const chunks = await fetchChunks([...ids]);
-    chunksById = new Map(chunks.map((c) => [c.id, c]));
-  } catch (err) {
-    warn("chat.rehydration.chunk_lookup_failed", {
-      sessionId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
+  // One store read for the whole transcript, degrading through the same
+  // shared helper the live frame uses (thermo-review B1).
+  const chunksById = await chunksByIdOrEmpty({
+    ids: [...ids],
+    fetchChunks,
+    warn,
+    warnKey: "chat.rehydration.chunk_lookup_failed",
+    warnFields: { sessionId },
+  });
   const messages: ChatSessionMessage[] = rows.map((row) => {
     // The route only ever writes the transcript's two roles.
     const base = {
