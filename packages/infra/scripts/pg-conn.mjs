@@ -32,6 +32,19 @@ const SNAPSHOTABLE = [
   "schema_migrations",
 ];
 
+/**
+ * The subset of `SNAPSHOTABLE` that must match a manifest exactly on `verify`.
+ *
+ * These are the corpus and its schema identity. The remaining tables are
+ * append-only ledger rows that legitimately grow the moment any chat or smoke
+ * run touches the store, so a snapshot taken before that traffic would
+ * otherwise look corrupt.
+ */
+const CORPUS_TABLES = ["doc_parents", "doc_children", "aligned_pairs", "schema_migrations"];
+
+/** Whether a table's row count is part of the corpus identity. */
+export const isCorpusTable = (name) => CORPUS_TABLES.includes(name);
+
 /** Run a command and return trimmed stdout; throws with stderr on any failure. */
 export function run(cmd, args, env = {}) {
   const res = spawnSync(cmd, args, { env: { ...process.env, ...env }, encoding: "utf8" });

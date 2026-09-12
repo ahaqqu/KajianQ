@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { isCorpusTable } from "../../packages/infra/scripts/pg-conn.mjs";
 import {
   SNAPSHOT_ROOT,
   createSnapshotStore,
@@ -70,5 +71,28 @@ describe("createSnapshotStore", () => {
 
   it("honours an explicit bucket override", () => {
     expect(createSnapshotStore({ ...FULL_ENV, R2_BUCKET_STAGING: "other" }).bucket).toBe("other");
+  });
+});
+
+describe("corpus vs ledger classification", () => {
+  it("treats the corpus and its schema identity as strict", () => {
+    for (const table of ["doc_parents", "doc_children", "aligned_pairs", "schema_migrations"]) {
+      expect(isCorpusTable(table), table).toBe(true);
+    }
+  });
+
+  it("treats append-only ledger tables as non-strict, so smoke traffic never looks like corruption", () => {
+    for (const table of [
+      "eval_runs",
+      "eval_results",
+      "answer_traces",
+      "chat_messages",
+      "chat_sessions",
+      "users",
+      "sessions",
+      "model_configs",
+    ]) {
+      expect(isCorpusTable(table), table).toBe(false);
+    }
   });
 });

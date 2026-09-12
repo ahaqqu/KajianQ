@@ -16,7 +16,7 @@
  */
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { pgEnv, run, sql, tableCounts } from "./pg-conn.mjs";
+import { isCorpusTable, pgEnv, run, sql, tableCounts } from "./pg-conn.mjs";
 import {
   createSnapshotStore,
   dumpKey,
@@ -155,10 +155,17 @@ async function cmdVerify(label) {
   }
 
   const neonUrl = process.env.NEON_DATABASE_URL;
-  let drift = [];
+  let corpusDrift = [];
+  let ledgerDrift = [];
   if (neonUrl) {
     const live = tableCounts(neonUrl);
-    drift = Object.entries(manifest.tableCounts).filter(([t, n]) => live[t] !== n);
+    const changed = Object.entries(manifest.tableCounts).filter(([t, n]) => live[t] !== n);
+    // Only the corpus must match: the ledger tables are append-only and change
+    // as soon as any chat or smoke run touches the store, so treating their
+    // growth as corruption would flag every healthy snapshot. They are still
+    // reported, so real data loss is visible rather than hidden.
+    corpusDrift = changed.filter(([t]) => isCorpusTable(t));
+    ledgerDrift = changed.filter(([t]) => !isCorpusTable(t));
   }
   console.log(
     [
@@ -166,13 +173,18 @@ async function cmdVerify(label) {
       `  sha256    ${actual.slice(0, 16)}… matches the manifest`,
       `  size      ${(dump.length / 1024 / 1024).toFixed(1)} MB`,
       neonUrl
-        ? drift.length === 0
-          ? `  live rows match the manifest for all ${Object.keys(manifest.tableCounts).length} tables`
-          : `  DRIFT vs live database: ${drift.map(([t, n]) => `${t} manifest=${n}`).join(", ")}`
+        ? corpusDrift.length === 0
+          ? "  corpus row counts match the live database"
+          : `  CORPUS DRIFT: ${corpusDrift.map(([t, n]) => `${t} manifest=${n}`).join(", ")}`
         : "  (NEON_DATABASE_URL unset — integrity checked, live counts skipped)",
+      ...(ledgerDrift.length > 0
+        ? [
+            `  ledger tables moved on (expected): ${ledgerDrift.map(([t, n]) => `${t} manifest=${n}`).join(", ")}`,
+          ]
+        : []),
     ].join("\n"),
   );
-  if (drift.length > 0) process.exit(2);
+  if (corpusDrift.length > 0) process.exit(2);
 }
 
 async function cmdList() {
