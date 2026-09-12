@@ -1,4 +1,9 @@
-import { AnonymousSessionSchema, DeletedUserSchema, type AnonymousSession } from "@app/contracts";
+import {
+  AnonymousSessionSchema,
+  AuthErrorSchema,
+  DeletedUserSchema,
+  type AnonymousSession,
+} from "@app/contracts";
 import { createLogger } from "@app/infra";
 import { describeRoute, resolver } from "hono-openapi";
 import { newRouter } from "../lib/guard";
@@ -32,11 +37,11 @@ const ANONYMOUS_OPENAPI = describeRoute({
     },
     429: {
       description: "Rate limited — the per-IP request budget for the window is exhausted",
-      content: { "application/json": { schema: resolver(DeletedUserSchema) } },
+      content: { "application/json": { schema: resolver(AuthErrorSchema) } },
     },
     503: {
       description: "Auth not configured — the DATABASE_URL binding is absent in this environment",
-      content: { "application/json": { schema: resolver(DeletedUserSchema) } },
+      content: { "application/json": { schema: resolver(AuthErrorSchema) } },
     },
   },
 });
@@ -52,15 +57,15 @@ const DELETE_ME_OPENAPI = describeRoute({
     },
     401: {
       description: "Unauthorized",
-      content: { "application/json": { schema: resolver(DeletedUserSchema) } },
+      content: { "application/json": { schema: resolver(AuthErrorSchema) } },
     },
     429: {
       description: "Rate limited — the per-IP request budget for the window is exhausted",
-      content: { "application/json": { schema: resolver(DeletedUserSchema) } },
+      content: { "application/json": { schema: resolver(AuthErrorSchema) } },
     },
     503: {
       description: "Auth not configured — the DATABASE_URL binding is absent in this environment",
-      content: { "application/json": { schema: resolver(DeletedUserSchema) } },
+      content: { "application/json": { schema: resolver(AuthErrorSchema) } },
     },
   },
 });
