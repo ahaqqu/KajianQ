@@ -137,10 +137,12 @@ jobs:
       - name: Verify the corpus landed
         # Positive evidence, not a green checkmark: the counts the smoke's
         # retrieval recall will resolve against, plus the IngestionReports the
-        # CLIs persisted to eval_runs.
+        # CLIs persisted to eval_runs. The probe lives inside packages/infra —
+        # the workspace package that owns the Neon driver — because bun's
+        # isolated install does not link it at the repo root.
         run: |
           set -uo pipefail
-          cat > .corpus-status.mjs <<'EOF'
+          cat > packages/infra/.corpus-status.mjs <<'EOF'
           import { neon } from "@neondatabase/serverless";
           const sql = neon(process.env.NEON_DATABASE_URL);
           const parents = await sql`SELECT count(*)::int AS n FROM doc_parents`;
@@ -164,8 +166,8 @@ jobs:
           );
           if (missing.length > 0) process.exit(1);
           EOF
-          bun .corpus-status.mjs
-          rm -f .corpus-status.mjs
+          bun packages/infra/.corpus-status.mjs
+          rm -f packages/infra/.corpus-status.mjs
         env:
           NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
           INGEST_SCOPE: ${{ github.event.inputs.ingest_scope || 'both' }}
