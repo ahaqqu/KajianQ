@@ -90,14 +90,28 @@ export function parseChatMeta(data: string): ChatMetaParse {
   }
 }
 
-/** Parse one `event:`/`data:` frame. Returns null for comments/blanks. */
+/**
+ * Parse one `event:`/`data:` frame. Returns null for comments/blanks.
+ *
+ * A `data:` field drops **exactly one** leading space (the optional space
+ * after the colon, per the SSE spec) — never `trimStart()`. The route replays
+ * the vendor's own delta sequence, so a delta routinely begins with a space;
+ * trimming all leading whitespace silently rewrote the answer on the wire.
+ * The corruption is not cosmetic: a citation split as `"QS."` + `" 2:43"`
+ * reassembled to `"QS.2:43"`, so the eval harness scored a correctly cited
+ * answer as citing nothing (`citationValidity: 0`) while the persisted answer
+ * and the reviewer both held the true text.
+ */
 function parseFrame(frame: string): { event: string; data: string } | null {
   let event = "message";
   const dataLines: string[] = [];
   for (const line of frame.split("\n")) {
     if (line.startsWith(":")) continue;
     if (line.startsWith("event:")) event = line.slice(6).trim();
-    else if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
+    else if (line.startsWith("data:")) {
+      const value = line.slice(5);
+      dataLines.push(value.startsWith(" ") ? value.slice(1) : value);
+    }
   }
   if (dataLines.length === 0) return null;
   return { event, data: dataLines.join("\n") };
