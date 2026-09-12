@@ -68,8 +68,12 @@ const CITATION_GRAMMARS: readonly (() => RegExp)[] = [
   // tolerated. Token classes exclude `.` and `,` so the match cannot run
   // across a sentence boundary or swallow a list, and both the token length
   // and the repetition count are bounded — no nested unbounded quantifier,
-  // so the pattern stays linear (ReDoS-safe) as required.
-  () => /\bHR(?:\.|\s)\s*[^\s,.]{1,24}(?:\s+[^\s,.]{1,24}){0,3}\s+no\.\s*[^\s,;.)]+/gi,
+  // so the pattern stays linear (ReDoS-safe) as required. The trailing
+  // number token also skips brackets (#11, found by the citation-payload
+  // derivation): `[HR. Malik no. 18]` used to capture a phantom `…no. 18]`
+  // span that normalized to nothing a chunk grounds — a false UNGROUNDED,
+  // i.e. a refused grounded answer; the Quran address already skipped them.
+  () => /\bHR(?:\.|\s)\s*[^\s,.]{1,24}(?:\s+[^\s,.]{1,24}){0,3}\s+no\.\s*[^\s,;.)\[\]]+/gi,
   // Kitab (SPECS §2.1): `Al-Umm, Imam Syafi'i, Jilid 1, Hal. 102, Bab …`.
   // Kitab ingestion has not landed, so any such citation is ungrounded by
   // definition today — detecting it is the point, not an accident.
