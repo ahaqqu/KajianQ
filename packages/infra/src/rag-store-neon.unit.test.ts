@@ -309,11 +309,16 @@ describe("rag-store-neon adapter (fake runner)", () => {
     const id = await runOk(
       store.insertAnswerTrace({ messageId: "m1", userId: "u1", trace: sampleTrace }),
     );
-    expect(typeof id).toBe("string");
     const text = sql._calls[0]?.text ?? "";
     expect(text).toContain("INSERT INTO answer_traces");
     expect(text).toContain("user_id");
     expect(sql._calls[0]?.values).toContain("u1");
+    // The returned id must be the id actually inserted: callers persist
+    // dependent rows against it (`chat_messages.answer_trace_id` FKs to this
+    // column), and it need not equal `trace.id` — the column is `uuid` while
+    // the contract allows any non-empty string.
+    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    expect(sql._calls[0]?.values?.[0]).toBe(id);
   });
 
   it("insertAnswerTrace fails constraint-class on a malformed Trace", async () => {

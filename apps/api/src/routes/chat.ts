@@ -124,15 +124,23 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
   );
 
   // Persist the settled answer trace + assistant message, then stream.
-  await runStore(
+  //
+  // The stored row id comes from the store, never from `answer.trace.id`: the
+  // column is `uuid` while the contract's id is any non-empty string, so the
+  // two cannot always agree. Three things depend on the STORED id —
+  // `chat_messages.answer_trace_id` and the eval ledger's
+  // `eval_results.answer_trace_id` (both FK this column), and the SSE `meta`
+  // frame the eval harness reads its ledger id from. Assuming `trace.id` broke
+  // the write path and surfaced as a 500 on every answer.
+  const storedTraceId = (await runStore(
     store.insertAnswerTrace({ messageId: answerMessageId, userId, trace: answer.trace }),
-  );
+  )) as string;
   await runStore(
     store.insertChatMessage({
       sessionId,
       role: "assistant",
       content: answer.text,
-      answerTraceId: answer.trace.id,
+      answerTraceId: storedTraceId,
     }),
   );
 
@@ -159,7 +167,7 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
         enc.encode(
           sseFrame(
             "meta",
-            JSON.stringify({ sessionId, messageId: answerMessageId, traceId: answer.trace.id }),
+            JSON.stringify({ sessionId, messageId: answerMessageId, traceId: storedTraceId }),
           ),
         ),
       );

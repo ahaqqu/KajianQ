@@ -22,6 +22,12 @@ export function neonTraceMethods(
         try: () => parseTrace(input.trace),
         catch: constraintError,
       });
+      // The row id is the STORE's, not the contract's: this column is `uuid`
+      // while `Trace.id` is any non-empty string, so the two cannot always
+      // agree. Callers must persist dependent rows (notably a chat message's
+      // `answer_trace_id`, which FKs to this column) using the id returned
+      // here — assuming `trace.id` instead silently broke every assistant
+      // message write, which the live staging smoke caught as a 500.
       const id = crypto.randomUUID();
       return Effect.flatMap(parsed, (trace) =>
         Effect.as(

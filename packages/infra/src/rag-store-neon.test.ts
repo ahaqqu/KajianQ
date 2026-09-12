@@ -179,8 +179,19 @@ run("RagStore contract (real Neon, Effect-shaped seam)", () => {
     const messageId = `${PREFIX}-msg-1`;
     const program = Effect.gen(function* () {
       const { userId, token } = yield* store.createSession();
-      yield* store.createChatSession({ userId, metadata: { pfx: PREFIX } });
-      yield* store.insertAnswerTrace({ messageId, userId, trace });
+      const chatSessionId = yield* store.createChatSession({ userId, metadata: { pfx: PREFIX } });
+      const storedTraceId = yield* store.insertAnswerTrace({ messageId, userId, trace });
+      // `chat_messages.answer_trace_id` FKs `answer_traces(id)`, so it must
+      // carry the id the store RETURNED — not `trace.id`, which the uuid column
+      // cannot always hold. The route assumed `trace.id`, so every assistant
+      // message write failed with a foreign-key violation and every answer
+      // surfaced as a 500.
+      yield* store.insertChatMessage({
+        sessionId: chatSessionId,
+        role: "assistant",
+        content: "grounded answer",
+        answerTraceId: storedTraceId,
+      });
       // Tolerant reader: a trace stored without `version` reads back unchanged
       // (version is an optional forward-compat anchor, ADR-0007 amendment).
       const fetched = yield* store.getAnswerTraceByMessage(messageId);
