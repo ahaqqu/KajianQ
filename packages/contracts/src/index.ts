@@ -8,9 +8,17 @@ export {
   ChatErrorSchema,
   ChatMetaSchema,
   ChatRequestSchema,
+  ChatCitationSchema,
+  ChatCitationsFrameSchema,
+  ChatSessionMessageSchema,
+  ChatSessionMessagesSchema,
   type ChatError,
   type ChatMeta,
   type ChatRequest,
+  type ChatCitation,
+  type ChatCitationsFrame,
+  type ChatSessionMessage,
+  type ChatSessionMessages,
 } from "./chat";
 export {
   AnonymousSessionSchema,
