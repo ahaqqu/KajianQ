@@ -112,10 +112,23 @@ export async function runGoldenSet(set: GoldenSet, deps: HarnessDeps): Promise<H
         if (event.cost) costs.push(event.cost);
       }
       const outcome = scoreQuestion(question, reply.text, events, deps);
-      results.push({ ...outcome, traceId: reply.traceId });
-      if (outcome.passed) passed += 1;
+      const result: HarnessQuestionResult = { ...outcome, traceId: reply.traceId };
+      try {
+        await deps.ledger.saveResult(runId, question.id, outcome, reply.traceId);
+      } catch (err) {
+        // A ledger write failure fails THIS question — its evidence was not
+        // persisted — but it must not ALSO fabricate a "skipped" entry for a
+        // question that was asked and scored. The previous shape pushed both,
+        // so two questions produced four rows and two phantom skips, which made
+        // the smoke exit non-zero for an infrastructure reason while the report
+        // disagreed with its own question count. Only a transport/trace failure,
+        // which yields no score at all, is a skip.
+        result.passed = false;
+        result.notes = [`ledger_write_failed: ${err instanceof Error ? err.message : String(err)}`];
+      }
+      results.push(result);
+      if (result.passed) passed += 1;
       else failed += 1;
-      await deps.ledger.saveResult(runId, question.id, outcome, reply.traceId);
     } catch (err) {
       if (err instanceof BudgetExceededError) {
         budgetExceeded = true;

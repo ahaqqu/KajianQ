@@ -47,6 +47,8 @@ function makeDeps(
     budget?: Budget;
     /** Trace events returned for every message lookup (default: costless). */
     traceEvents?: () => TraceEventLike[];
+    /** Make every `saveResult` reject, to exercise the ledger-failure path. */
+    failLedger?: boolean;
   } = {},
 ) {
   const savedResults: { questionId: string; outcome: unknown; runId: string }[] = [];
@@ -92,6 +94,7 @@ function makeDeps(
       savedReport = report;
     },
     async saveResult(runId, questionId, outcome) {
+      if (opts.failLedger) throw new Error("An error has occurred");
       savedResults.push({ questionId, outcome, runId });
       return questionId;
     },
@@ -126,6 +129,24 @@ describe("runGoldenSet", () => {
       retrievalRecall: 1,
       citationValidity: 1,
     });
+  });
+
+  it("records one result per question when the ledger write fails — no phantom skip", async () => {
+    const { deps, savedResults } = makeDeps({ failLedger: true });
+    const result = await runGoldenSet(set, deps);
+    // A ledger failure must fail the question, not duplicate it: the previous
+    // shape pushed the scored result AND a "skipped" entry, so two questions
+    // produced four rows and two phantom skips — enough to fail the smoke for an
+    // infrastructure reason while the report disagreed with its own question
+    // count. Only a transport/trace failure is a genuine skip.
+    expect(result.results).toHaveLength(set.questions.length);
+    expect(result.skipped).toBe(0);
+    expect(result.failed).toBe(set.questions.length);
+    expect(savedResults).toHaveLength(0);
+    for (const entry of result.results) {
+      expect(entry.passed).toBe(false);
+      expect(entry.notes?.some((n) => n.startsWith("ledger_write_failed:"))).toBe(true);
+    }
   });
 
   it("persists the final report with the real run id (A4)", async () => {
