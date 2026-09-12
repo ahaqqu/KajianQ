@@ -24,6 +24,8 @@ export const messages = {
     stagedContext: "Retrieving context…",
     stagedReview: "Checking citations…",
     stagedCompose: "Composing the answer…",
+    dhaifWarningCard:
+      "[Warning] The cited hadith is graded weak (dhaif); it may not be used as a primary proof.",
     gradeLabel: "Grade",
     sourceLabel: "Source",
     arabicOriginal: "Original Arabic text",
@@ -58,6 +60,8 @@ export const messages = {
     stagedContext: "Mengambil konteks…",
     stagedReview: "Memeriksa sitasi…",
     stagedCompose: "Menyusun jawaban…",
+    dhaifWarningCard:
+      "[Peringatan] Hadits yang dikutip berderajat lemah (dhaif); tidak dapat dijadikan dalil utama.",
     gradeLabel: "Derajat",
     sourceLabel: "Sumber",
     arabicOriginal: "Teks Arab asli",

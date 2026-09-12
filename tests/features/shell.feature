@@ -12,10 +12,10 @@ Feature: KajianQ shell
     Then I see the home title
     And the health schema version is visible
 
-  Scenario: Switch language to Bahasa Indonesia
+  Scenario: Switch language to English (the product defaults to Bahasa Indonesia)
     When I open the health page
-    And I switch the language to Bahasa Indonesia
-    Then I see the home page in Bahasa Indonesia
+    And I switch the language to English
+    Then I see the health page in English
 
   Scenario: Home page has no serious accessibility violations
     When I open the home page

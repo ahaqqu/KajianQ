@@ -29,6 +29,10 @@ export function MessageCard({ message }: { message: ChatSessionMessage }) {
   const split = splitAnswerBlocks(message.content);
   const citations = message.citations?.citations ?? [];
   const segments = renderAnswerSegments(split.body, citations);
+  // The card shows the answer's own warning line when the deterministic
+  // rule appended it; the frame's dhaifWarning flag drives the card even
+  // when the line is missing from the (rehydrated) text.
+  const warning = split.warning ?? (message.citations?.dhaifWarning === true ? t(locale, "dhaifWarningCard") : null);
 
   return (
     <article data-testid="message-assistant" className="max-w-[95%] space-y-1">
@@ -52,13 +56,13 @@ export function MessageCard({ message }: { message: ChatSessionMessage }) {
             ),
           )}
         </div>
-        {split.warning !== null && (
+        {warning !== null && (
           <div
             data-testid="dhaif-warning"
             role="note"
             className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200"
           >
-            {split.warning}
+            {warning}
           </div>
         )}
         {split.disclaimer !== null && (
@@ -70,7 +74,7 @@ export function MessageCard({ message }: { message: ChatSessionMessage }) {
           </p>
         )}
       </div>
-      <p className="px-1 text-[11px] text-slate-500">
+      <p className="px-1 text-[11px] text-slate-400">
         {formatWhen(locale, new Date(message.createdAt))}
       </p>
       {sheet.active !== null && (

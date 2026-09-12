@@ -10,7 +10,8 @@ import { SwUpdatePrompt } from "../lib/sw-update";
  * the chat UI in later milestones.
  */
 export function Shell() {
-  const [locale, setLocale] = useState<Locale>("en");
+  // Indonesian-first (SPECS §2.1): the product defaults to Bahasa Indonesia.
+  const [locale, setLocale] = useState<Locale>("id");
 
   useEffect(() => {
     document.documentElement.lang = locale;

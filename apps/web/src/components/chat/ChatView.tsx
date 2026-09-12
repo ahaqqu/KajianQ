@@ -146,7 +146,7 @@ function EmptyState({ locale }: { locale: Locale }) {
     <div data-testid="chat-empty" className="mt-10 space-y-1 text-center">
       <h1 className="text-3xl font-semibold tracking-tight">{t(locale, "homeTitle")}</h1>
       <p className="text-sm font-medium text-slate-300">{t(locale, "chatEmptyTitle")}</p>
-      <p className="text-xs text-slate-500">{t(locale, "chatEmptyHint")}</p>
+      <p className="text-xs text-slate-400">{t(locale, "chatEmptyHint")}</p>
     </div>
   );
 }
