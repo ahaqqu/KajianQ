@@ -138,7 +138,10 @@ function ChunkRow({
     <li className="text-sm text-card-foreground">
       {chunk.source ?? <span className="font-mono text-xs">{chunk.id}</span>}
       {chunk.score !== undefined && (
-        <span data-testid="trace-score" className="ml-2 font-mono text-[11px] text-muted-foreground">
+        <span
+          data-testid="trace-score"
+          className="ml-2 font-mono text-[11px] text-muted-foreground"
+        >
           {t(locale, "traceScoreLabel")} {score.format(chunk.score)}
         </span>
       )}
