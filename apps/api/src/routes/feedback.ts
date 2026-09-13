@@ -62,9 +62,9 @@ export const feedbackRoutes = newRouter().post(
     if (unauthorized !== undefined) return unauthorized;
     const { userId } = c.get("authed");
 
-    const target = (await runStore(fullStore.getAnswerFeedbackTarget(req.messageId))) as
-      | AnswerFeedbackTarget
-      | null;
+    const target = (await runStore(
+      fullStore.getAnswerFeedbackTarget(req.messageId),
+    )) as AnswerFeedbackTarget | null;
     if (target === null || target.userId !== userId) {
       // Unknown answer and someone else's answer: indistinguishable 404.
       return c.json({ error: "not_found" }, 404);

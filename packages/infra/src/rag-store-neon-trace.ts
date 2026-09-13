@@ -128,10 +128,12 @@ export function neonTraceMethods(
 
     getAnswerFeedbackTarget(messageId) {
       // One read for the whole feedback target (#13): the trace, its owner,
-      // and the answer text joined through `chat_messages.answer_trace_id` —
-      // the client-facing `message_id` is the TRACE's key, never the chat
-      // row's store-generated id, so the join is the only honest path to the
-      // answer text the anchor validation re-derives the citations from.
+      // and the answer text joined through `chat_messages.answer_trace_id`.
+      // The caller's id may be EITHER identifier the user's client holds:
+      // the live stream's `meta.messageId` (the trace's `message_id`) or a
+      // rehydrated transcript row id (`chat_messages.id` — the store
+      // generates that one, so it is never equal to the trace key). Both are
+      // uuids; at most one row can match either way.
       return Effect.flatMap(
         sqlEffect(
           sql,
@@ -141,11 +143,14 @@ export function neonTraceMethods(
           FROM answer_traces t
           LEFT JOIN chat_messages m ON m.answer_trace_id = t.id
           WHERE t.message_id = ${messageId}
-        ` as Promise<{
-              user_id: string | null;
-              trace: unknown;
-              answer_text: string | null;
-            }[]>,
+             OR m.id = ${messageId}::uuid
+        ` as Promise<
+              {
+                user_id: string | null;
+                trace: unknown;
+                answer_text: string | null;
+              }[]
+            >,
         ),
         (rows) => {
           const row = rows[0];

@@ -247,13 +247,13 @@ run("RagStore contract (real Neon, Effect-shaped seam)", () => {
       const { userId, token } = yield* store.createSession();
       const chatSessionId = yield* store.createChatSession({ userId, metadata: { pfx: PREFIX } });
       const storedTraceId = yield* store.insertAnswerTrace({ messageId, userId, trace });
-      yield* store.insertChatMessage({
+      const chatRowId = yield* store.insertChatMessage({
         sessionId: chatSessionId,
         role: "assistant",
         content: "Allah Mahahidup [QS. 2:255].",
         answerTraceId: storedTraceId,
       });
-      const thumbId = yield* store.insertFeedback({
+      yield* store.insertFeedback({
         messageId,
         userId,
         rating: 1,
@@ -262,7 +262,7 @@ run("RagStore contract (real Neon, Effect-shaped seam)", () => {
         category: null,
         freeText: null,
       });
-      const flagId = yield* store.insertFeedback({
+      yield* store.insertFeedback({
         messageId,
         userId,
         rating: -1,
@@ -273,19 +273,24 @@ run("RagStore contract (real Neon, Effect-shaped seam)", () => {
         status: "pending",
       });
       const target = yield* store.getAnswerFeedbackTarget(messageId);
+      // The rehydrated transcript carries the chat ROW id (store-generated),
+      // not the trace's message_id — the target must resolve from both (#13).
+      const byRowId = yield* store.getAnswerFeedbackTarget(chatRowId);
       const absentTarget = yield* store.getAnswerFeedbackTarget(`${PREFIX}-nope`);
       // Cascade: the feedback rows carry the user FK, so they die with the user.
       yield* store.deleteUserCascade(userId);
       const orphanedTarget = yield* store.getAnswerFeedbackTarget(messageId);
       const deadToken = yield* store.resolveUserId(token);
-      return { thumbId, flagId, target, absentTarget, orphanedTarget, deadToken };
+      return { target, byRowId, absentTarget, orphanedTarget, deadToken };
     });
-    const { target, absentTarget, orphanedTarget, deadToken } = await Effect.runPromise(program);
+    const { target, byRowId, absentTarget, orphanedTarget, deadToken } =
+      await Effect.runPromise(program);
     expect(target).not.toBeNull();
     expect(target?.userId).toBeTruthy();
     expect(target?.trace).toEqual(trace);
     // The answer text joins through chat_messages.answer_trace_id (#13).
     expect(target?.answerText).toBe("Allah Mahahidup [QS. 2:255].");
+    expect(byRowId).toEqual(target);
     expect(absentTarget).toBeNull();
     // After the cascade the trace is gone; the token no longer resolves.
     expect(orphanedTarget).toBeNull();

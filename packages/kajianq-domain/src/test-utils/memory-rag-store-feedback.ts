@@ -15,8 +15,12 @@ export type MemoryFeedbackState = {
   >;
   /** Persisted traces keyed by message id (getAnswerFeedbackTarget reads this). */
   traces: Map<string, unknown>;
+  /** Persisted traces keyed by row id (the FK stand-in for answer_traces.id). */
+  traceRows: Map<string, unknown>;
   /** Trace owners by message id, as inserted (ADR-0007 amendment). */
   traceOwners: Map<string, string | null>;
+  /** Trace owners by row id (the dual-id resolution the feedback route uses). */
+  traceRowOwners: Map<string, string | null>;
   /** Persisted feedback rows by id. */
   feedback: Map<string, FeedbackInsert & { id: string }>;
   nextId: () => number;
@@ -35,16 +39,28 @@ export function memoryFeedbackMethods(
     },
     getAnswerFeedbackTarget(messageId) {
       return Effect.sync(() => {
-        const trace = state.traces.get(messageId);
+        // Dual-id resolution (#13): the id may be the trace's `message_id`
+        // (the live stream's meta) or a rehydrated chat row id (the store
+        // generates that one) — the Neon adapter resolves both via OR.
+        let trace = state.traces.get(messageId);
+        let owner = state.traceOwners.get(messageId) ?? null;
+        let chatRow = undefined;
+        if (trace === undefined) {
+          chatRow = state.chatMessages.get(messageId);
+          const traceId = chatRow?.answerTraceId ?? null;
+          if (traceId === null) return null;
+          trace = state.traceRows.get(traceId);
+          owner = state.traceRowOwners.get(traceId) ?? null;
+        }
         if (trace === undefined) return null;
         const traceId = (trace as { id?: string }).id;
         // The chat row's answerTraceId holds the trace's id (the FK stand-in);
         // the answer text joins through it, like the real adapter's join.
         const answerText =
-          [...state.chatMessages.values()].find((m) => m.answerTraceId === traceId)?.content ??
-          null;
+          (chatRow ?? [...state.chatMessages.values()].find((m) => m.answerTraceId === traceId))
+            ?.content ?? null;
         const target: AnswerFeedbackTarget = {
-          userId: state.traceOwners.get(messageId) ?? null,
+          userId: owner,
           trace: trace as never,
           answerText,
         };

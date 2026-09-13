@@ -73,6 +73,7 @@ export function createMemoryRagStore(): RagStore & {
   const traces = new Map<string, unknown>();
   const traceRows = new Map<string, unknown>();
   const traceOwners = new Map<string, string | null>(); // messageId → user (ADR-0007 amendment)
+  const traceRowOwners = new Map<string, string | null>(); // trace row id → user
   const feedback = new Map<string, FeedbackInsert & { id: string }>();
   // Chat/auth sessions are distinct maps, like the real tables (A5).
   const chatSessions = new Map<string, string>();
@@ -100,7 +101,9 @@ export function createMemoryRagStore(): RagStore & {
   const feedbackMethods = memoryFeedbackMethods({
     chatMessages,
     traces,
+    traceRows,
     traceOwners,
+    traceRowOwners,
     feedback,
     nextId: () => (seq += 1),
   });
@@ -195,6 +198,7 @@ export function createMemoryRagStore(): RagStore & {
         traces.set(input.messageId, input.trace);
         traceRows.set(input.trace.id as string, input.trace); // row id = FK key
         traceOwners.set(input.messageId, input.userId);
+        traceRowOwners.set(input.trace.id as string, input.userId);
         return input.trace.id;
       });
     },
