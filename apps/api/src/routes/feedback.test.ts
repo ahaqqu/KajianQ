@@ -280,4 +280,73 @@ describe("POST /v1/feedback", () => {
     expect(second.status).toBe(429);
     expect(await second.json()).toEqual({ error: "rate_limited" });
   });
+
+  // Thermo-review A1: a repeat verdict (double-tap, client retry, changed
+  // mind) must update the one row in place, never multiply review-queue rows.
+  it("upserts a repeated verdict: one row per (user, answer, element), latest wins", async () => {
+    const { store, userId, token } = await wiredStore();
+    const messageId = await seedAnswer(store, userId);
+    await post(token, { messageId, rating: "up" });
+    const again = await post(token, { messageId, rating: "up", freeText: "second tap" });
+    expect(again.status).toBe(200);
+    const changed = await post(token, { messageId, rating: "down" });
+    expect(changed.status).toBe(200);
+    const rows = store.allFeedback();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ userId, messageId, rating: -1, anchorType: "answer" });
+  });
+
+  it("upserts a repeated flag on the same element without a sibling row", async () => {
+    const { store, userId, token } = await wiredStore();
+    const messageId = await seedAnswer(store, userId);
+    const target = store.allChildren()[0]?.id as string;
+    const anchor = { type: "chunk", category: "irrelevant_chunk", id: target };
+    await post(token, { messageId, anchor, freeText: "first" });
+    await post(token, { messageId, anchor, freeText: "second" });
+    expect(store.allFeedback()).toHaveLength(1);
+    expect(store.allFeedback()[0]).toMatchObject({ freeText: "second" });
+  });
+
+  // Thermo-review A2: a rehydrated transcript addresses the answer by the
+  // chat ROW id, a live surface by the trace's message id — both must land on
+  // the same canonically-keyed row, and the response echoes the canonical id.
+  it("keys the row by the canonical trace message id even when addressed by the row id", async () => {
+    const { store, userId, token } = await wiredStore();
+    const messageId = await seedAnswer(store, userId);
+    const chatRowId = store.allChatMessages().find((m) => m.role === "assistant")?.id as string;
+    const res = await post(token, { messageId: chatRowId, rating: "up" });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { messageId: string };
+    expect(body.messageId).toBe(messageId); // canonical, not the row id
+    const rows = store.allFeedback();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.messageId).toBe(messageId);
+    // The same verdict via the canonical key hits the SAME row (upsert).
+    await post(token, { messageId, rating: "up" });
+    expect(store.allFeedback()).toHaveLength(1);
+  });
+});
+
+describe("POST /v1/feedback — degraded derivation (thermo-review A3)", () => {
+  it("answers 503 anchor_unavailable when the answer text is reclaimed, never a 422", async () => {
+    const { store, userId, token } = await wiredStore();
+    // Seed a trace with NO chat message row: the answer text is gone, so the
+    // citations frame cannot be derived honestly — a server-side condition.
+    const trace = {
+      id: `trace-${crypto.randomUUID()}`,
+      createdAt: 1_700_000_000_000,
+      events: [],
+    };
+    await runStoreEffect<string>(
+      store.insertAnswerTrace({ messageId: crypto.randomUUID(), userId, trace }),
+    );
+    const messageId = store.allTraces().keys().next().value as string;
+    const res = await post(token, {
+      messageId,
+      anchor: { type: "citation", category: "wrong_citation", id: "QS. 2:255" },
+    });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "anchor_unavailable" });
+    expect(store.allFeedback()).toHaveLength(0);
+  });
 });

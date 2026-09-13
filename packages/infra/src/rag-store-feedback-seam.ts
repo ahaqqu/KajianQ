@@ -41,6 +41,13 @@ export type FeedbackInsert = {
  * the answer text through this join.
  */
 export type AnswerFeedbackTarget = {
+  /**
+   * The trace's CANONICAL message id (the trace's `message_id` column,
+   * thermo-review A2): the caller may have looked the target up by either
+   * identifier the client holds — this is the one the store must key the
+   * feedback row by, so the same answer is never keyed two ways.
+   */
+  messageId: string;
   /** The trace's owning user (ADR-0007 amendment); null when unowned. */
   userId: string | null;
   trace: Trace;

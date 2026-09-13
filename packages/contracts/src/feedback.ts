@@ -97,6 +97,13 @@ export const FeedbackRequestSchema = v.pipe(
 
 export type FeedbackRequest = v.InferOutput<typeof FeedbackRequestSchema>;
 
+/**
+ * The review-queue state a fresh row starts in — the one constant the stores'
+ * insert default and the route's echoed response share (thermo-review B3), so
+ * the "pending" vocabulary lives in the contract, not as scattered literals.
+ */
+export const FEEDBACK_INITIAL_STATUS = "pending";
+
 /** The persisted feedback row, echoed so the client sees its anchor landed. */
 export const FeedbackResponseSchema = v.object({
   id: v.pipe(v.string(), v.minLength(1)),

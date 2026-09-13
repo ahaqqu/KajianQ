@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { FeedbackAnchor } from "@app/contracts";
 import type { FeedbackPayload } from "../../lib/feedback";
 import { sendFeedback } from "../../lib/feedback";
 import { t, useLocale, type Locale } from "../../lib/i18n";
@@ -83,10 +84,11 @@ export function FeedbackBar({ messageId }: { messageId: string }) {
 }
 
 /**
- * One trace-anchored flag button: `anchor` carries the element reference the
- * frames actually showed (a chunk id from the Trace panel, a citation label
- * from the passage sheet); the server re-validates it against the persisted
- * trace (#13) — the client never invents an anchor.
+ * One trace-anchored flag button: `anchor` is the CONTRACT's `FeedbackAnchor`
+ * variant (thermo-review B1) carrying the element reference the frames
+ * actually showed (a chunk id from the Trace panel, a citation label from the
+ * passage sheet); the server re-validates it against the persisted trace
+ * (#13) — the client never invents an anchor.
  */
 export function FlagButton({
   messageId,
@@ -95,7 +97,7 @@ export function FlagButton({
   testId,
 }: {
   messageId: string;
-  anchor: { type: "chunk" | "citation" | "translation" | "grade"; category: string; id: string };
+  anchor: FeedbackAnchor;
   labelKey:
     | "flagWrongCitation"
     | "flagIrrelevantChunk"

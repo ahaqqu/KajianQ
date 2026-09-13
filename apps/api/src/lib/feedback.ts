@@ -1,5 +1,7 @@
 import {
+  FeedbackErrorSchema,
   FeedbackRequestSchema,
+  FeedbackResponseSchema,
   type ChatCitationsFrame,
   type FeedbackAnchor,
   type FeedbackRequest,
@@ -50,32 +52,34 @@ export const FEEDBACK_OPENAPI = describeRoute({
   },
   responses: {
     200: {
-      description: "The stored feedback row, with its anchor echoed",
-      content: { "application/json": { schema: resolver(v.any()) } },
+      description: "The stored feedback row, with its canonical message id and anchor echoed",
+      content: { "application/json": { schema: resolver(FeedbackResponseSchema) } },
     },
     400: {
       description: "Invalid request body (invalid_json or invalid_request)",
-      content: { "application/json": { schema: resolver(v.any()) } },
+      content: { "application/json": { schema: resolver(FeedbackErrorSchema) } },
     },
     401: {
       description: "Unauthorized (anonymous Bearer session required)",
-      content: { "application/json": { schema: resolver(v.any()) } },
+      content: { "application/json": { schema: resolver(FeedbackErrorSchema) } },
     },
     404: {
       description: "No answer trace for the message, or not the caller's answer",
-      content: { "application/json": { schema: resolver(v.any()) } },
+      content: { "application/json": { schema: resolver(FeedbackErrorSchema) } },
     },
     422: {
       description: "Malformed anchor — the flagged element is not grounded by the persisted trace",
-      content: { "application/json": { schema: resolver(v.any()) } },
+      content: { "application/json": { schema: resolver(FeedbackErrorSchema) } },
     },
     429: {
       description: "Rate limited — the per-IP request budget for the window is exhausted",
-      content: { "application/json": { schema: resolver(v.any()) } },
+      content: { "application/json": { schema: resolver(FeedbackErrorSchema) } },
     },
     503: {
-      description: "Feedback not configured — the DATABASE_URL binding is absent",
-      content: { "application/json": { schema: resolver(v.any()) } },
+      description:
+        "Feedback not configured (DATABASE_URL binding absent), or the trace-side anchor " +
+        "derivation degraded (answer text reclaimed, chunk lookup failed) — anchor_unavailable",
+      content: { "application/json": { schema: resolver(FeedbackErrorSchema) } },
     },
   },
 });
@@ -118,11 +122,24 @@ export async function parseFeedbackRequest(
 }
 
 /**
+ * The citations-frame derivation a flag's label must appear in (thermo-review
+ * A3): a frame, or the reason the derivation DEGRADED — the answer text was
+ * reclaimed, or the chunk lookup failed. A degraded derivation is a server
+ * side problem (nothing honest to validate against), never a malformed
+ * anchor, and the route answers it differently.
+ */
+export type FeedbackCitationsDerivation =
+  | { degraded: false; citations: ChatCitationsFrame }
+  | { degraded: true; reason: "answer_text_missing" | "chunk_lookup_failed" };
+
+/**
  * Derive the citations frame a flag's label must appear in — the exact
  * derivation the live `citations` frame uses, so the server validates the
- * anchor against the elements the client actually saw. Null when the answer
- * text is gone (the message row was reclaimed) — nothing honest to validate
- * against.
+ * anchor against the elements the client actually saw. Degraded when the
+ * answer text is gone (the message row was reclaimed) or the chunk lookup
+ * failed: the degraded-derive posture (no fabricated data) means there is
+ * nothing honest to validate against, which is a 503-class condition, not a
+ * user error.
  */
 export async function deriveFeedbackCitations(input: {
   messageId: string;
@@ -130,22 +147,34 @@ export async function deriveFeedbackCitations(input: {
   answerText: string | null;
   fetchChunks: CitationChunkSource;
   warn: Warn;
-}): Promise<ChatCitationsFrame | null> {
-  if (input.answerText === null) return null;
+}): Promise<FeedbackCitationsDerivation> {
+  if (input.answerText === null) return { degraded: true, reason: "answer_text_missing" };
+  // The degrade-and-derive fetch reports its own failure through `warn`;
+  // intercept that key so degradation is distinguishable from a derivation
+  // that honestly produced a frame without the flagged label.
+  let chunkLookupFailed = false;
+  const warn: Warn = (msg, fields) => {
+    if (msg === "feedback.anchor.chunk_lookup_failed") chunkLookupFailed = true;
+    input.warn(msg, fields);
+  };
   const ids = traceChunkIds(input.trace);
   const chunksById = await chunksByIdOrEmpty({
     ids,
     fetchChunks: input.fetchChunks,
-    warn: input.warn,
+    warn,
     warnKey: "feedback.anchor.chunk_lookup_failed",
     warnFields: { messageId: input.messageId },
   });
-  return deriveCitationsFrame({
-    trace: input.trace,
-    messageId: input.messageId,
-    answerText: input.answerText,
-    chunksById,
-  });
+  if (chunkLookupFailed) return { degraded: true, reason: "chunk_lookup_failed" };
+  return {
+    degraded: false,
+    citations: deriveCitationsFrame({
+      trace: input.trace,
+      messageId: input.messageId,
+      answerText: input.answerText,
+      chunksById,
+    }),
+  };
 }
 
 /**

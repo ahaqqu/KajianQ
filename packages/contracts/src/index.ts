@@ -25,6 +25,7 @@ export {
   type ChatSessionMessages,
 } from "./chat";
 export {
+  FEEDBACK_INITIAL_STATUS,
   FeedbackAnchorSchema,
   FeedbackAnchorTypeSchema,
   FeedbackCategorySchema,

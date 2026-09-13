@@ -1,4 +1,9 @@
-import { FeedbackResponseSchema, type FeedbackResponse } from "@app/contracts";
+import {
+  FeedbackResponseSchema,
+  type FeedbackAnchor,
+  type FeedbackRating,
+  type FeedbackResponse,
+} from "@app/contracts";
 import * as v from "valibot";
 import { apiFetch } from "./api";
 import { bootstrapAnonymousToken, ChatApiError, errorKindOf, loadStoredToken } from "./chat-store";
@@ -12,10 +17,16 @@ import { bootstrapAnonymousToken, ChatApiError, errorKindOf, loadStoredToken } f
  * frames actually showed the user.
  */
 
-/** The wire payload the feedback affordances build. */
+/**
+ * The wire payload the feedback affordances build. The anchor is the
+ * CONTRACT's `FeedbackAnchor` variant (thermo-review B1), not a hand-rolled
+ * `{ type: union; category: string }` — the category↔type pairing holds
+ * where the payload is built, so a mismatched combination ("irrelevant_chunk"
+ * anchored to a grade badge) cannot typecheck, let alone ship.
+ */
 export type FeedbackPayload = {
-  rating?: "up" | "down";
-  anchor?: { type: "chunk" | "citation" | "translation" | "grade"; category: string; id: string };
+  rating?: FeedbackRating;
+  anchor?: FeedbackAnchor;
   freeText?: string;
 };
 

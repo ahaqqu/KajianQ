@@ -29,6 +29,7 @@ const run = URL ? describe : describe.skip;
 // Per-run prefix isolates this test run's rows from anything else in the
 // staging database, so the tests are idempotent and leave no residue.
 let PREFIX: string;
+let sql: import("./rag-store-neon-errors").SqlRunner | null = null;
 let store: RagStore;
 let cleanup: () => Promise<void>;
 
@@ -40,17 +41,17 @@ run("RagStore contract (real Neon, Effect-shaped seam)", () => {
   beforeAll(async () => {
     if (!URL) return;
     PREFIX = `ct-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
-    const sql = neon(URL);
+    sql = neon(URL);
     store = createNeonRagStore(sql);
     cleanup = async () => {
       // Remove this run's fixture rows. userId/messageId keys carry PREFIX so
       // a failed run cannot collide with the next.
-      await sql`DELETE FROM users WHERE id IN (
+      await sql!`DELETE FROM users WHERE id IN (
         SELECT user_id FROM chat_sessions WHERE metadata->>'pfx' = ${PREFIX}
       )`;
-      await sql`DELETE FROM answer_traces WHERE message_id LIKE ${PREFIX + "-%"}`;
-      await sql`DELETE FROM eval_runs WHERE label LIKE ${PREFIX + "-%"}`;
-      await sql`DELETE FROM doc_parents WHERE source_key = ${PREFIX}`;
+      await sql!`DELETE FROM answer_traces WHERE message_id LIKE ${PREFIX + "-%"}`;
+      await sql!`DELETE FROM eval_runs WHERE label LIKE ${PREFIX + "-%"}`;
+      await sql!`DELETE FROM doc_parents WHERE source_key = ${PREFIX}`;
     };
   });
 
@@ -274,26 +275,61 @@ run("RagStore contract (real Neon, Effect-shaped seam)", () => {
         freeText: "salah surah",
         status: "pending",
       });
+      // A repeat verdict (double-tap, client retry) UPSERTS (thermo-review
+      // A1): the 0003 functional unique index keys one verdict per
+      // (user, answer, element), so the row count stays 1 and the latest
+      // free text wins.
+      yield* store.insertFeedback({
+        messageId,
+        userId,
+        rating: 1,
+        anchorType: "answer",
+        anchorId: null,
+        category: null,
+        freeText: "dua kali",
+      });
+      const thumbRows = (yield* Effect.promise(
+        () =>
+          sql!`SELECT count(*)::int AS n FROM feedback
+        WHERE user_id = ${userId} AND message_id = ${messageId} AND anchor_type = 'answer'`,
+      )) as { n: number }[];
       const target = yield* store.getAnswerFeedbackTarget(messageId);
       // The rehydrated transcript carries the chat ROW id (store-generated),
       // not the trace's message_id — the target must resolve from both (#13).
       const byRowId = yield* store.getAnswerFeedbackTarget(chatRowId);
       const absentTarget = yield* store.getAnswerFeedbackTarget(crypto.randomUUID());
+      // A non-uuid id can only ever be a message-id key (thermo-review A4):
+      // it must degrade to a null target, never 500 at the `::uuid` cast.
+      const nonUuidTarget = yield* store.getAnswerFeedbackTarget("feedback-non-uuid-probe");
       // Cascade: the feedback rows carry the user FK, so they die with the user.
       yield* store.deleteUserCascade(userId);
       const orphanedTarget = yield* store.getAnswerFeedbackTarget(messageId);
       const deadToken = yield* store.resolveUserId(token);
-      return { target, byRowId, absentTarget, orphanedTarget, deadToken };
+      return {
+        thumbRows,
+        target,
+        byRowId,
+        absentTarget,
+        nonUuidTarget,
+        orphanedTarget,
+        deadToken,
+      };
     });
-    const { target, byRowId, absentTarget, orphanedTarget, deadToken } =
+    const { thumbRows, target, byRowId, absentTarget, nonUuidTarget, orphanedTarget, deadToken } =
       await Effect.runPromise(program);
     expect(target).not.toBeNull();
     expect(target?.userId).toBeTruthy();
     expect(target?.trace).toEqual(trace);
+    // The target carries the trace's CANONICAL message id (thermo-review A2)
+    // — the id feedback rows are keyed by, whatever id the caller looked up.
+    expect(target?.messageId).toBe(messageId);
     // The answer text joins through chat_messages.answer_trace_id (#13).
     expect(target?.answerText).toBe("Allah Mahahidup [QS. 2:255].");
     expect(byRowId).toEqual(target);
     expect(absentTarget).toBeNull();
+    expect(nonUuidTarget).toBeNull();
+    // The upsert kept the repeat verdict to one row with the latest free text.
+    expect(thumbRows[0]?.n).toBe(1);
     // After the cascade the trace is gone; the token no longer resolves.
     expect(orphanedTarget).toBeNull();
     expect(deadToken).toBeNull();

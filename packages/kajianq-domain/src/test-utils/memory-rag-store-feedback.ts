@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { FEEDBACK_INITIAL_STATUS } from "@app/contracts";
 import type { AnswerFeedbackTarget, FeedbackInsert, RagStore } from "@app/infra";
 
 /**
@@ -21,6 +22,8 @@ export type MemoryFeedbackState = {
   traceOwners: Map<string, string | null>;
   /** Trace owners by row id (the dual-id resolution the feedback route uses). */
   traceRowOwners: Map<string, string | null>;
+  /** Trace row id → the canonical message id it was inserted under (A2). */
+  traceRowMessageIds: Map<string, string>;
   /** Persisted feedback rows by id. */
   feedback: Map<string, FeedbackInsert & { id: string }>;
   nextId: () => number;
@@ -32,8 +35,25 @@ export function memoryFeedbackMethods(
   return {
     insertFeedback(input: FeedbackInsert) {
       return Effect.sync(() => {
+        // Upsert (thermo-review A1), mirroring the Neon adapter's ON CONFLICT
+        // against the 0003 functional unique index: one verdict per (user,
+        // answer, element); a repeat updates rating/free text/queue state in
+        // place and keeps the original row id.
+        const key = (row: FeedbackInsert) =>
+          `${row.userId}|${row.messageId}|${row.anchorType}|${row.anchorId ?? ""}|${row.category ?? ""}`;
+        for (const [id, row] of state.feedback) {
+          if (key(row) === key(input)) {
+            state.feedback.set(id, {
+              ...row,
+              rating: input.rating,
+              freeText: input.freeText,
+              status: input.status ?? FEEDBACK_INITIAL_STATUS,
+            });
+            return id;
+          }
+        }
         const id = `fb${state.nextId()}`;
-        state.feedback.set(id, { ...input, status: input.status ?? "pending", id });
+        state.feedback.set(id, { ...input, status: input.status ?? FEEDBACK_INITIAL_STATUS, id });
         return id;
       });
     },
@@ -45,12 +65,14 @@ export function memoryFeedbackMethods(
         let trace = state.traces.get(messageId);
         let owner = state.traceOwners.get(messageId) ?? null;
         let chatRow = undefined;
+        let canonicalMessageId = messageId;
         if (trace === undefined) {
           chatRow = state.chatMessages.get(messageId);
           const traceId = chatRow?.answerTraceId ?? null;
           if (traceId === null) return null;
           trace = state.traceRows.get(traceId);
           owner = state.traceRowOwners.get(traceId) ?? null;
+          canonicalMessageId = state.traceRowMessageIds.get(traceId) ?? messageId;
         }
         if (trace === undefined) return null;
         const traceId = (trace as { id?: string }).id;
@@ -60,6 +82,9 @@ export function memoryFeedbackMethods(
           (chatRow ?? [...state.chatMessages.values()].find((m) => m.answerTraceId === traceId))
             ?.content ?? null;
         const target: AnswerFeedbackTarget = {
+          // The trace's CANONICAL message id (thermo-review A2): the caller
+          // keys the feedback row by this, never by the looked-up alias.
+          messageId: canonicalMessageId,
           userId: owner,
           trace: trace as never,
           answerText,

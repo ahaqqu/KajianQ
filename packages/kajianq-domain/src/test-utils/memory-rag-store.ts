@@ -45,6 +45,7 @@ export function createMemoryRagStore(): RagStore & {
   /** All persisted answer traces keyed by message id (test introspection). */
   allTraces: () => Map<string, unknown>;
   allChatMessages: () => readonly {
+    id: string;
     sessionId: string;
     role: string;
     content: string;
@@ -74,6 +75,7 @@ export function createMemoryRagStore(): RagStore & {
   const traceRows = new Map<string, unknown>();
   const traceOwners = new Map<string, string | null>(); // messageId → user (ADR-0007 amendment)
   const traceRowOwners = new Map<string, string | null>(); // trace row id → user
+  const traceRowMessageIds = new Map<string, string>(); // trace row id → canonical messageId
   const feedback = new Map<string, FeedbackInsert & { id: string }>();
   // Chat/auth sessions are distinct maps, like the real tables (A5).
   const chatSessions = new Map<string, string>();
@@ -104,6 +106,7 @@ export function createMemoryRagStore(): RagStore & {
     traceRows,
     traceOwners,
     traceRowOwners,
+    traceRowMessageIds,
     feedback,
     nextId: () => (seq += 1),
   });
@@ -199,6 +202,7 @@ export function createMemoryRagStore(): RagStore & {
         traceRows.set(input.trace.id as string, input.trace); // row id = FK key
         traceOwners.set(input.messageId, input.userId);
         traceRowOwners.set(input.trace.id as string, input.userId);
+        traceRowMessageIds.set(input.trace.id as string, input.messageId); // canonical key (A2)
         return input.trace.id;
       });
     },
@@ -221,7 +225,11 @@ export function createMemoryRagStore(): RagStore & {
     },
     insertChatMessage(input) {
       return Effect.sync(() => {
-        const id = `msg${(seq += 1)}`;
+        // A uuid, like the real `chat_messages.id` DEFAULT gen_random_uuid():
+        // the feedback route's contract admits only uuid message ids, and a
+        // rehydrated surface addresses answers by THIS id (thermo-review A2's
+        // test path) — the stand-in must agree with the production shape.
+        const id = crypto.randomUUID();
         chatMessages.set(id, {
           sessionId: input.sessionId,
           role: input.role,
@@ -268,7 +276,7 @@ export function createMemoryRagStore(): RagStore & {
     allParents: () => [...parents.values()],
     allPairs: () => [...pairs.values()],
     allTraces: () => traces,
-    allChatMessages: () => [...chatMessages.values()],
+    allChatMessages: () => [...chatMessages.entries()].map(([id, m]) => ({ id, ...m })),
     allEvalResults: () => [...evalResults.values()],
     allFeedback: () => [...feedback.values()],
     cosineSearch: (track, query, limit) =>

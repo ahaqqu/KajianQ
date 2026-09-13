@@ -94,6 +94,16 @@ jobs:
       - name: Install dependencies
         if: steps.infra.outputs.touched == 'true'
         run: bun install --frozen-lockfile
+      # The suite exercises the seam against the CURRENT schema: apply pending
+      # engine migrations first (idempotent via the schema_migrations ledger),
+      # so an adapter change that depends on a new migration — e.g. the 0003
+      # feedback dedup index its ON CONFLICT targets — cannot fail against a
+      # drifted staging schema. Serialized by the job-level concurrency group.
+      - name: Apply pending engine migrations
+        if: steps.infra.outputs.touched == 'true'
+        run: bun run db:up
+        env:
+          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
       # vp is the single test runner (ADR-0029): vp resolves from
       # node_modules/.bin, no setup-vp step needed here.
       - name: Run the Effect-shaped Neon contract suite

@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import type { Trace } from "@app/contracts";
+import { FEEDBACK_INITIAL_STATUS, type Trace } from "@app/contracts";
 import type { AnswerFeedbackTarget, FeedbackInsert, RagStore } from "./rag-store";
 import { constraintError, parseTrace } from "./rag-store-shared";
 import { sqlEffect, type SqlRunner } from "./rag-store-neon-errors";
@@ -15,6 +15,16 @@ import { sqlEffect, type SqlRunner } from "./rag-store-neon-errors";
  * opaque values (the seam's domain-agnostic pass-through rule) — the shared
  * contract owns it, the route enforces it, the store only persists it.
  */
+/**
+ * True when the string is the canonical hyphenated uuid form — the only shape
+ * `chat_messages.id` is ever generated in (`gen_random_uuid()`), and the only
+ * shape safe to hand to the `::uuid` cast. Anything else is a message-id key
+ * lookup, never a row-id lookup.
+ */
+function isUuid(s: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+}
+
 export function neonTraceMethods(
   sql: SqlRunner,
 ): Pick<
@@ -108,6 +118,12 @@ export function neonTraceMethods(
 
     insertFeedback(input: FeedbackInsert) {
       const id = crypto.randomUUID();
+      // Upsert (thermo-review A1): the 0003 functional unique index keys one
+      // verdict per (user, answer, element) on the same COALESCE'd expression
+      // list, so a repeat thumb or a re-submitted flag updates the row in
+      // place — rating, free text, and queue state refresh, the id (and the
+      // row count the review queue shows) stay stable. `user_id` NULL never
+      // conflicts (Postgres NULLs are distinct); the route always attributes.
       return Effect.as(
         sqlEffect(
           sql,
@@ -118,8 +134,18 @@ export function neonTraceMethods(
           )
           VALUES (
             ${input.messageId}, ${input.userId}, ${input.rating}, ${input.anchorType},
-            ${input.anchorId}, ${input.category}, ${input.freeText}, ${input.status ?? "pending"}
+            ${input.anchorId}, ${input.category}, ${input.freeText},
+            ${input.status ?? FEEDBACK_INITIAL_STATUS}
           )
+          ON CONFLICT (
+            user_id, message_id, anchor_type,
+            COALESCE(anchor_id, ''), COALESCE(category, '')
+          )
+          DO UPDATE SET
+            rating = EXCLUDED.rating,
+            free_text = EXCLUDED.free_text,
+            status = EXCLUDED.status,
+            created_at = now()
         ` as Promise<unknown[]>,
         ),
         id,
@@ -132,25 +158,46 @@ export function neonTraceMethods(
       // The caller's id may be EITHER identifier the user's client holds:
       // the live stream's `meta.messageId` (the trace's `message_id`) or a
       // rehydrated transcript row id (`chat_messages.id` — the store
-      // generates that one, so it is never equal to the trace key). Both are
-      // uuids; at most one row can match either way.
+      // generates that one, so it is never equal to the trace key). The row
+      // id is uuid-typed, so the OR arm casts; a non-uuid caller id (the
+      // seam is stricter than the route's contract, thermo-review A4) must
+      // not 500 at the cast — it can only ever match `t.message_id`, so the
+      // cast arm is simply omitted. Either way the target carries the
+      // trace's CANONICAL message id (thermo-review A2): the caller keys the
+      // feedback row by it, so the same answer is never stored two ways.
+      const byEither = isUuid(messageId);
       return Effect.flatMap(
-        sqlEffect(
-          sql,
-          () =>
-            sql`
-          SELECT t.user_id AS user_id, t.trace AS trace, m.content AS answer_text
+        sqlEffect(sql, () =>
+          byEither
+            ? (sql`
+          SELECT t.message_id AS trace_message_id, t.user_id AS user_id, t.trace AS trace,
+                 m.content AS answer_text
           FROM answer_traces t
           LEFT JOIN chat_messages m ON m.answer_trace_id = t.id
           WHERE t.message_id = ${messageId}
              OR m.id = ${messageId}::uuid
         ` as Promise<
-              {
-                user_id: string | null;
-                trace: unknown;
-                answer_text: string | null;
-              }[]
-            >,
+                {
+                  trace_message_id: string;
+                  user_id: string | null;
+                  trace: unknown;
+                  answer_text: string | null;
+                }[]
+              >)
+            : (sql`
+          SELECT t.message_id AS trace_message_id, t.user_id AS user_id, t.trace AS trace,
+                 m.content AS answer_text
+          FROM answer_traces t
+          LEFT JOIN chat_messages m ON m.answer_trace_id = t.id
+          WHERE t.message_id = ${messageId}
+        ` as Promise<
+                {
+                  trace_message_id: string;
+                  user_id: string | null;
+                  trace: unknown;
+                  answer_text: string | null;
+                }[]
+              >),
         ),
         (rows) => {
           const row = rows[0];
@@ -164,6 +211,7 @@ export function neonTraceMethods(
               catch: constraintError,
             }),
             (trace): AnswerFeedbackTarget => ({
+              messageId: row.trace_message_id,
               userId: row.user_id,
               trace,
               answerText: row.answer_text,
