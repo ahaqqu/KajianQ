@@ -73,3 +73,13 @@ Notes:
 ## Appendix B — decision 7 provenance (2026-09-07)
 
 Decision 7 was produced by a grilling session against the post-migration tree: the consumer map (`RagStore` → `rag-ingest/deps.store` and `apps/api/Authed`; `ObjectStore` with zero external consumers), the error survey (bare `S3ServiceException`/Neon exceptions and `RangeError`s traveling via `throw` through plain `Promise` signatures), and the verified fact that `packages/infra` already imports `@app/rag-core` (so the `StoreError` placement adds no dependency edge). Eight owner-adjudicated decisions: store seams migrate (not deferred); contract suite converts same-PR; contract interfaces go Effect-signatured directly (no wrapper layer); closed-kind `StoreError` taxonomy mirroring `ProviderErrorKind`; type lives in `packages/rag-core` re-exported by `@app/infra`; one PR; amend this ADR rather than mint a new one (one topic, one ADR); a secret-gated `neon:contract` CI job covers the suite on CI (the Neon secret already present in GitHub).
+
+## Appendix C — workspace aligned on effect v4 (2026-09-13)
+
+The version skew this ADR's packaging amendment managed is retired: the whole workspace now pins one Effect version (`effect@4.0.0-rc.115`, npm's `rc` dist-tag) — the engine packages (`rag-core`, `infra`, `rag-ingest`, `eval`, `kajianq-domain`) up from `3.22.1` and `apps/api` up from `4.0.0-rc.112` — so "both versions coexist in Bun's store" no longer holds and the amendment's dependency-edge rule is moot (apps/api keeps `effect` as a devDependency for alchemy, as before; handlers still bridge through the domain's re-exports, decision 3 unchanged).
+
+Consequences recorded for the record:
+
+- The v3-only APIs the code standardized on were ported: `Context.Tag` → `Context.Service`, `Layer.scoped` → `Layer.effect`, `Schedule.makeWithState`/`ScheduleDecision`/`ScheduleInterval` → `Schedule.fromStep` (per-run state now lives in the step closure), `Cause.failureOption` → `Cause.findFail`, `Effect.catchAll` → `catchIf`/`tapError`, `Effect.async` → `Effect.callback`, `Effect.fork` → `forkChild`, `Stream.unwrapScoped`/`unfoldEffect`/`repeatEffect` → `unwrap`/`unfold`/`forever(fromEffect)`, `Config.redacted` → `Config.Redacted`. The spike (Appendix A) now runs on v4.
+- `runStoreEffect`'s `(effect: unknown) => Promise<A>` erasure — introduced by PR #143's B2 fix solely because cross-major Effect types cannot typecheck — is retired; the bridge is typed as the domain's `StoreBridge` shape.
+- v4's `runPromise` rejects a typed failure with the error instance itself (no FiberFailure wrapper); the promise-level interop (`interop.ts`) and the HTTP edge's error mapping are unchanged in behavior, pinned by the existing suites (696 tests green after the port).
