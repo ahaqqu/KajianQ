@@ -86,8 +86,10 @@ export function TracePanel({ trace }: { trace: ChatTraceFrame | undefined }) {
                 <div data-testid="trace-subqueries">
                   <MonoLabel>{t(locale, "traceSubqueriesLabel")}</MonoLabel>
                   <ul className="mt-1 list-disc space-y-0.5 pl-5">
-                    {technical.subQueries.map((text) => (
-                      <li key={text} className="text-sm text-card-foreground">
+                    {technical.subQueries.map((text, index) => (
+                      // Index-stabilized key (thermo-review B4): duplicate
+                      // sub-query texts must not collide as React keys.
+                      <li key={`${text}-${index}`} className="text-sm text-card-foreground">
                         {text}
                       </li>
                     ))}

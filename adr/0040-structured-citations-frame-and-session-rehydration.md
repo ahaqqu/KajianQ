@@ -8,6 +8,22 @@ and ADR-0017 (the anonymous session id persists client-side so a reload
 rehydrates the transcript). Does not change ADR-0021 (traces are assembled by
 the pipeline runner) or the citation gate's refusal semantics.
 
+**Amended (2026-09-13, #12):** the wire contract this ADR defines extends by
+one frame and one field for the user-facing Trace panel (ADR-0007). The SSE
+sequence becomes `meta → delta(s) → citations → trace → done` — one `trace`
+frame carrying the two-layer `ChatTraceFrame` derived server-side from the
+same persisted answer trace the `citations` frame uses, in the same
+degrade-honest posture (a failed derivation loses the frame, never invents
+one) — and the rehydration endpoint attaches the same frame per assistant
+message; each of the two frames degrades independently of the other's
+contract parse. The eval harness is unaffected (it reads `meta`/`delta`
+only). Recorded deliberately (thermo-review A1): the frame's
+`technical.models` discloses the RAW config-resolved model ids — ADR-0009's
+opaque ids, ADR-0007's mandated model identity — because the panel is the
+never-hide-the-machinery instrument; a friendlier config-level display label
+would be a config-layer change, not a contract one, and is left to a future
+ticket if product copy ever wants it.
+
 ## Context
 
 - Issue #10 put `/v1/chat` live: answers stream as SSE, and citations, the

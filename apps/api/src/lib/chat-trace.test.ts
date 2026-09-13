@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { Trace } from "@app/contracts";
 import type { DocChildById } from "@app/infra";
 import { chunkFetcher, deriveTraceFrame, traceChunkIds, traceChunkRefs } from "./chat-trace";
@@ -171,27 +171,6 @@ describe("deriveTraceFrame — the technical layer", () => {
       models: ["model-a"],
     });
     expect("intent" in frame.technical).toBe(false);
-  });
-});
-
-describe("traceFrameFor — the degrade path", () => {
-  it("parses against the contract and warns on a chunk-lookup failure, degrading to id-only entries", async () => {
-    const { traceFrameFor } = await import("./chat-trace");
-    const warn = vi.fn();
-    const frame = await traceFrameFor({
-      trace: traceOf([{ id: "c1", score: 0.5 }]),
-      messageId: "m1",
-      fetchChunks: async () => {
-        throw new Error("store down");
-      },
-      warn,
-    });
-    expect(frame.messageId).toBe("m1");
-    expect(frame.sources).toEqual([{ id: "c1" }]);
-    expect(warn).toHaveBeenCalledWith(
-      "chat.trace.chunk_lookup_failed",
-      expect.objectContaining({ messageId: "m1" }),
-    );
   });
 });
 

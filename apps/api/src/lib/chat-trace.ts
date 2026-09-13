@@ -1,12 +1,11 @@
 import {
-  ChatTraceFrameSchema,
   type ChatTraceChunk,
   type ChatTraceFrame,
+  type ChunkRef,
   type Trace,
 } from "@app/contracts";
 import type { DocChildById, RagStore } from "@app/infra";
 import type { StoreBridge } from "@app/kajianq-domain";
-import * as v from "valibot";
 
 /**
  * The user-facing Trace frame (#12, ADR-0007) — the invariant this module
@@ -61,14 +60,6 @@ export function traceChunkIds(trace: Trace): string[] {
   return traceChunkRefs(trace).map((ref) => ref.id);
 }
 
-/** The persisted trace's retrieval ref shape (contracts `ChunkRef`). */
-type ChunkRef = {
-  id: string;
-  score?: number | undefined;
-  rankDense?: number | undefined;
-  rankSparse?: number | undefined;
-};
-
 /** The chunk's display title, when the store row resolves with a non-empty one. */
 function sourceTitleOf(row: DocChildById | undefined): string | undefined {
   const title = row?.parentTitle;
@@ -101,7 +92,9 @@ function toTechnicalChunk(
  * display rows of the trace's chunks. Refusals carry no retrieval events, so
  * their frame is legitimately empty (the UI says "no sources consulted" —
  * honest, not an error). Parsed against the contract by the callers, exactly
- * as the citations derivation is.
+ * as the citations derivation is. The live route's combined entry (one shared
+ * store read for both frames, thermo-review B1) is `answerFramesFor` in
+ * `chat-citations.ts` — this module stays below it in the import graph.
  */
 export function deriveTraceFrame(input: {
   trace: Trace;
@@ -164,28 +157,4 @@ export async function chunksByIdOrEmpty(input: {
     });
     return new Map<string, DocChildById>();
   }
-}
-
-/**
- * The route-level entry: derive the Trace frame from the just-persisted
- * trace, resolving display data through the store seam. A store-read failure
- * degrades to id-only entries (never fabricated titles) with a structured
- * warning; the frame is parsed against the contract before it touches the
- * wire.
- */
-export async function traceFrameFor(input: {
-  trace: Trace;
-  messageId: string;
-  fetchChunks: CitationChunkSource;
-  warn: Warn;
-}): Promise<ChatTraceFrame> {
-  const { trace, messageId, fetchChunks, warn } = input;
-  const chunksById = await chunksByIdOrEmpty({
-    ids: traceChunkIds(trace),
-    fetchChunks,
-    warn,
-    warnKey: "chat.trace.chunk_lookup_failed",
-    warnFields: { messageId },
-  });
-  return v.parse(ChatTraceFrameSchema, deriveTraceFrame({ trace, messageId, chunksById }));
 }

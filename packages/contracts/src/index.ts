@@ -56,12 +56,14 @@ export {
   type MorphToken,
 } from "./ingestion";
 export {
+  ChunkRefSchema,
   CostRecordSchema,
   StageSchema,
   TraceEventSchema,
   TraceSchema,
   parseTrace,
   totalCostMicroUsd,
+  type ChunkRef,
   type CostRecord,
   type Stage,
   type Trace,

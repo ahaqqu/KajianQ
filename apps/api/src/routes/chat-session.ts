@@ -44,10 +44,10 @@ const MESSAGES_LIMIT = 200;
 const SESSION_MESSAGES_OPENAPI = describeRoute({
   summary: "Rehydrate a chat session's messages",
   description:
-    "Returns the session's transcript (oldest first). Assistant messages carry a `citations` payload derived from their persisted answer trace (ADR-0040); the client never parses answer text for citations.",
+    "Returns the session's transcript (oldest first). Assistant messages carry a `citations` payload derived from their persisted answer trace (ADR-0040) plus the two-layer `trace` payload of the Trace panel (#12, ADR-0007) — both derived server-side from the same trace; the client never parses answer text for citations nor reconstructs pipeline machinery.",
   responses: {
     200: {
-      description: "The session's transcript with derived citation payloads",
+      description: "The session's transcript with derived citation and trace payloads",
       content: { "application/json": { schema: resolver(ChatSessionMessagesSchema) } },
     },
     401: {
