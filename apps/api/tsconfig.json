@@ -4,7 +4,8 @@
     "types": ["@cloudflare/workers-types", "node"],
     "lib": ["ESNext"],
     "paths": {
-      "@app/kajianq-domain/test-utils/*": ["../../packages/kajianq-domain/src/test-utils/*"]
+      "@app/kajianq-domain/test-utils/*": ["../../packages/kajianq-domain/src/test-utils/*"],
+      "@app/rate/test-utils/*": ["../../packages/rate/src/test-utils/*"]
     }
   },
   "include": ["src", "alchemy.run.ts"]

@@ -20,6 +20,7 @@
     "worktree:clean": "bun scripts/worktree-cleanup.mjs",
     "dsh:prompt": "bun scripts/dsh-dispatch-prompt.mjs",
     "openapi:check": "bun scripts/openapi-check.mjs",
+    "rate:bypass": "bun scripts/rate-bypass-mint.mts",
     "db:up": "bun packages/infra/scripts/db-migrate.mjs up",
     "db:down": "bun packages/infra/scripts/db-migrate.mjs down",
     "db:status": "bun packages/infra/scripts/db-migrate.mjs status",

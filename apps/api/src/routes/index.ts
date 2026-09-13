@@ -21,7 +21,8 @@ export function registerRoutes(api: Hono<ApiEnv>): void {
   registerDocRoutes(api);
 
   // SPA catch-all: non-API paths serve the static assets through the Hono
-  // stack, so security headers, CORS, and rate limiting cover the SPA too.
+  // stack, so security headers and CORS cover the SPA too; rate limiting
+  // meters /v1 only (ADR-0041).
   // API namespaces get a machine-readable JSON 404 instead of the SPA.
   api.all("*", (c) => serveAssets(c.req.raw, c.env.ASSETS));
 }
