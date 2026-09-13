@@ -80,9 +80,11 @@ export const perKindRetrySchedule = (
         if (budget === undefined || attempt >= budget.maxRetries) {
           return Cause.done(undefined);
         }
+        // v3's makeWithState threaded the state through the return tuple;
+        // the v4 closure holds it, so the counter mutates in place (the
+        // step effect re-runs per retry driver, giving fresh counters).
+        counts[index] = attempt + 1;
         const delayMs = Duration.toMillis(budget.base) * 2 ** attempt;
-        const next = counts.slice();
-        next[index] = attempt + 1;
         return Effect.succeed([
           undefined,
           Duration.millis(delayMs),

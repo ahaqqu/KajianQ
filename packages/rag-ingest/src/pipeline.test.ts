@@ -3,7 +3,7 @@ import type { RagStore } from "@app/infra";
 import type { Provider } from "@app/rag-core";
 import { EmbedMisalignment, runIngestion } from "./pipeline";
 import type { ParsedParent } from "./types";
-import { Cause, Effect, Result } from "effect";
+import { Cause, Effect } from "effect";
 
 /** In-memory RagStore fake: idempotent by sourceKey / (parentId, ordinal). */
 function fakeStore() {
@@ -414,9 +414,9 @@ describe("runIngestion", () => {
         })),
       },
     ];
-    // The run rejects with the typed EmbedMisalignment wrapped in a
-    // FiberFailure; unwrap the cause (Effect stows it on a module symbol,
-    // not a plain property) and assert its shape.
+    // The run rejects with the typed EmbedMisalignment itself: under Effect
+    // v4, `runPromise` rejects a typed failure with the error instance (the
+    // v3 FiberFailure wrapper and its cause symbol are gone).
     let rejection: unknown;
     try {
       await runIngestion(
@@ -434,20 +434,10 @@ describe("runIngestion", () => {
       rejection = err;
     }
     expect(rejection).toBeDefined();
-    const causeSym = Object.getOwnPropertySymbols(rejection as object).find(
-      (sym) => sym.description === "effect/Runtime/FiberFailure/Cause",
-    );
-    expect(causeSym).toBeDefined();
-    const cause = causeSym
-      ? (rejection as Record<symbol, Cause.Cause<EmbedMisalignment>>)[causeSym]
-      : undefined;
-    expect(cause).toBeDefined();
-    const failure = cause ? Cause.findFail(cause) : undefined;
-    if (failure !== undefined && Result.isSuccess(failure)) {
-      expect(failure.success.error._tag).toBe("EmbedMisalignment");
-      expect(failure.success.error.expected).toBe(2);
-      expect(failure.success.error.received).toBe(1);
-    }
+    expect(rejection).toBeInstanceOf(EmbedMisalignment);
+    const misaligned = rejection as EmbedMisalignment;
+    expect(misaligned.expected).toBe(2);
+    expect(misaligned.received).toBe(1);
     // Fail-fast interrupted in-flight siblings (their scope finalizers ran).
     expect(aborted.length).toBeGreaterThan(0);
     // No children written for a failed run.
