@@ -21,7 +21,7 @@ export function MessageCard({ message }: { message: ChatSessionMessage }) {
     return (
       <article
         data-testid="message-user"
-        className="ml-auto max-w-[85%] rounded-xl bg-card px-4 py-2.5"
+        className="ml-auto w-fit max-w-[85%] rounded-xl bg-card px-4 py-2.5"
       >
         <p className="whitespace-pre-wrap text-[15px] text-card-foreground">{message.content}</p>
       </article>
