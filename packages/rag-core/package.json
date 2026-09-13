@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./effect-spike": "./src/effect-spike.ts",
-    "./interop": "./src/interop.ts"
+    "./interop": "./src/interop.ts",
+    "./testing": "./src/testing.ts"
   },
   "scripts": {
     "check": "tsc -p tsconfig.json --noEmit"

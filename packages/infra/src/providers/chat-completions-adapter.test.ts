@@ -1,4 +1,4 @@
-import { Cause, Effect, Result, Stream } from "effect";
+import { Effect, Stream } from "effect";
 import { describe, expect, it } from "vitest";
 import {
   createChatCompletionsProvider,
@@ -6,7 +6,8 @@ import {
   isRetryable,
   type FetchLike,
 } from "./chat-completions-adapter";
-import { chatBody, jsonResponse, runFail, testVendor } from "./test-fixtures";
+import { chatBody, jsonResponse, testVendor } from "./test-fixtures";
+import { runFail } from "@app/rag-core/testing";
 import type { StreamHandle } from "@app/rag-core";
 
 function makeProvider(modelId: "m-chat" | "m-embed", fetchImpl: FetchLike, apiKey = "k-1") {
@@ -247,15 +248,10 @@ describe("chat-completions adapter", () => {
     );
     const exit = await Effect.runPromiseExit(Stream.runCollect(handle.deltas));
     expect(exit._tag).toBe("Failure");
-    const costExit = await Effect.runPromiseExit(handle.cost());
-    expect(costExit._tag).toBe("Failure");
-    // The mid-flight failure fails cost with a typed transport ProviderError.
-    // Effect v4: v3's `Cause.failureOption` extraction is `Cause.findFail`.
-    const costFailure = costExit._tag === "Failure" ? Cause.findFail(costExit.cause) : undefined;
-    expect(costFailure !== undefined && Result.isSuccess(costFailure)).toBe(true);
-    if (costFailure !== undefined && Result.isSuccess(costFailure)) {
-      expect(costFailure.success.error._tag).toBe("ProviderError");
-      expect(costFailure.success.error.kind).toBe("transport");
-    }
+    // The mid-flight failure fails cost with a typed transport ProviderError
+    // (shared: @app/rag-core/testing's runFail).
+    const costFailure = await runFail(handle.cost());
+    expect(costFailure._tag).toBe("ProviderError");
+    expect(costFailure.kind).toBe("transport");
   });
 });

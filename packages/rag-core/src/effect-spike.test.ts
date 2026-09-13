@@ -1,6 +1,7 @@
-import { Cause, Context, Effect, Exit, Fiber, Layer, Option, Result, Scope, Stream } from "effect";
+import { Cause, Context, Effect, Exit, Fiber, Layer, Option, Scope, Stream } from "effect";
 import { TestClock } from "effect/testing";
 import { describe, expect, it } from "vitest";
+import { failureOf } from "./testing";
 import {
   EffectSpikeError,
   SpikeResource,
@@ -13,17 +14,6 @@ import {
 } from "./effect-spike";
 
 /** ADR-0027 §2 spike: the program runs under `Effect.runPromise` (vitest + bun). */
-
-/**
- * Extract the first typed failure from a failed exit. Effect v4: the v3
- * `Cause.failureOption` is `Cause.findFail` — a Result carrying the first
- * typed `Fail` reason.
- */
-const failureOf = <E>(exit: Exit.Exit<unknown, E>): Option.Option<E> => {
-  if (exit._tag !== "Failure") return Option.none<E>();
-  const fail = Cause.findFail(exit.cause);
-  return Result.isSuccess(fail) ? Option.some(fail.success.error) : Option.none<E>();
-};
 
 describe("effect spike", () => {
   it("retries a rate_limited failure with backoff until success", async () => {

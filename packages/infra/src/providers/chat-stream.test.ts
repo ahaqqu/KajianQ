@@ -1,6 +1,7 @@
-import { Cause, Effect, Exit, Fiber, Result, Stream } from "effect";
+import { Effect, Exit, Fiber, Option, Stream } from "effect";
 import { describe, expect, it } from "vitest";
 import { streamHandle } from "./chat-stream";
+import { failureOf, runFail } from "@app/rag-core/testing";
 import type { ProviderError, StreamHandle } from "@app/rag-core";
 
 /** An SSE body that emits the given chunks then closes. */
@@ -30,14 +31,6 @@ function stalledSseBody(firstChunk: string): ReadableStream<Uint8Array> {
 async function collect(handle: StreamHandle): Promise<string> {
   const chunks = await Effect.runPromise(Stream.runCollect(handle.deltas));
   return Array.from(chunks).join("");
-}
-
-/** Extract the typed failure from an exit that must have failed. */
-function failureOf(exit: Exit.Exit<unknown, ProviderError>): ProviderError {
-  // Effect v4: v3's `Cause.failureOption` extraction is `Cause.findFail`.
-  const failure = exit._tag === "Failure" ? Cause.findFail(exit.cause) : undefined;
-  if (failure !== undefined && Result.isSuccess(failure)) return failure.success.error;
-  throw new Error("expected the effect to fail");
 }
 
 function makeHandle(body: ReadableStream<Uint8Array>, aborts: string[] = []): StreamHandle {
@@ -105,9 +98,9 @@ describe("streamHandle", () => {
     const handle = makeHandle(body);
     const deltasExit = await Effect.runPromiseExit(Stream.runCollect(handle.deltas));
     expect(deltasExit._tag).toBe("Failure");
-    const costExit = await Effect.runPromiseExit(handle.cost());
-    expect(costExit._tag).toBe("Failure");
-    const costError = failureOf(costExit);
+    // The wire cut fails cost with a typed transport ProviderError (shared
+    // runFail: fails the test unless cost() exits with a typed failure).
+    const costError = await runFail(handle.cost());
     expect(costError.kind).toBe("transport");
     // C2: the attempt reached the vendor (a delta flowed before the wire
     // cut), so the failure carries the attempt's estimated cost — prompt
@@ -164,7 +157,9 @@ describe("streamHandle", () => {
     // settlement came from the interruption path, not the timeout.
     const exit = await Effect.runPromiseExit(handle.cost().pipe(Effect.timeout("1 second")));
     expect(exit._tag).toBe("Failure");
-    expect(failureOf(exit as Exit.Exit<unknown, ProviderError>).kind).toBe("transport");
+    expect(Option.getOrThrow(failureOf(exit as Exit.Exit<unknown, ProviderError>)).kind).toBe(
+      "transport",
+    );
   });
 
   it("an unconsumed stream that is cost-drained is never aborted", async () => {

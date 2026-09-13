@@ -61,30 +61,26 @@ export const perKindRetrySchedule = (
     { kinds: ["rate_limited"], base: rateLimitedBase, maxRetries: budgets.rateLimitedRetries ?? 2 },
     { kinds: ["transport", "server"], base: faultBase, maxRetries: budgets.faultRetries ?? 3 },
   ];
-  // State: one attempt counter per budget, indexed by budget. A kind that
-  // matches no budget has no counter and never retries. Effect v4 builds
-  // custom schedules on `Schedule.fromStep` (the v3 `makeWithState` /
+  // State: the attempt counter lives on the budget entry itself, so a kind
+  // that matches no budget has no entry and never retries — the single
+  // `undefined` guard below IS that invariant, not defensiveness. Effect v4
+  // builds custom schedules on `Schedule.fromStep` (the v3 `makeWithState` /
   // `ScheduleDecision` / `ScheduleInterval` API is gone): the step effect
   // runs once per retry driver, so the counters are fresh per run, each step
   // returns the next `[output, delay]` pair, and completion is `Cause.done`.
   return Schedule.fromStep(
     Effect.sync(() => {
-      const counts = perKind.map(() => 0);
+      const state = perKind.map((budget) => ({ budget, attempts: 0 }));
       return (_now: number, err: ProviderError) => {
-        const index = perKind.findIndex((b) => b.kinds.includes(err.kind));
-        if (index < 0) {
-          return Cause.done(undefined);
-        }
-        const budget = perKind[index];
-        const attempt = counts[index] ?? 0;
-        if (budget === undefined || attempt >= budget.maxRetries) {
+        const entry = state.find((e) => e.budget.kinds.includes(err.kind));
+        if (entry === undefined || entry.attempts >= entry.budget.maxRetries) {
           return Cause.done(undefined);
         }
         // v3's makeWithState threaded the state through the return tuple;
         // the v4 closure holds it, so the counter mutates in place (the
         // step effect re-runs per retry driver, giving fresh counters).
-        counts[index] = attempt + 1;
-        const delayMs = Duration.toMillis(budget.base) * 2 ** attempt;
+        const delayMs = Duration.toMillis(entry.budget.base) * 2 ** entry.attempts;
+        entry.attempts += 1;
         return Effect.succeed([undefined, Duration.millis(delayMs)] as [
           undefined,
           Duration.Duration,

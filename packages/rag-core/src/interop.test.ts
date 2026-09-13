@@ -1,4 +1,4 @@
-import { Cause, Effect, Result, Stream } from "effect";
+import { Effect, Option, Stream } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import type { CostRecord } from "@app/contracts";
 import { RunContext } from "./context";
@@ -8,6 +8,7 @@ import { engineStreamToWeb } from "./interop-stream";
 import type { Chunk, Draft } from "./pipeline";
 import { ProviderError, type StreamHandle } from "./provider";
 import type { PipelineStages } from "./run";
+import { failureOf } from "./testing";
 
 const stages: PipelineStages = {
   router: { route: () => Effect.succeed({ intent: "factual", subQueries: [], filters: {} }) },
@@ -197,8 +198,8 @@ describe("bridge failure unwrapping", () => {
       }),
     );
     // Effect v4: the v3 `Cause.failureOption` extraction is `Cause.findFail` —
-    // a Result whose success carries the typed `Fail` reason.
-    const failure = Cause.findFail(exit._tag === "Failure" ? exit.cause : Cause.empty);
-    expect(Result.isSuccess(failure)).toBe(true);
+    // a Result whose success carries the typed `Fail` reason (shared:
+    // ./testing's failureOf).
+    expect(Option.isSome(failureOf(exit))).toBe(true);
   });
 });
