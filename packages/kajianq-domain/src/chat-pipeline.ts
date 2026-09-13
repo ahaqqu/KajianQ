@@ -7,6 +7,7 @@ import {
   type RunConfig,
   type RunOptions,
   type StageError,
+  type StoreError,
 } from "@app/rag-core";
 import { createKajianQRouter, type RouterProvider } from "./chat-router";
 import { createKajianQRetriever, type RetrieverEmbedder, type StoreBridge } from "./chat-retriever";
@@ -115,11 +116,16 @@ export function runChatPipeline(
 
 /**
  * Run one Effect-signatured store call to a promise — the single effect
- * bridge the HTTP edge may use (the domain owns the engine's effect runtime,
- * so an app-side `Effect.runPromise` would run a foreign-runtime value).
+ * bridge the HTTP edge may use (ADR-0027 decision 3: apps keep no direct
+ * effect dependency, so the bridge lives in the domain, which owns the
+ * engine's effect version). Rejects with the typed `StoreError`. Typed as the
+ * domain's `StoreBridge` now that the whole workspace sits on one Effect
+ * major — the former `(effect: unknown) => Promise<A>` erasure existed only
+ * because apps/api pinned effect 4 while the engine packages pinned 3, and
+ * cross-major Effect types cannot typecheck.
  */
-export function runStoreEffect<A>(effect: unknown): Promise<A> {
-  return Effect.runPromise(effect as never) as Promise<A>;
+export function runStoreEffect<A>(effect: Effect.Effect<A, StoreError>): Promise<A> {
+  return Effect.runPromise(effect);
 }
 export function runChatPipelinePromise(
   deps: ChatPipelineDeps,

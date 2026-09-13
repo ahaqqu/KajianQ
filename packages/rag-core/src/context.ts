@@ -14,9 +14,9 @@ export type DefaultFilters = Record<string, string | readonly string[]>;
  * service. Model ids are opaque strings resolved from `model_configs` at
  * wiring time — the engine never names a vendor or model (ADR-0009).
  *
- * ADR-0027 maps the RunContext's responsibilities to a `Context.Tag` service:
- * the per-run config, the clock, and the trace sink are required through the
- * `RunContext` Tag in the stages' `R` channel, and per-run disposal moved to
+ * ADR-0027 maps the RunContext's responsibilities to a `Context` service: the
+ * per-run config, the clock, and the trace sink are required through the
+ * `RunContext` key in the stages' `R` channel, and per-run disposal moved to
  * Effect's `Scope` (the runner opens one per run).
  */
 export type RunConfig<TFilters extends Record<string, unknown>> = {
@@ -44,6 +44,10 @@ export interface RunContextService {
 /**
  * The run's handle as an Effect service (ADR-0027): stage implementations do
  * `const run = yield* RunContext` to read config, stamp timestamps, and
- * record trace events; the runner is the only provider.
+ * record trace events; the runner is the only provider. Effect v4 carries
+ * service keys on `Context.Service` (the class itself is the key — the v3
+ * `Context.Tag` maker is gone).
  */
-export class RunContext extends Context.Tag("app/RunContext")<RunContext, RunContextService>() {}
+export class RunContext extends Context.Service<RunContext, RunContextService>()(
+  "app/RunContext",
+) {}

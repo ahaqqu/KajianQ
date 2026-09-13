@@ -6,14 +6,15 @@
   "exports": {
     ".": "./src/index.ts",
     "./effect-spike": "./src/effect-spike.ts",
-    "./interop": "./src/interop.ts"
+    "./interop": "./src/interop.ts",
+    "./testing": "./src/testing.ts"
   },
   "scripts": {
     "check": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@app/contracts": "workspace:*",
-    "effect": "3.22.1"
+    "effect": "4.0.0-rc.112"
   },
   "devDependencies": {
     "typescript": "7.0.2"

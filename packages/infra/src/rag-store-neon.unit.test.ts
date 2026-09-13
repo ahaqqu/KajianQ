@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { Cause, Effect, Exit, Option } from "effect";
+import { Effect, Exit } from "effect";
 import type { StoreError } from "@app/rag-core";
+import { runFail } from "@app/rag-core/testing";
 import { createNeonRagStore, type SqlRunner } from "./rag-store-neon";
 import { sqlEffect } from "./rag-store-neon-errors";
 import { createRagStore } from "./rag-store-factory";
@@ -22,16 +23,6 @@ import type { Trace } from "@app/contracts";
 
 /** Run a store effect that must succeed, returning its value. */
 const runOk = <A>(effect: Effect.Effect<A, StoreError>): Promise<A> => Effect.runPromise(effect);
-
-/** Run a store effect that must fail, returning the typed StoreError. */
-async function runFail<A>(effect: Effect.Effect<A, StoreError>): Promise<StoreError> {
-  const exit = await Effect.runPromiseExit(effect);
-  const failure = Exit.isFailure(exit)
-    ? Cause.failureOption(exit.cause)
-    : Option.none<StoreError>();
-  if (Option.isSome(failure)) return failure.value;
-  throw new Error("expected the effect to fail");
-}
 
 /** Uniform shape so access sites don't need per-variant narrowing. */
 type Recorded = { kind: string; text: string; values: unknown[]; queries?: unknown[] };

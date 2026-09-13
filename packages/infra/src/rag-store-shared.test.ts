@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { Cause, Effect, Exit, Option } from "effect";
-import type { StoreError } from "@app/rag-core";
+import { Effect } from "effect";
+import { runFail } from "@app/rag-core/testing";
 import {
   checkEmbedding,
   hashToken,
@@ -11,16 +11,6 @@ import {
   toVectorLiteral,
   toVectorLiteralChecked,
 } from "./rag-store-shared";
-
-/** Run a pure validation effect that must fail; returns the typed failure. */
-async function failWith(effect: Effect.Effect<unknown, StoreError>): Promise<StoreError> {
-  const exit = await Effect.runPromiseExit(effect);
-  const failure = Exit.isFailure(exit)
-    ? Cause.failureOption(exit.cause)
-    : Option.none<StoreError>();
-  if (Option.isSome(failure)) return failure.value;
-  throw new Error("expected the effect to fail");
-}
 
 describe("rag-store-shared: vector helpers", () => {
   it("toVectorLiteral round-trips with parseVectorLiteral", async () => {
@@ -42,12 +32,12 @@ describe("rag-store-shared: vector helpers", () => {
 
   it("parseVectorLiteral rejects unrecognised shapes and non-finite components (constraint kind)", async () => {
     for (const value of [42, {}]) {
-      const err = await failWith(parseVectorLiteral(value));
+      const err = await runFail(parseVectorLiteral(value));
       expect(err.kind).toBe("constraint");
       expect((err.cause as Error).message).toMatch(/unexpected vector/);
     }
     for (const value of [["NaN"], "[1,abc]"]) {
-      const err = await failWith(parseVectorLiteral(value));
+      const err = await runFail(parseVectorLiteral(value));
       expect(err.kind).toBe("constraint");
       // Array form reports the non-finite component; wire form reports the
       // unparseable slot — both are constraint-class vector validation.
@@ -69,7 +59,7 @@ describe("rag-store-shared: embedding validation", () => {
   });
 
   it("checkEmbedding rejects wrong dimension as constraint StoreError", async () => {
-    const err = await failWith(checkEmbedding([1, 2], 3));
+    const err = await runFail(checkEmbedding([1, 2], 3));
     expect(err.kind).toBe("constraint");
     expect((err.cause as Error).message).toMatch(/dimension mismatch/);
   });
@@ -79,7 +69,7 @@ describe("rag-store-shared: embedding validation", () => {
       [1, Number.NaN, 3],
       [1, Number.POSITIVE_INFINITY, 3],
     ]) {
-      const err = await failWith(checkEmbedding(bad, 3));
+      const err = await runFail(checkEmbedding(bad, 3));
       expect(err.kind).toBe("constraint");
       expect((err.cause as Error).message).toMatch(/finite number/);
     }
@@ -88,7 +78,7 @@ describe("rag-store-shared: embedding validation", () => {
   it("toVectorLiteralChecked validates then serializes, null passes through", async () => {
     expect(await Effect.runPromise(toVectorLiteralChecked([1, 2, 3], 3))).toBe("[1,2,3]");
     expect(await Effect.runPromise(toVectorLiteralChecked(null, 3))).toBeNull();
-    const err = await failWith(toVectorLiteralChecked([1, 2], 3));
+    const err = await runFail(toVectorLiteralChecked([1, 2], 3));
     expect(err.kind).toBe("constraint");
     expect((err.cause as Error).message).toMatch(/dimension mismatch/);
   });
@@ -105,7 +95,7 @@ describe("rag-store-shared: row mapping", () => {
   });
 
   it("parseEpochMs rejects invalid timestamps as constraint StoreError", async () => {
-    const err = await failWith(parseEpochMs("not-a-date"));
+    const err = await runFail(parseEpochMs("not-a-date"));
     expect(err.kind).toBe("constraint");
     expect((err.cause as Error).message).toMatch(/bad timestamp/);
   });

@@ -8,7 +8,8 @@ import {
 import { describe, expect, it } from "vitest";
 import { ProviderError } from "@app/rag-core";
 import type { FetchLike } from "./chat-completions-adapter";
-import { chatBody, configWith, jsonResponse, runFail, runOk } from "./test-fixtures";
+import { chatBody, configWith, jsonResponse, runOk } from "./test-fixtures";
+import { runFail } from "@app/rag-core/testing";
 
 /** Fast per-kind schedule so retry tests do not sleep for real backoff. */
 const fastSchedule = perKindRetrySchedule("1 millis", "1 millis");

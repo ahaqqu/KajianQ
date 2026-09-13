@@ -387,9 +387,11 @@ describe("runIngestion", () => {
               ),
               // Track fail-fast sibling interruption: an in-flight batch's
               // exit is interruption-only (no typed failure of its own).
+              // Effect v4 renamed `Cause.isInterruptedOnly` to
+              // `hasInterruptsOnly`.
               Effect.onExit((exit) =>
                 Effect.sync(() => {
-                  if (exit._tag === "Failure" && Cause.isInterruptedOnly(exit.cause))
+                  if (exit._tag === "Failure" && Cause.hasInterruptsOnly(exit.cause))
                     if (spec.texts[0] !== undefined) aborted.push(spec.texts[0]);
                 }),
               ),
@@ -412,9 +414,9 @@ describe("runIngestion", () => {
         })),
       },
     ];
-    // The run rejects with the typed EmbedMisalignment wrapped in a
-    // FiberFailure; unwrap the cause (Effect stows it on a module symbol,
-    // not a plain property) and assert its shape.
+    // The run rejects with the typed EmbedMisalignment itself: under Effect
+    // v4, `runPromise` rejects a typed failure with the error instance (the
+    // v3 FiberFailure wrapper and its cause symbol are gone).
     let rejection: unknown;
     try {
       await runIngestion(
@@ -432,20 +434,10 @@ describe("runIngestion", () => {
       rejection = err;
     }
     expect(rejection).toBeDefined();
-    const causeSym = Object.getOwnPropertySymbols(rejection as object).find(
-      (sym) => sym.description === "effect/Runtime/FiberFailure/Cause",
-    );
-    expect(causeSym).toBeDefined();
-    const cause = causeSym
-      ? (rejection as Record<symbol, Cause.Cause<EmbedMisalignment>>)[causeSym]
-      : undefined;
-    expect(cause).toBeDefined();
-    const failure = cause ? Cause.failureOption(cause) : undefined;
-    if (failure !== undefined && failure._tag === "Some") {
-      expect(failure.value._tag).toBe("EmbedMisalignment");
-      expect(failure.value.expected).toBe(2);
-      expect(failure.value.received).toBe(1);
-    }
+    expect(rejection).toBeInstanceOf(EmbedMisalignment);
+    const misaligned = rejection as EmbedMisalignment;
+    expect(misaligned.expected).toBe(2);
+    expect(misaligned.received).toBe(1);
     // Fail-fast interrupted in-flight siblings (their scope finalizers ran).
     expect(aborted.length).toBeGreaterThan(0);
     // No children written for a failed run.

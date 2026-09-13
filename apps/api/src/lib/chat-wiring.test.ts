@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { runStoreEffect } from "@app/kajianq-domain";
+import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 import {
   authGuard,
   buildChatWiring,
@@ -10,9 +11,6 @@ import {
   storeBridge,
   wiringOr503,
 } from "../lib/chat-wiring";
-
-const storeBridgeOf = (fx: unknown) => runStoreEffect<{ token: string }>(fx);
-import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 
 async function awaitImportConfig() {
   const { loadProviderConfig } = await import("@app/infra");
@@ -196,7 +194,9 @@ describe("authGuard", () => {
 
   it("stashes the Authed variable for a known token", async () => {
     const store = createMemoryRagStore();
-    const session = await storeBridgeOf(store.createSession());
+    // The typed bridge infers A from the store call — no explicit type arg
+    // (the unknown-typed bridge forced `runStoreEffect<{ token: string }>`).
+    const session = await runStoreEffect(store.createSession());
     const c = fakeContext(`Bearer ${session.token}`);
     const res = await authGuard(c as never, store);
     expect(res).toBeUndefined();

@@ -1,4 +1,4 @@
-import { Cause, Effect, Option } from "effect";
+import { Effect } from "effect";
 import { ProviderError } from "@app/rag-core";
 import type { ProviderConfig, VendorConfig } from "./provider-config";
 
@@ -66,17 +66,6 @@ export function chatBody(
     choices: [{ message: { content: "hello there" } }],
     usage,
   };
-}
-
-/** Run an effect that must fail, returning the typed failure itself. */
-export async function runFail<A>(
-  effect: Effect.Effect<A, ProviderError, never>,
-): Promise<ProviderError> {
-  const exit = await Effect.runPromiseExit(effect);
-  const failure =
-    exit._tag === "Failure" ? Cause.failureOption(exit.cause) : Option.none<ProviderError>();
-  if (Option.isSome(failure)) return failure.value;
-  throw new Error("expected the effect to fail");
 }
 
 /** Run an effect that must succeed, returning its value. */

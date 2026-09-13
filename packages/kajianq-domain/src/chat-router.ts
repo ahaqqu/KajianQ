@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 import type { CostRecord } from "@app/contracts";
 import { RunContext, toStageError, type Query, type Router } from "@app/rag-core";
 import type { KajianQFilters, Madzhab, Grade, TextLayer } from "./filters";
@@ -71,19 +71,20 @@ export function createKajianQRouter(provider: RouterProvider): Router<KajianQFil
             .pipe(Effect.mapError((cause) => ({ cause })));
           const call: CostRecord = reply.cost;
           const extracted = extractJsonObject(reply.text);
-          const parsed = Schema.decodeUnknownEither(RouterOutputSchema)(extracted);
-          const out: RouterOutput =
-            parsed._tag === "Right"
-              ? parsed.right
-              : // C2: an unparseable/mis-keyed router reply is recorded, not
-                // silently degraded — the fallback single factual sub-query
-                // is visible in the trace's `subquery` event.
-                (run.record({
-                  stage: "router",
-                  kind: "subquery",
-                  detail: { text: query.text },
-                  at: run.now(),
-                }) ?? { intent: "factual", subQueries: [query.text] });
+          // Effect v4: `decodeUnknownOption` replaces the v3
+          // `decodeUnknownEither` (the call site only branches on success).
+          const parsed = Schema.decodeUnknownOption(RouterOutputSchema)(extracted);
+          const out: RouterOutput = Option.isSome(parsed)
+            ? parsed.value
+            : // C2: an unparseable/mis-keyed router reply is recorded, not
+              // silently degraded — the fallback single factual sub-query
+              // is visible in the trace's `subquery` event.
+              (run.record({
+                stage: "router",
+                kind: "subquery",
+                detail: { text: query.text },
+                at: run.now(),
+              }) ?? { intent: "factual", subQueries: [query.text] });
           run.record({
             stage: "router",
             kind: "llm_call",

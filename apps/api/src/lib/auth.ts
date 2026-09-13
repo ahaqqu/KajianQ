@@ -20,7 +20,9 @@ export async function authGuard(
   if (token === "") {
     return c.json({ error: "unauthorized" }, 401);
   }
-  const userId = (await runStoreEffect(store.resolveUserId(token))) as string | null;
+  // The typed `runStoreEffect` bridge carries the seam's generic: A infers
+  // from the store call — no cast (the unknown-typed bridge forced one).
+  const userId = await runStoreEffect(store.resolveUserId(token));
   if (userId === null) {
     return c.json({ error: "unauthorized" }, 401);
   }

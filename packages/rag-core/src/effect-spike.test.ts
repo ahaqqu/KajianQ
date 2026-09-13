@@ -1,17 +1,7 @@
-import {
-  Cause,
-  Context,
-  Effect,
-  Exit,
-  Fiber,
-  Layer,
-  Option,
-  Scope,
-  Stream,
-  TestClock,
-  TestContext,
-} from "effect";
+import { Cause, Context, Effect, Exit, Fiber, Layer, Option, Scope, Stream } from "effect";
+import { TestClock } from "effect/testing";
 import { describe, expect, it } from "vitest";
+import { failureOf } from "./testing";
 import {
   EffectSpikeError,
   SpikeResource,
@@ -25,21 +15,17 @@ import {
 
 /** ADR-0027 §2 spike: the program runs under `Effect.runPromise` (vitest + bun). */
 
-/** Extract the first typed failure from a failed exit. */
-const failureOf = <E>(exit: Exit.Exit<unknown, E>): Option.Option<E> =>
-  exit._tag === "Failure" ? Cause.failureOption(exit.cause) : Option.none<E>();
-
 describe("effect spike", () => {
   it("retries a rate_limited failure with backoff until success", async () => {
     // Run under the TestClock: the 10/20 ms backoff sleeps complete the
     // moment the clock is adjusted — the testability pattern the migration
-    // relies on. Fork + adjust + join must live in one TestContext program.
+    // relies on. Fork + adjust + join must live in one TestClock program.
     const result = await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.fork(flakyCall(2));
+        const fiber = yield* Effect.forkChild(flakyCall(2));
         for (let i = 0; i < 4; i++) yield* TestClock.adjust("1 second");
         return yield* Fiber.join(fiber);
-      }).pipe(Effect.provide(TestContext.TestContext)),
+      }).pipe(Effect.provide(TestClock.layer())),
     );
     expect(result.answer).toBe("ok on attempt 3");
     expect(result.attempts).toBe(3);
@@ -48,10 +34,10 @@ describe("effect spike", () => {
   it("gives up after the schedule exhausts and fails with the typed error", async () => {
     const exit = await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.fork(Effect.exit(flakyCall(10)));
+        const fiber = yield* Effect.forkChild(Effect.exit(flakyCall(10)));
         for (let i = 0; i < 5; i++) yield* TestClock.adjust("1 second");
         return yield* Fiber.join(fiber);
-      }).pipe(Effect.provide(TestContext.TestContext)),
+      }).pipe(Effect.provide(TestClock.layer())),
     );
     const failure = failureOf(exit);
     expect(Option.isSome(failure)).toBe(true);
@@ -67,10 +53,7 @@ describe("effect spike", () => {
       new EffectSpikeError({ kind: "transport", message: "connection reset" }),
     );
     const exit = await Effect.runPromiseExit(
-      Effect.provide(
-        Effect.retry(transportCall, { schedule: retrySchedule }),
-        TestContext.TestContext,
-      ),
+      Effect.provide(Effect.retry(transportCall, { schedule: retrySchedule }), TestClock.layer()),
     );
     const failure = failureOf(exit);
     expect(Option.isSome(failure)).toBe(true);
@@ -162,14 +145,19 @@ describe("effect spike", () => {
     );
     const exit = await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.fork(Stream.runCollect(stream));
+        const fiber = yield* Effect.forkChild(Stream.runCollect(stream));
         // Let the fork start consuming before interrupting.
         yield* Effect.sleep("20 millis");
         // Fiber.interrupt must be run as an Effect, not passed as a bare value.
-        return yield* Fiber.interrupt(fiber);
+        yield* Fiber.interrupt(fiber);
+        // Effect v4: interrupt returns void; the fiber's Exit comes from
+        // `Fiber.await` (the v3 `Fiber.interrupt` return value).
+        return yield* Fiber.await(fiber);
       }),
     );
-    expect(Exit.isInterrupted(exit)).toBe(true);
+    // Effect v4 dropped `Exit.isInterrupted`: a failure whose cause carries
+    // only interruptions is the same predicate via `Cause.hasInterruptsOnly`.
+    expect(exit._tag === "Failure" && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
     expect(cancelRan).toBe(true);
   });
 
