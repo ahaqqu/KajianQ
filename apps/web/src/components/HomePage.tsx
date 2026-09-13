@@ -25,7 +25,9 @@ export function HomePage({ locale }: { locale: Locale }) {
         <Card>
           <CardLabel>{t(locale, "health")}</CardLabel>
           {health.isPending && <p className="mt-2 text-sm">{t(locale, "loading")}</p>}
-          {health.isError && <p className="mt-2 text-sm text-destructive">{t(locale, "health")}: error</p>}
+          {health.isError && (
+            <p className="mt-2 text-sm text-destructive">{t(locale, "health")}: error</p>
+          )}
           {health.data && (
             <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
               <dt className="text-muted-foreground">{t(locale, "env")}</dt>

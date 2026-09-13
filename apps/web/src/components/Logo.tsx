@@ -24,13 +24,7 @@ export function LogoTile({ size }: { size: keyof typeof SIZES }) {
         aria-hidden="true"
       >
         <rect x="6.2" y="6.2" width="11.6" height="11.6" />
-        <rect
-          x="6.2"
-          y="6.2"
-          width="11.6"
-          height="11.6"
-          transform="rotate(45 12 12)"
-        />
+        <rect x="6.2" y="6.2" width="11.6" height="11.6" transform="rotate(45 12 12)" />
         <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
       </svg>
     </div>
