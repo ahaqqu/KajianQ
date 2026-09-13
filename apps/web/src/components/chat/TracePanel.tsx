@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { ChatTraceChunk, ChatTraceFrame } from "@app/contracts";
 import { t, useLocale, type Locale } from "../../lib/i18n";
 import { MonoLabel } from "../ui";
+import { FlagButton } from "./FeedbackControls";
 
 /**
  * The user-facing Trace panel (#12, ADR-0007): every answer expands to show
@@ -12,12 +13,21 @@ import { MonoLabel } from "../ui";
  * server-derived from the persisted answer trace and rendered as-is; the
  * client never reconstructs pipeline machinery. ADR-0007's warning stands:
  * this panel is the feedback instrument, not UI clutter — do not clean it up.
+ * The instrument part is literal since #13: each source row carries a flag
+ * affordance anchoring an "irrelevant chunk" report to that chunk's id — the
+ * server re-validates the anchor against the persisted trace before storing.
  *
  * Rendered only when the message carries a trace frame; a message without
  * one (user turns, degraded traces) shows no affordance, by data.
  */
 
-export function TracePanel({ trace }: { trace: ChatTraceFrame | undefined }) {
+export function TracePanel({
+  trace,
+  messageId,
+}: {
+  trace: ChatTraceFrame | undefined;
+  messageId: string;
+}) {
   const locale: Locale = useLocale();
   const [open, setOpen] = useState(false);
   const [techOpen, setTechOpen] = useState(false);
@@ -55,9 +65,17 @@ export function TracePanel({ trace }: { trace: ChatTraceFrame | undefined }) {
                   <li
                     key={chunk.id}
                     data-testid="trace-source"
-                    className="text-sm text-card-foreground"
+                    className="flex items-center justify-between gap-2 text-sm text-card-foreground"
                   >
-                    {chunk.source ?? <span className="font-mono text-xs">{chunk.id}</span>}
+                    <span>
+                      {chunk.source ?? <span className="font-mono text-xs">{chunk.id}</span>}
+                    </span>
+                    <FlagButton
+                      messageId={messageId}
+                      anchor={{ type: "chunk", category: "irrelevant_chunk", id: chunk.id }}
+                      labelKey="flagIrrelevantChunk"
+                      testId={`trace-flag-${chunk.id}`}
+                    />
                   </li>
                 ))}
               </ul>

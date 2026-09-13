@@ -45,12 +45,14 @@ export {
 } from "./providers/retry-schedule";
 export {
   type AlignedPairInsert,
+  type AnswerFeedbackTarget,
   type ChatMessage,
   type DocChild,
   type DocChildById,
   type DocChildInsert,
   type DocParent,
   type DocParentInsert,
+  type FeedbackInsert,
   type RagStore,
   type RetrievalTrack,
   type SimilarChild,

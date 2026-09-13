@@ -2,6 +2,7 @@ import type { Effect } from "effect";
 import type { Trace } from "@app/contracts";
 import type { StoreError } from "@app/rag-core";
 import type { RagStoreEvalLedger, RagStoreEvalRunWrite } from "./rag-store-eval-seam";
+import type { RagStoreFeedback } from "./rag-store-feedback-seam";
 
 /**
  * RagStore — the single persistence seam (ADR-0008), Effect-signatured
@@ -132,7 +133,7 @@ export type SimilarChild = {
   rankDense: number;
 };
 
-export interface RagStore extends RagStoreEvalRunWrite, RagStoreEvalLedger {
+export interface RagStore extends RagStoreEvalRunWrite, RagStoreEvalLedger, RagStoreFeedback {
   // -- Corpus ------------------------------------------------------------
 
   /** Insert a parent document, returning the effect of its persisted id. */
@@ -294,5 +295,5 @@ export interface RagStore extends RagStoreEvalRunWrite, RagStoreEvalLedger {
    */
   cleanupExpiredSessions(before?: Date): Effect.Effect<number, StoreError>;
 }
-
 export type { RagStoreEvalLedger, RagStoreEvalRunWrite } from "./rag-store-eval-seam";
+export type { AnswerFeedbackTarget, FeedbackInsert } from "./rag-store-feedback-seam";

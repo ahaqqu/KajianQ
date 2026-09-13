@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { MACHINE_TRANSLATION_LABEL } from "../../lib/chat-render";
-import { t, type Locale } from "../../lib/i18n";
+import { t, useLocale } from "../../lib/i18n";
 import { MonoLabel } from "../ui";
 import type { ChatCitation } from "@app/contracts";
 
@@ -9,17 +9,20 @@ import type { ChatCitation } from "@app/contracts";
  * language: serif mono-labeled sections, the Arabic original in Amiri (RTL),
  * the translation as a gold-bordered blockquote with the ADR-0006
  * machine-translation label, the grade badge, and the mono source line —
- * every field server-derived from the trace, none inferred.
+ * every field server-derived from the trace, none inferred. The optional
+ * `children` slot is the sheet's footer; MessageCard fills it with the
+ * trace-anchored flags (#13) anchored to this sheet's label.
  */
 export function CitationSheet({
   citation,
-  locale,
   onClose,
+  children,
 }: {
   citation: ChatCitation;
-  locale: Locale;
   onClose: () => void;
+  children?: ReactNode;
 }) {
+  const locale = useLocale();
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === "Escape") onClose();
@@ -85,6 +88,11 @@ export function CitationSheet({
               {citation.source}
             </span>
           </MonoLabel>
+        )}
+        {children !== undefined && (
+          <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-rule pt-3">
+            {children}
+          </div>
         )}
       </div>
     </div>
