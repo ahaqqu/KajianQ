@@ -12,7 +12,7 @@
     "build": "bun run build:web",
     "check": "tsc -p tsconfig.json && bun run --filter '@app/*' check",
     "test": "vp test run --coverage",
-    "lint": "vp check && bun scripts/check-vp-vite-pin.mjs",
+    "lint": "vp check && bun scripts/check-vp-vite-pin.mjs && bun scripts/check-effect-pin.mjs",
     "fmt": "vp fmt",
     "boundary": "bun scripts/check-boundary.mjs",
     "size-limit": "size-limit",
@@ -63,7 +63,9 @@
     "vitest": "4.1.11"
   },
   "overrides": {
-    "@effect/platform-node-shared": "4.0.0-rc.112"
+    "brace-expansion": "5.0.8",
+    "@effect/platform-node-shared": "4.0.0-rc.112",
+    "effect": "4.0.0-rc.112"
   },
   "size-limit": [
     {
