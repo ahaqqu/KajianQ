@@ -5,8 +5,7 @@ import {
   installSecurityHeaders,
   resolveRateLimiter,
 } from "./";
-import { checkBypassHeader } from "./rate-bypass";
-import { RATE_BYPASS_HEADER } from "@app/rate";
+import { checkBypassHeader, RATE_BYPASS_HEADER } from "./rate-bypass";
 import type { ApiEnv, RateLimiter } from "../env";
 import { trimTrailingSlash } from "hono/trailing-slash";
 import type { Hono } from "hono";

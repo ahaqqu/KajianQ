@@ -1,5 +1,9 @@
 import { verifyBypassToken, type BypassVerifyResult } from "@app/rate";
 
+// Re-exported so middleware consumes the header name and the bypass check
+// from the same module (keeps this file the API's single bypass seam).
+export { RATE_BYPASS_HEADER } from "@app/rate";
+
 /**
  * The Ed25519 public key that verifies rate-limit bypass tokens (ADR-0041),
  * base64 raw — committed by design: it can only mint nothing, and the trust
