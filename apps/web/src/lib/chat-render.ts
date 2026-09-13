@@ -49,11 +49,13 @@ export type AnswerBlock =
  * A styled span's content must not start or end with whitespace (so
  * `2 * 3 = 6` stays arithmetic), and a one-asterisk emphasis must not open
  * or close against a word character (so `snake_case` and `3*4*5` stay
- * verbatim). Bold is tried first in the alternation, so `**x**` never
- * degrades to an emphasis pair around a lone `*`.
+ * verbatim). Bold-italic (`***x***`) is tried first, then bold — whose
+ * content may carry non-adjacent single asterisks, so `**a *b* c**` nests
+ * the emphasis instead of leaking its markers — and bold is tried before
+ * emphasis, so `**x**` never degrades to an emphasis pair around a lone `*`.
  */
 const STYLED_SPAN =
-  /\*\*([^*\s](?:[^*]*[^*\s])?)\*\*|(?<!\w)\*([^*\s](?:[^*]*[^*\s])?)\*(?!\w)|(?<!\w)_([^_\s](?:[^_]*[^_\s])?)_(?!\w)/;
+  /\*\*\*([^*\s](?:[^*]*[^*\s])?)\*\*\*|\*\*([^*\s](?:(?:\*(?!\*)|[^*])*[^*\s])?)\*\*|(?<!\w)\*([^*\s](?:[^*]*[^*\s])?)\*(?!\w)|(?<!\w)_([^_\s](?:[^_]*[^_\s])?)_(?!\w)/;
 
 /** A list line: an optional 3-space indent, then a `- `/`* ` bullet or a `1.`/`1)` number. */
 const LIST_LINE = /^ {0,3}(?:([-*])|\d{1,9}[.)])\s+(.+)$/;
@@ -94,22 +96,26 @@ function locateCitations(text: string, citations: readonly ChatCitation[]): Answ
 }
 
 /**
- * Split a plain-text run into inline nodes: styled spans (`**bold**`,
- * `*emphasis*`, `_emphasis_`) wrap the citation-aware parse of their
- * content — so `**[QS. 2:255]**` renders the chip inside bold — and the
- * gaps between them go through citation location directly. An unclosed
+ * Split a plain-text run into inline nodes: styled spans (`***bold italic***`,
+ * `**bold**`, `*emphasis*`, `_emphasis_`) wrap the citation-aware parse of
+ * their content — so `**[QS. 2:255]**` renders the chip inside bold — and
+ * the gaps between them go through citation location directly. An unclosed
  * marker finds no span and stays verbatim text.
  */
-function parseInline(text: string, citations: readonly ChatCitation[]): AnswerInline[] {
+export function parseInline(text: string, citations: readonly ChatCitation[]): AnswerInline[] {
   const match = STYLED_SPAN.exec(text);
   if (match === null) return locateCitations(text, citations);
-  const inner = (match[1] ?? match[2] ?? match[3])!;
+  const inner = (match[1] ?? match[2] ?? match[3] ?? match[4])!;
+  const children = parseInline(inner, citations);
+  const bold = match[1] !== undefined || match[2] !== undefined;
   return [
     ...parseInline(text.slice(0, match.index), citations),
-    {
-      kind: match[1] !== undefined ? "bold" : "em",
-      children: parseInline(inner, citations),
-    },
+    bold
+      ? {
+          kind: "bold",
+          children: match[1] !== undefined ? [{ kind: "em", children }] : children,
+        }
+      : { kind: "em", children },
     ...parseInline(text.slice(match.index + match[0].length), citations),
   ];
 }
@@ -165,17 +171,6 @@ export function renderBodyBlocks(body: string, citations: readonly ChatCitation[
   flushList();
   flushPara();
   return blocks;
-}
-
-/**
- * Inline-level parse of an answer text (kept for direct callers and tests):
- * citation chips plus bold/emphasis spans, no block structure.
- */
-export function renderAnswerSegments(
-  text: string,
-  citations: readonly ChatCitation[],
-): AnswerInline[] {
-  return parseInline(text, citations);
 }
 
 export type SplitAnswer = {

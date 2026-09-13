@@ -3,10 +3,11 @@ import {
   DISCLAIMER_MARKERS,
   MACHINE_TRANSLATION_LABEL,
   WARNING_MARKERS,
-  renderAnswerSegments,
+  parseInline,
   renderBodyBlocks,
   splitAnswerBlocks,
 } from "./chat-render";
+import type { AnswerInline } from "./chat-render";
 import type { ChatCitation } from "@app/contracts";
 
 const citation = (label: string): ChatCitation => ({
@@ -15,9 +16,17 @@ const citation = (label: string): ChatCitation => ({
   machineTranslated: false,
 });
 
-describe("renderAnswerSegments", () => {
+/** Every character the render would show as plain text, including span interiors. */
+const textOf = (inline: AnswerInline): string =>
+  inline.kind === "text"
+    ? inline.text
+    : inline.kind === "bold" || inline.kind === "em"
+      ? inline.children.map(textOf).join("")
+      : "";
+
+describe("parseInline", () => {
   it("turns a bracketed frame label into a chip and keeps the rest verbatim", () => {
-    const segments = renderAnswerSegments("Dalilnya [QS. 2:255] jelas.", [citation("QS. 2:255")]);
+    const segments = parseInline("Dalilnya [QS. 2:255] jelas.", [citation("QS. 2:255")]);
     expect(segments).toEqual([
       { kind: "text", text: "Dalilnya " },
       { kind: "citation", label: "QS. 2:255" },
@@ -26,22 +35,22 @@ describe("renderAnswerSegments", () => {
   });
 
   it("falls back to the bare label when the model wrote no brackets", () => {
-    const segments = renderAnswerSegments("Dalilnya QS. 2:255 jelas.", [citation("QS. 2:255")]);
+    const segments = parseInline("Dalilnya QS. 2:255 jelas.", [citation("QS. 2:255")]);
     expect(segments).toContainEqual({ kind: "citation", label: "QS. 2:255" });
   });
 
   it("never invents a chip: a frame label absent from the text renders nothing", () => {
-    const segments = renderAnswerSegments("Tanpa sitasi.", [citation("QS. 2:255")]);
+    const segments = parseInline("Tanpa sitasi.", [citation("QS. 2:255")]);
     expect(segments).toEqual([{ kind: "text", text: "Tanpa sitasi." }]);
   });
 
   it("leaves non-citation brackets untouched ([Peringatan] is not a chip)", () => {
-    const segments = renderAnswerSegments("[Peringatan] waspada.", [citation("QS. 2:255")]);
+    const segments = parseInline("[Peringatan] waspada.", [citation("QS. 2:255")]);
     expect(segments).toEqual([{ kind: "text", text: "[Peringatan] waspada." }]);
   });
 
   it("locates multiple citations left-to-right; the leftmost wins overlaps", () => {
-    const segments = renderAnswerSegments("[QS. 112:1] dan [QS. 2:255].", [
+    const segments = parseInline("[QS. 112:1] dan [QS. 2:255].", [
       citation("QS. 2:255"),
       citation("QS. 112:1"),
     ]);
@@ -55,14 +64,14 @@ describe("renderAnswerSegments", () => {
   // render them rich, never as literal asterisks.
 
   it("renders **QS. 2:255** as bold with the citation chip nested inside", () => {
-    const segments = renderAnswerSegments("**QS. 2:255**", [citation("QS. 2:255")]);
+    const segments = parseInline("**QS. 2:255**", [citation("QS. 2:255")]);
     expect(segments).toEqual([
       { kind: "bold", children: [{ kind: "citation", label: "QS. 2:255" }] },
     ]);
   });
 
   it("renders bold text as a bold span when no citation matches", () => {
-    const segments = renderAnswerSegments("**Ayat Kursi** adalah perlindungan.", []);
+    const segments = parseInline("**Ayat Kursi** adalah perlindungan.", []);
     expect(segments).toEqual([
       { kind: "bold", children: [{ kind: "text", text: "Ayat Kursi" }] },
       { kind: "text", text: " adalah perlindungan." },
@@ -70,32 +79,58 @@ describe("renderAnswerSegments", () => {
   });
 
   it("renders *emphasis* and _emphasis_ as em spans", () => {
-    expect(renderAnswerSegments("*ayat takhta*", [])).toEqual([
+    expect(parseInline("*ayat takhta*", [])).toEqual([
       { kind: "em", children: [{ kind: "text", text: "ayat takhta" }] },
     ]);
-    expect(renderAnswerSegments("_ayat takhta_", [])).toEqual([
+    expect(parseInline("_ayat takhta_", [])).toEqual([
       { kind: "em", children: [{ kind: "text", text: "ayat takhta" }] },
     ]);
   });
 
-  it("never leaves a literal marker on a well-formed span", () => {
-    const text = "**QS. 2:255** dan *ayat takhta* dalam _surah_.";
-    const segments = renderAnswerSegments(text, [citation("QS. 2:255")]);
-    const literals = segments.flatMap((s) =>
-      s.kind === "text" ? [s.text] : s.kind === "bold" || s.kind === "em" ? [] : [],
-    );
-    expect(literals.join("")).not.toContain("*");
-    expect(literals.join("")).not.toContain("_surah_");
+  it("renders ***bold italic*** as bold wrapping em (no leaked asterisk)", () => {
+    expect(parseInline("***penting sekali***", [])).toEqual([
+      {
+        kind: "bold",
+        children: [{ kind: "em", children: [{ kind: "text", text: "penting sekali" }] }],
+      },
+    ]);
+    expect(parseInline("***QS. 2:255***", [citation("QS. 2:255")])).toEqual([
+      {
+        kind: "bold",
+        children: [{ kind: "em", children: [{ kind: "citation", label: "QS. 2:255" }] }],
+      },
+    ]);
+  });
+
+  it("renders bold containing emphasis (**a *b* c**) without leaking its markers", () => {
+    expect(parseInline("**kalam *masyhur* mazhab**", [])).toEqual([
+      {
+        kind: "bold",
+        children: [
+          { kind: "text", text: "kalam " },
+          { kind: "em", children: [{ kind: "text", text: "masyhur" }] },
+          { kind: "text", text: " mazhab" },
+        ],
+      },
+    ]);
+  });
+
+  it("never leaves a literal marker on a well-formed span, including span interiors", () => {
+    const text = "**QS. 2:255** dan ***penting sekali*** dalam *ayat takhta* / _surah_.";
+    const segments = parseInline(text, [citation("QS. 2:255")]);
+    const literals = segments.map(textOf).join("");
+    expect(literals).not.toContain("*");
+    expect(literals).not.toContain("_surah_");
   });
 
   it("keeps arithmetic and snake_case verbatim (no span around a space or word char)", () => {
     const text = "Hasil 2 * 3 * 4 = 24 dan nilai awal_x_akhir tetap.";
-    expect(renderAnswerSegments(text, [])).toEqual([{ kind: "text", text }]);
+    expect(parseInline(text, [])).toEqual([{ kind: "text", text }]);
   });
 
   it("leaves an unclosed marker verbatim instead of guessing", () => {
     const text = "Jawaban **penting tanpa penutup.";
-    expect(renderAnswerSegments(text, [])).toEqual([{ kind: "text", text }]);
+    expect(parseInline(text, [])).toEqual([{ kind: "text", text }]);
   });
 });
 
