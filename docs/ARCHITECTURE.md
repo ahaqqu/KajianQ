@@ -158,8 +158,9 @@ Account deletion cascades across all data stores, including `answer_traces`
   from the template; now project-owned (ADR-0030).
 - **Secure headers** — `@app/hardening` (`packages/hardening`): one shared
   CSP/COOP/CORP/HSTS/Permissions-Policy policy; every request (API and SPA)
-  flows through the Hono stack, so headers, CORS, and rate limiting cover
-  static assets too. ZAP findings may only be suppressed in
+  flows through the Hono stack, so headers and CORS cover static assets
+  too. Rate limiting is an API-surface policy (ADR-0041): it meters the
+  `/v1` API surface only. ZAP findings may only be suppressed in
   `.github/zap-rules.tsv` with an inline justification; staging runs with
   `fail_action: true`.
 

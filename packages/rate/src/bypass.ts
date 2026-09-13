@@ -93,6 +93,18 @@ export async function verifyBypassToken(
       alg?: string;
     };
     if (header.alg !== "EdDSA") return { ok: false, reason: "unexpected_alg" };
+    // Signature first (canonical JWT order, as in `jose`): untrusted claims
+    // are parsed and validated only after the signature over
+    // `header.payload` verifies — otherwise any future claim-check outcome
+    // that becomes behaviorally distinct turns pre-signature parsing into an
+    // attacker-probeable oracle.
+    const valid = await crypto.subtle.verify(
+      "Ed25519",
+      await importVerifyKey(publicKeyRawB64),
+      Buffer.from(signatureB64, "base64url"),
+      enc.encode(`${headerB64}.${payloadB64}`),
+    );
+    if (!valid) return { ok: false, reason: "bad_signature" };
     const claims = JSON.parse(Buffer.from(payloadB64, "base64url").toString()) as Record<
       string,
       unknown
@@ -102,13 +114,7 @@ export async function verifyBypassToken(
       return { ok: false, reason: "missing_subject" };
     if (typeof claims.exp !== "number" || claims.exp <= Math.floor(now() / 1000))
       return { ok: false, reason: "expired" };
-    const valid = await crypto.subtle.verify(
-      "Ed25519",
-      await importVerifyKey(publicKeyRawB64),
-      Buffer.from(signatureB64, "base64url"),
-      enc.encode(`${headerB64}.${payloadB64}`),
-    );
-    return valid ? { ok: true, subject: claims.sub } : { ok: false, reason: "bad_signature" };
+    return { ok: true, subject: claims.sub };
   } catch {
     return { ok: false, reason: "malformed_token" };
   }

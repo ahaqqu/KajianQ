@@ -12,9 +12,18 @@
 import { mintBypassToken } from "../packages/rate/src/index.ts";
 
 const args = process.argv.slice(2);
+// Flags are optional, but a flag that is present must carry a value —
+// `--sub` as the last argv item (or followed by another flag) is a caller
+// error, not a silent default.
 const flag = (name: string): string | undefined => {
   const at = args.indexOf(name);
-  return at !== -1 ? args[at + 1] : undefined;
+  if (at === -1) return undefined;
+  const value = args[at + 1];
+  if (value === undefined || value.startsWith("--")) {
+    console.error(`${name} requires a value (e.g. ${name} 3600).`);
+    process.exit(1);
+  }
+  return value;
 };
 
 const privateKeyPkcs8B64 = process.env.RATE_BYPASS_PRIVATE_KEY;
@@ -25,9 +34,18 @@ if (!privateKeyPkcs8B64) {
   process.exit(1);
 }
 
+// A non-numeric TTL would otherwise become `exp: null` — a well-formed-looking
+// token that verifies as expired on every request. Fail loudly instead.
+const ttlFlag = flag("--ttl-seconds");
+const ttlSeconds = ttlFlag === undefined ? 3_600 : Number(ttlFlag);
+if (!Number.isFinite(ttlSeconds) || ttlSeconds <= 0) {
+  console.error(`--ttl-seconds must be a positive number of seconds, got "${ttlFlag}".`);
+  process.exit(1);
+}
+
 const token = await mintBypassToken({
   privateKeyPkcs8B64,
   subject: flag("--sub") ?? "unspecified",
-  ttlSeconds: Number(flag("--ttl-seconds") ?? 3600),
+  ttlSeconds,
 });
 console.log(token);

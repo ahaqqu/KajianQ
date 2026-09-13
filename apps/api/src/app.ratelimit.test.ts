@@ -5,6 +5,7 @@ import {
   RATE_BYPASS_HEADER,
   type RateLimiterNamespace,
 } from "@app/rate";
+import { generateEd25519KeypairB64 } from "@app/rate/test-utils/ed25519-keypair";
 import { createApi } from "./app";
 import { RATE_BYPASS_PUBLIC_KEY_B64 } from "./lib/rate-bypass";
 import type { WorkerBindings } from "./env";
@@ -96,20 +97,7 @@ describe("rate limiting", () => {
   // keypair and override the verifier key; the committed production key is
   // only smoke-checked for importability (the private half never lives in
   // the repo).
-  const bypassKeypair = async () => {
-    const kp = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, [
-      "sign",
-      "verify",
-    ])) as CryptoKeyPair;
-    return {
-      privateKeyPkcs8B64: Buffer.from(
-        await crypto.subtle.exportKey("pkcs8", kp.privateKey),
-      ).toString("base64"),
-      publicKeyRawB64: Buffer.from(await crypto.subtle.exportKey("raw", kp.publicKey)).toString(
-        "base64",
-      ),
-    };
-  };
+  const bypassKeypair = generateEd25519KeypairB64;
 
   it("exempts a valid bypass token from metering even on an exhausted budget", async () => {
     const { privateKeyPkcs8B64, publicKeyRawB64 } = await bypassKeypair();

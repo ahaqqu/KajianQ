@@ -5,6 +5,7 @@ import {
   RATE_BYPASS_HEADER,
   RATE_BYPASS_PURPOSE,
 } from "./bypass";
+import { generateEd25519KeypairB64 } from "./test-utils/ed25519-keypair";
 
 /**
  * Bypass-token contract (ADR-0041): Ed25519 JWT, purpose-locked, exp-gated,
@@ -12,20 +13,7 @@ import {
  * `ok: false` so middleware can fall through to ordinary metering.
  */
 
-const keypair = async () => {
-  const kp = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, [
-    "sign",
-    "verify",
-  ])) as CryptoKeyPair;
-  return {
-    privateKeyPkcs8B64: Buffer.from(await crypto.subtle.exportKey("pkcs8", kp.privateKey)).toString(
-      "base64",
-    ),
-    publicKeyRawB64: Buffer.from(await crypto.subtle.exportKey("raw", kp.publicKey)).toString(
-      "base64",
-    ),
-  };
-};
+const keypair = generateEd25519KeypairB64;
 
 const now = () => 1_700_000_000_000;
 
@@ -79,18 +67,17 @@ describe("mintBypassToken / verifyBypassToken", () => {
       now,
     });
     // The claim set is signed, so swapping purpose (e.g. to stand in for a
-    // session) can only produce a bad signature, never a valid other-purpose
-    // token — this pins that the verifier itself also refuses non-bypass
-    // purposes outright.
+    // session) breaks the signature: the verifier checks the Ed25519
+    // signature before parsing/validating any claim (canonical JWT order),
+    // so the forgery is dead as `bad_signature` — a valid other-purpose
+    // token is unreachable by construction.
     const [, payload] = token.split(".");
     const claims = JSON.parse(Buffer.from(payload!, "base64url").toString());
     claims.purpose = "auth";
     const forged = `${token.split(".")[0]}.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.${token.split(".")[2]}`;
-    // The claim check runs before signature verification, so the reason is
-    // wrong_purpose; either way the token is dead.
     expect(await verifyBypassToken(forged, publicKeyRawB64, now)).toEqual({
       ok: false,
-      reason: "wrong_purpose",
+      reason: "bad_signature",
     });
   });
 

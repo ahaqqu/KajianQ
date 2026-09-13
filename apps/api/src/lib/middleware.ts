@@ -6,6 +6,7 @@ import {
   resolveRateLimiter,
 } from "./";
 import { checkBypassHeader } from "./rate-bypass";
+import { RATE_BYPASS_HEADER } from "@app/rate";
 import type { ApiEnv, RateLimiter } from "../env";
 import { trimTrailingSlash } from "hono/trailing-slash";
 import type { Hono } from "hono";
@@ -39,7 +40,7 @@ export function applyMiddleware(api: Hono<ApiEnv>, opts?: MiddlewareOpts): void 
     // metering — harness traffic (DAST/load tests), never user sessions: the
     // token grants nothing else. An invalid or absent token degrades to
     // ordinary metering; the reason is logged, never leaked to the response.
-    const bypass = await checkBypassHeader(c.req.header("X-Rate-Bypass"), opts);
+    const bypass = await checkBypassHeader(c.req.header(RATE_BYPASS_HEADER), opts);
     const ctx = c.get("ctx");
     if (bypass.ok) {
       ctx.logger.debug("rate.bypass", { subject: bypass.subject, path: c.req.path });

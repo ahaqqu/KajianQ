@@ -1,4 +1,4 @@
-import { verifyBypassToken } from "@app/rate";
+import { verifyBypassToken, type BypassVerifyResult } from "@app/rate";
 
 /**
  * The Ed25519 public key that verifies rate-limit bypass tokens (ADR-0041),
@@ -11,8 +11,6 @@ import { verifyBypassToken } from "@app/rate";
  */
 export const RATE_BYPASS_PUBLIC_KEY_B64 = "ggtNRLTrZooWoeEqtkM+NHRBiOPJGTwXiaDpGOSLFcU=";
 
-export type BypassCheck = { ok: true; subject: string } | { ok: false; reason: string };
-
 /**
  * Check a request's bypass header against the committed public key (tests
  * override it with a generated keypair's key). An absent header short-circuits
@@ -22,7 +20,7 @@ export type BypassCheck = { ok: true; subject: string } | { ok: false; reason: s
 export async function checkBypassHeader(
   headerValue: string | undefined,
   opts?: { bypassPublicKeyB64?: string },
-): Promise<BypassCheck> {
+): Promise<BypassVerifyResult> {
   if (headerValue === undefined) return { ok: false, reason: "absent" };
   return verifyBypassToken(headerValue, opts?.bypassPublicKeyB64 ?? RATE_BYPASS_PUBLIC_KEY_B64);
 }

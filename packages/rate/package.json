@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./durable": "./src/rate-limiter-do.ts"
+    "./durable": "./src/rate-limiter-do.ts",
+    "./test-utils/*": "./src/test-utils/*"
   },
   "scripts": {
     "check": "tsc -p tsconfig.json --noEmit"
