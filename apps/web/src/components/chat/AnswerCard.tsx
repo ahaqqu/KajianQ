@@ -1,5 +1,5 @@
-import type { ChatSessionMessage } from "@app/contracts";
-import { renderAnswerSegments, splitAnswerBlocks } from "../../lib/chat-render";
+import type { ChatCitation, ChatSessionMessage } from "@app/contracts";
+import { renderBodyBlocks, splitAnswerBlocks, type AnswerInline } from "../../lib/chat-render";
 import { t, useLocale, type Locale } from "../../lib/i18n";
 import { LogoTile, MonoLabel } from "../ui";
 import { CitationSheet, useCitationSheet } from "./CitationSheet";
@@ -10,7 +10,9 @@ import { CitationSheet, useCitationSheet } from "./CitationSheet";
  * (citation chips resolved from the structured frame), the dhaif warning
  * card, and the ulama disclaimer footnote. A refused answer carries an empty
  * citation list, so it renders as a plain card with no citation affordances
- * by data, not by a client-side guess about refusals.
+ * by data, not by a client-side guess about refusals. The body renders the
+ * model's inline markdown (#150) — bold/emphasis spans and lists — as rich
+ * text; citation chips stay top-level inline nodes even inside a styled span.
  */
 export function AnswerCard({ message }: { message: ChatSessionMessage }) {
   const locale: Locale = useLocale();
@@ -18,13 +20,40 @@ export function AnswerCard({ message }: { message: ChatSessionMessage }) {
 
   const split = splitAnswerBlocks(message.content);
   const citations = message.citations?.citations ?? [];
-  const segments = renderAnswerSegments(split.body, citations);
+  const blocks = renderBodyBlocks(split.body, citations);
   // The card shows the answer's own warning line when the deterministic
   // rule appended it; the frame's dhaifWarning flag drives the card even
   // when the line is missing from the (rehydrated) text.
   const warning =
     split.warning ??
     (message.citations?.dhaifWarning === true ? t(locale, "dhaifWarningCard") : null);
+
+  const openCitation = (label: string) => {
+    const citation = citations.find((c) => c.label === label);
+    if (citation) sheet.open(citation);
+  };
+  // A function declaration, not an arrow const: the recursion is otherwise
+  // circular for return-type inference and would need a ReactNode import
+  // (the agentic-limits cap holds AnswerCard at five imports).
+  function renderInline(node: AnswerInline, key: number) {
+    switch (node.kind) {
+      case "text":
+        return node.text;
+      case "citation":
+        return (
+          <CitationChip
+            key={key}
+            label={node.label}
+            locale={locale}
+            onOpen={() => openCitation(node.label)}
+          />
+        );
+      case "bold":
+        return <strong key={key}>{node.children.map((child, j) => renderInline(child, j))}</strong>;
+      case "em":
+        return <em key={key}>{node.children.map((child, j) => renderInline(child, j))}</em>;
+    }
+  }
 
   return (
     <article data-testid="message-assistant" className="max-w-[95%] space-y-2">
@@ -34,21 +63,23 @@ export function AnswerCard({ message }: { message: ChatSessionMessage }) {
       </div>
       <div className="ml-10 space-y-3 rounded-2xl bg-card px-5 py-4">
         <div className="space-y-3 text-[15px] leading-7 text-card-foreground">
-          {segments.map((segment, i) =>
-            segment.kind === "text" ? (
+          {blocks.map((block, i) =>
+            block.kind === "para" ? (
               <p key={i} className="whitespace-pre-wrap">
-                {segment.text}
+                {block.inlines.map((inline, j) => renderInline(inline, j))}
               </p>
+            ) : block.ordered ? (
+              <ol key={i} className="list-decimal space-y-1 pl-5">
+                {block.items.map((item, j) => (
+                  <li key={j}>{item.map((inline, k) => renderInline(inline, k))}</li>
+                ))}
+              </ol>
             ) : (
-              <CitationChip
-                key={i}
-                label={segment.label}
-                locale={locale}
-                onOpen={() => {
-                  const citation = citations.find((c) => c.label === segment.label);
-                  if (citation) sheet.open(citation);
-                }}
-              />
+              <ul key={i} className="list-disc space-y-1 pl-5">
+                {block.items.map((item, j) => (
+                  <li key={j}>{item.map((inline, k) => renderInline(inline, k))}</li>
+                ))}
+              </ul>
             ),
           )}
         </div>

@@ -4,6 +4,7 @@ import {
   MACHINE_TRANSLATION_LABEL,
   WARNING_MARKERS,
   renderAnswerSegments,
+  renderBodyBlocks,
   splitAnswerBlocks,
 } from "./chat-render";
 import type { ChatCitation } from "@app/contracts";
@@ -47,6 +48,107 @@ describe("renderAnswerSegments", () => {
     expect(segments.filter((s) => s.kind === "citation").map((s) => s.label)).toEqual([
       "QS. 112:1",
       "QS. 2:255",
+    ]);
+  });
+
+  // #150 — the grounded model still wraps spans in markdown; the card must
+  // render them rich, never as literal asterisks.
+
+  it("renders **QS. 2:255** as bold with the citation chip nested inside", () => {
+    const segments = renderAnswerSegments("**QS. 2:255**", [citation("QS. 2:255")]);
+    expect(segments).toEqual([
+      { kind: "bold", children: [{ kind: "citation", label: "QS. 2:255" }] },
+    ]);
+  });
+
+  it("renders bold text as a bold span when no citation matches", () => {
+    const segments = renderAnswerSegments("**Ayat Kursi** adalah perlindungan.", []);
+    expect(segments).toEqual([
+      { kind: "bold", children: [{ kind: "text", text: "Ayat Kursi" }] },
+      { kind: "text", text: " adalah perlindungan." },
+    ]);
+  });
+
+  it("renders *emphasis* and _emphasis_ as em spans", () => {
+    expect(renderAnswerSegments("*ayat takhta*", [])).toEqual([
+      { kind: "em", children: [{ kind: "text", text: "ayat takhta" }] },
+    ]);
+    expect(renderAnswerSegments("_ayat takhta_", [])).toEqual([
+      { kind: "em", children: [{ kind: "text", text: "ayat takhta" }] },
+    ]);
+  });
+
+  it("never leaves a literal marker on a well-formed span", () => {
+    const text = "**QS. 2:255** dan *ayat takhta* dalam _surah_.";
+    const segments = renderAnswerSegments(text, [citation("QS. 2:255")]);
+    const literals = segments.flatMap((s) =>
+      s.kind === "text" ? [s.text] : s.kind === "bold" || s.kind === "em" ? [] : [],
+    );
+    expect(literals.join("")).not.toContain("*");
+    expect(literals.join("")).not.toContain("_surah_");
+  });
+
+  it("keeps arithmetic and snake_case verbatim (no span around a space or word char)", () => {
+    const text = "Hasil 2 * 3 * 4 = 24 dan nilai awal_x_akhir tetap.";
+    expect(renderAnswerSegments(text, [])).toEqual([{ kind: "text", text }]);
+  });
+
+  it("leaves an unclosed marker verbatim instead of guessing", () => {
+    const text = "Jawaban **penting tanpa penutup.";
+    expect(renderAnswerSegments(text, [])).toEqual([{ kind: "text", text }]);
+  });
+});
+
+describe("renderBodyBlocks", () => {
+  it("groups consecutive bullet lines into one unordered list block", () => {
+    const blocks = renderBodyBlocks(
+      "- Allah Mahahidup\n- Penjaga segala sesuatu\n\nParagraf penutup.",
+      [],
+    );
+    expect(blocks).toEqual([
+      {
+        kind: "list",
+        ordered: false,
+        items: [
+          [{ kind: "text", text: "Allah Mahahidup" }],
+          [{ kind: "text", text: "Penjaga segala sesuatu" }],
+        ],
+      },
+      { kind: "para", inlines: [{ kind: "text", text: "Paragraf penutup." }] },
+    ]);
+  });
+
+  it("tells ordered from unordered bullets and groups each kind separately", () => {
+    const blocks = renderBodyBlocks("1. Rukun pertama\n2) Rukun kedua\n- catatan", []);
+    expect(
+      blocks.map((b) => ({ kind: b.kind, ordered: b.kind === "list" ? b.ordered : null })),
+    ).toEqual([
+      { kind: "list", ordered: true },
+      { kind: "list", ordered: false },
+    ]);
+  });
+
+  it("keeps a citation chip and bold span working inside a list item", () => {
+    const blocks = renderBodyBlocks("- **Allah** Mahahidup [QS. 2:255]", [citation("QS. 2:255")]);
+    expect(blocks).toEqual([
+      {
+        kind: "list",
+        ordered: false,
+        items: [
+          [
+            { kind: "bold", children: [{ kind: "text", text: "Allah" }] },
+            { kind: "text", text: " Mahahidup " },
+            { kind: "citation", label: "QS. 2:255" },
+          ],
+        ],
+      },
+    ]);
+  });
+
+  it("renders a marker-free body as a single paragraph, newlines preserved", () => {
+    const body = "Baris pertama\nBaris kedua.";
+    expect(renderBodyBlocks(body, [])).toEqual([
+      { kind: "para", inlines: [{ kind: "text", text: body }] },
     ]);
   });
 });
