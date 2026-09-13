@@ -7,7 +7,7 @@
 # would have to amend or force-push. Blocked pushes should run
 # `bunx vp check --fix`, commit, and push again.
 
-command -v bunx >/dev/null 2>&1 || exit 0
+command -v bun >/dev/null 2>&1 || exit 0
 
 bun run lint || {
   echo "pre-push: lint would fail in CI. Run 'bunx vp check --fix', commit the result, and push again." >&2
