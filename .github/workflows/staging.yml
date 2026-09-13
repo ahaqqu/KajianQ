@@ -43,10 +43,13 @@ permissions:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Deploy + verify. Runs on every push to main and on every dispatch. This is
-  # the evidence job: its Golden Set smoke step is what a PR cites.
+  # Deploy. Runs on every push to main and on every dispatch: guards the
+  # required secrets (failing here, before any deploy, names the missing
+  # role instead of surfacing an opaque 5xx mid-smoke), applies the Alchemy
+  # stack, and waits for Cloudflare edge propagation via the health smoke.
   # ---------------------------------------------------------------------------
-  staging:
+  deploy:
+    name: deploy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -64,11 +67,10 @@ jobs:
           # on the undocumented status (ADR-0028 revisit trigger).
           test -n "$NEON_DATABASE_URL"
           # The two keys the chat pipeline cannot degrade without, now that the
-          # Golden Set smoke runs here (ADR-0009 amendment 2026-09-12):
-          # DEEPSEEK_API_KEY is the generator role's chain head, GEMINI_API_KEY
-          # the embedder (retrieval) and the mandatory cross-vendor reviewer.
-          # A missing one would surface as an opaque 5xx mid-smoke, so it fails
-          # here instead, naming the role.
+          # Golden Set smoke runs in this workflow's post-deploy-checks job
+          # (ADR-0009 amendment 2026-09-12): DEEPSEEK_API_KEY is the generator
+          # role's chain head, GEMINI_API_KEY the embedder (retrieval) and the
+          # mandatory cross-vendor reviewer.
           test -n "$DEEPSEEK_API_KEY" || {
             echo "::error::DEEPSEEK_API_KEY is unset — the generator role has no keyed candidate"
             exit 1
@@ -113,6 +115,23 @@ jobs:
         with:
           name: Health
           url: ${{ vars.STAGING_URL }}/v1/health
+
+  # ---------------------------------------------------------------------------
+  # Post-deploy checks — the evidence job. Its Golden Set smoke step is what a
+  # PR cites (SPECS §3.7). Needs `deploy` so the checks always run against a
+  # fresh, healthy deployment, and a failed deploy skips them instead of
+  # scanning or scoring a stale environment.
+  # ---------------------------------------------------------------------------
+  post-deploy-checks:
+    name: post deploy checks
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.0
+      - run: bun install --frozen-lockfile
       # The PR-time behavioural gate (SPECS §3.7, ticket #10): a deterministic
       # stratified slice of the Golden Set — refusal, dhaif trap, English, and
       # Indonesian cases — answered by the *deployed* Worker and scored from its
@@ -189,7 +208,8 @@ jobs:
         # No bearer token: the unauthenticated surface (401 on the guarded
         # routes) is documented — /v1/chat returns 401 without a session,
         # 503 chat_not_configured only when the DATABASE_URL binding is
-        # absent (required in CI above, so fuzzing always sees a live route).
+        # absent (required in the deploy job above, so fuzzing always sees a
+        # live route).
         # The fuzz carries a rate-limit bypass token (ADR-0041) when the
         # signer key is configured — scanner bursts must not exhaust the
         # per-IP /v1 budget mid-scan; the token exempts metering only, the
