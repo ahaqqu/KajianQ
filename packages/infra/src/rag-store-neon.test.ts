@@ -241,7 +241,9 @@ run("RagStore contract (real Neon, Effect-shaped seam)", () => {
 
   it("persists feedback against a trace target, reads it back, and cascade-deletes it (#13)", async () => {
     if (!URL) return;
-    const messageId = `${PREFIX}-msg-fb`;
+    // The API contract admits only uuid messageIds, and the target read casts
+    // the parameter for the chat-row-id branch — the fixture uses a real uuid.
+    const messageId = crypto.randomUUID();
     const trace = { id: "trace-fb", createdAt: 1_700_000_000_000, events: [] };
     const program = Effect.gen(function* () {
       const { userId, token } = yield* store.createSession();
@@ -276,7 +278,7 @@ run("RagStore contract (real Neon, Effect-shaped seam)", () => {
       // The rehydrated transcript carries the chat ROW id (store-generated),
       // not the trace's message_id — the target must resolve from both (#13).
       const byRowId = yield* store.getAnswerFeedbackTarget(chatRowId);
-      const absentTarget = yield* store.getAnswerFeedbackTarget(`${PREFIX}-nope`);
+      const absentTarget = yield* store.getAnswerFeedbackTarget(crypto.randomUUID());
       // Cascade: the feedback rows carry the user FK, so they die with the user.
       yield* store.deleteUserCascade(userId);
       const orphanedTarget = yield* store.getAnswerFeedbackTarget(messageId);
