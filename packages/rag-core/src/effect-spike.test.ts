@@ -63,10 +63,7 @@ describe("effect spike", () => {
       new EffectSpikeError({ kind: "transport", message: "connection reset" }),
     );
     const exit = await Effect.runPromiseExit(
-      Effect.provide(
-        Effect.retry(transportCall, { schedule: retrySchedule }),
-        TestClock.layer(),
-      ),
+      Effect.provide(Effect.retry(transportCall, { schedule: retrySchedule }), TestClock.layer()),
     );
     const failure = failureOf(exit);
     expect(Option.isSome(failure)).toBe(true);

@@ -251,8 +251,7 @@ describe("chat-completions adapter", () => {
     expect(costExit._tag).toBe("Failure");
     // The mid-flight failure fails cost with a typed transport ProviderError.
     // Effect v4: v3's `Cause.failureOption` extraction is `Cause.findFail`.
-    const costFailure =
-      costExit._tag === "Failure" ? Cause.findFail(costExit.cause) : undefined;
+    const costFailure = costExit._tag === "Failure" ? Cause.findFail(costExit.cause) : undefined;
     expect(costFailure !== undefined && Result.isSuccess(costFailure)).toBe(true);
     if (costFailure !== undefined && Result.isSuccess(costFailure)) {
       expect(costFailure.success.error._tag).toBe("ProviderError");

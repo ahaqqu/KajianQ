@@ -85,10 +85,10 @@ export const perKindRetrySchedule = (
         // step effect re-runs per retry driver, giving fresh counters).
         counts[index] = attempt + 1;
         const delayMs = Duration.toMillis(budget.base) * 2 ** attempt;
-        return Effect.succeed([
+        return Effect.succeed([undefined, Duration.millis(delayMs)] as [
           undefined,
-          Duration.millis(delayMs),
-        ] as [undefined, Duration.Duration]);
+          Duration.Duration,
+        ]);
       };
     }),
   );

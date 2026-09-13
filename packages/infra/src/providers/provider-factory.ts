@@ -202,7 +202,10 @@ class FallbackProvider implements Provider {
           acc.pipe(
             // Non-retryable kinds pass through untouched (the v4 conditional
             // catch keeps the v3 `isRetryable ? next : re-fail` shape).
-            Effect.catchIf((err) => isRetryable(err.kind), () => retried(candidate)),
+            Effect.catchIf(
+              (err) => isRetryable(err.kind),
+              () => retried(candidate),
+            ),
           ),
         retried(first),
       );

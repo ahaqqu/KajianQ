@@ -74,18 +74,17 @@ export function createKajianQRouter(provider: RouterProvider): Router<KajianQFil
           // Effect v4: `decodeUnknownOption` replaces the v3
           // `decodeUnknownEither` (the call site only branches on success).
           const parsed = Schema.decodeUnknownOption(RouterOutputSchema)(extracted);
-          const out: RouterOutput =
-            Option.isSome(parsed)
-              ? parsed.value
-              : // C2: an unparseable/mis-keyed router reply is recorded, not
-                // silently degraded — the fallback single factual sub-query
-                // is visible in the trace's `subquery` event.
-                (run.record({
-                  stage: "router",
-                  kind: "subquery",
-                  detail: { text: query.text },
-                  at: run.now(),
-                }) ?? { intent: "factual", subQueries: [query.text] });
+          const out: RouterOutput = Option.isSome(parsed)
+            ? parsed.value
+            : // C2: an unparseable/mis-keyed router reply is recorded, not
+              // silently degraded — the fallback single factual sub-query
+              // is visible in the trace's `subquery` event.
+              (run.record({
+                stage: "router",
+                kind: "subquery",
+                detail: { text: query.text },
+                at: run.now(),
+              }) ?? { intent: "factual", subQueries: [query.text] });
           run.record({
             stage: "router",
             kind: "llm_call",
