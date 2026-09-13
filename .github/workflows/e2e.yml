@@ -1,8 +1,27 @@
 name: E2E
+# Docs-only changes (markdown, docs/, adr/, NOTICES/, .agents/, .zcode/) cannot
+# change app behaviour the BDD suite exercises, so they skip both the
+# pull_request and push triggers. GitHub skips a trigger only when EVERY
+# changed file matches an ignore pattern, so a change mixing docs and code
+# still runs. workflow_dispatch is unaffected — an operator can always run it.
 on:
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "adr/**"
+      - "NOTICES/**"
+      - ".agents/**"
+      - ".zcode/**"
   push:
     branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "adr/**"
+      - "NOTICES/**"
+      - ".agents/**"
+      - ".zcode/**"
   workflow_dispatch:
 
 jobs:

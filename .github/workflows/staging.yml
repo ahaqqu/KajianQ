@@ -1,6 +1,11 @@
 name: Staging
-# Deploy to the Cloudflare staging environment on every merge to main, and
-# on demand (workflow_dispatch) for rollbacks/re-runs. The push trigger was
+# Deploy to the Cloudflare staging environment on every code-bearing merge to
+# main, and on demand (workflow_dispatch) for rollbacks/re-runs. Docs-only
+# pushes (markdown, docs/, adr/, NOTICES/, .agents/, .zcode/) cannot change the
+# deployed Worker, so they skip the push trigger — a deploy plus its paid smoke
+# would be pure spend with no new artifact to verify. GitHub skips a push only
+# when EVERY changed file matches an ignore pattern, so a push mixing docs and
+# code still deploys. The push trigger was
 # briefly dropped in #53 when a template-sync --ours resolution re-introduced
 # D1 steps; D1 was already stripped from this fork in #3 (ADR-0008). The
 # workflow below is project-owned (Neon-backed, no D1, no /v1/session).
@@ -15,6 +20,13 @@ name: Staging
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "adr/**"
+      - "NOTICES/**"
+      - ".agents/**"
+      - ".zcode/**"
   workflow_dispatch:
     inputs:
       # Operator knobs for the Golden Set smoke (SPECS §3.7). On a push these
