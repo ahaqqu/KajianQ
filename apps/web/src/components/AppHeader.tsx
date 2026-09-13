@@ -1,14 +1,16 @@
 import type { ReactNode } from "react";
 import { t, useLocale, useLocaleSetter } from "../lib/i18n";
 import { useTheme } from "../lib/theme";
-import { LogoTile } from "./Logo";
+import { LogoTile, MonoLabel } from "./ui";
 
 /**
  * The app header (the reference design's): logo tile + serif-italic wordmark
  * over a mono uppercase letter-spaced tagline; the right side carries the
  * circular theme toggle and the language select, plus any route action (the
  * chat adds its "new conversation" pill). The wordmark is the product name —
- * always KajianQ.
+ * always KajianQ. On small screens the wordmark block compresses (min-w-0,
+ * truncated tagline) so the pill keeps the reference's single line
+ * (thermo-review C3).
  */
 export function AppHeader({ actions }: { actions?: ReactNode }) {
   const locale = useLocale();
@@ -16,15 +18,13 @@ export function AppHeader({ actions }: { actions?: ReactNode }) {
   const { theme, toggle } = useTheme();
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl items-center gap-3 px-4 py-4">
+    <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-4 py-4 sm:gap-3">
       <LogoTile size="md" />
       <div className="min-w-0">
-        <p className="font-serif text-[22px] font-semibold italic leading-tight">
+        <p className="truncate font-serif text-[22px] font-semibold italic leading-tight">
           {t(locale, "appTitle")}
         </p>
-        <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-          {t(locale, "tagline")}
-        </p>
+        <MonoLabel className="truncate">{t(locale, "tagline")}</MonoLabel>
       </div>
       <div className="ml-auto flex items-center gap-2">
         {actions}

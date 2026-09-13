@@ -2,21 +2,21 @@ import { useEffect, useRef, useState } from "react";
 import { t, type Locale } from "../../lib/i18n";
 import type { ChatSessionMessage } from "@app/contracts";
 import { AppHeader } from "../AppHeader";
-import { EmptyState, MessageCard } from "./MessageCard";
+import { Transcript, TranscriptMeta, type TranscriptError } from "./Transcript";
 
 /**
  * The chat view (#11) in the reference visual language: the app header with
- * the new-conversation pill, the mono CONVERSATION rule row, the transcript
- * column, and the bottom-pinned composer band with the circular submit
- * button and the mono meta footer. Staged honest loading state ("Mengambil
- * konteks…" → "Memeriksa sitasi…" → "Menyusun jawaban…" — the machinery the
- * pipeline actually runs). Presentational: the page owns data and transport.
+ * the new-conversation pill, the scrollable transcript (see Transcript), and
+ * the bottom-pinned composer band with the circular submit button. Staged
+ * honest loading state ("Mengambil konteks…" → "Memeriksa sitasi…" →
+ * "Menyusun jawaban…" — the machinery the pipeline actually runs).
+ * Presentational: the page owns data and transport.
  */
 
 const STAGE_KEYS = ["stagedContext", "stagedReview", "stagedCompose"] as const;
 const STAGE_INTERVAL_MS = 1400;
 
-export type ChatViewError = "rate_limited" | "unavailable" | "generic" | "load" | null;
+export type ChatViewError = TranscriptError;
 
 export function ChatView({
   locale,
@@ -61,19 +61,22 @@ export function ChatView({
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [messages.length]);
 
-  const sendText = (text: string): void => {
+  const sendText = (text: string): boolean => {
     // `loadingTranscript` is part of the guard (thermo-review A1): a send
     // inside the rehydration window would append optimistic turns that the
     // resolving transcript cannot contain.
-    if (text === "" || busy || loadingTranscript) return;
+    if (text === "" || busy || loadingTranscript) return false;
     onSend(text);
+    return true;
   };
 
+  // Guard before clearing (thermo-review A1): a send rejected by the busy or
+  // rehydration guard must preserve the draft, exactly as before the
+  // submit/sendText split — never clear a message the user cannot recover.
   const submit = (): void => {
     const text = draft.trim();
-    if (text === "") return;
+    if (text === "" || !sendText(text)) return;
     setDraft("");
-    sendText(text);
   };
 
   return (
@@ -84,7 +87,7 @@ export function ChatView({
             <button
               type="button"
               data-testid="new-session"
-              className="rounded-full border border-border bg-card px-4 py-2 text-sm font-medium text-card-foreground hover:bg-secondary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="shrink-0 whitespace-nowrap rounded-full border border-border bg-card px-3 py-2 text-sm font-medium text-card-foreground hover:bg-secondary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:px-4"
               onClick={onNewSession}
             >
               {t(locale, "newSession")}
@@ -98,65 +101,17 @@ export function ChatView({
         data-testid="message-list"
         className="mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-4"
       >
-        <div className="flex items-center gap-3 pb-2 pt-4">
-          <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-            {t(locale, "conversationLabel")}
-          </span>
-          <span className="h-px flex-1 bg-rule" />
-          <span className="font-mono text-[11px] text-muted-foreground">
-            {t(locale, "savedLocally")}
-          </span>
-        </div>
-
-        {!online && (
-          <p
-            role="alert"
-            data-testid="offline-banner"
-            className="mb-2 rounded-lg border border-accent/40 bg-accent/10 px-3 py-2 text-sm text-accent-foreground"
-          >
-            {t(locale, "offlineBanner")}
-          </p>
-        )}
-        {error !== null && (
-          <p
-            role="alert"
-            data-testid="chat-error"
-            className="mb-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-          >
-            {error === "load" ? t(locale, "loadError") : errorCopy(locale, error)}
-          </p>
-        )}
-
-        <div className="space-y-4 pb-4">
-          {transcriptTruncated && !busy && (
-            <p
-              data-testid="transcript-truncated"
-              className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground"
-            >
-              {t(locale, "transcriptTruncated")}
-            </p>
-          )}
-          {messages.length === 0 && !loadingTranscript && !busy && (
-            <EmptyState locale={locale} onSuggest={sendText} />
-          )}
-          {messages.map((message) => (
-            <MessageCard key={message.id} message={message} />
-          ))}
-          {busy && (
-            <p
-              data-testid="staged-loading"
-              aria-live="polite"
-              className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground"
-            >
-              {t(locale, STAGE_KEYS[stage]!)}
-            </p>
-          )}
-          {loadingTranscript && (
-            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-              {t(locale, "loading")}
-            </p>
-          )}
-        </div>
+        <Transcript
+          locale={locale}
+          messages={messages}
+          busy={busy}
+          loadingTranscript={loadingTranscript}
+          transcriptTruncated={transcriptTruncated}
+          online={online}
+          error={error}
+          stagedLabel={busy ? t(locale, STAGE_KEYS[stage]!) : null}
+          onSuggest={sendText}
+        />
       </div>
 
       <div className="shrink-0 border-t border-rule bg-background pb-[calc(env(safe-area-inset-bottom)+0.625rem)]">
@@ -193,9 +148,7 @@ export function ChatView({
               <EnterIcon />
             </button>
           </form>
-          <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-            {t(locale, "footerMeta")}
-          </p>
+          <TranscriptMeta locale={locale} />
         </div>
       </div>
     </div>
@@ -212,10 +165,4 @@ function EnterIcon() {
       />
     </svg>
   );
-}
-
-function errorCopy(locale: Locale, error: Exclude<ChatViewError, "load" | null>): string {
-  if (error === "rate_limited") return t(locale, "errorRateLimited");
-  if (error === "unavailable") return t(locale, "errorUnavailable");
-  return t(locale, "errorGeneric");
 }

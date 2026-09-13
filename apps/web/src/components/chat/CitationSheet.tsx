@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { MACHINE_TRANSLATION_LABEL } from "../../lib/chat-render";
 import { t, type Locale } from "../../lib/i18n";
+import { MonoLabel } from "../ui";
 import type { ChatCitation } from "@app/contracts";
 
 /**
@@ -45,12 +46,12 @@ export function CitationSheet({
         className="relative z-10 w-full rounded-t-2xl border-t border-border bg-card p-5 shadow-2xl"
       >
         <div className="mb-4 flex items-center justify-between gap-2">
-          <span className="rounded-md border border-accent/30 bg-accent/10 px-2 py-1 font-mono text-[11px] uppercase tracking-wide text-accent-foreground">
+          <span className="rounded-md border border-accent/30 bg-accent/10 px-2 py-1 font-mono text-[11px] uppercase tracking-wide text-accent-foreground dark:text-accent">
             {citation.label}
           </span>
           {citation.grade !== undefined && <GradeBadge grade={citation.grade} />}
         </div>
-        <SheetLabel>{t(locale, "arabicOriginal")}</SheetLabel>
+        <MonoLabel>{t(locale, "arabicOriginal")}</MonoLabel>
         <p
           dir="rtl"
           lang="ar"
@@ -61,7 +62,7 @@ export function CitationSheet({
         </p>
         {citation.translation !== undefined && (
           <>
-            <SheetLabel>{t(locale, "translationLabel")}</SheetLabel>
+            <MonoLabel>{t(locale, "translationLabel")}</MonoLabel>
             <blockquote className="mt-1 mb-3 border-l-2 border-accent pl-3">
               <p
                 data-testid="citation-translation"
@@ -70,34 +71,23 @@ export function CitationSheet({
                 {citation.translation}
               </p>
               {citation.machineTranslated && (
-                <p
-                  data-testid="citation-mt-label"
-                  className="mt-1 font-mono text-[10px] uppercase tracking-wide text-muted-foreground"
-                >
+                <MonoLabel className="mt-1" data-testid="citation-mt-label">
                   ({MACHINE_TRANSLATION_LABEL})
-                </p>
+                </MonoLabel>
               )}
             </blockquote>
           </>
         )}
         {citation.source !== undefined && (
-          <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+          <MonoLabel className="mt-4">
             {t(locale, "sourceLabel")}:{" "}
             <span data-testid="citation-source" className="normal-case tracking-normal">
               {citation.source}
             </span>
-          </p>
+          </MonoLabel>
         )}
       </div>
     </div>
-  );
-}
-
-function SheetLabel({ children }: { children: string }) {
-  return (
-    <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-      {children}
-    </p>
   );
 }
 
