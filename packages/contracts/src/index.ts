@@ -25,6 +25,22 @@ export {
   type ChatSessionMessages,
 } from "./chat";
 export {
+  FeedbackAnchorSchema,
+  FeedbackAnchorTypeSchema,
+  FeedbackCategorySchema,
+  FeedbackErrorSchema,
+  FeedbackRatingSchema,
+  FeedbackRequestSchema,
+  FeedbackResponseSchema,
+  type FeedbackAnchor,
+  type FeedbackAnchorType,
+  type FeedbackCategory,
+  type FeedbackError,
+  type FeedbackRating,
+  type FeedbackRequest,
+  type FeedbackResponse,
+} from "./feedback";
+export {
   AnonymousSessionSchema,
   DeletedUserSchema,
   AuthErrorSchema,
