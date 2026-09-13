@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 import * as v from "valibot";
-import {
-  FeedbackAnchorSchema,
-  FeedbackRequestSchema,
-  type FeedbackRequest,
-} from "./feedback";
+import { FeedbackAnchorSchema, FeedbackRequestSchema, type FeedbackRequest } from "./feedback";
 
 /**
  * Feedback contracts (#13). These are trap tests: the anchor taxonomy only
@@ -86,9 +82,9 @@ describe("FeedbackRequestSchema", () => {
   });
 
   it("rejects unknown anchor types and unknown categories", () => {
-    expect(v.is(FeedbackAnchorSchema, { type: "answer", category: "wrong_citation", id: "x" })).toBe(
-      false,
-    );
+    expect(
+      v.is(FeedbackAnchorSchema, { type: "answer", category: "wrong_citation", id: "x" }),
+    ).toBe(false);
     expect(v.is(FeedbackAnchorSchema, { type: "chunk", category: "spam", id: "chunk-1" })).toBe(
       false,
     );
@@ -96,7 +92,13 @@ describe("FeedbackRequestSchema", () => {
 
   it("rejects an anchor with an empty id", () => {
     expect(
-      v.is(FeedbackRequestSchema, base({ rating: undefined, anchor: { type: "chunk", category: "irrelevant_chunk", id: "" } })),
+      v.is(
+        FeedbackRequestSchema,
+        base({
+          rating: undefined,
+          anchor: { type: "chunk", category: "irrelevant_chunk", id: "" },
+        }),
+      ),
     ).toBe(false);
   });
 

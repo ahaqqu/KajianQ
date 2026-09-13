@@ -9,7 +9,10 @@ import type { AnswerFeedbackTarget, FeedbackInsert, RagStore } from "@app/infra"
  */
 export type MemoryFeedbackState = {
   /** All persisted chat messages by id (getChatMessage reads this). */
-  chatMessages: Map<string, { sessionId: string; role: string; content: string; answerTraceId: string | null }>;
+  chatMessages: Map<
+    string,
+    { sessionId: string; role: string; content: string; answerTraceId: string | null }
+  >;
   /** Persisted traces keyed by message id (getAnswerFeedbackTarget reads this). */
   traces: Map<string, unknown>;
   /** Trace owners by message id, as inserted (ADR-0007 amendment). */

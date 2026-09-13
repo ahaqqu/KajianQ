@@ -22,12 +22,7 @@ export const FeedbackRatingSchema = v.picklist(["up", "down"]);
 export type FeedbackRating = v.InferOutput<typeof FeedbackRatingSchema>;
 
 /** The element class a flag anchors to. `answer` is reserved for thumbs. */
-export const FeedbackAnchorTypeSchema = v.picklist([
-  "chunk",
-  "citation",
-  "translation",
-  "grade",
-]);
+export const FeedbackAnchorTypeSchema = v.picklist(["chunk", "citation", "translation", "grade"]);
 
 export type FeedbackAnchorType = v.InferOutput<typeof FeedbackAnchorTypeSchema>;
 

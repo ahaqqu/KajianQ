@@ -1,7 +1,6 @@
 import type { SqlRunner } from "./rag-store-neon-errors";
 import { neonCorpusMethods } from "./rag-store-neon-corpus";
 import { neonEvalMethods } from "./rag-store-neon-eval";
-import { neonFeedbackMethods } from "./rag-store-neon-feedback";
 import { neonSessionMethods } from "./rag-store-neon-session";
 import { neonTraceMethods } from "./rag-store-neon-trace";
 
@@ -9,7 +8,7 @@ import { neonTraceMethods } from "./rag-store-neon-trace";
  * Barrel over the Neon adapter's split method modules, so the composition
  * root (`rag-store-neon.ts`) stays within the agentic import cap. This is a
  * pure re-grouping — each module keeps its own concern (corpus / eval /
- * traces / sessions / feedback), and no logic lives here.
+ * traces+feedback / sessions), and no logic lives here.
  */
 export function neonStoreMethods(sql: SqlRunner) {
   return {
@@ -17,6 +16,5 @@ export function neonStoreMethods(sql: SqlRunner) {
     ...neonEvalMethods(sql),
     ...neonTraceMethods(sql),
     ...neonSessionMethods(sql),
-    ...neonFeedbackMethods(sql),
   };
 }

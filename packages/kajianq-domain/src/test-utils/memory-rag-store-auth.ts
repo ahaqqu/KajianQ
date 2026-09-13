@@ -25,7 +25,9 @@ export type MemoryAuthState = {
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-export function memoryAuthMethods(state: MemoryAuthState): Pick<
+export function memoryAuthMethods(
+  state: MemoryAuthState,
+): Pick<
   RagStore,
   "createSession" | "resolveUserId" | "deleteUserCascade" | "cleanupExpiredSessions"
 > {
