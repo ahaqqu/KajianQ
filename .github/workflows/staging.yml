@@ -18,12 +18,13 @@ on:
   workflow_dispatch:
     inputs:
       # Operator knobs for the Golden Set smoke (SPECS §3.7). On a push these
-      # are empty, so the env fallbacks on the smoke step apply the spec
-      # defaults (5 questions, $1 cap).
+      # are empty, so the env fallbacks on the smoke step apply the defaults
+      # (full-set smoke = 50, clamped to the fixture by selectSmokeSubset;
+      # $1 cap unchanged — a full run costs ~3 orders of magnitude less).
       eval_smoke_size:
-        description: "Golden Set smoke subset size (questions; spec default 5)"
+        description: "Golden Set smoke subset size (questions; staging default 50 = full set)"
         required: false
-        default: "5"
+        default: "50"
       eval_budget_micro_usd:
         description: "Hard spend cap for the smoke run in micro-USD (1000000 = $1)"
         required: false
@@ -170,7 +171,12 @@ jobs:
           # Fail-closed spend cap (ADR-0034): unset would be an explicit opt-out,
           # so the workflow always sets one. 1000000 micro-USD = $1 per run.
           EVAL_BUDGET_MICRO_USD: ${{ github.event.inputs.eval_budget_micro_usd || '1000000' }}
-          EVAL_SMOKE_SIZE: ${{ github.event.inputs.eval_smoke_size || '5' }}
+          # Full-set staging smoke (owner decision 2026-09-13, 10x the
+          # 5-question PR-time size): selectSmokeSubset clamps to the fixture,
+          # so this is the whole golden-set-v0 today (~$0.00014/run, ~4x the
+          # 5-question cost) and stays a wide sample as the set grows
+          # (~$0.00035/run at 50). The $1 cap above is untouched.
+          EVAL_SMOKE_SIZE: ${{ github.event.inputs.eval_smoke_size || '50' }}
           EVAL_RUN_LABEL: staging-smoke-${{ github.sha }}
       - name: ZAP baseline
         uses: zaproxy/action-baseline@de8ad967d3548d44ef623df22cf95c3b0baf8b25 # v0.15.0
