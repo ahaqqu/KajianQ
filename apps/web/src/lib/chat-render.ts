@@ -8,6 +8,12 @@ import type { ChatCitation } from "@app/contracts";
  * disclaimer are split out of the text into their own blocks by matching the
  * product's canonical copy (kajianq-domain's chat-postprocess constants —
  * drift is guarded by chat-render.test.ts, which imports both sides).
+ *
+ * Inline markdown (#150): the grounded model still spontaneously wraps spans
+ * in `**bold**` / `*emphasis*` and emits `- ` / `1. ` lists, and the answer
+ * card must render them as rich text, never as literal markers. This is a
+ * display-only concern — citation extraction runs on the raw text upstream
+ * and is unaffected.
  */
 
 /** The machine-translation label (ADR-0006) — one Indonesian constant, no EN variant. */
@@ -29,18 +35,38 @@ export const DISCLAIMER_MARKERS = [
 /** A rule paragraph is one short line; anything longer is answer prose. */
 const RULE_LINE_MAX = 200;
 
-export type AnswerSegment = { kind: "text"; text: string } | { kind: "citation"; label: string };
+export type AnswerInline =
+  | { kind: "text"; text: string }
+  | { kind: "citation"; label: string }
+  | { kind: "bold"; children: AnswerInline[] }
+  | { kind: "em"; children: AnswerInline[] };
+
+export type AnswerBlock =
+  | { kind: "para"; inlines: AnswerInline[] }
+  | { kind: "list"; ordered: boolean; items: AnswerInline[][] };
 
 /**
- * Split the answer text into plain-text and citation-chip segments. A chip
- * replaces the whole bracketed span `[label]` when present, else the bare
- * label. A frame label that does not occur in the text produces nothing —
- * the text stays verbatim, and no chip is invented.
+ * A styled span's content must not start or end with whitespace (so
+ * `2 * 3 = 6` stays arithmetic), and a one-asterisk emphasis must not open
+ * or close against a word character (so `snake_case` and `3*4*5` stay
+ * verbatim). Bold-italic (`***x***`) is tried first, then bold — whose
+ * content may carry non-adjacent single asterisks, so `**a *b* c**` nests
+ * the emphasis instead of leaking its markers — and bold is tried before
+ * emphasis, so `**x**` never degrades to an emphasis pair around a lone `*`.
  */
-export function renderAnswerSegments(
-  text: string,
-  citations: readonly ChatCitation[],
-): AnswerSegment[] {
+const STYLED_SPAN =
+  /\*\*\*([^*\s](?:[^*]*[^*\s])?)\*\*\*|\*\*([^*\s](?:(?:\*(?!\*)|[^*])*[^*\s])?)\*\*|(?<!\w)\*([^*\s](?:[^*]*[^*\s])?)\*(?!\w)|(?<!\w)_([^_\s](?:[^_]*[^_\s])?)_(?!\w)/;
+
+/** A list line: an optional 3-space indent, then a `- `/`* ` bullet or a `1.`/`1)` number. */
+const LIST_LINE = /^ {0,3}(?:([-*])|\d{1,9}[.)])\s+(.+)$/;
+
+/**
+ * Locate the frame's labels in a plain-text run: a chip replaces the whole
+ * bracketed span `[label]` when present, else the bare label. A frame label
+ * that does not occur in the text produces nothing — the text stays
+ * verbatim, and no chip is invented.
+ */
+function locateCitations(text: string, citations: readonly ChatCitation[]): AnswerInline[] {
   const matches: { start: number; end: number; label: string }[] = [];
   for (const citation of citations) {
     for (const form of [`[${citation.label}]`, citation.label]) {
@@ -55,18 +81,96 @@ export function renderAnswerSegments(
     }
   }
   matches.sort((a, b) => a.start - b.start || b.end - a.end);
-  const segments: AnswerSegment[] = [];
+  const inlines: AnswerInline[] = [];
   let cursor = 0;
   for (const match of matches) {
     if (match.start < cursor) continue; // overlapping — first (leftmost) wins
     if (match.start > cursor) {
-      segments.push({ kind: "text", text: text.slice(cursor, match.start) });
+      inlines.push({ kind: "text", text: text.slice(cursor, match.start) });
     }
-    segments.push({ kind: "citation", label: match.label });
+    inlines.push({ kind: "citation", label: match.label });
     cursor = match.end;
   }
-  if (cursor < text.length) segments.push({ kind: "text", text: text.slice(cursor) });
-  return segments;
+  if (cursor < text.length) inlines.push({ kind: "text", text: text.slice(cursor) });
+  return inlines;
+}
+
+/**
+ * Split a plain-text run into inline nodes: styled spans (`***bold italic***`,
+ * `**bold**`, `*emphasis*`, `_emphasis_`) wrap the citation-aware parse of
+ * their content — so `**[QS. 2:255]**` renders the chip inside bold — and
+ * the gaps between them go through citation location directly. An unclosed
+ * marker finds no span and stays verbatim text.
+ */
+export function parseInline(text: string, citations: readonly ChatCitation[]): AnswerInline[] {
+  const match = STYLED_SPAN.exec(text);
+  if (match === null) return locateCitations(text, citations);
+  const inner = (match[1] ?? match[2] ?? match[3] ?? match[4])!;
+  const children = parseInline(inner, citations);
+  const bold = match[1] !== undefined || match[2] !== undefined;
+  return [
+    ...parseInline(text.slice(0, match.index), citations),
+    bold
+      ? {
+          kind: "bold",
+          children: match[1] !== undefined ? [{ kind: "em", children }] : children,
+        }
+      : { kind: "em", children },
+    ...parseInline(text.slice(match.index + match[0].length), citations),
+  ];
+}
+
+/**
+ * Split the answer body into display blocks: consecutive list lines become
+ * one `<ul>`/`<ol>` block, a blank line separates blocks, and every other
+ * line run stays one paragraph (joined by `\n` — the card renders it
+ * pre-wrap, so single newlines inside e.g. quoted Arabic keep their visual
+ * breaks). An indented continuation line under a list item is not modeled:
+ * it becomes its own paragraph.
+ */
+export function renderBodyBlocks(body: string, citations: readonly ChatCitation[]): AnswerBlock[] {
+  const blocks: AnswerBlock[] = [];
+  let paraLines: string[] = [];
+  let list: { ordered: boolean; items: string[] } | null = null;
+  const flushPara = () => {
+    if (paraLines.length > 0) {
+      blocks.push({ kind: "para", inlines: parseInline(paraLines.join("\n"), citations) });
+      paraLines = [];
+    }
+  };
+  const flushList = () => {
+    if (list !== null) {
+      blocks.push({
+        kind: "list",
+        ordered: list.ordered,
+        items: list.items.map((item) => parseInline(item, citations)),
+      });
+      list = null;
+    }
+  };
+  for (const line of body.split("\n")) {
+    const listItem = LIST_LINE.exec(line);
+    if (listItem !== null) {
+      flushPara();
+      const ordered = listItem[1] === undefined;
+      if (list === null || list.ordered !== ordered) {
+        flushList();
+        list = { ordered, items: [] };
+      }
+      list.items.push(listItem[2]!);
+    } else if (line.trim() === "") {
+      // A blank line separates blocks: it never renders as a leading or
+      // trailing blank row inside a paragraph.
+      flushList();
+      flushPara();
+    } else {
+      flushList();
+      paraLines.push(line);
+    }
+  }
+  flushList();
+  flushPara();
+  return blocks;
 }
 
 export type SplitAnswer = {

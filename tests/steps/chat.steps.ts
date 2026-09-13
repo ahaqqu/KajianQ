@@ -28,6 +28,19 @@ const ANSWER_FIXTURE = [
 const DHAIF_WARNING =
   "[Peringatan] Hadits yang dikutip berderajat lemah (dhaif); tidak dapat dijadikan dalil utama.";
 
+// #150 — the grounded model spontaneously wraps spans in markdown; the
+// fixture mirrors a live staging answer (`**QS. 2:255**` seen 2026-09-13).
+const MD_ANSWER =
+  "**Ayat Kursi** adalah *ayat takhta* dalam surah Al-Baqarah.\n\n" +
+  "- Allah Mahahidup [QS. 2:255]\n- Penjaga segala sesuatu\n\n";
+
+const MD_FIXTURE = [
+  'event: meta\ndata: {"sessionId":"sess-e2e","messageId":"m-md","traceId":"tr-md"}\n\n',
+  `event: delta\ndata: ${MD_ANSWER.replaceAll("\n", "\ndata: ")}\n\n`,
+  'event: citations\ndata: {"messageId":"m-md","refusal":false,"dhaifWarning":false,"citations":[{"label":"QS. 2:255","arabic":"اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ","translation":"Allah, tidak ada tuhan selain Dia.","machineTranslated":true,"source":"Al-Baqarah"}]}\n\n',
+  `event: done\ndata: {}\n\n`,
+].join("");
+
 const DHAIF_FIXTURE = [
   'event: meta\ndata: {"sessionId":"sess-e2e","messageId":"m-dhaif","traceId":"tr-dhaif"}\n\n',
   `event: delta\ndata: Hadits tersebut diriwayatkan [HR. Malik no. 18].\ndata: \ndata: ${DHAIF_WARNING}\ndata: \ndata: ${DISCLAIMER}\n\n`,
@@ -113,6 +126,12 @@ When("I ask a question whose answer carries a dhaif hadith", async ({ page }) =>
   await page.getByTestId("send").click();
 });
 
+When("I ask a question whose answer contains markdown", async ({ page }) => {
+  await openChatWithFixtures(page, MD_FIXTURE);
+  await page.getByTestId("composer").fill("Apa itu ayat kursi?");
+  await page.getByTestId("send").click();
+});
+
 When("I ask something the corpus cannot answer", async ({ page }) => {
   await openChatWithFixtures(page, REFUSAL_FIXTURE);
   await page.getByTestId("composer").fill("Pertanyaan di luar cakupan?");
@@ -169,6 +188,22 @@ Then("the dhaif warning renders as a warning card with the grade badge", async (
   const sheet = page.getByTestId("citation-sheet");
   await expect(sheet.getByTestId("grade-badge")).toHaveText("dhaif");
 });
+
+Then(
+  "the answer renders bold, emphasis, and list items with no literal markdown",
+  async ({ page }) => {
+    const assistant = page.getByTestId("message-assistant").last();
+    await expect(assistant.locator("strong")).toHaveText("Ayat Kursi");
+    await expect(assistant.locator("em")).toHaveText("ayat takhta");
+    const items = assistant.locator("li");
+    await expect(items).toHaveCount(2);
+    await expect(items.first()).toContainText("Allah Mahahidup");
+    // The chip still resolves from the structured frame, inside the list item.
+    await expect(assistant.getByTestId("citation-chip")).toHaveText("[QS. 2:255]");
+    await expect(assistant).not.toContainText("**");
+    await expect(assistant).not.toContainText("*ayat takhta*");
+  },
+);
 
 Then("the refusal renders as a plain card with no citation chips", async ({ page }) => {
   const assistant = page.getByTestId("message-assistant").last();
