@@ -10,12 +10,8 @@ import {
   runStoreEffect,
 } from "@app/kajianq-domain";
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
-import {
-  chunkFetcher,
-  citationsFrameFor,
-  deriveCitationsFrame,
-  traceChunkIds,
-} from "./chat-citations";
+import { chunkFetcher, traceChunkIds } from "./chat-trace";
+import { answerFramesFor, deriveCitationsFrame } from "./chat-citations";
 
 /**
  * The invariant under test (#11, ADR-0040): **a citation may never reach the
@@ -221,10 +217,27 @@ describe("deriveCitationsFrame — the invariant, adversarial shapes", () => {
   });
 });
 
-describe("citationsFrameFor — the route-level wrapper", () => {
-  it("degrades to an empty citation list (never a fabricated one) when the store read fails", async () => {
+describe("answerFramesFor — the live route's entry (one shared store read, thermo-review B1)", () => {
+  it("resolves display rows ONCE for both frames", async () => {
+    const fetchChunks = vi.fn(async (ids: readonly string[]) =>
+      ids.map((id) => chunk(id, "QS. 2:255")),
+    );
+    const { citations, trace } = await answerFramesFor({
+      trace: traceWithChunks(["c1", "c2"]),
+      messageId: "m1",
+      answerText: "Ayat [QS. 2:255].",
+      fetchChunks,
+      warn: vi.fn(),
+    });
+    expect(fetchChunks).toHaveBeenCalledTimes(1);
+    expect(fetchChunks).toHaveBeenCalledWith(["c1", "c2"]);
+    expect(citations.citations).toHaveLength(1);
+    expect(trace.sources.map((s) => s.id)).toEqual(["c1", "c2"]);
+  });
+
+  it("degrades BOTH frames honestly (never fabricated) when the store read fails", async () => {
     const warn = vi.fn();
-    const frame = await citationsFrameFor({
+    const { citations, trace } = await answerFramesFor({
       trace: traceWithChunks(["c1"]),
       messageId: "m1",
       answerText: "Ayat [QS. 2:255].",
@@ -233,37 +246,60 @@ describe("citationsFrameFor — the route-level wrapper", () => {
       },
       warn,
     });
-    expect(frame.citations).toEqual([]);
-    expect(frame.refusal).toBe(false);
-    expect(warn).toHaveBeenCalledWith("chat.citations.chunk_lookup_failed", expect.anything());
+    expect(citations.citations).toEqual([]);
+    expect(citations.refusal).toBe(false);
+    // The panel keeps the chunk row as an id — a lost title, not a made-up
+    // one. The ref's own score (trace data, not store data) still rides along.
+    expect(trace.sources).toEqual([{ id: "c1" }]);
+    expect(trace.technical.chunks).toEqual([{ id: "c1", score: 0.1 }]);
+    expect(warn).toHaveBeenCalledWith("chat.answer.chunk_lookup_failed", expect.anything());
   });
 
-  it("a refused answer never touches the store", async () => {
+  it("a refusal's citations frame carries no citations even when its text has citation spans", async () => {
     const fetchChunks = vi.fn(async () => [chunk("c1", "QS. 2:255")]);
     const trace = traceWithChunks(
       ["c1"],
       [{ stage: "reviewer", kind: "refusal", reason: "r", at: 3 }],
     );
-    const frame = await citationsFrameFor({
+    const { citations, trace: traceFrame } = await answerFramesFor({
       trace,
+      messageId: "m1",
+      answerText: "Maaf, [QS. 2:255] tidak dapat saya pastikan.",
+      fetchChunks,
+      warn: vi.fn(),
+    });
+    expect(citations.refusal).toBe(true);
+    expect(citations.citations).toEqual([]);
+    // The panel is independent of the refusal (thermo-review A2): the sources
+    // consulted before the refusal stay visible, so the shared read happens.
+    expect(fetchChunks).toHaveBeenCalledTimes(1);
+    expect(traceFrame.sources.map((s) => s.id)).toEqual(["c1"]);
+  });
+
+  it("a trace with no retrieval events needs no store read at all", async () => {
+    const fetchChunks = vi.fn();
+    const { citations, trace } = await answerFramesFor({
+      trace: { id: "t1", createdAt: 1, events: [] },
       messageId: "m1",
       answerText: "teks",
       fetchChunks,
       warn: vi.fn(),
     });
-    expect(frame.refusal).toBe(true);
     expect(fetchChunks).not.toHaveBeenCalled();
+    expect(citations.citations).toEqual([]);
+    expect(trace.sources).toEqual([]);
   });
 
-  it("parses the emitted frame against the contract", async () => {
-    const frame = await citationsFrameFor({
+  it("parses both emitted frames against their contracts", async () => {
+    const { citations, trace } = await answerFramesFor({
       trace: traceWithChunks(["c1"]),
       messageId: "m1",
       answerText: "Ayat [QS. 2:255].",
       fetchChunks: async (ids) => ids.map((id) => chunk(id, "QS. 2:255")),
       warn: vi.fn(),
     });
-    expect(frame.citations).toHaveLength(1);
+    expect(citations.citations).toHaveLength(1);
+    expect(trace.messageId).toBe("m1");
   });
 
   it("chunkFetcher bridges the store seam through the typed StoreBridge", async () => {

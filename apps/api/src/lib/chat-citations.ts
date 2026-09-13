@@ -1,20 +1,32 @@
 import {
   ChatCitationsFrameSchema,
   ChatSessionMessagesSchema,
+  ChatTraceFrameSchema,
   type ChatCitation,
   type ChatCitationsFrame,
   type ChatSessionMessage,
   type ChatSessionMessages,
+  type ChatTraceFrame,
   type Trace,
 } from "@app/contracts";
-import type { ChatMessage, DocChildById, RagStore } from "@app/infra";
+import type { ChatMessage, DocChildById } from "@app/infra";
 import {
   citationCandidatesIn,
   citationLabelsOf,
   dhaifWarning as dhaifWarningLine,
   normalizeCitationLabel,
-  type StoreBridge,
 } from "@app/kajianq-domain";
+// The trace-frame module owns the shared chunk-ref + display-fetch plumbing;
+// this module consumes it (thermo-review B2: the old re-export shim had zero
+// consumers for the seam names — `chunkFetcher` is re-exported to importers
+// by the wiring hub, straight from `./chat-trace`).
+import {
+  chunksByIdOrEmpty,
+  deriveTraceFrame,
+  traceChunkIds,
+  type CitationChunkSource,
+  type Warn,
+} from "./chat-trace";
 import * as v from "valibot";
 
 /**
@@ -32,37 +44,6 @@ import * as v from "valibot";
  * citation-shaped span with no matching chunk (fabricated or whose row
  * vanished) is absent from the payload — never a chip without provenance.
  */
-
-/** The trace's retrieval chunk refs, in retrieval order, deduplicated. */
-export function traceChunkIds(trace: Trace): string[] {
-  const ids: string[] = [];
-  for (const event of trace.events) {
-    if (event.kind !== "retrieval") continue;
-    for (const ref of event.detail.chunks) {
-      if (!ids.includes(ref.id)) ids.push(ref.id);
-    }
-  }
-  return ids;
-}
-
-/** Display-data fetcher over the store seam (the bridge stays at the edge). */
-export type CitationChunkSource = (ids: readonly string[]) => Promise<readonly DocChildById[]>;
-
-/** The structured-warning callback both derivation entries share. */
-type Warn = (msg: string, fields?: Record<string, string | number | boolean | null>) => void;
-
-/**
- * Bind a {@link CitationChunkSource} to a wired store + its Effect bridge.
- * The bridge is the domain's typed `StoreBridge` (thermo-review B2): a wrong
- * store call wired here fails to compile instead of degrading to an empty
- * citation list at runtime.
- */
-export function chunkFetcher(
-  store: Pick<RagStore, "getDocChildrenByIds">,
-  runStore: StoreBridge,
-): CitationChunkSource {
-  return async (ids) => runStore(store.getDocChildrenByIds(ids));
-}
 
 /** The chunk's citation labels, normalized exactly as the gate normalizes. */
 function labelsOf(chunk: DocChildById): string[] {
@@ -140,68 +121,45 @@ export function deriveCitationsFrame(input: {
 }
 
 /**
- * The refusal early-return both derivation paths share (thermo-review B1):
- * a refused answer carries no citations — the refusal text is not a cited
- * answer.
+ * The live route's entry for a just-answered question (thermo-review B1 of
+ * the #12 review): derives BOTH wire frames — citations (#11) and the
+ * two-layer Trace panel (#12, ADR-0007) — from the one persisted trace with
+ * ONE shared store read, instead of the two identical sequential
+ * `getDocChildrenByIds` reads the per-frame entries made before first byte.
+ * A store-read failure degrades both frames honestly (empty citations,
+ * id-only panel rows — never fabricated ones) with a single structured
+ * warning; each frame is parsed against its contract before it touches the
+ * wire. The rehydration path (`rehydrateTranscript`) keeps its own
+ * transcript-wide single read.
  */
-function refusalFrame(messageId: string): ChatCitationsFrame {
-  return { messageId, citations: [], refusal: true, dhaifWarning: false };
-}
-
-/**
- * The shared degrade-and-derive fetch (thermo-review B1): resolve display
- * rows for the given chunk ids, degrading to an EMPTY map on failure — never
- * a fabricated one — with the caller's structured warning. One owner for the
- * policy, so a change to it (e.g. a structured warning field on the frame)
- * cannot be made in one entry point and forgotten in the other.
- */
-async function chunksByIdOrEmpty(input: {
-  ids: readonly string[];
-  fetchChunks: CitationChunkSource;
-  warn: Warn;
-  warnKey: string;
-  warnFields: Record<string, string | number | boolean | null>;
-}): Promise<ReadonlyMap<string, DocChildById>> {
-  try {
-    const chunks = await input.fetchChunks(input.ids);
-    return new Map<string, DocChildById>(chunks.map((c) => [c.id, c]));
-  } catch (err) {
-    // Degrade honestly: no chips, not wrong chips. Ops sees why.
-    input.warn(input.warnKey, {
-      ...input.warnFields,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return new Map<string, DocChildById>();
-  }
-}
-
-/**
- * The route-level entry: derive the frame from the just-persisted trace,
- * resolving display data through the store seam. A store-read failure
- * degrades to an empty citation list (never a fabricated one) with a
- * structured warning; the answer text itself is unaffected. The result is
- * parsed against the contract before it touches the wire.
- */
-export async function citationsFrameFor(input: {
+export async function answerFramesFor(input: {
   trace: Trace;
   messageId: string;
   answerText: string;
   fetchChunks: CitationChunkSource;
   warn: Warn;
-}): Promise<ChatCitationsFrame> {
+}): Promise<{ citations: ChatCitationsFrame; trace: ChatTraceFrame }> {
   const { trace, messageId, answerText, fetchChunks, warn } = input;
-  if (trace.events.some((event) => event.kind === "refusal")) return refusalFrame(messageId);
-  const chunksById = await chunksByIdOrEmpty({
-    ids: traceChunkIds(trace),
-    fetchChunks,
-    warn,
-    warnKey: "chat.citations.chunk_lookup_failed",
-    warnFields: { messageId },
-  });
-  return v.parse(
-    ChatCitationsFrameSchema,
-    deriveCitationsFrame({ trace, messageId, answerText, chunksById }),
-  );
+  // A trace with no retrieval events (a pure refusal) needs no store read at
+  // all: an empty id list would only round-trip the seam.
+  const ids = traceChunkIds(trace);
+  const chunksById =
+    ids.length === 0
+      ? new Map<string, DocChildById>()
+      : await chunksByIdOrEmpty({
+          ids,
+          fetchChunks,
+          warn,
+          warnKey: "chat.answer.chunk_lookup_failed",
+          warnFields: { messageId },
+        });
+  return {
+    citations: v.parse(
+      ChatCitationsFrameSchema,
+      deriveCitationsFrame({ trace, messageId, answerText, chunksById }),
+    ),
+    trace: v.parse(ChatTraceFrameSchema, deriveTraceFrame({ trace, messageId, chunksById })),
+  };
 }
 
 /**
@@ -209,10 +167,13 @@ export async function citationsFrameFor(input: {
  * the rehydration contract, deriving each assistant message's citation frame
  * from ITS persisted trace — the same derivation the live `citations` frame
  * uses, so a rehydrated answer can show exactly the citations it may show
- * live, and never one its trace does not ground. Display data is fetched in
- * ONE store read for the whole transcript (the union of every trace's chunk
- * refs). A trace that is missing, fails to load, or yields a contract-invalid
- * frame degrades to a plain-text message — never to invented citations.
+ * live, and never one its trace does not ground. The same trace derives the
+ * message's two-layer Trace panel frame (#12, ADR-0007). Display data is
+ * fetched in ONE store read for the whole transcript (the union of every
+ * trace's chunk refs). A trace that is missing or fails to load degrades to a
+ * plain-text message; a frame that fails its contract parse degrades
+ * independently — the other frame still renders (thermo-review A2) — never
+ * to invented citations or an invented panel.
  */
 export async function rehydrateTranscript(input: {
   sessionId: string;
@@ -264,6 +225,11 @@ export async function rehydrateTranscript(input: {
     };
     const trace = traces.get(row.id);
     if (trace === undefined) return base;
+    // Both frames are independent derivations of the SAME trace and the SAME
+    // display rows — so each degrades independently (thermo-review A2): a
+    // contract-invalid citations frame must not take the Trace panel down
+    // with it, and vice versa. A degraded frame just stays absent; nothing is
+    // ever invented to replace it.
     const parsed = v.safeParse(
       ChatCitationsFrameSchema,
       deriveCitationsFrame({
@@ -275,9 +241,19 @@ export async function rehydrateTranscript(input: {
     );
     if (!parsed.success) {
       warn("chat.rehydration.invalid_frame", { messageId: row.id });
-      return base;
     }
-    return { ...base, citations: parsed.output };
+    const traceParsed = v.safeParse(
+      ChatTraceFrameSchema,
+      deriveTraceFrame({ trace, messageId: row.id, chunksById }),
+    );
+    if (!traceParsed.success) {
+      warn("chat.rehydration.invalid_trace_frame", { messageId: row.id });
+    }
+    return {
+      ...base,
+      ...(parsed.success ? { citations: parsed.output } : {}),
+      ...(traceParsed.success ? { trace: traceParsed.output } : {}),
+    };
   });
   return v.parse(ChatSessionMessagesSchema, { sessionId, messages, truncated });
 }

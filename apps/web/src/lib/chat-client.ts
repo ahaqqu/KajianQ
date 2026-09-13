@@ -1,8 +1,10 @@
 import {
   ChatCitationsFrameSchema,
   ChatMetaSchema,
+  ChatTraceFrameSchema,
   type ChatCitationsFrame,
   type ChatMeta,
+  type ChatTraceFrame,
 } from "@app/contracts";
 import * as v from "valibot";
 import { apiFetch } from "./api";
@@ -17,18 +19,20 @@ import { parseSseStream } from "./sse";
 
 /**
  * The chat stream consumer (#11): POST /v1/chat and walk the SSE wire
- * (`meta → delta(s) → citations → done`, ADR-0034 + ADR-0040). Streaming-
- * native: deltas append as they arrive (single or multiple), the citations
- * frame is validated against the shared contract and handed over whole —
- * the client never parses answer text for citations. Token bootstrap and
- * the one-shot 401 retry (fresh anonymous session) live here so components
- * stay declarative.
+ * (`meta → delta(s) → citations → trace → done`, ADR-0034 + ADR-0040 +
+ * #12). Streaming-native: deltas append as they arrive (single or multiple),
+ * the citations and trace frames are validated against the shared contracts
+ * and handed over whole — the client never parses answer text for citations
+ * and never reconstructs pipeline machinery for the Trace panel. Token
+ * bootstrap and the one-shot 401 retry (fresh anonymous session) live here
+ * so components stay declarative.
  */
 
 export type ChatStreamHandlers = {
   onMeta?: (meta: ChatMeta) => void;
   onDelta?: (text: string) => void;
   onCitations?: (frame: ChatCitationsFrame) => void;
+  onTrace?: (frame: ChatTraceFrame) => void;
 };
 
 export type AskChatInput = {
@@ -72,6 +76,13 @@ export async function askChat(
       if (value === undefined) continue;
       const parsed = v.safeParse(ChatCitationsFrameSchema, value);
       if (parsed.success) handlers.onCitations?.(parsed.output);
+    } else if (frame.event === "trace") {
+      // Same optional-decoration posture as citations (#12): an invalid trace
+      // frame is skipped — the answer stands without a panel, never broken.
+      const value = parseJsonSafe(frame.data);
+      if (value === undefined) continue;
+      const parsed = v.safeParse(ChatTraceFrameSchema, value);
+      if (parsed.success) handlers.onTrace?.(parsed.output);
     }
     // `done` and any future frame types need no client-side action.
   }

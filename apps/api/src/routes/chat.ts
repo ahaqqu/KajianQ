@@ -1,9 +1,9 @@
 import { newRouter } from "../lib/guard";
 import {
+  answerFramesFor,
   authGuard,
   buildChatWiring,
   chunkFetcher,
-  citationsFrameFor,
   sseFrame,
   wiringOr503,
   type ChatWiring,
@@ -157,8 +157,9 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
     }),
   );
 
-  // The SSE wire contract (meta → deltas → citations → done, ADR-0034 +
-  // #11/ADR-0040). A refused answer never ships the vendor's text: the
+  // The SSE wire contract (meta → deltas → citations → trace → done,
+  // ADR-0034 + ADR-0040 as amended for the `trace` frame — #11/#12). A refused
+  // answer never ships the vendor's text: the
   // reviewer recorded a `refusal` event on the trace (the same signal the
   // eval harness reads), and the frames carry the plain refusal instead.
   // Otherwise the vendor's own delta sequence is replayed when it reproduces
@@ -174,12 +175,15 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
       ? [...deltas, ...chunkText(answer.text.slice(streamed.length))]
       : chunkText(answer.text);
 
-  // The structured citation frame (#11, ADR-0040): derived from the trace
-  // that was JUST persisted above — the trace is the source of truth for
-  // which citations may exist — with display data joined from the store by
-  // the trace's own chunk ids. The client never re-implements the citation
-  // grammar, so a span the trace does not ground can never render as a chip.
-  const citations = await citationsFrameFor({
+  // Both structured wire frames — the citation frame (#11, ADR-0040) and the
+  // user-facing Trace panel frame (#12, ADR-0007) — derive from the trace
+  // that was JUST persisted above, with ONE shared store read for the display
+  // rows (thermo-review B1: the per-frame entries used to repeat the same
+  // sequential `getDocChildrenByIds` before first byte). The trace is the
+  // source of truth for which citations may exist, and the client renders the
+  // frames as-is — it never re-implements the citation grammar nor
+  // reconstructs pipeline machinery from raw events.
+  const { citations, trace: traceFrame } = await answerFramesFor({
     trace: answer.trace,
     messageId: answerMessageId,
     answerText: answer.text,
@@ -202,6 +206,7 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
         controller.enqueue(enc.encode(sseFrame("delta", delta)));
       }
       controller.enqueue(enc.encode(sseFrame("citations", JSON.stringify(citations))));
+      controller.enqueue(enc.encode(sseFrame("trace", JSON.stringify(traceFrame))));
       controller.enqueue(enc.encode(sseFrame("done", "{}")));
       controller.close();
     },

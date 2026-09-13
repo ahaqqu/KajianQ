@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { ChatCitationsFrame, ChatSessionMessage } from "@app/contracts";
+import type { ChatCitationsFrame, ChatSessionMessage, ChatTraceFrame } from "@app/contracts";
 import { askChat } from "./chat-client";
 import {
   ChatApiError,
@@ -112,6 +112,7 @@ export function useChat(locale: "id" | "en") {
               prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + delta } : m)),
             ),
           onCitations: (frame: ChatCitationsFrame) => patchAssistant({ citations: frame }),
+          onTrace: (frame: ChatTraceFrame) => patchAssistant({ trace: frame }),
         },
       )
         .catch((err: unknown) => {

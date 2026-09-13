@@ -10,6 +10,8 @@ export {
   ChatRequestSchema,
   ChatCitationSchema,
   ChatCitationsFrameSchema,
+  ChatTraceChunkSchema,
+  ChatTraceFrameSchema,
   ChatSessionMessageSchema,
   ChatSessionMessagesSchema,
   type ChatError,
@@ -17,6 +19,8 @@ export {
   type ChatRequest,
   type ChatCitation,
   type ChatCitationsFrame,
+  type ChatTraceChunk,
+  type ChatTraceFrame,
   type ChatSessionMessage,
   type ChatSessionMessages,
 } from "./chat";
@@ -52,12 +56,14 @@ export {
   type MorphToken,
 } from "./ingestion";
 export {
+  ChunkRefSchema,
   CostRecordSchema,
   StageSchema,
   TraceEventSchema,
   TraceSchema,
   parseTrace,
   totalCostMicroUsd,
+  type ChunkRef,
   type CostRecord,
   type Stage,
   type Trace,

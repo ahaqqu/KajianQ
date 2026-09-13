@@ -119,6 +119,35 @@ describe("askChat", () => {
     expect(seen).toEqual(["jawaban"]);
   });
 
+  it("hands the trace frame over whole after citations, in wire order (#12)", async () => {
+    const TRACE =
+      'event: trace\ndata: {"messageId":"m-1","sources":[{"id":"c1","source":"Al-Baqarah"}],"technical":{"subQueries":["ayat kursi"],"chunks":[{"id":"c1","score":0.03}],"models":["m-a"]}}\n\n';
+    stubFetchSequence([sseResponse([META, CITATIONS, TRACE, "event: done\ndata: {}\n\n"])]);
+    const seen: string[] = [];
+    await askChat(
+      { message: "q", sessionId: null, language: "id" },
+      {
+        onCitations: () => seen.push("citations"),
+        onTrace: (f) => seen.push(`trace:${f.sources[0]?.source}:${f.technical.chunks[0]?.score}`),
+      },
+      "tok-1",
+    );
+    expect(seen).toEqual(["citations", "trace:Al-Baqarah:0.03"]);
+  });
+
+  it("a malformed trace frame is skipped; the answer and panel degrade, never break the turn", async () => {
+    stubFetchSequence([
+      sseResponse([META, "event: trace\ndata: {broken\n\n", "event: done\ndata: {}\n\n"]),
+    ]);
+    const seen: string[] = [];
+    await askChat(
+      { message: "q", sessionId: null, language: "id" },
+      { onTrace: () => seen.push("trace") },
+      "tok-1",
+    );
+    expect(seen).toEqual([]);
+  });
+
   it("a stream without meta fails loudly (session identity is load-bearing)", async () => {
     stubFetchSequence([sseResponse(["event: done\ndata: {}\n\n"])]);
     const err = await askChat({ message: "q", sessionId: null, language: "id" }, {}, "tok-1").catch(

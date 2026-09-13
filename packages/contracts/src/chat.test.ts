@@ -5,6 +5,7 @@ import {
   ChatCitationsFrameSchema,
   ChatSessionMessageSchema,
   ChatSessionMessagesSchema,
+  ChatTraceFrameSchema,
 } from "./chat";
 
 /**
@@ -132,5 +133,71 @@ describe("ChatSessionMessagesSchema", () => {
         createdAt: 1,
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("ChatTraceFrameSchema", () => {
+  const CHUNK = { id: "chunk-1", source: "Al-Baqarah", score: 0.03125 };
+
+  const FRAME = {
+    messageId: "m1",
+    sources: [CHUNK],
+    technical: {
+      intent: "fiqh",
+      confidence: 0.9,
+      subQueries: ["ayat kursi", "QS 2:255 terjemahan"],
+      chunks: [CHUNK],
+      models: ["router-model", "generator-model"],
+    },
+  };
+
+  it("accepts a fully populated trace frame (both layers)", () => {
+    const parsed = v.parse(ChatTraceFrameSchema, FRAME);
+    expect(parsed.sources[0]?.source).toBe("Al-Baqarah");
+    expect(parsed.technical.intent).toBe("fiqh");
+    expect(parsed.technical.models).toHaveLength(2);
+  });
+
+  it("accepts the top layer with the numeric fields absent (plain sources view)", () => {
+    const parsed = v.parse(ChatTraceFrameSchema, {
+      messageId: "m1",
+      sources: [{ id: "chunk-1", source: "Al-Baqarah" }],
+      technical: { subQueries: [], chunks: [], models: [] },
+    });
+    expect(parsed.sources[0]?.score).toBeUndefined();
+    expect(parsed.technical.intent).toBeUndefined();
+  });
+
+  it("accepts a refusal's empty frame (no sources consulted, no machinery to show)", () => {
+    const parsed = v.parse(ChatTraceFrameSchema, {
+      messageId: "m2",
+      sources: [],
+      technical: { subQueries: [], chunks: [], models: ["router-model"] },
+    });
+    expect(parsed.sources).toEqual([]);
+  });
+
+  it("rejects a missing technical layer (the deeper view is part of the frame)", () => {
+    const { technical: _technical, ...noTech } = FRAME;
+    expect(v.safeParse(ChatTraceFrameSchema, noTech).success).toBe(false);
+  });
+
+  it("rejects a chunk with an empty id (provenance must be resolvable)", () => {
+    expect(v.safeParse(ChatTraceFrameSchema, { ...FRAME, sources: [{ id: "" }] }).success).toBe(
+      false,
+    );
+  });
+
+  it("accepts a session message carrying the optional trace frame, and a user turn without one", () => {
+    const parsed = v.parse(ChatSessionMessagesSchema, {
+      sessionId: "s1",
+      truncated: false,
+      messages: [
+        { id: "m0", role: "user", content: "q", createdAt: 1 },
+        { id: "m1", role: "assistant", content: "a", trace: FRAME, createdAt: 2 },
+      ],
+    });
+    expect(parsed.messages[0]?.trace).toBeUndefined();
+    expect(parsed.messages[1]?.trace?.technical.intent).toBe("fiqh");
   });
 });

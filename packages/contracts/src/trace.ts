@@ -52,6 +52,9 @@ export const ChunkRefSchema = v.object({
   rankSparse: v.optional(v.number()),
 });
 
+/** The persisted trace's retrieval ref shape (thermo-review B3: the one owner). */
+export type ChunkRef = v.InferOutput<typeof ChunkRefSchema>;
+
 /**
  * Every recordable pipeline occurrence, keyed on `kind` with `detail` typed
  * per variant (#45; ADR-0007 amendment "typed, checked every change"). An

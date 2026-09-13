@@ -12,7 +12,10 @@ import {
 export { authGuard } from "./auth";
 // Re-exported so the chat route keeps its 5-import agentic cap (same pattern
 // as the authGuard re-export): the route imports one name from its lib hub.
-export { citationsFrameFor, chunkFetcher, rehydrateTranscript } from "./chat-citations";
+// `chunkFetcher` re-exports straight from `./chat-trace` (thermo-review B2:
+// the old re-export hop through chat-citations had zero other consumers).
+export { answerFramesFor, rehydrateTranscript } from "./chat-citations";
+export { chunkFetcher } from "./chat-trace";
 
 /**
  * Env-bound wiring for the chat route (#10): the one place the Worker's
