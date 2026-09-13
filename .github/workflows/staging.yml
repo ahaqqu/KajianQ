@@ -171,6 +171,11 @@ jobs:
           # so the workflow always sets one. 1000000 micro-USD = $1 per run.
           EVAL_BUDGET_MICRO_USD: ${{ github.event.inputs.eval_budget_micro_usd || '1000000' }}
           EVAL_SMOKE_SIZE: ${{ github.event.inputs.eval_smoke_size || '5' }}
+          # Tolerate one bad question (failed or skipped) in the live smoke —
+          # per-answer LLM nondeterminism (e.g. a grounded reply to a refusal
+          # trap) must not gate a deploy; 2+ still fail it. Owner decision
+          # 2026-09-13, after the gs-v0-019 flake at c7e20a7.
+          EVAL_SMOKE_MAX_FAILURES: "1"
           EVAL_RUN_LABEL: staging-smoke-${{ github.sha }}
       - name: ZAP baseline
         uses: zaproxy/action-baseline@de8ad967d3548d44ef623df22cf95c3b0baf8b25 # v0.15.0

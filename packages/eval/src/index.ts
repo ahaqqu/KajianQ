@@ -11,6 +11,7 @@
 
 export { GoldenSetLoadError, assertV0Shape, loadGoldenSetJson, parseGoldenSet } from "./golden-set";
 export { selectSmokeSubset, type SmokeSelectOptions, type SmokeSelection } from "./smoke-subset";
+export { decideSmokeGate, type SmokeGateDecision } from "./smoke-gate";
 export {
   citationValidity,
   detectRefusal,

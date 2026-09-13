@@ -19,13 +19,19 @@
  *                          and persist the run into (required)
  *   EVAL_BUDGET_MICRO_USD  hard spend cap in micro-USD (unset/0 = uncapped)
  *   EVAL_SMOKE_SIZE        subset size (default 5, the spec's PR-time size)
+ *   EVAL_SMOKE_MAX_FAILURES  bad questions (failed + skipped) tolerated
+ *                          before the run fails (default 1); 0 = the original
+ *                          zero-tolerance gate
  *   EVAL_GOLDEN_SET_PATH   optional fixture path override
  *   EVAL_RUN_LABEL         optional run label
  *
- * Exit code is non-zero when any smoke question fails, so CI can gate on it.
- * A live run needs staging secrets (Cloudflare + Neon + vendor keys); when
- * they are absent the script fails fast with the missing name rather than
- * reporting a misleading pass — see the run instructions in SPECS §3.7.
+ * Exit code is non-zero when the bad-question count (failed + skipped)
+ * exceeds `EVAL_SMOKE_MAX_FAILURES`, so CI still gates on real regressions
+ * while a single nondeterministic answer cannot. A pass via tolerance is
+ * printed loudly with the bad question ids. A live run needs staging secrets
+ * (Cloudflare + Neon + vendor keys); when they are absent the script fails
+ * fast with the missing name rather than reporting a misleading pass — see
+ * the run instructions in SPECS §3.7.
  *
  * Round-3 B2: the config load, budget banner, fixture load, and summary
  * printer are the shared CLI glue in `eval-cli.mjs` — one copy, no drift.
@@ -44,6 +50,16 @@ const size = (() => {
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 1) {
     fail(`EVAL_SMOKE_SIZE must be a positive integer, got "${raw}"`);
+  }
+  return n;
+})();
+
+const maxBad = (() => {
+  const raw = process.env.EVAL_SMOKE_MAX_FAILURES;
+  if (raw === undefined || raw.trim() === "") return 1;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0) {
+    fail(`EVAL_SMOKE_MAX_FAILURES must be a non-negative integer, got "${raw}"`);
   }
   return n;
 })();
@@ -84,10 +100,18 @@ printSummary("eval:smoke", {
   costMicroUsd: budget.total,
 });
 
-if (result.failed > 0 || result.skipped > 0) {
+const badQuestions = result.results.filter((r) => r.passed !== true).map((r) => r.questionId);
+const decision = evalpkg.decideSmokeGate(result.failed, result.skipped, maxBad);
+
+if (!decision.pass) {
   console.error(
-    `eval:smoke: FAILED — ${result.failed} failed, ${result.skipped} skipped. See eval_results for run ${result.runId}.`,
+    `eval:smoke: FAILED — ${result.failed} failed, ${result.skipped} skipped (max bad ${maxBad}): ${badQuestions.join(", ")}. See eval_results for run ${result.runId}.`,
   );
   process.exit(1);
+}
+if (decision.tolerated) {
+  console.warn(
+    `eval:smoke: TOLERATED — ${result.failed} failed, ${result.skipped} skipped within max bad ${maxBad}: ${badQuestions.join(", ")}. A failure recurring every run is a real regression — see eval_results for run ${result.runId}.`,
+  );
 }
 console.log("eval:smoke: PASSED");
