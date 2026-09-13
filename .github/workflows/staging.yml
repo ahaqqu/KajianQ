@@ -180,6 +180,8 @@ jobs:
           # justifications — never a workflow-level bypass.
           rules_file_name: .github/zap-rules.tsv
           fail_action: true
+        # ZAP stays metered (its action interface makes header injection
+        # unreliable); the baseline scan's request volume fits the /v1 budget.
       - name: Schemathesis fuzz
         # schemathesis.toml suppresses unsupported_method (Cloudflare edge
         # returns 405 without Allow header — not our app's behavior). See the
@@ -188,10 +190,21 @@ jobs:
         # routes) is documented — /v1/chat returns 401 without a session,
         # 503 chat_not_configured only when the DATABASE_URL binding is
         # absent (required in CI above, so fuzzing always sees a live route).
+        # The fuzz carries a rate-limit bypass token (ADR-0041) when the
+        # signer key is configured — scanner bursts must not exhaust the
+        # per-IP /v1 budget mid-scan; the token exempts metering only, the
+        # unauthenticated 401 surface above is unchanged.
         run: |
           pip install schemathesis
+          BYPASS_ARGS=()
+          if [ -n "$RATE_BYPASS_PRIVATE_KEY" ]; then
+            TOKEN=$(bun run rate:bypass --sub schemathesis)
+            BYPASS_ARGS+=(--header "X-Rate-Bypass: $TOKEN")
+          fi
           schemathesis run "$STAGING_URL/openapi.json" \
             --url "$STAGING_URL" \
+            "${BYPASS_ARGS[@]}" \
             --checks all
         env:
           STAGING_URL: ${{ vars.STAGING_URL }}
+          RATE_BYPASS_PRIVATE_KEY: ${{ secrets.RATE_BYPASS_PRIVATE_KEY }}

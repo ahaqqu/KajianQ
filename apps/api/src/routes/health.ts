@@ -31,8 +31,9 @@ export const healthRoutes = newRouter().get(
         description: "OK",
         content: { "application/json": { schema: resolver(HealthResponseSchema) } },
       },
-      // The per-IP rate limiter is global middleware — health is not exempt,
-      // so a client that exhausts its window sees this on any route.
+      // The per-IP rate limiter meters the /v1 surface (ADR-0041) — health
+      // is not exempt, so a client that exhausts its window sees this on
+      // any /v1 route.
       429: {
         description: "Rate limited — the per-IP request budget for the window is exhausted",
         content: { "application/json": { schema: resolver(HealthErrorSchema) } },
