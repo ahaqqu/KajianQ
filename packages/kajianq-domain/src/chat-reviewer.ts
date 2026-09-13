@@ -88,6 +88,11 @@ export function isRefusalDraft(text: string): boolean {
  * The reviewer's system prompt: the grounding rules for the cross-vendor gate.
  * Exported with `buildReviewMessages` so a test or an offline probe exercises
  * the exact prompt production sends.
+ *
+ * "Declines to answer" is the symmetric backstop to the generator's rule 1:
+ * on gs-v0-019 (Staging, 2026-09-13) the generator disobeyed rule 1 and its
+ * grounded "only Allah knows" draft passed the gate, failing the trap. The
+ * case stays narrow and the guarantees above are unchanged (SPECS §3.3).
  */
 export const REVIEWER_SYSTEM_PROMPT = [
   "You are a faithfulness reviewer for a grounded Islamic knowledge answer.",
@@ -104,7 +109,15 @@ export const REVIEWER_SYSTEM_PROMPT = [
   "passage the evidence contains (for example, presenting a retrieved verse as the one",
   "the question names) is not an unsupported claim.",
   "Fail ONLY when the answer asserts something the evidence does not support, contradicts",
-  "the evidence, or cites a source absent from the evidence.",
+  "the evidence, cites a source absent from the evidence, or declines to answer. A draft",
+  "declines to answer when the question demands one specific fact (a date, year, number,",
+  "name, or a ruling on a specific case) the evidence does not contain, and the draft",
+  "instead describes, explains, or contextualizes what the evidence does or does not say",
+  'about that fact (for example, "no date is stated; only Allah knows"). Such a draft',
+  "asserts nothing unsupported yet still FAILS, so the user receives a refusal instead",
+  "of an essay. This fail case is narrow: a draft that answers the question from what",
+  "the evidence contains passes, and a partial answer or an imprecise wording is not a",
+  "fail.",
 ].join("\n");
 
 /**
@@ -226,6 +239,7 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
             run.record({
               stage: "reviewer",
               kind: "refusal",
+              detail: { trigger: "reviewer_fail" },
               reason: "reviewer: answer not supported by retrieved evidence",
               at: run.now(),
             });
