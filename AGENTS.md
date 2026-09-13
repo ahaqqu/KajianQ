@@ -73,6 +73,7 @@ Tickets carry model routing labels applied by the `to-tickets` skill and consume
 ## Working agreements (from the owner — non-negotiable)
 
 - **Check the branch at the start of every turn.** Before the first git write of each session turn, run `git branch --show-current` and switch to the intended PR branch if needed. The owner may change branches between prompts, but never mid-turn — one check per turn is enough. Never commit task work directly on `main`.
+- **Versioned git hooks gate every commit and push.** The root `prepare` script sets `core.hooksPath` to `.githooks/` on install: `pre-commit` auto-formats staged files (the formatter fix lands inside the commit), `pre-push` runs `bun run lint`. Do not bypass with `--no-verify`; if `pre-push` blocks, run `bunx vp check --fix`, commit the result, and push again.
 - Complete a task end-to-end with a PR created via the `pr-creation` skill, then hand it to the owner for review. **Never merge a PR unless the owner explicitly approves merging it.**
 - Orchestrators instruct spawned subagents explicitly about PR creation and CI-green expectations, supervise and monitor their work, and report back when they finish.
 - PR titles/descriptions in English; create via `gh api --input` with a JSON payload file — never `gh pr edit --field body=…`.

@@ -1,0 +1,41 @@
+#!/bin/sh
+# Format staged files before every commit so the CI `vp check` formatting gate
+# cannot fail on push. Wired repo-wide via core.hooksPath (the root package.json
+# `prepare` script sets it on install).
+#
+# vp fixes the whole tree, so only files this commit was staging are re-added —
+# unrelated in-progress working-tree edits are never swept into the commit.
+# Files that already had unstaged changes before the fix (partial staging via
+# `git add -p`) abort the commit instead: re-adding them would sweep those
+# hunks in, and skipping them would leave unformatted content in the commit.
+
+command -v bunx >/dev/null 2>&1 || exit 0
+
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$staged" ] && exit 0
+
+# Files with unstaged changes before the fix: re-staging them would commit
+# hunks the author deliberately left out, so refuse instead.
+partial=$(git diff --name-only -- $staged)
+if [ -n "$partial" ]; then
+  echo "pre-commit: these staged files also have unstaged changes:" >&2
+  printf '  %s\n' $partial >&2
+  echo "pre-commit: the formatter fix cannot be applied to them without sweeping the" >&2
+  echo "pre-commit: unstaged hunks into the commit. Stage them fully (git add <file>) or" >&2
+  echo "pre-commit: stash the unstaged hunks, then commit again." >&2
+  exit 1
+fi
+
+bunx vp check --fix || {
+  echo "pre-commit: vp could not fix all issues; commit aborted. Fix the errors above and retry." >&2
+  exit 1
+}
+
+printf '%s\n' "$staged" | while IFS= read -r file; do
+  [ -f "$file" ] && git add -- "$file"
+done
+
+bunx vp check || {
+  echo "pre-commit: staged files are still unformatted after --fix; commit aborted." >&2
+  exit 1
+}
