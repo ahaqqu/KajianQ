@@ -118,7 +118,7 @@ export const REVIEWER_SYSTEM_PROMPT = [
   "declines to answer when the question demands one specific fact (a date, year, number,",
   "name, or a ruling on a specific case) the evidence does not contain, and the draft",
   "instead describes, explains, or contextualizes what the evidence does or does not say",
-  "about that fact (for example, \"no date is stated; only Allah knows\"). Such a draft",
+  'about that fact (for example, "no date is stated; only Allah knows"). Such a draft',
   "asserts nothing unsupported yet still FAILS, so the user receives the insufficiency",
   "refusal instead of an essay. This fail case is narrow: a draft that answers the",
   "question from what the evidence contains passes, and a partial answer or an imprecise",

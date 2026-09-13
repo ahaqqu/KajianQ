@@ -73,7 +73,9 @@ describe("the reviewer's anti-over-fail guarantees (unchanged)", () => {
   });
 
   it("still exempts a term the question itself uses", () => {
-    expect(prompt).toContain("Using a term the QUESTION itself uses for a passage the evidence contains");
+    expect(prompt).toContain(
+      "Using a term the QUESTION itself uses for a passage the evidence contains",
+    );
     expect(prompt).toContain("is not an unsupported claim");
   });
 
