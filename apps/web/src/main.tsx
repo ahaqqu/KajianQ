@@ -1,10 +1,12 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { initSentry } from "./lib/sentry";
+import { initTheme } from "./lib/theme";
 import { App } from "./app";
 import "./styles.css";
 
 initSentry(import.meta.env.VITE_SENTRY_DSN);
+initTheme();
 
 const root = document.getElementById("root");
 if (!root) throw new Error("root_missing");

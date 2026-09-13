@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { t, type Locale } from "../../lib/i18n";
 import type { ChatSessionMessage } from "@app/contracts";
-import { MessageCard } from "./MessageCard";
+import { AppHeader } from "../AppHeader";
+import { EmptyState, MessageCard } from "./MessageCard";
 
 /**
- * The chat view (#11): tight message list, staged honest loading state
- * ("Mengambil konteks…" → "Memeriksa sitasi…" → "Menyusun jawaban…" — the
- * machinery the pipeline actually runs), composer pinned at the bottom,
- * edge-state banners. Presentational: the page owns data and transport.
+ * The chat view (#11) in the reference visual language: the app header with
+ * the new-conversation pill, the mono CONVERSATION rule row, the transcript
+ * column, and the bottom-pinned composer band with the circular submit
+ * button and the mono meta footer. Staged honest loading state ("Mengambil
+ * konteks…" → "Memeriksa sitasi…" → "Menyusun jawaban…" — the machinery the
+ * pipeline actually runs). Presentational: the page owns data and transport.
  */
 
 const STAGE_KEYS = ["stagedContext", "stagedReview", "stagedCompose"] as const;
@@ -58,108 +61,156 @@ export function ChatView({
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [messages.length]);
 
-  const submit = (): void => {
-    const text = draft.trim();
+  const sendText = (text: string): void => {
     // `loadingTranscript` is part of the guard (thermo-review A1): a send
     // inside the rehydration window would append optimistic turns that the
-    // resolving transcript cannot contain. The hook's effect also discards
-    // any mid-turn transcript result; this keeps the race unreachable from
-    // the UI in the first place.
+    // resolving transcript cannot contain.
     if (text === "" || busy || loadingTranscript) return;
-    setDraft("");
     onSend(text);
   };
 
-  return (
-    <div className="flex h-[calc(100vh-9rem)] flex-col" data-testid="chat-view">
-      <div className="mb-2 flex items-center gap-2">
-        <button
-          type="button"
-          data-testid="new-session"
-          className="rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:bg-slate-800"
-          onClick={onNewSession}
-        >
-          {t(locale, "newSession")}
-        </button>
-      </div>
+  const submit = (): void => {
+    const text = draft.trim();
+    if (text === "") return;
+    setDraft("");
+    sendText(text);
+  };
 
-      {!online && (
-        <p
-          role="alert"
-          data-testid="offline-banner"
-          className="mb-2 rounded-lg bg-slate-800 px-3 py-2 text-xs text-amber-300"
-        >
-          {t(locale, "offlineBanner")}
-        </p>
-      )}
-      {error !== null && (
-        <p
-          role="alert"
-          data-testid="chat-error"
-          className="mb-2 rounded-lg bg-rose-500/15 px-3 py-2 text-xs text-rose-200"
-        >
-          {error === "load" ? t(locale, "loadError") : errorCopy(locale, error)}
-        </p>
-      )}
+  return (
+    <div className="flex h-dvh flex-col overflow-hidden" data-testid="chat-view">
+      <header className="shrink-0 border-b border-dashed border-rule">
+        <AppHeader
+          actions={
+            <button
+              type="button"
+              data-testid="new-session"
+              className="rounded-full border border-border bg-card px-4 py-2 text-sm font-medium text-card-foreground hover:bg-secondary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={onNewSession}
+            >
+              {t(locale, "newSession")}
+            </button>
+          }
+        />
+      </header>
 
       <div
         ref={listRef}
-        className="flex-1 space-y-3 overflow-y-auto pr-1"
         data-testid="message-list"
+        className="mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-4"
       >
-        {transcriptTruncated && !busy && (
-          <p data-testid="transcript-truncated" className="px-1 pb-1 text-xs text-slate-500">
-            {t(locale, "transcriptTruncated")}
-          </p>
-        )}
-        {messages.length === 0 && !loadingTranscript && !busy && <EmptyState locale={locale} />}
-        {messages.map((message) => (
-          <MessageCard key={message.id} message={message} />
-        ))}
-        {busy && (
+        <div className="flex items-center gap-3 pb-2 pt-4">
+          <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+            {t(locale, "conversationLabel")}
+          </span>
+          <span className="h-px flex-1 bg-rule" />
+          <span className="font-mono text-[11px] text-muted-foreground">
+            {t(locale, "savedLocally")}
+          </span>
+        </div>
+
+        {!online && (
           <p
-            data-testid="staged-loading"
-            aria-live="polite"
-            className="px-1 text-xs text-slate-400"
+            role="alert"
+            data-testid="offline-banner"
+            className="mb-2 rounded-lg border border-accent/40 bg-accent/10 px-3 py-2 text-sm text-accent-foreground"
           >
-            {t(locale, STAGE_KEYS[stage]!)}
+            {t(locale, "offlineBanner")}
           </p>
         )}
-        {loadingTranscript && <p className="px-1 text-xs text-slate-400">{t(locale, "loading")}</p>}
+        {error !== null && (
+          <p
+            role="alert"
+            data-testid="chat-error"
+            className="mb-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            {error === "load" ? t(locale, "loadError") : errorCopy(locale, error)}
+          </p>
+        )}
+
+        <div className="space-y-4 pb-4">
+          {transcriptTruncated && !busy && (
+            <p
+              data-testid="transcript-truncated"
+              className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground"
+            >
+              {t(locale, "transcriptTruncated")}
+            </p>
+          )}
+          {messages.length === 0 && !loadingTranscript && !busy && (
+            <EmptyState locale={locale} onSuggest={sendText} />
+          )}
+          {messages.map((message) => (
+            <MessageCard key={message.id} message={message} />
+          ))}
+          {busy && (
+            <p
+              data-testid="staged-loading"
+              aria-live="polite"
+              className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground"
+            >
+              {t(locale, STAGE_KEYS[stage]!)}
+            </p>
+          )}
+          {loadingTranscript && (
+            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+              {t(locale, "loading")}
+            </p>
+          )}
+        </div>
       </div>
 
-      <form
-        className="mt-2 flex items-end gap-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          submit();
-        }}
-      >
-        <textarea
-          data-testid="composer"
-          aria-label={t(locale, "composerPlaceholder")}
-          className="flex-1 resize-none rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-50 outline-none focus:border-sky-500"
-          rows={2}
-          value={draft}
-          placeholder={t(locale, "composerPlaceholder")}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
+      <div className="shrink-0 border-t border-rule bg-background pb-[calc(env(safe-area-inset-bottom)+0.625rem)]">
+        <div className="mx-auto w-full max-w-3xl px-4 pt-3">
+          <form
+            className="relative rounded-xl border border-input bg-card"
+            onSubmit={(event) => {
               event.preventDefault();
               submit();
-            }
-          }}
-        />
-        <button
-          type="submit"
-          data-testid="send"
-          disabled={busy || loadingTranscript || draft.trim() === ""}
-          className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950 disabled:opacity-50"
-        >
-          {t(locale, "send")}
-        </button>
-      </form>
+            }}
+          >
+            <textarea
+              data-testid="composer"
+              aria-label={t(locale, "composerPlaceholder")}
+              className="w-full resize-none bg-transparent px-4 pb-10 pt-3 text-[15px] text-card-foreground outline-none placeholder:text-muted-foreground"
+              rows={2}
+              value={draft}
+              placeholder={t(locale, "composerPlaceholder")}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  submit();
+                }
+              }}
+            />
+            <button
+              type="submit"
+              data-testid="send"
+              aria-label={t(locale, "send")}
+              disabled={busy || loadingTranscript || draft.trim() === ""}
+              className="absolute right-2.5 bottom-2.5 flex size-9 items-center justify-center rounded-full bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <EnterIcon />
+            </button>
+          </form>
+          <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+            {t(locale, "footerMeta")}
+          </p>
+        </div>
+      </div>
     </div>
+  );
+}
+
+function EnterIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-4">
+      <path
+        d="M20 5v6a3 3 0 0 1-3 3H5m0 0 4-4m-4 4 4 4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
@@ -167,14 +218,4 @@ function errorCopy(locale: Locale, error: Exclude<ChatViewError, "load" | null>)
   if (error === "rate_limited") return t(locale, "errorRateLimited");
   if (error === "unavailable") return t(locale, "errorUnavailable");
   return t(locale, "errorGeneric");
-}
-
-function EmptyState({ locale }: { locale: Locale }) {
-  return (
-    <div data-testid="chat-empty" className="mt-10 space-y-1 text-center">
-      <h1 className="text-3xl font-semibold tracking-tight">{t(locale, "homeTitle")}</h1>
-      <p className="text-sm font-medium text-slate-300">{t(locale, "chatEmptyTitle")}</p>
-      <p className="text-xs text-slate-400">{t(locale, "chatEmptyHint")}</p>
-    </div>
-  );
 }

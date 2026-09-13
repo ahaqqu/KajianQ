@@ -1,15 +1,17 @@
 import type { ChatSessionMessage } from "@app/contracts";
 import { renderAnswerSegments, splitAnswerBlocks } from "../../lib/chat-render";
-import { formatWhen, t, useLocale, type Locale } from "../../lib/i18n";
+import { t, useLocale, type Locale } from "../../lib/i18n";
 import { CitationSheet, useCitationSheet } from "./CitationSheet";
+import { LogoTile } from "../Logo";
 
 /**
- * One transcript turn (#11): a tight card (SPECS §3.1 — no excessive
- * whitespace). Assistant answers split into body (with citation chips
- * resolved from the structured frame), the dhaif warning card, and the
- * ulama disclaimer footer. A refused answer carries an empty citation list,
- * so it renders as a plain card with no citation affordances by data, not
- * by a client-side guess about refusals.
+ * One transcript turn (#11) in the reference visual language: the assistant
+ * turn is an avatar + serif-italic name over a warm card holding the answer
+ * (citation chips resolved from the structured frame), the dhaif warning
+ * card, and the ulama disclaimer footnote. The user turn is a right-aligned
+ * muted bubble. A refused answer carries an empty citation list, so it
+ * renders as a plain card with no citation affordances by data, not by a
+ * client-side guess about refusals.
  */
 export function MessageCard({ message }: { message: ChatSessionMessage }) {
   const locale: Locale = useLocale();
@@ -19,9 +21,9 @@ export function MessageCard({ message }: { message: ChatSessionMessage }) {
     return (
       <article
         data-testid="message-user"
-        className="ml-auto max-w-[85%] rounded-2xl rounded-br-sm bg-sky-500/15 px-3 py-2"
+        className="ml-auto max-w-[85%] rounded-xl bg-card px-4 py-2.5"
       >
-        <p className="whitespace-pre-wrap text-sm text-slate-100">{message.content}</p>
+        <p className="whitespace-pre-wrap text-[15px] text-card-foreground">{message.content}</p>
       </article>
     );
   }
@@ -37,9 +39,13 @@ export function MessageCard({ message }: { message: ChatSessionMessage }) {
     (message.citations?.dhaifWarning === true ? t(locale, "dhaifWarningCard") : null);
 
   return (
-    <article data-testid="message-assistant" className="max-w-[95%] space-y-1">
-      <div className="rounded-2xl rounded-bl-sm border border-slate-800 bg-slate-900/60 px-3 py-2">
-        <div className="space-y-1.5 text-sm leading-relaxed text-slate-100">
+    <article data-testid="message-assistant" className="max-w-[95%] space-y-2">
+      <div className="flex items-center gap-3">
+        <LogoTile size="sm" />
+        <span className="font-serif text-lg font-semibold italic">{t(locale, "appTitle")}</span>
+      </div>
+      <div className="ml-10 space-y-3 rounded-2xl bg-card px-5 py-4">
+        <div className="space-y-3 text-[15px] leading-7 text-card-foreground">
           {segments.map((segment, i) =>
             segment.kind === "text" ? (
               <p key={i} className="whitespace-pre-wrap">
@@ -62,27 +68,72 @@ export function MessageCard({ message }: { message: ChatSessionMessage }) {
           <div
             data-testid="dhaif-warning"
             role="note"
-            className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200"
+            className="rounded-r-lg border-l-2 border-destructive bg-destructive/10 px-3 py-2"
           >
-            {warning}
+            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-destructive">
+              {t(locale, "warningLabel")}
+            </p>
+            <p className="mt-1 text-sm text-card-foreground">{warning}</p>
           </div>
         )}
         {split.disclaimer !== null && (
           <p
             data-testid="ulama-disclaimer"
-            className="mt-2 border-t border-slate-800 pt-2 text-xs italic text-slate-400"
+            className="border-t border-rule pt-2 font-mono text-[11px] uppercase tracking-wide text-muted-foreground"
           >
             {split.disclaimer}
           </p>
         )}
       </div>
-      <p className="px-1 text-[11px] text-slate-400">
-        {formatWhen(locale, new Date(message.createdAt))}
-      </p>
       {sheet.active !== null && (
         <CitationSheet citation={sheet.active} locale={locale} onClose={sheet.close} />
       )}
     </article>
+  );
+}
+
+/**
+ * The empty transcript state: centered logo tile, the serif-italic greeting,
+ * the two-line subtitle, and three full-width suggestion chips (each sends
+ * its question — KajianQ's own starter questions per locale).
+ */
+export function EmptyState({
+  locale,
+  onSuggest,
+}: {
+  locale: Locale;
+  onSuggest: (text: string) => void;
+}) {
+  const suggestions = [
+    t(locale, "suggestion1"),
+    t(locale, "suggestion2"),
+    t(locale, "suggestion3"),
+  ];
+  return (
+    <div data-testid="chat-empty" className="flex flex-col items-center pt-14 pb-8 text-center">
+      <LogoTile size="lg" />
+      <h1 data-testid="chat-greeting" className="mt-8 font-serif text-3xl font-semibold italic">
+        {t(locale, "greeting")}
+      </h1>
+      <p className="mt-4 text-sm text-muted-foreground">
+        {t(locale, "emptyLine1")}
+        <br />
+        {t(locale, "emptyLine2")}
+      </p>
+      <div className="mt-6 w-full space-y-3">
+        {suggestions.map((suggestion) => (
+          <button
+            key={suggestion}
+            type="button"
+            data-testid="suggestion-chip"
+            className="w-full rounded-xl bg-card px-4 py-3 text-left text-sm text-card-foreground hover:bg-secondary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => onSuggest(suggestion)}
+          >
+            {suggestion}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -100,7 +151,7 @@ function CitationChip({
       type="button"
       data-testid="citation-chip"
       aria-label={`${t(locale, "citationChipAria")} ${label}`}
-      className="inline-flex items-center rounded-full bg-sky-500/15 px-2 py-0.5 align-baseline font-mono text-xs text-sky-300 hover:bg-sky-500/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+      className="inline-flex items-center rounded-md border border-accent/30 bg-accent/10 px-1.5 py-0.5 align-baseline font-mono text-[11px] uppercase tracking-wide text-accent-foreground hover:bg-accent/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       onClick={onOpen}
     >
       [{label}]

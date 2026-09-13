@@ -14,8 +14,8 @@ export default defineConfig({
         name: "KajianQ",
         short_name: "KajianQ",
         description: "Islamic classical-knowledge chatbot on the DARS engine",
-        theme_color: "#0f172a",
-        background_color: "#0f172a",
+        theme_color: "#f6f0e3",
+        background_color: "#f6f0e3",
         display: "standalone",
         start_url: "/",
         icons: [
