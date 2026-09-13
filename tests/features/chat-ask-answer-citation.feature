@@ -22,6 +22,10 @@ Feature: Chat — ask, answer, citations, warnings, disclaimer
     When I ask a question whose answer carries a dhaif hadith
     Then the dhaif warning renders as a warning card with the grade badge
 
+  Scenario: Markdown in the answer renders as rich text, never literal markers (#150)
+    When I ask a question whose answer contains markdown
+    Then the answer renders bold, emphasis, and list items with no literal markdown
+
   Scenario: A refusal renders as a plain card without citation affordances
     When I ask something the corpus cannot answer
     Then the refusal renders as a plain card with no citation chips
