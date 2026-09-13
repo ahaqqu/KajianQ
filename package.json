@@ -63,7 +63,7 @@
     "vitest": "4.1.11"
   },
   "overrides": {
-    "brace-expansion": "5.0.8"
+    "@effect/platform-node-shared": "4.0.0-rc.112"
   },
   "size-limit": [
     {

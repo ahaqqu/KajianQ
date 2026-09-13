@@ -18,7 +18,7 @@
     "@app/rag-core": "workspace:*",
     "@aws-sdk/client-s3": "^3.1116.0",
     "@neondatabase/serverless": "^1.1.0",
-    "effect": "4.0.0-rc.115",
+    "effect": "4.0.0-rc.112",
     "valibot": "1.4.2"
   },
   "devDependencies": {
