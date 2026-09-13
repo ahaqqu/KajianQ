@@ -51,9 +51,12 @@ describe("the reviewer's decline-to-answer fail case", () => {
     expect(prompt).toContain("no date is stated; only Allah knows");
   });
 
-  it("states the consequence so the verdict maps to the canonical refusal path", () => {
+  it("states the consequence so the verdict maps to a refusal path", () => {
     expect(prompt).toContain("asserts nothing unsupported yet still FAILS");
-    expect(prompt).toContain("the user receives the insufficiency refusal instead of an essay");
+    // The reviewer-fail path returns the reviewer-refusal copy
+    // (`refusalTextFor(.., "reviewer")`), not the canonical insufficiency
+    // string — the prompt must not promise copy the path does not deliver.
+    expect(prompt).toContain("the user receives a refusal instead of an essay");
   });
 
   it("keeps the case narrow: partial answers and imprecise wording are not fails", () => {

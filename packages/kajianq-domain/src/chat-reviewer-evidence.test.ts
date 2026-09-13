@@ -200,3 +200,51 @@ describe("generator-emitted refusal short-circuit", () => {
     expect(result.text).toContain("QS. 2:255");
   });
 });
+
+/**
+ * Thermo-review B1: the reviewer-fail `refusal` event must carry a
+ * machine-readable `trigger` like its sibling paths (`ungrounded_citation`,
+ * `generator_refusal`) — a refusal-event filter (what `detectRefusal` reads)
+ * must be able to tell a decline-to-answer backstop fail from every other
+ * reviewer fail without parsing prose.
+ */
+describe("reviewer-fail refusal event", () => {
+  async function runFailReview(): Promise<{
+    result: { text: string };
+    events: { kind: string; detail?: Record<string, unknown> }[];
+  }> {
+    const events: { kind: string; detail?: Record<string, unknown> }[] = [];
+    const reviewer = createKajianQReviewer({
+      provider: {
+        generate: () =>
+          Effect.succeed({ text: '{"verdict": "fail", "reason": "x"}', cost: cost() }),
+      },
+      language: "id",
+    });
+    const result = (await Effect.runPromise(
+      Effect.provideService(
+        reviewer.review(
+          { text: "Jawaban dengan QS. 2:255 dan HR. Malik no. 185." } as never,
+          await assembledContext(),
+        ) as never,
+        RunContext,
+        {
+          config: {},
+          now: () => 1,
+          record: (e: { kind: string; detail?: Record<string, unknown> }) => events.push(e),
+        } as never,
+      ) as never,
+    )) as { text: string };
+    return { result, events };
+  }
+
+  it("records the refusal with a machine-readable trigger and the reviewer copy", async () => {
+    const { result, events } = await runFailReview();
+    // The reviewer-refusal copy, NOT the canonical insufficiency string
+    // (thermo-review A1): the prompt must not promise copy the path skips.
+    expect(result.text).toBe("jawaban tidak didukung oleh dalil yang ditemukan");
+    const refusalEvent = events.find((e) => e.kind === "refusal");
+    expect(refusalEvent).toBeDefined();
+    expect(refusalEvent?.detail?.["trigger"]).toBe("reviewer_fail");
+  });
+});
