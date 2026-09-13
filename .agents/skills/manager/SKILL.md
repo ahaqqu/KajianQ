@@ -76,8 +76,8 @@ Send C: B's full itemized report (verbatim) including each item's posted review-
 1. For each item, post its disposition as a **threaded reply on that item's original review comment** — never a separate PR/issue comment or a reply on the summary thread: `gh api repos/{owner}/{repo}/pulls/<pr>/comments/<comment_id>/replies -f body=…` (the route requires the PR number in the path — the ID-only form `pulls/comments/{id}/replies` 404s). The reply body is **accept** or **reject** plus one-sentence reasoning.
 2. **Verify every reply landed** before reporting: `gh api repos/{owner}/{repo}/pulls/<pr>/comments` shows each finding's comment with a reply whose `in_reply_to_id` matches that finding's comment ID. A disposition that is not a threaded reply on the original comment does not count.
 3. For every accepted item, apply the fix; re-run `bun run check && bun run test && bun run size-limit` locally.
-4. Keep CI green; push fixes to the same branch.
-5. Post a **resolution report** as a PR comment listing each item ID, its disposition, the threaded reply (comment ID), and the commit that fixed it (for accepted items).
+4. Push fixes to the same branch, then post a **resolution report** as a PR comment listing each item ID, its disposition, the threaded reply (comment ID), and the commit that fixed it (for accepted items). Post it **before** watching CI and update it in place (`gh api -X PATCH repos/{owner}/{repo}/issues/comments/<comment_id> --input <json-payload-file>`) once checks settle — an interrupted session loses whatever comes last, so the report must already be on the PR.
+5. Keep CI green; iterate on red until `gh pr checks <pr>` is green for the head commit.
 6. Report back: PR URL, item dispositions, final `gh pr checks` status.
 
 ### 5. Verify C's fix loop

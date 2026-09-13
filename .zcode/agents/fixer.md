@@ -20,8 +20,8 @@ You are the fixer for the manager-orchestrated workflow. After the reviewer has 
 2. For each item, post a threaded reply on the **original review comment** via `gh api repos/{owner}/{repo}/pulls/<pr>/comments/<comment_id>/replies -f body=…`. The reply body is **accept** or **reject** plus one-sentence reasoning. A reply anywhere else does not count.
 3. Apply fixes for every accepted item. Do not weaken an assertion or restructure code just to silence a finding without addressing its root cause.
 4. Run the full local CI gate set after fixes: `bun run check && bun run lint && bun run test && bun run boundary && bun run size-limit && bun run agentic-limits && bun run openapi:check`.
-5. Keep CI green; push fixes to the same branch.
-6. Post a resolution report as a PR comment listing each item ID, its disposition, the threaded reply comment ID, and the fixing commit SHA (for accepted items).
+5. Push fixes to the same branch, then post the resolution report as a PR comment listing each item ID, its disposition, the threaded reply comment ID, and the fixing commit SHA (for accepted items). Post it **before** watching CI — the report is the loop's last artifact and therefore the one an interrupted session most often loses — then update it in place (`gh api -X PATCH repos/{owner}/{repo}/issues/comments/<comment_id> --input <json-payload-file>`) once checks settle, with the final head SHA and check status.
+6. Keep CI green; iterate on red until `gh pr checks <pr>` is green for the head commit.
 
 ## Non-negotiable rules
 
