@@ -107,10 +107,15 @@ For readers who want the full picture, the working documents are open:
 
 ## Environments
 
-| Environment | URL                                           |
-| ----------- | --------------------------------------------- |
-| Staging     | https://kajianq-api-staging.rumaq.workers.dev |
-| Production  | https://kajianq-api.rumaq.workers.dev         |
+| Environment | UI                                            | API                                           |
+| ----------- | --------------------------------------------- | --------------------------------------------- |
+| Staging     | https://kajianq-api-staging.rumaq.workers.dev | https://kajianq-api-staging.rumaq.workers.dev |
+| Production  | https://kajianq-api.rumaq.workers.dev         | https://kajianq-api.rumaq.workers.dev         |
+
+The UI and API columns are identical today: the React PWA is served by the
+same Cloudflare Worker (the Hono stack that exposes `/v1/*`), so each
+environment has one host. The columns exist so a future split — a separate
+UI host — only updates one column.
 
 ## Data sources & attribution
 
