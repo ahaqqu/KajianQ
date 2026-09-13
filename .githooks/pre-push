@@ -1,0 +1,15 @@
+#!/bin/sh
+# Last gate before a push: the same lint gate CI runs, so a commit that
+# bypassed pre-commit (git commit --no-verify) fails here, in seconds,
+# instead of burning a CI run.
+#
+# This hook checks but never fixes: the commits already exist, so a fix here
+# would have to amend or force-push. Blocked pushes should run
+# `bunx vp check --fix`, commit, and push again.
+
+command -v bunx >/dev/null 2>&1 || exit 0
+
+bun run lint || {
+  echo "pre-push: lint would fail in CI. Run 'bunx vp check --fix', commit the result, and push again." >&2
+  exit 1
+}

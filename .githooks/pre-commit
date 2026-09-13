@@ -1,0 +1,26 @@
+#!/bin/sh
+# Format staged files before every commit so the CI `vp check` formatting gate
+# cannot fail on push. Wired repo-wide via core.hooksPath (the root package.json
+# `prepare` script sets it on install).
+#
+# vp fixes the whole tree, so only files this commit was staging are re-added —
+# unrelated in-progress working-tree edits are never swept into the commit.
+
+command -v bunx >/dev/null 2>&1 || exit 0
+
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$staged" ] && exit 0
+
+bunx vp check --fix || {
+  echo "pre-commit: vp could not fix all issues; commit aborted. Fix the errors above and retry." >&2
+  exit 1
+}
+
+printf '%s\n' "$staged" | while IFS= read -r file; do
+  [ -f "$file" ] && git add -- "$file"
+done
+
+bunx vp check || {
+  echo "pre-commit: staged files are still unformatted after --fix; commit aborted." >&2
+  exit 1
+}
