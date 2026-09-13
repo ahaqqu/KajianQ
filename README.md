@@ -105,6 +105,13 @@ For readers who want the full picture, the working documents are open:
 | What do the domain words mean? (Kitab, Madzhab, Isnad…) | [`CONTEXT.md`](CONTEXT.md)                                                   |
 | Where did the idea start? (original v1.2 spec, frozen)  | [`INITIAL_IDEA.md`](INITIAL_IDEA.md)                                         |
 
+## Environments
+
+| Environment | URL                                           |
+| ----------- | --------------------------------------------- |
+| Staging     | https://kajianq-api-staging.rumaq.workers.dev |
+| Production  | https://kajianq-api.rumaq.workers.dev         |
+
 ## Data sources & attribution
 
 All corpus texts keep their attributions — the Quran and its translations

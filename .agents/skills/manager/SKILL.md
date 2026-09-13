@@ -97,6 +97,10 @@ Produce the final user-facing summary:
 - **Next-step recommendation**: e.g. merge (B's compliance + thermos passes already ran), follow-up tickets, or escalating a rejected-High to the user.
 - **Workflow improvement suggestion**: at least one concrete change to this skill, the role agent files, or the relay protocol that would have made this run faster or more reliable. This is a standing duty of the manager — if everything went perfectly, say so and skip.
 
+### 7. Post-merge CI check
+
+After the owner merges, one-shot verify the post-merge workflows on `main` are green for the merge commit (`gh run list --workflow <post-merge workflow>` filtered to that commit — e.g. the `Staging` workflow). On red, relay the failing log to the user immediately — never silently absorb it (a PR green before merge can still break main: #146 merged and the Staging Golden Set smoke went red 4/5 after). Step 6's cleanup duty moves behind this check: remove worktrees only once the post-merge runs are verified or the failure is relayed.
+
 ## Reliability & supervision
 
 - **Subagent results.** Capture each spawn's agent/subagent id. Continue a running child with your adapter's continue mechanism. Read a child's result from its report/settle notice — not from a transcript-style output tool (your adapter documents the specifics).
