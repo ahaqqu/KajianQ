@@ -1,4 +1,4 @@
-import { Cause, Effect } from "effect";
+import { Cause, Effect, Result } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { totalCostMicroUsd, type CostRecord } from "@app/contracts";
 import { RunContext } from "./context";
@@ -202,10 +202,11 @@ describe("runPipeline", () => {
       runPipeline(stages, query, {}, { traceId: "t", now: () => 0 }),
     );
     expect(order).toEqual(["cleanup"]);
-    const failure = exit._tag === "Failure" ? Cause.failureOption(exit.cause) : undefined;
+    // Effect v4: v3's `Cause.failureOption` extraction is `Cause.findFail`.
+    const failure = exit._tag === "Failure" ? Cause.findFail(exit.cause) : undefined;
     expect(failure).toBeDefined();
-    if (failure && failure._tag === "Some") {
-      const err = failure.value;
+    if (failure && Result.isSuccess(failure)) {
+      const err = failure.success.error;
       expect(err).toBeInstanceOf(StageError);
       expect(err.stage).toBe("generator");
       expect((err.cause as Error).message).toBe("boom");

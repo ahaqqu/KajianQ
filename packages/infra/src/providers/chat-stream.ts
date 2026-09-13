@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit, Option, Stream } from "effect";
+import { Cause, Effect, Exit, Result, Stream } from "effect";
 import { ProviderError, type StreamHandle } from "@app/rag-core";
 import type { CostRecord } from "@app/contracts";
 import { computeCost, estimateTokens, withAttemptCost } from "./chat-wire";
@@ -130,19 +130,25 @@ export function streamHandle(input: {
    * estimated cost rides on the error (C2). */
   function settleFromExit(exit: Exit.Exit<unknown, unknown>): void {
     if (settled || exit._tag === "Success") return;
-    const failure = Cause.failureOption(exit.cause);
+    // Effect v4: `Cause.findFail` replaces v3's `failureOption` — a Result
+    // carrying the first typed `Fail` reason (or the cause, unchanged).
+    const failure = Cause.findFail(exit.cause);
+    const failed = Result.isSuccess(failure) ? failure.success.error : undefined;
     const error: Error =
-      Option.isSome(failure) && failure.value instanceof Error
-        ? failure.value
+      failed instanceof Error
+        ? failed
         : new ProviderError({
             kind: "transport",
-            message: `stream terminated before completion: ${String(Option.isSome(failure) ? failure.value : "interrupted")}`,
+            message: `stream terminated before completion: ${failed === undefined ? "interrupted" : String(failed)}`,
           });
     const stamped = withAttemptCost(error as ProviderError, buildCost(undefined, charsSoFar()));
     settle(false, stamped as unknown as Error);
   }
 
-  const deltas: Stream.Stream<string, ProviderError> = Stream.unwrapScoped(
+  // Effect v4: `Stream.unwrap` absorbed `unwrapScoped`, and `Stream.unfold`
+  // absorbed `unfoldEffect` (the step returns the next `[value, state]` pair
+  // or `undefined` — not an Option).
+  const deltas: Stream.Stream<string, ProviderError> = Stream.unwrap(
     Effect.gen(function* () {
       const it = start();
       deltasStarted = true;
@@ -154,17 +160,17 @@ export function streamHandle(input: {
           settleFromExit(exit);
         }),
       );
-      return Stream.unfoldEffect(it, (gen) =>
+      return Stream.unfold(it, (gen) =>
         Effect.tryPromise({ try: () => gen.next(), catch: toProviderError }).pipe(
           Effect.flatMap((next) =>
             next.done
               ? Effect.sync(() => {
                   settle(true, next.value);
-                  return Option.none<readonly [string, AsyncGenerator<string, StreamOutcome>]>();
+                  return undefined;
                 })
               : Effect.sync(() => {
                   emittedChars += next.value.length;
-                  return Option.some([next.value, gen] as const);
+                  return [next.value, gen] as const;
                 }),
           ),
         ),

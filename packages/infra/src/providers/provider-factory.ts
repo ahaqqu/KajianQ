@@ -165,30 +165,32 @@ class FallbackProvider implements Provider {
         return op(candidate.provider).pipe(
           // Collect each failure's spend as it passes into the retry loop —
           // retried or not — then re-fail with the same error so the
-          // schedule's kind dispatch is untouched.
-          Effect.catchAll((err: ProviderError) => {
-            collect(err);
-            return Effect.fail(err);
-          }),
+          // schedule's kind dispatch is untouched. (Effect v4: tap-and-refail
+          // is `tapError`; `catchAll` is gone.)
+          Effect.tapError((err: ProviderError) => Effect.sync(() => collect(err))),
           Effect.retry({ schedule: this.retrySchedule }),
           // The candidate gave up: stamp the accumulated list onto the
           // escaping error and move the spend to the chain level. (No
           // second collect here — the pre-retry hook already collected
           // this failure's cost; collecting again would double-count the
-          // last attempt.)
-          Effect.catchAll((err: ProviderError) => {
-            chainCosts.push(...costs);
-            return Effect.fail(
-              costs.length > 0
-                ? new ProviderError({
-                    kind: err.kind,
-                    message: err.message,
-                    ...(err.candidates !== undefined ? { candidates: err.candidates } : {}),
-                    attemptCosts: costs,
-                  })
-                : err,
-            );
-          }),
+          // last attempt.) `catchIf` with an always-true predicate is the
+          // v4 form of the former `catchAll`.
+          Effect.catchIf(
+            () => true,
+            (err: ProviderError) => {
+              chainCosts.push(...costs);
+              return Effect.fail(
+                costs.length > 0
+                  ? new ProviderError({
+                      kind: err.kind,
+                      message: err.message,
+                      ...(err.candidates !== undefined ? { candidates: err.candidates } : {}),
+                      attemptCosts: costs,
+                    })
+                  : err,
+              );
+            },
+          ),
         );
       };
       // `eligible` is non-empty here (the empty-list case failed above); the
@@ -198,24 +200,24 @@ class FallbackProvider implements Provider {
       const chain = rest.reduce<Effect.Effect<A, ProviderError>>(
         (acc, candidate) =>
           acc.pipe(
-            Effect.catchAll((err) =>
-              isRetryable(err.kind) ? retried(candidate) : Effect.fail(err),
-            ),
+            // Non-retryable kinds pass through untouched (the v4 conditional
+            // catch keeps the v3 `isRetryable ? next : re-fail` shape).
+            Effect.catchIf((err) => isRetryable(err.kind), () => retried(candidate)),
           ),
         retried(first),
       );
       return chain.pipe(
-        Effect.catchAll((lastError) =>
-          isRetryable(lastError.kind)
-            ? Effect.fail(
-                new ProviderError({
-                  kind: "exhausted",
-                  message: `role "${this.role}": all candidates failed (last: ${lastError.message})`,
-                  candidates: eligible.map((c) => c.provider.modelId),
-                  attemptCosts: chainCosts,
-                }),
-              )
-            : Effect.fail(lastError),
+        Effect.catchIf(
+          (lastError) => isRetryable(lastError.kind),
+          (lastError) =>
+            Effect.fail(
+              new ProviderError({
+                kind: "exhausted",
+                message: `role "${this.role}": all candidates failed (last: ${lastError.message})`,
+                candidates: eligible.map((c) => c.provider.modelId),
+                attemptCosts: chainCosts,
+              }),
+            ),
         ),
       );
     };

@@ -1,4 +1,4 @@
-import { Duration, Effect, Schedule, ScheduleDecision, ScheduleInterval } from "effect";
+import { Cause, Duration, Effect, Schedule } from "effect";
 import type { ProviderError } from "@app/rag-core";
 
 /**
@@ -26,7 +26,7 @@ import type { ProviderError } from "@app/rag-core";
  */
 type KindBudget = {
   kinds: readonly string[];
-  base: Duration.DurationInput;
+  base: Duration.Input;
   maxRetries: number;
 };
 
@@ -44,18 +44,17 @@ export type RetryBudgets = {
  * and server faults retry faster; `bad_request`/`exhausted` never retry.
  * Tests inject a faster schedule via `ResolveOptions.retrySchedule`.
  *
- * Implemented as one custom schedule rather than a union of `whileInput`
- * filters: in effect 3.22 a `whileInput` step advances its underlying arm
- * *before* testing the predicate, and a union persists both arms' state, so
- * errors of one kind would silently consume the other kind's budget
- * (review A2 — two transport faults followed by a 429 left the 429 with zero
- * retries). Here the kind is dispatched *before* any state advances, so each
- * kind's budget is consumed only by errors of that kind, and an error whose
- * kind matches no budget ends the retry immediately.
+ * Implemented as one custom schedule rather than a union of predicate-filtered
+ * schedules: a unioned arm advances its own state even when the *other* arm's
+ * predicate matched, so errors of one kind would silently consume the other
+ * kind's budget (review A2 — two transport faults followed by a 429 left the
+ * 429 with zero retries). Here the kind is dispatched *before* any state
+ * advances, so each kind's budget is consumed only by errors of that kind, and
+ * an error whose kind matches no budget ends the retry immediately.
  */
 export const perKindRetrySchedule = (
-  rateLimitedBase: Duration.DurationInput,
-  faultBase: Duration.DurationInput,
+  rateLimitedBase: Duration.Input,
+  faultBase: Duration.Input,
   budgets: RetryBudgets = {},
 ): Schedule.Schedule<unknown, ProviderError> => {
   const perKind: readonly KindBudget[] = [
@@ -63,29 +62,33 @@ export const perKindRetrySchedule = (
     { kinds: ["transport", "server"], base: faultBase, maxRetries: budgets.faultRetries ?? 3 },
   ];
   // State: one attempt counter per budget, indexed by budget. A kind that
-  // matches no budget has no counter and never retries.
-  return Schedule.makeWithState<ReadonlyArray<number>, ProviderError, unknown>(
-    perKind.map(() => 0),
-    (now, err, counts) => {
-      const index = perKind.findIndex((b) => b.kinds.includes(err.kind));
-      if (index < 0) {
-        return Effect.succeed([counts, undefined, ScheduleDecision.done] as const);
-      }
-      const budget = perKind[index];
-      const attempt = counts[index] ?? 0;
-      if (budget === undefined || attempt >= budget.maxRetries) {
-        return Effect.succeed([counts, undefined, ScheduleDecision.done] as const);
-      }
-      const baseMs = Duration.toMillis(budget.base);
-      const delayMs = baseMs * 2 ** attempt;
-      const next = counts.slice();
-      next[index] = attempt + 1;
-      return Effect.succeed([
-        next,
-        undefined,
-        ScheduleDecision.continueWith(ScheduleInterval.after(now + delayMs)),
-      ] as const);
-    },
+  // matches no budget has no counter and never retries. Effect v4 builds
+  // custom schedules on `Schedule.fromStep` (the v3 `makeWithState` /
+  // `ScheduleDecision` / `ScheduleInterval` API is gone): the step effect
+  // runs once per retry driver, so the counters are fresh per run, each step
+  // returns the next `[output, delay]` pair, and completion is `Cause.done`.
+  return Schedule.fromStep(
+    Effect.sync(() => {
+      const counts = perKind.map(() => 0);
+      return (_now: number, err: ProviderError) => {
+        const index = perKind.findIndex((b) => b.kinds.includes(err.kind));
+        if (index < 0) {
+          return Cause.done(undefined);
+        }
+        const budget = perKind[index];
+        const attempt = counts[index] ?? 0;
+        if (budget === undefined || attempt >= budget.maxRetries) {
+          return Cause.done(undefined);
+        }
+        const delayMs = Duration.toMillis(budget.base) * 2 ** attempt;
+        const next = counts.slice();
+        next[index] = attempt + 1;
+        return Effect.succeed([
+          undefined,
+          Duration.millis(delayMs),
+        ] as [undefined, Duration.Duration]);
+      };
+    }),
   );
 };
 

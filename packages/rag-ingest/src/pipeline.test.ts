@@ -3,7 +3,7 @@ import type { RagStore } from "@app/infra";
 import type { Provider } from "@app/rag-core";
 import { EmbedMisalignment, runIngestion } from "./pipeline";
 import type { ParsedParent } from "./types";
-import { Cause, Effect } from "effect";
+import { Cause, Effect, Result } from "effect";
 
 /** In-memory RagStore fake: idempotent by sourceKey / (parentId, ordinal). */
 function fakeStore() {
@@ -387,9 +387,11 @@ describe("runIngestion", () => {
               ),
               // Track fail-fast sibling interruption: an in-flight batch's
               // exit is interruption-only (no typed failure of its own).
+              // Effect v4 renamed `Cause.isInterruptedOnly` to
+              // `hasInterruptsOnly`.
               Effect.onExit((exit) =>
                 Effect.sync(() => {
-                  if (exit._tag === "Failure" && Cause.isInterruptedOnly(exit.cause))
+                  if (exit._tag === "Failure" && Cause.hasInterruptsOnly(exit.cause))
                     if (spec.texts[0] !== undefined) aborted.push(spec.texts[0]);
                 }),
               ),
@@ -440,11 +442,11 @@ describe("runIngestion", () => {
       ? (rejection as Record<symbol, Cause.Cause<EmbedMisalignment>>)[causeSym]
       : undefined;
     expect(cause).toBeDefined();
-    const failure = cause ? Cause.failureOption(cause) : undefined;
-    if (failure !== undefined && failure._tag === "Some") {
-      expect(failure.value._tag).toBe("EmbedMisalignment");
-      expect(failure.value.expected).toBe(2);
-      expect(failure.value.received).toBe(1);
+    const failure = cause ? Cause.findFail(cause) : undefined;
+    if (failure !== undefined && Result.isSuccess(failure)) {
+      expect(failure.success.error._tag).toBe("EmbedMisalignment");
+      expect(failure.success.error.expected).toBe(2);
+      expect(failure.success.error.received).toBe(1);
     }
     // Fail-fast interrupted in-flight siblings (their scope finalizers ran).
     expect(aborted.length).toBeGreaterThan(0);

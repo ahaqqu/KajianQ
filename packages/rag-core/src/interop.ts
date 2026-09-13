@@ -1,4 +1,4 @@
-import { Cause, Data, Effect, Option } from "effect";
+import { Cause, Data, Effect, Result } from "effect";
 import { runPipeline, type PipelineStages, type RunConfig, type RunOptions } from "./run";
 import { StageError } from "./errors";
 import { ProviderError, type ProviderErrorKind } from "./provider";
@@ -57,8 +57,10 @@ export async function runPipelinePromise<TFilters extends Record<string, unknown
     : runPipeline(stages, query, config, options);
   const exit = await Effect.runPromiseExit(program);
   if (exit._tag === "Success") return exit.value;
-  const failure = Cause.failureOption(exit.cause);
-  if (Option.isSome(failure)) throw failure.value;
+  // Effect v4: `Cause.findFail` replaces v3's `failureOption` — a Result whose
+  // success carries the first typed `Fail` reason (`.error` is the seam error).
+  const failure = Cause.findFail(exit.cause);
+  if (Result.isSuccess(failure)) throw failure.success.error;
   throw Cause.squash(exit.cause);
 }
 
@@ -76,7 +78,9 @@ function raceSignal<A, E>(
     if (signal.aborted) return Effect.fail(new PipelineAbortedError({ signal }));
     return Effect.raceFirst(
       effect,
-      Effect.async<never, PipelineAbortedError>((resume) => {
+      // Effect v4: `Effect.callback` is the renamed `Effect.async` — same
+      // register-and-resume shape, cleanup effect on interrupt included.
+      Effect.callback<never, PipelineAbortedError>((resume) => {
         const onAbort = () => resume(Effect.fail(new PipelineAbortedError({ signal })));
         signal.addEventListener("abort", onAbort, { once: true });
         return Effect.sync(() => signal.removeEventListener("abort", onAbort));

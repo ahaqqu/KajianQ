@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Cause, Effect, Exit, Option } from "effect";
+import { Cause, Effect, Exit, Result } from "effect";
 import type { StoreError } from "@app/rag-core";
 import {
   checkEmbedding,
@@ -15,10 +15,9 @@ import {
 /** Run a pure validation effect that must fail; returns the typed failure. */
 async function failWith(effect: Effect.Effect<unknown, StoreError>): Promise<StoreError> {
   const exit = await Effect.runPromiseExit(effect);
-  const failure = Exit.isFailure(exit)
-    ? Cause.failureOption(exit.cause)
-    : Option.none<StoreError>();
-  if (Option.isSome(failure)) return failure.value;
+  // Effect v4: v3's `Cause.failureOption` extraction is `Cause.findFail`.
+  const failure = Exit.isFailure(exit) ? Cause.findFail(exit.cause) : undefined;
+  if (failure !== undefined && Result.isSuccess(failure)) return failure.success.error;
   throw new Error("expected the effect to fail");
 }
 

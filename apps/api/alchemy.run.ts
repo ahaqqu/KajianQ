@@ -34,7 +34,8 @@ const SECRET_NAMES = [
 ] as const;
 
 const secretBindings = Object.fromEntries(
-  SECRET_NAMES.filter((name) => env[name]).map((name) => [name, Config.redacted(name)] as const),
+  // Effect v4 renamed `Config.redacted` to `Config.Redacted`.
+  SECRET_NAMES.filter((name) => env[name]).map((name) => [name, Config.Redacted(name)] as const),
 );
 
 /** The chat store's binding name → the repo secret that carries its value. */
@@ -42,7 +43,7 @@ const DATABASE_URL_BINDING = "DATABASE_URL";
 const NEON_DATABASE_URL_SECRET = "NEON_DATABASE_URL";
 const databaseUrlBinding =
   env[NEON_DATABASE_URL_SECRET] && env[NEON_DATABASE_URL_SECRET].trim() !== ""
-    ? { [DATABASE_URL_BINDING]: Config.redacted(NEON_DATABASE_URL_SECRET) }
+    ? { [DATABASE_URL_BINDING]: Config.Redacted(NEON_DATABASE_URL_SECRET) }
     : {};
 
 const ASSETS = {

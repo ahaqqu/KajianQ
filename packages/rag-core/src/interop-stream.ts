@@ -24,7 +24,9 @@ export function engineStreamToWeb(
   handle: StreamHandle,
   onCost: (cost: CostRecord) => void,
 ): ReadableStream<Uint8Array> {
-  const deltas: Stream.Stream<string, ProviderError> = Stream.unwrapScoped(
+  // Effect v4: `Stream.unwrap` absorbed `unwrapScoped` — an effect returning
+  // a Stream, whose `Scope` requirement the combinator owns.
+  const deltas: Stream.Stream<string, ProviderError> = Stream.unwrap(
     Effect.gen(function* () {
       yield* Effect.addFinalizer(() =>
         handle.cost().pipe(

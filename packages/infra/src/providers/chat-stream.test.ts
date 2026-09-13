@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit, Fiber, Option, Stream } from "effect";
+import { Cause, Effect, Exit, Fiber, Result, Stream } from "effect";
 import { describe, expect, it } from "vitest";
 import { streamHandle } from "./chat-stream";
 import type { ProviderError, StreamHandle } from "@app/rag-core";
@@ -34,8 +34,9 @@ async function collect(handle: StreamHandle): Promise<string> {
 
 /** Extract the typed failure from an exit that must have failed. */
 function failureOf(exit: Exit.Exit<unknown, ProviderError>): ProviderError {
-  const failure = exit._tag === "Failure" ? Cause.failureOption(exit.cause) : Option.none();
-  if (Option.isSome(failure)) return failure.value;
+  // Effect v4: v3's `Cause.failureOption` extraction is `Cause.findFail`.
+  const failure = exit._tag === "Failure" ? Cause.findFail(exit.cause) : undefined;
+  if (failure !== undefined && Result.isSuccess(failure)) return failure.success.error;
   throw new Error("expected the effect to fail");
 }
 

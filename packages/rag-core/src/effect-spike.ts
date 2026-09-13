@@ -1,5 +1,5 @@
 import { parseTrace } from "@app/contracts";
-import { Context, Data, Effect, Layer, Ref, Schedule, Stream } from "effect";
+import { Cause, Context, Data, Duration, Effect, Layer, Ref, Schedule, Stream } from "effect";
 
 /**
  * ADR-0027 §2 go/no-go spike (Workers gate). One program exercising the four
@@ -8,14 +8,17 @@ import { Context, Data, Effect, Layer, Ref, Schedule, Stream } from "effect";
  *
  * 1. typed error channel — `EffectSpikeError` travels in `E`, not via throw
  * 2. retry policy — `Effect.retry` with a kind-selective `Schedule` (backoff)
- * 3. lifecycle — a `Context.Tag` service acquired/released through
- *    `Layer.scoped`
+ * 3. lifecycle — a `Context.Service` key acquired/released through
+ *    `Layer.effect`'s scope
  * 4. streaming — a `Stream` built from a `ReadableStream` with
  *    interruption-capable consumption
  *
  * plus the interop point the ADR fixes: a valibot contract parse
  * (`parseTrace`) inside `Effect.try`. Kept as a permanent, tested artifact of
  * the spike; deleted only if a revisit trigger fires and the ADR is revised.
+ * (Effect v4 alignment: `Context.Service` replaces the v3 `Context.Tag`
+ * maker, `Layer.effect` is scope-managed, and custom schedules build on
+ * `Schedule.fromStep`.)
  */
 
 /**
@@ -28,20 +31,20 @@ export class EffectSpikeError extends Data.TaggedError("EffectSpikeError")<{
   readonly message: string;
 }> {}
 
-/** ADR-0021 `RunContext.now` responsibility, mapped to a `Context.Tag`. */
-export class SpikeClock extends Context.Tag("app/spike/SpikeClock")<
+/** ADR-0021 `RunContext.now` responsibility, mapped to a `Context` service. */
+export class SpikeClock extends Context.Service<
   SpikeClock,
   {
     readonly now: () => number;
   }
->() {}
+>()("app/spike/SpikeClock") {}
 
 /**
  * A lifecycle-managed resource: acquired when the layer builds, released when
  * the scope closes. The release signal is observable so tests can assert the
  * release actually ran (ADR-0027 decision 3, "Scope lifecycle").
  */
-export class SpikeResource extends Context.Tag("app/spike/SpikeResource")<
+export class SpikeResource extends Context.Service<
   SpikeResource,
   {
     /** Increments the resource's usage count. */
@@ -49,10 +52,11 @@ export class SpikeResource extends Context.Tag("app/spike/SpikeResource")<
     /** Observed `true` only after the scope released the resource. */
     readonly released: Effect.Effect<boolean>;
   }
->() {}
+>()("app/spike/SpikeResource") {}
 
-/** `Layer.scoped` acquire/release around a `Ref`-held release flag. */
-export const spikeResourceLayer: Layer.Layer<SpikeResource> = Layer.scoped(
+/** `Layer.effect` acquire/release around a `Ref`-held release flag (the v4
+ * `Layer.effect` wraps the acquire effect in the layer's scope). */
+export const spikeResourceLayer: Layer.Layer<SpikeResource> = Layer.effect(
   SpikeResource,
   Effect.gen(function* () {
     const released = yield* Ref.make(false);
@@ -105,10 +109,24 @@ export const flakyCall = (
  * Kind-selective retry schedule: exponential backoff capped at 3 retries,
  * continuing only while the failing error is retryable (`rate_limited`); any
  * other kind stops the schedule, so the failure surfaces after 1 attempt.
+ *
+ * Effect v4 dropped `Schedule.whileInput`/`Schedule.compose`; the same policy
+ * is one custom `Schedule.fromStep` schedule: fresh per-run state (the step
+ * effect re-runs per driver, like v3's `makeWithState` initial state), the
+ * kind dispatched before any state advances, and delays of 10/20/40 ms — the
+ * v3 `exponential("10 millis")` sequence.
  */
-export const retrySchedule = Schedule.exponential("10 millis").pipe(
-  Schedule.whileInput((e: EffectSpikeError) => e.kind === "rate_limited"),
-  Schedule.compose(Schedule.recurs(3)),
+export const retrySchedule: Schedule.Schedule<unknown, EffectSpikeError> = Schedule.fromStep(
+  Effect.sync(() => {
+    let retries = 0;
+    return (_now: number, e: EffectSpikeError) =>
+      e.kind !== "rate_limited" || retries >= 3
+        ? Cause.done(undefined)
+        : Effect.succeed([undefined, Duration.millis(10 * 2 ** retries++)] as [
+            undefined,
+            Duration.Duration,
+          ]);
+  }),
 );
 
 /** A ReadableStream of text deltas, as the provider adapter would hand over. */

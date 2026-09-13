@@ -1,4 +1,4 @@
-import { Cause, Effect, Option, Stream } from "effect";
+import { Cause, Effect, Result, Stream } from "effect";
 import { describe, expect, it } from "vitest";
 import {
   createChatCompletionsProvider,
@@ -250,12 +250,13 @@ describe("chat-completions adapter", () => {
     const costExit = await Effect.runPromiseExit(handle.cost());
     expect(costExit._tag).toBe("Failure");
     // The mid-flight failure fails cost with a typed transport ProviderError.
+    // Effect v4: v3's `Cause.failureOption` extraction is `Cause.findFail`.
     const costFailure =
-      costExit._tag === "Failure" ? Cause.failureOption(costExit.cause) : Option.none();
-    expect(Option.isSome(costFailure)).toBe(true);
-    if (Option.isSome(costFailure)) {
-      expect(costFailure.value._tag).toBe("ProviderError");
-      expect(costFailure.value.kind).toBe("transport");
+      costExit._tag === "Failure" ? Cause.findFail(costExit.cause) : undefined;
+    expect(costFailure !== undefined && Result.isSuccess(costFailure)).toBe(true);
+    if (costFailure !== undefined && Result.isSuccess(costFailure)) {
+      expect(costFailure.success.error._tag).toBe("ProviderError");
+      expect(costFailure.success.error.kind).toBe("transport");
     }
   });
 });

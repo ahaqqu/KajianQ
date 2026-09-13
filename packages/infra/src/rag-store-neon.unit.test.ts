@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Cause, Effect, Exit, Option } from "effect";
+import { Cause, Effect, Exit, Result } from "effect";
 import type { StoreError } from "@app/rag-core";
 import { createNeonRagStore, type SqlRunner } from "./rag-store-neon";
 import { sqlEffect } from "./rag-store-neon-errors";
@@ -26,10 +26,9 @@ const runOk = <A>(effect: Effect.Effect<A, StoreError>): Promise<A> => Effect.ru
 /** Run a store effect that must fail, returning the typed StoreError. */
 async function runFail<A>(effect: Effect.Effect<A, StoreError>): Promise<StoreError> {
   const exit = await Effect.runPromiseExit(effect);
-  const failure = Exit.isFailure(exit)
-    ? Cause.failureOption(exit.cause)
-    : Option.none<StoreError>();
-  if (Option.isSome(failure)) return failure.value;
+  // Effect v4: v3's `Cause.failureOption` extraction is `Cause.findFail`.
+  const failure = Exit.isFailure(exit) ? Cause.findFail(exit.cause) : undefined;
+  if (failure !== undefined && Result.isSuccess(failure)) return failure.success.error;
   throw new Error("expected the effect to fail");
 }
 

@@ -15,7 +15,7 @@
     "@app/kajianq-domain": "workspace:*",
     "@app/rag-core": "workspace:*",
     "@neondatabase/serverless": "^1.1.0",
-    "effect": "3.22.1",
+    "effect": "4.0.0-rc.115",
     "valibot": "1.4.2"
   },
   "devDependencies": {

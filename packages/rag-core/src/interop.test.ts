@@ -1,4 +1,4 @@
-import { Cause, Effect, Option, Stream } from "effect";
+import { Cause, Effect, Result, Stream } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import type { CostRecord } from "@app/contracts";
 import { RunContext } from "./context";
@@ -153,12 +153,13 @@ describe("engineStreamToWeb", () => {
 
   it("interrupts the source fiber and settles cost when the reader disconnects", async () => {
     let interrupted = false;
-    const deltas: Stream.Stream<string, ProviderError> = Stream.unwrapScoped(
+    const deltas: Stream.Stream<string, ProviderError> = Stream.unwrap(
       Effect.gen(function* () {
         // Registered when the deltas stream's scope opens; unwound when the
         // bridge cancels the fiber — the interruption-observing flag.
         yield* Effect.addFinalizer(() => Effect.sync(() => (interrupted = true)));
-        return Stream.repeatEffect(Effect.sync(() => "chunk"));
+        // Effect v4: v3's `Stream.repeatEffect` is `forever` over `fromEffect`.
+        return Stream.forever(Stream.fromEffect(Effect.sync(() => "chunk")));
       }),
     );
     const handle: StreamHandle = { deltas, cost: () => Effect.succeed(cost) };
@@ -189,13 +190,15 @@ describe("bridge failure unwrapping", () => {
     expect(err).not.toBeInstanceOf(StageError);
   });
 
-  it("keeps Cause.failureOption semantics for typed failures (regression pin)", async () => {
+  it("keeps the typed-failure extraction semantics (regression pin)", async () => {
     const exit = await Effect.runPromiseExit(
       Effect.gen(function* () {
         return yield* Effect.fail(new StageError({ stage: "router", cause: new Error("x") }));
       }),
     );
-    const failure = Cause.failureOption(exit._tag === "Failure" ? exit.cause : Cause.empty);
-    expect(Option.isSome(failure)).toBe(true);
+    // Effect v4: the v3 `Cause.failureOption` extraction is `Cause.findFail` —
+    // a Result whose success carries the typed `Fail` reason.
+    const failure = Cause.findFail(exit._tag === "Failure" ? exit.cause : Cause.empty);
+    expect(Result.isSuccess(failure)).toBe(true);
   });
 });

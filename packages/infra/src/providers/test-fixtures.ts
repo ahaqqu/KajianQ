@@ -1,4 +1,4 @@
-import { Cause, Effect, Option } from "effect";
+import { Cause, Effect, Result } from "effect";
 import { ProviderError } from "@app/rag-core";
 import type { ProviderConfig, VendorConfig } from "./provider-config";
 
@@ -73,9 +73,9 @@ export async function runFail<A>(
   effect: Effect.Effect<A, ProviderError, never>,
 ): Promise<ProviderError> {
   const exit = await Effect.runPromiseExit(effect);
-  const failure =
-    exit._tag === "Failure" ? Cause.failureOption(exit.cause) : Option.none<ProviderError>();
-  if (Option.isSome(failure)) return failure.value;
+  // Effect v4: v3's `Cause.failureOption` extraction is `Cause.findFail`.
+  const failure = exit._tag === "Failure" ? Cause.findFail(exit.cause) : undefined;
+  if (failure !== undefined && Result.isSuccess(failure)) return failure.success.error;
   throw new Error("expected the effect to fail");
 }
 
