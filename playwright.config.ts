@@ -17,10 +17,12 @@ export default defineConfig({
     trace: "on-first-retry",
     // The PWA service worker's precache multiplies per-context requests
     // against the dev worker's per-IP rate limiter (120/min); these tests
-    // exercise app behavior, not SW mechanics. Known accepted gap (thermo-
-    // review C2, recorded in SPECS §2.3): with SWs blocked here and no SW
-    // unit test, the update-prompt flow (sw-update.tsx) is untested
-    // everywhere — registration compiling is all "the build" proves.
+    // exercise app behavior, not SW mechanics. The limiter gates every
+    // request (SPA assets included — one shared Hono middleware stack), so
+    // even a /v1-free scenario cannot avoid the multiplication. The update-
+    // prompt flow (sw-update.tsx) this block once left untested (thermo-
+    // review C2) is now pinned by unit coverage in
+    // apps/web/src/lib/sw-update.test.ts; kept blocked on purpose.
     serviceWorkers: "block",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
