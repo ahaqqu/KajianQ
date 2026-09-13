@@ -239,6 +239,71 @@ run("RagStore contract (real Neon, Effect-shaped seam)", () => {
     expect(deadToken).toBeNull();
   }, 60_000);
 
+  it("persists feedback against a trace target, reads it back, and cascade-deletes it (#13)", async () => {
+    if (!URL) return;
+    const messageId = `${PREFIX}-msg-fb`;
+    const trace = { id: "trace-fb", createdAt: 1_700_000_000_000, events: [] };
+    const program = Effect.gen(function* () {
+      const { userId, token } = yield* store.createSession();
+      const chatSessionId = yield* store.createChatSession({ userId, metadata: { pfx: PREFIX } });
+      const storedTraceId = yield* store.insertAnswerTrace({ messageId, userId, trace });
+      yield* store.insertChatMessage({
+        sessionId: chatSessionId,
+        role: "assistant",
+        content: "Allah Mahahidup [QS. 2:255].",
+        answerTraceId: storedTraceId,
+      });
+      const thumbId = yield* store.insertFeedback({
+        messageId,
+        userId,
+        rating: 1,
+        anchorType: "answer",
+        anchorId: null,
+        category: null,
+        freeText: null,
+      });
+      const flagId = yield* store.insertFeedback({
+        messageId,
+        userId,
+        rating: -1,
+        anchorType: "citation",
+        anchorId: "QS. 2:255",
+        category: "wrong_citation",
+        freeText: "salah surah",
+        status: "pending",
+      });
+      const target = yield* store.getAnswerFeedbackTarget(messageId);
+      const absentTarget = yield* store.getAnswerFeedbackTarget(`${PREFIX}-nope`);
+      const message = yield* store.getChatMessage(messageId);
+      const absentMessage = yield* store.getChatMessage("00000000-0000-4000-8000-000000000000");
+      // Cascade: the feedback rows carry the user FK, so they die with the user.
+      yield* store.deleteUserCascade(userId);
+      const orphanedTarget = yield* store.getAnswerFeedbackTarget(messageId);
+      const deadToken = yield* store.resolveUserId(token);
+      return {
+        thumbId,
+        flagId,
+        target,
+        absentTarget,
+        message,
+        absentMessage,
+        orphanedTarget,
+        deadToken,
+      };
+    });
+    const { target, absentTarget, message, absentMessage, orphanedTarget, deadToken } =
+      await Effect.runPromise(program);
+    expect(target).not.toBeNull();
+    expect(target?.userId).toBeTruthy();
+    expect(target?.trace).toEqual(trace);
+    expect(absentTarget).toBeNull();
+    expect(message?.content).toBe("Allah Mahahidup [QS. 2:255].");
+    expect(absentMessage).toBeNull();
+    // After the cascade the trace is gone; the token no longer resolves.
+    expect(orphanedTarget).toBeNull();
+    expect(deadToken).toBeNull();
+  }, 60_000);
+
   it("upserts doc parents/children idempotently by source_key / (parent_id, ordinal)", async () => {
     if (!URL) return;
     const ar = vec(1536, 7);

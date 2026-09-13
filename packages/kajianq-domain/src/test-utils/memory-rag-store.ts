@@ -4,10 +4,13 @@ import type {
   DocChildById,
   DocChildInsert,
   DocParentInsert,
+  FeedbackInsert,
   RagStore,
   SimilarChild,
 } from "@app/infra";
 import { memoryEvalMethods } from "./memory-rag-store-eval";
+import { memoryFeedbackMethods } from "./memory-rag-store-feedback";
+import { memoryAuthMethods } from "./memory-rag-store-auth";
 
 /**
  * In-memory RagStore with real cosine search — the test seam. Same upsert
@@ -53,6 +56,8 @@ export function createMemoryRagStore(): RagStore & {
     answerTraceId: string | null;
     outcome: unknown;
   }[];
+  /** All persisted feedback rows (test introspection, #13). */
+  allFeedback: () => readonly (FeedbackInsert & { id: string })[];
   /** Direct cosine search helper for assertions. */
   cosineSearch: (
     track: "primary" | "fallback",
@@ -67,6 +72,8 @@ export function createMemoryRagStore(): RagStore & {
   const pairs = new Map<string, AlignedPairInsert & { id: string }>();
   const traces = new Map<string, unknown>();
   const traceRows = new Map<string, unknown>();
+  const traceOwners = new Map<string, string | null>(); // messageId → user (ADR-0007 amendment)
+  const feedback = new Map<string, FeedbackInsert & { id: string }>();
   // Chat/auth sessions are distinct maps, like the real tables (A5).
   const chatSessions = new Map<string, string>();
   const authSessions = new Map<string, { userId: string; expiresAt: number }>();
@@ -90,6 +97,23 @@ export function createMemoryRagStore(): RagStore & {
     nextId: () => (seq += 1),
   };
   const evalMethods = memoryEvalMethods(evalState);
+  const feedbackMethods = memoryFeedbackMethods({
+    chatMessages,
+    traces,
+    traceOwners,
+    feedback,
+    nextId: () => (seq += 1),
+  });
+  const authMethods = memoryAuthMethods({
+    users,
+    authSessions,
+    tokens,
+    chatSessions,
+    traces,
+    traceOwners,
+    feedback,
+    nextId: () => (seq += 1),
+  });
 
   const cosine = (a: readonly number[], b: readonly number[]): number => {
     let dot = 0;
@@ -170,6 +194,7 @@ export function createMemoryRagStore(): RagStore & {
       return Effect.sync(() => {
         traces.set(input.messageId, input.trace);
         traceRows.set(input.trace.id as string, input.trace); // row id = FK key
+        traceOwners.set(input.messageId, input.userId);
         return input.trace.id;
       });
     },
@@ -219,69 +244,19 @@ export function createMemoryRagStore(): RagStore & {
         return tail;
       });
     },
-    createSession() {
-      const minted = {
-        userId: `user${(seq += 1)}`,
-        sessionId: `s${(seq += 1)}`,
-        token: `tok${(seq += 1)}`,
-        expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
-      };
-      return Effect.sync(() => {
-        users.set(minted.userId, { kind: "anonymous" });
-        authSessions.set(minted.sessionId, {
-          userId: minted.userId,
-          expiresAt: minted.expiresAt,
-        });
-        tokens.set(minted.token, minted.userId);
-        return minted;
-      });
-    },
-    resolveUserId(token) {
-      // Tokens map to their minted user; unknown/expired → null.
-      const userId = tokens.get(token) ?? null;
-      return Effect.sync(() => userId);
-    },
-    deleteUserCascade(userId) {
-      // The FK cascade, modeled: the user row, their chat sessions, messages,
-      // and traces all go together.
-      return Effect.sync(() => {
-        users.delete(userId);
-        for (const [id, owner] of [...chatSessions]) if (owner === userId) chatSessions.delete(id);
-        for (const [id, session] of [...authSessions])
-          if (session.userId === userId) authSessions.delete(id);
-        for (const [messageId, trace] of [...traces]) {
-          if ((trace as { userId?: string }).userId === userId) traces.delete(messageId);
-        }
-      });
-    },
-    // The real cleanup's contract (A5): expired sessions AND the anonymous
-    // users left with no session, in one call. Returns reclaimed user count.
-    cleanupExpiredSessions(before = new Date()) {
-      return Effect.sync(() => {
-        const cutoff = before.getTime();
-        for (const [id, session] of [...authSessions]) {
-          if (session.expiresAt <= cutoff) authSessions.delete(id);
-        }
-        let reclaimed = 0;
-        for (const [id, user] of [...users]) {
-          if (user.kind !== "anonymous") continue;
-          const stillHasSession = [...authSessions.values()].some((s) => s.userId === id);
-          if (!stillHasSession) {
-            users.delete(id);
-            for (const [chatId, owner] of [...chatSessions])
-              if (owner === id) chatSessions.delete(chatId);
-            reclaimed += 1;
-          }
-        }
-        return reclaimed;
-      });
-    },
     insertEvalRun: evalMethods.insertEvalRun,
     refreshEvalRun: evalMethods.refreshEvalRun,
     insertEvalResult: evalMethods.insertEvalResult,
     getEvalRun: evalMethods.getEvalRun,
     listEvalRuns: evalMethods.listEvalRuns,
     getEvalResultsByRun: evalMethods.getEvalResultsByRun,
+    createSession: authMethods.createSession,
+    resolveUserId: authMethods.resolveUserId,
+    deleteUserCascade: authMethods.deleteUserCascade,
+    cleanupExpiredSessions: authMethods.cleanupExpiredSessions,
+    insertFeedback: feedbackMethods.insertFeedback,
+    getChatMessage: feedbackMethods.getChatMessage,
+    getAnswerFeedbackTarget: feedbackMethods.getAnswerFeedbackTarget,
   };
 
   return {
@@ -292,6 +267,7 @@ export function createMemoryRagStore(): RagStore & {
     allTraces: () => traces,
     allChatMessages: () => [...chatMessages.values()],
     allEvalResults: () => [...evalResults.values()],
+    allFeedback: () => [...feedback.values()],
     cosineSearch: (track, query, limit) =>
       Effect.runPromise(store.similaritySearch(track, query, { limit })),
   };

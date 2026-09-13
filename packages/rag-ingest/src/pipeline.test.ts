@@ -110,6 +110,15 @@ function fakeStore() {
     getEvalResultsByRun() {
       return Effect.succeed([]);
     },
+    insertFeedback() {
+      return Effect.succeed(`fb${(seq += 1)}`);
+    },
+    getChatMessage() {
+      return Effect.succeed(null);
+    },
+    getAnswerFeedbackTarget() {
+      return Effect.succeed(null);
+    },
   };
   return {
     store,
