@@ -62,6 +62,18 @@ describe("validateCitations — grounded direction", () => {
     expect(ungrounded).toEqual([]);
   });
 
+  it("grounds a bracketed hadith citation (#11 regression)", () => {
+    // The hadith number token used to eat the closing bracket: `[HR. Malik
+    // no. 18]` produced a phantom `HR. Malik no. 18]` candidate that no chunk
+    // grounds, so the gate refused a correctly grounded answer. Found by the
+    // citation-payload derivation (#11), which resolves these same spans.
+    const { grounded, ungrounded } = validateCitations("Hadits [HR. Malik no. 18] berbunyi …", [
+      chunk("HR. Malik no. 18"),
+    ]);
+    expect(grounded).toEqual(["HR. Malik no. 18"]);
+    expect(ungrounded).toEqual([]);
+  });
+
   it("grounds a dot-less Quran citation against its dotted label", () => {
     // Round-3 A1: `QS 2:255` is a common model spelling. The grammar must see
     // it (the old dotted-only grammar missed it entirely) and normalization

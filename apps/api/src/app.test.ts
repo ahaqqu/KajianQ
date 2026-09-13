@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createApi } from "./app";
+import { toOpenApiPath } from "./lib/openapi-path";
 
 const { captureException } = vi.hoisted(() => ({
   captureException: vi.fn(),
@@ -144,11 +145,14 @@ describe("generated OpenAPI doc", () => {
 
   it("covers every registered /v1 route exactly (no doc drift)", async () => {
     const { api, doc } = await getDoc();
+    // Hono's route table uses `:param`; hono-openapi documents `{param}`.
+    // Both sides normalize through the shared owner (thermo-review B3) that
+    // scripts/openapi-check.mjs also imports, so the two checks agree.
     const registered = [
       ...new Set(
         api.routes
           .filter((r) => r.path.startsWith("/v1/") && r.method !== "ALL")
-          .map((r) => `${r.method} ${r.path}`),
+          .map((r) => `${r.method} ${toOpenApiPath(r.path)}`),
       ),
     ].sort();
     expect(registered.length).toBeGreaterThan(0);

@@ -5,19 +5,16 @@ import type { RagStoreEvalLedger, RagStoreEvalRunWrite } from "./rag-store-eval-
 
 /**
  * RagStore — the single persistence seam (ADR-0008), Effect-signatured
- * (ADR-0027 decision 7): every method returns `Effect<A, StoreError>` and
- * no error kind travels via `throw` across the seam.
+ * (ADR-0027 decision 7): every method returns `Effect<A, StoreError>` and no
+ * error kind travels via `throw` across the seam. Every structured-data
+ * access in the system goes through this interface; engine packages and apps
+ * never hold a database client or SQL. The Neon Postgres + pgvector
+ * implementation is one adapter — the interface keeps it swappable (a second
+ * Postgres, SQLite, an in-memory fake for tests) without touching consumers.
  *
- * Every structured-data access in the system goes through this interface;
- * engine packages and apps never hold a database client or SQL. The Neon
- * Postgres + pgvector implementation in this package is one adapter — the
- * interface keeps it swappable (a second Postgres, SQLite, an in-memory
- * fake for tests) without touching consumers.
- *
- * The interface is domain-agnostic by design (AGENTS.md §1.1, dars-pluggability):
- * filters and metadata are opaque pass-throughs. Domain vocabulary lives in
- * the domain pack and arrives here only as *values* inside `metadata` or
- * `filters`, never as names in this file.
+ * The interface is domain-agnostic by design (AGENTS.md §1.1): filters and
+ * metadata are opaque pass-throughs. Domain vocabulary lives in the domain
+ * pack and arrives only as *values* inside `metadata`/`filters`.
  */
 export type { StoreError };
 
@@ -25,10 +22,9 @@ export type { StoreError };
 export type StoreFailure = StoreError;
 
 /**
- * Make the given keys of `T` optional while leaving every other property —
- * including its modifiers (`readonly`) — exactly as declared. Used for the
- * `*Insert` shapes below so "same as the row type minus server-owned fields"
- * stays a one-liner that cannot drift from the source type.
+ * Make the given keys of `T` optional, leaving every other property exactly
+ * as declared. Used for the `*Insert` shapes below so "same as the row type
+ * minus server-owned fields" cannot drift from the source type.
  */
 type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
 
@@ -96,6 +92,9 @@ export type DocChild = {
  * defaults to `{}` (see {@link DocChild.citation}).
  */
 export type DocChildInsert = PartialBy<DocChild, "id" | "createdAt" | "citation">;
+
+/** A child chunk read by id, plus its parent document's display title. */
+export type DocChildById = DocChild & { parentTitle: string | null };
 
 /**
  * An aligned source/target text pair with its per-token morphology — the
@@ -182,6 +181,15 @@ export interface RagStore extends RagStoreEvalRunWrite, RagStoreEvalLedger {
     },
   ): Effect.Effect<readonly SimilarChild[], StoreError>;
 
+  /**
+   * Fetch child chunks by id (deduplicated; absent ids simply missing).
+   * Like `similaritySearch`, the rows carry NO embeddings, plus the parent
+   * display title. The read behind the citation payload (#11): a trace's
+   * retrieval chunk refs resolve here, so display data comes from the rows
+   * retrieval served.
+   */
+  getDocChildrenByIds(ids: readonly string[]): Effect.Effect<readonly DocChildById[], StoreError>;
+
   // -- Traces (ADR-0007) ---------------------------------------------------
 
   /**
@@ -199,6 +207,14 @@ export interface RagStore extends RagStoreEvalRunWrite, RagStoreEvalLedger {
 
   /** Fetch a persisted Trace by answer message id. */
   getAnswerTraceByMessage(messageId: string): Effect.Effect<Trace | null, StoreError>;
+
+  /**
+   * Fetch a persisted Trace by its ROW id — the value
+   * `chat_messages.answer_trace_id` FKs (#11). Distinct from
+   * `getAnswerTraceByMessage`: that column carries the route's answer
+   * message id, not the chat message row's id.
+   */
+  getAnswerTraceById(id: string): Effect.Effect<Trace | null, StoreError>;
 
   // -- Chat (v1 conversational surface) ------------------------------------
 

@@ -47,6 +47,7 @@ export {
   type AlignedPairInsert,
   type ChatMessage,
   type DocChild,
+  type DocChildById,
   type DocChildInsert,
   type DocParent,
   type DocParentInsert,

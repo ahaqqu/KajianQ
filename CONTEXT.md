@@ -64,6 +64,26 @@ _Avoid_: query translation (a different, rejected mechanism)
 The opt-in retrieval mode for comprehensive-coverage questions: iterative rounds (draft → gap detection → re-retrieve) over a deep candidate pool (50–100 chunks) with cheap-tier relevance filtering before assembly, under hard budget caps. The Trace shows coverage (passages examined vs. used). Never "read all documents into the context" (ADR-0011).
 _Avoid_: deep research (marketing term), read-all (rejected approach)
 
+**Citation**:
+A source reference rendered on an answer (e.g. `QS. 2:255`, `HR. Malik no. 18`), grounded against retrieved chunks and resolved for the UI from the answer's persisted trace — never re-parsed from answer text client-side (ADR-0040). The inline span renders as a chip that opens the passage's Arabic original, translation, grade, and source.
+_Avoid_: reference link (implies a URL), footnote
+
+**Chat Session**:
+An anonymous user's conversation: a `chat_sessions` row whose turns are `chat_messages` (user question, assistant answer with its answer trace). The client persists the session id locally; follow-ups append to it, and "new session" starts a clean one (ADR-0017 stakes, ADR-0040 rehydration).
+_Avoid_: chat history (ambiguous with the transcript), thread
+
+**Rehydration**:
+Restoring the full transcript — messages plus their derived citation payloads — from the server on reload, via `GET /v1/chat/sessions/:id/messages` (ADR-0040). There is no offline store; chat needs network.
+_Avoid_: cache restore, sync
+
+**Dhaif warning**:
+The deterministic notice the product appends whenever a cited hadith is graded weak — `[Peringatan] Hadits yang dikutip berderajat lemah (dhaif); tidak dapat dijadikan dalil utama.` — rendered in the UI as a visible warning card, never as ordinary prose (spec §2.2).
+_Avoid_: weak-hadith disclaimer (it is a warning, not a disclaimer)
+
+**Machine-translation label**:
+The ADR-0006 label shown with every machine-made translation — `Terjemahan mesin — lihat teks Arab asli` — one Indonesian constant, no EN variant, always alongside the Arabic original it points to.
+_Avoid_: auto-translate badge (drifts from the fixed copy)
+
 **Isnad**:
 The ordered chain of narrators through which a hadith was transmitted. From v2 stored as structured rows (narrators + chains), not prose; grading applies to the Isnad, not the Matn (ADR-0012).
 _Avoid_: sanad (unqualified romanization drift), chain (unqualified)

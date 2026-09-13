@@ -1,5 +1,5 @@
 import * as neon from "@neondatabase/serverless";
-import { runStoreEffect } from "@app/kajianq-domain";
+import { runStoreEffect, type StoreBridge } from "@app/kajianq-domain";
 import type { Provider } from "@app/rag-core";
 import {
   createRagStore,
@@ -10,6 +10,9 @@ import {
   type RagStore,
 } from "@app/infra";
 export { authGuard } from "./auth";
+// Re-exported so the chat route keeps its 5-import agentic cap (same pattern
+// as the authGuard re-export): the route imports one name from its lib hub.
+export { citationsFrameFor, chunkFetcher, rehydrateTranscript } from "./chat-citations";
 
 /**
  * Env-bound wiring for the chat route (#10): the one place the Worker's
@@ -116,9 +119,12 @@ export function createProvidersFromEnv(env: Record<string, string | undefined>):
 /**
  * The store-seam bridge: run one Effect-signatured store call to a promise.
  * Lives in the wiring (not route handlers) so the handlers hold plain
- * promise-shaped helpers only.
+ * promise-shaped helpers only. Typed as the domain's `StoreBridge`
+ * (thermo-review B2): the seam's generic survives to the call sites, so a
+ * wrong store call fails to compile instead of erasing into
+ * `Promise<unknown>` casts.
  */
-export function storeBridge(_store: RagStore): (effect: unknown) => Promise<unknown> {
+export function storeBridge(_store: RagStore): StoreBridge {
   return (effect) => runStoreEffect(effect);
 }
 
@@ -129,7 +135,7 @@ export type ChatWiring = {
     "language" | "history" | "onDelta"
   >;
   fullStore: RagStore;
-  runStore: (effect: unknown) => Promise<unknown>;
+  runStore: StoreBridge;
 };
 
 /**
@@ -144,7 +150,7 @@ export type ChatWiring = {
  */
 export type StoreWiring = {
   fullStore: RagStore;
-  runStore: (effect: unknown) => Promise<unknown>;
+  runStore: StoreBridge;
 };
 
 export function buildStoreWiring(env: { DATABASE_URL?: string }): StoreWiring {
@@ -177,9 +183,9 @@ export function buildChatWiring(env: Record<string, string | undefined>): ChatWi
       reviewerProvider: providers.reviewer,
       embedder: providers.embedder,
       store,
-      bridge: storeBridge(
-        store,
-      ) as unknown as import("@app/kajianq-domain").ChatPipelineDeps["bridge"],
+      // Typed as the domain's StoreBridge — no erasure cast needed anymore
+      // (thermo-review B2).
+      bridge: storeBridge(store),
     },
     fullStore: store,
     runStore: storeBridge(store),

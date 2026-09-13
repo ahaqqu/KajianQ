@@ -159,6 +159,7 @@ export {
   validateCitations,
   citationLabelsOf,
   citationCandidatesIn,
+  normalizeCitationLabel,
 } from "./chat-citation-validator";
 export {
   createKajianQGenerator,

@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import type { AlignedPairInsert, DocChildInsert, RagStore } from "./rag-store";
 import { buildBatchChildUpsert } from "./rag-store-neon-batch";
 import { sqlEffect, type SqlRunner } from "./rag-store-neon-errors";
-import { neonSimilaritySearch } from "./rag-store-neon-similarity";
+import { neonChildMethods, neonSimilaritySearch } from "./rag-store-neon-similarity";
 
 /**
  * Corpus methods of the Neon RagStore adapter, split from
@@ -23,6 +23,7 @@ export function neonCorpusMethods(
   | "insertDocChildren"
   | "upsertAlignedPair"
   | "similaritySearch"
+  | "getDocChildrenByIds"
 > {
   return {
     insertDocParent(input) {
@@ -97,5 +98,8 @@ export function neonCorpusMethods(
     similaritySearch(track, embedding, opts) {
       return neonSimilaritySearch(sql, track, embedding, opts);
     },
+    // The by-id read behind the structured citation payload (#11); the
+    // implementation shares the similarity module's row machinery.
+    ...neonChildMethods(sql),
   };
 }

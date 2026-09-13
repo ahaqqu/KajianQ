@@ -56,10 +56,16 @@ function fakeStore() {
     similaritySearch() {
       return Effect.succeed([]);
     },
+    getDocChildrenByIds() {
+      return Effect.succeed([]);
+    },
     insertAnswerTrace() {
       return Effect.succeed("");
     },
     getAnswerTraceByMessage() {
+      return Effect.succeed(null);
+    },
+    getAnswerTraceById() {
       return Effect.succeed(null);
     },
     getChatSessionUser() {

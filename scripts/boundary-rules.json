@@ -5,7 +5,8 @@
     "flags": "i",
     "exts": ["ts", "tsx", "mts", "cts", "sql"],
     "deps": false,
-    "justification": "CONTEXT.md vocabulary — engine packages must receive these as opaque inputs. The short substrings 'isnad', 'sanad', 'hasan', 'sharh', and 'matn' are word-boundary anchored so legitimate identifiers like 'hasAnnotation' or 'chasan' do not false-positive; the longer terms are left unanchored to also catch suffixed forms (e.g. 'quranic'). 'ayah' is included so a migration cannot encode Quran-verse references in the engine schema (the concept graph with ayah_pair_id lives in the domain pack, per the ADR-0014 amendment). The domain rule is NOT applied to package.json dependency names — only to source and SQL."
+    "justification": "CONTEXT.md vocabulary \u2014 engine packages must receive these as opaque inputs. The short substrings 'isnad', 'sanad', 'hasan', 'sharh', and 'matn' are word-boundary anchored so legitimate identifiers like 'hasAnnotation' or 'chasan' do not false-positive; the longer terms are left unanchored to also catch suffixed forms (e.g. 'quranic'). 'ayah' is included so a migration cannot encode Quran-verse references in the engine schema (the concept graph with ayah_pair_id lives in the domain pack, per the ADR-0014 amendment). The domain rule is NOT applied to package.json dependency names \u2014 only to source and SQL. ADR-0040 (#11): the shared chat citation contract carries the product's CONTEXT.md term as its wire flag name (`dhaifWarning`); the two contracts chat files are exempt file-scoped \u2014 values stay opaque strings, and no other engine file may carry domain vocabulary.",
+    "exempt": ["packages/contracts/src/chat.test.ts", "packages/contracts/src/chat.ts"]
   },
   {
     "name": "vendor or model name outside config",
@@ -14,7 +15,7 @@
     "exts": ["ts", "tsx", "mts", "cts"],
     "deps": true,
     "pkgExempt": ["packages/infra/package.json"],
-    "justification": "ADR-0009 vendor allowlist — vendor/model names appear only in model_configs and the Provider adapters in packages/infra. Also applied to engine package.json dependency names so a vendor SDK cannot be added to an engine package by config. The infra manifest is exempt because packages/infra is the sanctioned Provider adapter home."
+    "justification": "ADR-0009 vendor allowlist \u2014 vendor/model names appear only in model_configs and the Provider adapters in packages/infra. Also applied to engine package.json dependency names so a vendor SDK cannot be added to an engine package by config. The infra manifest is exempt because packages/infra is the sanctioned Provider adapter home."
   },
   {
     "name": "direct database client outside the RagStore seam",
@@ -28,6 +29,6 @@
       "packages/infra/scripts/db-migrate.mjs",
       "packages/infra/scripts/pg-search-probe.mjs"
     ],
-    "justification": "Match code-level coupling: an import of a DB driver, a pool/prepared call, a tagged SQL query, or a dynamic import of 'pg'. Doc comments naming 'pg'/'postgres' are not violations — the rule's target is dependency, not vocabulary. Also applied to engine package.json dependency names (e.g. 'drizzle-orm', '@neondatabase/serverless'). The exempt files are the RagStore adapter's own integration tests and the infra scripts that own migrations/probes against a real database — the one place a DB driver import IS the point."
+    "justification": "Match code-level coupling: an import of a DB driver, a pool/prepared call, a tagged SQL query, or a dynamic import of 'pg'. Doc comments naming 'pg'/'postgres' are not violations \u2014 the rule's target is dependency, not vocabulary. Also applied to engine package.json dependency names (e.g. 'drizzle-orm', '@neondatabase/serverless'). The exempt files are the RagStore adapter's own integration tests and the infra scripts that own migrations/probes against a real database \u2014 the one place a DB driver import IS the point."
   }
 ]
