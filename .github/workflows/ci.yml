@@ -36,7 +36,11 @@ jobs:
       # excluded from coverage (see vitest.config.ts) since it needs the
       # secret. The contract suite runs in the separate neon-contract job.
       - run: bun run test
-      - run: bun run build
+      # size-limit builds apps/web itself (bun run build:web inside the
+      # script), so the measurement always matches the working tree — and a
+      # fresh checkout (CI, new git worktree) never measures stale or missing
+      # dist bytes. The former separate `bun run build` step was its only
+      # consumer here and would now double-build.
       - run: bun run size-limit
       - run: bun run agentic-limits
       - run: bun run boundary

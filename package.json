@@ -15,7 +15,7 @@
     "lint": "vp check && bun scripts/check-vp-vite-pin.mjs && bun scripts/check-effect-pin.mjs",
     "fmt": "vp fmt",
     "boundary": "bun scripts/check-boundary.mjs",
-    "size-limit": "size-limit",
+    "size-limit": "bun run build:web && size-limit",
     "agentic-limits": "bun scripts/check-agentic-limits.mjs",
     "worktree:clean": "bun scripts/worktree-cleanup.mjs",
     "dsh:prompt": "bun scripts/dsh-dispatch-prompt.mjs",
