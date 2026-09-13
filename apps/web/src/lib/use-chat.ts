@@ -44,12 +44,6 @@ export function useChat(locale: "id" | "en") {
   const appliedTranscriptAtRef = useRef(0);
 
   useEffect(() => {
-    console.log("EFFECT", {
-      busy,
-      data: transcript.data === undefined ? "undef" : transcript.data === null ? "null" : "defined",
-      dataUpdatedAt: transcript.dataUpdatedAt,
-      marker: appliedTranscriptAtRef.current,
-    });
     if (transcript.isError) setError("load");
     if (transcript.data === undefined) return;
     // (thermo-review A1) A transcript (re)load must never clobber an
@@ -59,7 +53,6 @@ export function useChat(locale: "id" | "en") {
     // because it was fetched before the turn's write, so applying it after
     // the turn would hide the completed turn instead.
     if (busy) {
-      console.log("DISCARD", transcript.dataUpdatedAt);
       appliedTranscriptAtRef.current = transcript.dataUpdatedAt;
       return;
     }
