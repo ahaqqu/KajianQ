@@ -128,8 +128,7 @@ describe("askChat", () => {
       { message: "q", sessionId: null, language: "id" },
       {
         onCitations: () => seen.push("citations"),
-        onTrace: (f) =>
-          seen.push(`trace:${f.sources[0]?.source}:${f.technical.chunks[0]?.score}`),
+        onTrace: (f) => seen.push(`trace:${f.sources[0]?.source}:${f.technical.chunks[0]?.score}`),
       },
       "tok-1",
     );
@@ -138,11 +137,7 @@ describe("askChat", () => {
 
   it("a malformed trace frame is skipped; the answer and panel degrade, never break the turn", async () => {
     stubFetchSequence([
-      sseResponse([
-        META,
-        "event: trace\ndata: {broken\n\n",
-        "event: done\ndata: {}\n\n",
-      ]),
+      sseResponse([META, "event: trace\ndata: {broken\n\n", "event: done\ndata: {}\n\n"]),
     ]);
     const seen: string[] = [];
     await askChat(

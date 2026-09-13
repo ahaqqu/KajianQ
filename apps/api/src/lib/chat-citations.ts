@@ -26,12 +26,7 @@ import {
 } from "./chat-trace";
 import * as v from "valibot";
 
-export {
-  chunkFetcher,
-  traceChunkIds,
-  type CitationChunkSource,
-  type Warn,
-} from "./chat-trace";
+export { chunkFetcher, traceChunkIds, type CitationChunkSource, type Warn } from "./chat-trace";
 
 /**
  * The structured citation payload (#11, ADR-0040) — the invariant this module

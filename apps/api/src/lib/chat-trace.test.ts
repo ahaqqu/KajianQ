@@ -52,8 +52,18 @@ function chunkRow(id: string, parentTitle: string): DocChildById {
 const derive = (trace: Trace, rows: readonly DocChildById[]) =>
   deriveTraceFrame({ trace, messageId: "m1", chunksById: new Map(rows.map((r) => [r.id, r])) });
 
-const INTENT = { stage: "router" as const, kind: "intent" as const, detail: { intent: "dalil_umum", confidence: 0.87 }, at: 0 };
-const SUBQ = (text: string) => ({ stage: "router" as const, kind: "subquery" as const, detail: { text }, at: 1 });
+const INTENT = {
+  stage: "router" as const,
+  kind: "intent" as const,
+  detail: { intent: "dalil_umum", confidence: 0.87 },
+  at: 0,
+};
+const SUBQ = (text: string) => ({
+  stage: "router" as const,
+  kind: "subquery" as const,
+  detail: { text },
+  at: 1,
+});
 const CALL = (modelId: string) => ({
   stage: "generator" as const,
   kind: "llm_call" as const,
@@ -69,7 +79,12 @@ describe("traceChunkIds / traceChunkRefs", () => {
         {
           stage: "retriever",
           kind: "retrieval",
-          detail: { chunks: [{ id: "c1", score: 0.1 }, { id: "c2", score: 0.2 }] },
+          detail: {
+            chunks: [
+              { id: "c1", score: 0.1 },
+              { id: "c2", score: 0.2 },
+            ],
+          },
           at: 9,
         },
       ],
@@ -93,10 +108,7 @@ describe("deriveTraceFrame — the top layer", () => {
 
   it("omits the title of a chunk whose row (or title) is missing — id-only, never fabricated", () => {
     const frame = derive(traceOf([{ id: "c1" }, { id: "ghost" }]), [chunkRow("c1", "Al-Baqarah")]);
-    expect(frame.sources).toEqual([
-      { id: "c1", source: "Al-Baqarah" },
-      { id: "ghost" },
-    ]);
+    expect(frame.sources).toEqual([{ id: "c1", source: "Al-Baqarah" }, { id: "ghost" }]);
   });
 
   it("a refusal's trace has no retrieval events, so the panel is legitimately empty", () => {
@@ -123,14 +135,17 @@ describe("deriveTraceFrame — the top layer", () => {
 describe("deriveTraceFrame — the technical layer", () => {
   it("carries intent, confidence, sub-queries, scores, and distinct model ids", () => {
     const frame = derive(
-      traceOf([{ id: "c1", score: 0.03125, rankDense: 1, rankSparse: 3 }], [
-        INTENT,
-        SUBQ("ayat kursi"),
-        SUBQ("QS 2:255 terjemahan"),
-        CALL("model-a"),
-        CALL("model-b"),
-        CALL("model-a"),
-      ]),
+      traceOf(
+        [{ id: "c1", score: 0.03125, rankDense: 1, rankSparse: 3 }],
+        [
+          INTENT,
+          SUBQ("ayat kursi"),
+          SUBQ("QS 2:255 terjemahan"),
+          CALL("model-a"),
+          CALL("model-b"),
+          CALL("model-a"),
+        ],
+      ),
       [chunkRow("c1", "Al-Baqarah")],
     );
     expect(frame.technical.intent).toBe("dalil_umum");
@@ -183,7 +198,8 @@ describe("traceFrameFor — the degrade path", () => {
 describe("chunkFetcher", () => {
   it("binds the store seam through the bridge (a wrong call fails to compile)", async () => {
     const { runStoreEffect } = await import("@app/kajianq-domain");
-    const { createMemoryRagStore } = await import("@app/kajianq-domain/test-utils/memory-rag-store");
+    const { createMemoryRagStore } =
+      await import("@app/kajianq-domain/test-utils/memory-rag-store");
     const store = createMemoryRagStore();
     const parentId = await runStoreEffect<string>(
       store.insertDocParent({ sourceKey: "quran/2", title: "Al-Baqarah", metadata: {} }),

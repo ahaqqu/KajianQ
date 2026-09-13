@@ -183,9 +183,9 @@ describe("ChatTraceFrameSchema", () => {
   });
 
   it("rejects a chunk with an empty id (provenance must be resolvable)", () => {
-    expect(
-      v.safeParse(ChatTraceFrameSchema, { ...FRAME, sources: [{ id: "" }] }).success,
-    ).toBe(false);
+    expect(v.safeParse(ChatTraceFrameSchema, { ...FRAME, sources: [{ id: "" }] }).success).toBe(
+      false,
+    );
   });
 
   it("accepts a session message carrying the optional trace frame, and a user turn without one", () => {

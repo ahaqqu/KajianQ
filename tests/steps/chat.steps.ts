@@ -6,7 +6,7 @@ import { AxeBuilder } from "@axe-core/playwright";
  * Chat UI BDD (#11). All /v1/* traffic is intercepted with fixture streams —
  * zero LLM spend in CI (plan decision 4); the live path stays covered by
  * eval:smoke in the Staging workflow. The fixtures mirror the wire contract
- * (ADR-0034 + ADR-0040): meta → delta(s) → citations → done.
+ * (ADR-0034 + ADR-0040 + #12): meta → delta(s) → citations → trace → done.
  */
 
 const { When, Then } = createBdd();
@@ -22,6 +22,7 @@ const ANSWER_FIXTURE = [
   // sseFrame escaping) — a literal blank line would terminate the frame.
   `event: delta\ndata: [QS. 2:255].\ndata: \ndata: ${DISCLAIMER}\n\n`,
   'event: citations\ndata: {"messageId":"m-live","refusal":false,"dhaifWarning":false,"citations":[{"label":"QS. 2:255","arabic":"اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ","translation":"Allah, tidak ada tuhan selain Dia.","machineTranslated":true,"source":"Al-Baqarah"}]}\n\n',
+  'event: trace\ndata: {"messageId":"m-live","sources":[{"id":"chunk-1","source":"Al-Baqarah"}],"technical":{"intent":"dalil_umum","subQueries":["apa itu ayat kursi","QS 2:255 makna"],"chunks":[{"id":"chunk-1","source":"Al-Baqarah","score":0.03125}],"models":["router-stub","generator-stub"]}}\n\n',
   "event: done\ndata: {}\n\n",
 ].join("");
 
@@ -79,6 +80,16 @@ const TRANSCRIPT_FIXTURE = {
             source: "Al-Baqarah",
           },
         ],
+      },
+      trace: {
+        messageId: "m1",
+        sources: [{ id: "chunk-1", source: "Al-Baqarah" }],
+        technical: {
+          intent: "dalil_umum",
+          subQueries: ["apa itu ayat kursi"],
+          chunks: [{ id: "chunk-1", source: "Al-Baqarah", score: 0.03125 }],
+          models: ["router-stub", "generator-stub"],
+        },
       },
     },
   ],
@@ -219,6 +230,45 @@ Then("reloading restores the full transcript", async ({ page }) => {
   await expect(assistant).toContainText("Allah Mahahidup");
   await expect(assistant.getByTestId("citation-chip")).toHaveText("[QS. 2:255]");
 });
+
+Then("the Trace panel is available from the rehydrated transcript", async ({ page }) => {
+  // The rehydrated assistant turn carries the same trace frame the live
+  // stream sent (#12) — the panel is a first-class part of the transcript.
+  await expect(page.getByTestId("trace-toggle").last()).toBeVisible();
+});
+
+When("I expand the answer's Trace", async ({ page }) => {
+  await page.getByTestId("trace-toggle").last().click();
+  await expect(page.getByTestId("trace-body")).toBeVisible();
+});
+
+When("I open the Trace's technical details", async ({ page }) => {
+  await page.getByTestId("trace-tech-toggle").last().click();
+});
+
+Then("I see the sources consulted with no technical detail", async ({ page }) => {
+  // The top layer is readable by a non-technical user: the source works, no
+  // scores, no machinery (ADR-0007 — plain language first).
+  const panel = page.getByTestId("trace-body");
+  await expect(panel.getByTestId("trace-sources")).toContainText("Al-Baqarah");
+  await expect(panel.getByTestId("trace-score")).toHaveCount(0);
+  await expect(panel.getByTestId("trace-technical")).toHaveCount(0);
+  await expect(panel.getByTestId("trace-models")).toHaveCount(0);
+});
+
+Then(
+  "I see the router intent, sub-queries, retrieval scores, and model identity",
+  async ({ page }) => {
+    const tech = page.getByTestId("trace-technical");
+    await expect(tech).toBeVisible();
+    await expect(tech.getByTestId("trace-intent")).toContainText("dalil_umum");
+    await expect(tech.getByTestId("trace-subqueries")).toContainText("ayat kursi");
+    // Scores format through Intl (0.03125 → "0,0313" in the id locale,
+    // "0.0313" in en) — assert the rounded digits, not the separator.
+    await expect(tech.getByTestId("trace-score").first()).toContainText(/0[.,]0313/);
+    await expect(tech.getByTestId("trace-models")).toContainText("router-stub");
+  },
+);
 
 Then("the chat page has no serious accessibility violations", async ({ page }) => {
   const { violations } = await new AxeBuilder({ page }).analyze();

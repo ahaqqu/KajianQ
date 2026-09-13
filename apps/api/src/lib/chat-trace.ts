@@ -112,7 +112,9 @@ export function deriveTraceFrame(input: {
   const refs = traceChunkRefs(trace);
   const intentEvent = trace.events.find((event) => event.kind === "intent");
   const subQueries = trace.events
-    .filter((event): event is Extract<typeof event, { kind: "subquery" }> => event.kind === "subquery")
+    .filter(
+      (event): event is Extract<typeof event, { kind: "subquery" }> => event.kind === "subquery",
+    )
     .map((event) => event.detail.text);
   const models: string[] = [];
   for (const event of trace.events) {
@@ -185,8 +187,5 @@ export async function traceFrameFor(input: {
     warnKey: "chat.trace.chunk_lookup_failed",
     warnFields: { messageId },
   });
-  return v.parse(
-    ChatTraceFrameSchema,
-    deriveTraceFrame({ trace, messageId, chunksById }),
-  );
+  return v.parse(ChatTraceFrameSchema, deriveTraceFrame({ trace, messageId, chunksById }));
 }

@@ -34,6 +34,27 @@ Feature: Chat — ask, answer, citations, warnings, disclaimer
     When I open the chat and ask about ayat kursi
     And the answer renders with a citation chip
     And reloading restores the full transcript
+    And the Trace panel is available from the rehydrated transcript
+
+  Scenario: Expanding the Trace lists the sources consulted in plain language
+    When I open the chat and ask about ayat kursi
+    And the answer renders with a citation chip
+    And I expand the answer's Trace
+    Then I see the sources consulted with no technical detail
+
+  Scenario: The Trace's deeper layer shows intent, sub-queries, scores, and model identity
+    When I open the chat and ask about ayat kursi
+    And the answer renders with a citation chip
+    And I expand the answer's Trace
+    And I open the Trace's technical details
+    Then I see the router intent, sub-queries, retrieval scores, and model identity
+
+  Scenario: The expanded Trace has no serious accessibility violations
+    When I open the chat and ask about ayat kursi
+    And the answer renders with a citation chip
+    And I expand the answer's Trace
+    And I open the Trace's technical details
+    Then the chat page has no serious accessibility violations
 
   Scenario: A capped transcript says older messages are not shown
     When I open a chat whose stored transcript was capped
