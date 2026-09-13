@@ -247,6 +247,40 @@ describe("POST /v1/chat", () => {
     expect(answer).toContain("bukan fatwa");
   }, 15000);
 
+  it("emits the user-facing trace frame after citations, derived from the persisted trace (#12)", async () => {
+    const { store, token } = await wiredStore();
+    currentStore = store;
+    await seed(store);
+    currentOverrides = { answerText: "Jawaban berdasar konteks. QS. 2:255" };
+
+    const { status, frames, meta } = await postChat(token, { message: "Apa itu Ayat Kursi?" });
+    expect(status).toBe(200);
+
+    // Wire order: meta → deltas → citations → trace → done.
+    const events = frames.map((f) => f.event);
+    expect(events.indexOf("trace")).toBeGreaterThan(events.indexOf("citations"));
+    expect(events.at(-1)).toBe("done");
+
+    const traceFrame = JSON.parse(frames.find((f) => f.event === "trace")?.data ?? "null") as {
+      messageId: string;
+      sources: { id: string; source?: string }[];
+      technical: { chunks: { id: string; score?: number }[]; models: string[] };
+    };
+    expect(traceFrame.messageId).toBe(meta.messageId);
+    // The panel's provenance matches the persisted trace's own refs.
+    const persisted = store.allTraces().get(meta.messageId) as
+      | { events: { kind: string; detail?: { chunks?: { id: string; score?: number }[] } }[] }
+      | undefined;
+    const persistedRef = persisted?.events
+      .find((e) => e.kind === "retrieval")
+      ?.detail?.chunks?.at(0);
+    expect(traceFrame.technical.chunks[0]?.id).toBe(persistedRef?.id);
+    expect(traceFrame.technical.chunks[0]?.score).toBe(persistedRef?.score);
+    // Display title joined server-side; model identities carried verbatim.
+    expect(traceFrame.sources[0]?.source).toBe("Al-Baqarah");
+    expect(traceFrame.technical.models.length).toBeGreaterThan(0);
+  }, 15000);
+
   it("refuses an answer whose citation is not in the retrieved context (the #10 invariant)", async () => {
     const { store, token } = await wiredStore();
     currentStore = store;

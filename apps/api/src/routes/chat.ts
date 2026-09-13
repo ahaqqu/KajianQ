@@ -5,6 +5,7 @@ import {
   chunkFetcher,
   citationsFrameFor,
   sseFrame,
+  traceFrameFor,
   wiringOr503,
   type ChatWiring,
 } from "../lib/chat-wiring";
@@ -157,8 +158,8 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
     }),
   );
 
-  // The SSE wire contract (meta → deltas → citations → done, ADR-0034 +
-  // #11/ADR-0040). A refused answer never ships the vendor's text: the
+  // The SSE wire contract (meta → deltas → citations → trace → done,
+  // ADR-0034 + #11/ADR-0040 + #12). A refused answer never ships the vendor's text: the
   // reviewer recorded a `refusal` event on the trace (the same signal the
   // eval harness reads), and the frames carry the plain refusal instead.
   // Otherwise the vendor's own delta sequence is replayed when it reproduces
@@ -187,6 +188,18 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
     warn: (msg, fields) => logger.warn(msg, fields),
   });
 
+  // The user-facing Trace panel frame (#12, ADR-0007): the same persisted
+  // trace, derived into the two-layer payload (sources consulted first,
+  // technical details one tap deeper) — the client renders it, it never
+  // reconstructs the pipeline from raw events. Chunk display titles join
+  // through the same trace chunk ids the citations frame uses.
+  const traceFrame = await traceFrameFor({
+    trace: answer.trace,
+    messageId: answerMessageId,
+    fetchChunks: chunkFetcher(store, runStore),
+    warn: (msg, fields) => logger.warn(msg, fields),
+  });
+
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
       const enc = new TextEncoder();
@@ -202,6 +215,7 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
         controller.enqueue(enc.encode(sseFrame("delta", delta)));
       }
       controller.enqueue(enc.encode(sseFrame("citations", JSON.stringify(citations))));
+      controller.enqueue(enc.encode(sseFrame("trace", JSON.stringify(traceFrame))));
       controller.enqueue(enc.encode(sseFrame("done", "{}")));
       controller.close();
     },

@@ -166,6 +166,34 @@ describe("GET /v1/chat/sessions/:id/messages", () => {
     ]);
   }, 15000);
 
+  it("rehydrated assistant turns carry the two-layer trace panel frame (#12)", async () => {
+    const { store, token } = await wiredStore();
+    await seed(store);
+    currentOverrides = { answerText: "Ayat Kursi adalah QS. 2:255." };
+    expect(await ask(token, { message: "Apa itu Ayat Kursi?" })).toBe(200);
+    const sessionId = (store.allChatMessages().at(0) as unknown as { sessionId: string }).sessionId;
+
+    const res = await getMessages(token, sessionId);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      messages: {
+        role: string;
+        trace?: {
+          messageId: string;
+          sources: { id: string; source?: string }[];
+          technical: { chunks: { id: string; score?: number }[]; models: string[] };
+        };
+      }[];
+    };
+    const [user, assistant] = body.messages;
+    expect(user?.trace).toBeUndefined();
+    expect(assistant?.trace).toBeTruthy();
+    expect(assistant?.trace?.messageId).toBeTruthy();
+    expect(assistant?.trace?.sources[0]?.source).toBe("Al-Baqarah");
+    expect(assistant?.trace?.technical.chunks[0]?.score).toBeGreaterThan(0);
+    expect(assistant?.trace?.technical.models.length).toBeGreaterThan(0);
+  }, 15000);
+
   it("a transcript past the cap is marked truncated, never silently clipped (thermo-review A4)", async () => {
     const { store, token } = await wiredStore();
     await seed(store);
