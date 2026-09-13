@@ -25,9 +25,9 @@ on:
         required: false
         default: "5"
       eval_budget_micro_usd:
-        description: "Hard spend cap for the smoke run in micro-USD (1000000 = $1)"
+        description: "Hard spend cap for the smoke run in micro-USD (10000000 = $10)"
         required: false
-        default: "1000000"
+        default: "10000000"
 
 # Serialize staging runs: a push-to-main deploy and a manual dispatch would
 # otherwise race on the same Alchemy state and on the Neon ledger the smoke
@@ -168,8 +168,9 @@ jobs:
           EVAL_API_TOKEN: ${{ steps.eval-token.outputs.token }}
           NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
           # Fail-closed spend cap (ADR-0034): unset would be an explicit opt-out,
-          # so the workflow always sets one. 1000000 micro-USD = $1 per run.
-          EVAL_BUDGET_MICRO_USD: ${{ github.event.inputs.eval_budget_micro_usd || '1000000' }}
+          # so the workflow always sets one. 10000000 micro-USD = $10 per run
+          # (owner decision 2026-09-13, raised 10x from $1).
+          EVAL_BUDGET_MICRO_USD: ${{ github.event.inputs.eval_budget_micro_usd || '10000000' }}
           EVAL_SMOKE_SIZE: ${{ github.event.inputs.eval_smoke_size || '5' }}
           EVAL_RUN_LABEL: staging-smoke-${{ github.sha }}
       - name: ZAP baseline
