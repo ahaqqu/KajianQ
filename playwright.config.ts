@@ -22,7 +22,10 @@ export default defineConfig({
     // even a /v1-free scenario cannot avoid the multiplication. The update-
     // prompt flow (sw-update.tsx) this block once left untested (thermo-
     // review C2) is now pinned by unit coverage in
-    // apps/web/src/lib/sw-update.test.ts; kept blocked on purpose.
+    // apps/web/src/lib/sw-update.test.ts. Staging that prompt in e2e
+    // (route-rewriting the served sw.js so a byte-different worker installs)
+    // is possible in Chromium but brittle, and it still pays the precache
+    // multiplication; kept blocked on purpose.
     serviceWorkers: "block",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
