@@ -1,10 +1,13 @@
 import type { ChatSessionMessage } from "@app/contracts";
 import { AnswerCard } from "./AnswerCard";
+import { TracePanel } from "./TracePanel";
 
 /**
  * One transcript turn (#11): shaped dispatch only. The user turn is a
  * right-aligned muted bubble; the assistant turn is the answer card
- * (avatar, cited answer, warnings — see AnswerCard).
+ * (avatar, cited answer, warnings — see AnswerCard) with the expandable
+ * Trace panel beneath it (#12) — rendered at this level because the
+ * agentic-limits import cap holds AnswerCard at five imports.
  */
 export function MessageCard({ message }: { message: ChatSessionMessage }) {
   if (message.role === "user") {
@@ -17,5 +20,10 @@ export function MessageCard({ message }: { message: ChatSessionMessage }) {
       </article>
     );
   }
-  return <AnswerCard message={message} />;
+  return (
+    <>
+      <AnswerCard message={message} />
+      <TracePanel trace={message.trace} />
+    </>
+  );
 }
