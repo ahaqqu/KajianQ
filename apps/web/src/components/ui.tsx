@@ -1,48 +1,69 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 
-/** Minimal shadcn-like primitives (owned source). */
-const BUTTON_VARIANTS = {
-  primary: "bg-sky-500 text-slate-950 hover:bg-sky-400",
-  muted: "bg-slate-700 text-slate-100 hover:bg-slate-600",
-  danger: "bg-rose-500/90 text-slate-950 hover:bg-rose-400",
+/** Minimal shadcn-like primitives (owned source), themed by the design tokens. */
+export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return (
+    <div
+      className={`rounded-2xl border border-border bg-card p-4 text-card-foreground ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * The reference's mono-uppercase label primitive (thermo-review B1): one
+ * treatment — mono, uppercase, 0.2em tracking, muted — so the label voice
+ * cannot drift per call site. Callers override only size/color via className.
+ */
+export function MonoLabel({
+  children,
+  className = "",
+  ...rest
+}: { children: ReactNode; className?: string } & ComponentProps<"p">) {
+  return (
+    <p
+      className={`font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground ${className}`}
+      {...rest}
+    >
+      {children}
+    </p>
+  );
+}
+
+export function CardLabel({ children }: { children: ReactNode }) {
+  return <MonoLabel>{children}</MonoLabel>;
+}
+
+const LOGO_SIZES = {
+  sm: "size-7 rounded-lg",
+  md: "size-10 rounded-xl",
+  lg: "size-14 rounded-2xl",
 } as const;
 
-export function Button({
-  variant = "primary",
-  className = "",
-  ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: keyof typeof BUTTON_VARIANTS;
-}) {
+/**
+ * The logo tile: an 8-pointed star (rub el hizb) emblem on the theme's
+ * primary tile — dark green in light mode, gold in dark mode. Pure SVG, no
+ * external asset; sizes follow the reference treatments (header, avatar,
+ * empty state).
+ */
+export function LogoTile({ size }: { size: keyof typeof LOGO_SIZES }) {
   return (
-    <button
-      className={`inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-50 ${BUTTON_VARIANTS[variant]} ${className}`}
-      {...props}
-    />
+    <div
+      className={`flex shrink-0 items-center justify-center bg-primary text-primary-foreground ${LOGO_SIZES[size]}`}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        className="size-[60%]"
+        aria-hidden="true"
+      >
+        <rect x="6.2" y="6.2" width="11.6" height="11.6" />
+        <rect x="6.2" y="6.2" width="11.6" height="11.6" transform="rotate(45 12 12)" />
+        <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
+      </svg>
+    </div>
   );
-}
-
-export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return (
-    <input
-      className={`w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-50 outline-none focus:border-sky-500 ${className}`}
-      {...props}
-    />
-  );
-}
-
-export function Textarea({
-  className = "",
-  ...props
-}: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return (
-    <textarea
-      className={`w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-50 outline-none focus:border-sky-500 ${className}`}
-      {...props}
-    />
-  );
-}
-
-export function Card({ children }: { children: ReactNode }) {
-  return <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">{children}</div>;
 }

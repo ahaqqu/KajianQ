@@ -45,11 +45,11 @@ export function SwUpdatePrompt() {
 
   return (
     <div
-      className="fixed right-3 bottom-3 z-50 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm shadow-lg"
+      className="fixed right-3 bottom-3 z-50 rounded-xl border border-border bg-card px-3 py-2 text-sm text-card-foreground shadow-lg"
       role="status"
     >
       <span className="mr-2">{t(locale, "updateAvailable")}</span>
-      <button type="button" className="text-sky-400 underline" onClick={applyUpdate}>
+      <button type="button" className="font-medium text-accent underline" onClick={applyUpdate}>
         {t(locale, "reload")}
       </button>
     </div>

@@ -46,3 +46,25 @@ Then("the page has no serious accessibility violations", async ({ page }) => {
     ),
   ).toEqual([]);
 });
+
+Then("I see the greeting heading", async ({ page }) => {
+  await expect(page.getByTestId("chat-greeting")).toContainText(/Assalamu|Peace be/);
+});
+
+Then("I see three suggestion chips", async ({ page }) => {
+  await expect(page.getByTestId("suggestion-chip")).toHaveCount(3);
+});
+
+When("I toggle the dark theme", async ({ page }) => {
+  await page.getByTestId("theme-toggle").click();
+});
+
+Then("the page carries the dark theme", async ({ page }) => {
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  await expect(page.locator("html")).not.toHaveClass(/light/);
+});
+
+Then("reloading keeps the dark theme", async ({ page }) => {
+  await page.reload();
+  await expect(page.locator("html")).toHaveClass(/dark/);
+});

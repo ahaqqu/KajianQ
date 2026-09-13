@@ -16,11 +16,21 @@ export const messages = {
     localeLabel: "Language",
     updateAvailable: "Update available",
     reload: "Reload",
-    chatEmptyTitle: "Start asking",
-    chatEmptyHint: "Ask about the Islamic classical kitab — Quran and hadith first.",
-    composerPlaceholder: "Ask something…",
+    tagline: "Islamic classical knowledge",
+    themeToggle: "Toggle light or dark theme",
+    conversationLabel: "Conversation",
+    savedLocally: "Saved on your device",
+    greeting: "Peace be upon you, reader.",
+    emptyLine1: "Ask about the Quran, hadith, tafsir, and the classical tradition.",
+    emptyLine2: "Each answer cites its sources.",
+    suggestion1: "What is Ayat al-Kursi and what does it mean?",
+    suggestion2: "Which authentic hadith speak about honesty?",
+    suggestion3: "What do the classical kitab say about intention in deeds?",
+    footerMeta: "One conversation · Every answer cites its sources · Saved on your device",
+    warningLabel: "Warning",
+    composerPlaceholder: "Ask about the Quran, hadith, or classical scholarship…",
     send: "Send",
-    newSession: "New session",
+    newSession: "New conversation",
     stagedContext: "Retrieving context…",
     stagedReview: "Checking citations…",
     stagedCompose: "Composing the answer…",
@@ -53,12 +63,22 @@ export const messages = {
     localeLabel: "Bahasa",
     updateAvailable: "Pembaruan tersedia",
     reload: "Muat ulang",
-    chatEmptyTitle: "Mulai bertanya",
-    chatEmptyHint:
-      "Ajukan pertanyaan seputar kitab klasik Islam — awali dengan Al-Quran dan hadits.",
-    composerPlaceholder: "Tanyakan sesuatu…",
+    tagline: "Pengetahuan Islam klasik",
+    themeToggle: "Ganti tema terang atau gelap",
+    conversationLabel: "Percakapan",
+    savedLocally: "Tersimpan di perangkat Anda",
+    greeting: "Assalamu’alaikum, pembaca.",
+    emptyLine1: "Tanyakan tentang Al-Quran, hadits, tafsir, dan tradisi klasik.",
+    emptyLine2: "Setiap jawaban mencantumkan sumbernya.",
+    suggestion1: "Apa itu ayat kursi dan apa maknanya?",
+    suggestion2: "Hadits apa saja yang shahih tentang kejujuran?",
+    suggestion3: "Apa kata kitab klasik tentang niat dalam beramal?",
+    footerMeta:
+      "Satu percakapan · Setiap jawaban mencantumkan sumbernya · Tersimpan di perangkat Anda",
+    warningLabel: "Peringatan",
+    composerPlaceholder: "Tanyakan tentang Quran, hadits, atau tafsir…",
     send: "Kirim",
-    newSession: "Sesi baru",
+    newSession: "Percakapan baru",
     stagedContext: "Mengambil konteks…",
     stagedReview: "Memeriksa sitasi…",
     stagedCompose: "Menyusun jawaban…",
@@ -88,8 +108,15 @@ export type MessageKey = keyof (typeof messages)["en"];
  */
 export const LocaleCtx = createContext<Locale>("en");
 
+/** The shell's locale setter, shared the same way (the header's language select). */
+export const LocaleSetterCtx = createContext<(locale: Locale) => void>(() => {});
+
 export function useLocale(): Locale {
   return useContext(LocaleCtx);
+}
+
+export function useLocaleSetter(): (locale: Locale) => void {
+  return useContext(LocaleSetterCtx);
 }
 
 export function t(locale: Locale, key: MessageKey): string {
