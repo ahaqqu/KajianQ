@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import type { Trace } from "@app/contracts";
-import type { AnswerFeedbackTarget, ChatMessage, FeedbackInsert, RagStore } from "./rag-store";
+import type { AnswerFeedbackTarget, FeedbackInsert, RagStore } from "./rag-store";
 import { constraintError, parseTrace } from "./rag-store-shared";
 import { sqlEffect, type SqlRunner } from "./rag-store-neon-errors";
 
@@ -23,7 +23,6 @@ export function neonTraceMethods(
   | "getAnswerTraceByMessage"
   | "getAnswerTraceById"
   | "insertFeedback"
-  | "getChatMessage"
   | "getAnswerFeedbackTarget"
 > {
   return {
@@ -127,49 +126,26 @@ export function neonTraceMethods(
       );
     },
 
-    getChatMessage(id) {
-      return Effect.map(
-        sqlEffect(
-          sql,
-          () =>
-            sql`
-          SELECT id, session_id, role, content, answer_trace_id, created_at
-          FROM chat_messages WHERE id = ${id}::uuid
-        ` as Promise<
-              {
-                id: string;
-                session_id: string;
-                role: string;
-                content: string;
-                answer_trace_id: string | null;
-                created_at: string | Date;
-              }[]
-            >,
-        ),
-        (rows) => {
-          const row = rows[0];
-          if (!row) return null;
-          const message: ChatMessage = {
-            id: row.id,
-            sessionId: row.session_id,
-            role: row.role,
-            content: row.content,
-            answerTraceId: row.answer_trace_id,
-            createdAt: new Date(row.created_at).getTime(),
-          };
-          return message;
-        },
-      );
-    },
-
     getAnswerFeedbackTarget(messageId) {
+      // One read for the whole feedback target (#13): the trace, its owner,
+      // and the answer text joined through `chat_messages.answer_trace_id` —
+      // the client-facing `message_id` is the TRACE's key, never the chat
+      // row's store-generated id, so the join is the only honest path to the
+      // answer text the anchor validation re-derives the citations from.
       return Effect.flatMap(
         sqlEffect(
           sql,
           () =>
             sql`
-          SELECT user_id, trace FROM answer_traces WHERE message_id = ${messageId}
-        ` as Promise<{ user_id: string | null; trace: unknown }[]>,
+          SELECT t.user_id AS user_id, t.trace AS trace, m.content AS answer_text
+          FROM answer_traces t
+          LEFT JOIN chat_messages m ON m.answer_trace_id = t.id
+          WHERE t.message_id = ${messageId}
+        ` as Promise<{
+              user_id: string | null;
+              trace: unknown;
+              answer_text: string | null;
+            }[]>,
         ),
         (rows) => {
           const row = rows[0];
@@ -182,7 +158,11 @@ export function neonTraceMethods(
               try: () => parseTrace(row.trace) as Trace,
               catch: constraintError,
             }),
-            (trace): AnswerFeedbackTarget => ({ userId: row.user_id, trace }),
+            (trace): AnswerFeedbackTarget => ({
+              userId: row.user_id,
+              trace,
+              answerText: row.answer_text,
+            }),
           );
         },
       );

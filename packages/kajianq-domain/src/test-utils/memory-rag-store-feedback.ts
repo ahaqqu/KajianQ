@@ -24,7 +24,7 @@ export type MemoryFeedbackState = {
 
 export function memoryFeedbackMethods(
   state: MemoryFeedbackState,
-): Pick<RagStore, "insertFeedback" | "getChatMessage" | "getAnswerFeedbackTarget"> {
+): Pick<RagStore, "insertFeedback" | "getAnswerFeedbackTarget"> {
   return {
     insertFeedback(input: FeedbackInsert) {
       return Effect.sync(() => {
@@ -33,22 +33,20 @@ export function memoryFeedbackMethods(
         return id;
       });
     },
-    getChatMessage(id) {
-      return Effect.sync(() => {
-        const row = state.chatMessages.get(id);
-        if (!row) return null;
-        // Insertion order stands in for created_at (no clock), like getChatMessages.
-        const index = [...state.chatMessages.keys()].indexOf(id);
-        return { ...row, id, createdAt: index };
-      });
-    },
     getAnswerFeedbackTarget(messageId) {
       return Effect.sync(() => {
         const trace = state.traces.get(messageId);
         if (trace === undefined) return null;
+        const traceId = (trace as { id?: string }).id;
+        // The chat row's answerTraceId holds the trace's id (the FK stand-in);
+        // the answer text joins through it, like the real adapter's join.
+        const answerText =
+          [...state.chatMessages.values()].find((m) => m.answerTraceId === traceId)?.content ??
+          null;
         const target: AnswerFeedbackTarget = {
           userId: state.traceOwners.get(messageId) ?? null,
           trace: trace as never,
+          answerText,
         };
         return target;
       });

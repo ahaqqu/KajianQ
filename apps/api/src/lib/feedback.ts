@@ -120,40 +120,32 @@ export async function parseFeedbackRequest(
 /**
  * Derive the citations frame a flag's label must appear in — the exact
  * derivation the live `citations` frame uses, so the server validates the
- * anchor against the elements the client actually saw. Null when the answer's
- * message row is gone (nothing honest to validate against).
+ * anchor against the elements the client actually saw. Null when the answer
+ * text is gone (the message row was reclaimed) — nothing honest to validate
+ * against.
  */
 export async function deriveFeedbackCitations(input: {
   messageId: string;
   trace: Trace;
-  getMessage: () => Promise<{ content: string } | null>;
+  answerText: string | null;
   fetchChunks: CitationChunkSource;
   warn: Warn;
 }): Promise<ChatCitationsFrame | null> {
-  try {
-    const message = await input.getMessage();
-    if (message === null) return null;
-    const ids = traceChunkIds(input.trace);
-    const chunksById = await chunksByIdOrEmpty({
-      ids,
-      fetchChunks: input.fetchChunks,
-      warn: input.warn,
-      warnKey: "feedback.anchor.chunk_lookup_failed",
-      warnFields: { messageId: input.messageId },
-    });
-    return deriveCitationsFrame({
-      trace: input.trace,
-      messageId: input.messageId,
-      answerText: message.content,
-      chunksById,
-    });
-  } catch (err) {
-    input.warn("feedback.anchor.derive_failed", {
-      messageId: input.messageId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return null;
-  }
+  if (input.answerText === null) return null;
+  const ids = traceChunkIds(input.trace);
+  const chunksById = await chunksByIdOrEmpty({
+    ids,
+    fetchChunks: input.fetchChunks,
+    warn: input.warn,
+    warnKey: "feedback.anchor.chunk_lookup_failed",
+    warnFields: { messageId: input.messageId },
+  });
+  return deriveCitationsFrame({
+    trace: input.trace,
+    messageId: input.messageId,
+    answerText: input.answerText,
+    chunksById,
+  });
 }
 
 /**

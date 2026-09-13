@@ -1,7 +1,6 @@
 import type { Effect } from "effect";
 import type { Trace } from "@app/contracts";
 import type { StoreError } from "@app/rag-core";
-import type { ChatMessage } from "./rag-store";
 
 /**
  * Feedback half of the `RagStore` seam (#13), split from `rag-store.ts` to
@@ -32,11 +31,21 @@ export type FeedbackInsert = {
   status?: string;
 };
 
-/** What a feedback flag anchors to: the answer's Trace and its owner (#13). */
+/**
+ * What a feedback flag anchors to (#13): the answer's Trace, its owner, and
+ * the answer text — the exact inputs the server-side anchor validation needs
+ * (the citations frame re-derivation reads the answer's inline spans), all in
+ * one seam call. `answerText` joins through `chat_messages.answer_trace_id`
+ * — the client-facing `message_id` is the TRACE's key, not the chat row's id
+ * (the store generates that one), so a lookup by message id can only reach
+ * the answer text through this join.
+ */
 export type AnswerFeedbackTarget = {
   /** The trace's owning user (ADR-0007 amendment); null when unowned. */
   userId: string | null;
   trace: Trace;
+  /** The answer's persisted text, when its chat message row survives. */
+  answerText: string | null;
 };
 
 export interface RagStoreFeedback {
@@ -46,13 +55,6 @@ export interface RagStoreFeedback {
    * shared contract decides which wire shape maps to which.
    */
   insertFeedback(input: FeedbackInsert): Effect.Effect<string, StoreError>;
-
-  /**
-   * One chat message row by id, or null when absent. Feedback anchoring (#13)
-   * reads the answer's text to re-derive its citation frame; a generic
-   * single-message read keeps that a seam call, not a SQL reach-through.
-   */
-  getChatMessage(id: string): Effect.Effect<ChatMessage | null, StoreError>;
 
   /**
    * The feedback target for one answer message (#13): the persisted Trace

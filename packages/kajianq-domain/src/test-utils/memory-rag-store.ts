@@ -255,7 +255,6 @@ export function createMemoryRagStore(): RagStore & {
     deleteUserCascade: authMethods.deleteUserCascade,
     cleanupExpiredSessions: authMethods.cleanupExpiredSessions,
     insertFeedback: feedbackMethods.insertFeedback,
-    getChatMessage: feedbackMethods.getChatMessage,
     getAnswerFeedbackTarget: feedbackMethods.getAnswerFeedbackTarget,
   };
 

@@ -1,5 +1,5 @@
-import type { FeedbackAnchor, FeedbackResponse, Trace } from "@app/contracts";
-import { createLogger } from "@app/infra";
+import type { FeedbackAnchor, FeedbackResponse } from "@app/contracts";
+import { createLogger, type AnswerFeedbackTarget } from "@app/infra";
 import { newRouter } from "../lib/guard";
 import { authGuard, buildStoreWiring, wiringOr503 } from "../lib/chat-wiring";
 import {
@@ -62,10 +62,9 @@ export const feedbackRoutes = newRouter().post(
     if (unauthorized !== undefined) return unauthorized;
     const { userId } = c.get("authed");
 
-    const target = (await runStore(fullStore.getAnswerFeedbackTarget(req.messageId))) as {
-      userId: string | null;
-      trace: Trace;
-    } | null;
+    const target = (await runStore(fullStore.getAnswerFeedbackTarget(req.messageId))) as
+      | AnswerFeedbackTarget
+      | null;
     if (target === null || target.userId !== userId) {
       // Unknown answer and someone else's answer: indistinguishable 404.
       return c.json({ error: "not_found" }, 404);
@@ -109,10 +108,7 @@ export const feedbackRoutes = newRouter().post(
         : await deriveFeedbackCitations({
             messageId: req.messageId,
             trace: target.trace,
-            getMessage: () =>
-              runStore(fullStore.getChatMessage(req.messageId)) as Promise<{
-                content: string;
-              } | null>,
+            answerText: target.answerText,
             fetchChunks: chunkFetcher(fullStore, runStore),
             warn: (msg, fields) => logger.warn(msg, fields),
           });

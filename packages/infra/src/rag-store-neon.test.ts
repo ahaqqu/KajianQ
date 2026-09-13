@@ -274,31 +274,19 @@ run("RagStore contract (real Neon, Effect-shaped seam)", () => {
       });
       const target = yield* store.getAnswerFeedbackTarget(messageId);
       const absentTarget = yield* store.getAnswerFeedbackTarget(`${PREFIX}-nope`);
-      const message = yield* store.getChatMessage(messageId);
-      const absentMessage = yield* store.getChatMessage("00000000-0000-4000-8000-000000000000");
       // Cascade: the feedback rows carry the user FK, so they die with the user.
       yield* store.deleteUserCascade(userId);
       const orphanedTarget = yield* store.getAnswerFeedbackTarget(messageId);
       const deadToken = yield* store.resolveUserId(token);
-      return {
-        thumbId,
-        flagId,
-        target,
-        absentTarget,
-        message,
-        absentMessage,
-        orphanedTarget,
-        deadToken,
-      };
+      return { thumbId, flagId, target, absentTarget, orphanedTarget, deadToken };
     });
-    const { target, absentTarget, message, absentMessage, orphanedTarget, deadToken } =
-      await Effect.runPromise(program);
+    const { target, absentTarget, orphanedTarget, deadToken } = await Effect.runPromise(program);
     expect(target).not.toBeNull();
     expect(target?.userId).toBeTruthy();
     expect(target?.trace).toEqual(trace);
+    // The answer text joins through chat_messages.answer_trace_id (#13).
+    expect(target?.answerText).toBe("Allah Mahahidup [QS. 2:255].");
     expect(absentTarget).toBeNull();
-    expect(message?.content).toBe("Allah Mahahidup [QS. 2:255].");
-    expect(absentMessage).toBeNull();
     // After the cascade the trace is gone; the token no longer resolves.
     expect(orphanedTarget).toBeNull();
     expect(deadToken).toBeNull();
