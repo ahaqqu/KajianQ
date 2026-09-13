@@ -84,6 +84,10 @@ _Avoid_: weak-hadith disclaimer (it is a warning, not a disclaimer)
 The ADR-0006 label shown with every machine-made translation — `Terjemahan mesin — lihat teks Arab asli` — one Indonesian constant, no EN variant, always alongside the Arabic original it points to.
 _Avoid_: auto-translate badge (drifts from the fixed copy)
 
+**Feedback anchor**:
+The element reference a feedback report carries (#13): a thumbs row anchors `answer`; a flag anchors one Trace element — `chunk` (a trace chunk id), `citation`, `translation`, or `grade` (a citation label) — with exactly one reason category per anchor type (`irrelevant_chunk`, `wrong_citation`, `bad_machine_translation`, `questionable_grade`). The server stores a flag only if the persisted Trace grounds the anchor; flags persist as rating −1. Identifiers come from the shared contract's frames only, never free-form coordinates (ADR-0007).
+_Avoid_: report tag, flag type, feedback reason (unqualified)
+
 **Isnad**:
 The ordered chain of narrators through which a hadith was transmitted. From v2 stored as structured rows (narrators + chains), not prose; grading applies to the Isnad, not the Matn (ADR-0012).
 _Avoid_: sanad (unqualified romanization drift), chain (unqualified)
