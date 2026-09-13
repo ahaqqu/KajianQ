@@ -87,7 +87,7 @@ export function ChatView({
             <button
               type="button"
               data-testid="new-session"
-              className="shrink-0 whitespace-nowrap rounded-full border border-border bg-card px-3 py-2 text-sm font-medium text-card-foreground hover:bg-secondary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:px-4"
+              className="shrink-0 whitespace-nowrap rounded-full border border-border bg-card px-2 py-2 text-sm font-medium text-card-foreground hover:bg-secondary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:px-4"
               onClick={onNewSession}
             >
               {t(locale, "newSession")}

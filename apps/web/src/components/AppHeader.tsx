@@ -26,7 +26,7 @@ export function AppHeader({ actions }: { actions?: ReactNode }) {
         </p>
         <MonoLabel className="truncate">{t(locale, "tagline")}</MonoLabel>
       </div>
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
         {actions}
         <button
           type="button"
@@ -38,7 +38,7 @@ export function AppHeader({ actions }: { actions?: ReactNode }) {
           {theme === "light" ? <MoonIcon /> : <SunIcon />}
         </button>
         <select
-          className="rounded-full border border-border bg-transparent px-2 py-1.5 font-mono text-xs text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="rounded-full border border-border bg-transparent px-1.5 py-1.5 font-mono text-xs text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:px-2"
           value={locale}
           aria-label={t(locale, "localeLabel")}
           data-testid="locale-select"
