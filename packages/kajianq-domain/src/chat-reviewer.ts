@@ -89,15 +89,10 @@ export function isRefusalDraft(text: string): boolean {
  * Exported with `buildReviewMessages` so a test or an offline probe exercises
  * the exact prompt production sends.
  *
- * The fourth fail case ("declines to answer") is the symmetric backstop to the
- * generator's rule 1 (`chat-prompts.ts`): when the question demands one specific
- * fact the evidence does not contain, a grounded essay about what the evidence
- * does or does not say is NOT a pass — the generator disobeying rule 1 (live
- * Staging, gs-v0-019, 2026-09-13: a well-cited "no date is stated; only Allah
- * knows" draft passed the gate and the refusal-coverage trap failed). The case
- * is deliberately narrow — partial answers and imprecise wording stay passes —
- * and the anti-over-fail guarantees above it are unchanged, so the gate cannot
- * start inflating refusals on legitimate answers (SPECS §3.4 cost posture).
+ * "Declines to answer" is the symmetric backstop to the generator's rule 1:
+ * on gs-v0-019 (Staging, 2026-09-13) the generator disobeyed rule 1 and its
+ * grounded "only Allah knows" draft passed the gate, failing the trap. The
+ * case stays narrow and the guarantees above are unchanged (SPECS §3.3).
  */
 export const REVIEWER_SYSTEM_PROMPT = [
   "You are a faithfulness reviewer for a grounded Islamic knowledge answer.",
