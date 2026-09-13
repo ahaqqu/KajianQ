@@ -8,6 +8,31 @@ describe("i18n", () => {
     expect(t("id", "health")).toBe("Kesehatan API");
   });
 
+  it("keeps the product name KajianQ everywhere (wordmark, assistant name)", () => {
+    expect(t("en", "appTitle")).toBe("KajianQ");
+    expect(t("id", "appTitle")).toBe("KajianQ");
+  });
+
+  it("externalizes the reference-layout copy in both locales", () => {
+    for (const key of [
+      "tagline",
+      "themeToggle",
+      "conversationLabel",
+      "savedLocally",
+      "greeting",
+      "emptyLine1",
+      "emptyLine2",
+      "suggestion1",
+      "suggestion2",
+      "suggestion3",
+      "footerMeta",
+      "warningLabel",
+    ] as const) {
+      expect(messages.en[key].length).toBeGreaterThan(0);
+      expect(messages.id[key].length).toBeGreaterThan(0);
+    }
+  });
+
   it("keeps en and id key sets in parity", () => {
     expect(Object.keys(messages.id).sort()).toEqual(Object.keys(messages.en).sort());
   });
