@@ -6,7 +6,7 @@ import {
   ProviderError,
   type CostRecord,
 } from "@app/rag-core";
-import { computeCost, estimateTokens } from "./chat-wire";
+import { computeCost, estimateTokens, withAttemptCost } from "./chat-wire";
 import { errorKindForStatus, type FetchLike } from "./chat-completions-adapter";
 import {
   resolveChain,
@@ -105,26 +105,36 @@ export function createSystemOneDecider(opts: SystemOneOptions): Decider {
     if (!res.ok) {
       const body = await res.text().catch(() => "");
       // 529 (overloaded) maps to `server` via errorKindForStatus (>= 500),
-      // so the retry policy backs off like any 5xx.
-      throw new ProviderError({
-        kind: errorKindForStatus(res.status),
-        message: `systemone failed (${res.status}): ${body.slice(0, 300)}`,
-      });
+      // so the retry policy backs off like any 5xx. The vendor was reached,
+      // so the attempt's estimated input spend rides on the error (C2).
+      throw withAttemptCost(
+        new ProviderError({
+          kind: errorKindForStatus(res.status),
+          message: `systemone failed (${res.status}): ${body.slice(0, 300)}`,
+        }),
+        attemptCost(started, stateChars),
+      );
     }
     let json: SystemOneResponse;
     try {
       json = (await res.json()) as SystemOneResponse;
     } catch (err) {
-      throw new ProviderError({
-        kind: "transport",
-        message: `systemone returned 200 but the body did not parse: ${String(err)}`,
-      });
+      throw withAttemptCost(
+        new ProviderError({
+          kind: "transport",
+          message: `systemone returned 200 but the body did not parse: ${String(err)}`,
+        }),
+        attemptCost(started, stateChars),
+      );
     }
     if (!json.answers || typeof json.answers !== "object") {
-      throw new ProviderError({
-        kind: "transport",
-        message: "systemone response has no answers object",
-      });
+      throw withAttemptCost(
+        new ProviderError({
+          kind: "transport",
+          message: "systemone response has no answers object",
+        }),
+        attemptCost(started, stateChars),
+      );
     }
     const usage = json.usage ?? {};
     const isMetered = Number.isInteger(usage.input_tokens);

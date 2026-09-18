@@ -94,6 +94,14 @@ describe("systemone adapter", () => {
       const err = await Effect.runPromise(Effect.flip(decider.decide(SPEC)));
       expect(err.kind).toBe(kind);
       expect(err.message).toContain(String(status));
+      // Vendor-reaching: the attempt's estimated input spend rides on the
+      // error (traceability rule 4) — never a bare failure.
+      expect(err.attemptCosts).toHaveLength(1);
+      const cost = err.attemptCosts?.[0];
+      expect(cost?.estimated).toBeTruthy();
+      expect(cost?.modelId).toBe("m-decide");
+      expect(cost?.tokensIn).toBeGreaterThan(0);
+      expect(cost?.costMicroUsd).toBeGreaterThan(0);
     }
   });
 
@@ -103,6 +111,9 @@ describe("systemone adapter", () => {
     const err = await Effect.runPromise(Effect.flip(decider.decide(SPEC)));
     expect(err.kind).toBe("transport");
     expect(err.message).toContain("no answers");
+    // Still vendor-reaching — the attempt cost rides on the error.
+    expect(err.attemptCosts).toHaveLength(1);
+    expect(err.attemptCosts?.[0]?.estimated).toBeTruthy();
   });
 
   it("throws on a model without the decide capability", () => {
