@@ -4,6 +4,7 @@ import { createSystemOneDecider, resolveDecider } from "./systemone-adapter";
 import type { FetchLike } from "./chat-completions-adapter";
 import { jsonResponse, testVendor } from "./test-fixtures";
 import type { DecisionSpec } from "@app/rag-core";
+import type { VendorConfig } from "./provider-config";
 
 /** A systemone-shaped vendor config (protocol is the only difference). */
 const systemoneVendor = {
@@ -15,7 +16,7 @@ const systemoneVendor = {
       priceMicroUsdPerMTok: { in: 42, out: 0 },
     },
   },
-} as const;
+} satisfies VendorConfig;
 
 function makeDecider(fetchImpl: FetchLike, apiKey = "k-1") {
   return createSystemOneDecider({

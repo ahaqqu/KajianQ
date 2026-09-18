@@ -27,7 +27,6 @@ import { dirname, resolve as resolvePath } from "node:path";
 import * as app from "@app/infra";
 import * as evalpkg from "@app/eval";
 import * as domain from "@app/kajianq-domain";
-import { Effect } from "effect";
 
 const logger = app.createLogger({ script: "eval:decision-bench" });
 
