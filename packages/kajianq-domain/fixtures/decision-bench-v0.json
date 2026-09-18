@@ -1,0 +1,170 @@
+{
+  "id": "decision-bench-v0",
+  "status": "v0-draft",
+  "$comment": "ADR-0042 multilingual decision-model gate fixture. Passages are verbatim from the ingested sources (NOTICES/DATASETS.md): Bukhari hadith 1 & 2 (ara/ind from fawazahmed0/hadith-api editions, eng sunnah.com wording via the same API) and Quran 2:255 (Tanzil Uthmani + Kemenag translation via the hangsbreaker mirror). Ground truths were authored by hand; the fixture stays v0-draft until the owner signs the content off.",
+  "relevance": [
+    {
+      "id": "rel-ar-01",
+      "language": "ar",
+      "query": "ما فضل النية في الأعمال عند الإسلام؟",
+      "passage": "سَمِعْتُ عُمَرَ بْنَ الْخَطَّابِ رَضِيَ اللَّهُ عَنْهُ عَلَى الْمِنْبَرِ، قَالَ : سَمِعْتُ رَسُولَ اللَّهِ صَلَّى اللَّهُ عَلَيْهِ وَسَلَّمَ، يَقُولُ : \" إِنَّمَا الْأَعْمَالُ بِالنِّيَّاتِ، وَإِنَّمَا لِكُلِّ امْرِئٍ مَا نَوَى، فَمَنْ كَانَتْ هِجْرَتُهُ إِلَى دُنْيَا يُصِيبُهَا أَوْ إِلَى امْرَأَةٍ يَنْكِحُهَا، فَهِجْرَتُهُ إِلَى مَا هَاجَرَ إِلَيْهِ",
+      "relevant": true
+    },
+    {
+      "id": "rel-ar-02",
+      "language": "ar",
+      "query": "كيف كان يأتي الوحي إلى النبي؟",
+      "passage": "سَمِعْتُ عُمَرَ بْنَ الْخَطَّابِ رَضِيَ اللَّهُ عَنْهُ عَلَى الْمِنْبَرِ، قَالَ : سَمِعْتُ رَسُولَ اللَّهِ صَلَّى اللَّهُ عَلَيْهِ وَسَلَّمَ، يَقُولُ : \" إِنَّمَا الْأَعْمَالُ بِالنِّيَّاتِ، وَإِنَّمَا لِكُلِّ امْرِئٍ مَا نَوَى، فَمَنْ كَانَتْ هِجْرَتُهُ إِلَى دُنْيَا يُصِيبُهَا أَوْ إِلَى امْرَأَةٍ يَنْكِحُهَا، فَهِجْرَتُهُ إِلَى مَا هَاجَرَ إِلَيْهِ",
+      "relevant": false
+    },
+    {
+      "id": "rel-ar-03",
+      "language": "ar",
+      "query": "هل يأخذ الله سنة أو نومًا؟",
+      "passage": "اَللّٰهُ لَآ اِلٰهَ اِلَّا هُوَۚ اَلْحَيُّ الْقَيْـُّوْمُ ەۚ لَا تَأْخُذُهٗ سِنَةٌ وَّلَا نَوْمٌۗ  لَهٗ مَا فِى السَّمٰوٰتِ وَمَا فِى الْاَرْضِۗ مَنْ ذَا الَّذِيْ يَشْفَعُ عِنْدَهٗٓ اِلَّا بِاِذْنِهٖۗ يَعْلَمُ مَا بَيْنَ اَيْدِيْهِمْ وَمَا خَلْفَهُمْۚ وَلَا يُحِيْطُوْنَ بِشَيْءٍ مِّنْ عِلْمِهٖٓ اِلَّا بِمَا شَاۤءَۚ وَسِعَ كُرْسِيُّهُ السَّمٰوٰتِ وَالْاَرْضَۚ وَلَا يَـُٔوْدُهٗ حِفْظُهُمَاۚ وَهُوَ الْعَلِيُّ الْعَظِيْمُ",
+      "relevant": true
+    },
+    {
+      "id": "rel-ar-04",
+      "language": "ar",
+      "query": "ما حكم النية في الأعمال؟",
+      "passage": "لَآ اِكْرَاهَ فِى الدِّيْنِۗ  قَدْ تَّبَيَّنَ الرُّشْدُ مِنَ الْغَيِّ",
+      "relevant": false
+    },
+    {
+      "id": "rel-id-01",
+      "language": "id",
+      "query": "Apakah pentingnya niat dalam beramal?",
+      "passage": "saya pernah mendengar [Umar bin Al Khaththab] diatas mimbar berkata; saya mendengar Rasulullah shallallahu 'alaihi wasallam bersabda: \"Semua perbuatan tergantung niatnya, dan (balasan) bagi tiap-tiap orang (tergantung) apa yang diniatkan; Barangsiapa niat hijrahnya karena dunia yang ingin digapainya atau karena seorang perempuan yang ingin dinikahinya, maka hijrahnya adalah kepada apa dia diniatkan",
+      "relevant": true
+    },
+    {
+      "id": "rel-id-02",
+      "language": "id",
+      "query": "Bagaimana cara wahyu turun kepada Nabi?",
+      "passage": "saya pernah mendengar [Umar bin Al Khaththab] diatas mimbar berkata; saya mendengar Rasulullah shallallahu 'alaihi wasallam bersabda: \"Semua perbuatan tergantung niatnya, dan (balasan) bagi tiap-tiap orang (tergantung) apa yang diniatkan; Barangsiapa niat hijrahnya karena dunia yang ingin digapainya atau karena seorang perempuan yang ingin dinikahinya, maka hijrahnya adalah kepada apa dia diniatkan",
+      "relevant": false
+    },
+    {
+      "id": "rel-id-03",
+      "language": "id",
+      "query": "Apakah Allah pernah mengantuk atau tidur?",
+      "passage": "Allah, tidak ada tuhan selain Dia, Yang Mahahidup lagi terus-menerus mengurus (makhluk-Nya). Dia tidak dilanda oleh kantuk dan tidak (pula) oleh tidur. Milik-Nyalah apa yang ada di langit dan apa yang ada di bumi. Tidak ada yang dapat memberi syafaat di sisi-Nya tanpa izin-Nya. Dia mengetahui apa yang ada di hadapan mereka dan apa yang ada di belakang mereka. Mereka tidak mengetahui sesuatu apa pun dari ilmu-Nya, kecuali apa yang Dia kehendaki. Kursi-Nya (ilmu dan kekuasaan-Nya) meliputi langit dan bumi. Dia tidak merasa berat memelihara keduanya. Dialah yang Mahatinggi lagi Mahaagung.",
+      "relevant": true
+    },
+    {
+      "id": "rel-id-04",
+      "language": "id",
+      "query": "Apa pentingnya niat dalam beramal?",
+      "passage": "Tidak ada paksaan dalam (menganut) agama (Islam). Sungguh, telah jelas jalan yang benar dari jalan yang sesat.",
+      "relevant": false
+    },
+    {
+      "id": "rel-en-01",
+      "language": "en",
+      "query": "What does Islam say about the importance of intention in deeds?",
+      "passage": "Narrated 'Umar bin Al-Khattab: I heard Allah's Messenger (ﷺ) saying, \"The reward of deeds depends upon the intentions and every person will get the reward according to what he has intended. So whoever emigrated for worldly benefits or for a woman to marry, his emigration was for what he emigrated for",
+      "relevant": true
+    },
+    {
+      "id": "rel-en-02",
+      "language": "en",
+      "query": "How did divine inspiration come to the Prophet?",
+      "passage": "Narrated 'Umar bin Al-Khattab: I heard Allah's Messenger (ﷺ) saying, \"The reward of deeds depends upon the intentions and every person will get the reward according to what he has intended. So whoever emigrated for worldly benefits or for a woman to marry, his emigration was for what he emigrated for",
+      "relevant": false
+    },
+    {
+      "id": "rel-en-03",
+      "language": "en",
+      "query": "Does God ever feel drowsiness or sleep?",
+      "passage": "Allah — there is no deity except Him, the Ever-Living, the Sustainer of existence. Neither drowsiness overtakes Him nor sleep. To Him belongs whatever is in the heavens and the earth. Who can intercede with Him except by His permission? He knows what lies before them and what lies behind them, and they encompass nothing of His knowledge except what He wills. His Kursi extends over the heavens and the earth, and their preservation tires Him not. And He is the Most High, the Most Great.",
+      "relevant": true
+    },
+    {
+      "id": "rel-en-04",
+      "language": "en",
+      "query": "What does Islam say about the importance of intention in deeds?",
+      "passage": "There shall be no compulsion in religion; the right course has become distinct from the wrong one.",
+      "relevant": false
+    }
+  ],
+  "rerank": [
+    {
+      "id": "rr-ar-01",
+      "language": "ar",
+      "query": "ما فضل النية في الأعمال عند الإسلام؟",
+      "candidates": [
+        "قَالَتْ عَائِشَةُ رضى الله عنها وَلَقَدْ رَأَيْتُهُ يَنْزِلُ عَلَيْهِ الْوَحْىُ فِي الْيَوْمِ الشَّدِيدِ الْبَرْدِ، فَيَفْصِمُ عَنْهُ وَإِنَّ جَبِينَهُ لَيَتَفَصَّدُ عَرَقًا",
+        "سَمِعْتُ رَسُولَ اللَّهِ صَلَّى اللَّهُ عَلَيْهِ وَسَلَّمَ، يَقُولُ : \" إِنَّمَا الْأَعْمَالُ بِالنِّيَّاتِ، وَإِنَّمَا لِكُلِّ امْرِئٍ مَا نَوَى، فَمَنْ كَانَتْ هِجْرَتُهُ إِلَى دُنْيَا يُصِيبُهَا أَوْ إِلَى امْرَأَةٍ يَنْكِحُهَا، فَهِجْرَتُهُ إِلَى مَا هَاجَرَ إِلَيْهِ",
+        "اَللّٰهُ لَآ اِلٰهَ اِلَّا هُوَۚ اَلْحَيُّ الْقَيْـُّوْمُ ەۚ لَا تَأْخُذُهٗ سِنَةٌ وَّلَا نَوْمٌۗ"
+      ],
+      "bestIndex": 1
+    },
+    {
+      "id": "rr-id-01",
+      "language": "id",
+      "query": "Apakah Allah bisa mengantuk?",
+      "candidates": [
+        "Semua perbuatan tergantung niatnya, dan (balasan) bagi tiap-tiap orang (tergantung) apa yang diniatkan",
+        "Tidak ada paksaan dalam (menganut) agama (Islam)",
+        "Allah, tidak ada tuhan selain Dia, Yang Mahahidup lagi terus-menerus mengurus (makhluk-Nya). Dia tidak dilanda oleh kantuk dan tidak (pula) oleh tidur."
+      ],
+      "bestIndex": 2
+    },
+    {
+      "id": "rr-en-01",
+      "language": "en",
+      "query": "How did the revelation come to the Prophet?",
+      "candidates": [
+        "Allah's Messenger (ﷺ) replied, \"Sometimes it is (revealed) like the ringing of a bell, this form of Inspiration is the hardest of all and then this state passes off after I have grasped what is inspired. Sometimes the Angel comes in the form of a man and talks to me and I grasp whatever he says.\"",
+        "The reward of deeds depends upon the intentions and every person will get the reward according to what he has intended.",
+        "Neither drowsiness overtakes Him nor sleep."
+      ],
+      "bestIndex": 0
+    }
+  ],
+  "citation": [
+    {
+      "id": "cit-ar-01",
+      "language": "ar",
+      "claim": "قال رسول الله ﷺ: إنما الأعمال بالنيات، وإنما لكل امرئ ما نوى.",
+      "passage": "سَمِعْتُ رَسُولَ اللَّهِ صَلَّى اللَّهُ عَلَيْهِ وَسَلَّمَ، يَقُولُ : \" إِنَّمَا الْأَعْمَالُ بِالنِّيَّاتِ، وَإِنَّمَا لِكُلِّ امْرِئٍ مَا نَوَى، فَمَنْ كَانَتْ هِجْرَتُهُ إِلَى دُنْيَا يُصِيبُهَا أَوْ إِلَى امْرَأَةٍ يَنْكِحُهَا، فَهِجْرَتُهُ إِلَى مَا هَاجَرَ إِلَيْهِ",
+      "supports": true
+    },
+    {
+      "id": "cit-ar-02",
+      "language": "ar",
+      "claim": "قال تعالى في آية الكرسي: الله يأخذه سنة ونوم.",
+      "passage": "اَللّٰهُ لَآ اِلٰهَ اِلَّا هُوَۚ اَلْحَيُّ الْقَيْـُّوْمُ ەۚ لَا تَأْخُذُهٗ سِنَةٌ وَّلَا نَوْمٌۗ  لَهٗ مَا فِى السَّمٰوٰتِ وَمَا فِى الْاَرْضِۗ",
+      "supports": false
+    },
+    {
+      "id": "cit-id-01",
+      "language": "id",
+      "claim": "Rasulullah shallallahu 'alaihi wasallam bersabda bahwa semua perbuatan tergantung niatnya.",
+      "passage": "saya mendengar Rasulullah shallallahu 'alaihi wasallam bersabda: \"Semua perbuatan tergantung niatnya, dan (balasan) bagi tiap-tiap orang (tergantung) apa yang diniatkan; Barangsiapa niat hijrahnya karena dunia yang ingin digapainya atau karena seorang perempuan yang ingin dinikahinya, maka hijrahnya adalah kepada apa dia diniatkan",
+      "supports": true
+    },
+    {
+      "id": "cit-id-02",
+      "language": "id",
+      "claim": "Ayat Kursi menyatakan bahwa Allah dilanda kantuk dan tidur.",
+      "passage": "Allah, tidak ada tuhan selain Dia, Yang Mahahidup lagi terus-menerus mengurus (makhluk-Nya). Dia tidak dilanda oleh kantuk dan tidak (pula) oleh tidur.",
+      "supports": false
+    },
+    {
+      "id": "cit-en-01",
+      "language": "en",
+      "claim": "The Prophet said: The reward of deeds depends upon the intentions.",
+      "passage": "Narrated 'Umar bin Al-Khattab: I heard Allah's Messenger (ﷺ) saying, \"The reward of deeds depends upon the intentions and every person will get the reward according to what he has intended.",
+      "supports": true
+    },
+    {
+      "id": "cit-en-02",
+      "language": "en",
+      "claim": "The Throne Verse states that drowsiness and sleep overtake God.",
+      "passage": "Allah — there is no deity except Him, the Ever-Living, the Sustainer of existence. Neither drowsiness overtakes Him nor sleep.",
+      "supports": false
+    }
+  ]
+}

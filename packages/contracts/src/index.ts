@@ -64,6 +64,19 @@ export {
   type GoldenSet,
 } from "./eval";
 export {
+  CitationCaseSchema,
+  DecisionBenchFixtureSchema,
+  DecisionTaskSchema,
+  RelevanceCaseSchema,
+  RerankCaseSchema,
+  parseDecisionBenchFixture,
+  type CitationCase,
+  type DecisionBenchFixture,
+  type DecisionTask,
+  type RelevanceCase,
+  type RerankCase,
+} from "./decision-bench";
+export {
   IngestionReportSchema,
   AlignedPairSchema,
   MorphTokenSchema,

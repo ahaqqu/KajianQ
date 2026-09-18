@@ -39,6 +39,7 @@
     "eval:run": "bun packages/eval/scripts/eval-run.mjs",
     "eval:smoke": "bun packages/eval/scripts/eval-smoke.mjs",
     "eval:embed-bench": "bun packages/eval/scripts/embed-bench.mjs",
+    "eval:decision-bench": "bun packages/eval/scripts/decision-bench.mjs",
     "ingest:quran": "bun packages/kajianq-domain/scripts/ingest-quran.mjs",
     "ingest:hadith": "bun packages/kajianq-domain/scripts/ingest-hadith.mjs",
     "e2e": "bddgen && playwright test",

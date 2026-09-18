@@ -14,7 +14,7 @@ const PriceSchema = v.object({
   out: v.pipe(v.number(), v.integer(), v.minValue(0)),
 });
 
-const CapabilitiesSchema = v.array(v.picklist(["generate", "stream", "embed"]));
+const CapabilitiesSchema = v.array(v.picklist(["generate", "stream", "embed", "decide"]));
 
 const ModelSchema = v.object({
   capabilities: CapabilitiesSchema,
@@ -26,7 +26,7 @@ const ModelSchema = v.object({
 const VendorSchema = v.object({
   baseUrl: v.pipe(v.string(), v.url()),
   apiKeyEnv: v.pipe(v.string(), v.minLength(1)),
-  protocol: v.picklist(["chat-completions"]),
+  protocol: v.picklist(["chat-completions", "systemone"]),
   /** Free-tier traffic may be used for vendor training — personal data never routes here. */
   freeTier: v.boolean(),
   personalDataAllowed: v.boolean(),

@@ -66,3 +66,24 @@ export {
   loadEmbedBenchConfig,
   type EmbedBenchConfig,
 } from "./eval-config";
+export {
+  DECISION_BENCH_DEFAULT_FIXTURE_PATH,
+  loadDecisionBenchConfig,
+  loadDecisionBenchFixtureJson,
+  parseDecisionBenchFixture,
+  type DecisionBenchConfig,
+} from "./decision-bench-config";
+export {
+  DECISION_GATE_FLOORS,
+  accuracyByLanguage,
+  evaluateDecisionGate,
+  meanAccuracy,
+  runDecisionBench,
+  scoreCitationAnswer,
+  scoreRelevanceAnswer,
+  scoreRerankAnswer,
+  type CaseOutcome,
+  type DecisionBenchPrompts,
+  type DecisionGate,
+  type TaskCell,
+} from "./decision-bench";
