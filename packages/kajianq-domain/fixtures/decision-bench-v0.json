@@ -1,7 +1,7 @@
 {
   "id": "decision-bench-v0",
   "status": "v0-draft",
-  "$comment": "ADR-0042 multilingual decision-model gate fixture. Passages are verbatim from the ingested sources (NOTICES/DATASETS.md): Bukhari hadith 1 & 2 (ara/ind from fawazahmed0/hadith-api editions, eng sunnah.com wording via the same API) and Quran 2:255 (Tanzil Uthmani + Kemenag translation via the hangsbreaker mirror). Ground truths were authored by hand; the fixture stays v0-draft until the owner signs the content off.",
+  "$comment": "ADR-0042 multilingual decision-model gate fixture. Passages are verbatim from commit-safe sources (NOTICES/DATASETS.md): Bukhari hadith 1 & 2 and Abu Dawud 1 (ara/ind/eng from fawazahmed0/hadith-api, The Unlicense; English wording per the API's sunnah.com-derived edition) and Quran Arabic from the Tanzil Uthmani edition (verbatim distribution permitted with attribution to tanzil.net; ayah excerpts here, full text ingested via the hangsbreaker mirror). Indonesian and English Quran translation wording is deliberately NOT used — the Kemenag translation's licensing is gated by prerequisite #2, so Indonesian cases ride the Unlicense hadith-api edition instead. The one English paraphrase (rel-en-04 / cit-en-02 / rr-en-01 candidate 3) is a plain rendering of Abu Dawud 1 authored for this fixture. Ground truths were hand-authored; the fixture stays v0-draft until the owner signs the content off.",
   "relevance": [
     {
       "id": "rel-ar-01",
@@ -48,15 +48,15 @@
     {
       "id": "rel-id-03",
       "language": "id",
-      "query": "Apakah Allah pernah mengantuk atau tidur?",
-      "passage": "Allah, tidak ada tuhan selain Dia, Yang Mahahidup lagi terus-menerus mengurus (makhluk-Nya). Dia tidak dilanda oleh kantuk dan tidak (pula) oleh tidur. Milik-Nyalah apa yang ada di langit dan apa yang ada di bumi. Tidak ada yang dapat memberi syafaat di sisi-Nya tanpa izin-Nya. Dia mengetahui apa yang ada di hadapan mereka dan apa yang ada di belakang mereka. Mereka tidak mengetahui sesuatu apa pun dari ilmu-Nya, kecuali apa yang Dia kehendaki. Kursi-Nya (ilmu dan kekuasaan-Nya) meliputi langit dan bumi. Dia tidak merasa berat memelihara keduanya. Dialah yang Mahatinggi lagi Mahaagung.",
+      "query": "Bagaimana cara wahyu turun kepada Nabi?",
+      "passage": "Al Harits bin Hisyam bertanya kepada Rasulullah shallallahu 'alaihi wasallam: \"Wahai Rasulullah, bagaimana caranya wahyu turun kepada engkau?\" Maka Rasulullah shallallahu 'alaihi wasallam menjawab: \"Terkadang datang kepadaku seperti suara gemerincing lonceng dan cara ini yang paling berat buatku, lalu terhenti sehingga aku dapat mengerti apa yang disampaikan. Dan terkadang datang Malaikat menyerupai seorang laki-laki lalu berbicara kepadaku maka aku ikuti apa yang diucapkannya\".",
       "relevant": true
     },
     {
       "id": "rel-id-04",
       "language": "id",
       "query": "Apa pentingnya niat dalam beramal?",
-      "passage": "Tidak ada paksaan dalam (menganut) agama (Islam). Sungguh, telah jelas jalan yang benar dari jalan yang sesat.",
+      "passage": "bahwasanya Nabi shallallahu 'alaihi wasallam apabila hendak pergi untuk buang hajat, maka beliau menjauh",
       "relevant": false
     },
     {
@@ -76,15 +76,15 @@
     {
       "id": "rel-en-03",
       "language": "en",
-      "query": "Does God ever feel drowsiness or sleep?",
-      "passage": "Allah — there is no deity except Him, the Ever-Living, the Sustainer of existence. Neither drowsiness overtakes Him nor sleep. To Him belongs whatever is in the heavens and the earth. Who can intercede with Him except by His permission? He knows what lies before them and what lies behind them, and they encompass nothing of His knowledge except what He wills. His Kursi extends over the heavens and the earth, and their preservation tires Him not. And He is the Most High, the Most Great.",
+      "query": "How did the revelation come to the Prophet?",
+      "passage": "Al-Harith bin Hisham asked Allah's Messenger (ﷺ): \"O Allah's Messenger! How is the Divine Inspiration revealed to you?\" Allah's Messenger (ﷺ) replied, \"Sometimes it is (revealed) like the ringing of a bell, this form of Inspiration is the hardest of all and then this state passes off after I have grasped what is inspired. Sometimes the Angel comes in the form of a man and talks to me and I grasp whatever he says.\"",
       "relevant": true
     },
     {
       "id": "rel-en-04",
       "language": "en",
       "query": "What does Islam say about the importance of intention in deeds?",
-      "passage": "There shall be no compulsion in religion; the right course has become distinct from the wrong one.",
+      "passage": "Whenever the Prophet (ﷺ) went to answer the call of nature, he went far away.",
       "relevant": false
     }
   ],
@@ -103,11 +103,11 @@
     {
       "id": "rr-id-01",
       "language": "id",
-      "query": "Apakah Allah bisa mengantuk?",
+      "query": "Bagaimana cara wahyu turun kepada Nabi?",
       "candidates": [
         "Semua perbuatan tergantung niatnya, dan (balasan) bagi tiap-tiap orang (tergantung) apa yang diniatkan",
-        "Tidak ada paksaan dalam (menganut) agama (Islam)",
-        "Allah, tidak ada tuhan selain Dia, Yang Mahahidup lagi terus-menerus mengurus (makhluk-Nya). Dia tidak dilanda oleh kantuk dan tidak (pula) oleh tidur."
+        "bahwasanya Nabi shallallahu 'alaihi wasallam apabila hendak pergi untuk buang hajat, maka beliau menjauh",
+        "Terkadang datang kepadaku seperti suara gemerincing lonceng dan cara ini yang paling berat buatku, lalu terhenti sehingga aku dapat mengerti apa yang disampaikan. Dan terkadang datang Malaikat menyerupai seorang laki-laki lalu berbicara kepadaku maka aku ikuti apa yang diucapkannya"
       ],
       "bestIndex": 2
     },
@@ -118,7 +118,7 @@
       "candidates": [
         "Allah's Messenger (ﷺ) replied, \"Sometimes it is (revealed) like the ringing of a bell, this form of Inspiration is the hardest of all and then this state passes off after I have grasped what is inspired. Sometimes the Angel comes in the form of a man and talks to me and I grasp whatever he says.\"",
         "The reward of deeds depends upon the intentions and every person will get the reward according to what he has intended.",
-        "Neither drowsiness overtakes Him nor sleep."
+        "Whenever the Prophet (ﷺ) went to answer the call of nature, he went far away."
       ],
       "bestIndex": 0
     }
@@ -148,8 +148,8 @@
     {
       "id": "cit-id-02",
       "language": "id",
-      "claim": "Ayat Kursi menyatakan bahwa Allah dilanda kantuk dan tidur.",
-      "passage": "Allah, tidak ada tuhan selain Dia, Yang Mahahidup lagi terus-menerus mengurus (makhluk-Nya). Dia tidak dilanda oleh kantuk dan tidak (pula) oleh tidur.",
+      "claim": "Nabi shallallahu 'alaihi wasallam bersabda bahwa wahyu terkadang datang seperti suara gemerincing lonceng.",
+      "passage": "bahwasanya Nabi shallallahu 'alaihi wasallam apabila hendak pergi untuk buang hajat, maka beliau menjauh",
       "supports": false
     },
     {
@@ -162,8 +162,8 @@
     {
       "id": "cit-en-02",
       "language": "en",
-      "claim": "The Throne Verse states that drowsiness and sleep overtake God.",
-      "passage": "Allah — there is no deity except Him, the Ever-Living, the Sustainer of existence. Neither drowsiness overtakes Him nor sleep.",
+      "claim": "The Prophet taught that revelation sometimes came to him like the ringing of a bell.",
+      "passage": "Whenever the Prophet (ﷺ) went to answer the call of nature, he went far away.",
       "supports": false
     }
   ]
