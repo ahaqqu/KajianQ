@@ -5,7 +5,7 @@
  *   bun run eval:decision-bench
  *
  * Env (validated by loadDecisionBenchConfig before any spend):
- *   TYPESAFE_API_KEY       the decision vendor key; ABSENT = the run reports
+ *   JEV_API_KEY       the decision vendor key; ABSENT = the run reports
  *                          NOT RUN and exits 0 — CI has no key and stays
  *                          green (mirrors provider-smoke's NOT RUN posture)
  *   EVAL_BUDGET_MICRO_USD  optional hard spend cap in micro-USD

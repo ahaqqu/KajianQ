@@ -80,7 +80,7 @@
     "typesafe": {
       "$comment": "ADR-0042: TypeSafe AI 'System One' decision endpoint — typed structured questions (Choice/Score/Noul) over a state, priced on input tokens only (output free). Not a chat or embedding vendor: it backs the decision-bench role only until the multilingual gate is evaluated; serving adoption is a future ADR.",
       "baseUrl": "https://api.typesafe.ai/v1",
-      "apiKeyEnv": "TYPESAFE_API_KEY",
+      "apiKeyEnv": "JEV_API_KEY",
       "protocol": "systemone",
       "freeTier": false,
       "personalDataAllowed": true,

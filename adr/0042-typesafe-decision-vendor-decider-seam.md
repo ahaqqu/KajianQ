@@ -81,7 +81,7 @@ stage is gated on a multilingual benchmark run.**
    language with fewer than 3 scored cases is reported but does not count
    for or against the floor — a single-case language would make the floor a
    coin flip). The CLI exits non-zero when no keyed candidate passes, so a
-   failed gate cannot be read as a passed one; with `TYPESAFE_API_KEY`
+   failed gate cannot be read as a passed one; with `JEV_API_KEY`
    absent it reports NOT RUN and exits 0 (CI has no key, mirroring
    provider-smoke).
 

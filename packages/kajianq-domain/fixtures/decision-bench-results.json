@@ -1,0 +1,207 @@
+{
+  "id": "decision-bench-v0",
+  "fixtureId": "decision-bench-v0",
+  "fixtureStatus": "v0-draft",
+  "cases": 21,
+  "languages": ["ar", "id", "en"],
+  "gateFloors": {
+    "overall": 0.85,
+    "perLanguage": 0.75,
+    "minCasesPerLanguage": 3
+  },
+  "candidates": [
+    {
+      "modelId": "jev-1.13.0",
+      "gate": {
+        "overallPass": true,
+        "failedLanguages": [],
+        "gatePass": true
+      },
+      "perLanguage": {
+        "ar": {
+          "cases": 7,
+          "accuracy": 1
+        },
+        "id": {
+          "cases": 7,
+          "accuracy": 1
+        },
+        "en": {
+          "cases": 7,
+          "accuracy": 1
+        }
+      },
+      "perTask": [
+        {
+          "task": "relevance",
+          "cases": 12,
+          "accuracy": 1
+        },
+        {
+          "task": "rerank",
+          "cases": 3,
+          "accuracy": 1
+        },
+        {
+          "task": "citation",
+          "cases": 6,
+          "accuracy": 1
+        }
+      ],
+      "outcomes": [
+        {
+          "caseId": "rel-ar-01",
+          "language": "ar",
+          "expected": true,
+          "got": 0.92,
+          "passed": true
+        },
+        {
+          "caseId": "rel-ar-02",
+          "language": "ar",
+          "expected": false,
+          "got": 0.03,
+          "passed": true
+        },
+        {
+          "caseId": "rel-ar-03",
+          "language": "ar",
+          "expected": true,
+          "got": 0.98,
+          "passed": true
+        },
+        {
+          "caseId": "rel-ar-04",
+          "language": "ar",
+          "expected": false,
+          "got": 0.04,
+          "passed": true
+        },
+        {
+          "caseId": "rel-id-01",
+          "language": "id",
+          "expected": true,
+          "got": 0.91,
+          "passed": true
+        },
+        {
+          "caseId": "rel-id-02",
+          "language": "id",
+          "expected": false,
+          "got": 0.02,
+          "passed": true
+        },
+        {
+          "caseId": "rel-id-03",
+          "language": "id",
+          "expected": true,
+          "got": 0.98,
+          "passed": true
+        },
+        {
+          "caseId": "rel-id-04",
+          "language": "id",
+          "expected": false,
+          "got": 0.02,
+          "passed": true
+        },
+        {
+          "caseId": "rel-en-01",
+          "language": "en",
+          "expected": true,
+          "got": 0.98,
+          "passed": true
+        },
+        {
+          "caseId": "rel-en-02",
+          "language": "en",
+          "expected": false,
+          "got": 0.02,
+          "passed": true
+        },
+        {
+          "caseId": "rel-en-03",
+          "language": "en",
+          "expected": true,
+          "got": 0.98,
+          "passed": true
+        },
+        {
+          "caseId": "rel-en-04",
+          "language": "en",
+          "expected": false,
+          "got": 0.02,
+          "passed": true
+        },
+        {
+          "caseId": "rr-ar-01",
+          "language": "ar",
+          "expected": "c1",
+          "got": "c1",
+          "passed": true
+        },
+        {
+          "caseId": "rr-id-01",
+          "language": "id",
+          "expected": "c2",
+          "got": "c2",
+          "passed": true
+        },
+        {
+          "caseId": "rr-en-01",
+          "language": "en",
+          "expected": "c0",
+          "got": "c0",
+          "passed": true
+        },
+        {
+          "caseId": "cit-ar-01",
+          "language": "ar",
+          "expected": true,
+          "got": 0.97,
+          "passed": true
+        },
+        {
+          "caseId": "cit-ar-02",
+          "language": "ar",
+          "expected": false,
+          "got": 0.02,
+          "passed": true
+        },
+        {
+          "caseId": "cit-id-01",
+          "language": "id",
+          "expected": true,
+          "got": 0.97,
+          "passed": true
+        },
+        {
+          "caseId": "cit-id-02",
+          "language": "id",
+          "expected": false,
+          "got": 0.01,
+          "passed": true
+        },
+        {
+          "caseId": "cit-en-01",
+          "language": "en",
+          "expected": true,
+          "got": 0.98,
+          "passed": true
+        },
+        {
+          "caseId": "cit-en-02",
+          "language": "en",
+          "expected": false,
+          "got": 0.01,
+          "passed": true
+        }
+      ]
+    }
+  ],
+  "budget": {
+    "capMicroUsd": null,
+    "totalMicroUsd": 21
+  },
+  "finishedAt": "2026-09-18T23:20:59.518Z"
+}
