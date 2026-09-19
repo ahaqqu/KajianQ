@@ -1,14 +1,16 @@
 import { Link } from "@tanstack/react-router";
 import { t, type Locale } from "../lib/i18n";
 import { PageShell } from "./PageShell";
+import { PrivacyNotice } from "./PrivacyNotice";
 import { Card, MonoLabel, PageIntro } from "./ui";
 
 /**
  * The About page (#about route): what KajianQ is, the mission (orientation, not
- * authority), three working principles, and the privacy posture — all from the
- * product's real facts (SPECS §1/§2.1, ADR-0017), never the reference mockup's
- * branding. Copy is externalized per locale; the page carries no data of its
- * own.
+ * authority), three working principles, and the privacy notice — all from the
+ * product's real facts (SPECS §1/§2.1, ADR-0017, ADR-0043), never the reference
+ * mockup's branding. Copy is externalized per locale; the page carries no data
+ * of its own beyond the principles list. The notice itself lives in
+ * `PrivacyNotice` so this page stays inside the agentic-limits import cap.
  */
 export function AboutPage({ locale }: { locale: Locale }) {
   const principles = [
@@ -38,10 +40,7 @@ export function AboutPage({ locale }: { locale: Locale }) {
         </div>
       </section>
 
-      <section className="space-y-2" data-testid="about-privacy">
-        <MonoLabel>{t(locale, "aboutPrivacyLabel")}</MonoLabel>
-        <p className="text-sm leading-relaxed">{t(locale, "aboutPrivacyBody")}</p>
-      </section>
+      <PrivacyNotice locale={locale} />
 
       <div className="flex flex-wrap gap-3 pt-2">
         <Link

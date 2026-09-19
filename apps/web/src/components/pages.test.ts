@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { renderApp } from "./app-test-utils";
 import { COLLECTION_ENTRIES, byStatus } from "../lib/collections";
 import { COLLECTION_AVAILABLE } from "../lib/collections-available";
+import { CONTROLLER, ERASURE, RETENTION, SUB_PROCESSORS } from "../lib/privacy-notice";
 
 // React 19 + vitest: mark the environment for act() (testing-library's flushes).
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -187,6 +188,54 @@ describe("AboutPage", () => {
         .map((h) => h.textContent),
     ).toEqual(["Sebutkan sumbernya", "Jaga perbedaan", "Kenali batasnya"]);
     expect(screen.getByTestId("about-privacy").textContent).toContain("Privasi");
+  });
+
+  it("renders the privacy notice from the register: controller, sub-processors, retention, erasure (#179)", async () => {
+    await renderApp("/about");
+    const privacy = screen.getByTestId("about-privacy");
+    expect(privacy.textContent).toContain("Privasi");
+
+    // One card per register row, each carrying its status — netcup is the
+    // planned destination today (#181), so the page is never false.
+    const processors = within(privacy).getAllByTestId("about-privacy-processor");
+    expect(processors.length).toBe(SUB_PROCESSORS.length);
+    expect(within(privacy).getByTestId("about-privacy-controller").textContent).toContain(
+      CONTROLLER.name,
+    );
+    const netcup = processors.find((card) => card.textContent?.includes("netcup GmbH"))!;
+    expect(netcup.getAttribute("data-status")).toBe("planned");
+    expect(netcup.textContent).toContain("Direncanakan");
+    // The register rule and the tier/verdict pair are on the page, not only in
+    // the data module.
+    expect(privacy.textContent).toContain("data pribadi tidak pernah lewat tingkat gratis");
+    expect(netcup.textContent).toContain("Berbayar · Boleh membawa data pribadi");
+
+    // Retention rows, with the live/planned split visible.
+    const retention = within(privacy).getAllByTestId("about-privacy-retention-row");
+    expect(retention.length).toBe(RETENTION.length);
+    expect(
+      retention.find((row) => row.textContent?.includes("30 hari tanpa aktivitas")),
+    ).toBeDefined();
+    const accessLogs = retention.find((row) => row.textContent?.includes("Log akses"))!;
+    expect(accessLogs.getAttribute("data-status")).toBe("planned");
+    expect(accessLogs.textContent).toContain("direncanakan · #180");
+
+    // The erasure card names the real endpoint and the actual gap.
+    const erasure = within(privacy).getByTestId("about-privacy-erasure");
+    expect(erasure.textContent).toContain(`${ERASURE.method} ${ERASURE.path}`);
+    expect(erasure.textContent).toContain("belum punya tombol");
+  });
+
+  it("switches the privacy notice to English with the locale (#179)", async () => {
+    await renderApp("/about");
+    fireEvent.change(screen.getByTestId("locale-select"), { target: { value: "en" } });
+    const privacy = screen.getByTestId("about-privacy");
+    expect(privacy.textContent).toContain("Who processes your data");
+    expect(privacy.textContent).toContain("Planned");
+    expect(privacy.textContent).toContain("Not for personal data");
+    expect(within(privacy).getByTestId("about-privacy-erasure").textContent).toContain(
+      "no button for this yet",
+    );
   });
 
   it("links its calls to action to the chat and the collection", async () => {

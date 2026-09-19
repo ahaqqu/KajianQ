@@ -50,6 +50,18 @@ Feature: About and Collection pages
     When I open the about page
     Then the page has no serious accessibility violations
 
+  Scenario: The about page names who processes the data, for how long, and how to erase it (#179)
+    When I open the about page
+    Then I see the privacy notice rendered from the register
+    And I see the netcup destination marked as planned, not live
+    And I see the retention row for reverse-proxy access logs marked "direncanakan · #180"
+    And the erasure card names the endpoint that erases the data
+
+  Scenario: The privacy notice follows the language switch (#179)
+    When I open the about page
+    And I switch the language to English
+    Then I see the privacy notice in English
+
   Scenario: An available source links into the chat with its question pre-filled
     When I open the collection page
     And I follow the first available source's ask link
