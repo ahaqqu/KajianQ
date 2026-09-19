@@ -2,12 +2,14 @@
 #
 # The access log carries IP addresses (personal data, CJEU Breyer), so it must
 # not grow unbounded and must not become the de-facto system of record. The ADR
-# fixes the value: rotated daily, size-capped, and after 14 days the rotated
-# segments are deleted.
+# fixes the value: rotated daily, size-capped, and 14 days in total — after
+# that the segments are deleted.
 #
 #   daily          — one segment per calendar day
-#   rotate 14      — 14 daily segments kept; the 15th is deleted ("after 14
-#                    days the rotated segments are deleted")
+#   rotate 13      — the current day's log + 13 rotated segments = 14 calendar
+#                    days in total, the window the ADR and the Art. 30 record
+#                    declare; the 15th day's segment is deleted ("after 14
+#                    days the segments are deleted")
 #   maxsize 100M   — a single busy day cannot fill the disk between rotations
 #   compress       — 14 days of segments do not cost full size on disk
 #   notifempty     — an idle day produces no phantom segment to count
@@ -22,7 +24,7 @@
 /var/log/nginx/kajianq.access.log
 /var/log/nginx/kajianq.error.log {
     daily
-    rotate 14
+    rotate 13
     maxsize 100M
     compress
     delaycompress

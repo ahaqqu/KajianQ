@@ -1,0 +1,15 @@
+# provision/vps/systemd/kajianq-backup.timer — the daily schedule for
+# kajianq-backup.service (ADR-0043 decision 4, #180). Installed and enabled by
+# provision/vps/apply.sh. Persistent=true makes a powered-off night's backup
+# run at the next boot, so a skipped day is caught up rather than silently
+# lost — the window is only as real as the schedule is.
+
+[Unit]
+Description=Daily KajianQ encrypted Postgres backup
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -15,19 +15,20 @@ none exists yet.
 Everything the runbook places is config-as-code under
 [`provision/vps/`](../provision/vps/):
 
-| File                                       | Lands at                                          | Purpose                                              |
-| ------------------------------------------ | ------------------------------------------------- | ---------------------------------------------------- |
-| `apply.sh`                                 | (runs in place)                                   | Places every config below and enables the units      |
-| `nginx/kajianq.conf`                       | `/etc/nginx/sites-available/kajianq.conf`         | Reverse proxy + the minimal access-log format        |
-| `logrotate/kajianq-proxy`                  | `/etc/logrotate.d/kajianq-proxy`                  | 14-day proxy access/error-log rotation               |
-| `logrotate/kajianq-postgres`               | `/etc/logrotate.d/kajianq-postgres`               | 14-day Postgres log rotation                         |
-| `journald/kajianq.conf`                    | `/etc/systemd/journald.conf.d/kajianq.conf`       | 14-day / 512M cap for API structured logs            |
-| `postgres/99-kajianq.conf`                 | `/etc/postgresql/<v>/main/conf.d/99-kajianq.conf` | Loopback-only listener; no statement text in logs    |
-| `systemd/kajianq-api.service`              | `/etc/systemd/system/kajianq-api.service`         | Unprivileged API unit, credentials from an env file  |
-| `backup/kajianq-backup.mjs`                | (runs in place)                                   | Encrypted dump + manifest + 30-day rolling retention |
-| `backup/kajianq-restore.mjs`               | (runs in place)                                   | Restore into a scratch target, re-applying erasure   |
-| `backup/restore-drill.mjs`                 | (CI + on demand)                                  | The executable restore test                          |
-| `proxy.env.example` / `backup.env.example` | `/etc/kajianq/*.env`                              | The only place real hostnames/credentials appear     |
+| File                                        | Lands at                                             | Purpose                                                     |
+| ------------------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------- |
+| `apply.sh`                                  | (runs in place)                                      | Places every config below and enables the units             |
+| `nginx/kajianq.conf`                        | `/etc/nginx/sites-available/kajianq.conf`            | Reverse proxy + the minimal access-log format               |
+| `logrotate/kajianq-proxy`                   | `/etc/logrotate.d/kajianq-proxy`                     | 14-day proxy access/error-log rotation                      |
+| `logrotate/kajianq-postgres`                | `/etc/logrotate.d/kajianq-postgres`                  | 14-day Postgres log rotation                                |
+| `journald/kajianq.conf`                     | `/etc/systemd/journald.conf.d/kajianq.conf`          | 14-day / 512M cap for API structured logs                   |
+| `postgres/99-kajianq.conf`                  | `/etc/postgresql/<v>/main/conf.d/99-kajianq.conf`    | Loopback-only listener; no statement text in logs           |
+| `systemd/kajianq-api.service`               | `/etc/systemd/system/kajianq-api.service`            | Unprivileged API unit, credentials from an env file         |
+| `systemd/kajianq-backup.service` / `.timer` | `/etc/systemd/system/kajianq-backup.{service,timer}` | Daily encrypted backup, installed and enabled by `apply.sh` |
+| `backup/kajianq-backup.mjs`                 | (runs in place)                                      | Encrypted dump + manifest + 30-day rolling retention        |
+| `backup/kajianq-restore.mjs`                | (runs in place)                                      | Restore into a scratch target, re-applying erasure          |
+| `backup/restore-drill.mjs`                  | (CI + on demand)                                     | The executable restore test                                 |
+| `proxy.env.example` / `backup.env.example`  | `/etc/kajianq/*.env`                                 | The only place real hostnames/credentials appear            |
 
 ## Why nginx, and why retention rather than IP masking
 
@@ -94,12 +95,17 @@ sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env
 4. installs the journald cap and restarts journald;
 5. installs the Postgres posture and restarts Postgres (skipped with a warning
    if no Debian `conf.d` exists yet);
-6. installs and **enables** — does not start — `kajianq-api.service`.
+6. installs and **enables** — does not start — `kajianq-api.service`;
+7. renders and installs `kajianq-backup.service`/`.timer` (the script path
+   comes from this checkout) and **enables** the timer with
+   `--now`, so the daily encrypted backup is scheduled by config-as-code, not
+   by hand-copied snippets.
 
 Verify:
 
 ```bash
 systemctl status kajianq-api          # enabled, inactive (awaiting #181)
+systemctl list-timers kajianq-backup.timer  # enabled, scheduled 03:15 daily
 sudo logrotate --debug /etc/logrotate.d/kajianq-proxy
 sudo logrotate --debug /etc/logrotate.d/kajianq-postgres
 sudo nginx -T | grep -A2 log_format    # the access format, no user-agent/referer
@@ -140,40 +146,21 @@ sudo sh -c '. /etc/kajianq/backup.env && restic -r "$RESTIC_REPOSITORY" init'
 world-readable: a world-readable repository key silently undoes the encryption
 it exists to provide.
 
-### 5. Take the first backup and install the schedule
+### 5. Take the first backup and confirm the schedule
 
 ```bash
 sudo sh -c '. /etc/kajianq/backup.env && bun provision/vps/backup/kajianq-backup.mjs --label first-run'
 ```
 
-Then install the daily timer (systemd is already the service manager here):
-
-```ini
-# /etc/systemd/system/kajianq-backup.service
-[Unit]
-Description=KajianQ encrypted Postgres backup
-[Service]
-Type=oneshot
-EnvironmentFile=/etc/kajianq/backup.env
-WorkingDirectory=/srv/kajianq
-ExecStart=/usr/bin/bun /srv/kajianq/provision/vps/backup/kajianq-backup.mjs
-```
-
-```ini
-# /etc/systemd/system/kajianq-backup.timer
-[Unit]
-Description=Daily KajianQ encrypted Postgres backup
-[Timer]
-OnCalendar=*-*-* 03:15:00
-Persistent=true
-[Install]
-WantedBy=timers.target
-```
+Run this **before** the timer's first scheduled fire (the timer is enabled
+`--now` by `apply.sh`): the one-time `restic init` in step 4 must be observed
+before any automated run. The schedule itself needs no manual install —
+`kajianq-backup.service` and `kajianq-backup.timer` ship as config-as-code
+(`provision/vps/systemd/`) and are installed and enabled by `apply.sh`:
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now kajianq-backup.timer
 systemctl list-timers kajianq-backup.timer
+systemctl cat kajianq-backup.service   # ExecStart points at this checkout's script
 ```
 
 The 30-day rolling window is enforced by the backup script's

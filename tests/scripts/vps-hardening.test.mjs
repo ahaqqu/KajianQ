@@ -9,8 +9,11 @@ import {
   REQUIRED_ENV,
   assertManifest,
   buildManifest,
+  dbLocation,
+  erasurePsqlArgs,
   erasureSql,
   formatCounts,
+  isSameDatabase,
   labelTag,
   missingEnv,
   parseEnvFile,
@@ -191,14 +194,85 @@ describe("erasure a restore must re-apply", () => {
     expect(orphan).toMatch(/kind = 'anonymous'/);
   });
 
-  it("builds the Art. 17 cascade by user id and refuses anything else", () => {
-    expect(erasureSql("33333333-3333-4333-8333-333333333333")).toBe(
-      "DELETE FROM users WHERE id = '33333333-3333-4333-8333-333333333333'",
+  it("the Art. 17 statement matches production deleteUserCascade — the restore path cannot drift", () => {
+    // Production erasure (DELETE /v1/auth/me → deleteUserCascade in
+    // packages/infra/src/rag-store-neon-session.ts) executes a parameterized
+    // `DELETE FROM users WHERE id = ${userId}`. The restore re-applies the
+    // same statement with the id bound as a psql variable (thermo-review A3):
+    // if the adapter's erasure ever changes shape, this test fails and points
+    // at the restore path — otherwise a restore would silently stop erasing
+    // what production erases. The comparison normalizes the adapter's tagged
+    // template (its `${userId}` parameter and whitespace) against the restore
+    // statement's `:'uid'` psql-variable binding — the same placeholder role,
+    // so the normalized texts must be identical.
+    const normalize = (text) =>
+      text
+        .replace(/\s+/g, " ")
+        .replace(/\$\{userId\}/g, ":'uid'")
+        .trim();
+    const adapter = normalize(
+      readFileSync(resolve(process.cwd(), "packages/infra/src/rag-store-neon-session.ts"), "utf8"),
     );
-    // A non-UUID is refused rather than interpolated into the statement.
-    for (const bad of ["", "1 OR 1=1", "not-a-uuid"]) {
-      expect(() => erasureSql(bad)).toThrow(/UUID/);
+    expect(adapter).toContain(normalize(erasureSql()));
+  });
+
+  it("binds the erasure user id as a psql variable, never into the statement text", () => {
+    expect(erasureSql()).toBe("DELETE FROM users WHERE id = :'uid'");
+    // Fixed text: no string-interpolation seam for an id to flow through —
+    // the id travels in erasurePsqlArgs, quoted by psql itself.
+    expect(erasureSql()).not.toMatch(/\$\{/);
+    expect(erasurePsqlArgs("33333333-3333-4333-8333-333333333333")).toEqual([
+      "-v",
+      "uid=33333333-3333-4333-8333-333333333333",
+    ]);
+    // A non-UUID is refused before it can reach psql at all.
+    for (const bad of ["", "1 OR 1=1", "not-a-uuid", "'; DROP TABLE users; --"]) {
+      expect(() => erasurePsqlArgs(bad)).toThrow(/UUID/);
     }
+  });
+
+  it("compares connection URLs by database location, not by string (the live-URL guard)", () => {
+    // The `--target-url` guard must refuse a URL that NAMES the live database
+    // even when written differently (default port omitted, postgresql://
+    // scheme, different credentials or query order), and must not compare
+    // secrets. A raw-string comparison fails both ways (thermo-review A1).
+    expect(
+      isSameDatabase(
+        "postgres://u:p@127.0.0.1:5432/kajianq",
+        "postgresql://other:secret@127.0.0.1/kajianq?sslmode=require",
+      ),
+    ).toBe(true);
+    expect(
+      isSameDatabase(
+        "postgres://u:p@127.0.0.1:5432/kajianq",
+        "postgres://u:p@127.0.0.1:5433/kajianq",
+      ),
+    ).toBe(false);
+    expect(
+      isSameDatabase(
+        "postgres://u:p@127.0.0.1:5432/kajianq",
+        "postgres://u:p@127.0.0.1:5432/kajianq_restored",
+      ),
+    ).toBe(false);
+    // Parsing fails closed: an unparseable or non-postgres target can never
+    // pass the guard.
+    expect(() => dbLocation("not a url")).toThrow(/parseable/);
+    expect(() => dbLocation(null)).toThrow(/parseable/);
+    expect(() => dbLocation("mysql://u:p@127.0.0.1/kajianq")).toThrow(/postgres/);
+    expect(dbLocation("postgres://u:p@db.example:5432/kajianq")).toEqual({
+      protocol: "postgres:",
+      host: "db.example",
+      port: "5432",
+      database: "kajianq",
+    });
+    // The restore script requires PGDATABASE_URL and uses isSameDatabase —
+    // pinned here so the guard cannot silently regress to string equality.
+    const restore = readFileSync(
+      resolve(process.cwd(), "provision/vps/backup/kajianq-restore.mjs"),
+      "utf8",
+    );
+    expect(restore).toMatch(/isSameDatabase\(targetUrl, process\.env\.PGDATABASE_URL\)/);
+    expect(restore).toMatch(/PGDATABASE_URL is required/);
   });
 
   it("names the rows the drill proves gone and the rows it proves survive", () => {
@@ -266,9 +340,70 @@ describe("provisioning config as code stays true to the ADR", () => {
     // The log format must carry $remote_addr (the IP is the declared data
     // category in the Art. 30 record)…
     expect(conf).toMatch(/log_format kajianq_access[^;]*\$remote_addr/);
-    // …and must NOT widen it with device or navigation identifiers.
+    // …and must NOT widen it with device, navigation, or identity identifiers.
     expect(conf).not.toMatch(/\$http_user_agent/);
     expect(conf).not.toMatch(/\$http_referer/);
+    // $remote_user is only ever populated by HTTP basic auth, which this
+    // server block never enables — a username is not a declared data
+    // category, so the format must not carry it (thermo-review B4).
+    expect(conf).not.toMatch(/\$remote_user/);
+  });
+
+  it("restic never receives the repository on argv — credentials stay out of the process table", () => {
+    // restic reads RESTIC_REPOSITORY from the environment; an `-r` flag would
+    // put a repository URL that may embed credentials (s3://key:secret@…,
+    // sftp://user:pass@…) on the command line where `ps` exposes it
+    // (thermo-review B3).
+    for (const file of [
+      "provision/vps/backup/kajianq-backup.mjs",
+      "provision/vps/backup/kajianq-restore.mjs",
+      "provision/vps/backup/restore-drill.mjs",
+    ]) {
+      expect(readFileSync(resolve(process.cwd(), file), "utf8"), file).not.toMatch(/"-r"/);
+    }
+  });
+
+  it("libpq invocations never take a connection URL on argv", () => {
+    // pg_restore/psql get the database name (or nothing) and read the rest of
+    // the connection from the PG* environment (thermo-review A2). A URL on
+    // argv would carry the password in the process table.
+    const restore = readFileSync(
+      resolve(process.cwd(), "provision/vps/backup/kajianq-restore.mjs"),
+      "utf8",
+    );
+    expect(restore).toMatch(/dbLocation\(targetUrl\)\.database/);
+    expect(restore).not.toMatch(/"-d",\s*targetUrl/);
+  });
+
+  it("the backup schedule is config-as-code, installed and enabled by apply.sh", () => {
+    // The retention policy is only real if the timer runs (thermo-review B2):
+    // the units must be shipped files, and apply.sh must install, render and
+    // enable them — not runbook snippets to copy by hand.
+    const service = directives("provision/vps/systemd/kajianq-backup.service");
+    expect(service).toContain("EnvironmentFile=/etc/kajianq/backup.env");
+    expect(service).toMatch(/ExecStart=\/usr\/bin\/bun __KAJIANQ_BACKUP_SCRIPT__/);
+    expect(service).toMatch(/Type=oneshot/);
+    // Credentials in the unit text would be world-readable in the journal.
+    expect(service).not.toMatch(/RESTIC_|PGDATABASE_URL/);
+    const timer = directives("provision/vps/systemd/kajianq-backup.timer");
+    expect(timer).toMatch(/OnCalendar=.+/);
+    expect(timer).toMatch(/Persistent=true/);
+    expect(timer).toMatch(/WantedBy=timers.target/);
+    const apply = readFileSync(resolve(process.cwd(), "provision/vps/apply.sh"), "utf8");
+    expect(apply).toMatch(/kajianq-backup\.service/);
+    expect(apply).toMatch(/kajianq-backup\.timer/);
+    expect(apply).toMatch(/enable --now kajianq-backup\.timer/);
+  });
+
+  it("apply.sh refuses to source an env file that is not root-owned 0600-or-tighter", () => {
+    // The env file is executed with root privileges; a writable one is local
+    // privilege escalation on the next apply (thermo-review B1).
+    const apply = readFileSync(resolve(process.cwd(), "provision/vps/apply.sh"), "utf8");
+    expect(apply).toMatch(/stat -c '%U:%G' "\$\{ENV_FILE\}"/);
+    expect(apply).toMatch(/!= "root:root"/);
+    expect(apply).toMatch(/& 077\)\)" -ne 0/);
+    // The check must precede the source.
+    expect(apply.indexOf("root:root")).toBeLessThan(apply.indexOf('. "${ENV_FILE}"'));
   });
 
   it("the proxy establishes CF-Connecting-IP from $remote_addr, so the rate limiter cannot be spoofed", () => {
@@ -290,6 +425,7 @@ describe("provisioning config as code stays true to the ADR", () => {
     for (const file of [
       "provision/vps/nginx/kajianq.conf",
       "provision/vps/systemd/kajianq-api.service",
+      "provision/vps/systemd/kajianq-backup.service",
       "provision/vps/postgres/99-kajianq.conf",
     ]) {
       const text = read(file);
@@ -301,7 +437,11 @@ describe("provisioning config as code stays true to the ADR", () => {
 
   it("the proxy logrotate policy enforces the ADR's 14-day window with a size cap", () => {
     const conf = directives("provision/vps/logrotate/kajianq-proxy");
-    expect(conf).toMatch(/rotate 14\b/);
+    // rotate 13 + daily: current day + 13 rotated = 14 calendar days in
+    // total — the value the ADR and the Art. 30 record declare (a `rotate 14`
+    // would keep a 15th day; thermo-review C1).
+    expect(conf).toMatch(/rotate 13\b/);
+    expect(conf).not.toMatch(/rotate 14\b/);
     expect(conf).toMatch(/daily/);
     expect(conf).toMatch(/maxsize/);
     // nginx reopens its logs on SIGUSR1; copytruncate would be the wrong tool
@@ -314,7 +454,9 @@ describe("provisioning config as code stays true to the ADR", () => {
 
   it("the Postgres logrotate policy rotates and truncates in place, since Postgres never reopens", () => {
     const conf = directives("provision/vps/logrotate/kajianq-postgres");
-    expect(conf).toMatch(/rotate 14\b/);
+    // Same arithmetic as the proxy stanza: 14 calendar days in total (C1).
+    expect(conf).toMatch(/rotate 13\b/);
+    expect(conf).not.toMatch(/rotate 14\b/);
     expect(conf).toContain("copytruncate");
     expect(conf).toContain("/var/log/postgresql/*.log");
   });

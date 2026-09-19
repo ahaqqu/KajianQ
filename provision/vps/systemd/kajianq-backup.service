@@ -1,0 +1,29 @@
+# provision/vps/systemd/kajianq-backup.service — the daily encrypted backup
+# (ADR-0043 decision 4, #180). Installed by provision/vps/apply.sh, which
+# renders __KAJIANQ_BACKUP_SCRIPT__ to the checked-out backup script's path
+# (systemd does not expand variables in ExecStart, so the apply script
+# substitutes the real path of the repository checkout).
+#
+# The unit runs as root because the restic repository key and the Postgres
+# dump both require it (the key file is root-only by policy). It is oneshot
+# and scheduled by kajianq-backup.timer; the retention window (30-day rolling)
+# is enforced by the script's `restic forget --prune` step on every run, not
+# by the schedule.
+#
+# Credentials arrive through EnvironmentFile, never this unit's text — the
+# same rule kajianq-api.service follows.
+
+[Unit]
+Description=KajianQ encrypted Postgres backup
+After=postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/kajianq/backup.env
+WorkingDirectory=/srv/kajianq
+ExecStart=/usr/bin/bun __KAJIANQ_BACKUP_SCRIPT__
+
+# The dump is plaintext while it exists; a private tmp isolates it from other
+# processes for the run's duration, and the script removes it in a finally.
+PrivateTmp=yes
