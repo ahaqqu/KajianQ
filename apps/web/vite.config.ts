@@ -29,6 +29,13 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,svg,ico,woff2}"],
+        // The SPA fallback is what makes every client route — /about and
+        // /collection included — open offline after precache: a navigation
+        // request is answered with the precached index.html and the router
+        // resolves the path client-side. Declared explicitly (it is also
+        // workbox's generateSW default) so the contract sits next to the
+        // routes it serves, not hidden in plugin defaults.
+        navigateFallback: "index.html",
       },
     }),
   ],

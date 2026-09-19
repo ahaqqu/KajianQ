@@ -1,10 +1,15 @@
 import type { ComponentProps, ReactNode } from "react";
 
 /** Minimal shadcn-like primitives (owned source), themed by the design tokens. */
-export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
+export function Card({
+  children,
+  className = "",
+  ...rest
+}: { children: ReactNode; className?: string } & ComponentProps<"div">) {
   return (
     <div
       className={`rounded-2xl border border-border bg-card p-4 text-card-foreground ${className}`}
+      {...rest}
     >
       {children}
     </div>
@@ -33,6 +38,42 @@ export function MonoLabel({
 
 export function CardLabel({ children }: { children: ReactNode }) {
   return <MonoLabel>{children}</MonoLabel>;
+}
+
+/**
+ * The static pages' shared heading (About, Collection): the reference's
+ * serif-italic h1 over a muted intro paragraph, in the app's single-column
+ * voice. Owned here so both pages cannot drift apart.
+ */
+export function PageIntro({ title, intro }: { title: string; intro: string }) {
+  return (
+    <div className="space-y-2">
+      <h1 className="font-serif text-3xl font-semibold italic">{title}</h1>
+      <p className="text-sm leading-relaxed text-muted-foreground">{intro}</p>
+    </div>
+  );
+}
+
+/**
+ * The Available/Planned distinction (mandatory on the collection page): a
+ * filled primary pill for an ingested, citable source, and a dashed outline in
+ * muted tones for registered-but-not-ingested work. Both are mono uppercase so
+ * the pair reads as one system and neither can be mistaken for the other.
+ */
+export function StatusBadge({ status, label }: { status: "available" | "planned"; label: string }) {
+  const tone =
+    status === "available"
+      ? "border border-primary bg-primary text-primary-foreground"
+      : "border border-dashed border-border text-muted-foreground";
+  return (
+    <span
+      data-testid="collection-status"
+      data-status={status}
+      className={`shrink-0 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.2em] ${tone}`}
+    >
+      {label}
+    </span>
+  );
 }
 
 const LOGO_SIZES = {
