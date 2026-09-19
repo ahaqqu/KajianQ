@@ -1,0 +1,32 @@
+# provision/vps/logrotate/kajianq-postgres — Postgres log rotation (ADR-0043 decision 4, #180).
+#
+# Postgres is configured (provision/vps/postgres/99-kajianq.conf) with
+# logging_collector on and daily file names, so logrotate is the deletion half:
+# it compresses the closed day and enforces the window. The pair is deliberate —
+# the server writes one file per day, logrotate deletes the 15th.
+#
+#   daily / rotate 14  — 14 daily segments kept, matching the proxy policy
+#   maxsize 100M       — a day of connection churn cannot fill the disk
+#   copytruncate       — Postgres never reopens its log file, so the contents
+#                        are copied then truncated in place; without this the
+#                        server keeps writing to the renamed inode and the
+#                        rotation silently stops reclaiming anything.
+#                        copytruncate can in principle split a line written
+#                        during the copy; Postgres log lines are single writes
+#                        from one backend and the cost is at most one truncated
+#                        line per day, which is acceptable for an ops log and
+#                        strictly better than unbounded growth.
+#
+# `/var/log/postgresql` is the Debian default for the collector's log dir.
+
+/var/log/postgresql/*.log {
+    daily
+    rotate 14
+    maxsize 100M
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    su postgres postgres
+}
