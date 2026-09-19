@@ -147,12 +147,18 @@ Caveats: sslip.io names share Let's Encrypt's rate-limit pool — occasional
    (14-day logrotate/journald caps), encrypted restic backups, restore drill,
    the unprivileged `kajianq` service account — are **not** on this box yet.
    They are prerequisites for the box touching personal data.
-3. **DPA (#178).** Concluding the netcup DPA in the CCP is the owner's action
-   and a precondition for the app or DB landing here. No personal data exists
-   on the box today (static HTML only), which keeps this session compliant.
+3. **DPA (#178) — done.** Concluded in the netcup CCP by the owner
+   (2026-09-19); the Art. 30 record and DPIA-lite landed in #183. GDPR-E is
+   unblocked from this side.
 4. **Database.** The decision to move Postgres off Neon onto this VPS (Neon
    free tier exceeded) is recorded in ADR-0043's direction but the concrete
    pgvector + backup posture lands with GDPR-E.
+5. **#181 scope.** GDPR-E's acceptance criteria now carry the four
+   pre-migration gates this doc flags: the `PromptSpec.personalData`
+   precondition, the on-host hardening application + restore drill, the
+   About-page register flip, and the backup-timer/cron re-homing — plus the
+   Caddy-vs-nginx proxy decision above, which must be made in the PR that
+   starts the migration (issue #181, amended 2026-09-20).
 
 ## Related
 
