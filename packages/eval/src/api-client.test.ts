@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { consumeSseToText, parseChatMeta, type ChatSseResult } from "./api-client";
+import {
+  consumeSseToText,
+  parseChatMeta,
+  parseCitationsFrame,
+  type ChatSseResult,
+} from "./api-client";
 
 /** SSE-consume unit tests: pure stream parsing, no network. */
 
@@ -70,6 +75,58 @@ describe("consumeSseToText", () => {
     const result = await consumeSseToText(body);
     expect(result.messageId).toBeNull();
     expect(result.text).toBe("y");
+  });
+
+  it("captures the citations frame's grounded labels (ADR-0040)", async () => {
+    // The wire order is meta → deltas → citations → trace → done; the scorer
+    // reads these labels in preference to re-parsing the answer text.
+    const { body } = sseResponse([
+      'event: meta\ndata: {"messageId":"m1","traceId":"t1"}\n\n',
+      "event: delta\ndata: The answer cites QS.\n\n",
+      "event: delta\ndata:  1:2\n\n",
+      'event: citations\ndata: {"messageId":"m1","citations":[{"label":"QS. 1:2","arabic":"x","machineTranslated":true}],"refusal":false,"dhaifWarning":false}\n\n',
+      'event: trace\ndata: {"messageId":"m1","sources":[],"technical":{"subQueries":[],"chunks":[],"models":[]}}\n\n',
+      "event: done\ndata: {}\n\n",
+    ]);
+    const result = await consumeSseToText(body);
+    expect(result.text).toBe("The answer cites QS. 1:2");
+    expect(result.citations).toEqual({ citations: [{ label: "QS. 1:2" }] });
+  });
+
+  it("leaves citations null when the frame is absent", async () => {
+    const { body } = sseResponse(["event: delta\ndata: plain answer\n\n"]);
+    const result = await consumeSseToText(body);
+    expect(result.citations).toBeNull();
+  });
+
+  it("leaves citations null for a malformed frame instead of a partial read", async () => {
+    const { body } = sseResponse(["event: citations\ndata: {broken\n\n"]);
+    const result = await consumeSseToText(body);
+    expect(result.citations).toBeNull();
+  });
+});
+
+describe("parseCitationsFrame", () => {
+  it("extracts the labels from a well-formed frame", () => {
+    expect(
+      parseCitationsFrame(
+        '{"messageId":"m","citations":[{"label":"QS. 1:2"},{"label":"HR. Malik no. 187"}],"refusal":false,"dhaifWarning":false}',
+      ),
+    ).toEqual({ citations: [{ label: "QS. 1:2" }, { label: "HR. Malik no. 187" }] });
+  });
+
+  it("returns null when the payload has no citations array", () => {
+    expect(parseCitationsFrame('{"messageId":"m","refusal":true}')).toBeNull();
+  });
+
+  it("skips entries with a non-string or empty label", () => {
+    expect(
+      parseCitationsFrame('{"citations":[{"label":""},{"label":42},{"label":"QS. 2:255"}]}'),
+    ).toEqual({ citations: [{ label: "QS. 2:255" }] });
+  });
+
+  it("returns null for junk rather than throwing", () => {
+    expect(parseCitationsFrame("junk")).toBeNull();
   });
 });
 
