@@ -1,6 +1,6 @@
 # Architecture (v1.0 — KajianQ & DARS)
 
-Pluggable · Traceable · Price-disciplined · Performance · Cross-Platform · Polished · Secure · Observable · Maintainable · Available · Reliable · Reproducible · Agentic · EN / ID
+Pluggable · Traceable · Price-disciplined · Performance · Cross-Platform · Polished · Secure · Observable · Maintainable · Available · Reliable · Reproducible · Agentic · Privacy · EN / ID
 
 ## Purpose
 
@@ -327,7 +327,30 @@ Root `package.json` scripts are the single source of truth for gates:
 | `bun run e2e`                                         | Playwright-BDD against `alchemy dev` (local workerd) |
 | `bun run build` / `dev` / `deploy` / `deploy:staging` | build, local dev, deploys                            |
 
-## 17. Which document answers which question
+## 17. Privacy by design — GDPR posture
+
+Privacy is a design property, not a compliance layer bolted on: sessions are
+**anonymous by design** (ADR-0017 — no accounts, no email, no cookies, so the
+identifier says nothing about the person), only the minimum is kept (a SHA-256
+token hash, the transcript, the persisted Trace, optional feedback free-text),
+and every stored category carries a **config-owned retention value** as a fixed
+number rather than "as long as needed", because Art. 13(1)(e) requires an
+answer the product can render. **Erasure is a first-class flow**:
+`DELETE /v1/auth/me` cascades the user's entire subtree (sessions, chat, traces,
+feedback), and a backup restore re-applies it so a restored row cannot
+resurrect deleted data. Personal data routes only through paid, DPA-covered
+vendors — never a free tier, which `personalDataAllowed` gates at the
+`Provider` seam (ADR-0009 amendment). ADR-0043 is the decision record; the
+sub-processor register, the retention values, and their implementation status
+live in [`GDPR-ARTICLE-30-RECORD.md`](./GDPR-ARTICLE-30-RECORD.md) and move
+together with any change to the posture — a new processor or hosting region
+joins the register in the same PR that introduces it.
+
+Gated by: cascade-delete tests (§4); the privacy guardrail and its Definition
+of Done line in [`AGENTS.md`](../AGENTS.md); the GDPR item in
+`.agents/skills/guided-implementation/SKILL.md`.
+
+## 18. Which document answers which question
 
 | Question                                           | Document                              |
 | -------------------------------------------------- | ------------------------------------- |

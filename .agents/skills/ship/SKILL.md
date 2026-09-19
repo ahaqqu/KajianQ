@@ -87,9 +87,26 @@ CI command:
 
 Fail on server errors (5xx) or response validation failures. Timeouts above 10s are flagged.
 
-## Phase 5 — Promote to production
+## Phase 5 — Privacy validation (before promote)
 
-Once staging passes BDD, DAST, and fuzz, promote:
+Run this on staging once BDD, DAST, and fuzz pass, and before promoting. It is a
+blocking gate on personal-data-touching releases (auth, chat, traces, feedback,
+logging) — the same class of change that already requires DAST and fuzz.
+
+1. **Erasure flow** — create an anonymous session, send one message, then call
+   `DELETE /v1/auth/me` with the session token. The response is a success, the
+   session token no longer authenticates, and re-authenticating starts a fresh
+   user with no transcript. This verifies the Art. 17 cascade (`deleteUserCascade`)
+   still removes sessions, chat, traces, and feedback together.
+2. **Privacy notice** — load `/about` on staging and confirm the privacy
+   section renders in both locales, with no placeholder or missing copy.
+
+If erasure leaves any orphaned subtree row, or the notice fails to render, stop —
+do not promote.
+
+## Phase 6 — Promote to production
+
+Once staging passes BDD, DAST, fuzz, and privacy validation, promote:
 
 ```bash
 wrangler deploy --env production
@@ -101,7 +118,7 @@ Production is a separate Worker and D1. D1 is bound via `wrangler.toml`; only ru
 wrangler secret put SENTRY_DSN --env production
 ```
 
-## Phase 6 — Smoke tests
+## Phase 7 — Smoke tests
 
 After production deploy, run a minimal health check and one critical user flow to confirm the deploy didn't break anything.
 
@@ -115,9 +132,9 @@ curl -sf -X GET https://<project>.workers.dev/v1/notes \
   -H "Authorization: Bearer $TEST_TOKEN" | jq .notes
 ```
 
-Smoke tests are in `.github/workflows/deploy.yml` and run automatically after promotion. If smoke fails, initiate Phase 7.
+Smoke tests are in `.github/workflows/deploy.yml` and run automatically after promotion. If smoke fails, initiate Phase 8.
 
-## Phase 7 — Rollback
+## Phase 8 — Rollback
 
 If any gate fails after promotion, roll back immediately. Cloudflare Workers support instant rollback to the previous deploy:
 
@@ -127,7 +144,7 @@ wrangler rollback --env production
 
 Verify with the health endpoint. If D1 schema changed in the failed deploy, the previous Worker is already compatible (schema migrations are additive and backward-compatible per AGENTS.md guardrails).
 
-## Phase 8 — Environment cleanup
+## Phase 9 — Environment cleanup
 
 Staging is a scratch environment. After promoting to production:
 
@@ -141,7 +158,8 @@ wrangler d1 execute <staging-db> --env staging --command "DELETE FROM widgets WH
 
 ## Guards
 
-- You MUST run all four validation gates (health, BDD, DAST, fuzz) before promoting to production.
+- You MUST run all validation gates (health, BDD, DAST, fuzz) before promoting to production.
+- You MUST run the Phase 5 privacy validation on personal-data-touching releases (auth, chat, traces, feedback, logging) and confirm the erasure flow and the `/about` privacy notice both hold.
 - You MUST verify secrets are set per-environment. `wrangler secret list --env production` must show all required keys.
 - You MUST NEVER skip DAST or fuzz on security-sensitive changes (auth, payments, user data).
 - You MUST never deploy to production from a branch that isn't `main`.
@@ -156,6 +174,7 @@ Deploy is done when:
 - [ ] All BDD scenarios pass against staging.
 - [ ] OWASP ZAP reports zero High/Medium findings.
 - [ ] Schemathesis fuzz reports zero server errors.
+- [ ] Privacy validation passes on personal-data-touching releases: erasure flow cascades, `/about` privacy notice renders.
 - [ ] Production health check returns 200.
 - [ ] Smoke tests pass: health endpoint + one critical user flow.
 - [ ] Staging test data cleaned up.

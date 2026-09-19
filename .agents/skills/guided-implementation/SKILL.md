@@ -87,6 +87,7 @@ This monorepo also hosts the DARS engine (`packages/`) and the KajianQ domain pa
 - **Per-stage models from config only.** Model choice per stage comes from `model_configs` config; no vendor or model names in engine or app code outside `packages/infra` Provider adapters.
 - **Batch jobs produce reports.** Ingestion, eval, glossary build, narrator resolution runs produce ingestion/eval reports (counts, sampled-review scores, quarantine count, cost) — stored and citable, never skipped.
 - **Respect go/no-go gates.** E.g. the embedding benchmark gate (#9) decides the retrieval posture before Kitab-scale ingestion starts. Check `adr/` and `SPECS.md` §7 for the gates your ticket touches.
+- **Keep personal-data paths GDPR-true.** When the change touches personal data (session tokens, chat content, persisted traces, feedback free-text, IPs/logs, backups, snapshot archives), the sub-processor register, retention values, and RoPA stay accurate in the same PR (`docs/GDPR-ARTICLE-30-RECORD.md`; register in ADR-0043 decision 3); a new processor, vendor, or hosting region joins the register before it sees data; personal-data calls route only through paid, DPA-covered vendors (`personalDataAllowed` — never a free tier), so any `models.json` `freeTier`/`personalDataAllowed` edit is privacy-relevant; and the erasure path (`DELETE /v1/auth/me` → `deleteUserCascade`) still cascades the whole subtree. Decision record: ADR-0043.
 
 ### Pre-PR verification (KajianQ-specific)
 
@@ -99,6 +100,7 @@ Before opening the PR, run the Quick review scans from `.agents/skills/dars-plug
 - [ ] `NOTICES/DATASETS.md` updated when a dataset or corpus resource is touched.
 - [ ] Touched `SPECS.md` sections updated in the same PR (architecture §3, data layer §3.5/§4, cost §5, plan §7, product scope §2); new ADR row in its §8 Record of Decisions.
 - [ ] Golden Set traps added where the ticket demands them (new refusal case, trap question, or validator).
+- [ ] Personal-data-touching changes: register, retention values, and RoPA current (ADR-0043), and the erasure cascade still complete.
 
 ## During implementation
 
