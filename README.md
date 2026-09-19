@@ -92,6 +92,20 @@ Every answer carries its full **Trace** — the sub-questions asked, the sources
 consulted with their relevance scores, the model used, and the cost — visible
 in the app, never hidden.
 
+## Privacy
+
+No account, no email, no cookies: a session is an anonymous id kept on your
+device and erased from the server after the retention window set in
+[`docs/GDPR-ARTICLE-30-RECORD.md`](docs/GDPR-ARTICLE-30-RECORD.md). What the
+service stores is your conversation, its Trace, and any feedback you leave —
+to answer you and improve the answers, never to profile you — and you can ask
+for all of it to be erased at once. Questions about fiqh or aqidah touch on
+belief, so that data is treated as sensitive by design. The short privacy
+notice sits on the
+[About page](https://kajianq-api.rumaq.workers.dev/about); the full record —
+what is stored, for how long, and which processors see it — is
+[`docs/GDPR-ARTICLE-30-RECORD.md`](docs/GDPR-ARTICLE-30-RECORD.md).
+
 ## Go deeper
 
 For readers who want the full picture, the working documents are open:
