@@ -28,7 +28,7 @@ import * as v from "valibot";
 export const MAX_PREFILL_LENGTH = 200;
 
 /** The validated search of the chat route ("/"): an optional seed question. */
-export type ChatSearch = { q?: string };
+export type ChatSearch = { q?: string | undefined };
 
 const PrefillSchema = v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(MAX_PREFILL_LENGTH));
 
@@ -45,12 +45,16 @@ export function parsePrefill(raw: unknown): string | undefined {
 
 /**
  * The chat route's `validateSearch`. Every input maps to a valid `ChatSearch`:
- * a usable question becomes `{ q }`, anything else becomes `{}` — so a
- * malformed or out-of-range param degrades to "no pre-fill" instead of failing
- * the route (issue #175). The parameter is typed loosely on purpose: the router
- * hands this function the raw, unvalidated search object.
+ * a usable question becomes `{ q }`, anything else becomes `{ q: undefined }` —
+ * so a malformed or out-of-range param degrades to "no pre-fill" instead of
+ * failing the route (issue #175).
+ *
+ * The output ALWAYS carries the `q` key, explicitly undefined when the param is
+ * unusable: TanStack merges the validated object OVER the raw, unparsed search
+ * (`matchRoutes`, `applySearchMiddleware`), so a key omitted from the output
+ * would leave the raw value — including a junk one like `"   "` — readable via
+ * `useSearch`. Emitting `q: undefined` is what clears it.
  */
 export function validateChatSearch(input: Record<string, unknown>): ChatSearch {
-  const q = parsePrefill(input["q"]);
-  return q === undefined ? {} : { q };
+  return { q: parsePrefill(input["q"]) };
 }
