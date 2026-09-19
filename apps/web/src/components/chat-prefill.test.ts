@@ -16,7 +16,10 @@ beforeEach(() => {
   Element.prototype.scrollTo = () => {};
   // The chat never auto-sends (#175): a global fetch stub that records calls
   // makes "no request on pre-fill" an assertion, not an assumption.
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(null, { status: 204 })),
+  );
 });
 afterEach(() => {
   cleanup();

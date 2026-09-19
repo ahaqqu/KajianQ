@@ -6,6 +6,7 @@ import {
   filterByCategory,
   type CollectionEntry,
 } from "./collections";
+import { MAX_PREFILL_LENGTH } from "./chat-prefill";
 import { messages } from "./i18n";
 
 /**
@@ -53,6 +54,33 @@ describe("collection data", () => {
         // register's one-line note).
         expect(entry.attribution, entry.id).toBeDefined();
       }
+    }
+  });
+
+  it("gives every available entry a real per-locale seed question (#175)", () => {
+    // The "Ask about this source" affordance links into the chat with this
+    // question; a missing or placeholder one would ship an empty pre-fill.
+    for (const entry of byStatus(COLLECTION_ENTRIES, "available")) {
+      expect(entry.ask, entry.id).toBeDefined();
+      for (const locale of ["en", "id"] as const) {
+        const question = entry.ask![locale];
+        expect(question.length, `${entry.id}.ask.${locale}`).toBeGreaterThan(0);
+        expect(question.endsWith("?"), `${entry.id}.ask.${locale}`).toBe(true);
+        // The seed must survive the route's length cap, or the link would
+        // silently pre-fill nothing (lib/chat-prefill).
+        expect(question.length, `${entry.id}.ask.${locale}`).toBeLessThanOrEqual(
+          MAX_PREFILL_LENGTH,
+        );
+      }
+      expect(entry.ask!.en, entry.id).not.toBe(entry.ask!.id);
+    }
+  });
+
+  it("never gives a planned entry the ask affordance (#175)", () => {
+    // Planned entries are registered work, not a source that can answer:
+    // linking one into the chat would imply a corpus the product does not have.
+    for (const entry of byStatus(COLLECTION_ENTRIES, "planned")) {
+      expect(entry.ask, entry.id).toBeUndefined();
     }
   });
 
