@@ -1,3 +1,8 @@
+/// <reference types="node" />
+// The drift guards below read the register and the enforcing code from the repo
+// (Node can; the app bundle cannot, which is why the module mirrors them). The
+// directive is file-scoped because `apps/web/tsconfig.json` types the app for
+// the browser only.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
