@@ -231,6 +231,25 @@ describe("erasure a restore must re-apply", () => {
     }
   });
 
+  it("sends psql statements on stdin — :var substitution only works for script input", () => {
+    // psql substitutes `:'var'` in script input (-f/-stdin), never in `-c`
+    // command text — the drill's first CI run failed exactly there (follow-up
+    // to A3). Statements travel on stdin, which also keeps SQL text off the
+    // process table's argv.
+    const restore = readFileSync(
+      resolve(process.cwd(), "provision/vps/backup/kajianq-restore.mjs"),
+      "utf8",
+    );
+    expect(restore).toMatch(/"-f",\s*"-"/);
+    expect(restore).toMatch(/input:\s*statement/);
+    expect(restore).not.toMatch(/"-c",\s*statement/);
+    const drill = readFileSync(
+      resolve(process.cwd(), "provision/vps/backup/restore-drill.mjs"),
+      "utf8",
+    );
+    expect(drill).toMatch(/psqlVar\(sourceUrl, erasureSql\(\), erasurePsqlArgs\(SUBJECT\)\)/);
+  });
+
   it("compares connection URLs by database location, not by string (the live-URL guard)", () => {
     // The `--target-url` guard must refuse a URL that NAMES the live database
     // even when written differently (default port omitted, postgresql://

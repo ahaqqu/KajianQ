@@ -77,9 +77,18 @@ function pgEnv(url) {
 }
 
 function psql(url, statement, extra = []) {
-  return run("psql", ["-At", "-v", "ON_ERROR_STOP=1", ...extra, "-c", statement], {
+  // The statement travels on stdin (`-f -`), never as the `-c` value: psql
+  // only performs `:'var'` substitution for variables in script input, not in
+  // `-c` command text, and stdin keeps every statement — including the Art. 17
+  // one with its bound id — off the process table's argv.
+  const res = spawnSync("psql", ["-At", "-v", "ON_ERROR_STOP=1", ...extra, "-f", "-"], {
     env: { ...process.env, ...pgEnv(url) },
+    encoding: "utf8",
+    input: statement,
   });
+  if (res.error) fail(`psql could not run: ${res.error.message}`);
+  if (res.status !== 0) fail(`psql exited ${res.status}: ${(res.stderr || "").trim()}`);
+  return (res.stdout || "").trim();
 }
 
 function tableCounts(url) {
