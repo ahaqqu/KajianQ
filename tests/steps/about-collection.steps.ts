@@ -142,6 +142,67 @@ Then("I see the about page in English", async ({ page }) => {
   await expect(page.getByTestId("about-principles")).toContainText("Name the source");
 });
 
+// --- The privacy notice (#179, GDPR-C) -----------------------------------
+// The notice renders the ADR-0043 register and the retention values, with the
+// netcup destination honestly marked planned (#181 has not happened) and the
+// erasure path named as the endpoint that exists. The steps assert the copy
+// and the status attributes a reader actually sees.
+
+When("I see the privacy notice rendered from the register", async ({ page }) => {
+  const notice = page.getByTestId("about-privacy");
+  await expect(notice).toContainText("Siapa yang memproses data Anda");
+  await expect(notice.getByTestId("about-privacy-controller")).toContainText("Angga (@ahaqqu)");
+  // Every register row is its own card (netcup, Cloudflare, Neon, and the LLM
+  // vendors), and the rule that governs them is stated.
+  const processors = notice.getByTestId("about-privacy-processor");
+  expect(await processors.count()).toBeGreaterThanOrEqual(8);
+  await expect(notice).toContainText("netcup GmbH");
+  await expect(notice).toContainText("Neon, Inc.");
+  await expect(notice).toContainText("data pribadi tidak pernah lewat tingkat gratis");
+  await expect(notice).toContainText("Bukan untuk data pribadi");
+});
+
+Then("I see the netcup destination marked as planned, not live", async ({ page }) => {
+  const netcup = page.getByTestId("about-privacy-processor").filter({ hasText: "netcup GmbH" });
+  await expect(netcup).toHaveAttribute("data-status", "planned");
+  await expect(netcup.getByTestId("about-privacy-processor-status")).toHaveText("Direncanakan");
+  // The vendors serving today say so, so the notice is never false.
+  const cloudflare = page
+    .getByTestId("about-privacy-processor")
+    .filter({ hasText: "Cloudflare, Inc." });
+  await expect(cloudflare).toHaveAttribute("data-status", "transition");
+});
+
+Then(
+  "I see the retention row for reverse-proxy access logs marked {string}",
+  async ({ page }, mark: string) => {
+    const row = page
+      .getByTestId("about-privacy-retention-row")
+      .filter({ hasText: "Log akses reverse proxy" });
+    await expect(row).toHaveAttribute("data-status", "planned");
+    await expect(row).toContainText(mark);
+    await expect(row).toContainText("14 hari");
+  },
+);
+
+Then("the erasure card names the endpoint that erases the data", async ({ page }) => {
+  const erasure = page.getByTestId("about-privacy-erasure");
+  await expect(erasure).toContainText("DELETE /v1/auth/me");
+  // The cascade names all four subtrees the endpoint removes.
+  await expect(erasure).toContainText(
+    "sesi, sesi obrolan dan pesannya, trace setiap jawaban, dan masukan",
+  );
+  // The gap is stated, not papered over: there is no in-app erase button yet.
+  await expect(erasure).toContainText("belum punya tombol");
+});
+
+Then("I see the privacy notice in English", async ({ page }) => {
+  const notice = page.getByTestId("about-privacy");
+  await expect(notice).toContainText("Who processes your data");
+  await expect(notice).toContainText("Not for personal data");
+  await expect(notice.getByTestId("about-privacy-erasure")).toContainText("no button for this yet");
+});
+
 // --- "Ask about this source" affordance (#175) ---------------------------
 // The first available entry is the Uthmani Quran text; its Indonesian question
 // (the page's default locale) is pinned here explicitly, so the scenario
