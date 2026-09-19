@@ -76,6 +76,21 @@
           "priceMicroUsdPerMTok": { "in": 550, "out": 2200 }
         }
       }
+    },
+    "typesafe": {
+      "$comment": "ADR-0042: TypeSafe AI 'System One' decision endpoint — typed structured questions (Choice/Score/Noul) over a state, priced on input tokens only (output free). Not a chat or embedding vendor: it backs the decision-bench role only until the multilingual gate is evaluated; serving adoption is a future ADR.",
+      "baseUrl": "https://api.typesafe.ai/v1",
+      "apiKeyEnv": "JEV_API_KEY",
+      "protocol": "systemone",
+      "freeTier": false,
+      "personalDataAllowed": true,
+      "models": {
+        "jev-1.13.0": {
+          "$comment": "Pinned version — 64k request / 32k state budget, 1,200 req/min. 42 micro-USD per input MTok (ADR-0042).",
+          "capabilities": ["decide"],
+          "priceMicroUsdPerMTok": { "in": 42, "out": 0 }
+        }
+      }
     }
   },
   "roles": {
@@ -103,6 +118,10 @@
     "embedder-candidates": {
       "$comment": "#9 gate benchmark role: every candidate the benchmark compares, in one chain. Not for serving — the benchmark resolves each candidate directly from this chain (ADR-0022).",
       "chain": ["gemini:gemini-embedding-001", "gemini:gemini-embedding-2"]
+    },
+    "decision-candidates": {
+      "$comment": "ADR-0042 decision-bench role (mirrors embedder-candidates): every decision-model candidate the multilingual gate compares. Not for serving — the bench resolves each candidate directly. Absent key = the bench reports NOT RUN and exits 0 (CI has no JEV_API_KEY).",
+      "chain": ["typesafe:jev-1.13.0"]
     }
   }
 }

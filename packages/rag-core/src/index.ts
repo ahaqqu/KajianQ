@@ -29,3 +29,16 @@ export {
   type StreamHandle,
 } from "./provider";
 export { runPipeline, type PipelineStages, type RunOptions } from "./run";
+export {
+  type ChoiceAnswer,
+  type ChoiceQuestion,
+  type DecisionAnswer,
+  type DecisionQuestion,
+  type DecisionResult,
+  type DecisionSpec,
+  type Decider,
+  type NoulAnswer,
+  type NoulQuestion,
+  type ScoreAnswer,
+  type ScoreQuestion,
+} from "./decider";

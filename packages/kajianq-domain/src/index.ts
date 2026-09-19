@@ -127,6 +127,7 @@ export {
   type DomainBenchDoc,
 } from "./embed-bench-corpus";
 export { EXPANSION_SYSTEM_PROMPT, expansionUserPrompt } from "./embed-bench-prompts";
+export { DECISION_BENCH_PROMPTS } from "./decision-bench-prompts";
 
 // -- Chat pipeline (#8): Smart Router stages over the DARS seams -----------
 // (Filter vocabulary (Madzhab/Grade/TextLayer/KajianQFilters) stays exported
