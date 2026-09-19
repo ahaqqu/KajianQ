@@ -203,6 +203,34 @@ Then("I see the privacy notice in English", async ({ page }) => {
   await expect(notice.getByTestId("about-privacy-erasure")).toContainText("no button for this yet");
 });
 
+// --- The browser-storage line (#179 follow-up) ---------------------------
+// The notice states what stays on the visitor's device: no cookies, the
+// session token and theme preference in localStorage, erasable by the user.
+// The steps assert the RENDERED copy and key list, so a data change that never
+// reaches the page fails here.
+
+Then(
+  "I see the browser-storage line: no cookies, localStorage keys, erasable",
+  async ({ page }) => {
+    const storage = page.getByTestId("about-privacy").getByTestId("about-privacy-storage");
+    await expect(storage).toBeVisible();
+    await expect(storage).toContainText("tidak memasang cookie");
+    await expect(storage).toContainText("tanpa pelacakan");
+    await expect(storage).toContainText("menghapusnya sendiri");
+    // The keys named are the ones the app writes.
+    await expect(storage).toContainText("kajianq.auth.token");
+    await expect(storage).toContainText("kajianq.chat.sessionId");
+    await expect(storage).toContainText("kajianq.theme");
+  },
+);
+
+Then("I see the browser-storage line in English", async ({ page }) => {
+  const storage = page.getByTestId("about-privacy").getByTestId("about-privacy-storage");
+  await expect(storage).toContainText("sets no cookies");
+  await expect(storage).toContainText("no tracking");
+  await expect(storage).toContainText("erase them yourself");
+});
+
 // --- "Ask about this source" affordance (#175) ---------------------------
 // The first available entry is the Uthmani Quran text; its Indonesian question
 // (the page's default locale) is pinned here explicitly, so the scenario

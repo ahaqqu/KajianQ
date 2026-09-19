@@ -1,7 +1,12 @@
 import type { EvalResultOutcome, EvalRunReport, GoldenQuestion, GoldenSet } from "@app/contracts";
 import { Budget, BudgetExceededError } from "./budget";
 import { citationValidity, detectRefusal, refusalCorrectness, retrievalRecall } from "./scorers";
-import type { CostRecordLike, TraceEventLike } from "./harness-types";
+import type {
+  CitationFrameLike,
+  CitationGrammar,
+  CostRecordLike,
+  TraceEventLike,
+} from "./harness-types";
 
 /**
  * EvalHarness (#8): run a Golden Set against a chat target, score each
@@ -18,6 +23,13 @@ export type ChatTransportResult = {
   text: string;
   messageId: string | null;
   traceId: string | null;
+  /**
+   * The server's structured citations frame (ADR-0040), when the transport
+   * consumed one. Absent for a transport that does not carry it (a fake, an
+   * older client); citation scoring then falls back to the trace's `grounded`
+   * labels and finally the answer text.
+   */
+  citations?: CitationFrameLike | null;
 };
 
 /** One question's round-trip against the target. */
@@ -60,6 +72,14 @@ export type HarnessDeps = {
   budget: Budget;
   /** Refusal markers in the answer text (domain vocabulary, caller-supplied). */
   refusalMarkers?: readonly string[];
+  /**
+   * The citation grammar the scorer uses on the text fallback (domain
+   * vocabulary, caller-supplied — the engine stays agnostic). Supplied by the
+   * CLI composition root from `@app/kajianq-domain`, so the scorer and the
+   * deterministic gate normalize labels identically. Omitted in a unit
+   * context: scoring then falls back to the byte-exact substring check.
+   */
+  citationGrammar?: CitationGrammar;
   /** Run label persisted with the report. */
   label?: string;
   now?: () => number;
@@ -111,7 +131,7 @@ export async function runGoldenSet(set: GoldenSet, deps: HarnessDeps): Promise<H
       for (const event of events) {
         if (event.cost) costs.push(event.cost);
       }
-      const outcome = scoreQuestion(question, reply.text, events, deps);
+      const outcome = scoreQuestion(question, reply.text, events, deps, reply.citations);
       const result: HarnessQuestionResult = { ...outcome, traceId: reply.traceId };
       try {
         await deps.ledger.saveResult(runId, question.id, outcome, reply.traceId);
@@ -169,17 +189,28 @@ export async function runGoldenSet(set: GoldenSet, deps: HarnessDeps): Promise<H
   return { runId, passed, failed, skipped, budgetExceeded, results };
 }
 
-/** Score one question from its answer text and trace events. */
+/**
+ * Score one question from its answer text, trace events, and — when the
+ * transport carried one — the server's citations frame. Citation validity
+ * prefers the frame (ADR-0040: a label in it is grounded by construction),
+ * then the trace's reviewer `grounded` labels, then the text through the
+ * injected citation grammar (see `citationValidity`).
+ */
 export function scoreQuestion(
   question: GoldenQuestion,
   answerText: string,
   events: readonly TraceEventLike[],
-  deps: Pick<HarnessDeps, "sourceTypeOf" | "refusalMarkers">,
+  deps: Pick<HarnessDeps, "sourceTypeOf" | "refusalMarkers" | "citationGrammar">,
+  frame?: CitationFrameLike | null,
 ): EvalResultOutcome {
   const retrieval = events.filter((e) => e.kind === "retrieval").at(-1);
   const chunks = retrieval?.detail?.chunks ?? [];
   const recall = retrievalRecall(question.expectedSourceTypes, chunks, deps.sourceTypeOf);
-  const citations = citationValidity(question.requiredCitations, answerText);
+  const citations = citationValidity(question.requiredCitations, answerText, {
+    frame,
+    events,
+    ...(deps.citationGrammar !== undefined ? { grammar: deps.citationGrammar } : {}),
+  });
   const refused = detectRefusal(events, answerText, deps.refusalMarkers ?? []);
   const correct = refusalCorrectness(question.expectedBehavior, refused);
   const passed = correct && citations === 1 && recall === 1;

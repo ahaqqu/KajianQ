@@ -16,8 +16,11 @@ import { apiFetch } from "./api";
  * localStorage is absent (tests, hardened webviews) instead of crashing.
  */
 
-const SESSION_KEY = "kajianq.chat.sessionId";
-const TOKEN_KEY = "kajianq.auth.token";
+/** The `localStorage` keys this module owns, exported so the /about notice's
+ * storage card (`privacy-notice-storage.ts`) names them from here instead of
+ * duplicating the literals (thermo-review B1). */
+export const SESSION_KEY = "kajianq.chat.sessionId";
+export const TOKEN_KEY = "kajianq.auth.token";
 
 const memory = new Map<string, string>();
 

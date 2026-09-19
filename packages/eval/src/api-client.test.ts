@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { consumeSseToText, parseChatMeta, type ChatSseResult } from "./api-client";
+import {
+  consumeSseToText,
+  parseChatMeta,
+  parseCitationsFrame,
+  type ChatSseResult,
+} from "./api-client";
 
 /** SSE-consume unit tests: pure stream parsing, no network. */
 
@@ -70,6 +75,62 @@ describe("consumeSseToText", () => {
     const result = await consumeSseToText(body);
     expect(result.messageId).toBeNull();
     expect(result.text).toBe("y");
+  });
+
+  it("captures the citations frame's grounded labels (ADR-0040)", async () => {
+    // The wire order is meta → deltas → citations → trace → done; the scorer
+    // reads these labels in preference to re-parsing the answer text.
+    const { body } = sseResponse([
+      'event: meta\ndata: {"messageId":"m1","traceId":"t1"}\n\n',
+      "event: delta\ndata: the answer cites \n\n",
+      "event: delta\ndata: alpha\n\n",
+      'event: citations\ndata: {"messageId":"m1","citations":[{"label":"alpha","arabic":"x","machineTranslated":true}],"refusal":false}\n\n',
+      'event: trace\ndata: {"messageId":"m1","sources":[],"technical":{"subQueries":[],"chunks":[],"models":[]}}\n\n',
+      "event: done\ndata: {}\n\n",
+    ]);
+    const result = await consumeSseToText(body);
+    expect(result.text).toBe("the answer cites alpha");
+    expect(result.citations).toEqual({ citations: [{ label: "alpha" }] });
+  });
+
+  it("leaves citations null when the frame is absent", async () => {
+    const { body } = sseResponse(["event: delta\ndata: plain answer\n\n"]);
+    const result = await consumeSseToText(body);
+    expect(result.citations).toBeNull();
+  });
+
+  it("leaves citations null for a malformed frame instead of a partial read", async () => {
+    const { body } = sseResponse(["event: citations\ndata: {broken\n\n"]);
+    const result = await consumeSseToText(body);
+    expect(result.citations).toBeNull();
+  });
+});
+
+describe("parseCitationsFrame", () => {
+  it("extracts the labels from a well-formed frame", () => {
+    // The real frame also carries the product's weak-grade display flag; this
+    // engine-package test omits it deliberately (the boundary gate forbids
+    // domain vocabulary here) — the parser ignores it, so the labels it reads
+    // are the same.
+    expect(
+      parseCitationsFrame(
+        '{"messageId":"m","citations":[{"label":"label-a"},{"label":"label-b"}],"refusal":false}',
+      ),
+    ).toEqual({ citations: [{ label: "label-a" }, { label: "label-b" }] });
+  });
+
+  it("returns null when the payload has no citations array", () => {
+    expect(parseCitationsFrame('{"messageId":"m","refusal":true}')).toBeNull();
+  });
+
+  it("skips entries with a non-string or empty label", () => {
+    expect(
+      parseCitationsFrame('{"citations":[{"label":""},{"label":42},{"label":"kept"}]}'),
+    ).toEqual({ citations: [{ label: "kept" }] });
+  });
+
+  it("returns null for junk rather than throwing", () => {
+    expect(parseCitationsFrame("junk")).toBeNull();
   });
 });
 

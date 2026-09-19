@@ -6,7 +6,9 @@ import { useCallback, useEffect, useState } from "react";
  * render (main.tsx) so a dark preference never flashes the light theme.
  */
 
-const THEME_KEY = "kajianq.theme";
+/** Exported so the /about notice's storage card (`privacy-notice-storage.ts`)
+ * names the key from here instead of duplicating the literal (thermo-review B1). */
+export const THEME_KEY = "kajianq.theme";
 
 export type Theme = "light" | "dark";
 

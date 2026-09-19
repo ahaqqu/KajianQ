@@ -62,6 +62,12 @@ Feature: About and Collection pages
     And I switch the language to English
     Then I see the privacy notice in English
 
+  Scenario: The privacy notice states what stays in the browser (#179)
+    When I open the about page
+    Then I see the browser-storage line: no cookies, localStorage keys, erasable
+    When I switch the language to English
+    Then I see the browser-storage line in English
+
   Scenario: An available source links into the chat with its question pre-filled
     When I open the collection page
     And I follow the first available source's ask link
