@@ -1,0 +1,55 @@
+# provision/vps/systemd/kajianq-api.service — the API process (ADR-0043, #180).
+#
+# The Hono Worker is a Cloudflare-runtime artifact today; GDPR-E (#181) owns
+# the Bun/Node serving entry. This unit is the hardening half: the process
+# runs unprivileged, reads its configuration from a root-owned env file that is
+# not in the repository, and writes only structured JSON to stdout.
+#
+# Logging: apps/api's logger emits one JSON object per line with a correlation
+# id and NO IP address (packages/infra/src/logger.ts; Art. 30 record §7 "Data
+# minimisation in logs"). journald is the sink; its retention is capped by
+# /etc/systemd/journald.conf.d/kajianq.conf, which is where "no unbounded log
+# growth" is enforced for the API half.
+#
+# The DATABASE_URL for the self-hosted Postgres arrives through the same env
+# file. It is never an argv value and never in this unit: a credential in the
+# unit file would be world-readable in the process table's command line and in
+# the journal.
+
+[Unit]
+Description=KajianQ API (DARS serving path)
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=kajianq
+Group=kajianq
+WorkingDirectory=/srv/kajianq/api
+EnvironmentFile=/etc/kajianq/api.env
+ExecStart=/usr/bin/bun run /srv/kajianq/api/index.js
+Restart=on-failure
+RestartSec=5
+
+# Hardening: the API needs the network and its own tree, nothing else.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ReadWritePaths=/srv/kajianq/api
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+
+# Structured logs go to stdout as JSON; journald captures them.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
