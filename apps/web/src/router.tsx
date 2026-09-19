@@ -1,5 +1,6 @@
 import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import { AboutPage, ChatPage, CollectionPage, HomePage, Shell } from "./components/pages";
+import { validateChatSearch } from "./lib/chat-prefill";
 import { useLocale } from "./lib/i18n";
 
 /**
@@ -51,6 +52,11 @@ export function createRouteTree() {
     getParentRoute: () => rootRoute,
     path: "/",
     component: Chat,
+    // #175: the chat route accepts `?q=<question>` as a composer pre-fill.
+    // Validation caps the length and ignores anything unusable — an
+    // out-of-range param is "no pre-fill", never a route-search error
+    // (`lib/chat-prefill`).
+    validateSearch: validateChatSearch,
   });
   const healthRoute = createRoute({
     getParentRoute: () => rootRoute,

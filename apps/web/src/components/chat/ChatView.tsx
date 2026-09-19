@@ -11,6 +11,14 @@ import { Transcript, TranscriptMeta, type TranscriptError } from "./Transcript";
  * honest loading state ("Mengambil konteks…" → "Memeriksa sitasi…" →
  * "Menyusun jawaban…" — the machinery the pipeline actually runs).
  * Presentational: the page owns data and transport.
+ *
+ * Pre-fill (#175): `prefill` is the seed question the chat route read from the
+ * URL's `q` param. It seeds the composer DRAFT ONLY — never auto-sent — and
+ * only while the draft is still at its initial, untouched state, so a draft
+ * the reader already edited is never clobbered. The page consumes (strips) the
+ * param after reading it; the seed arrives here as a plain prop and the
+ * composer stays local-only: nothing about the pre-fill touches the chat
+ * session/server contract (ADR-0040).
  */
 
 const STAGE_KEYS = ["stagedContext", "stagedReview", "stagedCompose"] as const;
@@ -26,6 +34,7 @@ export function ChatView({
   transcriptTruncated,
   error,
   online,
+  prefill,
   onSend,
   onNewSession,
 }: {
@@ -36,12 +45,31 @@ export function ChatView({
   transcriptTruncated: boolean;
   error: ChatViewError;
   online: boolean;
+  /** The seed question from the route's `?q=` param, if any (see above). */
+  prefill?: string | undefined;
   onSend: (text: string) => void;
   onNewSession: () => void;
 }) {
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(prefill ?? "");
   const [stage, setStage] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
+  // The last seed this composer has taken. A seed is applied only once, and
+  // only while it equals the draft's initial state — i.e. while the reader has
+  // not touched the composer (see the seeding effect).
+  const seededRef = useRef<string | undefined>(prefill);
+
+  // Seed the composer from the route's pre-fill (#175): the draft becomes the
+  // question, never a sent turn. The clobber guard is the `seededRef`
+  // comparison: the effect re-runs when the seed arrives (client-side
+  // navigation) but applies it only while the draft is still the untouched
+  // initial value, so a draft the reader has already edited is never
+  // overwritten. A seed already taken is not re-applied; an absent seed leaves
+  // the composer alone.
+  useEffect(() => {
+    if (prefill === undefined || seededRef.current === prefill) return;
+    setDraft((current) => (current === (seededRef.current ?? "") ? prefill : current));
+    seededRef.current = prefill;
+  }, [prefill]);
 
   // The staged waiting state cycles through the pipeline's real stages while
   // the turn is in flight; it never shows when the answer is already streaming.

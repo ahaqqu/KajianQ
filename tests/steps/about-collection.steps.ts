@@ -141,3 +141,53 @@ Then("I see the about page in English", async ({ page }) => {
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("About KajianQ");
   await expect(page.getByTestId("about-principles")).toContainText("Name the source");
 });
+
+// --- "Ask about this source" affordance (#175) ---------------------------
+// The first available entry is the Uthmani Quran text; its Indonesian question
+// (the page's default locale) is pinned here explicitly, so the scenario
+// asserts the data module's real copy reaching the composer — not a value the
+// test read back from the same link it is checking.
+
+const FIRST_ASK_ID = "Apa yang Al-Qur'an katakan tentang kesabaran?";
+const FIRST_ASK_EN = "What does the Quran say about patience?";
+
+When("I follow the first available source's ask link", async ({ page }) => {
+  await page
+    .getByTestId("collection-section-available")
+    .getByTestId("collection-ask")
+    .first()
+    .click();
+});
+
+Then("the chat opens with that source's question in the composer", async ({ page }) => {
+  await expect(page.getByTestId("composer")).toHaveValue(FIRST_ASK_ID);
+  await expect(page).toHaveURL(/\/$/);
+});
+
+Then("the chat URL carries no question param", async ({ page }) => {
+  // The param was consumed on read, so a refresh cannot re-seed it.
+  await expect(page).toHaveURL((url) => url.search === "");
+});
+
+Then("no answer was sent", async ({ page }) => {
+  // Pre-fill is a draft only: no turn was appended and the empty state stands.
+  await expect(page.getByTestId("message-user")).toHaveCount(0);
+  await expect(page.getByTestId("chat-empty")).toBeVisible();
+});
+
+Then("the first available source's ask link is in English", async ({ page }) => {
+  const link = page
+    .getByTestId("collection-section-available")
+    .getByTestId("collection-ask")
+    .first();
+  await expect(link).toHaveText("Ask about this source");
+  // The question follows the locale too, not only the label. The origin is
+  // irrelevant: only the `q` param is asserted, so the base URL never couples
+  // the step to a specific serving origin (thermo-review C1).
+  const q = new URL((await link.getAttribute("href"))!, "http://example.com").searchParams.get("q");
+  expect(q).toBe(FIRST_ASK_EN);
+});
+
+Then("the chat composer is empty", async ({ page }) => {
+  await expect(page.getByTestId("composer")).toHaveValue("");
+});

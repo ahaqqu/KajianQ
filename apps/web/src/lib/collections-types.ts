@@ -55,6 +55,14 @@ export type CollectionEntry = {
   description: Localized;
   /** One-line attribution for an available entry (see module comment). */
   attribution?: Localized;
+  /**
+   * The per-locale question the entry's "Ask about this source" affordance
+   * links into the chat with (#175) — the entry's own copy, in both locales,
+   * never a generic one. Available only, like `attribution`: a planned entry
+   * is registered work, and linking it into an answer would imply a source the
+   * corpus does not have.
+   */
+  ask?: Localized;
   /** A planned entry's registered reference, e.g. "#33" — shown as "planned · #33". */
   planRef?: string;
 };

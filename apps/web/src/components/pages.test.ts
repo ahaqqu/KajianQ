@@ -3,6 +3,7 @@ import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { renderApp } from "./app-test-utils";
 import { COLLECTION_ENTRIES, byStatus } from "../lib/collections";
+import { COLLECTION_AVAILABLE } from "../lib/collections-available";
 
 // React 19 + vitest: mark the environment for act() (testing-library's flushes).
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -14,6 +15,15 @@ beforeEach(() => {
   Element.prototype.scrollTo = () => {};
 });
 afterEach(cleanup);
+
+/** The `q` seed an ask link's href carries, decoded as the browser would. */
+function seedOf(link: HTMLElement): string {
+  const href = link.getAttribute("href") ?? "";
+  expect(href.startsWith("/")).toBe(true);
+  const q = new URL(href, "http://localhost").searchParams.get("q");
+  expect(q).not.toBeNull();
+  return q!;
+}
 
 describe("CollectionPage", () => {
   it("renders both the available and the planned entries, each marked", async () => {
@@ -114,6 +124,54 @@ describe("CollectionPage", () => {
       "Available now",
     );
     expect(screen.getAllByTestId("collection-status")[0]?.textContent).toBe("Available");
+  });
+
+  /**
+   * The "Ask about this source" affordance (#175): available entries only, each
+   * a typed router `Link` into the chat carrying that entry's own question in
+   * the current locale as the `q` param. The link never auto-sends — the chat
+   * seeds its composer draft (see `chat-prefill.test.ts` for the consumption
+   * half).
+   */
+  it("gives every available entry an Ask link carrying its question, and none to planned entries", async () => {
+    await renderApp("/collection");
+
+    const available = within(screen.getByTestId("collection-section-available"));
+    const planned = within(screen.getByTestId("collection-section-planned"));
+    const availableEntries = available.getAllByTestId("collection-entry");
+    const plannedEntries = planned.getAllByTestId("collection-entry");
+    const availableIds = byStatus(COLLECTION_ENTRIES, "available").map((entry) => entry.id);
+
+    // One ask link per available entry, in order, each pointing at the chat
+    // with that entry's own (Indonesian, the default locale) question.
+    const links = available.getAllByTestId("collection-ask");
+    expect(links.length).toBe(availableEntries.length);
+    expect(links.length).toBe(availableIds.length);
+    links.forEach((link, index) => {
+      const question = COLLECTION_ENTRIES.find((e) => e.id === availableIds[index])!.ask!.id;
+      expect(link.tagName).toBe("A");
+      expect(link.textContent).toBe("Tanyakan sumber ini");
+      // The router serializes the `q` search param into the href; read it back
+      // the way the browser would (URLSearchParams decodes `+` as a space).
+      expect(seedOf(link)).toBe(question);
+    });
+
+    // Planned entries never carry the affordance.
+    expect(plannedEntries.length).toBeGreaterThan(0);
+    expect(planned.queryAllByTestId("collection-ask").length).toBe(0);
+  });
+
+  it("switches the Ask link's label and question with the locale", async () => {
+    await renderApp("/collection");
+    const firstQuestion = COLLECTION_AVAILABLE[0]!.ask!;
+    const link = () => screen.getAllByTestId("collection-ask")[0]!;
+
+    expect(link().textContent).toBe("Tanyakan sumber ini");
+    expect(seedOf(link())).toBe(firstQuestion.id);
+
+    fireEvent.change(screen.getByTestId("locale-select"), { target: { value: "en" } });
+    expect(link().textContent).toBe("Ask about this source");
+    expect(seedOf(link())).toBe(firstQuestion.en);
   });
 });
 
