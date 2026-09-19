@@ -188,7 +188,10 @@ Then(
 Then("the erasure card names the endpoint that erases the data", async ({ page }) => {
   const erasure = page.getByTestId("about-privacy-erasure");
   await expect(erasure).toContainText("DELETE /v1/auth/me");
-  await expect(erasure).toContainText("sesi, obrolan, trace, dan masukan");
+  // The cascade names all four subtrees the endpoint removes.
+  await expect(erasure).toContainText(
+    "sesi, sesi obrolan dan pesannya, trace setiap jawaban, dan masukan",
+  );
   // The gap is stated, not papered over: there is no in-app erase button yet.
   await expect(erasure).toContainText("belum punya tombol");
 });
