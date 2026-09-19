@@ -8,7 +8,7 @@ Issue: #178 (GDPR-B). The companion note is
 
 This document is the **derivation source** for the categories declared in the
 netcup DPA. Section
-[CCP declaration](#ccp-declaration-master-data--order-processing) is the block
+[§9 CCP declaration](#9-ccp-declaration-master-data--order-processing) is the block
 the owner copies into the netcup Customer Control Panel. Values here — retention
 windows, processor rows, data categories — are fixed by ADR-0043 and must not
 drift from it: ADR-0043 is the source of truth, this record is its Art. 30
