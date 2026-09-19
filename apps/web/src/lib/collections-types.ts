@@ -22,8 +22,9 @@
  * planned entry is registered work, never an ingest already done.
  */
 
-/** A string per locale; the page renders the reader's locale. */
-export type Localized = { en: string; id: string };
+import type { Localized } from "./localized";
+
+export type { Localized };
 
 export type CollectionStatus = "available" | "planned";
 
