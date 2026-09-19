@@ -23,10 +23,26 @@ import { Effect } from "effect";
 import { neon } from "@neondatabase/serverless";
 import { createNeonRagStore } from "@app/infra";
 import { BudgetExceededError, postChatSse } from "@app/eval";
-import { DEFAULT_REFUSALS } from "@app/kajianq-domain";
+import {
+  DEFAULT_REFUSALS,
+  citationCandidatesIn,
+  normalizeCitationLabel,
+} from "@app/kajianq-domain";
 
 /** The generator's refusal text in each answer language (domain-owned). */
 export const REFUSAL_MARKERS = [DEFAULT_REFUSALS.id, DEFAULT_REFUSALS.en];
+
+/**
+ * The citation grammar the scorer normalizes labels with (C2 fix). It is the
+ * DOMAIN's own functions — the same ones the deterministic citation gate
+ * (`validateCitations`) and the citations-frame derivation use — injected here
+ * by the composition root, so the engine package stays domain-agnostic while
+ * the scorer and the gate cannot disagree about what a citation is.
+ */
+export const CITATION_GRAMMAR = {
+  normalizeLabel: normalizeCitationLabel,
+  labelsInText: citationCandidatesIn,
+};
 
 /**
  * Build the staging seams one eval run needs. The Neon client is constructed
@@ -60,7 +76,15 @@ export async function createStagingHarness(config, budget) {
         question: question.question,
         language: question.language === "en" ? "en" : "id",
       });
-      return { text: reply.text, messageId: reply.messageId, traceId: reply.traceId };
+      // The structured citations frame (ADR-0040) rides along: the scorer
+      // prefers its labels, which the server grounded against the persisted
+      // trace, over re-parsing the answer text.
+      return {
+        text: reply.text,
+        messageId: reply.messageId,
+        traceId: reply.traceId,
+        citations: reply.citations,
+      };
     },
   };
 
@@ -102,5 +126,6 @@ export async function createStagingHarness(config, budget) {
     traces,
     ledger,
     refusalMarkers: REFUSAL_MARKERS,
+    citationGrammar: CITATION_GRAMMAR,
   };
 }

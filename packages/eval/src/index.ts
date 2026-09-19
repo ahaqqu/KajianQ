@@ -12,6 +12,7 @@
 export { GoldenSetLoadError, assertV0Shape, loadGoldenSetJson, parseGoldenSet } from "./golden-set";
 export { selectSmokeSubset, type SmokeSelectOptions, type SmokeSelection } from "./smoke-subset";
 export {
+  citationLabelsPresent,
   citationValidity,
   detectRefusal,
   refusalCorrectness,
@@ -20,7 +21,12 @@ export {
 } from "./scorers";
 export { Budget, BudgetExceededError, budgetCapFromEnv } from "./budget";
 export { EvalConfigError, loadEvalRunConfig, type EvalRunConfig } from "./eval-config";
-export { consumeSseToText, postChatSse, type ChatSseResult } from "./api-client";
+export {
+  consumeSseToText,
+  parseCitationsFrame,
+  postChatSse,
+  type ChatSseResult,
+} from "./api-client";
 export {
   runGoldenSet,
   scoreQuestion,
@@ -32,7 +38,13 @@ export {
   type HarnessRunResult,
   type RunLedger,
 } from "./harness";
-export type { ChunkRefLike, RetrievalLike, TraceEventLike } from "./harness-types";
+export type {
+  ChunkRefLike,
+  CitationFrameLike,
+  CitationGrammar,
+  RetrievalLike,
+  TraceEventLike,
+} from "./harness-types";
 export {
   BENCH_K,
   GATE_FLOORS,

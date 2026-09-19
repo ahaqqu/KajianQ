@@ -7,6 +7,8 @@
  * harness just collapses it.
  */
 
+import type { CitationFrameLike } from "./harness-types";
+
 /** The parsed outcome of one `/v1/chat` SSE round-trip. */
 export type ChatSseResult = {
   /** The buffered answer text (concatenated `delta` events). */
@@ -15,6 +17,12 @@ export type ChatSseResult = {
   messageId: string | null;
   /** The answer's trace id (from `meta` events). */
   traceId: string | null;
+  /**
+   * The server's structured citations frame (ADR-0040), parsed from the
+   * `citations` SSE frame. `null` when the frame was absent or malformed — the
+   * scorer then falls back to the trace's `grounded` labels and the answer text.
+   */
+  citations: CitationFrameLike | null;
   /** Raw events in arrival order, for debugging failing runs. */
   events: { event: string; data: string }[];
 };
@@ -40,6 +48,7 @@ export async function consumeSseToText(body: ReadableStream<Uint8Array>): Promis
   const deltas: string[] = [];
   let messageId: string | null = null;
   let traceId: string | null = null;
+  let citations: CitationFrameLike | null = null;
 
   const reader = body.getReader();
   for (;;) {
@@ -64,10 +73,35 @@ export async function consumeSseToText(body: ReadableStream<Uint8Array>): Promis
         }
         if (meta.messageId) messageId = meta.messageId;
         if (meta.traceId) traceId = meta.traceId;
+      } else if (parsed.event === "citations") {
+        citations = parseCitationsFrame(parsed.data);
       }
     }
   }
-  return { text: deltas.join(""), messageId, traceId, events };
+  return { text: deltas.join(""), messageId, traceId, citations, events };
+}
+
+/**
+ * Parse the `citations` SSE frame payload (ADR-0040) into the label list the
+ * scorer reads. Structurally tolerant: a frame missing the `citations` array,
+ * or carrying entries without a string `label`, yields `null` — the scorer's
+ * fallback path — rather than a partially-read frame that could silently drop
+ * a legitimate citation. Malformed JSON is diagnosable, never swallowed.
+ */
+export function parseCitationsFrame(data: string): CitationFrameLike | null {
+  try {
+    const parsed = JSON.parse(data) as { citations?: unknown };
+    if (!Array.isArray(parsed.citations)) return null;
+    const labels: string[] = [];
+    for (const entry of parsed.citations) {
+      const label = (entry as { label?: unknown } | null)?.label;
+      if (typeof label === "string" && label !== "") labels.push(label);
+    }
+    return { citations: labels.map((label) => ({ label })) };
+  } catch {
+    console.warn(`eval: malformed SSE citations payload: ${data.slice(0, 200)}`);
+    return null;
+  }
 }
 
 /** The parsed meta event payload (message/trace ids, null when absent). */
