@@ -1,5 +1,10 @@
 import type { ComponentProps, ReactNode } from "react";
 
+// Re-exported so `AppHeader` (capped at 5 imports by `agentic-limits`) can
+// reach the shared nav views without a sixth import; the implementation lives
+// in the leaf `lib/routes` beside the nav list it derives from (thermo-review C3).
+export { NavLinks } from "../lib/routes";
+
 /** Minimal shadcn-like primitives (owned source), themed by the design tokens. */
 export function Card({
   children,

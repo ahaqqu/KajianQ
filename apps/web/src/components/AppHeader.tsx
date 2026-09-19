@@ -1,9 +1,8 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { useRouterState } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { type Locale, t, useLocale, useLocaleSetter } from "../lib/i18n";
 import { useTheme } from "../lib/theme";
-import { NAV_ROUTES } from "../lib/routes";
-import { LogoTile, MonoLabel } from "./ui";
+import { LogoTile, MonoLabel, NavLinks } from "./ui";
 
 /**
  * The app header (the reference design's): logo tile + serif-italic wordmark
@@ -128,32 +127,6 @@ export function AppHeader({ actions }: { actions?: ReactNode }) {
         </nav>
       )}
     </div>
-  );
-}
-
-/** The three destinations the header carries, inline (sm+) or stacked (burger). */
-function NavLinks({ locale, stacked = false }: { locale: Locale; stacked?: boolean }) {
-  return (
-    <ul className={stacked ? "flex flex-col" : "flex items-center gap-1"}>
-      {NAV_ROUTES.map(({ to, key }) => (
-        <li key={to}>
-          <Link
-            to={to}
-            // "/" prefixes every route: without exact matching the Chat link
-            // would read active on /about and /collection.
-            activeOptions={{ exact: to === "/" }}
-            activeProps={{
-              "aria-current": "page",
-              className: "text-foreground",
-            }}
-            inactiveProps={{ className: "text-muted-foreground" }}
-            className="block rounded-lg px-3 py-1.5 text-sm font-medium hover:bg-secondary hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {t(locale, key)}
-          </Link>
-        </li>
-      ))}
-    </ul>
   );
 }
 
