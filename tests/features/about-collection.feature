@@ -49,3 +49,19 @@ Feature: About and Collection pages
   Scenario: The about page has no serious accessibility violations
     When I open the about page
     Then the page has no serious accessibility violations
+
+  Scenario: An available source links into the chat with its question pre-filled
+    When I open the collection page
+    And I follow the first available source's ask link
+    Then the chat opens with that source's question in the composer
+    And the chat URL carries no question param
+    And no answer was sent
+
+  Scenario: The ask affordance follows the language switch
+    When I open the collection page
+    And I switch the language to English
+    Then the first available source's ask link is in English
+
+  Scenario: Opening the chat directly leaves the composer empty
+    When I open the home page
+    Then the chat composer is empty
