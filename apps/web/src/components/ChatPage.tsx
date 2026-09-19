@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useChat } from "../lib/use-chat";
 import { ChatView } from "./chat/ChatView";
@@ -18,7 +18,11 @@ import { ChatView } from "./chat/ChatView";
  *    composer draft stays local-only.
  *  - It is read ONCE and CONSUMED: the param is stripped from the URL with a
  *    replace navigation, so a refresh of the chat does not re-seed an old
- *    question. Route search validation already dropped any unusable `q`
+ *    question. The validated `search.q` is passed to the view as-is — the
+ *    view's `seededRef` owns the once-only invariant (thermo-review B1: the
+ *    page kept a duplicate `consumedRef` guard), and the composer's draft
+ *    state survives the strip because the view is never remounted. Route
+ *    search validation already dropped any unusable `q`
  *    (`lib/chat-prefill`), so reaching here means the seed is usable.
  *  - An absent param leaves the composer untouched.
  */
@@ -26,20 +30,6 @@ export function ChatPage({ locale }: { locale: "id" | "en" }) {
   const chat = useChat(locale);
   const navigate = useNavigate();
   const search = useSearch({ from: "/" });
-  // The seed is captured in state: the param is stripped below, so the search
-  // object can no longer carry it on the next render and the seed must survive.
-  const [prefill, setPrefill] = useState<string | undefined>(search.q);
-  // The seed this page has already consumed (thermo-review: one read per
-  // value) — a repeat navigation to the same `q` does not re-seed, and the
-  // strip effect below cannot loop.
-  const consumedRef = useRef<string | undefined>(search.q);
-
-  useEffect(() => {
-    const q = search.q;
-    if (q === undefined || q === consumedRef.current) return;
-    consumedRef.current = q;
-    setPrefill(q);
-  }, [search.q]);
 
   // Consume the param: its `replace` keeps the chat URL clean ("/") whether
   // the reader follows a collection link or reloads, so a refresh cannot
@@ -58,7 +48,7 @@ export function ChatPage({ locale }: { locale: "id" | "en" }) {
       transcriptTruncated={chat.transcriptTruncated}
       error={chat.error}
       online={chat.online}
-      prefill={prefill}
+      prefill={search.q}
       onSend={chat.send}
       onNewSession={chat.newSession}
     />

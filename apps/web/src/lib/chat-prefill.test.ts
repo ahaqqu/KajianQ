@@ -68,7 +68,11 @@ describe("validateChatSearch", () => {
     ]) {
       expect(() => validateChatSearch(input)).not.toThrow();
       const output = validateChatSearch(input);
-      expect(JSON.stringify(output), JSON.stringify(input)).toBe("{}");
+      // The key must be present with an explicit undefined — JSON.stringify
+      // drops undefined values, so a string comparison would mask a regression
+      // of the always-emit invariant (thermo-review B2).
+      expect("q" in output, JSON.stringify(input)).toBe(true);
+      expect(output.q, JSON.stringify(input)).toBeUndefined();
     }
   });
 

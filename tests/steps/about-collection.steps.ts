@@ -181,10 +181,10 @@ Then("the first available source's ask link is in English", async ({ page }) => 
     .getByTestId("collection-ask")
     .first();
   await expect(link).toHaveText("Ask about this source");
-  // The question follows the locale too, not only the label.
-  const q = new URL((await link.getAttribute("href"))!, "http://127.0.0.1:8787").searchParams.get(
-    "q",
-  );
+  // The question follows the locale too, not only the label. The origin is
+  // irrelevant: only the `q` param is asserted, so the base URL never couples
+  // the step to a specific serving origin (thermo-review C1).
+  const q = new URL((await link.getAttribute("href"))!, "http://example.com").searchParams.get("q");
   expect(q).toBe(FIRST_ASK_EN);
 });
 
