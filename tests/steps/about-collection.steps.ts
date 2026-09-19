@@ -143,30 +143,15 @@ Then("I see the about page in English", async ({ page }) => {
 });
 
 // --- "Ask about this source" affordance (#175) ---------------------------
-// The seed the link carries is read back from its own href (the browser's
-// serialization, decoded by the URL) and compared to the composer — so the
-// scenario asserts the real link-to-composer contract without importing the
-// app's data module into the browser test.
+// The first available entry is the Uthmani Quran text; its Indonesian question
+// (the page's default locale) is pinned here explicitly, so the scenario
+// asserts the data module's real copy reaching the composer — not a value the
+// test read back from the same link it is checking.
 
-/** The `q` seed of the first available entry's ask link, as the URL carries it. */
-async function firstAskSeed(page: import("@playwright/test").Page): Promise<string> {
-  const href = await page
-    .getByTestId("collection-section-available")
-    .getByTestId("collection-ask")
-    .first()
-    .getAttribute("href");
-  expect(href).toBeTruthy();
-  const q = new URL(href!, "http://127.0.0.1:8787").searchParams.get("q");
-  expect(q).toBeTruthy();
-  return q!;
-}
+const FIRST_ASK_ID = "Apa yang Al-Qur'an katakan tentang kesabaran?";
+const FIRST_ASK_EN = "What does the Quran say about patience?";
 
 When("I follow the first available source's ask link", async ({ page }) => {
-  // Record the seed before navigating (the question is about the source, in
-  // Indonesian — the page's default locale).
-  const seed = await firstAskSeed(page);
-  expect(seed.length).toBeGreaterThan(0);
-  (page as { __askSeed?: string }).__askSeed = seed;
   await page
     .getByTestId("collection-section-available")
     .getByTestId("collection-ask")
@@ -175,14 +160,12 @@ When("I follow the first available source's ask link", async ({ page }) => {
 });
 
 Then("the chat opens with that source's question in the composer", async ({ page }) => {
-  const seed = (page as { __askSeed?: string }).__askSeed;
-  expect(seed).toBeTruthy();
-  await expect(page.getByTestId("composer")).toHaveValue(seed!);
+  await expect(page.getByTestId("composer")).toHaveValue(FIRST_ASK_ID);
   await expect(page).toHaveURL(/\/$/);
 });
 
 Then("the chat URL carries no question param", async ({ page }) => {
-  // The param is consumed (stripped) on read, so a refresh cannot re-seed it.
+  // The param was consumed on read, so a refresh cannot re-seed it.
   await expect(page).toHaveURL((url) => url.search === "");
 });
 
@@ -202,7 +185,7 @@ Then("the first available source's ask link is in English", async ({ page }) => 
   const q = new URL((await link.getAttribute("href"))!, "http://127.0.0.1:8787").searchParams.get(
     "q",
   );
-  expect(q).toBe("What does the Quran say about patience?");
+  expect(q).toBe(FIRST_ASK_EN);
 });
 
 Then("the chat composer is empty", async ({ page }) => {

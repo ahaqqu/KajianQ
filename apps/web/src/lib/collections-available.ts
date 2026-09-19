@@ -63,7 +63,7 @@ export const COLLECTION_AVAILABLE: readonly CollectionEntry[] = [
     },
     ask: {
       en: 'What is the root of the word "sabr" in the Quran?',
-      id: 'Apa akar kata "sabr" dalam Al-Qur\'an?',
+      id: 'Apa akar kata "sabar" dalam Al-Qur\'an?',
     },
   },
   {
