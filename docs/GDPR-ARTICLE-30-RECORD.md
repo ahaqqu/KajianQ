@@ -57,6 +57,11 @@ processors (Art. 4(8)).
 | P4  | Improve answer quality from trace-anchored feedback                                      | Anonymous visitors | Optional free-text feedback; rating; Trace anchor                            | Art. 6(1)(f)            | Follows P1 (cascade-deleted with the user)                                      |
 | P5  | Durability of the paid corpus and disaster recovery                                      | Anonymous visitors | Full-database backup (contains P1/P4 rows); snapshot archives                | Art. 6(1)(f)            | 30-day rolling backups; superseded snapshots 30 days after a successor verifies |
 
+The Art. 6 basis is **indicative, not a legal determination**: it records the
+operator's working assumption for each activity and is one of the items the
+owner confirms. Where an activity carries Art. 9 content, the further Art. 9(2)
+condition is addressed in §5 and the DPIA-lite note.
+
 Processing with **no personal data** (recorded for completeness, out of Art. 30(1)
 scope): corpus ingestion and translation (`ingest:quran`, `ingest:hadith`,
 `ingest:kitab`) and the eval harness run against corpus text, and the Golden Set
@@ -81,9 +86,10 @@ anonymous user is a `users` row; everything they own references it with
 | Full-database backup                              | Encrypted backup target, key held outside the repo                                      | Contains all of the above. Encrypted at rest, 30-day rolling, restores re-apply erasure (ADR-0043 decision 4).                                                                        |
 | Snapshot archive (`pre-ingest-*`/`post-ingest-*`) | ObjectStore snapshot prefix (R2 today)                                                  | A whole-database `pg_dump`, so it already carries `users`/`sessions`/`chat_*`/`answer_traces`/`feedback`. Flagged as a personal-data-bearing location in ADR-0043 decision 5.         |
 
-The client stores the session id and token (plus theme and language preference)
-in `localStorage`; there are **no cookies** and no client-side persistence layer
-beyond that.
+The client stores the session id and token (plus the theme preference) in
+`localStorage` under the `kajianq.*` keys; the selected language is in-memory
+shell state today, not persisted. There are **no cookies** and no client-side
+persistence layer beyond that.
 
 ## 5. Special-category data (Art. 9)
 
