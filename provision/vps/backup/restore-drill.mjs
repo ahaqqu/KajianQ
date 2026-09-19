@@ -104,6 +104,25 @@ function run(cmd, args, env = {}) {
 
 const psql = (url, statement, extra = []) =>
   run("psql", ["-At", "-v", "ON_ERROR_STOP=1", ...extra, "-c", statement], pgEnv(url));
+// Statements carrying psql variables (`:'var'`) must go through script input,
+// not `-c`: substitution only happens for script input. This one runs the
+// erasure statement from stdin with the id bound as a variable.
+const psqlVar = (url, statement, extra = []) => {
+  const res = spawnSync("psql", ["-At", "-v", "ON_ERROR_STOP=1", ...extra, "-f", "-"], {
+    env: { ...process.env, ...pgEnv(url) },
+    encoding: "utf8",
+    input: statement,
+  });
+  if (res.error) fail(`psql could not run: ${res.error.message}`);
+  if (res.status !== 0) {
+    fail(
+      `psql exited ${res.status}\n` +
+        `  stdout: ${(res.stdout || "").trim()}\n` +
+        `  stderr: ${(res.stderr || "").trim()}`,
+    );
+  }
+  return (res.stdout || "").trim();
+};
 const psqlFile = (url, file) =>
   run("psql", ["-At", "-v", "ON_ERROR_STOP=1", "-f", file], pgEnv(url));
 
@@ -244,7 +263,7 @@ console.log(
 // resurrect data, which is the thing the ADR's clause exists to catch).
 // ---------------------------------------------------------------------------
 for (const statement of RECLAIM_SQL) psql(sourceUrl, statement);
-psql(sourceUrl, erasureSql(), erasurePsqlArgs(SUBJECT));
+psqlVar(sourceUrl, erasureSql(), erasurePsqlArgs(SUBJECT));
 const liveCounts = tableCounts(sourceUrl);
 console.log(`restore-drill: live state after reclamation + Art. 17 erasure (${SOURCE_DB})`);
 
