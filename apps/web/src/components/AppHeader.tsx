@@ -1,24 +1,75 @@
-import type { ReactNode } from "react";
-import { t, useLocale, useLocaleSetter } from "../lib/i18n";
+import { useRouterState } from "@tanstack/react-router";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { type Locale, t, useLocale, useLocaleSetter } from "../lib/i18n";
 import { useTheme } from "../lib/theme";
-import { LogoTile, MonoLabel } from "./ui";
+import { LogoTile, MonoLabel, NavLinks } from "./ui";
 
 /**
  * The app header (the reference design's): logo tile + serif-italic wordmark
- * over a mono uppercase letter-spaced tagline; the right side carries the
- * circular theme toggle and the language select, plus any route action (the
- * chat adds its "new conversation" pill). The wordmark is the product name —
- * always KajianQ. On small screens the wordmark block compresses (min-w-0,
- * truncated tagline) so the pill keeps the reference's single line
- * (thermo-review C3).
+ * over a mono uppercase letter-spaced tagline; the primary nav (Chat,
+ * Collection, About) inline on sm+ screens; and on the right the circular theme
+ * toggle and the language select, plus any route action (the chat adds its "new
+ * conversation" pill). The wordmark is the product name — always KajianQ.
+ * Below sm the nav collapses into a burger button that toggles a disclosure
+ * menu (aria-expanded + aria-controls, aria-label from i18n, keyboard
+ * reachable, closed automatically when the route changes); the wordmark block
+ * compresses (min-w-0, truncated tagline) so the controls keep the reference's
+ * single line (thermo-review C3).
  */
 export function AppHeader({ actions }: { actions?: ReactNode }) {
   const locale = useLocale();
   const setLocale = useLocaleSetter();
   const { theme, toggle } = useTheme();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  // A menu left open would cover the page its own link just opened, so close
+  // it whenever the route changes (the router state read is required for that
+  // close-on-navigate behavior — this component cannot render outside a
+  // router; tests go through `renderApp`/`wrapInRouter`).
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
+
+  // Keyboard contract for the disclosure (thermo-review A3): Escape closes and
+  // returns focus to the toggle, and focus leaving the toggle+menu subtree
+  // closes it, so Tab from the last menu link cannot strand the open menu
+  // (absolutely positioned over the page) without the user noticing. The
+  // focusout listener sits on the header container because the menu is a
+  // sibling of the controls row — the containment check must cover both.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const container = menuRef.current;
+    if (!container) return;
+    const inDisclosure = (node: Node | null) =>
+      node !== null &&
+      (node === container.querySelector('[data-testid="nav-menu-toggle"]') ||
+        (container.querySelector('[data-testid="nav-menu"]')?.contains(node) ?? false));
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+        container.querySelector<HTMLButtonElement>('[data-testid="nav-menu-toggle"]')?.focus();
+      }
+    };
+    const onFocusOut = (event: FocusEvent) => {
+      if (inDisclosure(event.target as Node) && !inDisclosure(event.relatedTarget as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    container.addEventListener("focusout", onFocusOut);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      container.removeEventListener("focusout", onFocusOut);
+    };
+  }, [menuOpen]);
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-4 py-4 sm:gap-3">
+    <div
+      className="relative mx-auto flex w-full max-w-3xl items-center gap-2 px-4 py-4 sm:gap-3"
+      ref={menuRef}
+    >
       <LogoTile size="md" />
       <div className="min-w-0">
         <p className="truncate font-serif text-[22px] font-semibold italic leading-tight">
@@ -26,8 +77,24 @@ export function AppHeader({ actions }: { actions?: ReactNode }) {
         </p>
         <MonoLabel className="truncate">{t(locale, "tagline")}</MonoLabel>
       </div>
+
+      <nav aria-label={t(locale, "navLabel")} className="ml-4 hidden sm:block">
+        <NavLinks locale={locale} />
+      </nav>
+
       <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
         {actions}
+        <button
+          type="button"
+          data-testid="nav-menu-toggle"
+          aria-expanded={menuOpen}
+          aria-controls="primary-nav-menu"
+          aria-label={t(locale, menuOpen ? "navMenuClose" : "navMenuOpen")}
+          onClick={() => setMenuOpen((open) => !open)}
+          className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border text-foreground hover:bg-card focus:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:hidden"
+        >
+          {menuOpen ? <CloseIcon /> : <BurgerIcon />}
+        </button>
         <button
           type="button"
           data-testid="theme-toggle"
@@ -42,13 +109,40 @@ export function AppHeader({ actions }: { actions?: ReactNode }) {
           value={locale}
           aria-label={t(locale, "localeLabel")}
           data-testid="locale-select"
-          onChange={(e) => setLocale(e.target.value as "en" | "id")}
+          onChange={(e) => setLocale(e.target.value as Locale)}
         >
           <option value="en">EN</option>
           <option value="id">ID</option>
         </select>
       </div>
+
+      {menuOpen && (
+        <nav
+          id="primary-nav-menu"
+          aria-label={t(locale, "navLabel")}
+          data-testid="nav-menu"
+          className="absolute top-full right-4 left-4 z-40 rounded-xl border border-border bg-card p-2 shadow-lg sm:hidden"
+        >
+          <NavLinks locale={locale} stacked />
+        </nav>
+      )}
     </div>
+  );
+}
+
+function BurgerIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="size-4">
+      <path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="size-4">
+      <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+    </svg>
   );
 }
 

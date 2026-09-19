@@ -1,0 +1,51 @@
+Feature: About and Collection pages
+  As a visitor
+  I want to read what KajianQ is and what it draws on
+  So that I can judge the product and its sources before trusting an answer
+
+  Scenario: The header reaches both pages from the chat
+    When I open the home page
+    Then I see the primary navigation
+    When I follow the "Koleksi" nav link
+    Then I see the collection page
+    When I follow the "Tentang" nav link
+    Then I see the about page
+
+  Scenario: The burger menu opens on a small screen and navigates
+    When I open the collection page on a small screen
+    Then the navigation is collapsed into a burger button
+    When I open the burger menu
+    Then I see the nav links in the menu
+    When I follow the "Tentang" link in the menu
+    Then the burger menu is closed
+    And I see the about page
+
+  Scenario: The collection page separates available from planned sources
+    When I open the collection page
+    Then I see an entry marked "Tersedia" for the Uthmani Quran text
+    And I see a planned Kitab entry
+    And the planned entries carry their registered reference
+
+  Scenario: The collection tabs filter the register
+    When I open the collection page
+    And I choose the "Tafsir" collection tab
+    Then only planned entries remain
+    And the "Tafsir" tab is the active filter
+    When I choose the "Semua" collection tab
+    Then the full register is shown again
+
+  Scenario: Both pages follow the language switch
+    When I open the collection page
+    And I switch the language to English
+    Then I see the collection page in English
+    When I open the about page
+    And I switch the language to English
+    Then I see the about page in English
+
+  Scenario: The collection page has no serious accessibility violations
+    When I open the collection page
+    Then the page has no serious accessibility violations
+
+  Scenario: The about page has no serious accessibility violations
+    When I open the about page
+    Then the page has no serious accessibility violations
