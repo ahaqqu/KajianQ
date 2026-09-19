@@ -205,18 +205,13 @@ async function main() {
 
     // 3. Encrypted upload. restic encrypts client-side with the repository key
     //    held outside the repo; the target therefore stores ciphertext only.
-    run("restic", [
-      "-r",
-      process.env.RESTIC_REPOSITORY,
-      "backup",
-      "--tag",
-      labelTag(label),
-      dumpPath,
-      manifestPath,
-    ]);
+    //    The repository comes from RESTIC_REPOSITORY in the environment, never
+    //    argv: a repository URL that embeds storage credentials (s3://,
+    //    sftp://) would otherwise be readable in the process table.
+    run("restic", ["backup", "--tag", labelTag(label), dumpPath, manifestPath]);
 
     // 4. Rolling retention — the only deletion path.
-    run("restic", ["-r", process.env.RESTIC_REPOSITORY, ...retentionArgs(keepDaily)]);
+    run("restic", retentionArgs(keepDaily));
 
     console.log(
       [

@@ -71,6 +71,21 @@ if [ ! -f "${ENV_FILE}" ]; then
     exit 1
 fi
 
+# The env file is executed with root privileges, so it must be root-owned and
+# readable only by root before it is sourced: a group/world-writable file
+# would let any local user inject commands that run as root on the next apply.
+# Fail closed on the first apply rather than trusting the runbook's chmod.
+env_owner="$(stat -c '%U:%G' "${ENV_FILE}")"
+env_mode="$(stat -c '%a' "${ENV_FILE}")"
+if [ "${env_owner}" != "root:root" ]; then
+    echo "apply: ${ENV_FILE} is owned by ${env_owner} — must be root:root before sourcing" >&2
+    exit 1
+fi
+if [ "$((0#${env_mode} & 077))" -ne 0 ]; then
+    echo "apply: ${ENV_FILE} is mode ${env_mode} — must be 0600 or tighter (no group/other bits)" >&2
+    exit 1
+fi
+
 # shellcheck source=/dev/null
 . "${ENV_FILE}"
 
@@ -145,11 +160,27 @@ fi
 
 # --- API service ------------------------------------------------------------
 run install -o root -g root -m 0644 "${SRC}/systemd/kajianq-api.service" /etc/systemd/system/kajianq-api.service
+
+# --- backup schedule --------------------------------------------------------
+# The backup script lives in the checked-out repository; the service unit
+# carries a placeholder because systemd does not expand variables in
+# ExecStart, so the real path is rendered here like every other substitute.
+if [ ! -f "${SRC}/backup/kajianq-backup.mjs" ]; then
+    echo "apply: ${SRC}/backup/kajianq-backup.mjs not found — the backup unit needs the repository checkout" >&2
+    exit 1
+fi
+render "${SRC}/systemd/kajianq-backup.service" /etc/systemd/system/kajianq-backup.service
+run install -o root -g root -m 0644 "${SRC}/systemd/kajianq-backup.timer" /etc/systemd/system/kajianq-backup.timer
 run systemctl daemon-reload
 # Enabled, not started: the API needs its env file and the GDPR-E (#181)
 # cutover before it can serve. Enabling now means the box comes up hardened
 # instead of accidentally serving with default logging.
 run systemctl enable kajianq-api.service
+# The timer is enabled --now: backups must exist for the restore drill to be
+# meaningful, and a timer that waits for a manual start is the failure B2
+# guards against. The first backup is still run by hand (runbook step 5) so
+# the one-time `restic init` is observed before any scheduled run.
+run systemctl enable --now kajianq-backup.timer
 
-log "done. Verify with: systemctl status kajianq-api; logrotate --debug /etc/logrotate.d/kajianq-proxy"
-log "next: the one-time backup-repository init in docs/VPS-HARDENING-RUNBOOK.md"
+log "done. Verify with: systemctl status kajianq-api; systemctl list-timers kajianq-backup.timer; logrotate --debug /etc/logrotate.d/kajianq-proxy"
+log "next: the one-time backup-repository init in docs/VPS-HARDENING-RUNBOOK.md (before the timer's first scheduled run)"

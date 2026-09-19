@@ -35,7 +35,7 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { RECLAIM_SQL, erasureSql } from "./lib.mjs";
+import { RECLAIM_SQL, erasurePsqlArgs, erasureSql } from "./lib.mjs";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
@@ -102,8 +102,8 @@ function run(cmd, args, env = {}) {
   return (res.stdout || "").trim();
 }
 
-const psql = (url, statement) =>
-  run("psql", ["-At", "-v", "ON_ERROR_STOP=1", "-c", statement], pgEnv(url));
+const psql = (url, statement, extra = []) =>
+  run("psql", ["-At", "-v", "ON_ERROR_STOP=1", ...extra, "-c", statement], pgEnv(url));
 const psqlFile = (url, file) =>
   run("psql", ["-At", "-v", "ON_ERROR_STOP=1", "-f", file], pgEnv(url));
 
@@ -229,7 +229,7 @@ const backupEnv = {
 // One-time repository creation is a runbook step on the VPS
 // (docs/VPS-HARDENING-RUNBOOK.md); the drill does it here so the run is
 // self-contained.
-run("restic", ["-r", REPO_DIR, "init"], { RESTIC_PASSWORD: "drill-passphrase" });
+run("restic", ["init"], { RESTIC_REPOSITORY: REPO_DIR, RESTIC_PASSWORD: "drill-passphrase" });
 const backupOut = run("bun", [`${HERE}kajianq-backup.mjs`, "--label", LABEL], backupEnv);
 console.log("restore-drill: backup complete");
 console.log(
@@ -244,7 +244,7 @@ console.log(
 // resurrect data, which is the thing the ADR's clause exists to catch).
 // ---------------------------------------------------------------------------
 for (const statement of RECLAIM_SQL) psql(sourceUrl, statement);
-psql(sourceUrl, erasureSql(SUBJECT));
+psql(sourceUrl, erasureSql(), erasurePsqlArgs(SUBJECT));
 const liveCounts = tableCounts(sourceUrl);
 console.log(`restore-drill: live state after reclamation + Art. 17 erasure (${SOURCE_DB})`);
 

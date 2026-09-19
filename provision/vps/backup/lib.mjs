@@ -151,10 +151,58 @@ export const RECLAIM_SQL = [
   "DELETE FROM users WHERE kind = 'anonymous' AND NOT EXISTS (SELECT 1 FROM sessions WHERE sessions.user_id = users.id)",
 ];
 
-/** The Art. 17 cascade, parameterised by user id (never interpolated by string). */
-export function erasureSql(userId) {
+/**
+ * The Art. 17 cascade — the same statement production `deleteUserCascade`
+ * runs (`packages/infra/src/rag-store-neon-session.ts`), with the user id
+ * bound, never interpolated into the statement text. The id travels as a psql
+ * variable (`-v uid=…` + `:'uid'`), so it is quoted by psql and the statement
+ * text is fixed — a unit test normalizes this statement and the adapter's to
+ * the same text, so the restore path cannot drift from production erasure.
+ */
+export function erasureSql() {
+  return "DELETE FROM users WHERE id = :'uid'";
+}
+
+/** psql args binding the user id for `erasureSql()`; a non-UUID is refused. */
+export function erasurePsqlArgs(userId) {
   if (!/^[0-9a-fA-F-]{36}$/.test(String(userId ?? ""))) fail("erasure needs a UUID user id");
-  return `DELETE FROM users WHERE id = '${userId}'`;
+  return ["-v", `uid=${String(userId)}`];
+}
+
+/**
+ * The database LOCATION a connection URL names — protocol, host, port (5432
+ * when omitted) and database name. Credentials and query parameters are
+ * dropped: sslmode and friends change how a connection is made, not which
+ * database it reaches. Throws on anything that is not a parseable
+ * postgres:// URL, so a comparison built on it fails closed.
+ */
+export function dbLocation(url) {
+  let u;
+  try {
+    u = new URL(String(url ?? ""));
+  } catch {
+    fail(`not a parseable connection URL: ${JSON.stringify(String(url ?? ""))}`);
+  }
+  const protocol = u.protocol === "postgresql:" ? "postgres:" : u.protocol;
+  if (protocol !== "postgres:") fail(`not a postgres:// URL (got ${u.protocol})`);
+  const database = (u.pathname || "").replace(/^\//, "") || "postgres";
+  return { protocol, host: u.hostname, port: u.port || "5432", database };
+}
+
+/**
+ * True when two connection URLs name the same database, even when written
+ * differently (default port omitted, postgresql:// scheme, other credentials
+ * or query order). This is the `--target-url`-must-not-be-the-live-URL guard:
+ * string equality would both miss an equal database written differently and
+ * compare secrets. Used by kajianq-restore.mjs to refuse restoring over the
+ * live store (ADR-0043 decision 4).
+ */
+export function isSameDatabase(a, b) {
+  const key = (url) => {
+    const l = dbLocation(url);
+    return `${l.protocol}|${l.host}|${l.port}|${l.database}`;
+  };
+  return key(a) === key(b);
 }
 
 /** Compact rows/tables line for console output. */

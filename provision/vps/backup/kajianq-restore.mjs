@@ -9,9 +9,13 @@
  * This is the documented restore procedure, as a script rather than folklore.
  * It is deliberately NOT able to write to the live database:
  *
- *   - `--target-url` is required and must not equal PGDATABASE_URL; the archive
- *     is restored into a scratch cluster (a separate Postgres, or a fresh
- *     database on the same server), never over the store that is serving.
+ *   - `--target-url` is required, PGDATABASE_URL is required with it, and the
+ *     target must not name the same database as PGDATABASE_URL (compared by
+ *     normalized location — host, port, database name — not raw string); the
+ *     archive is restored into a scratch cluster (a separate Postgres, or a
+ *     fresh database on the same server), never over the store that is
+ *     serving. Credentials never reach argv: pg_restore gets the database
+ *     name only and reads the rest from the PG* environment.
  *   - The dump is decrypted by restic (the key is the repo key, outside the
  *     repo), re-hashed, and compared to the manifest before anything is
  *     restored — a corrupted archive stops here instead of producing a
@@ -31,8 +35,11 @@ import { spawnSync } from "node:child_process";
 import {
   RECLAIM_SQL,
   assertManifest,
+  dbLocation,
+  erasurePsqlArgs,
   erasureSql,
   formatCounts,
+  isSameDatabase,
   missingEnv,
   parseEnvFile,
   readLabel,
@@ -88,6 +95,10 @@ function tableCounts(url) {
   return counts;
 }
 
+// The Art. 17 statement is fixed text with the user id bound as a psql
+// variable (see lib.mjs) — the id never becomes part of the statement.
+const ERASE_SQL = erasureSql();
+
 async function main() {
   const argv = process.argv.slice(2);
   const envFile = argAfter(argv, "--env-file");
@@ -102,10 +113,22 @@ async function main() {
   const targetUrl = argAfter(argv, "--target-url");
   if (!targetUrl)
     fail("--target-url is required — a restore never targets the live URL implicitly");
-  if (process.env.PGDATABASE_URL && targetUrl === process.env.PGDATABASE_URL) {
+  // The live-URL refusal needs PGDATABASE_URL: the restore must know what it
+  // must not touch. Comparing the normalized database location (host, port
+  // with its 5432 default, database name — never credentials or query order)
+  // instead of the raw strings, so a URL that names the live database in a
+  // different spelling is still refused, and a scratch URL written with a
+  // different password or sslmode is not.
+  if (!process.env.PGDATABASE_URL)
     fail(
-      "--target-url equals PGDATABASE_URL — refusing. Restore into a scratch location; " +
-        "restoring over the live store would resurrect erased data (ADR-0043 decision 4).",
+      "PGDATABASE_URL is required — the live URL must be configured so the " +
+        "--target-url guard can refuse a restore over the store that is serving",
+    );
+  if (isSameDatabase(targetUrl, process.env.PGDATABASE_URL)) {
+    fail(
+      "--target-url names the live database (PGDATABASE_URL) — refusing. " +
+        "Restore into a scratch location; restoring over the live store would " +
+        "resurrect erased data (ADR-0043 decision 4).",
     );
   }
   const eraseUser = argAfter(argv, "--erase-user");
@@ -120,17 +143,9 @@ async function main() {
 
   const tmp = mkdtempSync(join(process.env.TMPDIR ?? "/tmp", "kajianq-restore-"));
   try {
-    // 1. Decrypt out of restic into the private temp dir.
-    run("restic", [
-      "-r",
-      process.env.RESTIC_REPOSITORY,
-      "restore",
-      "latest",
-      "--tag",
-      `label:${label}`,
-      "--target",
-      tmp,
-    ]);
+    // 1. Decrypt out of restic into the private temp dir. The repository comes
+    //    from RESTIC_REPOSITORY in the environment, never argv.
+    run("restic", ["restore", "latest", "--tag", `label:${label}`, "--target", tmp]);
 
     // 2. Read + validate the manifest and re-hash the decrypted dump. The
     //    hash is the integrity check the manifest exists for; without it the
@@ -148,10 +163,21 @@ async function main() {
     }
 
     // 3. Restore into the scratch target. --clean --if-exists makes the drill
-    //    re-runnable; it only ever touches --target-url.
+    //    re-runnable; it only ever touches --target-url. The database name
+    //    alone goes to -d: the rest of the connection travels as libpq env
+    //    vars (below), so the password is never on the command line where
+    //    `ps` would expose it.
     run(
       "pg_restore",
-      ["--clean", "--if-exists", "--no-owner", "--no-privileges", "-d", targetUrl, dumpPath],
+      [
+        "--clean",
+        "--if-exists",
+        "--no-owner",
+        "--no-privileges",
+        "-d",
+        dbLocation(targetUrl).database,
+        dumpPath,
+      ],
       { env: { ...process.env, ...pgEnv(targetUrl) } },
     );
 
@@ -175,7 +201,7 @@ async function main() {
     //    arrived after the backup.
     if (!skipErasure) {
       for (const statement of RECLAIM_SQL) psql(targetUrl, statement);
-      if (eraseUser) psql(targetUrl, erasureSql(eraseUser));
+      if (eraseUser) psql(targetUrl, ERASE_SQL, erasurePsqlArgs(eraseUser));
     }
 
     console.log(

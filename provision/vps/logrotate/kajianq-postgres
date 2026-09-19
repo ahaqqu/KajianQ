@@ -5,7 +5,9 @@
 # it compresses the closed day and enforces the window. The pair is deliberate —
 # the server writes one file per day, logrotate deletes the 15th.
 #
-#   daily / rotate 14  — 14 daily segments kept, matching the proxy policy
+#   daily / rotate 13  — the current day + 13 rotated segments = 14 calendar
+#                        days in total, matching the proxy policy and the
+#                        window the ADR and the Art. 30 record declare
 #   maxsize 100M       — a day of connection churn cannot fill the disk
 #   copytruncate       — Postgres never reopens its log file, so the contents
 #                        are copied then truncated in place; without this the
@@ -21,7 +23,7 @@
 
 /var/log/postgresql/*.log {
     daily
-    rotate 14
+    rotate 13
     maxsize 100M
     compress
     delaycompress
