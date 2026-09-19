@@ -1,58 +1,17 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { parseDecisionBenchFixture } from "@app/contracts";
+import { parseDecisionBenchFixture, type DecisionBenchPrompts } from "@app/contracts";
 import { DECISION_BENCH_PROMPTS } from "./decision-bench-prompts";
 
 /**
  * The checked-in fixture must stay valid against the shared contract — a
  * fixture that drifts from the schema fails here, not at bench time after
- * spend. And the prompt templates must be structurally compatible with the
- * eval engine's DecisionBenchPrompts shape (checked structurally: the
- * domain pack must not import @app/eval — dependency direction).
+ * spend. The prompt templates are typed by the shared contracts type
+ * (DecisionBenchPrompts), so a drift from the engine's expected shape is a
+ * compile error here, not a bench-time surprise.
  */
 
 const FIXTURE_PATH = new URL("../fixtures/decision-bench-v0.json", import.meta.url);
-
-// The structural shape the eval engine expects (duplicated from
-// @app/eval's DecisionBenchPrompts — the domain pack cannot import it).
-type PromptsShape = {
-  relevance: {
-    instructions: (c: {
-      id: string;
-      language: string;
-      query: string;
-      passage: string;
-      relevant: boolean;
-    }) => string;
-    criteria: { true: string; false: string };
-  };
-  rerank: {
-    instructions: (c: {
-      id: string;
-      language: string;
-      query: string;
-      candidates: string[];
-      bestIndex: number;
-    }) => string;
-    criteria: (c: {
-      id: string;
-      language: string;
-      query: string;
-      candidates: string[];
-      bestIndex: number;
-    }) => Record<string, string | null>;
-  };
-  citation: {
-    instructions: (c: {
-      id: string;
-      language: string;
-      claim: string;
-      passage: string;
-      supports: boolean;
-    }) => string;
-    criteria: { true: string; false: string };
-  };
-};
 
 function loadFixture() {
   return parseDecisionBenchFixture(JSON.parse(readFileSync(FIXTURE_PATH, "utf8")));
@@ -86,7 +45,7 @@ describe("decision-bench fixture", () => {
   });
 
   it("prompt templates are structurally compatible with the engine's DecisionBenchPrompts", () => {
-    const prompts: PromptsShape = DECISION_BENCH_PROMPTS;
+    const prompts: DecisionBenchPrompts = DECISION_BENCH_PROMPTS;
     expect(prompts.relevance.instructions).toBeTypeOf("function");
     expect(prompts.relevance.criteria.true).toBeTypeOf("string");
     expect(

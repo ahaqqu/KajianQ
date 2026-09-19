@@ -72,6 +72,7 @@ export {
   parseDecisionBenchFixture,
   type CitationCase,
   type DecisionBenchFixture,
+  type DecisionBenchPrompts,
   type DecisionTask,
   type RelevanceCase,
   type RerankCase,

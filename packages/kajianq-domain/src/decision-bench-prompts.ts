@@ -1,4 +1,4 @@
-import type { CitationCase, RelevanceCase, RerankCase } from "@app/contracts";
+import type { CitationCase, DecisionBenchPrompts, RelevanceCase, RerankCase } from "@app/contracts";
 
 /**
  * Decision-bench prompt templates (ADR-0042): the per-task question wording
@@ -29,8 +29,8 @@ export const CITATION_CRITERIA = {
   false: "The passage does not state or support the claim",
 } as const;
 
-/** Structurally identical to `@app/eval`'s DecisionBenchPrompts. */
-export const DECISION_BENCH_PROMPTS = {
+/** The shared prompt-template shape (contracts owns it — B5). */
+export const DECISION_BENCH_PROMPTS: DecisionBenchPrompts = {
   relevance: {
     instructions: (_c: RelevanceCase) => RELEVANCE_INSTRUCTIONS,
     criteria: { ...RELEVANCE_CRITERIA },
@@ -43,4 +43,4 @@ export const DECISION_BENCH_PROMPTS = {
     instructions: (_c: CitationCase) => CITATION_INSTRUCTIONS,
     criteria: { ...CITATION_CRITERIA },
   },
-} as const;
+};

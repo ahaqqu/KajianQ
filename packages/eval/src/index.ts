@@ -76,6 +76,7 @@ export {
 export {
   DECISION_GATE_FLOORS,
   accuracyByLanguage,
+  accuracyByTask,
   evaluateDecisionGate,
   meanAccuracy,
   runDecisionBench,
@@ -85,5 +86,4 @@ export {
   type CaseOutcome,
   type DecisionBenchPrompts,
   type DecisionGate,
-  type TaskCell,
 } from "./decision-bench";

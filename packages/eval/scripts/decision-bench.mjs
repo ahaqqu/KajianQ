@@ -81,48 +81,72 @@ if (deciders.length === 0) {
 const budget = new evalpkg.Budget(config.budgetCapMicroUsd);
 logger.info("budget configured", { budgetCapMicroUsd: config.budgetCapMicroUsd ?? null });
 
+/** Write the report file from whatever state exists — the failure path
+ * owes a citable report too (thermo A2): recorded spend and completed
+ * outcomes are never lost to an abort or vendor failure. */
+const writeReport = (aborted) => {
+  const report = {
+    id: "decision-bench-v0",
+    fixtureId: fixture.id,
+    fixtureStatus: fixture.status,
+    cases: caseCount,
+    languages,
+    aborted: aborted === true,
+    gateFloors: evalpkg.DECISION_GATE_FLOORS,
+    candidates: results,
+    budget: { capMicroUsd: config.budgetCapMicroUsd ?? null, totalMicroUsd: budget.total },
+    finishedAt: new Date().toISOString(),
+  };
+  const reportPath = fromCwd(config.reportPath);
+  mkdirSync(dirname(reportPath), { recursive: true });
+  writeFileSync(reportPath, JSON.stringify(report, null, 2) + "\n");
+  logger.warn("partial report written (run aborted)", { reportPath: config.reportPath });
+};
+
 const results = [];
-for (const { modelId, decider } of deciders) {
-  logger.info("running candidate", { modelId });
-  const outcomes = [];
-  try {
-    const run = await evalpkg.runDecisionBench({
-      decider,
-      fixture,
-      prompts: domain.DECISION_BENCH_PROMPTS,
-      onCost: (cost) => {
-        budget.add(cost.costMicroUsd);
-        budget.check();
-      },
-      wouldExceed: () => budget.wouldExceed(),
-      log: logger,
-    });
-    outcomes.push(...run);
-  } catch (err) {
-    if (err instanceof evalpkg.BudgetExceededError) {
-      logger.error("budget exceeded — aborting candidate", { modelId });
-      throw err;
+try {
+  for (const { modelId, decider } of deciders) {
+    logger.info("running candidate", { modelId });
+    let outcomes;
+    try {
+      outcomes = await evalpkg.runDecisionBench({
+        decider,
+        fixture,
+        prompts: domain.DECISION_BENCH_PROMPTS,
+        onCost: (cost) => {
+          budget.add(cost.costMicroUsd);
+          budget.check();
+        },
+        wouldExceed: () => budget.wouldExceed(),
+        log: logger,
+      });
+    } catch (err) {
+      // Budget abort or vendor failure: the partial report still lands
+      // (thermo A2), then the run exits non-zero — an aborted gate may
+      // never read as a passed one.
+      writeReport(true);
+      if (err instanceof evalpkg.BudgetExceededError) {
+        logger.error("budget exceeded — aborting run", { modelId });
+      } else {
+        logger.error(`decision-bench: candidate ${modelId} failed: ${String(err?.message ?? err)}`);
+      }
+      process.exit(1);
     }
-    fail(`decision-bench: candidate ${modelId} failed: ${String(err?.message ?? err)}`);
+    const gate = evalpkg.evaluateDecisionGate(outcomes);
+    const perLanguage = evalpkg.accuracyByLanguage(outcomes);
+    const perTask = evalpkg.accuracyByTask(outcomes);
+    results.push({ modelId, gate, perLanguage, perTask, outcomes });
+    logger.info("candidate scored", {
+      modelId,
+      gatePass: gate.gatePass,
+      overallAccuracy: evalpkg.meanAccuracy(outcomes),
+      failedLanguages: gate.failedLanguages,
+    });
   }
-  const gate = evalpkg.evaluateDecisionGate(outcomes);
-  const perLanguage = evalpkg.accuracyByLanguage(outcomes);
-  const perTask = ["relevance", "rerank", "citation"].map((task) => {
-    // Task labels are reconstructed from case-id prefixes (rel-/rr-/cit-);
-    // the fixture owns the ids, so the convention is recorded in the ADR.
-    const prefix = { relevance: "rel-", rerank: "rr-", citation: "cit-" }[task];
-    const cells = outcomes.filter((o) => o.caseId.startsWith(prefix));
-    const accuracy =
-      cells.length === 0 ? null : cells.filter((o) => o.passed).length / cells.length;
-    return { task, cases: cells.length, accuracy };
-  });
-  results.push({ modelId, gate, perLanguage, perTask, outcomes });
-  logger.info("candidate scored", {
-    modelId,
-    gatePass: gate.gatePass,
-    overallAccuracy: evalpkg.meanAccuracy(outcomes),
-    failedLanguages: gate.failedLanguages,
-  });
+} catch (err) {
+  // Belt-and-braces: any unexpected failure still owes the partial report.
+  writeReport(true);
+  throw err;
 }
 
 const report = {
@@ -131,6 +155,7 @@ const report = {
   fixtureStatus: fixture.status,
   cases: caseCount,
   languages,
+  aborted: false,
   gateFloors: evalpkg.DECISION_GATE_FLOORS,
   candidates: results,
   budget: { capMicroUsd: config.budgetCapMicroUsd ?? null, totalMicroUsd: budget.total },

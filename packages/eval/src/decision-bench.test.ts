@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DECISION_GATE_FLOORS,
   accuracyByLanguage,
+  accuracyByTask,
   evaluateDecisionGate,
   meanAccuracy,
   scoreCitationAnswer,
@@ -18,6 +19,7 @@ import {
 
 const outcome = (caseId: string, language: string, passed: boolean): CaseOutcome => ({
   caseId,
+  task: "relevance",
   language,
   expected: true,
   got: passed ? true : false,
@@ -38,6 +40,17 @@ describe("decision-bench scoring math", () => {
     ]);
     expect(by.ar).toEqual({ cases: 2, accuracy: 0.5 });
     expect(by.id).toEqual({ cases: 1, accuracy: 1 });
+  });
+
+  it("accuracyByTask groups by the outcome's task label, not case-id conventions", () => {
+    const rel = { ...outcome("any-id-shape-1", "en", true), task: "relevance" as const };
+    const rerank = { ...outcome("any-id-shape-2", "en", false), task: "rerank" as const };
+    const cells = accuracyByTask([rel, rerank]);
+    expect(cells).toEqual([
+      { task: "relevance", cases: 1, accuracy: 1 },
+      { task: "rerank", cases: 1, accuracy: 0 },
+      { task: "citation", cases: 0, accuracy: null },
+    ]);
   });
 
   it("answer scoring: noul threshold at 0.5, rerank by candidate key", () => {

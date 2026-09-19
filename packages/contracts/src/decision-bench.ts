@@ -60,6 +60,27 @@ export type RerankCase = v.InferOutput<typeof RerankCaseSchema>;
 export type CitationCase = v.InferOutput<typeof CitationCaseSchema>;
 
 /**
+ * The per-task question templates a decision-bench run consumes. Shared here
+ * (not in the eval engine) because both consumers sit across the dependency
+ * arrow: the domain pack authors the wording, the eval runner consumes it —
+ * contracts is the one package both already depend on.
+ */
+export type DecisionBenchPrompts = {
+  relevance: {
+    instructions: (c: RelevanceCase) => string;
+    criteria: { true: string; false: string };
+  };
+  rerank: {
+    instructions: (c: RerankCase) => string;
+    criteria: (c: RerankCase) => Record<string, string | null>;
+  };
+  citation: {
+    instructions: (c: CitationCase) => string;
+    criteria: { true: string; false: string };
+  };
+};
+
+/**
  * Parse an untrusted fixture payload, with the cross-field check the schema
  * cannot express: a rerank case's `bestIndex` must point at a real candidate
  * — a fixture whose ground truth dangles would score a correct answer as a

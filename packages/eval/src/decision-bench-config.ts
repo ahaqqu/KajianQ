@@ -1,18 +1,18 @@
-import * as v from "valibot";
 import {
-  DecisionBenchFixtureSchema,
   parseDecisionBenchFixture as parseWithCrossChecks,
   type DecisionBenchFixture,
 } from "@app/contracts";
 import { EvalConfigError } from "./eval-config";
+import { budgetCapFromEnv } from "./budget";
 
 /**
  * Decision-bench config + fixture loading (ADR-0042): same binder discipline
  * as `loadEmbedBenchConfig` — the env record is passed in, validated, and
  * typed before any spend; a malformed fixture fails the load, never a
  * silent skip (a fixture that silently drops cases lies about coverage).
- * The cross-field ground-truth check (rerank bestIndex in range) lives in
- * the shared contract's `parseDecisionBenchFixture`.
+ * One validation pass: the contract's `parseDecisionBenchFixture` does the
+ * schema parse AND the cross-field ground-truth check (rerank bestIndex in
+ * range); this module only wraps failures with the fixture's source label.
  */
 
 export class DecisionBenchLoadError extends Error {
@@ -26,18 +26,8 @@ export class DecisionBenchLoadError extends Error {
 
 /** Validate an already-parsed fixture object against the contract. */
 export function parseDecisionBenchFixture(raw: unknown, source = "inline"): DecisionBenchFixture {
-  const parsed = v.safeParse(DecisionBenchFixtureSchema, raw);
-  if (!parsed.success) {
-    throw new DecisionBenchLoadError(
-      source,
-      parsed.issues.map(
-        (i) => `${i.path?.map((p) => String(p.key)).join(".") ?? "?"}: ${i.message}`,
-      ),
-    );
-  }
   try {
-    // Structural pass done; now the contract's cross-field checks.
-    return parseWithCrossChecks(parsed.output);
+    return parseWithCrossChecks(raw);
   } catch (cause) {
     throw new DecisionBenchLoadError(source, [String(cause)]);
   }
@@ -74,16 +64,12 @@ export type DecisionBenchConfig = {
 export function loadDecisionBenchConfig(
   env: Record<string, string | undefined>,
 ): DecisionBenchConfig {
-  const rawCap = env.EVAL_BUDGET_MICRO_USD;
   let budgetCapMicroUsd: number | undefined;
-  if (rawCap !== undefined) {
-    const n = Number(rawCap.trim() === "" ? Number.NaN : rawCap);
-    if (!Number.isInteger(n) || n < 0) {
-      throw new EvalConfigError(
-        `EVAL_BUDGET_MICRO_USD must be a non-negative integer (0 = explicit opt-out), got "${rawCap}"`,
-      );
-    }
-    budgetCapMicroUsd = n;
+  try {
+    // The canonical fail-closed parse (ADR-0034 decision 2) — no local copy.
+    budgetCapMicroUsd = budgetCapFromEnv(env.EVAL_BUDGET_MICRO_USD);
+  } catch (cause) {
+    throw new EvalConfigError(String(cause instanceof Error ? cause.message : cause));
   }
   return {
     budgetCapMicroUsd,

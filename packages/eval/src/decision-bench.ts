@@ -1,4 +1,4 @@
-import type { CitationCase, DecisionBenchFixture, RelevanceCase, RerankCase } from "@app/contracts";
+import type { DecisionBenchFixture, DecisionBenchPrompts, DecisionTask } from "@app/contracts";
 import type { CostRecord, Decider } from "@app/rag-core";
 import { Effect } from "effect";
 
@@ -16,20 +16,14 @@ import { Effect } from "effect";
  * aligns one language fails its direction floors.
  */
 
-/** One scored case: the expected truth, the model's judgment, pass/fail. */
+/** One scored case: the task it belongs to, the truth, the judgment. */
 export type CaseOutcome = {
   caseId: string;
+  task: DecisionTask;
   language: string;
   expected: string | number | boolean;
   got: string | number | boolean;
   passed: boolean;
-};
-
-/** Accuracy over one task's cases (null when none ran). */
-export type TaskCell = {
-  task: "relevance" | "rerank" | "citation";
-  cases: number;
-  accuracy: number | null;
 };
 
 /** The gate floors (ADR-0042): overall ≥ 0.85 AND every language ≥ 0.75. */
@@ -71,6 +65,24 @@ export function accuracyByLanguage(
 }
 
 /**
+ * Group accuracy per task — outcomes carry their task label, so no
+ * case-id convention is relied on (a renamed id can never silently
+ * vanish from a task cell).
+ */
+export function accuracyByTask(
+  outcomes: readonly CaseOutcome[],
+): { task: DecisionTask; cases: number; accuracy: number | null }[] {
+  return (["relevance", "rerank", "citation"] as const).map((task) => {
+    const cells = outcomes.filter((o) => o.task === task);
+    return {
+      task,
+      cases: cells.length,
+      accuracy: cells.length === 0 ? null : cells.filter((o) => o.passed).length / cells.length,
+    };
+  });
+}
+
+/**
  * Evaluate the gate. Languages with fewer than `minCasesPerLanguage` scored
  * cases do not count for or against the per-language floor (a single-case
  * language would make the floor a coin flip) — but they are reported, so a
@@ -90,21 +102,8 @@ export function evaluateDecisionGate(outcomes: readonly CaseOutcome[]): Decision
   };
 }
 
-/** Instruction templates the domain pack supplies (opaque strings here). */
-export type DecisionBenchPrompts = {
-  relevance: {
-    instructions: (c: RelevanceCase) => string;
-    criteria: { true: string; false: string };
-  };
-  rerank: {
-    instructions: (c: RerankCase) => string;
-    criteria: (c: RerankCase) => Record<string, string | null>;
-  };
-  citation: {
-    instructions: (c: CitationCase) => string;
-    criteria: { true: string; false: string };
-  };
-};
+export type { DecisionBenchPrompts };
+
 /** The pure answer-reading logic, exported so tests pin the math. */
 export function scoreRelevanceAnswer(noul: number | undefined, relevant: boolean): boolean {
   if (noul === undefined || !Number.isFinite(noul)) return false;
@@ -138,82 +137,97 @@ export async function runDecisionBench({
 }): Promise<CaseOutcome[]> {
   const outcomes: CaseOutcome[] = [];
 
-  const decide = async (
-    id: string,
-    language: string,
-    state: string | Record<string, unknown> | unknown[],
-    questions: Record<string, Parameters<Decider["decide"]>[0]["questions"][string]>,
-    read: (
-      answers: Record<string, { type: string } & Record<string, unknown>>,
-    ) => string | number | boolean | undefined,
-    expected: string | number | boolean,
-    passed: (got: string | number | boolean | undefined) => boolean,
+  // One Noul question per case; the answer is read through the seam's typed
+  // union — no re-cast of the wire shape.
+  const runNoul = async (
+    task: "relevance" | "citation",
+    c: { id: string; language: string },
+    state: Record<string, unknown>,
+    question: { instructions: string; criteria: { true: string; false: string } },
+    key: string,
+    expected: boolean,
+    score: (noul: number | undefined) => boolean,
   ) => {
     if (wouldExceed()) {
-      log?.warn("budget cap hit — bench aborted", { caseId: id });
+      log?.warn("budget cap hit — bench aborted", { caseId: c.id });
       return;
     }
-    const result = await Effect.runPromise(decider.decide({ state, questions }));
+    const result = await Effect.runPromise(
+      decider.decide({
+        state,
+        questions: {
+          [key]: { type: "noul", instructions: question.instructions, criteria: question.criteria },
+        },
+      }),
+    );
     onCost(result.cost);
-    const got = read(result.answers as Record<string, { type: string } & Record<string, unknown>>);
-    outcomes.push({ caseId: id, language, expected, got: got ?? "n/a", passed: passed(got) });
+    const answer = result.answers[key];
+    const noul = answer?.type === "noul" ? answer.noul : undefined;
+    outcomes.push({
+      caseId: c.id,
+      task,
+      language: c.language,
+      expected,
+      got: noul ?? "n/a",
+      passed: score(noul),
+    });
   };
 
   for (const c of fixture.relevance) {
-    await decide(
-      c.id,
-      c.language,
+    await runNoul(
+      "relevance",
+      c,
       { query: c.query, passage: c.passage },
-      {
-        relevant: {
-          type: "noul",
-          instructions: prompts.relevance.instructions(c),
-          criteria: prompts.relevance.criteria,
-        },
-      },
-      (answers) => answers.relevant?.["noul"] as number | undefined,
+      { instructions: prompts.relevance.instructions(c), criteria: prompts.relevance.criteria },
+      "relevant",
       c.relevant,
-      (got) => scoreRelevanceAnswer(got as number | undefined, c.relevant),
+      (noul) => scoreRelevanceAnswer(noul, c.relevant),
     );
   }
 
   for (const c of fixture.rerank) {
+    if (wouldExceed()) {
+      log?.warn("budget cap hit — bench aborted", { caseId: c.id });
+      continue;
+    }
     const criteria: Record<string, string | null> = {};
     c.candidates.forEach((_, i) => {
       criteria[`c${i}`] = null;
     });
-    await decide(
-      c.id,
-      c.language,
-      { query: c.query, candidates: c.candidates },
-      {
-        best: {
-          type: "choice",
-          instructions: prompts.rerank.instructions(c),
-          criteria: { ...criteria, ...prompts.rerank.criteria(c) },
+    const result = await Effect.runPromise(
+      decider.decide({
+        state: { query: c.query, candidates: c.candidates },
+        questions: {
+          best: {
+            type: "choice",
+            instructions: prompts.rerank.instructions(c),
+            criteria: { ...criteria, ...prompts.rerank.criteria(c) },
+          },
         },
-      },
-      (answers) => answers.best?.["choice"] as string | undefined,
-      `c${c.bestIndex}`,
-      (got) => scoreRerankAnswer(got as string | undefined, c.bestIndex),
+      }),
     );
+    onCost(result.cost);
+    const answer = result.answers.best;
+    const choice = answer?.type === "choice" ? answer.choice : undefined;
+    outcomes.push({
+      caseId: c.id,
+      task: "rerank",
+      language: c.language,
+      expected: `c${c.bestIndex}`,
+      got: choice ?? "n/a",
+      passed: scoreRerankAnswer(choice, c.bestIndex),
+    });
   }
 
   for (const c of fixture.citation) {
-    await decide(
-      c.id,
-      c.language,
+    await runNoul(
+      "citation",
+      c,
       { claim: c.claim, passage: c.passage },
-      {
-        supports: {
-          type: "noul",
-          instructions: prompts.citation.instructions(c),
-          criteria: prompts.citation.criteria,
-        },
-      },
-      (answers) => answers.supports?.["noul"] as number | undefined,
+      { instructions: prompts.citation.instructions(c), criteria: prompts.citation.criteria },
+      "supports",
       c.supports,
-      (got) => scoreCitationAnswer(got as number | undefined, c.supports),
+      (noul) => scoreCitationAnswer(noul, c.supports),
     );
   }
 
