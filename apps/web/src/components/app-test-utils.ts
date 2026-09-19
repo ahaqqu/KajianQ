@@ -1,7 +1,12 @@
-import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
+import {
+  RouterContextProvider,
+  RouterProvider,
+  createMemoryHistory,
+  createRouter,
+} from "@tanstack/react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
-import { createElement } from "react";
+import { createElement, type ReactElement } from "react";
 import { createRouteTree } from "../router";
 
 /**
@@ -29,4 +34,18 @@ export async function renderApp(path: string) {
     ),
   );
   return { router, queryClient, ...view };
+}
+
+/**
+ * Renders a view that is ordinarily reached through the router but is mounted
+ * on its own here (e.g. ChatView, whose header now reads the router's location
+ * and renders `Link`s). Only the router *context* is provided — no route
+ * matching — so the view under test keeps owning its own props.
+ */
+export function wrapInRouter(element: ReactElement) {
+  const router = createRouter({
+    routeTree: createRouteTree(),
+    history: createMemoryHistory({ initialEntries: ["/"] }),
+  });
+  return createElement(RouterContextProvider, { router, children: element });
 }

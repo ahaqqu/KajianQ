@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createElement } from "react";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { wrapInRouter } from "../app-test-utils";
 import { ChatView } from "./ChatView";
 
 // React 19 + vitest: mark the environment for act() (testing-library's flushes).
@@ -31,17 +32,19 @@ function renderView(overrides: {
 }) {
   const onSend = overrides.onSend ?? vi.fn();
   render(
-    createElement(ChatView, {
-      locale: "id",
-      messages: [],
-      busy: overrides.busy ?? false,
-      loadingTranscript: overrides.loadingTranscript ?? false,
-      transcriptTruncated: false,
-      error: null,
-      online: true,
-      onSend,
-      onNewSession: vi.fn(),
-    }),
+    wrapInRouter(
+      createElement(ChatView, {
+        locale: "id",
+        messages: [],
+        busy: overrides.busy ?? false,
+        loadingTranscript: overrides.loadingTranscript ?? false,
+        transcriptTruncated: false,
+        error: null,
+        online: true,
+        onSend,
+        onNewSession: vi.fn(),
+      }),
+    ),
   );
   return { onSend };
 }
