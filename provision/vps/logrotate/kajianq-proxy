@@ -1,0 +1,38 @@
+# provision/vps/logrotate/kajianq-proxy — reverse-proxy log rotation (ADR-0043 decision 4, #180).
+#
+# The access log carries IP addresses (personal data, CJEU Breyer), so it must
+# not grow unbounded and must not become the de-facto system of record. The ADR
+# fixes the value: rotated daily, size-capped, and after 14 days the rotated
+# segments are deleted.
+#
+#   daily          — one segment per calendar day
+#   rotate 14      — 14 daily segments kept; the 15th is deleted ("after 14
+#                    days the rotated segments are deleted")
+#   maxsize 100M   — a single busy day cannot fill the disk between rotations
+#   compress       — 14 days of segments do not cost full size on disk
+#   notifempty     — an idle day produces no phantom segment to count
+#
+# nginx reopens its logs on SIGUSR1 (`nginx -s reopen`), so no copytruncate is
+# used and no line is ever split or lost across a rotation.
+#
+# The error log is rotated under the same policy: nginx error lines can carry
+# the client address, so leaving it unrotated would just move the unbounded
+# IP-bearing log next door.
+
+/var/log/nginx/kajianq.access.log
+/var/log/nginx/kajianq.error.log {
+    daily
+    rotate 14
+    maxsize 100M
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 www-data adm
+    sharedscripts
+    postrotate
+        if [ -s /run/nginx.pid ]; then
+            kill -USR1 "$(cat /run/nginx.pid)"
+        fi
+    endscript
+}
