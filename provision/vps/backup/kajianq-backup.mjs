@@ -30,7 +30,6 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import {
   BACKUP_KEEP_DAILY,
-  REQUIRED_ENV,
   buildManifest,
   formatCounts,
   labelTag,

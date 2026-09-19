@@ -1,0 +1,79 @@
+name: VPS restore drill
+# The executable restore test for the hardening in #180 (ADR-0043 decision 4):
+# encrypted backups whose restore re-applies erasure. The VPS itself is not
+# reachable from CI, so the drill runs the SAME scripts the runbook tells the
+# owner to run — `kajianq-backup.mjs` and `kajianq-restore.mjs` — against a
+# scratch Postgres with pgvector in a service container.
+#
+# It is a real drill, not a smoke test: it asserts that a restore of a backup
+# taken before an erasure DOES resurrect the erased rows (the negative control),
+# and that re-applying the reclamation and the Art. 17 cascade makes the
+# restored target match the live store.
+#
+# paths-ignore mirrors E2E: a docs-only change cannot alter the scripts this
+# drill exercises. workflow_dispatch is unaffected.
+on:
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "adr/**"
+      - "NOTICES/**"
+      - ".agents/**"
+      - ".zcode/**"
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "adr/**"
+      - "NOTICES/**"
+      - ".agents/**"
+      - ".zcode/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drill:
+    runs-on: ubuntu-latest
+    # pgvector/pgvector:pg18 matches the engine migration's `CREATE EXTENSION
+    # vector` and the Postgres major the box is provisioned with
+    # (docs/VPS-HARDENING-RUNBOOK.md), so the drill tests the real schema.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg18
+        env:
+          POSTGRES_USER: drill
+          POSTGRES_PASSWORD: drill
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U drill"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.0
+      - name: Install restic and the libpq client tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends restic postgresql-client
+          restic version
+          psql --version
+      - name: Run the restore drill
+        # The drill creates and drops its own scratch databases from this
+        # maintenance connection, and exercises the shipped backup/restore
+        # scripts end to end.
+        run: bun provision/vps/backup/restore-drill.mjs --admin-url "postgres://drill:drill@127.0.0.1:5432/postgres"
+      - name: Restore the drill's databases on failure
+        if: failure()
+        # --keep is not used on the happy path (the drill cleans up after
+        # itself); on failure the workflow is re-runnable as-is, and the log
+        # above already carries the failing assertion.
+        run: echo "The drill failed; see the assertion output above."
