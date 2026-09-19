@@ -25,12 +25,11 @@
  * same code path is exercised in CI by provision/vps/backup/restore-drill.mjs
  * against a scratch cluster.
  */
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import {
   RECLAIM_SQL,
-  REQUIRED_ENV,
   assertManifest,
   erasureSql,
   formatCounts,
