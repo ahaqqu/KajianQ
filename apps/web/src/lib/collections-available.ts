@@ -21,6 +21,10 @@ export const COLLECTION_AVAILABLE: readonly CollectionEntry[] = [
       en: "Tanzil Terms of Use — redistributed verbatim with attribution.",
       id: "Ketentuan Penggunaan Tanzil — disebarkan apa adanya dengan atribusi.",
     },
+    ask: {
+      en: "What does the Quran say about patience?",
+      id: "Apa yang Al-Qur'an katakan tentang kesabaran?",
+    },
   },
   {
     id: "quran-kemenag-id",
@@ -37,6 +41,10 @@ export const COLLECTION_AVAILABLE: readonly CollectionEntry[] = [
       en: "Kemenag RI edition; redistribution gated by the licensing-verification prerequisite (issue #2).",
       id: "Edisi Kemenag RI; penyebaran digantungkan pada prasyarat verifikasi lisensi (issue #2).",
     },
+    ask: {
+      en: "How does the Indonesian translation render the Quran's command to establish prayer?",
+      id: "Bagaimana terjemahan Indonesia memuat perintah Al-Qur'an untuk mendirikan shalat?",
+    },
   },
   {
     id: "quran-arabic-corpus-morphology",
@@ -52,6 +60,10 @@ export const COLLECTION_AVAILABLE: readonly CollectionEntry[] = [
     attribution: {
       en: "GPL corpus, consumed at build and ingestion time.",
       id: "Korpus GPL, dipakai pada saat build dan ingest.",
+    },
+    ask: {
+      en: 'What is the root of the word "sabr" in the Quran?',
+      id: 'Apa akar kata "sabr" dalam Al-Qur\'an?',
     },
   },
   {
@@ -75,6 +87,10 @@ export const COLLECTION_AVAILABLE: readonly CollectionEntry[] = [
       en: "fawazahmed0/hadith-api (Unlicense); grade consolidation follows dhaif-wins (ADR-0026).",
       id: "fawazahmed0/hadith-api (Unlicense); konsolidasi derajat mengikuti dhaif-menang (ADR-0026).",
     },
+    ask: {
+      en: "Which authentic hadith speak about patience?",
+      id: "Hadits shahih apa saja yang berbicara tentang kesabaran?",
+    },
   },
   {
     id: "hadith-sunnah-com",
@@ -90,6 +106,10 @@ export const COLLECTION_AVAILABLE: readonly CollectionEntry[] = [
     attribution: {
       en: "Attribution owed to sunnah.com as the upstream source of the ingested editions.",
       id: "Atribusi diberikan kepada sunnah.com sebagai sumber hulu edisi yang diingest.",
+    },
+    ask: {
+      en: "Which hadith in the Muwatta of Malik are graded dhaif?",
+      id: "Hadits mana dalam Muwatta Malik yang berderajat dhaif?",
     },
   },
 ];

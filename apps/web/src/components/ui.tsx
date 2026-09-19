@@ -4,6 +4,10 @@ import type { ComponentProps, ReactNode } from "react";
 // reach the shared nav views without a sixth import; the implementation lives
 // in the leaf `lib/routes` beside the nav list it derives from (thermo-review C3).
 export { NavLinks } from "../lib/routes";
+// Same cap arrangement for the collection page's "Ask about this source"
+// affordance (#175): the link lives in the `lib/` leaf, beside the route tree
+// it targets.
+export { AskAboutLink } from "../lib/collection-ask";
 
 /** Minimal shadcn-like primitives (owned source), themed by the design tokens. */
 export function Card({

@@ -10,7 +10,7 @@ import {
   type CollectionFilter,
 } from "../lib/collections";
 import { PageShell } from "./PageShell";
-import { Card, MonoLabel, PageIntro, StatusBadge } from "./ui";
+import { AskAboutLink, Card, MonoLabel, PageIntro, StatusBadge } from "./ui";
 
 /**
  * The Collection page (#collection route): the register of sources KajianQ can
@@ -173,6 +173,16 @@ function EntryCard({ locale, entry }: { locale: Locale; entry: CollectionEntry }
         <MonoLabel className="normal-case tracking-normal">
           {t(locale, "collectionAttributionLabel")}: {entry.attribution[locale]}
         </MonoLabel>
+      )}
+      {/* #175: available entries get the "Ask about this source" affordance —
+          a typed Link into the chat with this entry's own question as the `q`
+          param (pre-fill only; ADR-0040 keeps the chat contract untouched).
+          Planned entries never carry it: they are registered work, not a
+          source that can answer. */}
+      {entry.status === "available" && entry.ask !== undefined && (
+        <div className="pt-1">
+          <AskAboutLink label={t(locale, "collectionAskAbout")} question={entry.ask[locale]} />
+        </div>
       )}
       {entry.status === "planned" && entry.planRef !== undefined && (
         <p className="font-mono text-[11px] text-muted-foreground">
