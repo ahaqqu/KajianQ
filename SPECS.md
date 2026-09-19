@@ -124,6 +124,8 @@ scripts/      # Ingestion & eval CLI (Bun, run off-Workers)
 
 ### 3.2 Runtime topology (ADR-0008)
 
+**Current (running today):**
+
 ```
 User → Cloudflare (Static Assets + Workers)
          apps/web (React PWA)
@@ -131,13 +133,28 @@ User → Cloudflare (Static Assets + Workers)
             │  in-process: rag-core pipeline
             ▼
          Neon Postgres + pgvector   (RagStore adapter; vectors, metadata, chat, traces, feedback, golden set)
-         Cloudflare R2              (ObjectStore adapter; raw Shamela exports, text_raw backups)
+         Cloudflare R2              (ObjectStore adapter; raw Shamela exports, text_raw backups, snapshot dumps)
 External APIs: Gemini / Qwen / DeepSeek / Kimi  (Provider interface; ADR-0009)
 ```
 
-Ingestion and eval harness run as **Bun CLI scripts** (local/CI), never on Workers. Neon free tier covers small scale; backups managed. Deliberate deviation from the template's D1 — the Smart Router needs SQL metadata filtering + pgvector HNSW + tsvector, which D1/Vectorize cannot express.
+**Decided target (ADR-0043, 2026-09-19; migration is GDPR-E #181, not yet executed):**
 
-**Provisioning & deploys (ADR-0028):** the Cloudflare topology (Worker, R2 bucket, Durable Object binding, static assets, vars/secrets) is declared as code in `apps/api/alchemy.run.ts` and applied with Alchemy (v2, Effect-native IaC) — `bun run deploy` / `deploy:staging` per stage, physical names pinned to the wrangler-era resources, one-time `deploy:bootstrap` (`--adopt`) takeover. The same stack file drives local dev and e2e (`alchemy dev`: workerd + virtual R2/DO on port 8787, no cloud credentials); wrangler is retired. Neon stays provisioned outside the deploy tooling.
+```
+User → Cloudflare DNS           (optionally the CDN proxy; hides the origin IP)
+         ▼
+       netcup VPS, Germany/EU   (reverse proxy → apps/api (Hono), Bun/Node)
+         ├─ apps/web             (static build served by the proxy)
+         ├─ Postgres + pgvector  (RagStore adapter — same schema, self-hosted)
+         └─ encrypted backups + logrotate (14-day access-log retention, ADR-0043)
+       Cloudflare R2            (ObjectStore adapter — raw corpus, snapshot dumps)
+External APIs: Gemini / Qwen / DeepSeek / Kimi / TypeSafe  (Provider/Decider seams; ADR-0009, ADR-0042)
+```
+
+Ingestion and eval harness run as **Bun CLI scripts** (local/CI), never inside the serving runtime. Neon free tier covers small scale today; backups managed. Deliberate deviation from the template's D1 — the Smart Router needs SQL metadata filtering + pgvector HNSW + tsvector, which D1/Vectorize cannot express.
+
+**Hosting decision (ADR-0043):** the serving path moves to a **netcup GmbH VPS (Germany/EU)** — EU/Germany data residency for chat content and traces (which can reveal religious convictions, Art. 9 GDPR) at VPS cost, with Postgres self-hosted rather than on Neon's free plan. Because KajianQ serves the public (SPECS §1.1/§2.1), the Art. 2(2)(c) household exception does not apply and a DPA under Art. 28(3) GDPR is mandatory with netcup GmbH as processor (Art. 28(1)); it is concluded in netcup's Customer Control Panel (Master Data → Order Processing) and the sub-processor register, retention values (30-day anonymous sessions per ADR-0017, 14-day access logs, 30-day rolling encrypted backups, superseded snapshot archives deleted 30 days after their successor verifies), and the snapshot personal-data flag live in ADR-0043. Cloudflare Workers + Neon are the **transition and rollback** path, retired only on the owner's approval (#181). The register rule is the ADR-0009 amendment made enforceable: personal data never routes through a vendor's free tier, enforced per call by `personalDataAllowed` filtering in `provider-factory.ts` for any call that declares `PromptSpec.personalData` — **and ADR-0043 records the open gap** that no serving call site sets that flag yet (the `cheap` role's chain head is free-tier Gemini), which is a precondition of serving public traffic from the VPS (#181).
+
+**Provisioning & deploys (ADR-0028; serving path superseded by ADR-0043):** the Cloudflare topology (Worker, R2 bucket, Durable Object binding, static assets, vars/secrets) is declared as code in `apps/api/alchemy.run.ts` and applied with Alchemy (v2, Effect-native IaC) — `bun run deploy` / `deploy:staging` per stage, physical names pinned to the wrangler-era resources, one-time `deploy:bootstrap` (`--adopt`) takeover. The same stack file drives local dev and e2e (`alchemy dev`: workerd + virtual R2/DO on port 8787, no cloud credentials); wrangler is retired. Neon stays provisioned outside the deploy tooling. **Under ADR-0043 this path is the transition and rollback, not the target:** the VPS deploy (reverse proxy, API process, self-hosted Postgres, log/backup provisioning) is GDPR-D #180 and GDPR-E #181; the Alchemy topology stays live until the owner approves decommissioning it, and local dev/e2e stay on `alchemy dev` until then.
 
 ### 3.3 The DARS pipeline (Smart Router)
 
@@ -271,6 +288,18 @@ v1.2's "~$2.95 per 1K queries" was **internally inconsistent** (~80K-token conte
 
 Mitigations: top-k discipline (8–12 chunks, not 20), prompt caching for the stable system prompt + Principle blocks, context trimming, and per-query cost tracing in `answer_traces`.
 
+**Infra cost after the hosting move (ADR-0043 — decided, not yet executing).** The variable per-query lines above are unchanged: the generator/reviewer/embedding spend does not depend on where the API runs. What changes is the fixed line — `Neon + Cloudflare $0` becomes:
+
+| Component                          | Cost                                                | Notes                                                                                                                            |
+| ---------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| netcup VPS (Germany/EU)            | the VPS contract (flat monthly)                     | Replaces Cloudflare Workers + Neon free tiers; covers reverse proxy, API, self-hosted Postgres, logs, backups                    |
+| Cloudflare (DNS, optional proxy)   | $0                                                  | Free tier; retained as the edge/rollback path                                                                                    |
+| Cloudflare R2 (corpus + snapshots) | $0                                                  | Free-tier object storage for raw corpus and snapshot dumps; snapshot archives carry personal data (ADR-0043) and need encryption |
+| LLM/embedding vendors              | unchanged (see the table above)                     | The cost head remains the mandatory reviewer per answer                                                                          |
+| **Effect on the total**            | **a flat hosting line replacing the $0 free tiers** | Deliberate: EU/Germany residency is bought with a fixed monthly cost, not a per-query one                                        |
+
+The residency choice removes Neon's free-plan ceiling as a cost/scale constraint (ADR-0039 was shaped by it) and replaces it with disk sizing on the VPS — a capital-style decision, not a per-query one. It also removes two free tiers from the personal-data path (ADR-0043's register rule).
+
 **One-time ingestion (10 kitab):** translation ~$2.50–3/kitab (Qwen3 Max, incl. output tokens) + cleaning/tagging ~$0.30 (DeepSeek V4-Flash) + embeddings ~$0.10 → **~$30–40 total**. Cheap relative to the cost of dirty data in production.
 
 ---
@@ -348,6 +377,7 @@ Mitigations: top-k discipline (8–12 chunks, not 20), prompt caching for the st
 | `adr/0040` | Structured citation payload + session rehydration (#11): the server derives a `citations` SSE frame and the rehydration endpoint's per-message payload from the persisted answer trace — emitted citations are exactly the answer's inline citation spans that a trace-retrieved chunk grounds (the gate's own grammar; the client never parses answer text for citations); display data joins by chunk id (`getDocChildrenByIds`), traces read by the `answer_trace_id` FK (`getAnswerTraceById`); chat is the home route with full-transcript rehydration on reload (localStorage session id + token, ADR-0017 stakes); E2E on mocked SSE fixtures, zero LLM spend in CI. **Amended 2026-09-13 (#12)**: the SSE sequence gains one `trace` frame after `citations` and the rehydration payload a per-message `trace` — the two-layer `ChatTraceFrame` derived from the same persisted trace, each frame degrading independently; `technical.models` deliberately discloses the raw config-resolved model ids (ADR-0007 model identity, ADR-0009 opaque ids) |
 | `adr/0041` | The per-IP rate limiter meters the `/v1` API surface only — static assets and the `/openapi.json`+`/docs` routes flow through unmetered, while security headers/CORS/correlation-id still apply to every response. Inherited template behavior (assets counted since PR #36, never an ADR decision) stole the per-IP budget from real chat calls behind shared IPs, paid a DO round-trip per asset, and 429'd e2e suites on asset loads that cannot carry a credential. Harness traffic that must exceed the `/v1` budget itself (schemathesis fuzz, load tests) carries a purpose-locked Ed25519 bypass JWT (`X-Rate-Bypass`): public key committed, private key only in `.env`/the `RATE_BYPASS_PRIVATE_KEY` Actions secret, verification fail-closed to ordinary metering, every decision logged; an env-level limiter kill switch is rejected |
 | `adr/0042` | TypeSafe AI enters the vendor catalog as the first **decision-model** vendor (ADR-0009 amendment): a new `Decider` seam in `rag-core` (typed Choice/Score/Noul questions over a state, failures ride `ProviderError`) with a vendor-name-free `systemone` adapter in `infra` (cost metered from `usage.input_tokens`, input-only price 42 µ$/MTok, output free). The pinned model `jev-1.13.0` sits in a **bench-only** `decision-candidates` role — no serving role references it. Adoption in any pipeline stage is gated on `bun run eval:decision-bench`: the multilingual gate (ar/id/en × relevance/rerank/citation, 21 verbatim-source cases in `kajianq-domain/fixtures/decision-bench-v0.json`) with floors overall ≥ 0.85 and per-language ≥ 0.75; absent key = NOT RUN exit 0, no passing candidate = non-zero exit. Serving adoption is a future PR that must cite the bench report |
+| `adr/0043` | Serving moves to a **netcup GmbH VPS (Germany/EU)** — EU/Germany residency for chat content and traces at VPS cost, with Postgres self-hosted instead of Neon's free plan (ADR-0028's Cloudflare/Alchemy path retained as transition + rollback; the migration is #181). Because KajianQ serves the public, the Art. 2(2)(c) household exception is rejected and a **DPA under Art. 28(3) is mandatory** with netcup as processor (Art. 28(1)), concluded in the CCP (Master Data → Order Processing — owner action, #178). The ADR fixes the **sub-processor register** the notice renders (#179: netcup, Cloudflare/Neon as transition rows, LLM vendors — free-tier vendors may never carry personal data, the ADR-0009 amendment made enforceable via `personalDataAllowed`); the **retention values** (30 days of inactivity for anonymous sessions, ADR-0017 unchanged; 14-day access-log retention; 30-day rolling encrypted backups that re-apply erasure; superseded snapshot archives deleted 30 days after a successor verifies); and an explicit flag that `db:snapshot` **`pre-ingest`/`post-ingest` archives already contain chat/feedback rows** — whole-DB `pg_dump`, so the ObjectStore snapshot prefix is a personal-data-bearing location needing encryption, while `verify`'s corpus-vs-ledger partition (`CORPUS_TABLES`) keeps its exact semantics. Records the **open gap** that no serving call site sets `PromptSpec.personalData` yet, so a chat question can ride free-tier Gemini today — a precondition of public traffic on the VPS, not a nicety. Does not relitigate ADR-0007/ADR-0017 |
 
 Domain vocabulary: `CONTEXT.md`. Workflow after this spec: `to-spec` → `to-tickets` per the template's agentic pipeline.
 
