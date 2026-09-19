@@ -1,4 +1,6 @@
+import { SESSION_KEY, TOKEN_KEY } from "./chat-store";
 import type { Localized } from "./localized";
+import { THEME_KEY } from "./theme";
 
 /**
  * The browser-storage line (#179 follow-up): what the app keeps ON the
@@ -26,8 +28,9 @@ import type { Localized } from "./localized";
  */
 
 export const STORAGE = {
-  /** The `localStorage` keys the app writes, as the source modules define them. */
-  keys: ["kajianq.auth.token", "kajianq.chat.sessionId", "kajianq.theme"],
+  /** The `localStorage` keys the app writes, imported from the modules that
+   * write them (`chat-store.ts`, `theme.ts`) — no duplicated literal to drift. */
+  keys: [TOKEN_KEY, SESSION_KEY, THEME_KEY],
   setsCookies: false,
   body: {
     id: "KajianQ tidak memasang cookie sama sekali. Token sesi dan preferensi tema disimpan di localStorage peramban Anda — murni fungsional, tanpa pelacakan, sehingga aturan banner cookie tidak berlaku. Anda dapat menghapusnya sendiri kapan saja lewat pengaturan data situs di peramban.",

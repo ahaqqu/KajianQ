@@ -3,7 +3,7 @@
 // (Node can; the app bundle cannot, which is why the module mirrors them). The
 // directive is file-scoped because `apps/web/tsconfig.json` types the app for
 // the browser only.
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   CONTROLLER,
@@ -39,6 +39,29 @@ import { messages } from "./i18n";
 
 const ROOT = new URL("../../../../", import.meta.url);
 const read = (path: string): string => readFileSync(new URL(path, ROOT), "utf8");
+
+/**
+ * Every `.ts`/`.tsx` source file under the given repo-root-relative dirs
+ * (Node can walk the repo; the app bundle cannot, which is why the drift
+ * guards read from disk). Deterministic: sorted paths, `node_modules` and
+ * build output excluded.
+ */
+function walkSources(dirs: string[]): string[] {
+  const files: string[] = [];
+  const walk = (relative: string): void => {
+    const entries = readdirSync(new URL(relative, ROOT), { withFileTypes: true });
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (entry.name === "node_modules" || entry.name === "dist" || entry.name === ".wrangler")
+        continue;
+      const path = `${relative}/${entry.name}`;
+      if (entry.isDirectory()) walk(path);
+      else if (/\.(ts|tsx)$/.test(entry.name) && statSync(new URL(path, ROOT)).isFile())
+        files.push(path);
+    }
+  };
+  for (const dir of dirs) walk(dir);
+  return files;
+}
 
 const ADR_0043 = read("adr/0043-netcup-vps-hosting-gdpr-posture.md");
 const ROPA = read("docs/GDPR-ARTICLE-30-RECORD.md");
@@ -363,30 +386,42 @@ describe("privacy notice: labels are externalized", () => {
 
 describe("privacy notice: browser storage is stated from the code that stores it", () => {
   it("names the localStorage keys the app actually writes", () => {
-    // The claim is pinned to the source of each key, not to prose: a key
-    // rename fails here before the notice can drift.
+    // The claim is pinned to the source of each key, not to prose: the keys
+    // are the owning modules' own exported constants (`chat-store.ts`
+    // `SESSION_KEY`/`TOKEN_KEY`, `theme.ts` `THEME_KEY`) re-exported through
+    // `privacy-notice.ts` — a key rename fails the typecheck before the
+    // notice can drift (thermo-review B1). This test pins the value ↔
+    // constant identity so a literal edit inside an owning module fails here.
     const chatStore = read("apps/web/src/lib/chat-store.ts");
     const theme = read("apps/web/src/lib/theme.ts");
     const declared = [
-      ...chatStore.matchAll(/const (?:SESSION|TOKEN)_KEY = "([^"]+)"/g),
-      ...theme.matchAll(/const THEME_KEY = "([^"]+)"/g),
+      ...chatStore.matchAll(/export const (?:SESSION|TOKEN)_KEY = "([^"]+)"/g),
+      ...theme.matchAll(/export const THEME_KEY = "([^"]+)"/g),
     ].map((match) => match[1]!);
     expect(declared.sort()).toEqual([...STORAGE.keys].sort());
   });
 
   it("claims no cookies only because the code sets none", () => {
     expect(STORAGE.setsCookies).toBe(false);
-    // Neither the web app nor the API's auth route writes a cookie today. If
-    // either starts to, this assertion is the tripwire: the notice line must
-    // change with it.
-    for (const source of [
-      read("apps/web/src/lib/chat-store.ts"),
-      read("apps/web/src/lib/theme.ts"),
-      read("apps/api/src/routes/auth.ts"),
-    ]) {
-      expect(source, "a cookie appeared where the notice says none is set").not.toMatch(
-        /document\.cookie|["']set-cookie["']/i,
-      );
+    // The whole web app and the whole API are scanned, not three files
+    // (thermo-review B2): a cookie added in any other component, route, or
+    // helper makes the /about notice stale — this assertion is the tripwire,
+    // and it fails the suite the moment the notice line stops being true.
+    const sources = walkSources(["apps/web/src", "apps/api/src"]);
+    // The notice module's doc comment names `document.cookie` to explain the
+    // claim, and this test asserts about it — neither is a cookie use.
+    const prose = new Set([
+      "apps/web/src/lib/privacy-notice-storage.ts",
+      "apps/web/src/lib/privacy-notice.test.ts",
+    ]);
+    expect(sources.length).toBeGreaterThan(100); // the scan is real, not vacuous
+    for (const file of sources) {
+      if (prose.has(file)) continue;
+      const source = read(file);
+      expect(
+        /document\.cookie|["']set-cookie["']/i.test(source),
+        `${file} writes a cookie — the /about notice says none is set`,
+      ).toBe(false);
     }
   });
 
