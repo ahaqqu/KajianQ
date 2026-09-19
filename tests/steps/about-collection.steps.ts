@@ -1,7 +1,7 @@
 import { createBdd } from "playwright-bdd";
 import { expect } from "@playwright/test";
 
-const { When, Then } = createBdd();
+const { Before, When, Then } = createBdd();
 
 /**
  * The About and Collection pages, and the header nav that reaches them. The
@@ -9,6 +9,13 @@ const { When, Then } = createBdd();
  * collapses the inline nav), so the browser's real CSS decides which layout the
  * page uses — the jsdom component tests pin the disclosure contract.
  */
+
+// Every scenario gets its own `page` (fresh browser context), so this reset is
+// belt-and-braces (thermo-review C2): it guarantees a desktop viewport even if
+// the config ever moves to shared contexts or reordered scenarios.
+Before(async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+});
 
 When("I open the about page", async ({ page }) => {
   await page.goto("/about");

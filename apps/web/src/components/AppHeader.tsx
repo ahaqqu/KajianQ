@@ -1,7 +1,8 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { type Locale, t, useLocale, useLocaleSetter } from "../lib/i18n";
 import { useTheme } from "../lib/theme";
+import { NAV_ROUTES } from "../lib/routes";
 import { LogoTile, MonoLabel } from "./ui";
 
 /**
@@ -21,16 +22,55 @@ export function AppHeader({ actions }: { actions?: ReactNode }) {
   const setLocale = useLocaleSetter();
   const { theme, toggle } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   // A menu left open would cover the page its own link just opened, so close
-  // it whenever the route changes.
+  // it whenever the route changes (the router state read is required for that
+  // close-on-navigate behavior — this component cannot render outside a
+  // router; tests go through `renderApp`/`wrapInRouter`).
   const pathname = useRouterState({ select: (state) => state.location.pathname });
 
   useEffect(() => {
     setMenuOpen(false);
   }, [pathname]);
 
+  // Keyboard contract for the disclosure (thermo-review A3): Escape closes and
+  // returns focus to the toggle, and focus leaving the toggle+menu subtree
+  // closes it, so Tab from the last menu link cannot strand the open menu
+  // (absolutely positioned over the page) without the user noticing. The
+  // focusout listener sits on the header container because the menu is a
+  // sibling of the controls row — the containment check must cover both.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const container = menuRef.current;
+    if (!container) return;
+    const inDisclosure = (node: Node | null) =>
+      node !== null &&
+      (node === container.querySelector('[data-testid="nav-menu-toggle"]') ||
+        (container.querySelector('[data-testid="nav-menu"]')?.contains(node) ?? false));
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+        container.querySelector<HTMLButtonElement>('[data-testid="nav-menu-toggle"]')?.focus();
+      }
+    };
+    const onFocusOut = (event: FocusEvent) => {
+      if (inDisclosure(event.target as Node) && !inDisclosure(event.relatedTarget as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    container.addEventListener("focusout", onFocusOut);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      container.removeEventListener("focusout", onFocusOut);
+    };
+  }, [menuOpen]);
+
   return (
-    <div className="relative mx-auto flex w-full max-w-3xl items-center gap-2 px-4 py-4 sm:gap-3">
+    <div
+      className="relative mx-auto flex w-full max-w-3xl items-center gap-2 px-4 py-4 sm:gap-3"
+      ref={menuRef}
+    >
       <LogoTile size="md" />
       <div className="min-w-0">
         <p className="truncate font-serif text-[22px] font-semibold italic leading-tight">
@@ -93,14 +133,9 @@ export function AppHeader({ actions }: { actions?: ReactNode }) {
 
 /** The three destinations the header carries, inline (sm+) or stacked (burger). */
 function NavLinks({ locale, stacked = false }: { locale: Locale; stacked?: boolean }) {
-  const items = [
-    { to: "/", key: "navChat" },
-    { to: "/collection", key: "navCollection" },
-    { to: "/about", key: "navAbout" },
-  ] as const;
   return (
     <ul className={stacked ? "flex flex-col" : "flex items-center gap-1"}>
-      {items.map(({ to, key }) => (
+      {NAV_ROUTES.map(({ to, key }) => (
         <li key={to}>
           <Link
             to={to}

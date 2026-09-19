@@ -129,7 +129,10 @@ export const COLLECTION_PLANNED_KITAB: readonly CollectionEntry[] = [
     status: "planned",
     category: "kitab",
     century: { en: "6th c. AH · d. 593 H", id: "Abad 6 H · w. 593 H" },
-    title: { en: "Al-Hidayah", id: "Al-Hidayah" },
+    // Author-qualified: "Al-Hidayah" alone is ambiguous (several works share
+    // the name); SPECS §4.2 pins this one as Al-Marghinani's Hanafi compendium
+    // (593 H).
+    title: { en: "Al-Hidayah — Al-Marghinani", id: "Al-Hidayah — Al-Marghinani" },
     author: { en: "Al-Marghinani", id: "Al-Marghinani" },
     description: {
       en: "The Hanafi legal compendium that complements Al-Mabsut; the last of the priority titles.",

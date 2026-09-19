@@ -57,6 +57,40 @@ describe("AppHeader navigation", () => {
     expect(screen.queryByTestId("nav-menu")).toBeNull();
   });
 
+  it("closes the disclosure on Escape and returns focus to the toggle", async () => {
+    await renderApp("/about");
+    const toggle = screen.getByTestId("nav-menu-toggle");
+    fireEvent.click(toggle);
+    expect(screen.getByTestId("nav-menu")).toBeTruthy();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByTestId("nav-menu")).toBeNull();
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(toggle);
+  });
+
+  it("closes the disclosure when focus leaves the toggle+menu subtree", async () => {
+    await renderApp("/about");
+    const toggle = screen.getByTestId("nav-menu-toggle");
+    fireEvent.click(toggle);
+    expect(screen.getByTestId("nav-menu")).toBeTruthy();
+    // Focus moves from a menu link to a control outside the disclosure (the
+    // theme toggle) — the menu must close (thermo-review A3).
+    const menuLink = within(screen.getByTestId("nav-menu")).getByRole("link", {
+      name: "Koleksi",
+    });
+    fireEvent.focusOut(menuLink, { relatedTarget: screen.getByTestId("theme-toggle") });
+    expect(screen.queryByTestId("nav-menu")).toBeNull();
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    // Moving focus between controls inside the disclosure keeps it open.
+    fireEvent.click(toggle);
+    fireEvent.focusOut(toggle, {
+      relatedTarget: within(screen.getByTestId("nav-menu")).getByRole("link", {
+        name: "Koleksi",
+      }),
+    });
+    expect(screen.getByTestId("nav-menu")).toBeTruthy();
+  });
+
   it("renders the same links inside the menu and closes it on navigation", async () => {
     const { router } = await renderApp("/about");
     fireEvent.click(screen.getByTestId("nav-menu-toggle"));

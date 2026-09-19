@@ -42,18 +42,25 @@ export function CollectionPage({ locale }: { locale: Locale }) {
     <PageShell>
       <PageIntro title={t(locale, "collectionTitle")} intro={t(locale, "collectionIntro")} />
 
-      <div className="flex flex-wrap gap-2" role="group" aria-label={t(locale, "collectionTitle")}>
-        <FilterTab active={filter === "all"} onClick={() => setFilter("all")}>
-          {t(locale, "collectionFilterAll")}
-        </FilterTab>
+      <div
+        className="flex flex-wrap gap-2"
+        role="group"
+        aria-label={t(locale, "collectionFilterGroup")}
+      >
+        <FilterTab
+          locale={locale}
+          labelKey="collectionFilterAll"
+          active={filter === "all"}
+          onClick={() => setFilter("all")}
+        />
         {COLLECTION_CATEGORIES.map((category) => (
           <FilterTab
             key={category}
+            locale={locale}
+            labelKey={CATEGORY_LABELS[category]}
             active={filter === category}
             onClick={() => setFilter(category)}
-          >
-            {t(locale, CATEGORY_LABELS[category])}
-          </FilterTab>
+          />
         ))}
       </div>
 
@@ -75,14 +82,21 @@ export function CollectionPage({ locale }: { locale: Locale }) {
   );
 }
 
+/**
+ * One filter tab. Typed over a `MessageKey` (thermo-review B1), not a plain
+ * string: the compiler now forces every label through the i18n dictionary, so
+ * a future caller cannot pass a bare literal that silently bypasses externalization.
+ */
 function FilterTab({
+  locale,
+  labelKey,
   active,
   onClick,
-  children,
 }: {
+  locale: Locale;
+  labelKey: MessageKey;
   active: boolean;
   onClick: () => void;
-  children: string;
 }) {
   return (
     <button
@@ -97,7 +111,7 @@ function FilterTab({
           : "border-border text-muted-foreground hover:bg-secondary hover:text-foreground"
       }`}
     >
-      {children}
+      {t(locale, labelKey)}
     </button>
   );
 }

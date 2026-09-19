@@ -39,6 +39,11 @@ export const ROUTES = {
   collection: "/collection",
 } as const;
 
+// Production singleton: `createRouter` owns matcher state that must live for
+// the app's lifetime. Tests must never reuse this export — they mount their
+// own router via `createRouteTree()` on a memory history (`app-test-utils`).
+export const router = createRouter({ routeTree: createRouteTree() });
+
 /** A fresh route tree — one router per call (tests mount it on memory history). */
 export function createRouteTree() {
   const rootRoute = createRootRoute({ component: Shell });
@@ -65,7 +70,11 @@ export function createRouteTree() {
   return rootRoute.addChildren([indexRoute, healthRoute, aboutRoute, collectionRoute]);
 }
 
-export const router = createRouter({ routeTree: createRouteTree() });
+// Production singleton (thermo-review B5): the app's one router, built at
+// module load. Tests must never reuse this export — TanStack route objects
+// carry matcher state that cannot be mounted by two routers at once, so tests
+// mount their own router via `createRouteTree()` on a memory history
+// (`app-test-utils.ts`). Do not switch this to a lazy or recomputed value.
 
 declare module "@tanstack/react-router" {
   interface Register {

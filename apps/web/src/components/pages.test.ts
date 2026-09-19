@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { renderApp } from "./app-test-utils";
+import { COLLECTION_ENTRIES, byStatus } from "../lib/collections";
 
 // React 19 + vitest: mark the environment for act() (testing-library's flushes).
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -17,12 +18,17 @@ afterEach(cleanup);
 describe("CollectionPage", () => {
   it("renders both the available and the planned entries, each marked", async () => {
     await renderApp("/collection");
-    expect(screen.getAllByTestId("collection-entry").length).toBeGreaterThan(5);
+    expect(screen.getAllByTestId("collection-entry").length).toBe(COLLECTION_ENTRIES.length);
 
+    // Counts are derived from the data module, not hard-coded (thermo-review
+    // B4): the data shape contract is owned by `collections.test.ts`; this
+    // test asserts the page renders what the module declares, per section.
     const available = screen.getByTestId("collection-section-available");
     const planned = screen.getByTestId("collection-section-planned");
-    expect(within(available).getAllByTestId("collection-entry").length).toBe(5);
-    expect(within(planned).getAllByTestId("collection-entry").length).toBeGreaterThan(5);
+    const availableIds = byStatus(COLLECTION_ENTRIES, "available").map((entry) => entry.id);
+    const plannedIds = byStatus(COLLECTION_ENTRIES, "planned").map((entry) => entry.id);
+    expect(within(available).getAllByTestId("collection-entry").length).toBe(availableIds.length);
+    expect(within(planned).getAllByTestId("collection-entry").length).toBe(plannedIds.length);
 
     // The available/planned distinction is a per-entry marker (badge + status
     // attribute), not only a section heading.
@@ -31,6 +37,16 @@ describe("CollectionPage", () => {
     }
     for (const entry of within(planned).getAllByTestId("collection-entry")) {
       expect(entry.getAttribute("data-status")).toBe("planned");
+    }
+    // The pinned available sources from `collections.test.ts` are on the page.
+    for (const id of ["quran-tanzil-uthmani", "hadith-sunnah-com"] as const) {
+      const entry = COLLECTION_ENTRIES.find((candidate) => candidate.id === id)!;
+      expect(
+        within(available)
+          .getAllByTestId("collection-entry")
+          .some((node) => node.textContent?.includes(entry.title.id)),
+        id,
+      ).toBe(true);
     }
     expect(within(available).getAllByTestId("collection-status")[0]?.textContent).toBe("Tersedia");
     expect(within(planned).getAllByTestId("collection-status")[0]?.textContent).toBe(

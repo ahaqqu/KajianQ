@@ -1,8 +1,9 @@
 /**
  * The collection page's content model. The page renders one
  * `CollectionEntry[]`; the data itself lives in the sibling
- * `collections-available.ts` / `collections-kitab.ts` / `collections-corpora.ts`
- * / `collections-sources.ts` modules, aggregated by `collections.ts`.
+ * `collections-available.ts`, `collections-planned-kitab.ts` (which also
+ * exports `COLLECTION_PLANNED_CORPORA`), and `collections-planned-sources.ts`
+ * modules, aggregated by `collections.ts`.
  *
  * The markdown register is never imported at runtime (a production bundle
  * cannot read repo files), so the data modules mirror, and must be kept true to:
