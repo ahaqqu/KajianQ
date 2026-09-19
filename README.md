@@ -95,7 +95,8 @@ in the app, never hidden.
 ## Privacy
 
 No account, no email, no cookies: a session is an anonymous id kept on your
-device and erased from the server 30 days after your last message. What the
+device and erased from the server after the retention window set in
+[`docs/GDPR-ARTICLE-30-RECORD.md`](docs/GDPR-ARTICLE-30-RECORD.md). What the
 service stores is your conversation, its Trace, and any feedback you leave —
 to answer you and improve the answers, never to profile you — and you can ask
 for all of it to be erased at once. Questions about fiqh or aqidah touch on

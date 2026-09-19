@@ -98,8 +98,11 @@ logging) — the same class of change that already requires DAST and fuzz.
    session token no longer authenticates, and re-authenticating starts a fresh
    user with no transcript. This verifies the Art. 17 cascade (`deleteUserCascade`)
    still removes sessions, chat, traces, and feedback together.
-2. **Privacy notice** — load `/about` on staging and confirm the privacy
-   section renders in both locales, with no placeholder or missing copy.
+2. **Privacy notice** — load `/about` on staging and confirm a privacy section
+   renders in both locales (no runtime error, no unrendered placeholder). This
+   gate checks **presence and render only**; the notice's content accuracy is
+   the About-page privacy notice ticket's deliverable (#179) — verify its copy
+   against the Art. 30 record once that ticket lands, not as part of this gate.
 
 If erasure leaves any orphaned subtree row, or the notice fails to render, stop —
 do not promote.
@@ -159,7 +162,7 @@ wrangler d1 execute <staging-db> --env staging --command "DELETE FROM widgets WH
 ## Guards
 
 - You MUST run all validation gates (health, BDD, DAST, fuzz) before promoting to production.
-- You MUST run the Phase 5 privacy validation on personal-data-touching releases (auth, chat, traces, feedback, logging) and confirm the erasure flow and the `/about` privacy notice both hold.
+- You MUST run the Phase 5 privacy validation on personal-data-touching releases (auth, chat, traces, feedback, logging) and confirm the erasure flow and that the `/about` privacy section renders (content accuracy is #179's deliverable).
 - You MUST verify secrets are set per-environment. `wrangler secret list --env production` must show all required keys.
 - You MUST NEVER skip DAST or fuzz on security-sensitive changes (auth, payments, user data).
 - You MUST never deploy to production from a branch that isn't `main`.
@@ -174,7 +177,7 @@ Deploy is done when:
 - [ ] All BDD scenarios pass against staging.
 - [ ] OWASP ZAP reports zero High/Medium findings.
 - [ ] Schemathesis fuzz reports zero server errors.
-- [ ] Privacy validation passes on personal-data-touching releases: erasure flow cascades, `/about` privacy notice renders.
+- [ ] Privacy validation passes on personal-data-touching releases: erasure flow cascades, `/about` privacy section renders in both locales (copy accuracy owned by #179).
 - [ ] Production health check returns 200.
 - [ ] Smoke tests pass: health endpoint + one critical user flow.
 - [ ] Staging test data cleaned up.

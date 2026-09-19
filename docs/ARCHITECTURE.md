@@ -339,8 +339,13 @@ answer the product can render. **Erasure is a first-class flow**:
 `DELETE /v1/auth/me` cascades the user's entire subtree (sessions, chat, traces,
 feedback), and a backup restore re-applies it so a restored row cannot
 resurrect deleted data. Personal data routes only through paid, DPA-covered
-vendors — never a free tier, which `personalDataAllowed` gates at the
-`Provider` seam (ADR-0009 amendment). ADR-0043 is the decision record; the
+vendors — never a free tier — as a **decided rule** that `personalDataAllowed`
+gates at the `Provider` seam (ADR-0009 amendment). It is not yet enforced on
+the serving path: no serving call site sets `PromptSpec.personalData` today
+(ADR-0043 Consequences; the Art. 30 record §10 gap table), so a chat question
+can still ride a free-tier model until the flag is set — closing that
+precondition before the VPS serves public traffic is owned by #181. ADR-0043
+is the decision record; the
 sub-processor register, the retention values, and their implementation status
 live in [`GDPR-ARTICLE-30-RECORD.md`](./GDPR-ARTICLE-30-RECORD.md) and move
 together with any change to the posture — a new processor or hosting region
