@@ -3,11 +3,14 @@
 ## Status
 
 Accepted (2026-09-19). Amends ADR-0009 (vendor allowlist: the `typesafe`
-vendor enters the catalog priced and capped, bench-only). The gate itself is
-**pending its run**: the `decision-candidates` role is wired, the fixture is
-authored, and `bun run eval:decision-bench` is the operator-driven gate —
-no pipeline stage may consume the vendor until the run's numbers clear the
-floors recorded here.
+vendor enters the catalog priced and capped, bench-only). The gate **ran
+the same day and passed**: `jev-1.13.0` scored 21/21 overall and per-language
+(ar/id/en × 7/7) — relevance 12/12, rerank 3/3, citation 6/6 — for a total of
+21 micro-USD (report: the domain pack's
+`fixtures/decision-bench-results.json`, committed with this ADR). The gate
+remains operator-driven and re-runnable; the fixture is `v0-draft` (owner
+sign-off pending), so serving adoption (the reviewer pre-gate, ticketed
+separately) rides on fail-open design, not on this smoke-grade score.
 
 ## Context
 

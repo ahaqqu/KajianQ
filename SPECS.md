@@ -164,7 +164,7 @@ Ingestion and eval harness run as **Bun CLI scripts** (local/CI), never on Worke
 
 ### 3.4 Providers & default model mix (2026-08, ADR-0009; cost posture amended 2026-09-12)
 
-All calls behind a **Provider interface** (`generate/stream/embed`); every stage's model is config-swappable. **Vendor allowlist: Gemini, Kimi, DeepSeek, Qwen, and TypeSafe AI (decision-model only, bench-gated, ADR-0042).** Tie-break: near-equal capability → prefer Qwen.
+Generation/embedding calls ride a **Provider interface** (`generate/stream/embed`); decision-model calls (ADR-0042) ride the **`Decider` seam** (`decide`, typed Choice/Score/Noul questions over a state — not chat, so never in a Provider fallback chain). Every stage's model is config-swappable. **Vendor allowlist: Gemini, Kimi, DeepSeek, Qwen, and TypeSafe AI (decision-model only, bench-gated, ADR-0042).** Tie-break: near-equal capability → prefer Qwen.
 
 | Role                                              | Default                                            | Alt / challenger                                                         | Price (in/out per MTok) |
 | ------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------ | ----------------------- |

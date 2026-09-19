@@ -120,7 +120,7 @@
       "chain": ["gemini:gemini-embedding-001", "gemini:gemini-embedding-2"]
     },
     "decision-candidates": {
-      "$comment": "ADR-0042 decision-bench role (mirrors embedder-candidates): every decision-model candidate the multilingual gate compares. Not for serving — the bench resolves each candidate directly. Absent key = the bench reports NOT RUN and exits 0 (CI has no TYPESAFE_API_KEY).",
+      "$comment": "ADR-0042 decision-bench role (mirrors embedder-candidates): every decision-model candidate the multilingual gate compares. Not for serving — the bench resolves each candidate directly. Absent key = the bench reports NOT RUN and exits 0 (CI has no JEV_API_KEY).",
       "chain": ["typesafe:jev-1.13.0"]
     }
   }
