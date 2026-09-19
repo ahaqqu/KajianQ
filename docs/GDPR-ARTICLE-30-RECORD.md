@@ -222,7 +222,34 @@ Recorded rather than implied. None of these is closed by this document.
 | No dedicated Art. 15 (access) or Art. 20 (portability) endpoint exists. A data subject can read their transcript via the rehydration endpoint and erase it via `DELETE /v1/auth/me`; a formal access/portability response is handled manually by the operator today. ADR-0043's revisit trigger (real user identity) is where these duties extend.                                                                                                                                                                                                                                     | Owner                                |
 | **The Art. 17 right has an API but no in-product control yet** (#179). `DELETE /v1/auth/me` is the working erasure path, but the web app offers no erase button: clearing browser storage or starting a new session only drops the local session id and leaves the server rows. The `/about` privacy notice therefore names the endpoint and states the gap explicitly (`apps/web/src/lib/privacy-notice-erasure.ts`, `ERASURE.uiAffordance: "absent"`) rather than implying an affordance that does not exist. A discoverable erase control is follow-up product work at public beta. | Owner, at public beta                |
 
-## 11. Keeping this record true
+## 11. Indonesian law (UU No. 27/2022, PDP Law)
+
+KajianQ's audience is Indonesian (SPECS §1.1), so this record also answers to
+Indonesia's **PDP Law** (UU No. 27/2022), fully effective October 2024. KajianQ
+is a **data controller** for Indonesian data subjects' personal data, in PDP
+terms as in GDPR's — the two roles are the same operator here.
+
+**Posture: GDPR-aligned, PDP-satisfying.** The PDP Law's data-subject rights
+catalogue (information, correction, erasure, portability, objection,
+restriction) is modeled on the GDPR, and the measures this record already
+carries — lawful-basis-by-design anonymity, the §6 retention windows, the §7
+TOMs, and the complete erasure cascade (§4) — substantially satisfy it. This is
+stated once; the values are not restated here (ADR-0043 and §6/§7 remain their
+source).
+
+Two PDP duties have no direct GDPR analogue and are recorded explicitly:
+
+| PDP duty                             | How it is discharged here                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Breach notification (Art. 46)**    | A personal-data breach with real harm carries a **3×24-hour** notification duty: to the affected data subjects, and — where the breach has material or indirect impact — to the authority (the PDP supervisory body). This is an **incident-response duty**, not a product feature: it joins the runbook's incident path (docs/VPS-HARDENING-RUNBOOK.md) and is exercised by the same operator who holds the DPA duties. Nothing in the record changes; the clock is what is new.         |
+| **International transfer (Art. 56)** | After the VPS migration (#181) personal data leaves Indonesia for **Germany (netcup GmbH, EU)**. PDP permits transfer to a jurisdiction with **equivalent protection**, or absent that, with **adequate safeguards**. EU/GDPR-level protection qualifies as equivalent, and the DPA (Art. 28) plus the §7 TOMs are the safeguards of record. Residency rationale: ADR-0043 (`adr/0043-netcup-vps-hosting-gdpr-posture.md`, decision 1 — EU/Germany residency is the reason for the move). |
+
+**Not owner-actionable.** This is a record of duties that follow from the
+posture the ADR-0043 chain already commits to; it introduces no new processing
+and opens no new gap. If a PDP-specific obligation ever outruns the GDPR
+posture, it lands in §10 rather than here.
+
+## 12. Keeping this record true
 
 - Retention values, processor rows, and the Art. 9 posture are ADR-0043's; a
   change there changes this record in the same PR.

@@ -38,6 +38,8 @@ export type TraceEventLike = {
   detail?: {
     chunks?: ChunkRefLike[];
     purpose?: string;
+    /** The reviewer's raw verdict payload (contracts `review` event detail). */
+    verdict?: string;
     /**
      * The retrieved citation labels the reviewer's deterministic gate found in
      * the answer (contracts `review` event, thermo-review B4). Optional: older

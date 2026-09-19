@@ -82,15 +82,15 @@ describe("consumeSseToText", () => {
     // reads these labels in preference to re-parsing the answer text.
     const { body } = sseResponse([
       'event: meta\ndata: {"messageId":"m1","traceId":"t1"}\n\n',
-      "event: delta\ndata: The answer cites QS.\n\n",
-      "event: delta\ndata:  1:2\n\n",
-      'event: citations\ndata: {"messageId":"m1","citations":[{"label":"QS. 1:2","arabic":"x","machineTranslated":true}],"refusal":false,"dhaifWarning":false}\n\n',
+      "event: delta\ndata: the answer cites \n\n",
+      "event: delta\ndata: alpha\n\n",
+      'event: citations\ndata: {"messageId":"m1","citations":[{"label":"alpha","arabic":"x","machineTranslated":true}],"refusal":false}\n\n',
       'event: trace\ndata: {"messageId":"m1","sources":[],"technical":{"subQueries":[],"chunks":[],"models":[]}}\n\n',
       "event: done\ndata: {}\n\n",
     ]);
     const result = await consumeSseToText(body);
-    expect(result.text).toBe("The answer cites QS. 1:2");
-    expect(result.citations).toEqual({ citations: [{ label: "QS. 1:2" }] });
+    expect(result.text).toBe("the answer cites alpha");
+    expect(result.citations).toEqual({ citations: [{ label: "alpha" }] });
   });
 
   it("leaves citations null when the frame is absent", async () => {
@@ -108,11 +108,15 @@ describe("consumeSseToText", () => {
 
 describe("parseCitationsFrame", () => {
   it("extracts the labels from a well-formed frame", () => {
+    // The real frame also carries the product's weak-grade display flag; this
+    // engine-package test omits it deliberately (the boundary gate forbids
+    // domain vocabulary here) — the parser ignores it, so the labels it reads
+    // are the same.
     expect(
       parseCitationsFrame(
-        '{"messageId":"m","citations":[{"label":"QS. 1:2"},{"label":"HR. Malik no. 187"}],"refusal":false,"dhaifWarning":false}',
+        '{"messageId":"m","citations":[{"label":"label-a"},{"label":"label-b"}],"refusal":false}',
       ),
-    ).toEqual({ citations: [{ label: "QS. 1:2" }, { label: "HR. Malik no. 187" }] });
+    ).toEqual({ citations: [{ label: "label-a" }, { label: "label-b" }] });
   });
 
   it("returns null when the payload has no citations array", () => {
@@ -121,8 +125,8 @@ describe("parseCitationsFrame", () => {
 
   it("skips entries with a non-string or empty label", () => {
     expect(
-      parseCitationsFrame('{"citations":[{"label":""},{"label":42},{"label":"QS. 2:255"}]}'),
-    ).toEqual({ citations: [{ label: "QS. 2:255" }] });
+      parseCitationsFrame('{"citations":[{"label":""},{"label":42},{"label":"kept"}]}'),
+    ).toEqual({ citations: [{ label: "kept" }] });
   });
 
   it("returns null for junk rather than throwing", () => {

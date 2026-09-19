@@ -10,6 +10,7 @@ import {
   ERASURE,
   REGISTER_RULE,
   RETENTION,
+  STORAGE,
   SUB_PROCESSORS,
   type ProcessorStatus,
   type ProcessorTier,
@@ -337,6 +338,7 @@ describe("privacy notice: labels are externalized", () => {
     "aboutPrivacyPlannedPrefix",
     "aboutPrivacyRetentionLabel",
     "aboutPrivacyErasureLabel",
+    "aboutPrivacyStorageLabel",
   ] as const;
 
   it("has every notice label in both locales", () => {
@@ -356,5 +358,58 @@ describe("privacy notice: labels are externalized", () => {
     const retentionStatuses: RetentionStatus[] = ["current", "planned"];
     const labels = retentionStatuses.map((status) => messages.id[STATUS_KEY[status]]);
     expect(new Set(labels).size).toBe(retentionStatuses.length);
+  });
+});
+
+describe("privacy notice: browser storage is stated from the code that stores it", () => {
+  it("names the localStorage keys the app actually writes", () => {
+    // The claim is pinned to the source of each key, not to prose: a key
+    // rename fails here before the notice can drift.
+    const chatStore = read("apps/web/src/lib/chat-store.ts");
+    const theme = read("apps/web/src/lib/theme.ts");
+    const declared = [
+      ...chatStore.matchAll(/const (?:SESSION|TOKEN)_KEY = "([^"]+)"/g),
+      ...theme.matchAll(/const THEME_KEY = "([^"]+)"/g),
+    ].map((match) => match[1]!);
+    expect(declared.sort()).toEqual([...STORAGE.keys].sort());
+  });
+
+  it("claims no cookies only because the code sets none", () => {
+    expect(STORAGE.setsCookies).toBe(false);
+    // Neither the web app nor the API's auth route writes a cookie today. If
+    // either starts to, this assertion is the tripwire: the notice line must
+    // change with it.
+    for (const source of [
+      read("apps/web/src/lib/chat-store.ts"),
+      read("apps/web/src/lib/theme.ts"),
+      read("apps/api/src/routes/auth.ts"),
+    ]) {
+      expect(source, "a cookie appeared where the notice says none is set").not.toMatch(
+        /document\.cookie|["']set-cookie["']/i,
+      );
+    }
+  });
+
+  it("states the functional-only exemption and the self-erase path in both locales", () => {
+    expect(STORAGE.body.en).toContain("sets no cookies");
+    expect(STORAGE.body.en).toContain("no tracking");
+    expect(STORAGE.body.id).toContain("tidak memasang cookie");
+    expect(STORAGE.body.id).toContain("tanpa pelacakan");
+    // Erasable by the visitor, from the browser — the local half of erasure.
+    expect(STORAGE.body.en.toLowerCase()).toContain("erase them yourself");
+    expect(STORAGE.body.id.toLowerCase()).toContain("menghapusnya sendiri");
+    expect(STORAGE.body.en).not.toBe(STORAGE.body.id);
+  });
+
+  it("names no processor, vendor, or retention window", () => {
+    // UI-posture copy, not register data: it therefore carries no ADR-0043 row.
+    // A named vendor or a day count here would make it register data and it
+    // would need one.
+    for (const copy of [STORAGE.body.en, STORAGE.body.id]) {
+      expect(copy, "storage copy names a day count").not.toMatch(/\b\d+[- ](day|hari)\b/i);
+      for (const vendor of SUB_PROCESSORS) {
+        expect(copy, `storage copy names ${vendor.name}`).not.toContain(vendor.name);
+      }
+    }
   });
 });

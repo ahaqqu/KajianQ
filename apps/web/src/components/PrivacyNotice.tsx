@@ -6,6 +6,7 @@ import {
   REGISTER_SOURCE,
   REGISTER_TRANSITION_NOTE,
   RETENTION,
+  STORAGE,
   SUB_PROCESSORS,
   type ProcessorStatus,
   type ProcessorTier,
@@ -162,6 +163,12 @@ export function PrivacyNotice({ locale }: { locale: Locale }) {
         </p>
         <p className="text-sm leading-relaxed text-muted-foreground">{ERASURE.noUiNote[locale]}</p>
         <p className="text-xs leading-relaxed text-muted-foreground">{ERASURE.localNote[locale]}</p>
+      </Card>
+
+      <Card className="space-y-2" data-testid="about-privacy-storage">
+        <MonoLabel>{t(locale, "aboutPrivacyStorageLabel")}</MonoLabel>
+        <p className="text-sm leading-relaxed">{STORAGE.body[locale]}</p>
+        <p className="font-mono text-xs text-muted-foreground">{STORAGE.keys.join(" · ")}</p>
       </Card>
     </section>
   );

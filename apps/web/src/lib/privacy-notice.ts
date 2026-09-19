@@ -57,3 +57,5 @@ export {
 export { RETENTION } from "./privacy-notice-retention";
 
 export { CONTROLLER, ERASURE } from "./privacy-notice-erasure";
+
+export { STORAGE } from "./privacy-notice-storage";
