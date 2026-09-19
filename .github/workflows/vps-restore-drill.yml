@@ -60,11 +60,23 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: 1.4.0
-      - name: Install restic and the libpq client tools
+      - name: Install restic and a libpq client matching the server
+        # pg_dump refuses to dump a server whose major version is newer than its
+        # own ("aborting because of server version mismatch"), and the runner
+        # image ships PostgreSQL 16 while the service container is 18. The
+        # client therefore comes from the PGDG apt repository at the container's
+        # major — the same repo the runbook uses on the box — rather than from
+        # the distro default.
         run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -sSfL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends restic postgresql-client
+          sudo apt-get install -y --no-install-recommends restic postgresql-client-18
           restic version
+          pg_dump --version
           psql --version
       - name: Run the restore drill
         # The drill creates and drops its own scratch databases from this
