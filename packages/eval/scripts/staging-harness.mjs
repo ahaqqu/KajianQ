@@ -66,10 +66,14 @@ export async function createStagingHarness(config, budget) {
   // memoized, so a long run does not re-read the same chunk row.
   const sourceTypeByChunkId = new Map();
   const sourceTypeOf = (id) => sourceTypeByChunkId.get(id);
-  const loadSourceTypes = (chunkIds) => {
+  const loadSourceTypes = async (chunkIds) => {
     const missing = [...new Set(chunkIds)].filter((id) => !sourceTypeByChunkId.has(id));
     if (missing.length === 0) return;
-    const rows = runStore(store.getDocChildrenByIds(missing));
+    // The store seam is effect-shaped: without the await this iterates the
+    // PROMISE — "{} is not iterable" — and the question skips. Lost in the
+    // GDPR-E rewire; the CI gate could not catch it because the self-skip
+    // reads as a transport failure.
+    const rows = await runStore(store.getDocChildrenByIds(missing));
     for (const row of rows) {
       const meta = row.metadata ?? {};
       if (typeof meta.sourceType === "string") sourceTypeByChunkId.set(row.id, meta.sourceType);
@@ -113,7 +117,7 @@ export async function createStagingHarness(config, budget) {
       // before the scorer reads the (synchronous) resolver.
       for (const event of trace.events) {
         if (event.kind === "retrieval") {
-          loadSourceTypes((event.detail?.chunks ?? []).map((ref) => ref.id));
+          await loadSourceTypes((event.detail?.chunks ?? []).map((ref) => ref.id));
         }
       }
       return trace.events;
