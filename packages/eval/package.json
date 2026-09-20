@@ -14,7 +14,6 @@
     "@app/infra": "workspace:*",
     "@app/kajianq-domain": "workspace:*",
     "@app/rag-core": "workspace:*",
-    "@neondatabase/serverless": "^1.1.0",
     "effect": "4.0.0-rc.112",
     "valibot": "1.4.2"
   },

@@ -3,7 +3,7 @@ import { createApi } from "../app";
 
 const { captureException } = vi.hoisted(() => ({ captureException: vi.fn() }));
 
-vi.mock("@sentry/cloudflare", () => ({ captureException }));
+vi.mock("@sentry/bun", () => ({ captureException }));
 import { runStoreEffect } from "@app/kajianq-domain";
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 import { createStubChatProviders } from "@app/kajianq-domain/test-utils/stub-chat-providers";
@@ -87,9 +87,15 @@ vi.mock("../lib/chat-wiring", async (importOriginal) => {
   };
 });
 
-vi.mock("@neondatabase/serverless", () => ({
-  neon: () => {
-    throw new Error("chat test: neon must not be reached");
+// The database client lives behind the RagStore adapter (ADR-0008), so
+// these route tests never reach one: constructing or querying the pool is
+// the failure this mock makes loud.
+vi.mock("pg", () => ({
+  Pool: class {
+    on(): void {}
+    query(): never {
+      throw new Error("chat test: the database must not be reached");
+    }
   },
 }));
 

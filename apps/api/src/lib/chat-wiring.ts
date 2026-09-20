@@ -1,9 +1,8 @@
-import * as neon from "@neondatabase/serverless";
 import { runStoreEffect, type StoreBridge } from "@app/kajianq-domain";
 import type { Provider } from "@app/rag-core";
 import {
-  createRagStore,
   loadProviderConfig,
+  resolvePostgresStore,
   resolveRole,
   type Logger,
   type ProviderConfig,
@@ -46,14 +45,17 @@ export class ChatConfigError extends Error {
  * `ChatConfigError` (config-class) when the binding is missing — the route
  * answers 503 rather than silently degrading; anything else propagates to
  * the typed error handler.
+ *
+ * The URL is passed to the adapter's own composition helper: the app names the
+ * connection and receives the seam, and never imports a database client
+ * (ADR-0008 — the driver lives behind the adapter, ADR-0044).
  */
 export function createRagStoreFromEnv(env: { DATABASE_URL?: string }): RagStore {
   const url = env.DATABASE_URL;
   if (!url || url.trim() === "") {
     throw new ChatConfigError("chat route: DATABASE_URL is not bound", "DATABASE_URL");
   }
-  const sql = neon.neon(url);
-  return createRagStore("neon", sql);
+  return resolvePostgresStore(url);
 }
 
 /** The provider roles the chat pipeline needs, resolved once per request. */
@@ -110,6 +112,13 @@ export function createProvidersFromEnv(env: Record<string, string | undefined>):
     for (const key of missingKeys) missing.add(key);
     return provider;
   };
+  // The reviewer's missing keys are collected even when the role resolves to
+  // null (no keyed candidate): the ops report must name every env var the
+  // chat path can consume, so an unbound reviewer key says exactly which key
+  // to bind — without this, the key that unblocks the reviewer would vanish
+  // from the report precisely when it is the only thing missing.
+  const reviewerMissing = resolveRole(config, "reviewer", { env }).missingKeys;
+  for (const key of reviewerMissing) missing.add(key);
   return {
     router: resolve("cheap"),
     generator: resolve("generator"),

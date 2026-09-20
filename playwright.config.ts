@@ -27,12 +27,27 @@ export default defineConfig({
     serviceWorkers: "block",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  // The suite boots the API as the plain Bun process the VPS runs
+  // (`apps/api/src/boot.ts`, ADR-0044), which is the same serving entry the
+  // deploy ships and the same one the middleware/route unit tests compose — so
+  // e2e exercises the host that serves production, not a runtime shim. Before
+  // #181 this was `alchemy dev` (local workerd); with the Cloudflare path gone
+  // there is no workerd in the tree, so the harness had to move with it.
+  // `KAJIANQ_WEB_ROOT` points the disk-backed ASSETS handle at the build
+  // `bun run build` just produced. No DATABASE_URL is set, so the store-backed
+  // routes answer 503 and the suites' route interception (fixture streams,
+  // zero LLM spend) provides the behaviour they assert.
   webServer: process.env.E2E_BASE_URL
     ? undefined
     : {
-        command: "bun run build && bun run --filter '@app/api' dev",
+        command: "bun run build && bun apps/api/src/boot.ts",
         url: "http://127.0.0.1:8787/v1/health",
         reuseExistingServer: !process.env.CI,
         timeout: 180_000,
+        env: {
+          KAJIANQ_WEB_ROOT: "apps/web/dist",
+          PORT: "8787",
+          APP_ENV: "development",
+        },
       },
 });

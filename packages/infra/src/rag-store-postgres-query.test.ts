@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { buildSimilarityQuery } from "./rag-store-neon-query";
+import { buildSimilarityQuery } from "./rag-store-postgres-query";
 
 /**
- * Pure unit tests for the Neon similarity-search SQL builder. These run in
+ * Pure unit tests for the Postgres similarity-search SQL builder. These run in
  * every environment (no database needed); the adapter's I/O is exercised by
- * the secret-gated contract suite in rag-store-neon.test.ts.
+ * the secret-gated contract suite in rag-store-postgres.test.ts.
  */
-describe("rag-store-neon-query: buildSimilarityQuery", () => {
+describe("rag-store-postgres-query: buildSimilarityQuery", () => {
   it("targets the primary track and never names the fallback track (and vice versa)", () => {
     const primary = buildSimilarityQuery("primary", 0);
     const fallback = buildSimilarityQuery("fallback", 0);

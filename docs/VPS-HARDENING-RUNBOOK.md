@@ -7,28 +7,31 @@ Reproducible steps for the netcup VPS privacy posture fixed in
 [`docs/GDPR-ARTICLE-30-RECORD.md`](./GDPR-ARTICLE-30-RECORD.md) §7.
 
 Scope: **hardening only.** This runbook migrates no personal data and starts no
-serving process. Moving the API and the database is GDPR-E (**#181**), and the
-DPA must be concluded in the netcup CCP (**#178**) before either runs. Nothing
-here writes to a store that holds personal data, because on a freshly bought VPS
-none exists yet.
+serving process. Moving the API and the database is GDPR-E (**#181**), whose
+executable half is [`docs/VPS-CUTOVER-RUNBOOK.md`](./VPS-CUTOVER-RUNBOOK.md) —
+run the cutover runbook, which calls this one's steps in order. The DPA must be
+concluded in the netcup CCP (**#178**) before either runs. Nothing here writes
+to a store that holds personal data, because on a freshly bought VPS none exists
+yet.
 
 Everything the runbook places is config-as-code under
 [`provision/vps/`](../provision/vps/):
 
-| File                                        | Lands at                                             | Purpose                                                     |
-| ------------------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------- |
-| `apply.sh`                                  | (runs in place)                                      | Places every config below and enables the units             |
-| `nginx/kajianq.conf`                        | `/etc/nginx/sites-available/kajianq.conf`            | Reverse proxy + the minimal access-log format               |
-| `logrotate/kajianq-proxy`                   | `/etc/logrotate.d/kajianq-proxy`                     | 14-day proxy access/error-log rotation                      |
-| `logrotate/kajianq-postgres`                | `/etc/logrotate.d/kajianq-postgres`                  | 14-day Postgres log rotation                                |
-| `journald/kajianq.conf`                     | `/etc/systemd/journald.conf.d/kajianq.conf`          | 14-day / 512M cap for API structured logs                   |
-| `postgres/99-kajianq.conf`                  | `/etc/postgresql/<v>/main/conf.d/99-kajianq.conf`    | Loopback-only listener; no statement text in logs           |
-| `systemd/kajianq-api.service`               | `/etc/systemd/system/kajianq-api.service`            | Unprivileged API unit, credentials from an env file         |
-| `systemd/kajianq-backup.service` / `.timer` | `/etc/systemd/system/kajianq-backup.{service,timer}` | Daily encrypted backup, installed and enabled by `apply.sh` |
-| `backup/kajianq-backup.mjs`                 | (runs in place)                                      | Encrypted dump + manifest + 30-day rolling retention        |
-| `backup/kajianq-restore.mjs`                | (runs in place)                                      | Restore into a scratch target, re-applying erasure          |
-| `backup/restore-drill.mjs`                  | (CI + on demand)                                     | The executable restore test                                 |
-| `proxy.env.example` / `backup.env.example`  | `/etc/kajianq/*.env`                                 | The only place real hostnames/credentials appear            |
+| File                                        | Lands at                                             | Purpose                                                                                        |
+| ------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `apply.sh`                                  | (runs in place)                                      | Places every config below and enables the units                                                |
+| `nginx/kajianq.conf`                        | `/etc/nginx/sites-available/kajianq.conf`            | Reverse proxy + the minimal access-log format                                                  |
+| `logrotate/kajianq-proxy`                   | `/etc/logrotate.d/kajianq-proxy`                     | 14-day proxy access/error-log rotation                                                         |
+| `logrotate/kajianq-postgres`                | `/etc/logrotate.d/kajianq-postgres`                  | 14-day Postgres log rotation                                                                   |
+| `journald/kajianq.conf`                     | `/etc/systemd/journald.conf.d/kajianq.conf`          | 14-day / 512M cap for API structured logs                                                      |
+| `postgres/99-kajianq.conf`                  | `/etc/postgresql/<v>/main/conf.d/99-kajianq.conf`    | Loopback-only listener; no statement text in logs                                              |
+| `systemd/kajianq-api.service`               | `/etc/systemd/system/kajianq-api.service`            | Unprivileged API unit, credentials from an env file                                            |
+| `systemd/kajianq-cron.service` / `.timer`   | `/etc/systemd/system/kajianq-cron.{service,timer}`   | Nightly anonymous-session reclamation (ADR-0017) at 03:17, installed and enabled by `apply.sh` |
+| `systemd/kajianq-backup.service` / `.timer` | `/etc/systemd/system/kajianq-backup.{service,timer}` | Daily encrypted backup, installed and enabled by `apply.sh`                                    |
+| `backup/kajianq-backup.mjs`                 | (runs in place)                                      | Encrypted dump + manifest + 30-day rolling retention                                           |
+| `backup/kajianq-restore.mjs`                | (runs in place)                                      | Restore into a scratch target, re-applying erasure                                             |
+| `backup/restore-drill.mjs`                  | (CI + on demand)                                     | The executable restore test                                                                    |
+| `proxy.env.example` / `backup.env.example`  | `/etc/kajianq/*.env`                                 | The only place real hostnames/credentials appear                                               |
 
 ## Why nginx, and why retention rather than IP masking
 
@@ -38,6 +41,21 @@ policy), and the codebase already assumes its semantics — the API's 499
 "client closed request" handling in `apps/api/src/lib/errors.ts`. Caddy would
 also work; it buys nothing here, because rotation is logrotate's job
 (ADR-0043 decision 4), not the proxy's.
+
+**The bootstrap's Caddy must be retired before this runbook applies.** The
+baseline setup served a static page through Caddy
+(`docs/VPS-BASELINE-SETUP.md`), and Caddy and nginx cannot share :80/:443.
+The proxy choice is decided — nginx — and recorded in ADR-0044 decision 4, so
+the teardown is a prerequisite step, not an alternative:
+
+```bash
+sudo systemctl disable --now caddy 2>/dev/null || true
+sudo rm -f /etc/caddy/Caddyfile
+sudo ss -lntp | grep -E ':(80|443)\b'   # must be empty before apply.sh runs
+```
+
+The full ordered cutover — including this teardown — is
+[`docs/VPS-CUTOVER-RUNBOOK.md`](./VPS-CUTOVER-RUNBOOK.md) step 0.
 
 **Retention rather than dropping/masking the IP.** ADR-0043 decision 4 fixes
 this: the Art. 30 record declares "IP addresses in server access logs
@@ -96,7 +114,10 @@ sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env
 5. installs the Postgres posture and restarts Postgres (skipped with a warning
    if no Debian `conf.d` exists yet);
 6. installs and **enables** — does not start — `kajianq-api.service`;
-7. renders and installs `kajianq-backup.service`/`.timer` (the script path
+7. installs and **enables** `kajianq-cron.{service,timer}` — the nightly
+   session reclamation ADR-0017 used to run as a Worker cron (ADR-0044
+   decision 7), on the same 03:17 slot;
+8. renders and installs `kajianq-backup.service`/`.timer` (the script path
    comes from this checkout) and **enables** the timer with
    `--now`, so the daily encrypted backup is scheduled by config-as-code, not
    by hand-copied snippets.
@@ -104,8 +125,9 @@ sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env
 Verify:
 
 ```bash
-systemctl status kajianq-api          # enabled, inactive (awaiting #181)
+systemctl status kajianq-api          # enabled; inactive until the cutover starts it
 systemctl list-timers kajianq-backup.timer  # enabled, scheduled 03:15 daily
+systemctl list-timers kajianq-cron.timer    # enabled, scheduled 03:17 daily
 sudo logrotate --debug /etc/logrotate.d/kajianq-proxy
 sudo logrotate --debug /etc/logrotate.d/kajianq-postgres
 sudo nginx -T | grep -A2 log_format    # the access format, no user-agent/referer
@@ -229,7 +251,8 @@ record than three.
 ## What this runbook deliberately does not do
 
 - **No data migration.** Moving the API and Postgres is GDPR-E (#181).
-- **No serving.** `apply.sh` enables `kajianq-api.service` but does not start it.
+- **No serving.** `apply.sh` enables `kajianq-api.service` but does not start
+  it; starting it is the cutover (`docs/VPS-CUTOVER-RUNBOOK.md`).
 - **No DPA.** Concluding it in the netcup CCP is the owner's action (#178) and a
   precondition of the box touching personal data.
 - **No secrets in the repo.** The only hostnames and credentials live in

@@ -26,9 +26,15 @@ vi.mock("../lib/chat-wiring", async (importOriginal) => {
   };
 });
 
-vi.mock("@neondatabase/serverless", () => ({
-  neon: () => {
-    throw new Error("feedback test: neon must not be reached");
+// The database client lives behind the RagStore adapter (ADR-0008), so
+// these route tests never reach one: constructing or querying the pool is
+// the failure this mock makes loud.
+vi.mock("pg", () => ({
+  Pool: class {
+    on(): void {}
+    query(): never {
+      throw new Error("feedback test: the database must not be reached");
+    }
   },
 }));
 

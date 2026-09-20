@@ -2,6 +2,7 @@ import {
   allowRequest,
   corsGuard,
   createRequestContext,
+  fnv1aHex,
   installSecurityHeaders,
   resolveRateLimiter,
 } from "./";
@@ -33,7 +34,7 @@ export function applyMiddleware(api: Hono<ApiEnv>, opts?: MiddlewareOpts): void 
   // Rate limiting is an API-surface policy (ADR-0041): only /v1/* is metered.
   // Static assets and the doc routes flow through unmetered — asset fetches
   // cannot carry credentials, and metering them steals the per-IP budget from
-  // real chat calls while paying a Durable Object round-trip per asset.
+  // real chat calls.
   api.use("/v1/*", async (c, next) => {
     // A valid bypass token (Ed25519 JWT, ADR-0041) exempts the request from
     // metering — harness traffic (DAST/load tests), never user sessions: the
@@ -48,13 +49,14 @@ export function applyMiddleware(api: Hono<ApiEnv>, opts?: MiddlewareOpts): void 
     if (bypass.reason !== "absent") {
       ctx.logger.warn("rate.bypass_rejected", { reason: bypass.reason });
     }
+    // The client IP is proxy-established: nginx overwrites CF-Connecting-IP
+    // from $remote_addr (provision/vps/nginx/kajianq.conf), so a client-set
+    // value cannot influence the limiter. It is digested before it names a
+    // counter (fnv1aHex) so the limiter holds no raw address — the retention
+    // notice's "kept in memory and named by a digest" claim (ADR-0043 d4).
     const ip = c.req.header("CF-Connecting-IP") ?? "local";
-    // Injected limiter wins (tests); otherwise resolve from bindings:
-    // Durable Objects when `RATE_LIMITER` is bound (global across isolates),
-    // else the bounded in-memory fallback.
-    if (
-      !(await allowRequest(`ip:${ip}`, opts?.limiter ?? resolveRateLimiter(c.env), opts?.limit))
-    ) {
+    const limiter = opts?.limiter ?? resolveRateLimiter();
+    if (!(await allowRequest(`ip:${fnv1aHex(ip)}`, limiter, opts?.limit))) {
       return c.json({ error: "rate_limited" }, 429);
     }
     await next();

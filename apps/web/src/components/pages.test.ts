@@ -195,16 +195,17 @@ describe("AboutPage", () => {
     const privacy = screen.getByTestId("about-privacy");
     expect(privacy.textContent).toContain("Privasi");
 
-    // One card per register row, each carrying its status — netcup is the
-    // planned destination today (#181), so the page is never false.
+    // One card per register row, each carrying its status — netcup is the host
+    // in use today (#181 moved the serving path onto it), so the page is never
+    // false.
     const processors = within(privacy).getAllByTestId("about-privacy-processor");
     expect(processors.length).toBe(SUB_PROCESSORS.length);
     expect(within(privacy).getByTestId("about-privacy-controller").textContent).toContain(
       CONTROLLER.name,
     );
     const netcup = processors.find((card) => card.textContent?.includes("netcup GmbH"))!;
-    expect(netcup.getAttribute("data-status")).toBe("planned");
-    expect(netcup.textContent).toContain("Direncanakan");
+    expect(netcup.getAttribute("data-status")).toBe("current");
+    expect(netcup.textContent).toContain("Dipakai hari ini");
     // The register rule and the tier/verdict pair are on the page, not only in
     // the data module.
     expect(privacy.textContent).toContain("data pribadi tidak pernah lewat tingkat gratis");
@@ -231,7 +232,7 @@ describe("AboutPage", () => {
     fireEvent.change(screen.getByTestId("locale-select"), { target: { value: "en" } });
     const privacy = screen.getByTestId("about-privacy");
     expect(privacy.textContent).toContain("Who processes your data");
-    expect(privacy.textContent).toContain("Planned");
+    expect(privacy.textContent).toContain("In use today");
     expect(privacy.textContent).toContain("Not for personal data");
     expect(within(privacy).getByTestId("about-privacy-erasure").textContent).toContain(
       "no button for this yet",

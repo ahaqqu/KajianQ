@@ -1,18 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
 import { createApi } from "./app";
+import type { AssetFetcher } from "@app/hardening";
 import { toOpenApiPath } from "./lib/openapi-path";
 
 const { captureException } = vi.hoisted(() => ({
   captureException: vi.fn(),
 }));
 
-vi.mock("@sentry/cloudflare", () => ({ captureException }));
+vi.mock("@sentry/bun", () => ({ captureException }));
 
 const spaHtml = "<!doctype html><html><body>SPA</body></html>";
 
-function mockAssets(): { fetch: typeof fetch } {
+function mockAssets(): AssetFetcher {
   return {
-    fetch: async (_input: RequestInfo | URL, _init?: RequestInit) =>
+    fetch: async (_request: Request) =>
       new Response(spaHtml, {
         status: 200,
         headers: { "content-type": "text/html" },

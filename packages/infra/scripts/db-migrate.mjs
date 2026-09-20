@@ -2,13 +2,13 @@
 /**
  * db-migrate.mjs — KajianQ migration CLI (#4).
  *
- *   NEON_DATABASE_URL=postgres://… bun packages/infra/scripts/db-migrate.mjs status
- *   NEON_DATABASE_URL=postgres://… bun packages/infra/scripts/db-migrate.mjs up
- *   NEON_DATABASE_URL=postgres://… bun packages/infra/scripts/db-migrate.mjs up --step 1
- *   NEON_DATABASE_URL=postgres://… bun packages/infra/scripts/db-migrate.mjs down
- *   NEON_DATABASE_URL=postgres://… bun packages/infra/scripts/db-migrate.mjs down --step 2
+ *   DATABASE_URL=postgres://… bun packages/infra/scripts/db-migrate.mjs status
+ *   DATABASE_URL=postgres://… bun packages/infra/scripts/db-migrate.mjs up
+ *   DATABASE_URL=postgres://… bun packages/infra/scripts/db-migrate.mjs up --step 1
+ *   DATABASE_URL=postgres://… bun packages/infra/scripts/db-migrate.mjs down
+ *   DATABASE_URL=postgres://… bun packages/infra/scripts/db-migrate.mjs down --step 2
  *
- * Multiple migration sets share one Neon database and one ledger. Pass
+ * Multiple migration sets share one Postgres database and one ledger. Pass
  * `--dir <path>` (relative to cwd) to target a set:
  *
  *   bun run db:up                                 # engine (packages/infra)
@@ -23,14 +23,14 @@
  *   - Applied migrations are recorded in the shared `schema_migrations(name)`
  *     ledger; migration *names* must be unique across all dirs.
  *
- * Runs over Neon's WebSocket `Pool` (not the HTTP `neon()` function) because
+ * Runs over a plain `pg` `Pool` (TCP), not an HTTP query function, because
  * migrations need session transactions: each file is applied as an explicit
  * `BEGIN … COMMIT` so a failed statement rolls the whole migration back, and
- * the ledger row is inserted inside that same transaction. The runtime
- * RagStore adapter stays on the HTTP `neon()` function — only the migration
- * CLI uses `Pool`.
+ * the ledger row is inserted inside that same transaction. Post-ADR-0044 the
+ * target is the self-hosted Postgres on the netcup VPS; the adapter itself
+ * reaches the same server through the `RagStore` seam.
  */
-import { Pool } from "@neondatabase/serverless";
+import { Pool } from "pg";
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -162,8 +162,8 @@ async function status(client) {
 async function main() {
   const { command, step, dir } = parseArgs(process.argv);
   if (dir) MIGRATIONS_DIR = resolve(process.cwd(), dir);
-  const url = process.env.NEON_DATABASE_URL;
-  if (!url) fail("NEON_DATABASE_URL is not set");
+  const url = process.env.DATABASE_URL;
+  if (!url) fail("DATABASE_URL is not set");
   const pool = new Pool({ connectionString: url });
   pool.on("error", (err) => console.error("db-migrate: pool error", err));
   const client = await pool.connect();

@@ -32,6 +32,13 @@ import { chatSystemPrompt, chatUserPrompt, type ChatLanguage } from "./chat-prom
 export type GeneratorProvider = {
   generate(spec: {
     turns: readonly { role: string; content: string }[];
+    /**
+     * Required on the serving seam: the generator prompt carries the user's
+     * question and its assembled context — personal data (ADR-0043
+     * Consequences). Non-optional so a call site that drops it is a compile
+     * error; the provider seam skips free-tier candidates when it is set.
+     */
+    personalData: true;
   }): Effect.Effect<{ text: string; cost: CostRecord }, unknown>;
   /**
    * Streamed generation. Optional so a non-streaming test double (and any
@@ -40,6 +47,7 @@ export type GeneratorProvider = {
    */
   stream?(spec: {
     turns: readonly { role: string; content: string }[];
+    personalData: true;
   }): Effect.Effect<StreamHandleLike, unknown>;
 };
 
@@ -117,7 +125,7 @@ function generateDraft(
 ): Effect.Effect<{ text: string; cost: CostRecord }, { cause: unknown }> {
   return mapCause(
     deps.provider
-      .generate({ turns })
+      .generate({ turns, personalData: true })
       .pipe(Effect.map((reply) => ({ text: reply.text, cost: reply.cost }))),
   );
 }
@@ -142,7 +150,7 @@ function streamDraft(
   turns: readonly { role: string; content: string }[],
 ): Effect.Effect<{ text: string; cost: CostRecord }, { cause: unknown }> {
   return Effect.gen(function* () {
-    const handle = yield* mapCause(stream({ turns }));
+    const handle = yield* mapCause(stream({ turns, personalData: true }));
     let text = "";
     yield* mapCause(
       Stream.runForEach(handle.deltas, (delta) =>

@@ -1,14 +1,8 @@
 import { describe, expect, it } from "vitest";
-import {
-  createMemoryRateLimiter,
-  mintBypassToken,
-  RATE_BYPASS_HEADER,
-  type RateLimiterNamespace,
-} from "@app/rate";
+import { createMemoryRateLimiter, mintBypassToken, RATE_BYPASS_HEADER } from "@app/rate";
 import { generateEd25519KeypairB64 } from "@app/rate/test-utils/ed25519-keypair";
 import { createApi } from "./app";
 import { RATE_BYPASS_PUBLIC_KEY_B64 } from "./lib/rate-bypass";
-import type { WorkerBindings } from "./env";
 
 /**
  * 429 through the real middleware stack, without coupling to the module-level
@@ -36,47 +30,39 @@ describe("rate limiting", () => {
     expect(res.headers.get("X-Correlation-Id")).toBeTruthy();
   });
 
-  it("resolves the Durable Object backend from the binding when no limiter is injected", async () => {
-    const fakeNamespace: RateLimiterNamespace = {
-      idFromName: (name: string) => ({ name }),
-      get: (_id: unknown) => ({
-        async check(_limit: number, _windowMs: number): Promise<boolean> {
-          return false;
-        },
-      }),
-    };
-    const doEnv = {
-      ASSETS: { fetch },
-      RATE_LIMITER: fakeNamespace,
-    } as unknown as WorkerBindings;
-    // No injected limiter: middleware resolves from bindings. The fake stub
-    // denies immediately, proving the DO path (the in-memory fallback would
-    // allow the first request).
-    const api = createApi();
-    const res = await api.request("/v1/health", {}, doEnv);
-    expect(res.status).toBe(429);
-    expect(await res.json()).toEqual({ error: "rate_limited" });
-  });
-
-  // ADR-0041: rate limiting meters the /v1 API surface only. A denying
-  // limiter (every check fails) must not touch non-API paths — the doc
-  // routes stand in for every unmetered path (static assets ride the same
-  // "not /v1" branch through the ASSETS catch-all).
-  it("never meters non-API paths, even when the limiter denies everything", async () => {
-    const denying: RateLimiterNamespace = {
-      idFromName: (name: string) => ({ name }),
-      get: (_id: unknown) => ({
-        async check(): Promise<boolean> {
-          return false;
-        },
-      }),
-    };
-    const api = createApi();
-    const doEnv = { ASSETS: { fetch }, RATE_LIMITER: denying } as unknown as WorkerBindings;
+  // ADR-0041: rate limiting meters the /v1 API surface only. An exhausted
+  // limiter must not touch non-API paths — the doc routes stand in for every
+  // unmetered path (static assets ride the same "not /v1" branch through the
+  // ASSETS catch-all).
+  it("never meters non-API paths, even with the budget exhausted", async () => {
+    const api = createApi({ limiter: createMemoryRateLimiter(), limit });
+    for (let i = 0; i < limit; i += 1) {
+      await api.request("/v1/health", {}, env);
+    }
+    expect((await api.request("/v1/health", {}, env)).status).toBe(429);
     for (const path of ["/docs", "/openapi.json"]) {
-      const res = await api.request(path, {}, doEnv);
+      const res = await api.request(path, {}, env);
       expect(res.status).toBe(200);
     }
+  });
+
+  it("keys the counter by the digested client IP, so a different IP has its own budget", async () => {
+    // The limiter holds a digest, not the raw address (ADR-0043 decision 4:
+    // "kept in memory and named by a digest"). Two clients therefore do not
+    // share one budget, which is the property the digest must not break.
+    const api = createApi({ limiter: createMemoryRateLimiter(), limit });
+    for (let i = 0; i < limit; i += 1) {
+      await api.request("/v1/health", { headers: { "CF-Connecting-IP": "203.0.113.7" } }, env);
+    }
+    expect(
+      (await api.request("/v1/health", { headers: { "CF-Connecting-IP": "203.0.113.7" } }, env))
+        .status,
+    ).toBe(429);
+    // A second client's first request is still allowed.
+    expect(
+      (await api.request("/v1/health", { headers: { "CF-Connecting-IP": "198.51.100.9" } }, env))
+        .status,
+    ).toBe(200);
   });
 
   it("does not spend the per-IP budget on non-API traffic", async () => {

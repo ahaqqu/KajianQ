@@ -83,10 +83,12 @@ Consequences that bind every model decision:
   posture (AR-only vs. ID-fallback fusion); the dual-index schema (ADR-0013,
   sized in ADR-0020) keeps the choice switchable without re-embedding.
 
-What remains true from the template: infrastructure runs in free quotas where
-possible — Workers, Static Assets, R2, and Neon's free tier at small scale.
-The generator choice swings ~6× per 1K queries (spec §5); the harness
-(`packages/eval`) re-validates candidates so cost stays a measured decision.
+What remains true from the template: infrastructure cost is minimised —
+Cloudflare's free DNS/proxy tier and R2 remain at small scale, while the
+serving host and database moved to the paid netcup VPS for EU residency
+(ADR-0043/ADR-0044). The generator choice swings ~6× per 1K queries (spec §5);
+the harness (`packages/eval`) re-validates candidates so cost stays a measured
+decision.
 
 Gated by: per-query cost records in `answer_traces`; `bun run size-limit`.
 
@@ -97,9 +99,10 @@ local-first pillar (`packages/local-first`: IndexedDB source of truth, LWW
 CRDT sync, offline-first) is **dropped** — chat requires a live LLM and
 retrieval; an offline mode cannot answer. Instead:
 
-- **Postgres (Neon) is the single durable copy**, accessed only through the
-  `RagStore` adapter (ADR-0008): corpus, `answer_traces`, chat sessions and
-  messages, feedback, Golden Set, eval ledger, model configs.
+- **Postgres (self-hosted on the VPS, ADR-0044) is the single durable copy**,
+  accessed only through the `RagStore` adapter (ADR-0008): corpus,
+  `answer_traces`, chat sessions and messages, feedback, Golden Set, eval
+  ledger, model configs.
 - **Anonymous sessions are first-class** — `users` / `sessions` tables, 30-day
   Bearer tokens (SHA-256-hashed), no hosted identity in v1 (ADR-0017).
 - **Erasure is complete**: `deleteUserCascade` removes the user's sessions,
@@ -146,16 +149,27 @@ Gated by: axe audits (serious/critical violations fail the run).
 Every external boundary is validated. Sessions are anonymous Bearer tokens —
 stored in **Postgres via the RagStore seam** (deviation from the template's
 D1; ADR-0017, which also rejects hosted identity for v1). No custom crypto.
-Secrets are declared in `apps/api/alchemy.run.ts` as `Config.redacted` and land
-as Cloudflare `secret_text` bindings at deploy time (values come from the
-operator's environment / GitHub secrets — never the repository).
-Account deletion cascades across all data stores, including `answer_traces`
-(ADR-0007 amendment).
+Secrets are supplied as environment variables and read once at the composition
+root: the Bun serving entry (`apps/api/src/lib/server.ts`) maps a present key
+onto `AppBindings`, and absent means "feature disabled" — never an empty string
+that looks configured. On the VPS systemd supplies them through a root-owned
+`EnvironmentFile=/etc/kajianq/api.env` (mode 0600, never the unit text, never
+argv); the deploy path reads the box's name and key from an env file or
+environment secrets. Values come from the owner's environment — never the
+repository, which is public.
 
-- **Rate limiting** — `@app/rate` (`packages/rate`): one Durable Object per
-  key in production (global across isolates and POPs, alarm-based eviction);
-  bounded in-memory fallback for local dev/tests only. Originally inherited
-  from the template; now project-owned (ADR-0030).
+> **Moved by ADR-0044 (#181).** This paragraph described Cloudflare
+> `secret_text` bindings declared in `apps/api/alchemy.run.ts`; the serving path
+> is now a self-hosted Bun process behind nginx.
+> Account deletion cascades across all data stores, including `answer_traces`
+> (ADR-0007 amendment).
+
+- **Rate limiting** — `@app/rate` (`packages/rate`): the process-wide bounded
+  in-memory limiter. Post-ADR-0044 the API is one Bun process, so per-process
+  and global-for-the-deployment are the same set; the Durable Object backend was
+  removed with the Cloudflare serving path. The counter is named by a digest
+  (`fnv1aHex`), so no raw IP is held. Originally inherited from the template;
+  now project-owned (ADR-0030).
 - **Secure headers** — `@app/hardening` (`packages/hardening`): one shared
   CSP/COOP/CORP/HSTS/Permissions-Policy policy; every request (API and SPA)
   flows through the Hono stack, so headers and CORS cover static assets
@@ -206,7 +220,7 @@ so swapping the RagStore adapter swaps the backend.
 .
 ├── apps/
 │   ├── web/                    # React 19 PWA (chat, trace panel, admin routes)
-│   └── api/                    # Hono Worker: /v1/*, OpenAPI, ASSETS catch-all
+│   └── api/                    # Hono API: /v1/*, OpenAPI, SPA catch-all (Bun entry src/boot.ts)
 │       └── migrations/         # Product tables (Principle Index, Golden Set)
 ├── packages/
 │   ├── contracts/              # Valibot contracts incl. Trace/TraceEvent/CostRecord
@@ -229,10 +243,15 @@ so swapping the RagStore adapter swaps the backend.
 ## 11. Available — degrade, don't crash _(inherited, adapted)_
 
 On flaky networks the API fails with typed errors and the UI surfaces them;
-Sentry and other opt-in services degrade silently when unconfigured. Neon is
-the durable copy: point-in-time recovery replaces the template's D1 Time
-Travel, and a restore drill is a consuming-project runbook (the template's
-`RUNBOOK_RESTORE.md` / `QUOTA.md` were intentionally not brought over). PITR
+Sentry and other opt-in services degrade silently when unconfigured. Postgres
+is the durable copy, and durability is the snapshot discipline plus the
+encrypted-backup layer: `bun run db:snapshot` brackets every paid ingest
+(ADR-0038), `provision/vps/backup/` takes daily encrypted backups with a
+30-day rolling window, and a restore re-applies erasure (ADR-0043 decision 4).
+Point-in-time recovery replaced the template's D1 Time Travel while the store
+was managed; self-hosted, the backup + snapshot pair is the recovery story, and
+the restore drill is the consuming-project runbook (the template's
+`RUNBOOK_RESTORE.md` / `QUOTA.md` were intentionally not brought over). The cutover
 alone is not sufficient protection for the corpus — the free plan offers a
 6-hour window and a single manual snapshot — so the corpus layer is bracketed
 by snapshots at two independent layers: a provider snapshot plus a portable
@@ -240,7 +259,7 @@ by snapshots at two independent layers: a provider snapshot plus a portable
 ADR-0038). The ObjectStore is therefore where the real backup/export lands, and
 `db:snapshot restore-plan` prints the exact restore commands.
 
-Gated by: post-deploy smoke tests (`staging.yml`, `deploy.yml`) and blocking
+Gated by: post-deploy smoke tests (`deploy-vps.yml`, `staging.yml`) and blocking
 ZAP/Schemathesis against staging.
 
 ## 12. Reliable — verified before it ships _(inherited + Golden Set)_
@@ -291,41 +310,41 @@ Gated by: `bun run agentic-limits`, `bun run boundary`.
 
 ## 15. Technology choices
 
-| Layer            | Choice                                                                                     | Rationale                                                                                                                                                                                         |
-| ---------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Platform         | Cloudflare Workers + Static Assets + R2                                                    | Unified free tier for the serving path; stateless compute at the edge.                                                                                                                            |
-| Database         | **Neon Postgres + pgvector behind `RagStore`**                                             | Smart Router needs vector HNSW + tsvector + rich SQL filtering — D1/Vectorize cannot express it (ADR-0008). Dual 1536-dim vector schema sized in ADR-0020.                                        |
-| API framework    | Hono + hono-openapi                                                                        | Valibot route definitions produce validation, TS types, OpenAPI 3.1.                                                                                                                              |
-| Auth             | **Anonymous sessions in Postgres (RagStore)**                                              | 30-day Bearer tokens; full erasure cascade; hosted identity rejected for v1 (ADR-0017).                                                                                                           |
-| Migrations       | Raw SQL per owning package                                                                 | Engine (`packages/infra/migrations`), product (`apps/api/migrations`), concept graph (`packages/kajianq-domain/migrations`) — engine schema stays domain-agnostic (ADR-0014 amendment, ADR-0019). |
-| LLM / embeddings | `Provider` interface; allowlist Gemini/Kimi/DeepSeek/Qwen; `model_configs` per stage       | ADR-0009; paid critical path accepted with price discipline; every call traced.                                                                                                                   |
-| Pipeline         | `packages/rag-core`: Router → Retriever → Assembler → Generator → Reviewer + `runPipeline` | Typed seams, single trace collection point (ADR-0021).                                                                                                                                            |
-| Domain pack      | `packages/kajianq-domain`                                                                  | Zero Islamic-domain logic in engine packages (AGENTS.md rule 1).                                                                                                                                  |
-| Storage          | R2 via ObjectStore adapter                                                                 | Raw Shamela exports and `text_raw` backups (ADR-0008).                                                                                                                                            |
-| Rate limiting    | `@app/rate` (Durable Objects)                                                              | Inherited template package; global counter per key.                                                                                                                                               |
-| Hardening        | `@app/hardening`                                                                           | Shared CSP/headers policy; ZAP-suppression workflow.                                                                                                                                              |
-| Client state     | TanStack Query over `/v1` API                                                              | **No offline store** — `@app/local-first` dropped with D1 (spec §3.1).                                                                                                                            |
-| Routing / UI     | TanStack Router; shadcn/ui + Tailwind                                                      | Inherited.                                                                                                                                                                                        |
-| PWA              | vite-plugin-pwa                                                                            | Shell precache + update prompt; data requires network.                                                                                                                                            |
-| i18n             | Build-time en/id translations                                                              | Indonesian-first product (spec).                                                                                                                                                                  |
-| Trace contract   | `packages/contracts`: `Trace`/`TraceEvent`/`CostRecord`                                    | One shape for pipeline, PWA, admin, eval (ADR-0007 amendments).                                                                                                                                   |
-| Evaluation       | `packages/eval` + Golden Set                                                               | Versioned test sets; #9 embedding benchmark is the retrieval go/no-go gate.                                                                                                                       |
-| Payments         | Deferred                                                                                   | Not in KajianQ v1; template guidance (Xendit/Polar behind one adapter) stands if ever adopted.                                                                                                    |
-| Tooling          | Bun scripts; TypeScript strict; Nix optional                                               | Inherited.                                                                                                                                                                                        |
+| Layer            | Choice                                                                                     | Rationale                                                                                                                                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Platform         | **netcup VPS (Germany/EU)**: nginx → Bun (`apps/api`), static build served by the proxy    | EU/Germany residency for chat content and traces (ADR-0043); one host runs the proxy, API, and database (ADR-0044). Cloudflare/Neon decommissioned.                                                       |
+| Database         | **Self-hosted Postgres + pgvector behind `RagStore`**, `pg` over TCP                       | Smart Router needs vector HNSW + tsvector + rich SQL filtering — D1/Vectorize cannot express it (ADR-0008). Self-hosted for residency (ADR-0043/ADR-0044); dual 1536-dim vector schema sized in ADR-0020. |
+| API framework    | Hono + hono-openapi                                                                        | Valibot route definitions produce validation, TS types, OpenAPI 3.1.                                                                                                                                      |
+| Auth             | **Anonymous sessions in Postgres (RagStore)**                                              | 30-day Bearer tokens; full erasure cascade; hosted identity rejected for v1 (ADR-0017).                                                                                                                   |
+| Migrations       | Raw SQL per owning package                                                                 | Engine (`packages/infra/migrations`), product (`apps/api/migrations`), concept graph (`packages/kajianq-domain/migrations`) — engine schema stays domain-agnostic (ADR-0014 amendment, ADR-0019).         |
+| LLM / embeddings | `Provider` interface; allowlist Gemini/Kimi/DeepSeek/Qwen; `model_configs` per stage       | ADR-0009; paid critical path accepted with price discipline; every call traced.                                                                                                                           |
+| Pipeline         | `packages/rag-core`: Router → Retriever → Assembler → Generator → Reviewer + `runPipeline` | Typed seams, single trace collection point (ADR-0021).                                                                                                                                                    |
+| Domain pack      | `packages/kajianq-domain`                                                                  | Zero Islamic-domain logic in engine packages (AGENTS.md rule 1).                                                                                                                                          |
+| Storage          | R2 via ObjectStore adapter (transitional)                                                  | Raw Shamela exports, `text_raw` backups, and snapshot dumps (ADR-0008); a snapshot carrying personal data is encrypted at rest before it lands on the VPS (ADR-0043 decision 5).                          |
+| Rate limiting    | `@app/rate` (process-wide in-memory)                                                       | One API process, so a per-process counter is global (ADR-0044); the key is a digest, never a raw IP.                                                                                                      |
+| Hardening        | `@app/hardening`                                                                           | Shared CSP/headers policy; ZAP-suppression workflow.                                                                                                                                                      |
+| Client state     | TanStack Query over `/v1` API                                                              | **No offline store** — `@app/local-first` dropped with D1 (spec §3.1).                                                                                                                                    |
+| Routing / UI     | TanStack Router; shadcn/ui + Tailwind                                                      | Inherited.                                                                                                                                                                                                |
+| PWA              | vite-plugin-pwa                                                                            | Shell precache + update prompt; data requires network.                                                                                                                                                    |
+| i18n             | Build-time en/id translations                                                              | Indonesian-first product (spec).                                                                                                                                                                          |
+| Trace contract   | `packages/contracts`: `Trace`/`TraceEvent`/`CostRecord`                                    | One shape for pipeline, PWA, admin, eval (ADR-0007 amendments).                                                                                                                                           |
+| Evaluation       | `packages/eval` + Golden Set                                                               | Versioned test sets; #9 embedding benchmark is the retrieval go/no-go gate.                                                                                                                               |
+| Payments         | Deferred                                                                                   | Not in KajianQ v1; template guidance (Xendit/Polar behind one adapter) stands if ever adopted.                                                                                                            |
+| Tooling          | Bun scripts; TypeScript strict; Nix optional                                               | Inherited.                                                                                                                                                                                                |
 
 ## 16. Tooling
 
 Root `package.json` scripts are the single source of truth for gates:
 
-| Script                                                | Purpose                                              |
-| ----------------------------------------------------- | ---------------------------------------------------- |
-| `bun run check`                                       | typecheck (root + all packages)                      |
-| `bun run test`                                        | unit + property tests (coverage gate)                |
-| `bun run boundary`                                    | engine domain/vendor/SQL boundary gate               |
-| `bun run agentic-limits`                              | file-size / import-count caps                        |
-| `bun run size-limit`                                  | bundle budget (<200 KB gzipped)                      |
-| `bun run e2e`                                         | Playwright-BDD against `alchemy dev` (local workerd) |
-| `bun run build` / `dev` / `deploy` / `deploy:staging` | build, local dev, deploys                            |
+| Script                                           | Purpose                                                                                 |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| `bun run check`                                  | typecheck (root + all packages)                                                         |
+| `bun run test`                                   | unit + property tests (coverage gate)                                                   |
+| `bun run boundary`                               | engine domain/vendor/SQL boundary gate                                                  |
+| `bun run agentic-limits`                         | file-size / import-count caps                                                           |
+| `bun run size-limit`                             | bundle budget (<200 KB gzipped)                                                         |
+| `bun run e2e`                                    | Playwright-BDD against the local **Bun** entry (`apps/api/src/boot.ts`)                 |
+| `bun run build` / `dev` / `api:serve` / `deploy` | web build, local dev, the Bun server, the VPS deploy (`provision/vps/deploy/deploy.sh`) |
 
 ## 17. Privacy by design — GDPR posture
 

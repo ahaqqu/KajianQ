@@ -31,6 +31,16 @@ EnvironmentFile=/etc/kajianq/api.env
 ExecStart=/usr/bin/bun run /srv/kajianq/api/index.js
 Restart=on-failure
 RestartSec=5
+# The SIGTERM drain is bounded in code: boot.ts drains in-flight SSE answers up
+# to DRAIN_TIMEOUT_MS = 300s (apps/api/src/lib/server.ts), matched to nginx's
+# proxy_read_timeout 300s — a stream never outlives its own read timeout, so
+# waiting longer buys nothing. This value must equal that deadline: with the
+# 90 s default, systemd would SIGKILL a healthy drain mid-stream, silently
+# contradicting the drain design. KillMode=mixed sends SIGTERM only to the
+# main process (the drain target) and SIGKILL to the rest of the cgroup after
+# the timeout, instead of signalling everything at once.
+TimeoutStopSec=300s
+KillMode=mixed
 
 # Hardening: the API needs the network and its own tree, nothing else.
 NoNewPrivileges=yes

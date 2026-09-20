@@ -179,7 +179,10 @@ describe("erasure a restore must re-apply", () => {
         .replace(/\$\{before\.toISOString\(\)\}/g, "now()")
         .trim();
     const adapter = normalize(
-      readFileSync(resolve(process.cwd(), "packages/infra/src/rag-store-neon-session.ts"), "utf8"),
+      readFileSync(
+        resolve(process.cwd(), "packages/infra/src/rag-store-postgres-session.ts"),
+        "utf8",
+      ),
     );
     for (const statement of RECLAIM_SQL) {
       expect(adapter, statement).toContain(normalize(statement));
@@ -196,7 +199,7 @@ describe("erasure a restore must re-apply", () => {
 
   it("the Art. 17 statement matches production deleteUserCascade — the restore path cannot drift", () => {
     // Production erasure (DELETE /v1/auth/me → deleteUserCascade in
-    // packages/infra/src/rag-store-neon-session.ts) executes a parameterized
+    // packages/infra/src/rag-store-postgres-session.ts) executes a parameterized
     // `DELETE FROM users WHERE id = ${userId}`. The restore re-applies the
     // same statement with the id bound as a psql variable (thermo-review A3):
     // if the adapter's erasure ever changes shape, this test fails and points
@@ -211,7 +214,10 @@ describe("erasure a restore must re-apply", () => {
         .replace(/\$\{userId\}/g, ":'uid'")
         .trim();
     const adapter = normalize(
-      readFileSync(resolve(process.cwd(), "packages/infra/src/rag-store-neon-session.ts"), "utf8"),
+      readFileSync(
+        resolve(process.cwd(), "packages/infra/src/rag-store-postgres-session.ts"),
+        "utf8",
+      ),
     );
     expect(adapter).toContain(normalize(erasureSql()));
   });
@@ -500,6 +506,117 @@ describe("provisioning config as code stays true to the ADR", () => {
     // and in the journal.
     expect(unit).not.toMatch(/DATABASE_URL=/);
     expect(unit).toContain("NoNewPrivileges=yes");
+  });
+
+  it("the served entry the unit runs is the Bun one, with no Cloudflare runtime left", () => {
+    // The unit's ExecStart must name the Bun entry point built from
+    // apps/api/src/boot.ts (ADR-0044 decision 1), not a Worker artifact.
+    const unit = directives("provision/vps/systemd/kajianq-api.service");
+    expect(unit).toMatch(/ExecStart=\/usr\/bin\/bun run \/srv\/kajianq\/api\/index\.js/);
+    expect(unit).toContain("User=kajianq");
+    // A workerd / alchemy deployment path is gone, so nothing in the unit may
+    // reference it.
+    expect(unit).not.toMatch(/workerd|alchemy|wrangler/i);
+  });
+
+  it("the SIGTERM drain ceiling matches the code's drain deadline, not systemd's 90 s default", () => {
+    // Thermo-review A3: the drain (boot.ts waits for in-flight SSE answers up
+    // to DRAIN_TIMEOUT_MS) is only real if the unit lets it run. The unit's
+    // TimeoutStopSec must equal the code's deadline — a smaller value SIGKILLs
+    // a healthy drain mid-stream; a larger one waits past a stream nginx has
+    // already cut at proxy_read_timeout 300s. The three numbers agreeing is
+    // the checkable form of the drain design.
+    const unit = directives("provision/vps/systemd/kajianq-api.service");
+    expect(unit).toContain("TimeoutStopSec=300s");
+    expect(unit).toContain("KillMode=mixed");
+    const server = readFileSync(resolve(process.cwd(), "apps/api/src/lib/server.ts"), "utf8");
+    expect(server).toMatch(/DRAIN_TIMEOUT_MS = 300_000/);
+    const nginx = directives("provision/vps/nginx/kajianq.conf");
+    expect(nginx).toContain("proxy_read_timeout 300s");
+  });
+
+  it("the session reclaim runs as its own timer at ADR-0017's 03:17 slot", () => {
+    // ADR-0044 decision 7: the reclamation must be independently observable,
+    // not an in-process interval, so the units are shipped and enabled.
+    const service = directives("provision/vps/systemd/kajianq-cron.service");
+    expect(service).toMatch(/Type=oneshot/);
+    expect(service).toContain("EnvironmentFile=/etc/kajianq/api.env");
+    expect(service).toMatch(/ExecStart=\/usr\/bin\/bun run \/srv\/kajianq\/api\/cleanup\.js/);
+    expect(service).toContain("User=kajianq");
+    // Credentials in the unit text would be world-readable in the journal.
+    expect(service).not.toMatch(/DATABASE_URL=/);
+    const timer = directives("provision/vps/systemd/kajianq-cron.timer");
+    expect(timer).toMatch(/OnCalendar=\*-\*-\* 03:17:00/);
+    expect(timer).toMatch(/Persistent=true/);
+    expect(timer).toContain("Unit=kajianq-cron.service");
+    expect(timer).toMatch(/WantedBy=timers.target/);
+    const apply = readFileSync(resolve(process.cwd(), "provision/vps/apply.sh"), "utf8");
+    expect(apply).toMatch(/kajianq-cron\.service/);
+    expect(apply).toMatch(/systemctl enable kajianq-cron\.timer/);
+  });
+
+  it("the deploy script ships only placeholders and takes the box name from an env file", () => {
+    const script = read("provision/vps/deploy/deploy.sh");
+    // No hostname, IP, or credential in the repository — it is public.
+    expect(script).not.toMatch(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/);
+    expect(script).not.toMatch(/https?:\/\/[a-z0-9.-]+\.(com|net|org|dev|id)/);
+    expect(script).toMatch(/KAJIANQ_DEPLOY_HOST/);
+    expect(script).toMatch(/KAJIANQ_DEPLOY_USER/);
+    // The env file must be owner-only before it is sourced.
+    expect(script).toMatch(/8#\$\{env_mode\} & 077/);
+    // It must smoke the public URL (through the proxy), and it must run the
+    // built entries — not rebuild them on the box.
+    expect(script).toMatch(/KAJIANQ_PUBLIC_URL/);
+    expect(script).toMatch(/\/v1\/health/);
+    expect(script).toMatch(/boot\.ts/);
+    expect(script).toMatch(/cleanup\.ts/);
+  });
+
+  it("the deploy script builds with documented forms and smokes the SPA, not only the API", () => {
+    // Thermo-review A6/C3: `bun run --cwd` relies on undocumented flag
+    // forwarding; the web build must run via an explicit subshell cd. And the
+    // smoke must fetch an extensionless client route — the e2e suite caught
+    // the octet-stream bug class on exactly this path, and the deploy smoke
+    // is the last gate that proves the shipped SPA on the box.
+    const script = read("provision/vps/deploy/deploy.sh");
+    expect(script).not.toMatch(/bun run --cwd/);
+    expect(script).toMatch(/cd '\$REPO_DIR' && bun run build:web/);
+    expect(script).toMatch(/\$\{PUBLIC_URL\}\/chat/);
+    expect(script).toMatch(/<!doctype html/);
+  });
+
+  it("the deploy env example carries placeholders, not a real host", () => {
+    const example = read("provision/vps/deploy/deploy.env.example");
+    expect(example).not.toMatch(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/);
+    expect(example).toMatch(/KAJIANQ_DEPLOY_HOST=/);
+    expect(example).toMatch(/KAJIANQ_PUBLIC_URL=/);
+  });
+
+  it("the api.env example carries every key the serving composition root reads, as placeholders", () => {
+    // Thermo-review B2/A5: /etc/kajianq/api.env is the serving process's whole
+    // configuration, but no document described its contents. The example must
+    // list exactly the PASSTHROUGH_KEYS set in apps/api/src/lib/server.ts (the
+    // two sets drift only together), set KAJIANQ_WEB_ROOT to the deployed path
+    // (the default resolves under the unit's WorkingDirectory and 503s every
+    // SPA route while health stays green), and hold placeholders only. The
+    // loopback 127.0.0.1 is exempt: it is the Postgres listener's own address,
+    // already printed in backup.env.example, not an origin secret.
+    const example = read("provision/vps/api.env.example");
+    const server = readFileSync(resolve(process.cwd(), "apps/api/src/lib/server.ts"), "utf8");
+    const keys = [...server.matchAll(/^\s*"([A-Z_0-9]+)",?$/gm)].map((m) => m[1]);
+    expect(keys.length).toBeGreaterThanOrEqual(9);
+    for (const key of keys) {
+      expect(example, key).toMatch(new RegExp(`^${key}=`, "m"));
+    }
+    expect(example).toMatch(/^KAJIANQ_WEB_ROOT=\/srv\/kajianq\/web$/m);
+    const noLoopback = example.replace(/127\.0\.0\.1/g, "<loopback>");
+    expect(noLoopback).not.toMatch(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/);
+    expect(example).not.toMatch(/postgres:\/\/(?!kajianq:CHANGE_ME)/);
+    // Real secrets never enter the repo: every provider key line is a
+    // placeholder.
+    for (const key of ["GEMINI_PAID_API_KEY", "MOONSHOT_API_KEY", "DEEPSEEK_API_KEY"]) {
+      expect(example).toMatch(new RegExp(`^${key}=CHANGE_ME$`, "m"));
+    }
   });
 });
 

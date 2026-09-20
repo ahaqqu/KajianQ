@@ -7,16 +7,29 @@
  *
  *   create <label> | verify <label> | require <label> | list | download | restore-plan
  *
- * Env: NEON_DATABASE_URL plus the R2_* credentials. The connection URL is
+ * Env: DATABASE_URL plus the R2_* credentials. The connection URL is
  * decomposed into libpq PG* env vars, never argv, and the manifest records host
  * and database name only — never credentials. This is the portable layer of the
  * two-layer guardrail (survives project deletion, plan downgrade, or a v2
- * re-embed); the provider (Neon) snapshot is the fast in-place layer taken
- * alongside it.
+ * re-embed); the source is whatever DATABASE_URL names (Neon during the
+ * transition, the self-hosted Postgres on the netcup VPS post-cutover,
+ * ADR-0044), so the CLI carries no vendor in its configuration.
+ *
+ * The archive is a whole-database `pg_dump`, so it carries personal data
+ * (ADR-0043 decision 5). `create` computes that from the row counts and refuses
+ * to write such an archive unless the storage posture is asserted — see
+ * `snapshot-privacy.mjs` for the decision and both escapes (the encrypted path
+ * is the GDPR-D backup tooling, `provision/vps/backup/`, never a second tool).
  */
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { isCorpusTable, pgEnv, run, sql, tableCounts } from "./pg-conn.mjs";
+import {
+  archivePrivacy,
+  buildManifest,
+  privacyBanner,
+  refusalMessage,
+} from "./snapshot-privacy.mjs";
 import {
   createSnapshotStore,
   dumpKey,
@@ -46,8 +59,8 @@ function gitInfo() {
   }
 }
 
-function sourceLabel(neonUrl) {
-  const u = new URL(neonUrl);
+function sourceLabel(databaseUrl) {
+  const u = new URL(databaseUrl);
   return { host: u.hostname, database: u.pathname.replace(/^\//, "") || "(default)" };
 }
 
@@ -66,8 +79,8 @@ function readLabel(argv) {
 }
 
 async function cmdCreate(label) {
-  const neonUrl = process.env.NEON_DATABASE_URL;
-  if (!neonUrl) fail("NEON_DATABASE_URL is not set — nothing to snapshot");
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) fail("DATABASE_URL is not set — nothing to snapshot");
   const { store, bucket } = createSnapshotStore();
 
   if (await getObject(store, manifestKey(label))) {
@@ -84,26 +97,34 @@ async function cmdCreate(label) {
     run(
       "pg_dump",
       ["--format=custom", "--no-owner", "--no-privileges", "--compress=6", "--file", dumpPath],
-      pgEnv(neonUrl),
+      pgEnv(databaseUrl),
     );
     const bytes = readFileSync(dumpPath);
-    const manifest = {
+    const counts = tableCounts(databaseUrl);
+    // The privacy posture is computed, not assumed: a whole-DB dump carries the
+    // personal-data tables whenever they hold a row, and the storage assertion
+    // is the operator's. Recording it in the manifest turns ADR-0043 decision 5
+    // from an analysis into a checkable claim.
+    const privacy = archivePrivacy(counts);
+    if (privacy.posture === "refused") fail(refusalMessage(label));
+    const manifest = buildManifest({
       label,
       createdAt: new Date().toISOString(),
       tool: { pgDump: pgDumpVersion, generator: "packages/infra/scripts/db-snapshot.mjs" },
       git: gitInfo(),
       source: {
-        ...sourceLabel(neonUrl),
-        serverVersion: sql(neonUrl, "SHOW server_version"),
-        databaseBytes: Number(sql(neonUrl, "SELECT pg_database_size(current_database())")),
+        ...sourceLabel(databaseUrl),
+        serverVersion: sql(databaseUrl, "SHOW server_version"),
+        databaseBytes: Number(sql(databaseUrl, "SELECT pg_database_size(current_database())")),
         migrations: sql(
-          neonUrl,
+          databaseUrl,
           "SELECT coalesce(string_agg(name, ',' ORDER BY name), '') FROM schema_migrations",
         ),
       },
       dump: { key: dumpKey(label), bytes: bytes.length, sha256: sha256Hex(bytes) },
-      tableCounts: tableCounts(neonUrl),
-    };
+      counts,
+      privacy,
+    });
     await putObject(store, dumpKey(label), bytes);
     await putObject(store, manifestKey(label), JSON.stringify(manifest, null, 2));
     console.log(
@@ -112,9 +133,10 @@ async function cmdCreate(label) {
         `  dump      ${dumpKey(label)} (${(bytes.length / 1024 / 1024).toFixed(1)} MB, sha256 ${manifest.dump.sha256.slice(0, 16)}…)`,
         `  manifest  ${manifestKey(label)}`,
         `  source    ${manifest.source.host}/${manifest.source.database} @ ${manifest.git.sha.slice(0, 8)} (pg ${manifest.source.serverVersion})`,
-        `  rows      ${Object.entries(manifest.tableCounts)
+        `  rows      ${Object.entries(counts)
           .map(([t, n]) => `${t}=${n}`)
           .join(" ")}`,
+        privacyBanner(privacy),
       ].join("\n"),
     );
   } finally {
@@ -154,12 +176,12 @@ async function cmdVerify(label) {
     fail(`dump hash mismatch: manifest ${manifest.dump.sha256}, downloaded ${actual}`);
   }
 
-  const neonUrl = process.env.NEON_DATABASE_URL;
+  const databaseUrl = process.env.DATABASE_URL;
   // Round-3 A5: the live counts are read up front and the headline reflects
   // the verdict — a drifted snapshot must not print a "verified" banner, and
   // the drift line must show what the live database actually holds next to
   // what the manifest recorded (a bare manifest count is not diagnosable).
-  const live = neonUrl ? tableCounts(neonUrl) : null;
+  const live = databaseUrl ? tableCounts(databaseUrl) : null;
   let corpusDrift = [];
   let ledgerDrift = [];
   if (live) {
@@ -178,7 +200,7 @@ async function cmdVerify(label) {
       `  sha256    ${actual.slice(0, 16)}… matches the manifest`,
       `  size      ${(dump.length / 1024 / 1024).toFixed(1)} MB`,
       live === null
-        ? "  (NEON_DATABASE_URL unset — integrity checked, live counts skipped)"
+        ? "  (DATABASE_URL unset — integrity checked, live counts skipped)"
         : drifted
           ? `  CORPUS DRIFT: ${corpusDrift.map(([t, n]) => `${t} manifest=${n} live=${live[t]}`).join(", ")}`
           : "  corpus row counts match the live database",

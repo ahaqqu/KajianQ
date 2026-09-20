@@ -1,20 +1,22 @@
 /// <reference types="node" />
-import { neon } from "@neondatabase/serverless";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Effect } from "effect";
-import { createNeonRagStore } from "./rag-store-neon";
+import { createPostgresRagStore } from "./rag-store-postgres";
+import { disposePostgresPools, postgresPool, postgresSqlRunner } from "./rag-store-postgres-driver";
 import type { RagStore } from "./rag-store";
 
 /**
  * RagStore contract tests (#4 AC: "vector insert + similarity query
  * round-trip on both `embedding_primary` and `embedding_fallback`").
  *
- * These are integration tests against a real Neon database. They only run
- * when NEON_DATABASE_URL is set — without it they are skipped so unit-test
- * runs (and any environment lacking the secret) stay green. When the URL is
- * present they must be run in SERIES (`vitest --no-file-parallelism` or a
- * single-file run) because they share one test fixture namespace keyed off a
- * per-run prefix; parallel runs against the same Neon project would race.
+ * These are integration tests against a real Postgres server (the self-hosted
+ * one on the VPS post-ADR-0044; the CI contract job points DATABASE_URL at a
+ * pgvector service container). They only run when DATABASE_URL is set —
+ * without it they are skipped so unit-test runs (and any environment lacking
+ * the secret) stay green. When the URL is present they must be run in SERIES
+ * (`vitest --no-file-parallelism` or a single-file run) because they share one
+ * test fixture namespace keyed off a per-run prefix; parallel runs against the
+ * same database would race.
  *
  * Assertions are Effect-shaped (ADR-0027 decision 7): every seam call is
  * composed into one program per test via `Effect.gen`/`Effect.forEach` and
@@ -23,13 +25,13 @@ import type { RagStore } from "./rag-store";
  * shims.
  */
 
-const URL = process.env.NEON_DATABASE_URL;
+const URL = process.env.DATABASE_URL;
 const run = URL ? describe : describe.skip;
 
 // Per-run prefix isolates this test run's rows from anything else in the
 // staging database, so the tests are idempotent and leave no residue.
 let PREFIX: string;
-let sql: import("./rag-store-neon-errors").SqlRunner | null = null;
+let sql: import("./rag-store-postgres-errors").SqlRunner | null = null;
 let store: RagStore;
 let cleanup: () => Promise<void>;
 
@@ -37,12 +39,12 @@ function vec(dim: number, seed: number): number[] {
   return Array.from({ length: dim }, (_, i) => Math.sin(seed * 1000 + i * 0.01));
 }
 
-run("RagStore contract (real Neon, Effect-shaped seam)", () => {
+run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
   beforeAll(async () => {
     if (!URL) return;
     PREFIX = `ct-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
-    sql = neon(URL);
-    store = createNeonRagStore(sql);
+    sql = postgresSqlRunner(postgresPool(URL));
+    store = createPostgresRagStore(sql);
     cleanup = async () => {
       // Remove this run's fixture rows. userId/messageId keys carry PREFIX so
       // a failed run cannot collide with the next.
@@ -57,6 +59,9 @@ run("RagStore contract (real Neon, Effect-shaped seam)", () => {
 
   afterAll(async () => {
     if (cleanup) await cleanup();
+    // Release the memoized pools so the vitest worker exits cleanly (a held
+    // connection keeps the event loop alive).
+    await disposePostgresPools();
   });
 
   it("round-trips a vector insert + similarity search on embedding_primary", async () => {

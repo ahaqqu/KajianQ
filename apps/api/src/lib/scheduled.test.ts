@@ -5,15 +5,22 @@ import { cleanupExpiredSessions } from "./scheduled";
 
 /**
  * The scheduled cleanup (ADR-0017, ticket #10): expired anonymous sessions
- * are reclaimed by a Worker cron. The handler must be inert when the database
+ * are reclaimed by the nightly `kajianq-cron.timer` (ADR-0044 decision 7,
+ * previously a Worker cron). The handler must be inert when the database
  * binding is absent and must not throw on a store fault — a cron run has no
- * client to fail to, and a transient Neon error must leave the rows for the
+ * client to fail to, and a transient store error must leave the rows for the
  * next tick rather than page anyone.
  */
 
-vi.mock("@neondatabase/serverless", () => ({
-  neon: () => {
-    throw new Error("scheduled test: neon must not be reached");
+// The database client lives behind the RagStore adapter (ADR-0008), so
+// these route tests never reach one: constructing or querying the pool is
+// the failure this mock makes loud.
+vi.mock("pg", () => ({
+  Pool: class {
+    on(): void {}
+    query(): never {
+      throw new Error("scheduled test: the database must not be reached");
+    }
   },
 }));
 
@@ -62,7 +69,7 @@ describe("cleanupExpiredSessions", () => {
       {
         createStore: () => storeWith(() => ({})),
         runStore: async () => {
-          throw new Error("neon transient");
+          throw new Error("store transient");
         },
       },
     );

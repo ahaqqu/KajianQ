@@ -1,20 +1,20 @@
 import { Effect } from "effect";
 import type { AlignedPairInsert, DocChildInsert, RagStore } from "./rag-store";
-import { buildBatchChildUpsert } from "./rag-store-neon-batch";
-import { sqlEffect, type SqlRunner } from "./rag-store-neon-errors";
-import { neonChildMethods, neonSimilaritySearch } from "./rag-store-neon-similarity";
+import { buildBatchChildUpsert } from "./rag-store-postgres-batch";
+import { sqlEffect, type SqlRunner } from "./rag-store-postgres-errors";
+import { postgresChildMethods, postgresSimilaritySearch } from "./rag-store-postgres-similarity";
 
 /**
- * Corpus methods of the Neon RagStore adapter, split from
- * `rag-store-neon.ts` to respect the agentic size limits. Part of the Neon
+ * Corpus methods of the Postgres RagStore adapter, split from
+ * `rag-store-postgres.ts` to respect the agentic size limits. Part of the Postgres
  * adapter SQL surface (ADR-0027 decision 7): parents upsert by source_key
  * (AGENTS.md rule 13), children by (parent_id, ordinal) — text_raw is
  * immutable; pairs by pair_key (rule 11). The similarity search lives in
- * `rag-store-neon-similarity.ts`: it validates the embedding BEFORE the
+ * `rag-store-postgres-similarity.ts`: it validates the embedding BEFORE the
  * query so a bad vector fails as a `constraint` StoreError at the seam, not
  * an opaque pgvector error.
  */
-export function neonCorpusMethods(
+export function postgresCorpusMethods(
   sql: SqlRunner,
 ): Pick<
   RagStore,
@@ -96,10 +96,10 @@ export function neonCorpusMethods(
     },
 
     similaritySearch(track, embedding, opts) {
-      return neonSimilaritySearch(sql, track, embedding, opts);
+      return postgresSimilaritySearch(sql, track, embedding, opts);
     },
     // The by-id read behind the structured citation payload (#11); the
     // implementation shares the similarity module's row machinery.
-    ...neonChildMethods(sql),
+    ...postgresChildMethods(sql),
   };
 }

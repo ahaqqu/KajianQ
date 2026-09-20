@@ -144,8 +144,9 @@ Then("I see the about page in English", async ({ page }) => {
 
 // --- The privacy notice (#179, GDPR-C) -----------------------------------
 // The notice renders the ADR-0043 register and the retention values, with the
-// netcup destination honestly marked planned (#181 has not happened) and the
-// erasure path named as the endpoint that exists. The steps assert the copy
+// netcup host marked in use today (#181 moved the serving path onto it) and the
+// vendors the move narrows marked transition, so the notice is never false. The
+// erasure path is named as the endpoint that exists. The steps assert the copy
 // and the status attributes a reader actually sees.
 
 When("I see the privacy notice rendered from the register", async ({ page }) => {
@@ -162,16 +163,22 @@ When("I see the privacy notice rendered from the register", async ({ page }) => 
   await expect(notice).toContainText("Bukan untuk data pribadi");
 });
 
-Then("I see the netcup destination marked as planned, not live", async ({ page }) => {
-  const netcup = page.getByTestId("about-privacy-processor").filter({ hasText: "netcup GmbH" });
-  await expect(netcup).toHaveAttribute("data-status", "planned");
-  await expect(netcup.getByTestId("about-privacy-processor-status")).toHaveText("Direncanakan");
-  // The vendors serving today say so, so the notice is never false.
-  const cloudflare = page
-    .getByTestId("about-privacy-processor")
-    .filter({ hasText: "Cloudflare, Inc." });
-  await expect(cloudflare).toHaveAttribute("data-status", "transition");
-});
+Then(
+  "I see the netcup host marked as in use today, with the narrowed vendors marked transition",
+  async ({ page }) => {
+    const netcup = page.getByTestId("about-privacy-processor").filter({ hasText: "netcup GmbH" });
+    await expect(netcup).toHaveAttribute("data-status", "current");
+    await expect(netcup.getByTestId("about-privacy-processor-status")).toHaveText(
+      "Dipakai hari ini",
+    );
+    // The vendors the move narrows or retires say so — the row is not claimed
+    // gone until the owner approves decommissioning (#181).
+    for (const vendor of ["Cloudflare, Inc.", "Neon, Inc."]) {
+      const row = page.getByTestId("about-privacy-processor").filter({ hasText: vendor });
+      await expect(row).toHaveAttribute("data-status", "transition");
+    }
+  },
+);
 
 Then(
   "I see the retention row for reverse-proxy access logs marked {string}",

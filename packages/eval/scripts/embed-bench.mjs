@@ -6,7 +6,7 @@
  *   bun run eval:embed-bench
  *
  * Env (validated by loadEmbedBenchConfig before any spend):
- *   NEON_DATABASE_URL     optional (validated URL-shape when set; the run is
+ *   DATABASE_URL     optional (validated URL-shape when set; the run is
  *                         source-based and DB-free — thermo B5)
  *   GEMINI_API_KEY        the vendor key every candidate needs (absent =
  *                         fail fast, never silently skip a candidate)

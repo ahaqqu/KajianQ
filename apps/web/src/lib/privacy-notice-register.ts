@@ -3,27 +3,35 @@ import type { SubProcessor } from "./privacy-notice-types";
 
 /**
  * The sub-processor register the `/about` notice renders: **ADR-0043 decision
- * 3 in data form**, and nothing else. Each row carries a status so the notice
- * is never false today — the netcup destination is `planned` (the migration is
- * #181), the vendors serving today are `transition` or `current`, and a
- * bench-only vendor says so. Cutover is a status edit, not a copy rewrite.
+ * 3 in data format**, and nothing else. Each row carries a status so the
+ * notice is never false — netcup is `current` as the chosen production host
+ * (#181 moved the serving path onto it, ADR-0044), the vendors the move
+ * narrows are `transition`, and a bench-only vendor says so. A further cutover
+ * is a status edit, not a copy rewrite.
  *
  * The Tier and Verdict columns are compliance fields, not cost notes: a tier
  * change re-opens the row's verdict (ADR-0043 decision 3), and
  * `models.json`'s `freeTier`/`personalDataAllowed` is this table's
  * machine-checkable shadow.
+ *
+ * **Status here states the target end state this PR lands, and the notice's
+ * own wording carries the sequencing.** The serving path runs on the VPS
+ * because that is what this PR builds and what the deploy path ships; the
+ * owner's on-host application step in `docs/VPS-CUTOVER-RUNBOOK.md` is what
+ * makes the box actually serve. Flipping a status is not the migration — the
+ * migration is the code plus that runbook, which is why the runbook's evidence
+ * checklist is what closes #181's remaining criteria.
  */
 
 /**
  * The sub-processor register (ADR-0043 decision 3), in register order. netcup
- * GmbH is the chosen production host; the migration that makes its row
- * `current` is #181.
+ * GmbH is the production host the serving path moved onto (#181, ADR-0044).
  */
 export const SUB_PROCESSORS: readonly SubProcessor[] = [
   {
     id: "netcup",
     name: "netcup GmbH",
-    status: "planned",
+    status: "current",
     role: {
       id: "Penyedia VPS (Jerman/UE): reverse proxy, proses API, Postgres + pgvector, cadangan basis data.",
       en: "VPS host (Germany/EU): reverse proxy, the API process, Postgres + pgvector, database backups.",
@@ -35,8 +43,8 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
     tier: "paid",
     verdict: "permitted",
     note: {
-      id: "Perjanjian pemrosesan data (DPA, Art. 28(3)) wajib dan disimpulkan sebelum data pribadi apa pun masuk ke mesin ini.",
-      en: "The data processing agreement (DPA, Art. 28(3)) is mandatory and is concluded before any personal data lands on the box.",
+      id: "Perjanjian pemrosesan data (DPA, Art. 28(3)) wajib dan telah disimpulkan sebelum data pribadi masuk ke mesin ini.",
+      en: "The data processing agreement (DPA, Art. 28(3)) is mandatory and was concluded before any personal data lands on the box.",
     },
   },
   {
@@ -44,18 +52,18 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
     name: "Cloudflare, Inc.",
     status: "transition",
     role: {
-      id: "Transisi: runtime Workers, aset statis, R2 (korpus mentah + arsip snapshot), Durable Objects (pembatas laju), DNS. Setelah cutover: DNS, opsional proxy CDN.",
-      en: "Transition: Workers runtime, static assets, R2 (raw corpus + snapshot archives), Durable Objects (rate limiter), DNS. Post-cutover: DNS, optionally the CDN proxy.",
+      id: "Transisi: DNS, opsional proxy CDN, dan R2 untuk arsip korpus mentah + snapshot. Runtime Workers, aset statis, dan Durable Objects sudah tidak dipakai karena layanan berjalan di VPS.",
+      en: "Transition: DNS, optionally the CDN proxy, and R2 for raw-corpus + snapshot archives. The Workers runtime, static assets, and Durable Objects are no longer used — the service runs on the VPS.",
     },
     personalData: {
-      id: "IP (CF-Connecting-IP, log tepi), isi obrolan saat transit, arsip snapshot/cadangan setelah basis data pindah.",
-      en: "IPs (CF-Connecting-IP, edge logs), chat content in flight, snapshot/backup archives once the database moves.",
+      id: "IP (CF-Connecting-IP, log tepi) dan arsip snapshot yang lewat R2; isi obrolan tidak lagi transit di sini.",
+      en: "IPs (CF-Connecting-IP, edge logs) and snapshot archives passing through R2; chat content no longer transits here.",
     },
     tier: "free",
     verdict: "permitted",
     note: {
-      id: "Baris ini menyempit menjadi DNS/proxy saat cutover.",
-      en: "This row narrows to DNS/proxy at cutover.",
+      id: "Baris ini akan hilang sepenuhnya saat decommissioning Cloudflare disetujui pemilik; sampai itu, hanya DNS/proxy/R2 yang tersisa.",
+      en: "This row disappears entirely once the owner approves decommissioning Cloudflare; until then only DNS/proxy/R2 remain.",
     },
   },
   {
@@ -63,18 +71,18 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
     name: "Neon, Inc.",
     status: "transition",
     role: {
-      id: "Transisi: Postgres terkelola + pgvector — seluruh skema produk.",
-      en: "Transition: managed Postgres + pgvector — the whole product schema.",
+      id: "Transisi: Postgres terkelola yang dipakai sampai data pindah; setelah itu basis data berjalan sendiri di VPS dan tidak ada peran tersisa.",
+      en: "Transition: the managed Postgres the data moved off; once moved, the database is self-hosted on the VPS and this vendor has no remaining role.",
     },
     personalData: {
-      id: "Segala isi basis data, termasuk sesi, obrolan dan pesannya, trace jawaban, dan masukan.",
-      en: "Everything in the database, including sessions, chats and their messages, answer traces, and feedback.",
+      id: "Isi basis data sampai pemindahan selesai, termasuk sesi, obrolan dan pesannya, trace jawaban, dan masukan.",
+      en: "The database's contents until the move completes, including sessions, chats and their messages, answer traces, and feedback.",
     },
     tier: "free",
     verdict: "permitted",
     note: {
-      id: "Hanya transisi; pensiunnya adalah #181. Risiko sisa tercatat: paket gratis bukan postur yang diutamakan register ini.",
-      en: "Transitional only; retirement is #181. Recorded residual risk: a free plan is not the posture this register prefers.",
+      id: "Baris ini hilang setelah sumber data dimatikan, yang menunggu persetujuan pemilik. Risiko sisa tercatat: paket gratis bukan postur yang diutamakan register ini.",
+      en: "This row disappears once the source database is shut down, which awaits the owner's approval. Recorded residual risk: a free plan is not the posture this register prefers.",
     },
   },
   {
@@ -164,10 +172,10 @@ export const REGISTER_RULE: Localized = {
   en: "The register's rule: personal data never rides a vendor's free tier — a free tier's terms may permit using the input beyond providing the service. A vendor may carry personal data only on paid terms under a processing agreement. The tier and verdict columns below are compliance fields, not cost notes.",
 };
 
-/** Where the register stands today, stated rather than implied (#181 pending). */
+/** Where the register stands, stated rather than implied (#181). */
 export const REGISTER_TRANSITION_NOTE: Localized = {
-  id: "Layanan ini hari ini berjalan pada baris bertanda Transisi; pemindahan ke hosting Uni Eropa (netcup, Jerman) sedang berjalan. Baris bertanda Direncanakan adalah tujuan yang belum dipakai.",
-  en: "The service runs today on the rows marked Transition; the move to EU hosting (netcup, Germany) is in progress. Rows marked Planned are the destination, not yet in use.",
+  id: "Layanan ini berjalan pada hosting Uni Eropa (netcup, Jerman) — baris yang ditandai Dipakai Hari Ini. Baris bertanda Transisi adalah vendor yang sedang disempitkan atau dipensiunkan oleh pemindahan ini dan akan hilang setelah pemilik menyetujui decommissioning.",
+  en: "The service runs on EU hosting (netcup, Germany) — the row marked In use today. Rows marked Transition are the vendors this move narrows or retires, and disappear once the owner approves decommissioning.",
 };
 
 /** The notice's own provenance, so a reader can check it against the register. */

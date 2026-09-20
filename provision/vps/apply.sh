@@ -81,7 +81,12 @@ if [ "${env_owner}" != "root:root" ]; then
     echo "apply: ${ENV_FILE} is owned by ${env_owner} — must be root:root before sourcing" >&2
     exit 1
 fi
-if [ "$((0#${env_mode} & 077))" -ne 0 ]; then
+# `8#` is load-bearing: `stat -c %a` prints an octal-looking string without a
+# leading 0 (600, not 0600), and bash's `0#` form rejects a leading digit 6
+# with "invalid number" — inside `[ ]` that error is a false condition, which
+# is exactly the fail-open this check exists to prevent. Parsing explicitly in
+# base 8 accepts both printed forms and rejects 644.
+if [ "$((8#${env_mode} & 077))" -ne 0 ]; then
     echo "apply: ${ENV_FILE} is mode ${env_mode} — must be 0600 or tighter (no group/other bits)" >&2
     exit 1
 fi
@@ -161,6 +166,14 @@ fi
 # --- API service ------------------------------------------------------------
 run install -o root -g root -m 0644 "${SRC}/systemd/kajianq-api.service" /etc/systemd/system/kajianq-api.service
 
+# --- session-reclamation cron (ADR-0017, ADR-0044 decision 7) ---------------
+# The nightly reclamation used to be a Cloudflare Worker cron trigger; on the
+# VPS it is a systemd timer invoking the dedicated entry. Both units are
+# config-as-code, so the schedule is installed and enabled here rather than as a
+# hand-copied crontab line.
+run install -o root -g root -m 0644 "${SRC}/systemd/kajianq-cron.service" /etc/systemd/system/kajianq-cron.service
+run install -o root -g root -m 0644 "${SRC}/systemd/kajianq-cron.timer" /etc/systemd/system/kajianq-cron.timer
+
 # --- backup schedule --------------------------------------------------------
 # The backup script lives in the checked-out repository; the service unit
 # carries a placeholder because systemd does not expand variables in
@@ -172,15 +185,19 @@ fi
 render "${SRC}/systemd/kajianq-backup.service" /etc/systemd/system/kajianq-backup.service
 run install -o root -g root -m 0644 "${SRC}/systemd/kajianq-backup.timer" /etc/systemd/system/kajianq-backup.timer
 run systemctl daemon-reload
-# Enabled, not started: the API needs its env file and the GDPR-E (#181)
-# cutover before it can serve. Enabling now means the box comes up hardened
-# instead of accidentally serving with default logging.
+# Enabled, not started: the API needs its env file and the cutover before it can
+# serve. Enabling now means the box comes up hardened instead of accidentally
+# serving with default logging.
 run systemctl enable kajianq-api.service
+# Same posture for the reclamation: enabled, so the schedule is live as soon as
+# the API env file exists; it starts working when the cutover starts serving.
+run systemctl enable kajianq-cron.timer
 # The timer is enabled --now: backups must exist for the restore drill to be
 # meaningful, and a timer that waits for a manual start is the failure B2
 # guards against. The first backup is still run by hand (runbook step 5) so
 # the one-time `restic init` is observed before any scheduled run.
 run systemctl enable --now kajianq-backup.timer
 
-log "done. Verify with: systemctl status kajianq-api; systemctl list-timers kajianq-backup.timer; logrotate --debug /etc/logrotate.d/kajianq-proxy"
+log "done. Verify with: systemctl status kajianq-api; systemctl list-timers kajianq-backup.timer kajianq-cron.timer; logrotate --debug /etc/logrotate.d/kajianq-proxy"
 log "next: the one-time backup-repository init in docs/VPS-HARDENING-RUNBOOK.md (before the timer's first scheduled run)"
+log "next: fill in /etc/kajianq/api.env from provision/vps/api.env.example (placeholders out, mode 0600) — the API unit cannot start without it, and without KAJIANQ_WEB_ROOT the SPA would 503 while health stays green"

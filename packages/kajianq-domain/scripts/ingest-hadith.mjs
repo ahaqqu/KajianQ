@@ -2,7 +2,7 @@
 /**
  * ingest-hadith.mjs — the `ingest:hadith` Bun CLI (issue #7).
  *
- *   bun run ingest:hadith                          # full ingest (needs NEON_DATABASE_URL + API keys)
+ *   bun run ingest:hadith                          # full ingest (needs DATABASE_URL + API keys)
  *   bun run ingest:hadith -- --check               # integrity check only (no LLM/embedding spend)
  *   bun run ingest:hadith -- --limit 2             # ingest only the first N collections
  *   bun run ingest:hadith -- --offset 3 --limit 1  # one collection per pass (resumable)
@@ -28,7 +28,6 @@
  * parents upsert by sourceKey, children by (parentId, ordinal), pairs by
  * pairKey, reports by run id — re-running the script is safe by construction.
  */
-import { neon } from "@neondatabase/serverless";
 import * as app from "@app/infra";
 import * as ingest from "@app/rag-ingest";
 import * as domain from "@app/kajianq-domain";
@@ -77,8 +76,8 @@ const collections = selection.collections;
 // Main.
 // ---------------------------------------------------------------------------
 
-const neonUrl = process.env.NEON_DATABASE_URL;
-if (!neonUrl && !CHECK_ONLY) fail("NEON_DATABASE_URL is not set");
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl && !CHECK_ONLY) fail("DATABASE_URL is not set");
 
 logger.info("starting", {
   mode: CHECK_ONLY ? "integrity-check" : "full-ingestion",
@@ -141,10 +140,11 @@ if (CHECK_ONLY) {
   process.exit(0);
 }
 
-// Wire seams once — one sql runner feeds both the RagStore and the report
-// path (C1: a single `neon()` handle per run).
-const sql = neon(neonUrl);
-const store = app.createRagStore("neon", sql, { logger });
+// Wire seams once: the store comes from @app/infra's own composition helper
+// (ADR-0008 — this CLI names the connection URL and receives the seam; it
+// never imports a database client), and one runner feeds both the RagStore
+// and the report path (C1: a single handle per run).
+const store = app.resolvePostgresStore(databaseUrl, { logger });
 const config = app.loadProviderConfig();
 // Batch retry policy: an offline ingest must ride out a vendor's
 // per-minute window rather than give up after the interactive ≈1.5 s

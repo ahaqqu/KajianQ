@@ -14,7 +14,7 @@ import { memoryAuthMethods } from "./memory-rag-store-auth";
 
 /**
  * In-memory RagStore with real cosine search — the test seam. Same upsert
- * semantics as the Neon adapter, Effect-signatured like the seam (ADR-0027).
+ * semantics as the Postgres adapter, Effect-signatured like the seam (ADR-0027).
  */
 
 /** Project a stored child insert to the read shape: no vectors, epoch-0 createdAt. */

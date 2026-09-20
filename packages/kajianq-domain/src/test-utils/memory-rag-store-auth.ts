@@ -6,7 +6,7 @@ import type { RagStore } from "@app/infra";
  * `memory-rag-store.ts` to respect the agentic size limits — same pattern as
  * `memory-rag-store-eval.ts` / `memory-rag-store-feedback.ts`. The maps are
  * owned by the main factory and shared here by reference. Cleanup and cascade
- * semantics mirror the Neon adapter's contract (thermo-review A5): expired
+ * semantics mirror the Postgres adapter's contract (thermo-review A5): expired
  * sessions AND the anonymous users left with no session, one call, reclaimed
  * user count returned; the cascade removes the user's full subtree.
  */

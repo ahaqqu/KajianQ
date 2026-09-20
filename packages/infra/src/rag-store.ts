@@ -9,7 +9,7 @@ import type { RagStoreFeedback } from "./rag-store-feedback-seam";
  * (ADR-0027 decision 7): every method returns `Effect<A, StoreError>` and no
  * error kind travels via `throw` across the seam. Every structured-data
  * access in the system goes through this interface; engine packages and apps
- * never hold a database client or SQL. The Neon Postgres + pgvector
+ * never hold a database client or SQL. The self-hosted Postgres + pgvector
  * implementation is one adapter — the interface keeps it swappable (a second
  * Postgres, SQLite, an in-memory fake for tests) without touching consumers.
  *

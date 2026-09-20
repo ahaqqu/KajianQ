@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { createApi } from "../app";
 
-vi.mock("@sentry/cloudflare", () => ({ captureException: vi.fn() }));
+vi.mock("@sentry/bun", () => ({ captureException: vi.fn() }));
 import { runStoreEffect } from "@app/kajianq-domain";
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 import type { AnonymousSession } from "@app/contracts";
 
 /**
  * Anonymous-session auth routes (ADR-0017, ticket #10): mint, resolve, erase.
- * The store is the in-memory RagStore; the Neon client is mocked to prove the
+ * The store is the in-memory RagStore; the database client is mocked to prove the
  * routes never reach a database directly (the seam holds).
  */
 
@@ -27,9 +27,15 @@ vi.mock("../lib/chat-wiring", async (importOriginal) => {
   };
 });
 
-vi.mock("@neondatabase/serverless", () => ({
-  neon: () => {
-    throw new Error("auth test: neon must not be reached");
+// The database client lives behind the RagStore adapter (ADR-0008), so
+// these route tests never reach one: constructing or querying the pool is
+// the failure this mock makes loud.
+vi.mock("pg", () => ({
+  Pool: class {
+    on(): void {}
+    query(): never {
+      throw new Error("auth test: the database must not be reached");
+    }
   },
 }));
 
@@ -68,7 +74,7 @@ describe("DELETE /v1/auth/me", () => {
     const session = await runStoreEffect<AnonymousSession>(currentStore.createSession());
     // Give the user a chat session + message so the cascade has something to
     // erase (the memory store's deleteUserCascade is a no-op stand-in for the
-    // Neon FK cascade; the route's contract is that it is called once, with
+    // FK cascade; the route's contract is that it is called once, with
     // the authenticated user id).
     const chatSessionId = await runStoreEffect<string>(
       currentStore.createChatSession({ userId: session.userId }),

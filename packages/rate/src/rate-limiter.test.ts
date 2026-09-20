@@ -1,10 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
-import {
-  createDurableObjectRateLimiter,
-  createMemoryRateLimiter,
-  fnv1aHex,
-  tickFixedWindow,
-} from "./rate-limiter";
+import { describe, expect, it } from "vitest";
+import { createMemoryRateLimiter, fnv1aHex, tickFixedWindow } from "./rate-limiter";
 
 describe("tickFixedWindow", () => {
   it("starts a fresh window", () => {
@@ -71,23 +66,6 @@ describe("createMemoryRateLimiter", () => {
     expect(await limiter.check("c", 1, 60_000)).toBe(true);
     // "a" was evicted, so it starts a fresh window.
     expect(await limiter.check("a", 1, 60_000)).toBe(true);
-  });
-});
-
-describe("createDurableObjectRateLimiter", () => {
-  it("delegates to the stub for the key", async () => {
-    const calls: { limit: number; windowMs: number }[] = [];
-    const stub = {
-      async check(limit: number, windowMs: number): Promise<boolean> {
-        calls.push({ limit, windowMs });
-        return false;
-      },
-    };
-    const getStub = vi.fn((_key: string) => stub);
-    const limiter = createDurableObjectRateLimiter(getStub);
-    expect(await limiter.check("ip:1.2.3.4", 120, 60_000)).toBe(false);
-    expect(getStub).toHaveBeenCalledWith("ip:1.2.3.4");
-    expect(calls).toEqual([{ limit: 120, windowMs: 60_000 }]);
   });
 });
 

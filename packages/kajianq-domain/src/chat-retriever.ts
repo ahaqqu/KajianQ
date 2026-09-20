@@ -31,6 +31,13 @@ export const HIERARCHY_BONUS = {
 export type RetrieverEmbedder = {
   embed(spec: {
     texts: readonly string[];
+    /**
+     * Required on the serving seam: the embedded texts are the user's
+     * sub-queries — personal data (ADR-0043 Consequences). Non-optional so
+     * a call site that drops it is a compile error; the provider seam skips
+     * free-tier candidates when it is set.
+     */
+    personalData: true;
   }): Effect.Effect<{ vectors: readonly (readonly number[])[]; cost: CostRecord }, unknown>;
 };
 
@@ -123,7 +130,7 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
         Effect.gen(function* () {
           if (routed.subQueries.length === 0) return [];
           const embedded = yield* deps.embedder
-            .embed({ texts: routed.subQueries.map((q) => q.text) })
+            .embed({ texts: routed.subQueries.map((q) => q.text), personalData: true })
             .pipe(Effect.mapError((cause) => ({ cause })));
           if (deps.onEmbedCost) deps.onEmbedCost(embedded.cost);
           const filters = metadataFilters(routed.filters);

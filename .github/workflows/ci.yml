@@ -4,13 +4,12 @@ on:
   push:
     branches: [main]
 
-# One run at a time per ref. The neon:contract job writes to a SHARED staging
-# Neon database - parallel runs (a push and its own PR build, or two PRs)
-# race each other's fixture writes on the same tables. The suite is idempotent
-# by prefix EXCEPT for primary-key collisions between concurrent runs
-# (crypto.randomUUID is unique per insert, but a run's writes interleaving
-# with another's deletes can surface transient unique violations (e.g.
-# chat_sessions_pkey), so the runs are serialized. Cancel superseded runs.
+# One run at a time per ref. The postgres-contract job writes to a SHARED
+# service container, and the suite is idempotent by per-run fixture prefix
+# except for primary-key collisions between concurrent runs (crypto.randomUUID
+# is unique per insert, but a run's writes interleaving with another's deletes
+# can surface transient unique violations, e.g. chat_sessions_pkey), so runs are
+# serialized. Cancel superseded runs.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -30,11 +29,12 @@ jobs:
       - uses: voidzero-dev/setup-vp@49c3e4e92c52e7f8392712a9267bbe71c5ab30e5 # v1.19.0
       - run: bun run check
       - run: bun run lint
-      # Default unit/coverage gate runs WITHOUT the Neon secret: the RagStore
-      # contract tests (rag-store-neon.test.ts) self-skip without it, so this
-      # job stays green for fork PRs (no secret) and the I/O adapter is
-      # excluded from coverage (see vitest.config.ts) since it needs the
-      # secret. The contract suite runs in the separate neon-contract job.
+      # The default unit/coverage gate runs WITHOUT a database: the RagStore
+      # contract tests (rag-store-postgres.test.ts) self-skip when DATABASE_URL
+      # is unset, so this job stays green everywhere (including forks without
+      # secrets) and the I/O adapter is excluded from coverage (see
+      # vitest.config.ts) since it needs a server. The contract suite runs in
+      # the separate postgres-contract job below.
       - run: bun run test
       # size-limit builds apps/web itself (bun run build:web inside the
       # script), so the measurement always matches the working tree — and a
@@ -55,17 +55,33 @@ jobs:
           pip install --quiet semgrep
           semgrep scan --config auto --error --quiet .
 
-  # Secret-gated RagStore contract tests against real Neon staging
-  # (ADR-0027 decision 7: the `neon:contract` job). The suite self-skips
-  # when NEON_DATABASE_URL is empty (fork PRs have no secret), so the job
-  # stays green there. When the secret is present it runs in series
-  # (--no-file-parallelism) because the tests share one fixture namespace
-  # keyed off a per-run prefix. On pull requests the job only engages when
-  # the PR touches packages/infra (the seam lives there); pushes to main
-  # always run it so staging drift is caught.
-  neon-contract:
-    name: neon:contract
+  # RagStore contract tests against a real Postgres + pgvector (ADR-0027
+  # decision 7: the `postgres:contract` job). #181 moved this off the
+  # secret-gated shared Neon database and onto a service container: the
+  # migration's whole point is that the store is self-hosted, and a container is
+  # the same pgvector/pg18 image the VPS runs — so the suite tests the real
+  # schema in every environment, forks without secrets included, with no shared
+  # external state to race.
+  #
+  # It engages on every PR touching packages/infra (the seam lives there) and on
+  # every push to main.
+  postgres-contract:
+    name: postgres:contract
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg18
+        env:
+          POSTGRES_USER: contract
+          POSTGRES_PASSWORD: contract
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U contract"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -94,20 +110,22 @@ jobs:
       - name: Install dependencies
         if: steps.infra.outputs.touched == 'true'
         run: bun install --frozen-lockfile
-      # The suite exercises the seam against the CURRENT schema: apply pending
-      # engine migrations first (idempotent via the schema_migrations ledger),
-      # so an adapter change that depends on a new migration — e.g. the 0003
+      # The suite exercises the seam against the CURRENT schema: apply the
+      # migration sets first (idempotent via the schema_migrations ledger), so
+      # an adapter change that depends on a new migration — e.g. the 0003
       # feedback dedup index its ON CONFLICT targets — cannot fail against a
-      # drifted staging schema. Serialized by the job-level concurrency group.
-      - name: Apply pending engine migrations
+      # drifted schema. All three sets, because the suite writes chat/trace rows
+      # that reference the domain and product tables. Serialized by the
+      # job-level concurrency group above.
+      - name: Apply the migration sets
         if: steps.infra.outputs.touched == 'true'
-        run: bun run db:up
+        run: bun run db:up:all
         env:
-          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+          DATABASE_URL: postgres://contract:contract@127.0.0.1:5432/postgres
       # vp is the single test runner (ADR-0029): vp resolves from
       # node_modules/.bin, no setup-vp step needed here.
-      - name: Run the Effect-shaped Neon contract suite
+      - name: Run the Effect-shaped Postgres contract suite
         if: steps.infra.outputs.touched == 'true'
-        run: bunx vp test run --no-file-parallelism packages/infra/src/rag-store-neon.test.ts
+        run: bunx vp test run --no-file-parallelism packages/infra/src/rag-store-postgres.test.ts
         env:
-          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+          DATABASE_URL: postgres://contract:contract@127.0.0.1:5432/postgres

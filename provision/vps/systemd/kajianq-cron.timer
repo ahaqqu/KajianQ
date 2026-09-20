@@ -1,0 +1,22 @@
+# provision/vps/systemd/kajianq-cron.timer — the schedule for the
+# anonymous-session reclamation (ADR-0017, ADR-0044, issue #181).
+#
+# 03:17 nightly, UTC, the same slot the Cloudflare Worker cron used
+# (`crons: ["17 3 * * *"]`, ADR-0017): off the top of the hour (the busiest
+# slot for a scheduler) and outside the deploy window. `Persistent=true` runs a
+# missed job after downtime, which is what a reclamation wants — the rows are
+# still there.
+#
+# The timer is installed and enabled by `provision/vps/apply.sh`, so the
+# schedule is config-as-code rather than a hand-copied crontab line.
+
+[Unit]
+Description=Nightly KajianQ anonymous-session reclamation (ADR-0017)
+
+[Timer]
+OnCalendar=*-*-* 03:17:00
+Persistent=true
+Unit=kajianq-cron.service
+
+[Install]
+WantedBy=timers.target

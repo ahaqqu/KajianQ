@@ -2,11 +2,11 @@ import { Effect } from "effect";
 import { FEEDBACK_INITIAL_STATUS, type Trace } from "@app/contracts";
 import type { AnswerFeedbackTarget, FeedbackInsert, RagStore } from "./rag-store";
 import { constraintError, parseTrace } from "./rag-store-shared";
-import { sqlEffect, type SqlRunner } from "./rag-store-neon-errors";
+import { sqlEffect, type SqlRunner } from "./rag-store-postgres-errors";
 
 /**
- * Answer-trace and feedback methods of the Neon RagStore adapter, split from
- * `rag-store-neon.ts` to respect the agentic size limits. Part of the Neon
+ * Answer-trace and feedback methods of the Postgres RagStore adapter, split from
+ * `rag-store-postgres.ts` to respect the agentic size limits. Part of the Postgres
  * adapter SQL surface (ADR-0027 decision 7): the store writes/parses the
  * @app/contracts `Trace` shape verbatim (ADR-0007) — never a parallel schema
  * — and contract violations are `constraint`-class StoreErrors. The feedback
@@ -25,7 +25,7 @@ function isUuid(s: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 }
 
-export function neonTraceMethods(
+export function postgresTraceMethods(
   sql: SqlRunner,
 ): Pick<
   RagStore,

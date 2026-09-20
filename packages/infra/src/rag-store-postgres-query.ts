@@ -1,11 +1,11 @@
 import type { RetrievalTrack } from "./rag-store";
 
 /**
- * Neon-specific similarity-search SQL builder.
+ * Postgres-specific similarity-search SQL builder.
  *
- * This is pure (no I/O) but Neon/Postgres-specific, so it lives beside the
+ * This is pure (no I/O) but Postgres-specific, so it lives beside the
  * adapter rather than in the DB-free `rag-store-shared.ts`. Keeping it in its
- * own module means the executable SQL stays in the Neon adapter surface
+ * own module means the executable SQL stays in the Postgres adapter surface
  * (satisfying "all SQL in the adapter package") while remaining unit-testable
  * and coverage-gated without a live database.
  *

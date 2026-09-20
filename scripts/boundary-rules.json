@@ -25,10 +25,12 @@
     "deps": true,
     "pkgExempt": ["packages/infra/package.json", "packages/eval/package.json"],
     "exempt": [
-      "packages/infra/src/rag-store-neon.test.ts",
+      "packages/infra/src/rag-store-postgres-driver.ts",
+      "packages/infra/src/rag-store-postgres-driver.test.ts",
+      "packages/infra/src/rag-store-postgres.test.ts",
       "packages/infra/scripts/db-migrate.mjs",
       "packages/infra/scripts/pg-search-probe.mjs"
     ],
-    "justification": "Match code-level coupling: an import of a DB driver, a pool/prepared call, a tagged SQL query, or a dynamic import of 'pg'. Doc comments naming 'pg'/'postgres' are not violations \u2014 the rule's target is dependency, not vocabulary. Also applied to engine package.json dependency names (e.g. 'drizzle-orm', '@neondatabase/serverless'). The exempt files are the RagStore adapter's own integration tests and the infra scripts that own migrations/probes against a real database \u2014 the one place a DB driver import IS the point."
+    "justification": "Match code-level coupling: an import of a DB driver, a pool/prepared call, a tagged SQL query, or a dynamic import of 'pg'. Doc comments naming 'pg'/'postgres' are not violations \u2014 the rule's target is dependency, not vocabulary. Also applied to engine package.json dependency names (e.g. 'drizzle-orm', 'pg'). The exempt files are the one place a DB driver import IS the point: the adapter's driver adapter module (`rag-store-postgres-driver.ts` is the sanctioned `pg` home, ADR-0008/ADR-0044), its unit test, the adapter's own integration test, and the infra scripts that own migrations/probes against a real database."
   }
 ]
