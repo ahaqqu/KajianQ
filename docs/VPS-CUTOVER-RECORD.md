@@ -91,3 +91,50 @@ Notes:
   `/etc/kajianq/db-password` (root:root 0600), and consumed into `api.env` /
   later `backup.env`. It never left the box in any log.
 - `APP_ENV=staging` until the prod cutover flips it.
+
+### Step 0 — remainder: keys, backups, restore drill, GitHub wiring (executed 2026-09-20 ~14:50–15:05 UTC)
+
+| Action                                                                                               | Result                                                                                                                                                                                                                                          |
+| ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Provider keys into `/etc/kajianq/api.env` (from the owner's local `.env`, over the ssh session only) | `GEMINI_PAID_API_KEY` = `GEMINI_API_KEY` (same value, per owner), `DEEPSEEK_API_KEY` set; `MOONSHOT_API_KEY` / `DASHSCOPE_API_KEY` left empty (owner has none); 0 `PLACEHOLDER_OWNER_FILLS` remain                                              |
+| `/etc/kajianq/backup.env` written (0600)                                                             | `RESTIC_REPOSITORY=/srv/kajianq-backups/restic` (local filesystem — external-VPS backup target deferred to a follow-up ticket), `RESTIC_PASSWORD_FILE=/etc/kajianq/restic.pass` (0600, generated on box), `PGDATABASE_URL` from the DB password |
+| One-time `restic init`                                                                               | repo initialized (`config` present; empty snapshot list before first backup)                                                                                                                                                                    |
+| Bun runtime installed on the box                                                                     | `unzip` + bun 1.4.2 at `/usr/bin/bun` (the systemd units' `ExecStart` path)                                                                                                                                                                     |
+| First manual encrypted backup                                                                        | label `daily-20260920t125740z`, 1 snapshot in the repo (restic `snapshots` lists it; sha256 in manifest)                                                                                                                                        |
+| On-host restore drill (`restore-drill.mjs`)                                                          | **OK** — all asserts PASS: backup restores into scratch; negative control shows resurrected rows without `--skip-erasure`'s re-application; production mode re-applies reclamation + Art. 17 erasure; restored store matches live store         |
+
+Two bugs found and fixed during this remainder (both shipped-code defects that
+the on-host run surfaced; fixes live in the `gdpr-e-cutover-record` branch):
+
+1. **Backup label regex collision.** The generated label was
+   `daily-20260920T125625Z` (uppercase `T`/`Z` from `toISOString()`), but
+   `LABEL_RE` (`/^[a-z0-9][a-z0-9-]{2,60}$/`) is lowercase-only — the first
+   backup failed with a typed error. Fix: `.toLowerCase()` on the generated
+   label (matches the test fixture `"daily-20260919t031500z"`). The CI drill
+   never caught it because the drill passes `--label drill` explicitly.
+2. **Restore drill vs. inherited production restic env.** The drill sets its
+   own `RESTIC_PASSWORD` but restic gives `RESTIC_PASSWORD_FILE` precedence —
+   when the drill is run from a shell holding the production `backup.env`
+   (the runbook's own example), `restic init` encrypts with the production
+   key and the drill's backup child then fails with exit 12. The drill is
+   self-contained by design, so the fix on-host was to run it with the
+   production `RESTIC_*`/`PG*` env stripped (`env -u …`). A code-level guard
+   (drill refuses inherited `RESTIC_PASSWORD_FILE`) is worth a follow-up.
+
+GitHub wiring (set via `gh`, per the owner's request — values live only in
+GitHub's store, never the repo):
+
+- **Vars:** `VPS_HOST`, `VPS_USER`, `VPS_PUBLIC_URL` (repo-level).
+- **Secrets:** `VPS_DEPLOY_SSH_KEY` (a dedicated ed25519 deploy key — not the
+  owner's admin key; public half in the box's `authorized_keys`, private half
+  only in the GitHub secret store, local copy destroyed after upload),
+  `STAGING_DATABASE_URL` (the VPS Postgres loopback URL — staging eval/ingest
+  targets the VPS DB per the issue's pre-migration note), `DEEPSEEK_API_KEY`,
+  `GEMINI_API_KEY`.
+- Pre-existing secrets left in place for now: `NEON_DATABASE_URL`,
+  `NEON_API_KEY`, `RATE_BYPASS_PRIVATE_KEY`, `CLOUDFLARE_*` (CF ones are
+  step-7 purge candidates, decommissioning is owner-gated).
+
+Remaining step-0 precondition: the Golden Set smoke runs after the data
+transfer (steps 1–3) — the DB is currently empty, so staging smoke would have
+nothing to answer from.
