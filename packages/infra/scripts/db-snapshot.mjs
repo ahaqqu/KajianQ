@@ -105,7 +105,7 @@ async function cmdCreate(label) {
     // personal-data tables whenever they hold a row, and the storage assertion
     // is the operator's. Recording it in the manifest turns ADR-0043 decision 5
     // from an analysis into a checkable claim.
-    const privacy = archivePrivacy(counts);
+    const privacy = archivePrivacy(counts, process.env);
     if (privacy.posture === "refused") fail(refusalMessage(label));
     const manifest = buildManifest({
       label,

@@ -150,7 +150,8 @@ async function main() {
     `daily-${new Date()
       .toISOString()
       .replace(/[-:]/g, "")
-      .replace(/\.\d+Z$/, "Z")}`;
+      .replace(/\.\d+Z$/, "Z")
+      .toLowerCase()}`;
   readLabel(label);
 
   const url = process.env.PGDATABASE_URL;
