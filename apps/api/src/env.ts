@@ -26,6 +26,8 @@ export type WorkerBindings = {
    * `resolveRole`'s env record — never vendor names here.
    */
   GEMINI_API_KEY?: string;
+  /** Paid-terms Gemini row (same API, billing-enabled project — #181). */
+  GEMINI_PAID_API_KEY?: string;
   DASHSCOPE_API_KEY?: string;
   DEEPSEEK_API_KEY?: string;
   MOONSHOT_API_KEY?: string;

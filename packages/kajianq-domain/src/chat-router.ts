@@ -25,6 +25,15 @@ type RouterOutput = Schema.Schema.Type<typeof RouterOutputSchema>;
 export type RouterProvider = {
   generate(spec: {
     turns: readonly { role: string; content: string }[];
+    /**
+     * Required, never optional, on the serving seam: the router prompt
+     * carries the user's chat question, which is personal data
+     * (ADR-0043 Consequences — the measured gap this type now closes). A
+     * non-optional field makes dropping the flag a compile error at the
+     * call site, and the flag makes `FallbackProvider` skip free-tier
+     * candidates for the call (`personalDataAllowed`, ADR-0009 amendment).
+     */
+    personalData: true;
   }): Effect.Effect<{ text: string; cost: CostRecord }, unknown>;
 };
 
@@ -67,6 +76,9 @@ export function createKajianQRouter(provider: RouterProvider): Router<KajianQFil
                 { role: "system", content: ROUTER_SYSTEM_PROMPT },
                 { role: "user", content: query.text },
               ],
+              // The user's question is personal data — never a free-tier ride
+              // (ADR-0043 Consequences; enforced by the provider seam).
+              personalData: true,
             })
             .pipe(Effect.mapError((cause) => ({ cause })));
           const call: CostRecord = reply.cost;

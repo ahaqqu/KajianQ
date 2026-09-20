@@ -110,6 +110,13 @@ export function createProvidersFromEnv(env: Record<string, string | undefined>):
     for (const key of missingKeys) missing.add(key);
     return provider;
   };
+  // The reviewer's missing keys are collected even when the role resolves to
+  // null (no keyed candidate): the ops report must name every env var the
+  // chat path can consume, so an unbound reviewer key says exactly which key
+  // to bind — without this, the key that unblocks the reviewer would vanish
+  // from the report precisely when it is the only thing missing.
+  const reviewerMissing = resolveRole(config, "reviewer", { env }).missingKeys;
+  for (const key of reviewerMissing) missing.add(key);
   return {
     router: resolve("cheap"),
     generator: resolve("generator"),
