@@ -111,7 +111,10 @@ trap 'rm -rf "${STAGE}"' EXIT
 # than a runtime resolve against a tree the box does not have.
 log "building web bundle + API entries"
 run bun --version >/dev/null
-run bun run --cwd "${REPO_DIR}" build:web
+# `bun run` in an explicit subshell cd: `--cwd` is a runtime flag, not a
+# documented `bun run` option, and a deploy step must not lean on undocumented
+# flag forwarding to work on the box.
+run sh -c "cd '$REPO_DIR' && bun run build:web"
 run bun build "${REPO_DIR}/apps/api/src/boot.ts" --target=bun \
     --outfile "${STAGE}/api/index.js"
 run bun build "${REPO_DIR}/apps/api/src/cleanup.ts" --target=bun \
@@ -174,6 +177,15 @@ if [ "${RUN_SMOKE}" -eq 1 ]; then
     # catch.
     run curl -sSf --max-time 30 -X POST "${PUBLIC_URL}/v1/auth/anonymous" |
         grep -q '"token"'
+    log "smoke: ${PUBLIC_URL}/chat (the SPA through the disk-asset path)"
+    # An extensionless client route must come back as HTML: the e2e suite
+    # caught exactly this class of bug (extensionless paths served as
+    # application/octet-stream, so the browser downloaded the page), and this
+    # is the one check that pins the shipped web build on the box — a missing
+    # KAJIANQ_WEB_ROOT or a regressed content-type would 503/download here
+    # while /v1/health stays green.
+    run curl -sSf --max-time 30 -H 'accept: text/html' "${PUBLIC_URL}/chat" |
+        grep -qi '<!doctype html'
 fi
 
 log "done. deployed and smoke-verified."

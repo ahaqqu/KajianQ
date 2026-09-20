@@ -200,3 +200,4 @@ run systemctl enable --now kajianq-backup.timer
 
 log "done. Verify with: systemctl status kajianq-api; systemctl list-timers kajianq-backup.timer kajianq-cron.timer; logrotate --debug /etc/logrotate.d/kajianq-proxy"
 log "next: the one-time backup-repository init in docs/VPS-HARDENING-RUNBOOK.md (before the timer's first scheduled run)"
+log "next: fill in /etc/kajianq/api.env from provision/vps/api.env.example (placeholders out, mode 0600) — the API unit cannot start without it, and without KAJIANQ_WEB_ROOT the SPA would 503 while health stays green"

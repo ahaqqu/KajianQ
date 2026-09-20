@@ -63,6 +63,24 @@ export type ServeOptions = {
 };
 
 /**
+ * The SIGTERM drain window, in milliseconds — the bound a restart waits for
+ * in-flight answers before closing anyway. Chosen against the two numbers it
+ * must sit between:
+ *   - the proxy's `proxy_read_timeout 300s` (provision/vps/nginx/kajianq.conf):
+ *     a stream is never allowed to outlive its own read timeout, so 300 s is
+ *     the ceiling worth honoring;
+ *   - systemd's `TimeoutStopSec=300s` in `kajianq-api.service`, which is set
+ *     to this same value: the two numbers agreeing is what makes the drain
+ *     deterministic. With the default 90 s, systemd would SIGKILL a healthy
+ *     drain mid-stream (the bound this explicitness exists to prevent).
+ *
+ * A drain that hits the deadline closes in-flight streams — an answered-cut-
+ * off is better than a wedged restart — and the deadline being explicit means
+ * the behavior is a recorded choice, not Bun's internal default.
+ */
+export const DRAIN_TIMEOUT_MS = 300_000;
+
+/**
  * Start the Bun server. The bind address defaults to loopback: the design is
  * a reverse proxy (nginx) as the only public ingress, so the API must not be
  * reachable directly. Binding elsewhere is possible for a container, but is
@@ -90,7 +108,23 @@ export function serveApi(opts: ServeOptions): { stop: () => Promise<void> } {
   logger.info("server.listening", { hostname, port });
 
   const stop = async (): Promise<void> => {
-    await server.stop();
+    // `server.stop()` waits for in-flight requests (verified on Bun 1.4.0:
+    // a 1.5 s handler holds `stop()` for 1502 ms) but has no ceiling of its
+    // own — this deadline is the bound. A stream that runs past the deadline
+    // is closed mid-answer deliberately: the alternative is `systemctl
+    // restart` hanging until the unit's TimeoutStopSec SIGKILLs us, which is
+    // the same cut-off minus the grace and the log line.
+    let fire: (() => void) | undefined;
+    const deadline = new Promise<void>((resolve) => {
+      fire = resolve;
+    });
+    const timer = setTimeout(fire ?? (() => {}), DRAIN_TIMEOUT_MS);
+    timer.unref();
+    try {
+      await Promise.race([server.stop(), deadline]);
+    } finally {
+      clearTimeout(timer);
+    }
   };
   return { stop };
 }

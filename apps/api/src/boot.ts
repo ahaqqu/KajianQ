@@ -19,7 +19,10 @@ const { stop } = serveApi({ api: createApi() });
 
 // SIGTERM is what systemd sends on `systemctl restart` / `stop`. Draining the
 // listener means in-flight answers (SSE streams can run up to the proxy's
-// 300 s read timeout) are allowed to finish instead of being cut mid-answer.
+// 300 s read timeout) are allowed to finish instead of being cut mid-answer,
+// bounded by DRAIN_TIMEOUT_MS (server.ts) — the number `kajianq-api.service`'s
+// `TimeoutStopSec=300s` matches, so the restart's ceiling is recorded rather
+// than implied by systemd's 90 s default.
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.on(signal, () => {
     void stop().then(() => process.exit(0));

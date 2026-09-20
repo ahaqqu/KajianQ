@@ -3,18 +3,23 @@ import type { RagStore } from "@app/infra";
 import { createRagStoreFromEnv, ChatConfigError } from "./chat-wiring";
 
 /**
- * The Worker's scheduled handler body (ADR-0017, ticket #10): expire
- * anonymous sessions on a cron.
+ * The anonymous-session reclamation body (ADR-0017, ticket #10; re-homed by
+ * ADR-0044 decision 7): expire sessions on a schedule.
  *
  * Expiry is a storage-reclamation concern, not a correctness one —
  * `resolveUserId` already rejects expired rows on read — so a failed cleanup
- * must never take the Worker down or page anyone: it logs and returns. The
- * cron expression lives in the deploy topology (`apps/api/alchemy.run.ts`).
+ * must never take serving down or page anyone: it logs and returns.
  *
- * Kept out of `index.ts` so the behavior is unit-testable without a Worker
- * runtime: the entrypoint wires this function to Cloudflare's event shape,
- * and `deps` lets a test inject the store + bridge (the production defaults
- * are the real wiring).
+ * Runtime-agnostic by design: the schedule's source of truth is the systemd
+ * timer `provision/vps/systemd/kajianq-cron.timer` (03:17 UTC daily — the
+ * retention value the privacy notice's "30-day inactivity" row depends on),
+ * whose `kajianq-cron.service` invokes the dedicated entry
+ * `apps/api/src/cleanup.ts`, which calls this function. Verification of that
+ * retention value starts at the timer, not here.
+ *
+ * Kept as its own injectable-deps module so the behavior is unit-testable
+ * without a host runtime: `deps` lets a test supply the store + bridge (the
+ * production defaults are the real wiring).
  */
 
 export type ScheduledEnv = Record<string, string | undefined>;

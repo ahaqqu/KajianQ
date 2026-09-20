@@ -4,8 +4,8 @@
  * (thermo-review B2).
  *
  * `eval:run` and `eval:smoke` used to carry near-identical copies of this
- * setup — the Postgres store, the `doc_children` sourceType scan, the ledger and
- * trace bridges, and the refusal markers. Two copies of the same staging
+ * setup — the Postgres store, the `doc_children` sourceType join, the ledger
+ * and trace bridges, and the refusal markers. Two copies of the same staging
  * wiring drift: one entry point's fix silently misses the other. Both scripts
  * now build their seams from this one module.
  *
@@ -19,8 +19,7 @@
  * disagree about what counts as a refusal — the previous two literal copies
  * could.
  */
-import { Effect } from "effect";
-import { postgresPool, postgresSqlRunner, resolvePostgresStore } from "@app/infra";
+import { Effect, createLogger, resolvePostgresStore } from "@app/infra";
 import { BudgetExceededError, postChatSse } from "@app/eval";
 import {
   DEFAULT_REFUSALS,
@@ -48,24 +47,36 @@ export const CITATION_GRAMMAR = {
  * connection URL through `@app/infra`'s own composition helper — the script
  * never imports a database client (ADR-0008), it names the URL and receives
  * the seam — and every seam is bound to that store, so a script supplies only
- * its question set and its summary.
+ * its question set and its summary. The logger is passed into the store so the
+ * adapter's slow-query/error logging stays visible in an eval run, exactly as
+ * it is in a serving run.
  */
 export async function createStagingHarness(config, budget) {
-  const store = resolvePostgresStore(config.databaseUrl);
-  const sql = postgresSqlRunner(postgresPool(config.databaseUrl));
+  const store = resolvePostgresStore(config.databaseUrl, {
+    logger: createLogger({ service: "eval", route: "staging-harness" }),
+  });
   const runStore = (effect) => Effect.runPromise(effect);
 
   // Chunk-id → sourceType resolver for retrieval recall: the trace's retrieval
-  // events carry chunk ids (ADR-0007); the source-type labels live in the
-  // chunks' metadata, loaded once here.
+  // events carry only chunk ids (ADR-0007), and the source-type labels live in
+  // the chunks' metadata, so the join is this harness's job. It goes through
+  // the store's own `getDocChildrenByIds` seam read — the ids a trace names are
+  // exactly the rows that read exists for — resolved lazily per retrieval and
+  // memoized, so a long run does not re-read the same chunk row.
   const sourceTypeByChunkId = new Map();
-  {
-    const rows = await sql`SELECT id, metadata FROM doc_children WHERE metadata ? 'sourceType'`;
+  const sourceTypeOf = (id) => sourceTypeByChunkId.get(id);
+  const loadSourceTypes = (chunkIds) => {
+    const missing = [...new Set(chunkIds)].filter((id) => !sourceTypeByChunkId.has(id));
+    if (missing.length === 0) return;
+    const rows = runStore(store.getDocChildrenByIds(missing));
     for (const row of rows) {
       const meta = row.metadata ?? {};
       if (typeof meta.sourceType === "string") sourceTypeByChunkId.set(row.id, meta.sourceType);
+      // Cache the miss too: a chunk without a sourceType label must not be
+      // re-queried by every later question that retrieves it.
+      else sourceTypeByChunkId.set(row.id, undefined);
     }
-  }
+  };
 
   const transport = {
     async ask(question) {
@@ -97,6 +108,13 @@ export async function createStagingHarness(config, budget) {
       // the pipeline spend the harness triggered — count them into the cap.
       budget.add(trace.events.reduce((s, e) => s + (e.cost?.costMicroUsd ?? 0), 0));
       budget.check();
+      // Warm the sourceType cache from the retrieval events this trace carries,
+      // before the scorer reads the (synchronous) resolver.
+      for (const event of trace.events) {
+        if (event.kind === "retrieval") {
+          loadSourceTypes((event.detail?.chunks ?? []).map((ref) => ref.id));
+        }
+      }
       return trace.events;
     },
   };
@@ -122,7 +140,7 @@ export async function createStagingHarness(config, budget) {
     store,
     runStore,
     sourceTypeByChunkId,
-    sourceTypeOf: (id) => sourceTypeByChunkId.get(id),
+    sourceTypeOf,
     transport,
     traces,
     ledger,

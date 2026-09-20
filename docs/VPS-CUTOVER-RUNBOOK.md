@@ -54,6 +54,7 @@ Steps 0–3 are data. Steps 4–6 are serving. Step 7 is irreversible.
 | nginx present, Caddy retired                 | `nginx -v` prints a version and `systemctl status caddy` reports not-found/inactive.                                                        |
 | Postgres + pgvector installed, loopback-only | `psql --version`; `sudo -u postgres psql -Atc "SELECT extname FROM pg_extension"` lists `vector`.                                           |
 | Deploy access from the deploying machine     | `/etc/kajianq/deploy.env` filled in, mode 0600; `ssh <user>@<host> true` succeeds non-interactively.                                        |
+| `api.env` filled in from the example         | `sudo install -o root -g root -m 0600 provision/vps/api.env.example /etc/kajianq/api.env`, then fill in the real values (placeholders out). |
 
 **Caddy teardown (ADR-0044 decision 4).** The bootstrap installed Caddy to serve
 a static page. nginx must own :80/:443 before `apply.sh` runs:
@@ -67,6 +68,15 @@ sudo nginx -t && sudo systemctl reload nginx
 
 Confirm the free ports: `sudo ss -lntp | grep -E ':(80|443)\b'` shows nginx,
 not caddy.
+
+**The `api.env` keys.** The example (`provision/vps/api.env.example`) carries
+every key the serving process reads; two are chat-path preconditions, not
+optional: `MOONSHOT_API_KEY` (the reviewer chain head) and
+`GEMINI_PAID_API_KEY` (the embedder head). Without them a chat question fails
+its reviewer/embedder stage with a typed error — `/v1/health` and anonymous
+minting still work, so the smokes alone do not prove them present. The
+`DEEPSEEK_API_KEY` (generator/router head) and `GEMINI_API_KEY` /
+`DASHSCOPE_API_KEY` rows complete the provider set.
 
 ## 1. Pre-cutover snapshot on the source (AC-1)
 
@@ -128,19 +138,42 @@ corpus table; `db:status:all` shows every migration applied.
 
 ## 3. Post-cutover snapshot on the target, verified (AC-2)
 
+`db:snapshot` reads the R2 credentials from its own environment and the box
+**has none by design** (step 2), so this step runs on the **deploying machine**,
+reaching the box's Postgres through an ssh tunnel — the listener stays
+loopback-only; the tunnel is the loopback peer. The `R2_*` exports from step 1
+are still in that shell (open a new one and re-export if not):
+
 ```bash
-export DATABASE_URL="postgres://kajianq@127.0.0.1:5432/kajianq"    # the VPS, on the box
+# On the deploying machine: forward a local port to the box's loopback 5432.
+# Keep this shell open until the verify below is done.
+ssh -N -L 5433:127.0.0.1:5432 <user>@<host> &
+
+export DATABASE_URL="postgres://kajianq:CHANGE_ME@127.0.0.1:5433/kajianq"
+export R2_ACCOUNT_ID=… R2_ACCESS_KEY_ID=… R2_SECRET_ACCESS_KEY=…
+
+# The data is now EU/DPA-covered, so the archive goes through the **encrypted**
+# path, not the plaintext acknowledgement of step 1.
 KAJIANQ_SNAPSHOT_ENCRYPTED_AT_REST=true \
   bun run db:snapshot create post-cutover-20260920T0100Z
+
 bun run db:snapshot verify post-cutover-20260920T0100Z
+
+# Done with the database? Kill the tunnel (find it: jobs / kill %1).
 ```
+
+The verify re-reads the live database through the same `DATABASE_URL`, so the
+tunnel must still be up for it. The archive lands on the same encrypted-at-rest
+target step 1 used, via the same R2 credentials — no second tool, and no
+plaintext copy anywhere on the box (the dump lives in the CLI's temp dir and is
+deleted when `create` returns).
 
 Post-cutover the archive goes through the **encrypted** path, not the plaintext
 acknowledgement: the data is now EU/DPA-covered and the archive must not be the
-unexamined copy. The command above stores it on the storage target the operator
-asserts encrypted; when the target is the restic repository instead, take the
-snapshot with `bun run db:snapshot create …` against a local path and ship it
-through `provision/vps/backup/kajianq-backup.mjs` (no second tool).
+unexamined copy. (The box's own encrypted-at-rest backup —
+`provision/vps/backup/kajianq-backup.mjs`, restic client-side encryption — runs
+on its own schedule; it is the GDPR-D durability layer, not this ADR-0038
+portable snapshot, and the two coexist.)
 
 **Compare the two labels.** The corpus and schema counts from
 `post-cutover-…` must equal `pre-cutover-…` exactly; the ledger/personal tables
@@ -228,7 +261,10 @@ is the `ship` skill's pre-prod validation, run against the real ingress.
 
 **Do not start this step until the post-cutover snapshot verifies (step 3) and
 the live flows pass (step 6), and the owner has approved decommissioning in the
-PR review.** It is irreversible.
+PR review.** It is irreversible. The same gate orders the merge itself: PR #189
+merges **only at/after step 3's post-cutover snapshot has verified** (AC-16) —
+that is the window in which the About page's netcup row marked
+"In use today" becomes true.
 
 1. **Cloudflare Workers**: delete the `kajianq-api` and `kajianq-api-staging`
    deployments (Workers → the worker → delete). The static-asset and Durable
@@ -257,23 +293,24 @@ closed by code, and the Art. 30 record's "implemented as code, not yet applied"
 rows flip only with this evidence — the notice's `planned` retention rows stay
 `planned` until then.
 
-| #     | Acceptance criterion                                                                       | Command                                                                                                           | What counts as evidence                                                                                        | Gated by                    |
-| ----- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------- |
-| AC-1  | Pre-cutover snapshot verified on the source                                                | `bun run db:snapshot create pre-cutover-… && bun run db:snapshot verify pre-cutover-…`                            | `created` banner (label, sha256, counts) + `verified` banner with `corpus row counts match the live database`  | Owner                       |
-| AC-2  | Postgres + pgvector restored on the VPS; post-cutover snapshot verified; both labels cited | `pg_restore … && bun run db:snapshot create post-cutover-… && bun run db:snapshot verify post-cutover-…`          | Both manifests with an exact `tableCounts` match on the corpus + schema tables; both labels in the PR          | Owner                       |
-| AC-3  | Ingest/eval CLIs run against the VPS database                                              | `DATABASE_URL=postgres://kajianq@… bun run eval:smoke` (and one ingest `--check` pass)                            | The smoke summary green against the VPS store; `db:status:all` fully applied                                   | Owner                       |
-| AC-4  | API serves `/v1/*` with TLS; the anonymous-session cron runs on the host                   | `systemctl status kajianq-api`; `systemctl list-timers kajianq-cron.timer`; `curl -sSf https://<host>/v1/health`  | Unit active, timer scheduled at 03:17, HTTPS health JSON, `journalctl -u kajianq-cron` showing a completed run | Owner                       |
-| AC-5  | Deployer separation                                                                        | `grep -rn "alchemy" apps/` returns nothing; `git ls-files .github/workflows/deploy-vps.yml provision/vps/deploy/` | The paths exist; no `alchemy:*` script and no `alchemy.run.ts` under `apps/`                                   | Repo (this PR)              |
-| AC-6  | Secrets: none committed; business logic never touches `env.*`                              | `bun run boundary`; the gitleaks CI step; `bun run test` (the env→bindings mapping test)                          | Boundary clean, gitleaks clean, the `bindingsFromEnv` tests green                                              | Repo (this PR)              |
-| AC-7  | Single-shot cutover, staging first                                                         | The Staging workflow run, then the prod `deploy-vps` run                                                          | Two green deploy runs in order; no rollback step attempted                                                     | Owner                       |
-| AC-8  | Smoke tests pass against the VPS; e2e re-pointed                                           | `bun run e2e` (local, against the Bun host) and the deploy script's smoke lines                                   | 33/33 BDD scenarios green locally; the deployed smoke lines against the public URL                             | Repo + Owner                |
-| AC-9  | `PromptSpec.personalData` on every serving call site                                       | `bun run test apps/api/src/lib/personal-data-serving.test.ts`                                                     | The enforcement test green: every serving role has a keyed personal-data-allowed candidate                     | Repo (prior checkpoint)     |
-| AC-10 | On-host hardening applied + restore drill on the real box                                  | `sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env`; the runbook step 6 drill                              | `apply.sh` clean; the drill exits 0 on the host; `logrotate --debug` clean on both stanzas                     | Owner                       |
-| AC-11 | About-page register flips at cutover                                                       | `bun run test apps/web/src/lib/privacy-notice.test.ts`                                                            | The drift guard green with netcup `current` and the transition rows narrowing                                  | Repo (this PR)              |
-| AC-12 | Backup timer + cron re-homed                                                               | `systemctl list-timers kajianq-backup.timer kajianq-cron.timer`                                                   | Both timers scheduled; `kajianq-backup.mjs --label first-run` produced a snapshot in the repository            | Owner                       |
-| AC-13 | Decommissioning Cloudflare + Neon + CF secrets                                             | Step 7's commands                                                                                                 | Deletion confirmations; `gh secret list` without the CF/Neon entries; the grep returning nothing               | **Owner approval required** |
-| AC-14 | SPECS.md + the ADR's implementation notes updated                                          | `git diff --stat SPECS.md adr/0043-*.md`                                                                          | The spec's §3/§5/§7/§8 diff and the ADR-0043 amendment in the same PR                                          | Repo (this PR)              |
-| AC-15 | `NOTICES/DATASETS.md` unchanged unless corpus handling changed                             | `git diff --stat NOTICES/DATASETS.md`                                                                             | Empty — raw source data stays immutable and no dataset was touched                                             | Repo (this PR)              |
+| #     | Acceptance criterion                                                                       | Command                                                                                                                                                                                                                                                             | What counts as evidence                                                                                                                                     | Gated by                        |
+| ----- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| AC-1  | Pre-cutover snapshot verified on the source                                                | `bun run db:snapshot create pre-cutover-… && bun run db:snapshot verify pre-cutover-…`                                                                                                                                                                              | `created` banner (label, sha256, counts) + `verified` banner with `corpus row counts match the live database`                                               | Owner                           |
+| AC-2  | Postgres + pgvector restored on the VPS; post-cutover snapshot verified; both labels cited | `pg_restore …` (step 2, on the box) && `bun run db:snapshot create post-cutover-… && bun run db:snapshot verify post-cutover-…` (step 3, on the deploying machine over the ssh tunnel)                                                                              | Both manifests with an exact `tableCounts` match on the corpus + schema tables; both labels in the PR                                                       | Owner                           |
+| AC-3  | Ingest/eval CLIs run against the VPS database                                              | `DATABASE_URL=postgres://kajianq:…@127.0.0.1:5432/kajianq bun run eval:smoke` with `EVAL_API_BASE_URL`/`EVAL_API_TOKEN`/`EVAL_BUDGET_MICRO_USD` set (step 4's block); `bun run ingest:quran -- --check` and `bun run ingest:hadith -- --check` against the same URL | The smoke summary green against the VPS store; both `--check` passes reporting "store untouched, no LLM/embedding spend"; `db:status:all` fully applied     | Owner                           |
+| AC-4  | API serves `/v1/*` with TLS; the anonymous-session cron runs on the host                   | `systemctl status kajianq-api`; `systemctl list-timers kajianq-cron.timer`; `curl -sSf https://<host>/v1/health`                                                                                                                                                    | Unit active, timer scheduled at 03:17, HTTPS health JSON, `journalctl -u kajianq-cron` showing a completed run                                              | Owner                           |
+| AC-5  | Deployer separation                                                                        | `grep -rn "alchemy" apps/` returns nothing; `git ls-files .github/workflows/deploy-vps.yml provision/vps/deploy/`                                                                                                                                                   | The paths exist; no `alchemy:*` script and no `alchemy.run.ts` under `apps/`                                                                                | Repo (this PR)                  |
+| AC-6  | Secrets: none committed; business logic never touches `env.*`                              | `bun run boundary`; the gitleaks CI step; `bun run test` (the env→bindings mapping test)                                                                                                                                                                            | Boundary clean, gitleaks clean, the `bindingsFromEnv` tests green                                                                                           | Repo (this PR)                  |
+| AC-7  | Single-shot cutover, staging first                                                         | The Staging workflow run, then the prod `deploy-vps` run                                                                                                                                                                                                            | Two green deploy runs in order; no rollback step attempted                                                                                                  | Owner                           |
+| AC-8  | Smoke tests pass against the VPS; e2e re-pointed                                           | `bun run e2e` — **on the deploying machine** (playwright boots `boot.ts` locally; the box has no playwright/chromium) — and the deploy script's smoke lines                                                                                                         | 33/33 BDD scenarios green locally; the deployed smoke lines against the public URL                                                                          | Repo + Owner                    |
+| AC-9  | `PromptSpec.personalData` on every serving call site                                       | `bun run test apps/api/src/lib/personal-data-serving.test.ts`                                                                                                                                                                                                       | The enforcement test green: every serving role has a keyed personal-data-allowed candidate                                                                  | Repo (prior checkpoint)         |
+| AC-10 | On-host hardening applied + restore drill on the real box                                  | `sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env`; the runbook step 6 drill                                                                                                                                                                                | `apply.sh` clean; the drill exits 0 on the host; `logrotate --debug` clean on both stanzas                                                                  | Owner                           |
+| AC-11 | About-page register flips at cutover                                                       | `bun run test apps/web/src/lib/privacy-notice.test.ts`                                                                                                                                                                                                              | The drift guard green with netcup `current` and the transition rows narrowing                                                                               | Repo (this PR)                  |
+| AC-12 | Backup timer + cron re-homed                                                               | `systemctl list-timers kajianq-backup.timer kajianq-cron.timer`                                                                                                                                                                                                     | Both timers scheduled; `kajianq-backup.mjs --label first-run` produced a snapshot in the repository                                                         | Owner                           |
+| AC-13 | Decommissioning Cloudflare + Neon + CF secrets                                             | Step 7's commands                                                                                                                                                                                                                                                   | Deletion confirmations; `gh secret list` without the CF/Neon entries; the grep returning nothing                                                            | **Owner approval required**     |
+| AC-16 | The notice's register flip is merged at/after cutover step 3                               | This checklist: step 3's `verified` banner exists **before** PR #189 merges                                                                                                                                                                                         | The owner ticks the PR's "Merged only at/after cutover step 3" checklist item; the netcup row's `In use today` is true in the same window the merge happens | **Owner confirmation required** |
+| AC-14 | SPECS.md + the ADR's implementation notes updated                                          | `git diff --stat SPECS.md adr/0043-*.md`                                                                                                                                                                                                                            | The spec's §3/§5/§7/§8 diff and the ADR-0043 amendment in the same PR                                                                                       | Repo (this PR)                  |
+| AC-15 | `NOTICES/DATASETS.md` unchanged unless corpus handling changed                             | `git diff --stat NOTICES/DATASETS.md`                                                                                                                                                                                                                               | Empty — raw source data stays immutable and no dataset was touched                                                                                          | Repo (this PR)                  |
 
 ## After the cutover
 

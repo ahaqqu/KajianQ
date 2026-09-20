@@ -97,7 +97,16 @@ by `docs/VPS-CUTOVER-RUNBOOK.md`.
    owner. The API reads the client address from `CF-Connecting-IP`, which nginx
    overwrites unconditionally from `$remote_addr` — the header name is kept
    deliberately: renaming it would be churn with no behavioral gain, and the
-   value is proxy-established either way.
+   value is proxy-established either way. **The Cloudflare CDN proxy stays OFF
+   at cutover** (DNS-only): with the proxy on, nginx's `$remote_addr` is a
+   Cloudflare edge IP, so every visitor behind one edge POP would share a single
+   rate-limit budget — per-IP metering (ADR-0041) would collapse without any
+   error to observe. Enabling the proxy later is a recorded decision that must
+   first ship `ngx_http_realip_module` config (`set_real_ip_from` for
+   Cloudflare's published IP ranges + `real_ip_header CF-Connecting-IP`) so
+   `$remote_addr` becomes the real client again — the nginx conf carries that
+   requirement in its own comment, and SPECS §3.2's "optionally the CDN proxy"
+   is read subject to it.
 
 5. **The database adapter speaks Postgres over TCP, named for its dialect.**
    `pg` (node-postgres) replaces the hosting vendor's serverless transport; the

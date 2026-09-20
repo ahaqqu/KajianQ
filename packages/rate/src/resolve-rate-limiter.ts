@@ -22,9 +22,12 @@ import { createMemoryRateLimiter, type RateLimiter } from "./rate-limiter";
 const memoryLimiter = createMemoryRateLimiter();
 
 /**
- * Resolve the rate limiter. One backend, so this is a function rather than a
- * constant only so the seam stays a function at the call site (middleware
- * passes the bindings object it does not otherwise use).
+ * Resolve the process-wide limiter. A function rather than a bare constant so
+ * the export stays an indirection point if a second backend ever returns (the
+ * shared-counter revisit trigger in ADR-0044: a scale-out to several API
+ * processes would need one) — callers swap the backend here, not at every
+ * call site. It takes no arguments and passes no bindings; the one real
+ * invariant, a single shared instance per process, is what the tests pin.
  */
 export function resolveRateLimiter(): RateLimiter {
   return memoryLimiter;
