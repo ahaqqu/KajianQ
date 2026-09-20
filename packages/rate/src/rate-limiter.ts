@@ -38,11 +38,10 @@ export type MemoryRateLimiterOptions = {
 };
 
 /**
- * In-memory rate limiter for local dev and as a bindingless fallback.
- * Single-isolate and per-process only — NOT a global defense in production;
- * use `createDurableObjectRateLimiter` (Durable Objects) for cross-isolate
- * enforcement. Bounded to `maxKeys` entries: expired windows are pruned and,
- * when still at capacity, the oldest active window is evicted.
+ * The in-memory rate limiter. Post-ADR-0044 this is the production backend
+ * too, not just a fallback: the API is a single process, so per-process is
+ * global. Bounded to `maxKeys` entries: expired windows are pruned and, when
+ * still at capacity, the oldest active window is evicted.
  */
 export function createMemoryRateLimiter(options: MemoryRateLimiterOptions = {}): RateLimiter {
   const maxKeys = options.maxKeys ?? 10_000;
@@ -82,30 +81,10 @@ export function createMemoryRateLimiter(options: MemoryRateLimiterOptions = {}):
   };
 }
 
-export type RateLimiterStubLike = {
-  /** RPC into the Durable Object: atomic check-and-increment. */
-  check(limit: number, windowMs: number): Promise<boolean>;
-};
-
 /**
- * Rate limiter backed by a Durable Object namespace. The caller supplies a
- * `getStub` factory so this module stays free of Cloudflare-specific types;
- * the Worker composition root maps a key to the Durable Object stub that
- * owns that key's counter.
- */
-export function createDurableObjectRateLimiter(
-  getStub: (key: string) => RateLimiterStubLike,
-): RateLimiter {
-  return {
-    async check(key, limit, windowMs) {
-      return getStub(key).check(limit, windowMs);
-    },
-  };
-}
-
-/**
- * Deterministic 32-bit FNV-1a hex digest. Used to name Durable Objects
- * without persisting raw keys (e.g. client IPs) in object names.
+ * Deterministic 32-bit FNV-1a hex digest. Used to name a limiter's counter
+ * without holding a raw key (e.g. a client IP address) in the map — the
+ * retention notice's "named by a digest" claim (ADR-0043 decision 4).
  */
 export function fnv1aHex(input: string): string {
   let hash = 0x811c9dc5;

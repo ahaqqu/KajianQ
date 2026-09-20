@@ -60,7 +60,7 @@ describe("loadEvalRunConfig (thermo-review B2/A1/A2)", () => {
     );
   });
 
-  it("accepts a postgres:// Neon connection string (any valid URL scheme)", () => {
+  it("accepts a postgres:// connection string (any valid URL scheme)", () => {
     const cfg = loadEvalRunConfig(VALID);
     expect(cfg.databaseUrl).toBe("postgres://u:p@db.example.com/x");
   });

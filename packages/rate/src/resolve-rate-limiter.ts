@@ -1,47 +1,38 @@
-import {
-  createDurableObjectRateLimiter,
-  createMemoryRateLimiter,
-  fnv1aHex,
-  type RateLimiter,
-  type RateLimiterStubLike,
-} from "./rate-limiter";
+import { createMemoryRateLimiter, type RateLimiter } from "./rate-limiter";
 
 /**
- * Minimal Durable Object namespace shape, structurally compatible with the
- * Workers runtime binding. Keeping it here lets `resolveRateLimiter` select
- * backends without importing app-level or runtime-specific types.
- */
-export type RateLimiterNamespace = {
-  idFromName(name: string): unknown;
-  get(id: unknown): RateLimiterStubLike;
-};
-
-/**
- * Bindingless fallback for local dev and tests. Per-isolate and bounded; the
- * global defense in production is the Durable Object implementation selected
- * by `resolveRateLimiter`.
+ * The process-wide limiter (#181, ADR-0044). A bounded in-memory backend is
+ * the right shape self-hosted: the API runs as ONE process behind the reverse
+ * proxy, so "per-process" and "global" are the same set — the property Durable
+ * Objects existed to provide (cross-isolate, cross-POP counting) has no meaning
+ * when there is exactly one isolate.
+ *
+ * What changed with the move is therefore the mechanism, not the guarantee:
+ * the counter is still global for the deployment, and it is still created once
+ * per process rather than per request (a per-request map would enforce
+ * nothing). What is genuinely lost is protection against a future scale-out to
+ * several API processes; the revisit trigger is recorded in ADR-0044, and the
+ * bounded map's eviction (pruning expired windows, then the oldest) is what
+ * keeps memory flat.
+ *
+ * The key is hashed before it reaches this map (`fnv1aHex`, in the middleware
+ * seam) so the limiter holds no raw IP address — the retention notice says
+ * "kept in memory and named by a digest", and that must stay true.
  */
 const memoryLimiter = createMemoryRateLimiter();
 
 /**
- * Resolves the rate limiter for a Worker: Durable Objects when the
- * `RATE_LIMITER` binding is present (global across isolates and POPs), else
- * the in-memory fallback. Accepts any env structurally — the Worker
- * composition root passes its full bindings object.
+ * Resolve the rate limiter. One backend, so this is a function rather than a
+ * constant only so the seam stays a function at the call site (middleware
+ * passes the bindings object it does not otherwise use).
  */
-export function resolveRateLimiter(env: { RATE_LIMITER?: RateLimiterNamespace }): RateLimiter {
-  const namespace = env.RATE_LIMITER;
-  if (namespace) {
-    return createDurableObjectRateLimiter((key) =>
-      namespace.get(namespace.idFromName(fnv1aHex(key))),
-    );
-  }
+export function resolveRateLimiter(): RateLimiter {
   return memoryLimiter;
 }
 
 /**
- * Default edge policy: 120 requests per minute per key. Callers may override
- * per invocation; the middleware seam stays identical across backends.
+ * Default policy: 120 requests per minute per key. Callers may override per
+ * invocation; the middleware seam is unchanged.
  */
 export async function allowRequest(
   key: string,

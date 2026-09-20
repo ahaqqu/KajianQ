@@ -8,7 +8,7 @@
  *   DATABASE_URL=postgres://… bun packages/infra/scripts/db-migrate.mjs down
  *   DATABASE_URL=postgres://… bun packages/infra/scripts/db-migrate.mjs down --step 2
  *
- * Multiple migration sets share one Neon database and one ledger. Pass
+ * Multiple migration sets share one Postgres database and one ledger. Pass
  * `--dir <path>` (relative to cwd) to target a set:
  *
  *   bun run db:up                                 # engine (packages/infra)

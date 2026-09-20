@@ -15,7 +15,7 @@
  *   EVAL_API_BASE_URL      the staging /v1/chat origin (required)
  *   EVAL_API_TOKEN         an anonymous Bearer token minted by the API
  *                          (required; `POST /v1/auth/anonymous` mints one)
- *   DATABASE_URL      the staging Neon store to read answer traces from
+ *   DATABASE_URL      the VPS staging store to read answer traces from
  *                          and persist the run into (required)
  *   EVAL_BUDGET_MICRO_USD  hard spend cap in micro-USD (unset/0 = uncapped)
  *   EVAL_SMOKE_SIZE        subset size (default 5, the spec's PR-time size)
@@ -23,7 +23,7 @@
  *   EVAL_RUN_LABEL         optional run label
  *
  * Exit code is non-zero when any smoke question fails, so CI can gate on it.
- * A live run needs staging secrets (Cloudflare + Neon + vendor keys); when
+ * A live run needs staging secrets (the VPS store URL + vendor keys); when
  * they are absent the script fails fast with the missing name rather than
  * reporting a misleading pass — see the run instructions in SPECS §3.7.
  *

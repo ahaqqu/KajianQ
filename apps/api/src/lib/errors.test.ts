@@ -6,7 +6,7 @@ import { engineErrorStatus, onError } from "./errors";
 
 const { captureException } = vi.hoisted(() => ({ captureException: vi.fn() }));
 
-vi.mock("@sentry/cloudflare", () => ({ captureException }));
+vi.mock("@sentry/bun", () => ({ captureException }));
 
 /** Minimal env for hono's `app.request` (ApiEnv bindings are optional). */
 const env = { APP_ENV: "test" };

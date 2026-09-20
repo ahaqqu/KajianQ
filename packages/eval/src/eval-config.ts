@@ -11,7 +11,7 @@ export type EvalRunConfig = {
   apiBaseUrl: string;
   /** An anonymous Bearer token minted by the API (required). */
   apiToken: string;
-  /** The staging Neon store connection string (required). */
+  /** The store connection string the run reads traces from (required). */
   databaseUrl: string;
   /** Hard spend cap in micro-USD (fail-closed: unset/0 = explicit opt-out). */
   budgetCapMicroUsd: number | undefined;
@@ -34,7 +34,7 @@ function requireHttpUrl(name: string, raw: string | undefined): string {
   return url;
 }
 
-/** Require a set, syntactically-valid URL (any scheme — Neon is `postgres:`). */
+/** Require a set, syntactically-valid URL (any scheme — Postgres is `postgres:`). */
 function requireUrl(name: string, raw: string | undefined): string {
   if (raw === undefined || raw.trim() === "") {
     throw new EvalConfigError(`${name} is not set`);
@@ -78,7 +78,7 @@ export const EMBED_BENCH_DEFAULT_EXPANSION_PATH =
 /** Validated, typed configuration for one `eval:embed-bench` invocation. */
 export type EmbedBenchConfig = {
   /**
-   * The staging Neon store connection string — optional (thermo B5): the
+   * The store connection string — optional (thermo B5): the
    * gate run is source-based and DB-free, so the URL is only validated for
    * URL-shape when actually provided; undefined otherwise.
    */

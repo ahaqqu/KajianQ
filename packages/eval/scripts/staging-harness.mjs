@@ -4,14 +4,14 @@
  * (thermo-review B2).
  *
  * `eval:run` and `eval:smoke` used to carry near-identical copies of this
- * setup — the Neon store, the `doc_children` sourceType scan, the ledger and
+ * setup — the Postgres store, the `doc_children` sourceType scan, the ledger and
  * trace bridges, and the refusal markers. Two copies of the same staging
  * wiring drift: one entry point's fix silently misses the other. Both scripts
  * now build their seams from this one module.
  *
  * Why a script module and not `@app/eval/src`: the eval package is an engine
  * package, and the boundary gate (ADR-0005/0008) forbids a direct database
- * client there. The Neon driver belongs to the CLI composition root — these
+ * client there. The database client belongs behind @app/infra — these
  * scripts, where `eval:run`'s store wiring has always lived.
  *
  * The refusal markers are imported from the domain pack's own

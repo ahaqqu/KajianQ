@@ -3,7 +3,7 @@ import { createApi } from "../app";
 
 const { captureException } = vi.hoisted(() => ({ captureException: vi.fn() }));
 
-vi.mock("@sentry/cloudflare", () => ({ captureException }));
+vi.mock("@sentry/bun", () => ({ captureException }));
 import { runStoreEffect } from "@app/kajianq-domain";
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 import { createStubChatProviders } from "@app/kajianq-domain/test-utils/stub-chat-providers";

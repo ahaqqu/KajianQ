@@ -7,7 +7,7 @@
  * Env (validated by `loadEvalRunConfig` before any spend):
  *   EVAL_API_BASE_URL      the staging /v1/chat origin (required)
  *   EVAL_API_TOKEN         an anonymous Bearer token minted by the API (required)
- *   DATABASE_URL      the staging Neon store to read answer traces from
+ *   DATABASE_URL      the staging store to read answer traces from
  *                          and persist eval_runs/eval_results into (required)
  *   EVAL_BUDGET_MICRO_USD  hard spend cap in micro-USD; the run aborts when
  *                          the cap is hit (harness LLM calls + the pipeline
@@ -18,7 +18,7 @@
  *                          domain pack's golden-set-v0.json, resolved from
  *                          the repo root — thermo-review A2)
  *
- * Thin composition root (B5): wires the SSE client + the Neon store through
+ * Thin composition root (B5): wires the SSE client + the Postgres store through
  * the @app/eval seams, runs the harness (`runGoldenSet` owns the run
  * lifecycle — no re-implemented loop, no ledger mutation, thermo-review
  * A3/A4/A9/B1), and prints the summary. Missing API keys are reported NOT

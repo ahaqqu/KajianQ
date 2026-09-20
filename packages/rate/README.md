@@ -1,60 +1,46 @@
 # @app/rate
 
-Self-contained rate limiting for Hono-on-Workers APIs: a `RateLimiter`
-adapter interface with two backends — a Durable Object (one per key, global
-across isolates and POPs, alarm-based eviction) and a bounded in-memory
-fallback (local dev / tests only, per-isolate).
+Self-contained rate limiting for the Hono API: a `RateLimiter` adapter
+interface with a bounded in-memory backend.
+
+Post-ADR-0044 the API runs as a single Bun process behind nginx, so
+"per-process" and "global for the deployment" are the same set — the
+cross-isolate counting a Durable Object backend provided has no meaning with
+exactly one isolate. The Durable Object backend and its `cloudflare:workers`
+dependency were removed with the Cloudflare serving path; the guarantee that
+matters (one counter per key, created once per process) is unchanged, and the
+counter is still named by a digest so no raw IP address is held.
 
 This package exists as a reusable workspace package so forked projects can
-consume it from `packages/` instead of copy-pasting it from `apps/`. The
-Worker app keeps only composition-root glue.
+consume it from `packages/` instead of copy-pasting it from `apps/`. The API
+app keeps only the middleware glue.
 
 ## Modules
 
 - `rate-limiter.ts` — `RateLimiter` interface, pure `tickFixedWindow` window
-  math (single source of truth for all backends), bounded
-  `createMemoryRateLimiter`, `createDurableObjectRateLimiter` adapter,
-  `fnv1aHex` key hashing.
-- `rate-limiter-do.ts` — `RateLimiterDo`, the SQLite-backed Durable Object
-  (exposed as the separate `@app/rate/durable` entrypoint so tooling that runs
-  under Node/Bun never pulls `cloudflare:workers` in transitively).
-- `resolve-rate-limiter.ts` — `resolveRateLimiter(env)` backend selection
-  (DO when the `RATE_LIMITER` binding is present, memory otherwise) and the
-  `allowRequest` seam (default 120 req/min per key).
+  math, bounded `createMemoryRateLimiter` (prunes expired windows, then evicts
+  the oldest at capacity), and `fnv1aHex` key hashing.
+- `resolve-rate-limiter.ts` — `resolveRateLimiter()` (the process-wide limiter)
+  and the `allowRequest` seam (default 120 req/min per key).
+- `bypass.ts` — the purpose-locked Ed25519 bypass JWT (ADR-0041): harness
+  traffic that must exceed the `/v1` budget without disabling metering.
 
-## Adopting in a forked Worker
+## Adopting in a forked API
 
 1. Dependency: add `"@app/rate": "workspace:*"` to the API package.
-2. Entrypoint: re-export the class from the Worker entrypoint —
-   `export { RateLimiterDo } from "@app/rate/durable";`
-3. Binding (Alchemy stack file, ADR-0028):
+2. Middleware (inside the request path):
 
    ```ts
-   RATE_LIMITER: Cloudflare.DurableObject("RATE_LIMITER", {
-     className: "RateLimiterDo",
-   }),
-   ```
+   import { allowRequest, fnv1aHex, resolveRateLimiter } from "@app/rate";
 
-   Alchemy derives the class migration automatically (SQLite-backed).
-
-4. Middleware (inside the request path):
-
-   ```ts
-   import { allowRequest, resolveRateLimiter } from "@app/rate";
-
+   // CF-Connecting-IP is proxy-established (nginx overwrites it from
+   // $remote_addr); the digest keeps the raw address out of the limiter.
    const ip = c.req.header("CF-Connecting-IP") ?? "local";
-   if (!(await allowRequest(`ip:${ip}`, resolveRateLimiter(c.env)))) {
+   if (!(await allowRequest(`ip:${fnv1aHex(ip)}`, resolveRateLimiter()))) {
      return c.json({ error: "rate_limited" }, 429);
    }
    ```
 
-Without the binding (local `vitest`, bindingless dev) the bounded in-memory
-fallback is used; it is per-isolate and NOT a global defense. With the
-binding, counters are global. Durable Objects are available on the Workers
-Free plan; each key's DO self-clears via alarm, so storage stays negligible.
-
-Note: `RateLimiterDo` imports `cloudflare:workers`, which only exists in the
-Workers runtime. That is why this package has its own tsconfig (with
-`@cloudflare/workers-types`) and is excluded from the root typecheck
-umbrella; Node-based vitest runs alias `cloudflare:workers` to
-`src/test-utils/durable-object-stub.ts`.
+The limiter is bounded and per-process. A future scale-out to several API
+processes would need a shared counter (a store-backed limiter, or sticky
+routing) — recorded as ADR-0044's revisit trigger, not built speculatively.

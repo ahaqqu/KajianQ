@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * pg-search-probe.mjs — probe BM25/pg_search availability on the Postgres
- * server the store runs on (#4 AC: "pg_search/BM25 availability on the Neon
+ * server the store runs on (#4 AC: "pg_search/BM25 availability on the
  * plan probed and result recorded (fallback: tsvector)").
  *
  *   DATABASE_URL=postgres://… bun packages/infra/scripts/pg-search-probe.mjs

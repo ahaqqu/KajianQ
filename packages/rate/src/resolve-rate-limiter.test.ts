@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { RateLimiterNamespace } from "./resolve-rate-limiter";
 import { allowRequest, resolveRateLimiter } from "./resolve-rate-limiter";
 import { createMemoryRateLimiter } from "./rate-limiter";
 
@@ -11,25 +10,19 @@ describe("allowRequest", () => {
 });
 
 describe("resolveRateLimiter", () => {
-  it("uses the in-memory fallback without a binding", async () => {
-    const limiter = resolveRateLimiter({});
-    // Memory path: the first check allows, the second trips the limit.
-    expect(await limiter.check("k", 1, 60_000)).toBe(true);
-    expect(await limiter.check("k", 1, 60_000)).toBe(false);
+  it("returns a limiter that enforces a per-key window", async () => {
+    const limiter = resolveRateLimiter();
+    // The first check allows, the second trips the limit — the process-wide
+    // limiter counts, rather than resolving to a per-call no-op.
+    expect(await limiter.check("resolve-test-key", 1, 60_000)).toBe(true);
+    expect(await limiter.check("resolve-test-key", 1, 60_000)).toBe(false);
   });
 
-  it("routes through the Durable Object binding when present", async () => {
-    const fakeNamespace: RateLimiterNamespace = {
-      idFromName: (name: string) => ({ name }),
-      get: (_id: unknown) => ({
-        async check(_limit: number, _windowMs: number): Promise<boolean> {
-          return false;
-        },
-      }),
-    };
-    const limiter = resolveRateLimiter({ RATE_LIMITER: fakeNamespace });
-    // The fake stub returns false, proving the DO path (not memory, which
-    // would allow the first request).
-    expect(await limiter.check("ip:1.2.3.4", 120, 60_000)).toBe(false);
+  it("is a single shared instance across calls (per-process, not per-request)", async () => {
+    // Constructing a fresh limiter per request would enforce nothing: the two
+    // resolutions below must address the same counter.
+    const key = "resolve-shared-key";
+    expect(await resolveRateLimiter().check(key, 1, 60_000)).toBe(true);
+    expect(await resolveRateLimiter().check(key, 1, 60_000)).toBe(false);
   });
 });

@@ -36,7 +36,7 @@ export type StoreErrorKind =
  * `E` channel (ADR-0027 decision 7). Each kind wraps the original vendor
  * exception in `cause` — the taxonomy is the classification, `cause` is the
  * audit trail; neither replaces the other. Adapters map vendor exceptions
- * (Neon `NeonDbError`/`PostgresError`, S3 `S3ServiceException`, bare
+ * (node-postgres `DatabaseError`, S3 `S3ServiceException`, bare
  * `RangeError`s from value validation) into exactly one kind, inside the
  * adapter.
  */

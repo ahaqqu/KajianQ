@@ -5,7 +5,7 @@ import { newRouter } from "../lib/guard";
 
 /**
  * Placeholder persistence-schema version. The local-first sync package that
- * used to own it is removed; #4 owns the real Neon schema version. Health
+ * used to own it is removed; #4 owns the real schema version. Health
  * keeps reporting a monotonically increasing integer so clients can feature-
  * check once persistence lands.
  */

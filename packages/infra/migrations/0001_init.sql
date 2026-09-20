@@ -30,7 +30,7 @@
 
 BEGIN;
 
--- Required for the embedding columns below. pgvector is available on Neon's
+-- Required for the embedding columns below. pgvector is available on the
 -- standard plans; probing is part of #4's verification steps.
 CREATE EXTENSION IF NOT EXISTS vector;
 

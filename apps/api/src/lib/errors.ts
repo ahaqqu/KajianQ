@@ -1,4 +1,4 @@
-import * as Sentry from "@sentry/cloudflare";
+import * as Sentry from "@sentry/bun";
 import { createLogger } from "@app/infra";
 import {
   PipelineAbortedError,

@@ -6,9 +6,9 @@ import type { DocChild } from "./rag-store";
 
 /**
  * Pure, database-free helpers shared by the RagStore adapter and its unit
- * tests. Everything here is deterministic and side-effect-free; the Neon
+ * tests. Everything here is deterministic and side-effect-free; the Postgres
  * adapter composes these with its I/O. Crucially, NO SQL lives here — the
- * similarity-search query builder is co-located with the Neon adapter
+ * similarity-search query builder is co-located with the Postgres adapter
  * (`rag-store-postgres.ts`), the only place executable SQL should appear.
  *
  * pg returns `vector` columns as their wire form `'[0.1,0.2]'`; embeddings go

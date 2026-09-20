@@ -131,7 +131,6 @@ if (CHECK_ONLY) {
 // never imports a database client), and one runner feeds both the RagStore
 // and the report path (C1: a single handle per run).
 const store = app.resolvePostgresStore(databaseUrl, { logger });
-const sql = app.postgresSqlRunner(app.postgresPool(databaseUrl));
 const config = app.loadProviderConfig();
 // Batch retry policy: an offline ingest must ride out a vendor's
 // per-minute window rather than give up after the interactive ≈1.5 s
