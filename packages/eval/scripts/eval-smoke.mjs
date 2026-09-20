@@ -15,7 +15,7 @@
  *   EVAL_API_BASE_URL      the staging /v1/chat origin (required)
  *   EVAL_API_TOKEN         an anonymous Bearer token minted by the API
  *                          (required; `POST /v1/auth/anonymous` mints one)
- *   NEON_DATABASE_URL      the staging Neon store to read answer traces from
+ *   DATABASE_URL      the staging Neon store to read answer traces from
  *                          and persist the run into (required)
  *   EVAL_BUDGET_MICRO_USD  hard spend cap in micro-USD (unset/0 = uncapped)
  *   EVAL_SMOKE_SIZE        subset size (default 5, the spec's PR-time size)

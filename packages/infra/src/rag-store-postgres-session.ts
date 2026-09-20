@@ -1,19 +1,19 @@
 import { Effect } from "effect";
 import type { RagStore } from "./rag-store";
 import { hashToken, randomToken } from "./rag-store-shared";
-import { neonErrorToStoreError, sqlEffect, type SqlRunner } from "./rag-store-neon-errors";
+import { postgresErrorToStoreError, sqlEffect, type SqlRunner } from "./rag-store-postgres-errors";
 
 /**
- * Session/auth/chat methods of the Neon RagStore adapter, split from
- * `rag-store-neon.ts` to respect the agentic size limits (ADR-0027 decision
- * 7 migration kept all executable SQL inside the Neon adapter surface: this
- * file, `rag-store-neon.ts`, `rag-store-neon-query.ts`, and the migrations).
+ * Session/auth/chat methods of the Postgres RagStore adapter, split from
+ * `rag-store-postgres.ts` to respect the agentic size limits (ADR-0027 decision
+ * 7 migration kept all executable SQL inside the Postgres adapter surface: this
+ * file, `rag-store-postgres.ts`, `rag-store-postgres-query.ts`, and the migrations).
  */
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days, per ADR-0017.
 
-/** The session/auth/chat half of the `RagStore` interface, Neon-backed. */
-export function neonSessionMethods(
+/** The session/auth/chat half of the `RagStore` interface, Postgres-backed. */
+export function postgresSessionMethods(
   sql: SqlRunner,
 ): Pick<
   RagStore,
@@ -126,13 +126,13 @@ export function neonSessionMethods(
       const sessionId = crypto.randomUUID();
       const token = randomToken();
       const expiresAt = Date.now() + SESSION_TTL_MS;
-      // Atomic: the user row and its session row are written in one Neon HTTP
-      // non-interactive transaction, so a mid-write failure cannot orphan a
+      // Atomic: the user row and its session row are written in one batched
+      // transaction, so a mid-write failure cannot orphan a
       // user with no session.
       return Effect.flatMap(
         Effect.tryPromise({
           try: () => hashToken(token),
-          catch: neonErrorToStoreError,
+          catch: postgresErrorToStoreError,
         }),
         (tokenHash) =>
           Effect.as(
@@ -155,7 +155,7 @@ export function neonSessionMethods(
       return Effect.flatMap(
         Effect.tryPromise({
           try: () => hashToken(token),
-          catch: neonErrorToStoreError,
+          catch: postgresErrorToStoreError,
         }),
         (tokenHash) =>
           Effect.map(
@@ -179,7 +179,7 @@ export function neonSessionMethods(
       // runs user → session, never the reverse, so without the second DELETE
       // every abandoned browser leaves a permanent `users` row plus its
       // `chat_sessions`/`chat_messages`/`answer_traces` subtree — the exact
-      // unbounded growth this cleanup exists to prevent. Both run in one Neon
+      // unbounded growth this cleanup exists to prevent. Both run in one
       // transaction so a crash between them cannot strand a half-reclaimed
       // user, and the returned count is the reclaimed users (the number the
       // cron reports as storage reclaimed).
@@ -198,7 +198,7 @@ export function neonSessionMethods(
           ]),
         ),
         (results) => {
-          // Neon's transaction() resolves one result per statement, in order;
+          // The batched transaction resolves one result per statement, in order;
           // the user-reclamation statement is the second. A driver that
           // resolves differently is a contract violation, not a count to
           // guess at — report 0 rather than a wrong number.

@@ -1,8 +1,8 @@
 import type { Logger } from "./logger";
-import type { SqlRunner } from "./rag-store-neon";
+import type { SqlRunner } from "./rag-store-postgres";
 
 /**
- * Operational logging wiring for the Neon RagStore adapter (issue #63 item 5),
+ * Operational logging wiring for the Postgres RagStore adapter (issue #63 item 5),
  * kept out of the adapter proper so its import surface stays small and the
  * default path stays dependency-free.
  */
@@ -11,11 +11,11 @@ import type { SqlRunner } from "./rag-store-neon";
 export const DEFAULT_SLOW_QUERY_MS = 1_000;
 
 /**
- * Optional operational wiring for the Neon adapter. Both knobs default to
+ * Optional operational wiring for the Postgres adapter. Both knobs default to
  * "off": with no `logger` the adapter is fully silent, so it stays usable in
  * tests and in consumers that do their own observability.
  */
-export type NeonRagStoreOptions = {
+export type PostgresRagStoreOptions = {
   /**
    * Structured logger for slow/failed queries (ops observability). This is
    * deliberately NOT the answer Trace (ADR-0007): log fields carry only the

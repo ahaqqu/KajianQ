@@ -2,7 +2,7 @@
 /**
  * ingest-quran.mjs — the `ingest:quran` Bun CLI (issue #6).
  *
- *   bun run ingest:quran                          # full ingest (needs NEON_DATABASE_URL + API keys)
+ *   bun run ingest:quran                          # full ingest (needs DATABASE_URL + API keys)
  *   bun run ingest:quran -- --check               # integrity check only (no LLM/embedding spend)
  *   bun run ingest:quran -- --limit 5             # ingest only the first N surahs
  *
@@ -27,7 +27,6 @@
  * pairs by pairKey, reports by run id — re-running the script is safe by
  * construction.
  */
-import { neon } from "@neondatabase/serverless";
 // Effect bridge for the Effect-shaped store seam (ADR-0027 decision 7).
 import * as app from "@app/infra";
 import * as ingest from "@app/rag-ingest";
@@ -80,8 +79,8 @@ if (Number.isNaN(LIMIT)) {
 // Main.
 // ---------------------------------------------------------------------------
 
-const neonUrl = process.env.NEON_DATABASE_URL;
-if (!neonUrl) fail("NEON_DATABASE_URL is not set");
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) fail("DATABASE_URL is not set");
 
 logger.info("starting", {
   mode: CHECK_ONLY ? "integrity-check" : "full-ingestion",
@@ -127,10 +126,12 @@ if (CHECK_ONLY) {
   process.exit(0);
 }
 
-// Wire seams once — one sql runner feeds both the RagStore and the report
-// path (C1: a single `neon()` handle per run).
-const sql = neon(neonUrl);
-const store = app.createRagStore("neon", sql, { logger });
+// Wire seams once: the store comes from @app/infra's own composition helper
+// (ADR-0008 — this CLI names the connection URL and receives the seam; it
+// never imports a database client), and one runner feeds both the RagStore
+// and the report path (C1: a single handle per run).
+const store = app.resolvePostgresStore(databaseUrl, { logger });
+const sql = app.postgresSqlRunner(app.postgresPool(databaseUrl));
 const config = app.loadProviderConfig();
 // Batch retry policy: an offline ingest must ride out a vendor's
 // per-minute window rather than give up after the interactive ≈1.5 s

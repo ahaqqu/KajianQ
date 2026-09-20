@@ -47,8 +47,8 @@ export async function cleanupExpiredSessions(
     store = createStore(env);
   } catch (err) {
     if (err instanceof ChatConfigError) {
-      // No database binding in this environment (local dev, a stage without
-      // Neon): the feature is disabled, not broken.
+      // No database binding in this environment (local dev, an environment without
+      // a configured store): the feature is disabled, not broken.
       logger.warn("scheduled.cleanup_skipped", { missing: err.missing ?? "unknown" });
       return { deleted: null, ok: false };
     }
@@ -69,7 +69,7 @@ export async function cleanupExpiredSessions(
     logger.info("scheduled.sessions_cleaned", { deleted });
     return { deleted, ok: true };
   } catch (err) {
-    // A transient Neon fault must not fail the cron run: log and let the next
+    // A transient store fault must not fail the cron run: log and let the next
     // tick retry (the rows are still there, still harmless).
     logger.error("scheduled.cleanup_failed", {
       error: err instanceof Error ? err.message : String(err),

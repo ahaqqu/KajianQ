@@ -139,7 +139,7 @@ export function verifyRestore(manifest, actual) {
  * restored row would silently resurrect data the live store had deleted").
  *
  * The first two statements are `cleanupExpiredSessions` from
- * `packages/infra/src/rag-store-neon-session.ts` verbatim: expired tokens, plus
+ * `packages/infra/src/rag-store-postgres-session.ts` verbatim: expired tokens, plus
  * the anonymous `users` left with no session (the FK cascade runs user →
  * session, never the reverse, so the second DELETE is what removes the chat /
  * trace / feedback subtree). The third is the Art. 17 path
@@ -153,7 +153,7 @@ export const RECLAIM_SQL = [
 
 /**
  * The Art. 17 cascade — the same statement production `deleteUserCascade`
- * runs (`packages/infra/src/rag-store-neon-session.ts`), with the user id
+ * runs (`packages/infra/src/rag-store-postgres-session.ts`), with the user id
  * bound, never interpolated into the statement text. The id travels as a psql
  * variable (`-v uid=…` + `:'uid'`), so it is quoted by psql and the statement
  * text is fixed — a unit test normalizes this statement and the adapter's to

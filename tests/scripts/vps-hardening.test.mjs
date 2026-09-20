@@ -179,7 +179,10 @@ describe("erasure a restore must re-apply", () => {
         .replace(/\$\{before\.toISOString\(\)\}/g, "now()")
         .trim();
     const adapter = normalize(
-      readFileSync(resolve(process.cwd(), "packages/infra/src/rag-store-neon-session.ts"), "utf8"),
+      readFileSync(
+        resolve(process.cwd(), "packages/infra/src/rag-store-postgres-session.ts"),
+        "utf8",
+      ),
     );
     for (const statement of RECLAIM_SQL) {
       expect(adapter, statement).toContain(normalize(statement));
@@ -196,7 +199,7 @@ describe("erasure a restore must re-apply", () => {
 
   it("the Art. 17 statement matches production deleteUserCascade — the restore path cannot drift", () => {
     // Production erasure (DELETE /v1/auth/me → deleteUserCascade in
-    // packages/infra/src/rag-store-neon-session.ts) executes a parameterized
+    // packages/infra/src/rag-store-postgres-session.ts) executes a parameterized
     // `DELETE FROM users WHERE id = ${userId}`. The restore re-applies the
     // same statement with the id bound as a psql variable (thermo-review A3):
     // if the adapter's erasure ever changes shape, this test fails and points
@@ -211,7 +214,10 @@ describe("erasure a restore must re-apply", () => {
         .replace(/\$\{userId\}/g, ":'uid'")
         .trim();
     const adapter = normalize(
-      readFileSync(resolve(process.cwd(), "packages/infra/src/rag-store-neon-session.ts"), "utf8"),
+      readFileSync(
+        resolve(process.cwd(), "packages/infra/src/rag-store-postgres-session.ts"),
+        "utf8",
+      ),
     );
     expect(adapter).toContain(normalize(erasureSql()));
   });

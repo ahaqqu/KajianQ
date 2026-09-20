@@ -2,18 +2,18 @@ import { describe, expect, it } from "vitest";
 import { Effect, Exit } from "effect";
 import type { StoreError } from "@app/rag-core";
 import { runFail } from "@app/rag-core/testing";
-import { createNeonRagStore, type SqlRunner } from "./rag-store-neon";
-import { sqlEffect } from "./rag-store-neon-errors";
+import { createPostgresRagStore, type SqlRunner } from "./rag-store-postgres";
+import { sqlEffect } from "./rag-store-postgres-errors";
 import { createRagStore } from "./rag-store-factory";
 import type { Logger, LogFields } from "./logger";
 import type { Trace } from "@app/contracts";
 
 /**
- * Unit tests for the Neon RagStore adapter using a fake `SqlRunner`. These
+ * Unit tests for the Postgres RagStore adapter using a fake `SqlRunner`. These
  * run in every environment (no database) and give the adapter's logic — SQL
  * construction, embedding validation, upsert RETURNING fallback, transaction
  * wiring, row mapping — line coverage that the secret-gated contract suite
- * (rag-store-neon.test.ts) cannot provide in the default gate job. The fake
+ * (rag-store-postgres.test.ts) cannot provide in the default gate job. The fake
  * records what the adapter asked the driver to do and feeds back canned rows.
  *
  * Assertions are Effect-shaped (ADR-0027 decision 7): seam calls are run via
@@ -101,10 +101,10 @@ const sampleTrace: Trace = {
   events: [{ stage: "generator", kind: "llm_call", at: 1 }],
 };
 
-describe("rag-store-neon adapter (fake runner)", () => {
+describe("rag-store-postgres adapter (fake runner)", () => {
   it("insertDocParent upserts and returns the RETURNING id, falling back to the generated id", async () => {
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     sql._setTag([{ id: "from-db" }]);
     const id = await runOk(
       store.insertDocParent({ sourceKey: "k", title: "t", metadata: { a: 1 } }),
@@ -121,7 +121,7 @@ describe("rag-store-neon adapter (fake runner)", () => {
 
   it("insertDocChild upserts by (parent_id, ordinal) without overwriting text_raw", async () => {
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     sql._setQuery([{ id: "child-1" }]);
     const id = await runOk(
       store.insertDocChild({
@@ -146,7 +146,7 @@ describe("rag-store-neon adapter (fake runner)", () => {
 
   it("insertDocChildren batches rows in a single query", async () => {
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     sql._setQuery([{ id: "c1" }, { id: "c2" }]);
     const ids = await runOk(
       store.insertDocChildren([
@@ -204,7 +204,7 @@ describe("rag-store-neon adapter (fake runner)", () => {
 
   it("insertDocChild rejects wrong-dimension embeddings before touching the DB (constraint kind)", async () => {
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     const err = await runFail(
       store.insertDocChild({
         parentId: "p",
@@ -225,7 +225,7 @@ describe("rag-store-neon adapter (fake runner)", () => {
 
   it("similaritySearch validates the embedding, builds bound params, and maps rows", async () => {
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     sql._setQuery([
       {
         id: "c1",
@@ -235,7 +235,7 @@ describe("rag-store-neon adapter (fake runner)", () => {
         text_id: "id",
         citation: { s: 2 },
         // The real query selects `NULL::text` for both vector columns — see
-        // the payload regression in rag-store-neon-query.test.ts.
+        // the payload regression in rag-store-postgres-query.test.ts.
         embedding_primary: null,
         embedding_fallback: null,
         ordinal: 3,
@@ -266,7 +266,7 @@ describe("rag-store-neon adapter (fake runner)", () => {
 
   it("similaritySearch rejects a bad-dimension embedding before querying (constraint kind)", async () => {
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     const err = await runFail(store.similaritySearch("primary", [0.1], { limit: 5 }));
     expect(err.kind).toBe("constraint");
     expect((err.cause as Error).message).toMatch(/dimension mismatch/);
@@ -275,7 +275,7 @@ describe("rag-store-neon adapter (fake runner)", () => {
 
   it("similaritySearch fails constraint-class on a corrupt stored vector", async () => {
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     sql._setQuery([
       {
         id: "c1",
@@ -300,7 +300,7 @@ describe("rag-store-neon adapter (fake runner)", () => {
 
   it("insertAnswerTrace validates the Trace and stores user_id", async () => {
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     const id = await runOk(
       store.insertAnswerTrace({ messageId: "m1", userId: "u1", trace: sampleTrace }),
     );
@@ -318,7 +318,7 @@ describe("rag-store-neon adapter (fake runner)", () => {
 
   it("insertAnswerTrace fails constraint-class on a malformed Trace", async () => {
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     const err = await runFail(
       store.insertAnswerTrace({
         messageId: "m1",
@@ -333,7 +333,7 @@ describe("rag-store-neon adapter (fake runner)", () => {
 
   it("getAnswerTraceByMessage returns null when absent and the parsed Trace when present", async () => {
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     sql._setTag([]);
     expect(await runOk(store.getAnswerTraceByMessage("none"))).toBeNull();
     sql._setTag([{ trace: sampleTrace }]);
@@ -344,7 +344,7 @@ describe("rag-store-neon adapter (fake runner)", () => {
 
   it("getAnswerTraceByMessage fails constraint-class on a corrupt persisted trace", async () => {
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     sql._setTag([{ trace: { id: 42 } }]);
     const err = await runFail(store.getAnswerTraceByMessage("m1"));
     expect(err.kind).toBe("constraint");
@@ -352,7 +352,7 @@ describe("rag-store-neon adapter (fake runner)", () => {
 
   it("createChatSession and insertChatMessage issue the right inserts", async () => {
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     await runOk(store.createChatSession({ userId: "u1", metadata: { k: 1 } }));
     expect(sql._calls[0]?.text).toContain("INSERT INTO chat_sessions");
     await runOk(store.insertChatMessage({ sessionId: "s1", role: "user", content: "hi" }));
@@ -361,7 +361,7 @@ describe("rag-store-neon adapter (fake runner)", () => {
 
   it("createSession writes users + sessions in one atomic transaction", async () => {
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     const out = await runOk(store.createSession());
     expect(out.userId).toEqual(expect.any(String));
     expect(out.token.length).toBeGreaterThanOrEqual(40);
@@ -379,7 +379,7 @@ describe("rag-store-neon adapter (fake runner)", () => {
 
   it("resolveUserId returns the user_id for a live session and null otherwise", async () => {
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     sql._setTag([{ user_id: "u1" }]);
     expect(await runOk(store.resolveUserId("tok"))).toBe("u1");
     sql._setTag([]);
@@ -389,8 +389,8 @@ describe("rag-store-neon adapter (fake runner)", () => {
 
   it("cleanupExpiredSessions reclaims expired sessions AND orphaned users (A5)", async () => {
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql);
-    // Neon's transaction() resolves one result per statement, in order: the
+    const store = createPostgresRagStore(sql);
+    // The batched transaction resolves one result per statement, in order: the
     // sessions DELETE, then the users DELETE ... RETURNING id.
     sql._setTxn([
       [{ id: "a" }, { id: "b" }],
@@ -412,19 +412,19 @@ describe("rag-store-neon adapter (fake runner)", () => {
 
   it("deleteUserCascade deletes from users (cascade does the rest)", async () => {
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     await runOk(store.deleteUserCascade("u1"));
     expect(sql._calls[0]?.text).toContain("DELETE FROM users WHERE id =");
   });
 
-  it("classifies a NeonDbError unique violation as constraint (taxonomy, ADR-0027 d7)", async () => {
+  it("classifies a Postgres unique violation as constraint (taxonomy, ADR-0027 d7)", async () => {
     const sql = makeBoomSql(() =>
       Object.assign(new Error("duplicate key value violates unique constraint"), {
-        name: "NeonDbError",
+        severity: "ERROR",
         code: "23505",
       }),
     );
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     const err = await runFail(store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }));
     expect(err.kind).toBe("constraint");
     expect((err.cause as { code?: string }).code).toBe("23505");
@@ -433,39 +433,52 @@ describe("rag-store-neon adapter (fake runner)", () => {
   it("classifies an auth failure (28P01) as config, not transport", async () => {
     const sql = makeBoomSql(() =>
       Object.assign(new Error("authentication failed"), {
-        name: "NeonDbError",
+        severity: "FATAL",
         code: "28P01",
       }),
     );
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
+    const err = await runFail(store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }));
+    expect(err.kind).toBe("config");
+  });
+
+  it("classifies a refused connection as config (wrong host/port, not a blip)", async () => {
+    // node-postgres surfaces the Node errno error here: `code` is
+    // ECONNREFUSED and there is no `severity`, so it must not reach the
+    // SQLSTATE table — a wrong address fails the same way every time.
+    const sql = makeBoomSql(() =>
+      Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:5432"), {
+        code: "ECONNREFUSED",
+      }),
+    );
+    const store = createPostgresRagStore(sql);
     const err = await runFail(store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }));
     expect(err.kind).toBe("config");
   });
 
   it("classifies a driver timeout message as timeout", async () => {
-    const sql = makeBoomSql(() => new Error("fetch timed out"));
-    const store = createNeonRagStore(sql);
+    const sql = makeBoomSql(() => new Error("connection timed out"));
+    const store = createPostgresRagStore(sql);
     const err = await runFail(store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }));
     expect(err.kind).toBe("timeout");
   });
 
   it("classifies an unknown network failure as transport (closed default)", async () => {
-    const sql = makeBoomSql(() => new TypeError("fetch failed"));
-    const store = createNeonRagStore(sql);
+    const sql = makeBoomSql(() => new Error("Connection terminated unexpectedly"));
+    const store = createPostgresRagStore(sql);
     const err = await runFail(store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }));
     expect(err.kind).toBe("transport");
-    expect(err.cause).toBeInstanceOf(TypeError);
   });
 
   it("classifies schema drift (42703/42P01) as config, not constraint", async () => {
     for (const code of ["42703", "42P01"]) {
       const sql = makeBoomSql(() =>
         Object.assign(new Error(`column "x" does not exist`), {
-          name: "NeonDbError",
+          severity: "ERROR",
           code,
         }),
       );
-      const store = createNeonRagStore(sql);
+      const store = createPostgresRagStore(sql);
       const err = await runFail(
         store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }),
       );
@@ -473,16 +486,16 @@ describe("rag-store-neon adapter (fake runner)", () => {
     }
   });
 
-  it("does not SQLSTATE-classify non-Neon errors that carry a string code (B1 guard)", async () => {
-    // A Node-style ErrnoException carries `code: string` but is NOT a
-    // Neon/Postgres error — it must fall to the closed transport default,
-    // never reach the SQLSTATE table.
+  it("does not SQLSTATE-classify non-Postgres errors that carry a string code (B1 guard)", async () => {
+    // A Node-style ErrnoException carries `code: string` but has no
+    // `severity` — it is NOT a Postgres server error, so it must fall to the
+    // closed transport default, never reach the SQLSTATE table.
     const sql = makeBoomSql(() =>
-      Object.assign(new Error("connect ECONNREFUSED"), {
+      Object.assign(new Error("something went wrong"), {
         code: "23505", // collides with unique_violation on purpose
       }),
     );
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     const err = await runFail(store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }));
     expect(err.kind).toBe("transport");
   });
@@ -490,7 +503,7 @@ describe("rag-store-neon adapter (fake runner)", () => {
 
 describe("sqlEffect execution-semantics guard (A1)", () => {
   it("executes a lazy thenable exactly once while the guard still observes rejections", async () => {
-    // Simulates the Neon driver's lazy NeonQueryPromise: every consumer of
+    // Simulates the driver's lazy query promise: every consumer of
     // the LAZY promise fires a fresh execution. The guard must adopt it into
     // a native promise with exactly one execution — never attach a second
     // consumer to the lazy promise itself (PR #132 review A1 + CI regression:
@@ -534,9 +547,9 @@ describe("sqlEffect execution-semantics guard (A1)", () => {
   });
 });
 
-describe("rag-store-neon adapter: optional ops logging", () => {
+describe("rag-store-postgres adapter: optional ops logging", () => {
   it("propagates the original as cause, classified transport, when no logger is configured", async () => {
-    const store = createNeonRagStore(makeBoomSql(() => new Error("db down")));
+    const store = createPostgresRagStore(makeBoomSql(() => new Error("db down")));
     const err = await runFail(store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }));
     // A generic Error carries no SQLSTATE/shape → transport (closed default),
     // with the original vendor error verbatim in cause.
@@ -547,7 +560,7 @@ describe("rag-store-neon adapter: optional ops logging", () => {
   it("warns on slow queries with only {op, ms} fields, no SQL text or values", async () => {
     const fake = makeFakeLogger();
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql, {
+    const store = createPostgresRagStore(sql, {
       logger: fake.logger,
       slowQueryMs: 0, // every query is "slow" → deterministic assertion
     });
@@ -564,7 +577,7 @@ describe("rag-store-neon adapter: optional ops logging", () => {
 
   it("logs errors and fails with the classified StoreError when a query fails", async () => {
     const fake = makeFakeLogger();
-    const store = createNeonRagStore(
+    const store = createPostgresRagStore(
       makeBoomSql(() => new Error("db down")),
       {
         logger: fake.logger,
@@ -582,7 +595,7 @@ describe("rag-store-neon adapter: optional ops logging", () => {
   it("does not warn when queries stay under slowQueryMs", async () => {
     const fake = makeFakeLogger();
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql, {
+    const store = createPostgresRagStore(sql, {
       logger: fake.logger,
       slowQueryMs: Number.MAX_SAFE_INTEGER,
     });
@@ -593,9 +606,9 @@ describe("rag-store-neon adapter: optional ops logging", () => {
 });
 
 describe("rag-store-factory: createRagStore", () => {
-  it("returns a working Neon-backed RagStore for provider 'neon'", async () => {
+  it("returns a working Postgres-backed RagStore for provider 'postgres'", async () => {
     const sql = makeFakeSql();
-    const store = createRagStore("neon", sql);
+    const store = createRagStore("postgres", sql);
     sql._setTag([{ id: "p1" }]);
     const id = await runOk(
       store.insertDocParent({
@@ -611,7 +624,7 @@ describe("rag-store-factory: createRagStore", () => {
   it("forwards adapter options (logger) to the chosen backend", async () => {
     const fake = makeFakeLogger();
     const sql = makeFakeSql();
-    const store = createRagStore("neon", sql, {
+    const store = createRagStore("postgres", sql, {
       logger: fake.logger,
       slowQueryMs: 0,
     });
@@ -626,7 +639,7 @@ describe("rag-store-factory: createRagStore", () => {
     // switch: the default branch must fail loudly, not silently return.
     // Factory selection is constructor-time wiring, not a seam call — a
     // throw here is not an error kind crossing the store seam.
-    expect(() => createRagStore("memory" as "neon", sql)).toThrow(
+    expect(() => createRagStore("memory" as "postgres", sql)).toThrow(
       /no RagStore adapter for provider: memory/,
     );
   });
@@ -640,10 +653,10 @@ describe("rag-store-factory: createRagStore", () => {
 
 import { parseEvalRunReport } from "@app/contracts";
 
-describe("Neon eval-ledger methods (unit, fake SQL)", () => {
+describe("Postgres eval-ledger methods (unit, fake SQL)", () => {
   it("insertEvalRun stores the label and the JSONB report, idempotent by id", async () => {
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     sql._setTag([{ id: "run-1" }]);
     const id = await runOk(
       store.insertEvalRun({
@@ -658,7 +671,7 @@ describe("Neon eval-ledger methods (unit, fake SQL)", () => {
 
   it("refreshEvalRun upserts the final report by run id (A3/A4)", async () => {
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     await runOk(
       store.refreshEvalRun("run-1", "lbl", {
         runId: "run-1",
@@ -684,7 +697,7 @@ describe("Neon eval-ledger methods (unit, fake SQL)", () => {
 
   it("insertEvalResult binds questionId as a loose string, runId as uuid (B3)", async () => {
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     await runOk(
       store.insertEvalResult({
         runId: "0e1b1e58-aaaa-4a86-b1e8-1a2b3c4d5e60",
@@ -702,7 +715,7 @@ describe("Neon eval-ledger methods (unit, fake SQL)", () => {
 
   it("getEvalRun parses the stored report with parseEvalRunReport (A5)", async () => {
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     const valid = parseEvalRunReport({
       runId: "0e1b1e58-1a2b-3c4d-5e60-0e1b1e581a2b",
       setId: "s",
@@ -726,7 +739,7 @@ describe("Neon eval-ledger methods (unit, fake SQL)", () => {
 
   it("getEvalRun fails with a constraint-class error on a mis-shaped report (A5)", async () => {
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     sql._setTag([
       { id: "run-1", label: "l", report: { totally: "wrong" }, created_at: new Date(0) },
     ]);
@@ -738,7 +751,7 @@ describe("Neon eval-ledger methods (unit, fake SQL)", () => {
 
   it("listEvalRuns maps snake_case rows", async () => {
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     sql._setTag([{ id: "r1", label: "l", created_at: new Date(1700000000000) }]);
     const rows = await runOk(store.listEvalRuns({ limit: 5 }));
     expect(rows[0]).toMatchObject({ id: "r1", label: "l" });
@@ -746,7 +759,7 @@ describe("Neon eval-ledger methods (unit, fake SQL)", () => {
 
   it("getEvalResultsByRun maps snake_case outcome rows", async () => {
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     sql._setTag([
       { id: "er1", question_id: "gs-v0-001", answer_trace_id: null, outcome: { passed: true } },
     ]);
@@ -757,7 +770,7 @@ describe("Neon eval-ledger methods (unit, fake SQL)", () => {
 
   it("getAnswerTraceById reads by row id and parses the trace tolerantly", async () => {
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     sql._setTag([{ trace: sampleTrace }]);
     const trace = await runOk(store.getAnswerTraceById("row-1"));
     expect(sql._calls[0]?.text).toContain("WHERE id = ?::uuid");
@@ -769,7 +782,7 @@ describe("Neon eval-ledger methods (unit, fake SQL)", () => {
 
   it("getDocChildrenByIds dedupes ids, strips vectors, and carries the parent title", async () => {
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     sql._setQuery([
       {
         id: "c1",
@@ -800,7 +813,7 @@ describe("Neon eval-ledger methods (unit, fake SQL)", () => {
 
   it("getDocChildrenByIds short-circuits to an empty result without a query", async () => {
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     const rows = await runOk(store.getDocChildrenByIds([]));
     expect(rows).toEqual([]);
     expect(sql._calls).toEqual([]);
@@ -808,7 +821,7 @@ describe("Neon eval-ledger methods (unit, fake SQL)", () => {
 
   it("getDocChildrenByIds maps a null parent title to null", async () => {
     const sql = makeFakeSql();
-    const store = createNeonRagStore(sql);
+    const store = createPostgresRagStore(sql);
     sql._setQuery([
       {
         id: "c2",

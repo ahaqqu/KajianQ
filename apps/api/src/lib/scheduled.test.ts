@@ -11,9 +11,15 @@ import { cleanupExpiredSessions } from "./scheduled";
  * next tick rather than page anyone.
  */
 
-vi.mock("@neondatabase/serverless", () => ({
-  neon: () => {
-    throw new Error("scheduled test: neon must not be reached");
+// The database client lives behind the RagStore adapter (ADR-0008), so
+// these route tests never reach one: constructing or querying the pool is
+// the failure this mock makes loud.
+vi.mock("pg", () => ({
+  Pool: class {
+    on(): void {}
+    query(): never {
+      throw new Error("scheduled test: the database must not be reached");
+    }
   },
 }));
 
@@ -62,7 +68,7 @@ describe("cleanupExpiredSessions", () => {
       {
         createStore: () => storeWith(() => ({})),
         runStore: async () => {
-          throw new Error("neon transient");
+          throw new Error("store transient");
         },
       },
     );

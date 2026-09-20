@@ -4,8 +4,8 @@ import type { DocChildInsert } from "./rag-store";
 import { CORPUS_EMBEDDING_DIM, toVectorLiteralChecked } from "./rag-store-shared";
 
 /**
- * SQL construction for the Neon RagStore's batched child upsert
- * (`insertDocChildren`), kept beside `rag-store-neon-query.ts` so the
+ * SQL construction for the Postgres RagStore's batched child upsert
+ * (`insertDocChildren`), kept beside `rag-store-postgres-query.ts` so the
  * adapter file stays focused on seam wiring. All executable SQL in the
  * repository lives in these two files (and the migrations).
  */

@@ -7,8 +7,14 @@ export {
   type R2Like,
 } from "./object-store";
 export { createMemoryConfigStore, type ConfigStore } from "./config-store";
-export { createNeonRagStore } from "./rag-store-neon";
-export { type NeonRagStoreOptions } from "./rag-store-neon-logging";
+export { createPostgresRagStore } from "./rag-store-postgres";
+export { type PostgresRagStoreOptions } from "./rag-store-postgres-logging";
+export {
+  disposePostgresPools,
+  postgresPool,
+  postgresSqlRunner,
+  resolvePostgresStore,
+} from "./rag-store-postgres-driver";
 export { createRagStore, type RagStoreProvider } from "./rag-store-factory";
 // The engine's closed store-failure taxonomy (ADR-0027 decision 7) —
 // defined in @app/rag-core, re-exported here so seam consumers need only

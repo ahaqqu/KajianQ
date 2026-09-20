@@ -35,7 +35,7 @@ export function memoryFeedbackMethods(
   return {
     insertFeedback(input: FeedbackInsert) {
       return Effect.sync(() => {
-        // Upsert (thermo-review A1), mirroring the Neon adapter's ON CONFLICT
+        // Upsert (thermo-review A1), mirroring the Postgres adapter's ON CONFLICT
         // against the 0003 functional unique index: one verdict per (user,
         // answer, element); a repeat updates rating/free text/queue state in
         // place and keeps the original row id.
@@ -61,7 +61,7 @@ export function memoryFeedbackMethods(
       return Effect.sync(() => {
         // Dual-id resolution (#13): the id may be the trace's `message_id`
         // (the live stream's meta) or a rehydrated chat row id (the store
-        // generates that one) — the Neon adapter resolves both via OR.
+        // generates that one) — the Postgres adapter resolves both via OR.
         let trace = state.traces.get(messageId);
         let owner = state.traceOwners.get(messageId) ?? null;
         let chatRow = undefined;

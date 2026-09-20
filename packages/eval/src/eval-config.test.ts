@@ -5,7 +5,7 @@ import { EvalConfigError, loadEvalRunConfig } from "./eval-config";
 const VALID = {
   EVAL_API_BASE_URL: "https://api.example.com",
   EVAL_API_TOKEN: "tok",
-  NEON_DATABASE_URL: "postgres://u:p@db.example.com/x",
+  DATABASE_URL: "postgres://u:p@db.example.com/x",
   EVAL_BUDGET_MICRO_USD: "5000",
 };
 
@@ -62,7 +62,7 @@ describe("loadEvalRunConfig (thermo-review B2/A1/A2)", () => {
 
   it("accepts a postgres:// Neon connection string (any valid URL scheme)", () => {
     const cfg = loadEvalRunConfig(VALID);
-    expect(cfg.neonDatabaseUrl).toBe("postgres://u:p@db.example.com/x");
+    expect(cfg.databaseUrl).toBe("postgres://u:p@db.example.com/x");
   });
 
   it("passes a run label through when set", () => {

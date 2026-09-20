@@ -7,7 +7,7 @@
  * Env (validated by `loadEvalRunConfig` before any spend):
  *   EVAL_API_BASE_URL      the staging /v1/chat origin (required)
  *   EVAL_API_TOKEN         an anonymous Bearer token minted by the API (required)
- *   NEON_DATABASE_URL      the staging Neon store to read answer traces from
+ *   DATABASE_URL      the staging Neon store to read answer traces from
  *                          and persist eval_runs/eval_results into (required)
  *   EVAL_BUDGET_MICRO_USD  hard spend cap in micro-USD; the run aborts when
  *                          the cap is hit (harness LLM calls + the pipeline

@@ -7,13 +7,13 @@ import {
   toVectorLiteral,
   type ChildRow,
 } from "./rag-store-shared";
-import { buildSimilarityQuery } from "./rag-store-neon-query";
-import { sqlEffect, type SqlRunner } from "./rag-store-neon-errors";
+import { buildSimilarityQuery } from "./rag-store-postgres-query";
+import { sqlEffect, type SqlRunner } from "./rag-store-postgres-errors";
 
 /**
- * The Neon adapter's corpus reads — the similarity search and the by-id
+ * The Postgres adapter's corpus reads — the similarity search and the by-id
  * child lookup — split from the corpus module to respect the agentic size
- * limits. Part of the Neon adapter SQL surface
+ * limits. Part of the Postgres adapter SQL surface
  * (ADR-0027 decision 7). The embedding is validated BEFORE the query runs:
  * a misconfigured provider or ingestion bug fails loudly at the seam as a
  * `constraint` StoreError, never as an opaque pgvector dimension error, and
@@ -26,7 +26,7 @@ import { sqlEffect, type SqlRunner } from "./rag-store-neon-errors";
  * (`RagStore.similaritySearch`) checks assignability at the composition
  * root.
  */
-export function neonSimilaritySearch(
+export function postgresSimilaritySearch(
   sql: SqlRunner,
   track: RetrievalTrack,
   embedding: readonly number[],
@@ -72,7 +72,7 @@ export function neonSimilaritySearch(
  * and stay null on the mapped rows. The parent join carries the display
  * title the citation payload shows as the passage's source reference.
  */
-export function neonChildMethods(sql: SqlRunner): Pick<RagStore, "getDocChildrenByIds"> {
+export function postgresChildMethods(sql: SqlRunner): Pick<RagStore, "getDocChildrenByIds"> {
   return {
     getDocChildrenByIds(ids) {
       const unique = [...new Set(ids)].filter((id) => id.trim() !== "");

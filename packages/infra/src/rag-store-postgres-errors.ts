@@ -2,57 +2,62 @@ import { Effect } from "effect";
 import { StoreError } from "@app/rag-core";
 
 /**
- * The Neon serverless driver's query surface, loosely typed.
+ * The database driver's query surface, loosely typed.
  *
  * The adapter only awaits results and validates row shapes itself, so the
  * runner type is intentionally `unknown[]`-shaped rather than generic: this
  * avoids fighting the driver's heavy generics while still letting the real
  * driver query handle be passed directly, and keeps the adapter
- * unit-testable against a fake that returns canned rows. `transaction`
- * mirrors the Neon HTTP driver's non-interactive transaction primitive, used
- * so multi-statement writes (e.g. createSession) are atomic.
+ * unit-testable against a fake that returns canned rows. `transaction` is a
+ * batched primitive — it takes an array of the tagged-template results and
+ * runs them atomically — used so multi-statement writes (e.g. `createSession`)
+ * cannot half-apply.
+ *
+ * The tagged-template result is a LAZY thenable in every implementation: the
+ * statements handed to `transaction` must not have executed yet, so the
+ * batched primitive can run them on one connection inside `BEGIN … COMMIT`
+ * (see `rag-store-postgres-driver.ts`). `sqlEffect` documents the contract
+ * precisely and is the only consumer that triggers execution.
  *
  * The type lives here — the shared base of the adapter's split modules —
- * and `rag-store-neon.ts` re-exports it as the adapter's historical import
- * surface, so external importers are unaffected by the file split.
+ * and `rag-store-postgres.ts` re-exports it as the adapter's import surface,
+ * so external importers are unaffected by the file split.
  */
 export type SqlRunner = {
   (strings: TemplateStringsArray, ...values: unknown[]): Promise<unknown[]>;
   query(text: string, params?: unknown[]): Promise<unknown[]>;
-  // `any` here is deliberate: the Neon HTTP driver's `transaction()` accepts
-  // a union of an array of its own query-promise type OR a callback, and the
-  // adapter only ever passes an array of the call-signature's `Promise<unknown[]>`.
-  // A precise signature would force callers into a cast; `any` keeps the
-  // already-loose runner assignable from the real driver handle.
+  // `any` here is deliberate: implementations accept an array of their own
+  // tagged-template result type, and the adapter only ever passes statements
+  // produced by the same runner. A precise signature would force callers into
+  // a cast; `any` keeps the already-loose runner assignable.
   transaction(queries: any[]): Promise<any>;
 };
 
 /**
- * Vendor-exception → `StoreError` mapping for the Neon adapter
+ * Vendor-exception → `StoreError` mapping for the Postgres adapter
  * (ADR-0027 decision 7). The taxonomy is closed and this mapper is the ONLY
- * place Neon's exception surface is interpreted — consumers switch on
+ * place the driver's exception surface is interpreted — consumers switch on
  * `kind`, never on adapter classes. The classification must be exhaustive
- * over what the Neon HTTP driver can throw, with a closed default, so no
- * failure escapes unclassified.
+ * over what the driver can throw, with a closed default, so no failure
+ * escapes unclassified.
  *
- * The Neon serverless driver surfaces:
- * - `NeonDbError` (HTTP-driver path): carries Postgres error fields —
- *   `code` (SQLSTATE), `severity`, `constraint`, `table`.
- * - `DatabaseError` (WebSocket path; the driver re-exports the
- *   node-postgres error shape): same `code`/`constraint` fields.
- *   PostgresError is the name users know for that shape; both are handled
- *   here by field shape, not by class identity, so the mapping survives
- *   driver version churn.
- * - Network-level `TypeError`/`DOMException` from the underlying `fetch`
- *   (transport/abort).
+ * The node-postgres (`pg`) driver surfaces:
+ * - Server errors: a `pg-protocol` `DatabaseError` carrying the Postgres
+ *   error fields — `severity`, `code` (SQLSTATE), `constraint`, `table`. The
+ *   parser sets `severity`/`code` explicitly and leaves `name` as the protocol
+ *   field ('error'), so `severity` is the marker that identifies this shape.
+ *   The shape is read by FIELD, not class identity, so it survives driver
+ *   version churn.
+ * - Connection-level failures: Node `Error`s (`ECONNREFUSED`, `ENOTFOUND`)
+ *   or a `Error: Connection terminated …` from a dropped socket.
+ * - `AbortError`/timeout shapes from an aborted operation.
  */
 
 /**
- * SQLSTATE → StoreError kind. Every code the Neon HTTP driver can surface
- * for this adapter's operations maps to exactly one kind. Codes absent from
- * this table fall through to the class-shape rules below — the table holds
- * only the codes whose classification is not derivable from the HTTP status
- * or shape rules.
+ * SQLSTATE → StoreError kind. Every code the driver can surface for this
+ * adapter's operations maps to exactly one kind. Codes absent from this table
+ * fall through to the shape rules below — the table holds only the codes whose
+ * classification is not derivable from the connection/transport rules.
  */
 const SQLSTATE_KINDS: Record<string, "config" | "constraint" | "not_found"> = {
   // Config-class: the store itself is misconfigured.
@@ -83,30 +88,28 @@ const SQLSTATE_KINDS: Record<string, "config" | "constraint" | "not_found"> = {
 };
 
 /**
- * True when the exception is a Neon/Postgres DB error by field shape.
+ * True when the exception is a Postgres server error by field shape.
  *
- * Deliberately discriminating (ADR-0027 decision 7): SQLSTATE codes are
- * only interpreted on errors that carry a Neon/Postgres-specific marker —
- * the driver's `NeonDbError`/`DatabaseError` name, or a `severity` field
- * (both driver paths set it; no non-Postgres exception does). Bare
+ * Deliberately discriminating (ADR-0027 decision 7): SQLSTATE codes are only
+ * interpreted on errors that carry a Postgres-server marker — node-postgres
+ * sets `severity` on every `pg-protocol` `DatabaseError` (the parser writes it
+ * alongside `code`), and no connection-level or Node system error does. Bare
  * `code: string` alone is NOT sufficient — Node system errors
- * (`ErrnoException`), fetch failures, and AWS-like exceptions all carry a
- * string `code` that must not reach the SQLSTATE table; those fall through
- * to the closed `transport` default.
+ * (`ErrnoException`, whose `code` is `ECONNREFUSED`/`ENOTFOUND`) and
+ * AWS-like exceptions all carry a string `code` that must not reach the
+ * SQLSTATE table; those fall through to the closed `transport` default.
  */
-function isNeonDbError(cause: unknown): cause is Error & { code?: string; name?: string } {
+function isPostgresDbError(cause: unknown): cause is Error & { code?: string; severity?: unknown } {
   if (!(cause instanceof Error)) return false;
-  const named = cause as { name?: string; code?: unknown; severity?: unknown };
-  const driverNamed = named.name === "NeonDbError" || named.name === "DatabaseError";
-  return driverNamed && (typeof named.code === "string" || "severity" in named);
+  return "severity" in cause;
 }
 
 /**
- * Classify a thrown Neon driver exception into exactly one `StoreError`
+ * Classify a thrown driver exception into exactly one `StoreError`
  * kind. Order: SQLSTATE table → abort/timeout shapes → field-shape DB
  * errors → closed default `transport`. The original always rides in `cause`.
  */
-export function neonErrorToStoreError(cause: unknown): StoreError {
+export function postgresErrorToStoreError(cause: unknown): StoreError {
   // Caller-aborted fetch: the caller (or Effect's interruption channel)
   // cancelled the operation. It maps to the closed default `transport`
   // because the taxonomy has no dedicated `cancelled` kind (ADR-0027
@@ -121,24 +124,32 @@ export function neonErrorToStoreError(cause: unknown): StoreError {
   if (cause instanceof Error && /timed?\s?out|deadline|ETIMEDOUT|timeout/i.test(cause.message)) {
     return new StoreError({ kind: "timeout", cause });
   }
-  if (isNeonDbError(cause)) {
+  if (isPostgresDbError(cause)) {
     const code = (cause as { code?: string }).code;
     const mapped = code !== undefined ? SQLSTATE_KINDS[code] : undefined;
     if (mapped !== undefined) {
       return new StoreError({ kind: mapped, cause });
     }
-    // A driver-level auth/endpoint misconfiguration (e.g. fetch returned a
-    // non-2xx before any SQL ran: bad connection string) — config, not
-    // transport: retrying with the same URL fails identically.
+    // A driver-level endpoint misconfiguration reported by the server side of
+    // the handshake — config, not transport: retrying with the same URL fails
+    // identically.
     const message = cause.message;
-    if (
-      /fetch returned|connection string|invalid connection|ECONNREFUSED|ENOTFOUND/i.test(message)
-    ) {
+    if (/connection string|invalid connection|database .* does not exist/i.test(message)) {
       return new StoreError({ kind: "config", cause });
     }
   }
-  // Everything else (network blips, HTTP 5xx from the driver, unknown
-  // shapes): transport — the caller's safest retryable bucket.
+  // Connection-level failures carry a Node errno `code` and no `severity`.
+  // A refused connection or an unresolvable host is a wrong host/port/name —
+  // config-class, because the same URL fails the same way. Keyed on the errno
+  // `code` FIELD, never the message, so an arbitrary `code` (a SQLSTATE, or a
+  // non-Postgres system error) cannot reach this branch (the B1 guard).
+  const errno = (cause as { code?: unknown } | null)?.code;
+  if (errno === "ECONNREFUSED" || errno === "ENOTFOUND") {
+    return new StoreError({ kind: "config", cause });
+  }
+  // Everything else (network blips, dropped sockets, deadlock/serialization
+  // SQLSTATEs, unknown shapes): transport — the caller's safest retryable
+  // bucket.
   return new StoreError({ kind: "transport", cause });
 }
 
@@ -146,15 +157,15 @@ export function neonErrorToStoreError(cause: unknown): StoreError {
  * Run one SQL operation as an Effect, classified into the `StoreError`
  * taxonomy (ADR-0027 decision 7).
  *
- * Execution-semantics note (driver-coupled, load-bearing): the Neon HTTP
- * driver's query function returns a LAZY query promise (NeonQueryPromise) whose
- * `.then`/`.catch`/`.finally` each fire a fresh HTTP query — it is not a
- * settled promise. The operation must therefore be invoked exactly once,
- * *inside* the `try` factory. Eagerly starting the promise outside, or
- * attaching a second consumer to the lazy promise itself (e.g.
- * `void pending.catch(...)`), executes the same SQL twice CONCURRENTLY:
+ * Execution-semantics note (driver-coupled, load-bearing): the tagged-template
+ * call returns a LAZY thenable whose `.then`/`.catch`/`.finally` each start a
+ * fresh execution — it is not a settled promise. The operation must therefore
+ * be invoked exactly once, *inside* the `try` factory. Eagerly starting the
+ * promise outside, or attaching a second consumer to the lazy promise itself
+ * (e.g. `void pending.catch(...)`), executes the same SQL twice CONCURRENTLY:
  * harmless for idempotent upserts, but a plain INSERT with a caller-supplied
- * PK collides with itself (23505) — a silent, order-dependent failure.
+ * PK collides with itself (23505) — a silent, order-dependent failure. The
+ * same laziness is what lets `transaction` batch un-executed statements.
  *
  * Interruption guard (A1): the fiber's await must not be the ONLY consumer of
  * the in-flight query — if the fiber is interrupted, the rejection would be
@@ -182,6 +193,6 @@ export function sqlEffect<A>(
       native.catch(() => {});
       return native;
     },
-    catch: neonErrorToStoreError,
+    catch: postgresErrorToStoreError,
   });
 }

@@ -20,8 +20,7 @@
  * could.
  */
 import { Effect } from "effect";
-import { neon } from "@neondatabase/serverless";
-import { createNeonRagStore } from "@app/infra";
+import { postgresPool, postgresSqlRunner, resolvePostgresStore } from "@app/infra";
 import { BudgetExceededError, postChatSse } from "@app/eval";
 import {
   DEFAULT_REFUSALS,
@@ -45,13 +44,15 @@ export const CITATION_GRAMMAR = {
 };
 
 /**
- * Build the staging seams one eval run needs. The Neon client is constructed
- * here and every seam is bound to the store, so a script supplies only its
- * question set and its summary.
+ * Build the staging seams one eval run needs. The store is resolved from the
+ * connection URL through `@app/infra`'s own composition helper — the script
+ * never imports a database client (ADR-0008), it names the URL and receives
+ * the seam — and every seam is bound to that store, so a script supplies only
+ * its question set and its summary.
  */
 export async function createStagingHarness(config, budget) {
-  const sql = neon(config.neonDatabaseUrl);
-  const store = createNeonRagStore(sql);
+  const store = resolvePostgresStore(config.databaseUrl);
+  const sql = postgresSqlRunner(postgresPool(config.databaseUrl));
   const runStore = (effect) => Effect.runPromise(effect);
 
   // Chunk-id → sourceType resolver for retrieval recall: the trace's retrieval

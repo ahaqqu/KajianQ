@@ -1,12 +1,12 @@
 import { Effect } from "effect";
 import { parseEvalRunReport } from "@app/contracts";
 import type { RagStore } from "./rag-store";
-import { sqlEffect, type SqlRunner } from "./rag-store-neon-errors";
+import { sqlEffect, type SqlRunner } from "./rag-store-postgres-errors";
 
 /**
- * Eval-ledger methods of the Neon RagStore adapter, split from
- * `rag-store-neon.ts` to keep the composition root pure wiring (and to
- * respect the agentic size limits). Part of the Neon adapter SQL surface
+ * Eval-ledger methods of the Postgres RagStore adapter, split from
+ * `rag-store-postgres.ts` to keep the composition root pure wiring (and to
+ * respect the agentic size limits). Part of the Postgres adapter SQL surface
  * (ADR-0027 decision 7): the run report and per-question outcomes persist to
  * `eval_runs` / `eval_results` verbatim as JSONB (kajianq-traceability rule
  * 4) so the persisted records stay the single source of truth.
@@ -23,7 +23,7 @@ type EvalResultRow = {
   outcome: unknown;
 };
 
-export function neonEvalMethods(
+export function postgresEvalMethods(
   sql: SqlRunner,
 ): Pick<
   RagStore,

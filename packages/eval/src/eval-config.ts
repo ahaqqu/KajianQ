@@ -12,7 +12,7 @@ export type EvalRunConfig = {
   /** An anonymous Bearer token minted by the API (required). */
   apiToken: string;
   /** The staging Neon store connection string (required). */
-  neonDatabaseUrl: string;
+  databaseUrl: string;
   /** Hard spend cap in micro-USD (fail-closed: unset/0 = explicit opt-out). */
   budgetCapMicroUsd: number | undefined;
   /** Optional persisted run label. */
@@ -82,7 +82,7 @@ export type EmbedBenchConfig = {
    * gate run is source-based and DB-free, so the URL is only validated for
    * URL-shape when actually provided; undefined otherwise.
    */
-  neonDatabaseUrl: string | undefined;
+  databaseUrl: string | undefined;
   /** Hard spend cap in micro-USD (unset/0 = explicit opt-out). */
   budgetCapMicroUsd: number | undefined;
   /** Cap on the corpus's first source group (undefined = the domain's full set). */
@@ -115,9 +115,9 @@ export function loadEmbedBenchConfig(env: Record<string, string | undefined>): E
   // Thermo B5: the benchmark never touches the store, so the URL is optional
   // here (validated for shape only when supplied) — unlike `loadEvalRunConfig`,
   // whose eval-run path reads persisted runs.
-  const neonDatabaseUrl =
-    env.NEON_DATABASE_URL !== undefined && env.NEON_DATABASE_URL.trim() !== ""
-      ? requireUrl("NEON_DATABASE_URL", env.NEON_DATABASE_URL)
+  const databaseUrl =
+    env.DATABASE_URL !== undefined && env.DATABASE_URL.trim() !== ""
+      ? requireUrl("DATABASE_URL", env.DATABASE_URL)
       : undefined;
   const rawCap = env.EVAL_BUDGET_MICRO_USD;
   let budgetCapMicroUsd: number | undefined;
@@ -139,7 +139,7 @@ export function loadEmbedBenchConfig(env: Record<string, string | undefined>): E
     return n;
   };
   return {
-    neonDatabaseUrl,
+    databaseUrl,
     budgetCapMicroUsd,
     groupACap: intOrUndefined("BENCH_GROUP_A", env.BENCH_GROUP_A),
     groupBCap: intOrUndefined("BENCH_GROUP_B", env.BENCH_GROUP_B),
@@ -161,7 +161,7 @@ export function loadEmbedBenchConfig(env: Record<string, string | undefined>): E
 export function loadEvalRunConfig(env: Record<string, string | undefined>): EvalRunConfig {
   const apiBaseUrl = requireHttpUrl("EVAL_API_BASE_URL", env.EVAL_API_BASE_URL);
   const apiToken = requireToken("EVAL_API_TOKEN", env.EVAL_API_TOKEN);
-  const neonDatabaseUrl = requireUrl("NEON_DATABASE_URL", env.NEON_DATABASE_URL);
+  const databaseUrl = requireUrl("DATABASE_URL", env.DATABASE_URL);
   const rawCap = env.EVAL_BUDGET_MICRO_USD;
   let budgetCapMicroUsd: number | undefined;
   if (rawCap !== undefined) {
@@ -176,7 +176,7 @@ export function loadEvalRunConfig(env: Record<string, string | undefined>): Eval
   return {
     apiBaseUrl,
     apiToken,
-    neonDatabaseUrl,
+    databaseUrl,
     budgetCapMicroUsd,
     runLabel: env.EVAL_RUN_LABEL?.trim() || undefined,
     goldenSetPath: resolveGoldenSetPath(env.EVAL_GOLDEN_SET_PATH),

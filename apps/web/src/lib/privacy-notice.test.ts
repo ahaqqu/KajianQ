@@ -68,7 +68,7 @@ const ROPA = read("docs/GDPR-ARTICLE-30-RECORD.md");
 const MODELS_JSON = JSON.parse(read("packages/infra/src/providers/models.json")) as {
   vendors: Record<string, { freeTier: boolean; personalDataAllowed: boolean }>;
 };
-const SESSION_ADAPTER = read("packages/infra/src/rag-store-neon-session.ts");
+const SESSION_ADAPTER = read("packages/infra/src/rag-store-postgres-session.ts");
 const AUTH_ROUTE = read("apps/api/src/routes/auth.ts");
 
 type RegisterRow = { vendor: string; cells: string[] };

@@ -3,12 +3,12 @@ import { EvalConfigError, loadEmbedBenchConfig } from "./eval-config";
 
 describe("loadEmbedBenchConfig", () => {
   const base = {
-    NEON_DATABASE_URL: "postgres://user:pass@host/db",
+    DATABASE_URL: "postgres://user:pass@host/db",
   };
 
   it("parses defaults with no optional vars set", () => {
     const config = loadEmbedBenchConfig(base);
-    expect(config.neonDatabaseUrl).toBe(base.NEON_DATABASE_URL);
+    expect(config.databaseUrl).toBe(base.DATABASE_URL);
     expect(config.budgetCapMicroUsd).toBeUndefined();
     expect(config.groupACap).toBeUndefined();
     expect(config.groupBCap).toBeUndefined();
@@ -19,10 +19,10 @@ describe("loadEmbedBenchConfig", () => {
   // Thermo B5: the benchmark is DB-free — the URL is optional; a supplied
   // value is still validated for URL shape.
   it("treats the Neon URL as optional (DB-free run) but validates its shape when set", () => {
-    expect(loadEmbedBenchConfig({}).neonDatabaseUrl).toBeUndefined();
-    expect(loadEmbedBenchConfig({ NEON_DATABASE_URL: "  " }).neonDatabaseUrl).toBeUndefined();
-    expect(() => loadEmbedBenchConfig({ NEON_DATABASE_URL: "not a url" })).toThrow(EvalConfigError);
-    expect(loadEmbedBenchConfig(base).neonDatabaseUrl).toBe(base.NEON_DATABASE_URL);
+    expect(loadEmbedBenchConfig({}).databaseUrl).toBeUndefined();
+    expect(loadEmbedBenchConfig({ DATABASE_URL: "  " }).databaseUrl).toBeUndefined();
+    expect(() => loadEmbedBenchConfig({ DATABASE_URL: "not a url" })).toThrow(EvalConfigError);
+    expect(loadEmbedBenchConfig(base).databaseUrl).toBe(base.DATABASE_URL);
   });
 
   it("accepts 0 as an explicit opt-out budget but rejects negatives", () => {

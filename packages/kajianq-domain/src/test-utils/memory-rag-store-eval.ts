@@ -4,7 +4,7 @@ import type { RagStore } from "@app/infra";
 /**
  * Eval-ledger half of the in-memory RagStore, split from
  * `memory-rag-store.ts` to respect the agentic size limits — the same
- * concern-split the Neon adapter uses (`rag-store-neon-eval.ts`). The maps
+ * concern-split the Neon adapter uses (`rag-store-postgres-eval.ts`). The maps
  * and the id sequence are owned by the caller and passed in, so both halves
  * see one store state.
  */
