@@ -34,7 +34,10 @@ jobs:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
       - run: bunx playwright install chromium --with-deps
-      - run: bun run build
+      # playwright.config.ts's webServer boots the plain Bun entry
+      # (apps/api/src/boot.ts) against the build this step produces — the same
+      # serving host the VPS runs (ADR-0044), so the suite exercises production's
+      # runtime rather than a workerd shim.
       - run: bun run e2e
         env:
           CI: true

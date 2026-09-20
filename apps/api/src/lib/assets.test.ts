@@ -44,6 +44,15 @@ describe("createDiskAssetFetcher", () => {
     expect(await res.text()).toContain("shell");
   });
 
+  it("never serves an extensionless path as an octet-stream (that downloads the page)", async () => {
+    // An extensionless path is a client-side route, so it must be served as
+    // HTML. `application/octet-stream` makes the browser DOWNLOAD the document
+    // instead of rendering it — the bug this rule fixes.
+    const assets = createDiskAssetFetcher(root);
+    const res = await assets.fetch(new Request("https://x/chat"));
+    expect(res.headers.get("content-type")).toContain("text/html");
+  });
+
   it("serves index.html at the root path", async () => {
     const assets = createDiskAssetFetcher(root);
     const res = await assets.fetch(new Request("https://x/"));

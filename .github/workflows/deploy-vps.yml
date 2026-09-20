@@ -1,0 +1,112 @@
+name: Deploy to VPS
+
+# The VPS deployer (#181, ADR-0044). Its own home, separate from the app:
+# `provision/vps/deploy/deploy.sh` does build → ship → restart → smoke, and this
+# workflow is the CI-owned trigger. That separation is the recorded decision
+# (ADR-0044 decision 3) — app code carries no hosting/deploy logic, the deploy
+# path lives outside `apps/`, and CI gates stay in `.github/workflows/`.
+#
+# Two triggers, one implementation:
+#   - `workflow_dispatch` for an operator (staging first, then prod — the
+#     single-shot cutover order, issue #181).
+#   - `workflow_call` so the Staging workflow's push-to-main deploy invokes
+#     exactly this job instead of re-implementing build/ship/restart.
+#
+# The box is not reachable from a stock GitHub-hosted runner without a deploy
+# key, and that credential is the owner's to hold. Until the owner provisions it
+# (environment vars VPS_HOST / VPS_USER / VPS_PUBLIC_URL and the environment
+# secret VPS_DEPLOY_SSH_KEY), the job fails at the "Require the deploy access"
+# step — a named, actionable failure rather than a silent no-op.
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Which environment to deploy (staging first, then prod)"
+        required: true
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - prod
+  workflow_call:
+    inputs:
+      environment:
+        description: "Which environment to deploy"
+        required: true
+        type: string
+    secrets:
+      VPS_DEPLOY_SSH_KEY:
+        required: false
+
+permissions:
+  contents: read
+
+# Serialize deploys: a prod and a staging run starting together would race the
+# same tree on the box. A deploy is never cancelled mid-flight — a half-shipped
+# tree is the failure worth avoiding.
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Environment-scoped vars/secrets: staging and prod carry different
+    # hostnames and keys under one repository. The workflow_dispatch path also
+    # requires an approving environment for `prod`, which is where the issue's
+    # "owner explicitly approves decommissioning" gate belongs.
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.0
+      - run: bun install --frozen-lockfile
+      # The deploy key and the box's name are per-environment secrets/vars,
+      # never in the repository. The private key is written to a file the
+      # runner removes when the job ends.
+      - name: Require the deploy access
+        run: |
+          test -n "$KAJIANQ_DEPLOY_HOST" || { echo "::error::KAJIANQ_DEPLOY_HOST (vars.VPS_HOST) is unset — the VPS is not reachable without it"; exit 1; }
+          test -n "$KAJIANQ_DEPLOY_USER" || { echo "::error::KAJIANQ_DEPLOY_USER (vars.VPS_USER) is unset"; exit 1; }
+          test -n "$KAJIANQ_PUBLIC_URL" || { echo "::error::KAJIANQ_PUBLIC_URL (vars.VPS_PUBLIC_URL) is unset — the smoke has no URL"; exit 1; }
+          test -n "$SSH_KEY" || { echo "::error::secrets.VPS_DEPLOY_SSH_KEY is unset — the runner has no key to reach the box"; exit 1; }
+        env:
+          KAJIANQ_DEPLOY_HOST: ${{ vars.VPS_HOST }}
+          KAJIANQ_DEPLOY_USER: ${{ vars.VPS_USER }}
+          KAJIANQ_PUBLIC_URL: ${{ vars.VPS_PUBLIC_URL }}
+          SSH_KEY: ${{ secrets.VPS_DEPLOY_SSH_KEY }}
+      - name: Write the SSH key
+        run: |
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 0600 ~/.ssh/id_deploy
+        env:
+          SSH_KEY: ${{ secrets.VPS_DEPLOY_SSH_KEY }}
+      - name: Configure ssh to use it
+        run: |
+          {
+            echo "Host ${KAJIANQ_DEPLOY_HOST}"
+            echo "  IdentityFile ~/.ssh/id_deploy"
+            echo "  IdentitiesOnly yes"
+          } >> ~/.ssh/config
+        env:
+          KAJIANQ_DEPLOY_HOST: ${{ vars.VPS_HOST }}
+      - name: Deploy (build → ship → restart → smoke)
+        # The env file is written 0600 (the script refuses looser permissions —
+        # a sourced file with group/other bits is a local privilege issue).
+        run: |
+          set -euo pipefail
+          install -m 0600 /dev/null /tmp/deploy.env
+          {
+            echo "KAJIANQ_DEPLOY_HOST=${KAJIANQ_DEPLOY_HOST}"
+            echo "KAJIANQ_DEPLOY_USER=${KAJIANQ_DEPLOY_USER}"
+            echo "KAJIANQ_DEPLOY_ROOT=${KAJIANQ_DEPLOY_ROOT}"
+            echo "KAJIANQ_PUBLIC_URL=${KAJIANQ_PUBLIC_URL}"
+          } > /tmp/deploy.env
+          provision/vps/deploy/deploy.sh --env /tmp/deploy.env
+        env:
+          KAJIANQ_DEPLOY_HOST: ${{ vars.VPS_HOST }}
+          KAJIANQ_DEPLOY_USER: ${{ vars.VPS_USER }}
+          KAJIANQ_DEPLOY_ROOT: ${{ vars.VPS_ROOT }}
+          KAJIANQ_PUBLIC_URL: ${{ vars.VPS_PUBLIC_URL }}

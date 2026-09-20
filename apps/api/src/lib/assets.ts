@@ -56,6 +56,21 @@ function readIfFile(path: string): Buffer | null {
 }
 
 /**
+ * Content type for a path. A path with no extension is a client-side ROUTE
+ * (`/`, `/chat`, `/about`), not a file worth downloading — serving those as
+ * `application/octet-stream` makes the browser download the HTML instead of
+ * rendering it, which is exactly the failure this lookup must not have. So the
+ * default is `text/html`, not `application/octet-stream`, and only a path that
+ * actually names an extension looks one up.
+ */
+function contentTypeFor(segments: readonly string[]): string {
+  const last = segments.at(-1) ?? "";
+  const dot = last.lastIndexOf(".");
+  if (dot <= 0) return CONTENT_TYPES.html!;
+  return CONTENT_TYPES[last.slice(dot + 1).toLowerCase()] ?? "application/octet-stream";
+}
+
+/**
  * Build an `ASSETS` handle over a directory of built SPA files. A request for
  * a file that exists is served as-is (with a content type by extension); every
  * other path falls back to `index.html`, because the app is a client-side
@@ -69,12 +84,9 @@ export function createDiskAssetFetcher(root: string): AssetFetcher {
       const { pathname } = new URL(request.url);
       const segments = safeSegments(pathname);
       const candidate = `${base}/${segments.join("/")}`;
-      const ext = (segments.at(-1)?.split(".").at(-1) ?? "").toLowerCase();
       const file = readIfFile(segments.length === 0 ? indexPath : candidate);
       if (file !== null) {
-        return new Response(file, {
-          headers: { "content-type": CONTENT_TYPES[ext] ?? "application/octet-stream" },
-        });
+        return new Response(file, { headers: { "content-type": contentTypeFor(segments) } });
       }
       // A missing path falls back to the SPA shell so a client-side route
       // works on reload. Without a build there is no shell to serve, and a

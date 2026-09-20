@@ -43,12 +43,9 @@
     "ingest:quran": "bun packages/kajianq-domain/scripts/ingest-quran.mjs",
     "ingest:hadith": "bun packages/kajianq-domain/scripts/ingest-hadith.mjs",
     "e2e": "bddgen && playwright test",
-    "deploy": "bun run build && bun run --filter '@app/api' alchemy:deploy",
-    "deploy:staging": "bun run build && bun run --filter '@app/api' alchemy:deploy:staging",
-    "deploy:bootstrap": "bun run build && bun run --filter '@app/api' alchemy:bootstrap",
-    "deploy:bootstrap:staging": "bun run build && bun run --filter '@app/api' alchemy:bootstrap:staging",
-    "deploy:bootstrap:ci": "bun run build && bun run --filter '@app/api' alchemy:bootstrap:ci",
-    "deploy:bootstrap:staging:ci": "bun run build && bun run --filter '@app/api' alchemy:bootstrap:staging:ci",
+    "api:serve": "bun apps/api/src/boot.ts",
+    "api:cleanup": "bun apps/api/src/cleanup.ts",
+    "deploy": "provision/vps/deploy/deploy.sh",
     "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true"
   },
   "devDependencies": {

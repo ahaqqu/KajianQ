@@ -81,7 +81,12 @@ if [ "${env_owner}" != "root:root" ]; then
     echo "apply: ${ENV_FILE} is owned by ${env_owner} — must be root:root before sourcing" >&2
     exit 1
 fi
-if [ "$((0#${env_mode} & 077))" -ne 0 ]; then
+# `8#` is load-bearing: `stat -c %a` prints an octal-looking string without a
+# leading 0 (600, not 0600), and bash's `0#` form rejects a leading digit 6
+# with "invalid number" — inside `[ ]` that error is a false condition, which
+# is exactly the fail-open this check exists to prevent. Parsing explicitly in
+# base 8 accepts both printed forms and rejects 644.
+if [ "$((8#${env_mode} & 077))" -ne 0 ]; then
     echo "apply: ${ENV_FILE} is mode ${env_mode} — must be 0600 or tighter (no group/other bits)" >&2
     exit 1
 fi
