@@ -193,3 +193,11 @@ catalogued capability is `decide`, not `generate`); free-tier Gemini is
 refused by the enforcement itself. Implemented in PR `gdpr-e-reviewer-deepseek`:
 models.json chains, register surfaces, env plumbing, and the runbook's
 precondition text all drop Moonshot.
+
+## Post-merge staging verification (2026-09-20 ~23:30Z)
+
+- Owner merged PR #197 (a281ac7, security headers) and #198 (0f2a4d9, docs). Staging workflow ran on main (run 35544413355): **deploy green; ZAP baseline fully green** (`FAIL-NEW: 0, WARN-NEW: 0, PASS: 62, IGNORE: 5` — the five header warnings cleared); **Schemathesis fuzz failed** — previously masked behind ZAP's failure.
+- Schemathesis finding (st case noWRVW): `POST /v1/feedback` carrying both `rating` and `anchor` — schema-compliant per the emitted OpenAPI document, answered 400. Root cause: the exactly-one-feedback-shape invariant was a `v.check` cross-field rule hono-openapi never emits. Reproduced directly against staging (`status 400`).
+- Fix: PR #199 (`feedback-schema-xor`, commit f67b926, merged by author per standing merge-if-CI-green authorization). `FeedbackRequestSchema` restructured as a union of the two valid shapes, each forbidding the sibling key with `v.optional(v.never())` — the invariant is now structural and visible in the emitted doc (`not: {}` clauses). Runtime behavior unchanged (all 24 pre-existing tests pass; null-valued-key semantics verified identical).
+- Local gates for #199: `check`, `lint`, `test` (995 unit + 6-test real-Postgres RagStore contract suite via ssh tunnel to the VPS, green), `boundary`, `agentic-limits`, `openapi:check`. CI: bdd, drill, gate, postgres:contract all pass.
+- Post-merge Staging re-run on the merge commit: awaiting result — expected fully green end-to-end for the first time since cutover.
