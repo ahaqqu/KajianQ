@@ -7,11 +7,17 @@ run and verified on the real box.
 
 Scope: **baseline only** — OS, access, firewall, one static hello-world page.
 This is the layer under [`docs/VPS-HARDENING-RUNBOOK.md`](./VPS-HARDENING-RUNBOOK.md)
-(privacy posture: log retention, backups, restore drills — **not yet applied**
-to this box) and under ADR-0043
+(privacy posture: log retention, backups, restore drills) and under ADR-0043
 ([`adr/0043-netcup-vps-hosting-gdpr-posture.md`](../adr/0043-netcup-vps-hosting-gdpr-posture.md),
-the hosting decision itself). The app + database migration is GDPR-E (#181) and
-has not started; the netcup DPA (#178) is still an owner action.
+the hosting decision itself).
+
+> **Status (2026-09-21).** The layers above this one have since been applied and
+> the migration executed through cutover step 3 — the hardening is on the box,
+> Postgres 17 + pgvector is restored and snapshot-verified, and the API serves
+> behind nginx. `docs/VPS-BASELINE-SETUP.md` remains the record of the baseline
+> session and the reproducible bootstrap; **the operator's as-is manual is
+> [`docs/VPS-OPERATIONS.md`](./VPS-OPERATIONS.md)**, and the executed migration is
+> [`docs/VPS-CUTOVER-RECORD.md`](./VPS-CUTOVER-RECORD.md).
 
 No hostnames, IPs, or credentials are committed here. The real values live in
 the owner's netcup welcome mail and password manager; the runbook uses
@@ -133,6 +139,17 @@ Caveats: sslip.io names share Let's Encrypt's rate-limit pool — occasional
 "no OCSP stapling" log warning is harmless.
 
 ## Known deltas to reconcile before the app migration (#181)
+
+> **All five are now settled (2026-09-21)** — kept as the record of what the
+> baseline flagged. The resolutions: (1) nginx replaced Caddy (ADR-0044
+> decision 4, executed); (2) the hardening layers were applied by `apply.sh`
+> and the on-host restore drill ran green; (3) the DPA was concluded, and the
+> register's netcup row flipped to current; (4) Postgres 17 + pgvector landed and
+> the Neon data transferred snapshot-verified; (5) all four #181 pre-migration
+> gates closed — the `personalData` flag is enforced by test, the hardening is
+> applied, the About register flipped, and the backup timer + cron are re-homed.
+> See [`docs/VPS-CUTOVER-RECORD.md`](./VPS-CUTOVER-RECORD.md) for the executed
+> log.
 
 1. **Proxy choice divergence.** The privacy-hardening runbook fixes
    **nginx** as the reverse proxy — chosen for field-by-field access-log
