@@ -138,3 +138,44 @@ GitHub's store, never the repo):
 Remaining step-0 precondition: the Golden Set smoke runs after the data
 transfer (steps 1–3) — the DB is currently empty, so staging smoke would have
 nothing to answer from.
+
+## Steps 1–3 — data transfer, snapshot-verified (executed 2026-09-20 13:02–13:20 UTC)
+
+| Step                                  | Command (deploying machine unless noted)                                                                                         | Result                                                                                                                                                                                                                                                                                                        |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Pre-cutover snapshot on Neon       | `KAJIANQ_SNAPSHOT_PLAINTEXT_ACKNOWLEDGED=true bun run db:snapshot create pre-cutover-20260920t1302`                              | created in `kajianq-raw-staging`: 127.0 MB, sha256 `dcacefd2…`, source `…neon.tech/neondb @ 5a721131` (pg 18.6); rows `aligned_pairs=7781 answer_traces=202 chat_messages=445 chat_sessions=246 doc_children=8358 doc_parents=566 eval_results=159 eval_runs=42 schema_migrations=6 sessions=8292 users=8292` |
+| 1. Verify against live Neon           | `bun run db:snapshot verify pre-cutover-20260920t1302`                                                                           | **verified** — sha256 matches, corpus row counts match the live database                                                                                                                                                                                                                                      |
+| 2. Download                           | `db:snapshot download … --out /tmp/kajianq-transfer/…`                                                                           | wrote 127.0 MB, sha256 verified against manifest (`dcacefd2ea305d45`)                                                                                                                                                                                                                                         |
+| 2. Copy to box                        | `scp` → `/srv/kajianq/restore/` (0700, postgres-owned)                                                                           | box-side sha256 identical: `dcacefd2ea305d45`                                                                                                                                                                                                                                                                 |
+| 2. Restore                            | `sudo -u postgres pg_restore --clean --if-exists --no-owner --no-privileges -d postgres://kajianq:<pw>@127.0.0.1:5432/kajianq …` | 11.9 s; **2 ignored errors, both "must be owner of extension vector"** (Neon-owned extension; the app role's DB has `vector` installed by us). **Zero errors on any corpus table** — the runbook's evidence bar holds                                                                                         |
+| 2. Row-count check on the box         | `psql … SELECT count(*) …`                                                                                                       | `566 / 8358 / 7781 / 6 / 8292 / 445 / 202` — **exact match with the manifest on every table**                                                                                                                                                                                                                 |
+| 2. Migrations                         | `DATABASE_URL=… bun run db:status:all` then `db:up:all`                                                                          | all applied; `up: nothing to apply` (archive was current)                                                                                                                                                                                                                                                     |
+| 3. Post-cutover snapshot from the VPS | ssh tunnel `-L 15433:127.0.0.1:5432` → `db:snapshot create post-cutover-20260920t1316`                                           | created: 127.0 MB, sha256 `64023db0…`, **source `127.0.0.1/kajianq @ 09b33cae` (pg 17.11 Debian — the VPS)**; rows identical to pre-cutover (34389 total both sides); privacy line: `CARRYING PERSONAL DATA — plaintext, acknowledged exposure (ADR-0043 d5)`                                                 |
+| 3. Verify                             | `db:snapshot verify post-cutover-20260920t1316`                                                                                  | **verified** — sha matches, corpus row counts match the live (VPS) database                                                                                                                                                                                                                                   |
+| Compare                               | manifest totals                                                                                                                  | `pre-cutover-20260920t1302` and `post-cutover-20260920t1316` both 34389 rows; per-table counts equal; ledger drift zero (nothing ran between the two)                                                                                                                                                         |
+
+### Labels cited (AC-2)
+
+- **pre-cutover-20260920t1302** — source Neon, verified before any transfer.
+- **post-cutover-20260920t1316** — target VPS (pg 17.11), verified through the
+  loopback-only tunnel.
+
+### Defects found and fixed during the transfer (shipped-code bugs, on-host run surfaced them)
+
+1. **`archivePrivacy` called without the environment** (`db-snapshot.mjs:108`):
+   the merged privacy gate called `archivePrivacy(counts)` and the helper
+   defaults `env = {}` — so the operator's `KAJIANQ_SNAPSHOT_*` flags never
+   reached it and every personal-data-carrying archive was unconditionally
+   `refused`. The unit tests pass `env` explicitly, so CI could not catch the
+   missing argument at the call site. Fix: `archivePrivacy(counts, process.env)`.
+   With the fix, the three-valued posture works as designed (the manifest now
+   records `plaintext, acknowledged exposure` honestly).
+2. **A mislabeled snapshot exists and is recorded, not deleted**: my first
+   post-cutover attempt ran with a stale local checkout whose CLI still read
+   `NEON_DATABASE_URL`, so label `post-cutover-20260920t1306` was created from
+   **Neon**, not the VPS. Labels are immutable (ADR-0038), so it stays and this
+   note is its correction; the true post-cutover label is `…t1316` (manifest
+   source `127.0.0.1/kajianq @ 09b33cae`).
+3. Snapshot label regex: same lowercase lesson as the backup label — the
+   runbook's example labels are lowercase-safe, the `date -u +%Y%m%dT%H%MZ`
+   shape is not. Commands here use `t`/lowercase.
