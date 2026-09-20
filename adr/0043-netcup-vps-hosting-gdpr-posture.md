@@ -11,9 +11,17 @@ column. It does **not** relitigate ADR-0007 (trace/feedback) or ADR-0017
 (anonymous sessions) — hosting changes _where_ personal data is processed and
 _who_ processes it, not the session model, the trace contract, or the 30-day TTL.
 
-The migration itself is **not** this ADR: it is GDPR-E (#181). Nothing here
-claims the VPS is live; today the API still runs on Cloudflare Workers and the
-database on Neon.
+The migration itself is **not** this ADR: it is GDPR-E (#181).
+**Status amendment (2026-09-20, #181):** the serving path and the database
+adapter are now the VPS ones — see
+[ADR-0044](0044-vps-serving-path-cutover.md), which supersedes ADR-0028's
+serving path. The repo-side migration is complete (Bun behind nginx, `pg` over
+TCP, vendor-free `DATABASE_URL`, the `PromptSpec.personalData` gap closed); the
+**on-host** application, the single-shot cutover, and the owner-approved
+decommissioning of Cloudflare + Neon remain owner-executed and are tracked by
+[`docs/VPS-CUTOVER-RUNBOOK.md`](../docs/VPS-CUTOVER-RUNBOOK.md). The register,
+retention values, and the snapshot personal-data flag decided here are unchanged
+and are what the implementation conforms to.
 
 ## Context
 
@@ -63,11 +71,13 @@ database on Neon.
 
 ## Decision
 
-1. **netcup GmbH (Germany/EU) is the chosen production host** for the Hono API,
-   the reverse proxy, and Postgres + pgvector. The Cloudflare Workers + Neon
-   path stays live as the **rollback** until the owner approves decommissioning
-   (GDPR-E, #181); ADR-0028's Alchemy topology is retained for exactly that
-   window and is no longer the target end state.
+1. **netcup GmbH (Germany/EU) is the production host** for the Hono API, the
+   reverse proxy, and Postgres + pgvector — implemented by ADR-0044 (#181). The
+   Cloudflare Workers + Neon path is **superseded, not maintained in parallel**:
+   the issue's zero-downtime-tolerance amendment (no live users, single-shot
+   cutover) removed the rollback window this decision originally preserved, and
+   the git history is the rollback. Decommissioning the old resources is
+   owner-approved in review.
 
 2. **The DPA is concluded in the netcup CCP (Master Data → Order Processing)
    before any personal data lands on the box**, and the declared categories
@@ -240,18 +250,21 @@ database on Neon.
 
 ## Consequences
 
-- **Register rule vs. current chat path — a measured gap, named honestly.** The
-  rule in decision 3 says personal data never routes through a free tier, and
-  the seam enforces it via `PromptSpec.personalData`. **No call site in the
-  serving path sets that flag today**: the router, generator, and reviewer build
-  `{ turns }` only, and the `cheap` role's chain head is the free-tier Gemini
-  model (`personalDataAllowed: false`). A chat question — personal data — can
-  therefore ride a free tier right now. The flag exists and works; the callers
-  do not use it. This ADR records it as a **precondition of the VPS going live
-  with public traffic**, not as a future nicety: either the serving call sites
-  set `personalData` (and the free-tier head drops out of the chain for them, as
-  designed), or the register row is false. #181 must not serve public traffic
-  while chat prompts can ride a free tier.
+- **Register rule vs. current chat path — the measured gap, now closed
+  (#181).** The rule in decision 3 says personal data never routes through a
+  free tier, and the seam enforces it via `PromptSpec.personalData`. When this
+  ADR was written **no call site in the serving path set that flag**: the
+  router, generator, and reviewer built `{ turns }` only, and the `cheap` role's
+  chain head was the free-tier Gemini model. #181 closed it in two layers: the
+  domain stage seams (`RouterProvider`, `GeneratorProvider`, `ReviewerProvider`,
+  `RetrieverEmbedder`) declare `personalData: true` as a **required**, literal-
+  true field — dropping the flag is a compile error — and the serving chains
+  carry paid, personal-data-allowed heads (the `cheap`/`generator` roles on
+  DeepSeek, the reviewer on Kimi, the embedder on a new paid-terms `gemini-paid`
+  row for the same model and embedding space). `apps/api/src/lib/personal-data-serving.test.ts`
+  fails CI if a serving role loses its keyed personal-data-allowed candidate or
+  a free-tier vendor returns to a chain head. The free-tier Gemini row remains
+  for non-personal calls (ingestion, tagging) and as a skipped tail.
 - The corpus no longer depends on Neon's free-plan caps. ADR-0039's "smallest
   corpus that satisfies the gate" was forced by Neon's 0.5 GB write ceiling;
   on a VPS the ceiling becomes the disk, so the full corpus becomes a
@@ -270,7 +283,13 @@ database on Neon.
 - `bun run db:snapshot` reads `NEON_DATABASE_URL` and requires R2 credentials;
   post-cutover the source env var, the manifest's `source.host`, and the
   ObjectStore target all change (or the CLI gains a vendor-free env name). The
-  manifest stays a provenance record, not a privacy record.
+  manifest stays a provenance record, not a privacy record. **Resolved by
+  ADR-0044 (#181):** the CLI reads the vendor-free `DATABASE_URL`, and its
+  manifest gained a `privacy` block — `carriesPersonalData` (computed from the
+  row counts, ADR-0043 decision 5's flag made checkable) plus the archive's
+  asserted storage posture. `create` refuses to write a personal-data-bearing
+  archive unless the target is asserted encrypted at rest or the plaintext
+  transitional exposure recorded here is explicitly acknowledged.
 - No new domain vocabulary is introduced (CONTEXT.md governs product terms:
   Kitab, Matn, Trace, Chat Session); "sub-processor register" and "access-log
   retention" are compliance artifacts, not product concepts, so CONTEXT.md is

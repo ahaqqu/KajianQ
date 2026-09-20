@@ -45,11 +45,22 @@ const CONTENT_TYPES: Record<string, string> = {
   map: "application/json; charset=utf-8",
 };
 
-/** Read a regular file, or null when it is missing or not a regular file. */
-function readIfFile(path: string): Buffer | null {
+/**
+ * Read a regular file as bytes, or null when it is missing or not a regular
+ * file.
+ *
+ * The returned `ArrayBuffer` is sliced to the file's exact bytes rather than
+ * handing back the Buffer's whole backing store: `readFileSync` may return a
+ * view into node's shared pool, so `.buffer` alone can carry adjacent data.
+ * `ArrayBuffer` (not `Buffer`/`Uint8Array`) is also the shape the DOM
+ * `Response` body type accepts in the app's own typecheck — node's
+ * `Uint8Array<ArrayBufferLike>` is not assignable to `BufferSource`.
+ */
+function readIfFile(path: string): ArrayBuffer | null {
   try {
     if (!statSync(path).isFile()) return null;
-    return readFileSync(path);
+    const buf = readFileSync(path);
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
   } catch {
     return null;
   }

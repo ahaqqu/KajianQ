@@ -5,6 +5,13 @@ import {
   isPersonalDataTable,
 } from "../../packages/infra/scripts/pg-conn.mjs";
 import {
+  ENCRYPTED_FLAG,
+  PLAINTEXT_FLAG,
+  archivePrivacy,
+  buildManifest,
+  refusalMessage,
+} from "../../packages/infra/scripts/snapshot-privacy.mjs";
+import {
   SNAPSHOT_ROOT,
   createSnapshotStore,
   dumpKey,
@@ -131,5 +138,72 @@ describe("personal-data classification (ADR-0043 decision 5)", () => {
     // personal data would forbid that case.
     expect(carriesPersonalData({ doc_children: 0, users: 0, sessions: 0 })).toBe(false);
     expect(carriesPersonalData({ doc_parents: 12, doc_children: 400 })).toBe(false);
+  });
+});
+
+describe("the archive's privacy posture gate (ADR-0043 decision 5)", () => {
+  const withPersonalData = { doc_children: 999, users: 2, chat_messages: 7 };
+  const corpusOnly = { doc_parents: 3, doc_children: 999 };
+
+  it("refuses an archive carrying personal data when no storage posture is asserted", () => {
+    // The whole point: silence must not write the archive.
+    expect(archivePrivacy(withPersonalData, {}).posture).toBe("refused");
+  });
+
+  it("accepts when the target is asserted encrypted at rest", () => {
+    expect(archivePrivacy(withPersonalData, { [ENCRYPTED_FLAG]: "true" }).posture).toBe(
+      "encrypted",
+    );
+    expect(archivePrivacy(withPersonalData, { [ENCRYPTED_FLAG]: "1" }).posture).toBe("encrypted");
+  });
+
+  it("accepts the acknowledged plaintext transitional exposure, and records which it was", () => {
+    const a = archivePrivacy(withPersonalData, { [PLAINTEXT_FLAG]: "true" });
+    expect(a.posture).toBe("acknowledged");
+    expect(a.encryptedAtRest).toBe(false);
+    expect(a.plaintextAcknowledged).toBe(true);
+  });
+
+  it("treats a false or empty flag as not asserted (a value must be explicit)", () => {
+    for (const raw of ["", "false", "no", "0"]) {
+      expect(archivePrivacy(withPersonalData, { [ENCRYPTED_FLAG]: raw }).posture).toBe("refused");
+      expect(archivePrivacy(withPersonalData, { [PLAINTEXT_FLAG]: raw }).posture).toBe("refused");
+    }
+  });
+
+  it("does not require an assertion for a corpus-only snapshot", () => {
+    const p = archivePrivacy(corpusOnly, {});
+    expect(p.posture).toBe("none");
+    expect(p.personalData).toBe(false);
+  });
+
+  it("the refusal names both escapes, so an operator is not left guessing", () => {
+    const msg = refusalMessage("pre-cutover-20260920T0000Z");
+    expect(msg).toContain("pre-cutover-20260920T0000Z");
+    expect(msg).toContain("ADR-0043 decision 5");
+    expect(msg).toContain(ENCRYPTED_FLAG);
+    expect(msg).toContain(PLAINTEXT_FLAG);
+    // It must point at the existing encrypted tool rather than inviting a second.
+    expect(msg).toContain("kajianq-backup.mjs");
+  });
+
+  it("the manifest builder always writes the privacy block", () => {
+    const manifest = buildManifest({
+      label: "pre-ingest-20260912t121320z",
+      createdAt: "2026-09-12T12:13:20.000Z",
+      tool: { pgDump: "pg_dump", generator: "test" },
+      git: { sha: "abc", branch: "main" },
+      source: { host: "db.internal", database: "kajianq" },
+      dump: { key: "k", bytes: 1, sha256: "a".repeat(64) },
+      counts: withPersonalData,
+      privacy: archivePrivacy(withPersonalData, { [ENCRYPTED_FLAG]: "true" }),
+    });
+    // A manifest without this block is exactly the unexamined archive the ADR
+    // forbids, so the builder owns writing it rather than the caller.
+    expect(manifest.privacy).toEqual({
+      carriesPersonalData: true,
+      encryptedAtRest: true,
+      plaintextAcknowledged: false,
+    });
   });
 });

@@ -16,17 +16,20 @@
  * ADR-0044), so the CLI carries no vendor in its configuration.
  *
  * The archive is a whole-database `pg_dump`, so it carries personal data
- * (users/sessions/chat/answer_traces/feedback — ADR-0043 decision 5). The
- * ObjectStore prefix is therefore a personal-data-bearing location: before
- * personal data lands on the VPS the archive must be encrypted at rest. The
- * encrypted path is the GDPR-D backup tooling (`provision/vps/backup/`), not a
- * second snapshot tool — this CLI is the corpus durability layer (ADR-0038),
- * and its own storage encryption is the recorded transitional exposure
- * ADR-0043 decision 5 owns.
+ * (ADR-0043 decision 5). `create` computes that from the row counts and refuses
+ * to write such an archive unless the storage posture is asserted — see
+ * `snapshot-privacy.mjs` for the decision and both escapes (the encrypted path
+ * is the GDPR-D backup tooling, `provision/vps/backup/`, never a second tool).
  */
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { carriesPersonalData, isCorpusTable, pgEnv, run, sql, tableCounts } from "./pg-conn.mjs";
+import { isCorpusTable, pgEnv, run, sql, tableCounts } from "./pg-conn.mjs";
+import {
+  archivePrivacy,
+  buildManifest,
+  privacyBanner,
+  refusalMessage,
+} from "./snapshot-privacy.mjs";
 import {
   createSnapshotStore,
   dumpKey,
@@ -66,11 +69,6 @@ function argAfter(flags, name) {
   return i >= 0 ? flags[i + 1] : undefined;
 }
 
-/** A boolean environment flag: absent/empty/false → false, 1/true → true. */
-function parseFlag(raw) {
-  return /^(1|true)$/i.test((raw ?? "").trim());
-}
-
 function readLabel(argv) {
   const label = argv[0];
   if (!label) fail("a snapshot label is required (e.g. pre-ingest-20260912T1200Z)");
@@ -103,34 +101,13 @@ async function cmdCreate(label) {
     );
     const bytes = readFileSync(dumpPath);
     const counts = tableCounts(databaseUrl);
-    // The personal-data flag is computed, not assumed: a whole-DB dump carries
-    // these tables whenever they hold a row. Recording it in the manifest is
-    // what turns ADR-0043 decision 5's analysis into a checkable claim.
-    const personalData = carriesPersonalData(counts);
-    // `encryptedAtRest` is a claim about THIS archive's storage target, and it
-    // is only ever set from the environment — never inferred, never defaulted
-    // to true. The plaintext acknowledgement is the honest alternative while
-    // the ObjectStore prefix is not encrypted: it records that the operator has
-    // read ADR-0043 decision 5 and accepts the *recorded transitional exposure*
-    // for this label, instead of making the tool assert something false. The
-    // cutover runbook requires the encrypted GDPR-D path for the labels that
-    // bracket the migration.
-    const encryptedAtRest = parseFlag(process.env.KAJIANQ_SNAPSHOT_ENCRYPTED_AT_REST);
-    const plaintextAcknowledged = parseFlag(process.env.KAJIANQ_SNAPSHOT_PLAINTEXT_ACKNOWLEDGED);
-    if (personalData && !encryptedAtRest && !plaintextAcknowledged) {
-      fail(
-        `snapshot "${label}" would carry personal data (users/sessions/chat/traces/feedback) ` +
-          `and neither storage posture was asserted. ADR-0043 decision 5: an archive carrying ` +
-          `personal data must be encrypted at rest before personal data lands on the VPS. ` +
-          `Either route it through the GDPR-D encrypted path ` +
-          `(provision/vps/backup/kajianq-backup.mjs — restic client-side encryption; do NOT invent ` +
-          `a second snapshot tool), or, when the target is genuinely encrypted at rest, set ` +
-          `KAJIANQ_SNAPSHOT_ENCRYPTED_AT_REST=true. If the target is NOT encrypted (the R2 ` +
-          `transitional exposure ADR-0043 decision 5 records), set ` +
-          `KAJIANQ_SNAPSHOT_PLAINTEXT_ACKNOWLEDGED=true and cite that decision in the PR.`,
-      );
-    }
-    const manifest = {
+    // The privacy posture is computed, not assumed: a whole-DB dump carries the
+    // personal-data tables whenever they hold a row, and the storage assertion
+    // is the operator's. Recording it in the manifest turns ADR-0043 decision 5
+    // from an analysis into a checkable claim.
+    const privacy = archivePrivacy(counts);
+    if (privacy.posture === "refused") fail(refusalMessage(label));
+    const manifest = buildManifest({
       label,
       createdAt: new Date().toISOString(),
       tool: { pgDump: pgDumpVersion, generator: "packages/infra/scripts/db-snapshot.mjs" },
@@ -145,12 +122,9 @@ async function cmdCreate(label) {
         ),
       },
       dump: { key: dumpKey(label), bytes: bytes.length, sha256: sha256Hex(bytes) },
-      tableCounts: counts,
-      // Provenance of the ARCHIVE's privacy posture (ADR-0043 decision 5).
-      // `verify` leaves this alone: it is a record of how the snapshot was
-      // taken, not something a later check can re-derive.
-      privacy: { carriesPersonalData: personalData, encryptedAtRest, plaintextAcknowledged },
-    };
+      counts,
+      privacy,
+    });
     await putObject(store, dumpKey(label), bytes);
     await putObject(store, manifestKey(label), JSON.stringify(manifest, null, 2));
     console.log(
@@ -162,9 +136,7 @@ async function cmdCreate(label) {
         `  rows      ${Object.entries(counts)
           .map(([t, n]) => `${t}=${n}`)
           .join(" ")}`,
-        personalData
-          ? `  privacy   CARRYING PERSONAL DATA — ${encryptedAtRest ? "encrypted at rest" : "plaintext, acknowledged exposure (ADR-0043 d5)"}`
-          : `  privacy   no personal-data rows in this snapshot`,
+        privacyBanner(privacy),
       ].join("\n"),
     );
   } finally {
