@@ -331,6 +331,40 @@ describe("POST /v1/feedback", () => {
     await post(token, { messageId, rating: "up" });
     expect(store.allFeedback()).toHaveLength(1);
   });
+
+  it("documents the one-shape invariant in /openapi.json, not only at runtime", async () => {
+    // The staging fuzz (st case noWRVW, run 35544413355) caught the doc
+    // lying: the flat schema validated {rating, anchor} while the route
+    // rejected it 400. The emitted document must carry the same rule — a
+    // union of two shapes, each forbidding the sibling key — so a
+    // schema-compliant probe is never answered 400.
+    const api = createApi();
+    const res = await api.request("/openapi.json", {}, env);
+    expect(res.ok).toBe(true);
+    const doc = (await res.json()) as {
+      paths: Record<
+        string,
+        { post: { requestBody: { content: Record<string, { schema: { anyOf?: unknown } }> } } }
+      >;
+    };
+    const op = doc.paths["/v1/feedback"]?.post;
+    expect(op).toBeDefined();
+    const media = op?.requestBody.content["application/json"];
+    expect(media).toBeDefined();
+    const schema = media?.schema;
+    expect(schema).toBeDefined();
+    const shapes = (schema?.anyOf ?? []) as {
+      properties: Record<string, unknown>;
+      required: string[];
+    }[];
+    expect(shapes).toHaveLength(2);
+    const thumb = shapes.find((s) => s.required.includes("rating"));
+    const flag = shapes.find((s) => s.required.includes("anchor"));
+    // Each shape emits a `not` clause on the sibling key — the XOR, visible
+    // to spec consumers.
+    expect(thumb?.properties.anchor).toEqual({ not: {} });
+    expect(flag?.properties.rating).toEqual({ not: {} });
+  });
 });
 
 describe("POST /v1/feedback — degraded derivation (thermo-review A3)", () => {
