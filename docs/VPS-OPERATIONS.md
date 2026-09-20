@@ -174,17 +174,20 @@ Repo-level values the workflows read (nothing here is in the repository):
 | var    | `VPS_PUBLIC_URL`          | deploy smoke, Staging smoke, ZAP, Schemathesis | the public base URL                                                        |
 | var    | `VPS_ROOT`                | `deploy-vps.yml` → `KAJIANQ_DEPLOY_ROOT`       | the deployed tree (default `/srv/kajianq`)                                 |
 | secret | `VPS_DEPLOY_SSH_KEY`      | deploy + staging tunnel                        | a dedicated ed25519 deploy key, public half in the box's `authorized_keys` |
-| secret | `STAGING_DATABASE_URL`    | Staging Golden Set smoke                       | the VPS Postgres loopback URL, **through the tunnel port** (§2.7)          |
+| secret | `STAGING_DATABASE_URL`    | Staging Golden Set smoke                       | the VPS Postgres loopback URL, **through the tunnel port** (§2.8)          |
 | secret | `RATE_BYPASS_PRIVATE_KEY` | Staging Schemathesis fuzz                      | the purpose-locked bypass token (ADR-0041)                                 |
 
 `deploy-vps.yml` fails at a named "Require the deploy access" step when a var or
 the key is missing — an actionable failure rather than a silent no-op. The
 private key is written to a runner-local file the job removes when it ends.
 
-**Legacy values still present** (`PROD_URL`, `STAGING_URL`) are
-decommissioning residue: the cutover runbook's step 7 removes them. They are
-safe to delete once no workflow reads them (nothing does — `grep -rn
-'PROD_URL\|STAGING_URL' .github/` returns nothing).
+**Legacy variables still present.** Repo-level `PROD_URL` and `STAGING_URL`
+(the Worker-era URLs) are decommissioning residue: the cutover runbook's step 7
+removes them. No workflow _reads_ them — the occurrences of the name
+`STAGING_URL` in `staging.yml` are that workflow's own local shell variable,
+fed from `vars.VPS_PUBLIC_URL`, not the repo variable — so they are safe to
+delete once the owner removes them in step 7. (The `vars.VPS_*` set above is
+what the workflows actually consume.)
 
 ### 1.5 The permission model (deploy user ↔ `kajianq`)
 
@@ -511,8 +514,9 @@ owner that something is wrong:
 - **No backup-failure or missed-day alert.** The 30-day durability guarantee is
   only as real as the schedule.
 - **No host metrics collection.** CPU, memory, disk growth, connection counts,
-  and lock waits are not collected; `sysstat` is not installed on the box (the
-  cutover record's package list) and no agent reports anywhere.
+  and lock waits are not collected: no metrics agent is installed and nothing
+  reports anywhere (the cutover record's package list is nginx, Postgres +
+  pgvector, certbot, restic, Bun — no collector).
 - **No dashboards.** Only `systemctl`, `journalctl`, `restic`, and `psql`.
 
 This is tracked by **issue #194** (_Observability: health/monitoring dashboard +
