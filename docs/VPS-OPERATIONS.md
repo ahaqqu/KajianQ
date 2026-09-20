@@ -118,9 +118,17 @@ snapshot (§2.4), touch DNS, or restart the backup timer.
 (single-shot cutover, ADR-0044 decision 2). The workflow sets
 `environment: ${{ inputs.environment }}`, so a **prod dispatch runs against the
 `prod` environment** — that environment's approval rule is where the owner's
-sign-off lives, and its own `VPS_HOST`/`VPS_USER`/`VPS_PUBLIC_URL` vars and
+sign-off belongs (`deploy-vps.yml`'s own header comment records this as the
+intent), and its own `VPS_HOST`/`VPS_USER`/`VPS_PUBLIC_URL` vars and
 `VPS_DEPLOY_SSH_KEY` secret must be configured for it. Staging and prod
 therefore carry different host values under one repository.
+
+> **The environment and its approval rule are owner setup, not code.** The
+> workflow names the environment; whether a required reviewer is attached is
+> GitHub configuration outside this repository. Confirm it before relying on it
+> (`gh api repos/<owner>/<repo>/environments`): if no `prod` environment exists
+> or it carries no protection rule, a prod dispatch has **no approval gate**,
+> and the runbook's "owner sign-off" step is not actually enforced.
 
 `concurrency: group: deploy-vps, cancel-in-progress: false` serializes deploys:
 a prod and a staging run starting together would race the same tree on the box,
