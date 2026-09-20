@@ -42,8 +42,40 @@ const SNAPSHOTABLE = [
  */
 const CORPUS_TABLES = ["doc_parents", "doc_children", "aligned_pairs", "schema_migrations"];
 
+/**
+ * The subset of `SNAPSHOTABLE` that carries personal data (ADR-0043 decision 5).
+ *
+ * Named here so the CLI can say — in the manifest and in the create banner —
+ * whether an archive carries personal data, rather than leaving a reader to
+ * infer it from the table list. A whole-database `pg_dump` includes these
+ * tables whether or not anyone thinks about them, which is the exposure
+ * ADR-0043 decision 5 requires be written down.
+ */
+const PERSONAL_DATA_TABLES = [
+  "users",
+  "sessions",
+  "chat_sessions",
+  "chat_messages",
+  "answer_traces",
+  "eval_runs",
+  "eval_results",
+];
+
 /** Whether a table's row count is part of the corpus identity. */
 export const isCorpusTable = (name) => CORPUS_TABLES.includes(name);
+
+/** Whether the table holds personal data, and therefore makes an archive one. */
+export const isPersonalDataTable = (name) => PERSONAL_DATA_TABLES.includes(name);
+
+/**
+ * True when the given row counts describe an archive that carries personal
+ * data: any personal-data table with at least one row. A schema-only snapshot
+ * of an empty database is not a personal-data-bearing archive, and treating it
+ * as one would forbid the one case where an unencrypted archive is honest.
+ */
+export function carriesPersonalData(counts) {
+  return Object.entries(counts).some(([table, n]) => isPersonalDataTable(table) && Number(n) > 0);
+}
 
 /** Run a command and return trimmed stdout; throws with stderr on any failure. */
 export function run(cmd, args, env = {}) {

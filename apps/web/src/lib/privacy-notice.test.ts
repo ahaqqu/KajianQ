@@ -206,14 +206,27 @@ describe("privacy notice: the register mirrors ADR-0043", () => {
     }
   });
 
-  it("states the transition honestly: the destination is planned, not live", () => {
-    // #181 has not happened. netcup is the destination and the two vendors
-    // serving today are transition rows — the notice is never false today, and
-    // cutover is a status edit rather than a copy rewrite.
-    expect(byId("netcup").status).toBe("planned");
+  it("states the hosting move honestly: netcup is in use, the narrowed vendors are transition", () => {
+    // #181 moved the serving path onto the VPS (ADR-0044), so netcup is the
+    // live host and the vendors the move narrows or retires stay `transition`
+    // until the owner approves decommissioning — the row is not claimed gone.
+    expect(byId("netcup").status).toBe("current");
     expect(byId("cloudflare").status).toBe("transition");
     expect(byId("neon").status).toBe("transition");
-    expect(ADR_0043).toContain("Nothing here\nclaims the VPS is live");
+    // ADR-0043's "nothing here claims the VPS is live" described the state
+    // BEFORE #181. ADR-0044 is the ADR that records the serving path, so the
+    // notice's source of truth for hosting is ADR-0044 now.
+    expect(ADR_0043).toContain("GDPR-E (#181)");
+  });
+
+  it("does not claim a transition row is gone before decommissioning is approved", () => {
+    // The decommissioning criterion is owner-gated (issue #181), so a row may
+    // not silently disappear from the register — the move narrows it, it does
+    // not erase it, and the notice has to keep saying so.
+    for (const processor of SUB_PROCESSORS) {
+      if (processor.status !== "transition") continue;
+      expect(processor.note, `${processor.id} has no narrowing note`).toBeDefined();
+    }
   });
 
   it("gives every vendor a role and a personal-data line in both locales", () => {

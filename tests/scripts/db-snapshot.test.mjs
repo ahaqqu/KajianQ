@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { isCorpusTable } from "../../packages/infra/scripts/pg-conn.mjs";
+import {
+  carriesPersonalData,
+  isCorpusTable,
+  isPersonalDataTable,
+} from "../../packages/infra/scripts/pg-conn.mjs";
 import {
   SNAPSHOT_ROOT,
   createSnapshotStore,
@@ -94,5 +98,38 @@ describe("corpus vs ledger classification", () => {
     ]) {
       expect(isCorpusTable(table), table).toBe(false);
     }
+  });
+});
+
+describe("personal-data classification (ADR-0043 decision 5)", () => {
+  it("names exactly the tables that make an archive personal-data-bearing", () => {
+    for (const table of [
+      "users",
+      "sessions",
+      "chat_sessions",
+      "chat_messages",
+      "answer_traces",
+      "eval_runs",
+      "eval_results",
+    ]) {
+      expect(isPersonalDataTable(table), table).toBe(true);
+    }
+    // Corpus tables are the paid asset, not personal data; treating them as
+    // such would make the encryption gate fire on every corpus snapshot.
+    for (const table of ["doc_parents", "doc_children", "aligned_pairs", "schema_migrations"]) {
+      expect(isPersonalDataTable(table), table).toBe(false);
+    }
+  });
+
+  it("flags an archive as personal-data-bearing when any such table holds a row", () => {
+    expect(carriesPersonalData({ doc_children: 999, users: 1 })).toBe(true);
+    expect(carriesPersonalData({ doc_children: 999, chat_messages: 4 })).toBe(true);
+  });
+
+  it("does not flag a schema-only snapshot of an empty database", () => {
+    // The one case where an unencrypted archive is honest — and treating it as
+    // personal data would forbid that case.
+    expect(carriesPersonalData({ doc_children: 0, users: 0, sessions: 0 })).toBe(false);
+    expect(carriesPersonalData({ doc_parents: 12, doc_children: 400 })).toBe(false);
   });
 });

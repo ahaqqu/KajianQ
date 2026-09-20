@@ -507,6 +507,61 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(unit).not.toMatch(/DATABASE_URL=/);
     expect(unit).toContain("NoNewPrivileges=yes");
   });
+
+  it("the served entry the unit runs is the Bun one, with no Cloudflare runtime left", () => {
+    // The unit's ExecStart must name the Bun entry point built from
+    // apps/api/src/boot.ts (ADR-0044 decision 1), not a Worker artifact.
+    const unit = directives("provision/vps/systemd/kajianq-api.service");
+    expect(unit).toMatch(/ExecStart=\/usr\/bin\/bun run \/srv\/kajianq\/api\/index\.js/);
+    expect(unit).toContain("User=kajianq");
+    // A workerd / alchemy deployment path is gone, so nothing in the unit may
+    // reference it.
+    expect(unit).not.toMatch(/workerd|alchemy|wrangler/i);
+  });
+
+  it("the session reclaim runs as its own timer at ADR-0017's 03:17 slot", () => {
+    // ADR-0044 decision 7: the reclamation must be independently observable,
+    // not an in-process interval, so the units are shipped and enabled.
+    const service = directives("provision/vps/systemd/kajianq-cron.service");
+    expect(service).toMatch(/Type=oneshot/);
+    expect(service).toContain("EnvironmentFile=/etc/kajianq/api.env");
+    expect(service).toMatch(/ExecStart=\/usr\/bin\/bun run \/srv\/kajianq\/api\/cleanup\.js/);
+    expect(service).toContain("User=kajianq");
+    // Credentials in the unit text would be world-readable in the journal.
+    expect(service).not.toMatch(/DATABASE_URL=/);
+    const timer = directives("provision/vps/systemd/kajianq-cron.timer");
+    expect(timer).toMatch(/OnCalendar=\*-\*-\* 03:17:00/);
+    expect(timer).toMatch(/Persistent=true/);
+    expect(timer).toContain("Unit=kajianq-cron.service");
+    expect(timer).toMatch(/WantedBy=timers.target/);
+    const apply = readFileSync(resolve(process.cwd(), "provision/vps/apply.sh"), "utf8");
+    expect(apply).toMatch(/kajianq-cron\.service/);
+    expect(apply).toMatch(/systemctl enable kajianq-cron\.timer/);
+  });
+
+  it("the deploy script ships only placeholders and takes the box name from an env file", () => {
+    const script = read("provision/vps/deploy/deploy.sh");
+    // No hostname, IP, or credential in the repository — it is public.
+    expect(script).not.toMatch(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/);
+    expect(script).not.toMatch(/https?:\/\/[a-z0-9.-]+\.(com|net|org|dev|id)/);
+    expect(script).toMatch(/KAJIANQ_DEPLOY_HOST/);
+    expect(script).toMatch(/KAJIANQ_DEPLOY_USER/);
+    // The env file must be owner-only before it is sourced.
+    expect(script).toMatch(/8#\$\{env_mode\} & 077/);
+    // It must smoke the public URL (through the proxy), and it must run the
+    // built entries — not rebuild them on the box.
+    expect(script).toMatch(/KAJIANQ_PUBLIC_URL/);
+    expect(script).toMatch(/\/v1\/health/);
+    expect(script).toMatch(/boot\.ts/);
+    expect(script).toMatch(/cleanup\.ts/);
+  });
+
+  it("the deploy env example carries placeholders, not a real host", () => {
+    const example = read("provision/vps/deploy/deploy.env.example");
+    expect(example).not.toMatch(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/);
+    expect(example).toMatch(/KAJIANQ_DEPLOY_HOST=/);
+    expect(example).toMatch(/KAJIANQ_PUBLIC_URL=/);
+  });
 });
 
 describe("small helpers", () => {
