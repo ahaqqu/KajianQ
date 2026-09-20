@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import * as v from "valibot";
-import { FeedbackAnchorSchema, FeedbackRequestSchema, type FeedbackRequest } from "./feedback";
+import {
+  FeedbackAnchorSchema,
+  FeedbackFlagShape,
+  FeedbackRequestSchema,
+  FeedbackThumbShape,
+  type FeedbackRequest,
+} from "./feedback";
 
 /**
  * Feedback contracts (#13). These are trap tests: the anchor taxonomy only
@@ -67,6 +73,27 @@ describe("FeedbackRequestSchema", () => {
       anchor: { type: "chunk", category: "irrelevant_chunk", id: "chunk-1" },
     });
     expect(v.is(FeedbackRequestSchema, both)).toBe(false);
+  });
+
+  it("structurally forbids the sibling key in each shape", () => {
+    // The one-shape invariant is carried by the union's shapes, not a
+    // cross-field check, so each shape's own members prove the rule: the
+    // thumb shape's anchor slot and the flag shape's rating slot are
+    // optional-never — present keys fail, absent keys pass.
+    expect(
+      v.is(FeedbackThumbShape, {
+        messageId: "0b8fe2a5-6b1a-4d0e-9a7c-1f2e3d4c5b6a",
+        rating: "up",
+        anchor: { type: "chunk", category: "irrelevant_chunk", id: "chunk-1" },
+      }),
+    ).toBe(false);
+    expect(
+      v.is(FeedbackFlagShape, {
+        messageId: "0b8fe2a5-6b1a-4d0e-9a7c-1f2e3d4c5b6a",
+        rating: "up",
+        anchor: { type: "chunk", category: "irrelevant_chunk", id: "chunk-1" },
+      }),
+    ).toBe(false);
   });
 
   it("rejects a category anchored to the wrong element class", () => {

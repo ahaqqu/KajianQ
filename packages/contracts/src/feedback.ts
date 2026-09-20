@@ -79,21 +79,30 @@ export type FeedbackAnchor = v.InferOutput<typeof FeedbackAnchorSchema>;
  * the chat route mints); `freeText` is optional color for either shape
  * (spec §2: "Free-text optional"), capped so a report cannot smuggle in an
  * essay (or personal data beyond a sentence).
+ *
+ * The one-shape invariant is STRUCTURAL, not a cross-field check: the schema
+ * is a union of the two valid shapes, each forbidding the other key with
+ * `v.optional(v.never())`. A check added to a flat object never reaches the
+ * emitted OpenAPI document (hono-openapi resolves only the object), so a
+ * schema-compliant `{rating, anchor}` probe was rejected 400 — the exact
+ * mismatch Schemathesis reports (st case noWRVW, staging run 35544413355).
+ * The union makes the doc carry the same rule the validator enforces.
  */
-export const FeedbackRequestSchema = v.pipe(
-  v.object({
-    messageId: v.pipe(v.string(), v.uuid()),
-    rating: v.optional(FeedbackRatingSchema),
-    anchor: v.optional(FeedbackAnchorSchema),
-    freeText: v.optional(v.pipe(v.string(), v.maxLength(2000))),
-  }),
-  v.check(
-    (req) =>
-      // Exactly one feedback shape per request: a thumb or a flag, never
-      // both, never neither (the module comment's invariant).
-      (req.rating !== undefined) !== (req.anchor !== undefined),
-  ),
-);
+export const FeedbackThumbShape = v.object({
+  messageId: v.pipe(v.string(), v.uuid()),
+  rating: FeedbackRatingSchema,
+  anchor: v.optional(v.never()),
+  freeText: v.optional(v.pipe(v.string(), v.maxLength(2000))),
+});
+
+export const FeedbackFlagShape = v.object({
+  messageId: v.pipe(v.string(), v.uuid()),
+  rating: v.optional(v.never()),
+  anchor: FeedbackAnchorSchema,
+  freeText: v.optional(v.pipe(v.string(), v.maxLength(2000))),
+});
+
+export const FeedbackRequestSchema = v.union([FeedbackThumbShape, FeedbackFlagShape]);
 
 export type FeedbackRequest = v.InferOutput<typeof FeedbackRequestSchema>;
 
