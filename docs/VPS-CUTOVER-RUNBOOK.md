@@ -15,6 +15,12 @@ The layer under this one is
 encrypted backups, restore drill) and
 [`docs/VPS-BASELINE-SETUP.md`](./VPS-BASELINE-SETUP.md) (OS, SSH, firewall).
 
+**This runbook is the migration.** Once the box is serving, the document to
+operate it is [`docs/VPS-OPERATIONS.md`](./VPS-OPERATIONS.md) — deploy path,
+Postgres management, backups/restore, and the monitoring story — and
+[`docs/VPS-CUTOVER-RECORD.md`](./VPS-CUTOVER-RECORD.md) is the executed log of
+this runbook (steps 0–3 are done; the record is append-only history).
+
 Scope: **moving data and traffic.** Nothing here changes the product's
 behaviour; a step that would is a bug in this runbook.
 

@@ -260,6 +260,7 @@ record than three.
 
 ## Related
 
+- [`docs/VPS-OPERATIONS.md`](./VPS-OPERATIONS.md) — the operator's as-is manual for the running box (deploy, Postgres, backups/restore, monitoring); this runbook is the hardening half of getting there
 - [`adr/0043-netcup-vps-hosting-gdpr-posture.md`](../adr/0043-netcup-vps-hosting-gdpr-posture.md) — the retention values and backup clause this implements
 - [`docs/GDPR-ARTICLE-30-RECORD.md`](./GDPR-ARTICLE-30-RECORD.md) §6–§7 — the retention table and TOMs this runbook converts to implemented
 - [`docs/GDPR-DPIA-LITE.md`](./GDPR-DPIA-LITE.md) §3 — the mitigations this runbook is evidence for
