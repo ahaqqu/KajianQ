@@ -135,21 +135,6 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
     verdict: "permitted",
   },
   {
-    id: "moonshot",
-    name: "Moonshot (Kimi)",
-    status: "no-serving-role",
-    role: {
-      id: "LLM: kandidat yang terkatalog, tanpa peran melayani.",
-      en: "LLM: catalogued challenger, no serving role.",
-    },
-    personalData: {
-      id: "Tidak ada dalam layanan.",
-      en: "None in serving.",
-    },
-    tier: "paid",
-    verdict: "permitted",
-  },
-  {
     id: "typesafe",
     name: "TypeSafe AI",
     status: "no-serving-role",

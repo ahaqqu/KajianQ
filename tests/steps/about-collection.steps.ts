@@ -154,9 +154,10 @@ When("I see the privacy notice rendered from the register", async ({ page }) => 
   await expect(notice).toContainText("Siapa yang memproses data Anda");
   await expect(notice.getByTestId("about-privacy-controller")).toContainText("Angga (@ahaqqu)");
   // Every register row is its own card (netcup, Cloudflare, Neon, and the LLM
-  // vendors), and the rule that governs them is stated.
+  // vendors), and the rule that governs them is stated. Seven rows since the
+  // 2026-09-21 amendment removed Moonshot (ADR-0043/0044 amendments).
   const processors = notice.getByTestId("about-privacy-processor");
-  expect(await processors.count()).toBeGreaterThanOrEqual(8);
+  expect(await processors.count()).toBeGreaterThanOrEqual(7);
   await expect(notice).toContainText("netcup GmbH");
   await expect(notice).toContainText("Neon, Inc.");
   await expect(notice).toContainText("data pribadi tidak pernah lewat tingkat gratis");

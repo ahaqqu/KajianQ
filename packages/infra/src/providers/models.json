@@ -1,5 +1,5 @@
 {
-  "$comment": "Provider config — the single source of truth for the ADR-0009 vendor allowlist: endpoints, model ids, api-key env names, prices per MTok, and per-role fallback chains (ADR-0022). Vendor data lives ONLY here (and the model_configs DB mirror); no .ts file in the engine may name a vendor — the boundary gate enforces it by scanning .ts and not .json. Prices are micro-USD per MTok (1 USD = 1e6 micro-USD, so a $0.50/MTok input price is 500000), PR-reviewed like any model decision. Defaults from SPECS.md §3.4 (2026-08).",
+  "$comment": "Provider config \u2014 the single source of truth for the ADR-0009 vendor allowlist: endpoints, model ids, api-key env names, prices per MTok, and per-role fallback chains (ADR-0022). Vendor data lives ONLY here (and the model_configs DB mirror); no .ts file in the engine may name a vendor \u2014 the boundary gate enforces it by scanning .ts and not .json. Prices are micro-USD per MTok (1 USD = 1e6 micro-USD, so a $0.50/MTok input price is 500000), PR-reviewed like any model decision. Defaults from SPECS.md \u00a73.4 (2026-08).",
   "vendors": {
     "gemini": {
       "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -10,27 +10,39 @@
       "models": {
         "gemini-3.1-pro-preview": {
           "capabilities": ["generate", "stream"],
-          "priceMicroUsdPerMTok": { "in": 2000, "out": 12000 }
+          "priceMicroUsdPerMTok": {
+            "in": 2000,
+            "out": 12000
+          }
         },
         "gemini-3-flash-preview": {
           "capabilities": ["generate", "stream"],
-          "priceMicroUsdPerMTok": { "in": 500, "out": 3000 }
+          "priceMicroUsdPerMTok": {
+            "in": 500,
+            "out": 3000
+          }
         },
         "gemini-embedding-001": {
           "capabilities": ["embed"],
           "dimensions": 1536,
-          "priceMicroUsdPerMTok": { "in": 0, "out": 0 }
+          "priceMicroUsdPerMTok": {
+            "in": 0,
+            "out": 0
+          }
         },
         "gemini-embedding-2": {
-          "$comment": "#9 benchmark challenger — explicitly cross-lingual (100+ languages); incompatible embedding space with embedding-001, so adopting it is a clean-slate re-embed, not an upgrade. Dimensions verified 1536 on the OpenAI-compat endpoint.",
+          "$comment": "#9 benchmark challenger \u2014 explicitly cross-lingual (100+ languages); incompatible embedding space with embedding-001, so adopting it is a clean-slate re-embed, not an upgrade. Dimensions verified 1536 on the OpenAI-compat endpoint.",
           "capabilities": ["embed"],
           "dimensions": 1536,
-          "priceMicroUsdPerMTok": { "in": 0, "out": 0 }
+          "priceMicroUsdPerMTok": {
+            "in": 0,
+            "out": 0
+          }
         }
       }
     },
     "gemini-paid": {
-      "$comment": "The SAME Gemini API and the SAME model ids on PAID terms (standard tier, billing enabled, DPA-covered) — a separate vendor row because the register rule (ADR-0043 decision 3) keys on terms, not on the model: the free-tier row may never carry personal data, the paid row may. GEMINI_PAID_API_KEY is a distinct key on a billing-enabled Google project; an embedding served through this row uses the identical embedding space as the free-tier row, so the already-ingested corpus vectors (ADR-0036 gate winner) stay valid — no re-embed. Price: the currently published paid embedding input price for the Gemini embedding family ($0.20/MTok, ai.google.dev pricing, checked 2026-09-20); gemini-embedding-001's own paid price is no longer published separately.",
+      "$comment": "The SAME Gemini API and the SAME model ids on PAID terms (standard tier, billing enabled, DPA-covered) \u2014 a separate vendor row because the register rule (ADR-0043 decision 3) keys on terms, not on the model: the free-tier row may never carry personal data, the paid row may. GEMINI_PAID_API_KEY is a distinct key on a billing-enabled Google project; an embedding served through this row uses the identical embedding space as the free-tier row, so the already-ingested corpus vectors (ADR-0036 gate winner) stay valid \u2014 no re-embed. Price: the currently published paid embedding input price for the Gemini embedding family ($0.20/MTok, ai.google.dev pricing, checked 2026-09-20); gemini-embedding-001's own paid price is no longer published separately.",
       "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
       "apiKeyEnv": "GEMINI_PAID_API_KEY",
       "protocol": "chat-completions",
@@ -40,12 +52,18 @@
         "gemini-embedding-001": {
           "capabilities": ["embed"],
           "dimensions": 1536,
-          "priceMicroUsdPerMTok": { "in": 200, "out": 0 }
+          "priceMicroUsdPerMTok": {
+            "in": 200,
+            "out": 0
+          }
         },
         "gemini-embedding-2": {
           "capabilities": ["embed"],
           "dimensions": 1536,
-          "priceMicroUsdPerMTok": { "in": 200, "out": 0 }
+          "priceMicroUsdPerMTok": {
+            "in": 200,
+            "out": 0
+          }
         }
       }
     },
@@ -59,11 +77,17 @@
       "models": {
         "qwen3.7-max": {
           "capabilities": ["generate", "stream"],
-          "priceMicroUsdPerMTok": { "in": 2500, "out": 7500 }
+          "priceMicroUsdPerMTok": {
+            "in": 2500,
+            "out": 7500
+          }
         },
         "qwen3-max": {
           "capabilities": ["generate", "stream"],
-          "priceMicroUsdPerMTok": { "in": 780, "out": 3900 }
+          "priceMicroUsdPerMTok": {
+            "in": 780,
+            "out": 3900
+          }
         }
       }
     },
@@ -76,29 +100,15 @@
       "models": {
         "deepseek-v4-flash": {
           "capabilities": ["generate", "stream"],
-          "priceMicroUsdPerMTok": { "in": 140, "out": 280 }
-        }
-      }
-    },
-    "kimi": {
-      "baseUrl": "https://api.moonshot.ai/v1",
-      "apiKeyEnv": "MOONSHOT_API_KEY",
-      "protocol": "chat-completions",
-      "freeTier": false,
-      "personalDataAllowed": true,
-      "models": {
-        "kimi-k3": {
-          "capabilities": ["generate", "stream"],
-          "priceMicroUsdPerMTok": { "in": 2000, "out": 8000 }
-        },
-        "kimi-k2.6": {
-          "capabilities": ["generate", "stream"],
-          "priceMicroUsdPerMTok": { "in": 550, "out": 2200 }
+          "priceMicroUsdPerMTok": {
+            "in": 140,
+            "out": 280
+          }
         }
       }
     },
     "typesafe": {
-      "$comment": "ADR-0042: TypeSafe AI 'System One' decision endpoint — typed structured questions (Choice/Score/Noul) over a state, priced on input tokens only (output free). Not a chat or embedding vendor: it backs the decision-bench role only until the multilingual gate is evaluated; serving adoption is a future ADR.",
+      "$comment": "ADR-0042: TypeSafe AI 'System One' decision endpoint \u2014 typed structured questions (Choice/Score/Noul) over a state, priced on input tokens only (output free). Not a chat or embedding vendor: it backs the decision-bench role only until the multilingual gate is evaluated; serving adoption is a future ADR.",
       "baseUrl": "https://api.typesafe.ai/v1",
       "apiKeyEnv": "JEV_API_KEY",
       "protocol": "systemone",
@@ -106,41 +116,46 @@
       "personalDataAllowed": true,
       "models": {
         "jev-1.13.0": {
-          "$comment": "Pinned version — 64k request / 32k state budget, 1,200 req/min. 42 micro-USD per input MTok (ADR-0042).",
+          "$comment": "Pinned version \u2014 64k request / 32k state budget, 1,200 req/min. 42 micro-USD per input MTok (ADR-0042).",
           "capabilities": ["decide"],
-          "priceMicroUsdPerMTok": { "in": 42, "out": 0 }
+          "priceMicroUsdPerMTok": {
+            "in": 42,
+            "out": 0
+          }
         }
       }
     }
   },
   "roles": {
     "generator": {
-      "$comment": "Cost posture decided 2026-09-12 (ADR-0009 amendment): the answer generator runs on the cheap tier — DeepSeek V4-Flash at $0.14/$0.28 per MTok vs Qwen3.7-Max's $2.50/$7.50 — because the trust invariant is carried by the deterministic citation gate and the cross-vendor reviewer, not by generator price. The Qwen3.7-Max tail was REMOVED on 2026-09-12 (owner decision): DashScope is not provisioned and will not be, and resolveRole silently filters candidates whose apiKeyEnv is unset — so the chain advertised a failover that could never be wired. Single candidate, accepted single point of failure: a generator failure costs one <=$1 smoke re-run, not data. Re-adding a fallback means adding a candidate whose key is actually bound.",
+      "$comment": "Cost posture decided 2026-09-12 (ADR-0009 amendment): the answer generator runs on the cheap tier \u2014 DeepSeek V4-Flash at $0.14/$0.28 per MTok vs Qwen3.7-Max's $2.50/$7.50 \u2014 because the trust invariant is carried by the deterministic citation gate and the cross-vendor reviewer, not by generator price. The Qwen3.7-Max tail was REMOVED on 2026-09-12 (owner decision): DashScope is not provisioned and will not be, and resolveRole silently filters candidates whose apiKeyEnv is unset \u2014 so the chain advertised a failover that could never be wired. Single candidate, accepted single point of failure: a generator failure costs one <=$1 smoke re-run, not data. Re-adding a fallback means adding a candidate whose key is actually bound.",
       "chain": ["deepseek:deepseek-v4-flash"]
     },
     "reviewer": {
-      "$comment": "Personal-data posture (ADR-0043 gap closure, #181): the serving reviewer's prompt embeds the user's question and the drafted answer, so with PromptSpec.personalData now required on every serving call, a free-tier candidate can no longer head this chain — the previous head (free-tier Gemini 3 Flash Preview) was ADR-0009's cost decision, made before the flag existed. Kimi K2.6 was ADR-0009's DOCUMENTED challenger for exactly this role ($0.55/$2.20); it becomes the reviewer because it is paid (personalDataAllowed: true) and preserves cross-vendor separation from the DeepSeek generator (ADR-0015's anti-self-review property, ADR-0009's stated rejection of same-vendor review). Requires MOONSHOT_API_KEY to be bound (owner action, cited in #181's runbook). Gemini 3 Flash Preview stays as the tail: with the flag set it is skipped for chat calls, and a non-personal caller (an offline probe) still has the cheaper head available.",
-      "chain": ["kimi:kimi-k2.6", "gemini:gemini-3-flash-preview"]
+      "$comment": "Personal-data posture (ADR-0043 gap closure, #181; amended 2026-09-21 per owner): the serving reviewer's prompt embeds the user's question and the drafted answer, so with PromptSpec.personalData required on every serving call only a paid candidate may serve. The designed head was kimi:kimi-k2.6 (cross-vendor, ADR-0009/ADR-0015), but the owner holds no Moonshot key and elected (issue #181 thread) to remove Moonshot from the register and head the reviewer with the DeepSeek generator model instead. This accepts same-vendor review \u2014 the property ADR-0015 named 'anti-self-review' is relaxed for the current key set, recorded as a deliberate trade-off rather than drifted into. Revisit when a second paid vendor key (kimi, qwen) is provisioned.",
+      "chain": ["deepseek:deepseek-v4-flash"]
     },
     "reviewer-live": {
-      "$comment": "Live-sample faithfulness review follows the serving reviewer's posture (paid, personal-data-allowed head).",
-      "chain": ["kimi:kimi-k2.6", "gemini:gemini-3-flash-preview"]
+      "$comment": "Same amendment as the reviewer chain: the live reviewer is DeepSeek until a second paid vendor key exists.",
+      "chain": ["deepseek:deepseek-v4-flash"]
     },
     "cheap": {
-      "$comment": "Router stages 1-3, tagging, cleaning. REORDERED for the personal-data posture (#181, ADR-0043 gap closure): the serving router prompt carries the user's question, so with PromptSpec.personalData required on serving calls the paid DeepSeek head answers them and the free-tier Gemini tail is skipped. Free tier remains available for non-personal calls (ingest summaries, tagging, cleaning — corpus text only). Cost: the router is 3 short calls per question, ~$0.001-0.005 per query at DeepSeek V4-Flash $0.14/$0.28 — the free-tier saving was never material.",
+      "$comment": "Router stages 1-3, tagging, cleaning. REORDERED for the personal-data posture (#181, ADR-0043 gap closure): the serving router prompt carries the user's question, so with PromptSpec.personalData required on serving calls the paid DeepSeek head answers them and the free-tier Gemini tail is skipped. Free tier remains available for non-personal calls (ingest summaries, tagging, cleaning \u2014 corpus text only). Cost: the router is 3 short calls per question, ~$0.001-0.005 per query at DeepSeek V4-Flash $0.14/$0.28 \u2014 the free-tier saving was never material.",
       "chain": ["deepseek:deepseek-v4-flash", "gemini:gemini-3-flash-preview"]
     },
-    "translation": { "chain": ["qwen:qwen3-max"] },
+    "translation": {
+      "chain": ["qwen:qwen3-max"]
+    },
     "embedder": {
-      "$comment": "Decided by the #9 embedding benchmark gate (ADR-0036): the chain holds the gate's winner only — never both models, they are embedding-space-incompatible. Moved to the PAID terms row (#181, ADR-0043 gap closure): the serving retriever embeds the user's sub-queries (personal data), so the free-tier row can no longer carry chat-path embeddings. gemini-paid:gemini-embedding-001 is the SAME model and embedding space on paid/DPA-covered terms — the corpus vectors stay valid, no re-embed. Corpus ingestion rides the same paid row (its texts are corpus content, not personal data, but one role keeps the config honest and removes the free-tier ~1,000 items/day wall ADR-0036 called 'infeasible' for full-corpus runs). Requires GEMINI_PAID_API_KEY to be bound (owner action, cited in #181's runbook).",
+      "$comment": "Decided by the #9 embedding benchmark gate (ADR-0036): the chain holds the gate's winner only \u2014 never both models, they are embedding-space-incompatible. Moved to the PAID terms row (#181, ADR-0043 gap closure): the serving retriever embeds the user's sub-queries (personal data), so the free-tier row can no longer carry chat-path embeddings. gemini-paid:gemini-embedding-001 is the SAME model and embedding space on paid/DPA-covered terms \u2014 the corpus vectors stay valid, no re-embed. Corpus ingestion rides the same paid row (its texts are corpus content, not personal data, but one role keeps the config honest and removes the free-tier ~1,000 items/day wall ADR-0036 called 'infeasible' for full-corpus runs). Requires GEMINI_PAID_API_KEY to be bound (owner action, cited in #181's runbook).",
       "chain": ["gemini-paid:gemini-embedding-001"]
     },
     "embedder-candidates": {
-      "$comment": "#9 gate benchmark role: every candidate the benchmark compares, in one chain. Not for serving — the benchmark resolves each candidate directly from this chain (ADR-0022). Kept on the free-tier row: the benchmark embeds gate-fixture text, never personal data, and its per-candidate cost lines in the report were measured on those terms.",
+      "$comment": "#9 gate benchmark role: every candidate the benchmark compares, in one chain. Not for serving \u2014 the benchmark resolves each candidate directly from this chain (ADR-0022). Kept on the free-tier row: the benchmark embeds gate-fixture text, never personal data, and its per-candidate cost lines in the report were measured on those terms.",
       "chain": ["gemini:gemini-embedding-001", "gemini:gemini-embedding-2"]
     },
     "decision-candidates": {
-      "$comment": "ADR-0042 decision-bench role (mirrors embedder-candidates): every decision-model candidate the multilingual gate compares. Not for serving — the bench resolves each candidate directly. Absent key = the bench reports NOT RUN and exits 0 (CI has no JEV_API_KEY).",
+      "$comment": "ADR-0042 decision-bench role (mirrors embedder-candidates): every decision-model candidate the multilingual gate compares. Not for serving \u2014 the bench resolves each candidate directly. Absent key = the bench reports NOT RUN and exits 0 (CI has no JEV_API_KEY).",
       "chain": ["typesafe:jev-1.13.0"]
     }
   }

@@ -71,7 +71,7 @@ not caddy.
 
 **The `api.env` keys.** The example (`provision/vps/api.env.example`) carries
 every key the serving process reads; two are chat-path preconditions, not
-optional: `MOONSHOT_API_KEY` (the reviewer chain head) and
+optional: `DASHSCOPE_API_KEY` (catalogued challenger, no serving role); the reviewer shares `DEEPSEEK_API_KEY` (same-vendor amendment, 2026-09-21) and
 `GEMINI_PAID_API_KEY` (the embedder head). Without them a chat question fails
 its reviewer/embedder stage with a typed error — `/v1/health` and anonymous
 minting still work, so the smokes alone do not prove them present. The

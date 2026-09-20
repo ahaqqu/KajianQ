@@ -121,7 +121,6 @@ const CATALOG_IDS: Record<string, string> = {
   gemini: "gemini",
   deepseek: "deepseek",
   alibaba: "qwen",
-  moonshot: "kimi",
   typesafe: "typesafe",
 };
 
@@ -134,7 +133,7 @@ const STATUS_KEY = {
 
 describe("privacy notice: the register mirrors ADR-0043", () => {
   it("parsed the ADR register (so the drift guards below are not vacuous)", () => {
-    expect(REGISTER_ROWS.length).toBeGreaterThanOrEqual(8);
+    expect(REGISTER_ROWS.length).toBeGreaterThanOrEqual(7);
     expect(REGISTER_ROWS[0]!.vendor).toContain("netcup");
   });
 

@@ -19,7 +19,8 @@
  * disagree about what counts as a refusal — the previous two literal copies
  * could.
  */
-import { Effect, createLogger, resolvePostgresStore } from "@app/infra";
+import { Effect } from "effect";
+import { createLogger, resolvePostgresStore } from "@app/infra";
 import { BudgetExceededError, postChatSse } from "@app/eval";
 import {
   DEFAULT_REFUSALS,

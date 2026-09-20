@@ -64,11 +64,11 @@ const SERVING_ROLES = ["cheap", "generator", "reviewer", "embedder"] as const;
 
 /**
  * The env-name set every serving role is keyed with in a fully-configured
- * deployment (the same names the deployer passes through; the two #181-added
- * keys — GEMINI_PAID_API_KEY for the paid-terms embedder head and
- * MOONSHOT_API_KEY for the reviewer chain head — are owner-provisioned
- * preconditions of the chat path: without them the reviewer/embedder stage
- * fails a serving call with a typed error). They are named in the cutover
+ * deployment (the same names the deployer passes through; the #181-added
+ * GEMINI_PAID_API_KEY (the paid-terms embedder head) is an owner-provisioned
+ * precondition of the chat path: without it the embedder stage fails a
+ * serving call with a typed error. The reviewer is DeepSeek (same-vendor
+ * amendment, 2026-09-21) and shares DEEPSEEK_API_KEY). They are named in the cutover
  * runbook's step-0 preconditions and `provision/vps/api.env.example`; this
  * test pins the config side only — that the checked-in `models.json` shapes a
  * fully-keyed serving graph — and cannot observe the live environment.
@@ -77,7 +77,6 @@ const DEPLOYED_KEYS = new Set([
   "GEMINI_API_KEY",
   "GEMINI_PAID_API_KEY",
   "DEEPSEEK_API_KEY",
-  "MOONSHOT_API_KEY",
   "DASHSCOPE_API_KEY",
 ]);
 
