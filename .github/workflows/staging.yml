@@ -130,6 +130,7 @@ jobs:
       # scoped to this repo.
       - name: Open ssh tunnel to the VPS database
         run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
           install -m 600 /dev/stdin ~/.ssh/id_ed25519 <<< "$SSH_KEY"
           ssh -f -N -o StrictHostKeyChecking=accept-new -L 15433:127.0.0.1:5432 "$KAJIANQ_DEPLOY_USER@$KAJIANQ_DEPLOY_HOST"
           echo "KAJIANQ_DB_TUNNEL_UP=1" >> "$GITHUB_ENV"
