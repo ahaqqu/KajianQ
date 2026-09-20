@@ -604,7 +604,7 @@ describe("provisioning config as code stays true to the ADR", () => {
     const example = read("provision/vps/api.env.example");
     const server = readFileSync(resolve(process.cwd(), "apps/api/src/lib/server.ts"), "utf8");
     const keys = [...server.matchAll(/^\s*"([A-Z_0-9]+)",?$/gm)].map((m) => m[1]);
-    expect(keys.length).toBeGreaterThanOrEqual(9);
+    expect(keys.length).toBeGreaterThanOrEqual(8);
     for (const key of keys) {
       expect(example, key).toMatch(new RegExp(`^${key}=`, "m"));
     }
@@ -614,7 +614,7 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(example).not.toMatch(/postgres:\/\/(?!kajianq:CHANGE_ME)/);
     // Real secrets never enter the repo: every provider key line is a
     // placeholder.
-    for (const key of ["GEMINI_PAID_API_KEY", "MOONSHOT_API_KEY", "DEEPSEEK_API_KEY"]) {
+    for (const key of ["GEMINI_PAID_API_KEY", "DEEPSEEK_API_KEY"]) {
       expect(example).toMatch(new RegExp(`^${key}=CHANGE_ME$`, "m"));
     }
   });

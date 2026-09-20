@@ -179,3 +179,17 @@ nothing to answer from.
 3. Snapshot label regex: same lowercase lesson as the backup label — the
    runbook's example labels are lowercase-safe, the `date -u +%Y%m%dT%H%MZ`
    shape is not. Commands here use `t`/lowercase.
+
+## Reviewer re-head amendment (2026-09-21)
+
+The Golden Set smoke exposed the runbook's chat-path precondition as a real
+blocker: with no `MOONSHOT_API_KEY`, the reviewer stage refuses every chat
+call (`personal-data call but no candidate allows personal data`) — the
+`PromptSpec.personalData` enforcement working as designed, with no legal
+candidate to route to. Owner decision (same day): **remove Moonshot from the
+stack entirely** (never to be used); reviewer served by DeepSeek (same-vendor
+review accepted, amended in ADR-0044); TypeSafe JEV cannot serve it (its
+catalogued capability is `decide`, not `generate`); free-tier Gemini is
+refused by the enforcement itself. Implemented in PR `gdpr-e-reviewer-deepseek`:
+models.json chains, register surfaces, env plumbing, and the runbook's
+precondition text all drop Moonshot.

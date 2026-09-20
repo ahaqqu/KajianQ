@@ -277,3 +277,27 @@ by `docs/VPS-CUTOVER-RUNBOOK.md`.
 - Sentry or a vendor key becomes load-bearing in staging → promote `SENTRY_DSN`
   and the provider keys to required env guards in the systemd unit and the
   deploy's require-step (mirroring ADR-0028's revisit trigger).
+
+## Amendment (2026-09-21, owner decision in the cutover thread): reviewer re-headed to DeepSeek; Moonshot removed
+
+The reviewer chain designed in #189 (`kimi:kimi-k2.6` head) requires
+`MOONSHOT_API_KEY`, which the owner does not hold and has elected never to
+provision: "please remove Moonshot API key, I would never use it." The owner
+directed the reviewer to be served from the held key set (DeepSeek / Gemini /
+Jev / TypeSafe). Of those, only DeepSeek has a `generate`-capable paid
+candidate; TypeSafe JEV is `decide`-only and Gemini's row is free-tier, which
+the `PromptSpec.personalData` enforcement refuses by design.
+
+Decision:
+
+- `reviewer` and `reviewer-live` chains are headed `deepseek:deepseek-v4-flash`.
+  **Same-vendor review is accepted deliberately** — the anti-self-review
+  property ADR-0009/ADR-0015 recorded is relaxed for the current key set and
+  the trade-off is stated here rather than drifted into. Revisit trigger: any
+  second paid vendor key (kimi, qwen) being provisioned restores cross-vendor
+  review by re-editing the chain — config only, no code change.
+- The `kimi` vendor row is removed from `models.json` and from the register
+  surfaces (privacy notice, Art. 30 record); `MOONSHOT_API_KEY` is removed
+  from `env.ts`, `server.ts` PASSTHROUGH_KEYS, `api.env.example`, and the
+  runbook's key preconditions. ADR-0009's vendor-allowlist text is history and
+  is not edited retroactively; this amendment is the operative record.

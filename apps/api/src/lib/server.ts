@@ -40,7 +40,6 @@ const PASSTHROUGH_KEYS = [
   "GEMINI_PAID_API_KEY",
   "DASHSCOPE_API_KEY",
   "DEEPSEEK_API_KEY",
-  "MOONSHOT_API_KEY",
 ] as const;
 
 /** Read the process environment into the app's binding shape. */

@@ -39,7 +39,6 @@ export type AppBindings = {
   GEMINI_PAID_API_KEY?: string;
   DASHSCOPE_API_KEY?: string;
   DEEPSEEK_API_KEY?: string;
-  MOONSHOT_API_KEY?: string;
 };
 
 /**

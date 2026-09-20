@@ -121,6 +121,22 @@ jobs:
           exit 1
         env:
           STAGING_URL: ${{ vars.VPS_PUBLIC_URL }}
+      # The eval harness reads persisted answer traces from the store behind the
+      # RagStore seam (traceable-by-design), and the VPS Postgres is loopback-only
+      # by hardening posture (ADR-0044 decision 5). A GitHub runner reaches it
+      # only through an ssh tunnel — the same shape the cutover runbook's
+      # post-cutover snapshot uses. The tunnel lives for the smoke step's shell;
+      # the strict host-key check is accepted because the key is environment-
+      # scoped to this repo.
+      - name: Open ssh tunnel to the VPS database
+        run: |
+          install -m 600 /dev/stdin ~/.ssh/id_ed25519 <<< "$SSH_KEY"
+          ssh -f -N -o StrictHostKeyChecking=accept-new -L 15433:127.0.0.1:5432 "$KAJIANQ_DEPLOY_USER@$KAJIANQ_DEPLOY_HOST"
+          echo "KAJIANQ_DB_TUNNEL_UP=1" >> "$GITHUB_ENV"
+        env:
+          SSH_KEY: ${{ secrets.VPS_DEPLOY_SSH_KEY }}
+          KAJIANQ_DEPLOY_USER: ${{ vars.VPS_USER }}
+          KAJIANQ_DEPLOY_HOST: ${{ vars.VPS_HOST }}
       - name: Golden Set smoke
         # The summary is written to the job page even when the smoke fails —
         # that is the evidence a reviewer reads, so it must not be skipped by
@@ -141,6 +157,7 @@ jobs:
           EVAL_API_BASE_URL: ${{ vars.VPS_PUBLIC_URL }}
           EVAL_API_TOKEN: ${{ steps.eval-token.outputs.token }}
           DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          # STAGING_DATABASE_URL must name the tunnel port (15433) — the DB is loopback-only.
           # Fail-closed spend cap (ADR-0034): unset would be an explicit opt-out,
           # so the workflow always sets one. 1000000 micro-USD = $1 per run.
           EVAL_BUDGET_MICRO_USD: ${{ github.event.inputs.eval_budget_micro_usd || '1000000' }}
