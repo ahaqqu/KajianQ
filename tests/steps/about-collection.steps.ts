@@ -144,8 +144,9 @@ Then("I see the about page in English", async ({ page }) => {
 
 // --- The privacy notice (#179, GDPR-C) -----------------------------------
 // The notice renders the ADR-0043 register and the retention values, with the
-// netcup host marked in use today (#181 moved the serving path onto it) and the
-// vendors the move narrows marked transition, so the notice is never false. The
+// netcup host marked in use today (#181 moved the serving path onto it, and the
+// 2026-09-21 decommissioning left Cloudflare/Neon registered as no-serving-role),
+// so the notice is never false. The
 // erasure path is named as the endpoint that exists. The steps assert the copy
 // and the status attributes a reader actually sees.
 
@@ -155,7 +156,9 @@ When("I see the privacy notice rendered from the register", async ({ page }) => 
   await expect(notice.getByTestId("about-privacy-controller")).toContainText("Angga (@ahaqqu)");
   // Every register row is its own card (netcup, Cloudflare, Neon, and the LLM
   // vendors), and the rule that governs them is stated. Seven rows since the
-  // 2026-09-21 amendment removed Moonshot (ADR-0043/0044 amendments).
+  // 2026-09-21 amendment removed Moonshot (ADR-0043/0044 amendments); the
+  // decommissioning (2026-09-21) keeps Cloudflare and Neon registered as
+  // no-serving-role rows.
   const processors = notice.getByTestId("about-privacy-processor");
   expect(await processors.count()).toBeGreaterThanOrEqual(7);
   await expect(notice).toContainText("netcup GmbH");
@@ -165,18 +168,20 @@ When("I see the privacy notice rendered from the register", async ({ page }) => 
 });
 
 Then(
-  "I see the netcup host marked as in use today, with the narrowed vendors marked transition",
+  "I see the netcup host marked as in use today, with the decommissioned vendors marked as having no serving role",
   async ({ page }) => {
     const netcup = page.getByTestId("about-privacy-processor").filter({ hasText: "netcup GmbH" });
     await expect(netcup).toHaveAttribute("data-status", "current");
     await expect(netcup.getByTestId("about-privacy-processor-status")).toHaveText(
       "Dipakai hari ini",
     );
-    // The vendors the move narrows or retires say so — the row is not claimed
-    // gone until the owner approves decommissioning (#181).
+    // The decommissioning is executed (2026-09-21, owner-approved): both
+    // retired vendors remain registered — the free-tier history and the R2
+    // provenance archive keep their rows — but each says "no serving role".
     for (const vendor of ["Cloudflare, Inc.", "Neon, Inc."]) {
       const row = page.getByTestId("about-privacy-processor").filter({ hasText: vendor });
-      await expect(row).toHaveAttribute("data-status", "transition");
+      await expect(row).toHaveAttribute("data-status", "no-serving-role");
+      await expect(row).toContainText("Tanpa peran melayani");
     }
   },
 );

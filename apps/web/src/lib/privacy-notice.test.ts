@@ -176,10 +176,13 @@ describe("privacy notice: the register mirrors ADR-0043", () => {
   it("keeps the register's rule: a free tier never carries personal data", () => {
     for (const processor of SUB_PROCESSORS) {
       if (processor.tier !== "free") continue;
-      // Permitted on a free tier only as the transitional rows whose
-      // personal-data footprint the migration removes (ADR-0043 decision 3).
+      // Permitted on a free tier only when the row carries no serving-path
+      // personal data: a `transition` row whose footprint the migration
+      // removes (ADR-0043 decision 3), or a decommissioned row whose runtime
+      // processing ended (2026-09-21 — Cloudflare is at-rest archives only,
+      // Neon is gone; both remain registered because their tier is free).
       expect(processor.verdict === "permitted", `${processor.name} is free-tier`).toBe(
-        processor.status === "transition",
+        processor.status === "transition" || processor.status === "no-serving-role",
       );
     }
   });
@@ -205,13 +208,16 @@ describe("privacy notice: the register mirrors ADR-0043", () => {
     }
   });
 
-  it("states the hosting move honestly: netcup is in use, the narrowed vendors are transition", () => {
+  it("states the hosting move honestly: netcup live, Cloudflare archives-only, Neon gone", () => {
     // #181 moved the serving path onto the VPS (ADR-0044), so netcup is the
-    // live host and the vendors the move narrows or retires stay `transition`
-    // until the owner approves decommissioning — the row is not claimed gone.
+    // live host. The decommissioning is executed (2026-09-21, owner-approved,
+    // docs/VPS-CUTOVER-RECORD.md): Cloudflare has no serving role left — only
+    // the at-rest R2 provenance archive — and Neon is decommissioned entirely.
+    // Both stay registered (free-tier history, and the archive is a
+    // personal-data-bearing location per ADR-0043).
     expect(byId("netcup").status).toBe("current");
-    expect(byId("cloudflare").status).toBe("transition");
-    expect(byId("neon").status).toBe("transition");
+    expect(byId("cloudflare").status).toBe("no-serving-role");
+    expect(byId("neon").status).toBe("no-serving-role");
     // ADR-0043's "nothing here claims the VPS is live" described the state
     // BEFORE #181. ADR-0044 is the ADR that records the serving path, so the
     // notice's source of truth for hosting is ADR-0044 now.

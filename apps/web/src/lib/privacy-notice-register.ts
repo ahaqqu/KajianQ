@@ -50,39 +50,39 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
   {
     id: "cloudflare",
     name: "Cloudflare, Inc.",
-    status: "transition",
+    status: "no-serving-role",
     role: {
-      id: "Transisi: DNS, opsional proxy CDN, dan R2 untuk arsip korpus mentah + snapshot. Runtime Workers, aset statis, dan Durable Objects sudah tidak dipakai karena layanan berjalan di VPS.",
-      en: "Transition: DNS, optionally the CDN proxy, and R2 for raw-corpus + snapshot archives. The Workers runtime, static assets, and Durable Objects are no longer used — the service runs on the VPS.",
+      id: "Arsip at-rest saja: R2 menyimpan ekspor korpus mentah dan dump snapshot (arsip provenance). Runtime Workers, aset statis, dan Durable Objects sudah dihapus — tidak ada lalu lintas layanan yang lewat Cloudflare.",
+      en: "At-rest archives only: R2 holds the raw-corpus exports and the snapshot dumps (the provenance archive). The Workers runtime, static assets, and Durable Objects are deleted; no serving traffic transits Cloudflare.",
     },
     personalData: {
-      id: "IP (CF-Connecting-IP, log tepi) dan arsip snapshot yang lewat R2; isi obrolan tidak lagi transit di sini.",
-      en: "IPs (CF-Connecting-IP, edge logs) and snapshot archives passing through R2; chat content no longer transits here.",
+      id: "Arsip snapshot dan ekspor korpus mentah saat disimpan (tidak ada data pribadi jalur layanan).",
+      en: "Snapshot archives and raw-corpus exports at rest (no serving-path personal data).",
     },
     tier: "free",
     verdict: "permitted",
     note: {
-      id: "Baris ini akan hilang sepenuhnya saat decommissioning Cloudflare disetujui pemilik; sampai itu, hanya DNS/proxy/R2 yang tersisa.",
-      en: "This row disappears entirely once the owner approves decommissioning Cloudflare; until then only DNS/proxy/R2 remain.",
+      id: "Arsip provenance disimpan (ADR-0038: tidak ada yang satu-satunya salinan aset berbayar dihapus); tidak ada pemrosesan data pribadi saat runtime.",
+      en: "The provenance archive is retained (ADR-0038: nothing that is the only copy of a paid asset is deleted); no runtime personal-data processing remains.",
     },
   },
   {
     id: "neon",
     name: "Neon, Inc.",
-    status: "transition",
+    status: "no-serving-role",
     role: {
-      id: "Transisi: Postgres terkelola yang dipakai sampai data pindah; setelah itu basis data berjalan sendiri di VPS dan tidak ada peran tersisa.",
-      en: "Transition: the managed Postgres the data moved off; once moved, the database is self-hosted on the VPS and this vendor has no remaining role.",
+      id: "Dekomisioning (proyek dihapus setelah arsip pasca-cutover terverifikasi di dua tempat); basis data berjalan sendiri di VPS dan vendor ini tidak punya peran tersisa.",
+      en: "Decommissioned (the project was deleted after the post-cutover archive verified in two places); the database is self-hosted on the VPS and this vendor has no remaining role.",
     },
     personalData: {
-      id: "Isi basis data sampai pemindahan selesai, termasuk sesi, obrolan dan pesannya, trace jawaban, dan masukan.",
-      en: "The database's contents until the move completes, including sessions, chats and their messages, answer traces, and feedback.",
+      id: "Tidak ada — tidak ada data pribadi yang diproses di sini lagi.",
+      en: "None — no personal data is processed here anymore.",
     },
     tier: "free",
     verdict: "permitted",
     note: {
-      id: "Baris ini hilang setelah sumber data dimatikan, yang menunggu persetujuan pemilik. Risiko sisa tercatat: paket gratis bukan postur yang diutamakan register ini.",
-      en: "This row disappears once the source database is shut down, which awaits the owner's approval. Recorded residual risk: a free plan is not the posture this register prefers.",
+      id: "Baris dipertahankan untuk riwayat register: vendor memproses data pribadi selama masa transisi hingga 2026-09-21.",
+      en: "The row is kept for the register's history: the vendor processed personal data during the transition, until 2026-09-21.",
     },
   },
   {

@@ -53,7 +53,7 @@ Feature: About and Collection pages
   Scenario: The about page names who processes the data, for how long, and how to erase it (#179)
     When I open the about page
     Then I see the privacy notice rendered from the register
-    And I see the netcup host marked as in use today, with the narrowed vendors marked transition
+    And I see the netcup host marked as in use today, with the decommissioned vendors marked as having no serving role
     And I see the retention row for reverse-proxy access logs marked "direncanakan · #180"
     And the erasure card names the endpoint that erases the data
 
