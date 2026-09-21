@@ -1,0 +1,43 @@
+# provision/vps/sudoers/kajianq-deploy — the deploy identity's entire root grant
+# (#181, ADR-0044 decision 3 and its 2026-09-21 deploy-identity amendment).
+#
+# Installed by provision/vps/apply.sh at /etc/sudoers.d/kajianq-deploy, owned
+# root:root mode 0440, and only after the candidate has passed `visudo -cf`: a
+# malformed file in sudoers.d can lock sudo out of the box entirely, so the parse
+# is a gate in front of the install, not a check after it.
+#
+# The account name is a literal, not a substituted placeholder, on purpose.
+# sudoers grants are per-username, so a configurable name would let this grant
+# and the CI variable VPS_USER (which the deploy workflow passes as
+# KAJIANQ_DEPLOY_USER) disagree — the deploy would then fail with a confusing
+# "password is required" instead of a named mismatch. One name, three places
+# that must agree, and tests/scripts/vps-hardening.test.mjs fails the build when
+# they stop agreeing.
+#
+# The deploy path (provision/vps/deploy/deploy.sh) runs exactly two privileged
+# operations, and this file is their whole authorization: restart the API unit
+# after the tree is shipped, and fire the session-reclamation oneshot once so a
+# rotated env var fails the deploy instead of surfacing at 03:17. Everything else
+# is unprivileged — the web build, both rsyncs, the smoke, and the read-only
+# `systemctl is-active` check, which needs no grant because unit state is
+# world-readable (verified on the box; the deploy runs it without sudo).
+#
+# Exact commands, absolute binary paths, no wildcards: wildcard arguments in
+# sudoers are the classic privilege-escalation footgun. What this grant does NOT
+# give the deploy identity: a root shell, `daemon-reload`, unit-file edits, any
+# other service, or any read of /etc/kajianq/*.env (root:root 0600 — the
+# provider keys and the database password stay unreadable from that session).
+#
+# Stated rather than left implicit: the deploy identity ships the code
+# kajianq-api.service executes and may restart that unit, so it is trusted
+# equivalently to the serving process. A stronger boundary needs a root-owned
+# installer that reads no deploy-supplied scripts and is recorded as ADR-0044's
+# revisit trigger, not pretended here.
+
+# The deploy's ssh calls are non-interactive and allocate no pty. Debian's
+# default does not set requiretty, but naming the precondition keeps this grant
+# from depending on a distro default a later hardening pass could flip on.
+Defaults:kajianq-deploy !requiretty
+
+kajianq-deploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart kajianq-api.service, \
+                                    /usr/bin/systemctl start kajianq-cron.service

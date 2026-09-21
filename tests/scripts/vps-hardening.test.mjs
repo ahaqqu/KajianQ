@@ -592,6 +592,157 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(example).toMatch(/KAJIANQ_PUBLIC_URL=/);
   });
 
+  it("the deploy grant authorizes exactly the sudo the deploy script runs", () => {
+    // The load-bearing parity (#181). The deploy's privileged half is sudo over
+    // ssh, where a missing grant fails as "a password is required" — an error
+    // that names neither the missing rule nor the command that needed it, and
+    // that no test would otherwise catch (it surfaced only when the cutover's
+    // blanket passwordless rule was removed). So both directions are pinned:
+    // every sudo'd command is granted, and every granted command is used.
+    // Without the second direction an unused grant would accumulate silently,
+    // widening the account's privilege while looking harmless.
+    const script = read("provision/vps/deploy/deploy.sh");
+    const grant = read("provision/vps/sudoers/kajianq-deploy");
+
+    // Extract the sudo'd argv from the script's remote commands. The `sudo `
+    // may follow a shell quote, so quotes and whitespace are normalized first;
+    // `${SYSTEMCTL}` is the script's own variable for the absolute binary —
+    // resolve it to the literal the grant carries, since sudoers matches the
+    // expanded command string. The capture runs to the end of the remote
+    // command (the next shell separator), so a call carrying EXTRA arguments is
+    // compared in full rather than truncated — a truncating pattern would let
+    // an argument-bearing deploy call pass against a narrower grant.
+    const resolved = script
+      .replace(/\$\{SYSTEMCTL\}/g, "/usr/bin/systemctl")
+      .replace(/["']/g, "\n");
+    const used = [...resolved.matchAll(/sudo\s+(\/usr\/bin\/systemctl\s+[^\n;|&]+)/g)].map((m) =>
+      m[1].trim(),
+    );
+    expect(used.length).toBeGreaterThanOrEqual(2);
+
+    // The grant's command list. Collapse whitespace first: the second entry
+    // follows a `\` line continuation, so its spacing is cosmetic. Commas
+    // separate entries and are not part of the command; the capture runs to
+    // the entry boundary so an extra-argument grant is compared in full.
+    const grantBody = grant
+      .slice(grant.indexOf("NOPASSWD:"))
+      .replace(/\\\s*\n/g, " ")
+      .replace(/\s+/g, " ");
+    const granted = [...grantBody.matchAll(/(\/usr\/bin\/systemctl\s+[^,]+?)\s*(?:,|$)/g)].map(
+      (m) => m[1].trim(),
+    );
+    expect(granted.length).toBeGreaterThanOrEqual(2);
+
+    for (const command of used) {
+      expect(granted, `deploy runs \`sudo ${command}\` but the grant omits it`).toContain(command);
+    }
+    for (const command of granted) {
+      expect(used, `the grant allows \`${command}\` but the deploy never runs it`).toContain(
+        command,
+      );
+    }
+  });
+
+  it("the deploy grant is scoped: no wildcards, no shell, one identity, absolute paths", () => {
+    // visudo -cf proves the file PARSES; it does not prove it is narrow — a
+    // wildcard command parses perfectly and is the classic privilege-escalation
+    // footgun in sudoers. The scope therefore has to be asserted here.
+    const grant = read("provision/vps/sudoers/kajianq-deploy");
+    const rules = grant
+      .split("\n")
+      .filter((l) => l.trim() && !l.trim().startsWith("#"))
+      .join("\n");
+
+    expect(rules).not.toMatch(/\*/);
+    expect(rules).not.toMatch(/\?|\[[^\]]/);
+    // No shell, and no ALL-command form: ALL would make the exact-command
+    // scoping decorative.
+    expect(rules).not.toMatch(/NOPASSWD:\s*ALL/);
+    for (const shell of ["bash", "sh ", "sudo", "env "]) {
+      expect(rules).not.toMatch(new RegExp(`/usr/bin/${shell.trim()}`));
+    }
+    // Absolute binary paths only — sudoers matches the command string exactly,
+    // so a PATH-resolved name would not match the grant.
+    expect(rules).toMatch(/\/usr\/bin\/systemctl restart kajianq-api\.service/);
+    expect(rules).toMatch(/\/usr\/bin\/systemctl start kajianq-cron\.service/);
+    // The read-only check must not be granted: unit state is world-readable.
+    expect(rules).not.toMatch(/is-active/);
+  });
+
+  it("apply.sh installs the deploy grant only behind visudo, and the account name cannot drift", () => {
+    // Three places must agree on the deploy identity: the account apply.sh
+    // creates, the sudoers grant, and CI's VPS_USER. A drift there produces the
+    // same unnamed "password is required" failure the parity test above exists
+    // to prevent — so the name is fixed in one place, asserted against the
+    // grant, and pinned here.
+    const apply = read("provision/vps/apply.sh");
+    const grant = read("provision/vps/sudoers/kajianq-deploy");
+
+    expect(apply).toMatch(/DEPLOY_USER="kajianq-deploy"/);
+    expect(grant).toMatch(/^kajianq-deploy ALL=\(root\)/m);
+    // The install is gated on the parse: a malformed sudoers.d file can lock
+    // sudo out of the box entirely, so visudo must run BEFORE the mv into place.
+    // Anchor on the real invocation (a line whose command is visudo), not a
+    // comment that merely mentions it — the prologue prose names `visudo -cf`
+    // too, and a bare /visudo -cf/ match would pass on documentation alone.
+    const visudoCall = /^\s*if ! visudo -cf\b/m.exec(apply);
+    expect(visudoCall, "apply.sh must gate the sudoers install on visudo -cf").not.toBeNull();
+    expect(apply.indexOf(visudoCall[0])).toBeLessThan(apply.indexOf('mv -f "${dst}.new"'));
+    // A failed parse must abort the apply, not fall through to the install.
+    expect(apply).toMatch(/if ! visudo -cf[^]*?exit 1/);
+    // Staged beside the target with a dot in the name: sudoers(5) ignores
+    // dot-named files, so no sudo invocation can read a half-written grant.
+    expect(apply).toMatch(/\$\{dst\}\.new/);
+    // The grant must not be left world- or group-readable.
+    expect(apply).toMatch(/install -o root -g root -m 0440/);
+    // The drift assert runs against the shipped file, not a substituted value.
+    expect(apply).toMatch(/grep -q "\^\$\{DEPLOY_USER\} ALL=\(root\)"/);
+  });
+
+  it("the deploy identity owns the deployed tree, so rsync needs no group-write grant", () => {
+    // rsync -az implies -t (preserve times) and --delete removes stale
+    // content-hashed assets; both need write access to the tree. Ownership by
+    // the deploy identity is what provides it, without widening the service
+    // account or the unit. The recursive chown is the migration half: install
+    // -d fixes the directories but leaves existing files owned by a previous
+    // owner, and rsync then fails with "failed to set times" on the first
+    // unchanged file (the failure docs/VPS-OPERATIONS.md §1.5 records).
+    const apply = read("provision/vps/apply.sh");
+    expect(apply).toMatch(/install -d -o "\$\{DEPLOY_USER\}" -g "\$\{DEPLOY_USER\}" -m 0755/);
+    expect(apply).toMatch(
+      /chown -R "\$\{DEPLOY_USER\}:\$\{DEPLOY_USER\}" \/srv\/kajianq\/api \/srv\/kajianq\/web/,
+    );
+    // The service account must NOT gain write access as the cheaper fix: the
+    // API process never writes to this tree, so granting it there would widen
+    // the serving identity for no requirement.
+    expect(apply).not.toMatch(/install -d -o kajianq -g kajianq -m 2755/);
+  });
+
+  it("the deploy key installation never comes from the repository and never overwrites", () => {
+    // The repository is public, so a key can only arrive through
+    // --deploy-pubkey at provisioning time. Appending (not overwriting) keeps
+    // the prod environment's separate key pair from evicting staging's, which
+    // is exactly the failure a re-run would otherwise introduce silently.
+    const apply = read("provision/vps/apply.sh");
+    expect(apply).toMatch(/--deploy-pubkey/);
+    expect(apply).not.toMatch(/authorized_keys.*<<<.*id_(ed25519|rsa)/);
+    expect(apply).toMatch(/grep -qxF "\$\{key\}" "\$\{deploy_home\}\/\.ssh\/authorized_keys"/);
+    expect(apply).toMatch(/install -d -o "\$\{DEPLOY_USER\}" -g "\$\{DEPLOY_USER\}" -m 0700/);
+  });
+
+  it("apply.sh never installs the deploy grant for a name the grant does not name", () => {
+    // Negative control for the parity assert: the check must be a real
+    // comparison against the shipped file, not a constant that always passes.
+    const grant = read("provision/vps/sudoers/kajianq-deploy");
+    const apply = read("provision/vps/apply.sh");
+    const deployUser = /DEPLOY_USER="([^"]+)"/.exec(apply)?.[1];
+    expect(deployUser).toBe("kajianq-deploy");
+    expect(grant).toMatch(new RegExp(`^${deployUser} ALL=\\(root\\)`, "m"));
+    // A different name must NOT satisfy the same assertion — otherwise the
+    // test above would pass on any grant file.
+    expect(grant).not.toMatch(/^some-other-user ALL=\(root\)/m);
+  });
+
   it("the api.env example carries every key the serving composition root reads, as placeholders", () => {
     // Thermo-review B2/A5: /etc/kajianq/api.env is the serving process's whole
     // configuration, but no document described its contents. The example must

@@ -316,6 +316,28 @@ by the agent.
   `sudo` group so password-based sudo is intact. The box's VPS access
   protocol (record header) is now fully honored.
 
+**Correction (recorded 2026-09-21, same day).** This step was correct in itself
+and incomplete in its consequences: the deploy path had been running on that
+temporary blanket rule, so removing it removed CI's ability to restart the
+service. The next push to `main` (1242243, Staging run 35548824035) failed at
+the restart step — `sudo: a password is required` — **after** the tree had
+already been shipped to `/srv/kajianq`, leaving `post deploy checks` (Golden
+Set smoke, ZAP, Schemathesis) skipped for that commit. The three-command grant
+`docs/VPS-OPERATIONS.md` §1.5 described had never been installed; a documented
+host precondition with no executable existence is the defect, and this record
+stated the removal without stating the dependency.
+
+The fix is recorded in ADR-0044's deploy-identity amendment: a dedicated
+`kajianq-deploy` account owning the deployed tree, with exactly two granted
+`systemctl` commands shipped as code (`provision/vps/sudoers/kajianq-deploy`,
+installed by `apply.sh` behind `visudo -cf` and pinned by
+`tests/scripts/vps-hardening.test.mjs`). The deploy key moves from the owner's
+admin account to that identity — see the hardening runbook's key-move step.
+
+Timeline for the next reader: the prod deploy at 00:21 UTC succeeded while the
+blanket rule was still present; the rule was removed at ~02:34 CEST; the first
+push after it failed at 00:47 UTC.
+
 ### Note on Neon API access during decommissioning
 
 `api.neon.tech` had no DNS records from this machine (A/AAAA empty via DoH);

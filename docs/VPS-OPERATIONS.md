@@ -83,12 +83,13 @@ What it does, in order:
    `/srv/kajianq/api` and `/srv/kajianq/web`. `--delete` is deliberate: the SPA
    is content-hashed, and a stale file on the box is a stale file, not a
    rollback.
-3. **Restart.** `sudo systemctl restart kajianq-api.service`, then
-   `is-active --quiet` so a unit that died on start fails the deploy
-   immediately, then `sudo systemctl start kajianq-cron.service` once, so a
-   rotated env var or a missing key fails the deploy now rather than silently at
-   03:17. The timer itself is not restarted — its schedule does not depend on
-   the shipped code.
+3. **Restart.** `sudo systemctl restart kajianq-api.service`, then a plain
+   (unprivileged) `systemctl is-active --quiet` so a unit that died on start
+   fails the deploy immediately, then `sudo systemctl start kajianq-cron.service`
+   once, so a rotated env var or a missing key fails the deploy now rather than
+   silently at 03:17. The timer itself is not restarted — its schedule does not
+   depend on the shipped code. Both `sudo` calls are covered by exactly two
+   grants (§1.5); the `is-active` check needs none.
 4. **Smoke, against the public URL** (through DNS, the proxy, and TLS — never
    the loopback port, which would skip exactly where a TLS, upstream, header,
    or content-type regression shows up):
@@ -182,7 +183,7 @@ Repo-level values the workflows read (nothing here is in the repository):
 | Kind   | Name                      | Read by                                        | Purpose                                                                    |
 | ------ | ------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------- |
 | var    | `VPS_HOST`                | `deploy-vps.yml` → `KAJIANQ_DEPLOY_HOST`       | the server (or an ssh-config alias)                                        |
-| var    | `VPS_USER`                | `deploy-vps.yml` → `KAJIANQ_DEPLOY_USER`       | the unprivileged login user                                                |
+| var    | `VPS_USER`                | `deploy-vps.yml` → `KAJIANQ_DEPLOY_USER`       | the deploy identity — `kajianq-deploy` (§1.5)                              |
 | var    | `VPS_PUBLIC_URL`          | deploy smoke, Staging smoke, ZAP, Schemathesis | the public base URL                                                        |
 | var    | `VPS_ROOT`                | `deploy-vps.yml` → `KAJIANQ_DEPLOY_ROOT`       | the deployed tree (default `/srv/kajianq`)                                 |
 | secret | `VPS_DEPLOY_SSH_KEY`      | deploy + staging tunnel                        | a dedicated ed25519 deploy key, public half in the box's `authorized_keys` |
@@ -212,33 +213,51 @@ decision 2). Its `VPS_*` variables and `VPS_DEPLOY_SSH_KEY` are
 environment-scoped, so staging and prod carry their own credentials under
 one repository.
 
-### 1.5 The permission model (deploy user ↔ `kajianq`)
+### 1.5 The permission model (deploy identity ↔ `kajianq`)
 
 Three distinct identities, deliberately:
 
-- **`kajianq`** — a system account with `nologin`, created by `apply.sh`. It
-  owns `/srv/kajianq`, `/srv/kajianq/api`, and `/srv/kajianq/web`
-  (`kajianq:kajianq`, mode 0755) and is the user both `kajianq-api.service` and
-  `kajianq-cron.service` run as. It cannot log in and is not in `sudo`.
-- **the deploy user** (`<user>`) — the unprivileged login user from
-  [`docs/VPS-BASELINE-SETUP.md`](./VPS-BASELINE-SETUP.md). It needs:
-  - **write access to the deployed tree**, because `rsync` writes as this user
-    into directories owned by `kajianq`. The repository fixes the tree's
-    ownership (above) but not this grant — it is a host-side step, and the
-    cutover record shows it is real: the first deploy runs failed with
-    `failed to set times on "/srv/kajianq/api/."` and `mkstemp … Permission
-denied`, and the next run with the same script and the same command set
-    succeeded, so the change was host-side, not repo-side. The shape is
-    membership in the `kajianq` group plus group-write on the tree
-    (`chgrp -R kajianq /srv/kajianq` with `g+w`, and setgid on the directories
-    so new files inherit the group), or ownership of the tree.
-  - **sudo for exactly three commands**: `systemctl restart kajianq-api.service`,
-    `systemctl is-active kajianq-api.service`, and
-    `systemctl start kajianq-cron.service` (the deploy's `sudo` calls). Nothing
-    else in the deploy path runs privileged; the `rsync` and the build run as
-    the login user.
+- **`kajianq`** — a system account with `nologin`, created by `apply.sh`. It is
+  the user both `kajianq-api.service` and `kajianq-cron.service` run as, and it
+  **reads** the deployed tree through the 0755 world bits. It cannot log in, is
+  not in `sudo`, and does not own the deployed tree — the API never writes to
+  it (nothing in `apps/api` writes to disk), so it needs no write access there.
+- **`kajianq-deploy`** — the deploy identity, created by `apply.sh`. A
+  dedicated unprivileged login account, not a human admin login: CI's deploy
+  key belongs to it, so the owner's admin account is not the credential a
+  workflow holds. Its authorization is **exactly two commands**, installed as
+  code from [`provision/vps/sudoers/kajianq-deploy`](../provision/vps/sudoers/kajianq-deploy)
+  by `apply.sh` (at `/etc/sudoers.d/kajianq-deploy`, root:root 0440, and only
+  after `visudo -cf` parses it):
+  - `systemctl restart kajianq-api.service`
+  - `systemctl start kajianq-cron.service`
+
+  By absolute path, no wildcards, no shell, no `ALL`. The read-only
+  `systemctl is-active` check is deliberately **not** granted — unit state is
+  world-readable, so the deploy runs it without `sudo`. The account also
+  **owns the deployed tree** (`/srv/kajianq/{api,web}`), which is what lets
+  `rsync --delete` write it and re-stamp times on unchanged files without any
+  group-write grant. It cannot read `/etc/kajianq/*.env` (root:root 0600), so
+  the provider keys and database password are not reachable from its session.
+
+  The name is fixed rather than configurable, because sudoers grants are
+  per-username: the account, the grant file, and CI's `VPS_USER` variable must
+  name the same user, and `tests/scripts/vps-hardening.test.mjs` fails the build
+  when they drift. `apply.sh` additionally refuses to install a grant that does
+  not name the account it created.
+
 - **root** — `apply.sh`, `kajianq-backup.service` (it reads the restic key and
   dumps the database), and the one-time repository init.
+
+> **Why the deploy identity exists (and why it is pinned by test).** Before the
+> 2026-09-21 amendment the deploy ran as the owner's admin login on a temporary
+> `NOPASSWD:ALL` rule installed for the cutover session, and the grant §1.5
+> described had never actually been installed. Removing the temporary rule
+> therefore broke the next push to `main` at the restart step — `sudo: a
+password is required`, after the tree had already shipped (Staging run
+> 35548824035). The fix moved the grant into the repository and put executable
+> pins on it, so the host precondition and the deploy script can no longer
+> disagree silently. Record: ADR-0044's deploy-identity amendment.
 
 `rsync --chmod=D755,F644` normalizes what lands: directories 0755, files 0644.
 The API bundle is not written by the service account, so a deploy cannot leave a

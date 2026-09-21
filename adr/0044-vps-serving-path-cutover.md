@@ -301,3 +301,71 @@ Decision:
   from `env.ts`, `server.ts` PASSTHROUGH_KEYS, `api.env.example`, and the
   runbook's key preconditions. ADR-0009's vendor-allowlist text is history and
   is not edited retroactively; this amendment is the operative record.
+
+## Amendment (2026-09-21, owner decision): the deploy identity is a dedicated account with a two-command sudo grant
+
+Decision 3 fixed _where_ the deployer lives (outside `apps/`) but left the
+_identity_ it authenticates as to the host: the deploy ran as the owner's
+personal admin login. That was never a decision, and it broke as soon as it was
+tested. The cutover's closing step removed the temporary blanket
+`NOPASSWD:ALL` rule step 0 had installed for the session
+(`docs/VPS-CUTOVER-RECORD.md`), and the next push to `main` failed at the
+restart step — `sudo: a password is required`, with the tree already shipped
+(Staging run 35548824035). The three-command grant `docs/VPS-OPERATIONS.md`
+§1.5 documented as the deploy user's requirement had never been installed:
+deploys had been running on the session's temporary rule, so removing it
+removed the deploy's ability to restart the service with no warning and no
+test covering the gap.
+
+The owner directed a dedicated account rather than widening the admin login's
+grant back. Decision:
+
+1. **The deploy identity is `kajianq-deploy`, a dedicated unprivileged login
+   account**, created by `provision/vps/apply.sh`. The name is fixed, not
+   configurable: sudoers grants are per-username, and a configurable name would
+   let the account, the grant, and CI's `VPS_USER` disagree silently — the
+   failure mode being the same unnamed "a password is required" this amendment
+   removes. The three places are pinned in agreement by test, and `apply.sh`
+   refuses to install a grant that does not name the account it just created.
+2. **The grant is exactly two commands**, shipped as code in
+   `provision/vps/sudoers/kajianq-deploy` and installed at
+   `/etc/sudoers.d/kajianq-deploy` (root:root 0440) only after the candidate
+   passes `visudo -cf` — a malformed file in that directory can lock sudo out
+   of the box entirely, so the parse gates the install rather than following
+   it. `systemctl restart kajianq-api.service` and
+   `systemctl start kajianq-cron.service`, by absolute path, no wildcards. The
+   read-only `systemctl is-active` check is **not** granted: unit state is
+   world-readable (verified on the box), so it needs no privilege, and the
+   deploy script drops the `sudo` it used to carry. The grant is one command
+   smaller than the pre-amendment documentation claimed — because that
+   documentation was never tested against a real least-privilege install.
+3. **The deploy identity owns the deployed tree.** It replaces the previous
+   arrangement (tree owned by the admin login, group `kajianq`), so the
+   `rsync --delete` and its time-preservation pass need no group-write grant.
+   The service account is deliberately _not_ given write access as the cheaper
+   fix: the API never writes to this tree, so widening the serving identity
+   there would grant an ability nothing requires. The migration needs a
+   recursive `chown`, since `install -d` fixes directories and leaves existing
+   files behind — which is exactly the `failed to set times` failure the ops
+   manual records from the first deploy attempts.
+4. **The gap is closed by test, not by prose.** The original defect was that a
+   documented host precondition had no executable existence. Five pins in
+   `tests/scripts/vps-hardening.test.mjs` now fail the build when: a `sudo` in
+   the deploy script has no matching grant; the grant allows a command the
+   deploy never runs (an unused grant is privilege widening that looks
+   harmless); the grant carries a wildcard, a shell, or a non-absolute path;
+   the `visudo` gate is removed from the install path; or the deployed tree
+   stops being owned by the deploy identity. Each pin was verified to fail
+   against the defect it guards, not merely to pass on the fixed tree.
+
+**Boundary stated rather than overclaimed:** the deploy identity ships the code
+`kajianq-api.service` executes and may restart that unit, so it is trusted
+equivalently to the serving process. This narrows _what the credential can
+reach_ (no root shell, no other unit, no read of the root-only
+`/etc/kajianq/*.env`), not _how far the deploy itself is trusted_.
+
+Revisit triggers: the deploy identity's trust is judged insufficient (the fix
+is a root-owned installer that fetches the artifact itself rather than
+executing a deploy-supplied entrypoint); a second deploy target arrives; or a
+human operator needs to deploy from a workstation, which means its key joins
+the same `authorized_keys` — supported, but a separately-recorded choice.
