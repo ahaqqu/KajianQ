@@ -230,3 +230,94 @@ afterwards. Owner separately smoke-tested the UI end-to-end ("i tested it works"
 - **No residue**: post-pass server counts show zero rows from the test sessions (feedback 0,
   the test message ids absent). Pre-existing staging rows are the fuzz/scan residue of the CI
   run, untouched.
+
+## Prod cutover and decommissioning (2026-09-21, steps 4–7)
+
+Owner approval received ("i approve you do it") covering the prod cutover,
+step-7 decommissioning, and the closing sudo removal. All steps below executed
+by the agent.
+
+### The `prod` environment gate (owner setup, done by agent at owner request)
+
+- `prod` environment created with a **required-reviewer** protection rule
+  (reviewer `ahaqqu`) and a protected-branch policy — the runbook's
+  "owner sign-off" is now actually enforced by GitHub, not narrative.
+- Environment-scoped vars `VPS_HOST`/`VPS_USER`/`VPS_ROOT`/`VPS_PUBLIC_URL`
+  and secret `VPS_DEPLOY_SSH_KEY` configured on the `prod` environment.
+- The deploy key's private half had been destroyed after upload (by design),
+  so a fresh dedicated ed25519 pair was generated: public half appended to the
+  box's `authorized_keys` (auth verified), private half uploaded as the prod
+  env secret, local material shredded.
+
+### Step 5 — cut prod over
+
+- `Deploy to VPS` dispatched with `environment: prod` (run 35547441652,
+  commit 2d73a54). The run **waited at the approval gate**, was approved
+  (GraphQL `approveDeployments`, as the configured reviewer), then ran
+  **green**: build → ship → restart → smoke (health 200, session mint has
+  `"token"`, `/chat` serves the SPA as HTML).
+- Single-host reality: there is no separate prod host to point DNS at — the
+  one box is prod now. Posture flipped accordingly: `/etc/kajianq/api.env`
+  `APP_ENV=staging` → `production`, service restarted; `/v1/health` now
+  reports `"env":"production"`. (`APP_ENV` is cosmetic — health JSON and log
+  labels; no behavioral gate differs between staging and production.)
+- `PROD_URL` variable re-pointed at `https://62.83.35.220.sslip.io`.
+
+### Step 6 — live flows against prod (runbook evidence)
+
+- Anonymous mint → 200; chat "Apa itu ayat kursi?" → full SSE frame set with
+  trace; second chat + **grounded chunk flag** → 200 (`pending`); **forged
+  anchor** → 422 `invalid_anchor`; `DELETE /v1/auth/me` → 200, token dead.
+- Both timers verified scheduled: `kajianq-backup.timer` (03:15) and
+  `kajianq-cron.timer` (03:17 — found dormant, `daemon-reload` + restart
+  restored the schedule; the service itself executes 0/SUCCESS).
+- Test session erased after the pass; no residue.
+
+### Pre-deletion archive verification (AC for step 7)
+
+- `post-cutover-20260920t1316` re-verified: sha256 matches, size 127.0 MB,
+  **corpus row counts match the live VPS DB** (one `ct-`-prefixed
+  contract-test residue row in doc_parents/doc_children — mine, from the
+  tunnel-based local test run — was removed first; corpus clean).
+- Two independent copies exist: the R2 snapshot archive (`kajianq-raw-staging`,
+  plaintext-transitional path) and the encrypted restic repo on the box
+  (snapshot `afd19227`). The two-places precondition holds.
+
+### Step 7 — decommissioning (irreversible, owner-approved)
+
+1. **Cloudflare Workers**: `kajianq-api-staging` deleted via API (the prod
+   worker `kajianq-api` was already absent — its URL 404s and no script
+   exists; deleted at some earlier point). Post-delete: the workers.dev URL
+   404s, API listing shows no kajianq workers.
+2. **Neon**: project `blue-bird-51941006` ("KajianQ", endpoint matches the
+   old `NEON_DATABASE_URL` exactly) **deleted** after the two-copies
+   verification. API listing shows zero projects; the old host no longer
+   serves.
+3. **R2**: **kept**. `kajianq-raw-staging` holds the corpus raw exports
+   (hadith editions) and both snapshot dumps — the provenance archive
+   (ADR-0038 decision 4: delete nothing that is the only copy of a paid
+   asset). `kajianq-raw` (prod bucket) is empty; left in place — deleting an
+   empty bucket saves nothing and the bucket remains a named target of the
+   ObjectStore seam. Bucket management is now console-only (the API token is
+   gone from GitHub).
+4. **GitHub secrets deleted**: `CLOUDFLARE_API_TOKEN`,
+   `CLOUDFLARE_ACCOUNT_ID`, `NEON_API_KEY`, `NEON_DATABASE_URL`.
+   **Variables**: `STAGING_URL` deleted; `PROD_URL` re-pointed at the VPS.
+   `grep -rn "CLOUDFLARE\|NEON_DATABASE" .github/` returns nothing.
+   Remaining secrets: `DEEPSEEK_API_KEY`, `GEMINI_API_KEY`,
+   `RATE_BYPASS_PRIVATE_KEY`, `STAGING_DATABASE_URL` (tunnel-port URL —
+   still consumed by the Staging workflow), `VPS_DEPLOY_SSH_KEY` (staging
+   env).
+
+### Closing hardening step — passwordless sudo removed
+
+- `/etc/sudoers.d/ahaqqu-nopasswd` (`ahaqqu ALL=(ALL) NOPASSWD:ALL`) deleted;
+  `sudo -n` now correctly requires a password; `ahaqqu` remains in the
+  `sudo` group so password-based sudo is intact. The box's VPS access
+  protocol (record header) is now fully honored.
+
+### Note on Neon API access during decommissioning
+
+`api.neon.tech` had no DNS records from this machine (A/AAAA empty via DoH);
+the API was reached through `console.neon.tech/api/v2` with the same bearer
+token — recorded so the step is reproducible.
