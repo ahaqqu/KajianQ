@@ -24,7 +24,7 @@ The real values live in the owner's password manager and in `/etc/kajianq/*.env`
 
 ```
 Internet
-   │  (Cloudflare DNS; the CDN proxy stays OFF — ADR-0044 decision 4)
+   │  (the sslip.io wildcard name; no DNS provider of ours in the serving path)
    ▼
 nginx  :443 (TLS)  ──static──▶  /srv/kajianq/web   (the React PWA build)
    │
@@ -39,8 +39,12 @@ Postgres 17 + pgvector   127.0.0.1:5432 only, reached over the unix socket
 ```
 
 One host runs the proxy, the API, and the database (ADR-0044). Cloudflare and
-Neon are decommissioned; only DNS (and optionally the CDN proxy, which must stay
-off until `ngx_http_realip_module` config ships) remains at the edge.
+Neon are **decommissioned** (2026-09-21, runbook step 7): the Workers runtime,
+static-asset serving, and Durable Objects are deleted, the Neon project is
+deleted, and no serving traffic transits Cloudflare. The only Cloudflare
+artifact retained is the R2 bucket `kajianq-raw-staging` — the corpus raw
+exports and snapshot dumps (provenance archive, ADR-0038 decision 4); nothing
+at runtime reads it.
 
 The service account is `kajianq` (system account, `nologin`). It owns
 `/srv/kajianq` and is the only account the API and cron units run as.
@@ -189,13 +193,24 @@ Repo-level values the workflows read (nothing here is in the repository):
 the key is missing — an actionable failure rather than a silent no-op. The
 private key is written to a runner-local file the job removes when it ends.
 
-**Legacy variables still present.** Repo-level `PROD_URL` and `STAGING_URL`
-(the Worker-era URLs) are decommissioning residue: the cutover runbook's step 7
-removes them. No workflow _reads_ them — the occurrences of the name
-`STAGING_URL` in `staging.yml` are that workflow's own local shell variable,
-fed from `vars.VPS_PUBLIC_URL`, not the repo variable — so they are safe to
-delete once the owner removes them in step 7. (The `vars.VPS_*` set above is
-what the workflows actually consume.)
+**Legacy variables removed (step 7 executed).** `STAGING_URL` is deleted;
+`PROD_URL` is re-pointed at the VPS host (`https://62.83.35.220.sslip.io`) —
+no workflow reads either, the occurrences of the name `STAGING_URL` in
+`staging.yml` are that workflow's own local shell variable fed from
+`vars.VPS_PUBLIC_URL`. The Worker-era secrets (`CLOUDFLARE_API_TOKEN`,
+`CLOUDFLARE_ACCOUNT_ID`, `NEON_API_KEY`, `NEON_DATABASE_URL`) are deleted
+from the GitHub secret store. What the workflows actually consume is the
+`vars.VPS_*` set above (repo-level) plus the `prod` environment's
+environment-scoped copy of the same four (`VPS_HOST`, `VPS_USER`, `VPS_ROOT`,
+`VPS_PUBLIC_URL`) and its `VPS_DEPLOY_SSH_KEY` secret.
+
+**The `prod` environment (owner sign-off gate).** A prod dispatch of
+`Deploy to VPS` targets the `prod` environment, which carries a
+required-reviewer protection rule (the owner) and a protected-branch policy —
+the approval is the single-shot cutover's recorded sign-off (ADR-0044
+decision 2). Its `VPS_*` variables and `VPS_DEPLOY_SSH_KEY` are
+environment-scoped, so staging and prod carry their own credentials under
+one repository.
 
 ### 1.5 The permission model (deploy user ↔ `kajianq`)
 

@@ -125,13 +125,15 @@ For readers who want the full picture, the working documents are open:
 | Environment | UI                            | API                           |
 | ----------- | ----------------------------- | ----------------------------- |
 | Staging     | https://62.83.35.220.sslip.io | https://62.83.35.220.sslip.io |
-| Production  | not yet cut over              | not yet cut over              |
+| Production  | https://62.83.35.220.sslip.io | https://62.83.35.220.sslip.io |
 
 The UI and API columns are identical today: the React PWA is served by the
 same host (the Hono stack that exposes `/v1/*`, behind nginx on the VPS), so
 each environment has one host. The columns exist so a future split — a
-separate UI host — only updates one column. Production still points at the
-legacy Cloudflare Workers host until the single-shot cutover (ADR-0044).
+separate UI host — only updates one column. There is one box today: staging
+and production share it, with `APP_ENV` naming the current posture
+(`production` since the single-shot cutover, ADR-0044) — the legacy
+Cloudflare Workers hosts are decommissioned.
 
 ## Data sources & attribution
 
