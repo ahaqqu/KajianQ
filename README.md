@@ -102,7 +102,7 @@ to answer you and improve the answers, never to profile you — and you can ask
 for all of it to be erased at once. Questions about fiqh or aqidah touch on
 belief, so that data is treated as sensitive by design. The short privacy
 notice sits on the
-[About page](https://kajianq-api.rumaq.workers.dev/about); the full record —
+[About page](https://62.83.35.220.sslip.io/about); the full record —
 what is stored, for how long, and which processors see it — is
 [`docs/GDPR-ARTICLE-30-RECORD.md`](docs/GDPR-ARTICLE-30-RECORD.md).
 
@@ -122,15 +122,16 @@ For readers who want the full picture, the working documents are open:
 
 ## Environments
 
-| Environment | UI                                            | API                                           |
-| ----------- | --------------------------------------------- | --------------------------------------------- |
-| Staging     | https://kajianq-api-staging.rumaq.workers.dev | https://kajianq-api-staging.rumaq.workers.dev |
-| Production  | https://kajianq-api.rumaq.workers.dev         | https://kajianq-api.rumaq.workers.dev         |
+| Environment | UI                            | API                           |
+| ----------- | ----------------------------- | ----------------------------- |
+| Staging     | https://62.83.35.220.sslip.io | https://62.83.35.220.sslip.io |
+| Production  | not yet cut over              | not yet cut over              |
 
 The UI and API columns are identical today: the React PWA is served by the
-same Cloudflare Worker (the Hono stack that exposes `/v1/*`), so each
-environment has one host. The columns exist so a future split — a separate
-UI host — only updates one column.
+same host (the Hono stack that exposes `/v1/*`, behind nginx on the VPS), so
+each environment has one host. The columns exist so a future split — a
+separate UI host — only updates one column. Production still points at the
+legacy Cloudflare Workers host until the single-shot cutover (ADR-0044).
 
 ## Data sources & attribution
 
