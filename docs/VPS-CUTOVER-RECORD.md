@@ -201,3 +201,32 @@ precondition text all drop Moonshot.
 - Fix: PR #199 (`feedback-schema-xor`, commit f67b926, merged by author per standing merge-if-CI-green authorization). `FeedbackRequestSchema` restructured as a union of the two valid shapes, each forbidding the sibling key with `v.optional(v.never())` — the invariant is now structural and visible in the emitted doc (`not: {}` clauses). Runtime behavior unchanged (all 24 pre-existing tests pass; null-valued-key semantics verified identical).
 - Local gates for #199: `check`, `lint`, `test` (995 unit + 6-test real-Postgres RagStore contract suite via ssh tunnel to the VPS, green), `boundary`, `agentic-limits`, `openapi:check`. CI: bdd, drill, gate, postgres:contract all pass.
 - Post-merge Staging re-run on the merge commit: awaiting result — expected fully green end-to-end for the first time since cutover.
+
+## Live-flow verification against the VPS (2026-09-21)
+
+Full user-journey pass exercised against `https://62.83.35.220.sslip.io` (staging), one
+throwaway anonymous session per flow, all evidence captured live; every test session erased
+afterwards. Owner separately smoke-tested the UI end-to-end ("i tested it works").
+
+- **Auth**: `POST /v1/auth/anonymous` → 200 with userId/sessionId/token/expiresAt (ADR-0017
+  anonymous session). Expired/erased token then answers 401 on every guarded route.
+- **Chat**: `POST /v1/chat` → 200 SSE stream with the full frame set
+  (`meta`, `delta`, `citations`, `trace`, `done`). Two questions exercised both answer paths:
+  - "Apa hukum mencampur emas dengan perak menurut madzhab Syafii?" → explicit **refusal**
+    ("tidak menemukan dalil yang memadai") with `refusal: true` in the citations frame — the
+    answer-beyond-context hard boundary (#2) firing on the live box.
+  - "Apa itu riba?" → full streamed answer (3,321 delta frames).
+- **Trace**: the `trace` frame carries sub-queries (id + Arabic + English expansion), chunk
+  refs with dense-rank scores, `models: ["deepseek-v4-flash"]` — model identity on the
+  user-visible trace per traceable-by-design.
+- **Feedback — thumb**: `POST /v1/feedback` `{rating: "up"}` → 200, row `pending`.
+- **Feedback — anchored flag**: grounded chunk ref from the trace's chunks → 200, row echoed
+  with `anchor` and `rating: "down"`; forged chunk id not grounded by the trace → **422
+  invalid_anchor** (the never-without-provenance trap working in production).
+- **Erasure**: `DELETE /v1/auth/me` → 200 `{"deleted": true}`; verified on the server (psql over
+  ssh) that the whole user subtree cascade-drops to zero — chat_messages 2→0, answer_traces
+  1→0, feedback 1→0, chat_sessions 1→0, users 1→0 — and the token is dead (401) afterwards.
+  Second session repeated the flow and verified the same cascade.
+- **No residue**: post-pass server counts show zero rows from the test sessions (feedback 0,
+  the test message ids absent). Pre-existing staging rows are the fuzz/scan residue of the CI
+  run, untouched.
