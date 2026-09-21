@@ -88,8 +88,7 @@ export const RETENTION: readonly RetentionItem[] = [
   },
   {
     id: "access-logs",
-    status: "planned",
-    planRef: "#180",
+    status: "current",
     what: {
       id: "Log akses reverse proxy",
       en: "Reverse-proxy access logs",
@@ -105,8 +104,7 @@ export const RETENTION: readonly RetentionItem[] = [
   },
   {
     id: "backups",
-    status: "planned",
-    planRef: "#180",
+    status: "current",
     what: {
       id: "Cadangan basis data",
       en: "Database backups",
@@ -122,8 +120,7 @@ export const RETENTION: readonly RetentionItem[] = [
   },
   {
     id: "snapshots",
-    status: "planned",
-    planRef: "#181",
+    status: "current",
     what: {
       id: "Arsip snapshot ingest yang sudah digantikan",
       en: "Superseded ingest snapshot archives",

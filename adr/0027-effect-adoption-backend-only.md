@@ -30,7 +30,7 @@ Effect (v3) was chosen over cordis and over more hand-rolling because it is runt
    - `packages/rate` and `packages/hardening` — pure Hono middleware functions; converting churns security-sensitive code for no typed-error payoff (decision 3's rationale, now extended to cover them explicitly). Reopen: only if a rate-limit or hardening decision needs retry/interruption semantics, via a new ADR.
    - The Hono HTTP edge itself — `Effect.runPromise` at the handler boundary is the permanent bridge (decision 3 stands).
    - Migrations and the ingestion migration CLI — plain SQL + script per the boundary gate (SQL lives only in the RagStore adapter and migrations); converting would put the runner inside Effect for no behavioral gain. Reopen: only if migrations acquire retry/concurrency semantics.
-   - `apps/api/alchemy.run.ts` — ADR-0028's deploy tooling on alchemy's v4-RC Effect; not engine code, follows alchemy's own version line.
+   - `apps/api/alchemy.run.ts` — ADR-0028's deploy tooling on alchemy's v4-RC Effect; not engine code, follows alchemy's own version line. **Removed by ADR-0044** (the file and the Cloudflare serving path are gone), which retires this exclusion; the equivalent boundary today is `provision/vps/deploy/deploy.sh`, plain bash outside the Effect surface.
      The store-seam migration lands as one PR (decision record + seam change + adapter/fake/test conversion + contract suite + this amendment), executable as ticket #137 under this decision.
 
 ## Consequences

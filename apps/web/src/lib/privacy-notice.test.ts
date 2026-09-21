@@ -300,8 +300,16 @@ describe("privacy notice: retention is the ADR's values, enforced by real code",
     const current = RETENTION.filter((item) => item.status === "current").map((item) => item.id);
     expect(current).toContain("sessions");
     expect(current).toContain("erasure");
-    const planned = RETENTION.filter((item) => item.status === "planned");
-    expect(planned.map((item) => item.planRef).sort()).toEqual(["#180", "#180", "#181"]);
+    // Post-cutover every retention window the notice states is enforced by
+    // something live on the host: the 2026-09-21 cutover applied the logrotate
+    // stanzas, the journald cap, and the backup timer (Art. 30 §7 "Applied on
+    // the host"; docs/VPS-CUTOVER-RECORD.md). No row may remain `planned` —
+    // claiming `planned` for an enforced window understates the protection the
+    // controller actually provides, which is the same honesty failure as the
+    // reverse. A future window lands as `planned` + its ticket, restoring the
+    // mixed state this asserts against.
+    expect(RETENTION.filter((item) => item.status === "planned")).toEqual([]);
+    expect(current.sort()).toEqual(RETENTION.map((item) => item.id).sort());
   });
 
   it("says there is no separate age-based deletion of chat rows", () => {

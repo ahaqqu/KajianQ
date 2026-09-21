@@ -105,16 +105,16 @@ packages/
   rag-ingest/ # DARS: source parsers (Tanzil, hadith-json, Shamela),— NEW, domain-agnostic
               # cleaning/translation pipeline, chunking
   eval/       # DARS: benchmark harness, Golden Set runner, judges  — NEW, domain-agnostic
-  rate/       # @app/rate: RateLimiter adapter (Durable Object +    — shared, project-agnostic
-              # bounded-memory fallback)
-  hardening/  # @app/hardening: security headers/CSP + ASSETS       — shared, project-agnostic
-              # serving for the Hono Worker
+  rate/       # @app/rate: RateLimiter adapter (process-wide    — shared, project-agnostic
+              # in-memory, bounded)
+  hardening/  # @app/hardening: security headers/CSP + static    — shared, project-agnostic
+              # asset serving for the Hono catch-all
   kajianq-domain/ # KajianQ: madzhab enums, principle seed data,    — NEW, the domain pack
               # prompts (ID/EN), citation formatters
 scripts/      # Ingestion & eval CLI (Bun, run off-Workers)
 ```
 
-**Dropped from template:** `packages/local-first` (no offline requirement — chat needs network anyway), D1 + Notes tracer feature. **Reused as-is:** Workers deploy pipeline, anonymous-session auth (matches anonymous feedback), Valibot contracts, adapters, i18n, Vitest/fast-check/Playwright-BDD, CI gates (size-limit, agentic-limits, truth).
+**Dropped from template:** `packages/local-first` (no offline requirement — chat needs network anyway), D1 + Notes tracer feature. **Reused as-is:** anonymous-session auth (matches anonymous feedback), Valibot contracts, adapters, i18n, Vitest/fast-check/Playwright-BDD, CI gates (size-limit, agentic-limits, truth). The template's Workers deploy pipeline was **not** kept: ADR-0044 replaced it with the VPS deployer (the "topology as code" idea stands; the Cloudflare implementation does not).
 
 **Stage communication:** in-process typed interfaces between packages (modular monolith) — no HTTP between pipeline stages. Per notes.md: simple and maintainable wins; extract a service only when a second consumer actually appears.
 

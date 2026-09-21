@@ -192,8 +192,12 @@ Then(
     const row = page
       .getByTestId("about-privacy-retention-row")
       .filter({ hasText: "Log akses reverse proxy" });
-    await expect(row).toHaveAttribute("data-status", "planned");
+    // Live since the 2026-09-21 cutover applied the logrotate stanza on the
+    // host (Art. 30 §7 "Applied on the host") — the row no longer renders as
+    // planned, and it must not claim a ticket for work that is done.
+    await expect(row).toHaveAttribute("data-status", "current");
     await expect(row).toContainText(mark);
+    await expect(row).not.toContainText("#180");
     await expect(row).toContainText("14 hari");
   },
 );

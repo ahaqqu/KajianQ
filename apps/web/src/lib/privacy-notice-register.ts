@@ -90,8 +90,13 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
     name: "Google (Gemini API)",
     status: "current",
     role: {
-      id: "LLM: router (peran murah), reviewer, embedding.",
-      en: "LLM: router (cheap role), reviewer, embeddings.",
+      // Not the reviewer: ADR-0044's 2026-09-21 amendment re-headed the reviewer
+      // to DeepSeek, and this free-tier row's verdict is not-for-personal-data —
+      // so it cannot serve a reviewer call (every serving call site sets
+      // PromptSpec.personalData). It is a fallback candidate on the cheap role
+      // and serves embeddings for non-personal calls only.
+      id: "LLM: kandidat cadangan pada peran murah (kepala rantai dilayani DeepSeek) dan embedding untuk panggilan non-pribadi saja.",
+      en: "LLM: fallback candidate on the cheap role (DeepSeek heads the chain) and embeddings for non-personal calls only.",
     },
     personalData: {
       id: "Isi prompt/embedding dari panggilan yang ditandai sebagai data pribadi.",

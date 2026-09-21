@@ -15,11 +15,18 @@ Know which seam you are standing on before writing code:
 | Seam                    | Interface lives in                             | Implementations live in              | What varies behind it                                         |
 | ----------------------- | ---------------------------------------------- | ------------------------------------ | ------------------------------------------------------------- |
 | Pipeline stages         | `packages/rag-core` (`StageEffect` signatures) | stage implementations per app wiring | Router, Retriever, Assembler, Generator, Reviewer             |
-| LLM / embedding vendors | `Provider` in `packages/rag-core`              | vendor adapters in `packages/infra`  | Gemini, Kimi, DeepSeek, Qwen (config allowlist)               |
-| Persistence             | `RagStore` in `packages/infra`                 | Neon Postgres + pgvector adapter     | vectors, metadata filters, chat, traces, feedback, Golden Set |
-| Blob storage            | `ObjectStore` in `packages/infra`              | Cloudflare R2                        | raw source archives, `text_raw` backups                       |
+| LLM / embedding vendors | `Provider` in `packages/rag-core`              | vendor adapters in `packages/infra`  | Gemini, DeepSeek, Qwen (config allowlist; ADR-0009/0022)      |
+| Persistence             | `RagStore` in `packages/infra`                 | Postgres adapter over `pg`/TCP       | vectors, metadata filters, chat, traces, feedback, Golden Set |
+| Blob storage            | `ObjectStore` in `packages/infra`              | S3-compatible (Cloudflare R2)        | raw source archives, `text_raw` backups                       |
 
 Stages communicate **in-process** through typed interfaces — no HTTP between pipeline stages.
+
+> **Vendor names here are the current configuration, not the seam's identity.**
+> The persistence adapter is named for its dialect (`rag-store-postgres*`,
+> provider `"postgres"`) precisely so a hosting move does not look like a
+> storage-engine change — ADR-0044 retired the `"neon"` naming and the
+> vendor-specific driver. ObjectStore's R2 row is the at-rest provenance archive
+> (ADR-0038 decision 4) and has no serving role.
 
 ## Hard rules
 
@@ -33,7 +40,7 @@ Stages communicate **in-process** through typed interfaces — no HTTP between p
 - Which seam does this belong behind? If none exists and one is needed, add the interface **first**, then the implementation, then the wiring.
 - What is the config knob? If the answer is "there is none, it's hardcoded," stop — that is exactly the defect this skill exists to prevent.
 - Does this pull a domain concept into the engine? If yes, invert it: the engine defines a generic type; the domain pack supplies values.
-- If I had to swap Neon for SQLite, or Qwen for Kimi, or add a second product with a completely different domain, which files would change? Only adapters, config, and the domain pack — nothing in `rag-core`/`rag-ingest`/`eval`.
+- If I had to swap Postgres for SQLite, or DeepSeek for Gemini, or add a second product with a completely different domain, which files would change? Only adapters, config, and the domain pack — nothing in `rag-core`/`rag-ingest`/`eval`.
 
 ## Quick review scan
 
@@ -46,11 +53,17 @@ rg -i "madzhab|hadith|quran|kitab|isnad|sanad|sahih|dhaif|hasan|mutawatir|hanafi
 rg -i "qwen|gemini|deepseek|kimi|moonshot|dashscope" \
   packages/rag-core packages/rag-ingest packages/eval packages/contracts apps
 
-# DB client usage outside RagStore/migrations
-rg "@neondatabase|drizzle|pg\\b" packages/rag-core packages/rag-ingest packages/eval apps --glob '!**/migrations/**'
+# DB client usage outside RagStore/migrations — the enforced form lives in
+# scripts/boundary-rules.json (this is the same scan, kept here for reviewers)
+rg "@neondatabase|drizzle|from\s+[\"']pg[\"']|new\s+Pool|createPool" \
+  packages/rag-core packages/rag-ingest packages/eval apps --glob '!**/migrations/**'
 ```
 
-Each hit is either a refactor or a conscious, recorded exception in an ADR. There is no third option.
+Each hit is either a refactor or a conscious, recorded exception in an ADR. There
+is no third option — the sanctioned homes are
+`packages/infra/src/rag-store-postgres-driver.ts` (the one place `pg` is
+imported) and the scripts that own migrations and probes, each listed with its
+justification in `scripts/boundary-rules.json`.
 
 ## Anti-patterns seen in RAG codebases (reject in review)
 

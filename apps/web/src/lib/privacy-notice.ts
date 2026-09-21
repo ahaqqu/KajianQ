@@ -21,13 +21,12 @@
  * Two honesty rules run through these modules, and `privacy-notice.test.ts`
  * pins both:
  *
- *   1. **Status, not tense.** The VPS migration (#181) has not happened: today
- *      the API runs on Cloudflare Workers and the database on Neon. Every row
- *      therefore carries a status — the destination (netcup) is `planned`, the
- *      vendors in use today are `transition` or `current`, and a row with no
- *      serving role says so. The notice is never false today and never needs a
- *      rewrite at cutover beyond flipping a row's status — a data edit, not a
- *      copy edit.
+ *   1. **Status, not tense.** The VPS migration (#181) has executed: the serving
+ *      path runs on netcup, and Cloudflare and Neon carry `no-serving-role`
+ *      (their runtime and database are decommissioned — `docs/VPS-CUTOVER-RECORD.md`
+ *      step 7; Cloudflare's R2 stays as an at-rest provenance archive). Every row
+ *      carries a status so the notice is never false, and a later posture change
+ *      is a status edit, not a copy rewrite.
  *   2. **No claim without code.** A `current` retention row is enforced by code
  *      that exists today (the test reads it); a `planned` row names the ticket
  *      that implements it in its `planRef` and renders as planned. The erasure

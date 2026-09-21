@@ -54,7 +54,7 @@ Feature: About and Collection pages
     When I open the about page
     Then I see the privacy notice rendered from the register
     And I see the netcup host marked as in use today, with the decommissioned vendors marked as having no serving role
-    And I see the retention row for reverse-proxy access logs marked "direncanakan · #180"
+    And I see the retention row for reverse-proxy access logs marked "14 hari"
     And the erasure card names the endpoint that erases the data
 
   Scenario: The privacy notice follows the language switch (#179)
