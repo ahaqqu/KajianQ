@@ -338,6 +338,65 @@ Timeline for the next reader: the prod deploy at 00:21 UTC succeeded while the
 blanket rule was still present; the rule was removed at ~02:34 CEST; the first
 push after it failed at 00:47 UTC.
 
+### Defect found while applying the deploy-identity fix — the nightly backup had never worked
+
+Recorded 2026-09-21, discovered by reading the box's journal while preparing the
+`apply.sh` re-run (not by any test or alert).
+
+`provision/vps/apply.sh`'s `render()` substituted only the four nginx
+placeholders. It never substituted `__KAJIANQ_BACKUP_SCRIPT__`, so
+`/etc/systemd/system/kajianq-backup.service` was installed with the literal token
+in `ExecStart` — and systemd does not expand variables. The token never existed
+as an environment variable either, so the unit could not execute under any
+configuration:
+
+```
+Sep 21 03:15:15 … bun[29887]: error: Script not found "__KAJIANQ_BACKUP_SCRIPT__"
+Sep 21 03:15:15 … kajianq-backup.service: Main process exited, code=exited, status=1/FAILURE
+```
+
+Evidence of the window: `Result=exit-code`, `ExecMainStatus=1`, zero successful
+runs in the journal. The **only** scheduled run to date — 03:15 on 2026-09-21 —
+failed. What was done by hand earlier (the manual backups in step 0 and the
+restore drill) worked because those invoked the script directly, bypassing the
+unit; the automated schedule never did.
+
+Why nothing caught it:
+
+- `systemctl is-active kajianq-backup.timer` was `active` throughout — being
+  active says the _schedule is armed_, never that the _job works_. The cutover
+  record's own step-6 verification ("Both timers verified scheduled") checked
+  exactly this field, so it confirmed the timer and could not have seen the
+  failure.
+- The hardening test asserted `ExecStart=/usr/bin/bun __KAJIANQ_BACKUP_SCRIPT__`
+  was **present** — pinning the placeholder, with nothing asserting it was ever
+  **substituted**. The test locked the defect's shape in place.
+- ADR-0043's backup guarantee was reviewed as "implemented as code" and the
+  Art. 30 TOMs row reads "Applied on the host", both on the strength of the
+  files being installed. Installed-but-never-executed is the gap.
+
+Impact: **no automated encrypted backup existed**, and the 30-day retention
+window was not running. The manual restic snapshot `afd19227` (step 0) and the
+R2 provenance archive were the only copies — the two-snapshot precondition for
+the step-7 deletions was met independently, so the decommissioning was not
+unsafe, but the ongoing guarantee was absent.
+
+Fixes (PR `fix-backup-script-placeholder`):
+
+1. `render()` substitutes `__KAJIANQ_BACKUP_SCRIPT__`, and now **fails closed**
+   on any leftover `__KAJIANQ_*__` token — a new placeholder in any shipped
+   config stops the apply naming it, instead of installing a config that breaks
+   later.
+2. Two derived test pins: every placeholder in a shipped config must be
+   substituted by `render()`, and the leftover-token guard must run before the
+   install. Both verified to fail against the defects they guard.
+3. The deploy checks `Result` on the backup unit, so a broken backup fails the
+   deploy rather than a green timer hiding it. `apply.sh` also runs
+   `systemctl reset-failed` on the unit, so the stale failure recorded against
+   the old definition does not make the check a false positive on first run.
+4. The runbook's step 5 no longer merely asserts in a comment that `ExecStart`
+   points at the checkout — it names the `Result` field as the real signal.
+
 ### Note on Neon API access during decommissioning
 
 `api.neon.tech` had no DNS records from this machine (A/AAAA empty via DoH);
