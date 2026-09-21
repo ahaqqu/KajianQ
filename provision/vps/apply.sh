@@ -19,7 +19,12 @@
 # it reads them from a root-only env file, not from argv.
 #
 # Usage:
-#   provision/vps/apply.sh [--env <file>] [--dry-run]
+#   provision/vps/apply.sh [--env <file>] [--dry-run] [--deploy-pubkey <file>]
+#
+# --deploy-pubkey installs the given public key file into the deploy account's
+# authorized_keys. Without it, the key step is left to the operator (the
+# runbook carries the command that moves the deploy keys off the admin
+# account); a key is never read from the repository, which is public.
 #
 # Exit non-zero on the first failure: a half-applied hardening config is worse
 # than an unapplied one, because it looks done.
@@ -30,6 +35,17 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SRC="${REPO_DIR}/provision/vps"
 ENV_FILE="/etc/kajianq/proxy.env"
 DRY_RUN=0
+DEPLOY_PUBKEY=""
+
+# The deploy identity is fixed, not configurable (#181, ADR-0044 deploy-identity
+# amendment). Three places must agree on it: this account here, the sudoers
+# grant in provision/vps/sudoers/kajianq-deploy, and the CI variable VPS_USER
+# that the deploy workflow passes as KAJIANQ_DEPLOY_USER. A configurable name
+# would let the grant and the caller disagree, and the deploy would then fail
+# with a confusing "password is required" rather than a named mismatch — so
+# name drift is a lint failure (tests/scripts/vps-hardening.test.mjs), not a
+# silent possibility.
+DEPLOY_USER="kajianq-deploy"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -40,6 +56,10 @@ while [ $# -gt 0 ]; do
         --dry-run)
             DRY_RUN=1
             shift
+            ;;
+        --deploy-pubkey)
+            DEPLOY_PUBKEY="${2:?--deploy-pubkey needs a path}"
+            shift 2
             ;;
         *)
             echo "apply: unknown argument: $1" >&2
@@ -106,8 +126,125 @@ done
 if ! id -u kajianq >/dev/null 2>&1; then
     run useradd --system --home /srv/kajianq --shell /usr/sbin/nologin kajianq
 fi
-run install -d -o kajianq -g kajianq -m 0755 /srv/kajianq /srv/kajianq/api /srv/kajianq/web
+
+# The deploy identity (#181, ADR-0044 deploy-identity amendment): a real login
+# account whose entire purpose is the deploy path, so CI's key is not the
+# owner's admin account and the root grant is scoped to it. `system` because it
+# runs no interactive session; bash (not nologin) because ssh executes the
+# deploy's remote commands through it; no sudo group membership, because
+# /etc/sudoers.d/kajianq-deploy is the whole grant.
+if ! id -u "${DEPLOY_USER}" >/dev/null 2>&1; then
+    run useradd --system --create-home --shell /bin/bash "${DEPLOY_USER}"
+fi
+
+# The deployed tree is owned by the deploy identity, not the service account.
+# That is what lets `rsync --delete` write it, remove stale content-hashed
+# assets, and re-stamp times on unchanged files with no group-write grant: the
+# deploy user is the owner, so owner permissions suffice and the 0755 modes stay
+# as they are. A migration from the previous arrangement (tree owned by the
+# admin login) needs the recursive chown below — `install -d` fixes the
+# directories but leaves the existing files behind, and rsync -t then fails with
+# "failed to set times" on the first unchanged file, which is precisely the
+# failure docs/VPS-OPERATIONS.md §1.5 records from the first deploy attempts.
+#
+# The API process runs as `kajianq` and only ever READS this tree (nothing in
+# apps/api writes to disk), so ownership can move without changing what the
+# service can do — it reaches the tree through the 0755 world bits, and it never
+# had write access here anyway (the previous ownership was the admin user with
+# group `kajianq` and mode 755). The unit's ReadWritePaths stays as it is: the
+# path is still the runtime's scratch allowance, and the hardened posture is
+# unchanged by who owns the files.
+run install -d -o "${DEPLOY_USER}" -g "${DEPLOY_USER}" -m 0755 \
+    /srv/kajianq /srv/kajianq/api /srv/kajianq/web
+if [ "${DRY_RUN}" -eq 0 ]; then
+    chown -R "${DEPLOY_USER}:${DEPLOY_USER}" /srv/kajianq/api /srv/kajianq/web
+else
+    log "would: chown -R ${DEPLOY_USER}:${DEPLOY_USER} /srv/kajianq/api /srv/kajianq/web"
+fi
 run install -d -o root -g root -m 0700 /etc/kajianq
+
+# --- the deploy identity's root grant ---------------------------------------
+# Installed only after `visudo -cf` parses the candidate: a malformed file in
+# sudoers.d can lock sudo out of the box entirely, so the parse gates the
+# install rather than following it. The candidate is validated first and moved
+# into place after, so a failed parse leaves the previous grant intact.
+install_sudoers() {
+    local src="${SRC}/sudoers/kajianq-deploy"
+    local dst="/etc/sudoers.d/${DEPLOY_USER}"
+    local tmp
+    tmp="$(mktemp)"
+    cat "${src}" >"${tmp}"
+    if [ "${DRY_RUN}" -eq 1 ]; then
+        log "would: install ${src} -> ${dst} (after visudo -cf)"
+        rm -f "${tmp}"
+        return 0
+    fi
+    if ! visudo -cf "${tmp}"; then
+        rm -f "${tmp}"
+        echo "apply: ${src} failed visudo -cf — not installing ${dst}" >&2
+        exit 1
+    fi
+    # The staged name keeps a dot so sudo ignores it while it exists: sudoers(5)
+    # skips files in sudoers.d whose names contain a `.`. Staging beside the
+    # target (same filesystem) makes the final mv atomic, so no sudo invocation
+    # can ever read a half-written grant.
+    install -o root -g root -m 0440 "${tmp}" "${dst}.new"
+    mv -f "${dst}.new" "${dst}"
+    rm -f "${tmp}"
+}
+
+if [ -d /etc/sudoers.d ]; then
+    # The grant names the account literally, so the shipped file and DEPLOY_USER
+    # must agree — otherwise the apply would install a grant for a different
+    # user and the deploy would fail later with "a password is required"
+    # instead of naming the mismatch here.
+    if ! grep -q "^${DEPLOY_USER} ALL=(root)" "${SRC}/sudoers/kajianq-deploy"; then
+        echo "apply: ${SRC}/sudoers/kajianq-deploy does not grant ${DEPLOY_USER} — name drift" >&2
+        exit 1
+    fi
+    install_sudoers
+else
+    echo "apply: /etc/sudoers.d is missing — the deploy grant cannot be installed" >&2
+    exit 1
+fi
+
+# The deploy key. Never from the repository (it is public) and never from argv
+# in CI: the workflow writes it to a file the runner deletes when the job ends.
+# `--deploy-pubkey` is the provisioning-time path; the runbook also carries the
+# manual command for moving the existing deploy keys off the admin account.
+if [ -n "${DEPLOY_PUBKEY}" ]; then
+    if [ ! -f "${DEPLOY_PUBKEY}" ]; then
+        echo "apply: --deploy-pubkey ${DEPLOY_PUBKEY} not found" >&2
+        exit 1
+    fi
+    # `|| true`: under `set -o pipefail` a getent miss on a not-yet-created
+    # account would otherwise abort the whole apply, which would make --dry-run
+    # unusable on a fresh box — the one case it is most useful in.
+    deploy_home="$(getent passwd "${DEPLOY_USER}" | cut -d: -f6 || true)"
+    if [ -z "${deploy_home}" ]; then
+        echo "apply: cannot resolve ${DEPLOY_USER}'s home directory — account missing?" >&2
+        exit 1
+    fi
+    run install -d -o "${DEPLOY_USER}" -g "${DEPLOY_USER}" -m 0700 "${deploy_home}/.ssh"
+    # Appended, not overwritten: a second key (the prod environment's key is a
+    # separate pair) must not evict the first, and re-running the apply must not
+    # depend on the key file still existing to stay valid.
+    if [ "${DRY_RUN}" -eq 0 ]; then
+        touch "${deploy_home}/.ssh/authorized_keys"
+        chown "${DEPLOY_USER}:${DEPLOY_USER}" "${deploy_home}/.ssh/authorized_keys"
+        chmod 0600 "${deploy_home}/.ssh/authorized_keys"
+        while IFS= read -r key; do
+            [ -n "${key}" ] || continue
+            grep -qxF "${key}" "${deploy_home}/.ssh/authorized_keys" ||
+                printf '%s\n' "${key}" >>"${deploy_home}/.ssh/authorized_keys"
+        done <"${DEPLOY_PUBKEY}"
+        log "installed the deploy key(s) from ${DEPLOY_PUBKEY}"
+    else
+        log "would: install the deploy key(s) from ${DEPLOY_PUBKEY}"
+    fi
+else
+    log "no --deploy-pubkey given: leaving ${DEPLOY_USER}'s authorized_keys to the operator"
+fi
 
 # --- reverse proxy ----------------------------------------------------------
 # The server block is rendered from the placeholder template, then installed
@@ -199,5 +336,6 @@ run systemctl enable kajianq-cron.timer
 run systemctl enable --now kajianq-backup.timer
 
 log "done. Verify with: systemctl status kajianq-api; systemctl list-timers kajianq-backup.timer kajianq-cron.timer; logrotate --debug /etc/logrotate.d/kajianq-proxy"
+log "verify the deploy grant: sudo -l -U ${DEPLOY_USER} (expect exactly two systemctl commands)"
 log "next: the one-time backup-repository init in docs/VPS-HARDENING-RUNBOOK.md (before the timer's first scheduled run)"
 log "next: fill in /etc/kajianq/api.env from provision/vps/api.env.example (placeholders out, mode 0600) — the API unit cannot start without it, and without KAJIANQ_WEB_ROOT the SPA would 503 while health stays green"

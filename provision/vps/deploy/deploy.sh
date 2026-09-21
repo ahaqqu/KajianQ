@@ -16,9 +16,18 @@
 # repository (the repo is public — no real hostname may enter its history):
 #
 #   KAJIANQ_DEPLOY_HOST   the server (or a ~/.ssh/config alias)
-#   KAJIANQ_DEPLOY_USER   the unprivileged login user
+#   KAJIANQ_DEPLOY_USER   the deploy identity (kajianq-deploy — a fixed account,
+#                         see the note below)
 #   KAJIANQ_DEPLOY_ROOT   the deployed tree on the box (default /srv/kajianq)
 #   KAJIANQ_PUBLIC_URL    the public base URL the smoke test hits
+#
+# The deploy identity is a dedicated unprivileged account, not a human admin
+# login (#181): its authorization is exactly two systemctl commands, installed
+# as code by provision/vps/apply.sh from provision/vps/sudoers/kajianq-deploy.
+# It owns the deployed tree, which is what lets the rsyncs below write it and
+# delete stale content-hashed assets without a group-write grant. The name is
+# fixed rather than configurable so the account, the sudoers grant, and CI's
+# VPS_USER cannot drift apart silently.
 #
 # The deploy is NOT zero-downtime and does not try to be (ADR-0044 decision 2):
 # there are no live users, so a single-shot replace + restart is the recorded
@@ -150,13 +159,27 @@ run rsync -az --delete --chmod=D755,F644 \
 # executes end to end (its failure mode — a rotated env var, a missing key — is
 # otherwise invisible until 03:17). The timer itself is not restarted: its
 # schedule is unaffected by new code.
+#
+# Root grant: the deploy identity holds passwordless sudo for exactly these two
+# commands and nothing else — /etc/sudoers.d/kajianq-deploy, installed by
+# provision/vps/apply.sh and pinned by tests/scripts/vps-hardening.test.mjs. The
+# `is-active` check is deliberately NOT sudo'd: unit state is world-readable, so
+# it needs no privilege, and keeping it unprivileged keeps the grant equal to
+# what the deploy actually requires. A test fails the build if the sudo calls
+# here and the sudoers grant ever stop agreeing.
+#
+# Absolute binary path in both places: sudoers matches the command string and
+# argv exactly, so a bare `systemctl` resolved through PATH would not match the
+# grant — and widening it with a wildcard is the privilege-escalation footgun
+# this scoping exists to avoid.
+SYSTEMCTL=/usr/bin/systemctl
 log "restarting kajianq-api.service"
-run ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" "sudo systemctl restart kajianq-api.service"
+run ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" "sudo ${SYSTEMCTL} restart kajianq-api.service"
 run ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" \
-    "sudo systemctl is-active --quiet kajianq-api.service"
+    "${SYSTEMCTL} is-active --quiet kajianq-api.service"
 
 log "running the reclamation once (proves the cron entry executes)"
-run ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" "sudo systemctl start kajianq-cron.service"
+run ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" "sudo ${SYSTEMCTL} start kajianq-cron.service"
 
 # --- 4. smoke ---------------------------------------------------------------
 # The `ship` skill's pre-prod validation: a health check and an anonymous

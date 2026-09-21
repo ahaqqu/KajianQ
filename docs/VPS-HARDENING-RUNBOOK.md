@@ -120,7 +120,14 @@ sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env
 8. renders and installs `kajianq-backup.service`/`.timer` (the script path
    comes from this checkout) and **enables** the timer with
    `--now`, so the daily encrypted backup is scheduled by config-as-code, not
-   by hand-copied snippets.
+   by hand-copied snippets;
+9. creates the **`kajianq-deploy`** identity and installs its grant as code:
+   `/etc/sudoers.d/kajianq-deploy` (root:root 0440), written only after
+   `visudo -cf` parses the candidate — two `systemctl` commands, no wildcards
+   (ADR-0044's deploy-identity amendment; §1.5 of
+   [`docs/VPS-OPERATIONS.md`](./VPS-OPERATIONS.md)). With
+   `--deploy-pubkey <file>` it also installs those public keys into the
+   account's `authorized_keys`; the file never comes from the repository.
 
 Verify:
 
@@ -132,7 +139,50 @@ sudo logrotate --debug /etc/logrotate.d/kajianq-proxy
 sudo logrotate --debug /etc/logrotate.d/kajianq-postgres
 sudo nginx -T | grep -A2 log_format    # the access format, no user-agent/referer
 sudo systemctl cat systemd-journald | grep -A3 '\[Journal\]'
+sudo -l -U kajianq-deploy             # exactly two systemctl commands, nothing else
+stat -c '%U:%G %a %n' /srv/kajianq/api /srv/kajianq/web   # kajianq-deploy:kajianq-deploy 755
 ```
+
+Then prove the grant actually authorizes, as the deploy identity itself — a
+file that parses is not proof, and the failure this replaced surfaced only when
+a real deploy ran:
+
+```bash
+sudo -u kajianq-deploy -H sudo -n systemctl is-active --quiet kajianq-api.service
+sudo -u kajianq-deploy -H sudo -n systemctl restart kajianq-api.service
+```
+
+### 2b. Move the deploy key onto the deploy identity
+
+CI's deploy key must belong to `kajianq-deploy`, not the owner's admin account —
+otherwise the workflow holds an admin credential and the two-command grant
+scopes nothing. One-time host step:
+
+```bash
+# As root. Move the EXISTING deploy key lines (comment `kajianq-vps-deploy-key*`)
+# onto the deploy identity. Do NOT regenerate: the private halves live only in
+# the GitHub secret store, and a fresh pair means re-uploading
+# VPS_DEPLOY_SSH_KEY in both the staging and prod environments.
+install -d -o kajianq-deploy -g kajianq-deploy -m 0700 /home/kajianq-deploy/.ssh
+grep -h 'kajianq-vps-deploy-key' /home/<admin>/.ssh/authorized_keys \
+    >> /home/kajianq-deploy/.ssh/authorized_keys
+chown kajianq-deploy:kajianq-deploy /home/kajianq-deploy/.ssh/authorized_keys
+chmod 0600 /home/kajianq-deploy/.ssh/authorized_keys
+```
+
+Verify a **new** session as the deploy identity works before removing those
+lines from the admin account's file — the open session is the safety rope, the
+same rule the baseline setup uses for its sshd edits:
+
+```bash
+ssh -i <deploy-private-key> kajianq-deploy@<host> \
+    'sudo -n systemctl restart kajianq-api.service && systemctl is-active kajianq-api.service'
+```
+
+Then verify end to end by dispatching `Deploy to VPS` for `staging`: the
+restart step passing is the real proof, since that is where the missing grant
+failed. The same key is reused by the Staging workflow's database tunnel, so
+that job must be green too.
 
 Retention check (do this **after** traffic exists, so segments are real):
 
