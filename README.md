@@ -110,16 +110,16 @@ what is stored, for how long, and which processors see it — is
 
 For readers who want the full picture, the working documents are open:
 
-| Question                                                | Document                                                                              |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| **How do I run this on my own VPS?**                    | [`docs/SELF-HOSTING-GUIDE.md`](docs/SELF-HOSTING-GUIDE.md) — bare box to green deploy |
-| What is the architecture and plan _now_?                | [`SPECS.md`](SPECS.md) — the living spec                                              |
-| Why is it built this way?                               | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — stable design rationale              |
-| Is it working? (success factors & metrics)              | [`docs/SUCCESS_FACTORS_AND_METRICS.md`](docs/SUCCESS_FACTORS_AND_METRICS.md)          |
-| How is it developed? (working rules, incl. AI agents)   | [`AGENTS.md`](AGENTS.md)                                                              |
-| What do the domain words mean? (Kitab, Madzhab, Isnad…) | [`CONTEXT.md`](CONTEXT.md)                                                            |
-| How is the VPS hardened and its data backed up? (GDPR)  | [`docs/VPS-HARDENING-RUNBOOK.md`](docs/VPS-HARDENING-RUNBOOK.md)                      |
-| Where did the idea start? (original v1.2 spec, frozen)  | [`INITIAL_IDEA.md`](INITIAL_IDEA.md)                                                  |
+| Question                                                | Document                                                                     |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| **How do I run this on my own VPS?**                    | [`docs/VPS-SETUP.md`](docs/VPS-SETUP.md) — bare box to green deploy          |
+| What is the architecture and plan _now_?                | [`SPECS.md`](SPECS.md) — the living spec                                     |
+| Why is it built this way?                               | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — stable design rationale     |
+| Is it working? (success factors & metrics)              | [`docs/SUCCESS_FACTORS_AND_METRICS.md`](docs/SUCCESS_FACTORS_AND_METRICS.md) |
+| How is it developed? (working rules, incl. AI agents)   | [`AGENTS.md`](AGENTS.md)                                                     |
+| What do the domain words mean? (Kitab, Madzhab, Isnad…) | [`CONTEXT.md`](CONTEXT.md)                                                   |
+| How is the VPS hardened and its data backed up? (GDPR)  | [`docs/VPS-SETUP.md`](docs/VPS-SETUP.md)                                     |
+| Where did the idea start? (original v1.2 spec, frozen)  | [`INITIAL_IDEA.md`](INITIAL_IDEA.md)                                         |
 
 ## Environments
 

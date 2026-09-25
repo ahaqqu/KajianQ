@@ -1,7 +1,7 @@
 name: VPS restore drill
 # The executable restore test for the hardening in #180 (ADR-0043 decision 4):
 # encrypted backups whose restore re-applies erasure. The VPS itself is not
-# reachable from CI, so the drill runs the SAME scripts the runbook tells the
+# reachable from CI, so the drill runs the SAME scripts the setup doc tells the
 # owner to run — `kajianq-backup.mjs` and `kajianq-restore.mjs` — against a
 # scratch Postgres with pgvector in a service container.
 #
@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     # pgvector/pgvector:pg18 — the image this drill tests against, chosen for a
     # pgvector build that can run the engine migration's `CREATE EXTENSION
-    # vector`, the same requirement docs/VPS-HARDENING-RUNBOOK.md states for the
+    # vector`, the same requirement docs/VPS-SETUP.md states for the
     # box. It is deliberately NOT the box's own major: the box is Postgres 17
     # (docs/VPS-OPERATIONS.md §2.1), and the drill's client tools come from the
     # same major as this container because pg_dump refuses a server newer than
@@ -71,7 +71,7 @@ jobs:
         # own ("aborting because of server version mismatch"), and the runner
         # image ships PostgreSQL 16 while the service container is 18. The
         # client therefore comes from the PGDG apt repository at the container's
-        # major — the same repo the runbook uses on the box — rather than from
+        # major — the same repo the setup doc uses on the box — rather than from
         # the distro default.
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg

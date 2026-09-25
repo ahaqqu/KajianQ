@@ -10,7 +10,7 @@ executed and the source it migrated off (Cloudflare Workers + Neon) is
 decommissioned, so there is nothing left here to follow — it is the proof that
 the GDPR-E work happened, and it is what issue #181's acceptance criteria are
 walked against (see the checklist at the end). For setting up a box of your own,
-[`docs/SELF-HOSTING-GUIDE.md`](./SELF-HOSTING-GUIDE.md); for running one,
+[`docs/VPS-SETUP.md`](./VPS-SETUP.md); for running one,
 [`docs/VPS-OPERATIONS.md`](./VPS-OPERATIONS.md). The one procedure here that
 outlived its vendor — moving an existing database onto a new box — is in the
 guide's §12.
@@ -469,7 +469,7 @@ token — recorded so the step is reproducible.
 This box was not bought for the migration; it was already serving a static page.
 The baseline session that took it from bare metal to that state is recorded here
 because `docs/VPS-BASELINE-SETUP.md` has been retired — its bootstrap runbook is
-now `docs/SELF-HOSTING-GUIDE.md` §1, which does the same layer with **nginx**
+now `docs/VPS-SETUP.md` §1, which does the same layer with **nginx**
 instead of the baseline's Caddy (Caddy was retired in step 0 of this record:
 the two cannot share :80/:443). The facts below are what "the box as found"
 above means, kept so the chain of custody has a start.
@@ -505,7 +505,7 @@ source to migrate from. It is kept here because issue #181 is still open and
 closing it means walking these rows against this record — the evidence column
 names what to look for above, not a command to run again.
 
-`docs/SELF-HOSTING-GUIDE.md` §12 carries the vendor-neutral part of the
+`docs/VPS-SETUP.md` §12 carries the vendor-neutral part of the
 procedure (snapshot → verify → ship → restore → snapshot → compare) for anyone
 moving an existing database onto a box, which is the half that outlived the
 Cloudflare/Neon specifics.

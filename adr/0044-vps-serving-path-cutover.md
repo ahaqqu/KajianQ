@@ -20,7 +20,7 @@ Nothing here claims the box is serving today: the repo-side change is complete
 and CI-green, and the on-host application + cutover is the owner's step, now
 **executed** and recorded — with its evidence and the #181 acceptance-criteria
 checklist — in `docs/VPS-CUTOVER-RECORD.md`. A fresh box follows
-`docs/SELF-HOSTING-GUIDE.md`.
+`docs/VPS-SETUP.md`.
 
 ## Context
 
@@ -263,8 +263,8 @@ checklist — in `docs/VPS-CUTOVER-RECORD.md`. A fresh box follows
   `e2e.yml`, `playwright.config.ts` — the harness and CI moves.
 - `docs/VPS-CUTOVER-RECORD.md` — the executed cutover, its evidence, and the
   #181 acceptance-criteria checklist (the runbook it was executed from is
-  retired; `docs/SELF-HOSTING-GUIDE.md` now carries the fork-and-run path);
-  `docs/VPS-HARDENING-RUNBOOK.md` — gains the Caddy teardown step.
+  retired; `docs/VPS-SETUP.md` now carries the fork-and-run path);
+  `docs/VPS-SETUP.md` — gains the Caddy teardown step.
 - `adr/0043-…` amendment, `SPECS.md` §3/§5/§7/§8, `docs/ARCHITECTURE.md`
   §8/§15/§16 — the decisions and the spec kept true in the same PR.
 

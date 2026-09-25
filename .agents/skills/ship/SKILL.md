@@ -22,7 +22,7 @@ for anything below that drifts.
 
 - [`docs/VPS-OPERATIONS.md`](../../../docs/VPS-OPERATIONS.md) §1 (deploy path), §2
   (Postgres, migrations, snapshots, backups), §3 (monitoring).
-- [`docs/VPS-HARDENING-RUNBOOK.md`](../../../docs/VPS-HARDENING-RUNBOOK.md) —
+- [`docs/VPS-SETUP.md`](../../../docs/VPS-SETUP.md) —
   provisioning, the deploy identity's key move, retention verification.
 - `provision/vps/deploy/deploy.sh` — the deploy path itself (build → ship →
   restart → smoke); `.github/workflows/deploy-vps.yml` — its CI trigger.
@@ -95,7 +95,7 @@ running:
   catches it.
 
 Moving a key or a variable is
-[`docs/VPS-HARDENING-RUNBOOK.md`](../../../docs/VPS-HARDENING-RUNBOOK.md) §2b–2c.
+[`docs/VPS-SETUP.md`](../../../docs/VPS-SETUP.md) §2b–2c.
 
 ## Phase 5 — Privacy validation (before promote)
 

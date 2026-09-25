@@ -25,7 +25,7 @@
  *     otherwise a restored row would silently resurrect data the live store had
  *     already deleted (ADR-0043 decision 4).
  *
- * The real-VPS run is the owner's (see docs/VPS-HARDENING-RUNBOOK.md), and the
+ * The real-VPS run is the operator's (see docs/VPS-SETUP.md), and the
  * same code path is exercised in CI by provision/vps/backup/restore-drill.mjs
  * against a scratch cluster.
  */

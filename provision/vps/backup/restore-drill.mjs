@@ -245,8 +245,8 @@ const backupEnv = {
   RESTIC_PASSWORD_FILE: PASS_FILE,
   RESTIC_PASSWORD: "drill-passphrase",
 };
-// One-time repository creation is a runbook step on the VPS
-// (docs/VPS-HARDENING-RUNBOOK.md); the drill does it here so the run is
+// One-time repository creation is a setup-doc step on the VPS
+// (docs/VPS-SETUP.md); the drill does it here so the run is
 // self-contained.
 run("restic", ["init"], { RESTIC_REPOSITORY: REPO_DIR, RESTIC_PASSWORD: "drill-passphrase" });
 const backupOut = run("bun", [`${HERE}kajianq-backup.mjs`, "--label", LABEL], backupEnv);
@@ -271,7 +271,7 @@ console.log(`restore-drill: live state after reclamation + Art. 17 erasure (${SO
 // restore into the scratch target — the production script, twice.
 //
 // Pass 1 uses --skip-erasure so the drill can OBSERVE the resurrected rows (its
-// negative control). Pass 2 is the default mode — the exact command the runbook
+// negative control). Pass 2 is the default mode — the exact command the setup doc
 // tells the owner to run — which re-applies the reclamation and the Art. 17
 // erasure. Both passes restore the same snapshot into the same target, so pass
 // 2 is a genuine run of the shipped erasure path.

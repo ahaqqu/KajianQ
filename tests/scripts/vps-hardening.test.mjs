@@ -932,52 +932,52 @@ describe("provisioning config as code stays true to the ADR", () => {
     }
   });
 
-  it("the self-hosting guide exists and carries the steps a fresh box cannot infer", () => {
+  it("the setup doc exists and carries the steps a fresh box cannot infer", () => {
     // The repository is open source, so the provisioning path has to be
     // followable by someone who is not the owner. Four things a reader cannot
     // derive from the configs, each of which has already broken a real deploy
     // (#181) — pin them so a doc edit cannot quietly drop them.
-    const guide = read("docs/SELF-HOSTING-GUIDE.md");
+    const setup = read("docs/VPS-SETUP.md");
 
     // 1. Bun must be installed at /usr/bin/bun. The units run with
     //    ProtectHome=yes, so a home-directory Bun is invisible to them and
     //    ExecStart fails for a binary that exists.
-    expect(guide).toMatch(/\/usr\/bin\/bun/);
-    // The guide must name the constraint, not just the path.
-    expect(guide).toMatch(/ProtectHome/);
+    expect(setup).toMatch(/\/usr\/bin\/bun/);
+    // The doc must name the constraint, not just the path.
+    expect(setup).toMatch(/ProtectHome/);
     // It must NOT recommend the home-directory installer that causes it.
-    expect(guide).not.toMatch(/curl -fsSL https:\/\/bun\.sh\/install/);
+    expect(setup).not.toMatch(/curl -fsSL https:\/\/bun\.sh\/install/);
 
     // 2. apply.sh installs the Postgres POSTURE but creates no role/database,
     //    so a fresh box has to create them or the API fails to connect.
     const apply = read("provision/vps/apply.sh");
     expect(apply).not.toMatch(/CREATE ROLE|createuser/);
-    expect(guide).toMatch(/CREATE ROLE kajianq LOGIN/);
+    expect(setup).toMatch(/CREATE ROLE kajianq LOGIN/);
 
     // 3. The two chat-path precondition keys (without them health stays green
     //    while every question fails its embedder or reviewer stage).
-    expect(guide).toMatch(/GEMINI_PAID_API_KEY/);
-    expect(guide).toMatch(/DEEPSEEK_API_KEY/);
+    expect(setup).toMatch(/GEMINI_PAID_API_KEY/);
+    expect(setup).toMatch(/DEEPSEEK_API_KEY/);
 
     // 4. The rate-bypass public key is committed, so an unmodified fork
     //    verifies tokens minted by anyone holding the project's private key.
-    //    A public guide has to say so.
+    //    A public setup doc has to say so.
     const bypass = read("apps/api/src/lib/rate-bypass.ts");
     expect(bypass).toMatch(/RATE_BYPASS_PUBLIC_KEY_B64 = "/);
-    expect(guide).toMatch(/rotate/i);
+    expect(setup).toMatch(/rotate/i);
   });
 
-  it("the hardening runbook proves the backup with the SERVICE, not a direct script run", () => {
-    // The trap this pins: the runbook used to prove the backup by running
+  it("the setup doc proves the backup with the SERVICE, not a direct script run", () => {
+    // The trap this pins: the doc used to prove the backup by running
     // `kajianq-backup.mjs` directly. That writes a snapshot but leaves the
     // unit's own ExecMainStatus/ExecMainExitTimestamp untouched, and the
     // deploy's gate reads exactly those — so a box "proven" that way failed its
     // first deploy with "has never run". Proving the script is not proving the
     // unit.
-    const runbook = read("docs/VPS-HARDENING-RUNBOOK.md");
-    expect(runbook).toMatch(/sudo systemctl start kajianq-backup\.service/);
+    const setup = read("docs/VPS-SETUP.md");
+    expect(setup).toMatch(/sudo systemctl start kajianq-backup\.service/);
     // The distinction must be stated, or the next reader reintroduces it.
-    expect(runbook).toMatch(/ExecMainStatus/);
+    expect(setup).toMatch(/ExecMainStatus/);
   });
 
   it("the restore-drill workflow does not claim its image matches the box's major", () => {
@@ -991,27 +991,46 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(workflow).not.toMatch(/the Postgres major the box is provisioned with/);
   });
 
-  it("the guide is reachable from the README and the operator's manual", () => {
+  it("the setup doc is reachable from the README and the operator's manual", () => {
     // An unlinked doc is an unfound doc — the whole point is a self-hoster
     // finding it from the front page.
-    expect(read("README.md")).toMatch(/docs\/SELF-HOSTING-GUIDE\.md/);
-    expect(read("docs/VPS-OPERATIONS.md")).toMatch(/SELF-HOSTING-GUIDE\.md/);
+    expect(read("README.md")).toMatch(/docs\/VPS-SETUP\.md/);
+    expect(read("docs/VPS-OPERATIONS.md")).toMatch(/VPS-SETUP\.md/);
   });
 
   it("the retired VPS docs are gone and their load-bearing content moved, not lost", () => {
-    // The consolidation: the VPS set was five documents plus a stub, written as
-    // a record of one box being built. Three were spent procedures — a baseline
-    // bootstrap, a one-shot migration off Cloudflare + Neon, and a pointer stub
-    // — and were retired. This test is what keeps the retirement honest: it
+    // The consolidation: the VPS set was six documents plus a stub, all written
+    // as a record of one box being built. Four were spent procedures or a
+    // duplicate — a baseline bootstrap, a one-shot migration off Cloudflare +
+    // Neon, a pointer stub, and a hardening runbook whose steps the setup doc
+    // already walked through. This test is what keeps the retirement honest: it
     // fails if a retired file reappears (two sources of truth), and it fails if
     // the content that had to survive is dropped by a later edit.
+    const setup = read("docs/VPS-SETUP.md");
     for (const retired of [
       "docs/VPS-BASELINE-SETUP.md",
       "docs/VPS-CUTOVER-RUNBOOK.md",
+      "docs/VPS-HARDENING-RUNBOOK.md",
       "docs/neon-sizing-issue-4.md",
+      // The pre-rename path: a stale link or a re-created file here means the
+      // rename was half-applied.
+      "docs/SELF-HOSTING-GUIDE.md",
     ]) {
       expect(existsSync(resolve(process.cwd(), retired)), retired).toBe(false);
     }
+
+    // The hardening runbook's substance had to land in the setup doc, or the
+    // merge silently dropped the privacy posture. Four things only it carried:
+    //  the config-as-code inventory, the nginx rationale, the CI-side VPS_USER
+    //  flip, and the retention verification that needs traffic to be meaningful.
+    expect(setup).toMatch(/Everything `apply\.sh` places/);
+    expect(setup).toMatch(/Reverse proxy: nginx, not Caddy/);
+    expect(setup).toMatch(/Retention, not IP masking/);
+    expect(setup).toMatch(/VPS_USER/);
+    expect(setup).toMatch(/Verify retention once traffic exists/);
+    // The retention table's four rows, which ARE the Art. 30 values.
+    expect(setup).toMatch(/restic `--keep-daily`/);
+    expect(setup).toMatch(/journald\/kajianq\.conf/);
 
     // 1. Issue #181 is still open, so the acceptance-criteria walk-through had
     //    to survive somewhere — it is what the issue is closed against.
@@ -1028,17 +1047,16 @@ describe("provisioning config as code stays true to the ADR", () => {
     //    moving an existing database onto a box. Cloudflare and Neon are
     //    specifics a self-hoster does not have; snapshot-verify-ship-compare is
     //    not.
-    const guide = read("docs/SELF-HOSTING-GUIDE.md");
-    expect(guide).toMatch(/## 12\. Moving an existing database/);
-    expect(guide).toMatch(/db:snapshot create/);
-    expect(guide).toMatch(/pg_restore/);
-    expect(guide).toMatch(/db:snapshot verify/);
+    expect(setup).toMatch(/## 12\. Moving an existing database/);
+    expect(setup).toMatch(/db:snapshot create/);
+    expect(setup).toMatch(/pg_restore/);
+    expect(setup).toMatch(/db:snapshot verify/);
 
     // 3. The disk figure. ADR-0020's arithmetic is the only corpus-size estimate
     //    in the repo, and a self-hoster sizing a VPS needs it — it was reachable
     //    from nowhere practical before this.
-    expect(guide).toMatch(/17–18 GiB/);
-    expect(guide).toMatch(/adr\/0020-neon-dual-vector-sizing\.md/);
+    expect(setup).toMatch(/17–18 GiB/);
+    expect(setup).toMatch(/adr\/0020-neon-dual-vector-sizing\.md/);
     // And the ADR must say its Neon recommendation is spent while the math
     // still holds, or a reader acts on pricing for a service that is deleted.
     const adr = read("adr/0020-neon-dual-vector-sizing.md");

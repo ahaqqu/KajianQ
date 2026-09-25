@@ -13,7 +13,7 @@ The estimate — ~700K chunk rows at ~25 KiB/row, ~17–18 GiB with both 1536-di
 vector columns and their HNSW indexes — was computed from the schema and the
 corpus shape, and it is the figure to size **any** Postgres for, including the
 self-hosted one. It is cited by
-[`docs/SELF-HOSTING-GUIDE.md`](../docs/SELF-HOSTING-GUIDE.md) for exactly that.
+[`docs/VPS-SETUP.md`](../docs/VPS-SETUP.md) for exactly that.
 
 Decision 3 below ("Production sizes for the full corpus on the Launch tier or
 above", with Neon's per-GiB-month pricing) is **spent**: the hosting moved to a

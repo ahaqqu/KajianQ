@@ -17,8 +17,7 @@ into the record and the setup guide respectively), and `neon-sizing-issue-4.md`
 | Document                                                                                        | Answers                                                                                                        |
 | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | **this file**                                                                                   | How do I operate the box that is running?                                                                      |
-| [`docs/SELF-HOSTING-GUIDE.md`](./SELF-HOSTING-GUIDE.md)                                         | How do I stand up an instance of my own, from a bare VPS?                                                      |
-| [`docs/VPS-HARDENING-RUNBOOK.md`](./VPS-HARDENING-RUNBOOK.md)                                   | What hardening is applied, step by step, and how do I restore?                                                 |
+| [`docs/VPS-SETUP.md`](./VPS-SETUP.md)                                                           | How do I stand up an instance of my own from a bare VPS — and what hardening does it carry?                    |
 | [`docs/VPS-CUTOVER-RECORD.md`](./VPS-CUTOVER-RECORD.md)                                         | What actually ran on the box, in execution order (append-only), and the #181 acceptance-criteria walk-through. |
 | [`adr/0044-vps-serving-path-cutover.md`](../adr/0044-vps-serving-path-cutover.md)               | Why the serving path is a Bun process behind nginx.                                                            |
 | [`adr/0043-netcup-vps-hosting-gdpr-posture.md`](../adr/0043-netcup-vps-hosting-gdpr-posture.md) | Register, retention values, GDPR posture.                                                                      |
@@ -426,7 +425,7 @@ sudo systemctl list-timers kajianq-backup.timer
 ```
 
 One-time repository init (mints the key) is
-[`docs/VPS-HARDENING-RUNBOOK.md`](./VPS-HARDENING-RUNBOOK.md) step 4 and must
+[`docs/VPS-SETUP.md`](./VPS-SETUP.md) step 4 and must
 happen **before** the timer's first scheduled fire.
 
 ### 2.6 The restore drill, and its one gotcha
@@ -514,7 +513,7 @@ recorded before it is configured.
 ## 3. What hardening is applied
 
 The summary; the step-by-step is
-[`docs/VPS-HARDENING-RUNBOOK.md`](./VPS-HARDENING-RUNBOOK.md), and every file
+[`docs/VPS-SETUP.md`](./VPS-SETUP.md), and every file
 below is config-as-code under [`provision/vps/`](../provision/vps/) placed by
 `apply.sh` (idempotent, fail-closed, `--dry-run` available).
 
@@ -603,7 +602,6 @@ monitoring must not create an unbounded personal-data-adjacent log surface. Issu
 - [`adr/0044-vps-serving-path-cutover.md`](../adr/0044-vps-serving-path-cutover.md) — the serving path, the deployer's home, the single-shot cutover
 - [`adr/0043-netcup-vps-hosting-gdpr-posture.md`](../adr/0043-netcup-vps-hosting-gdpr-posture.md) — the register, retention values, backups
 - [`adr/0038-corpus-snapshot-durability-guardrail.md`](../adr/0038-corpus-snapshot-durability-guardrail.md) — the snapshot discipline
-- [`docs/VPS-HARDENING-RUNBOOK.md`](./VPS-HARDENING-RUNBOOK.md) — the hardening steps and the restore test
-- [`docs/SELF-HOSTING-GUIDE.md`](./SELF-HOSTING-GUIDE.md) — the fork-and-run path: standing up an instance of your own from a bare VPS (this file is the manual for the project's own box)
+- [`docs/VPS-SETUP.md`](./VPS-SETUP.md) — the fork-and-run path: standing up an instance of your own from a bare VPS, including the hardening steps and the restore test (this file is the manual for the project's own box)
 - [`docs/VPS-CUTOVER-RECORD.md`](./VPS-CUTOVER-RECORD.md) — the executed migration, its evidence, and the #181 acceptance-criteria walk-through
 - [`docs/GDPR-ARTICLE-30-RECORD.md`](./GDPR-ARTICLE-30-RECORD.md) — retention values and TOMs this box implements
