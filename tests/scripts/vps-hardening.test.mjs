@@ -931,6 +931,72 @@ describe("provisioning config as code stays true to the ADR", () => {
       expect(example).toMatch(new RegExp(`^${key}=CHANGE_ME$`, "m"));
     }
   });
+
+  it("the self-hosting guide exists and carries the steps a fresh box cannot infer", () => {
+    // The repository is open source, so the provisioning path has to be
+    // followable by someone who is not the owner. Four things a reader cannot
+    // derive from the configs, each of which has already broken a real deploy
+    // (#181) — pin them so a doc edit cannot quietly drop them.
+    const guide = read("docs/SELF-HOSTING-GUIDE.md");
+
+    // 1. Bun must be installed at /usr/bin/bun. The units run with
+    //    ProtectHome=yes, so a home-directory Bun is invisible to them and
+    //    ExecStart fails for a binary that exists.
+    expect(guide).toMatch(/\/usr\/bin\/bun/);
+    // The guide must name the constraint, not just the path.
+    expect(guide).toMatch(/ProtectHome/);
+    // It must NOT recommend the home-directory installer that causes it.
+    expect(guide).not.toMatch(/curl -fsSL https:\/\/bun\.sh\/install/);
+
+    // 2. apply.sh installs the Postgres POSTURE but creates no role/database,
+    //    so a fresh box has to create them or the API fails to connect.
+    const apply = read("provision/vps/apply.sh");
+    expect(apply).not.toMatch(/CREATE ROLE|createuser/);
+    expect(guide).toMatch(/CREATE ROLE kajianq LOGIN/);
+
+    // 3. The two chat-path precondition keys (without them health stays green
+    //    while every question fails its embedder or reviewer stage).
+    expect(guide).toMatch(/GEMINI_PAID_API_KEY/);
+    expect(guide).toMatch(/DEEPSEEK_API_KEY/);
+
+    // 4. The rate-bypass public key is committed, so an unmodified fork
+    //    verifies tokens minted by anyone holding the project's private key.
+    //    A public guide has to say so.
+    const bypass = read("apps/api/src/lib/rate-bypass.ts");
+    expect(bypass).toMatch(/RATE_BYPASS_PUBLIC_KEY_B64 = "/);
+    expect(guide).toMatch(/rotate/i);
+  });
+
+  it("the hardening runbook proves the backup with the SERVICE, not a direct script run", () => {
+    // The trap this pins: the runbook used to prove the backup by running
+    // `kajianq-backup.mjs` directly. That writes a snapshot but leaves the
+    // unit's own ExecMainStatus/ExecMainExitTimestamp untouched, and the
+    // deploy's gate reads exactly those — so a box "proven" that way failed its
+    // first deploy with "has never run". Proving the script is not proving the
+    // unit.
+    const runbook = read("docs/VPS-HARDENING-RUNBOOK.md");
+    expect(runbook).toMatch(/sudo systemctl start kajianq-backup\.service/);
+    // The distinction must be stated, or the next reader reintroduces it.
+    expect(runbook).toMatch(/ExecMainStatus/);
+  });
+
+  it("the restore-drill workflow does not claim its image matches the box's major", () => {
+    // The comment said pg18 "matches the Postgres major the box is provisioned
+    // with"; the box is Postgres 17 (docs/VPS-OPERATIONS.md §2.1). The image is
+    // the schema under test, not a claim about the box — a wrong version claim
+    // in a comment is how a reader concludes the drill tests something it does
+    // not.
+    const workflow = read(".github/workflows/vps-restore-drill.yml");
+    expect(workflow).toMatch(/pgvector\/pgvector:pg18/);
+    expect(workflow).not.toMatch(/the Postgres major the box is provisioned with/);
+  });
+
+  it("the guide is reachable from the README and the operator's manual", () => {
+    // An unlinked doc is an unfound doc — the whole point is a self-hoster
+    // finding it from the front page.
+    expect(read("README.md")).toMatch(/docs\/SELF-HOSTING-GUIDE\.md/);
+    expect(read("docs/VPS-OPERATIONS.md")).toMatch(/SELF-HOSTING-GUIDE\.md/);
+  });
 });
 
 describe("small helpers", () => {

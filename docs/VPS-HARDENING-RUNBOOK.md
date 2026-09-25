@@ -117,10 +117,11 @@ sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env
 7. installs and **enables** `kajianq-cron.{service,timer}` — the nightly
    session reclamation ADR-0017 used to run as a Worker cron (ADR-0044
    decision 7), on the same 03:17 slot;
-8. renders and installs `kajianq-backup.service`/`.timer` (the script path
-   comes from this checkout) and **enables** the timer with
-   `--now`, so the daily encrypted backup is scheduled by config-as-code, not
-   by hand-copied snippets;
+8. installs `kajianq-backup.service`/`.timer` **verbatim** (the unit names a
+   deployed artifact, `/srv/kajianq/api/backup.js`, so there is no placeholder
+   to render and nothing here reads the checkout) and **enables** the timer
+   with `--now`, so the daily encrypted backup is scheduled by config-as-code,
+   not by hand-copied snippets;
 9. creates the **`kajianq-deploy`** identity and installs its grant as code:
    `/etc/sudoers.d/kajianq-deploy` (root:root 0440), written only after
    `visudo -cf` parses the candidate — two `systemctl` commands, no wildcards
@@ -279,13 +280,31 @@ it exists to provide.
 
 ### 5. Take the first backup and confirm the schedule
 
+At this point the deployed bundle does not exist yet (the deploy ships it), so
+the unit cannot execute. Prove the repository with the script:
+
 ```bash
 sudo sh -c '. /etc/kajianq/backup.env && bun provision/vps/backup/kajianq-backup.mjs --label first-run'
 ```
 
 Run this **before** the timer's first scheduled fire (the timer is enabled
 `--now` by `apply.sh`): the one-time `restic init` in step 4 must be observed
-before any automated run. The schedule itself needs no manual install —
+before any automated run.
+
+**Then start the SERVICE once, after the first deploy.** The deploy's backup
+gate reads the unit's own `ExecMainStatus` and `ExecMainExitTimestamp`; a direct
+script run writes a snapshot but leaves both untouched, so a box proven only
+that way fails its first deploy with "has never run". That failure is the gate
+working — it cannot certify a backup that never ran — and the fix is one
+command, then a re-deploy:
+
+```bash
+# After the deploy has shipped /srv/kajianq/api/backup.js.
+sudo systemctl start kajianq-backup.service
+```
+
+Expect the **first** deploy on a fresh box to stop at that gate; start the
+service and deploy again. The schedule itself needs no manual install —
 `kajianq-backup.service` and `kajianq-backup.timer` ship as config-as-code
 (`provision/vps/systemd/`) and are installed and enabled by `apply.sh`:
 

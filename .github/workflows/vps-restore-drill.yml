@@ -38,9 +38,15 @@ permissions:
 jobs:
   drill:
     runs-on: ubuntu-latest
-    # pgvector/pgvector:pg18 matches the engine migration's `CREATE EXTENSION
-    # vector` and the Postgres major the box is provisioned with
-    # (docs/VPS-HARDENING-RUNBOOK.md), so the drill tests the real schema.
+    # pgvector/pgvector:pg18 — the image this drill tests against, chosen for a
+    # pgvector build that can run the engine migration's `CREATE EXTENSION
+    # vector`, the same requirement docs/VPS-HARDENING-RUNBOOK.md states for the
+    # box. It is deliberately NOT the box's own major: the box is Postgres 17
+    # (docs/VPS-OPERATIONS.md §2.1), and the drill's client tools come from the
+    # same major as this container because pg_dump refuses a server newer than
+    # itself. So this is the schema under test, not a claim about the box's
+    # version — a dump taken on 17 must stay restorable, which is why the
+    # migration and the scripts carry no version-specific SQL.
     services:
       postgres:
         image: pgvector/pgvector:pg18
