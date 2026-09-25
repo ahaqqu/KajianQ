@@ -1,17 +1,19 @@
 # Schemathesis configuration
 # https://docs.schemathesis.io
 
-# Suppress unsupported_method: Cloudflare Workers edge returns 405 for
-# TRACE/CONNECT without the RFC 9110-required Allow header. This is
-# Cloudflare edge behavior, not an app bug — we cannot control the response
-# headers Cloudflare sends for methods our app doesn't handle.
-# Revisit if Cloudflare fixes RFC 9110 compliance.
+# Suppress unsupported_method: the ingress returns 405 for TRACE/CONNECT without
+# the RFC 9110-required Allow header. This is the proxy's behavior, not an app
+# bug — our app never sees those methods, so we cannot control the response (it
+# was Cloudflare's edge before ADR-0044; nginx answers it now, verified against
+# the live host 2026-09-21: TRACE → 405, no Allow header). The app's own routes
+# return proper 405s where they exist, so nothing app-level is being masked.
+# Revisit if a future ingress adds the header.
 [checks.unsupported_method]
 enabled = false
 
-# Stop sending unsupported-method requests during the coverage phase —
-# they're handled by the Cloudflare edge, not our Worker, so testing them
-# adds noise without finding app bugs.
+# Stop sending unsupported-method requests during the coverage phase — the
+# ingress answers them before our app, so testing them adds noise without
+# finding app bugs.
 [phases.coverage]
 unexpected-methods = []
 

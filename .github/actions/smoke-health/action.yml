@@ -1,9 +1,11 @@
 name: "Smoke health check"
 description: >-
   Retry an HTTP smoke check until the response body matches a pattern.
-  Cloudflare edge propagation can lag a few seconds after a deploy
-  returns, so deploy pipelines wait and retry rather than failing transiently
-  on a stale isolate (issue #49: one implementation, fork-owned).
+  A deploy can take a few seconds to become visible — the API restarts and
+  nginx picks up the new upstream — so deploy pipelines wait and retry rather
+  than failing transiently on a still-restarting process (issue #49: one
+  implementation, fork-owned). The retry stays useful post-ADR-0044 for the
+  same reason it existed before: the signal is eventually-consistent.
 inputs:
   name:
     description: "Label used in log lines and the failure annotation."

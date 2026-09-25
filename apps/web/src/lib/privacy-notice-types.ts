@@ -13,10 +13,12 @@ import type { Localized } from "./localized";
 
 /**
  * When a vendor's row describes the processing. `current` is serving traffic
- * today, `transition` is in use today but narrowed or retired at the netcup
- * cutover, `planned` is the destination and is not in use yet, and
- * `no-serving-role` is a catalogued or bench-only vendor that carries no
- * serving traffic (personal data never reaches it in the live path).
+ * today, `no-serving-role` is a catalogued or bench-only vendor that carries no
+ * serving traffic (personal data never reaches it in the live path), and
+ * `transition` (in use today but narrowed or retired at a cutover) and
+ * `planned` (a destination not yet in use) are retained for the next posture
+ * change — after the 2026-09-21 cutover no row carries either, and the notice's
+ * drift guards pin that.
  */
 export type ProcessorStatus = "current" | "transition" | "planned" | "no-serving-role";
 

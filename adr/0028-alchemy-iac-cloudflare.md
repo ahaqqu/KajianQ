@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted (2026-09-05). Companion to ADR-0027 (Effect adoption in engine packages + API): Alchemy v2 is itself Effect-based ("Infrastructure as Effects"), but the Effect it runs is deploy-side tooling under Bun and does not pre-empt or accelerate ADR-0027's engine migration phases. Owner-directed adoption (alchemy.run getting-started).
+Accepted (2026-09-05). **Serving path superseded by [ADR-0044](0044-vps-serving-path-cutover.md) (accepted 2026-09-20).** The Cloudflare Worker topology this ADR describes — the Alchemy stack file, the Durable Object rate limiter, the R2 binding, and `alchemy dev` as the local/e2e runtime — is removed; the serving path is now a plain Bun process behind nginx on the netcup VPS, described by `provision/vps/`. What stands is the _idea_: the topology is described as code and wrangler stays retired. The text below is history, not the operative record.
+
+Companion to ADR-0027 (Effect adoption in engine packages + API): Alchemy v2 is itself Effect-based ("Infrastructure as Effects"), but the Effect it runs is deploy-side tooling under Bun and does not pre-empt or accelerate ADR-0027's engine migration phases. Owner-directed adoption (alchemy.run getting-started).
 
 ## Context
 

@@ -1,4 +1,9 @@
-/** Structural type for the Workers ASSETS binding — no platform type import needed. */
+/**
+ * Structural type for a static-asset fetcher — no platform type import needed.
+ * The serving path supplies the disk-backed one (`createDiskAssetFetcher`,
+ * apps/api/src/lib/assets.ts); the shape is kept structural so this package
+ * stays host-agnostic.
+ */
 export type AssetFetcher = { fetch: (request: Request) => Promise<Response> };
 
 export type ServeAssetsOptions = {
@@ -20,10 +25,10 @@ const IMMUTABLE_CACHE = "public, max-age=31536000, immutable";
 
 /**
  * SPA fallback for the final catch-all route. Route every request through
- * the Hono stack first (Alchemy `runWorkerFirst: true`), then call this
- * from the catch-all so the SPA gets the same security headers, CORS, and
- * rate limiting as the API. Content-hashed assets are served `immutable`;
- * HTML keeps the platform's revalidating default so deploys pick up new
+ * the Hono stack first (so it gets the same security headers, CORS, and rate
+ * limiting as the API), then call this from the catch-all. Content-hashed
+ * assets are served `immutable`; HTML keeps a revalidating default so deploys
+ * pick up new
  * asset hashes immediately.
  */
 export async function serveAssets(

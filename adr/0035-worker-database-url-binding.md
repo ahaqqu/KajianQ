@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted (2026-09-09). Amends ADR-0028 (adds a binding to the stack map; Neon stays external — the stack still declares no Neon resource).
+Accepted (2026-09-09). **Superseded by [ADR-0044](0044-vps-serving-path-cutover.md) (accepted 2026-09-20).** The binding this ADR defines no longer exists: there is no Worker, `NEON_DATABASE_URL` is removed outright (ADR-0044 decision 5 — a back-compat alias would keep a vendor in the configuration of a self-hosted store), and the connection env is the vendor-free `DATABASE_URL` read from `/etc/kajianq/api.env`. What the ADR stood for — the chat route is load-bearing in staging CI, so a deploy that leaves it unconfigured must fail loudly — still holds, enforced by the deploy smoke and the Golden Set smoke.
+
+Amends ADR-0028 (adds a binding to the stack map; Neon stays external — the stack still declares no Neon resource).
 
 Tickets: none (CI repair: staging run 34300461139 failed when the DAST step fuzzed `/v1/chat` and hit the undocumented 503).
 

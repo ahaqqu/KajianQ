@@ -211,15 +211,23 @@ describe("AboutPage", () => {
     expect(privacy.textContent).toContain("data pribadi tidak pernah lewat tingkat gratis");
     expect(netcup.textContent).toContain("Berbayar · Boleh membawa data pribadi");
 
-    // Retention rows, with the live/planned split visible.
+    // Retention rows. Post-cutover every window stated is enforced by something
+    // live on the host (the 2026-09-21 cutover applied the logrotate stanzas and
+    // the backup timer — Art. 30 §7 "Applied on the host"), so no row renders as
+    // planned and none carries a ticket: claiming `planned` for enforced work
+    // understates the protection as much as the reverse would overstate it.
     const retention = within(privacy).getAllByTestId("about-privacy-retention-row");
     expect(retention.length).toBe(RETENTION.length);
     expect(
       retention.find((row) => row.textContent?.includes("30 hari tanpa aktivitas")),
     ).toBeDefined();
+    for (const row of retention) {
+      expect(row.getAttribute("data-status")).toBe("current");
+      expect(row.textContent).not.toContain("direncanakan");
+    }
     const accessLogs = retention.find((row) => row.textContent?.includes("Log akses"))!;
-    expect(accessLogs.getAttribute("data-status")).toBe("planned");
-    expect(accessLogs.textContent).toContain("direncanakan · #180");
+    expect(accessLogs.textContent).toContain("14 hari");
+    expect(accessLogs.textContent).not.toContain("#180");
 
     // The erasure card names the real endpoint and the actual gap.
     const erasure = within(privacy).getByTestId("about-privacy-erasure");

@@ -179,10 +179,41 @@ ssh -i <deploy-private-key> kajianq-deploy@<host> \
     'sudo -n systemctl restart kajianq-api.service && systemctl is-active kajianq-api.service'
 ```
 
+Once that works, remove the `kajianq-vps-deploy-key*` lines from
+`/home/<admin>/.ssh/authorized_keys` — leaving them would keep a deploy
+credential usable against the admin account, which is the arrangement this step
+exists to end.
+
+#### 2c. Flip `VPS_USER` — the host step's CI half
+
+Moving the key is only half the change: CI still connects as whatever
+`vars.VPS_USER` names. That variable currently holds the **admin login**, so
+after §2b the runner would present the deploy key to an account that no longer
+authorizes it and the deploy would fail to authenticate — a different symptom
+(`Permission denied (publickey)`) of the same misconfiguration. Flip it in both
+places it is set:
+
+```bash
+# Repo-level (read by deploy-vps.yml and the Staging tunnel).
+gh variable set VPS_USER --body kajianq-deploy
+
+# The `prod` environment carries its own environment-scoped copy, which
+# overrides the repo-level value for a prod dispatch.
+gh api --method PATCH repos/{owner}/{repo}/environments/prod/variables/VPS_USER \
+    -f name=VPS_USER -f value=kajianq-deploy
+```
+
+Verify both, then confirm no scope still says the admin login:
+
+```bash
+gh variable list | grep VPS_USER
+gh api repos/{owner}/{repo}/environments/prod/variables --jq '.variables[] | "\(.name)=\(.value)"' | grep VPS_USER
+```
+
 Then verify end to end by dispatching `Deploy to VPS` for `staging`: the
 restart step passing is the real proof, since that is where the missing grant
-failed. The same key is reused by the Staging workflow's database tunnel, so
-that job must be green too.
+failed. The same key and variable are reused by the Staging workflow's database
+tunnel (it connects as `KAJIANQ_DEPLOY_USER`), so that job must be green too.
 
 Retention check (do this **after** traffic exists, so segments are real):
 

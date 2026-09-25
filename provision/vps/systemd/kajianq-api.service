@@ -1,9 +1,10 @@
 # provision/vps/systemd/kajianq-api.service — the API process (ADR-0043, #180).
 #
-# The Hono Worker is a Cloudflare-runtime artifact today; GDPR-E (#181) owns
-# the Bun/Node serving entry. This unit is the hardening half: the process
-# runs unprivileged, reads its configuration from a root-owned env file that is
-# not in the repository, and writes only structured JSON to stdout.
+# The Bun serving entry (`apps/api/src/boot.ts`, bundled to index.js by
+# provision/vps/deploy/deploy.sh — ADR-0044 decision 1). This unit is the
+# hardening half: the process runs unprivileged, reads its configuration from a
+# root-owned env file that is not in the repository, and writes only structured
+# JSON to stdout.
 #
 # Logging: apps/api's logger emits one JSON object per line with a correlation
 # id and NO IP address (packages/infra/src/logger.ts; Art. 30 record §7 "Data

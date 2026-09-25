@@ -34,7 +34,7 @@ For each area the plan touches, verify compliance before writing code.
 
 - [ ] Raw SQL migration written in the owning package's `migrations/` dir — engine (`packages/infra/migrations`), product API (`apps/api/migrations`), or concept graph (`packages/kajianq-domain/migrations`); engine schema stays domain-agnostic.
 - [ ] Applied via the `db:up` / `db:down` / `db:status` scripts (root `package.json`); no ad hoc `psql`/driver calls.
-- [ ] SQL targets Neon Postgres — standard SQL + `pgvector` where the feature demands it; no engine-specific extensions.
+- [ ] SQL targets Postgres over TCP (`DATABASE_URL`, self-hosted on the VPS — ADR-0044) — standard SQL + `pgvector` where the feature demands it; no vendor-specific extensions.
 - [ ] No direct DB client imports outside the `RagStore` adapter and migrations (enforced by the boundary gate).
 
 ### Client state
@@ -61,20 +61,20 @@ For each area the plan touches, verify compliance before writing code.
 ### Adapters
 
 - [ ] Interface defined in `packages/infra/` first, before implementation.
-- [ ] Adapter injected via env vars. Business logic never imports Cloudflare-specific types.
+- [ ] Adapter injected via env vars, read once at the composition root (`apps/api/src/lib/server.ts`); business logic never imports host-specific types.
 - [ ] Business logic accesses adapters through the interface — never through `env.*` directly.
 
 ### Security
 
 - [ ] Valibot validates every external input boundary.
-- [ ] Secrets declared in `apps/api/alchemy.run.ts` as `Config.redacted` → `secret_text`, bound only when present in the deploy environment — never committed, never written empty over a live value.
-- [ ] `secure-headers` middleware applied (`packages/hardening`); CORS locked to known origins (`ALLOWED_ORIGINS`).
+- [ ] Secrets arrive through the root-owned `EnvironmentFile=/etc/kajianq/api.env` (mode 0600, never the unit text, never `argv`) or the CI environment — never committed, never written empty over a live value. A new key joins `apps/api/src/lib/server.ts`'s `PASSTHROUGH_KEYS` **and** `provision/vps/api.env.example` (a test pins the two in sync).
+- [ ] `secure-headers` middleware applied (`packages/hardening`); CORS locked to known origins (`ALLOWED_ORIGINS`). Static paths served by nginx carry their own headers (`provision/vps/nginx/kajianq.conf`).
 
 ### Testing
 
 - [ ] Unit tests (Vitest) for all business logic, schemas, store queries. Effect programs run under test via `Effect.runPromise`.
 - [ ] Property tests (fast-check) for any CRDT/merge logic, migration logic, or stateful algorithm the plan introduces; existing exemplars: `packages/contracts/src/trace.test.ts`.
-- [ ] BDD tests (Playwright-BDD) for user-facing flows, run against `alchemy dev` (local workerd) via `bun run e2e`.
+- [ ] BDD tests (Playwright-BDD) for user-facing flows, run against the real serving entry (`playwright.config.ts` boots `apps/api/src/boot.ts` — the same Bun process production runs) via `bun run e2e`.
 - [ ] Coverage above 80% lines/functions/statements, 70% branches over logic globs (packages, API, web lib); UI components are covered by BDD + axe instead. See `.agents/skills/writing-tests/SKILL.md` for patterns (load it in the test phase, Phase boundary 2).
 
 ## KajianQ/DARS domain checklist
@@ -144,7 +144,7 @@ mandatory, not advisory:
 ## After implementation
 
 - Run the project CI gates locally: `bun run check`, `bun run lint` (Vite+ `vp check` + vite-pin guard), `bun run test` (Vitest under `vp test` — runs on vp's managed Node, not bun), `bun run boundary`, `bun run agentic-limits`, `bun run openapi:check`, `bun run size-limit`. See `docs/ARCHITECTURE.md` §16 for tooling.
-- API/dev/deploy lifecycle goes through Alchemy: local dev and e2e boot the Worker via `alchemy dev` (no Cloudflare credentials needed, no wrangler); deploys are `bun run deploy` / `deploy:staging`, and rollback for a bad deploy is `git revert` + re-run the stage deploy.
+- The API/dev/deploy lifecycle goes through the VPS deploy path (ADR-0044): local dev and e2e boot the real Bun entry (`bun run api:serve`, or `playwright.config.ts` for the suite); deploys are `provision/vps/deploy/deploy.sh` (or a `Deploy to VPS` dispatch). Host preconditions — the deploy identity's grant, `VPS_USER`, `api.env` — are in `.agents/skills/ship/SKILL.md`; a bad deploy is rolled back with `git revert` (there is no instant rollback).
 - Verify against `AGENTS.md` Definition of Done.
 - Report what was implemented and what changed from the plan.
 - **Handoff:** in the test phase (Phase boundary 2), the fresh scoped context
