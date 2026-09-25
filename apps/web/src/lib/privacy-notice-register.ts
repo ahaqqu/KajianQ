@@ -111,6 +111,30 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
     },
   },
   {
+    id: "gemini-paid",
+    name: "Google (Gemini API, paid)",
+    status: "current",
+    role: {
+      // Keyed separately from the free-tier row above because the register rule
+      // keys on TERMS, not on the model: the same API and the same model id on
+      // standard/paid terms may carry personal data, the free tier may not. The
+      // serving retriever embeds the user's sub-queries, so the embedder role
+      // rides this row (#181, ADR-0043's recorded gap closure).
+      id: "LLM: peran embedder — meng-embed sub-kueri pengguna saat pencarian.",
+      en: "LLM: the embedder role — embeds the user's sub-queries at retrieval time.",
+    },
+    personalData: {
+      id: "Sub-kueri pengguna yang di-embed oleh retriever saat melayani.",
+      en: "The user's sub-queries, embedded by the serving retriever.",
+    },
+    tier: "paid",
+    verdict: "permitted",
+    note: {
+      id: "Ketentuan berbayar/standar dengan DPA — inilah yang membuat data pribadi boleh lewat sini, bukan tingkat gratisnya (ADR-0009, aturan register).",
+      en: "Paid/standard terms with a DPA — that is what makes personal data permissible here, not the free tier (ADR-0009, the register rule).",
+    },
+  },
+  {
     id: "deepseek",
     name: "DeepSeek",
     status: "current",
