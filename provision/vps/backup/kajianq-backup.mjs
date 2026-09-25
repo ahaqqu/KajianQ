@@ -26,7 +26,8 @@
  * the owner's encrypted storage endpoint, configured in backup.env.
  */
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import {
   BACKUP_KEEP_DAILY,
@@ -50,6 +51,23 @@ function run(cmd, args, opts = {}) {
   const res = spawnSync(cmd, args, { env: process.env, encoding: "utf8", ...opts });
   if (res.error) fail(`${cmd} could not run: ${res.error.message}`);
   if (res.status !== 0) fail(`${cmd} exited ${res.status}: ${(res.stderr || "").trim()}`);
+  return (res.stdout || "").trim();
+}
+
+/**
+ * Best-effort probe that NEVER aborts the run.
+ *
+ * `run()` fails through this script's `fail()`, which calls `process.exit(1)` —
+ * and an exit is not an exception, so no `try/catch` around a `run()` call can
+ * recover from it. That made `gitInfo()`'s guard dead code: the unit runs with
+ * `WorkingDirectory=/srv/kajianq` (the deployed tree, not a repository), so
+ * `git rev-parse` exited 128 and the WHOLE BACKUP aborted over a provenance
+ * field `buildManifest` already defaults to "unknown" — the worst thing to
+ * abort a backup over (#181). Provenance therefore uses this, not `run()`.
+ */
+function probe(cmd, args, opts = {}) {
+  const res = spawnSync(cmd, args, { env: process.env, encoding: "utf8", ...opts });
+  if (res.error || res.status !== 0) return undefined;
   return (res.stdout || "").trim();
 }
 
@@ -101,15 +119,24 @@ function tableCounts() {
   return counts;
 }
 
+/**
+ * The deployed revision, for the manifest's provenance field.
+ *
+ * Best-effort by design: a backup's integrity does not depend on knowing which
+ * commit produced it, so nothing here may abort the run. `probe` (not `run`)
+ * makes that true — see its comment for why the `try/catch` this replaced could
+ * never fire.
+ *
+ * `cwd` is pointed at the script's own directory rather than inherited: the
+ * unit's `WorkingDirectory` is the deployed tree, which is not a repository, so
+ * an inherited cwd would always miss even where a checkout exists alongside.
+ */
 function gitInfo() {
-  try {
-    return {
-      sha: run("git", ["rev-parse", "HEAD"]),
-      branch: run("git", ["rev-parse", "--abbrev-ref", "HEAD"]),
-    };
-  } catch {
-    return { sha: "unknown", branch: "unknown" };
-  }
+  const cwd = dirname(fileURLToPath(import.meta.url));
+  return {
+    sha: probe("git", ["rev-parse", "HEAD"], { cwd }) ?? "unknown",
+    branch: probe("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd }) ?? "unknown",
+  };
 }
 
 async function main() {
