@@ -27,6 +27,10 @@ address, credential, or user name — `<host>`, `<user>`, `<IP>` are placeholder
 The real values live in the owner's password manager and in `/etc/kajianq/*.env`
 (mode 0600) on the box and on the deploying machine.
 
+Loading corpus data onto this box's database is its own runbook:
+[`docs/CORPUS-INGEST.md`](./CORPUS-INGEST.md) — the local, tunnel-based ingest
+sequence with the ADR-0038 snapshot gate.
+
 ## 0. What runs on the box
 
 ```
@@ -579,23 +583,24 @@ monitoring must not create an unbounded personal-data-adjacent log surface. Issu
 
 ## 5. Common operations at a glance
 
-| I want to…                           | Do this                                                                                                 |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| Deploy the current `main` to staging | push a code-bearing commit to `main` (or dispatch the `Staging` workflow)                               |
-| Deploy a specific ref manually       | dispatch `Deploy to VPS` with `environment: staging`, then again with `prod` (approval)                 |
-| Deploy from the deploying machine    | `provision/vps/deploy/deploy.sh --env /etc/kajianq/deploy.env`                                          |
-| See what a deploy would do           | `provision/vps/deploy/deploy.sh --dry-run`                                                              |
-| Apply/refresh hardening              | `sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env` (idempotent)                                 |
-| Check migrations                     | `DATABASE_URL=… bun run db:status:all` (§2.3)                                                           |
-| Take a snapshot                      | `DATABASE_URL=… bun run db:snapshot create <lowercase-label>` with the posture flag (§2.4)              |
-| Verify a snapshot                    | `bun run db:snapshot verify <label>`                                                                    |
-| Take a backup now                    | `sudo sh -c '. /etc/kajianq/backup.env && bun provision/vps/backup/kajianq-backup.mjs --label <label>'` |
-| List backups                         | `sudo sh -c '. /etc/kajianq/backup.env && restic snapshots'`                                            |
-| Drill a restore                      | §2.6, with the inherited `RESTIC_*`/`PG*` stripped                                                      |
-| Restore for real                     | `kajianq-restore.mjs --label … --target-url <scratch>` (§2.7)                                           |
-| Reach the DB from elsewhere          | ssh tunnel (§2.8), port 15433 to match the CI convention                                                |
-| Read the API logs                    | `sudo journalctl -u kajianq-api -f` (non-root users need `systemd-journal` group membership)            |
-| Check the schedules                  | `systemctl list-timers kajianq-cron.timer kajianq-backup.timer`                                         |
+| I want to…                            | Do this                                                                                                                         |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Deploy the current `main` to staging  | push a code-bearing commit to `main` (or dispatch the `Staging` workflow)                                                       |
+| Deploy a specific ref manually        | dispatch `Deploy to VPS` with `environment: staging`, then again with `prod` (approval)                                         |
+| Deploy from the deploying machine     | `provision/vps/deploy/deploy.sh --env /etc/kajianq/deploy.env`                                                                  |
+| See what a deploy would do            | `provision/vps/deploy/deploy.sh --dry-run`                                                                                      |
+| Apply/refresh hardening               | `sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env` (idempotent)                                                         |
+| Check migrations                      | `DATABASE_URL=… bun run db:status:all` (§2.3)                                                                                   |
+| Take a snapshot                       | `DATABASE_URL=… bun run db:snapshot create <lowercase-label>` with the posture flag (§2.4)                                      |
+| Verify a snapshot                     | `bun run db:snapshot verify <label>`                                                                                            |
+| Take a backup now                     | `sudo sh -c '. /etc/kajianq/backup.env && bun provision/vps/backup/kajianq-backup.mjs --label <label>'`                         |
+| List backups                          | `sudo sh -c '. /etc/kajianq/backup.env && restic snapshots'`                                                                    |
+| Drill a restore                       | §2.6, with the inherited `RESTIC_*`/`PG*` stripped                                                                              |
+| Restore for real                      | `kajianq-restore.mjs --label … --target-url <scratch>` (§2.7)                                                                   |
+| Reach the DB from elsewhere           | ssh tunnel (§2.8), port 15433 to match the CI convention                                                                        |
+| Load the corpus (ingest a collection) | [`docs/CORPUS-INGEST.md`](./CORPUS-INGEST.md) — the operator runbook: preconditions, the snapshot gate, one pass per collection |
+| Read the API logs                     | `sudo journalctl -u kajianq-api -f` (non-root users need `systemd-journal` group membership)                                    |
+| Check the schedules                   | `systemctl list-timers kajianq-cron.timer kajianq-backup.timer`                                                                 |
 
 ## Related
 

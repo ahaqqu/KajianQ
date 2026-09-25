@@ -1,5 +1,14 @@
 # ADR-0039: Staging carries a minimal corpus; the full corpus is a production milestone
 
+> **Update 2026-09-26 (issue #213): the production half of decision 2 has
+> executed.** ADR-0044 moved the store to the self-hosted VPS (removing the
+> 0.5 GB cap that motivated this ADR), and the full corpus — the six remaining
+> hadith collections — loaded there per ADR-0037's pass discipline and
+> ADR-0038's snapshot gate (run record: `docs/CORPUS-INGEST.md` §4). The
+> minimal-corpus scope is **retired for the production store**; the historical
+> decision below stands as the record of why staging was scoped, and of the
+> cap-era trade-offs (HNSW/precision levers, the dhaif-trap residual risk).
+
 ## Status
 
 Accepted (2026-09-12). Scopes the staging corpus for the MVP. Amends the corpus
@@ -97,7 +106,11 @@ or ADR-0038 (how the result is protected).
 ## Revisit triggers
 
 - The production store exists, or kitab ingestion begins → load the full corpus
-  there and retire the minimal-corpus scope.
+  there and retire the minimal-corpus scope. **Fired 2026-09-26 (issue #213)**:
+  the cap came off with ADR-0044, and the six remaining collections landed on
+  the VPS store — the trigger's condition and its action are both closed. What
+  remains of this ADR is the staging-scoping _reasoning_ above and the
+  production-milestone framing of the full corpus.
 - A collection-specific retrieval bug appears → widen the staging corpus
   deliberately, checking headroom first.
 - The HNSW or embedding-precision levers become necessary → each needs its own

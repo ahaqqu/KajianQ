@@ -68,3 +68,4 @@ export {
   type RetrievalTrack,
   type SimilarChild,
 } from "./rag-store";
+export { type RagStoreCorpus } from "./rag-store-corpus-seam";

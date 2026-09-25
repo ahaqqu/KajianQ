@@ -94,8 +94,17 @@ budget semantics are unchanged.
 ## Revisit triggers
 
 - Corpus loading becomes routine (new collections per release) → add a committed
-  `--only-missing` guard and revisit decision 1.
+  `--only-missing` guard and revisit decision 1. **Fired 2026-09-26 (issue #213,
+  six collections at once)**: the guard is committed — `onlyMissingCollections`
+  in `packages/kajianq-domain/scripts/collection-range.mjs` (unit-tested with the
+  range rules), reading landed counts through the new
+  `RagStore.countDocChildrenByMetadata` seam _before_ any acquisition and
+  refusing a no-op paid pass when every selected collection already landed. The
+  guard narrows the operator's range; it does not replace decision 1 — a pass
+  is still one bounded range, and resumption is still by measured store state.
 - Embedding prices stop being booked at 0 → add a real spend cap to the ingest
-  path.
+  path. **Partially fired 2026-09-20 (#181)**: embeddings moved to the paid
+  `gemini-paid` row (priced, `models.json`), so embedding spend is now real;
+  the enforced bound remains volume + the $5 hard abort rule.
 - Staging gains a disposable, restorable database → ingestion could return to CI
   without the money/evidence coupling risk.
