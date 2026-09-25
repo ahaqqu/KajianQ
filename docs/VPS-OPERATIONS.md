@@ -596,5 +596,6 @@ monitoring must not create an unbounded personal-data-adjacent log surface. Issu
 - [`adr/0043-netcup-vps-hosting-gdpr-posture.md`](../adr/0043-netcup-vps-hosting-gdpr-posture.md) — the register, retention values, backups
 - [`adr/0038-corpus-snapshot-durability-guardrail.md`](../adr/0038-corpus-snapshot-durability-guardrail.md) — the snapshot discipline
 - [`docs/VPS-HARDENING-RUNBOOK.md`](./VPS-HARDENING-RUNBOOK.md) — the hardening steps and the restore test
+- [`docs/SELF-HOSTING-GUIDE.md`](./SELF-HOSTING-GUIDE.md) — the fork-and-run path: standing up an instance of your own from a bare VPS (this file is the manual for the project's own box)
 - [`docs/VPS-CUTOVER-RUNBOOK.md`](./VPS-CUTOVER-RUNBOOK.md) / [`RECORD`](./VPS-CUTOVER-RECORD.md) — the executed migration and its evidence
 - [`docs/GDPR-ARTICLE-30-RECORD.md`](./GDPR-ARTICLE-30-RECORD.md) — retention values and TOMs this box implements
