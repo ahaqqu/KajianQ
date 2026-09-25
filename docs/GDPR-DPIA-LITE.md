@@ -11,19 +11,6 @@ present scale, (b) the one honest complication — chat content can reveal Art. 
 religious convictions — and (c) the mitigations that keep that risk proportionate.
 It is written so the owner can revisit it at public beta rather than re-derive it.
 
-**Why this is a separate document from the Art. 30 record, and should stay one.**
-They are different instruments with different lifecycles. The Art. 30 record is
-a **register** — a living inventory meant to be edited whenever retention, a
-processor, or the processing itself changes, and `AGENTS.md` binds every
-personal-data PR to keeping it current. This note is a **point-in-time
-assessment** — a screening judgement with a date on it, whose value is that it
-was made deliberately and will be re-made when a revisit trigger fires (§5). Its
-conclusions are not meant to be incrementally patched the way a register is.
-Merging them would give one document two lifecycles, and the screening would
-quietly become something that is always "current" and was never actually
-re-assessed. The register holds the measures (§7); this note holds the Art. 9
-risk reasoning about them, and the two move together when a measure changes.
-
 ## 1. The Art. 35(1) screening question
 
 Art. 35(1) requires a DPIA where a type of processing is **likely to result in a
