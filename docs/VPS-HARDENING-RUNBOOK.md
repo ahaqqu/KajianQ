@@ -7,13 +7,16 @@ Reproducible steps for the netcup VPS privacy posture fixed in
 [`docs/GDPR-ARTICLE-30-RECORD.md`](./GDPR-ARTICLE-30-RECORD.md) §7.
 
 Scope: **hardening only.** This runbook migrates no personal data and starts no
-serving process. Moving the API and the database is GDPR-E (**#181**), whose
-executable half is [`docs/VPS-CUTOVER-RUNBOOK.md`](./VPS-CUTOVER-RUNBOOK.md) —
-run the cutover runbook, which calls this one's steps in order. The DPA must be
-concluded in the netcup CCP (**#178**) before either runs. Nothing here writes
-to a store that holds personal data, because on a freshly bought VPS none exists
-yet.
-
+serving process. Moving the API and the database was GDPR-E (**#181**), which is
+**executed** — its runbook has been retired now that there is nothing left to
+migrate off, and its evidence, its acceptance-criteria checklist, and the
+vendor-neutral data-move procedure live in
+[`docs/VPS-CUTOVER-RECORD.md`](./VPS-CUTOVER-RECORD.md) and
+[`docs/SELF-HOSTING-GUIDE.md`](./SELF-HOSTING-GUIDE.md) §12 respectively. To
+stand up a box of your own, follow the self-hosting guide, which calls this
+runbook's steps in order. The DPA must be concluded in the netcup CCP
+(**#178**) before a box touches personal data. Nothing here writes to a store
+that holds personal data, because on a freshly bought VPS none exists yet.
 Everything the runbook places is config-as-code under
 [`provision/vps/`](../provision/vps/):
 
@@ -43,8 +46,9 @@ also work; it buys nothing here, because rotation is logrotate's job
 (ADR-0043 decision 4), not the proxy's.
 
 **The bootstrap's Caddy must be retired before this runbook applies.** The
-baseline setup served a static page through Caddy
-(`docs/VPS-BASELINE-SETUP.md`), and Caddy and nginx cannot share :80/:443.
+baseline setup (2026-09-20; retained at the end of
+[`docs/VPS-CUTOVER-RECORD.md`](./VPS-CUTOVER-RECORD.md)) served a static page
+through Caddy, and Caddy and nginx cannot share :80/:443.
 The proxy choice is decided — nginx — and recorded in ADR-0044 decision 4, so
 the teardown is a prerequisite step, not an alternative:
 
@@ -54,8 +58,10 @@ sudo rm -f /etc/caddy/Caddyfile
 sudo ss -lntp | grep -E ':(80|443)\b'   # must be empty before apply.sh runs
 ```
 
-The full ordered cutover — including this teardown — is
-[`docs/VPS-CUTOVER-RUNBOOK.md`](./VPS-CUTOVER-RUNBOOK.md) step 0.
+The full ordered path — including this teardown — is
+[`docs/SELF-HOSTING-GUIDE.md`](./SELF-HOSTING-GUIDE.md); the executed cutover
+that first applied it is recorded in
+[`docs/VPS-CUTOVER-RECORD.md`](./VPS-CUTOVER-RECORD.md) step 0.
 
 **Retention rather than dropping/masking the IP.** ADR-0043 decision 4 fixes
 this: the Art. 30 record declares "IP addresses in server access logs
@@ -397,9 +403,12 @@ record than three.
 
 ## What this runbook deliberately does not do
 
-- **No data migration.** Moving the API and Postgres is GDPR-E (#181).
+- **No data migration.** Moving the API and Postgres was GDPR-E (#181) and is
+  executed; see [`docs/VPS-CUTOVER-RECORD.md`](./VPS-CUTOVER-RECORD.md), and
+  [`docs/SELF-HOSTING-GUIDE.md`](./SELF-HOSTING-GUIDE.md) §12 for moving an
+  existing database onto a box of your own.
 - **No serving.** `apply.sh` enables `kajianq-api.service` but does not start
-  it; starting it is the cutover (`docs/VPS-CUTOVER-RUNBOOK.md`).
+  it; starting it is the cutover, which the self-hosting guide walks through.
 - **No DPA.** Concluding it in the netcup CCP is the owner's action (#178) and a
   precondition of the box touching personal data.
 - **No secrets in the repo.** The only hostnames and credentials live in

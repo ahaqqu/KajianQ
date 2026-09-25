@@ -5,15 +5,23 @@ how to manage Postgres, what hardening is applied, and what the monitoring story
 is today. This is the **as-is** document for the box that is running, not the
 plan for getting there.
 
-| Document                                                                                        | Answers                                                         |
-| ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| **this file**                                                                                   | How do I operate the box that is running?                       |
-| [`docs/VPS-BASELINE-SETUP.md`](./VPS-BASELINE-SETUP.md)                                         | What was done to take a bare box to a serving baseline?         |
-| [`docs/VPS-HARDENING-RUNBOOK.md`](./VPS-HARDENING-RUNBOOK.md)                                   | What hardening is applied, step by step, and how do I restore?  |
-| [`docs/VPS-CUTOVER-RUNBOOK.md`](./VPS-CUTOVER-RUNBOOK.md)                                       | How was (and is) the data move executed? Evidence checklist.    |
-| [`docs/VPS-CUTOVER-RECORD.md`](./VPS-CUTOVER-RECORD.md)                                         | What actually ran on the box, in execution order (append-only). |
-| [`adr/0044-vps-serving-path-cutover.md`](../adr/0044-vps-serving-path-cutover.md)               | Why the serving path is a Bun process behind nginx.             |
-| [`adr/0043-netcup-vps-hosting-gdpr-posture.md`](../adr/0043-netcup-vps-hosting-gdpr-posture.md) | Register, retention values, GDPR posture.                       |
+The VPS document set is now three: a **setup** guide, this **operations**
+manual, and the **evidence** record. Three earlier documents were retired once
+the cutover executed — `VPS-BASELINE-SETUP.md` (its bootstrap is now the setup
+guide's §1, with nginx instead of the baseline's Caddy),
+`VPS-CUTOVER-RUNBOOK.md` (a one-shot migration off Cloudflare + Neon; its
+acceptance-criteria checklist and the vendor-neutral data-move procedure moved
+into the record and the setup guide respectively), and `neon-sizing-issue-4.md`
+(a pointer stub superseded by ADR-0020). Their full text stays in git history.
+
+| Document                                                                                        | Answers                                                                                                        |
+| ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| **this file**                                                                                   | How do I operate the box that is running?                                                                      |
+| [`docs/SELF-HOSTING-GUIDE.md`](./SELF-HOSTING-GUIDE.md)                                         | How do I stand up an instance of my own, from a bare VPS?                                                      |
+| [`docs/VPS-HARDENING-RUNBOOK.md`](./VPS-HARDENING-RUNBOOK.md)                                   | What hardening is applied, step by step, and how do I restore?                                                 |
+| [`docs/VPS-CUTOVER-RECORD.md`](./VPS-CUTOVER-RECORD.md)                                         | What actually ran on the box, in execution order (append-only), and the #181 acceptance-criteria walk-through. |
+| [`adr/0044-vps-serving-path-cutover.md`](../adr/0044-vps-serving-path-cutover.md)               | Why the serving path is a Bun process behind nginx.                                                            |
+| [`adr/0043-netcup-vps-hosting-gdpr-posture.md`](../adr/0043-netcup-vps-hosting-gdpr-posture.md) | Register, retention values, GDPR posture.                                                                      |
 
 The repository is **public**. Nothing below contains a real hostname, IP
 address, credential, or user name — `<host>`, `<user>`, `<IP>` are placeholders.
@@ -597,5 +605,5 @@ monitoring must not create an unbounded personal-data-adjacent log surface. Issu
 - [`adr/0038-corpus-snapshot-durability-guardrail.md`](../adr/0038-corpus-snapshot-durability-guardrail.md) — the snapshot discipline
 - [`docs/VPS-HARDENING-RUNBOOK.md`](./VPS-HARDENING-RUNBOOK.md) — the hardening steps and the restore test
 - [`docs/SELF-HOSTING-GUIDE.md`](./SELF-HOSTING-GUIDE.md) — the fork-and-run path: standing up an instance of your own from a bare VPS (this file is the manual for the project's own box)
-- [`docs/VPS-CUTOVER-RUNBOOK.md`](./VPS-CUTOVER-RUNBOOK.md) / [`RECORD`](./VPS-CUTOVER-RECORD.md) — the executed migration and its evidence
+- [`docs/VPS-CUTOVER-RECORD.md`](./VPS-CUTOVER-RECORD.md) — the executed migration, its evidence, and the #181 acceptance-criteria walk-through
 - [`docs/GDPR-ARTICLE-30-RECORD.md`](./GDPR-ARTICLE-30-RECORD.md) — retention values and TOMs this box implements

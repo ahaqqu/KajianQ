@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -996,6 +996,72 @@ describe("provisioning config as code stays true to the ADR", () => {
     // finding it from the front page.
     expect(read("README.md")).toMatch(/docs\/SELF-HOSTING-GUIDE\.md/);
     expect(read("docs/VPS-OPERATIONS.md")).toMatch(/SELF-HOSTING-GUIDE\.md/);
+  });
+
+  it("the retired VPS docs are gone and their load-bearing content moved, not lost", () => {
+    // The consolidation: the VPS set was five documents plus a stub, written as
+    // a record of one box being built. Three were spent procedures — a baseline
+    // bootstrap, a one-shot migration off Cloudflare + Neon, and a pointer stub
+    // — and were retired. This test is what keeps the retirement honest: it
+    // fails if a retired file reappears (two sources of truth), and it fails if
+    // the content that had to survive is dropped by a later edit.
+    for (const retired of [
+      "docs/VPS-BASELINE-SETUP.md",
+      "docs/VPS-CUTOVER-RUNBOOK.md",
+      "docs/neon-sizing-issue-4.md",
+    ]) {
+      expect(existsSync(resolve(process.cwd(), retired)), retired).toBe(false);
+    }
+
+    // 1. Issue #181 is still open, so the acceptance-criteria walk-through had
+    //    to survive somewhere — it is what the issue is closed against.
+    const record = read("docs/VPS-CUTOVER-RECORD.md");
+    expect(record).toMatch(/AC-1\b/);
+    expect(record).toMatch(/AC-16\b/);
+    expect(record).toMatch(/## Acceptance criteria/);
+    // The baseline session's record is the chain-of-custody start for the box
+    // the cutover record describes; its evidence table had to come along.
+    expect(record).toMatch(/baseline session/i);
+    expect(record).toMatch(/Debian 13 \(trixie\)/);
+
+    // 2. The one procedure in the cutover runbook that outlived its vendor:
+    //    moving an existing database onto a box. Cloudflare and Neon are
+    //    specifics a self-hoster does not have; snapshot-verify-ship-compare is
+    //    not.
+    const guide = read("docs/SELF-HOSTING-GUIDE.md");
+    expect(guide).toMatch(/## 12\. Moving an existing database/);
+    expect(guide).toMatch(/db:snapshot create/);
+    expect(guide).toMatch(/pg_restore/);
+    expect(guide).toMatch(/db:snapshot verify/);
+
+    // 3. The disk figure. ADR-0020's arithmetic is the only corpus-size estimate
+    //    in the repo, and a self-hoster sizing a VPS needs it — it was reachable
+    //    from nowhere practical before this.
+    expect(guide).toMatch(/17–18 GiB/);
+    expect(guide).toMatch(/adr\/0020-neon-dual-vector-sizing\.md/);
+    // And the ADR must say its Neon recommendation is spent while the math
+    // still holds, or a reader acts on pricing for a service that is deleted.
+    const adr = read("adr/0020-neon-dual-vector-sizing.md");
+    expect(adr).toMatch(/Supersession note/);
+    expect(adr).toMatch(/still holds/);
+  });
+
+  it("a markdown link gate exists and is wired into CI", () => {
+    // Nothing else in CI notices a dangling doc link, and GitHub renders one as
+    // ordinary text — so a reader cannot tell they are looking at a broken
+    // citation. Retiring three files meant repointing every reference to them;
+    // this gate is what proves that was done, now and on every future edit.
+    const script = read("scripts/check-markdown-links.mjs");
+    expect(script).toMatch(/markdown-links/);
+    // It must resolve relative targets, not merely look for the string.
+    expect(script).toMatch(/existsSync/);
+    // Fenced code blocks carry link syntax as examples; scanning them would
+    // make the gate fail on documentation about links.
+    expect(script).toMatch(/inFence/);
+    // Vendored READMEs are not this repo's prose.
+    expect(script).toMatch(/node_modules/);
+    expect(read("package.json")).toMatch(/"docs:links":/);
+    expect(read(".github/workflows/ci.yml")).toMatch(/bun run docs:links/);
   });
 });
 

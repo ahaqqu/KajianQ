@@ -11,14 +11,13 @@ _the project's own_ box was set up and how it is operated day to day; this one
 exists because the repository is open source and the deploy path should be
 reproducible by anyone, not only by the person who built it.
 
-| If you want…                                                      | Read                                                          |
-| ----------------------------------------------------------------- | ------------------------------------------------------------- |
-| To stand up your own instance (this guide)                        | **this file**                                                 |
-| The reasoning behind the architecture                             | [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md)                   |
-| How the project's own box is operated (deploy, Postgres, restore) | [`docs/VPS-OPERATIONS.md`](./VPS-OPERATIONS.md)               |
-| The hardening posture, step by step                               | [`docs/VPS-HARDENING-RUNBOOK.md`](./VPS-HARDENING-RUNBOOK.md) |
-| How the project's box was provisioned from bare metal             | [`docs/VPS-BASELINE-SETUP.md`](./VPS-BASELINE-SETUP.md)       |
-| The record of the project's own cutover                           | [`docs/VPS-CUTOVER-RECORD.md`](./VPS-CUTOVER-RECORD.md)       |
+| If you want…                                                            | Read                                                          |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------- |
+| To stand up your own instance (this guide)                              | **this file**                                                 |
+| The reasoning behind the architecture                                   | [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md)                   |
+| How the project's own box is operated (deploy, Postgres, restore)       | [`docs/VPS-OPERATIONS.md`](./VPS-OPERATIONS.md)               |
+| The hardening posture, step by step                                     | [`docs/VPS-HARDENING-RUNBOOK.md`](./VPS-HARDENING-RUNBOOK.md) |
+| The record of the project's own cutover (evidence + the #181 checklist) | [`docs/VPS-CUTOVER-RECORD.md`](./VPS-CUTOVER-RECORD.md)       |
 
 ## What you are building
 
@@ -59,6 +58,16 @@ You need:
 - **A VPS you are root on**, with a public IPv4. This guide assumes Debian 13
   (trixie); Debian/Ubuntu in general works. 2 GB RAM is the practical floor for
   Postgres + the API + a build-free runtime; 1 GB will swap.
+- **Disk.** Size for the corpus, not for the code. The full v1 corpus is
+  estimated at ~700,000 chunk rows, and with both 1536-dim vector columns and
+  their HNSW indexes that is **~17–18 GiB** of Postgres data
+  ([`adr/0020-neon-dual-vector-sizing.md`](../adr/0020-neon-dual-vector-sizing.md)
+  holds the arithmetic). Add your restic backups on top if you keep them on the
+  same disk, plus a little headroom for WAL and log segments — a 40 GB disk is
+  comfortable, 20 GB is tight once backups accumulate, and a small box will fill
+  during ingestion rather than during serving. If you ingest only the Quran to
+  start, a fraction of that is fine; the figure to plan against is the full
+  corpus.
 - **A hostname.** A real domain is ideal. If you do not have one,
   `<dotted-IP>.sslip.io` (for example `203-0-113-10.sslip.io`) is a wildcard DNS
   name that resolves to that IP for anyone, free — and Let's Encrypt issues real
@@ -741,6 +750,77 @@ a posture that transfers to you. In particular:
 
 ---
 
+## 12. Moving an existing database to this box
+
+If you are migrating from another host — a managed Postgres, a Neon project, an
+older VPS — the order below is what keeps the move verifiable. It is the
+vendor-neutral part of the project's own cutover, which moved a live Neon
+database onto the box this way.
+
+The principle is one sentence: **snapshot the source, verify the snapshot, ship
+that exact archive, then snapshot the target and compare.** Never pipe data
+straight from the live source into the target, because then the bytes that
+arrived are not the bytes you hashed, and a mismatch has no diagnosis.
+
+```bash
+# 1. Snapshot the SOURCE, from a machine that can reach it.
+#    db:snapshot operates on whatever DATABASE_URL names, so the source is just
+#    a URL — no vendor in its configuration.
+export DATABASE_URL="postgres://…/olddb"
+export R2_ACCOUNT_ID=… R2_ACCESS_KEY_ID=… R2_SECRET_ACCESS_KEY=…
+
+# If the archive is going to a storage target whose encryption you cannot
+# verify, the CLI refuses unless you acknowledge it explicitly.
+KAJIANQ_SNAPSHOT_PLAINTEXT_ACKNOWLEDGED=true bun run db:snapshot create pre-move-<label>
+bun run db:snapshot verify pre-move-<label>        # compares against the live source
+```
+
+`verify` checks the corpus and schema-identity row counts
+(`doc_parents`, `doc_children`, `aligned_pairs`, `schema_migrations`) against the
+live source exactly, and reports which ledger tables moved on. If it is red, the
+fix is never to re-snapshot without those tables, and a label is never deleted
+to reduce exposure.
+
+```bash
+# 2. Restore onto the box, from the verified archive.
+#    The listener is loopback-only, so this runs ON the box.
+sudo install -d -o postgres -g postgres -m 0700 /srv/kajianq/restore
+# Download the archive on a machine that has your object-storage credentials,
+# then copy it over (the box holds none by design).
+pg_restore --clean --if-exists --no-owner --no-privileges \
+  -d "postgres://kajianq:<pw>@127.0.0.1:5432/kajianq" \
+  /srv/kajianq/restore/olddb-pre-move-<label>.dump
+
+# Apply any migration the archive lacks — its schema_migrations ledger says what
+# it already has.
+DATABASE_URL="postgres://kajianq:<pw>@127.0.0.1:5432/kajianq" bun run db:status:all
+DATABASE_URL="postgres://kajianq:<pw>@127.0.0.1:5432/kajianq" bun run db:up:all
+```
+
+```bash
+# 3. Snapshot the TARGET and compare. Runs on a machine with storage creds,
+#    reaching the box's loopback Postgres through an ssh tunnel.
+ssh -N -L 5433:127.0.0.1:5432 kajianq-deploy@<your-host> &
+export DATABASE_URL="postgres://kajianq:<pw>@127.0.0.1:5433/kajianq"
+
+# The data is now covered by your provider's terms, so this archive uses the
+# ENCRYPTED path — not the plaintext acknowledgement of step 1.
+KAJIANQ_SNAPSHOT_ENCRYPTED_AT_REST=true bun run db:snapshot create post-move-<label>
+bun run db:snapshot verify post-move-<label>
+bun run db:snapshot list          # diff the two manifests' tableCounts
+```
+
+The corpus and schema counts for `post-move-…` must equal `pre-move-…`
+exactly. Ledger and personal tables may differ only by traffic that happened
+between the two steps — quote that drift explicitly rather than absorbing it.
+Kill the tunnel when you are done (`jobs` / `kill %1`).
+
+Once the box is serving, the restic backup in §6 takes over as the ongoing
+durability layer; the portable snapshot above is the migration artifact, and the
+two coexist.
+
+---
+
 ## Troubleshooting
 
 **The deploy fails at "Require the deploy access."** A variable or the secret is
@@ -792,8 +872,11 @@ step 4.
   project's own box: deploy, Postgres, backups, restore, monitoring
 - [`docs/VPS-HARDENING-RUNBOOK.md`](./VPS-HARDENING-RUNBOOK.md) — every hardening
   measure, step by step, and why each one exists
-- [`docs/VPS-BASELINE-SETUP.md`](./VPS-BASELINE-SETUP.md) — bare metal to a
-  serving baseline, the layer under this guide
+- [`docs/VPS-CUTOVER-RECORD.md`](./VPS-CUTOVER-RECORD.md) — the executed cutover,
+  the evidence behind the #181 acceptance criteria, and the retained record of
+  the box's bare-metal baseline session
+- [`adr/0020-neon-dual-vector-sizing.md`](../adr/0020-neon-dual-vector-sizing.md)
+  — the corpus storage arithmetic behind the disk guidance in "Before you start"
 - [`adr/0043-netcup-vps-hosting-gdpr-posture.md`](../adr/0043-netcup-vps-hosting-gdpr-posture.md)
   — the hosting and privacy posture these configs implement
 - [`adr/0044-vps-serving-path-cutover.md`](../adr/0044-vps-serving-path-cutover.md)
