@@ -14,15 +14,6 @@ windows, processor rows, data categories — are fixed by ADR-0043 and must not
 drift from it: ADR-0043 is the source of truth, this record is its Art. 30
 rendering.
 
-**This record and the DPIA-lite note are separate documents on purpose.** They
-are different instruments with different lifecycles: this one is a **register**,
-a living inventory that `AGENTS.md` binds every personal-data PR to keep current,
-while [`docs/GDPR-DPIA-LITE.md`](./GDPR-DPIA-LITE.md) is a **point-in-time
-screening assessment** whose value is that it is re-made when a revisit trigger
-fires, not incrementally patched. §7 below is the single source of truth for the
-measures; the note records the Art. 9 risk reasoning about them and does not
-restate the list.
-
 **Status of the DPA itself.** Concluding the DPA is an owner action (Master Data
 → Order Processing in the netcup CCP) and is tracked by #178. It is a
 **precondition of hosting**, not paperwork to follow the move: per ADR-0043
