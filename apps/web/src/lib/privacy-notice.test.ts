@@ -116,9 +116,13 @@ const retentionById = (id: string): RetentionItem => {
   return row;
 };
 
-/** The vendor catalog ids behind the notice rows that name an LLM vendor. */
+/** The vendor catalog ids behind the notice rows that name an LLM vendor.
+ * The paid Gemini row is a separate catalog vendor (`gemini-paid`), because the
+ * register rule keys on terms rather than on the model: the free-tier row may
+ * not carry personal data, the paid one may (ADR-0043 decision 3, #181). */
 const CATALOG_IDS: Record<string, string> = {
   gemini: "gemini",
+  "gemini-paid": "gemini-paid",
   deepseek: "deepseek",
   alibaba: "qwen",
   typesafe: "typesafe",
