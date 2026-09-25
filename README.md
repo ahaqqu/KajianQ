@@ -147,12 +147,6 @@ See [`NOTICES/DATASETS.md`](NOTICES/DATASETS.md) for the full list.
 KajianQ is developed agentically — AI agents write the code under explicit
 working rules ([`AGENTS.md`](AGENTS.md)).
 
-**Agentic development:**
-
-- **Harness:** DeepSeek Harness, ZCode
-- **Provider:** Ollama Cloud Pro
-- **Models:** kimi-k3, glm-5.3, glm-5.3-flash
-
 For autonomous, multi-agent orchestration (implement → review → fix in one
 run), invoke the `manager` skill (`.agents/skills/manager/SKILL.md`). It
 supervises role subagents — implementer, reviewer —
