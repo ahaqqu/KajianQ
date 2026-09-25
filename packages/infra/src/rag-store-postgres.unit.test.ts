@@ -842,4 +842,31 @@ describe("Postgres eval-ledger methods (unit, fake SQL)", () => {
     expect(rows[0]?.parentTitle).toBeNull();
     expect(rows[0]?.textId).toBeNull();
   });
+
+  it("countDocChildrenByMetadata binds the key as a parameter and passes rows through", async () => {
+    const sql = makeFakeSql();
+    const store = createPostgresRagStore(sql);
+    sql._setQuery([
+      { value: "bukhari", count: 7130 },
+      { value: "malik", count: 1829 },
+      { value: null, count: 3 },
+    ]);
+    const rows = await runOk(store.countDocChildrenByMetadata("collection"));
+    // The key is bound, never interpolated into the SQL text.
+    expect(sql._calls[0]?.values).toEqual(["collection"]);
+    expect(sql._calls[0]?.text).toContain("metadata->$1");
+    expect(sql._calls[0]?.text).toContain("GROUP BY metadata->$1");
+    expect(rows).toEqual([
+      { value: "bukhari", count: 7130 },
+      { value: "malik", count: 1829 },
+      { value: null, count: 3 },
+    ]);
+  });
+
+  it("countDocChildrenByMetadata maps a driver exception to a StoreError", async () => {
+    const sql = makeBoomSql(() => new Error("ECONNREFUSED connect"));
+    const store = createPostgresRagStore(sql);
+    const err = await runFail(store.countDocChildrenByMetadata("collection"));
+    expect(err.kind).toBe("transport");
+  });
 });

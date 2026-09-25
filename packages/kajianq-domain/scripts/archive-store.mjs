@@ -17,8 +17,13 @@ import { Effect } from "effect";
 export { acquireFiles, acquireSources, resolveFromCwd } from "./source-acquisition.mjs";
 // Re-exported here for the same reason: the CLI composition roots stay under
 // the agentic import cap by taking all their CLI-side helpers from this one
-// module (collection-range.mjs keeps the range rules testable on their own).
-export { parseCollectionRange, selectCollections } from "./collection-range.mjs";
+// module (collection-range.mjs keeps the range rules and the --only-missing
+// guard testable on their own).
+export {
+  onlyMissingCollections,
+  parseCollectionRange,
+  selectCollections,
+} from "./collection-range.mjs";
 
 /**
  * Build the archive ObjectStore from the R2 env credentials, or null when

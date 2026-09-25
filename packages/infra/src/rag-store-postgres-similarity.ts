@@ -72,7 +72,9 @@ export function postgresSimilaritySearch(
  * and stay null on the mapped rows. The parent join carries the display
  * title the citation payload shows as the passage's source reference.
  */
-export function postgresChildMethods(sql: SqlRunner): Pick<RagStore, "getDocChildrenByIds"> {
+export function postgresChildMethods(
+  sql: SqlRunner,
+): Pick<RagStore, "getDocChildrenByIds" | "countDocChildrenByMetadata"> {
   return {
     getDocChildrenByIds(ids) {
       const unique = [...new Set(ids)].filter((id) => id.trim() !== "");
@@ -100,6 +102,26 @@ export function postgresChildMethods(sql: SqlRunner): Pick<RagStore, "getDocChil
               parentTitle: r.parent_title ?? null,
             })),
           ),
+      );
+    },
+
+    countDocChildrenByMetadata(key) {
+      // The metadata key is a bound parameter ($1), never interpolated — the
+      // same invariant the similarity query builder holds. Rows without a
+      // string value for the key group under SQL NULL.
+      return sqlEffect(
+        sql,
+        () =>
+          sql.query(
+            `
+          SELECT metadata->$1 AS value, count(*)::int AS count
+          FROM doc_children
+          WHERE metadata ? $1 AND jsonb_typeof(metadata->$1) = 'string'
+          GROUP BY metadata->$1
+          ORDER BY count DESC
+        `,
+            [key],
+          ) as Promise<{ value: string | null; count: number }[]>,
       );
     },
   };

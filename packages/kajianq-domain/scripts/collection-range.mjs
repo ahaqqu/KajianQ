@@ -48,3 +48,35 @@ export function selectCollections(collections, { offset, limit }) {
     collections: collections.slice(offset, limit === null ? undefined : offset + limit),
   };
 }
+
+/**
+ * The `--only-missing` guard (ADR-0037's recorded revisit trigger, folded in
+ * from #141 for issue #213): narrow the requested collections to those whose
+ * landed child count (read from the store through the
+ * `countDocChildrenByMetadata` seam, keyed on the chunk metadata field that
+ * carries the collection label) is zero, so a naive range loop cannot
+ * re-pay embeddings for collections already landed. Idempotent upserts
+ * dedupe *rows*, not *spend* — a pass re-embeds every row it reads.
+ *
+ * The counts come from the caller (the CLI reads them before any
+ * acquisition, through the store seam). `landedCounts` maps the same
+ * metadata value the CLI filters on — the collection name — to its landed
+ * child count; a collection absent from the map reads as zero. Returns
+ * `{ collections, skipped }` — the kept selection plus, for the run log,
+ * the already-landed collections that were dropped — or `{ error }` when
+ * nothing is missing (the guard refuses a no-op paid pass rather than
+ * running one).
+ */
+export function onlyMissingCollections(collections, landedCounts) {
+  const missing = collections.filter((c) => (landedCounts[c] ?? 0) === 0);
+  if (missing.length === 0) {
+    return {
+      error:
+        `--only-missing: every selected collection already has children landed ` +
+        `(${collections.map((c) => `${c}=${landedCounts[c] ?? 0}`).join(", ")}) — ` +
+        `nothing to ingest; refusing a no-op paid pass`,
+    };
+  }
+  const landed = collections.filter((c) => (landedCounts[c] ?? 0) > 0);
+  return { collections: missing, landed };
+}
