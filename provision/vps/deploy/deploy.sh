@@ -181,6 +181,29 @@ run ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" \
 log "running the reclamation once (proves the cron entry executes)"
 run ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" "sudo ${SYSTEMCTL} start kajianq-cron.service"
 
+# The backup unit is deliberately NOT run here (it is root-only and would
+# double the daily dump), so its health is checked from its last run instead.
+# This is the check whose absence let a real defect go unnoticed (#181): the
+# unit shipped with an unsubstituted `__KAJIANQ_BACKUP_SCRIPT__` in ExecStart,
+# every scheduled run died on `Script not found`, and the TIMER's `is-active`
+# was green the whole time — active says the schedule is armed, never that the
+# job works. A deploy now fails on a unit whose last run failed, so the
+# encrypted-backup guarantee (ADR-0043 decision 4) has a gate rather than an
+# assumption. `Result=success` is the assertion; a unit that has never run
+# reports `Result=success` with no ExecMainStatus, which the is-failed check
+# below tolerates so a fresh box is not blocked.
+log "checking the backup unit's last run"
+run ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" '
+  result="$(systemctl show kajianq-backup.service -p Result --value)"
+  status="$(systemctl show kajianq-backup.service -p ExecMainStatus --value)"
+  if [ "$result" != "success" ]; then
+    echo "deploy: kajianq-backup.service last run reported Result=$result (ExecMainStatus=$status)" >&2
+    echo "deploy: the encrypted backup is not working — check: journalctl -u kajianq-backup.service -n 40" >&2
+    exit 1
+  fi
+  echo "deploy: backup unit healthy (Result=success, last ExecMainStatus=${status:-never run})"
+'
+
 # --- 4. smoke ---------------------------------------------------------------
 # The `ship` skill's pre-prod validation: a health check and an anonymous
 # session mint against the PUBLIC URL, through the real proxy and TLS. Not

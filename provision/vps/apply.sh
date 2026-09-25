@@ -250,6 +250,18 @@ fi
 # The server block is rendered from the placeholder template, then installed
 # under sites-available with the standard sites-enabled symlink, so disabling it
 # is one `rm` and not an edit of a tracked file.
+#
+# Every `__KAJIANQ_*__` token a shipped config may carry is substituted here —
+# including `__KAJIANQ_BACKUP_SCRIPT__`, which is why the function takes no
+# placeholder list. That one was originally missed: the backup unit was
+# installed with the literal token in `ExecStart`, systemd does not expand
+# variables, and bun answered `Script not found "__KAJIANQ_BACKUP_SCRIPT__"` on
+# every scheduled run — the nightly encrypted backup never once succeeded, while
+# `systemctl is-active` on the timer stayed green and said nothing was wrong.
+# The leftover-token check below is the fix that would have caught it: a
+# rendered file that still contains a `__KAJIANQ_` token is a half-applied
+# config, and installing it is exactly the "looks done" failure this script's
+# header forbids.
 render() {
     local src="$1" dst="$2"
     local tmp
@@ -259,7 +271,19 @@ render() {
         -e "s|__KAJIANQ_TLS_CERT__|${KAJIANQ_TLS_CERT}|g" \
         -e "s|__KAJIANQ_TLS_KEY__|${KAJIANQ_TLS_KEY}|g" \
         -e "s|__KAJIANQ_API_UPSTREAM__|${KAJIANQ_API_UPSTREAM}|g" \
+        -e "s|__KAJIANQ_BACKUP_SCRIPT__|${SRC}/backup/kajianq-backup.mjs|g" \
         "${src}" >"${tmp}"
+    # Fail closed on an unsubstituted token. A new placeholder in any shipped
+    # config must be handled here or the apply stops naming it, instead of
+    # installing a config whose brokenness surfaces later as a runtime error
+    # nobody connects back to the install.
+    if grep -qE '__KAJIANQ_[A-Z_]+__' "${tmp}"; then
+        local leftover
+        leftover="$(grep -oE '__KAJIANQ_[A-Z_]+__' "${tmp}" | sort -u | tr '\n' ' ')"
+        rm -f "${tmp}"
+        echo "apply: rendered ${src} still contains ${leftover}— add it to render()" >&2
+        exit 1
+    fi
     if [ "${DRY_RUN}" -eq 1 ]; then
         log "would: render ${src} -> ${dst}"
         rm -f "${tmp}"
@@ -322,6 +346,16 @@ fi
 render "${SRC}/systemd/kajianq-backup.service" /etc/systemd/system/kajianq-backup.service
 run install -o root -g root -m 0644 "${SRC}/systemd/kajianq-backup.timer" /etc/systemd/system/kajianq-backup.timer
 run systemctl daemon-reload
+
+# Clear a failed state recorded against the PREVIOUS unit definition. The
+# backup unit shipped with an unsubstituted `__KAJIANQ_BACKUP_SCRIPT__` and
+# failed on every run (#181); that failure is attached to the unit NAME, so it
+# would otherwise survive this re-render and make the deploy's backup check (and
+# `systemctl status`) report a defect that no longer exists — a stale-failure
+# false positive is its own kind of misleading. Only the failure state is
+# cleared: the run history stays in the journal, and the deploy re-checks the
+# unit's next real run.
+run systemctl reset-failed kajianq-backup.service
 # Enabled, not started: the API needs its env file and the cutover before it can
 # serve. Enabling now means the box comes up hardened instead of accidentally
 # serving with default logging.

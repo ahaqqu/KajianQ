@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   BACKUP_KEEP_DAILY,
@@ -348,6 +348,13 @@ describe("env handling", () => {
 
 describe("provisioning config as code stays true to the ADR", () => {
   const read = (rel) => readFileSync(resolve(process.cwd(), rel), "utf8");
+
+  /** Every file under a directory, recursively — for whole-tree scans. */
+  const walkFiles = (dir) =>
+    readdirSync(dir).flatMap((name) => {
+      const path = join(dir, name);
+      return statSync(path).isDirectory() ? walkFiles(path) : [path];
+    });
   /**
    * Drop comment lines before asserting directives. Several files explain why a
    * directive is NOT used (e.g. nginx's logrotate stanza says "no copytruncate
@@ -418,6 +425,65 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(apply).toMatch(/kajianq-backup\.service/);
     expect(apply).toMatch(/kajianq-backup\.timer/);
     expect(apply).toMatch(/enable --now kajianq-backup\.timer/);
+  });
+
+  it("render() substitutes every placeholder a shipped config may carry", () => {
+    // The defect this pins (#181): `__KAJIANQ_BACKUP_SCRIPT__` was asserted
+    // PRESENT in the unit (above) but nothing asserted it was ever SUBSTITUTED.
+    // The unit installed with the literal token in ExecStart, systemd does not
+    // expand variables, and every scheduled run died on
+    // `Script not found "__KAJIANQ_BACKUP_SCRIPT__"` — the nightly encrypted
+    // backup never once succeeded, while the timer's `is-active` stayed green.
+    //
+    // Derived, not enumerated: every `__KAJIANQ_*__` token appearing in a
+    // shipped config (anything under provision/vps/ except apply.sh itself)
+    // must have a matching sed entry in apply.sh's render(). A new placeholder
+    // in a unit or server block therefore fails this test until it is wired —
+    // which is the moment to wire it, not after a scheduled run.
+    const SRC = "provision/vps";
+    const apply = readFileSync(resolve(process.cwd(), `${SRC}/apply.sh`), "utf8");
+    const renderBody = /render\(\) \{[\s\S]*?\n\}/.exec(apply)?.[0];
+    expect(renderBody, "apply.sh must define render()").toBeTruthy();
+
+    const substituted = new Set(
+      [...renderBody.matchAll(/__KAJIANQ_([A-Z_]+)__\|/g)].map((m) => m[1]),
+    );
+    expect(substituted.size).toBeGreaterThanOrEqual(4);
+
+    const shipped = walkFiles(resolve(process.cwd(), SRC))
+      .filter((path) => !path.endsWith("apply.sh"))
+      .map((path) => readFileSync(path, "utf8"))
+      .join("\n");
+    // matchAll, not a single exec: a line may carry MORE than one token (the
+    // ExecStart that motivated this test carries the script path on a line that
+    // could also name a second placeholder), and taking only the first per line
+    // would let the extra one through unsubstituted — the same class of gap
+    // this test exists to close.
+    const declared = new Set([...shipped.matchAll(/__KAJIANQ_([A-Z_]+)__/g)].map((m) => m[1]));
+    expect(declared.size).toBeGreaterThanOrEqual(4);
+
+    for (const name of declared) {
+      expect(
+        substituted.has(name),
+        `render() in apply.sh does not substitute __KAJIANQ_${name}__, so a config shipping it installs the literal token`,
+      ).toBe(true);
+    }
+  });
+
+  it("render() refuses to install a config that still carries a placeholder token", () => {
+    // The substitution list is one mechanism; this is the backstop that makes a
+    // future omission loud at apply time rather than silent until a scheduled
+    // run. It must abort the whole apply — the script's header forbids a
+    // half-applied config that reports success.
+    const apply = readFileSync(resolve(process.cwd(), "provision/vps/apply.sh"), "utf8");
+    const renderBody = /render\(\) \{[\s\S]*?\n\}/.exec(apply)?.[0];
+    expect(renderBody).toMatch(/grep -qE '__KAJIANQ_\[A-Z_\]\+__'/);
+    expect(renderBody).toMatch(/exit 1/);
+    // It must run BEFORE the install, or the broken file is already in place
+    // when it fires.
+    expect(renderBody.search(/grep -qE '__KAJIANQ_\[A-Z_\]\+__'/)).toBeLessThan(
+      renderBody.indexOf("install -o root"),
+    );
   });
 
   it("apply.sh refuses to source an env file that is not root-owned 0600-or-tighter", () => {
@@ -583,6 +649,35 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(script).toMatch(/cd '\$REPO_DIR' && bun run build:web/);
     expect(script).toMatch(/\$\{PUBLIC_URL\}\/chat/);
     expect(script).toMatch(/<!doctype html/);
+  });
+
+  it("the deploy fails on a broken backup unit rather than trusting an active timer", () => {
+    // The gate whose absence let the backup defect hide (#181). The timer's
+    // `is-active` was green through every failed run — active means the
+    // SCHEDULE is armed, never that the job works — so the deploy must read the
+    // SERVICE's own Result, which is what actually records a run's outcome.
+    const script = read("provision/vps/deploy/deploy.sh");
+    expect(script).toMatch(/systemctl show kajianq-backup\.service -p Result/);
+    // A non-success Result must abort the deploy, not warn.
+    expect(script).toMatch(/if \[ "\$result" != "success" \][^]*?exit 1/);
+    // The failure must name the follow-up, or the operator reads a bare code.
+    expect(script).toMatch(/journalctl -u kajianq-backup\.service/);
+    // It must NOT merely re-check the timer: that is the reassuring-looking
+    // field this test exists to keep out of the gate.
+    expect(script).not.toMatch(/is-active --quiet kajianq-backup\.timer/);
+  });
+
+  it("apply.sh clears the backup unit's stale failure state after re-rendering it", () => {
+    // The old unit definition failed on every run; that failure is attached to
+    // the unit NAME, so without reset-failed the re-rendered unit still reports
+    // Result=exit-code and the deploy's new backup gate fails on a defect that
+    // no longer exists — a stale-failure false positive.
+    const apply = read("provision/vps/apply.sh");
+    expect(apply).toMatch(/systemctl reset-failed kajianq-backup\.service/);
+    // Order matters: the reset is meaningless before the new unit is in place.
+    expect(apply.indexOf("reset-failed kajianq-backup.service")).toBeGreaterThan(
+      apply.indexOf("systemd/kajianq-backup.service"),
+    );
   });
 
   it("the deploy env example carries placeholders, not a real host", () => {

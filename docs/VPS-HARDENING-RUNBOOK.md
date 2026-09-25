@@ -263,8 +263,22 @@ before any automated run. The schedule itself needs no manual install —
 
 ```bash
 systemctl list-timers kajianq-backup.timer
-systemctl cat kajianq-backup.service   # ExecStart points at this checkout's script
+# ExecStart must name THIS checkout's script, with no `__KAJIANQ_` token left.
+# A literal placeholder here means apply.sh's render() skipped the substitution:
+# systemd does not expand variables, so the unit fails on every run while the
+# timer still reports `active` — the defect that went unnoticed until 2026-09-21
+# (#181). Assert it rather than eyeballing it:
+systemctl cat kajianq-backup.service | grep '^ExecStart'
+systemctl show kajianq-backup.service -p Result -p ExecMainStatus
 ```
+
+`Result=success` with `ExecMainStatus=0` is the proof the unit executes — check
+what matters and not what merely looks reassuring:
+`systemctl is-active kajianq-backup.timer` being `active` says only that the
+schedule is armed. It stayed green through every failed run. The service's own
+`Result` (and the journal) is the signal, and the deploy now asserts that same
+field, so a red deploy names a broken backup instead of leaving it to be
+discovered at restore time.
 
 The 30-day rolling window is enforced by the backup script's
 `restic forget --keep-daily 30 --prune` step on every run, not by the timer.
