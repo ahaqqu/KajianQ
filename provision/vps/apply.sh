@@ -251,17 +251,17 @@ fi
 # under sites-available with the standard sites-enabled symlink, so disabling it
 # is one `rm` and not an edit of a tracked file.
 #
-# Every `__KAJIANQ_*__` token a shipped config may carry is substituted here —
-# including `__KAJIANQ_BACKUP_SCRIPT__`, which is why the function takes no
-# placeholder list. That one was originally missed: the backup unit was
-# installed with the literal token in `ExecStart`, systemd does not expand
-# variables, and bun answered `Script not found "__KAJIANQ_BACKUP_SCRIPT__"` on
-# every scheduled run — the nightly encrypted backup never once succeeded, while
-# `systemctl is-active` on the timer stayed green and said nothing was wrong.
-# The leftover-token check below is the fix that would have caught it: a
-# rendered file that still contains a `__KAJIANQ_` token is a half-applied
-# config, and installing it is exactly the "looks done" failure this script's
-# header forbids.
+# Every `__KAJIANQ_*__` token a shipped config may carry is substituted here, so
+# the function takes no placeholder list. The leftover-token check below is the
+# reason: a rendered file that still contains a token is a half-applied config,
+# and installing it is exactly the "looks done" failure this script's header
+# forbids. That check exists because a placeholder in the backup unit's
+# `ExecStart` went unsubstituted — systemd does not expand variables, so bun
+# answered `Script not found "__KAJIANQ_BACKUP_SCRIPT__"` on every scheduled run
+# and the nightly encrypted backup never once succeeded, while `is-active` on the
+# timer stayed green. That unit now names a deployed artifact and carries no
+# placeholder at all (#181); the check stays as the guard for anything that
+# reintroduces one.
 render() {
     local src="$1" dst="$2"
     local tmp
@@ -271,7 +271,6 @@ render() {
         -e "s|__KAJIANQ_TLS_CERT__|${KAJIANQ_TLS_CERT}|g" \
         -e "s|__KAJIANQ_TLS_KEY__|${KAJIANQ_TLS_KEY}|g" \
         -e "s|__KAJIANQ_API_UPSTREAM__|${KAJIANQ_API_UPSTREAM}|g" \
-        -e "s|__KAJIANQ_BACKUP_SCRIPT__|${SRC}/backup/kajianq-backup.mjs|g" \
         "${src}" >"${tmp}"
     # Fail closed on an unsubstituted token. A new placeholder in any shipped
     # config must be handled here or the apply stops naming it, instead of
@@ -336,25 +335,32 @@ run install -o root -g root -m 0644 "${SRC}/systemd/kajianq-cron.service" /etc/s
 run install -o root -g root -m 0644 "${SRC}/systemd/kajianq-cron.timer" /etc/systemd/system/kajianq-cron.timer
 
 # --- backup schedule --------------------------------------------------------
-# The backup script lives in the checked-out repository; the service unit
-# carries a placeholder because systemd does not expand variables in
-# ExecStart, so the real path is rendered here like every other substitute.
-if [ ! -f "${SRC}/backup/kajianq-backup.mjs" ]; then
-    echo "apply: ${SRC}/backup/kajianq-backup.mjs not found — the backup unit needs the repository checkout" >&2
-    exit 1
-fi
-render "${SRC}/systemd/kajianq-backup.service" /etc/systemd/system/kajianq-backup.service
+# The unit is installed verbatim: its ExecStart names a DEPLOYED artifact
+# (api/backup.js), so there is no placeholder to render and nothing here reads
+# the repository checkout. The bundle is shipped by the deploy path, which is
+# what puts this unit's code under the same update mechanism as the API's
+# (#181) — it used to execute whatever revision sat in /srv/kajianq-src, which
+# the deploy never touched.
+run install -o root -g root -m 0644 "${SRC}/systemd/kajianq-backup.service" /etc/systemd/system/kajianq-backup.service
 run install -o root -g root -m 0644 "${SRC}/systemd/kajianq-backup.timer" /etc/systemd/system/kajianq-backup.timer
 run systemctl daemon-reload
 
-# Clear a failed state recorded against the PREVIOUS unit definition. The
-# backup unit shipped with an unsubstituted `__KAJIANQ_BACKUP_SCRIPT__` and
-# failed on every run (#181); that failure is attached to the unit NAME, so it
-# would otherwise survive this re-render and make the deploy's backup check (and
-# `systemctl status`) report a defect that no longer exists — a stale-failure
-# false positive is its own kind of misleading. Only the failure state is
-# cleared: the run history stays in the journal, and the deploy re-checks the
-# unit's next real run.
+# The unit's ExecStart target is shipped by the DEPLOY path, not by this script
+# (which is why nothing here renders a path into it). On a box where the deploy
+# has not run yet the file is legitimately absent, so this warns rather than
+# fails — but it names the consequence, because a unit whose target does not
+# exist fails on its 03:15 run with an error nobody is watching for.
+if [ "${DRY_RUN}" -eq 0 ] && [ ! -f /srv/kajianq/api/backup.js ]; then
+    log "WARNING: /srv/kajianq/api/backup.js is absent — run provision/vps/deploy/deploy.sh to ship it,"
+    log "         otherwise kajianq-backup.service cannot execute (it fails at 03:15, not here)"
+fi
+
+# Clear a failed state recorded against the PREVIOUS unit definition. The backup
+# unit failed on every run under its old definition (#181); that failure is
+# attached to the unit NAME, so it would otherwise survive this install and make
+# `systemctl status` report a defect that no longer exists. Only the failure
+# state is cleared — the run history stays in the journal, and the deploy checks
+# the unit's next real run, which is the only thing that proves it works.
 run systemctl reset-failed kajianq-backup.service
 # Enabled, not started: the API needs its env file and the cutover before it can
 # serve. Enabling now means the box comes up hardened instead of accidentally

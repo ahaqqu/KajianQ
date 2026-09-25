@@ -156,33 +156,61 @@ sudo -u kajianq-deploy -H sudo -n systemctl restart kajianq-api.service
 
 CI's deploy key must belong to `kajianq-deploy`, not the owner's admin account —
 otherwise the workflow holds an admin credential and the two-command grant
-scopes nothing. One-time host step:
+scopes nothing. One-time host step, **as root** — every command needs it, and
+omitting `sudo` fails with `install: cannot create directory
+'/home/kajianq-deploy': Permission denied` because `/home` is root-owned:
 
 ```bash
-# As root. Move the EXISTING deploy key lines (comment `kajianq-vps-deploy-key*`)
-# onto the deploy identity. Do NOT regenerate: the private halves live only in
-# the GitHub secret store, and a fresh pair means re-uploading
-# VPS_DEPLOY_SSH_KEY in both the staging and prod environments.
-install -d -o kajianq-deploy -g kajianq-deploy -m 0700 /home/kajianq-deploy/.ssh
-grep -h 'kajianq-vps-deploy-key' /home/<admin>/.ssh/authorized_keys \
-    >> /home/kajianq-deploy/.ssh/authorized_keys
-chown kajianq-deploy:kajianq-deploy /home/kajianq-deploy/.ssh/authorized_keys
-chmod 0600 /home/kajianq-deploy/.ssh/authorized_keys
+# Do NOT regenerate the keys: the private halves live only in the GitHub secret
+# store, and a fresh pair means re-uploading VPS_DEPLOY_SSH_KEY in both the
+# repository scope and the prod environment.
+sudo install -d -o kajianq-deploy -g kajianq-deploy -m 0700 /home/kajianq-deploy/.ssh
+
+# Idempotent append, the same rule apply.sh uses. A plain `>>` re-run duplicates
+# every line — harmless to sshd, which authenticates on the first match, but it
+# stops the file being a readable record of what is authorized.
+sudo sh -c "for k in \$(grep -h 'kajianq-vps-deploy-key' /home/<admin>/.ssh/authorized_keys); do
+    grep -qxF \"\$k\" /home/kajianq-deploy/.ssh/authorized_keys || echo \"\$k\" >> /home/kajianq-deploy/.ssh/authorized_keys
+done"
+
+sudo chown kajianq-deploy:kajianq-deploy /home/kajianq-deploy/.ssh/authorized_keys
+sudo chmod 0600 /home/kajianq-deploy/.ssh/authorized_keys
+
+# Both pairs must be present: the repo-level secret uses `kajianq-vps-deploy-key`,
+# the prod environment uses `kajianq-vps-deploy-key-prod`.
+sudo awk '{print $NF}' /home/kajianq-deploy/.ssh/authorized_keys
 ```
 
-Verify a **new** session as the deploy identity works before removing those
-lines from the admin account's file — the open session is the safety rope, the
-same rule the baseline setup uses for its sshd edits:
+**Proving the grant authorizes does not need the private key.** The private half
+is in GitHub only (the local copy was destroyed after upload, per the cutover
+record), so test the rule on the box as root — this exercises the sudoers grant
+itself, which is the part that failed on 2026-09-21:
 
 ```bash
-ssh -i <deploy-private-key> kajianq-deploy@<host> \
-    'sudo -n systemctl restart kajianq-api.service && systemctl is-active kajianq-api.service'
+sudo -u kajianq-deploy -H sudo -n systemctl restart kajianq-api.service
+sudo -u kajianq-deploy -H systemctl is-active kajianq-api.service
 ```
 
-Once that works, remove the `kajianq-vps-deploy-key*` lines from
-`/home/<admin>/.ssh/authorized_keys` — leaving them would keep a deploy
-credential usable against the admin account, which is the arrangement this step
-exists to end.
+Only after that works, remove the deploy keys from the admin account:
+
+```bash
+sudo sh -c "grep -v 'kajianq-vps-deploy-key' /home/<admin>/.ssh/authorized_keys > /tmp/ak \
+    && cp /tmp/ak /home/<admin>/.ssh/authorized_keys \
+    && chown <admin>:<admin> /home/<admin>/.ssh/authorized_keys \
+    && chmod 600 /home/<admin>/.ssh/authorized_keys \
+    && rm -f /tmp/ak"
+
+sudo awk '{print $NF}' /home/<admin>/.ssh/authorized_keys   # expect the admin key only
+```
+
+Leaving them would keep a deploy credential usable against the admin account —
+the arrangement this step exists to end. Your own admin key is untouched, so box
+access is not at risk; keep a second session open regardless.
+
+**The key move is only half the switch.** Continue straight to §2c: CI
+authenticates as whatever `VPS_USER` names, and `apply.sh` has just given the
+deployed tree to `kajianq-deploy` — so a deploy run before the flip fails, on the
+ssh auth (`Permission denied (publickey)`) or on the `rsync`.
 
 #### 2c. Flip `VPS_USER` — the host step's CI half
 
@@ -263,22 +291,27 @@ before any automated run. The schedule itself needs no manual install —
 
 ```bash
 systemctl list-timers kajianq-backup.timer
-# ExecStart must name THIS checkout's script, with no `__KAJIANQ_` token left.
-# A literal placeholder here means apply.sh's render() skipped the substitution:
-# systemd does not expand variables, so the unit fails on every run while the
-# timer still reports `active` — the defect that went unnoticed until 2026-09-21
-# (#181). Assert it rather than eyeballing it:
+# ExecStart must name the DEPLOYED artifact (/srv/kajianq/api/backup.js), not a
+# path in the repository checkout and not a `__KAJIANQ_` token. Both of those
+# shipped once and each broke the unit a different way (#181): the placeholder
+# was never substituted (systemd does not expand variables), and the checkout
+# version aborted on its git-provenance step because the unit's WorkingDirectory
+# is not a repository. Assert it rather than eyeballing it:
 systemctl cat kajianq-backup.service | grep '^ExecStart'
-systemctl show kajianq-backup.service -p Result -p ExecMainStatus
+# The proof that it EXECUTES — the exit status, and whether the run postdates
+# this unit's own install (a run older than its definition proves nothing):
+systemctl show kajianq-backup.service -p ExecMainStatus -p ExecMainExitTimestamp
+stat -c '%y' /etc/systemd/system/kajianq-backup.service
 ```
 
-`Result=success` with `ExecMainStatus=0` is the proof the unit executes — check
-what matters and not what merely looks reassuring:
-`systemctl is-active kajianq-backup.timer` being `active` says only that the
-schedule is armed. It stayed green through every failed run. The service's own
-`Result` (and the journal) is the signal, and the deploy now asserts that same
-field, so a red deploy names a broken backup instead of leaving it to be
-discovered at restore time.
+Check what matters and not what merely looks reassuring: `is-active` on the
+**timer** says only that the schedule is armed — it stayed green through every
+failed run. `Result` alone is not the signal either: `systemctl reset-failed`
+clears it to `success` while (on systemd 257, the box) leaving `ExecMainStatus=1`
+behind, so a reset unit reports success about a failed run. The deploy's gate
+asserts the pair — exit status 0 **and** a last run newer than the unit file —
+and that second condition is the only thing that catches "installed but never
+executed", which is exactly the state this unit sat in for its whole life.
 
 The 30-day rolling window is enforced by the backup script's
 `restic forget --keep-daily 30 --prune` step on every run, not by the timer.

@@ -397,6 +397,58 @@ Fixes (PR `fix-backup-script-placeholder`):
 4. The runbook's step 5 no longer merely asserts in a comment that `ExecStart`
    points at the checkout — it names the `Result` field as the real signal.
 
+#### …and the two follow-on defects that fix exposed (2026-09-25)
+
+Recorded because each was found only by running the real thing, and because the
+first fix's own gate turned out to be wrong in the same way as the bug.
+
+**A. After the placeholder was rendered, every run still failed (exit 1).**
+
+```
+bun[68781]: kajianq-backup: git exited 128: fatal: not a git repository
+```
+
+The unit's `WorkingDirectory` is `/srv/kajianq` (the deployed tree), but the
+script it now executed lived in `/srv/kajianq-src` (the checkout). `gitInfo()`
+runs `git rev-parse HEAD` for the manifest's provenance field, and `git` resolves
+the repository from the _working directory_ — so it failed. The script had
+dumped Postgres successfully first (23.5s CPU, 388M peak) and aborted at the
+last step, writing the manifest.
+
+Why it was fatal rather than graceful is the real defect: `kajianq-backup.mjs`
+defines its own `fail()` calling `process.exit(1)`, unlike `lib.mjs`'s which
+throws. **An exit is not an exception**, so the `try/catch` around `gitInfo()`'s
+`run()` call was dead code — the intent (“a missing repo yields `sha: unknown`”,
+which `buildManifest` already defaults to) was documented and unreachable. Fixed
+with a `probe()` helper that returns `undefined` instead of exiting, `cwd` pinned
+to the script's own directory.
+
+**B. The gate added in fix 3 above was itself wrong.** It asserted
+`Result=success`, but `reset-failed` — added in the same PR — clears `Result`
+while leaving `ExecMainStatus=1` on systemd 257 (the box; 261 clears both,
+verified locally). A reset unit therefore reported `success` about a failed run,
+and the gate printed `backup unit healthy` while the backup was broken — the same
+masking the gate was written to prevent. `Result` is also the wrong field in
+principle: it cannot distinguish “the last run passed” from “no run since the
+unit changed”. The gate now asserts the pair — exit status 0 **and** a last run
+newer than the unit file — and the second condition is the only one that catches
+_installed but never executed_, which was the actual state.
+
+**C. The structural cause, fixed rather than patched.** `kajianq-backup.service`
+was the only production unit executing code out of the repository checkout, which
+the deploy never updates — production ran whatever revision happened to sit
+there, and a re-render could wire the unit to stale code. The backup job is now a
+third Bun bundle (`api/backup.js`, beside `index.js`/`cleanup.js`) shipped by
+`deploy.sh`, and `ExecStart` names that static path. The placeholder is gone
+rather than substituted, and the checkout is no longer production code.
+
+Evidence sequence on the box: five scheduled runs (Sep 21–25) and one manual run
+failed on the placeholder; the sixth failed on git provenance; the first success
+is the run after this fix. The two-copies precondition for the step-7 deletions
+was met independently (manual restic snapshot `afd19227` + the R2 provenance
+archive), so the decommissioning was not unsafe — but the ongoing guarantee was
+absent for the unit's entire life.
+
 ### Note on Neon API access during decommissioning
 
 `api.neon.tech` had no DNS records from this machine (A/AAAA empty via DoH);

@@ -413,7 +413,15 @@ describe("provisioning config as code stays true to the ADR", () => {
     // enable them — not runbook snippets to copy by hand.
     const service = directives("provision/vps/systemd/kajianq-backup.service");
     expect(service).toContain("EnvironmentFile=/etc/kajianq/backup.env");
-    expect(service).toMatch(/ExecStart=\/usr\/bin\/bun __KAJIANQ_BACKUP_SCRIPT__/);
+    // ExecStart names a DEPLOYED artifact, not a path in the repository
+    // checkout: this unit was the only production unit running code the deploy
+    // never updated (#181), which produced two failures in a row — an
+    // unsubstituted placeholder, then the provenance step aborting every run
+    // because the unit's WorkingDirectory is not a git repository. A static
+    // deployed path removes both classes, so assert the static path and that
+    // NO placeholder token remains.
+    expect(service).toMatch(/ExecStart=\/usr\/bin\/bun run \/srv\/kajianq\/api\/backup\.js/);
+    expect(service).not.toMatch(/__KAJIANQ_/);
     expect(service).toMatch(/Type=oneshot/);
     // Credentials in the unit text would be world-readable in the journal.
     expect(service).not.toMatch(/RESTIC_|PGDATABASE_URL/);
@@ -428,18 +436,20 @@ describe("provisioning config as code stays true to the ADR", () => {
   });
 
   it("render() substitutes every placeholder a shipped config may carry", () => {
-    // The defect this pins (#181): `__KAJIANQ_BACKUP_SCRIPT__` was asserted
-    // PRESENT in the unit (above) but nothing asserted it was ever SUBSTITUTED.
-    // The unit installed with the literal token in ExecStart, systemd does not
+    // The defect this pins (#181): a placeholder in the backup unit's ExecStart
+    // was asserted PRESENT (by an earlier test) but nothing asserted it was ever
+    // SUBSTITUTED. The unit installed with the literal token, systemd does not
     // expand variables, and every scheduled run died on
     // `Script not found "__KAJIANQ_BACKUP_SCRIPT__"` — the nightly encrypted
     // backup never once succeeded, while the timer's `is-active` stayed green.
     //
-    // Derived, not enumerated: every `__KAJIANQ_*__` token appearing in a
-    // shipped config (anything under provision/vps/ except apply.sh itself)
-    // must have a matching sed entry in apply.sh's render(). A new placeholder
-    // in a unit or server block therefore fails this test until it is wired —
-    // which is the moment to wire it, not after a scheduled run.
+    // That unit now ships a static deployed path and carries no token at all,
+    // which is the better fix; this invariant stays as the guard for anything
+    // that reintroduces one. Derived, not enumerated: every `__KAJIANQ_*__`
+    // token appearing in a shipped config (anything under provision/vps/ except
+    // apply.sh itself) must have a matching sed entry in apply.sh's render(). A
+    // new placeholder therefore fails this test until it is wired — which is the
+    // moment to wire it, not after a scheduled run.
     const SRC = "provision/vps";
     const apply = readFileSync(resolve(process.cwd(), `${SRC}/apply.sh`), "utf8");
     const renderBody = /render\(\) \{[\s\S]*?\n\}/.exec(apply)?.[0];
@@ -454,11 +464,9 @@ describe("provisioning config as code stays true to the ADR", () => {
       .filter((path) => !path.endsWith("apply.sh"))
       .map((path) => readFileSync(path, "utf8"))
       .join("\n");
-    // matchAll, not a single exec: a line may carry MORE than one token (the
-    // ExecStart that motivated this test carries the script path on a line that
-    // could also name a second placeholder), and taking only the first per line
-    // would let the extra one through unsubstituted — the same class of gap
-    // this test exists to close.
+    // matchAll, not a single exec: a line may carry MORE than one token, and
+    // taking only the first per line would let a second one through
+    // unsubstituted — the same class of gap this test exists to close.
     const declared = new Set([...shipped.matchAll(/__KAJIANQ_([A-Z_]+)__/g)].map((m) => m[1]));
     expect(declared.size).toBeGreaterThanOrEqual(4);
 
@@ -653,31 +661,90 @@ describe("provisioning config as code stays true to the ADR", () => {
 
   it("the deploy fails on a broken backup unit rather than trusting an active timer", () => {
     // The gate whose absence let the backup defect hide (#181). The timer's
-    // `is-active` was green through every failed run — active means the
-    // SCHEDULE is armed, never that the job works — so the deploy must read the
-    // SERVICE's own Result, which is what actually records a run's outcome.
+    // `is-active` was green through every failed run — active means the SCHEDULE
+    // is armed, never that the job works — so the deploy reads the service's own
+    // run record instead.
     const script = read("provision/vps/deploy/deploy.sh");
-    expect(script).toMatch(/systemctl show kajianq-backup\.service -p Result/);
-    // A non-success Result must abort the deploy, not warn.
-    expect(script).toMatch(/if \[ "\$result" != "success" \][^]*?exit 1/);
-    // The failure must name the follow-up, or the operator reads a bare code.
+    // The exit status is the assertion...
+    expect(script).toMatch(/systemctl show kajianq-backup\.service -p ExecMainStatus/);
+    expect(script).toMatch(/if \[ "\$status" != "0" \][^]*?exit 1/);
+    // ...and so is the timestamp-vs-install comparison, because `Result` cannot
+    // distinguish "the last run passed" from "no run since the unit changed".
+    // That distinction is the whole defect: the backup was installed-but-never-
+    // executed, and no single field reports it.
+    expect(script).toMatch(/ExecMainExitTimestamp --timestamp=unix/);
+    expect(script).toMatch(/stat -c %Y \/etc\/systemd\/system\/kajianq-backup\.service/);
+    expect(script).toMatch(/if \[ "\$exited" -lt "\$installed" \][^]*?exit 1/);
+    // A never-run unit must fail too, not pass on empty strings.
+    expect(script).toMatch(/if \[ -z "\$exited" \][^]*?exit 1/);
+    // Failures name the follow-up, or the operator reads a bare code.
     expect(script).toMatch(/journalctl -u kajianq-backup\.service/);
-    // It must NOT merely re-check the timer: that is the reassuring-looking
-    // field this test exists to keep out of the gate.
+    // `Result` must NOT be the assertion: on systemd 257 (the box)
+    // `reset-failed` clears it to `success` while leaving ExecMainStatus=1, so
+    // gating on it reports a failed run as healthy — the exact masking this
+    // check exists to prevent. (Verified on both 257 and 261.)
+    expect(script).not.toMatch(/-p Result/);
+    // And it must not merely re-check the timer: the reassuring-looking field
+    // this test exists to keep out of the gate.
     expect(script).not.toMatch(/is-active --quiet kajianq-backup\.timer/);
   });
 
-  it("apply.sh clears the backup unit's stale failure state after re-rendering it", () => {
+  it("apply.sh clears the backup unit's stale failure state after installing it", () => {
     // The old unit definition failed on every run; that failure is attached to
-    // the unit NAME, so without reset-failed the re-rendered unit still reports
-    // Result=exit-code and the deploy's new backup gate fails on a defect that
-    // no longer exists — a stale-failure false positive.
+    // the unit NAME, so without reset-failed `systemctl status` reports a defect
+    // that no longer exists. The deploy's gate does not depend on the reset (it
+    // compares the exit timestamp to the install time), so this is purely so the
+    // box's own status is not misleading.
     const apply = read("provision/vps/apply.sh");
     expect(apply).toMatch(/systemctl reset-failed kajianq-backup\.service/);
     // Order matters: the reset is meaningless before the new unit is in place.
     expect(apply.indexOf("reset-failed kajianq-backup.service")).toBeGreaterThan(
       apply.indexOf("systemd/kajianq-backup.service"),
     );
+  });
+
+  it("the backup job ships as a deployed artifact, not from the repository checkout", () => {
+    // Why this is the structural fix (#181): while the unit executed
+    // `/srv/kajianq-src/…/kajianq-backup.mjs`, production ran whatever revision
+    // happened to sit in that checkout — which the deploy never updated — and a
+    // re-render could wire it to stale code. Two failures followed from that
+    // coupling (an unsubstituted placeholder; then the git-provenance step
+    // aborting every run because the checkout is not the unit's cwd). Building a
+    // third bundle beside index.js/cleanup.js puts it under the deploy's control
+    // and removes the coupling.
+    const script = read("provision/vps/deploy/deploy.sh");
+    expect(script).toMatch(
+      /bun build "\$\{REPO_DIR\}\/provision\/vps\/backup\/kajianq-backup\.mjs" --target=bun/,
+    );
+    expect(script).toMatch(/--outfile "\$\{STAGE\}\/api\/backup\.js"/);
+    // The shipped unit must point at that artifact and at nothing else.
+    const service = directives("provision/vps/systemd/kajianq-backup.service");
+    expect(service).toMatch(/ExecStart=\/usr\/bin\/bun run \/srv\/kajianq\/api\/backup\.js/);
+    // No checkout path may remain anywhere in the unit.
+    expect(service).not.toMatch(/kajianq-src/);
+    // apply.sh installs it verbatim — no render() call, since there is nothing
+    // to substitute.
+    const apply = read("provision/vps/apply.sh");
+    expect(apply).not.toMatch(/render "\$\{SRC\}\/systemd\/kajianq-backup\.service"/);
+  });
+
+  it("the backup script's provenance probe cannot abort a run", () => {
+    // The second failure (#181): `gitInfo()` guarded a `run()` call with
+    // try/catch, but this script's `fail()` calls process.exit(1) — an exit is
+    // not an exception, so the catch was dead code and EVERY backup aborted over
+    // a manifest field that already defaults to "unknown". Provenance must go
+    // through a probe that returns rather than exits.
+    const script = read("provision/vps/backup/kajianq-backup.mjs");
+    expect(script).toMatch(/function probe\(cmd, args, opts = \{\}\)/);
+    expect(script).toMatch(/sha: probe\("git", \["rev-parse", "HEAD"\]/);
+    // `gitInfo` must not use `run()` any more — that is the fatal path.
+    const gitInfo = /function gitInfo\(\) \{[\s\S]*?\n\}/.exec(script)?.[0];
+    expect(gitInfo, "kajianq-backup.mjs must define gitInfo()").toBeTruthy();
+    expect(gitInfo).not.toMatch(/\brun\(/);
+    // The probe itself must never call fail()/exit.
+    const probeBody = /function probe\(cmd, args, opts = \{\}\) \{[\s\S]*?\n\}/.exec(script)?.[0];
+    expect(probeBody).toBeTruthy();
+    expect(probeBody).not.toMatch(/fail\(|process\.exit/);
   });
 
   it("the deploy env example carries placeholders, not a real host", () => {

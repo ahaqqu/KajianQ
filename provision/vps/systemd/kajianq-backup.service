@@ -1,8 +1,14 @@
 # provision/vps/systemd/kajianq-backup.service — the daily encrypted backup
-# (ADR-0043 decision 4, #180). Installed by provision/vps/apply.sh, which
-# renders __KAJIANQ_BACKUP_SCRIPT__ to the checked-out backup script's path
-# (systemd does not expand variables in ExecStart, so the apply script
-# substitutes the real path of the repository checkout).
+# (ADR-0043 decision 4, #180). Installed by provision/vps/apply.sh.
+#
+# ExecStart names a DEPLOYED artifact (api/backup.js, bundled by
+# provision/vps/deploy/deploy.sh), not a path in the repository checkout. It
+# used to take its script path from a placeholder substituted at apply time,
+# which made this the only production unit executing code the deploy never
+# updated — and that produced two separate failures (#181): the placeholder went
+# unsubstituted in ExecStart for a while, and once fixed, the script's provenance
+# step aborted every run because the unit's WorkingDirectory is not a git
+# repository. Shipping a static artifact removes both classes.
 #
 # The unit runs as root because the restic repository key and the Postgres
 # dump both require it (the key file is root-only by policy). It is oneshot
@@ -22,7 +28,7 @@ Requires=postgresql.service
 Type=oneshot
 EnvironmentFile=/etc/kajianq/backup.env
 WorkingDirectory=/srv/kajianq
-ExecStart=/usr/bin/bun __KAJIANQ_BACKUP_SCRIPT__
+ExecStart=/usr/bin/bun run /srv/kajianq/api/backup.js
 
 # The dump is plaintext while it exists; a private tmp isolates it from other
 # processes for the run's duration, and the script removes it in a finally.

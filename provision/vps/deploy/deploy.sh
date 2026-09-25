@@ -113,11 +113,20 @@ STAGE="$(mktemp -d "${TMPDIR:-/tmp}/kajianq-deploy-XXXXXX")"
 trap 'rm -rf "${STAGE}"' EXIT
 
 # --- 1. build ---------------------------------------------------------------
-# Two artifacts, both bundled for Bun so the box needs no node_modules:
-#   api/index.js   the serving entry (apps/api/src/boot.ts)
-#   api/cleanup.js the cron entry    (apps/api/src/cleanup.ts)
+# Three artifacts, all bundled for Bun so the box needs no node_modules:
+#   api/index.js   the serving entry  (apps/api/src/boot.ts)
+#   api/cleanup.js the cron entry     (apps/api/src/cleanup.ts)
+#   api/backup.js  the backup job     (provision/vps/backup/kajianq-backup.mjs)
 # `--target=bun` is what makes `pg` a plain dependency of the bundle rather
 # than a runtime resolve against a tree the box does not have.
+#
+# The backup job is bundled for a different reason than the other two: it is the
+# only unit that used to execute code out of the repository CHECKOUT
+# (`/srv/kajianq-src`), which the deploy never updated — so production ran
+# whatever revision happened to be checked out there, and a re-render could wire
+# the unit to stale code (#181). Shipping it beside the API entries puts every
+# production-executed file under the deploy's control and removes the
+# placeholder that had to be substituted into ExecStart.
 log "building web bundle + API entries"
 run bun --version >/dev/null
 # `bun run` in an explicit subshell cd: `--cwd` is a runtime flag, not a
@@ -128,6 +137,10 @@ run bun build "${REPO_DIR}/apps/api/src/boot.ts" --target=bun \
     --outfile "${STAGE}/api/index.js"
 run bun build "${REPO_DIR}/apps/api/src/cleanup.ts" --target=bun \
     --outfile "${STAGE}/api/cleanup.js"
+# `lib.mjs` is inlined by the bundler, so the deployed artifact is
+# self-contained and location-independent (it does not need the checkout).
+run bun build "${REPO_DIR}/provision/vps/backup/kajianq-backup.mjs" --target=bun \
+    --outfile "${STAGE}/api/backup.js"
 
 if [ "${DRY_RUN}" -eq 0 ]; then
     # `index.html` is the proof the web build actually produced an SPA: a
@@ -182,26 +195,45 @@ log "running the reclamation once (proves the cron entry executes)"
 run ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" "sudo ${SYSTEMCTL} start kajianq-cron.service"
 
 # The backup unit is deliberately NOT run here (it is root-only and would
-# double the daily dump), so its health is checked from its last run instead.
-# This is the check whose absence let a real defect go unnoticed (#181): the
-# unit shipped with an unsubstituted `__KAJIANQ_BACKUP_SCRIPT__` in ExecStart,
-# every scheduled run died on `Script not found`, and the TIMER's `is-active`
-# was green the whole time — active says the schedule is armed, never that the
-# job works. A deploy now fails on a unit whose last run failed, so the
-# encrypted-backup guarantee (ADR-0043 decision 4) has a gate rather than an
-# assumption. `Result=success` is the assertion; a unit that has never run
-# reports `Result=success` with no ExecMainStatus, which the is-failed check
-# below tolerates so a fresh box is not blocked.
+# double the daily dump), so its health is read from its own run record.
+#
+# What NOT to assert, learned the hard way (#181): `Result` alone is not the
+# signal, and neither is the timer. The timer's `is-active` only says the
+# schedule is armed — it stayed green through every failed run. `Result` alone
+# is also unreliable because `systemctl reset-failed` clears it to `success`
+# while, on systemd 257 (the box), LEAVING `ExecMainStatus=1` behind — so a
+# reset unit reports `Result=success` about a failed run, which is precisely the
+# masking this check exists to prevent. Verified on both versions: systemd 261
+# clears both fields, 257 clears only `Result`.
+#
+# So the assertion is the pair: the last exit status must be 0 AND the last run
+# must have happened AFTER this unit's current definition was installed. A unit
+# whose last run predates its own file has, by definition, never been exercised
+# in its current form — that is the "installed but never executed" state the
+# backup spent its whole life in, and no field reports it directly.
 log "checking the backup unit's last run"
 run ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" '
-  result="$(systemctl show kajianq-backup.service -p Result --value)"
   status="$(systemctl show kajianq-backup.service -p ExecMainStatus --value)"
-  if [ "$result" != "success" ]; then
-    echo "deploy: kajianq-backup.service last run reported Result=$result (ExecMainStatus=$status)" >&2
-    echo "deploy: the encrypted backup is not working — check: journalctl -u kajianq-backup.service -n 40" >&2
+  exited="$(systemctl show kajianq-backup.service -p ExecMainExitTimestamp --timestamp=unix --value)"
+  installed="$(stat -c %Y /etc/systemd/system/kajianq-backup.service)"
+  exited="${exited#@}"
+
+  if [ -z "$exited" ]; then
+    echo "deploy: kajianq-backup.service has never run — the encrypted backup is unproven" >&2
+    echo "deploy: prove it now: sudo systemctl start kajianq-backup.service" >&2
     exit 1
   fi
-  echo "deploy: backup unit healthy (Result=success, last ExecMainStatus=${status:-never run})"
+  if [ "$status" != "0" ]; then
+    echo "deploy: kajianq-backup.service last run exited $status — the encrypted backup is failing" >&2
+    echo "deploy: check: journalctl -u kajianq-backup.service -n 40" >&2
+    exit 1
+  fi
+  if [ "$exited" -lt "$installed" ]; then
+    echo "deploy: kajianq-backup.service last ran BEFORE its current definition was installed" >&2
+    echo "deploy: this unit has never been exercised as installed — prove it: sudo systemctl start kajianq-backup.service" >&2
+    exit 1
+  fi
+  echo "deploy: backup unit healthy (last run exited 0, after the current unit was installed)"
 '
 
 # --- 4. smoke ---------------------------------------------------------------
