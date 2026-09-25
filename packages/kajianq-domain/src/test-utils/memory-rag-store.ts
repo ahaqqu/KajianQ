@@ -196,6 +196,19 @@ export function createMemoryRagStore(): RagStore & {
         }),
       );
     },
+    countDocChildrenByMetadata(key) {
+      return Effect.sync(() => {
+        const counts = new Map<string | null, number>();
+        for (const c of children.values()) {
+          const raw = (c.metadata ?? {})[key];
+          const value = typeof raw === "string" ? raw : null;
+          counts.set(value, (counts.get(value) ?? 0) + 1);
+        }
+        return [...counts.entries()]
+          .map(([value, count]) => ({ value, count }))
+          .sort((a, b) => b.count - a.count);
+      });
+    },
     insertAnswerTrace(input) {
       return Effect.sync(() => {
         traces.set(input.messageId, input.trace);

@@ -6,6 +6,7 @@
  *   bun run ingest:hadith -- --check               # integrity check only (no LLM/embedding spend)
  *   bun run ingest:hadith -- --limit 2             # ingest only the first N collections
  *   bun run ingest:hadith -- --offset 3 --limit 1  # one collection per pass (resumable)
+ *   bun run ingest:hadith -- --only-missing        # ingest only collections with zero landed children
  *
  * Thin composition root (B5): source acquisition lives in
  * `source-acquisition.mjs`, R2 archival in `archive-store.mjs`; this file
@@ -26,7 +27,11 @@
  *
  * Source: fawazahmed0/hadith-api editions (Unlicense; ADR-0025). Idempotency:
  * parents upsert by sourceKey, children by (parentId, ordinal), pairs by
- * pairKey, reports by run id — re-running the script is safe by construction.
+ * pairKey, reports by run id — re-running the script is safe by construction
+ * (rows), but NOT by cost (a pass re-embeds every row it reads, ADR-0037):
+ * `--only-missing` reads the landed per-collection counts through the store
+ * seam before any acquisition and drops already-landed collections, so a
+ * range loop cannot re-pay for them (issue #213).
  */
 import * as app from "@app/infra";
 import * as ingest from "@app/rag-ingest";
@@ -35,6 +40,7 @@ import {
   acquireFiles,
   archiveRawSources,
   createArchiveObjectStore,
+  onlyMissingCollections,
   parseCollectionRange,
   resolveFromCwd,
   selectCollections,
@@ -53,6 +59,12 @@ const R2_PREFIX = "hadith/fawazahmed0-hadith-api";
 
 const args = process.argv.slice(2);
 const CHECK_ONLY = args.includes("--check");
+// The guard against re-paying for landed collections (issue #213): read the
+// store's per-collection child counts first and ingest only the missing ones.
+// The chunk metadata field carrying the collection label is written by this
+// domain pack's parser, so the key lives here — the seam stays engine-generic.
+const ONLY_MISSING = args.includes("--only-missing");
+const COLLECTION_METADATA_KEY = "collection";
 // Range parsing rules (and their validation) live in collection-range.mjs so
 // they are unit-tested: a bad flag must fail loudly, never silently ingest
 // nothing (`slice(0, NaN)`) or the wrong slice via falsiness.
@@ -82,18 +94,46 @@ if (!databaseUrl && !CHECK_ONLY) fail("DATABASE_URL is not set");
 logger.info("starting", {
   mode: CHECK_ONLY ? "integrity-check" : "full-ingestion",
   collections,
+  onlyMissing: ONLY_MISSING,
 });
+
+// --only-missing narrows the selection by measured store state BEFORE any
+// acquisition: the store seam is resolved, the landed counts read through
+// `countDocChildrenByMetadata`, and already-landed collections dropped. A
+// store read before the spend, never inside the embedding loop (ADR-0037).
+let selected = collections;
+if (ONLY_MISSING && !CHECK_ONLY) {
+  const store = app.resolvePostgresStore(databaseUrl, { logger });
+  const landedCounts = {};
+  for (const { value, count } of await ingest.runStoreEffect(
+    store.countDocChildrenByMetadata(COLLECTION_METADATA_KEY),
+  )) {
+    if (value !== null) landedCounts[value] = count;
+  }
+  logger.info("landed counts read", { landedCounts });
+  const narrowed = onlyMissingCollections(collections, landedCounts);
+  if (narrowed.error !== undefined) fail(narrowed.error);
+  if (narrowed.landed.length > 0) {
+    logger.info("skipping already-landed collections", { landed: narrowed.landed });
+  }
+  selected = narrowed.collections;
+  if (selected.length !== collections.length) {
+    logger.info("selection narrowed by --only-missing", { selected });
+  }
+} else {
+  selected = collections;
+}
 
 // Editions carry the collection name inside their JSON (parsed by the domain
 // layer); acquisition stays name-agnostic.
 const cacheDir = process.env.HADITH_SOURCE_DIR;
-const entries = collections.flatMap((c) => [
+const entries = selected.flatMap((c) => [
   { url: `${EDITIONS_BASE}/ara-${c}.json`, cacheFile: `ara-${c}.json` },
   { url: `${EDITIONS_BASE}/ind-${c}.json`, cacheFile: `ind-${c}.json` },
 ]);
 const texts = await acquireFiles(entries, { log: logger, cacheDir });
 
-const editions = collections.map((c, i) => ({
+const editions = selected.map((c, i) => ({
   collection: c,
   arabicText: texts[i * 2],
   indonesianText: texts[i * 2 + 1],
@@ -125,7 +165,7 @@ const emptyPrimary = [...corpus.alignment.values()].reduce((n, s) => n + s.empty
 // with text_id: null, so they are surfaced separately, not here (review C1).
 const quarantined = unmatched + emptyPrimary;
 logger.info("integrity OK", {
-  collections: collections.length,
+  collections: selected.length,
   hadith: corpus.records.length,
   gradeGraded: gradeStats.graded,
   gradeDhaifWins: gradeStats.dhaifWins,
@@ -215,7 +255,8 @@ const report = {
     archiveStored: archive.stored,
     archiveKeys: archive.keys.length,
     archivePrefix: archive.prefix,
-    collections: collections.length,
+    collections: selected.length,
+    onlyMissing: ONLY_MISSING,
     hadith: corpus.records.length,
     gradeGraded: gradeStats.graded,
     gradeDhaifWins: gradeStats.dhaifWins,

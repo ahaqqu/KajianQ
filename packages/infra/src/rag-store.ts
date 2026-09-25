@@ -160,6 +160,23 @@ export interface RagStore extends RagStoreEvalRunWrite, RagStoreEvalLedger, RagS
   upsertAlignedPair(input: AlignedPairInsert): Effect.Effect<string, StoreError>;
 
   /**
+   * Count child chunks grouped by one `metadata` JSONB key's string value.
+   * The key is bound as a parameter (never interpolated), the values are
+   * opaque strings, and rows where the key is absent or non-string collapse
+   * under `null` — the store does not interpret the key's meaning.
+   *
+   * The read behind the ingest CLIs' `--only-missing` guard (ADR-0037's
+   * recorded revisit trigger): resumption by measured store state needs the
+   * per-value landed counts BEFORE a pass acquires sources or spends, so a
+   * naive range loop cannot re-pay for collections already landed. The
+   * caller owns the domain vocabulary (which key to read); the seam stays
+   * engine-generic.
+   */
+  countDocChildrenByMetadata(
+    key: string,
+  ): Effect.Effect<readonly { value: string | null; count: number }[], StoreError>;
+
+  /**
    * Nearest-neighbour similarity search over one embedding track. `filters`
    * are exact-match against `metadata` JSONB keys, passed through untouched —
    * the store does not interpret their names.

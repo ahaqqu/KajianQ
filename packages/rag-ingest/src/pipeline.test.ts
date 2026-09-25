@@ -59,6 +59,9 @@ function fakeStore() {
     getDocChildrenByIds() {
       return Effect.succeed([]);
     },
+    countDocChildrenByMetadata() {
+      return Effect.succeed([]);
+    },
     insertAnswerTrace() {
       return Effect.succeed("");
     },

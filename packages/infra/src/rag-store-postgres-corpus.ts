@@ -24,6 +24,7 @@ export function postgresCorpusMethods(
   | "upsertAlignedPair"
   | "similaritySearch"
   | "getDocChildrenByIds"
+  | "countDocChildrenByMetadata"
 > {
   return {
     insertDocParent(input) {

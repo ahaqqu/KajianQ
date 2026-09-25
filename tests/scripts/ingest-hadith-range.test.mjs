@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  onlyMissingCollections,
   parseCollectionRange,
   selectCollections,
 } from "../../packages/kajianq-domain/scripts/collection-range.mjs";
@@ -11,7 +12,10 @@ import {
  * resumable passes (one collection per invocation), and because the earlier
  * parser's failure modes were silent: `--limit 0` meant "full corpus" via
  * falsiness, and `--limit abc` produced `slice(0, NaN)` — an empty run that
- * reported success.
+ * reported success. The `onlyMissingCollections` guard (issue #213) narrows a
+ * range to collections with zero landed children, so a range loop cannot
+ * re-pay embeddings for collections already landed — upserts dedupe rows,
+ * not spend (ADR-0037).
  */
 
 const COLLECTIONS = ["bukhari", "muslim", "abudawud", "tirmidhi", "nasai", "ibnmajah", "malik"];
@@ -90,5 +94,41 @@ describe("selectCollections", () => {
     expect(selectCollections(COLLECTIONS, { offset: 0, limit: Number.NaN }).error).toMatch(
       /--limit/,
     );
+  });
+});
+
+describe("onlyMissingCollections", () => {
+  const landed = {
+    bukhari: 7130,
+    muslim: 0,
+    abudawud: 0,
+    tirmidhi: 0,
+    nasai: 0,
+    ibnmajah: 0,
+    malik: 1829,
+  };
+
+  it("keeps only collections with zero landed children", () => {
+    const r = onlyMissingCollections(COLLECTIONS, landed);
+    expect(r.error).toBeUndefined();
+    expect(r.collections).toEqual(["muslim", "abudawud", "tirmidhi", "nasai", "ibnmajah"]);
+    expect(r.landed).toEqual(["bukhari", "malik"]);
+  });
+
+  it("reads a collection absent from the counts map as zero (kept)", () => {
+    const r = onlyMissingCollections(["muslim"], {});
+    expect(r.error).toBeUndefined();
+    expect(r.collections).toEqual(["muslim"]);
+  });
+
+  it("refuses a no-op paid pass when everything selected already landed", () => {
+    const r = onlyMissingCollections(["malik"], landed);
+    expect(r.error).toMatch(/already has children landed.*malik=1829.*refusing/);
+  });
+
+  it("keeps everything when nothing landed", () => {
+    const r = onlyMissingCollections(["bukhari", "muslim"], {});
+    expect(r.collections).toEqual(["bukhari", "muslim"]);
+    expect(r.landed).toEqual([]);
   });
 });
