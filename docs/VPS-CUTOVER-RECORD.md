@@ -1,15 +1,24 @@
 # VPS cutover record — the executed log of GDPR-E's on-host half
 
-The executed companion to [`docs/VPS-CUTOVER-RUNBOOK.md`](./VPS-CUTOVER-RUNBOOK.md):
-every command actually run on the box (or the deploying machine) while the
-migration was carried out, with the decisive output and the evidence row it
-maps to. Written live, in execution order — not a plan. Where a step failed and
-was retried, the failure is recorded too.
+Every command actually run on the box (or the deploying machine) while the
+migration was carried out, with the decisive output and the evidence row it maps
+to. Written live, in execution order — not a plan. Where a step failed and was
+retried, the failure is recorded too.
+
+**Read this as evidence, not as a manual.** The migration it records is
+executed and the source it migrated off (Cloudflare Workers + Neon) is
+decommissioned, so there is nothing left here to follow — it is the proof that
+the GDPR-E work happened, and it is what issue #181's acceptance criteria are
+walked against (see the checklist at the end). For setting up a box of your own,
+[`docs/VPS-SETUP.md`](./VPS-SETUP.md); for running one,
+[`docs/VPS-OPERATIONS.md`](./VPS-OPERATIONS.md). The one procedure here that
+outlived its vendor — moving an existing database onto a new box — is in the
+guide's §12.
 
 Sanitization: the repository is public, so no real hostname, IP address,
-credential, or connection string appears here — placeholders only, same rule as
-[`docs/VPS-BASELINE-SETUP.md`](./VPS-BASELINE-SETUP.md). Real values live in the
-owner's password manager and in `/etc/kajianq/*.env`, mode 0600, on the box.
+credential, or connection string appears here — placeholders only. Real values
+live in the owner's password manager and in `/etc/kajianq/*.env`, mode 0600, on
+the box.
 
 ADR: [`adr/0044-vps-serving-path-cutover.md`](../adr/0044-vps-serving-path-cutover.md).
 Issue: #181. The PR-level review loop and merge are recorded on PR #189.
@@ -23,9 +32,9 @@ removing it again is a closing step of this record.
 
 ## Step 0 survey — the box as found (before any change)
 
-Commands run via `ssh <user>@<IP>`; all output verified against
-[`docs/VPS-BASELINE-SETUP.md`](./VPS-BASELINE-SETUP.md)'s record — the box is
-exactly where the baseline left it:
+Commands run via `ssh <user>@<IP>`; all output verified against the baseline
+session's record (retained at the end of this file) — the box is exactly where
+the baseline left it:
 
 | Check           | Found                                                              |
 | --------------- | ------------------------------------------------------------------ |
@@ -454,3 +463,82 @@ absent for the unit's entire life.
 `api.neon.tech` had no DNS records from this machine (A/AAAA empty via DoH);
 the API was reached through `console.neon.tech/api/v2` with the same bearer
 token — recorded so the step is reproducible.
+
+## Before this record — the box's baseline session (2026-09-20, retained provenance)
+
+This box was not bought for the migration; it was already serving a static page.
+The baseline session that took it from bare metal to that state is recorded here
+because `docs/VPS-BASELINE-SETUP.md` has been retired — its bootstrap runbook is
+now `docs/VPS-SETUP.md` §1, which does the same layer with **nginx**
+instead of the baseline's Caddy (Caddy was retired in step 0 of this record:
+the two cannot share :80/:443). The facts below are what "the box as found"
+above means, kept so the chain of custody has a start.
+
+| #   | Step                                             | Result                                                                                |
+| --- | ------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| 1   | SSH in as root with the provider credentials     | Host key accepted, connected                                                          |
+| 2   | Identified the OS                                | **Debian 13 (trixie)** — kept as-is; not reinstalled to Ubuntu                        |
+| 3   | `apt update && apt full-upgrade -y`              | System current                                                                        |
+| 4   | Base tools installed                             | `ufw`, `unattended-upgrades`, `curl`, `git`, `sudo`                                   |
+| 5   | Admin user created, sudo enabled, key auth added | Non-root user, `usermod -aG sudo`, laptop pubkey via `ssh-copy-id` from the laptop    |
+| 6   | SSH hardened                                     | `PermitRootLogin no`, `PasswordAuthentication no`; verified from a **second** session |
+| 7   | Firewall enabled                                 | `ufw`: default deny in / allow out; only 22, 80, 443 open (v4+v6)                     |
+| 8   | Caddy installed                                  | From Debian's own repository — **retired in step 0 below**, replaced by nginx         |
+| 9   | Static hello page + Caddy site                   | `/var/www/hello/index.html`, one server block — removed with Caddy                    |
+| 10  | TLS certificate obtained                         | Let's Encrypt for the sslip.io hostname; re-issued for nginx in step 0                |
+
+Journal access note from that session: non-root users cannot read service logs
+by default on Debian; either `sudo journalctl -u <unit>` or
+`sudo usermod -aG systemd-journal <user>` (applies on next login).
+
+The baseline's own five "known deltas" were all settled before or during step 0
+(nginx replaced Caddy; hardening applied; the DPA concluded; Postgres 17 +
+pgvector landed and the Neon data transferred snapshot-verified). That list is
+preserved in git history if the reasoning is ever needed.
+
+## Acceptance criteria (#181) — the walk-through
+
+This checklist used to live in `docs/VPS-CUTOVER-RUNBOOK.md`, which has been
+retired now that the cutover is executed: the runbook was a **one-shot
+procedure** (migrate off Cloudflare + Neon), and a self-hoster has no such
+source to migrate from. It is kept here because issue #181 is still open and
+closing it means walking these rows against this record — the evidence column
+names what to look for above, not a command to run again.
+
+`docs/VPS-SETUP.md` §12 carries the vendor-neutral part of the
+procedure (snapshot → verify → ship → restore → snapshot → compare) for anyone
+moving an existing database onto a box, which is the half that outlived the
+Cloudflare/Neon specifics.
+
+**Owner-gated** rows cannot be closed by code, and the Art. 30 record's
+"implemented as code, not yet applied" rows flip only with this evidence.
+
+| #     | Acceptance criterion                                                                       | Evidence in this record                                                                                                                                                     | Gated by                    |
+| ----- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| AC-1  | Pre-cutover snapshot verified on the source                                                | "Labels cited (AC-2)": `pre-cutover-20260920t1302` `created` banner (label, sha256, counts) + `verified` against live Neon                                                  | Owner                       |
+| AC-2  | Postgres + pgvector restored on the VPS; post-cutover snapshot verified; both labels cited | Both manifests with an exact `tableCounts` match on the corpus + schema tables; both labels quoted in this record                                                           | Owner                       |
+| AC-3  | Ingest/eval CLIs run against the VPS database                                              | The Golden Set smoke green against the VPS store; `--check` passes reported "store untouched, no LLM/embedding spend"; `db:status:all` fully applied                        | Owner                       |
+| AC-4  | API serves `/v1/*` with TLS; the anonymous-session cron runs on the host                   | "Live-flow verification": unit active, timer scheduled at 03:17, HTTPS health JSON, `journalctl -u kajianq-cron` showing a completed run                                    | Owner                       |
+| AC-5  | Deployer separation                                                                        | `grep -rn "alchemy" apps/` returns nothing; `deploy-vps.yml` and `provision/vps/deploy/` exist                                                                              | Repo                        |
+| AC-6  | Secrets: none committed; business logic never touches `env.*`                              | `bun run boundary` clean, gitleaks clean, the `bindingsFromEnv` tests green                                                                                                 | Repo                        |
+| AC-7  | Single-shot cutover, staging first                                                         | Two green deploy runs in order (staging then prod, step 5); no rollback attempted                                                                                           | Owner                       |
+| AC-8  | Smoke tests pass against the VPS; e2e re-pointed                                           | 33/33 BDD scenarios green locally; the deploy script's smoke lines against the public URL                                                                                   | Repo + Owner                |
+| AC-9  | `PromptSpec.personalData` on every serving call site                                       | `bun run test apps/api/src/lib/personal-data-serving.test.ts` green: every serving role has a keyed personal-data-allowed candidate                                         | Repo                        |
+| AC-10 | On-host hardening applied + restore drill on the real box                                  | Step 0: `apply.sh` clean; the drill exits 0 on the host; `logrotate --debug` clean on both stanzas                                                                          | Owner                       |
+| AC-11 | About-page register flips at cutover                                                       | The drift guard green with netcup `current` and the transition rows narrowed                                                                                                | Repo                        |
+| AC-12 | Backup timer + cron re-homed                                                               | Both timers scheduled; a snapshot produced in the repository. **See "the nightly backup had never worked" — the scheduled unit's first real success postdates this record** | Owner                       |
+| AC-13 | Decommissioning Cloudflare + Neon + CF secrets                                             | Step 7's deletion confirmations; `gh secret list` without the CF/Neon entries; the grep returning nothing                                                                   | **Owner approval required** |
+| AC-14 | SPECS.md + the ADR's implementation notes updated                                          | The spec's §3/§5/§7/§8 diff and the ADR-0043 amendment in the same PR                                                                                                       | Repo                        |
+| AC-15 | `NOTICES/DATASETS.md` unchanged unless corpus handling changed                             | Empty diff — raw source data stays immutable and no dataset was touched                                                                                                     | Repo                        |
+| AC-16 | The notice's register flip is merged at/after cutover step 3                               | Step 3's `verified` banner exists **before** PR #189 merges; the netcup row's `In use today` is true in the same window                                                     | **Owner confirmation**      |
+
+## After the cutover
+
+- **The Art. 30 record flips its "not yet applied" rows** once AC-10's evidence
+  exists (owner), and the notice's `planned` retention rows become `current` in
+  the same edit — the two must move together or one of them is false.
+- **The golden-set smoke is the standing health signal.** A red smoke after the
+  move is a production incident, not a flake.
+- **The retention posture is now live**: 14-day access logs, 30-day rolling
+  encrypted backups, 30-day session reclamation at 03:17, and the superseded
+  snapshot deletion window (ADR-0043 decision 5).

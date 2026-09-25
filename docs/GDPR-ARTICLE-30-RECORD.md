@@ -120,7 +120,7 @@ it is not asserted as settled here.
 
 The values are ADR-0043 decision 4 verbatim; the notice (#179) states them and
 GDPR-D (#180) implements the log and backup halves as code under
-`provision/vps/` (see [`docs/VPS-HARDENING-RUNBOOK.md`](./VPS-HARDENING-RUNBOOK.md)
+`provision/vps/` (see [`docs/VPS-SETUP.md`](./VPS-SETUP.md)
 for the on-host steps and the restore test).
 
 | Category                                        | Retention                                                                                                                                                                                                                                                            | Enforced by                                                                                                                                                                                                                                                                                  |
@@ -241,7 +241,7 @@ Two PDP duties have no direct GDPR analogue and are recorded explicitly:
 
 | PDP duty                             | How it is discharged here                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Breach notification (Art. 46)**    | A personal-data breach with real harm carries a **3×24-hour** notification duty: to the affected data subjects, and — where the breach has material or indirect impact — to the authority (the PDP supervisory body). This is an **incident-response duty**, not a product feature: it joins the runbook's incident path (docs/VPS-HARDENING-RUNBOOK.md) and is exercised by the same operator who holds the DPA duties. Nothing in the record changes; the clock is what is new.         |
+| **Breach notification (Art. 46)**    | A personal-data breach with real harm carries a **3×24-hour** notification duty: to the affected data subjects, and — where the breach has material or indirect impact — to the authority (the PDP supervisory body). This is an **incident-response duty**, not a product feature: it joins the runbook's incident path (docs/VPS-SETUP.md) and is exercised by the same operator who holds the DPA duties. Nothing in the record changes; the clock is what is new.                     |
 | **International transfer (Art. 56)** | After the VPS migration (#181) personal data leaves Indonesia for **Germany (netcup GmbH, EU)**. PDP permits transfer to a jurisdiction with **equivalent protection**, or absent that, with **adequate safeguards**. EU/GDPR-level protection qualifies as equivalent, and the DPA (Art. 28) plus the §7 TOMs are the safeguards of record. Residency rationale: ADR-0043 (`adr/0043-netcup-vps-hosting-gdpr-posture.md`, decision 1 — EU/Germany residency is the reason for the move). |
 
 **Not owner-actionable.** This is a record of duties that follow from the
@@ -265,5 +265,5 @@ posture, it lands in §10 rather than here.
 - [`adr/0007-user-facing-trace-and-feedback.md`](../adr/0007-user-facing-trace-and-feedback.md) — the persisted Trace and cascade erasure
 - [`adr/0038-corpus-snapshot-durability-guardrail.md`](../adr/0038-corpus-snapshot-durability-guardrail.md) — snapshot labels and the durability layer
 - [`docs/GDPR-DPIA-LITE.md`](./GDPR-DPIA-LITE.md) — the Art. 35 assessment and Art. 9 mitigations
-- [`docs/VPS-HARDENING-RUNBOOK.md`](./VPS-HARDENING-RUNBOOK.md) — the on-host steps that turn §6/§7's #180 rows into running measures
+- [`docs/VPS-SETUP.md`](./VPS-SETUP.md) — the on-host steps that turn §6/§7's #180 rows into running measures
 - [`SPECS.md`](../SPECS.md) §3.2 — the hosting decision this record is scoped to

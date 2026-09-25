@@ -6,6 +6,26 @@ Accepted (2026-08-25, promoted from `docs/neon-sizing-issue-4.md` per issue
 #63 item 6 — a storage/cost trade-off is a decision record, not runbook
 content, per AGENTS.md §2 rule 7).
 
+**Supersession note (2026-09-21, added 2026-09-25): the _sizing arithmetic_ in
+this ADR still holds; the _Neon recommendation_ wrapped around it does not.**
+
+The estimate — ~700K chunk rows at ~25 KiB/row, ~17–18 GiB with both 1536-dim
+vector columns and their HNSW indexes — was computed from the schema and the
+corpus shape, and it is the figure to size **any** Postgres for, including the
+self-hosted one. It is cited by
+[`docs/VPS-SETUP.md`](../docs/VPS-SETUP.md) for exactly that.
+
+Decision 3 below ("Production sizes for the full corpus on the Launch tier or
+above", with Neon's per-GiB-month pricing) is **spent**: the hosting moved to a
+netcup VPS with Postgres self-hosted (ADR-0043, ADR-0044), and the Neon project
+was deleted on 2026-09-21 (§7 of
+[`docs/VPS-CUTOVER-RECORD.md`](../docs/VPS-CUTOVER-RECORD.md)). Decisions 1
+(accept doubled vector storage for the dual-index optionality) and 2 (dev/staging
+carry a sampled corpus) are unaffected and still in force. Read the Neon pricing
+as the historical record of the trade-off that was weighed, not as a live
+recommendation — the storage conclusion transfers to any host, because the
+per-row cost is a property of the schema.
+
 ## Context
 
 ADR-0013's amendment mandates building **both** embedding tracks from day 1:

@@ -17,10 +17,11 @@ import type { SubProcessor } from "./privacy-notice-types";
  * **Status here states the target end state this PR lands, and the notice's
  * own wording carries the sequencing.** The serving path runs on the VPS
  * because that is what this PR builds and what the deploy path ships; the
- * owner's on-host application step in `docs/VPS-CUTOVER-RUNBOOK.md` is what
- * makes the box actually serve. Flipping a status is not the migration — the
- * migration is the code plus that runbook, which is why the runbook's evidence
- * checklist is what closes #181's remaining criteria.
+ * owner's on-host application step is what made the box actually serve, and it
+ * is **executed** — `docs/VPS-CUTOVER-RECORD.md` records it, and that record's
+ * acceptance-criteria checklist is what closes #181's remaining criteria.
+ * Flipping a status was not the migration: the migration is the code plus that
+ * owner-executed step.
  */
 
 /**

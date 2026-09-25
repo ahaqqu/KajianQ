@@ -1,24 +1,30 @@
-# Self-hosting KajianQ on your own VPS
+# VPS setup and hardening — bare box to green deploy
 
 You have a fresh Debian VPS, no domain necessarily, and you want KajianQ
-serving. This guide takes you from a bare box to a green deploy, in the order
-the steps actually have to happen. It is written to be followed literally: every
-command is one that has been run, and where a step is easy to get subtly wrong
-the guide says why.
+serving. This takes you from a bare box to a green deploy and a hardened,
+backed-up instance, in the order the steps actually have to happen. It is
+written to be followed literally: every command is one that has been run, and
+where a step is easy to get subtly wrong the document says why.
+
+It is also the **privacy-hardening runbook** — the retention values, encrypted
+backups, and restore discipline fixed by
+[`adr/0043-netcup-vps-hosting-gdpr-posture.md`](../adr/0043-netcup-vps-hosting-gdpr-posture.md)
+(ADR-0043 decision 4, issue #180). The Art. 30 record's TOMs that these steps
+implement are in [`docs/GDPR-ARTICLE-30-RECORD.md`](./GDPR-ARTICLE-30-RECORD.md)
+§7. Hardening is not a separate pass here: `apply.sh` places it in §7, so a box
+set up by following this document is hardened by construction.
 
 This is the **fork-and-run** path. The other documents in this repo record how
 _the project's own_ box was set up and how it is operated day to day; this one
-exists because the repository is open source and the deploy path should be
+exists because the repository is open source and the deploying path should be
 reproducible by anyone, not only by the person who built it.
 
-| If you want…                                                      | Read                                                          |
-| ----------------------------------------------------------------- | ------------------------------------------------------------- |
-| To stand up your own instance (this guide)                        | **this file**                                                 |
-| The reasoning behind the architecture                             | [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md)                   |
-| How the project's own box is operated (deploy, Postgres, restore) | [`docs/VPS-OPERATIONS.md`](./VPS-OPERATIONS.md)               |
-| The hardening posture, step by step                               | [`docs/VPS-HARDENING-RUNBOOK.md`](./VPS-HARDENING-RUNBOOK.md) |
-| How the project's box was provisioned from bare metal             | [`docs/VPS-BASELINE-SETUP.md`](./VPS-BASELINE-SETUP.md)       |
-| The record of the project's own cutover                           | [`docs/VPS-CUTOVER-RECORD.md`](./VPS-CUTOVER-RECORD.md)       |
+| If you want…                                                            | Read                                                    |
+| ----------------------------------------------------------------------- | ------------------------------------------------------- |
+| To stand up your own instance (this document)                           | **this file**                                           |
+| The reasoning behind the architecture                                   | [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md)             |
+| How the project's own box is operated (deploy, Postgres, restore)       | [`docs/VPS-OPERATIONS.md`](./VPS-OPERATIONS.md)         |
+| The record of the project's own cutover (evidence + the #181 checklist) | [`docs/VPS-CUTOVER-RECORD.md`](./VPS-CUTOVER-RECORD.md) |
 
 ## What you are building
 
@@ -52,6 +58,45 @@ but a live instance costs money per question. Ingestion and the Golden Set smoke
 also spend. Budget for it before you start, and read [§9](#9-what-it-costs-and-what-you-need-to-buy)
 before provisioning keys.
 
+### Everything `apply.sh` places, and where it comes from
+
+Every config below is config-as-code under [`provision/vps/`](../provision/vps/)
+— placed and enabled by `apply.sh` in §7, never hand-copied. This table is the
+map from repo file to host path, so you can review a change before it lands:
+
+| File                                        | Lands at                                             | Purpose                                                                               |
+| ------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `apply.sh`                                  | (runs in place)                                      | Places every config below and enables the units                                       |
+| `nginx/kajianq.conf`                        | `/etc/nginx/sites-available/kajianq.conf`            | Reverse proxy + the minimal access-log format                                         |
+| `logrotate/kajianq-proxy`                   | `/etc/logrotate.d/kajianq-proxy`                     | 14-day proxy access/error-log rotation                                                |
+| `logrotate/kajianq-postgres`                | `/etc/logrotate.d/kajianq-postgres`                  | 14-day Postgres log rotation                                                          |
+| `journald/kajianq.conf`                     | `/etc/systemd/journald.conf.d/kajianq.conf`          | 14-day / 512M cap for API structured logs                                             |
+| `postgres/99-kajianq.conf`                  | `/etc/postgresql/<v>/main/conf.d/99-kajianq.conf`    | Loopback-only listener; no statement text in logs                                     |
+| `systemd/kajianq-api.service`               | `/etc/systemd/system/kajianq-api.service`            | Unprivileged API unit, credentials from an env file                                   |
+| `systemd/kajianq-cron.service` / `.timer`   | `/etc/systemd/system/kajianq-cron.{service,timer}`   | Nightly anonymous-session reclamation (ADR-0017) at 03:17                             |
+| `systemd/kajianq-backup.service` / `.timer` | `/etc/systemd/system/kajianq-backup.{service,timer}` | Daily encrypted backup, enabled by `apply.sh`                                         |
+| `backup/kajianq-backup.mjs`                 | (bundled to `/srv/kajianq/api/backup.js`)            | Encrypted dump + manifest + 30-day rolling retention                                  |
+| `backup/kajianq-restore.mjs`                | (runs in place)                                      | Restore into a scratch target, re-applying erasure                                    |
+| `backup/restore-drill.mjs`                  | (CI + on demand)                                     | The executable restore test                                                           |
+| `sudoers/kajianq-deploy`                    | `/etc/sudoers.d/kajianq-deploy`                      | The deploy identity's entire root grant — two commands, installed behind `visudo -cf` |
+| `proxy.env.example` / `backup.env.example`  | `/etc/kajianq/*.env`                                 | The only place real hostnames/credentials appear                                      |
+
+### Two hardening choices worth stating, since both are deliberate
+
+**Reverse proxy: nginx, not Caddy.** nginx lets the access-log format be fixed
+field-by-field, which is the whole point of the log policy below, and the
+codebase already assumes its semantics — the API's 499 "client closed request"
+handling in `apps/api/src/lib/errors.ts`. Caddy would also work; it buys nothing
+here, because rotation is logrotate's job (ADR-0043 decision 4), not the
+proxy's. The choice is recorded in ADR-0044 decision 4.
+
+**Retention, not IP masking.** ADR-0043 decision 4 fixes this: the Art. 30
+record declares "IP addresses in server access logs (14-day retention)", and
+abuse investigation needs the address. Masking or dropping the IP would leave
+the declared data category false without a compensating benefit, so the posture
+is a short documented retention with logrotate instead. The values are in
+[§11](#the-retention-posture-you-are-running).
+
 ## Before you start
 
 You need:
@@ -59,6 +104,16 @@ You need:
 - **A VPS you are root on**, with a public IPv4. This guide assumes Debian 13
   (trixie); Debian/Ubuntu in general works. 2 GB RAM is the practical floor for
   Postgres + the API + a build-free runtime; 1 GB will swap.
+- **Disk.** Size for the corpus, not for the code. The full v1 corpus is
+  estimated at ~700,000 chunk rows, and with both 1536-dim vector columns and
+  their HNSW indexes that is **~17–18 GiB** of Postgres data
+  ([`adr/0020-neon-dual-vector-sizing.md`](../adr/0020-neon-dual-vector-sizing.md)
+  holds the arithmetic). Add your restic backups on top if you keep them on the
+  same disk, plus a little headroom for WAL and log segments — a 40 GB disk is
+  comfortable, 20 GB is tight once backups accumulate, and a small box will fill
+  during ingestion rather than during serving. If you ingest only the Quran to
+  start, a fraction of that is fine; the figure to plan against is the full
+  corpus.
 - **A hostname.** A real domain is ideal. If you do not have one,
   `<dotted-IP>.sslip.io` (for example `203-0-113-10.sslip.io`) is a wildcard DNS
   name that resolves to that IP for anyone, free — and Let's Encrypt issues real
@@ -177,6 +232,25 @@ sudo ufw enable
 sudo ufw status verbose        # expect exactly 22, 80, 443 (v4 and v6)
 ```
 
+### If you inherited a box already serving on :80/:443
+
+nginx cannot share those ports with another server. If a previous setup left
+Caddy running (or any other server), retire it **before** `apply.sh` runs — the
+nginx render will fail to bind otherwise:
+
+```bash
+sudo systemctl disable --now caddy 2>/dev/null || true
+sudo rm -f /etc/caddy/Caddyfile            # the previous site
+
+# Must print nothing before you continue.
+sudo ss -lntp | grep -E ':(80|443)\b'
+```
+
+The project's own box went through exactly this: it was bootstrapped with Caddy
+for a static page and moved to nginx for the app (ADR-0044 decision 4), because
+nginx lets the access-log format be fixed field-by-field — see the note in
+"What you are building" above.
+
 ---
 
 ## 2. Runtime packages
@@ -184,8 +258,12 @@ sudo ufw status verbose        # expect exactly 22, 80, 443 (v4 and v6)
 ```bash
 sudo apt-get update
 sudo apt-get install -y nginx postgresql postgresql-contrib postgresql-client \
-                        restic certbot python3-certbot-nginx
+                        logrotate restic age jq certbot python3-certbot-nginx
 ```
+
+`age` is optional — restic's own client-side encryption is what makes the
+backups encrypted at rest. Install it only if you also want to wrap the key file
+at rest. `jq` is for reading logs comfortably.
 
 Then the pgvector package for **your** Postgres major — Debian 13 ships no
 `pgvector` meta-package, so there is no single name that works everywhere. The
@@ -449,9 +527,17 @@ the box), then install the public half:
 ssh-keygen -t ed25519 -f ~/.ssh/kajianq-deploy -C kajianq-vps-deploy-key -N ''
 
 # On the box, as root — or pass the .pub to apply.sh's --deploy-pubkey instead
-# and let it do this step.
+# and let it do this step. Every command here needs sudo: /home is root-owned,
+# and omitting it fails with `install: cannot create directory
+# '/home/kajianq-deploy': Permission denied`.
 sudo install -d -o kajianq-deploy -g kajianq-deploy -m 0700 /home/kajianq-deploy/.ssh
-sudo sh -c 'cat <your-deploy-pubkey.pub> >> /home/kajianq-deploy/.ssh/authorized_keys'
+
+# Idempotent append — a plain `>>` re-run duplicates every line. Harmless to
+# sshd, which authenticates on the first match, but it stops the file being a
+# readable record of what is authorized. apply.sh uses the same rule.
+sudo sh -c 'grep -qxF "$(cat <your-deploy-pubkey.pub>)" /home/kajianq-deploy/.ssh/authorized_keys \
+    || cat <your-deploy-pubkey.pub> >> /home/kajianq-deploy/.ssh/authorized_keys'
+
 sudo chown kajianq-deploy:kajianq-deploy /home/kajianq-deploy/.ssh/authorized_keys
 sudo chmod 0600 /home/kajianq-deploy/.ssh/authorized_keys
 ```
@@ -469,14 +555,56 @@ That restart also starts the API for the first time. If it is the very first
 deploy, the API will have no bundles shipped yet and will fail to start — that
 is expected before §8, and the `sudo -n` succeeding is the part being tested.
 
+**If you no longer hold the private key** — GitHub secrets are write-only, so a
+key uploaded and then deleted locally cannot be recovered — test the grant on
+the box instead, as root. This exercises the sudoers rule itself, which is the
+part that fails:
+
+```bash
+# On the box, as root. `sudo -u` becomes the deploy identity, so the grant is
+# evaluated exactly as it would be for the ssh session.
+sudo -u kajianq-deploy -H sudo -n systemctl restart kajianq-api.service
+sudo -u kajianq-deploy -H systemctl is-active kajianq-api.service
+```
+
+**If you inherited a box whose deploy ran as your admin login**, the switch is
+two halves and doing only one fails: the key must belong to `kajianq-deploy`
+(this section), _and_ CI must authenticate as that account (§8's `VPS_USER`).
+Move the key first, then flip the variable, then dispatch a deploy — a deploy
+run in between fails on ssh auth or on the `rsync`, because `apply.sh` has
+already given the deployed tree to `kajianq-deploy`. While the admin account
+still holds the deploy key lines, remove them once the new path works: leaving
+them keeps a deploy credential usable against an account with broader rights,
+which is the arrangement this split exists to end.
+
 ### Verify the apply
 
 ```bash
 systemctl status kajianq-api                    # enabled, inactive until you start it
 systemctl list-timers kajianq-backup.timer      # scheduled 03:15 daily
 systemctl list-timers kajianq-cron.timer        # scheduled 03:17 daily
+sudo logrotate --debug /etc/logrotate.d/kajianq-proxy
+sudo logrotate --debug /etc/logrotate.d/kajianq-postgres
 sudo nginx -t
+sudo nginx -T | grep -A2 log_format             # the access format, no user-agent/referer
+sudo systemctl cat systemd-journald | grep -A3 '\[Journal\]'   # the 14-day cap
 sudo -l -U kajianq-deploy                       # exactly two systemctl commands
+stat -c '%U:%G %a %n' /srv/kajianq/api /srv/kajianq/web   # kajianq-deploy:kajianq-deploy 755
+```
+
+The `logrotate --debug` runs matter: a syntax error in a stanza fails the apply
+now, rather than surfacing weeks later as a silent rotation failure — which is
+the shape of failure that makes a retention promise quietly false.
+
+### Verify retention once traffic exists
+
+A retention policy is a claim about files that only exist after the site has
+been used, so this check needs real traffic first:
+
+```bash
+sudo logrotate -f /etc/logrotate.d/kajianq-proxy    # force one rotation
+sudo ls -l /var/log/nginx/                          # kajianq.access.log.1.gz …
+sudo logrotate --debug /etc/logrotate.d/kajianq-proxy | grep -i 'removing'
 ```
 
 ---
@@ -516,6 +644,30 @@ if you want the approval gate on production deploys, and give it the same
 `VPS_*` variables plus its own `VPS_DEPLOY_SSH_KEY` secret. Environment-scoped
 values override repository-scoped ones, which is how one repository can hold two
 environments.
+
+**Both scopes must agree on `VPS_USER`, and that is easy to get half-right.**
+Changing only the repo-level variable leaves a prod dispatch authenticating as
+the old account, and the failure looks like an ssh problem rather than a
+variable one. Set it in both, then confirm no scope still says something else:
+
+```bash
+# Repo-level (read by deploy-vps.yml and the Staging tunnel).
+gh variable set VPS_USER --body kajianq-deploy
+
+# The `prod` environment carries its own environment-scoped copy, which
+# overrides the repo-level value for a prod dispatch.
+gh api --method PATCH repos/{owner}/{repo}/environments/prod/variables/VPS_USER \
+    -f name=VPS_USER -f value=kajianq-deploy
+
+gh variable list | grep VPS_USER
+gh api repos/{owner}/{repo}/environments/prod/variables \
+    --jq '.variables[] | "\(.name)=\(.value)"' | grep VPS_USER
+```
+
+Note whose shell this runs in: `gh` resolves the repository from the working
+directory's remote, so run these inside your checkout — or pass `--repo`
+explicitly. A `gh variable set` that reports success against an unexpected
+repository is a silent no-op for your deploy.
 
 ### Dispatch
 
@@ -642,6 +794,10 @@ whole backup layer exists to serve — a backup nobody has restored is a hope, n
 a backup:
 
 ```bash
+# The drill needs no pre-created databases on the happy path — it creates and
+# drops its own from the maintenance connection below. (The older runbook said
+# to `createdb` two scratch databases by hand; the drill does it, so do not.)
+#
 # Strip the production restic env first. The drill sets its own restic password,
 # but RESTIC_PASSWORD_FILE takes precedence over it in restic — run the drill
 # from a shell that has sourced backup.env and it encrypts with your production
@@ -651,11 +807,37 @@ env -u RESTIC_REPOSITORY -u RESTIC_PASSWORD_FILE -u PGDATABASE_URL \
     --admin-url "postgres://postgres@127.0.0.1:5432/postgres"
 ```
 
-It creates and drops its own scratch databases and touches nothing live. It
-asserts the restored target **does** hold erased rows (the negative control —
-without it the drill could pass while testing nothing), then that re-applying
-the reclamation and the erasure cascade makes the restored target match the live
-store.
+`--admin-url` is a **maintenance** connection (the `postgres` database, or any
+role that can `CREATE DATABASE`), not the app's own URL. It touches nothing
+live, and it asserts, in order:
+
+1. **negative control** — a backup taken before an erasure, restored into a
+   scratch location, _does_ bring the erased rows back. Without this the drill
+   could pass while testing nothing;
+2. **the erasure is re-applied** — the production restore script re-runs the
+   reclamation (`cleanupExpiredSessions` semantics) and the Art. 17 cascade
+   (`deleteUserCascade`), and the restored target then matches the live store:
+   erased rows gone, a still-active user's transcript intact.
+
+Pass `--keep` to inspect the scratch databases and the plaintext dump instead of
+having them removed. On a VPS where the scratch cluster has no `pgvector`
+available, run the drill against a container instead:
+`docker run --rm pgvector/pgvector:pg18`, and point `--admin-url` at it.
+
+**Restoring for real** — after a disaster, never to answer a subject request:
+
+```bash
+sudo sh -c '. /etc/kajianq/backup.env && \
+  bun provision/vps/backup/kajianq-restore.mjs \
+    --label <label> --target-url postgres://…/kajianq_restored'
+```
+
+`--target-url` is required and the script refuses a value naming the live
+database (compared by normalized location, not raw string). That refusal is the
+point: restoring over the live store would resurrect data the live store had
+already erased. After a real restore, re-run the reclamation for the affected
+window, and repoint `DATABASE_URL` at the restored database only once it has
+been verified.
 
 ### Confirm the backup timer actually works
 
@@ -671,6 +853,18 @@ systemctl list-timers kajianq-backup.timer
 
 After the first scheduled fire, `ExecMainStatus=0` and a timestamp newer than
 the unit file is what "the backup works" looks like.
+
+**Read the fields carefully, because two of them lie.** `is-active` on the
+timer only says the schedule is armed. And `Result` alone is not the signal
+either: `systemctl reset-failed` clears it to `success` while — on systemd 257
+— leaving `ExecMainStatus=1` behind, so a reset unit reports success about a
+failed run. The deploy's gate asserts the **pair**: exit status 0 **and** a last
+run newer than the unit file's install time. That second condition is the only
+thing that catches "installed but never executed", which is exactly the state
+this project's backup unit sat in for its entire life.
+
+The 30-day rolling window is enforced by the backup script's
+`restic forget --keep-daily 30 --prune` step on every run, not by the timer.
 
 ---
 
@@ -707,17 +901,38 @@ that before you need it.
 These values are not cosmetic — they are what a privacy notice and a processing
 record would declare, so if you change one, change the document that states it:
 
-| Log                            | Rotation                     | Window |
-| ------------------------------ | ---------------------------- | ------ |
-| Reverse proxy access + error   | daily, `maxsize 100M`, gzip  | 14 d   |
-| Postgres                       | daily, `maxsize 100M`, gzip  | 14 d   |
-| API structured logs (journald) | byte + time cap              | 14 d   |
-| Postgres backups               | daily, restic `--keep-daily` | 30 d   |
+| Log                            | Rotation                     | Window | Where enforced                             |
+| ------------------------------ | ---------------------------- | ------ | ------------------------------------------ |
+| Reverse proxy access + error   | daily, `maxsize 100M`, gzip  | 14 d   | `provision/vps/logrotate/kajianq-proxy`    |
+| Postgres                       | daily, `maxsize 100M`, gzip  | 14 d   | `provision/vps/logrotate/kajianq-postgres` |
+| API structured logs (journald) | byte + time cap              | 14 d   | `provision/vps/journald/kajianq.conf`      |
+| Postgres backups               | daily, restic `--keep-daily` | 30 d   | `provision/vps/backup/kajianq-backup.mjs`  |
 
 The proxy's access-log format is deliberately minimal: client IP, timestamp,
 request line, status, bytes, correlation id, request time — no user-agent, no
 referrer, no `$remote_user`. Statement text is never logged by Postgres, because
 a chat question is personal data and does not belong in an ops log.
+
+One retention value per class, all fixed by ADR-0043 decision 4. The API log is
+capped at 14 days for disk hygiene as well as consistency — it carries a
+correlation id and no IP address (`packages/infra/src/logger.ts`), so it is not
+a personal-data store, but one number is easier to keep true in a processing
+record than three.
+
+### What setting up the box deliberately does not do
+
+- **No data migration.** A fresh box starts empty; `apply.sh` writes
+  configuration and enables units but moves no data. To bring an existing
+  database across, see [§12](#12-moving-an-existing-database-to-this-box).
+- **No serving.** `apply.sh` enables `kajianq-api.service` but does not start
+  it, so a box cannot accidentally serve with default logging. Starting it is
+  §8's deploy.
+- **No DPA.** Concluding one with your provider is your action, not a
+  command — and it is a precondition of the box touching anyone's personal
+  data. Nothing in this setup writes to a store that holds personal data,
+  because on a freshly bought VPS none exists yet.
+- **No secrets in the repo.** The only hostnames and credentials live in
+  `/etc/kajianq/*.env`, mode 0600, outside version control.
 
 ### If you serve the public, the privacy duties are yours
 
@@ -738,6 +953,77 @@ a posture that transfers to you. In particular:
   [`docs/GDPR-ARTICLE-30-RECORD.md`](./GDPR-ARTICLE-30-RECORD.md) and
   [`docs/GDPR-DPIA-LITE.md`](./GDPR-DPIA-LITE.md), useful as a structural
   template and not as legal advice.
+
+---
+
+## 12. Moving an existing database to this box
+
+If you are migrating from another host — a managed Postgres, a Neon project, an
+older VPS — the order below is what keeps the move verifiable. It is the
+vendor-neutral part of the project's own cutover, which moved a live Neon
+database onto the box this way.
+
+The principle is one sentence: **snapshot the source, verify the snapshot, ship
+that exact archive, then snapshot the target and compare.** Never pipe data
+straight from the live source into the target, because then the bytes that
+arrived are not the bytes you hashed, and a mismatch has no diagnosis.
+
+```bash
+# 1. Snapshot the SOURCE, from a machine that can reach it.
+#    db:snapshot operates on whatever DATABASE_URL names, so the source is just
+#    a URL — no vendor in its configuration.
+export DATABASE_URL="postgres://…/olddb"
+export R2_ACCOUNT_ID=… R2_ACCESS_KEY_ID=… R2_SECRET_ACCESS_KEY=…
+
+# If the archive is going to a storage target whose encryption you cannot
+# verify, the CLI refuses unless you acknowledge it explicitly.
+KAJIANQ_SNAPSHOT_PLAINTEXT_ACKNOWLEDGED=true bun run db:snapshot create pre-move-<label>
+bun run db:snapshot verify pre-move-<label>        # compares against the live source
+```
+
+`verify` checks the corpus and schema-identity row counts
+(`doc_parents`, `doc_children`, `aligned_pairs`, `schema_migrations`) against the
+live source exactly, and reports which ledger tables moved on. If it is red, the
+fix is never to re-snapshot without those tables, and a label is never deleted
+to reduce exposure.
+
+```bash
+# 2. Restore onto the box, from the verified archive.
+#    The listener is loopback-only, so this runs ON the box.
+sudo install -d -o postgres -g postgres -m 0700 /srv/kajianq/restore
+# Download the archive on a machine that has your object-storage credentials,
+# then copy it over (the box holds none by design).
+pg_restore --clean --if-exists --no-owner --no-privileges \
+  -d "postgres://kajianq:<pw>@127.0.0.1:5432/kajianq" \
+  /srv/kajianq/restore/olddb-pre-move-<label>.dump
+
+# Apply any migration the archive lacks — its schema_migrations ledger says what
+# it already has.
+DATABASE_URL="postgres://kajianq:<pw>@127.0.0.1:5432/kajianq" bun run db:status:all
+DATABASE_URL="postgres://kajianq:<pw>@127.0.0.1:5432/kajianq" bun run db:up:all
+```
+
+```bash
+# 3. Snapshot the TARGET and compare. Runs on a machine with storage creds,
+#    reaching the box's loopback Postgres through an ssh tunnel.
+ssh -N -L 5433:127.0.0.1:5432 kajianq-deploy@<your-host> &
+export DATABASE_URL="postgres://kajianq:<pw>@127.0.0.1:5433/kajianq"
+
+# The data is now covered by your provider's terms, so this archive uses the
+# ENCRYPTED path — not the plaintext acknowledgement of step 1.
+KAJIANQ_SNAPSHOT_ENCRYPTED_AT_REST=true bun run db:snapshot create post-move-<label>
+bun run db:snapshot verify post-move-<label>
+bun run db:snapshot list          # diff the two manifests' tableCounts
+```
+
+The corpus and schema counts for `post-move-…` must equal `pre-move-…`
+exactly. Ledger and personal tables may differ only by traffic that happened
+between the two steps — quote that drift explicitly rather than absorbing it.
+Kill the tunnel when you are done (`jobs` / `kill %1`).
+
+Once the box is serving, the restic backup in §6 takes over as the ongoing
+durability layer; the portable snapshot above is the migration artifact, and the
+two coexist.
 
 ---
 
@@ -790,13 +1076,16 @@ step 4.
 
 - [`docs/VPS-OPERATIONS.md`](./VPS-OPERATIONS.md) — the operator's manual for the
   project's own box: deploy, Postgres, backups, restore, monitoring
-- [`docs/VPS-HARDENING-RUNBOOK.md`](./VPS-HARDENING-RUNBOOK.md) — every hardening
-  measure, step by step, and why each one exists
-- [`docs/VPS-BASELINE-SETUP.md`](./VPS-BASELINE-SETUP.md) — bare metal to a
-  serving baseline, the layer under this guide
+- [`docs/VPS-CUTOVER-RECORD.md`](./VPS-CUTOVER-RECORD.md) — the executed cutover,
+  the evidence behind the #181 acceptance criteria, and the retained record of
+  the box's bare-metal baseline session
+- [`docs/GDPR-ARTICLE-30-RECORD.md`](./GDPR-ARTICLE-30-RECORD.md) §7 — the TOMs
+  these steps implement, and the retention values they enforce
+- [`adr/0020-neon-dual-vector-sizing.md`](../adr/0020-neon-dual-vector-sizing.md)
+  — the corpus storage arithmetic behind the disk guidance in "Before you start"
 - [`adr/0043-netcup-vps-hosting-gdpr-posture.md`](../adr/0043-netcup-vps-hosting-gdpr-posture.md)
-  — the hosting and privacy posture these configs implement
+  — the retention values and backup clause (decision 4) that shape §7 and §11
 - [`adr/0044-vps-serving-path-cutover.md`](../adr/0044-vps-serving-path-cutover.md)
-  — the serving path, the deploy identity, and the cutover
+  — the serving path, the deploy identity, and the nginx-over-Caddy decision
 - [`NOTICES/DATASETS.md`](../NOTICES/DATASETS.md) — corpus attribution and
   licensing duties, before you ingest anything

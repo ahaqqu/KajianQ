@@ -10,7 +10,7 @@
 # version from the repo or enables an already-enabled unit. Nothing here touches
 # data — it writes configuration, creates the service account and directories,
 # and enables units. The backup repository's one-time `restic init` is a
-# separate, deliberate step in docs/VPS-HARDENING-RUNBOOK.md, because it mints
+# separate, deliberate step in docs/VPS-SETUP.md, because it mints
 # the encryption key and must be recorded by the owner.
 #
 # Substitutions: every `__KAJIANQ_*` placeholder in the shipped configs is
@@ -23,7 +23,7 @@
 #
 # --deploy-pubkey installs the given public key file into the deploy account's
 # authorized_keys. Without it, the key step is left to the operator (the
-# runbook carries the command that moves the deploy keys off the admin
+# setup doc carries the command that moves the deploy keys off the admin
 # account); a key is never read from the repository, which is public.
 #
 # Exit non-zero on the first failure: a half-applied hardening config is worse
@@ -94,7 +94,7 @@ fi
 # The env file is executed with root privileges, so it must be root-owned and
 # readable only by root before it is sourced: a group/world-writable file
 # would let any local user inject commands that run as root on the next apply.
-# Fail closed on the first apply rather than trusting the runbook's chmod.
+# Fail closed on the first apply rather than trusting the setup doc's chmod.
 env_owner="$(stat -c '%U:%G' "${ENV_FILE}")"
 env_mode="$(stat -c '%a' "${ENV_FILE}")"
 if [ "${env_owner}" != "root:root" ]; then
@@ -210,7 +210,7 @@ fi
 
 # The deploy key. Never from the repository (it is public) and never from argv
 # in CI: the workflow writes it to a file the runner deletes when the job ends.
-# `--deploy-pubkey` is the provisioning-time path; the runbook also carries the
+# `--deploy-pubkey` is the provisioning-time path; the setup doc also carries the
 # manual command for moving the existing deploy keys off the admin account.
 if [ -n "${DEPLOY_PUBKEY}" ]; then
     if [ ! -f "${DEPLOY_PUBKEY}" ]; then
@@ -371,11 +371,11 @@ run systemctl enable kajianq-api.service
 run systemctl enable kajianq-cron.timer
 # The timer is enabled --now: backups must exist for the restore drill to be
 # meaningful, and a timer that waits for a manual start is the failure B2
-# guards against. The first backup is still run by hand (runbook step 5) so
+# guards against. The first backup is still run by hand (setup doc step 5) so
 # the one-time `restic init` is observed before any scheduled run.
 run systemctl enable --now kajianq-backup.timer
 
 log "done. Verify with: systemctl status kajianq-api; systemctl list-timers kajianq-backup.timer kajianq-cron.timer; logrotate --debug /etc/logrotate.d/kajianq-proxy"
 log "verify the deploy grant: sudo -l -U ${DEPLOY_USER} (expect exactly two systemctl commands)"
-log "next: the one-time backup-repository init in docs/VPS-HARDENING-RUNBOOK.md (before the timer's first scheduled run)"
+log "next: the one-time backup-repository init in docs/VPS-SETUP.md (before the timer's first scheduled run)"
 log "next: fill in /etc/kajianq/api.env from provision/vps/api.env.example (placeholders out, mode 0600) — the API unit cannot start without it, and without KAJIANQ_WEB_ROOT the SPA would 503 while health stays green"

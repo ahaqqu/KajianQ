@@ -18,8 +18,9 @@ adapter are now the VPS ones — see
 serving path. The repo-side migration is complete (Bun behind nginx, `pg` over
 TCP, vendor-free `DATABASE_URL`, the `PromptSpec.personalData` gap closed); the
 **on-host** application, the single-shot cutover, and the owner-approved
-decommissioning of Cloudflare + Neon remain owner-executed and are tracked by
-[`docs/VPS-CUTOVER-RUNBOOK.md`](../docs/VPS-CUTOVER-RUNBOOK.md). The register,
+decommissioning of Cloudflare + Neon are **executed** (2026-09-21) and recorded
+in [`docs/VPS-CUTOVER-RECORD.md`](../docs/VPS-CUTOVER-RECORD.md), whose
+acceptance-criteria checklist is what issue #181 is closed against. The register,
 retention values, and the snapshot personal-data flag decided here are unchanged
 and are what the implementation conforms to.
 

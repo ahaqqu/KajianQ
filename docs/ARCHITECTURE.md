@@ -475,8 +475,8 @@ of Done line in [`AGENTS.md`](../AGENTS.md); the GDPR item in
 | What was decided, when, and why?                   | `adr/` (0005 onward)                                     |
 | Is it working? (factors, metrics, failure signals) | `docs/SUCCESS_FACTORS_AND_METRICS.md`                    |
 | How do I deploy / operate / restore the box?       | `docs/VPS-OPERATIONS.md`                                 |
-| How was the box hardened, step by step?            | `docs/VPS-HARDENING-RUNBOOK.md`                          |
-| How was (is) the data move executed?               | `docs/VPS-CUTOVER-RUNBOOK.md` + `…-RECORD.md`            |
+| How do I stand up a box of my own, and harden it?  | `docs/VPS-SETUP.md`                                      |
+| How was the data move executed?                    | `docs/VPS-CUTOVER-RECORD.md` (+ the #181 checklist)      |
 | What personal data is kept, for how long, by whom? | `docs/GDPR-ARTICLE-30-RECORD.md` (derives from ADR-0043) |
 
 When this document and `SPECS.md` disagree, `SPECS.md` wins (it is the living

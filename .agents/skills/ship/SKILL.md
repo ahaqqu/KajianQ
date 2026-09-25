@@ -13,16 +13,16 @@ Take a change from CI-green on `main` through staging validation to production, 
 **Post-ADR-0044 the serving host is the netcup VPS** (a plain Bun process behind
 nginx), not Cloudflare Workers. There is one box: staging and production are the
 same host, distinguished by `APP_ENV`. The executable record of how the move
-happened is [`docs/VPS-CUTOVER-RECORD.md`](../../docs/VPS-CUTOVER-RECORD.md);
+happened is [`docs/VPS-CUTOVER-RECORD.md`](../../../docs/VPS-CUTOVER-RECORD.md);
 the operator's as-is manual is
-[`docs/VPS-OPERATIONS.md`](../../docs/VPS-OPERATIONS.md), which is the authority
+[`docs/VPS-OPERATIONS.md`](../../../docs/VPS-OPERATIONS.md), which is the authority
 for anything below that drifts.
 
 ## Inputs
 
-- [`docs/VPS-OPERATIONS.md`](../../docs/VPS-OPERATIONS.md) §1 (deploy path), §2
+- [`docs/VPS-OPERATIONS.md`](../../../docs/VPS-OPERATIONS.md) §1 (deploy path), §2
   (Postgres, migrations, snapshots, backups), §3 (monitoring).
-- [`docs/VPS-HARDENING-RUNBOOK.md`](../../docs/VPS-HARDENING-RUNBOOK.md) —
+- [`docs/VPS-SETUP.md`](../../../docs/VPS-SETUP.md) —
   provisioning, the deploy identity's key move, retention verification.
 - `provision/vps/deploy/deploy.sh` — the deploy path itself (build → ship →
   restart → smoke); `.github/workflows/deploy-vps.yml` — its CI trigger.
@@ -95,7 +95,7 @@ running:
   catches it.
 
 Moving a key or a variable is
-[`docs/VPS-HARDENING-RUNBOOK.md`](../../docs/VPS-HARDENING-RUNBOOK.md) §2b–2c.
+[`docs/VPS-SETUP.md`](../../../docs/VPS-SETUP.md) §2b–2c.
 
 ## Phase 5 — Privacy validation (before promote)
 
@@ -171,7 +171,7 @@ rollback runway becomes a new ADR**, not an improvisation. Do not build
 blue/green choreography into a hotfix.
 
 If the box is broken rather than the code (a failed migration, a wedged unit),
-that is [`docs/VPS-OPERATIONS.md`](../../docs/VPS-OPERATIONS.md) §2–3 territory —
+that is [`docs/VPS-OPERATIONS.md`](../../../docs/VPS-OPERATIONS.md) §2–3 territory —
 unit status, Postgres, the restore path — not this skill's Phase 8.
 
 ## Phase 9 — Environment cleanup

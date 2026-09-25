@@ -45,6 +45,14 @@ jobs:
       - run: bun run agentic-limits
       - run: bun run boundary
       - run: bun run openapi:check
+      # Every relative doc link must resolve. Docs here cite each other as
+      # evidence (an Art. 30 TOMs row points at the executed cutover log, a
+      # skill points at the runbook it implements), so a dangling one is a
+      # compliance claim whose proof is gone — and GitHub renders it as plain
+      # text, so a reader cannot tell. The doc consolidation made this
+      # load-bearing: retiring a file means repointing its citations, and this
+      # is what proves that was done.
+      - run: bun run docs:links
       - name: gitleaks
         run: |
           curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz \

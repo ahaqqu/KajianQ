@@ -17,6 +17,7 @@
     "boundary": "bun scripts/check-boundary.mjs",
     "size-limit": "bun run build:web && size-limit",
     "agentic-limits": "bun scripts/check-agentic-limits.mjs",
+    "docs:links": "bun scripts/check-markdown-links.mjs",
     "worktree:clean": "bun scripts/worktree-cleanup.mjs",
     "dsh:prompt": "bun scripts/dsh-dispatch-prompt.mjs",
     "openapi:check": "bun scripts/openapi-check.mjs",
