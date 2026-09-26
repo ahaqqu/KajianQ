@@ -17,6 +17,15 @@ import {
 import { CITATION_CRITERIA, CITATION_INSTRUCTIONS } from "./decision-bench-prompts";
 
 /**
+ * Re-exported so the reviewer stage holds its two citation screens behind one
+ * import surface (the agentic import cap allows five imports per file, and the
+ * deterministic gate must stay first in the order). `chat-citation-validator`
+ * remains the one owner of the comparison — this is an alias, not a second
+ * implementation, exactly like the prompt module's own re-export surface.
+ */
+export { validateCitations } from "./chat-citation-validator";
+
+/**
  * The reviewer pre-gate (ADR-0042 adoption, ticket #168): one batched
  * decision-model call screens every citation of a draft answer before the paid
  * LLM reviewer runs. This module is the **reference implementation of the

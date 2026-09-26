@@ -7,9 +7,11 @@ import {
   type Draft,
   type Reviewer,
 } from "@app/rag-core";
-import { validateCitations } from "./chat-citation-validator";
 import { applyProductRules } from "./chat-postprocess";
-import { runCitationPregate } from "./chat-reviewer-pregate";
+// Both citation screens arrive through one import (the pre-gate module
+// re-exports the deterministic gate) so the stage stays inside the agentic
+// import cap while the gate keeps its own module and stays first in the order.
+import { runCitationPregate, validateCitations } from "./chat-reviewer-pregate";
 import {
   buildReviewMessages,
   isRefusalDraft,
