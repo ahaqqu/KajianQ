@@ -5,6 +5,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { loadProviderConfig } from "@app/infra";
+import { CHAT_SERVING_ROLES } from "./chat-wiring";
 
 /**
  * The free-tier trust invariant (ADR-0043 Consequences — the "measured gap"
@@ -34,7 +35,11 @@ import { loadProviderConfig } from "@app/infra";
  *      free tier. The test walks the real `models.json` — the same file the
  *      register's `Tier` column derives from — so a `freeTier` /
  *      `personalDataAllowed` edit that would break the chat path fails HERE
- *      first, in CI, instead of in production traffic.
+ *      first, in CI, instead of in production traffic. The `decision` role is
+ *      in scope: the pre-gate sends claim spans (personal data) and the
+ *      `Decider` seam carries its own required label plus a pre-wire refusal
+ *      and a serving-resolution filter (ADR-0042 amendment, #168) — this test
+ *      is what keeps a free-tier decision candidate out of that chain.
  *
  * Trap cases named before writing:
  *   - the `cheap` role's chain head IS a free-tier vendor today (Gemini) —
@@ -60,7 +65,7 @@ const MODELS = JSON.parse(
 };
 
 /** Every provider role the chat serving path resolves (chat-wiring.ts). */
-const SERVING_ROLES = ["cheap", "generator", "reviewer", "embedder"] as const;
+const SERVING_ROLES = CHAT_SERVING_ROLES;
 
 /**
  * The env-name set every serving role is keyed with in a fully-configured
@@ -78,6 +83,9 @@ const DEPLOYED_KEYS = new Set([
   "GEMINI_PAID_API_KEY",
   "DEEPSEEK_API_KEY",
   "DASHSCOPE_API_KEY",
+  // The decision vendor's key (#168): the pre-gate is optional in serving, but
+  // when it IS keyed this guard must judge the candidate it would wire.
+  "JEV_API_KEY",
 ]);
 
 const config = loadProviderConfig();
