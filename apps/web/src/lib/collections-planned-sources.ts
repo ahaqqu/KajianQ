@@ -2,9 +2,12 @@ import type { CollectionEntry } from "./collections-types";
 
 /**
  * Planned registrations outside the priority-kitab and author-corpora lists:
- * tafsir (`SPECS.md` §4.1, not yet ticketed), the next hadith collection that
- * fits the staging storage cap (issue #141), and the license-vetted seed
- * sources for the terminology concept graph (issue #24, ADR-0014).
+ * tafsir (`SPECS.md` §4.1, not yet ticketed), and the license-vetted seed
+ * sources for the terminology concept graph (issue #24, ADR-0014). The
+ * hadith side has no planned entry: all seven collections are ingested and
+ * citable (issue #213), so they live in `collections-available.ts` — a
+ * planned entry for them would claim as future work what the store already
+ * serves.
  */
 export const COLLECTION_PLANNED_SOURCES: readonly CollectionEntry[] = [
   {
@@ -22,22 +25,6 @@ export const COLLECTION_PLANNED_SOURCES: readonly CollectionEntry[] = [
       id: "Tafsir Al-Quran klasik, direncanakan dari edisi domain publik dan dijaga terpisah dari kitab suci yang dijelaskannya.",
     },
     planRef: "SPECS §4.1",
-  },
-  {
-    id: "hadith-staging-next",
-    status: "planned",
-    category: "hadith",
-    century: { en: "Staging · within the free-plan cap", id: "Staging · dalam batas paket gratis" },
-    title: {
-      en: "One more hadith collection on staging",
-      id: "Satu koleksi hadits lagi di staging",
-    },
-    author: { en: "Tirmidhi · Ibn Majah · Abu Dawud", id: "Tirmidzi · Ibnu Majah · Abu Dawud" },
-    description: {
-      en: "One further collection fits the free-plan storage cap and is planned incrementally, without re-embedding what is already ingested.",
-      id: "Satu koleksi lagi masih muat dalam batas penyimpanan paket gratis dan direncanakan secara bertahap, tanpa menyematkan ulang yang sudah diingest.",
-    },
-    planRef: "#141",
   },
   {
     id: "terminology-seed-sources",
