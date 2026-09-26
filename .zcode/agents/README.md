@@ -113,12 +113,11 @@ branches mid-run and corrupts each other's diffs. Therefore:
   (`.worktrees/<slug>`) or adds one from the existing branch
   (`git worktree add .worktrees/<slug> agent/<slug>` — no `-b`), because it
   takes over a branch that already exists.
-- Never put a worktree under `/tmp`: each DSH bash invocation gets its own
-  `/tmp`, so a tree created there is invisible to the next call. Never use
-  `.wt/` either — `.worktrees/` is the one in-repo convention, it is committed
-  to `.gitignore`, and `bun run worktree:clean` (run from the main checkout)
-  owns removal, keeping any branch with unmerged work. Cleanup is the
-  manager's duty, not yours.
+- Never put a worktree under `/tmp` (on DSH it is per-invocation — see the DSH
+  adapter). Never use `.wt/` either — `.worktrees/` is the one in-repo
+  convention, it is committed to `.gitignore`, and `bun run worktree:clean`
+  (run from the main checkout) owns removal, keeping any branch with unmerged
+  work. Cleanup is the manager's duty, not yours.
 - Before **any** `git` state-changing operation (commit, push, branch,
   checkout), verify with `git branch --show-current` that you are on your
   dispatch's branch (`agent/<slug>`) inside your worktree. Exception: the
