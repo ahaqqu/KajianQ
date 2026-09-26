@@ -11,6 +11,10 @@ the same day and passed**: `jev-1.13.0` scored 21/21 overall and per-language
 remains operator-driven and re-runnable; the fixture is `v0-draft` (owner
 sign-off pending), so serving adoption (the reviewer pre-gate, ticketed
 separately) rides on fail-open design, not on this smoke-grade score.
+**Amended 2026-09-27 (ticket #168): the serving adoption landed always-on
+wherever the key is bound, with no dedicated kill switch — see the
+[Amendment](#amendment-2026-09-27-serving-adoption-always-on-where-the-key-is-bound-no-kill-switch)
+section, which supersedes this ADR's "config-gated path" consequence.**
 
 ## Context
 
@@ -117,6 +121,11 @@ stage is gated on a multilingual benchmark run.**
   LLM spend), wired through a config-gated path so serving can be turned
   off without a deploy. That PR must cite the bench report and add its
   cost-per-query trace events (traceability rule 2).
+  **(Superseded 2026-09-27, ticket #168: the adoption landed, but the
+  "config-gated path" half does not — the pre-gate is always active wherever
+  the decision vendor's key is bound, with no dedicated kill switch. See the
+  Amendment below; the rest of this bullet held: the adoption PR cites the
+  bench report and adds the trace events.)**
 
 ## Alternatives considered
 
@@ -132,3 +141,61 @@ stage is gated on a multilingual benchmark run.**
 - **Skip the vendor entirely (English-only evidence).** Rejected by the
   owner: the price profile (input-only, ~$0.042/MTok) is favorable enough
   to justify one bench run's effort; the gate keeps the risk bounded.
+
+## Amendment (2026-09-27): serving adoption always-on where the key is bound, no kill switch
+
+**Owner decision (2026-09-19, recorded in the #167 spec):** the pre-gate is
+active whenever the decision vendor's API key is bound — exactly how every
+other provider role in `models.json` behaves (key absent = candidate not
+wired). There is **no dedicated enable/disable config** for it. The
+Consequences clause above ("wired through a config-gated path so serving can
+be turned off without a deploy") is superseded by this amendment; the
+requirement it served — being able to stop the vendor's spend without a
+deploy — is met by the key binding itself, which is configuration, not code.
+
+The adoption landed as ticket #168, inside the **existing Reviewer stage**
+(domain pack), not as a new pipeline stage and not as a runner change:
+
+- **Serving role.** `models.json` gains the `decision` role holding the pinned
+  candidate the gate measured (`typesafe:jev-1.13.0`, `decide` capability,
+  systemone protocol, input-only pricing). The bench-only
+  `decision-candidates` role is unchanged and stays bench-only — a re-bench can
+  add challengers without changing what serves. The serving role's
+  `$comment` cites this ADR and the committed report
+  (`packages/kajianq-domain/fixtures/decision-bench-results.json`).
+- **Judgment shape.** One batched decision call per answer: every citation of
+  the draft is one Noul question keyed by citation position (`c0`, `c1`, …),
+  and the state carries each position's claim span plus the retrieved
+  passage(s) that citation points at. Per-citation Noul ≥ 0.5 = supported.
+  Every citation ≥ 0.5 → reviewed-clean, the paid LLM reviewer is skipped.
+- **Order.** Deterministic citation validator first (free), pre-gate second,
+  paid LLM reviewer last. A draft that fails the deterministic validator — or
+  is a generator-emitted refusal — never spends on either.
+- **Fail-open.** Any citation below threshold, any missing/malformed/non-finite
+  answer, any vendor failure, and any draft with no citation to judge escalate
+  to the full LLM reviewer exactly as before. The pre-gate can therefore only
+  ever _remove_ spend on an answer it affirmatively cleared; it never gates
+  quality alone. The escalation reason is first-class persisted trace content
+  (`decision` event: `below_threshold` / `no_items` / `malformed_answer` /
+  `vendor_failure`), never a server log.
+- **Traceability.** The call's spend lands as the review stage's `llm_call`
+  event (model identity, tokens in/out, latency, computed cost), including the
+  estimated cost of a failed attempt that reached the vendor; the verdict lands
+  as the new typed `decision` event with the per-citation scores. The trace
+  total stays the sum of recorded calls.
+- **Cost posture.** The pre-gate replaces the escalation-tier reviewer call on
+  the clean path with a batched input-priced call (~$0.0001 at 42 micro-USD per
+  input MTok); the escalated path pays both, so the worst case is marginally
+  more expensive than before — accepted, because escalation only happens on a
+  doubted or unusable answer. The reviewer tier itself is the DeepSeek chain
+  recorded in ADR-0044's 2026-09-21 amendment (same-vendor review accepted for
+  the current key set); the "cross-vendor reviewer" phrasing in this ADR's
+  Context is the 2026-09-19 state of the world and is not a current claim.
+- **Vocabulary note.** The `decision` event's reason `no_items` is the generic
+  engine wording (the decision seam is domain-agnostic); for the reviewer
+  pre-gate it means the draft cited nothing, so there was nothing to clear.
+
+The gate evidence this adoption rests on is unchanged and remains `v0-draft`:
+21/21 overall and per-language (ar/id/en) for 21 micro-USD. A perfect smoke
+score is not a claim of infallibility — the fail-open design, not the score,
+is what makes the adoption safe.

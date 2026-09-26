@@ -104,6 +104,14 @@ _Avoid_: leaderboard comparison (implies hosted benchmarks), recall test (unqual
 The decided shape of the retrieval layer from the Embedding Benchmark: which embedding model serves as the `embedder` default and whether serving is AR-only or ID-fallback fusion over the dual-index schema. Recorded in ADR-0036; switchable without re-embedding (ADR-0013 amendment 1).
 _Avoid_: retrieval strategy (vague), embedding config (implies the whole provider config)
 
+**Decision model**:
+A model that answers typed structured questions (Choice / Score / Noul) over a supplied state instead of generating text — a different capability from chat and embedding, reached through the engine's `Decider` seam (ADR-0042). Its serving role is `decision`; its judgment is always a _screen_, never a verdict on its own. Not a chat model, not a judge.
+_Avoid_: judge (reserved for the reviewer), classifier (implies a fixed label set)
+
+**Reviewer pre-gate**:
+The decision-model screen that fronts the reviewer LLM (ADR-0042 adoption, #168): one batched decision call judging every citation of a draft ("does the cited passage genuinely support the claim as stated?", Noul, threshold 0.5), run after the deterministic citation validator and before the paid reviewer. All citations cleared → the draft is reviewed-clean and the reviewer is skipped; anything else escalates. **Fail-open**: it can only remove spend on an answer it affirmatively cleared, never carry review quality alone. Always active wherever the decision vendor's key is bound — there is no enable flag (owner decision 2026-09-19).
+_Avoid_: citation gate (that is the deterministic validator), reviewer (the LLM tier it fronts), pre-check (vague)
+
 ## Agentic pipeline
 
 Skill pipeline lives in `.agents/skills/` (router: `agentic-workflow`). Multi-agent orchestration lives in `manager` (spawns role subagents per phase; role models configured in `.zcode/agents/`). Reviews route through `code-review` — the single review entry point; thermos depth is mandatory for code-touching PRs, skippable only for docs/skill/non-code changes. Findings can be posted as itemized PR comments via `thermos-with-comments` (the manager's reviewer role). Domain guardrails that the skills enforce: `dars-pluggability` (pluggable-by-design) and `kajianq-traceability` (traceable-by-design). Reviewers must load both — `dars-pluggability` and `kajianq-traceability` — in addition to `code-review` when running the compliance pass over a diff.
