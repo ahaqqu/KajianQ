@@ -179,8 +179,8 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
     tier: "paid",
     verdict: "permitted",
     note: {
-      id: "Ketentuan berbayar/standar — aturan register (ADR-0009) mewajibkan perjanjian pemrosesan untuk data pribadi, dan perjanjian TypeSafe belum tercatat: pengikatan kunci produksi menunggu pemilik mencatatnya. Panggilan yang gagal atau tidak terbaca tidak pernah menggantikan reviewer LLM: pratinjau ini hanya bisa melewati reviewer pada jawaban yang benar-benar lolos (fail-open, ADR-0042).",
-      en: "Paid/standard terms — the register rule (ADR-0009) requires a processing agreement for personal data, and the TypeSafe agreement is not yet on record: binding the production key is gated on the owner recording it. A failed or unreadable screen never replaces the LLM reviewer: it can only skip it on an answer it affirmatively cleared (fail-open, ADR-0042).",
+      id: "Ketentuan berbayar/standar — aturan register (ADR-0009) mewajibkan perjanjian pemrosesan untuk data pribadi, dan perjanjian pemrosesan (Art. 28(3)) TypeSafe telah dikonfirmasi pemilik pada 2026-09-27: pengikatan kunci produksi tidak lagi ditahan. Rujukan perjanjiannya sendiri tidak tercatat di repositori ini. Panggilan yang gagal atau tidak terbaca tidak pernah menggantikan reviewer LLM: pratinjau ini hanya bisa melewati reviewer pada jawaban yang benar-benar lolos (fail-open, ADR-0042).",
+      en: "Paid/standard terms — the register rule (ADR-0009) requires a processing agreement for personal data, and TypeSafe's Art. 28(3) processing agreement was confirmed by the owner on 2026-09-27: binding the production key is no longer gated. The agreement's own reference is not recorded in this repo. A failed or unreadable screen never replaces the LLM reviewer: it can only skip it on an answer it affirmatively cleared (fail-open, ADR-0042).",
     },
   },
 ];

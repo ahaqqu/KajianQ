@@ -205,10 +205,11 @@ The adoption landed as ticket #168, inside the **existing Reviewer stage**
   `ineligibleKeys`, and the systemone adapter fails such a spec **before the
   wire** (`bad_request`, no spend) if one is ever reached. The bench resolves
   without the flag, so its candidate set is unchanged. The vendor row's
-  `personalDataAllowed: true` is itself **conditional on the processing
-  agreement**: the Art. 30 record lists it as not yet on record (§10, thermo
-  review C1), and binding `JEV_API_KEY` in production is gated on the owner
-  recording it.
+  `personalDataAllowed: true` rests on the Art. 28(3) processing agreement,
+  which the owner **confirmed on 2026-09-27** as the answer to thermo review C1
+  (the Art. 30 record §10 carries the dated closure; the agreement's own
+  reference is not recorded in this repo). No production `JEV_API_KEY` binding
+  is gated on it.
 - **Evidence scope (thermo review A3).** The committed gate measured
   **isolated single-question calls** over `{claim, passage}` (the citation task,
   6/6); serving sends **one batched call** whose state is `{citations: […]}`,
