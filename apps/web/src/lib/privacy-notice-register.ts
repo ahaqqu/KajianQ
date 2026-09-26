@@ -179,8 +179,8 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
     tier: "paid",
     verdict: "permitted",
     note: {
-      id: "Ketentuan berbayar dengan DPA — inilah yang membuat data pribadi boleh lewat sini (aturan register, ADR-0009). Panggilan yang gagal atau tidak terbaca tidak pernah menggantikan reviewer LLM: pratinjau ini hanya bisa melewati reviewer pada jawaban yang benar-benar lolos (fail-open, ADR-0042).",
-      en: "Paid terms with a DPA — that is what makes personal data permissible here (the register rule, ADR-0009). A failed or unreadable screen never replaces the LLM reviewer: it can only skip it on an answer it affirmatively cleared (fail-open, ADR-0042).",
+      id: "Ketentuan berbayar/standar — aturan register (ADR-0009) mewajibkan perjanjian pemrosesan untuk data pribadi, dan perjanjian TypeSafe belum tercatat: pengikatan kunci produksi menunggu pemilik mencatatnya. Panggilan yang gagal atau tidak terbaca tidak pernah menggantikan reviewer LLM: pratinjau ini hanya bisa melewati reviewer pada jawaban yang benar-benar lolos (fail-open, ADR-0042).",
+      en: "Paid/standard terms — the register rule (ADR-0009) requires a processing agreement for personal data, and the TypeSafe agreement is not yet on record: binding the production key is gated on the owner recording it. A failed or unreadable screen never replaces the LLM reviewer: it can only skip it on an answer it affirmatively cleared (fail-open, ADR-0042).",
     },
   },
 ];

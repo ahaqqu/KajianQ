@@ -171,13 +171,14 @@ The adoption landed as ticket #168, inside the **existing Reviewer stage**
 - **Order.** Deterministic citation validator first (free), pre-gate second,
   paid LLM reviewer last. A draft that fails the deterministic validator — or
   is a generator-emitted refusal — never spends on either.
-- **Fail-open.** Any citation below threshold, any missing/malformed/non-finite
-  answer, any vendor failure, and any draft with no citation to judge escalate
-  to the full LLM reviewer exactly as before. The pre-gate can therefore only
-  ever _remove_ spend on an answer it affirmatively cleared; it never gates
-  quality alone. The escalation reason is first-class persisted trace content
-  (`decision` event: `below_threshold` / `no_items` / `malformed_answer` /
-  `vendor_failure`), never a server log.
+- **Fail-open.** Any citation below threshold, any missing, malformed,
+  non-finite **or out-of-range** answer (the seam documents Noul 0..1; `5` is
+  finite and must read as unusable, never as support), any vendor failure, and
+  any draft with no citation to judge escalate to the full LLM reviewer exactly
+  as before. The pre-gate can therefore only ever _remove_ spend on an answer it
+  affirmatively cleared; it never gates quality alone. The escalation reason is
+  first-class persisted trace content (`decision` event: `below_threshold` /
+  `no_items` / `malformed_answer` / `vendor_failure`), never a server log.
 - **Traceability.** The call's spend lands as the review stage's `llm_call`
   event (model identity, tokens in/out, latency, computed cost), including the
   estimated cost of a failed attempt that reached the vendor; the verdict lands
@@ -194,6 +195,49 @@ The adoption landed as ticket #168, inside the **existing Reviewer stage**
 - **Vocabulary note.** The `decision` event's reason `no_items` is the generic
   engine wording (the decision seam is domain-agnostic); for the reviewer
   pre-gate it means the draft cited nothing, so there was nothing to clear.
+- **Personal-data posture (thermo review A1).** The pre-gate's state _is_ the
+  drafted answer's claim spans, so the `Decider` seam now carries what the
+  `Provider` seam already had: `DecisionSpec.personalData` is a **required**
+  field (ADR-0044 `PromptSpec` parity — a compile error to drop), the pre-gate
+  sends `true`, and the register rule is enforced at the seam, not only at
+  resolution — `resolveDecider` with `personalData: true` (the serving wiring)
+  drops a candidate whose vendor forbids personal data and reports it in
+  `ineligibleKeys`, and the systemone adapter fails such a spec **before the
+  wire** (`bad_request`, no spend) if one is ever reached. The bench resolves
+  without the flag, so its candidate set is unchanged. The vendor row's
+  `personalDataAllowed: true` is itself **conditional on the processing
+  agreement**: the Art. 30 record lists it as not yet on record (§10, thermo
+  review C1), and binding `JEV_API_KEY` in production is gated on the owner
+  recording it.
+- **Evidence scope (thermo review A3).** The committed gate measured
+  **isolated single-question calls** over `{claim, passage}` (the citation task,
+  6/6); serving sends **one batched call** whose state is `{citations: […]}`,
+  one Noul question per citation position. Positional pairing and judgment under
+  sibling citations are therefore **extrapolated, not measured** — the batched
+  variant is standing duty on the #167 gate fixture (the rerank task's
+  positional keys are the only positional shape the gate did measure). Until it
+  lands, the Golden Set `decision`-event escalation rate is the instrument that
+  would show the serving shape misbehaving.
+- **Golden Set evidence for this adoption (thermo review C2).** Four runs
+  against `golden-set-v0` on the same store, citable in `eval_runs`: baseline
+  `dc6518ef` and a second baseline sample `15b1a396` on unmodified `main`,
+  control `c9fc8ee7` (pre-gate inactive), adoption `bd07033a`. They are n=20
+  single samples: the pre-adoption baseline's own spread is 3→7 refusals (false
+  1→5) and citation validity 0.550→0.400, and the adoption values (6 refusals,
+  cv 0.400) sit inside it, with recall 0.975 confounding equally. The adoption
+  is therefore justified on the **aggregate reading** — inside the pre-adoption
+  band — not on a powered comparison, and that is the reading the ticket's
+  AC #5 records. `gs-v0-015` (the known #142 retrieval gap) is the one run-C
+  case where a pre-gate-cleared answer scored 0, and it is on the
+  fixture-enrichment watchlist.
+- **Trace rendering (thermo review C3).** The verdict is persisted trace content
+  and API-visible today; the trace panel renders the decision model's identity
+  generically, from `cost.modelId`, and **not** yet the outcome and per-citation
+  items. Extending `ChatTraceFrame.technical` is follow-up ticket #221.
+- **Adoption #2 (thermo review B3).** The generic half of the runner (call →
+  `llm_call` → `decision` → fail-open classification) is to be extracted when
+  the second adoption lands rather than copied; with a single adopter the
+  interface would be a guess.
 
 The gate evidence this adoption rests on is unchanged and remains `v0-draft`:
 21/21 overall and per-language (ar/id/en) for 21 micro-USD. A perfect smoke

@@ -29,6 +29,9 @@ function makeDecider(fetchImpl: FetchLike, apiKey = "k-1") {
 }
 
 const SPEC: DecisionSpec = {
+  // The test vendor is a free-tier row (`personalDataAllowed: false`); the
+  // bench/ops-shaped calls here carry no personal data.
+  personalData: false,
   state: { query: "q", passage: "p" },
   questions: {
     relevant: {
@@ -126,6 +129,28 @@ describe("systemone adapter", () => {
       }),
     ).toThrow(/does not support decide/);
   });
+
+  it("refuses a personal-data spec on a vendor that forbids it — before the wire (A1)", async () => {
+    // The register rule (ADR-0009 amendment / ADR-0043) is enforced at the
+    // seam, not only at resolution: a free-tier vendor may never receive the
+    // reviewer pre-gate's claim spans. The hard stop must fire with NO request,
+    // so the refusal spends nothing and the caller's fail-open path runs.
+    let fetches = 0;
+    const fetchImpl: FetchLike = async () => {
+      fetches += 1;
+      return jsonResponse(WIRE_RESPONSE);
+    };
+    const decider = makeDecider(fetchImpl);
+
+    const err = await Effect.runPromise(
+      Effect.flip(decider.decide({ ...SPEC, personalData: true })),
+    );
+
+    expect(err.kind).toBe("bad_request");
+    expect(err.message).toContain("does not allow personal data");
+    expect(fetches).toBe(0);
+    expect(err.attemptCosts).toBeUndefined();
+  });
 });
 
 describe("resolveDecider", () => {
@@ -164,5 +189,43 @@ describe("resolveDecider", () => {
     expect(() =>
       resolveDecider(config, "decision-candidates", { env: { TEST_KEY: "k-1" } }),
     ).toThrow(/does not speak the systemone protocol/);
+  });
+
+  it("drops a personal-data-ineligible candidate from a serving chain (A1)", () => {
+    // The serving posture (ADR-0043): the pre-gate sends claim spans, so a
+    // vendor that forbids personal data must not be wired at all. The drop is
+    // reported in `ineligibleKeys` — the key is bound, so it is never listed
+    // as missing — while the bench resolution (no flag) still sees it.
+    const free = {
+      ...systemoneVendor,
+      apiKeyEnv: "FREE_KEY",
+      freeTier: true,
+      personalDataAllowed: false,
+    };
+    const paid = {
+      ...systemoneVendor,
+      apiKeyEnv: "PAID_KEY",
+      freeTier: false,
+      personalDataAllowed: true,
+    };
+    const config = {
+      vendors: { free, paid },
+      roles: { decision: { chain: ["free:m-decide", "paid:m-decide"] } },
+    };
+
+    const serving = resolveDecider(config, "decision", {
+      env: { FREE_KEY: "k-free", PAID_KEY: "k-paid" },
+      personalData: true,
+    });
+    expect(serving.deciders).toHaveLength(1);
+    expect(serving.ineligibleKeys).toEqual(["FREE_KEY"]);
+    expect(serving.missingKeys).toEqual([]);
+
+    // Bench unaffected: no flag, both keyed candidates resolve.
+    const bench = resolveDecider(config, "decision", {
+      env: { FREE_KEY: "k-free", PAID_KEY: "k-paid" },
+    });
+    expect(bench.deciders).toHaveLength(2);
+    expect(bench.ineligibleKeys).toEqual([]);
   });
 });

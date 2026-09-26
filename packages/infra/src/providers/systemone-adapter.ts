@@ -154,7 +154,21 @@ export function createSystemOneDecider(opts: SystemOneOptions): Decider {
 
   return {
     modelId,
-    decide: (spec) => Effect.tryPromise({ try: () => decideWire(spec), catch: toProviderError }),
+    decide: (spec) =>
+      // The privacy guard at the seam (ADR-0043, ADR-0044 PromptSpec parity):
+      // a personal-data spec may never reach a vendor whose config forbids it.
+      // The failure is raised before the wire, so the refusal spends nothing
+      // and the caller's fail-open path (escalate to the LLM reviewer) runs.
+      spec.personalData && !vendor.personalDataAllowed
+        ? Effect.fail(
+            new ProviderError({
+              kind: "bad_request",
+              message:
+                `model ${modelId}: personal-data decision call, but the vendor at ` +
+                `${vendor.baseUrl} does not allow personal data (personalDataAllowed: false)`,
+            }),
+          )
+        : Effect.tryPromise({ try: () => decideWire(spec), catch: toProviderError }),
   };
 }
 
@@ -163,15 +177,38 @@ export function createSystemOneDecider(opts: SystemOneOptions): Decider {
  * keyed candidates are wired; a candidate without a key is reported in
  * `missingKeys` instead of silently skipped, so the bench CLI can print
  * NOT RUN and stay green in CI.
+ *
+ * `personalData: true` is the serving posture (ADR-0043): candidates whose
+ * vendor forbids personal data are dropped — a free-tier decision vendor may
+ * never carry the reviewer's claim spans — and each drop is reported in
+ * `ineligibleKeys` (the key is not the problem, so it is never listed as
+ * missing). The call-time guard in the adapter is the hard stop; this filter
+ * keeps an ineligible candidate off the serving role in the first place. The
+ * bench resolves without the flag, so its candidate set is unchanged.
  */
 export function resolveDecider(
   config: ProviderConfig,
   role: string,
-  opts: { env: Record<string, string | undefined>; fetchImpl?: FetchLike; timeoutMs?: number },
-): { deciders: { modelId: string; decider: Decider }[]; missingKeys: string[] } {
+  opts: {
+    env: Record<string, string | undefined>;
+    /** Serving posture: only vendors that allow personal data may be wired. */
+    personalData?: boolean;
+    fetchImpl?: FetchLike;
+    timeoutMs?: number;
+  },
+): {
+  deciders: { modelId: string; decider: Decider }[];
+  missingKeys: string[];
+  ineligibleKeys: string[];
+} {
   const deciders: { modelId: string; decider: Decider }[] = [];
   const missingKeys: string[] = [];
+  const ineligibleKeys: string[] = [];
   for (const candidate of resolveChain(config, role)) {
+    if (opts.personalData === true && !candidate.vendorConfig.personalDataAllowed) {
+      ineligibleKeys.push(candidate.vendorConfig.apiKeyEnv);
+      continue;
+    }
     const apiKey = opts.env[candidate.vendorConfig.apiKeyEnv];
     if (!apiKey) {
       missingKeys.push(candidate.vendorConfig.apiKeyEnv);
@@ -194,5 +231,5 @@ export function resolveDecider(
       }),
     });
   }
-  return { deciders, missingKeys };
+  return { deciders, missingKeys, ineligibleKeys };
 }

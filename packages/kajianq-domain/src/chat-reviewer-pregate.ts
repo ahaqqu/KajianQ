@@ -40,8 +40,10 @@ export { validateCitations } from "./chat-citation-validator";
  *     verdict as a `decision` event, so the trace total stays the sum of
  *     recorded calls (traceability rule 2);
  *  4. **fail-open**: anything short of an explicit all-items-cleared answer —
- *     a low score, a missing or unreadable answer, a vendor failure, or no
- *     items at all — returns `escalate`, i.e. run the existing path.
+ *     a low or out-of-range score, a missing/unreadable answer, a vendor
+ *     failure, or no items at all — returns `escalate`, i.e. the existing path.
+ *
+ * Adoption #2 extracts the generic half of this runner (ADR-0042 amendment).
  *
  * The trust property it protects: *an answer is never cleared by the decision
  * model alone.* The pre-gate can only ever **skip** the LLM reviewer when the
@@ -85,6 +87,14 @@ export function citationQuestionKey(index: number): string {
 }
 
 /**
+ * A usable Noul answer: finite **and** within the seam's documented 0..1 range —
+ * `5` would otherwise read as support and skip the paid reviewer.
+ */
+export function isNoulScore(value: number): boolean {
+  return Number.isFinite(value) && value >= 0 && value <= 1;
+}
+
+/**
  * Build the batched decision request for a draft, or `null` when the draft
  * carries no citation-shaped span at all (nothing to clear → no call, no
  * spend; the caller escalates).
@@ -121,6 +131,9 @@ export function planCitationPregate(input: {
   return {
     items,
     spec: {
+      // The claim spans are the user's answer text: a declared personal-data
+      // call (ADR-0043), so the seam can refuse a vendor that forbids it.
+      personalData: true,
       state: {
         citations: items.map(({ claim, passage }) => ({ claim, passage })),
       },
@@ -169,8 +182,7 @@ export function runCitationPregate(input: {
       // implicit pass (the silent failure this module exists to prevent).
       const items = plan.items.map((item, index) => {
         const answer = result.answers[citationQuestionKey(index)];
-        const score =
-          answer?.type === "noul" && Number.isFinite(answer.noul) ? answer.noul : undefined;
+        const score = answer?.type === "noul" && isNoulScore(answer.noul) ? answer.noul : undefined;
         return {
           index,
           key: item.label,

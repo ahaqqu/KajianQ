@@ -59,6 +59,22 @@ export function createRagStoreFromEnv(env: { DATABASE_URL?: string }): RagStore 
   return resolvePostgresStore(url);
 }
 
+/**
+ * The provider roles the chat composition root resolves, in one place. The
+ * env names behind them come from the config data (ADR-0022) — this list names
+ * *which* roles serve the chat path, so a new serving role is declared here
+ * (bench-only roles like `decision-candidates`/`embedder-candidates` are
+ * deliberately absent). `apps/api/src/lib/server.test.ts` iterates this list to
+ * prove the composition root passes through each resolved vendor's key.
+ */
+export const CHAT_SERVING_ROLES = [
+  "cheap",
+  "generator",
+  "reviewer",
+  "embedder",
+  "decision",
+] as const;
+
 /** The provider roles the chat pipeline needs, resolved once per request. */
 export type ChatProviders = {
   router: Provider;
@@ -73,6 +89,13 @@ export type ChatProviders = {
   embedder: Provider;
   /** Env names whose keys were absent (ops visibility, never client-facing). */
   missingKeys: readonly string[];
+  /**
+   * Keyed decision candidates the personal-data posture excluded from serving
+   * (ADR-0043): a vendor whose config forbids personal data may never carry
+   * the pre-gate's claim spans, so it is dropped rather than wired. Reported
+   * for ops visibility — the key being bound is not the problem.
+   */
+  ineligibleKeys: readonly string[];
 };
 
 /** True when the role has at least one keyed candidate. */
@@ -129,16 +152,23 @@ export function createProvidersFromEnv(env: Record<string, string | undefined>):
   // The decision-model serving role (#168): the pre-gate is active exactly
   // when its key is bound — an absent key is reported for ops visibility but
   // is NOT a configuration failure, because the reviewer's existing path is
-  // the fail-open fallback (the pre-gate only ever removes spend).
-  const decisionRole = resolveDecider(config, "decision", { env });
+  // the fail-open fallback (the pre-gate only ever removes spend). Resolved
+  // with `personalData: true` (ADR-0043): the pre-gate sends the drafted
+  // answer's claim spans, so a candidate whose vendor forbids personal data is
+  // dropped from the serving chain rather than wired (bench unaffected).
+  const decisionRole = resolveDecider(config, "decision", { env, personalData: true });
   for (const key of decisionRole.missingKeys) missing.add(key);
   return {
     router: resolve("cheap"),
     generator: resolve("generator"),
     reviewer: roleHasKey(config, env, "reviewer") ? resolve("reviewer") : null,
+    // Head-first: the eligible chain's first candidate serves. A failure does
+    // not walk the rest — the caller's fail-open path (the full reviewer) is
+    // the fallback, so the pre-gate never gates quality on a second vendor.
     decider: decisionRole.deciders[0]?.decider ?? null,
     embedder: resolve("embedder"),
     missingKeys: [...missing],
+    ineligibleKeys: decisionRole.ineligibleKeys,
   };
 }
 

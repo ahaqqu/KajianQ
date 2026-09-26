@@ -31,9 +31,9 @@ import type { KajianQFilters } from "./filters";
  *
  *  - **fail-open**: the pre-gate can only ever *skip* the paid reviewer on an
  *    explicit all-citations-cleared answer. A low score, a missing answer, a
- *    wrong answer type, a non-finite score, a vendor failure, and a draft with
- *    nothing to judge all escalate. A malformed response read as a pass is the
- *    silent failure this suite exists to prevent.
+ *    wrong answer type, a non-finite or out-of-range score, a vendor failure,
+ *    and a draft with nothing to judge all escalate. A malformed response read
+ *    as a pass is the silent failure this suite exists to prevent.
  *  - **no spend before the free gate**: the deterministic validator decides
  *    first; a draft that fails it or is a generator refusal makes no decision
  *    call and no reviewer call.
@@ -315,6 +315,27 @@ describe("#168 reviewer pre-gate — escalation path (fail-open)", () => {
     expect(decision.detail.items?.[0]).toEqual({ index: 0, key: "QS. 2:255" });
   });
 
+  it("fails open on an out-of-range Noul instead of reading it as support (A2)", async () => {
+    // The seam documents Noul 0..1. `5` is finite, so a finiteness-only read
+    // scores it above the threshold and SKIPS the paid reviewer — shipping the
+    // draft unreviewed. Out of range is an unusable item, never a pass.
+    for (const outOfRange of [5, -0.01]) {
+      const reviewer = countingReviewer();
+      const out = await review(
+        {
+          provider: reviewer.provider as never,
+          decider: fakeDecider(() => Effect.succeed(noulResult({ c0: outOfRange }))).decider,
+        },
+        "Lihat QS. 2:255.",
+        [chunk("QS. 2:255")],
+      );
+      expect(reviewer.calls(), `noul ${outOfRange} must not skip the reviewer`).toBe(1);
+      const decision = decisionEvent(out.events);
+      expect(decision.detail).toMatchObject({ outcome: "escalate", reason: "malformed_answer" });
+      expect(decision.detail.items?.[0]).toEqual({ index: 0, key: "QS. 2:255" });
+    }
+  });
+
   it("makes no decision call for a zero-citation draft and escalates", async () => {
     const pregate = fakeDecider(() => Effect.succeed(noulResult({})));
     const reviewer = countingReviewer();
@@ -377,6 +398,10 @@ describe("#168 reviewer pre-gate — request shape", () => {
       instructions: CITATION_INSTRUCTIONS,
       criteria: { ...CITATION_CRITERIA },
     });
+    // The claim spans and cited passages are the user's answer text, so the
+    // spec declares personal data (ADR-0043): the seam can then refuse a
+    // vendor whose config forbids it (A1).
+    expect(pregate.calls[0]?.personalData).toBe(true);
   });
 
   it("turns one repeated citation mention into one question", async () => {

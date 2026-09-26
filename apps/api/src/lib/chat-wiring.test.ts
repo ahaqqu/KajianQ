@@ -175,6 +175,9 @@ describe("createProvidersFromEnv", () => {
     const keyed = createProvidersFromEnv({ [decisionKeyEnv as string]: "test-key" });
     expect(keyed.decider).not.toBeNull();
     expect(keyed.decider?.modelId).toBe(config.roles.decision?.chain[0]?.split(":")[1]);
+    // The serving chain is resolved with `personalData: true` (ADR-0043); the
+    // shipped decision vendor allows personal data, so nothing is excluded.
+    expect(keyed.ineligibleKeys).toEqual([]);
     // An absent key is reported for ops visibility but is not a config
     // failure: the reviewer's existing path is the fail-open fallback.
     expect(createProvidersFromEnv({}).missingKeys).toContain(decisionKeyEnv);

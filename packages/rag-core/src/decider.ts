@@ -40,6 +40,16 @@ export type DecisionQuestion = NoulQuestion | ChoiceQuestion | ScoreQuestion;
 export type DecisionSpec = {
   /** The content to evaluate (text, JSON, or an array). */
   readonly state: string | Readonly<Record<string, unknown>> | readonly unknown[];
+  /**
+   * The privacy label of `state`, **required** exactly as
+   * `PromptSpec.personalData` is on the generation seam (ADR-0044 parity):
+   * the state reaches the vendor verbatim, so the caller must declare whether
+   * it carries personal data. A `true` spec may only be answered by a vendor
+   * whose config says `personalDataAllowed: true` — the register rule
+   * (ADR-0009 amendment / ADR-0043) that personal data never routes through a
+   * free tier is enforced at this seam, not only at resolution.
+   */
+  readonly personalData: boolean;
   /** Question id → question; answers return under the same ids. */
   readonly questions: Readonly<Record<string, DecisionQuestion>>;
 };
