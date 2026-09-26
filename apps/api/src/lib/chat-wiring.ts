@@ -1,7 +1,8 @@
 import { runStoreEffect, type StoreBridge } from "@app/kajianq-domain";
-import type { Provider } from "@app/rag-core";
+import type { Decider, Provider } from "@app/rag-core";
 import {
   loadProviderConfig,
+  resolveDecider,
   resolvePostgresStore,
   resolveRole,
   type Logger,
@@ -63,6 +64,12 @@ export type ChatProviders = {
   router: Provider;
   generator: Provider;
   reviewer: Provider | null;
+  /**
+   * The reviewer's decision-model pre-gate (ADR-0042 serving role). Null when
+   * no decision candidate is keyed — the reviewer then behaves exactly as it
+   * did before adoption (there is no enable flag: bound key = active).
+   */
+  decider: Decider | null;
   embedder: Provider;
   /** Env names whose keys were absent (ops visibility, never client-facing). */
   missingKeys: readonly string[];
@@ -119,10 +126,17 @@ export function createProvidersFromEnv(env: Record<string, string | undefined>):
   // from the report precisely when it is the only thing missing.
   const reviewerMissing = resolveRole(config, "reviewer", { env }).missingKeys;
   for (const key of reviewerMissing) missing.add(key);
+  // The decision-model serving role (#168): the pre-gate is active exactly
+  // when its key is bound — an absent key is reported for ops visibility but
+  // is NOT a configuration failure, because the reviewer's existing path is
+  // the fail-open fallback (the pre-gate only ever removes spend).
+  const decisionRole = resolveDecider(config, "decision", { env });
+  for (const key of decisionRole.missingKeys) missing.add(key);
   return {
     router: resolve("cheap"),
     generator: resolve("generator"),
     reviewer: roleHasKey(config, env, "reviewer") ? resolve("reviewer") : null,
+    decider: decisionRole.deciders[0]?.decider ?? null,
     embedder: resolve("embedder"),
     missingKeys: [...missing],
   };
@@ -193,6 +207,7 @@ export function buildChatWiring(env: Record<string, string | undefined>): ChatWi
       routerProvider: providers.router,
       generatorProvider: providers.generator,
       reviewerProvider: providers.reviewer,
+      reviewerDecider: providers.decider,
       embedder: providers.embedder,
       store,
       // Typed as the domain's StoreBridge — no erasure cast needed anymore

@@ -37,6 +37,7 @@ vi.mock("../lib/chat-wiring", async (importOriginal) => {
           routerProvider: providers.routerProvider,
           generatorProvider: providers.generatorProvider,
           reviewerProvider: providers.reviewerProvider,
+          reviewerDecider: providers.reviewerDecider,
           embedder: providers.embedder,
           store,
           bridge: runStoreEffect,

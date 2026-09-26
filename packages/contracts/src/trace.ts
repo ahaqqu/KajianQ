@@ -168,6 +168,58 @@ export const TraceEventSchema = v.variant("kind", [
     at: v.pipe(v.number(), v.integer()),
   }),
   v.object({
+    /**
+     * A decision-model call's verdict (ADR-0042 serving pattern): the shape
+     * every stage that asks a `Decider` to screen its fast path records, so a
+     * later adoption (retrieval screening, rerank) reuses it verbatim instead
+     * of inventing a per-stage variant. The call's own spend rides on a
+     * sibling `llm_call` event like every other model call, so the trace total
+     * stays the sum of recorded calls.
+     */
+    stage: StageSchema,
+    kind: v.literal("decision"),
+    detail: v.object({
+      /** Caller-supplied label for the screen (e.g. "citation_support"). */
+      purpose: v.optional(v.string()),
+      /**
+       * What the call concluded about the stage's fast path: `skip` clears it
+       * (the stage may take the cheap path and skip the expensive one),
+       * `escalate` defers to the stage's existing path. Fail-open is a
+       * caller-side classification rule, not a wire option: an unusable
+       * answer and a vendor failure both land on `escalate`.
+       */
+      outcome: v.picklist(["skip", "escalate"]),
+      /**
+       * Why the call escalated — absent on a `skip`. The vocabulary is
+       * generic (the decision seam is domain-agnostic): `below_threshold` (a
+       * scored item missed the threshold), `no_items` (there was nothing to
+       * judge, so nothing could be cleared), `malformed_answer` (the vendor
+       * returned no usable answer for at least one item), `vendor_failure`
+       * (the call itself failed).
+       */
+      reason: v.optional(
+        v.picklist(["below_threshold", "no_items", "malformed_answer", "vendor_failure"]),
+      ),
+      /** The per-item score threshold the outcome was computed against. */
+      threshold: v.optional(v.number()),
+      /**
+       * Per-item verdicts in request order. `index` is the caller's item
+       * position, `key` its identity in the decision request, `score` the
+       * vendor's Noul answer (absent = no usable answer for that item, e.g.
+       * on a vendor failure or a malformed response).
+       */
+      items: v.array(
+        v.object({
+          index: v.pipe(v.number(), v.integer(), v.minValue(0)),
+          key: v.pipe(v.string(), v.minLength(1)),
+          score: v.optional(v.number()),
+        }),
+      ),
+    }),
+    cost: v.optional(CostRecordSchema),
+    at: v.pipe(v.number(), v.integer()),
+  }),
+  v.object({
     stage: StageSchema,
     kind: v.literal("refusal"),
     detail: v.optional(

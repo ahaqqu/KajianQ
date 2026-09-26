@@ -8,6 +8,7 @@ import {
   type RunOptions,
   type StageError,
   type StoreError,
+  type Decider,
 } from "@app/rag-core";
 import { createKajianQRouter, type RouterProvider } from "./chat-router";
 import { createKajianQRetriever, type RetrieverEmbedder, type StoreBridge } from "./chat-retriever";
@@ -25,6 +26,14 @@ export type ChatPipelineDeps = {
   routerProvider: RouterProvider;
   generatorProvider: GeneratorProvider;
   reviewerProvider: ReviewerProvider | null;
+  /**
+   * The reviewer's decision-model pre-gate (ADR-0042 adoption, ticket #168):
+   * null when the decision vendor's key is not bound, in which case the
+   * reviewer behaves exactly as it did before adoption. Required (not
+   * optional) on purpose — a wiring that forgets the pre-gate is a silent
+   * loss of the adoption, so it must fail to compile instead.
+   */
+  reviewerDecider: Decider | null;
   embedder: RetrieverEmbedder;
   store: Pick<import("@app/infra").RagStore, "similaritySearch">;
   /** Runs a store Effect to a promise (composition-root bridge). */
@@ -63,6 +72,7 @@ export function buildChatStages(
   const tail = createChatTailStages({
     generatorProvider: deps.generatorProvider,
     reviewerProvider: deps.reviewerProvider,
+    reviewerDecider: deps.reviewerDecider,
     language: deps.language,
     ...(deps.skipReviewer !== undefined ? { skipReviewer: deps.skipReviewer } : {}),
     ...(deps.onDelta !== undefined ? { onDelta: deps.onDelta } : {}),

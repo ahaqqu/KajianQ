@@ -2,6 +2,7 @@ import { createKajianQAssembler } from "./chat-assembler";
 import { createKajianQGenerator, type GeneratorProvider } from "./chat-generator";
 import { createKajianQReviewer, refusalTextFor, type ReviewerProvider } from "./chat-reviewer";
 export type { GeneratorProvider, ReviewerProvider };
+import type { Decider } from "@app/rag-core";
 import type { ChatLanguage } from "./chat-prompts";
 
 /**
@@ -13,6 +14,8 @@ import type { ChatLanguage } from "./chat-prompts";
 export function createChatTailStages(deps: {
   generatorProvider: GeneratorProvider;
   reviewerProvider: ReviewerProvider | null;
+  /** The reviewer's decision-model pre-gate; null = the key is not bound. */
+  reviewerDecider: Decider | null;
   language: ChatLanguage;
   skipReviewer?: boolean;
   /** Streamed-delta observation hook (the HTTP edge forwards to SSE). */
@@ -31,6 +34,7 @@ export function createChatTailStages(deps: {
     }),
     reviewer: createKajianQReviewer({
       provider: deps.reviewerProvider,
+      decider: deps.reviewerDecider,
       ...(deps.skipReviewer !== undefined ? { skipLlm: deps.skipReviewer } : {}),
       language: deps.language,
       // The refusal the user sees is in their language (acceptance criterion:

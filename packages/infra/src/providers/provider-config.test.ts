@@ -25,6 +25,31 @@ describe("provider config", () => {
     }
   });
 
+  it("serves the decision model the multilingual gate measured (ADR-0042 adoption, #168)", () => {
+    const config = loadProviderConfig();
+    const serving = resolveChain(config, "decision");
+    const bench = resolveChain(config, "decision-candidates");
+    // Serving adopts exactly what the gate scored: the pinned candidate the
+    // committed bench report covers. A re-bench can add challengers to the
+    // bench-only role without silently changing what serves.
+    expect(serving).toHaveLength(1);
+    expect(bench[0]?.vendor).toBe(serving[0]?.vendor);
+    expect(bench[0]?.modelId).toBe(serving[0]?.modelId);
+    // The serving candidate must speak the decision protocol and price inputs.
+    expect(serving[0]?.vendorConfig.protocol).toBe("systemone");
+    expect(serving[0]?.modelConfig.capabilities).toContain("decide");
+    expect(serving[0]?.modelConfig.priceMicroUsdPerMTok.in).toBeGreaterThan(0);
+    // Serving is adopted FROM the benched set — never a candidate the gate did
+    // not measure. (The bench role itself stays bench-only: serving resolves
+    // the `decision` role, proven at the wiring seam.)
+    expect(
+      bench.some(
+        (candidate) =>
+          candidate.vendor === serving[0]?.vendor && candidate.modelId === serving[0]?.modelId,
+      ),
+    ).toBe(true);
+  });
+
   it("rejects a malformed or dangling config", () => {
     expect(() =>
       parseProviderConfig({

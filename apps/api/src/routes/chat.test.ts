@@ -76,6 +76,7 @@ vi.mock("../lib/chat-wiring", async (importOriginal) => {
           // The reviewer is non-optional on the chat path (#10); the stub
           // passes, so the deterministic validator is what these tests probe.
           reviewerProvider: providers.reviewerProvider,
+          reviewerDecider: providers.reviewerDecider,
           embedder: providers.embedder,
           store,
           bridge: runStoreEffect,

@@ -124,10 +124,79 @@ describe("trace contract", () => {
         at: 5,
       },
       { stage: "reviewer", kind: "review", detail: { verdict: "faithful" }, at: 6 },
-      { stage: "generator", kind: "refusal", reason: "insufficient evidence", at: 7 },
+      {
+        // The decision-model screen (ADR-0042 serving pattern): the skip and
+        // its per-item scores are persisted trace content, and the call's own
+        // spend rides on the sibling `llm_call` event above.
+        stage: "reviewer",
+        kind: "decision",
+        detail: {
+          purpose: "citation_support",
+          outcome: "skip",
+          threshold: 0.5,
+          items: [
+            { index: 0, key: "citation-1", score: 0.94 },
+            { index: 1, key: "citation-2", score: 0.5 },
+          ],
+        },
+        at: 7,
+      },
+      { stage: "generator", kind: "refusal", reason: "insufficient evidence", at: 8 },
     ];
     const trace = parseTrace({ id: "t", createdAt: 0, events });
-    expect(trace.events).toHaveLength(8);
+    expect(trace.events).toHaveLength(9);
+  });
+
+  it("rejects a decision event without an outcome", () => {
+    expect(
+      v.safeParse(TraceSchema, {
+        id: "t",
+        createdAt: 1,
+        events: [{ stage: "reviewer", kind: "decision", detail: { items: [] }, at: 1 }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a decision escalation reason outside the fail-open vocabulary", () => {
+    // The reason vocabulary is closed on purpose: an operator (and the eval
+    // harness) counts escalations by reason, so a free string would make the
+    // failure modes uncountable.
+    expect(
+      v.safeParse(TraceSchema, {
+        id: "t",
+        createdAt: 1,
+        events: [
+          {
+            stage: "reviewer",
+            kind: "decision",
+            detail: { outcome: "escalate", reason: "felt-wrong", items: [] },
+            at: 1,
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts an unscored decision item (a vendor failure never invents a score)", () => {
+    expect(
+      v.safeParse(TraceSchema, {
+        id: "t",
+        createdAt: 1,
+        events: [
+          {
+            stage: "reviewer",
+            kind: "decision",
+            detail: {
+              outcome: "escalate",
+              reason: "vendor_failure",
+              threshold: 0.5,
+              items: [{ index: 0, key: "citation-1" }],
+            },
+            at: 1,
+          },
+        ],
+      }).success,
+    ).toBe(true);
   });
 
   it("rejects an unknown kind", () => {

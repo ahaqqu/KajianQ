@@ -160,6 +160,25 @@ describe("createProvidersFromEnv", () => {
       }
     }
   });
+
+  it("wires the reviewer pre-gate only when the decision role's key is bound (#168)", async () => {
+    // The always-on-where-the-key-is-bound posture (ADR-0042 amendment, owner
+    // decision 2026-09-19) has no enable flag to assert: the key IS the flag.
+    // The env name is read from the config data (ADR-0022), never hard-coded.
+    const { loadProviderConfig } = await awaitImportConfig();
+    const config = loadProviderConfig();
+    const [vendorName = ""] = (config.roles.decision?.chain[0] ?? "").split(":");
+    const decisionKeyEnv = config.vendors[vendorName]?.apiKeyEnv;
+    expect(decisionKeyEnv).toBeDefined();
+
+    expect(createProvidersFromEnv({}).decider).toBeNull();
+    const keyed = createProvidersFromEnv({ [decisionKeyEnv as string]: "test-key" });
+    expect(keyed.decider).not.toBeNull();
+    expect(keyed.decider?.modelId).toBe(config.roles.decision?.chain[0]?.split(":")[1]);
+    // An absent key is reported for ops visibility but is not a config
+    // failure: the reviewer's existing path is the fail-open fallback.
+    expect(createProvidersFromEnv({}).missingKeys).toContain(decisionKeyEnv);
+  });
 });
 
 describe("storeBridge", () => {
