@@ -40,6 +40,11 @@ const PASSTHROUGH_KEYS = [
   "GEMINI_PAID_API_KEY",
   "DASHSCOPE_API_KEY",
   "DEEPSEEK_API_KEY",
+  // The decision vendor's key (#168). Absent = the reviewer pre-gate is not
+  // wired and the reviewer behaves exactly as before adoption, so this key is
+  // optional (never a boot precondition) — but it MUST be passed through, or a
+  // bound key would leave the pre-gate silently dead in serving.
+  "JEV_API_KEY",
 ] as const;
 
 /** Read the process environment into the app's binding shape. */
