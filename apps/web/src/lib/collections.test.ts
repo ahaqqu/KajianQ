@@ -99,16 +99,36 @@ describe("collection data", () => {
     const planned = byStatus(COLLECTION_ENTRIES, "planned");
     const refs = planned.map((entry) => entry.planRef);
     // Priority kitab (tracer + scale-out), the three complete corpora, the
-    // tafsir set in SPECS §4.1, #141's staging collection, and the
-    // terminology seeds (issue #24 / ADR-0014).
+    // tafsir set in SPECS §4.1, and the terminology seeds (issue #24 /
+    // ADR-0014). The hadith category carries NO planned entry since #213:
+    // all seven collections are ingested and citable, and a planned entry
+    // for them would claim as future work what the store already serves.
     expect(refs).toContain("#21");
     expect(refs).toContain("#22");
     expect(refs).toContain("#33");
     expect(refs).toContain("#35");
     expect(refs).toContain("#27–#31");
-    expect(refs).toContain("#141");
     expect(refs).toContain("ADR-0014 · #24");
     expect(refs).toContain("SPECS §4.1");
+    // The superseded #141 staging entry must not come back as "planned".
+    expect(refs).not.toContain("#141");
+  });
+
+  it("keeps no planned v1-collection entry (all seven collections are available, #213)", () => {
+    // Musnad Ahmad and Sunan ad-Darimi stay planned (ADR-0025: absent from
+    // the v1 source) — what must NOT reappear as planned is any of the seven
+    // fawazahmed0 collections (#141's staging entry did exactly that).
+    const hadithPlanned = COLLECTION_ENTRIES.filter(
+      (entry) => entry.category === "hadith" && entry.status === "planned",
+    );
+    const allowedPlannedHadithIds = [
+      "kitab-musnad-ahmad",
+      "kitab-sunan-ad-darimi",
+      "corpus-sanadset-v2",
+    ];
+    for (const entry of hadithPlanned) {
+      expect(allowedPlannedHadithIds).toContain(entry.id);
+    }
   });
 
   it("keeps no tafsir entry marked available (SPECS §4.1 lists it as planned)", () => {
