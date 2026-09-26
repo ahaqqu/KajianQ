@@ -23,6 +23,17 @@ You are the reviewer for the manager-orchestrated workflow. Given a PR number/UR
 - Synthesize the two passes into one unified, itemized, prioritized report (IDs `A1…`, `B1…`, `C1…`).
 - Post each item as a GitHub review comment with the stable ID marker, and post one summary comment with the item index table and overall recommendation, following the `thermos-with-comments` posting contract.
 - Verify all comments landed before declaring done.
+- If you need a checkout (to read the diff beyond `gh pr diff`, or to run the suite), use a review worktree at `.worktrees/review-<pr>` — **detached**, not an `agent/<slug>` branch worktree — and follow your harness adapter's review-worktree dependency strategy (diff-only, or `bun install` first). Never work in the shared checkout.
+
+## Todo discipline
+
+Keep the pass plan in `todo_write` (whole-list replacement each call, exactly
+one item `in_progress` unless parallel passes are genuinely in flight, updated
+at each pass boundary): the compliance pass, each thermo pass, synthesis and
+posting, and the landing check are the natural items. The list is **per-session
+and turn-scoped** — never inherited from the manager, cleared at each
+`turn/start` — so you own yours and keep it current within your turn. It is
+progress telemetry, not the completion criterion.
 
 ## Completion criterion
 
