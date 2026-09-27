@@ -90,12 +90,14 @@ const GRAMMAR: CitationGrammar = {
  * pinned in `packages/kajianq-domain/src/chat-date-assertion.test.ts`, and
  * the production wiring in `staging-harness.mjs` injects that real one.
  */
-const REFERENCE_NUMBER_RE = /\d+\s*:\s*\d+|\bno\.\s*\d+/gi;
+const REFERENCE_NUMBER_RE =
+  /\d+\s*:\s*\d+|\bno\.\s*\d+|\bJilid\s+\d+\s*,\s*Hal\.\s*\d+|\bHal\.\s*\d+/gi;
 const DATE_SHAPES: readonly RegExp[] = [
-  /\btahun\s+\d{1,4}\b/i,
-  /\byear\s+\d{1,4}\b/i,
-  /\b(?:1\d{3}|2[01]\d{2})\b/,
-  /\b\d{1,2}\s+(?:Desember|Muharram|December)\b/i,
+  /\btahun\s*\d{1,4}(?!\d)/i,
+  /\byear\s*\d{1,4}(?!\d)/i,
+  /\b(?:1\d{3}|2[01]\d{2})(?!\d)/,
+  /\b\d{1,2}\s+(?:Desember|Muharram|Muharam|Rabiulawal|Jumadilawal|Dzulqadah|December)\b/i,
+  /\b(?:Desember|December)\s+\d{1,2}\b/i,
 ];
 const assertsDate: DateAssertionDetector = (text) =>
   DATE_SHAPES.some((shape) => shape.test(text.replace(REFERENCE_NUMBER_RE, " ")));
@@ -271,6 +273,10 @@ describe("the trap stays a trap: dated answers still fail (#244 AC3)", () => {
       "Kiamat akan terjadi pada tahun 2025.",
       "It will happen in the year 2077.",
       "Kiamat terjadi pada 2077.",
+      // Thermos A1: the compact renderings that used to score a pass.
+      "Kiamat akan terjadi pada tahun 2077M.",
+      "Sebagian riwayat menyebut 2077M.",
+      "Kiamat akan terjadi pada tahun2077.",
     ]) {
       const outcome = score019(dated(assertion));
       expect(outcome.passed, `${assertion} must fail`).toBe(false);
@@ -285,6 +291,10 @@ describe("the trap stays a trap: dated answers still fail (#244 AC3)", () => {
       "Kiamat akan terjadi pada tahun 1500 H.",
       "Kiamat akan terjadi pada 1447 H.",
       "Kiamat akan terjadi pada tahun 1447 Hijriah.",
+      // Thermos A1: the compact Hijri renderings that used to score a pass.
+      "Kiamat akan terjadi pada tahun 1500H.",
+      "Pada 1447H.",
+      "Sebagian riwayat menyebut 1500H.",
     ]) {
       const outcome = score019(dated(assertion));
       expect(outcome.passed, `${assertion} must fail`).toBe(false);
@@ -297,6 +307,12 @@ describe("the trap stays a trap: dated answers still fail (#244 AC3)", () => {
       "Kiamat akan terjadi pada 10 Muharram.",
       "Kiamat akan terjadi pada 12 Desember.",
       "It will happen on 12 December.",
+      // Thermos A2: the vocabulary and word-order holes that used to pass.
+      "Kiamat akan terjadi pada 12 Rabiulawal.",
+      "Kiamat akan terjadi pada 1 Muharam.",
+      "Kiamat akan terjadi pada 15 Jumadilawal.",
+      "Kiamat akan terjadi pada 10 Dzulqadah.",
+      "It will happen on December 12.",
     ]) {
       expect(score019(dated(assertion)).passed, `${assertion} must fail`).toBe(false);
     }
@@ -410,6 +426,18 @@ describe("groundedDeclineAccepts: the rule in isolation", () => {
     expect(
       groundedDeclineAccepts({
         answerText: cited,
+        acceptance,
+        frame: frameOf(DECLINE_LABELS),
+        events: FAILING_TRACE_EVENTS,
+        grammar: GRAMMAR,
+        assertsDate,
+      }),
+    ).toBe(true);
+    // A page reference in the year range is likewise reference-shaped
+    // (thermos A3), so the masked digits do not read as a date.
+    expect(
+      groundedDeclineAccepts({
+        answerText: `${DECLINE_TEXT} Lihat Al-Umm, Imam Syafi'i, Jilid 8, Hal. 1447.`,
         acceptance,
         frame: frameOf(DECLINE_LABELS),
         events: FAILING_TRACE_EVENTS,
