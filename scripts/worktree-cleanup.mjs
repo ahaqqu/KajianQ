@@ -22,7 +22,10 @@
 // --force. A .worktrees/ entry that is not a registered git worktree (a stray
 // file or directory) is reported and skipped, never removed, so one stray entry
 // cannot abort the run. So is a registered worktree whose git commands fail —
-// locked, stale gitdir: the failure is that entry's keep, not the run's.
+// locked, stale gitdir: the failure is that entry's keep, not the run's. An
+// entry whose worktree removal succeeds but whose branch delete then fails is
+// still printed and counted as removed, with the branch failure named in the
+// same line: the removal happened, and a `kept` prefix would contradict it.
 //
 // RESIDUAL (#239): rule 1 cannot see liveness, so one destruction shape stays: a
 // dispatch reattached without -b to a surviving squash-merged branch — same
@@ -203,15 +206,20 @@ for (const slug of readdirSync(wtRoot).filter((n) => !n.startsWith("."))) {
     keep(`failed to remove (${gitError(err)})`);
     continue;
   }
+  // Removal succeeded, so this entry IS an entry this tool removed — the
+  // worktree, the thing the tool is named for, is gone. A failed branch delete
+  // is named in the same line but never demotes it to `kept`: that would
+  // contradict what happened and under-count the `done:` line. The surviving
+  // branch holds only merged or already-contained work by this point.
+  let branchFailure = "";
   if (branchExists) {
     try {
       git(["branch", "-D", branch]);
     } catch (err) {
-      keep(`failed to delete ${branch} (${gitError(err)})`);
-      continue;
+      branchFailure = `; branch delete failed: ${gitError(err)}`;
     }
   }
-  console.log(`removed ${slug} (${reason})`);
+  console.log(`removed ${slug} (${reason}${branchFailure})`);
   removed++;
 }
 

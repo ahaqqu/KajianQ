@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 
 /**
@@ -173,6 +173,15 @@ esac
     },
     branchExists(branch) {
       return gitOk(dir, ["rev-parse", "--verify", "--quiet", branch]);
+    },
+    // A stale ref lock: git refuses to rewrite the ref while the file exists,
+    // so `git branch -D` fails deterministically, while `rev-parse` still
+    // resolves the branch — the lock blocks writes, not reads.
+    refLock(ref) {
+      const lock = join(dir, ".git", `${ref}.lock`);
+      mkdirSync(dirname(lock), { recursive: true });
+      writeFileSync(lock, "");
+      return lock;
     },
     dispose() {
       rmSync(dir, { recursive: true, force: true });
@@ -550,6 +559,32 @@ describe("worktree-cleanup", () => {
       "pr view agent/a-locked --json state,headRefOid",
       "pr view agent/z-healthy --json state,headRefOid",
     ]);
+    fx.dispose();
+  });
+
+  it("counts a worktree whose branch delete fails after removal as removed (A6)", () => {
+    const fx = makeFixture();
+    const tip = fx.addCommitted("half-done");
+    fx.fakeGh({ prs: { "agent/half-done": { state: "MERGED", headRefOid: tip } } });
+    // The disposal's first step succeeds and its second fails. A stale ref lock
+    // is the deterministic trigger: only the delete can fail, and the branch
+    // still resolves afterwards.
+    fx.refLock("refs/heads/agent/half-done");
+
+    const result = runClean(fx);
+
+    expect(result.status).toBe(0);
+    // The line claims only what happened: the removal is reported and the
+    // branch failure is named — never a `kept` prefix that contradicts the run.
+    expect(result.stdout).toMatch(
+      /^removed half-done \(PR merged; branch delete failed: error: could not delete reference .*cannot lock ref/m,
+    );
+    expect(result.stdout).not.toContain("kept  half-done");
+    // Summary and per-entry lines agree: this entry was removed, not kept.
+    expect(result.stdout).toMatch(/^done: 1 removed, 0 kept$/m);
+    expect(fx.exists("half-done")).toBe(false);
+    expect(fx.branchExists("agent/half-done")).toBe(true);
+    expect(git(fx.dir, ["rev-parse", "agent/half-done"])).toBe(tip);
     fx.dispose();
   });
 
