@@ -102,6 +102,12 @@ branches mid-run and corrupts each other's diffs. Therefore:
   (`.worktrees/<slug>`) or adds one from the existing branch
   (`git worktree add .worktrees/<slug> agent/<slug>` — no `-b`), because it
   takes over a branch that already exists.
+- Lock the worktree as soon as it exists, with a reason naming your role and
+  ticket (`git worktree lock .worktrees/<slug> --reason "<role> #<issue>"`), and
+  unlock it (`git worktree unlock .worktrees/<slug>`) before reporting done: a
+  locked worktree is kept by `bun run worktree:clean` whatever flags it is
+  passed, so the lock is the liveness declaration that protects an active
+  dispatch's work through a cleanup.
 - Never put a worktree under `/tmp` (on DSH it is per-invocation — see the DSH
   adapter). Never use `.wt/` either — `.worktrees/` is the one in-repo
   convention, it is committed to `.gitignore`, and `bun run worktree:clean`
