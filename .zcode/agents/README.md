@@ -3,14 +3,14 @@
 This directory holds the role-agent definitions the manager-orchestrated
 workflow dispatches. Each role is a defined subagent whose file carries its
 operating persona, frontmatter, and completion criterion. The `reviewer`
-applies the `code-review` skill end-to-end, runs both thermo passes itself, and posts findings via `thermos-with-comments`.
+applies the `code-review` skill end-to-end, runs both thermo passes itself when the diff touches code, and posts findings via `thermos-with-comments` at thermos depth.
 
 | Role                  | File                    | Purpose                                                                                              |
 | --------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------- |
 | implementer (default) | `implementer.md`        | regular guided implementation, end-to-end to a green PR                                              |
 | senior-implementer    | `senior-implementer.md` | hard / `model:high` tickets — correctness/trust invariants that fail silently; also writes the tests |
-| fixer                 | `fixer.md`              | owns review feedback: accepts/rejects each thermos item, applies accepted fixes, keeps CI green      |
-| reviewer              | `reviewer.md`           | applies `code-review` end-to-end and runs both thermos passes itself; posts itemized findings        |
+| fixer                 | `fixer.md`              | owns review feedback: accepts/rejects each itemized finding, applies accepted fixes, keeps CI green  |
+| reviewer              | `reviewer.md`           | applies `code-review` end-to-end, running both thermos passes itself when the diff touches code      |
 
 The manager is the session agent itself — it has no role file.
 
