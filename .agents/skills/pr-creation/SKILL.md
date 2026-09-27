@@ -66,7 +66,7 @@ Max 72 characters
 
 **Closing keywords.** A closing keyword — `close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves`, `resolved` — closes the issue beside it anywhere in the description, not only in commit messages, and the parser reads the keyword while ignoring a negation in front of it. Write an issue this PR leaves open as a plain related link, and reserve closing keywords for the `## Closes` section below:
 
-- Safe, leaves the issue open: `Related (not addressed here): #N`
+- Safe, leaves the issue open: any phrasing that keeps those nine keywords away from a bare `#N` — `Related (not addressed here): #N`, `does not address #N`
 - Unsafe, still closes the issue on merge: `not closed: #N`
 
 ```markdown
