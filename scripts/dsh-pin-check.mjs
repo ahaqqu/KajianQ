@@ -44,7 +44,10 @@
 // Test seams, set together to run against fixtures instead of this machine:
 // DSH_PIN_CHECK_SETTINGS (settings.yaml path), DSH_PIN_CHECK_ROLES_DIR (the
 // role-file directory), DSH_PIN_CHECK_CATALOG (a catalog JSON file with the
-// API's `{ data: [{ id }] }` shape, replacing the network fetch).
+// API's `{ data: [{ id }] }` shape, replacing the network fetch). The three
+// are all-or-nothing and the script enforces it: redirecting the read paths
+// while the write path stays real is the one combination in which a fixture
+// run can reach — and with --fix write — this machine's settings file.
 //
 // This is a dispatch-time preflight for the manager's DSH adapter, not a CI
 // gate: it depends on this machine's DSH install and ollama.com reachability.
@@ -52,10 +55,13 @@ import { readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-const ROLES_DIR =
-  process.env.DSH_PIN_CHECK_ROLES_DIR ?? join(import.meta.dir, "..", ".zcode", "agents");
-const SETTINGS = process.env.DSH_PIN_CHECK_SETTINGS ?? join(homedir(), ".dsh", "settings.yaml");
-const CATALOG_FILE = process.env.DSH_PIN_CHECK_CATALOG ?? null;
+const SEAM_SETTINGS = "DSH_PIN_CHECK_SETTINGS";
+const SEAM_ROLES_DIR = "DSH_PIN_CHECK_ROLES_DIR";
+const SEAM_CATALOG = "DSH_PIN_CHECK_CATALOG";
+const DEFAULT_SETTINGS = join(homedir(), ".dsh", "settings.yaml");
+const ROLES_DIR = process.env[SEAM_ROLES_DIR] ?? join(import.meta.dir, "..", ".zcode", "agents");
+const SETTINGS = process.env[SEAM_SETTINGS] ?? DEFAULT_SETTINGS;
+const CATALOG_FILE = process.env[SEAM_CATALOG] ?? null;
 const CATALOG = "https://ollama.com/v1/models";
 const PROVIDER = "ollama";
 const SELECTION = "subagent-model-selection:";
@@ -68,6 +74,17 @@ function fail(message) {
   console.error(`✗ ${message}`);
   process.exit(1);
 }
+
+// The seams redirect the machine-global paths as one unit: a run whose read
+// paths point at fixtures while its write path still points at this machine's
+// file is the one partial redirection that can reach the real config — and
+// with --fix, edit it. Enforced before argv is parsed, so --fix cannot be
+// reached in that state either.
+const redirectedReads = [SEAM_ROLES_DIR, SEAM_CATALOG].filter((seam) => process.env[seam]);
+if (redirectedReads.length > 0 && !process.env[SEAM_SETTINGS])
+  fail(
+    `${redirectedReads.join(" and ")} is set without ${SEAM_SETTINGS} — the test seams are all-or-nothing: with the read paths redirected and the settings path left real, this run (and --fix) would act on ${DEFAULT_SETTINGS}. Set all three seams or none.`,
+  );
 
 const argv = process.argv.slice(2);
 const fix = argv.includes("--fix");
@@ -214,6 +231,22 @@ function allowedRoutes(lines, block) {
   return routes;
 }
 
+/** The indentation an `allowedModels` entry must carry where it is pasted:
+ * taken from the first entry already in the list, else from the list key's own
+ * line. A printed fix is pasted verbatim, so it has to match the file's shape
+ * — an entry at the wrong depth stops the whole settings file from parsing. */
+function allowedEntryIndents(lines, block) {
+  for (let i = block.idx + 1; i < block.end; i++) {
+    const m = lines[i].match(/^(\s*)-[ \t]+provider:/);
+    if (m) return { dash: m[1].length, model: m[1].length + 2 };
+  }
+  const rel = lines
+    .slice(block.idx + 1, block.end)
+    .findIndex((l) => /^\s*allowedModels:\s*$/.test(l));
+  const base = rel === -1 ? indentOf(lines[block.idx]) + 2 : indentOf(lines[block.idx + 1 + rel]);
+  return { dash: base + 2, model: base + 4 };
+}
+
 /** A declaration entry for one model id. Capability metadata (contextWindow,
  * maxTokens) is deliberately absent: the script cannot know the real values
  * per id, and a false capability is worse than the harness's own default. */
@@ -353,14 +386,16 @@ if (failures > 0) {
     );
   }
   // Narrowed routes: an owner-side settings edit, never a --fix append and
-  // never a rerouted pin.
+  // never a rerouted pin. The entry is printed in the file's own shape so it
+  // can be pasted verbatim.
+  const routeIndents = allowedEntryIndents(lines, selection);
   for (const route of notAllowed) {
     const [provider, model] = route.split("/");
     console.log(
       `  fix: add this route to subagent-model-selection.allowedModels in ${SETTINGS} — never reroute the pin:`,
     );
-    console.log(`      - provider: ${provider}`);
-    console.log(`        model: ${model}`);
+    console.log(`${" ".repeat(routeIndents.dash)}- provider: ${provider}`);
+    console.log(`${" ".repeat(routeIndents.model)}model: ${model}`);
     console.log(`    (recorded per session at composition, so the edit reaches new sessions only)`);
   }
   // Declarable ids: undeclared and not known-unserved.

@@ -15,7 +15,7 @@ import { spawnSync } from "node:child_process";
 /**
  * `bun run dsh:preflight` — the role-pin resolution gate (#222).
  *
- * Three parts of the gate's contract are pinned here, each against fixtures
+ * Four parts of the gate's contract are pinned here, each against fixtures
  * rather than this machine:
  *
  * - a pin resolves to its model id whatever the ZCode editor wrote — quoted
@@ -23,19 +23,24 @@ import { spawnSync } from "node:child_process";
  *   after-the-last-`/` recipe cannot read the second shape);
  * - a pin whose id is declared but whose route is absent from
  *   `subagent-model-selection.allowedModels` FAILS, with the exact settings
- *   edit — the narrowing guard. The list carries every declared catalog id
- *   today, so the guard rejects nothing now; the test is what keeps it
- *   load-bearing for a future narrowing;
+ *   edit printed at the file's own indentation, so it is paste-safe — the
+ *   narrowing guard. The list carries every declared catalog id today, so the
+ *   guard rejects nothing now; the test is what keeps it load-bearing for a
+ *   future narrowing;
  * - `--fix` appends a bare, de-duplicated declaration, backing up the original
- *   first, and only ever against the settings path under test.
+ *   first, and only ever against the settings path under test;
+ * - the three seams are all-or-nothing: a run that redirects the read paths
+ *   without the settings path is refused, never pointed at the real file.
  *
  * Every run goes through `runPreflight`, which sets all three machine-global
  * seams (`DSH_PIN_CHECK_SETTINGS`, `DSH_PIN_CHECK_ROLES_DIR`,
  * `DSH_PIN_CHECK_CATALOG`) and refuses a settings path outside the fixture.
- * That is the safety boundary: `--fix` writes a machine-global config, so a
- * test that forgot the seam would edit the owner's real file. The suite also
- * re-reads that file at the end when it exists, so the boundary is proven
- * rather than asserted.
+ * That is the second layer of the safety boundary; the first is the script's
+ * own all-or-nothing guard, which refuses a run that redirects the read paths
+ * while leaving the write path real (`--fix` included). The suite then proves
+ * the boundary from both directions: the real file is re-read and compared
+ * byte for byte when it existed at module load, and asserted still absent when
+ * it did not — so a run that created it fails here too.
  */
 
 const ROOT = process.cwd();
@@ -48,6 +53,7 @@ afterAll(() => {
   for (const root of roots) rmSync(root, { recursive: true, force: true });
   if (realSettingsBefore !== null)
     expect(readFileSync(REAL_SETTINGS, "utf8")).toBe(realSettingsBefore);
+  else expect(existsSync(REAL_SETTINGS)).toBe(false);
 });
 
 const PIN_SLASH = "d5585e04-940a-41f6-a9ec-320bb4fccd7e/deepseek-v4.1-flash:cloud";
@@ -135,7 +141,67 @@ function runPreflight(fx, args = []) {
   };
 }
 
+/** The printed fix block, as it appears in stdout: its two lines with their
+ * own indentation, ready to be pasted into `allowedModels`. */
+function printedEntry(stdout, provider, model) {
+  const m = stdout.match(new RegExp(`^( *)- provider: ${provider}\\n( *)model: ${model}$`, "m"));
+  if (!m) throw new Error(`no printed ${provider}/${model} entry in:\n${stdout}`);
+  return { block: m[0], dash: m[1].length, model: m[2].length };
+}
+
+/** Paste a printed block verbatim at the end of the fixture's `allowedModels`
+ * list — the operator's paste — and parse the result with a real YAML parser
+ * (Bun's). The gate's contract is that the printed entry is paste-safe as
+ * printed: at the wrong depth the file stops parsing, which would take the
+ * whole harness config down with it. */
+function pasteAndParse(fx, block) {
+  const pasted = join(fx.root, "pasted.yaml");
+  writeFileSync(pasted, `${readFileSync(fx.settings, "utf8")}${block}\n`);
+  return spawnSync(
+    "bun",
+    [
+      "-e",
+      'const text = require("node:fs").readFileSync(0, "utf8");const doc = Bun.YAML.parse(text);console.log(JSON.stringify(doc["subagent-model-selection"].allowedModels));',
+    ],
+    { input: readFileSync(pasted, "utf8"), encoding: "utf8" },
+  );
+}
+
 const backupsIn = (fx) => readdirSync(fx.root).filter((f) => f.startsWith("settings.yaml.bak-"));
+
+describe("test seams", () => {
+  it("refuses a partial seam redirection instead of falling through to the real settings file", () => {
+    const fx = fixture();
+    writeRole(fx, "reviewer", `model: "${PIN_SLASH}"`);
+    writeCatalog(fx, ["deepseek-v4.1-flash"]);
+    // HOME is redirected as well, so this test is safe to run even when it is
+    // red: without the guard the script would read (and with --fix write) the
+    // empty temp-home path, never the owner's real file.
+    const fakeHome = join(fx.root, "home");
+    mkdirSync(fakeHome, { recursive: true });
+    const baseEnv = { ...process.env, HOME: fakeHome };
+    for (const seam of [
+      "DSH_PIN_CHECK_SETTINGS",
+      "DSH_PIN_CHECK_ROLES_DIR",
+      "DSH_PIN_CHECK_CATALOG",
+    ])
+      delete baseEnv[seam];
+
+    for (const [seam, value] of [
+      ["DSH_PIN_CHECK_ROLES_DIR", fx.roles],
+      ["DSH_PIN_CHECK_CATALOG", fx.catalog],
+    ]) {
+      const res = spawnSync("bun", [SCRIPT, "--fix"], {
+        env: { ...baseEnv, [seam]: value },
+        encoding: "utf8",
+      });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain(`${seam} is set without DSH_PIN_CHECK_SETTINGS`);
+      expect(res.stdout).not.toContain("+ declared");
+    }
+    expect(existsSync(join(fakeHome, ".dsh"))).toBe(false);
+  });
+});
 
 describe("pin shapes", () => {
   it("resolves a quoted pin, a bare pin and the custom-encoded shape to the same model id", () => {
@@ -198,13 +264,43 @@ describe("subagent route narrowing guard", () => {
     expect(res.stdout).toContain(
       `fix: add this route to subagent-model-selection.allowedModels in ${fx.settings} — never reroute the pin:`,
     );
-    expect(res.stdout).toContain("      - provider: ollama\n        model: kimi-k3");
+    // The printed entry carries the file's own indentation (4/6, as the real
+    // file does), and pasting it verbatim leaves the file parseable.
+    const printed = printedEntry(res.stdout, "ollama", "kimi-k3");
+    const existing = readFileSync(fx.settings, "utf8").match(
+      /^( *)- provider: ollama\n( *)model: deepseek/m,
+    );
+    expect([printed.dash, printed.model]).toEqual([existing[1].length, existing[2].length]);
+    expect([printed.dash, printed.model]).toEqual([4, 6]);
+    const pasted = pasteAndParse(fx, printed.block);
+    expect(pasted.status).toBe(0);
+    expect(JSON.parse(pasted.stdout)).toContainEqual({ provider: "ollama", model: "kimi-k3" });
     const settings = readFileSync(fx.settings, "utf8");
     expect(settings).toContain(
       "allowedModels:\n    - provider: ollama\n      model: deepseek-v4.1-flash\n",
     );
     expect(settings).not.toContain("model: kimi-k3");
     expect(backupsIn(fx)).toHaveLength(0);
+  });
+
+  it("prints the file's indentation when allowedModels is empty too", () => {
+    const fx = fixture();
+    writeRole(fx, "fixer", `model: "${PIN_SLASH}"`);
+    writeSettings(fx, { declared: ["deepseek-v4.1-flash"], allowed: [] });
+    writeCatalog(fx, ["deepseek-v4.1-flash"]);
+
+    const res = runPreflight(fx);
+
+    expect(res.status).toBe(1);
+    expect(res.stdout).toContain("✗ fixer: deepseek-v4.1-flash — declared, NOT ALLOWED, served");
+    const printed = printedEntry(res.stdout, "ollama", "deepseek-v4.1-flash");
+    expect([printed.dash, printed.model]).toEqual([4, 6]);
+    const pasted = pasteAndParse(fx, printed.block);
+    expect(pasted.status).toBe(0);
+    expect(JSON.parse(pasted.stdout)).toContainEqual({
+      provider: "ollama",
+      model: "deepseek-v4.1-flash",
+    });
   });
 
   it("fails when the policy block is absent or disabled — no pin can be dispatched by route", () => {
