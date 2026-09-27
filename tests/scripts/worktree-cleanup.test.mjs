@@ -18,6 +18,21 @@ import {
  * the fake `gh`, `runClean` — lives in `worktree-cleanup-fixture.mjs`. Each
  * case builds its own fixture, so cases share no state.
  */
+
+// The fixture slug the isolation case uses. Deliberately one no dispatch would
+// pick, so finding it in the real checkout is unambiguous evidence of a leak.
+const SLUG = "isolation-canary";
+
+// The slug of every per-entry line the script prints — `removed <slug> (…)`,
+// `kept <slug>: …`, `would remove <slug> (…)` — in order. One line per entry
+// the run examined, so the slugs named are what the run actually saw.
+function namedSlugs(stdout) {
+  return stdout
+    .split("\n")
+    .map((line) => /^(?:removed|kept|would remove) +([^\s:]+)/.exec(line)?.[1])
+    .filter(Boolean);
+}
+
 describe("worktree-cleanup", () => {
   it("keeps a zero-commit worktree by default and prints why", () => {
     const fx = makeFixture();
@@ -456,28 +471,51 @@ describe("worktree-cleanup", () => {
   });
 
   it("resolves its root from the fixture repo, never the real checkout", () => {
-    const realBefore = existsSync(REAL_WORKTREES) ? readdirSync(REAL_WORKTREES).sort() : [];
+    // The real listing is read only to prove this run DELETED nothing from it.
+    // Additions are normal here: parallel dispatches create .worktrees/<slug>
+    // checkouts while the suite runs, so the comparison must tolerate them
+    // (#246). What cannot be raced is the leak signal itself — the slugs the
+    // run names — because a correctly rooted run never sees the real checkout.
+    const realBefore = existsSync(REAL_WORKTREES) ? readdirSync(REAL_WORKTREES) : [];
     const fx = makeFixture();
-    fx.addUnstarted("unstarted");
-    fx.fakeGh({ noPr: ["agent/unstarted"] });
+    // A slug no dispatch uses, so its absence from the real .worktrees/ and
+    // refs is a race-free check that the destructive path never ran there.
+    fx.addUnstarted(SLUG);
+    fx.fakeGh({ noPr: [`agent/${SLUG}`] });
+    // A stray entry the run reports and never removes: it makes the run print
+    // both line shapes the named-slug assertion parses — `kept <slug>:` and
+    // `removed <slug> (` — so the parse is exercised, not just one shape.
+    writeFileSync(join(fx.dir, ".worktrees", "README"), "stray\n");
 
     const result = runClean(fx, ["--include-unstarted"]);
 
     expect(result.status).toBe(0);
     // The script acted on the fixture's own worktree — proof it resolved the
     // fixture root, not the real checkout.
-    expect(result.stdout).toContain("removed unstarted (no unique commits vs origin/main)");
-    expect(fx.exists("unstarted")).toBe(false);
+    expect(result.stdout).toContain(`removed ${SLUG} (no unique commits vs origin/main)`);
+    expect(fx.exists(SLUG)).toBe(false);
+    // The leak tested directly: a run that resolved the real checkout
+    // enumerates and names the real slugs, whatever a concurrent dispatch
+    // created while it ran. Every entry the run examined is pinned, so a leak
+    // cannot hide behind the shapes that happen to pass. Not vacuous: an early
+    // exit that named nothing would fail this too.
+    expect(namedSlugs(result.stdout).sort()).toEqual(["README", SLUG]);
     // Only that one lookup happened: a root-resolution leak would have produced
     // a gh call per real slug, and this log has no other line.
-    expect(callLog(fx)).toEqual(["pr view agent/unstarted --json state,headRefOid"]);
+    expect(callLog(fx)).toEqual([`pr view agent/${SLUG} --json state,headRefOid`]);
     // No real slug ever reached gh.
     for (const slug of realBefore) expect(fx.ghCalls()).not.toContain(`agent/${slug}`);
-    // And the real checkout's .worktrees listing is untouched.
-    const realAfter = existsSync(REAL_WORKTREES) ? readdirSync(REAL_WORKTREES).sort() : [];
-    expect(realAfter).toEqual(realBefore);
-    expect(existsSync(join(REAL_WORKTREES, "unstarted"))).toBe(false);
-    expect(gitOk(MAIN_ROOT, ["rev-parse", "--verify", "--quiet", "agent/unstarted"])).toBe(false);
+    // The fixture slug never materialised in the real checkout: no worktree and
+    // no branch. A leak that disposed of a real worktree names that slug in its
+    // own `removed` line, which the named-slug assertion above already pins.
+    expect(existsSync(join(REAL_WORKTREES, SLUG))).toBe(false);
+    expect(gitOk(MAIN_ROOT, ["rev-parse", "--verify", "--quiet", `agent/${SLUG}`])).toBe(false);
+    // Superset, not equality: concurrent dispatches only ever add to the real
+    // listing, so a shrink means this run removed something it did not own.
+    // Nothing else runs `worktree:clean` beside the suite (the manager skill
+    // gates it on no dispatches being active).
+    const realAfter = existsSync(REAL_WORKTREES) ? readdirSync(REAL_WORKTREES) : [];
+    for (const slug of realBefore) expect(realAfter).toContain(slug);
     fx.dispose();
   });
 });
