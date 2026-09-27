@@ -3,6 +3,7 @@ import type { Chunk } from "@app/rag-core";
 import {
   citationCandidatesIn,
   citationLabelsOf,
+  citationSpansIn,
   normalizeCitationLabel,
   validateCitations,
 } from "./chat-citation-validator";
@@ -60,6 +61,133 @@ describe("validateCitations — grounded direction", () => {
     );
     expect(grounded).toEqual(["HR. Malik no. 18"]);
     expect(ungrounded).toEqual([]);
+  });
+
+  it("grounds a hadith citation written with an introducing colon (#253)", () => {
+    // The false refusal that opened #253: a staging smoke destroyed a
+    // correctly retrieved, correctly cited answer because the draft wrote
+    // `… HR. Bukhari no. 5010: <matn> …`. The hadith grammar's number token
+    // stops at `;`, `.`, `)` and `]` but absorbs `:`, so the label reached the
+    // membership test colon-suffixed, no chunk grounded it, and the reviewer
+    // rendered the canonical "no evidence" refusal (trace f417d603-…, chunk
+    // 94d2a731-… carried the plain label).
+    const { grounded, ungrounded } = validateCitations(
+      "Rasulullah bersabda dalam HR. Bukhari no. 5010: <matn>",
+      [chunk("HR. Bukhari no. 5010")],
+    );
+    expect(grounded).toEqual(["HR. Bukhari no. 5010"]);
+    expect(ungrounded).toEqual([]);
+  });
+
+  // The #253 CLASS, not the one character: every punctuation a generator
+  // plausibly attaches to a citation's tail. Both labels below are retrieved,
+  // so any `ungrounded` entry in this table is the same false refusal that
+  // destroyed the gs-v0-001 answer — a grounded citation reported fabricated.
+  it.each([
+    ["introducing colon", "Rasulullah bersabda dalam HR. Bukhari no. 5010: matn"],
+    ["semicolon", "Rasulullah bersabda dalam HR. Bukhari no. 5010; lalu ia bersabda"],
+    ["comma", "Rasulullah bersabda dalam HR. Bukhari no. 5010, lalu ia bersabda"],
+    ["full stop", "Rasulullah bersabda dalam HR. Bukhari no. 5010. Lalu ia bersabda"],
+    ["closing parenthesis", "Rasulullah bersabda dalam (HR. Bukhari no. 5010) lalu ia bersabda"],
+    ["closing bracket", "Rasulullah bersabda dalam [HR. Bukhari no. 5010] lalu ia bersabda"],
+    ["closed-up em dash", "Rasulullah bersabda dalam HR. Bukhari no. 5010—ia bersabda"],
+    ["spaced em dash", "Rasulullah bersabda dalam HR. Bukhari no. 5010 — ia bersabda"],
+    ["ellipsis", "Rasulullah bersabda dalam HR. Bukhari no. 5010… lalu ia bersabda"],
+    ["closing quote", 'Rasulullah bersabda dalam "HR. Bukhari no. 5010" lalu ia bersabda'],
+    ["bold markers", "Rasulullah bersabda dalam **HR. Bukhari no. 5010** lalu ia bersabda"],
+    ["bold markers then a colon", "Rasulullah bersabda dalam **HR. Bukhari no. 5010**: matn"],
+    ["colon after the Quran address", "Ayat Kursi ada di QS. 2:255: ayat yang agung"],
+    // Review A1: the rest of the dash family the number token absorbs. These
+    // hyphens join prose exactly like the em/en dash above, and all three were
+    // still false-refusing a grounded citation at the reviewed head.
+    ["closed-up ASCII hyphen", "Rasulullah bersabda dalam HR. Bukhari no. 5010-ia bersabda"],
+    ["figure dash glued prose", "Rasulullah bersabda dalam HR. Bukhari no. 5010‒ia bersabda"],
+    ["horizontal bar glued prose", "Rasulullah bersabda dalam HR. Bukhari no. 5010―ia bersabda"],
+    // Review A2: tails that end in a letter/digit-class character — a footnote
+    // digit, a superscript marker (`¹` is `\p{N}`, not an ASCII digit) and the
+    // glued grade the draft grammar can really produce. None of them is part
+    // of the address, so all three must ground.
+    ["footnote digit", "Rasulullah bersabda dalam HR. Bukhari no. 5010:1 tentang hal ini"],
+    ["superscript footnote", "Rasulullah bersabda dalam HR. Bukhari no. 5010¹ tentang hal ini"],
+    [
+      "glued grade parenthetical",
+      "Rasulullah bersabda dalam HR. Bukhari no. 5010(Sahih) tentang hal ini",
+    ],
+  ])("grounds a citation whose tail is a %s", (_variant, draft) => {
+    const { ungrounded } = validateCitations(draft, [
+      chunk("HR. Bukhari no. 5010"),
+      chunk("QS. 2:255"),
+    ]);
+    expect(ungrounded).toEqual([]);
+  });
+
+  it("reduces a tail to the address its grammar identified, not by punctuation (A2)", () => {
+    // The pair no trailing-character rule can separate: the footnote must
+    // reduce to the hadith address, while the Quran address must keep its
+    // colon and BOTH of its numbers. The grammars already know which is which
+    // — the hadith address ends at the number word after `no.`, the Quran
+    // address IS the `surah:ayah` pair — so `normalizeCitationLabel` trims the
+    // match to the grammar's own address instead of guessing from the tail.
+    expect(normalizeCitationLabel("HR. Bukhari no. 5010:1")).toBe("HR. Bukhari no. 5010");
+    expect(normalizeCitationLabel("HR. Bukhari no. 5010¹")).toBe("HR. Bukhari no. 5010");
+    expect(normalizeCitationLabel("HR. Bukhari no. 5010(Sahih")).toBe("HR. Bukhari no. 5010");
+    expect(normalizeCitationLabel("HR. Bukhari no. 5010-ia")).toBe("HR. Bukhari no. 5010");
+    expect(normalizeCitationLabel("QS. 2:255")).toBe("QS. 2:255");
+    expect(normalizeCitationLabel("QS. 2:255:")).toBe("QS. 2:255");
+    expect(normalizeCitationLabel("QS. Al-Baqarah:255")).toBe("QS. Al-Baqarah:255");
+  });
+
+  it("keeps the dash-joined numeric compound whole — the stated A3 trade-off", () => {
+    // Fail-closed on purpose (`DASH_JOINED_NUMBER_TAIL` in the source): the
+    // dash is the closed-up range joiner, so the compound may carry a SECOND
+    // address, and reducing it to `no. 5010` would let an unretrieved
+    // `no. 5011` ride in on the first address's grounding. The cost is this
+    // false refusal — paid even when BOTH addresses were retrieved — and the
+    // follow-up (split the compound at the comparison site, require each
+    // grounded) is recorded in the source comment, not left to be rediscovered.
+    const bothRetrieved = [chunk("HR. Bukhari no. 5010"), chunk("HR. Bukhari no. 5011")];
+    expect(
+      validateCitations("HR. Bukhari no. 5010—5011 menjelaskan …", bothRetrieved).ungrounded,
+    ).toEqual(["HR. Bukhari no. 5010—5011"]);
+    // Digit-glued prose is refused with it: the accepted cost, not a bug.
+    expect(
+      validateCitations("HR. Bukhari no. 5010—3 kali sehari", [chunk("HR. Bukhari no. 5010")])
+        .ungrounded,
+    ).toEqual(["HR. Bukhari no. 5010—3"]);
+  });
+
+  it("keeps an address-bearing glue distinct from the bare number (fail-closed)", () => {
+    // Letters and digits glued straight onto the number continue the address
+    // token: `no. 50102` and `no. 5010a` are different addresses than
+    // `no. 5010`. Dropping the glue would ground a wrong or fabricated
+    // sub-number on a retrieved one, so these stay distinct and refused.
+    for (const glued of [
+      "HR. Bukhari no. 50101",
+      "HR. Bukhari no. 5010a",
+      "HR. Bukhari no. 5010ia",
+    ]) {
+      expect(normalizeCitationLabel(glued)).toBe(glued);
+      expect(
+        validateCitations(`${glued} menjelaskan …`, [chunk("HR. Bukhari no. 5010")]).ungrounded,
+      ).toEqual([glued]);
+    }
+  });
+
+  it("reduces the glued grade span the draft grammar really produces (B2)", () => {
+    // The `stripGradeSuffix` docstring used to claim no draft span can carry a
+    // grade at all, because "the number token stops at whitespace". Execution
+    // falsified it: the token stops at whitespace but absorbs `(`, so
+    // `HR. Bukhari no. 573(Sahih) …` yields a span carrying grade text. The
+    // spaced forms are the ones that cannot occur.
+    expect(citationSpansIn("HR. Bukhari no. 573(Sahih) menjelaskan")).toEqual([
+      { start: 0, end: 25, label: "HR. Bukhari no. 573" },
+    ]);
+    expect(citationSpansIn("HR. Bukhari no. 573 (Sahih) menjelaskan")[0]?.label).toBe(
+      "HR. Bukhari no. 573",
+    );
+    expect(citationSpansIn("HR. Bukhari no. 573: (Sahih) menjelaskan")[0]?.label).toBe(
+      "HR. Bukhari no. 573",
+    );
   });
 
   it("grounds a bracketed hadith citation (#11 regression)", () => {
@@ -216,6 +344,48 @@ describe("validateCitations — ungrounded direction (the trap cases)", () => {
     expect(ungrounded).toEqual(["Jilid 1, Hal. 102"]);
   });
 
+  it("still rejects a fabricated hadith number written with a trailing colon (#253 trap)", () => {
+    // The colon fix must strip punctuation, never the address: the number is
+    // what makes a citation grounded, and `99999` is in no retrieved chunk.
+    const { grounded, ungrounded } = validateCitations(
+      "Rasulullah bersabda dalam HR. Bukhari no. 99999: matn",
+      [chunk("HR. Bukhari no. 5010")],
+    );
+    expect(grounded).toEqual([]);
+    expect(ungrounded).toEqual(["HR. Bukhari no. 99999"]);
+  });
+
+  it("still rejects a near-miss hadith number written with a trailing colon", () => {
+    // The dangerous near-miss: right collection, one digit off. Trailing
+    // punctuation must not let the number itself be dropped.
+    const { ungrounded } = validateCitations("HR. Bukhari no. 5011: matn", [
+      chunk("HR. Bukhari no. 5010"),
+    ]);
+    expect(ungrounded).toEqual(["HR. Bukhari no. 5011"]);
+  });
+
+  it("still rejects a fabricated hadith number written with a footnote digit (A2)", () => {
+    // Reducing `5010:1` to `5010` must not reduce `99999:1` to anything a
+    // retrieved chunk grounds: the footnote number is not address, and the
+    // fabricated number still is.
+    const { grounded, ungrounded } = validateCitations("HR. Bukhari no. 99999:1 menjelaskan …", [
+      chunk("HR. Bukhari no. 5010"),
+    ]);
+    expect(grounded).toEqual([]);
+    expect(ungrounded).toEqual(["HR. Bukhari no. 99999"]);
+  });
+
+  it("still rejects a closed-up hadith range whose second address was not retrieved", () => {
+    // A dash joined to more address digits is kept whole — the deliberate
+    // precision-for-safety trade-off on `DASH_JOINED_NUMBER_TAIL` — so a
+    // range keeps both addresses and the unretrieved one is caught. The cost
+    // of that decision is pinned in the grounded-direction suite.
+    const { ungrounded } = validateCitations("HR. Bukhari no. 5010—5011 menjelaskan …", [
+      chunk("HR. Bukhari no. 5010"),
+    ]);
+    expect(ungrounded).toEqual(["HR. Bukhari no. 5010—5011"]);
+  });
+
   it("de-duplicates a citation repeated in the answer", () => {
     const { ungrounded } = validateCitations("QS. 9:99 … lalu QS. 9:99 lagi", []);
     expect(ungrounded).toEqual(["QS. 9:99"]);
@@ -263,6 +433,30 @@ describe("citationCandidatesIn", () => {
     const text = "QS. 1:1 and QS. 2:2";
     expect(citationCandidatesIn(text)).toEqual(citationCandidatesIn(text));
   });
+
+  it("leaves clean labels exactly as they are (#253 tail-normalization check)", () => {
+    // The other reader must not drift: the citations frame and the reviewer
+    // pre-gate key on these labels, and the addresses inside them are
+    // untouched by the tail fix.
+    expect(citationCandidatesIn("QS. 2:255 dan HR. Bukhari no. 4697 lalu")).toEqual([
+      "QS. 2:255",
+      "HR. Bukhari no. 4697",
+    ]);
+  });
+
+  it("keeps two adjacent citations as two spans, in text order (#253)", () => {
+    // A colon tail must not merge neighbouring spans: the reviewer pre-gate
+    // masks by offsets, and each citation keeps its own claim.
+    expect(citationSpansIn("QS. 2:255: HR. Bukhari no. 4697 lalu")).toEqual([
+      { start: 0, end: 9, label: "QS. 2:255" },
+      { start: 11, end: 31, label: "HR. Bukhari no. 4697" },
+    ]);
+  });
+
+  it("de-duplicates the same address written with and without its tail (#253)", () => {
+    const draft = "HR. Bukhari no. 4697: pertama, HR. Bukhari no. 4697 kedua";
+    expect(citationCandidatesIn(draft)).toEqual(["HR. Bukhari no. 4697"]);
+  });
 });
 
 describe("normalizeCitationLabel", () => {
@@ -270,5 +464,50 @@ describe("normalizeCitationLabel", () => {
     expect(normalizeCitationLabel("  HR.   Bukhari  no.  573 (Sahih) ")).toBe(
       "HR. Bukhari no. 573",
     );
+  });
+
+  it("keeps the address's internal colon and drops only a trailing one (#253)", () => {
+    // The Quran address IS the colon pair; a naive `replace(/:.*$/, "")` would
+    // erase every Quran citation and ground nothing. The reduction is to the
+    // grammar's address, which is why the footnote below loses its colon tail
+    // while this address keeps its colon.
+    expect(normalizeCitationLabel("QS. 2:255")).toBe("QS. 2:255");
+    expect(normalizeCitationLabel("QS. 2:255:")).toBe("QS. 2:255");
+    expect(normalizeCitationLabel("QS. Al-Baqarah:255")).toBe("QS. Al-Baqarah:255");
+    expect(normalizeCitationLabel("HR. Bukhari no. 5010:1")).toBe("HR. Bukhari no. 5010");
+  });
+
+  it("strips the tail punctuation combinations a generator emits (#253, A1, A2)", () => {
+    expect(normalizeCitationLabel("HR. Bukhari no. 5010**")).toBe("HR. Bukhari no. 5010");
+    expect(normalizeCitationLabel("**HR. Bukhari no. 5010**:")).toBe("HR. Bukhari no. 5010");
+    expect(normalizeCitationLabel('HR. Bukhari no. 5010":')).toBe("HR. Bukhari no. 5010");
+    expect(normalizeCitationLabel("QS. 2:255)")).toBe("QS. 2:255");
+    expect(normalizeCitationLabel("HR. Bukhari no. 5010-ia")).toBe("HR. Bukhari no. 5010");
+    expect(normalizeCitationLabel("HR. Bukhari no. 5010‒ia")).toBe("HR. Bukhari no. 5010");
+    expect(normalizeCitationLabel("HR. Bukhari no. 5010―ia")).toBe("HR. Bukhari no. 5010");
+    expect(normalizeCitationLabel("HR. Bukhari no. 5010¹")).toBe("HR. Bukhari no. 5010");
+    expect(normalizeCitationLabel("HR. Bukhari no. 5010(Sahih")).toBe("HR. Bukhari no. 5010");
+    expect(normalizeCitationLabel("HR. Bukhari no. 5010：")).toBe("HR. Bukhari no. 5010");
+  });
+
+  it("strips the grade parenthetical the chunk formatter appends", () => {
+    // The grade arrives on the chunk side as the LAST thing in the label:
+    // `formatHadithCitation` writes `HR. X no. N (Grade)`, and this anchored
+    // pass removes it there. On the draft side only the SPACED form is
+    // unreachable (the number token stops at whitespace); the glued
+    // `HR. X no. N(Grade)` span does occur and is reduced by the
+    // grammar-address rule — see the glued-grade span test above (B2).
+    expect(normalizeCitationLabel("HR. Ibnu Majah no. 224 (Dhaif)")).toBe("HR. Ibnu Majah no. 224");
+    expect(normalizeCitationLabel("HR. Ibnu Majah no. 224 (Dhaif) ")).toBe(
+      "HR. Ibnu Majah no. 224",
+    );
+  });
+
+  it("is idempotent", () => {
+    for (const label of ["QS. 2:255:", "**HR. Bukhari no. 5010**:", "**HR. Bukhari no. 1**."]) {
+      expect(normalizeCitationLabel(normalizeCitationLabel(label))).toBe(
+        normalizeCitationLabel(label),
+      );
+    }
   });
 });

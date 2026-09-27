@@ -533,4 +533,32 @@ describe("#168 reviewer pre-gate — claim spans (domain grammar)", () => {
     });
     expect(plan?.items[0]?.passage).toBe("first\n\nsecond");
   });
+
+  it("carries the passage for a citation written with an introducing colon (#253)", () => {
+    // The tail is normalized on both sides, so a draft citation the gate
+    // grounds also finds its chunk's passage here. Before #253's fix the colon
+    // survived into the item's key, the map lookup missed, and the paid
+    // decision call judged this citation against an EMPTY passage.
+    const plan = planCitationPregate({
+      draft: "Rasulullah bersabda dalam HR. Bukhari no. 5010: matn hadith.",
+      chunks: [chunk("HR. Bukhari no. 5010", "bukhari passage")],
+    });
+    expect(plan?.items.map((item) => item.label)).toEqual(["HR. Bukhari no. 5010"]);
+    expect(plan?.items[0]?.passage).toBe("bukhari passage");
+    expect(plan?.items[0]?.claim).toContain("HR. Bukhari no. 5010:");
+  });
+
+  it("carries the passage for a citation written with a footnote tail (A2)", () => {
+    // Same seam, one class further: a footnote digit is not address, so the
+    // item is keyed by the reduced label and the passage lookup hits. Before
+    // the grammar-address fix (review A2) the key kept `:1`, the map lookup
+    // missed, and the paid call judged the citation against an EMPTY passage.
+    const plan = planCitationPregate({
+      draft: "Rasulullah bersabda dalam HR. Bukhari no. 5010:1 matn hadith.",
+      chunks: [chunk("HR. Bukhari no. 5010", "bukhari passage")],
+    });
+    expect(plan?.items.map((item) => item.label)).toEqual(["HR. Bukhari no. 5010"]);
+    expect(plan?.items[0]?.passage).toBe("bukhari passage");
+    expect(plan?.items[0]?.claim).toContain("HR. Bukhari no. 5010:1");
+  });
 });

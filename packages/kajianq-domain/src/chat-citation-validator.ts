@@ -1,4 +1,5 @@
 import type { Chunk } from "@app/rag-core";
+import { CITATION_GRAMMARS, reduceCitationLabel } from "./chat-citation-grammar";
 
 /**
  * Deterministic citation validator (spec §3.3 step 7, ticket #10): every
@@ -43,47 +44,19 @@ export function citationLabelsOf(chunk: Chunk): string[] {
 }
 
 /**
- * The citation grammars the product renders (SPECS §2.1). Literal regexes, not
- * strings compiled on the fly: a constructed regex is the ReDoS shape the
- * security scan blocks, and there is nothing dynamic here to justify it.
+ * Trailing citation noise: any run of non-address characters at the tail —
+ * punctuation, markdown markers/quotes, symbols and whitespace. This is the
+ * **fallback** rule, for labels that do not begin with a citation grammar (a
+ * full Kitab chunk label carries its work and author before `Jilid …`): such a
+ * label is not an address with a tail, so it is cleaned lexically. A label
+ * that does begin with a grammar is reduced to the address that grammar
+ * identified instead — see {@link normalizeCitationLabel}.
  *
- * Each entry is a **factory** returning a fresh regex, because a shared
- * module-level `g` regex carries `lastIndex` state between calls — which would
- * make validation order-dependent, and a non-deterministic safety gate is no
- * gate. Extending the validator for a new source type is a one-line addition.
+ * One negated character class, anchored: linear, with no alternation that
+ * could match the same tail two ways (model-controlled text makes an ambiguous
+ * tail pattern a ReDoS shape).
  */
-const CITATION_GRAMMARS: readonly (() => RegExp)[] = [
-  // Quran: `QS. 2:255` / `Q.S. 2:255` (both dotted spellings Indonesian prose
-  // uses) or `QS. Al-Baqarah:255` (surah numeric or named). The marker closes
-  // with a dot OR a space (round-3 A1): the dot-less `QS 2:255` is a common
-  // model spelling, and requiring the dot let a fabricated citation bypass the
-  // gate entirely. Requiring *some* separator keeps `QS2:255` (no boundary
-  // between marker and address) out of the grammar, as before.
-  () => /\bQ\.?S(?:\.|\s)\s*[^\s:,[\]()]+\s*:\s*\d+/gi,
-  // Hadith: `HR. Bukhari no. 573` / `HR. Ibn Majah no. 224 (Dhaif)`, and the
-  // dot-less `HR Bukhari no. 573` (round-3 A1, same rationale as the Quran
-  // marker). Collection names may be multi-word ("Abu Dawud", "Ibn Majah")
-  // and the long forms a model actually writes carry a collection-type prefix
-  // ("Sunan Abu Dawud", "Sunan an Nasai"), so up to four tokens are
-  // tolerated. Token classes exclude `.` and `,` so the match cannot run
-  // across a sentence boundary or swallow a list, and both the token length
-  // and the repetition count are bounded — no nested unbounded quantifier,
-  // so the pattern stays linear (ReDoS-safe) as required. The trailing
-  // number token also skips brackets (#11, found by the citation-payload
-  // derivation): `[HR. Malik no. 18]` used to capture a phantom `…no. 18]`
-  // span that normalized to nothing a chunk grounds — a false UNGROUNDED,
-  // i.e. a refused grounded answer; the Quran address already skipped them.
-  () => /\bHR(?:\.|\s)\s*[^\s,.]{1,24}(?:\s+[^\s,.]{1,24}){0,3}\s+no\.\s*[^\s,;.)[\]]+/gi,
-  // Kitab (SPECS §2.1): `Al-Umm, Imam Syafi'i, Jilid 1, Hal. 102, Bab …`.
-  // Kitab ingestion has not landed, so any such citation is ungrounded by
-  // definition today — detecting it is the point, not an accident.
-  () => /\bJilid\s+\d+\s*,\s*Hal\.\s*\d+/gi,
-];
-
-/** Strip the trailing `(Grade)` suffix the hadith formatter appends. */
-function stripGradeSuffix(label: string): string {
-  return label.replace(/\s*\([^()]*\)\s*$/, "").trim();
-}
+const TRAILING_CITATION_NOISE = /[^\p{L}\p{N}]+$/u;
 
 /**
  * Canonicalize the citation markers' spelling to the product's `QS.` / `HR.`
@@ -103,23 +76,85 @@ function canonicalizeMarkers(text: string): string {
 }
 
 /**
- * Normalize a label for comparison: collapse whitespace, trim, drop grade,
- * strip markdown emphasis, and canonicalize the marker spellings (`Q.S.` and
- * `QS` → `QS.`, `HR` → `HR.`).
+ * Strip the trailing `(Grade)` suffix the hadith formatter appends. On the
+ * chunk side it is only ever the LAST thing in a label — `formatHadithCitation`
+ * writes `HR. X no. N (Grade)` — and this single anchored pass is what removes
+ * it there.
  *
- * The markdown-emphasis strip matters because the grammar stops at sentence
- * punctuation but NOT at `*`/`_`/backticks, so a bolded citation
- * (`**HR. Malik no. 18**`) reached the comparison with its markers attached
- * and was reported UNGROUNDED. That false positive refused a grounded
- * answer on the first live size-5 smoke (gs-v0-015).
+ * On the draft side only the **spaced** form is out of reach: the grammar's
+ * number token stops at whitespace, so `HR. X no. 573 (Sahih)` and
+ * `HR. X no. 573: (Sahih)` never enter a span. The **glued** form does:
+ * `citationSpansIn("HR. Bukhari no. 573(Sahih) …")` yields the span
+ * `HR. Bukhari no. 573(Sahih` (the token absorbs `(`, stops at `)`), which is a
+ * real draft span carrying grade text. That shape is reduced by the
+ * grammar-address rule in {@link normalizeCitationLabel}; this pass never sees
+ * it. (An earlier docstring claimed no draft span could carry a grade at all —
+ * false, and the glued shape it missed false-refused a grounded citation;
+ * review B2/A2.)
+ */
+function stripGradeSuffix(label: string): string {
+  return label.replace(/\s*\([^()]*\)\s*$/, "");
+}
+
+/**
+ * Reduce a label that does **not** begin with a citation grammar to its
+ * address-adjacent form: drop the grade parenthetical the chunk formatter
+ * appends, then the punctuation, markdown or quote noise a draft wraps around
+ * it. Both patterns are linear and anchored, and neither can match what the
+ * other matched first. Labels that DO begin with a grammar are reduced to that
+ * grammar's address instead — the tail there is whatever the grammar's token
+ * absorbed, and only the grammar knows whether a given tail character is
+ * address or noise.
+ */
+function trimCitationTail(label: string): string {
+  return stripGradeSuffix(label).replace(TRAILING_CITATION_NOISE, "").trim();
+}
+
+/**
+ * Normalize a label for comparison: collapse whitespace, strip markdown
+ * emphasis, reduce the label to the **address its own citation grammar
+ * identifies**, then canonicalize the marker spellings (`Q.S.`/`QS ` → `QS.`,
+ * `HR ` → `HR.`).
+ *
+ * The reduction is grammar-driven rather than a punctuation rule, because a
+ * tail cannot be recognized by its characters alone (review A2): the footnote
+ * `HR. Bukhari no. 5010:1` must reduce to `HR. Bukhari no. 5010`, while
+ * `QS. 2:255` must keep its colon and both numbers. No trailing-character rule
+ * can separate those two — the hadith grammar already knows its address ends
+ * at the number word after `no.`, and the Quran grammar knows its address IS
+ * the `surah:ayah` pair. So each grammar names its address (`addressOf` in
+ * `chat-citation-grammar`) and {@link reduceCitationLabel} trims the match to
+ * it. That single rule also closes the rest of the tail family at once:
+ * `… no. 5010:` (#253), `… no. 5010—ia` / `-ia` / `‒ia` / `―ia` (A1),
+ * `… no. 5010:1`, `… no. 5010¹`, `… no. 5010(Sahih` (A2), and the rest of the
+ * Unicode classes the property sweeps (B1).
+ *
+ * Two things survive the reduction on purpose, both fail-closed (the reasons
+ * are on their declarations in `chat-citation-grammar`):
+ *
+ * - a dash joined to a number, kept whole — the A3 precision-for-safety
+ *   trade-off, with its cost and its follow-up;
+ * - letters and digits glued straight onto the number, which are part of the
+ *   address token itself, so `… no. 5010a` and `… no. 50102` stay distinct
+ *   from `… no. 5010` instead of grounding on it.
+ *
+ * Labels that do not begin with a grammar keep the lexical strip
+ * ({@link trimCitationTail}): the grade parenthetical the chunk formatter
+ * appends, then the trailing punctuation.
+ *
+ * Only the TAIL is touched, so the colon inside `QS. 2:255` and the comma
+ * inside `Jilid 1, Hal. 102` survive: a naive `replace(/:.*$/, "")` would
+ * erase every Quran citation.
  */
 export function normalizeCitationLabel(label: string): string {
-  return canonicalizeMarkers(
-    stripGradeSuffix(label)
-      .replace(/[*_`]+/g, "")
-      .replace(/\s+/g, " ")
-      .trim(),
-  );
+  const flattened = label
+    .replace(/[*_`]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const reduction = reduceCitationLabel(flattened);
+  const reduced =
+    reduction === null || reduction.keepWhole ? trimCitationTail(flattened) : reduction.address;
+  return canonicalizeMarkers(reduced);
 }
 
 /**
@@ -154,8 +189,8 @@ export function citationSpansIn(text: string): { start: number; end: number; lab
 function scanCitations(text: string): { start: number; end: number; label: string }[] {
   const found: { start: number; end: number; label: string }[] = [];
   const seen = new Set<string>();
-  for (const makePattern of CITATION_GRAMMARS) {
-    for (const match of text.matchAll(makePattern())) {
+  for (const grammar of CITATION_GRAMMARS) {
+    for (const match of text.matchAll(grammar.pattern())) {
       const label = normalizeCitationLabel(match[0]);
       if (label === "" || seen.has(label)) continue;
       seen.add(label);
