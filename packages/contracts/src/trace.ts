@@ -50,6 +50,14 @@ export const ChunkRefSchema = v.object({
   score: v.optional(v.number()),
   rankDense: v.optional(v.number()),
   rankSparse: v.optional(v.number()),
+  /**
+   * Why this chunk is in the retrieved set, as a caller-chosen opaque label
+   * (ADR-0045). Absent means the fused dense/sparse track produced it — the
+   * pre-existing shape, so older traces stay readable. A chunk a retriever
+   * added from a scope expansion carries that path's label, so a scorer can
+   * tell a fused hit from an expansion without guessing from rank alone.
+   */
+  origin: v.optional(v.pipe(v.string(), v.minLength(1))),
 });
 
 /** The persisted trace's retrieval ref shape (thermo-review B3: the one owner). */
@@ -127,6 +135,34 @@ export const TraceEventSchema = v.variant("kind", [
       dropped: v.record(v.string(), v.string()),
       /** Which embedding track the relaxation applied to. */
       track: v.pipe(v.string(), v.minLength(1)),
+    }),
+    cost: v.optional(CostRecordSchema),
+    at: v.pipe(v.number(), v.integer()),
+  }),
+  v.object({
+    /**
+     * A deterministic scope expansion (ADR-0045): the retriever added a
+     * bounded set of children belonging to a scope a domain pack identified
+     * in the question, alongside the fused hits. The detail is generic — the
+     * engine never names what `key`/`value` mean; the domain pack supplies
+     * them as opaque strings (e.g. a surah reference). Recorded so a scorer
+     * can read what the expansion contributed and an operator can see why the
+     * chunks are there; a scope expansion that leaves no trace is exactly the
+     * silent path traceability forbids.
+     */
+    stage: v.literal("retriever"),
+    kind: v.literal("scope_expansion"),
+    detail: v.object({
+      /** Opaque scope key chosen by the domain pack (e.g. a reference kind). */
+      key: v.pipe(v.string(), v.minLength(1)),
+      /** Opaque scope value chosen by the domain pack (string form). */
+      value: v.pipe(v.string(), v.minLength(1)),
+      /** How many children the expansion actually added to the retrieved set. */
+      returned: v.pipe(v.number(), v.integer(), v.minValue(0)),
+      /** The configured budget cap the expansion was bounded by. */
+      cap: v.pipe(v.number(), v.integer(), v.minValue(0)),
+      /** True when the scope held more children than the cap allowed. */
+      truncated: v.boolean(),
     }),
     cost: v.optional(CostRecordSchema),
     at: v.pipe(v.number(), v.integer()),

@@ -223,6 +223,24 @@ export function buildStoreWiring(env: { DATABASE_URL?: string }): StoreWiring {
 }
 
 /**
+ * Parse ADR-0045's scope-expansion budget from the environment. Absent/empty
+ * is "use the domain default"; `0` disables expansion; anything that is not a
+ * non-negative integer is a typed config failure, so a typo in deployment
+ * config cannot silently leave the cap at a value the operator did not choose.
+ */
+export function parseScopeExpansionCap(raw: string | undefined): number | undefined {
+  if (raw === undefined || raw.trim() === "") return undefined;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 0) {
+    throw new ChatConfigError(
+      `chat route: SCOPE_EXPANSION_CAP must be a non-negative integer (got "${raw}")`,
+      "SCOPE_EXPANSION_CAP",
+    );
+  }
+  return value;
+}
+
+/**
  * Build the chat wiring from the Worker bindings (providers + store + the
  * store bridge). Throws (config-class) when the store is not configured or
  * when the reviewer role has no keyed candidate — the route maps both to 503.
@@ -240,6 +258,7 @@ export function buildChatWiring(env: Record<string, string | undefined>): ChatWi
     );
   }
   const store = createRagStoreFromEnv(env);
+  const scopeExpansionCap = parseScopeExpansionCap(env["SCOPE_EXPANSION_CAP"]);
   return {
     pipeline: {
       routerProvider: providers.router,
@@ -251,6 +270,9 @@ export function buildChatWiring(env: Record<string, string | undefined>): ChatWi
       // Typed as the domain's StoreBridge — no erasure cast needed anymore
       // (thermo-review B2).
       bridge: storeBridge(store),
+      // ADR-0045: absent = the domain default; the knob is config, so the
+      // per-query expansion budget is a deployment choice, not a code literal.
+      ...(scopeExpansionCap !== undefined ? { scopeExpansionCap } : {}),
     },
     fullStore: store,
     runStore: storeBridge(store),

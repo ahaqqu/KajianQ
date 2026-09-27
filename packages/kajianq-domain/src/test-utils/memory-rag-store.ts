@@ -196,6 +196,22 @@ export function createMemoryRagStore(): RagStore & {
         }),
       );
     },
+    // The bounded scope read (ADR-0045): the parent is addressed by its
+    // opaque source_key, rows come back in the same stable order the Postgres
+    // adapter uses (`ordinal` ascending, id as tie-break), capped by `limit`.
+    listDocChildrenByParentSourceKey(parentSourceKey, opts) {
+      return Effect.sync(() => {
+        if (opts.limit <= 0) return [] as readonly DocChildById[];
+        const parentId = parentByKey.get(parentSourceKey);
+        if (parentId === undefined) return [] as readonly DocChildById[];
+        const parent = parents.get(parentId);
+        return [...children.values()]
+          .filter((c) => c.parentId === parentId)
+          .sort((a, b) => a.ordinal - b.ordinal || a.id.localeCompare(b.id))
+          .slice(0, opts.limit)
+          .map((c) => toReadChild(c, parent?.title ?? null));
+      });
+    },
     countDocChildrenByMetadata(key) {
       return Effect.sync(() => {
         const counts = new Map<string | null, number>();

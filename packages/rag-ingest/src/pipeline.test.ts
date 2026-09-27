@@ -62,6 +62,9 @@ function fakeStore() {
     countDocChildrenByMetadata() {
       return Effect.succeed([]);
     },
+    listDocChildrenByParentSourceKey() {
+      return Effect.succeed([]);
+    },
     insertAnswerTrace() {
       return Effect.succeed("");
     },

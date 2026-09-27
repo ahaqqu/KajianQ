@@ -74,7 +74,10 @@ export function postgresSimilaritySearch(
  */
 export function postgresChildMethods(
   sql: SqlRunner,
-): Pick<RagStore, "getDocChildrenByIds" | "countDocChildrenByMetadata"> {
+): Pick<
+  RagStore,
+  "getDocChildrenByIds" | "countDocChildrenByMetadata" | "listDocChildrenByParentSourceKey"
+> {
   return {
     getDocChildrenByIds(ids) {
       const unique = [...new Set(ids)].filter((id) => id.trim() !== "");
@@ -93,6 +96,42 @@ export function postgresChildMethods(
           WHERE c.id = ANY($1::uuid[])
         `,
               [unique],
+            ) as Promise<(ChildRow & { parent_title: string | null })[]>,
+        ),
+        (rows) =>
+          Effect.forEach(rows, (r) =>
+            Effect.map(rowToChildEffect(r), (child): DocChildById => ({
+              ...child,
+              parentTitle: r.parent_title ?? null,
+            })),
+          ),
+      );
+    },
+
+    listDocChildrenByParentSourceKey(parentSourceKey, opts) {
+      // The parent's source_key is UNIQUE and indexed, so the join is a point
+      // lookup; `ordinal` is the corpus's stable within-parent order (the
+      // `UNIQUE (parent_id, ordinal)` key), which is what makes the bounded
+      // window deterministic. A non-positive limit can never be a real read
+      // (the seam requires the caller to bound it), so it short-circuits
+      // instead of issuing `LIMIT 0`.
+      if (opts.limit <= 0) return Effect.succeed([] as readonly DocChildById[]);
+      return Effect.flatMap(
+        sqlEffect(
+          sql,
+          () =>
+            sql.query(
+              `
+          SELECT c.id, c.parent_id, c.text_raw, c.text_ar, c.text_id, c.citation,
+                 NULL::text AS embedding_primary, NULL::text AS embedding_fallback,
+                 c.ordinal, c.metadata, c.created_at, p.title AS parent_title
+          FROM doc_children c
+          JOIN doc_parents p ON p.id = c.parent_id
+          WHERE p.source_key = $1
+          ORDER BY c.ordinal ASC, c.id ASC
+          LIMIT $2
+        `,
+              [parentSourceKey, opts.limit],
             ) as Promise<(ChildRow & { parent_title: string | null })[]>,
         ),
         (rows) =>
