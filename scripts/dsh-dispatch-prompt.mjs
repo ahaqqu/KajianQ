@@ -3,18 +3,23 @@
 // manager role, from the role's definition file.
 //
 // The DSH adapter dispatches roles as generic `subagent` calls whose prompt
-// must carry (a) the task, (b) the role definition from
-// .zcode/agents/<role>.md — the single source of truth, and (c) the
-// dispatcher's per-run authorization. Hand-assembling that prompt each time
-// is where consistency dies: a body mis-copied here is a silent contract
-// break. This script prints the assembled prompt to stdout, verbatim-worthy:
-// the agent passes it to `subagent` unchanged.
+// must carry (a) the task and (b) the role definition from
+// .zcode/agents/<role>.md — the single source of truth. Hand-assembling that
+// prompt each time is where consistency dies: a body mis-copied here is a
+// silent contract break. This script prints the assembled prompt to stdout,
+// verbatim-worthy: the agent passes it to `subagent` unchanged.
 //
-// The script appends only what the role bodies do not already carry — the
-// per-run authorization section. Which roles carry PR-opening authorization
-// is decided by the role files themselves (a "## Dispatch authorization"
-// section in the body), never by a table in this script: the role file stays
-// the single source of truth and a new PR-opening role needs no script edit.
+// It emits exactly two sections, in this order, and appends nothing else:
+//
+//   ## Task              the manager-authored task text, trimmed
+//   ## Role definition   the role file's body, frontmatter stripped and trimmed
+//
+// Authorization text a role carries travels inside ## Role definition with
+// the rest of its body (implementer and senior-implementer carry a
+// "## Dispatch authorization" section; fixer implies it; reviewer needs
+// none) — this script holds no role→authorization table and adds no third
+// section. The role contract is canonical in .zcode/agents/README.md
+// (Dispatch authorization); what the script emits is canonical here.
 //
 // Usage:
 //   bun run dsh:prompt --role implementer --task "implement ticket #12"
