@@ -11,10 +11,27 @@ import {
 } from "./worktree-cleanup-fixture.mjs";
 
 // Every spawn form the script could reach for — node's whole child_process
-// surface and Bun's spawn globals, with or without a receiver; the lookbehind
-// keeps a receiver-less RegExp `.exec(` out.
+// surface and Bun's spawn globals — bare or behind a receiver. The receiver is
+// read as text ending in an identifier character, `)` or `]`, never as a list of
+// spellings: a namespace import is an ordinary style choice, so
+// `cpM.spawnSync("rm", …)` and `(await import("node:child_process")).spawnSync(…)`
+// must read their command token exactly as `cp.spawnSync("rm", …)` does.
+//
+// The receiver-qualified form refuses `exec`, because that one name covers two
+// different APIs: `<receiver>.exec(arg)` is RegExp.prototype.exec in
+// `pattern.exec(source)` — allowing any receiver is what lets that in, and the
+// lookbehind alone no longer keeps it out — while a receiver-less `exec(cmd)` is
+// node's shell spawn, which stays pinned. So a plain regex use cannot redden the
+// pin.
+//
+// The pin stops here, by decision (#249 A5). Deliberately out of reach: computed
+// method access (`obj["spawnSync"](…)`), an aliased import (`const run =
+// spawnSync`), `promisify` wrapping, and the `$` shell tag reached through an
+// identifier — each needs an import rewritten to dodge the pin and none is
+// guarded. Every token that IS read must be a git|gh literal, so a new primitive
+// still reddens until the trace matches it.
 const SPAWN =
-  /(?<![\w$.])(?:(?:Bun|cp|child_process)\.)?(?:execFileSync|execFile|execSync|exec|fork|spawnSync|spawn)\s*\(\s*([^\s,)]+)/g;
+  /(?<![\w$.])(?:(?<receiver>[\w$)\]]+)\.)?(?<method>execFileSync|execFile|execSync|exec|fork|spawnSync|spawn)\s*\(\s*(?<command>[^\s,)]+)/g;
 
 /**
  * The deletion boundary of `bun run worktree:clean` (#246, A1): this run may
@@ -99,12 +116,17 @@ describe("worktree-cleanup destruction boundary", () => {
     // Deletion primitives are pinned to the run's own git spawns: an fs-API
     // removal, or a spawn whose command token is not git|gh, would escape git's
     // boundary and the print accounting with it — so either fails here. Bun's
-    // `$` shell tag, the one spawn idiom with no command token to read, is
-    // refused the same way; a new primitive reddens until the trace matches it.
+    // `$` shell tag carries no command token a pin could read, so it is refused
+    // outright rather than read; a new primitive reddens until the trace matches
+    // it. Which spawn forms this pin can and cannot see is stated above SPAWN.
     const source = readFileSync(SCRIPT, "utf8");
     expect(source).not.toMatch(/\b(?:rm|rmdir|unlink|rmSync|rmdirSync|unlinkSync)\s*\(/);
     expect(source).not.toMatch(/(?:^|[^\w$])\$\s*`/);
-    const spawnTokens = [...source.matchAll(SPAWN)].map((match) => match[1].replace(/^\[/, ""));
+    // A receiver-qualified `exec` is RegExp.prototype.exec, not a spawn (see
+    // SPAWN above): drop those matches, then read the command token of the rest.
+    const spawnTokens = [...source.matchAll(SPAWN)]
+      .filter(({ groups }) => !(groups.receiver && groups.method === "exec"))
+      .map(({ groups }) => groups.command.replace(/^\[/, ""));
     expect(spawnTokens.length).toBeGreaterThan(0);
     expect(spawnTokens.filter((token) => !/^["'`](?:git|gh)["'`]$/.test(token))).toEqual([]);
     fx.dispose();
