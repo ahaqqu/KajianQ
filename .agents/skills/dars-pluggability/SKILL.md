@@ -53,7 +53,9 @@ rg -i "qwen|gemini|deepseek|kimi|moonshot|dashscope" \
   packages/rag-core packages/rag-ingest packages/eval packages/contracts apps
 
 # DB client usage outside RagStore/migrations — the enforced form lives in
-# scripts/boundary-rules.json (this is the same scan, kept here for reviewers)
+# scripts/boundary-rules.json (this is the same scan, kept here for reviewers).
+# `@neondatabase` and `drizzle` are deliberate catch-patterns, not current deps:
+# a hit means that vendor's client came back and belongs behind the adapter.
 rg "@neondatabase|drizzle|from\s+[\"']pg[\"']|new\s+Pool|createPool" \
   packages/rag-core packages/rag-ingest packages/eval apps --glob '!**/migrations/**'
 ```

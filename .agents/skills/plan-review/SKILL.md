@@ -16,7 +16,7 @@ Use this skill when reviewing a proposed plan or validating that an existing pla
 
 ## Evaluation checklist
 
-For each principle in `docs/ARCHITECTURE.md`, verify the plan addresses it:
+For each principle in `docs/ARCHITECTURE.md`, verify the plan addresses it. This list is a summary of recurring failure modes, not the authoritative set — enumerate every principle from `docs/ARCHITECTURE.md` and verify each:
 
 - **Cost**: Does the plan add paid dependencies? Does it introduce polling or per-request edge compute that belongs on the client?
 - **Performance**: Does the plan affect bundle size? Does it add runtime CSS-in-JS?
@@ -29,6 +29,7 @@ For each principle in `docs/ARCHITECTURE.md`, verify the plan addresses it:
 - **Reliable**: Does the plan include tests? Does it define contracts before implementation?
 - **Reproducible**: Does the plan introduce new tools not in the Nix flake?
 - **Agentic**: Can each module be understood in isolation? Are contracts clear?
+- **Privacy**: Does the plan touch personal data (session tokens, chat content, traces, feedback free-text, IPs/logs)? Do the sub-processor register, retention values, and RoPA (`docs/GDPR-ARTICLE-30-RECORD.md`) stay true, and does the erasure path (`DELETE /v1/auth/me`) still cascade?
 
 ## Output
 
