@@ -1,11 +1,5 @@
 import { TOTAL_SURAHS } from "./quran-source";
-import {
-  leadingArticle,
-  normalizeSurahText,
-  SURAH_NAMES,
-  withoutArticle,
-  type SurahName,
-} from "./surah-names";
+import { normalizeSurahText, SURAH_NAMES, withoutArticle, type SurahName } from "./surah-names";
 
 /**
  * Surah/verse-reference detection (KajianQ domain pack, ADR-0045).
@@ -29,18 +23,21 @@ import {
  *
  * 1. An explicit address: `QS. 2:255`, `Q.S. 2`, `QS 2`, `surah 2`,
  *    `surat ke-2` (all spellings survive normalization).
- * 2. A surah name in its definite-article form (`Al-Baqarah`, `An-Nas`,
- *    `Ash-Shu'ara`), which is distinctive enough on its own.
- * 3. Any surah name immediately preceded by `surah`/`surat` (optionally
- *    `ke`): `surah Muhammad`, `surat Ya-Sin`, `surah Ikhlas`.
+ * 2. A surah name immediately preceded by `surah`/`surat` (optionally `ke`),
+ *    in either its canonical or its article-stripped form: `surah Al-Fatihah`,
+ *    `surat Fatihah`, `surah Muhammad`, `surat Ya-Sin`.
  *
- * Anything else does not match, on purpose. Article-less names are common
- * personal and place words (`Muhammad`, `Yunus`, `Maryam`, `Nuh`, `Sad`), and
- * article-stripped short forms are ordinary Indonesian words (`ikhlas`,
- * `qadr`, `asr`, `nas`, `tin`), so a bare occurrence is only ever read as a
- * reference when the user wrote the marker that makes it one. Arabic-script
- * names (`سورة الفاتحة`) are not recognised — the table is Latin
- * transliteration only; that is a stated limitation, not a silent gap.
+ * A bare name is **not** a reference, even in its definite-article form.
+ * Almost every surah name is also an ordinary Arabic word or a divine name,
+ * and the Golden Set proves it: `gs-v0-012` ("Apa makna asmaul husna
+ * Ar-Rahman dan Ar-Rahim?") asks about the *name of Allah*, not Surah
+ * Ar-Rahman, so an article-form match would have expanded an unrelated surah
+ * into a question that named none. Article-less names (`Muhammad`, `Yunus`,
+ * `Maryam`, `Nuh`, `Sad`) and article-stripped short forms (`ikhlas`, `qadr`,
+ * `asr`, `nas`, `tin`) are worse still. The marker is what makes a name a
+ * reference; bare-name recognition is a recorded trade-off with a revisit
+ * trigger (ADR-0045), not an oversight. Arabic-script names (`سورة الفاتحة`)
+ * are not recognised — the table is Latin transliteration only.
  */
 
 /** A surah reference detected in a question: the surah, and the verse if named. */
@@ -116,20 +113,19 @@ function firstNamedReference(
   for (const entry of names) {
     const canonical = normalizeSurahText(entry.name);
     if (canonical === "") continue;
-    // The canonical name may match on its own only when it carries the
-    // transliterated definite article; the article-stripped (or article-less)
-    // form needs the explicit `surah`/`surat` marker.
-    const forms: { form: string; allowedAlone: boolean }[] = [
-      { form: canonical, allowedAlone: leadingArticle(canonical) !== null },
-    ];
+    // Both the canonical name and its article-stripped form are accepted —
+    // "surah Al-Fatihah" and "surat Fatihah" name the same surah — but only
+    // when the explicit `surah`/`surat` marker precedes them (see the module
+    // comment: a bare name is almost always some other word).
+    const forms = [canonical];
     const bare = withoutArticle(canonical);
-    if (bare !== canonical && bare !== "") forms.push({ form: bare, allowedAlone: false });
-    for (const { form, allowedAlone } of forms) {
+    if (bare !== canonical && bare !== "") forms.push(bare);
+    for (const form of forms) {
       let from = 0;
       for (;;) {
         const index = padded.indexOf(` ${form} `, from);
         if (index < 0) break;
-        if (allowedAlone || hasSurahMarkerBefore(padded, index)) {
+        if (hasSurahMarkerBefore(padded, index)) {
           consider(index, entry.number);
           break;
         }

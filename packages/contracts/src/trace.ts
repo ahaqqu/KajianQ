@@ -145,7 +145,7 @@ export const TraceEventSchema = v.variant("kind", [
      * bounded set of children belonging to a scope a domain pack identified
      * in the question, alongside the fused hits. The detail is generic — the
      * engine never names what `key`/`value` mean; the domain pack supplies
-     * them as opaque strings (e.g. a surah reference). Recorded so a scorer
+     * them as opaque strings (e.g. a reference to a document). Recorded so a scorer
      * can read what the expansion contributed and an operator can see why the
      * chunks are there; a scope expansion that leaves no trace is exactly the
      * silent path traceability forbids.

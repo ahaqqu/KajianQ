@@ -869,4 +869,63 @@ describe("Postgres eval-ledger methods (unit, fake SQL)", () => {
     const err = await runFail(store.countDocChildrenByMetadata("collection"));
     expect(err.kind).toBe("transport");
   });
+
+  it("listDocChildrenByParentSourceKey binds the key and limit, orders by ordinal (ADR-0045)", async () => {
+    const sql = makeFakeSql();
+    const store = createPostgresRagStore(sql);
+    // Domain-neutral fixtures: this is an engine package, so the example keys,
+    // values, and labels are placeholders (the boundary gate enforces it).
+    sql._setQuery([
+      {
+        id: "c1",
+        parent_id: "p1",
+        text_raw: "raw-1",
+        text_ar: "ar-1",
+        text_id: "id-1",
+        citation: { sourceType: "src", unit: 1, part: 1 },
+        embedding_primary: null,
+        embedding_fallback: null,
+        ordinal: 0,
+        metadata: { citation: "REF. 1:1" },
+        created_at: new Date(0),
+        parent_title: "Parent One",
+      },
+      {
+        id: "c2",
+        parent_id: "p1",
+        text_raw: "raw-2",
+        text_ar: "ar-2",
+        text_id: "id-2",
+        citation: { sourceType: "src", unit: 1, part: 2 },
+        embedding_primary: null,
+        embedding_fallback: null,
+        ordinal: 1,
+        metadata: { citation: "REF. 1:2" },
+        created_at: new Date(0),
+        parent_title: "Parent One",
+      },
+    ]);
+    const rows = await runOk(
+      store.listDocChildrenByParentSourceKey("collection/part/1", { limit: 12 }),
+    );
+    // Both the opaque source key and the cap are bound parameters.
+    expect(sql._calls[0]?.values).toEqual(["collection/part/1", 12]);
+    expect(sql._calls[0]?.text).toContain("WHERE p.source_key = $1");
+    expect(sql._calls[0]?.text).toContain("ORDER BY c.ordinal ASC");
+    expect(sql._calls[0]?.text).toContain("LIMIT $2");
+    expect(rows.map((r) => r.id)).toEqual(["c1", "c2"]);
+    expect(rows[0]).toMatchObject({ parentTitle: "Parent One", textAr: "ar-1" });
+    // Same embedding-stripping contract as the other corpus reads.
+    expect(rows[0]?.embeddingPrimary).toBeNull();
+    expect(rows[0]?.embeddingFallback).toBeNull();
+  });
+
+  it("listDocChildrenByParentSourceKey short-circuits a non-positive limit without a query", async () => {
+    const sql = makeFakeSql();
+    const store = createPostgresRagStore(sql);
+    expect(
+      await runOk(store.listDocChildrenByParentSourceKey("collection/part/1", { limit: 0 })),
+    ).toEqual([]);
+    expect(sql._calls).toEqual([]);
+  });
 });
