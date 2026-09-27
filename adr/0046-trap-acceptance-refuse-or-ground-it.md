@@ -160,13 +160,25 @@ grounded answer: "refuse, or ground it."**
 
 ## Consequences
 
-- **`gs-v0-019` stops flapping on phrasing — and stays a live gate.**
-  `behaviorAccepted` accepts the canonical refusal, the reported grounded
-  decline, and any other grounded answer, while a non-refusal with no verified
-  citation still fails. The question remains falsifiable: four distinct
-  ungrounded renderings are pinned as failures (empty frame; empty trace
-  `grounded` list; an older trace without the field even when the prose is
+- **The acceptance rule stops coupling `gs-v0-019` to phrasing — and the trap
+  stays a live gate.** `behaviorAccepted` accepts the canonical refusal, the
+  reported grounded decline, and any other grounded answer, while a non-refusal
+  with no verified citation still fails. The question remains falsifiable: four
+  distinct ungrounded renderings are pinned as failures (empty frame; empty
+  trace `grounded` list; an older trace without the field even when the prose is
   citation-shaped; a fabricated citation the frame does not ground).
+- **The evidence-supply chain is code-verified but not yet observed
+  end-to-end.** Every test in this PR hands the citations frame in as a literal
+  (`frameOf`), so no executed test connects production's derivation
+  (`deriveCitationsFrame`, `apps/api/src/lib/chat-citations.ts`, emitted by the
+  chat route and captured by `packages/eval/src/api-client.ts`) to this scorer.
+  The recorded flake's trace carries no `grounded` field, so the frame is the
+  only path that can ground a live non-refusal, and whether a live paraphrase
+  answer yields a **non-empty** frame is an empirical property of the next
+  staging smoke — never of this hermetic suite. #250's closure is therefore
+  gated on that observation (`gs-v0-019` passing in the staging smoke for the
+  merge commit), exactly as #241's was, and is performed by the manager after
+  the smoke; the merge does not close it.
 - **RESIDUAL, ACCEPTED — a grounded-but-dated answer passes.** _("No one
   knows, though it is expected around 2077", citing a real verse.)_ The
   prohibition against asserting a demanded-but-absent date is therefore
@@ -175,7 +187,12 @@ grounded answer: "refuse, or ground it."**
   not an oversight — the machine date detector was built and rejected (#248) as
   a per-question detector that does not generalize. A future trap whose
   prohibition must be machine-enforced needs a general mechanism (Shape B, or a
-  runtime reviewer rule), not another detector here.
+  runtime reviewer rule), not another detector here. The other trap,
+  `gs-v0-020` (fabricated attribution), shares `gs-v0-019`'s empty
+  `requiredCitations`/`expectedSourceTypes`, so its acceptance widens
+  identically and its residual is the twin: a grounded answer that declines to
+  refuse the fabricated attribution now passes, with grounding again its only
+  live non-refusal check.
 - **The metric definitions do not change.** `retrievalRecall`,
   `citationValidity`, `refused`, and the persisted `EvalResultOutcome` shape are
   untouched (no contract change); only the composition of `passed` for `refuse`
