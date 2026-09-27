@@ -37,6 +37,13 @@ import { execFileSync, spawnSync } from "node:child_process";
  *
  * A fixture is removed only after a test's assertions pass; a failure leaves
  * the fixture repo on disk (its path is logged) so the state is inspectable.
+ *
+ * Destructive runs carry `--no-active-dispatches` by default (#239): the sweep
+ * is gated, so the harness passes the acknowledgement for the cases whose
+ * subject is a removal rule, and `{ withholdGate: true }` reproduces the
+ * operator who forgot it. Lock state is driven through real
+ * `git worktree lock`/`unlock` and asserted from git's own porcelain listing
+ * (`lockState`), never from the script's parser.
  */
 const REAL_WORKTREE_ROOT = realpathSync(process.cwd());
 const SCRIPT = resolve(REAL_WORKTREE_ROOT, "scripts/worktree-cleanup.mjs");
@@ -77,8 +84,15 @@ function callLog(fx) {
 // those and exits non-zero; the script would swallow that as "no PR", so the
 // assertion here is what makes an undeclared state a loud failure. `env` adds
 // variables to the run only — e.g. git's own trace target, see `gitCommands`.
-function runClean(fx, args = [], env = {}) {
-  const result = fx.run(args, env);
+//
+// `--no-active-dispatches` is appended by default (#239): every case in this
+// suite that expects a removal is a deliberate sweep, and the acknowledgement
+// is a precondition of one. `{ withholdGate: true }` is the only way to run as
+// an operator who forgot the flag — its own case, which must remove nothing and
+// exit non-zero — and it is also how a case reaches an `--unlock` run, since
+// unlocking destroys nothing and so is not gated.
+function runClean(fx, args = [], env = {}, { withholdGate = false } = {}) {
+  const result = fx.run(withholdGate ? args : [...args, "--no-active-dispatches"], env);
   expect(fx.unexpectedGhCalls()).toBe("");
   return result;
 }
@@ -165,10 +179,16 @@ function makeFixture() {
     const calls = join(dir, "gh-calls.log");
     const unexpected = join(dir, "gh-unexpected.log");
     const arms = [
-      ...Object.entries(prs).map(
-        ([branch, pr]) =>
-          `  'pr view ${branch} --json state,headRefOid') printf '%s' '${JSON.stringify(pr)}' ;;`,
-      ),
+      ...Object.entries(prs).map(([branch, pr]) => {
+        // Only the verdict fields reach `gh`'s stdout: `before` is the arm's own
+        // side effect, run before it answers. It is the seam a case needs to
+        // change git state *during* the sweep — e.g. locking the worktree after
+        // the run has already parsed `git worktree list`, the race rule 0
+        // cannot see (#239).
+        const verdict = JSON.stringify({ state: pr.state, headRefOid: pr.headRefOid });
+        const sideEffect = pr.before ? `${pr.before}; ` : "";
+        return `  'pr view ${branch} --json state,headRefOid') ${sideEffect}printf '%s' '${verdict}' ;;`;
+      }),
       ...noPr.map(
         (branch) =>
           `  'pr view ${branch} --json state,headRefOid') printf 'no pull requests found for %s\\n' '${branch}' >&2; exit 1 ;;`,
@@ -230,6 +250,25 @@ esac
     },
     branchExists(branch) {
       return gitOk(dir, ["rev-parse", "--verify", "--quiet", branch]);
+    },
+    // The liveness declaration the tool reads (#239): a real `git worktree lock`
+    // carrying the reason a dispatch would record, so no case has to reproduce
+    // git's lock-file format.
+    lock(slug, reason) {
+      git(dir, ["worktree", "lock", wtPath(slug), ...(reason ? ["--reason", reason] : [])]);
+    },
+    unlock(slug) {
+      git(dir, ["worktree", "unlock", wtPath(slug)]);
+    },
+    // Git's own view of an entry's lock, read from the porcelain listing rather
+    // than from the script's parser, so a case can assert what git holds
+    // independently of what the run printed.
+    lockState(slug) {
+      const block = git(dir, ["worktree", "list", "--porcelain"])
+        .split("\n\n")
+        .find((entry) => entry.startsWith(`worktree ${wtPath(slug)}`));
+      const line = (block ?? "").split("\n").find((l) => l === "locked" || l.startsWith("locked "));
+      return { locked: line !== undefined, reason: line ? line.slice("locked".length).trim() : "" };
     },
     // A stale ref lock: git refuses to rewrite the ref while the file exists,
     // so `git branch -D` fails deterministically, while `rev-parse` still

@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 // Remove manager-skill subagent worktrees (.worktrees/<slug>) whose work is
-// safely disposable: a worktree is removable when ANY of these holds:
+// safely disposable: a worktree is removable when it is NOT locked (rule 0) and
+// ANY of these holds:
 //   1. its GitHub PR reports state MERGED AND the PR's head commit is the branch
 //      tip (squash-safe — history was rewritten). `gh pr view <branch>` answers
 //      by branch name from PR history, so the state alone is not a disposal
@@ -22,40 +23,73 @@
 // --force. A .worktrees/ entry that is not a registered git worktree (a stray
 // file or directory) is reported and skipped, never removed, so one stray entry
 // cannot abort the run. So is a registered worktree whose git commands fail —
-// locked, stale gitdir: the failure is that entry's keep, not the run's. An
-// entry whose worktree removal succeeds but whose branch delete then fails is
-// still printed and counted as removed, with the branch failure and the manual
-// remedy (`git branch -D`) named in the same line: the removal happened, and a
-// `kept` prefix would contradict it. This is the one failure state no later
-// sweep revisits — the slug is gone from .worktrees/ — so the line must carry
-// the next step itself.
+// a stale gitdir: the failure is that entry's keep, not the run's. An entry
+// whose worktree removal succeeds but whose branch delete then fails is still
+// printed and counted as removed, with the branch failure and the manual remedy
+// (`git branch -D`) named in the same line: the removal happened, and a `kept`
+// prefix would contradict it. This is the one failure state no later sweep
+// revisits — the slug is gone from .worktrees/ — so the line must carry the next
+// step itself.
 //
-// RESIDUAL (#239): rule 1 cannot see liveness, so one destruction shape stays: a
-// dispatch reattached without -b to a surviving squash-merged branch — same
-// slug, branch still at the merged PR's head, clean because it has only read
-// files — is bit-identical to a finished branch whose cleanup was deferred, so a
-// default run removes it. The trigger requires cleanup to run while a dispatch
-// is active, which the manager skill allows only with none. No commits are lost
-// when it fires: the deleted ref is the merged PR's own head, already contained
-// in main. Closing it needs a liveness declaration — a worktree-lock convention
-// carried by the manager skill and the role files — tracked as #239.
+// #239 closed the liveness gap by DECLARATION, not inference. A dispatch locks
+// its worktree when it creates it, with a reason naming its role and ticket
+// (`git worktree lock .worktrees/<slug> --reason "<role> #<issue>"`), and
+// unlocks it before reporting done. Rule 0 keeps any entry git reports as
+// `locked`, with the reason printed, BEFORE every other rule and every flag: no
+// combination of --force, --include-unstarted, --include-detached or PR history
+// reaches a declared-live worktree — and `git worktree remove` refuses a locked
+// tree, so the keep states the tool boundary, not a guess about branch state. A
+// lock left behind by a crashed dispatch is cleared deliberately, by slug, with
+// `--unlock <slug>` (repeatable): unlocking never happens automatically, and an
+// --unlock run never sweeps. The sweep itself is gated: a destructive run
+// requires --no-active-dispatches. Without it the run prints the verdict lines
+// it would print (`would remove <slug> (<reason>)`) and exits non-zero having
+// removed nothing, so forgetting the flag destroys nothing; --dry-run needs no
+// acknowledgement and still exits 0. The liveness heuristics #239 rejected
+// (worktree admin-dir age, file mtimes, HEAD reflog) cannot separate a dispatch
+// reattached to a surviving squash-merged branch from deferred cleanup; the
+// declaration is the discriminator, and the gate covers the window before a
+// dispatch has locked.
 //
 // Removing merged worktrees by default (rule 1) therefore presumes squash/rebase
 // merges, this repo's practice: under a merge-commit or fast-forward merge a
 // genuinely merged branch has zero unique commits, so rule 2 keeps it by default
 // and it needs --include-unstarted.
 //
-// Usage: bun scripts/worktree-cleanup.mjs [--dry-run] [--force]
-//          [--include-unstarted] [--include-detached]
+// Usage: bun scripts/worktree-cleanup.mjs --no-active-dispatches [--dry-run]
+//          [--force] [--include-unstarted] [--include-detached]
+//        bun scripts/worktree-cleanup.mjs --unlock <slug> [--unlock <slug> ...]
+//          [--dry-run]
 // Run from the MAIN checkout — a linked worktree has no .worktrees of its own.
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 
-const dryRun = process.argv.includes("--dry-run");
-const force = process.argv.includes("--force");
-const includeUnstarted = process.argv.includes("--include-unstarted");
-const includeDetached = process.argv.includes("--include-detached");
+const argv = process.argv.slice(2);
+const dryRun = argv.includes("--dry-run");
+const force = argv.includes("--force");
+const includeUnstarted = argv.includes("--include-unstarted");
+const includeDetached = argv.includes("--include-detached");
+const noActiveDispatches = argv.includes("--no-active-dispatches");
+
+// A run that may destroy requires the operator's acknowledgement; a run that
+// only reports (--dry-run) never does. Decided once, here, so no per-entry path
+// can forget it.
+const refuseSweep = !dryRun && !noActiveDispatches;
+
+// --unlock takes a value and is repeatable, so it is read positionally instead
+// of with a presence check.
+const unlockSlugs = [];
+for (let i = 0; i < argv.length; i++) {
+  if (argv[i] !== "--unlock") continue;
+  const slug = argv[i + 1];
+  if (slug === undefined || slug.startsWith("-")) {
+    console.error("--unlock requires a slug: --unlock <slug>");
+    process.exit(1);
+  }
+  unlockSlugs.push(slug);
+  i++; // the value is consumed, never re-read as a flag
+}
 
 function git(args, opts = {}) {
   return execFileSync("git", args, { encoding: "utf8", ...opts }).trim();
@@ -101,8 +135,70 @@ function realOrSelf(path) {
   }
 }
 
+// `git worktree list --porcelain` prints one block per registered worktree, the
+// blocks separated by blank lines: a `worktree <path>` header followed by that
+// entry's attributes — one of which may be `locked`, or `locked <reason>`. The
+// block structure is what makes the lock readable: a bare `locked` seen while
+// walking lines belongs to the entry the last `worktree ` line opened, never to
+// the next one. Keyed by realpath, so this map and the `registered` set below
+// answer for the same path a `.worktrees/` entry resolves to, symlinks included.
+function parseWorktrees(porcelain) {
+  const entries = new Map();
+  let current = null;
+  for (const line of porcelain.split("\n")) {
+    if (line.startsWith("worktree ")) {
+      current = { locked: false, lockReason: "" };
+      entries.set(realOrSelf(line.slice("worktree ".length)), current);
+    } else if (current && (line === "locked" || line.startsWith("locked "))) {
+      current.locked = true;
+      current.lockReason = line.slice("locked".length).trim();
+    }
+  }
+  return entries;
+}
+
 const root = git(["rev-parse", "--show-toplevel"]);
 const wtRoot = join(root, ".worktrees");
+
+const worktrees = parseWorktrees(git(["worktree", "list", "--porcelain"]));
+const registered = new Set(worktrees.keys());
+
+// --unlock <slug> is the deliberate remedy for a declaration left behind by a
+// crashed dispatch. It never sweeps and never runs automatically: clearing a
+// declaration and destroying the worktree stay two separate, named acts, so an
+// unlock can never be the first half of an accidental removal — the closing
+// line says so, so an operator who also passed --no-active-dispatches cannot
+// read the exit as "the worktree was removed". A dry run stays non-mutating
+// here too: it reports intent and validates against git's own listing instead
+// of clearing the lock.
+function runUnlocks(slugs) {
+  let failed = 0;
+  for (const slug of slugs) {
+    const wt = join(wtRoot, slug);
+    if (dryRun) {
+      if (worktrees.get(realOrSelf(wt))?.locked) {
+        console.log(`would unlock ${slug}`);
+      } else {
+        console.error(`unlock failed for ${slug}: not a locked worktree`);
+        failed++;
+      }
+      continue;
+    }
+    try {
+      git(["worktree", "unlock", wt]);
+      console.log(`unlocked ${slug}`);
+    } catch (err) {
+      console.error(`unlock failed for ${slug}: ${gitError(err)}`);
+      failed++;
+    }
+  }
+  console.log(
+    `done: ${slugs.length - failed} unlocked, ${failed} failed — --unlock never sweeps; run again with --no-active-dispatches to remove worktrees`,
+  );
+  return failed > 0 ? 1 : 0;
+}
+
+if (unlockSlugs.length > 0) process.exit(runUnlocks(unlockSlugs));
 
 if (!existsSync(wtRoot)) {
   console.log("No .worktrees directory — nothing to clean.");
@@ -110,15 +206,10 @@ if (!existsSync(wtRoot)) {
 }
 
 const base = gitOk(["rev-parse", "--verify", "--quiet", "origin/main"]) ? "origin/main" : "main";
-const registered = new Set(
-  git(["worktree", "list", "--porcelain"])
-    .split("\n")
-    .filter((line) => line.startsWith("worktree "))
-    .map((line) => realOrSelf(line.slice("worktree ".length))),
-);
 
 let removed = 0;
 let kept = 0;
+let wouldRemove = 0;
 
 for (const slug of readdirSync(wtRoot).filter((n) => !n.startsWith("."))) {
   const wt = join(wtRoot, slug);
@@ -131,8 +222,21 @@ for (const slug of readdirSync(wtRoot).filter((n) => !n.startsWith("."))) {
   // A stray file or directory under .worktrees/ is not ours to delete, and
   // probing it with a git command (cwd=file → ENOTDIR; `worktree remove` →
   // fatal) would abort the whole run. Report it and carry on.
-  if (!registered.has(realOrSelf(wt))) {
+  const realWt = realOrSelf(wt);
+  if (!registered.has(realWt)) {
     keep("not a git worktree — remove manually");
+    continue;
+  }
+
+  // Rule 0, before every rule below and every flag: a lock is a dispatch's own
+  // liveness declaration, so it is kept with its reason, and the reason is the
+  // operator's evidence of who declared it. `git worktree remove` refuses a
+  // locked tree, so consulting branch state first would only invite a doomed
+  // removal attempt — and a doomed attempt is a branch-delete risk.
+  const worktree = worktrees.get(realWt);
+  if (worktree.locked) {
+    const reason = worktree.lockReason ? ` ("${worktree.lockReason}")` : "";
+    keep(`locked${reason} — a live declaration; clear it with --unlock ${slug}`);
     continue;
   }
 
@@ -194,8 +298,12 @@ for (const slug of readdirSync(wtRoot).filter((n) => !n.startsWith("."))) {
     continue;
   }
 
-  if (dryRun) {
+  // A withheld sweep and a dry run both stop here and print the same verdict
+  // line: the report is what the operator gets either way, so the refused run
+  // is a truthful preview that happens to exit non-zero.
+  if (dryRun || refuseSweep) {
     console.log(`would remove ${slug} (${reason})${dirty ? ", forcing over dirty state" : ""}`);
+    if (refuseSweep) wouldRemove++;
     continue;
   }
 
@@ -229,6 +337,18 @@ for (const slug of readdirSync(wtRoot).filter((n) => !n.startsWith("."))) {
   const branchRemedy = branchFailure ? `; delete it with: git branch -D ${branch}` : "";
   console.log(`removed ${slug} (${reason}${branchFailure}${branchRemedy})`);
   removed++;
+}
+
+// Fail closed: the operator has not confirmed that no dispatch is active, so
+// nothing above was removed. The verdict lines already name what a gated run
+// would have done; this line names the flag that turns the preview into the
+// sweep, and the non-zero exit is what a script — or a manager's checklist —
+// reads.
+if (refuseSweep) {
+  console.error(
+    `refusing to remove ${wouldRemove} worktree${wouldRemove === 1 ? "" : "s"}: pass --no-active-dispatches once you have confirmed no dispatch is active`,
+  );
+  process.exit(1);
 }
 
 console.log(`done: ${removed} removed, ${kept} kept${dryRun ? " (dry run)" : ""}`);
