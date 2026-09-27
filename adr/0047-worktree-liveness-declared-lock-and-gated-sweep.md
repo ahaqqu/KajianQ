@@ -133,6 +133,18 @@ remove` refuses a locked tree, so the keep states the tool boundary rather
   the block is visible (the entry is kept with its reason, and the keep line
   names the remedy), and the alternative is a heuristic that can be wrong in the
   destructive direction.
+- **The lock is a one-shot declaration whose reason cannot be edited in place.**
+  `git worktree lock` accepts only `--reason` and has no `--force`, so a second
+  `lock` on an already-locked worktree fails with
+  `fatal: '<path>' is already locked, reason: <reason>` and the original reason
+  stands. A round that re-runs its lock line — a respawn, a resume, or a fixer
+  taking over A's tree — refreshes the reason with `git worktree unlock <path>`
+  then `git worktree lock <path> --reason "<role> #<ticket>"`, and never clears
+  that error by leaving a worktree it is working in unlocked: an unlocked, clean
+  tree whose branch looks merged (PR merged at the branch tip with unique
+  commits) is removed by the default sweep, and an unstarted or detached one
+  only with the sweep's explicit flags — the lock is the one keep no flag
+  reaches, which is the state it exists to prevent.
 - **The window between a worktree's creation and its lock is covered by the gate
   only.** Accepted: closing it needs the dispatch's own declaration, which is
   what layer 1 is.
