@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { CHAT_MESSAGE_MAX_LENGTH } from "@app/contracts";
 import { wrapInRouter } from "../app-test-utils";
-import { ChatView } from "./ChatView";
+import { ChatView, clampDraft } from "./ChatView";
 
 // React 19 + vitest: mark the environment for act() (testing-library's flushes).
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -113,6 +113,49 @@ describe("ChatView message ceiling (#256)", () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]).toHaveLength(CHAT_MESSAGE_MAX_LENGTH);
     expect(sent[0]!.length).toBeLessThanOrEqual(CHAT_MESSAGE_MAX_LENGTH);
+  });
+
+  it("drops an unpaired trailing high surrogate when the clamp cuts a pair (A1)", () => {
+    renderView({});
+    // 1,999 units then an emoji: unit 2,000 is the emoji's HIGH surrogate, so a
+    // raw slice would persist half a character — a lone surrogate the API
+    // accepts, the store keeps, and the prompt carries. The pair is dropped
+    // whole: the draft is one unit under the ceiling instead of corrupted.
+    const composer = typeDraft("a".repeat(CHAT_MESSAGE_MAX_LENGTH - 1) + "😀" + "b".repeat(500));
+    expect(composer.value).toBe("a".repeat(CHAT_MESSAGE_MAX_LENGTH - 1));
+    expect(composer.value.isWellFormed()).toBe(true);
+    expect(composer.value.length).toBeLessThanOrEqual(CHAT_MESSAGE_MAX_LENGTH);
+  });
+
+  it("keeps a surrogate pair that fits inside the ceiling (A1)", () => {
+    renderView({});
+    // The pair ends exactly at unit 2,000, so nothing is half-cut and nothing
+    // may be dropped: the guard targets lone surrogates, not emoji.
+    const composer = typeDraft("a".repeat(CHAT_MESSAGE_MAX_LENGTH - 2) + "😀" + "b".repeat(500));
+    expect(composer.value).toBe("a".repeat(CHAT_MESSAGE_MAX_LENGTH - 2) + "😀");
+    expect(composer.value.isWellFormed()).toBe(true);
+    expect(composer.value).toHaveLength(CHAT_MESSAGE_MAX_LENGTH);
+  });
+
+  /**
+   * Both paths that can reach the ceiling, pinned on the pure function rather
+   * than through the DOM (A1). The browser's `maxLength` enforcement hands the
+   * change handler an already-truncated value — the component test above runs
+   * that path — so the surrogate check must run on the result, not only on the
+   * slice this function performs for a value the attribute did not constrain.
+   */
+  describe("clampDraft", () => {
+    it("drops a trailing high surrogate from a value already at the ceiling", () => {
+      const atCeiling = "a".repeat(CHAT_MESSAGE_MAX_LENGTH - 1) + "\uD83D";
+      expect(atCeiling).toHaveLength(CHAT_MESSAGE_MAX_LENGTH);
+      expect(clampDraft(atCeiling)).toBe("a".repeat(CHAT_MESSAGE_MAX_LENGTH - 1));
+      expect(clampDraft(atCeiling).isWellFormed()).toBe(true);
+    });
+
+    it("drops it from an over-length value the attribute did not constrain", () => {
+      const overLength = "a".repeat(CHAT_MESSAGE_MAX_LENGTH - 1) + "😀" + "b".repeat(500);
+      expect(clampDraft(overLength)).toBe("a".repeat(CHAT_MESSAGE_MAX_LENGTH - 1));
+    });
   });
 
   it("announces the localized limit hint only once the draft reaches the ceiling", () => {
