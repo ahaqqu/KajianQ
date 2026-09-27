@@ -10,19 +10,21 @@ import {
   summaryCounts,
 } from "./worktree-cleanup-fixture.mjs";
 
-// Every spawn form the script could reach for — node's whole child_process
-// surface and Bun's spawn globals — bare or behind a receiver. The receiver is
-// read as text ending in an identifier character, `)` or `]`, never as a list of
-// spellings: a namespace import is an ordinary style choice, so
-// `cpM.spawnSync("rm", …)` and `(await import("node:child_process")).spawnSync(…)`
-// must read their command token exactly as `cp.spawnSync("rm", …)` does.
+// The spawn forms this pin reads: node's whole child_process surface and Bun's
+// spawn globals, bare or behind a receiver. The receiver is read as text ending
+// in an identifier character, `)` or `]`, never as a list of spellings: a
+// namespace import is an ordinary style choice, so `cpM.spawnSync("rm", …)` and
+// `(await import("node:child_process")).spawnSync(…)` must read their command
+// token exactly as `cp.spawnSync("rm", …)` does.
 //
 // The receiver-qualified form refuses `exec`, because that one name covers two
 // different APIs: `<receiver>.exec(arg)` is RegExp.prototype.exec in
 // `pattern.exec(source)` — allowing any receiver is what lets that in, and the
 // lookbehind alone no longer keeps it out — while a receiver-less `exec(cmd)` is
-// node's shell spawn, which stays pinned. So a plain regex use cannot redden the
-// pin.
+// node's shell spawn, which stays pinned. The two are textually identical, so
+// the exclusion is the only way a plain regex use cannot redden the pin; the
+// cost, taken by decision, is that a receiver-qualified `exec` spawn is not read
+// either.
 //
 // The pin stops here, by decision (#249 A5). Deliberately out of reach: computed
 // method access (`obj["spawnSync"](…)`), an aliased import (`const run =
