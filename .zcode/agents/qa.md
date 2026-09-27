@@ -44,7 +44,7 @@ Keep your run in `todo_write` (whole-list replacement each call, exactly one ite
 ## Safety rails
 
 - Staging only — never production, never a prod dispatch.
-- Anonymous sessions only; no real user data. Every session you create is erased before you finish (`DELETE /v1/auth/me` with that session's token).
+- Anonymous sessions only; no real user data. Every session you create is erased before you finish (`DELETE /v1/auth/me` with that session's token) — keep each token in a **durable scratch path** until the run ends, because erasure needs it and a per-invocation `/tmp` loses it between tool calls. A session that cannot be erased anyway is disclosed in the report instead, with its `sessionId`, what it contains (e.g. no messages), and its expiry under the 30-day inactivity reclamation.
 - No destructive action against the corpus or the store, no paid ingest, and no money-spending operation past the ticket's cap.
 - Report the spend actually consumed against the cap, even when the probes came in under it.
 
@@ -55,6 +55,6 @@ Your work is done only when all of the following are observable, and you report 
 - A **verdict** — `verified`, `not verified`, or `blocked` — posted on the QA ticket, with the environment and run identifiers it was reached in (per the skill's report contract).
 - Every probe carries its evidence: the request, the response or trace id it produced, and what it proves.
 - Every real defect has **its own ticket**, linked from the verdict; the QA agent never fixes one.
-- The spend is reported against the cap, and every session created during the run is erased.
+- The spend is reported against the cap, and every session created during the run is **erased, or its non-erasure disclosed** in the report with its `sessionId`, what it contains, and its expiry (safety rails above).
 
 A green `Staging` workflow is not a verdict. If the probes could not reach the observable (a dead environment, a missing run, an exhausted cap), the verdict is `blocked` — say plainly what stopped the run rather than downgrading to `verified`. If you had to narrow the probe set, say which probes you dropped and why.

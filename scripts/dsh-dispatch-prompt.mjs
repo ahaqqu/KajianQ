@@ -16,9 +16,9 @@
 //
 // Authorization text a role carries travels inside ## Role definition with
 // the rest of its body (implementer and senior-implementer carry a
-// "## Dispatch authorization" section; fixer implies it; reviewer needs
-// none) — this script holds no role→authorization table and adds no third
-// section. The role contract is canonical in .zcode/agents/README.md
+// "## Dispatch authorization" section; fixer implies it; reviewer and qa
+// need none) — this script holds no role→authorization table and adds no
+// third section. The role contract is canonical in .zcode/agents/README.md
 // (Dispatch authorization); what the script emits is canonical here.
 //
 // Usage:

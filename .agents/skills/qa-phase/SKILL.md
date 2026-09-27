@@ -20,7 +20,7 @@ A change is classified before its PR merges, and the manager records the decisio
 | Eval scorers, fixtures, smoke selection                                  | **Gate-affecting** | **Falsification** — does the gate still fail when it should? Staging user-behaviour probing cannot judge a gate. |
 | Routes, chat pipeline, prompts, retrieval, contracts, migrations, web UI | **Runtime**        | **Full staging QA**, adversarial persona included.                                                               |
 
-The middle shape is the one that gets mistaken for the third. A gate-affecting change ships no user-visible behaviour to probe, and a healthy answer from staging says nothing about whether the gate can still go red — so its QA phase is the gate's own falsification, written as a QA ticket with a mutation observable (`the gate must fail on <injected defect>`) instead of a user observable.
+The middle shape is the one that gets mistaken for the third. A gate-affecting change ships no user-visible behaviour to probe, and a healthy answer from staging says nothing about whether the gate can still go red — so its QA phase is the gate's own falsification, written as a QA ticket with a mutation observable (`the gate must fail on <defect>` — the defect classes the ticket names, e.g. an ungrounded non-refusal) instead of a user observable.
 
 The classification is a judgement about **what the change can break**, not about its diff size: a one-line prompt edit is runtime; a large test-suite refactor is inert.
 
@@ -29,6 +29,7 @@ The classification is a judgement about **what the change can break**, not about
 The ticket is the QA brief, and it carries all of:
 
 - **The observable that proves the issue is solved in staging** — a named Golden Set question passing, a route's response, a trace field present, a frame rendered. Name it concretely enough that a probe either meets it or does not.
+- **The mutation set, for a gate-affecting change** — the defect classes that must redden the gate (an ungrounded non-refusal, an over-refusal, a fabricated citation, a question the selection must include — whatever the change touches), named by the manager here, or an explicit delegation of the choice to the QA agent here with the reason. The QA agent may extend the set; the promised set is the manager's, and a placeholder is not a mutation set.
 - **Reachability, confirmed before the observable is promised.** Check the smoke subset actually selects the observable (`packages/eval/src/smoke-subset.ts` is deterministic — read what it picks), and that the merge triggers a `Staging` run at all (a docs-path-only push does not). When the observable is outside the subset, widen that run with the existing `workflow_dispatch` `eval_smoke_size` input or add a targeted check to the ticket's probe list — a promise the deployed run cannot reach is not a QA ticket.
 - **The blast radius** — what else sits on the changed code path: the neighbouring stages, the other questions the same scorer judges, the other routes that share the handler, the UI that renders the changed frame.
 - **The surfaces to probe** — routes, UI flows, persisted traces, SSE frames, the refusal/answer boundary, the rehydration endpoint.
@@ -52,7 +53,7 @@ Two probes of the same class with the same mechanism are one probe. The taxonomy
 A change to an eval scorer, a fixture, or the smoke selection is verified by **mutation** — the gate must still go red when it should:
 
 1. Take the gate's live observable from the ticket (the question, the scorer dimension, the selection rule).
-2. In the QA agent's own scratch reasoning, decide the defect the gate must catch (an ungrounded answer, a fabricated citation, an over-refusal, a question the selection must include).
+2. Take the mutation set from the ticket — the defect classes the manager named, or the choice the ticket explicitly delegated to you. You may extend the set, but the promised set is the manager's; the report names the mutations you instantiated.
 3. Reproduce the gate's failure path against the deployed or committed artifacts without shipping the defect: re-score the recorded evidence, or run the scorer against the known-bad shape, and show that `passed: false`.
 4. Show the unchanged good case still passes, so the gate was loosened only where the ticket says.
 
@@ -73,11 +74,11 @@ The verdict is the only thing that closes a QA-needed change: `verified` when th
 ## Safety rails
 
 - **Staging only.** Never production, never a prod dispatch.
-- **Anonymous sessions only**, no real user data, and every session the run creates is erased with its own token (`DELETE /v1/auth/me`) before the report is posted. Keep each token in a **durable scratch path** until the run ends — a per-invocation `/tmp` loses it between tool calls, and erasure needs that token: a session whose token is gone cannot be deleted through the API. Disclose any session you could not erase in the report, with its `sessionId` and the reason.
+- **Anonymous sessions only**, no real user data, and every session the run creates is erased with its own token (`DELETE /v1/auth/me`) before the report is posted. Keep each token in a **durable scratch path** until the run ends — a per-invocation `/tmp` loses it between tool calls, and erasure needs that token: a session whose token is gone cannot be deleted through the API. Disclose any session you could not erase in the report, with its `sessionId`, what it contains (e.g. no messages), and its expiry under the 30-day inactivity reclamation.
 - **Read-only on the repo**: comments and finding tickets yes, commits/branches/merges/closures no.
 - **Nothing destructive** against the corpus or the store; no paid ingest; no money-spending operation past the ticket's cap.
 - **Report the spend actually consumed**, under or over the estimate.
 
 ## Completion criterion
 
-The QA phase is done when the verdict is posted on the QA ticket with every probe's evidence, every defect has its own ticket, the spend is reported against the cap, and every session the run created is erased. Until then the QA-needed change is not finished — and its cleanup does not start.
+The QA phase is done when the verdict is posted on the QA ticket with every probe's evidence, every defect has its own ticket, the spend is reported against the cap, and every session the run created is **erased or its non-erasure disclosed** (safety rails). Until then the QA-needed change is not finished — and its cleanup does not start.
