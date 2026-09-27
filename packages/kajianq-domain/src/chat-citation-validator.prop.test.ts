@@ -23,6 +23,15 @@ import {
  * exactly why the suite stayed green on a head that still false-refused
  * grounded citations (A1/A2).
  *
+ * #264 moved two more classes, and the sweep moved with them:
+ *
+ *  - invisible formatting (`\p{Cf}`) is now stripped in the flatten step, so
+ *    it sweeps as noise — a label differing from an address only by an
+ *    invisible character must reduce to that address;
+ *  - a fullwidth digit (`５`, U+FF15) now folds to its ASCII value, so it
+ *    sweeps with the address-bearing `\p{Nd}` digits: glued to a number it
+ *    still continues that number, and must never reduce to the bare address.
+ *
  * The sweep states the boundary too, not only the noise. Two classes are
  * deliberately NOT noise, and a future widening of the tail rule that starts
  * grounding them fails here rather than in production:
@@ -32,7 +41,8 @@ import {
  *    addresses than `no. 5010`), so they must never reduce to the bare number;
  *  - a dash (`\p{Pd}`) joined to a number is the closed-up range form, kept
  *    whole so an unretrieved second address is never dropped from validation
- *    (A3's precision-for-safety trade-off, `DASH_JOINED_NUMBER_TAIL`).
+ *    (A3's precision-for-safety trade-off, `DASH_JOINED_NUMBER_TAIL`, which
+ *    #264 extended to the Quran compound `QS. 2:255—256`).
  */
 
 /** Addresses in the product's grammars. */
@@ -42,6 +52,12 @@ const ADDRESSES = ["QS. 2:255", "QS. 114:6", "HR. Bukhari no. 5010", "HR. Abu Da
 function chunk(label: string): Chunk {
   return { id: `c-${label}`, text: "evidence", metadata: { citation: label } };
 }
+
+/**
+ * The dash family (`\p{Pd}`) on its own, named so the closed-up-range property
+ * below cannot drift when a class is added to the sweep.
+ */
+const DASH_CHARS = ["-", "‐", "‑", "‒", "–", "—", "―", "−"] as const;
 
 /**
  * One representative per Unicode class that can appear in a citation's tail.
@@ -55,20 +71,29 @@ const NOISE_CLASSES = [
     name: "punctuation (\\p{P})",
     chars: [":", ";", ",", ".", ")", "]", "(", "…", '"', "'", "*", "،", "؛", "：", "؟"],
   },
-  { name: "dashes (\\p{Pd})", chars: ["-", "‐", "‑", "‒", "–", "—", "―", "−"] },
+  { name: "dashes (\\p{Pd})", chars: DASH_CHARS },
   { name: "symbols (\\p{S})", chars: ["+", "=", "$", "©", "°", "±"] },
   { name: "superscripts/subscripts (\\p{No})", chars: ["¹", "²", "⁵", "₀", "₃", "½"] },
   { name: "combining marks (\\p{M})", chars: ["\u0301", "\u0308", "\u0651"] },
   { name: "whitespace (\\s)", chars: [" ", "\u00a0", "\t", "\u2003"] },
+  // #264 item 1: invisible formatting is stripped, so it is noise like any
+  // other tail character — including *inside* a number, where it used to
+  // truncate the address to a retrieved prefix sibling.
+  {
+    name: "invisible formatting (\\p{Cf})",
+    chars: ["\u200b", "\u200c", "\u200d", "\u200e", "\u00ad", "\ufeff"],
+  },
 ] as const;
 
 /**
  * The address-bearing classes: characters that continue the number token
  * itself. They are NOT noise, and the tests below pin the fail-closed
  * direction — a label carrying one must never reduce to the bare address.
+ * `５` is here because #264 folds the fullwidth block to ASCII first: it is
+ * still a digit, so it still continues the number.
  */
 const ADDRESS_BEARING_CLASSES = [
-  { name: "digits (\\p{Nd})", chars: ["0", "2", "7", "9", "٣", "٥"] },
+  { name: "digits (\\p{Nd})", chars: ["0", "2", "7", "9", "٣", "٥", "５"] },
   { name: "letters (\\p{L})", chars: ["a", "Z", "é", "ا", "中"] },
 ] as const;
 
@@ -141,19 +166,34 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
     expect(normalizeCitationLabel("QS. 2:2550")).toBe("QS. 2:2550");
   });
 
-  it("keeps a dash joined to a number whole — the deliberate A3 trade-off", () => {
-    for (const dash of NOISE_CLASSES[1].chars) {
+  it("keeps a dash joined to a number whole — the deliberate A3 trade-off, both grammars", () => {
+    // #264: one rule covers both grammars. The Quran compound used to slip
+    // through because the grammar's match ended at the first verse's digits,
+    // so the second address never reached this comparison.
+    const compounds: { compound: string; retrieved: string[] }[] = [];
+    for (const dash of DASH_CHARS) {
       for (const number of ["3", "5011", "٥٠١١"]) {
-        const compound = `HR. Bukhari no. 5010${dash}${number}`;
-        expect(normalizeCitationLabel(compound), compound).toBe(compound);
-        const { ungrounded } = validateCitations(`Lihat ${compound} menjelaskan`, [
-          chunk("HR. Bukhari no. 5010"),
-          chunk("HR. Bukhari no. 5011"),
-        ]);
-        // Refused even with both addresses retrieved: the accepted cost of
-        // never dropping a possibly-unretrieved second address.
-        expect(ungrounded, compound).toEqual([compound]);
+        compounds.push({
+          compound: `HR. Bukhari no. 5010${dash}${number}`,
+          retrieved: ["HR. Bukhari no. 5010", "HR. Bukhari no. 5011"],
+        });
       }
+      for (const number of ["256", "255", "٢٥٦"]) {
+        compounds.push({
+          compound: `QS. 2:255${dash}${number}`,
+          retrieved: ["QS. 2:255", "QS. 2:256"],
+        });
+      }
+    }
+    for (const { compound, retrieved } of compounds) {
+      expect(normalizeCitationLabel(compound), compound).toBe(compound);
+      const { ungrounded } = validateCitations(
+        `Lihat ${compound} menjelaskan`,
+        retrieved.map((label) => chunk(label)),
+      );
+      // Refused even with both addresses retrieved: the accepted cost of
+      // never dropping a possibly-unretrieved second address.
+      expect(ungrounded, compound).toEqual([compound]);
     }
   });
 

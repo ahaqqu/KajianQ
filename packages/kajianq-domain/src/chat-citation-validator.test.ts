@@ -113,6 +113,23 @@ describe("validateCitations — grounded direction", () => {
       "glued grade parenthetical",
       "Rasulullah bersabda dalam HR. Bukhari no. 5010(Sahih) tentang hal ini",
     ],
+    // #264 item 3: the same false-refusal class, one spelling further out. The
+    // grammars write their separators with `\s*`, so a model that omits the
+    // space after `no.` or after the `QS.` marker is citing the retrieved
+    // address and must ground.
+    ["no space after `no.`", "Rasulullah bersabda dalam HR. Bukhari no.5010: matn"],
+    ["no space after the QS. marker", "Ayat Kursi ada di QS.2:255: ayat yang agung"],
+    // #264 item 1: an invisible format character inside the number is glue,
+    // not an address boundary.
+    [
+      "zero-width non-joiner inside the number",
+      "Rasulullah bersabda dalam HR. Bukhari no. 50\u200c10 tentang hal ini",
+    ],
+    // #264 item 5: fullwidth digits are the same number in another rendering.
+    [
+      "fullwidth hadith number",
+      "Rasulullah bersabda dalam HR. Bukhari no. ５０１０ tentang hal ini",
+    ],
   ])("grounds a citation whose tail is a %s", (_variant, draft) => {
     const { ungrounded } = validateCitations(draft, [
       chunk("HR. Bukhari no. 5010"),
@@ -171,6 +188,143 @@ describe("validateCitations — grounded direction", () => {
         validateCitations(`${glued} menjelaskan …`, [chunk("HR. Bukhari no. 5010")]).ungrounded,
       ).toEqual([glued]);
     }
+  });
+
+  it("grounds a citation written without the space after `no.` (#264 item 3)", () => {
+    // The address spelling a model plausibly produces for a retrieved label.
+    // The grammars write their separators with `\s*`, so the comparison form
+    // folds the spacing rather than refusing the answer for it.
+    expect(normalizeCitationLabel("HR. Bukhari no.5010")).toBe("HR. Bukhari no. 5010");
+    const { grounded, ungrounded } = validateCitations(
+      "Rasulullah bersabda dalam HR. Bukhari no.5010: matn",
+      [chunk("HR. Bukhari no. 5010")],
+    );
+    expect(grounded).toEqual(["HR. Bukhari no. 5010"]);
+    expect(ungrounded).toEqual([]);
+    // The same question for the other two grammars, answered the same way:
+    // the marker/separator spacing folds, so the no-space spelling of a
+    // retrieved address grounds instead of being refused.
+    expect(normalizeCitationLabel("QS.2:255")).toBe("QS. 2:255");
+    expect(normalizeCitationLabel("QS. 2: 255")).toBe("QS. 2:255");
+    expect(
+      validateCitations("Ayat Kursi ada di QS.2:255: ayat yang agung", [chunk("QS. 2:255")])
+        .ungrounded,
+    ).toEqual([]);
+    expect(normalizeCitationLabel("Jilid 1,Hal. 102")).toBe("Jilid 1, Hal. 102");
+    expect(
+      validateCitations("Al-Umm, Imam Syafi'i, Jilid 1,Hal. 102", [chunk("Jilid 1, Hal. 102")])
+        .ungrounded,
+    ).toEqual([]);
+  });
+
+  it("strips invisible format characters before the number token reads the digits (#264 item 1)", () => {
+    // `\p{Cf}` glue carries no address information, so the flatten step drops
+    // it and the address token sees the full number.
+    expect(normalizeCitationLabel("HR. Bukhari no. 50\u200c10")).toBe("HR. Bukhari no. 5010");
+    expect(normalizeCitationLabel("HR. Bukhari no.\u200c5010")).toBe("HR. Bukhari no. 5010");
+    expect(normalizeCitationLabel("\u200eHR. Bukhari no. 5010")).toBe("HR. Bukhari no. 5010");
+    expect(normalizeCitationLabel("HR. Bukhari no. 5010\u200b")).toBe("HR. Bukhari no. 5010");
+  });
+
+  it("grounds on the full number, not the prefix sibling the glue used to truncate to (#264 item 1)", () => {
+    // The contrived fail-open the reviewer found: with the invisible character
+    // truncating the address to `no. 50`, a retrieved prefix sibling grounded
+    // the citation — a DIFFERENT passage than the draft meant. The digits are
+    // one number, so the retrieved `no. 5010` is what it must ground on.
+    const meant = validateCitations("Rasulullah bersabda dalam HR. Bukhari no. 50\u200c10: matn", [
+      chunk("HR. Bukhari no. 5010"),
+    ]);
+    expect(meant).toEqual({ grounded: ["HR. Bukhari no. 5010"], ungrounded: [] });
+    const sibling = validateCitations(
+      "Rasulullah bersabda dalam HR. Bukhari no. 50\u200c10: matn",
+      [chunk("HR. Bukhari no. 50")],
+    );
+    // The refusal is what closes the fail-open: the full number the draft
+    // cited grounds on no retrieved chunk. (`grounded` stays a substring test
+    // of the whole answer, so the sibling's shorter label still appears inside
+    // it — an advisory list, never the gate: the answer is refused on
+    // `ungrounded`, and a refused answer renders no citations.)
+    expect(sibling.ungrounded).toEqual(["HR. Bukhari no. 5010"]);
+  });
+
+  it("folds the fullwidth digit block, the one \\p{Nd} script a label can render (#264 item 5)", () => {
+    // Fullwidth digits are the same number, so the fold grounds them instead
+    // of leaving the citation invisible (Quran) or refused (hadith).
+    expect(normalizeCitationLabel("HR. Bukhari no. ５０１０")).toBe("HR. Bukhari no. 5010");
+    expect(normalizeCitationLabel("QS. ２:２５５")).toBe("QS. 2:255");
+    expect(citationCandidatesIn("HR. Bukhari no. ５０１０ dan QS. ２:２５５")).toEqual([
+      "QS. 2:255",
+      "HR. Bukhari no. 5010",
+    ]);
+    expect(
+      validateCitations("Ayat Kursi ada di QS. ２:２５５", [chunk("QS. 2:255")]).ungrounded,
+    ).toEqual([]);
+    expect(
+      validateCitations("Rasulullah bersabda dalam HR. Bukhari no. ５０１０", [
+        chunk("HR. Bukhari no. 5010"),
+      ]).ungrounded,
+    ).toEqual([]);
+  });
+
+  it("recognises but never folds the other \\p{Nd} digit scripts (#264 item 5, recorded gap)", () => {
+    // Recorded, not half-closed: a general fold needs a per-block zero table
+    // (Unicode decimal blocks are not aligned mod 10), the generator is not
+    // observed to emit them, and folding only some blocks would refuse the
+    // rest anyway. So they are RECOGNISED — never silently invisible — and
+    // stay unfolded, which refuses them (fail-closed).
+    expect(normalizeCitationLabel("HR. Bukhari no. ٥٠١٠")).toBe("HR. Bukhari no. ٥٠١٠");
+    expect(citationCandidatesIn("QS. ٢:٢٥٥")).toEqual(["QS. ٢:٢٥٥"]);
+    expect(
+      validateCitations("HR. Bukhari no. ٥٠١٠ menjelaskan …", [chunk("HR. Bukhari no. 5010")])
+        .ungrounded,
+    ).toEqual(["HR. Bukhari no. ٥٠١٠"]);
+    expect(validateCitations("QS. ٢:٢٥٥ menjelaskan …", [chunk("QS. 2:255")]).ungrounded).toEqual([
+      "QS. ٢:٢٥٥",
+    ]);
+  });
+
+  it("keeps a dash-joined Quran range whole — the hadith rule, one grammar over (#264 item 4)", () => {
+    // The Quran grammar used to end at the first verse's digits, so the second
+    // address never reached the comparison and `QS. 2:255—256` grounded on
+    // `QS. 2:255` alone. The match now absorbs the dash-joined tail and the
+    // SHARED `DASH_JOINED_NUMBER_TAIL` rule keeps the compound whole — exactly
+    // how the hadith compound is handled, so there is one rule and not two.
+    expect(normalizeCitationLabel("QS. 2:255—256")).toBe("QS. 2:255—256");
+    expect(normalizeCitationLabel("QS. 2:255–256")).toBe("QS. 2:255–256");
+    expect(
+      validateCitations("Lihat QS. 2:255—256 tentang hal ini", [chunk("QS. 2:255")]).ungrounded,
+    ).toEqual(["QS. 2:255—256"]);
+    // The accepted cost is the hadith trade-off's own: refused even with both
+    // addresses retrieved (the follow-up recorded on the rule).
+    expect(
+      validateCitations("Lihat QS. 2:255—256 tentang hal ini", [
+        chunk("QS. 2:255"),
+        chunk("QS. 2:256"),
+      ]).ungrounded,
+    ).toEqual(["QS. 2:255—256"]);
+    // The span now covers the whole compound, so the reviewer pre-gate masks
+    // the range as one citation rather than half of it.
+    expect(citationSpansIn("Lihat QS. 2:255—256 ya")).toEqual([
+      { start: 6, end: 19, label: "QS. 2:255—256" },
+    ]);
+  });
+
+  it("records why a comma- or space-separated second verse is NOT a compound (#264 item 4)", () => {
+    // Deliberate boundary, stated rather than left implicit: the closed-up
+    // dash is the product's range joiner, and both grammars read it that way.
+    // A second verse written after a comma or a space carries no marker of its
+    // own, so it is a bare number — and bare numbers are not citation attempts
+    // (`ignores bare numbers and ordinary prose` above). The hadith grammar
+    // behaves identically (its token stops at the comma), so the two grammars
+    // agree here too.
+    expect(normalizeCitationLabel("QS. 2:255, 256")).toBe("QS. 2:255");
+    expect(
+      validateCitations("Lihat QS. 2:255, 256 tentang hal ini", [chunk("QS. 2:255")]).ungrounded,
+    ).toEqual([]);
+    expect(
+      validateCitations("HR. Bukhari no. 5010, 5011 menjelaskan …", [chunk("HR. Bukhari no. 5010")])
+        .ungrounded,
+    ).toEqual([]);
   });
 
   it("reduces the glued grade span the draft grammar really produces (B2)", () => {
@@ -375,6 +529,52 @@ describe("validateCitations — ungrounded direction (the trap cases)", () => {
     expect(ungrounded).toEqual(["HR. Bukhari no. 99999"]);
   });
 
+  it("still rejects a fabricated or near-miss no-space address (#264 item 3, reverse direction)", () => {
+    // Folding the separator spacing must never fold the number with it.
+    expect(
+      validateCitations("HR. Bukhari no.99999 menyebutkan …", [chunk("HR. Bukhari no. 5010")])
+        .ungrounded,
+    ).toEqual(["HR. Bukhari no. 99999"]);
+    expect(
+      validateCitations("HR. Bukhari no.5011 menyebutkan …", [chunk("HR. Bukhari no. 5010")])
+        .ungrounded,
+    ).toEqual(["HR. Bukhari no. 5011"]);
+    expect(validateCitations("QS.9:99 tentang hal ini", [chunk("QS. 2:255")]).ungrounded).toEqual([
+      "QS. 9:99",
+    ]);
+    // A longer number written without the space is still a different address:
+    // the fold moves separators, never digits.
+    expect(
+      validateCitations("HR. Bukhari no.50102 menjelaskan …", [chunk("HR. Bukhari no. 5010")])
+        .ungrounded,
+    ).toEqual(["HR. Bukhari no. 50102"]);
+  });
+
+  it("still rejects a fabricated number however it is glued or rendered (#264 items 1 and 5)", () => {
+    // Joining invisible characters, or folding a digit script, must never
+    // ground an invented number on a retrieved one.
+    expect(
+      validateCitations("HR. Bukhari no. 9999\u200c9 menjelaskan …", [
+        chunk("HR. Bukhari no. 5010"),
+      ]).ungrounded,
+    ).toEqual(["HR. Bukhari no. 99999"]);
+    expect(
+      validateCitations("HR. Bukhari no. ５０１１ menjelaskan …", [chunk("HR. Bukhari no. 5010")])
+        .ungrounded,
+    ).toEqual(["HR. Bukhari no. 5011"]);
+    expect(
+      validateCitations("QS. ９:９９ tentang hal ini", [chunk("QS. 2:255")]).ungrounded,
+    ).toEqual(["QS. 9:99"]);
+  });
+
+  it("still rejects a closed-up Quran range whose second address was not retrieved (#264 item 4)", () => {
+    // The other grammar of the same rule: the compound is kept whole, so the
+    // verse the draft cites and retrieval did not return refuses the answer.
+    expect(
+      validateCitations("Lihat QS. 2:255—256 tentang hal ini", [chunk("QS. 2:255")]).ungrounded,
+    ).toEqual(["QS. 2:255—256"]);
+  });
+
   it("still rejects a closed-up hadith range whose second address was not retrieved", () => {
     // A dash joined to more address digits is kept whole — the deliberate
     // precision-for-safety trade-off on `DASH_JOINED_NUMBER_TAIL` — so a
@@ -491,15 +691,22 @@ describe("normalizeCitationLabel", () => {
   });
 
   it("strips the grade parenthetical the chunk formatter appends", () => {
-    // The grade arrives on the chunk side as the LAST thing in the label:
-    // `formatHadithCitation` writes `HR. X no. N (Grade)`, and this anchored
-    // pass removes it there. On the draft side only the SPACED form is
-    // unreachable (the number token stops at whitespace); the glued
-    // `HR. X no. N(Grade)` span does occur and is reduced by the
-    // grammar-address rule — see the glued-grade span test above (B2).
+    // This anchored pass is reachable only for a label that does NOT begin
+    // with a citation grammar — a full Kitab label is the shape it exists for.
+    // The hadith chunk form `HR. X no. N (Grade)` never reaches it: the
+    // grammar-address reduction removes the grade first, because the address
+    // ends at the number word after `no.` (#264 item 2 — the earlier
+    // docstring claimed this pass was what removed it on the chunk side).
+    // The glued draft span `HR. X no. N(Grade)` is reduced the same way — see
+    // the glued-grade span test above (B2).
     expect(normalizeCitationLabel("HR. Ibnu Majah no. 224 (Dhaif)")).toBe("HR. Ibnu Majah no. 224");
     expect(normalizeCitationLabel("HR. Ibnu Majah no. 224 (Dhaif) ")).toBe(
       "HR. Ibnu Majah no. 224",
+    );
+    // The reachable path, pinned: a non-grammar-initial label keeps the
+    // lexical strip.
+    expect(normalizeCitationLabel("Al-Umm, Imam Syafi'i, Jilid 1, Hal. 102 (Sahih)")).toBe(
+      "Al-Umm, Imam Syafi'i, Jilid 1, Hal. 102",
     );
   });
 
