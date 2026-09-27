@@ -34,19 +34,22 @@ changes reach new spawns only after a client restart. Removing a role
 file's `model:` field makes that role inherit its dispatcher's model (this
 is how a sub-reviewer can be made to share its coordinator's model).
 
-## Role GitHub identities
+## Role GitHub identities (retired)
 
-Role subagents may be given dedicated GitHub identities, enforced
-mechanically: the PreToolUse hook `scripts/role-gh-identity/hook.mjs` denies
-a bare `gh` call from a role with a configured identity and names the
-compliant form, `gh-as <role> <gh args…>`
-(`scripts/role-gh-identity/gh-as.mjs` — per-invocation `GH_TOKEN`, token
-files outside the repo). Enforcement is opt-in
-(`scripts/role-gh-identity/config.json`, `enabled: false` by default); the
-hook fails open on every internal error, and the manager session (no role)
-is never denied. A `gh-as` auth failure surfaces as an ordinary command
-failure — the manager relays and escalates it like any CI failure, never
-bypasses the wrapper.
+Role-separated GitHub identities (ADR-0025) were **retired in #133**: the
+PreToolUse deny hook and the `gh-as <role>` wrapper under
+`scripts/role-gh-identity/` were deleted, and `.zcode/config.json` wires no
+PreToolUse hook. On every harness — DSH included — a role subagent's `gh` runs
+under the dispatching session's ambient identity: no role is denied a bare
+`gh`, and the manager session (no role) is never denied. The DSH adapter states
+this as it applies on DSH.
+
+The dormant design, if the owner ever re-enables it, was deny-redirect:
+opt-in enforcement (`scripts/role-gh-identity/config.json`, `enabled: false` by
+default), a fail-open hook naming the compliant form
+`gh-as <role> <gh args…>` (per-invocation `GH_TOKEN`, token files outside the
+repo), and an auth failure surfacing as an ordinary command failure the
+manager relays and escalates like any CI failure — never bypassed.
 
 ## Implementer-class operating rules
 
@@ -58,6 +61,27 @@ so a dispatched agent never needs a second file read. This section documents
 the same contract for the manager and human readers; the role files remain
 the operative copy. If you change the contract, change every role file in
 the same commit.
+
+### Todo discipline (canonical)
+
+Every implementer-class role maintains its plan in its own `todo_write` task
+list — a dispatch-contract duty, not a personal preference, and the fix for the
+live defect where dispatched subagents showed `todos=0` while working:
+
+- **Whole-list replacement.** Each `todo_write` call sends the complete list;
+  there is no partial update.
+- **One `in_progress`.** Exactly one item is `in_progress` at a time, unless
+  parallel work (several subagents genuinely in flight) justifies more.
+- **Update at every phase boundary.** Write or revise the list before a long
+  gate run, at a handoff (implement → test loop → report), and whenever scope
+  changes. Never let it go stale behind the work.
+- **Per-session and turn-scoped.** The list is never inherited from the
+  manager, and DSH clears it at each `turn/start`; each subagent creates and
+  owns its own list and keeps it current within its own turn. An empty list
+  while work is in flight means the owner cannot see the plan or the progress.
+
+The completion criterion is unchanged: a green PR is the evidence, and the todo
+list is progress telemetry, never a substitute for it.
 
 ### Stuck-report format (canonical)
 
@@ -81,16 +105,23 @@ Implementer-class roles share a checkout with the dispatching session and
 possibly other parallel dispatches — racing in one tree switches each other's
 branches mid-run and corrupts each other's diffs. Therefore:
 
-- At dispatch start, create your own temporary worktree and do **all** work
-  (edits, commits, gates, pushes) inside it:
-  `git worktree add /tmp/wt-<branch> -b <branch> origin/main`.
+- At dispatch start, create your own worktree under the repo's committed
+  `.worktrees/` directory and do **all** work (edits, commits, gates, pushes)
+  inside it: from the shared checkout run
+  `git worktree add .worktrees/<slug> -b agent/<slug> origin/main`.
   The fixer is the exception: it attaches the existing worktree
-  (`/tmp/wt-<branch>`) or adds one from the existing branch
-  (`git worktree add /tmp/wt-<branch> <branch>` — no `-b`), because it takes
-  over a branch that already exists.
+  (`.worktrees/<slug>`) or adds one from the existing branch
+  (`git worktree add .worktrees/<slug> agent/<slug>` — no `-b`), because it
+  takes over a branch that already exists.
+- Never put a worktree under `/tmp` (on DSH it is per-invocation — see the DSH
+  adapter). Never use `.wt/` either — `.worktrees/` is the one in-repo
+  convention, it is committed to `.gitignore`, and `bun run worktree:clean`
+  (run from the main checkout) owns removal, keeping any branch with unmerged
+  work. Cleanup is the manager's duty, not yours.
 - Before **any** `git` state-changing operation (commit, push, branch,
   checkout), verify with `git branch --show-current` that you are on your
-  dispatch's branch inside your worktree. Exception: the one-time
+  dispatch's branch (`agent/<slug>`) inside your worktree. Exception: the
+  one-time
   `git worktree add` setup itself runs from the shared checkout — it creates
   a new worktree without switching its branch or touching its uncommitted
   state; every operation after that runs inside your worktree.

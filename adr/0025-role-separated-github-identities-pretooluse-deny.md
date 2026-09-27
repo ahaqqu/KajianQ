@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-09-01). Records the identity-attribution decision for the manager-orchestrated agentic workflow. Builds on ADR-0009 (no secrets committed; price/config discipline), the iteration-guardrail doctrine (mechanical enforcement over prose, fail-open hooks), and ADR-0023 (per-role machinery in fork-owned files).
+Accepted (2026-09-01). **Machinery retired by [ADR-0031](0031-fixer-role-owns-review-feedback.md) / PR #133 (2026-09-08):** the PreToolUse deny hook and the `gh-as <role>` wrapper under `scripts/role-gh-identity/` were deleted, and `.zcode/config.json` wires no PreToolUse hook — on every harness, a role subagent's `gh` runs under the dispatching session's ambient identity. The text below is history, not the operative record. Records the identity-attribution decision for the manager-orchestrated agentic workflow. Builds on ADR-0009 (no secrets committed; price/config discipline), the iteration-guardrail doctrine (mechanical enforcement over prose, fail-open hooks), and ADR-0023 (per-role machinery in fork-owned files).
 
 ## Context
 

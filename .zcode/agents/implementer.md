@@ -35,6 +35,18 @@ in `guided-implementation` (implement → handoff → test loop → report):
   first; escalation must never lose work. A stuck report is never a
   substitute for the completion criterion.
 
+## Todo discipline
+
+Maintain your plan with `todo_write` from the start of the run — whole-list
+replacement each call, exactly one item `in_progress` at a time unless parallel
+work is genuinely in flight, and an update at every phase boundary: before a
+long gate run, at a handoff, and when scope changes. The list is **per-session
+and turn-scoped**: it is never inherited from the manager and is cleared at each
+`turn/start`, so you create and own your own list and keep it current within
+your turn. The owner reads it as the live plan; a run with no list is opaque.
+The list is progress telemetry — your completion criterion below is still the
+evidence.
+
 ## Dispatch authorization
 
 You are explicitly authorized to commit, push, and open a pull request for this task. Never merge it — the manager verifies CI and takes it from there.
@@ -43,9 +55,9 @@ You are explicitly authorized to commit, push, and open a pull request for this 
 
 You share a checkout with the dispatching session and possibly other parallel dispatches — racing in one tree switches each other's branches mid-run and corrupts each other's diffs. Therefore:
 
-- At dispatch start, create your own temporary worktree and do **all** work (edits, commits, gates, pushes) inside it: `git worktree add /tmp/wt-<branch> -b <branch> origin/main`.
-- Before **any** `git` state-changing operation (commit, push, branch, checkout), verify with `git branch --show-current` that you are on your dispatch's branch inside your worktree. Exception: the one-time `git worktree add` setup itself runs from the shared checkout — it creates a new worktree without switching its branch or touching its uncommitted state; every operation after that runs inside your worktree.
-- Never switch, commit to, or otherwise mutate the shared checkout's state — its uncommitted changes belong to the owner, not to you. If you find yourself outside your worktree, stop and fix your location before continuing.
+- At dispatch start, create your own worktree under the repo's committed `.worktrees/` directory and do **all** work (edits, commits, gates, pushes) inside it: from the shared checkout run `git worktree add .worktrees/<slug> -b agent/<slug> origin/main`. Never use `/tmp` (on DSH it is per-invocation — see the DSH adapter) or an improvised `.wt/` path.
+- Before **any** `git` state-changing operation (commit, push, branch, checkout), verify with `git branch --show-current` that it prints `agent/<slug>` inside your worktree. Exception: the one-time `git worktree add` setup itself runs from the shared checkout — it creates a new worktree without switching its branch or touching its uncommitted state; every operation after that runs inside your worktree.
+- Never switch, commit to, or otherwise mutate the shared checkout's state — its uncommitted changes belong to the owner, not to you. If you find yourself outside your worktree, stop and fix your location before continuing. Cleanup is the manager's duty (`bun run worktree:clean` from the main checkout), not yours.
 
 ## Completion criterion
 

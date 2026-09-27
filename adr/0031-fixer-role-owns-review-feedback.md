@@ -17,7 +17,7 @@ Routing thermos review findings back to the original implementer for fix has bee
    - Apply accepted fixes.
    - Keep CI green.
 4. **Rejected items require evidence.** If the fixer rejects a High-priority finding, it must cite a concrete `file:line` mechanism. The manager adjudicates.
-5. **Worktree handoff.** The fixer works in the same PR branch. It either reattaches the original implementer's worktree (`/tmp/wt-<branch>`) or adds its own fresh worktree from the existing branch. The manager owns cleanup after merge/close, per the existing isolation rule.
+5. **Worktree handoff.** The fixer works in the same PR branch. It either reattaches the original implementer's worktree (`.worktrees/<slug>`) or adds its own fresh worktree from the existing branch (`git worktree add .worktrees/<slug> agent/<slug>` — no `-b`). The manager owns cleanup after merge/close — `bun run worktree:clean` run from the main checkout, per the existing isolation rule.
 
 ## Consequences
 

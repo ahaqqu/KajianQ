@@ -1,0 +1,27 @@
+# DSH adapter — dispatching the manager's roles on DSH
+
+Load when running the manager loop on DSH; `SKILL.md` is harness-neutral.
+
+## Spawn
+
+1. **Prompt assembly.** No `subagent_type` exists; `subagent` takes a prompt. Inline the role body verbatim from `.zcode/agents/<role>.md` — a child without it does not carry the role's contract, and a role-file edit that never reaches a dispatch prompt changes nothing. `bun run dsh:prompt --role <role> --task-file <task.md>` (or `--task "<text>"`) strips the frontmatter and emits exactly `## Task` + `## Role definition`, nothing else; pass its stdout to `subagent` unchanged. Per-run authorization goes in the task text, unless the role body carries `## Dispatch authorization`.
+2. **Task text carries:** the task, the Definition of Done, that the implementer owns CI green, the worktree path (`.worktrees/<slug>`, branch `agent/<slug>`), and that the role keeps its own plan. The **subagent todo duty** and **fix-then-re-review trigger** are canonical in `SKILL.md` (step 1; Reliability & supervision) — state them in the prompt and follow them there.
+3. **Continue, don't respawn.** `subagent` runs in the background, returns a durable agent id at once, and delivers the result as a settle notice — read it there, never from a transcript. `send_message(agent_id, …)` continues a running or idle child; a completed child stays resumable, so a red-CI re-dispatch or stall respawn prefers it over a new `subagent` unless the child crashed. Never `subagent_fork` a role dispatch: it inherits the conversation, and the contract must be inlined.
+4. **Todo-duty evidence:** `todo_write` events in the subagent's `~/.dsh/sessions/<project-slug>/<session-id>/session.v3.jsonl.zstd` — `todo/write` events and a moving `todos` projection.
+
+## Model routing
+
+- **Pin → route, by hand.** Children inherit the session model unless the dispatch names one. Strip the pin's surrounding double quotes, normalize by shape, then set `provider: "ollama"`, `model: <id>`, `thoughtLevel:` → `reasoning_effort:`. Shapes: `<uuid>/<id>:cloud` → text after the last `/`, minus `:cloud`; `custom:<uuid>:<id>%3Acloud` → last `:`-segment, `%3A` → `:`, minus `:cloud` — the after-the-last-`/` recipe cannot dispatch this shape.
+- **Two gates.** The provider catalog `llm-pi-ai.providers.ollama.models` in `~/.dsh/settings.yaml`, then `subagent-model-selection.allowedModels` — the hard gate: outside it, `Error: child LLM route "<provider>/<model>" is not allowed for this Session`. `list_subagent_models` reports the hard gate: authoritative for what may be dispatched, incomplete only about the catalog.
+- **A blocked pin fixes the config, never the model.** Declare a missing id in the provider catalog; add a catalog id missing from the allow-list to that allow-list. If neither is possible, the pin or the provider changes — recorded in the role file, never a silent substitution, never an uncommitted working-tree pin.
+- **Pin-check gotcha.** `scripts/dsh-pin-check.mjs` reads quoted `model:` values as `glm-5.3:cloud"`, so every role reports `✗`; that is not a routing failure — check a concrete id with `--check <id>`. No `dsh:preflight` exists in `package.json`. Never `--fix`: it writes the machine-global settings file.
+
+## Workspace
+
+- **In-repo worktrees.** `/tmp` is per-bash-invocation, so a worktree or scratch state there is invisible to the next call. Dispatch implementer-class roles into `.worktrees/<slug>` on branch `agent/<slug>`: `git worktree add .worktrees/<slug> -b agent/<slug> origin/main`, from the main checkout; the fixer reattaches `.worktrees/<slug>`. `.worktrees/` is committed to `.gitignore`. Cleanup: `bun run worktree:clean` from the main checkout (`--dry-run` first; unmerged work kept). Canonical: `SKILL.md` (Workspace isolation).
+- **Review worktree dependencies.** A fresh worktree has no `node_modules`, and workspace symlinks point back to the source checkout, so the suite cannot run there. For a docs/skill/config-only PR, review the diff and state that basis; when verification needs execution, `bun install` in the review worktree or reuse a warm one. Never claim a test run that did not happen.
+
+## Session facts
+
+- **`gh` runs under the manager session's ambient identity** — no identity hook is wired, no role is denied a bare `gh`, and the manager session is never denied.
+- **Approvals disabled, workspace-write policy** — a dispatch, a background job, a commit or a `gh` call needs no per-action approval. Isolation is not harness-provided: it is the role files' worktree rule, which every dispatch must state.
