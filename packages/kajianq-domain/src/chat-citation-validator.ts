@@ -5,6 +5,7 @@ import {
   foldAddressDigits,
   reduceCitationLabel,
   stripInvisibleFormatting,
+  stripInvisibleFormattingWithOffsets,
 } from "./chat-citation-grammar";
 
 /**
@@ -66,15 +67,19 @@ const TRAILING_CITATION_NOISE = /[^\p{L}\p{N}]+$/u;
 
 /**
  * Strip the trailing `(Grade)` suffix the hadith formatter appends. It is
- * reachable only for a label that does **not** begin with a citation grammar —
- * a full Kitab chunk label (`Al-Umm, … , Jilid 1, Hal. 102 (Sahih)`) is the
- * shape it exists for. Every grammar-initial label is reduced to its grammar's
- * address before this pass is reached, and that reduction already removes the
- * grade: on the chunk side `formatHadithCitation` writes
- * `HR. X no. N (Grade)`, whose address is the number word after `no.`, so
- * `reduceCitationLabel("HR. Ibnu Majah no. 224 (Dhaif)")` returns
- * `{address: "HR. Ibnu Majah no. 224", keepWhole: false}` and this anchored
- * pass never sees it.
+ * reachable for a label that does **not** begin with a citation grammar — a
+ * full Kitab chunk label (`Al-Umm, … , Jilid 1, Hal. 102 (Sahih)`) is the shape
+ * it exists for — **or for a grammar-initial label that is kept whole**: a
+ * dash-joined compound reduces to itself, so this pass is what removes the
+ * grade from `HR. Bukhari no. 5010—5011 (Dhaif)` (executed). Every other
+ * grammar-initial label is reduced to its grammar's address before this pass is
+ * reached, and that reduction already removes the grade: on the chunk side
+ * `formatHadithCitation` writes `HR. X no. N (Grade)`, whose address is the
+ * number word after `no.`, so `reduceCitationLabel("HR. Ibnu Majah no. 224
+ * (Dhaif)")` returns `{address: "HR. Ibnu Majah no. 224", keepWhole: false}` and
+ * this anchored pass never sees it. The earlier rewording stopped at "does not
+ * begin with a citation grammar", which the kept-whole compound falsifies
+ * (review B2); both paths are executed in the unit test.
  *
  * On the draft side only the **spaced** form is out of reach: the grammar's
  * number token stops at whitespace, so `HR. X no. 573 (Sahih)` and
@@ -180,17 +185,41 @@ export function citationSpansIn(text: string): { start: number; end: number; lab
     .sort((a, b) => a.start - b.start);
 }
 
-/** The one grammar scan behind both citation-list exports (first-seen wins). */
+/**
+ * The one grammar scan behind both citation-list exports (first-seen wins).
+ *
+ * The scan reads the **stripped** text, not the raw draft (review A3): the
+ * ungrounded direction used to match raw characters while the comparison form
+ * dropped `\p{Cf}`, so a fabricated `HR. Bukhari no\u200c. 99999` was invisible
+ * to the gate and passed unseen. Both sides now read the same characters, and
+ * {@link stripInvisibleFormattingWithOffsets} carries the offset policy that
+ * keeps each span pointing at where the draft wrote it.
+ *
+ * **Recorded residual (#264 review A3).** Two spellings stay outside every
+ * grammar and so still pass unseen — the fail-open direction the digit posture
+ * on {@link CITATION_GRAMMARS} promises not to take. They are recorded, not
+ * closed, because closing either is a grammar widening:
+ *
+ * - `QS9:99` (no separator between marker and address) — round-3 A1 required
+ *   one, and {@link canonicalizeCitationSpelling} now mirrors that exclusion
+ *   instead of folding a spelling the scan cannot see (review A2);
+ * - `HR. Bukhari no 99999` (dot-less address marker) — the hadith pattern
+ *   requires `no.`.
+ *
+ * Both rows are pinned in the unit test so the next hunt does not re-find them.
+ */
 function scanCitations(text: string): { start: number; end: number; label: string }[] {
   const found: { start: number; end: number; label: string }[] = [];
   const seen = new Set<string>();
+  const { text: scanned, offsets } = stripInvisibleFormattingWithOffsets(text);
   for (const grammar of CITATION_GRAMMARS) {
-    for (const match of text.matchAll(grammar.pattern())) {
+    for (const match of scanned.matchAll(grammar.pattern())) {
       const label = normalizeCitationLabel(match[0]);
       if (label === "" || seen.has(label)) continue;
       seen.add(label);
-      const start = match.index;
-      found.push({ start, end: start + match[0].length, label });
+      const start = offsets[match.index] ?? text.length;
+      const end = offsets[match.index + match[0].length] ?? text.length;
+      found.push({ start, end, label });
     }
   }
   return found;

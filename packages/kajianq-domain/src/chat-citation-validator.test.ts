@@ -3,10 +3,12 @@ import type { Chunk } from "@app/rag-core";
 import {
   citationCandidatesIn,
   citationLabelsOf,
+  citationMatchText,
   citationSpansIn,
   normalizeCitationLabel,
   validateCitations,
 } from "./chat-citation-validator";
+import { CITATION_GRAMMARS, reduceCitationLabel } from "./chat-citation-grammar";
 
 /**
  * The deterministic citation validator (the #10 trust invariant). These tests
@@ -247,6 +249,51 @@ describe("validateCitations — grounded direction", () => {
     expect(sibling.ungrounded).toEqual(["HR. Bukhari no. 5010"]);
   });
 
+  it("scans the stripped text, so glue cannot hide a fabricated citation (A3)", () => {
+    // The strip used to run only inside normalizeCitationLabel, AFTER the scan
+    // had matched the raw draft: a `\p{Cf}` at a grammar-structural position
+    // made the whole citation invisible, so a FABRICATED label passed the gate
+    // unseen — the fail-open direction, on the product's #1 risk. The scan now
+    // reads the same characters the comparison side does.
+    expect(
+      validateCitations("HR. Bukhari no\u200c. 99999 menjelaskan", [chunk("HR. Bukhari no. 5010")]),
+    ).toEqual({ grounded: [], ungrounded: ["HR. Bukhari no. 99999"] });
+    expect(citationCandidatesIn("QS\u200c. 2:255 dan QS. 2:\u200c255")).toEqual(["QS. 2:255"]);
+    // The grounded direction reads the same characters, so the strip does not
+    // refuse the citation it just made visible.
+    expect(
+      validateCitations("Lihat HR. Bukhari no\u200c. 5010 lanjut", [chunk("HR. Bukhari no. 5010")]),
+    ).toEqual({ grounded: ["HR. Bukhari no. 5010"], ungrounded: [] });
+    // Spans still point where the draft wrote the citation: the glue sits
+    // inside the masked span (its offset is inside [start, end)).
+    expect(citationSpansIn("Lihat QS\u200c. 2:255 ya")).toEqual([
+      { start: 6, end: 16, label: "QS. 2:255" },
+    ]);
+    expect(citationSpansIn("Lihat QS. 2:255 ya")).toEqual([
+      { start: 6, end: 15, label: "QS. 2:255" },
+    ]);
+  });
+
+  it("records the grammar-invisible spellings that stay outside every grammar (A3 residual)", () => {
+    // Recorded, not closed, and pinned here so the next hunt does not re-find
+    // them (the reviewer's "at minimum"). These two spellings match no grammar,
+    // so the scan cannot see them at all and a FABRICATED one passes the gate
+    // unseen — the fail-open direction the digit posture on CITATION_GRAMMARS
+    // promises not to take. Closing either is a grammar widening (a third
+    // hand-synced spelling rule, and for `QS9:99` a reversal of the separator
+    // round-3 A1 deliberately required), so it is stated in the PR body
+    // instead of smuggled in here:
+    expect(citationCandidatesIn("QS9:99")).toEqual([]);
+    expect(citationCandidatesIn("HR. Bukhari no 99999")).toEqual([]);
+    expect(validateCitations("QS9:99 menjelaskan", [chunk("QS. 2:255")])).toEqual({
+      grounded: [],
+      ungrounded: [],
+    });
+    expect(
+      validateCitations("HR. Bukhari no 99999 menjelaskan", [chunk("HR. Bukhari no. 5010")]),
+    ).toEqual({ grounded: [], ungrounded: [] });
+  });
+
   it("folds the fullwidth digit block, the one \\p{Nd} script a label can render (#264 item 5)", () => {
     // Fullwidth digits are the same number, so the fold grounds them instead
     // of leaving the citation invisible (Quran) or refused (hadith).
@@ -307,6 +354,65 @@ describe("validateCitations — grounded direction", () => {
     expect(citationSpansIn("Lihat QS. 2:255—256 ya")).toEqual([
       { start: 6, end: 19, label: "QS. 2:255—256" },
     ]);
+  });
+
+  it("keeps the glued Quran compound whole too — the item-4 hole, closed for glue (A1)", () => {
+    // #264 review A1: the plain form refuses, but one invisible format
+    // character between the verse and the dash used to stop the pattern's dash
+    // tail at the first number — so `QS. 2:255\u200c—256` grounded on the first
+    // verse, with only `2:255` retrieved AND with both, while the plain form
+    // refuses in both cases. The tail tolerates `\p{Cf}` on either side of the
+    // dash, so every glued spelling now behaves exactly like the plain one.
+    const onlyFirst = [chunk("QS. 2:255")];
+    const both = [chunk("QS. 2:255"), chunk("QS. 2:256")];
+    for (const glued of [
+      "QS. 2:255\u200c—256", // before the dash: the fail-open the review found
+      "QS. 2:255—\u200c256", // after the dash
+      "QS. 2:255\u200c—\u200c256",
+      "QS. 2:255—2\u200c56", // inside the second number: truncates, refuses
+    ]) {
+      expect(normalizeCitationLabel(glued), glued).toBe("QS. 2:255—256");
+      expect(validateCitations(`Lihat ${glued} lanjut`, onlyFirst).ungrounded, glued).toEqual([
+        "QS. 2:255—256",
+      ]);
+      expect(validateCitations(`Lihat ${glued} lanjut`, both).ungrounded, glued).toEqual([
+        "QS. 2:255—256",
+      ]);
+    }
+    // The plain spelling is the reference every glued one now matches.
+    expect(validateCitations("Lihat QS. 2:255—256 lanjut", onlyFirst).ungrounded).toEqual([
+      "QS. 2:255—256",
+    ]);
+    expect(validateCitations("Lihat QS. 2:255—256 lanjut", both).ungrounded).toEqual([
+      "QS. 2:255—256",
+    ]);
+    // The glued span covers the whole compound too, so the pre-gate mask does
+    // not leave the second verse outside it.
+    expect(citationSpansIn("Lihat QS. 2:255\u200c—256 ya")).toEqual([
+      { start: 6, end: 20, label: "QS. 2:255—256" },
+    ]);
+  });
+
+  it("keeps the glued compound whole in the grammar itself, not only via the strip (A1)", () => {
+    // The scan and the flatten step both read stripped text today, so the rows
+    // above would pass even without the tail's `\p{Cf}` tolerance — which is
+    // exactly why this row pins the GRAMMAR's own contract instead: run on RAW
+    // text it still takes the whole compound. That is the difference between
+    // "A1 is closed because two callers happen to strip first" and "the pattern
+    // cannot reopen the hole for a caller that forgets to". Dropping either
+    // `\p{Cf}*` from the tail reddens this row (executed by mutation).
+    const quranMatch = (text: string) => CITATION_GRAMMARS[0]!.pattern().exec(text);
+    for (const glued of [
+      "QS. 2:255\u200c—256",
+      "QS. 2:255—\u200c256",
+      "QS. 2:255\u200c—\u200c256",
+    ]) {
+      // A fresh regex per call, deliberately: a shared `/g` matcher would carry
+      // `lastIndex` and the second call would miss.
+      const match = quranMatch(glued);
+      expect(match?.[0], glued).toBe(glued);
+      expect(CITATION_GRAMMARS[0]!.addressOf(match!), glued).toBe("QS. 2:255");
+    }
   });
 
   it("records why a comma- or space-separated second verse is NOT a compound (#264 item 4)", () => {
@@ -690,23 +796,49 @@ describe("normalizeCitationLabel", () => {
     expect(normalizeCitationLabel("HR. Bukhari no. 5010：")).toBe("HR. Bukhari no. 5010");
   });
 
-  it("strips the grade parenthetical the chunk formatter appends", () => {
-    // This anchored pass is reachable only for a label that does NOT begin
-    // with a citation grammar — a full Kitab label is the shape it exists for.
-    // The hadith chunk form `HR. X no. N (Grade)` never reaches it: the
-    // grammar-address reduction removes the grade first, because the address
-    // ends at the number word after `no.` (#264 item 2 — the earlier
-    // docstring claimed this pass was what removed it on the chunk side).
-    // The glued draft span `HR. X no. N(Grade)` is reduced the same way — see
-    // the glued-grade span test above (B2).
+  it("does not fold the marker-address spelling the grammar excludes (A2)", () => {
+    // #264 review A2: the QS marker rule used to fold `QS2:255` to `QS. 2:255`
+    // even though no grammar matches that spelling — so the comparison form
+    // grounded a citation the scan could not see, asymmetric with the hadith
+    // `no 5010` case. The rule now mirrors the separator the grammar makes
+    // mandatory (a dot or a space), so both sides of the comparison agree and
+    // the fold never rewrites a spelling the scan cannot read.
+    expect(normalizeCitationLabel("QS2:255")).toBe("QS2:255");
+    expect(citationMatchText("di QS2:255 ya")).toBe("di QS2:255 ya");
+    expect(citationCandidatesIn("QS2:255")).toEqual([]);
+    expect(validateCitations("Ayat Kursi ada di QS2:255", [chunk("QS. 2:255")]).grounded).toEqual(
+      [],
+    );
+    // The spellings the grammar DOES accept keep folding, so the false refusal
+    // #264 item 3 closed stays closed.
+    expect(normalizeCitationLabel("QS 2:255")).toBe("QS. 2:255");
+    expect(normalizeCitationLabel("Q.S. 2:255")).toBe("QS. 2:255");
+    expect(normalizeCitationLabel("Q.S.2:255")).toBe("QS. 2:255");
+  });
+
+  it("strips the grade parenthetical on both reachable paths, executed (B2)", () => {
+    // This anchored pass is reachable for a label that does NOT begin with a
+    // citation grammar — a full Kitab label is the shape it exists for — OR for
+    // a grammar-initial label that is kept WHOLE, where it is the grade remover.
+    // The earlier wording stopped at the first half and the kept-whole compound
+    // falsified it (review B2); the source docstring now names both paths, and
+    // both are executed here.
     expect(normalizeCitationLabel("HR. Ibnu Majah no. 224 (Dhaif)")).toBe("HR. Ibnu Majah no. 224");
     expect(normalizeCitationLabel("HR. Ibnu Majah no. 224 (Dhaif) ")).toBe(
       "HR. Ibnu Majah no. 224",
     );
-    // The reachable path, pinned: a non-grammar-initial label keeps the
-    // lexical strip.
+    // Path 1 — non-grammar-initial: the lexical strip owns the label.
     expect(normalizeCitationLabel("Al-Umm, Imam Syafi'i, Jilid 1, Hal. 102 (Sahih)")).toBe(
       "Al-Umm, Imam Syafi'i, Jilid 1, Hal. 102",
+    );
+    // Path 2 — grammar-initial but kept whole: the reduction keeps the whole
+    // label, so it does NOT remove the grade and this pass does (B2).
+    expect(reduceCitationLabel("HR. Bukhari no. 5010—5011 (Dhaif)")).toEqual({
+      address: "HR. Bukhari no. 5010",
+      keepWhole: true,
+    });
+    expect(normalizeCitationLabel("HR. Bukhari no. 5010—5011 (Dhaif)")).toBe(
+      "HR. Bukhari no. 5010—5011",
     );
   });
 
