@@ -15,8 +15,10 @@ import { execFileSync, spawnSync } from "node:child_process";
 
 /**
  * Fixture harness for the `bun run worktree:clean` cases (#229) — the plumbing
- * behind `worktree-cleanup.test.mjs`, split out so the case file stays
- * case-only and a second case file can share it.
+ * behind every `worktree-cleanup*.test.mjs` case file, split out so the case
+ * files stay case-only: `worktree-cleanup.test.mjs` (fixture behaviour),
+ * `worktree-cleanup-isolation.test.mjs` (the real-checkout canary) and
+ * `worktree-cleanup-destruction.test.mjs` (the deletion boundary).
  *
  * Every run is hermetic: the script resolves its root from
  * `git rev-parse --show-toplevel` of its cwd, so each case builds a throwaway
@@ -73,11 +75,66 @@ function callLog(fx) {
 
 // Run and reject any gh lookup the test did not declare. The fixture gh records
 // those and exits non-zero; the script would swallow that as "no PR", so the
-// assertion here is what makes an undeclared state a loud failure.
-function runClean(fx, args = []) {
-  const result = fx.run(args);
+// assertion here is what makes an undeclared state a loud failure. `env` adds
+// variables to the run only — e.g. git's own trace target, see `gitCommands`.
+function runClean(fx, args = [], env = {}) {
+  const result = fx.run(args, env);
   expect(fx.unexpectedGhCalls()).toBe("");
   return result;
+}
+
+// The script's per-entry line grammar — its de-facto output contract. One line
+// per entry the run examined: `removed <slug> (…)`, `kept  <slug>: …`,
+// `would remove <slug> (…)`. Parsed here, beside `callLog`, so every case file
+// reads the contract the same way; `summaryCounts` below is what keeps the
+// parse honest, so an unknown future shape reddens a case instead of silently
+// shrinking what it pins.
+function entryLines(stdout) {
+  return stdout.split("\n").flatMap((line) => {
+    const match = /^(removed|kept|would remove) +([^\s:]+)/.exec(line);
+    return match ? [{ verb: match[1], slug: match[2] }] : [];
+  });
+}
+
+function namedSlugs(stdout) {
+  return entryLines(stdout).map((entry) => entry.slug);
+}
+
+function removedSlugs(stdout) {
+  return entryLines(stdout)
+    .filter((entry) => entry.verb === "removed")
+    .map((entry) => entry.slug);
+}
+
+// The run's own totals, from the `done: X removed, Y kept` line. Throws — with
+// the whole output — when the shape is absent, so an early exit that printed no
+// summary can never satisfy an accounting assertion by default.
+function summaryCounts(stdout) {
+  const match = /^done: (\d+) removed, (\d+) kept(?: \(dry run\))?$/m.exec(stdout);
+  if (!match) throw new Error(`no "done:" summary line in the run's output:\n${stdout}`);
+  return { removed: Number(match[1]), kept: Number(match[2]) };
+}
+
+// Every git command the run under test issued, from a trace file written by
+// git's own trace2 event target (`GIT_TRACE2_EVENT`). Each entry is the argv
+// after the program name plus the repository or worktree git discovered for it
+// — observed at git's boundary, so it depends on nothing another dispatch can
+// mutate. Events are grouped by git's session id: one repository discovery
+// (`def_repo`) per command, when that command needed a repository at all.
+function gitCommands(tracePath) {
+  const commands = new Map();
+  for (const line of readFileSync(tracePath, "utf8").split("\n")) {
+    if (!line) continue;
+    const event = JSON.parse(line);
+    const command = commands.get(event.sid) ?? { args: [], repo: null };
+    if (event.event === "start") {
+      const argv = event.argv ?? [];
+      command.args = /(^|\/)git$/.test(argv[0] ?? "") ? argv.slice(1) : argv;
+    }
+    if (event.event === "def_repo") command.repo = event.worktree ?? null;
+    commands.set(event.sid, command);
+  }
+  return [...commands.values()].filter((command) => command.args.length > 0);
 }
 
 function makeFixture() {
@@ -96,11 +153,11 @@ function makeFixture() {
   git(dir, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
 
   const wtPath = (slug) => join(dir, ".worktrees", slug);
-  const run = (args = []) =>
+  const run = (args = [], env = {}) =>
     spawnSync("bun", [SCRIPT, ...args], {
       cwd: dir,
       encoding: "utf8",
-      env: { ...GIT_ENV, PATH: `${join(dir, "bin")}:${process.env.PATH}` },
+      env: { ...GIT_ENV, PATH: `${join(dir, "bin")}:${process.env.PATH}`, ...env },
     });
 
   function installGh({ prs = {}, noPr = [] } = {}) {
@@ -189,4 +246,17 @@ esac
   };
 }
 
-export { callLog, git, gitOk, MAIN_ROOT, makeFixture, REAL_WORKTREES, runClean };
+export {
+  callLog,
+  git,
+  gitCommands,
+  gitOk,
+  MAIN_ROOT,
+  makeFixture,
+  namedSlugs,
+  REAL_WORKTREES,
+  removedSlugs,
+  runClean,
+  SCRIPT,
+  summaryCounts,
+};
