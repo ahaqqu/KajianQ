@@ -182,5 +182,8 @@ describe("generated OpenAPI doc", () => {
     expect(message?.maxLength).toBe(CHAT_MESSAGE_MAX_LENGTH);
     expect(message?.description).toContain(`${CHAT_MESSAGE_MAX_LENGTH} characters`);
     expect(message?.description).toContain("invalid_request");
+    // The trim/length rule is part of the documented surface too (#256 C1):
+    // a client must not assume a body that trims to the ceiling is accepted.
+    expect(message?.description).toContain("no trim");
   });
 });

@@ -59,6 +59,33 @@ describe("ChatRequestSchema message ceiling (#256)", () => {
   it("keeps the empty-message floor (minLength still rejects a blank question)", () => {
     expect(parseMessage(0)).toBe(false);
   });
+
+  /**
+   * The trim/length semantics are surprising enough to be decisions, not
+   * accidents (thermo-review C1): validation never trims, so the bound applies
+   * to the raw body. Both halves are pinned here so a future "helpful" trim
+   * cannot land silently in either direction.
+   */
+  it("measures the raw string: a body that would only trim to the ceiling is rejected", () => {
+    expect(
+      v.safeParse(ChatRequestSchema, { message: "a".repeat(CHAT_MESSAGE_MAX_LENGTH) + " " })
+        .success,
+    ).toBe(false);
+  });
+
+  it("accepts a whitespace-only body inside the ceiling (pre-existing minLength(1) decides)", () => {
+    // The composer trims before sending, so the UI cannot build one; a direct
+    // API client can, and it runs the pipeline — bounded by the ceiling, never
+    // by a hidden normalization the client cannot see.
+    expect(v.safeParse(ChatRequestSchema, { message: " " }).success).toBe(true);
+    expect(
+      v.safeParse(ChatRequestSchema, { message: " ".repeat(CHAT_MESSAGE_MAX_LENGTH) }).success,
+    ).toBe(true);
+    // …and the ceiling still bounds it: one more whitespace unit is over.
+    expect(
+      v.safeParse(ChatRequestSchema, { message: " ".repeat(CHAT_MESSAGE_MAX_LENGTH + 1) }).success,
+    ).toBe(false);
+  });
 });
 
 describe("ChatCitationSchema", () => {

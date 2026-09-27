@@ -19,6 +19,12 @@ import * as v from "valibot";
  * cutting the observed 20,000-character probe by an order of magnitude. The
  * exact value is an owner decision recorded in the issue: adjusting it is a
  * one-line edit here plus the boundary test that pins it.
+ *
+ * Length is measured in UTF-16 code units on the RAW string, before any trim
+ * (nothing in the request path trims): the bound is on what the client
+ * actually sends, so it cannot be met by whitespace a later stage would strip.
+ * `ChatRequestSchema.message`'s description states the same rule on the API's
+ * published surface, and the boundary tests pin both halves of it.
  */
 export const CHAT_MESSAGE_MAX_LENGTH = 2000;
 
@@ -28,7 +34,7 @@ export const ChatRequestSchema = v.object({
     v.minLength(1),
     v.maxLength(CHAT_MESSAGE_MAX_LENGTH),
     v.description(
-      `The user's question (1 to ${CHAT_MESSAGE_MAX_LENGTH} characters). An over-length message is rejected with 400 invalid_request before any pipeline stage runs.`,
+      `The user's question (1 to ${CHAT_MESSAGE_MAX_LENGTH} characters), measured in UTF-16 code units on the raw string with no trim — so a body that would only trim to the ceiling is still rejected, and a whitespace-only body inside the ceiling is accepted. An over-length message is rejected with 400 invalid_request before any pipeline stage runs.`,
     ),
   ),
   /** Existing chat session to append to; absent = create a new session. */
