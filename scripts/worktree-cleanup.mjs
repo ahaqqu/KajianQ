@@ -44,12 +44,15 @@
 // .worktrees/ — a value that resolves anywhere else is refused before any git
 // call — unlocking never happens automatically, and an --unlock run never
 // sweeps. The sweep itself is gated: a destructive run requires
-// --no-active-dispatches. Without it a run that would remove something prints
-// those verdict lines (`would remove <slug> (<reason>)`) and exits non-zero
-// having removed nothing, so forgetting the flag destroys nothing; a gated run
-// with zero candidates withholds nothing, says so, and exits 0 — a no-op is not
-// a refusal. --dry-run needs no acknowledgement and still exits 0. The liveness
-// heuristics #239 rejected
+// --no-active-dispatches. Without it every removal a sweep would make is
+// withheld: the run prints those verdict lines (`would remove <slug>
+// (<reason>)`), prints no `done:` line, and exits non-zero having removed
+// nothing, so forgetting the flag destroys nothing; a gated run with nothing to
+// remove withholds nothing, so it is not a refusal — it prints `nothing to
+// remove: --no-active-dispatches is only needed when there is something to
+// remove`, then the ordinary `done: 0 removed, N kept`, and exits 0. --dry-run
+// needs no acknowledgement and still exits 0. The liveness heuristics #239
+// rejected
 // (worktree admin-dir age, file mtimes, HEAD reflog) cannot separate a dispatch
 // reattached to a surviving squash-merged branch from deferred cleanup; the
 // declaration is the discriminator, and the gate covers the window before a

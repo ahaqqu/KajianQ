@@ -55,11 +55,16 @@ and a mechanical operator gate on the sweep.**
    PR state, `--include-unstarted` and `--include-detached`. `git worktree
 remove` refuses a locked tree, so the keep states the tool boundary rather
    than a guess about branch state.
-2. **The gate — `--no-active-dispatches` is required to destroy.** Without it a
-   run removes nothing: it prints the same verdict lines a sweep would act on
-   (`would remove <slug> (<reason>)`), names the flag and why it is required on
-   stderr, and exits non-zero. `--dry-run` needs no acknowledgement and still
-   exits 0. Forgetting the flag destroys nothing.
+2. **The gate — `--no-active-dispatches` is required to destroy.** Without it,
+   every removal a sweep would make is withheld: the run prints the same verdict
+   lines a sweep would act on (`would remove <slug> (<reason>)`), names the flag
+   and why it is required on stderr (`refusing to remove N worktree(s): pass
+--no-active-dispatches once you have confirmed no dispatch is active`), exits
+   non-zero, and prints no `done:` line. A gated run with nothing to remove
+   withholds nothing and so refuses nothing: it prints `nothing to remove:
+--no-active-dispatches is only needed when there is something to remove`,
+   then the ordinary `done: 0 removed, N kept`, and exits 0. `--dry-run` needs
+   no acknowledgement and still exits 0. Forgetting the flag destroys nothing.
 3. **The remedy — `--unlock <slug>`, repeatable, never automatic.** It runs
    `git worktree unlock .worktrees/<slug>`, prints the outcome, and exits
    non-zero when the slug is not a locked worktree. It never sweeps (the closing
@@ -151,7 +156,9 @@ remove` refuses a locked tree, so the keep states the tool boundary rather
   lookup at all; the same entry swept once unlocked; a lock appearing mid-run
   (through the fake `gh`'s side effect) kept with the branch intact; a withheld
   sweep printing the same verdicts and removing nothing with a non-zero exit,
-  with `--dry-run` still exiting 0; `--unlock` clearing only the named entry,
+  with `--dry-run` still exiting 0; a gated run with nothing to remove printing
+  the no-op wording and exiting 0, on the same fixture as the refusal;
+  `--unlock` clearing only the named entry,
   repeatably, never sweeping; `--unlock` failing visibly for an unknown and an
   unlocked slug and for a missing value; `--dry-run --unlock` reporting without
   clearing.
