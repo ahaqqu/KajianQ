@@ -66,9 +66,26 @@ const frameOf = (labels: string[]): CitationFrameLike => ({
 });
 
 /**
- * One scripted answer for a question. `chunks` are the source-type labels the
- * retrieval event carries (the chunk id IS the label, so `sourceTypeOf` is the
- * identity); `events` are extra trace events after the retrieval.
+ * The chunk ids that satisfy a question's expected source types. The ids are
+ * opaque to the engine — they carry the question id and the expected type's
+ * index — and `sourceTypeOf` below resolves them back from the fixture, so the
+ * eval test never spells a domain source-type label (the boundary gate forbids
+ * that vocabulary in an engine package).
+ */
+const chunksFor = (question: GoldenQuestion): string[] =>
+  question.expectedSourceTypes.map((_, index) => `src-${question.id}-${index}`);
+
+/** Resolve one opaque chunk id back to the fixture's expected source type. */
+function sourceTypeOf(chunkId: string): string | undefined {
+  const match = /^src-(.+)-(\d+)$/.exec(chunkId);
+  if (match === null) return undefined;
+  const question = FIXTURE.questions.find((q) => q.id === match[1]);
+  return question?.expectedSourceTypes[Number(match[2])];
+}
+
+/**
+ * One scripted answer for a question. `chunks` are opaque chunk ids (see
+ * `chunksFor`); `events` are extra trace events after the retrieval.
  */
 type Answer = {
   text: string;
@@ -116,7 +133,7 @@ function makeHarness(script: Record<string, Answer>) {
     transport,
     traces,
     ledger,
-    sourceTypeOf: (chunkId) => chunkId,
+    sourceTypeOf,
     refusalMarkers: [REFUSAL],
     budget: new Budget(undefined),
     label: "refusal-acceptance-test",
@@ -144,7 +161,6 @@ describe("trap acceptance: refuse, or ground it (#250)", () => {
       [GROUNDED_RENDERING.id]: {
         text: GROUNDED_DECLINE,
         citations: frameOf(["QS. 55:1"]),
-        chunks: ["quran"],
       },
     });
     const result = await runGoldenSet(setOf([HOUR, GROUNDED_RENDERING]), deps);
@@ -179,7 +195,6 @@ describe("trap acceptance: refuse, or ground it (#250)", () => {
         [GROUNDED_RENDERING.id]: {
           text: GROUNDED_DECLINE,
           citations: frameOf(["QS. 55:1"]),
-          chunks: ["quran"],
         },
       });
       const result = await runGoldenSet(setOf([HOUR, GROUNDED_RENDERING]), deps);
@@ -229,7 +244,7 @@ describe("trap acceptance: refuse, or ground it (#250)", () => {
       [DIVINE_NAME.id]: {
         text: REFUSAL,
         citations: frameOf([]),
-        chunks: ["quran"],
+        chunks: chunksFor(DIVINE_NAME),
         events: [{ kind: "refusal", stage: "generator" }],
       },
     });
@@ -247,7 +262,6 @@ describe("trap acceptance: refuse, or ground it (#250)", () => {
       [HOUR.id]: {
         text: `${DATED_ANSWER} Dalilnya: QS. 55:1.`,
         citations: frameOf(["QS. 55:1"]),
-        chunks: ["quran"],
       },
     });
     const result = await runGoldenSet(setOf([HOUR]), deps);
@@ -257,7 +271,11 @@ describe("trap acceptance: refuse, or ground it (#250)", () => {
 
   it("leaves the neighbouring golden questions' outcomes unchanged in the same run", async () => {
     const { deps, saved } = makeHarness({
-      [DIVINE_NAME.id]: { text: "… QS. 1:1 …", citations: frameOf(["QS. 1:1"]), chunks: ["quran"] },
+      [DIVINE_NAME.id]: {
+        text: "… QS. 1:1 …",
+        citations: frameOf(["QS. 1:1"]),
+        chunks: chunksFor(DIVINE_NAME),
+      },
       [OTHER_REFUSAL.id]: {
         text: REFUSAL,
         citations: frameOf([]),

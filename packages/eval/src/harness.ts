@@ -208,28 +208,16 @@ export async function runGoldenSet(set: GoldenSet, deps: HarnessDeps): Promise<H
 
 /**
  * Score one question from its answer text, trace events, and — when the
- * transport carried one — the server's citations frame. Citation validity
- * prefers the frame (ADR-0040: a label in it is grounded by construction),
- * then the trace's reviewer `grounded` labels, then the text through the
- * injected citation grammar (see `citationValidity`).
+ * transport carried one — the server's citations frame (see `citationValidity`).
  *
- * The behavior dimension follows the trap rule (#250, ADR-0046,
- * `behaviorAccepted`): an `answer` question must not be refused; a `refuse`
- * question (a trap) is accepted on a refusal **or** on a grounded answer — one
- * that carries at least one citation the frame or the trace's `grounded`
- * labels verify (`groundedAnswer`). A non-refusal with no verified citation
- * fails, and a grounded-but-dated answer passes: the date prohibition is
- * prompt-enforced only, recorded on `behaviorAccepted` and in ADR-0046. The
- * frame's own refusal marker (`refusal: true`) plays no part here — a refusal
- * is accepted on the refusal signal, and a refusal carries no citations by
- * design.
+ * The behavior dimension follows the trap rule (#250, ADR-0046): an `answer`
+ * question must not be refused; a `refuse` question is accepted on a refusal
+ * **or** on a grounded answer (`behaviorAccepted` / `groundedAnswer`). A
+ * non-refusal with no verified citation still fails, and a grounded-but-dated
+ * answer passes — the date prohibition is prompt-enforced only (ADR-0046).
  *
- * When the caller names the scope-expansion origin label
- * (`deps.expansionOrigin`), the outcome also carries what the expansion
- * contributed (C1): the number of expansion-origin refs and the recall the
- * fused refs alone would have scored. `retrievalRecall` itself stays exactly
- * what it always was — the metric is not redefined; the provenance is added
- * beside it so the loosening is visible instead of inferred.
+ * `deps.expansionOrigin` adds the expansion's contribution beside the
+ * unchanged metric (C1), so the loosening is visible instead of inferred.
  */
 export function scoreQuestion(
   question: GoldenQuestion,
