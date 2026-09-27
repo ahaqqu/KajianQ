@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Trace } from "@app/contracts";
+import * as v from "valibot";
+import { ChatTraceFrameSchema, type Trace } from "@app/contracts";
 import type { DocChildById } from "@app/infra";
 import { chunkFetcher, deriveTraceFrame, traceChunkIds, traceChunkRefs } from "./chat-trace";
 
@@ -14,7 +15,13 @@ import { chunkFetcher, deriveTraceFrame, traceChunkIds, traceChunkRefs } from ".
 
 /** A trace with the given retrieval refs plus extra events. */
 function traceOf(
-  refs: { id: string; score?: number; rankDense?: number; rankSparse?: number }[],
+  refs: {
+    id: string;
+    score?: number;
+    rankDense?: number;
+    rankSparse?: number;
+    origin?: string;
+  }[],
   extra: Trace["events"] = [],
 ): Trace {
   return {
@@ -171,6 +178,41 @@ describe("deriveTraceFrame — the technical layer", () => {
       models: ["model-a"],
     });
     expect("intent" in frame.technical).toBe(false);
+  });
+
+  it("projects a chunk ref's `origin` label into the technical layer (A1)", () => {
+    // An expansion chunk has no score and no channel ranks, so this label is
+    // the only thing on the frame that says why the surah's verses are here.
+    const frame = derive(
+      traceOf([
+        { id: "c1", score: 0.5, rankDense: 1 },
+        { id: "c7", origin: "scope_expansion" },
+      ]),
+      [chunkRow("c1", "Al-Muwatta"), chunkRow("c7", "QS. 1")],
+    );
+    expect(frame.technical.chunks).toEqual([
+      { id: "c1", source: "Al-Muwatta", score: 0.5, rankDense: 1 },
+      { id: "c7", source: "QS. 1", origin: "scope_expansion" },
+    ]);
+    // The top layer stays plain language: a source consulted, no machinery.
+    expect(frame.sources).toEqual([
+      { id: "c1", source: "Al-Muwatta" },
+      { id: "c7", source: "QS. 1" },
+    ]);
+  });
+
+  it("derives a pre-change frame (no `origin` anywhere) that still parses against the contract", () => {
+    // The compatibility pin A1 asks for: a trace persisted before the field
+    // existed renders the same frame it always did — no origin key appears,
+    // and the frame the route parses is the contract's own shape.
+    const frame = derive(traceOf([{ id: "c1", score: 0.5, rankDense: 1, rankSparse: 2 }]), [
+      chunkRow("c1", "Al-Baqarah"),
+    ]);
+    expect("origin" in (frame.technical.chunks[0] ?? {})).toBe(false);
+    expect("origin" in (frame.sources[0] ?? {})).toBe(false);
+    const parsed = v.safeParse(ChatTraceFrameSchema, frame);
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.output.technical.chunks[0]?.origin).toBeUndefined();
   });
 });
 
