@@ -433,6 +433,30 @@ error while `/v1/health` and anonymous session minting stay green — so the
 deploy smokes alone will not tell you they are missing. Set them before you
 deploy.
 
+The serving process reports its provider posture **once at startup**, as a
+`providers.posture` line in `journalctl -u kajianq-api`:
+
+- `reviewer: "wired"` / `"not_wired"` — whether the reviewer role resolved at
+  all. `not_wired` means **every chat call answers 503** (the cross-vendor
+  faithfulness check is mandatory, so the route fails closed), and
+  `missingKeys` names the env var to bind — normally `DEEPSEEK_API_KEY`.
+- `preGate: "active"` / `"not_wired"` — whether the reviewer pre-gate
+  (`JEV_API_KEY`, #168 / ADR-0042) is wired. `not_wired` means the reviewer
+  runs on every answer, exactly as before adoption; it is fail-open, so
+  nothing else will complain.
+- `missingKeys` — the env var **names** whose keys were absent (including the
+  optional `JEV_API_KEY`), i.e. which key to bind.
+- `ineligibleKeys` — decision candidates the personal-data posture dropped
+  (ADR-0043), keyed or not: `resolveDecider` filters on personal-data
+  eligibility _before_ it checks the key, so an unkeyed ineligible candidate is
+  listed here too. It is not a missing key — the vendor may not carry the
+  pre-gate's claim spans.
+
+Names only: no secret value is ever printed. Read the line after a deploy or
+restart (`journalctl -u kajianq-api -n 50`) before concluding the pre-gate is
+on — a bound key in `api.env` is not by itself proof the serving process
+received it.
+
 Two more values are easy to overlook and both are load-bearing:
 
 - `KAJIANQ_WEB_ROOT=/srv/kajianq/web` — without it, the asset handler's default

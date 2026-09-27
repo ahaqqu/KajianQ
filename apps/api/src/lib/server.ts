@@ -1,7 +1,8 @@
-import { createLogger } from "@app/infra";
+import { createLogger, type Logger } from "@app/infra";
 import type { Hono } from "hono";
 import type { ApiEnv, AppBindings } from "../env";
 import { createDiskAssetFetcher } from "./assets";
+import { createProvidersFromEnv, type ChatProviders } from "./chat-wiring";
 
 /**
  * The Bun serving entry (#181, ADR-0044): bind the Hono app to a TCP socket
@@ -47,12 +48,35 @@ const PASSTHROUGH_KEYS = [
   "JEV_API_KEY",
 ] as const;
 
-/** Read the process environment into the app's binding shape. */
-export function bindingsFromEnv(env: Record<string, string | undefined>): AppBindings {
+/**
+ * The filtered env view requests receive: every present (non-empty)
+ * `PASSTHROUGH_KEYS` entry, and nothing else. Built ONCE per boot and handed to
+ * both consumers — the bindings a request gets and the posture report — so the
+ * report's "cannot drift from what serving actually wires" property is
+ * structural, not two maps that merely happen to be built the same way.
+ */
+function chatEnvFrom(env: Record<string, string | undefined>): Record<string, string> {
+  return present(env, PASSTHROUGH_KEYS);
+}
+
+/**
+ * Build the bindings requests receive from that one filtered view.
+ * `KAJIANQ_WEB_ROOT` is read from the raw env: it configures the asset handler
+ * and is not a chat key.
+ */
+function bindingsFrom(
+  env: Record<string, string | undefined>,
+  chatEnv: Record<string, string>,
+): AppBindings {
   return {
     ASSETS: createDiskAssetFetcher(env.KAJIANQ_WEB_ROOT ?? "./apps/web/dist"),
-    ...present(env, PASSTHROUGH_KEYS),
+    ...chatEnv,
   };
+}
+
+/** Read the process environment into the app's binding shape. */
+export function bindingsFromEnv(env: Record<string, string | undefined>): AppBindings {
+  return bindingsFrom(env, chatEnvFrom(env));
 }
 
 export type ServeOptions = {
@@ -85,6 +109,33 @@ export type ServeOptions = {
 export const DRAIN_TIMEOUT_MS = 300_000;
 
 /**
+ * Emit the provider posture ONCE at startup (#226): which env vars the chat
+ * path found absent — including the optional decision role's, whose absence
+ * leaves the reviewer pre-gate unwired — and which decision candidate the
+ * personal-data posture dropped (keyed or not: the filter precedes the key
+ * check). Both are computed per request by the wiring; before this line
+ * existed they were consumed only as the detail string of a reviewer-less
+ * config error, so an unbound `JEV_API_KEY` left the pre-gate silently dead in
+ * serving with no `decision` trace event to show for it.
+ *
+ * It resolves the roles through the same `createProvidersFromEnv` the request
+ * path uses, so the report cannot drift from what serving actually wires.
+ * **Names only, never values**: the names are what an operator binds; a key's
+ * value must never reach the log. The caller must resolve `providers` from the
+ * boot's one filtered chat env view (`chatEnvFrom`) that `bindingsFrom` also
+ * spreads into the requests' bindings, not the raw process environment — a key
+ * the passthrough drops is not bound as far as serving is concerned.
+ */
+export function reportProviderPosture(providers: ChatProviders, logger: Logger): void {
+  logger.info("providers.posture", {
+    reviewer: providers.reviewer === null ? "not_wired" : "wired",
+    preGate: providers.decider === null ? "not_wired" : "active",
+    missingKeys: providers.missingKeys.join(", ") || "none",
+    ineligibleKeys: providers.ineligibleKeys.join(", ") || "none",
+  });
+}
+
+/**
  * Start the Bun server. The bind address defaults to loopback: the design is
  * a reverse proxy (nginx) as the only public ingress, so the API must not be
  * reachable directly. Binding elsewhere is possible for a container, but is
@@ -98,7 +149,10 @@ export const DRAIN_TIMEOUT_MS = 300_000;
  */
 export function serveApi(opts: ServeOptions): { stop: () => Promise<void> } {
   const env = opts.env ?? process.env;
-  const bindings = bindingsFromEnv(env);
+  // The one filtered view this boot builds: the requests' bindings and the
+  // posture report both derive from it, so the two can never disagree.
+  const chatEnv = chatEnvFrom(env);
+  const bindings = bindingsFrom(env, chatEnv);
   const hostname = opts.hostname ?? env.KAJIANQ_API_HOST ?? "127.0.0.1";
   const port = opts.port ?? Number(env.PORT ?? "8787");
 
@@ -109,6 +163,13 @@ export function serveApi(opts: ServeOptions): { stop: () => Promise<void> } {
   });
 
   const logger = createLogger({ service: "api", route: "bootstrap" });
+  // Provider resolution runs here, outside the request path's `wiringOr503`:
+  // a config fault that is not a `ChatConfigError` fails the boot just after
+  // `Bun.serve` binds (systemd restarts the unit) instead of surfacing as
+  // per-request 500s. Intended — a wrong config fails at wiring time, never
+  // degrades to a silent default (`parseProviderConfig`) — and unreachable
+  // with the shipped `models.json`.
+  reportProviderPosture(createProvidersFromEnv(chatEnv), logger);
   logger.info("server.listening", { hostname, port });
 
   const stop = async (): Promise<void> => {
