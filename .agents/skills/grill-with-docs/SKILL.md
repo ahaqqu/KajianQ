@@ -55,7 +55,6 @@ Now interrogate the design. Each question probes a specific failure mode. Do not
 For each principle in `docs/ARCHITECTURE.md`, ask:
 
 - **Cost**: What happens at 100k requests/day? What degrades first?
-- **Local-first**: Does the user need the network for this to work? What offline behavior is expected?
 - **Performance**: What's the happy-path latency? What's the 95th percentile?
 - **Cross-Platform**: Does this behave differently on mobile? On iOS Safari specifically?
 - **Polished**: What does the empty state look like? The error state? The loading state?

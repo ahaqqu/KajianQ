@@ -28,7 +28,7 @@ The loop runs on any harness that can spawn a background subagent, continue it l
 - **ZCode** → `.agents/skills/manager/ZCODE-ADAPTER.md`
 - **DSH** → `.agents/skills/manager/DSH-ADAPTER.md`
 
-Each adapter states its own evidence class and claims only mechanics verified on its harness. Two rules are harness-neutral and live **only here**, so the adapters point at them instead of restating them: the **subagent todo duty** (dispatch-prompt requirement in step 1; canonical bullet in Reliability & supervision) and the **fix-then-re-review trigger** (Reliability & supervision).
+Each adapter carries only its own harness's mechanics — spawn, continue, results, model routing, workspace, and session facts — stated as instruction. Two rules are harness-neutral and live **only here**, so the adapters point at them instead of restating them: the **subagent todo duty** (dispatch-prompt requirement in step 1; canonical bullet in Reliability & supervision) and the **fix-then-re-review trigger** (Reliability & supervision).
 
 ## Non-negotiables
 

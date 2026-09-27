@@ -19,7 +19,6 @@ Use this skill when reviewing a proposed plan or validating that an existing pla
 For each principle in `docs/ARCHITECTURE.md`, verify the plan addresses it:
 
 - **Cost**: Does the plan add paid dependencies? Does it introduce polling or per-request edge compute that belongs on the client?
-- **Local-first**: Does the plan touch sync? Does it preserve CRDT merge and idempotency?
 - **Performance**: Does the plan affect bundle size? Does it add runtime CSS-in-JS?
 - **Cross-Platform**: Does the plan introduce platform-specific code?
 - **Polished**: Does the plan include i18n for `en` + `id`? Does it consider accessibility?
