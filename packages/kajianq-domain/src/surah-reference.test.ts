@@ -190,6 +190,21 @@ describe("detectSurahReference — trap cases (no reference must be detected)", 
   });
 });
 
+describe("detectSurahReference — the collapse's recorded false positive (R2)", () => {
+  it("collapses a doubled-vowel ordinary word onto Al-Fil — accepted-as-is", () => {
+    // The elongation collapse (A3) that makes `surat yaa siin` work also turns
+    // `fiil` into `fil` — Al-Fil's article-stripped form — so a grammar phrase
+    // like `surat fiil madhi` expands a surah the question never named. The
+    // class is unreachable before the collapse step existed, realism is weak,
+    // and the cost is bounded (a 5-verse surah), so ADR-0045's revisit triggers
+    // record it and this test pins it rather than the collapse being narrowed —
+    // narrowing would reopen the `yaa siin`/`annas` spellings A3 fixed.
+    expect(normalizeSurahText("fiil")).toBe(normalizeSurahText("fil"));
+    expect(detectSurahReference("surat fiil madhi")).toEqual({ surah: 105 });
+    expect(detectSurahReference("surat fiil dalam bahasa arab")).toEqual({ surah: 105 });
+  });
+});
+
 describe("withoutArticle", () => {
   it("strips the transliterated definite article, longest prefix first", () => {
     expect(withoutArticle(normalizeSurahText("Ash-Shu'ara"))).toBe("shuara");

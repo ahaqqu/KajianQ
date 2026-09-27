@@ -333,6 +333,13 @@ virtues`) and the **passing one** (`meaning and tafsir of Surah Al-Fatihah`)
   no rule reaches (an inserted or dropped consonant: `Yaseen`, `Fatehah`; or a
   Kemenag Indonesian translated name, still gated by human prerequisite #2) is
   not recognised; adding one is a table alias plus a test, not a wider match.
+- **The elongation collapse's own false-positive surface.** Collapsing repeated
+  vowels also pulls an ordinary doubled-vowel word after the marker onto a bare
+  name form — `surat fiil madhi` resolves to Al-Fil (105) through
+  `fiil` → `fil`, which no pre-collapse rule reached — and that class is pinned
+  as accepted-as-is in `surah-reference.test.ts` rather than narrowed away,
+  because narrowing the collapse would reopen the `yaa siin`/`annas` spellings
+  A3 fixed (realism is weak and the cost is bounded to a 5-verse surah).
 - **A multi-surah comparison question** ("the difference between Al-Fatihah and
   Al-Ikhlas") needs both scopes expanded under one total budget; today only the
   first reference expands.
