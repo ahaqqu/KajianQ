@@ -7,6 +7,7 @@ import {
   buildStoreWiring,
   ChatConfigError,
   createProvidersFromEnv,
+  parseScopeExpansionCap,
   sseFrame,
   storeBridge,
   wiringOr503,
@@ -67,6 +68,43 @@ describe("buildChatWiring — the reviewer is mandatory on the chat path", () =>
     expect(() => buildChatWiring({ DATABASE_URL: "postgres://x" })).toThrow(
       /reviewer role has no keyed candidate/,
     );
+  });
+});
+
+describe("parseScopeExpansionCap — ADR-0045's budget knob", () => {
+  it("treats absent and empty as 'use the domain default'", () => {
+    expect(parseScopeExpansionCap(undefined)).toBeUndefined();
+    expect(parseScopeExpansionCap("")).toBeUndefined();
+    expect(parseScopeExpansionCap("   ")).toBeUndefined();
+  });
+
+  it("parses a non-negative integer, including the 0 that disables expansion", () => {
+    expect(parseScopeExpansionCap("12")).toBe(12);
+    expect(parseScopeExpansionCap("0")).toBe(0);
+  });
+
+  it("fails closed on a malformed value instead of silently using the default", () => {
+    for (const bad of ["-1", "abc", "1.5", "12x"]) {
+      expect(() => parseScopeExpansionCap(bad)).toThrow(ChatConfigError);
+    }
+  });
+
+  it("wires the configured cap into the pipeline and omits it when unset", () => {
+    const keyed = { DATABASE_URL: "postgres://x", DEEPSEEK_API_KEY: "k" };
+    expect(buildChatWiring({ ...keyed, SCOPE_EXPANSION_CAP: "7" }).pipeline).toMatchObject({
+      scopeExpansionCap: 7,
+    });
+    expect(buildChatWiring(keyed).pipeline).not.toHaveProperty("scopeExpansionCap");
+  });
+
+  it("reports a malformed cap as a typed config failure", () => {
+    expect(() =>
+      buildChatWiring({
+        DATABASE_URL: "postgres://x",
+        DEEPSEEK_API_KEY: "k",
+        SCOPE_EXPANSION_CAP: "nope",
+      }),
+    ).toThrow(/SCOPE_EXPANSION_CAP/);
   });
 });
 

@@ -46,6 +46,10 @@ const PASSTHROUGH_KEYS = [
   // optional (never a boot precondition) — but it MUST be passed through, or a
   // bound key would leave the pre-gate silently dead in serving.
   "JEV_API_KEY",
+  // ADR-0045 scope-expansion budget (optional; absent = the domain default).
+  // Config, not a secret — but it must ride the same filtered view the request
+  // bindings get, or the knob would be dead in serving.
+  "SCOPE_EXPANSION_CAP",
 ] as const;
 
 /**

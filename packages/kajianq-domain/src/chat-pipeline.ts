@@ -35,11 +35,21 @@ export type ChatPipelineDeps = {
    */
   reviewerDecider: Decider | null;
   embedder: RetrieverEmbedder;
-  store: Pick<import("@app/infra").RagStore, "similaritySearch">;
+  store: Pick<
+    import("@app/infra").RagStore,
+    "similaritySearch" | "listDocChildrenByParentSourceKey"
+  >;
   /** Runs a store Effect to a promise (composition-root bridge). */
   bridge: StoreBridge;
   language: import("./chat-prompts").ChatLanguage;
   retrieverLimit?: number;
+  /**
+   * ADR-0045 scope-expansion budget: at most this many children of a surah
+   * the question names are added to the fused hits. Absent = the domain
+   * default (`DEFAULT_SCOPE_EXPANSION_CAP`); the composition root sets it from
+   * deployment config so the cost of a scoped query is a knob, not a literal.
+   */
+  scopeExpansionCap?: number;
   /** Skip the reviewer LLM call (eval refusal cases, budget-capped runs). */
   skipReviewer?: boolean;
   /** Collector for LLM costs that ride the retrieval stage (embed call). */
@@ -67,6 +77,7 @@ export function buildChatStages(
     embedder: deps.embedder,
     bridge: deps.bridge,
     ...(deps.retrieverLimit !== undefined ? { limit: deps.retrieverLimit } : {}),
+    ...(deps.scopeExpansionCap !== undefined ? { scopeExpansionCap: deps.scopeExpansionCap } : {}),
     onEmbedCost: (cost) => deps.onCost?.(cost),
   });
   const tail = createChatTailStages({

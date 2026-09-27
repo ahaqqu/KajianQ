@@ -1,14 +1,23 @@
 import { Effect } from "effect";
-import type { CostRecord } from "@app/contracts";
 import {
   RunContext,
   toStageError,
   type Chunk,
+  // `@app/rag-core` re-exports the engine's `CostRecord` (rag-core/src/index.ts),
+  // so sourcing it here keeps this module inside the repo's 5-import agentic
+  // limit while `withTextLayers` is imported from its single owner (R1).
+  type CostRecord,
   type RoutedQuery,
   type Retriever,
   type StoreError,
 } from "@app/rag-core";
 import type { KajianQFilters } from "./filters";
+import {
+  DEFAULT_SCOPE_EXPANSION_CAP,
+  expandSurahScope,
+  type ScopeChildRow,
+} from "./chat-scope-expansion";
+import { withTextLayers } from "./chunk-text-layers";
 
 /**
  * KajianQRetriever — Smart Router stage 4 (spec §3.3): embed each routed
@@ -60,6 +69,14 @@ export type RetrieverStore = {
     }[],
     StoreError
   >;
+  /**
+   * The bounded parent-scoped child read behind ADR-0045's scope expansion:
+   * a named surah's children, in the corpus's stable order, capped.
+   */
+  listDocChildrenByParentSourceKey(
+    parentSourceKey: string,
+    opts: { limit: number },
+  ): Effect.Effect<readonly ScopeChildRow[], StoreError>;
 };
 
 /** Effect bridge the wiring injects (keeps this module free of runner imports). */
@@ -72,6 +89,12 @@ export type KajianQRetrieverDeps = {
   bridge: StoreBridge;
   /** Per-track hits per sub-query (spec §3.7 smoke keeps this small). */
   limit?: number;
+  /**
+   * Budget cap for ADR-0045's surah-reference scope expansion: at most this
+   * many of the named surah's children are added to the fused hits. Defaults
+   * to `DEFAULT_SCOPE_EXPANSION_CAP`; `0` disables the expansion.
+   */
+  scopeExpansionCap?: number;
   /** Trace/cost sink for the embed call (the run's collection point). */
   onEmbedCost?: (cost: CostRecord) => void;
 };
@@ -186,13 +209,14 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
                       // only place those layers exist — without this merge the
                       // ADR-0006 rule is dead on the real answer path and the
                       // prompt silently claims an original it does not carry.
-                      metadata: {
-                        ...hit.child.metadata,
-                        textAr: hit.child.textAr,
-                        ...(hit.child.textId !== null && hit.child.textId !== ""
-                          ? { textId: hit.child.textId }
-                          : {}),
-                      },
+                      // `withTextLayers` (B1) is the one owner of that merge,
+                      // shared with the surah-scope expansion below, so the two
+                      // paths cannot drift.
+                      metadata: withTextLayers(
+                        hit.child.metadata,
+                        hit.child.textAr,
+                        hit.child.textId,
+                      ),
                       rankDense: hit.rankDense,
                     },
                     rank: hit.rankDense,
@@ -201,7 +225,28 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
               }
             }
           }
-          return rrfFuse(lists, hierarchyBonus);
+          const fused = rrfFuse(lists, hierarchyBonus);
+          // ADR-0045: a question that names a surah also gets that surah's
+          // children, read deterministically and bounded by the cap. Detection
+          // runs on the verbatim question, not on a sub-query, so the scope
+          // cannot be flipped by the router's paraphrase (#241).
+          const expansion = yield* expandSurahScope({
+            sourceText: routed.sourceText,
+            existingIds: new Set(fused.map((c) => c.id)),
+            cap: deps.scopeExpansionCap ?? DEFAULT_SCOPE_EXPANSION_CAP,
+            store: deps.store,
+            bridge: deps.bridge,
+          });
+          if (expansion.scope !== null) {
+            const run = yield* RunContext;
+            run.record({
+              stage: "retriever",
+              kind: "scope_expansion",
+              detail: expansion.scope,
+              at: run.now(),
+            });
+          }
+          return [...fused, ...expansion.chunks];
         }),
       ),
   };

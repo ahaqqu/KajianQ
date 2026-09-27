@@ -31,6 +31,13 @@ export type Chunk = {
   score?: number;
   rankDense?: number;
   rankSparse?: number;
+  /**
+   * Why this chunk is in the retrieved set, as a caller-chosen opaque label
+   * (ADR-0045). Absent means the retriever's fused tracks produced it; a
+   * retriever that adds chunks by another path labels them so the Trace can
+   * tell the two apart. The engine never interprets the label.
+   */
+  origin?: string;
   metadata?: Record<string, unknown>;
 };
 
@@ -38,6 +45,16 @@ export type RoutedQuery<TFilters extends Record<string, unknown> = DefaultFilter
   intent: string;
   subQueries: readonly Query<TFilters>[];
   filters: TFilters;
+  /**
+   * The verbatim caller question this routing decomposed, carried opaquely.
+   * It exists because a domain retriever may need to apply a *deterministic*
+   * rule keyed on what the user actually asked (e.g. ADR-0045's scope
+   * expansion), and a model-generated sub-query paraphrase is not a faithful
+   * stand-in — the same question routed twice yields different sub-query
+   * wording. Absent for callers that route without a source text; the engine
+   * never inspects it.
+   */
+  sourceText?: string;
 };
 
 /**

@@ -185,12 +185,20 @@ function toChunkRef(chunk: Chunk): {
   score?: number;
   rankDense?: number;
   rankSparse?: number;
+  origin?: string;
 } {
-  const ref: { id: string; score?: number; rankDense?: number; rankSparse?: number } = {
+  const ref: {
+    id: string;
+    score?: number;
+    rankDense?: number;
+    rankSparse?: number;
+    origin?: string;
+  } = {
     id: chunk.id,
   };
   if (chunk.score !== undefined) ref.score = chunk.score;
   if (chunk.rankDense !== undefined) ref.rankDense = chunk.rankDense;
   if (chunk.rankSparse !== undefined) ref.rankSparse = chunk.rankSparse;
+  if (chunk.origin !== undefined) ref.origin = chunk.origin;
   return ref;
 }

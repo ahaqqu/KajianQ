@@ -94,11 +94,37 @@ function makeFakeLogger() {
   return { logger, calls };
 }
 
+/**
+ * The insert→read fixture. It carries one of every shape the adapter must
+ * round-trip, including the ADR-0045 additions — the `scope_expansion` event
+ * variant and an `origin`-bearing chunk ref — so the new variant's persistence
+ * is exercised through `insertAnswerTrace` and read back, not inferred from
+ * the shared contract (A5 of #243's review).
+ */
 const sampleTrace: Trace = {
   id: "t1",
   version: 1,
   createdAt: 1,
-  events: [{ stage: "generator", kind: "llm_call", at: 1 }],
+  events: [
+    {
+      stage: "retriever",
+      kind: "retrieval",
+      detail: {
+        chunks: [
+          { id: "c1", score: 0.5, rankDense: 1, rankSparse: 2 },
+          { id: "c2", origin: "expansion" },
+        ],
+      },
+      at: 1,
+    },
+    {
+      stage: "retriever",
+      kind: "scope_expansion",
+      detail: { key: "reference", value: "1", returned: 1, cap: 12, truncated: false },
+      at: 1,
+    },
+    { stage: "generator", kind: "llm_call", at: 1 },
+  ],
 };
 
 describe("rag-store-postgres adapter (fake runner)", () => {
@@ -314,6 +340,12 @@ describe("rag-store-postgres adapter (fake runner)", () => {
     // the contract allows any non-empty string.
     expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     expect(sql._calls[0]?.values?.[0]).toBe(id);
+    // A5: the ADR-0045 shapes are what got persisted — the new event kind and
+    // the chunk ref's origin label, verbatim (the insert parses the trace
+    // through the shared contract, so this also pins that it accepts them).
+    const persisted = String(sql._calls[0]?.values?.[3] ?? "");
+    expect(persisted).toContain('"scope_expansion"');
+    expect(persisted).toContain('"origin":"expansion"');
   });
 
   it("insertAnswerTrace fails constraint-class on a malformed Trace", async () => {
@@ -340,6 +372,19 @@ describe("rag-store-postgres adapter (fake runner)", () => {
     const got = await runOk(store.getAnswerTraceByMessage("m1"));
     expect(got).toEqual(sampleTrace);
     expect(sql._calls[0]?.text).toContain("SELECT trace FROM answer_traces");
+    // A5: the scope-expansion variant survives the read explicitly — the
+    // event's typed detail and the ref's origin label, not just deep equality.
+    const scope = got?.events.find((e) => e.kind === "scope_expansion");
+    expect(scope?.kind === "scope_expansion" ? scope.detail : undefined).toEqual({
+      key: "reference",
+      value: "1",
+      returned: 1,
+      cap: 12,
+      truncated: false,
+    });
+    const retrieval = got?.events.find((e) => e.kind === "retrieval");
+    const refs = retrieval?.kind === "retrieval" ? retrieval.detail.chunks : [];
+    expect(refs.map((ref) => ref.origin)).toEqual([undefined, "expansion"]);
   });
 
   it("getAnswerTraceByMessage fails constraint-class on a corrupt persisted trace", async () => {
@@ -868,5 +913,64 @@ describe("Postgres eval-ledger methods (unit, fake SQL)", () => {
     const store = createPostgresRagStore(sql);
     const err = await runFail(store.countDocChildrenByMetadata("collection"));
     expect(err.kind).toBe("transport");
+  });
+
+  it("listDocChildrenByParentSourceKey binds the key and limit, orders by ordinal (ADR-0045)", async () => {
+    const sql = makeFakeSql();
+    const store = createPostgresRagStore(sql);
+    // Domain-neutral fixtures: this is an engine package, so the example keys,
+    // values, and labels are placeholders (the boundary gate enforces it).
+    sql._setQuery([
+      {
+        id: "c1",
+        parent_id: "p1",
+        text_raw: "raw-1",
+        text_ar: "ar-1",
+        text_id: "id-1",
+        citation: { sourceType: "src", unit: 1, part: 1 },
+        embedding_primary: null,
+        embedding_fallback: null,
+        ordinal: 0,
+        metadata: { citation: "REF. 1:1" },
+        created_at: new Date(0),
+        parent_title: "Parent One",
+      },
+      {
+        id: "c2",
+        parent_id: "p1",
+        text_raw: "raw-2",
+        text_ar: "ar-2",
+        text_id: "id-2",
+        citation: { sourceType: "src", unit: 1, part: 2 },
+        embedding_primary: null,
+        embedding_fallback: null,
+        ordinal: 1,
+        metadata: { citation: "REF. 1:2" },
+        created_at: new Date(0),
+        parent_title: "Parent One",
+      },
+    ]);
+    const rows = await runOk(
+      store.listDocChildrenByParentSourceKey("collection/part/1", { limit: 12 }),
+    );
+    // Both the opaque source key and the cap are bound parameters.
+    expect(sql._calls[0]?.values).toEqual(["collection/part/1", 12]);
+    expect(sql._calls[0]?.text).toContain("WHERE p.source_key = $1");
+    expect(sql._calls[0]?.text).toContain("ORDER BY c.ordinal ASC");
+    expect(sql._calls[0]?.text).toContain("LIMIT $2");
+    expect(rows.map((r) => r.id)).toEqual(["c1", "c2"]);
+    expect(rows[0]).toMatchObject({ parentTitle: "Parent One", textAr: "ar-1" });
+    // Same embedding-stripping contract as the other corpus reads.
+    expect(rows[0]?.embeddingPrimary).toBeNull();
+    expect(rows[0]?.embeddingFallback).toBeNull();
+  });
+
+  it("listDocChildrenByParentSourceKey short-circuits a non-positive limit without a query", async () => {
+    const sql = makeFakeSql();
+    const store = createPostgresRagStore(sql);
+    expect(
+      await runOk(store.listDocChildrenByParentSourceKey("collection/part/1", { limit: 0 })),
+    ).toEqual([]);
+    expect(sql._calls).toEqual([]);
   });
 });

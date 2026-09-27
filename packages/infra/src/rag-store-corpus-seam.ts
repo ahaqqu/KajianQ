@@ -93,4 +93,19 @@ export interface RagStoreCorpus {
    * retrieval served.
    */
   getDocChildrenByIds(ids: readonly string[]): Effect.Effect<readonly DocChildById[], StoreError>;
+
+  /**
+   * List a parent's child chunks in the corpus's stable within-parent order
+   * (`ordinal` ascending), at most `limit` rows. The parent is addressed by
+   * its opaque `source_key` provenance string — the caller owns its meaning
+   * (ADR-0045: a domain pack asks for the children of the document a question
+   * named, without the store learning what that document is). Like the other
+   * corpus reads, the rows carry NO embeddings; the parent display title
+   * rides along. `limit` is required so a caller cannot read an unbounded
+   * child set by accident; `limit <= 0` returns no rows.
+   */
+  listDocChildrenByParentSourceKey(
+    parentSourceKey: string,
+    opts: { limit: number },
+  ): Effect.Effect<readonly DocChildById[], StoreError>;
 }
