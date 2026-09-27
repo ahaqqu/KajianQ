@@ -210,5 +210,9 @@ Deploy is done when:
 - [ ] Privacy validation passes on personal-data-touching releases: erasure flow
       cascades, `/about` privacy section renders in both locales (copy accuracy
       owned by #179).
+- [ ] For a QA-needed release (the manager's classification, `qa-phase`): the QA
+      verdict is recorded on its QA ticket — `verified`, `not verified`, or
+      `blocked` — with per-probe evidence and every defect it found carrying its
+      own ticket. A green `Staging` run is not a verdict.
 - [ ] Production dispatch approved at the `prod` gate and its deploy green.
 - [ ] Any test session you created by hand is erased.
