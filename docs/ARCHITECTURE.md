@@ -175,11 +175,8 @@ argv); the deploy path reads the box's name and key from an env file or
 environment secrets. Values come from the owner's environment — never the
 repository, which is public.
 
-> **Moved by ADR-0044 (#181).** This paragraph described Cloudflare
-> `secret_text` bindings declared in `apps/api/alchemy.run.ts`; the serving path
-> is now a self-hosted Bun process behind nginx.
-> Account deletion cascades across all data stores, including `answer_traces`
-> (ADR-0007 amendment).
+Account deletion cascades across all data stores, including `answer_traces`
+(ADR-0007 amendment).
 
 - **Rate limiting** — `@app/rate` (`packages/rate`): the process-wide bounded
   in-memory limiter. Post-ADR-0044 the API is one Bun process, so per-process

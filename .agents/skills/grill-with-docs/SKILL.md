@@ -52,7 +52,7 @@ Now interrogate the design. Each question probes a specific failure mode. Do not
 
 ### Architecture alignment
 
-For each principle in `docs/ARCHITECTURE.md`, ask:
+For each principle in `docs/ARCHITECTURE.md`, ask. This list is a summary of recurring failure modes, not the authoritative set — enumerate every principle from `docs/ARCHITECTURE.md` and answer for each:
 
 - **Cost**: What happens at 100k requests/day? What degrades first?
 - **Performance**: What's the happy-path latency? What's the 95th percentile?
@@ -65,6 +65,7 @@ For each principle in `docs/ARCHITECTURE.md`, ask:
 - **Reliable**: What test proves this works? What test proves it handles failure?
 - **Reproducible**: Any new dependencies not in the Nix flake?
 - **Agentic**: Can this module be understood in isolation?
+- **Privacy**: What personal data does this touch? Which sub-processor sees it, and is that vendor paid and DPA-covered (never a free tier)? Does `DELETE /v1/auth/me` still cascade the whole subtree, and do the retention values and RoPA (`docs/GDPR-ARTICLE-30-RECORD.md`) stay true?
 
 ### Design pressure testing
 

@@ -25,7 +25,7 @@ for anything below that drifts.
 - `provision/vps/deploy/deploy.sh` — the deploy path itself (build → ship →
   restart → smoke); `.github/workflows/deploy-vps.yml` — its CI trigger.
 - `.github/workflows/staging.yml` — the post-deploy validation jobs.
-- `docs/ARCHITECTURE.md` §6 (security scanning), §9 (availability), §10
+- `docs/ARCHITECTURE.md` §8 (security scanning), §11 (availability), §12
   (reliability), §16 (tooling).
 
 ## Phases 1–4 are automated — do not hand-run them

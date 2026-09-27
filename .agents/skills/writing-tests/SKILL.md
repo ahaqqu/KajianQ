@@ -1,17 +1,17 @@
 ---
 name: writing-tests
-description: "Use when writing tests of any kind: unit, property, BDD, or integration. Read docs/ARCHITECTURE.md §10 for testing requirements and AGENTS.md for guardrails."
+description: "Use when writing tests of any kind: unit, property, BDD, or integration. Read docs/ARCHITECTURE.md §12 for testing requirements and AGENTS.md for guardrails."
 source: project
 synced: 2026-08-29
 ---
 
 # Writing Tests
 
-Generate correct, guardrail-compliant tests at the right layer. Load this skill when the run enters the test phase — after code exists to test (per `docs/ARCHITECTURE.md` §10, >80% coverage gate). The patterns are not inlined here: the repo's own suites are the pattern library, cited below. Read the one matching your case before writing tests of that kind.
+Generate correct, guardrail-compliant tests at the right layer. Load this skill when the run enters the test phase — after code exists to test (per `docs/ARCHITECTURE.md` §12, >80% coverage gate). The patterns are not inlined here: the repo's own suites are the pattern library, cited below. Read the one matching your case before writing tests of that kind.
 
 ## Test layer decision
 
-Pick the right test layer before writing anything. The table from `docs/ARCHITECTURE.md` §10 is authoritative:
+Pick the right test layer before writing anything. This table is a summary of the layers you choose between; `docs/ARCHITECTURE.md` §12 is the authoritative layer table and gate list — read it for the full set and the coverage gate:
 
 | What you're testing                                                                         | Tool                         | Needs                                                                                |
 | ------------------------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------ |
