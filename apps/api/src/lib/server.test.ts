@@ -215,6 +215,11 @@ describe("reportProviderPosture — the boot ops report (#226)", () => {
         [key]: SECRET,
       }),
     );
+    // The comment's premise, made load-bearing: if the checked-in config ever
+    // gained an unkeyed chat-role candidate, this test would otherwise keep
+    // passing while no longer testing the fully-keyed posture it claims.
+    expect(fields["missingKeys"]).toBe("none");
+    expect(fields["ineligibleKeys"]).toBe("none");
     expect(lines).not.toContain(SECRET);
     expect(JSON.stringify(fields)).not.toContain(SECRET);
   });
