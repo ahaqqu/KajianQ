@@ -95,17 +95,39 @@ const TRANSCRIPT_FIXTURE = {
   ],
 };
 
+/**
+ * The chat message ceiling (#256), in characters. The e2e layer cannot import
+ * `@app/contracts` (workspace packages resolve inside the apps, not at the repo
+ * root), so the value is repeated: a drift on either side — the contract's
+ * `CHAT_MESSAGE_MAX_LENGTH` or the composer's mirror of it — fails this
+ * scenario loudly, which is what pinning it end to end is for.
+ */
+const CHAT_CEILING = 2000;
+
+/** The over-length probe the QA finding measured (#256): 20,000 characters. */
+const QA_PROBE_LENGTH = 20_000;
+
+/**
+ * Chat POSTs the fixture route has served in the current scenario (#256).
+ * Module scope because a scenario's When and Then steps share it, and the
+ * suite runs scenarios sequentially (`fullyParallel: false`); it is reset
+ * every time a scenario opens the app with fixtures.
+ */
+let chatPosts = 0;
+
 /** Intercept auth + chat endpoints with fixtures, then open the app. */
 async function openChatWithFixtures(
   page: import("@playwright/test").Page,
   answerFixture: string,
   transcriptFixture: Record<string, unknown> = TRANSCRIPT_FIXTURE,
 ): Promise<void> {
+  chatPosts = 0;
   await page.route("**/v1/auth/anonymous", (route) => route.fulfill({ json: SESSION }));
   await page.route("**/v1/chat/sessions/*/messages", (route) =>
     route.fulfill({ json: transcriptFixture }),
   );
   await page.route("**/v1/chat", async (route) => {
+    chatPosts += 1;
     // A short delay so the staged loading state is observably honest.
     await new Promise((resolve) => setTimeout(resolve, 1200));
     await route.fulfill({
@@ -161,6 +183,29 @@ When("I open a chat whose stored transcript was capped", async ({ page }) => {
 
 Then("the transcript says older messages are not shown", async ({ page }) => {
   await expect(page.getByTestId("transcript-truncated")).toBeVisible();
+});
+
+When("I open the chat and paste a message longer than the ceiling", async ({ page }) => {
+  await openChatWithFixtures(page, ANSWER_FIXTURE);
+  // A programmatic fill, not typing (#256): the ceiling has to hold for a
+  // pasted value too, which the textarea's maxLength attribute alone does not
+  // guarantee — and it is how a crafted page would set the field.
+  await page.getByTestId("composer").fill("a".repeat(QA_PROBE_LENGTH));
+});
+
+Then("the composer holds the ceiling, says so, and sends nothing", async ({ page }) => {
+  const composer = page.getByTestId("composer");
+  // Clamped to the contract's own ceiling — the draft the reader sees is
+  // exactly what the API accepts, not a request that comes back 400.
+  expect((await composer.inputValue()).length).toBe(CHAT_CEILING);
+  // The hint is the reader's explanation, in the app's language (id by
+  // default); the number is Intl-formatted, so build the expectation the same
+  // way rather than hardcoding a separator.
+  await expect(page.getByTestId("composer-limit")).toContainText(
+    new Intl.NumberFormat("id").format(CHAT_CEILING),
+  );
+  // And no chat POST left the page: nothing to reject, nothing to spend.
+  expect(chatPosts).toBe(0);
 });
 
 Then("I see staged loading while the answer is prepared", async ({ page }) => {

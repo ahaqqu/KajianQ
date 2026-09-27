@@ -60,6 +60,10 @@ Feature: Chat — ask, answer, citations, warnings, disclaimer
     When I open a chat whose stored transcript was capped
     Then the transcript says older messages are not shown
 
+  Scenario: An over-long message is capped in the composer, never sent to the API (#256)
+    When I open the chat and paste a message longer than the ceiling
+    Then the composer holds the ceiling, says so, and sends nothing
+
   Scenario: The chat page has no serious accessibility violations
     When I open the chat and ask about ayat kursi
     And the answer renders with a citation chip
