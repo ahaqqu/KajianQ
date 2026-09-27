@@ -576,9 +576,14 @@ describe("worktree-cleanup", () => {
     expect(result.status).toBe(0);
     // The line claims only what happened: the removal is reported and the
     // branch failure is named — never a `kept` prefix that contradicts the run.
-    expect(result.stdout).toMatch(
-      /^removed half-done \(PR merged; branch delete failed: error: could not delete reference .*cannot lock ref/m,
-    );
+    // The assertion pins the script-owned prefix only: git's stderr prose past
+    // it is a third-party string this repo does not stabilize, so the state
+    // assertions below — worktree gone, branch still resolving at its old tip —
+    // are what prove this exact path fired.
+    expect(result.stdout).toMatch(/^removed half-done \(PR merged; branch delete failed: /m);
+    // The remedy is the load-bearing part of the line: no later sweep lists this
+    // slug again, so the operator only learns the branch is left from here.
+    expect(result.stdout).toContain("delete it with: git branch -D agent/half-done");
     expect(result.stdout).not.toContain("kept  half-done");
     // Summary and per-entry lines agree: this entry was removed, not kept.
     expect(result.stdout).toMatch(/^done: 1 removed, 0 kept$/m);
