@@ -1,7 +1,8 @@
-import { createLogger } from "@app/infra";
+import { createLogger, type Logger } from "@app/infra";
 import type { Hono } from "hono";
 import type { ApiEnv, AppBindings } from "../env";
 import { createDiskAssetFetcher } from "./assets";
+import { createProvidersFromEnv, type ChatProviders } from "./chat-wiring";
 
 /**
  * The Bun serving entry (#181, ADR-0044): bind the Hono app to a TCP socket
@@ -85,6 +86,33 @@ export type ServeOptions = {
 export const DRAIN_TIMEOUT_MS = 300_000;
 
 /**
+ * Emit the provider posture ONCE at startup (#226): which env vars the chat
+ * path found absent — including the optional decision role's, whose absence
+ * leaves the reviewer pre-gate unwired — and which keyed decision candidate
+ * the personal-data posture dropped. Both are computed per request by the
+ * wiring; before this line existed they were consumed only as the detail
+ * string of a reviewer-less config error, so an unbound `JEV_API_KEY` left
+ * the pre-gate silently dead in serving with no `decision` trace event to
+ * show for it.
+ *
+ * It resolves the roles through the same `createProvidersFromEnv` the request
+ * path uses, so the report cannot drift from what serving actually wires.
+ * **Names only, never values**: the names are what an operator binds; a key's
+ * value must never reach the log. The caller must resolve `providers` from the
+ * filtered `present(env, PASSTHROUGH_KEYS)` view `bindingsFromEnv` hands to
+ * requests, not the raw process environment — a key the passthrough drops is
+ * not bound as far as serving is concerned.
+ */
+export function reportProviderPosture(providers: ChatProviders, logger: Logger): void {
+  logger.info("providers.posture", {
+    reviewer: providers.reviewer === null ? "not_wired" : "wired",
+    preGate: providers.decider === null ? "not_wired" : "active",
+    missingKeys: providers.missingKeys.join(", ") || "none",
+    ineligibleKeys: providers.ineligibleKeys.join(", ") || "none",
+  });
+}
+
+/**
  * Start the Bun server. The bind address defaults to loopback: the design is
  * a reverse proxy (nginx) as the only public ingress, so the API must not be
  * reachable directly. Binding elsewhere is possible for a container, but is
@@ -109,6 +137,7 @@ export function serveApi(opts: ServeOptions): { stop: () => Promise<void> } {
   });
 
   const logger = createLogger({ service: "api", route: "bootstrap" });
+  reportProviderPosture(createProvidersFromEnv(present(env, PASSTHROUGH_KEYS)), logger);
   logger.info("server.listening", { hostname, port });
 
   const stop = async (): Promise<void> => {

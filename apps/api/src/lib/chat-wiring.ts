@@ -87,13 +87,13 @@ export type ChatProviders = {
    */
   decider: Decider | null;
   embedder: Provider;
-  /** Env names whose keys were absent (ops visibility, never client-facing). */
+  /** Env names whose keys were absent — named once at boot (`providers.posture`), never client-facing. */
   missingKeys: readonly string[];
   /**
    * Keyed decision candidates the personal-data posture excluded from serving
    * (ADR-0043): a vendor whose config forbids personal data may never carry
    * the pre-gate's claim spans, so it is dropped rather than wired. Reported
-   * for ops visibility — the key being bound is not the problem.
+   * once at boot (`providers.posture`) — the key being bound is not the problem.
    */
   ineligibleKeys: readonly string[];
 };
@@ -134,8 +134,14 @@ const CACHED_PROVIDER_CONFIG: ProviderConfig = loadProviderConfig();
  * typed `ChatConfigError` when no reviewer candidate is keyed, so the route
  * answers 503 instead of quietly dropping the check.
  */
-export function createProvidersFromEnv(env: Record<string, string | undefined>): ChatProviders {
-  const config = CACHED_PROVIDER_CONFIG;
+export function createProvidersFromEnv(
+  env: Record<string, string | undefined>,
+  // The config is a parameter (defaulting to the cached parse) so resolution
+  // stays a pure function of (config, env) like `resolveRole`/`resolveDecider`:
+  // a test can drive the ineligible-key posture with a synthetic vendor set.
+  // Production always takes the checked-in file.
+  config: ProviderConfig = CACHED_PROVIDER_CONFIG,
+): ChatProviders {
   const missing = new Set<string>();
   const resolve = (role: string) => {
     const { provider, missingKeys } = resolveRole(config, role, { env });

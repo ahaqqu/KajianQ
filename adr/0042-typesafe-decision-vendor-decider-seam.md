@@ -244,3 +244,34 @@ The gate evidence this adoption rests on is unchanged and remains `v0-draft`:
 21/21 overall and per-language (ar/id/en) for 21 micro-USD. A perfect smoke
 score is not a claim of infallibility — the fail-open design, not the score,
 is what makes the adoption safe.
+
+## Amendment (2026-09-27, #226): the posture report gets an operator-visible consumer
+
+The amendment above records that `resolveDecider` with `personalData: true`
+**reports** a candidate it drops in `ineligibleKeys`, and `ChatProviders`
+documents `missingKeys`/`ineligibleKeys` as ops visibility. Until #226 neither
+claim reached an operator: `missingKeys` was read only as the detail string of
+the reviewer-less `ChatConfigError`, and `ineligibleKeys` had no consumer at
+all. An unbound `JEV_API_KEY` therefore left the pre-gate silently dead in
+serving — every `staging-smoke-*` eval run contained zero `decision` events —
+while `models.json`, `provision/vps/api.env.example`, and this ADR described the
+pre-gate as active. Both claims were accurate about the field; what was missing
+was the surface.
+
+The consumer now exists. The composition root emits **one** structured
+`providers.posture` line at startup (`apps/api/src/lib/server.ts`,
+`reportProviderPosture`), carrying:
+
+- the pre-gate state (`active` / `not_wired`) and the reviewer's,
+- `missingKeys` — the env var names whose keys were absent, including the
+  optional decision role's, so an unbound key names exactly what to bind,
+- `ineligibleKeys` — the keyed decision candidates the personal-data posture
+  dropped.
+
+It resolves through the same `createProvidersFromEnv` the request path uses, so
+the report cannot drift from what serving actually wires. **Env var names
+only — a key's value is never printed.** Nothing about enforcement changes:
+which keys are required, the key-bound = active posture, and the personal-data
+filter all stay as the amendment above records. An operator reads the
+pre-gate's posture from `journalctl -u kajianq-api` (`docs/VPS-OPERATIONS.md`
+§5, `docs/VPS-SETUP.md` api.env section) without running an eval.
