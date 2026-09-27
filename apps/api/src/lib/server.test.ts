@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { CHAT_SERVING_ROLES } from "./chat-wiring";
 import { bindingsFromEnv } from "./server";
 
 /**
@@ -43,5 +44,35 @@ describe("bindingsFromEnv", () => {
   it("always supplies an ASSETS handle (the SPA catch-all needs one)", () => {
     const bindings = bindingsFromEnv({});
     expect(typeof bindings.ASSETS.fetch).toBe("function");
+  });
+
+  it("passes through every key the chat path's provider roles resolve (#168)", async () => {
+    // The silent-failure guard this test exists for: a key that is bound in
+    // the serving environment but dropped by the composition root leaves its
+    // role unwired while every other surface (models.json, the runbook, the
+    // deploy env) says it is configured. The reviewer pre-gate is the sharpest
+    // case — it is fail-open by design, so a dropped key degrades to "no
+    // pre-gate" with no error anywhere. What is automatic here: the env names
+    // are read from the config data (ADR-0022), so a vendor's key name is
+    // never hard-coded in the test. What is not: which roles serve the chat
+    // path — that list is the wiring's own `CHAT_SERVING_ROLES`, so a new
+    // serving role is declared once, where it is wired (bench-only roles are
+    // deliberately absent from it).
+    const { loadProviderConfig } = await import("@app/infra");
+    const config = loadProviderConfig();
+    const envNames = new Set<string>();
+    for (const role of CHAT_SERVING_ROLES) {
+      for (const candidate of config.roles[role]?.chain ?? []) {
+        const vendor = candidate.slice(0, candidate.indexOf(":"));
+        const name = config.vendors[vendor]?.apiKeyEnv;
+        if (name !== undefined) envNames.add(name);
+      }
+    }
+    expect(envNames.size).toBeGreaterThan(0);
+    for (const name of envNames) {
+      expect(bindingsFromEnv({ [name]: "test-key" }), `${name} is dropped`).toMatchObject({
+        [name]: "test-key",
+      });
+    }
   });
 });

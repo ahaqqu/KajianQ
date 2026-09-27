@@ -154,6 +154,10 @@ export async function runDecisionBench({
     }
     const result = await Effect.runPromise(
       decider.decide({
+        // Gate fixture text is corpus/synthetic content, never a user's
+        // answer — the bench is explicitly a non-personal-data caller
+        // (ADR-0043), which is why the serving filter leaves it unaffected.
+        personalData: false,
         state,
         questions: {
           [key]: { type: "noul", instructions: question.instructions, criteria: question.criteria },
@@ -196,6 +200,8 @@ export async function runDecisionBench({
     });
     const result = await Effect.runPromise(
       decider.decide({
+        // Non-personal gate fixture text, as in the Noul path above.
+        personalData: false,
         state: { query: c.query, candidates: c.candidates },
         questions: {
           best: {

@@ -3,11 +3,15 @@ import {
   RunContext,
   toStageError,
   type AssembledContext,
+  type Decider,
   type Draft,
   type Reviewer,
 } from "@app/rag-core";
-import { validateCitations } from "./chat-citation-validator";
 import { applyProductRules } from "./chat-postprocess";
+// Both citation screens arrive through one import (the pre-gate module
+// re-exports the deterministic gate) so the stage stays inside the agentic
+// import cap while the gate keeps its own module and stays first in the order.
+import { runCitationPregate, validateCitations } from "./chat-reviewer-pregate";
 import {
   buildReviewMessages,
   isRefusalDraft,
@@ -29,6 +33,16 @@ import {
  * well-behaved. A fabricated citation is the product's #1 stated risk
  * (SPECS §2.2), and a warning appended to a fabricated answer still ships the
  * fabrication to the user.
+ *
+ * **The pre-gate (ADR-0042 adoption, ticket #168):** when a decision-model
+ * `Decider` is bound, one batched decision call screens every citation before
+ * the paid LLM reviewer. All citations cleared → the draft is reviewed-clean
+ * and the paid reviewer is skipped; anything else (a low score, an unusable
+ * answer, a vendor failure, or a draft with no citation to judge at all)
+ * escalates to the full LLM reviewer exactly as before. The pre-gate can only
+ * ever *remove* spend on an answer the cheap judge affirmatively cleared; it
+ * never gates quality alone. With no `Decider` wired (no key bound) the stage
+ * behaves exactly as it did before adoption.
  */
 
 /** The serving seam type, aliased to its canonical home (ADR-0043 flag). */
@@ -37,6 +51,15 @@ export type ReviewerProvider = ReviewerLlmSeam;
 export type KajianQReviewerDeps = {
   /** Null disables the LLM cross-check (deterministic validator still runs). */
   provider: ReviewerProvider | null;
+  /**
+   * The decision-model pre-gate (ADR-0042). Null/absent = the decision
+   * vendor's key is not bound, so the stage behaves exactly as it did before
+   * adoption. There is deliberately no separate enable flag: the pre-gate is
+   * active wherever the key is bound (owner decision 2026-09-19).
+   */
+  decider?: Decider | null;
+  /** Per-citation support threshold; product policy default (ADR-0042). */
+  pregateThreshold?: number;
   /** Skip the LLM call (refusal cases, cost-capped runs). */
   skipLlm?: boolean;
   /** Refusal text for the active answer language. */
@@ -110,6 +133,25 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
           if (deps.provider === null || deps.skipLlm === true) {
             return withRules(draft, context);
           }
+
+          // The pre-gate (ticket #168) sits between the free deterministic
+          // validator and the paid reviewer: exactly one batched decision
+          // call, and only a full clear skips the reviewer. A vendor failure
+          // is classified inside (fail-open) — it never throws out of here.
+          if (deps.decider != null) {
+            const pregate = yield* runCitationPregate({
+              decider: deps.decider,
+              draft: draft.text,
+              chunks: context.chunks,
+              stage: "reviewer",
+              run,
+              ...(deps.pregateThreshold !== undefined ? { threshold: deps.pregateThreshold } : {}),
+            });
+            if (pregate.kind === "skip") {
+              return withRules(draft, context);
+            }
+          }
+
           const reply = yield* deps.provider
             .generate({ turns: buildReviewMessages(context, draft.text), personalData: true })
             .pipe(Effect.mapError((cause: unknown) => ({ cause })));

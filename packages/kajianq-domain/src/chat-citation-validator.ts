@@ -129,17 +129,54 @@ export function normalizeCitationLabel(label: string): string {
  * needed — and no non-citation bracketed text is picked up.
  */
 export function citationCandidatesIn(text: string): string[] {
-  const found: string[] = [];
+  return scanCitations(text).map((citation) => citation.label);
+}
+
+/**
+ * The same scan as {@link citationCandidatesIn}, but carrying each span's
+ * offsets in the original text and ordered by **position in the text** rather
+ * than by grammar (the candidate list is grammar-major: all Quran matches
+ * before all hadith matches, whatever their order in the draft).
+ *
+ * The offset+position form is what a consumer that must locate a groundable
+ * citation *inside* the draft needs — the reviewer pre-gate keys its judgment
+ * by citation position (ADR-0042 adoption) and must not split a claim span in
+ * the middle of a citation. Both exports read the one scan, so the grammar,
+ * the normalization, and the de-duplication rule cannot drift between them.
+ */
+export function citationSpansIn(text: string): { start: number; end: number; label: string }[] {
+  return scanCitations(text)
+    .map((citation) => ({ ...citation }))
+    .sort((a, b) => a.start - b.start);
+}
+
+/** The one grammar scan behind both citation-list exports (first-seen wins). */
+function scanCitations(text: string): { start: number; end: number; label: string }[] {
+  const found: { start: number; end: number; label: string }[] = [];
   const seen = new Set<string>();
   for (const makePattern of CITATION_GRAMMARS) {
     for (const match of text.matchAll(makePattern())) {
       const label = normalizeCitationLabel(match[0]);
       if (label === "" || seen.has(label)) continue;
       seen.add(label);
-      found.push(label);
+      const start = match.index;
+      found.push({ start, end: start + match[0].length, label });
     }
   }
   return found;
+}
+
+/**
+ * The comparison form of a text for grounded-label matching: whitespace
+ * collapsed and markers canonicalized, exactly as {@link validateCitations}
+ * matches a chunk's label against the answer. Exported so a consumer that must
+ * find a grounded citation inside the draft (the reviewer pre-gate's claim
+ * spans) compares the same way the gate that declared it grounded did — a
+ * second implementation here would let the two disagree about what "the
+ * passage states" means.
+ */
+export function citationMatchText(text: string): string {
+  return canonicalizeMarkers(text.replace(/\s+/g, " "));
 }
 
 /**
@@ -167,7 +204,7 @@ export function validateCitations(
   // address written with the dotted marker (`Q.S. 2:255`) or the dot-less
   // spelling (`QS 2:255`) for a `QS. 2:255` chunk still counts as grounded
   // provenance rather than vanishing from the review trace's `grounded` list.
-  const normalizedAnswer = canonicalizeMarkers(answer.replace(/\s+/g, " "));
+  const normalizedAnswer = citationMatchText(answer);
   const grounded: string[] = [];
   for (const label of known) {
     if (normalizedAnswer.includes(label)) grounded.push(label);

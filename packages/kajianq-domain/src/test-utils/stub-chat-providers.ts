@@ -43,6 +43,13 @@ export function createStubChatProviders(overrides: StubChatProviderOverrides = {
   generatorProvider: GeneratorProvider;
   reviewerProvider: ReviewerProvider;
   embedder: RetrieverEmbedder;
+  /**
+   * The reviewer pre-gate is unwired by default (#168): the stub models an
+   * environment where the decision vendor's key is absent, which is also the
+   * pre-adoption behavior — so pipeline tests that do not opt in keep
+   * asserting today's reviewer path.
+   */
+  reviewerDecider: null;
 } {
   const answerText = overrides.answerText ?? "Jawaban berdasar konteks.";
   const deltas = overrides.streamDeltas ?? [answerText];
@@ -95,5 +102,6 @@ export function createStubChatProviders(overrides: StubChatProviderOverrides = {
           cost: cost("stub-embedder", 0),
         }),
     },
+    reviewerDecider: null,
   };
 }

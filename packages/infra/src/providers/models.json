@@ -108,7 +108,7 @@
       }
     },
     "typesafe": {
-      "$comment": "ADR-0042: TypeSafe AI 'System One' decision endpoint \u2014 typed structured questions (Choice/Score/Noul) over a state, priced on input tokens only (output free). Not a chat or embedding vendor: it backs the decision-bench role only until the multilingual gate is evaluated; serving adoption is a future ADR.",
+      "$comment": "ADR-0042: TypeSafe AI 'System One' decision endpoint \u2014 typed structured questions (Choice/Score/Noul) over a state, priced on input tokens only (output free). Not a chat or embedding vendor: it backs the `decision` serving role (the reviewer pre-gate, ADR-0042 adoption ticket #168) and the bench-only `decision-candidates` role. The multilingual gate passed 21/21 ar/id/en (relevance 12/12, rerank 3/3, citation 6/6, 21 micro-USD total) \u2014 report committed at packages/kajianq-domain/fixtures/decision-bench-results.json.",
       "baseUrl": "https://api.typesafe.ai/v1",
       "apiKeyEnv": "JEV_API_KEY",
       "protocol": "systemone",
@@ -156,6 +156,10 @@
     },
     "decision-candidates": {
       "$comment": "ADR-0042 decision-bench role (mirrors embedder-candidates): every decision-model candidate the multilingual gate compares. Not for serving \u2014 the bench resolves each candidate directly. Absent key = the bench reports NOT RUN and exits 0 (CI has no JEV_API_KEY).",
+      "chain": ["typesafe:jev-1.13.0"]
+    },
+    "decision": {
+      "$comment": "The decision-model SERVING role (ADR-0042 adoption, ticket #168): the reviewer pre-gate's pinned decision model, adopted on the committed multilingual gate report (packages/kajianq-domain/fixtures/decision-bench-results.json: jev-1.13.0 scored 21/21 overall and per-language ar/id/en \u2014 relevance 12/12, rerank 3/3, citation 6/6, 21 micro-USD total). Separate from the bench-only `decision-candidates` role so a re-bench can add challengers without changing what serves. Always active wherever JEV_API_KEY is bound (owner decision 2026-09-19, recorded as the ADR-0042 consequence amendment); absent key = the pre-gate is not wired and the reviewer behaves as it did before adoption \u2014 no enable/disable flag exists. Batched: one call per answer, input-priced, ~$0.0001 per screen at the pinned 42 micro-USD/MTok.",
       "chain": ["typesafe:jev-1.13.0"]
     }
   }

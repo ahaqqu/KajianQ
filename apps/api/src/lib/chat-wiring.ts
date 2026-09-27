@@ -1,7 +1,8 @@
 import { runStoreEffect, type StoreBridge } from "@app/kajianq-domain";
-import type { Provider } from "@app/rag-core";
+import type { Decider, Provider } from "@app/rag-core";
 import {
   loadProviderConfig,
+  resolveDecider,
   resolvePostgresStore,
   resolveRole,
   type Logger,
@@ -58,14 +59,43 @@ export function createRagStoreFromEnv(env: { DATABASE_URL?: string }): RagStore 
   return resolvePostgresStore(url);
 }
 
+/**
+ * The provider roles the chat composition root resolves, in one place. The
+ * env names behind them come from the config data (ADR-0022) — this list names
+ * *which* roles serve the chat path, so a new serving role is declared here
+ * (bench-only roles like `decision-candidates`/`embedder-candidates` are
+ * deliberately absent). `apps/api/src/lib/server.test.ts` iterates this list to
+ * prove the composition root passes through each resolved vendor's key.
+ */
+export const CHAT_SERVING_ROLES = [
+  "cheap",
+  "generator",
+  "reviewer",
+  "embedder",
+  "decision",
+] as const;
+
 /** The provider roles the chat pipeline needs, resolved once per request. */
 export type ChatProviders = {
   router: Provider;
   generator: Provider;
   reviewer: Provider | null;
+  /**
+   * The reviewer's decision-model pre-gate (ADR-0042 serving role). Null when
+   * no decision candidate is keyed — the reviewer then behaves exactly as it
+   * did before adoption (there is no enable flag: bound key = active).
+   */
+  decider: Decider | null;
   embedder: Provider;
   /** Env names whose keys were absent (ops visibility, never client-facing). */
   missingKeys: readonly string[];
+  /**
+   * Keyed decision candidates the personal-data posture excluded from serving
+   * (ADR-0043): a vendor whose config forbids personal data may never carry
+   * the pre-gate's claim spans, so it is dropped rather than wired. Reported
+   * for ops visibility — the key being bound is not the problem.
+   */
+  ineligibleKeys: readonly string[];
 };
 
 /** True when the role has at least one keyed candidate. */
@@ -119,12 +149,26 @@ export function createProvidersFromEnv(env: Record<string, string | undefined>):
   // from the report precisely when it is the only thing missing.
   const reviewerMissing = resolveRole(config, "reviewer", { env }).missingKeys;
   for (const key of reviewerMissing) missing.add(key);
+  // The decision-model serving role (#168): the pre-gate is active exactly
+  // when its key is bound — an absent key is reported for ops visibility but
+  // is NOT a configuration failure, because the reviewer's existing path is
+  // the fail-open fallback (the pre-gate only ever removes spend). Resolved
+  // with `personalData: true` (ADR-0043): the pre-gate sends the drafted
+  // answer's claim spans, so a candidate whose vendor forbids personal data is
+  // dropped from the serving chain rather than wired (bench unaffected).
+  const decisionRole = resolveDecider(config, "decision", { env, personalData: true });
+  for (const key of decisionRole.missingKeys) missing.add(key);
   return {
     router: resolve("cheap"),
     generator: resolve("generator"),
     reviewer: roleHasKey(config, env, "reviewer") ? resolve("reviewer") : null,
+    // Head-first: the eligible chain's first candidate serves. A failure does
+    // not walk the rest — the caller's fail-open path (the full reviewer) is
+    // the fallback, so the pre-gate never gates quality on a second vendor.
+    decider: decisionRole.deciders[0]?.decider ?? null,
     embedder: resolve("embedder"),
     missingKeys: [...missing],
+    ineligibleKeys: decisionRole.ineligibleKeys,
   };
 }
 
@@ -193,6 +237,7 @@ export function buildChatWiring(env: Record<string, string | undefined>): ChatWi
       routerProvider: providers.router,
       generatorProvider: providers.generator,
       reviewerProvider: providers.reviewer,
+      reviewerDecider: providers.decider,
       embedder: providers.embedder,
       store,
       // Typed as the domain's StoreBridge — no erasure cast needed anymore

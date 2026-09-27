@@ -167,17 +167,21 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
   {
     id: "typesafe",
     name: "TypeSafe AI",
-    status: "no-serving-role",
+    status: "current",
     role: {
-      id: "Model keputusan, hanya untuk bench sampai gerbang ADR-0042 diadopsi untuk layanan.",
-      en: "Decision model, bench-only until the ADR-0042 gate is adopted for serving.",
+      id: "Model keputusan: pratinjau sitasi (pre-gate) sebelum reviewer LLM — menilai apakah petikan yang dikutip benar-benar mendukung klaim jawaban (adopsi ADR-0042, #168).",
+      en: "Decision model: the citation pre-gate ahead of the LLM reviewer — judges whether each cited passage genuinely supports the answer's claim (ADR-0042 adoption, #168).",
     },
     personalData: {
-      id: "Teks fixture gerbang saja.",
-      en: "Gate fixture text only.",
+      id: "Klaim dari jawaban yang disusun dan petikan bukti yang dikutipnya — hanya saat pratinjau sitasi berjalan, satu panggilan batch per jawaban.",
+      en: "Claim spans from the drafted answer and the cited evidence passages — only while the citation screen runs, one batched call per answer.",
     },
     tier: "paid",
     verdict: "permitted",
+    note: {
+      id: "Ketentuan berbayar/standar — aturan register (ADR-0009) mewajibkan perjanjian pemrosesan untuk data pribadi, dan perjanjian pemrosesan (Art. 28(3)) TypeSafe telah dikonfirmasi pemilik pada 2026-09-27: pengikatan kunci produksi tidak lagi ditahan. Rujukan perjanjiannya sendiri tidak tercatat di repositori ini. Panggilan yang gagal atau tidak terbaca tidak pernah menggantikan reviewer LLM: pratinjau ini hanya bisa melewati reviewer pada jawaban yang benar-benar lolos (fail-open, ADR-0042).",
+      en: "Paid/standard terms — the register rule (ADR-0009) requires a processing agreement for personal data, and TypeSafe's Art. 28(3) processing agreement was confirmed by the owner on 2026-09-27: binding the production key is no longer gated. The agreement's own reference is not recorded in this repo. A failed or unreadable screen never replaces the LLM reviewer: it can only skip it on an answer it affirmatively cleared (fail-open, ADR-0042).",
+    },
   },
 ];
 

@@ -39,6 +39,12 @@ export type AppBindings = {
   GEMINI_PAID_API_KEY?: string;
   DASHSCOPE_API_KEY?: string;
   DEEPSEEK_API_KEY?: string;
+  /**
+   * The decision vendor's key (#168): binds the reviewer pre-gate. Optional —
+   * an absent key leaves the reviewer exactly as it was before adoption,
+   * because the pre-gate only ever removes spend (fail-open).
+   */
+  JEV_API_KEY?: string;
 };
 
 /**
