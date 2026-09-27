@@ -98,7 +98,9 @@ describe("trace contract", () => {
       {
         stage: "retriever",
         kind: "retrieval",
-        detail: { chunks: [{ id: "c1", score: 0.5, rankDense: 1, rankSparse: 2 }] },
+        detail: {
+          chunks: [{ id: "c1", score: 0.5, rankDense: 1, rankSparse: 2, origin: "expansion" }],
+        },
         at: 3,
       },
       {
@@ -108,6 +110,17 @@ describe("trace contract", () => {
         stage: "retriever",
         kind: "filter_relaxed",
         detail: { dropped: { layer: "commentary" }, track: "primary" },
+        at: 3,
+      },
+      {
+        // Scope expansion (ADR-0045): the retriever added a bounded set of
+        // children belonging to a scope the domain pack named, alongside the
+        // fused hits. `key`/`value` stay generic here — the domain pack owns
+        // what they mean — and the cap/truncated fields make the budget the
+        // expansion spent observable.
+        stage: "retriever",
+        kind: "scope_expansion",
+        detail: { key: "reference", value: "2", returned: 12, cap: 12, truncated: true },
         at: 3,
       },
       {
@@ -144,7 +157,28 @@ describe("trace contract", () => {
       { stage: "generator", kind: "refusal", reason: "insufficient evidence", at: 8 },
     ];
     const trace = parseTrace({ id: "t", createdAt: 0, events });
-    expect(trace.events).toHaveLength(9);
+    expect(trace.events).toHaveLength(10);
+  });
+
+  it("keeps a chunk ref without `origin` readable (pre-ADR-0045 traces)", () => {
+    // Forward compatibility is the contract's rule (ADR-0007): a trace
+    // persisted before the field existed parses, and the absent label simply
+    // means "no caller label" — never a fabricated one.
+    const trace = parseTrace({
+      id: "t",
+      createdAt: 0,
+      events: [
+        {
+          stage: "retriever",
+          kind: "retrieval",
+          detail: { chunks: [{ id: "c1", score: 0.5, rankDense: 1, rankSparse: 2 }] },
+          at: 1,
+        },
+      ],
+    });
+    const ref =
+      trace.events[0]?.kind === "retrieval" ? trace.events[0].detail.chunks[0] : undefined;
+    expect(ref?.origin).toBeUndefined();
   });
 
   it("rejects a decision event without an outcome", () => {

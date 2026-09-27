@@ -25,6 +25,7 @@ export function postgresCorpusMethods(
   | "similaritySearch"
   | "getDocChildrenByIds"
   | "countDocChildrenByMetadata"
+  | "listDocChildrenByParentSourceKey"
 > {
   return {
     insertDocParent(input) {

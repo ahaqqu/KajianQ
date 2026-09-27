@@ -191,3 +191,24 @@ export {
   runStoreEffect,
   type ChatPipelineDeps,
 } from "./chat-pipeline";
+
+// -- Surah-reference scoped expansion (ADR-0045, #142/#241) ----------------
+export {
+  SURAH_AYAH_COUNTS,
+  SURAH_NAMES,
+  normalizeSurahText,
+  leadingArticle,
+  withoutArticle,
+  type SurahName,
+} from "./surah-names";
+export { detectSurahReference, type SurahReference } from "./surah-reference";
+export {
+  DEFAULT_SCOPE_EXPANSION_CAP,
+  SCOPE_EXPANSION_ORIGIN,
+  SCOPE_KEY_SURAH,
+  expandSurahScope,
+  type ScopeBridge,
+  type ScopeChildRow,
+  type ScopeExpansion,
+  type ScopeStore,
+} from "./chat-scope-expansion";

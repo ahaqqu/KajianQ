@@ -45,6 +45,13 @@ export type AppBindings = {
    * because the pre-gate only ever removes spend (fail-open).
    */
   JEV_API_KEY?: string;
+  /**
+   * ADR-0045's surah-reference scope-expansion budget, as a non-negative
+   * integer string. Absent = the domain default (`DEFAULT_SCOPE_EXPANSION_CAP`);
+   * `0` disables the expansion. Config, never a secret, but it rides the same
+   * filtered env view so the knob reaches the pipeline's wiring.
+   */
+  SCOPE_EXPANSION_CAP?: string;
 };
 
 /**

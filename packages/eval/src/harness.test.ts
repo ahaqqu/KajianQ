@@ -49,6 +49,8 @@ function makeDeps(
     traceEvents?: () => TraceEventLike[];
     /** Make every `saveResult` reject, to exercise the ledger-failure path. */
     failLedger?: boolean;
+    /** The opaque origin label injected as the harness's expansion marker. */
+    expansionOrigin?: string;
   } = {},
 ) {
   const savedResults: { questionId: string; outcome: unknown; runId: string }[] = [];
@@ -103,10 +105,11 @@ function makeDeps(
     transport,
     traces,
     ledger,
-    sourceTypeOf: (id: string) => (id === "c1" ? "source-a" : undefined),
+    sourceTypeOf: (id: string) => (id === "c1" || id === "x1" ? "source-a" : undefined),
     budget: opts.budget ?? new Budget(undefined),
     refusalMarkers: ["tidak menemukan dalil yang memadai"],
     label: "test-label",
+    ...(opts.expansionOrigin !== undefined ? { expansionOrigin: opts.expansionOrigin } : {}),
   };
   return { deps, savedResults, getLabel: () => runLabel, getReport: () => savedReport };
 }
@@ -196,6 +199,60 @@ describe("runGoldenSet", () => {
     // C1: a skipped result never counts as a scored failure.
     const scored = result.results.filter((r) => r.skipped !== true);
     expect(scored).toHaveLength(2);
+  });
+
+  it("persists the expansion's contribution on each scoped outcome (C1)", async () => {
+    const { deps, savedResults } = makeDeps({
+      expansionOrigin: "expansion",
+      traceEvents: () => [
+        {
+          kind: "retrieval",
+          stage: "retriever",
+          detail: {
+            chunks: [
+              { id: "f0", score: 0.5, rankDense: 1 },
+              { id: "x1", origin: "expansion" },
+            ],
+          },
+        },
+        {
+          kind: "scope_expansion",
+          stage: "retriever",
+          detail: { key: "reference", value: "1", returned: 1, cap: 12, truncated: false },
+        },
+      ],
+    });
+    await runGoldenSet(set, deps);
+    // q1 expects source-a, which ONLY the expansion ref supplies (the fused
+    // ref f0 resolves to no source type): the reported recall is 1 while the
+    // fused track alone scores 0 — the persisted statement "the expansion
+    // carried this question", visible in the report beside the metric.
+    expect(savedResults[0]?.outcome).toMatchObject({
+      retrievalRecall: 1,
+      expansion: { chunks: 1, fusedOnlyRetrievalRecall: 0 },
+    });
+  });
+
+  it("omits the expansion block when the caller injected no origin label (C1)", async () => {
+    // The engine never names a caller's label: with none supplied it cannot
+    // say which refs the expansion added, so it says nothing rather than
+    // guessing from a score-less ref.
+    const { deps, savedResults } = makeDeps({
+      traceEvents: () => [
+        {
+          kind: "retrieval",
+          stage: "retriever",
+          detail: { chunks: [{ id: "c1" }, { id: "x1", origin: "expansion" }] },
+        },
+        {
+          kind: "scope_expansion",
+          stage: "retriever",
+          detail: { key: "reference", value: "1", returned: 1, cap: 12, truncated: false },
+        },
+      ],
+    });
+    await runGoldenSet(set, deps);
+    expect(Object.hasOwn(savedResults[0]?.outcome as object, "expansion")).toBe(false);
   });
 
   it("aborts the remaining questions when the budget is exhausted", async () => {

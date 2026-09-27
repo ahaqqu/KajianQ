@@ -50,6 +50,9 @@ export const ChunkRefSchema = v.object({
   score: v.optional(v.number()),
   rankDense: v.optional(v.number()),
   rankSparse: v.optional(v.number()),
+  /** Why this chunk is in the set: an opaque caller label (ADR-0045).
+   * Absent = the fused tracks produced it, so older traces stay readable. */
+  origin: v.optional(v.pipe(v.string(), v.minLength(1))),
 });
 
 /** The persisted trace's retrieval ref shape (thermo-review B3: the one owner). */
@@ -127,6 +130,23 @@ export const TraceEventSchema = v.variant("kind", [
       dropped: v.record(v.string(), v.string()),
       /** Which embedding track the relaxation applied to. */
       track: v.pipe(v.string(), v.minLength(1)),
+    }),
+    cost: v.optional(CostRecordSchema),
+    at: v.pipe(v.number(), v.integer()),
+  }),
+  v.object({
+    /** A deterministic scope expansion (ADR-0045): the retriever added a
+     * bounded set of children of a domain-named scope, alongside the fused
+     * hits. `key`/`value` are opaque; `cap`/`truncated` show the budget. */
+    stage: v.literal("retriever"),
+    kind: v.literal("scope_expansion"),
+    detail: v.object({
+      key: v.pipe(v.string(), v.minLength(1)),
+      value: v.pipe(v.string(), v.minLength(1)),
+      /** Children added; the configured cap; whether it truncated them. */
+      returned: v.pipe(v.number(), v.integer(), v.minValue(0)),
+      cap: v.pipe(v.number(), v.integer(), v.minValue(0)),
+      truncated: v.boolean(),
     }),
     cost: v.optional(CostRecordSchema),
     at: v.pipe(v.number(), v.integer()),

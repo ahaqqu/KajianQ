@@ -11,6 +11,12 @@ export type ChunkRefLike = {
   score?: number;
   rankDense?: number;
   rankSparse?: number;
+  /**
+   * The ref's opaque origin label (ADR-0045), when the trace carries one.
+   * Opaque on purpose: the harness compares it against the caller-supplied
+   * `expansionOrigin` and never interprets what the label means.
+   */
+  origin?: string;
 };
 
 /** The subset of the contracts Trace the harness reads. */
@@ -46,6 +52,17 @@ export type TraceEventLike = {
      * persisted traces predate it, which is the signal to fall back to the text.
      */
     grounded?: string[];
+    /**
+     * The `scope_expansion` event's typed detail (ADR-0045), structurally
+     * mirroring the contract. The harness reads the event's KIND to know the
+     * scoped path ran (C1) and never interprets these opaque fields; they are
+     * listed so a trace fixture stays the real shape.
+     */
+    key?: string;
+    value?: string;
+    returned?: number;
+    cap?: number;
+    truncated?: boolean;
   };
   /** The event's cost record (thermo-review B1: feeds the report's costs). */
   cost?: CostRecordLike;

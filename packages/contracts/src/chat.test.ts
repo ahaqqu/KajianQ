@@ -5,6 +5,7 @@ import {
   ChatCitationsFrameSchema,
   ChatSessionMessageSchema,
   ChatSessionMessagesSchema,
+  ChatTraceChunkSchema,
   ChatTraceFrameSchema,
 } from "./chat";
 
@@ -166,6 +167,27 @@ describe("ChatTraceFrameSchema", () => {
     });
     expect(parsed.sources[0]?.score).toBeUndefined();
     expect(parsed.technical.intent).toBeUndefined();
+  });
+
+  it("parses a frame persisted before `origin` existed (A1 backward compatibility)", () => {
+    // The exact pre-ADR-0045 frame shape: no chunk carries an origin label.
+    // It must still parse and render — the field is additive and optional.
+    const parsed = v.parse(ChatTraceFrameSchema, FRAME);
+    for (const chunk of [...parsed.sources, ...parsed.technical.chunks]) {
+      expect(chunk.origin).toBeUndefined();
+    }
+  });
+
+  it("carries an opacity-checked `origin` label on a chunk ref (ADR-0045)", () => {
+    const chunk = { ...CHUNK, origin: "scope_expansion" };
+    const parsed = v.parse(ChatTraceFrameSchema, {
+      ...FRAME,
+      sources: [chunk],
+      technical: { ...FRAME.technical, chunks: [chunk] },
+    });
+    expect(parsed.technical.chunks[0]?.origin).toBe("scope_expansion");
+    // An empty label is not a label: the panel must never render a blank reason.
+    expect(v.safeParse(ChatTraceChunkSchema, { id: "c1", origin: "" }).success).toBe(false);
   });
 
   it("accepts a refusal's empty frame (no sources consulted, no machinery to show)", () => {

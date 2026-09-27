@@ -126,6 +126,11 @@ export function createKajianQRouter(provider: RouterProvider): Router<KajianQFil
             intent: out.intent,
             subQueries: subQueries.map((text) => ({ text })),
             filters,
+            // The verbatim question rides through opaquely so a domain
+            // retriever can apply a deterministic rule keyed on what the user
+            // actually asked (ADR-0045's scope expansion) instead of on a
+            // model-generated paraphrase (the #241 flake).
+            sourceText: query.text,
           };
         }),
       ),

@@ -83,14 +83,24 @@ export type ChatCitationsFrame = v.InferOutput<typeof ChatCitationsFrameSchema>;
 /**
  * One chunk reference in the user-facing Trace frame (#12, ADR-0007). The
  * `technical` layer carries the retrieval provenance verbatim from the
- * persisted trace's `retrieval` events (fused score + both channel ranks);
- * the top "sources consulted" layer reuses the same shape with the numeric
- * fields simply absent, so the panel's two layers read one contract.
+ * persisted trace's `retrieval` events (fused score + both channel ranks +
+ * the chunk's `origin` label); the top "sources consulted" layer reuses the
+ * same shape with those provenance fields simply absent, so the panel's two
+ * layers read one contract.
  *
  * `source` is the cited work's display title, joined server-side from the
  * store by the chunk id — the client never resolves display data itself. A
  * chunk whose row (or title) is missing renders by id instead: honest
  * provenance, never a fabricated title.
+ *
+ * `origin` is the same opaque caller label the persisted trace carries
+ * (`ChunkRef.origin`, ADR-0045), projected verbatim: it answers "why is this
+ * chunk here" for a chunk no fused track produced. The surah-scope
+ * expansion's verses carry no score and no channel rank, so without the
+ * label the panel shows them as scoreless sources with no stated reason.
+ * Optional and absent by default: fused hits have no label, and traces
+ * persisted before the field existed must keep rendering — the panel omits
+ * what the trace does not carry, never invents it.
  */
 export const ChatTraceChunkSchema = v.object({
   id: v.pipe(v.string(), v.minLength(1)),
@@ -98,6 +108,7 @@ export const ChatTraceChunkSchema = v.object({
   score: v.optional(v.number()),
   rankDense: v.optional(v.number()),
   rankSparse: v.optional(v.number()),
+  origin: v.optional(v.pipe(v.string(), v.minLength(1))),
 });
 
 export type ChatTraceChunk = v.InferOutput<typeof ChatTraceChunkSchema>;

@@ -72,6 +72,7 @@ const result = await evalpkg.runGoldenSet(selection.set, {
   refusalMarkers: harness.refusalMarkers,
   citationGrammar: harness.citationGrammar,
   dateAssertions: harness.dateAssertions,
+  expansionOrigin: harness.expansionOrigin,
   label,
   budget,
 });

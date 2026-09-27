@@ -104,6 +104,10 @@ _Avoid_: leaderboard comparison (implies hosted benchmarks), recall test (unqual
 The decided shape of the retrieval layer from the Embedding Benchmark: which embedding model serves as the `embedder` default and whether serving is AR-only or ID-fallback fusion over the dual-index schema. Recorded in ADR-0036; switchable without re-embedding (ADR-0013 amendment 1).
 _Avoid_: retrieval strategy (vague), embedding config (implies the whole provider config)
 
+**Surah-Reference Scoped Expansion**:
+The deterministic retrieval path that reads the children of the surah (or the surah of the verse) a question names — via the verbatim question, never via a router sub-query — and adds a bounded window of them alongside the fused hits. Its budget is `SCOPE_EXPANSION_CAP` (default 12, `0` disables), its trace is the typed `scope_expansion` event, and chunks it adds carry `origin: "scope_expansion"` — a label the user-facing Trace frame projects and the eval outcome counts (`expansion.chunks`, `expansion.fusedOnlyRetrievalRecall`), because for a question that names a reference the expansion satisfies the scored recall leg by construction. It exists because a short formulaic verse is unreachable for a whole-surah meta-question by similarity alone (#142), and it is keyed on the question so the router's paraphrase cannot move it (#241). Recorded in ADR-0045.
+_Avoid_: scope expansion (unqualified — ADR-0014's Arabic term expansion is a different mechanism), reference expansion (implies an explicit `QS. n:m` only), query expansion (that is ADR-0014)
+
 **Decision model**:
 A model that answers typed structured questions (Choice / Score / Noul) over a supplied state instead of generating text — a different capability from chat and embedding, reached through the engine's `Decider` seam (ADR-0042). Its serving role is `decision`; its judgment is always a _screen_, never a verdict on its own. Not a chat model, not a judge.
 _Avoid_: judge (reserved for the reviewer), classifier (implies a fixed label set)

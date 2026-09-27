@@ -84,6 +84,10 @@ function toTechnicalChunk(
     ...(ref.score !== undefined ? { score: ref.score } : {}),
     ...(ref.rankDense !== undefined ? { rankDense: ref.rankDense } : {}),
     ...(ref.rankSparse !== undefined ? { rankSparse: ref.rankSparse } : {}),
+    // The ref's opaque origin label, when the trace carries one (ADR-0045):
+    // an expansion chunk has no score or channel ranks, so this field is the
+    // only thing that tells the panel why the surah's verses are in context.
+    ...(ref.origin !== undefined ? { origin: ref.origin } : {}),
   };
 }
 

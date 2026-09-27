@@ -1,42 +1,24 @@
 import { Effect } from "effect";
 import type {
   AlignedPairInsert,
-  DocChildById,
   DocChildInsert,
   DocParentInsert,
   FeedbackInsert,
   RagStore,
   SimilarChild,
 } from "@app/infra";
-import { memoryEvalMethods } from "./memory-rag-store-eval";
-import { memoryFeedbackMethods } from "./memory-rag-store-feedback";
-import { memoryAuthMethods } from "./memory-rag-store-auth";
+import {
+  memoryAuthMethods,
+  memoryEvalMethods,
+  memoryFeedbackMethods,
+  memoryScopeMethods,
+  toReadChild,
+} from "./memory-rag-store-parts";
 
 /**
  * In-memory RagStore with real cosine search — the test seam. Same upsert
  * semantics as the Postgres adapter, Effect-signatured like the seam (ADR-0027).
  */
-
-/** Project a stored child insert to the read shape: no vectors, epoch-0 createdAt. */
-function toReadChild(
-  c: DocChildInsert & { id: string },
-  parentTitle: string | null = null,
-): DocChildById {
-  return {
-    id: c.id,
-    parentId: c.parentId,
-    textRaw: c.textRaw,
-    textAr: c.textAr,
-    textId: c.textId ?? null,
-    citation: c.citation ?? {},
-    embeddingPrimary: null,
-    embeddingFallback: null,
-    ordinal: c.ordinal,
-    metadata: c.metadata ?? {},
-    createdAt: 0,
-    parentTitle,
-  };
-}
 
 export function createMemoryRagStore(): RagStore & {
   allChildren: () => DocChildInsert[];
@@ -196,6 +178,9 @@ export function createMemoryRagStore(): RagStore & {
         }),
       );
     },
+    // The bounded scope read (ADR-0045) — helper module, like the auth/eval
+    // halves; the projection helper it shares with the reads above lives there.
+    ...memoryScopeMethods({ parents, parentByKey, children }),
     countDocChildrenByMetadata(key) {
       return Effect.sync(() => {
         const counts = new Map<string | null, number>();
