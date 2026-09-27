@@ -16,9 +16,9 @@
 //
 // Authorization text a role carries travels inside ## Role definition with
 // the rest of its body (implementer and senior-implementer carry a
-// "## Dispatch authorization" section; fixer implies it; reviewer needs
-// none) — this script holds no role→authorization table and adds no third
-// section. The role contract is canonical in .zcode/agents/README.md
+// "## Dispatch authorization" section; fixer implies it; reviewer and qa
+// need none) — this script holds no role→authorization table and adds no
+// third section. The role contract is canonical in .zcode/agents/README.md
 // (Dispatch authorization); what the script emits is canonical here.
 //
 // Usage:
@@ -33,7 +33,7 @@ const ROLES_DIR = join(import.meta.dir, "..", ".zcode", "agents");
 /** The manager's role set. The role argument is validated against this list —
  * a dispatch prompt carries commit/push/PR authority, so it is assembled only
  * from a known role file, never from an arbitrary path. */
-const ROLES = new Set(["implementer", "senior-implementer", "fixer", "reviewer"]);
+const ROLES = new Set(["implementer", "senior-implementer", "fixer", "reviewer", "qa"]);
 
 const argv = process.argv.slice(2);
 function argOf(flag) {

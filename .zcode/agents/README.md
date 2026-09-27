@@ -11,6 +11,7 @@ applies the `code-review` skill end-to-end, runs both thermo passes itself when 
 | senior-implementer    | `senior-implementer.md` | hard / `model:high` tickets — correctness/trust invariants that fail silently; also writes the tests |
 | fixer                 | `fixer.md`              | owns review feedback: accepts/rejects each itemized finding, applies accepted fixes, keeps CI green  |
 | reviewer              | `reviewer.md`           | applies `code-review` end-to-end, running both thermos passes itself when the diff touches code      |
+| qa                    | `qa.md`                 | adversarial staging verification of a merged change — verdict with per-probe evidence; no worktree   |
 
 The manager is the session agent itself — it has no role file.
 
