@@ -108,12 +108,25 @@ const CHAT_CEILING = 2000;
 const QA_PROBE_LENGTH = 20_000;
 
 /**
- * Chat POSTs the fixture route has served in the current scenario (#256).
- * Module scope because a scenario's When and Then steps share it, and the
- * suite runs scenarios sequentially (`fullyParallel: false`); it is reset
- * every time a scenario opens the app with fixtures.
+ * Chat POSTs the fixture route has served in the current scenario (#256), and
+ * the raw JSON bodies they carried. Module scope because a scenario's When and
+ * Then steps share it, and the suite runs scenarios sequentially
+ * (`fullyParallel: false`); both are reset every time a scenario opens the app
+ * with fixtures.
+ *
+ * The bodies are here for the ceiling scenario's wire claim (thermo-review B1):
+ * counting POSTs alone cannot say what was sent, and a count of zero cannot
+ * fail at all when no send happens.
  */
 let chatPosts = 0;
+let chatPostBodies: string[] = [];
+
+/**
+ * The draft the composer clamped the over-length paste to (#256), captured
+ * before the scenario sends it — the send clears the composer, so the wire
+ * body is compared against this, not against the (now empty) field.
+ */
+let clampedDraft = "";
 
 /** Intercept auth + chat endpoints with fixtures, then open the app. */
 async function openChatWithFixtures(
@@ -122,12 +135,15 @@ async function openChatWithFixtures(
   transcriptFixture: Record<string, unknown> = TRANSCRIPT_FIXTURE,
 ): Promise<void> {
   chatPosts = 0;
+  chatPostBodies = [];
+  clampedDraft = "";
   await page.route("**/v1/auth/anonymous", (route) => route.fulfill({ json: SESSION }));
   await page.route("**/v1/chat/sessions/*/messages", (route) =>
     route.fulfill({ json: transcriptFixture }),
   );
   await page.route("**/v1/chat", async (route) => {
     chatPosts += 1;
+    chatPostBodies.push(route.request().postData() ?? "");
     // A short delay so the staged loading state is observably honest.
     await new Promise((resolve) => setTimeout(resolve, 1200));
     await route.fulfill({
@@ -193,19 +209,41 @@ When("I open the chat and paste a message longer than the ceiling", async ({ pag
   await page.getByTestId("composer").fill("a".repeat(QA_PROBE_LENGTH));
 });
 
-Then("the composer holds the ceiling, says so, and sends nothing", async ({ page }) => {
+Then("the composer holds the ceiling and says so", async ({ page }) => {
   const composer = page.getByTestId("composer");
   // Clamped to the contract's own ceiling — the draft the reader sees is
   // exactly what the API accepts, not a request that comes back 400.
-  expect((await composer.inputValue()).length).toBe(CHAT_CEILING);
+  clampedDraft = await composer.inputValue();
+  expect(clampedDraft.length).toBe(CHAT_CEILING);
   // The hint is the reader's explanation, in the app's language (id by
   // default); the number is Intl-formatted, so build the expectation the same
   // way rather than hardcoding a separator.
   await expect(page.getByTestId("composer-limit")).toContainText(
     new Intl.NumberFormat("id").format(CHAT_CEILING),
   );
-  // And no chat POST left the page: nothing to reject, nothing to spend.
-  expect(chatPosts).toBe(0);
+});
+
+// B1: the scenario used to stop here and assert `chatPosts === 0`, a claim no
+// step could falsify because nothing ever attempted a send (the pre-fix
+// scenario passed with the composer's send path mutated to a no-op). The
+// property that matters now that the clamp exists is the wire body: press
+// Enter and assert what actually left the page.
+When("I press Enter to send the clamped draft", async ({ page }) => {
+  await page.getByTestId("composer").press("Enter");
+});
+
+Then("the outgoing chat POST carries the clamped message, no longer than the ceiling", async () => {
+  // A real send is the precondition of this claim: without it the assertion
+  // below has nothing to read, so make the counter load-bearing first.
+  await expect.poll(() => chatPosts).toBe(1);
+  const body = JSON.parse(chatPostBodies[0] ?? "{}") as { message?: string };
+  const sent = body.message ?? "";
+  // Exactly the clamped draft the composer held — not a truncated copy, not
+  // a different string — and at most the contract's ceiling on the wire.
+  expect(sent).toBe(clampedDraft);
+  expect(sent.length).toBeLessThanOrEqual(CHAT_CEILING);
+  // The over-length probe cannot be what was sent.
+  expect(sent.length).toBeLessThan(QA_PROBE_LENGTH);
 });
 
 Then("I see staged loading while the answer is prepared", async ({ page }) => {
