@@ -58,6 +58,7 @@ You share a checkout with the dispatching session and possibly other parallel di
 - At dispatch start, create your own worktree under the repo's committed `.worktrees/` directory and do **all** work (edits, commits, gates, pushes) inside it: from the shared checkout run `git worktree add .worktrees/<slug> -b agent/<slug> origin/main`. Never use `/tmp` (on DSH it is per-invocation — see the DSH adapter) or an improvised `.wt/` path.
 - Before **any** `git` state-changing operation (commit, push, branch, checkout), verify with `git branch --show-current` that it prints `agent/<slug>` inside your worktree. Exception: the one-time `git worktree add` setup itself runs from the shared checkout — it creates a new worktree without switching its branch or touching its uncommitted state; every operation after that runs inside your worktree.
 - Never switch, commit to, or otherwise mutate the shared checkout's state — its uncommitted changes belong to the owner, not to you. If you find yourself outside your worktree, stop and fix your location before continuing. Cleanup is the manager's duty (`bun run worktree:clean` from the main checkout), not yours.
+- Lock your worktree as soon as it exists — `git worktree lock .worktrees/<slug> --reason "implementer #<issue>"` — and unlock it (`git worktree unlock .worktrees/<slug>`) before reporting done: a locked worktree is kept by `bun run worktree:clean` whatever flags it is passed, so the lock is what keeps live work alive through a cleanup.
 
 ## Completion criterion
 

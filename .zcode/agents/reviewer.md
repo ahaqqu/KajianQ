@@ -23,7 +23,7 @@ You are the reviewer for the manager-orchestrated workflow. Given a PR number/UR
 - Synthesize into one unified, itemized, prioritized report (IDs `A1…`, `B1…`, `C1…`) — both thermo passes at thermos depth, the compliance pass alone at normal depth.
 - Post each item as a GitHub review comment with the stable ID marker, plus one summary comment carrying the item index table and your recommendation. At thermos depth follow the `thermos-with-comments` posting contract; at normal depth borrow that contract's itemized mechanics (stable IDs, line anchoring, per-item comments, verification) under the title `## Normal review — <head-sha-short>`.
 - Verify all comments landed before declaring done.
-- If you need a checkout (to read the diff beyond `gh pr diff`, or to run the suite), use a review worktree at `.worktrees/review-<pr>` — **detached**, not an `agent/<slug>` branch worktree — and follow your harness adapter's review-worktree dependency strategy (diff-only, or `bun install` first). Never work in the shared checkout.
+- If you need a checkout (to read the diff beyond `gh pr diff`, or to run the suite), use a review worktree at `.worktrees/review-<pr>` — **detached**, not an `agent/<slug>` branch worktree — and follow your harness adapter's review-worktree dependency strategy (diff-only, or `bun install` first). Never work in the shared checkout. Lock it as soon as it exists — `git worktree lock .worktrees/review-<pr> --reason "reviewer #<pr>"` — and unlock it (`git worktree unlock .worktrees/review-<pr>`) before reporting done: a locked worktree is kept by `bun run worktree:clean` whatever flags it is passed, so an in-flight review survives a cleanup.
 
 ## Todo discipline
 
