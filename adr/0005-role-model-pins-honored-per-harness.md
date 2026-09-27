@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-08-29). Records the model-routing decision for the manager-orchestrated agentic workflow. Originated in the KajianQ fork (issue #96, PR #98, probed 2026-08-29/30) and ported to the template; builds on the template-sync ownership rules in `template-sync.json`.
+Accepted (2026-08-29). **Superseded by [ADR-0023](0023-role-model-pins-honored-per-harness.md)** (accepted 2026-08-29; amended 2026-09-27): this file is the template-heritage near-duplicate of that decision, under the same title and the number `0005`, which in this repo belongs to the monorepo ADR ([`adr/0005-monorepo-engine-plus-product.md`](0005-monorepo-engine-plus-product.md)). ADR-0023 is the operative record — it carries the current pin set, the current DSH tool surface, the restored `bun run dsh:preflight` and its two checks, and the retired/current status of each harness's preflight. Every gate command this file names is history, and the ZCode-side command it names no longer exists (retired 2026-09-01, PR #130 — see the Update below), so no reader should run it. The text below is history, not the operative record.
 
 ## Context
 
