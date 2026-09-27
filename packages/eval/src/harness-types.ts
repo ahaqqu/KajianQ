@@ -78,3 +78,17 @@ export type CitationGrammar = {
   /** Every citation-shaped span in the text, ALREADY normalized. */
   labelsInText: (text: string) => string[];
 };
+
+/**
+ * The calendar-date assertion detector the grounded-decline acceptance
+ * (#244) uses, injected by the composition root (the domain pack owns the
+ * vocabulary; the engine package must not). The contract is narrow: does this
+ * text assert a Gregorian or Hijri date? The domain implementation is
+ * `assertsCalendarDate`, and its patterns are literal — the engine never
+ * compiles a regex from data.
+ *
+ * Absent on purpose in a unit context: with no detector injected the
+ * acceptance fails closed (no extra acceptance), so a caller that omits it
+ * cannot accidentally weaken a trap.
+ */
+export type DateAssertionDetector = (text: string) => boolean;

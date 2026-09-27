@@ -1,7 +1,9 @@
+import type { GroundedDeclineAcceptance } from "@app/contracts";
 import type {
   ChunkRefLike,
   CitationFrameLike,
   CitationGrammar,
+  DateAssertionDetector,
   RetrievalLike,
   TraceEventLike,
 } from "./harness-types";
@@ -180,6 +182,80 @@ export function detectRefusal(
 ): boolean {
   if (events.some((e) => e.kind === "refusal")) return true;
   return refusalMarkers.some((m) => m !== "" && answerText.includes(m));
+}
+
+/**
+ * The grounded-decline acceptance (#244, owner decision 2026-09-27). A
+ * `refuse` question may carry this optional block when the pipeline has TWO
+ * acceptable renderings at its boundary; this scorer then accepts the second
+ * one, the grounded decline, without a `refusal` event or refusal marker.
+ *
+ * The rule is deliberately a conjunction of three checks, all deterministic —
+ * no LLM judge, because the point is to remove run-to-run variation, and a
+ * nondeterministic acceptance would reintroduce it one layer up:
+ *
+ *   1. **Decline proof** — the answer contains one configured marker
+ *      (case-insensitive). A vague or hedging answer is not a decline.
+ *   2. **No date assertion** — the injected domain detector
+ *      (`DateAssertionDetector`, `assertsCalendarDate`) finds no calendar
+ *      date. This is the requirement the trap exists to enforce ("do not
+ *      assert a date for the Hour"): a dated answer fails no matter how well
+ *      it is cited. The detector is literal-patterned domain code, so the
+ *      engine names no vocabulary and compiles no regex; the strict direction
+ *      (reject on any date-ish token) never swallows a date.
+ *   3. **Grounded citations** — every citation-shaped span the answer carries
+ *      is present in the answer's `citations` frame (ADR-0040) or the trace
+ *      reviewer `grounded` labels. A fabricated citation reaches neither, so
+ *      it fails. An answer with no citation spans is vacuously grounded.
+ *
+ * Fail-closed by construction: without the injected date detector, the
+ * citation grammar, or grounding evidence, the acceptance returns false
+ * rather than admitting an uncheckable answer. The real CLI injects the
+ * detector and grammar and the transport carries the frame, so the accepted
+ * path is the production path; a unit caller that omits them simply gets no
+ * extra acceptance.
+ */
+export function groundedDeclineAccepts(input: {
+  answerText: string;
+  acceptance: GroundedDeclineAcceptance;
+  frame?: CitationFrameLike | null | undefined;
+  events?: readonly TraceEventLike[] | undefined;
+  grammar?: CitationGrammar | undefined;
+  assertsDate?: DateAssertionDetector | undefined;
+}): boolean {
+  const { answerText, acceptance, frame, events, grammar, assertsDate } = input;
+
+  // 1. The answer must say it declines (any-of, case-insensitive).
+  const haystack = answerText.toLowerCase();
+  if (!acceptance.markers.some((marker) => haystack.includes(marker.toLowerCase()))) return false;
+
+  // 2. No date assertion — a domain-owned, literal-patterned check. No
+  //    detector injected ⇒ fail closed.
+  if (assertsDate === undefined || assertsDate(answerText)) return false;
+
+  // 3. Every citation-shaped span must be grounded — and the grounding must be
+  //    verifiable. No grammar or no evidence ⇒ fail closed.
+  if (grammar === undefined) return false;
+  const spans = grammar.labelsInText(answerText);
+  const evidence = groundedEvidenceLabels(frame, events);
+  if (evidence === undefined) return false;
+  const grounded = new Set(evidence.map(grammar.normalizeLabel));
+  return spans.every((span) => grounded.has(grammar.normalizeLabel(span)));
+}
+
+/**
+ * The grounded label evidence for an answer, in the same precedence
+ * `citationLabelsPresent` uses: the server-derived frame first (a label in it
+ * is grounded by construction, ADR-0040), then the trace reviewer `grounded`
+ * list. `undefined` means neither is available — the caller must fail closed
+ * rather than treat the answer text as its own evidence.
+ */
+function groundedEvidenceLabels(
+  frame: CitationFrameLike | null | undefined,
+  events: readonly TraceEventLike[] | undefined,
+): string[] | undefined {
+  if (frame != null) return frame.citations.map((citation) => citation.label);
+  return reviewerGroundedLabels(events ?? []);
 }
 
 /** The retrieval events of one trace, in order. */

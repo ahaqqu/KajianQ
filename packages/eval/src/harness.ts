@@ -1,10 +1,17 @@
 import type { EvalResultOutcome, EvalRunReport, GoldenQuestion, GoldenSet } from "@app/contracts";
 import { Budget, BudgetExceededError } from "./budget";
-import { citationValidity, detectRefusal, refusalCorrectness, retrievalRecall } from "./scorers";
+import {
+  citationValidity,
+  detectRefusal,
+  groundedDeclineAccepts,
+  refusalCorrectness,
+  retrievalRecall,
+} from "./scorers";
 import type {
   CitationFrameLike,
   CitationGrammar,
   CostRecordLike,
+  DateAssertionDetector,
   TraceEventLike,
 } from "./harness-types";
 
@@ -80,6 +87,12 @@ export type HarnessDeps = {
    * context: scoring then falls back to the byte-exact substring check.
    */
   citationGrammar?: CitationGrammar;
+  /**
+   * The calendar-date assertion detector the grounded-decline acceptance (#244)
+   * uses — the domain pack's `assertsCalendarDate`, injected by the CLI
+   * composition root. Omitted ⇒ the acceptance fails closed.
+   */
+  dateAssertions?: DateAssertionDetector;
   /** Run label persisted with the report. */
   label?: string;
   now?: () => number;
@@ -195,12 +208,16 @@ export async function runGoldenSet(set: GoldenSet, deps: HarnessDeps): Promise<H
  * prefers the frame (ADR-0040: a label in it is grounded by construction),
  * then the trace's reviewer `grounded` labels, then the text through the
  * injected citation grammar (see `citationValidity`).
+ *
+ * Refusal correctness accepts the refusal signal, and — for the rare `refuse`
+ * question that opted into it (#244) — a grounded decline; the opt-in lives on
+ * the question, so no other verdict can change (see `groundedDeclineAccepts`).
  */
 export function scoreQuestion(
   question: GoldenQuestion,
   answerText: string,
   events: readonly TraceEventLike[],
-  deps: Pick<HarnessDeps, "sourceTypeOf" | "refusalMarkers" | "citationGrammar">,
+  deps: Pick<HarnessDeps, "sourceTypeOf" | "refusalMarkers" | "citationGrammar" | "dateAssertions">,
   frame?: CitationFrameLike | null,
 ): EvalResultOutcome {
   const retrieval = events.filter((e) => e.kind === "retrieval").at(-1);
@@ -212,7 +229,21 @@ export function scoreQuestion(
     ...(deps.citationGrammar !== undefined ? { grammar: deps.citationGrammar } : {}),
   });
   const refused = detectRefusal(events, answerText, deps.refusalMarkers ?? []);
-  const correct = refusalCorrectness(question.expectedBehavior, refused);
+  // The additive acceptance is inert unless the question opted in AND expects
+  // a refusal: `expectedBehavior`'s union is not widened, so a question that
+  // does not carry `acceptance` cannot inherit this path.
+  const groundedDecline =
+    question.expectedBehavior === "refuse" && question.acceptance !== undefined
+      ? groundedDeclineAccepts({
+          answerText,
+          acceptance: question.acceptance.groundedDecline,
+          frame,
+          events,
+          ...(deps.citationGrammar !== undefined ? { grammar: deps.citationGrammar } : {}),
+          ...(deps.dateAssertions !== undefined ? { assertsDate: deps.dateAssertions } : {}),
+        })
+      : false;
+  const correct = refusalCorrectness(question.expectedBehavior, refused) || groundedDecline;
   const passed = correct && citations === 1 && recall === 1;
   return {
     questionId: question.id,
@@ -221,6 +252,10 @@ export function scoreQuestion(
     retrievalRecall: recall,
     citationValidity: citations,
     refused,
+    // A pass the refusal signal did NOT produce says so on the persisted row,
+    // so an operator reading `passed: true, refused: false` learns which
+    // rendering satisfied the question instead of guessing.
+    ...(groundedDecline && !refused ? { notes: ["grounded_decline_accepted"] } : {}),
   };
 }
 

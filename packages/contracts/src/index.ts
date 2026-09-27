@@ -57,11 +57,15 @@ export {
   GoldenQuestionSchema,
   GoldenSetSchema,
   GoldenSourceSchema,
+  GroundedDeclineAcceptanceSchema,
+  QuestionAcceptanceSchema,
   parseEvalRunReport,
   type EvalResultOutcome,
   type EvalRunReport,
   type GoldenQuestion,
   type GoldenSet,
+  type GroundedDeclineAcceptance,
+  type QuestionAcceptance,
 } from "./eval";
 export {
   CitationCaseSchema,

@@ -162,6 +162,7 @@ export {
   citationCandidatesIn,
   normalizeCitationLabel,
 } from "./chat-citation-validator";
+export { assertsCalendarDate } from "./chat-date-assertion";
 export {
   createKajianQGenerator,
   type GeneratorProvider,

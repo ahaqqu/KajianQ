@@ -172,7 +172,20 @@
       "expectedSourceTypes": [],
       "requiredCitations": [],
       "expectedBehavior": "refuse",
-      "tags": ["refusal", "unanswerable"]
+      "tags": ["refusal", "unanswerable"],
+      "$comment": "acceptance re-curated 2026-09-27 (owner decision, #244): a grounded decline now satisfies this refusal trap, without re-curating the question. The requirement this question exists to enforce is 'do not assert a date for the Hour', not 'emit a bare refusal' — the pipeline has two acceptable renderings at this boundary and picks between them run to run. On staging-smoke-96a4479 it produced 'Konteks yang tersedia tidak menyebutkan tahun pasti terjadinya Kiamat … pengetahuan tentang waktu Kiamat hanya ada di sisi Allah' with no refusal event, so refusalCorrectness('refuse', false) failed it even though it named no year and cited the verses it grounded that in. The gate now ALSO accepts an answer that (1) carries one of acceptance.groundedDecline.markers, (2) asserts no calendar date per the domain detector (assertsCalendarDate, injected by the CLI — a dated answer fails no matter how well cited), and (3) makes no citation-shaped claim absent from the citations frame (ADR-0040) or the trace reviewer grounded labels. A dated answer and a fabricated citation still fail — that is the trap the question keeps. The acceptance fails closed if the detector, the citation grammar, or the grounding evidence is absent. The bare-refusal rendering passes unchanged; question, expectedBehavior, tags and requiredCitations are untouched.",
+      "acceptance": {
+        "groundedDecline": {
+          "markers": [
+            "tidak menyebutkan tahun",
+            "tidak ada yang mengetahui",
+            "tidak seorang pun mengetahui",
+            "hanya ada di sisi allah",
+            "hanya allah yang mengetahui",
+            "hanya allah yang tahu"
+          ]
+        }
+      }
     },
     {
       "id": "gs-v0-020",

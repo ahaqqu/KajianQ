@@ -15,6 +15,7 @@ export {
   citationLabelsPresent,
   citationValidity,
   detectRefusal,
+  groundedDeclineAccepts,
   refusalCorrectness,
   retrievalEventsOf,
   retrievalRecall,
@@ -42,6 +43,7 @@ export type {
   ChunkRefLike,
   CitationFrameLike,
   CitationGrammar,
+  DateAssertionDetector,
   RetrievalLike,
   TraceEventLike,
 } from "./harness-types";

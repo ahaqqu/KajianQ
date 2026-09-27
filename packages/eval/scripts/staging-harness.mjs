@@ -24,6 +24,7 @@ import { createLogger, resolvePostgresStore } from "@app/infra";
 import { BudgetExceededError, postChatSse } from "@app/eval";
 import {
   DEFAULT_REFUSALS,
+  assertsCalendarDate,
   citationCandidatesIn,
   normalizeCitationLabel,
 } from "@app/kajianq-domain";
@@ -42,6 +43,15 @@ export const CITATION_GRAMMAR = {
   normalizeLabel: normalizeCitationLabel,
   labelsInText: citationCandidatesIn,
 };
+
+/**
+ * The calendar-date assertion detector the grounded-decline acceptance (#244)
+ * uses: the DOMAIN's own literal-patterned function, injected by the
+ * composition root exactly as the citation grammar is. The engine never
+ * compiles a regex from data (the shape the security scan blocks), and the
+ * domain pack owns the date vocabulary.
+ */
+export const DATE_ASSERTIONS = assertsCalendarDate;
 
 /**
  * Build the staging seams one eval run needs. The store is resolved from the
@@ -151,5 +161,6 @@ export async function createStagingHarness(config, budget) {
     ledger,
     refusalMarkers: REFUSAL_MARKERS,
     citationGrammar: CITATION_GRAMMAR,
+    dateAssertions: DATE_ASSERTIONS,
   };
 }

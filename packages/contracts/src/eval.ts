@@ -26,6 +26,36 @@ export const GoldenCitationSchema = v.pipe(v.string(), v.minLength(1));
 /** The behavior the harness expects from the pipeline for this question. */
 export const ExpectedBehaviorSchema = v.picklist(["answer", "refuse"]);
 
+/**
+ * Additive, optional acceptance for a `refuse` question (#244, owner decision
+ * 2026-09-27): besides the refusal signal, a GROUNDED DECLINE may satisfy the
+ * question. The rule the gate then applies is:
+ *
+ *   1. the answer contains at least one of `markers` (the decline proof), and
+ *   2. the answer asserts no calendar date — checked by the DOMAIN-injected
+ *      date-assertion detector (`DateAssertionDetector`, wired by the CLI
+ *      composition root from `kajianq-domain`), not by fixture data, so no
+ *      constructed regex is compiled and the engine names no vocabulary; and
+ *   3. every citation-shaped span in the answer is grounded by the answer's
+ *      `citations` frame or the trace's reviewer `grounded` labels — a
+ *      fabricated source cannot reach either, so it fails.
+ *
+ * The scorer fails CLOSED: no detector, no citation grammar, or no grounding
+ * evidence ⇒ no extra acceptance. Omitted on every other question:
+ * `expectedBehavior`'s `"answer" | "refuse"` union is NOT widened, so this
+ * cannot leak acceptance into any question that did not opt in, and no
+ * existing fixture changes meaning.
+ */
+export const GroundedDeclineAcceptanceSchema = v.object({
+  /** Domain-language phrases, any ONE of which proves the answer declines. */
+  markers: v.pipe(v.array(v.pipe(v.string(), v.minLength(1))), v.minLength(1)),
+});
+
+/** The optional per-question acceptance block (see the schema above). */
+export const QuestionAcceptanceSchema = v.object({
+  groundedDecline: GroundedDeclineAcceptanceSchema,
+});
+
 export const GoldenQuestionSchema = v.object({
   /** Stable question id within the set (e.g. "gs-v0-001"). */
   id: v.pipe(v.string(), v.minLength(1)),
@@ -40,9 +70,17 @@ export const GoldenQuestionSchema = v.object({
   expectedBehavior: ExpectedBehaviorSchema,
   /** Trap/coverage tags (e.g. a weak-grade trap, a refusal case). Opaque. */
   tags: v.optional(v.array(v.pipe(v.string(), v.minLength(1)))),
+  /**
+   * Optional extra acceptance for a `refuse` question (#244). Absent on every
+   * question today except `gs-v0-019`; see the schema's doc comment for the
+   * exact rule the scorer applies.
+   */
+  acceptance: v.optional(QuestionAcceptanceSchema),
 });
 
 export type GoldenQuestion = v.InferOutput<typeof GoldenQuestionSchema>;
+export type GroundedDeclineAcceptance = v.InferOutput<typeof GroundedDeclineAcceptanceSchema>;
+export type QuestionAcceptance = v.InferOutput<typeof QuestionAcceptanceSchema>;
 
 /** A Golden Set fixture: the versioned question file the loader validates. */
 export const GoldenSetSchema = v.object({

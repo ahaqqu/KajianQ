@@ -44,6 +44,40 @@ describe("parseGoldenSet", () => {
   it("rejects a non-array questions field", () => {
     expect(() => parseGoldenSet({ ...validSet, questions: "nope" })).toThrow(GoldenSetLoadError);
   });
+
+  it("accepts the optional grounded-decline acceptance block (#244)", () => {
+    const set = parseGoldenSet({
+      ...validSet,
+      questions: [
+        {
+          ...validSet.questions[0],
+          expectedBehavior: "refuse",
+          requiredCitations: [],
+          expectedSourceTypes: [],
+          acceptance: { groundedDecline: { markers: ["no one knows"] } },
+        },
+      ],
+    });
+    expect(set.questions[0]?.acceptance?.groundedDecline.markers).toEqual(["no one knows"]);
+  });
+
+  it("rejects an acceptance with no markers (fail closed)", () => {
+    // A marker-less acceptance cannot prove the answer declines, so it would
+    // silently weaken the trap; the schema refuses it at load. (The date half
+    // of the rule is a domain-injected detector, not fixture data, so there is
+    // no pattern field to validate here.)
+    expect(() =>
+      parseGoldenSet({
+        ...validSet,
+        questions: [
+          {
+            ...validSet.questions[0],
+            acceptance: { groundedDecline: { markers: [] } },
+          },
+        ],
+      }),
+    ).toThrow(GoldenSetLoadError);
+  });
 });
 
 describe("loadGoldenSetJson", () => {
