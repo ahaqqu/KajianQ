@@ -24,6 +24,11 @@ import * as v from "valibot";
  * The seed question's length cap. A question is a sentence, not a document;
  * the cap keeps the URL sane and bounds what a crafted link can paste into the
  * composer (issue #175). Anything longer is ignored, not truncated.
+ *
+ * It must stay at or below `CHAT_MESSAGE_MAX_LENGTH` (the chat request's
+ * ceiling, #256): a seed the API refuses is a bug the composer cannot repair,
+ * because `?q=` arrives as a draft and sending it would meet the route's 400.
+ * The relationship is pinned by a test, not by this comment.
  */
 export const MAX_PREFILL_LENGTH = 200;
 

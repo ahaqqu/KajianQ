@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { t, type Locale } from "../../lib/i18n";
-import type { ChatSessionMessage } from "@app/contracts";
+import { formatMessage, formatNumber, t, type Locale } from "../../lib/i18n";
+import { CHAT_MESSAGE_MAX_LENGTH, type ChatSessionMessage } from "@app/contracts";
 import { AppHeader } from "../AppHeader";
 import { Transcript, TranscriptMeta, type TranscriptError } from "./Transcript";
 
@@ -19,10 +19,36 @@ import { Transcript, TranscriptMeta, type TranscriptError } from "./Transcript";
  * param after reading it; the seed arrives here as a plain prop and the
  * composer stays local-only: nothing about the pre-fill touches the chat
  * session/server contract (ADR-0040).
+ *
+ * Message ceiling (#256): the composer mirrors the chat contract's
+ * `CHAT_MESSAGE_MAX_LENGTH` so a reader cannot build a message the API will
+ * refuse. Both halves are needed — the textarea's `maxLength` attribute bounds
+ * what the browser lets through, and the change handler clamps the value
+ * itself (pair-aware, see `clampDraft`), because the attribute does not
+ * constrain a programmatically set value. Hitting the ceiling says so in the
+ * reader's language instead of leaving them to meet an unexplained 400.
  */
 
 const STAGE_KEYS = ["stagedContext", "stagedReview", "stagedCompose"] as const;
 const STAGE_INTERVAL_MS = 1400;
+
+/**
+ * Clamp a draft to the ceiling without splitting a surrogate pair (#256
+ * thermo-review A1). Two paths reach the ceiling: the browser's own
+ * `maxLength` enforcement truncates a typed or pasted value to 2,000 UTF-16
+ * code units, and this function slices a value the attribute did not
+ * constrain. Either one can stop between the halves of an emoji, so the check
+ * runs on the RESULT, not only on the slice: a trailing high surrogate
+ * (0xD800–0xDBFF) with no low half after it is dropped whole, turning a
+ * 2,000-unit draft into 1,999 complete units instead of half a character the
+ * API accepts, the store keeps, and the prompt carries.
+ */
+export function clampDraft(text: string): string {
+  const clamped =
+    text.length > CHAT_MESSAGE_MAX_LENGTH ? text.slice(0, CHAT_MESSAGE_MAX_LENGTH) : text;
+  const last = clamped.charCodeAt(clamped.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? clamped.slice(0, -1) : clamped;
+}
 
 export type ChatViewError = TranscriptError;
 
@@ -98,6 +124,16 @@ export function ChatView({
     return true;
   };
 
+  // The ceiling hint, derived from the draft rather than tracked in state: the
+  // clamped draft is the single source of truth, so the hint cannot go stale
+  // (a cleared draft clears it). The number is the contract's, formatted per
+  // locale through the i18n layer's own Intl helper (id: "2.000", en: "2,000")
+  // and substituted by its `{max}` convention (thermo-review B2).
+  const atMessageLimit = draft.length >= CHAT_MESSAGE_MAX_LENGTH;
+  const limitHint = formatMessage(locale, "composerLimit", {
+    max: formatNumber(locale, CHAT_MESSAGE_MAX_LENGTH),
+  });
+
   // Guard before clearing (thermo-review A1): a send rejected by the busy or
   // rehydration guard must preserve the draft, exactly as before the
   // submit/sendText split — never clear a message the user cannot recover.
@@ -154,11 +190,13 @@ export function ChatView({
             <textarea
               data-testid="composer"
               aria-label={t(locale, "composerPlaceholder")}
+              aria-describedby={atMessageLimit ? "composer-limit" : undefined}
+              maxLength={CHAT_MESSAGE_MAX_LENGTH}
               className="w-full resize-none bg-transparent px-4 pb-10 pt-3 text-[15px] text-card-foreground outline-none placeholder:text-muted-foreground"
               rows={2}
               value={draft}
               placeholder={t(locale, "composerPlaceholder")}
-              onChange={(event) => setDraft(event.target.value)}
+              onChange={(event) => setDraft(clampDraft(event.target.value))}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
@@ -176,6 +214,17 @@ export function ChatView({
               <EnterIcon />
             </button>
           </form>
+          {/* Always in the DOM so the live region announces the transition
+              (a conditionally mounted role="status" often goes unannounced);
+              empty at rest, so it costs no visual space beyond one text line. */}
+          <p
+            id="composer-limit"
+            data-testid="composer-limit"
+            role="status"
+            className="min-h-4 pt-1 text-xs text-muted-foreground"
+          >
+            {atMessageLimit ? limitHint : ""}
+          </p>
           <TranscriptMeta locale={locale} />
         </div>
       </div>

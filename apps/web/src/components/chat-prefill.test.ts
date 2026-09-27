@@ -4,8 +4,10 @@ import { createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderApp, wrapInRouter } from "./app-test-utils";
 import { ChatView } from "./chat/ChatView";
-import { MAX_PREFILL_LENGTH } from "../lib/chat-prefill";
+import { MAX_PREFILL_LENGTH, parsePrefill } from "../lib/chat-prefill";
 import { COLLECTION_AVAILABLE } from "../lib/collections-available";
+import { CHAT_MESSAGE_MAX_LENGTH, ChatRequestSchema } from "@app/contracts";
+import * as v from "valibot";
 
 // React 19 + vitest: mark the environment for act() (testing-library's flushes).
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -162,5 +164,24 @@ describe("ChatView pre-fill seeding", () => {
     const { rerender } = renderView("Apa itu ayat kursi?");
     act(() => rerender("Hadits tentang kejujuran?"));
     expect(composer().value).toBe("Hadits tentang kejujuran?");
+  });
+});
+
+/**
+ * The seed cap against the message ceiling (#256). A seed the chat contract
+ * refuses would be a bug the composer cannot repair — the `?q=` param arrives
+ * as a draft, and sending it would meet the route's 400 — so the cap must stay
+ * at or below the ceiling, and this is what keeps an edit to either constant
+ * honest.
+ */
+describe("prefill cap vs the chat message ceiling (#256)", () => {
+  it("keeps the seed cap within the message the API accepts", () => {
+    expect(MAX_PREFILL_LENGTH).toBeLessThanOrEqual(CHAT_MESSAGE_MAX_LENGTH);
+  });
+
+  it("produces a seed the real chat contract accepts at the cap", () => {
+    const seeded = parsePrefill("x".repeat(MAX_PREFILL_LENGTH));
+    expect(seeded).toBeDefined();
+    expect(v.safeParse(ChatRequestSchema, { message: seeded }).success).toBe(true);
   });
 });

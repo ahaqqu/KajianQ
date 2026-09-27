@@ -4,9 +4,36 @@ import { createApi } from "../app";
 const { captureException } = vi.hoisted(() => ({ captureException: vi.fn() }));
 
 vi.mock("@sentry/bun", () => ({ captureException }));
+import { CHAT_MESSAGE_MAX_LENGTH } from "@app/contracts";
 import { runStoreEffect } from "@app/kajianq-domain";
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 import { createStubChatProviders } from "@app/kajianq-domain/test-utils/stub-chat-providers";
+
+/**
+ * Every call into a pipeline seam, in order (#256). The no-spend test reads
+ * this: "the router, generator and reviewer did not run" is measured on the
+ * seams the pipeline actually calls, not inferred from a 400 status.
+ */
+const spendCalls: string[] = [];
+
+/**
+ * Wrap one seam so each method call is recorded. The pipeline calls these
+ * objects' methods and nothing else, so an empty `spendCalls` after a request
+ * is the assertion that no stage executed.
+ */
+function counting<T extends object>(name: string, seam: T, calls: string[]): T {
+  const wrapped: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(seam)) {
+    wrapped[key] =
+      typeof value === "function"
+        ? (...args: unknown[]) => {
+            calls.push(`${name}.${key}`);
+            return (value as (...inner: unknown[]) => unknown)(...args);
+          }
+        : value;
+  }
+  return wrapped as T;
+}
 
 /**
  * /v1/chat integration tests (#8, #10): the in-memory store + the domain's
@@ -71,13 +98,13 @@ vi.mock("../lib/chat-wiring", async (importOriginal) => {
       const providers = createStubChatProviders(currentOverrides);
       return {
         pipeline: {
-          routerProvider: providers.routerProvider,
-          generatorProvider: providers.generatorProvider,
+          routerProvider: counting("router", providers.routerProvider, spendCalls),
+          generatorProvider: counting("generator", providers.generatorProvider, spendCalls),
           // The reviewer is non-optional on the chat path (#10); the stub
           // passes, so the deterministic validator is what these tests probe.
-          reviewerProvider: providers.reviewerProvider,
+          reviewerProvider: counting("reviewer", providers.reviewerProvider, spendCalls),
           reviewerDecider: providers.reviewerDecider,
-          embedder: providers.embedder,
+          embedder: counting("embedder", providers.embedder, spendCalls),
           store,
           bridge: runStoreEffect,
         },
@@ -195,6 +222,58 @@ describe("POST /v1/chat", () => {
     );
     expect(res.status).toBe(400);
   });
+
+  it("rejects an over-length message with the existing 400 and spends nothing (#256)", async () => {
+    const { store, token } = await wiredStore();
+    currentStore = store;
+    await seed(store);
+    currentOverrides = { answerText: "an answer that must never be produced" };
+    spendCalls.length = 0;
+
+    const res = await createApi().request(
+      "/v1/chat",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify({ message: "a".repeat(CHAT_MESSAGE_MAX_LENGTH + 1) }),
+      },
+      env,
+    );
+
+    // The EXISTING error shape, not a new one: the route already surfaces a
+    // valibot failure as `400 invalid_request` (chat-openapi.ts), and the
+    // ceiling rides that path.
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_request" });
+
+    // The point of the ticket — no spend. The counters sit on the seams the
+    // pipeline actually calls (router, generator, reviewer, embedder), so
+    // this is measured, not inferred from the status code.
+    expect(spendCalls).toEqual([]);
+
+    // And the question never reached the store: no persisted user message and
+    // no answer trace for a request that was refused before the pipeline.
+    expect(store.allChatMessages()).toEqual([]);
+    expect(store.allTraces().size).toBe(0);
+  });
+
+  it("accepts a message exactly at the ceiling (2,000) and runs the pipeline", async () => {
+    const { store, token } = await wiredStore();
+    currentStore = store;
+    await seed(store);
+    currentOverrides = { answerText: "Jawaban berdasar konteks. QS. 2:255" };
+    spendCalls.length = 0;
+
+    const { status, frames } = await postChat(token, {
+      message: "a".repeat(CHAT_MESSAGE_MAX_LENGTH),
+    });
+
+    // The route adds no bound of its own: the contract's ceiling is the
+    // boundary, and one character under it is a legitimate question.
+    expect(status).toBe(200);
+    expect(frames.at(-1)?.event).toBe("done");
+    expect(spendCalls).toContain("router.generate");
+  }, 15000);
 
   it("answers with an SSE stream and persists the trace", async () => {
     const { store, token } = await wiredStore();

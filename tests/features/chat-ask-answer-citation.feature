@@ -60,6 +60,15 @@ Feature: Chat — ask, answer, citations, warnings, disclaimer
     When I open a chat whose stored transcript was capped
     Then the transcript says older messages are not shown
 
+  # B1: the clamp claim is proven on the wire, not by "no request happened".
+  # Before the ceiling the composer sent nothing extra; now a clamped draft
+  # DOES send, so the property is what the POST body carries.
+  Scenario: An over-long message is capped in the composer and sent at most at the ceiling (#256)
+    When I open the chat and paste a message longer than the ceiling
+    Then the composer holds the ceiling and says so
+    When I press Enter to send the clamped draft
+    Then the outgoing chat POST carries the clamped message, no longer than the ceiling
+
   Scenario: The chat page has no serious accessibility violations
     When I open the chat and ask about ayat kursi
     And the answer renders with a citation chip

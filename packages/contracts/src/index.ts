@@ -5,6 +5,7 @@ export {
   type HealthError,
 } from "./health";
 export {
+  CHAT_MESSAGE_MAX_LENGTH,
   ChatErrorSchema,
   ChatMetaSchema,
   ChatRequestSchema,

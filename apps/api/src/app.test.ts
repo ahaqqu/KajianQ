@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createApi } from "./app";
+import { CHAT_MESSAGE_MAX_LENGTH } from "@app/contracts";
 import type { AssetFetcher } from "@app/hardening";
 import { toOpenApiPath } from "./lib/openapi-path";
 
@@ -161,5 +162,28 @@ describe("generated OpenAPI doc", () => {
       .flatMap(([path, methods]) => Object.keys(methods).map((m) => `${m.toUpperCase()} ${path}`))
       .sort();
     expect(documented).toEqual(registered);
+  });
+
+  it("documents the chat message ceiling on the request body (#256)", async () => {
+    const { doc } = await getDoc();
+    // The limit lives on the API's documented surface, not only in the code:
+    // a client reading /openapi.json sees the same ceiling the route enforces,
+    // and the description says what an over-length message answers.
+    const body = doc.paths["/v1/chat"]?.["post"]?.["requestBody"] as
+      | {
+          content: {
+            "application/json": {
+              schema: { properties: { message: { maxLength?: number; description?: string } } };
+            };
+          };
+        }
+      | undefined;
+    const message = body?.content["application/json"].schema.properties.message;
+    expect(message?.maxLength).toBe(CHAT_MESSAGE_MAX_LENGTH);
+    expect(message?.description).toContain(`${CHAT_MESSAGE_MAX_LENGTH} characters`);
+    expect(message?.description).toContain("invalid_request");
+    // The trim/length rule is part of the documented surface too (#256 C1):
+    // a client must not assume a body that trims to the ceiling is accepted.
+    expect(message?.description).toContain("no trim");
   });
 });
