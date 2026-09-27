@@ -339,6 +339,7 @@ describe("worktree-cleanup", () => {
 
     const swept = runClean(fx, ["--include-unstarted"]);
 
+    expect(swept.status).toBe(0);
     expect(swept.stdout).toContain("removed reused (no unique commits vs origin/main)");
     expect(fx.exists("reused")).toBe(false);
     fx.dispose();
@@ -365,6 +366,7 @@ describe("worktree-cleanup", () => {
 
     const swept = runClean(fx, ["--include-unstarted"]);
 
+    expect(swept.status).toBe(0);
     expect(swept.stdout).toContain("removed ff (no unique commits vs origin/main)");
     expect(fx.exists("ff")).toBe(false);
     fx.dispose();
@@ -390,6 +392,7 @@ describe("worktree-cleanup", () => {
     // No flag combination sweeps real unmerged work.
     const swept = runClean(fx, ["--include-unstarted", "--include-detached", "--force"]);
 
+    expect(swept.status).toBe(0);
     expect(swept.stdout).toContain("kept  stale");
     expect(fx.exists("stale")).toBe(true);
     expect(fx.branchExists("agent/stale")).toBe(true);
@@ -511,6 +514,75 @@ describe("worktree-cleanup", () => {
     expect(existsSync(join(fx.dir, ".worktrees", "README"))).toBe(true);
     expect(existsSync(join(fx.dir, ".worktrees", "stray-dir"))).toBe(true);
     expect(fx.exists("review-9")).toBe(false);
+    fx.dispose();
+  });
+
+  it("keeps a locked worktree instead of aborting, and still sweeps later slugs", () => {
+    const fx = makeFixture();
+    const lockedTip = fx.addCommitted("a-locked");
+    const healthyTip = fx.addCommitted("z-healthy");
+    fx.fakeGh({
+      prs: {
+        "agent/a-locked": { state: "MERGED", headRefOid: lockedTip },
+        "agent/z-healthy": { state: "MERGED", headRefOid: healthyTip },
+      },
+    });
+    git(fx.dir, ["worktree", "lock", fx.wtPath("a-locked")]);
+
+    const result = runClean(fx);
+
+    expect(result.status).toBe(0);
+    // `git worktree remove` refuses a locked tree: that entry becomes a keep
+    // with the git message, not a mid-loop abort.
+    expect(result.stdout).toMatch(
+      /kept {2}a-locked: failed to remove \(fatal: cannot remove a locked working tree/,
+    );
+    // The removal failed ⇒ the branch ref is untouched. `git branch -D` here
+    // would destroy the only ref the still-present worktree holds.
+    expect(fx.exists("a-locked")).toBe(true);
+    expect(fx.branchExists("agent/a-locked")).toBe(true);
+    // The sweep reached the remaining entry: `done:` prints only after every
+    // entry was examined, and the healthy slug was disposed of in the same run.
+    // Either assertion fails on a mid-loop abort whatever the readdir order.
+    expect(result.stdout).toContain("removed z-healthy (PR merged)");
+    expect(result.stdout).toMatch(/^done: 1 removed, 1 kept$/m);
+    expect(callLog(fx).sort()).toEqual([
+      "pr view agent/a-locked --json state,headRefOid",
+      "pr view agent/z-healthy --json state,headRefOid",
+    ]);
+    fx.dispose();
+  });
+
+  it("keeps a stale-gitdir worktree instead of aborting, and still sweeps later slugs", () => {
+    const fx = makeFixture();
+    const healthyTip = fx.addCommitted("z-healthy");
+    fx.addCommitted("a-stale");
+    fx.fakeGh({ prs: { "agent/z-healthy": { state: "MERGED", headRefOid: healthyTip } } });
+    // Still a registered worktree (its admin dir is intact), but its .git file
+    // points at a gitdir that no longer exists: `git status` there exits 128.
+    writeFileSync(
+      join(fx.wtPath("a-stale"), ".git"),
+      `gitdir: ${join(fx.dir, ".git", "worktrees", "gone-gitdir")}\n`,
+    );
+    expect(git(fx.dir, ["worktree", "list", "--porcelain"])).toContain(fx.wtPath("a-stale"));
+    expect(gitOk(fx.wtPath("a-stale"), ["status", "--porcelain"])).toBe(false);
+
+    const result = runClean(fx);
+
+    expect(result.status).toBe(0);
+    // The failed inspection is reported per item; the run does not die with an
+    // empty stdout and no `done:` line as it did before the guard.
+    expect(result.stdout).toMatch(
+      /kept {2}a-stale: failed to inspect \(fatal: not a git repository/,
+    );
+    expect(result.stdout).toContain("kept  a-stale");
+    expect(fx.exists("a-stale")).toBe(true);
+    expect(fx.branchExists("agent/a-stale")).toBe(true);
+    expect(result.stdout).toContain("removed z-healthy (PR merged)");
+    expect(result.stdout).toMatch(/^done: 1 removed, 1 kept$/m);
+    // The broken entry never reaches the gh consultation: exactly one lookup,
+    // for the slug the run went on to dispose of.
+    expect(callLog(fx)).toEqual(["pr view agent/z-healthy --json state,headRefOid"]);
     fx.dispose();
   });
 

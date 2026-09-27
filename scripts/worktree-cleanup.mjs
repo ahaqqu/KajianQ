@@ -21,7 +21,23 @@
 // with unmerged commits are always KEPT. Dirty worktrees are skipped unless
 // --force. A .worktrees/ entry that is not a registered git worktree (a stray
 // file or directory) is reported and skipped, never removed, so one stray entry
-// cannot abort the run.
+// cannot abort the run. So is a registered worktree whose git commands fail —
+// locked, stale gitdir: the failure is that entry's keep, not the run's.
+//
+// RESIDUAL (#239): rule 1 cannot see liveness, so one destruction shape stays: a
+// dispatch reattached without -b to a surviving squash-merged branch — same
+// slug, branch still at the merged PR's head, clean because it has only read
+// files — is bit-identical to a finished branch whose cleanup was deferred, so a
+// default run removes it. The trigger requires cleanup to run while a dispatch
+// is active, which the manager skill allows only with none. No commits are lost
+// when it fires: the deleted ref is the merged PR's own head, already contained
+// in main. Closing it needs a liveness declaration — a worktree-lock convention
+// carried by the manager skill and the role files — tracked as #239.
+//
+// Removing merged worktrees by default (rule 1) therefore presumes squash/rebase
+// merges, this repo's practice: under a merge-commit or fast-forward merge a
+// genuinely merged branch has zero unique commits, so rule 2 keeps it by default
+// and it needs --include-unstarted.
 //
 // Usage: bun scripts/worktree-cleanup.mjs [--dry-run] [--force]
 //          [--include-unstarted] [--include-detached]
@@ -62,6 +78,13 @@ function ghPr(branch) {
   } catch {
     return null;
   }
+}
+
+// The first line of a failed git command's stderr, for a terse per-item reason.
+// execFileSync attaches the child's stderr to the thrown error.
+function gitError(err) {
+  const raw = err?.stderr ? String(err.stderr) : String(err?.message ?? err);
+  return raw.trim().split("\n")[0] || "git command failed";
 }
 
 function realOrSelf(path) {
@@ -107,52 +130,62 @@ for (const slug of readdirSync(wtRoot).filter((n) => !n.startsWith("."))) {
     continue;
   }
 
-  const dirty = git(["status", "--porcelain"], { cwd: wt }).length > 0;
-  if (dirty && !force) {
-    keep("dirty worktree (use --force to discard changes)");
-    continue;
-  }
-
-  const branchExists = gitOk(["rev-parse", "--verify", "--quiet", branch]);
-  let reason = null;
-
-  if (!branchExists) {
-    if (!includeDetached) {
-      keep(
-        `no ${branch} branch — a detached review or in-flight worktree (use --include-detached to remove)`,
-      );
+  // A registered worktree can still fail every git command aimed at it — a
+  // stale gitdir, a permission error. That is this entry's outcome, never the
+  // run's: report it and carry on to the remaining slugs.
+  let branchExists;
+  let dirty;
+  let reason;
+  try {
+    dirty = git(["status", "--porcelain"], { cwd: wt }).length > 0;
+    if (dirty && !force) {
+      keep("dirty worktree (use --force to discard changes)");
       continue;
     }
-    reason = `no ${branch} branch`;
-  } else {
-    const tip = git(["rev-parse", branch]);
-    const pr = ghPr(branch);
-    const unique = Number(git(["rev-list", "--count", `${base}..${branch}`]));
 
-    // A MERGED PR also needs the branch tip to be that PR's head commit: a
-    // re-dispatched slug reuses a merged PR's name. Both conditions plus real
-    // commits keep rule 2's guarantee intact — a fresh dispatch at origin/main
-    // has zero unique commits even when a fast-forward merge left the old PR's
-    // head at the current origin/main tip.
-    if (pr?.state === "MERGED" && pr.headRefOid === tip && unique > 0) {
-      reason = "PR merged";
-    } else if (unique === 0) {
-      if (!includeUnstarted) {
+    branchExists = gitOk(["rev-parse", "--verify", "--quiet", branch]);
+
+    if (!branchExists) {
+      if (!includeDetached) {
         keep(
-          `${branch} has no unique commits vs ${base} — either a dispatch that has not committed yet, or work already contained in ${base} (merged with or without a PR); use --include-unstarted to remove`,
+          `no ${branch} branch — a detached review or in-flight worktree (use --include-detached to remove)`,
         );
         continue;
       }
-      reason = `no unique commits vs ${base}`;
-    } else if (pr?.state === "MERGED") {
-      keep(
-        `${branch} has ${unique} commit(s) past its merged PR's head — unmerged work, finish or merge it first`,
-      );
-      continue;
+      reason = `no ${branch} branch`;
     } else {
-      keep(`${branch} has unmerged work — finish or merge its PR first`);
-      continue;
+      const tip = git(["rev-parse", branch]);
+      const pr = ghPr(branch);
+      const unique = Number(git(["rev-list", "--count", `${base}..${branch}`]));
+
+      // A MERGED PR also needs the branch tip to be that PR's head commit: a
+      // re-dispatched slug reuses a merged PR's name. Both conditions plus real
+      // commits keep rule 2's guarantee intact — a fresh dispatch at origin/main
+      // has zero unique commits even when a fast-forward merge left the old PR's
+      // head at the current origin/main tip.
+      if (pr?.state === "MERGED" && pr.headRefOid === tip && unique > 0) {
+        reason = "PR merged";
+      } else if (unique === 0) {
+        if (!includeUnstarted) {
+          keep(
+            `${branch} has no unique commits vs ${base} — either a dispatch that has not committed yet, or work already contained in ${base} (merged with or without a PR); use --include-unstarted to remove`,
+          );
+          continue;
+        }
+        reason = `no unique commits vs ${base}`;
+      } else if (pr?.state === "MERGED") {
+        keep(
+          `${branch} has ${unique} commit(s) past its merged PR's head — unmerged work, finish or merge it first`,
+        );
+        continue;
+      } else {
+        keep(`${branch} has unmerged work — finish or merge its PR first`);
+        continue;
+      }
     }
+  } catch (err) {
+    keep(`failed to inspect (${gitError(err)})`);
+    continue;
   }
 
   if (dryRun) {
@@ -160,8 +193,24 @@ for (const slug of readdirSync(wtRoot).filter((n) => !n.startsWith("."))) {
     continue;
   }
 
-  git(["worktree", "remove", wt, ...(dirty ? ["--force"] : [])]);
-  if (branchExists) git(["branch", "-D", branch]);
+  // The worktree is removed BEFORE its branch, never the reverse: if the removal
+  // fails the worktree still holds `branch`, and deleting it next would destroy
+  // the only ref to its commits. Both failures are this entry's outcome, not the
+  // run's.
+  try {
+    git(["worktree", "remove", wt, ...(dirty ? ["--force"] : [])]);
+  } catch (err) {
+    keep(`failed to remove (${gitError(err)})`);
+    continue;
+  }
+  if (branchExists) {
+    try {
+      git(["branch", "-D", branch]);
+    } catch (err) {
+      keep(`failed to delete ${branch} (${gitError(err)})`);
+      continue;
+    }
+  }
   console.log(`removed ${slug} (${reason})`);
   removed++;
 }
