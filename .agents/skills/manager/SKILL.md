@@ -66,9 +66,9 @@ A owns CI green: it watches its own checks, iterates on red, and reports done on
 
 ### 3. Dispatch B (review)
 
-Spawn the reviewer role (per your harness adapter) in the background. It applies the `code-review` skill (the single review entry point — for a code-touching PR the thermos depth is mandatory) and posts the itemized findings via `thermos-with-comments`, running both thermo passes itself. Its prompt must hand it the PR number/URL and require its completion criterion: **every item posted as a review comment + summary comment present**. Carry the todo duty into B's prompt too (canonical bullet in Reliability & supervision), scoped to its pass structure — one list item per pass and per posting/verification step.
+Spawn the reviewer role (per your harness adapter) in the background. It applies the `code-review` skill (the single review entry point — for a code-touching PR the thermos depth is mandatory) and runs both thermo passes itself when the diff touches code, posting the itemized findings via `thermos-with-comments` at thermos depth and in the same itemized shape — without that contract's title — at normal depth. Its prompt must hand it the PR number/URL and require its completion criterion: **every item posted as a review comment + summary comment present**. Carry the todo duty into B's prompt too (canonical bullet in Reliability & supervision), scoped to its pass structure — one list item per pass and per posting/verification step.
 
-**Completion criterion (verified):** `gh pr view <pr> --comments` shows the summary comment (contains "Thermos review") and at least as many review comments as items in B's returned report.
+**Completion criterion (verified):** `gh pr view <pr> --comments` shows the summary comment titled for the depth B ran — `Thermos review` at thermos depth, a normal-depth title otherwise — plus at least as many review comments as items in B's returned report. A summary titled for a depth that was not run is a false record, not a pass.
 
 ### 4. Dispatch C (fixer)
 

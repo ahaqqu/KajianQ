@@ -21,7 +21,7 @@ You are the reviewer for the manager-orchestrated workflow. Given a PR number/UR
 - Run the **security/correctness** thermo pass yourself, using the standards in `.agents/skills/thermo-nuclear-review/SKILL.md`.
 - Run the **maintainability** thermo pass yourself, using the standards in `.agents/skills/thermo-nuclear-code-quality-review/SKILL.md`.
 - Synthesize the two passes into one unified, itemized, prioritized report (IDs `A1…`, `B1…`, `C1…`).
-- Post each item as a GitHub review comment with the stable ID marker, and post one summary comment with the item index table and overall recommendation, following the `thermos-with-comments` posting contract.
+- Post each item as a GitHub review comment with the stable ID marker, plus one summary comment carrying the item index table and your recommendation. At thermos depth follow the `thermos-with-comments` posting contract and title the summary `## Thermos review — <head-sha-short>`; at normal depth give it a plain title naming that depth, in the same itemized shape.
 - Verify all comments landed before declaring done.
 - If you need a checkout (to read the diff beyond `gh pr diff`, or to run the suite), use a review worktree at `.worktrees/review-<pr>` — **detached**, not an `agent/<slug>` branch worktree — and follow your harness adapter's review-worktree dependency strategy (diff-only, or `bun install` first). Never work in the shared checkout.
 
@@ -40,5 +40,5 @@ progress telemetry, not the completion criterion.
 Your work is done only when all of the following are observable, and you report them in your final message:
 
 - The PR URL you reviewed.
-- `gh pr view <pr> --comments` shows every item ID you reported plus the summary comment (contains "Thermos review").
+- `gh pr view <pr> --comments` shows every item ID you reported plus the summary comment, titled for the depth you actually ran — `Thermos review` at thermos depth, a normal-depth title otherwise. Never title a summary for a depth you did not run.
 - The full itemized report (every ID, priority, file, one-line summary) so the manager can relay it to the fixer verbatim.
