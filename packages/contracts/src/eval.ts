@@ -111,7 +111,10 @@ export const EvalResultOutcomeSchema = v.object({
    * failure (thermo-review C1: the notes-prefix heuristic was brittle).
    */
   skipped: v.optional(v.boolean()),
-  /** Optional note (e.g. which required citation was missing). */
+  /**
+   * Optional note (e.g. which required citation was missing, or which
+   * acceptance satisfied the question — `grounded_decline_accepted`).
+   */
   notes: v.optional(v.array(v.pipe(v.string(), v.minLength(1)))),
 });
 

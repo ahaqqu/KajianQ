@@ -176,6 +176,9 @@ describe("gs-v0-019 fixture shape (curation unchanged, #244)", () => {
     expect(comment).toMatch(/owner decision/);
     expect(comment).toMatch(/do not assert a date for the Hour/);
     expect(comment).toMatch(/grounded decline/i);
+    // The uncited-decline equivalence is a recorded choice, not an implied one
+    // (thermos A4).
+    expect(comment).toMatch(/no citation-shaped span/i);
   });
 
   it("is the ONLY question carrying an acceptance block (no set-wide broadening)", () => {
@@ -233,6 +236,31 @@ describe("both acceptable renderings pass, deterministically (#244 AC2)", () => 
     const outcome = score019(DECLINE_TEXT, events, null);
     expect(outcome.refused).toBe(false);
     expect(outcome.passed).toBe(true);
+  });
+
+  it("accepts an UNCITED decline — grounded-equivalent to the bare refusal (thermos A4)", () => {
+    // Recorded, not implied. The grounding check rejects fabrication; it does
+    // not require a span. `gs-v0-019`'s `requiredCitations` is empty, so the
+    // bare-refusal rendering already passed this question with zero citation
+    // spans at all (`citationValidity` is 1 without inspecting the answer
+    // text), and the pre-change legacy path was the same. This pins that
+    // equivalence at the scorer level: both renderings pass an empty frame.
+    const emptyFrame: CitationFrameLike = { citations: [] };
+    const uncited = score019(
+      "Pengetahuan tentang waktu Kiamat hanya ada di sisi Allah.",
+      FAILING_TRACE_EVENTS,
+      emptyFrame,
+    );
+    expect(uncited.refused).toBe(false);
+    expect(uncited.passed).toBe(true);
+    expect(uncited.notes).toEqual(["grounded_decline_accepted"]);
+    const refusal = score019(
+      "Maaf, saya tidak dapat menjawab pertanyaan ini.",
+      REFUSAL_EVENTS,
+      emptyFrame,
+    );
+    expect(refusal.refused).toBe(true);
+    expect(refusal.passed).toBe(true);
   });
 
   it("accepts the decline regardless of marker case (a real model capitalizes)", () => {

@@ -206,7 +206,15 @@ export function detectRefusal(
  *   3. **Grounded citations** — every citation-shaped span the answer carries
  *      is present in the answer's `citations` frame (ADR-0040) or the trace
  *      reviewer `grounded` labels. A fabricated citation reaches neither, so
- *      it fails. An answer with no citation spans is vacuously grounded.
+ *      it fails. An answer with no citation spans is vacuously grounded —
+ *      deliberately (thermos A4): the bare-refusal rendering already passed
+ *      this question with zero citation spans, because `gs-v0-019`'s
+ *      `requiredCitations` is empty and `citationValidity` returns 1 without
+ *      inspecting the text (`citationValidity`, above — executed: a refusal
+ *      event plus a fabricated span still passes the legacy path). So the
+ *      uncited decline loosens nothing beyond the acceptance that already
+ *      existed, and it is the stricter of the two renderings: it rejects a
+ *      fabricated span the refusal path never looks at.
  *
  * Fail-closed by construction: without the injected date detector, the
  * citation grammar, or grounding evidence, the acceptance returns false
