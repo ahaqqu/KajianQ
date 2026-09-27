@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import * as v from "valibot";
 import {
+  CHAT_MESSAGE_MAX_LENGTH,
   ChatCitationSchema,
   ChatCitationsFrameSchema,
+  ChatRequestSchema,
   ChatSessionMessageSchema,
   ChatSessionMessagesSchema,
   ChatTraceChunkSchema,
@@ -23,6 +25,41 @@ const CITATION = {
   machineTranslated: true,
   source: "Al-Baqarah",
 };
+
+/**
+ * The chat request's message ceiling (#256). The boundary cases are the point:
+ * a message AT the ceiling must parse (a pasted passage plus a question is a
+ * legitimate question), one character over must not — the contract is the only
+ * bound between a client and the router/generator/reviewer spend a question
+ * triggers (ADR-0041 meters frequency, never size).
+ */
+describe("ChatRequestSchema message ceiling (#256)", () => {
+  const parseMessage = (length: number) =>
+    v.safeParse(ChatRequestSchema, { message: "a".repeat(length) }).success;
+
+  it("pins the owner-decided ceiling at 2,000 characters", () => {
+    // The value is an owner decision (issue #256): lowering or raising it is a
+    // deliberate edit here and in the schema, never a silent drift.
+    expect(CHAT_MESSAGE_MAX_LENGTH).toBe(2000);
+  });
+
+  it("accepts a message one character under the ceiling and one exactly at it", () => {
+    expect(parseMessage(CHAT_MESSAGE_MAX_LENGTH - 1)).toBe(true);
+    expect(parseMessage(CHAT_MESSAGE_MAX_LENGTH)).toBe(true);
+  });
+
+  it("rejects a message one character over the ceiling", () => {
+    expect(parseMessage(CHAT_MESSAGE_MAX_LENGTH + 1)).toBe(false);
+  });
+
+  it("rejects the 20,000-character probe that opened the QA finding", () => {
+    expect(parseMessage(20_000)).toBe(false);
+  });
+
+  it("keeps the empty-message floor (minLength still rejects a blank question)", () => {
+    expect(parseMessage(0)).toBe(false);
+  });
+});
 
 describe("ChatCitationSchema", () => {
   it("accepts a fully populated citation", () => {

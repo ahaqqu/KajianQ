@@ -7,8 +7,30 @@ import * as v from "valibot";
  * route (hono-openapi) and the eval harness client.
  */
 
+/**
+ * The chat message ceiling (#256): how long one question may be, in
+ * characters. It is a hard COST bound, not a UX nicety — ADR-0041's rate
+ * limiter caps request frequency, not request size, so without a ceiling a
+ * client can stay inside the rate limit while multiplying what each accepted
+ * question spends on the router, generator, and reviewer.
+ *
+ * 2,000 is ~21× the longest curated Golden Set question (93 characters; the
+ * median is 55), so it is generous for a pasted passage plus a question, while
+ * cutting the observed 20,000-character probe by an order of magnitude. The
+ * exact value is an owner decision recorded in the issue: adjusting it is a
+ * one-line edit here plus the boundary test that pins it.
+ */
+export const CHAT_MESSAGE_MAX_LENGTH = 2000;
+
 export const ChatRequestSchema = v.object({
-  message: v.pipe(v.string(), v.minLength(1)),
+  message: v.pipe(
+    v.string(),
+    v.minLength(1),
+    v.maxLength(CHAT_MESSAGE_MAX_LENGTH),
+    v.description(
+      `The user's question (1 to ${CHAT_MESSAGE_MAX_LENGTH} characters). An over-length message is rejected with 400 invalid_request before any pipeline stage runs.`,
+    ),
+  ),
   /** Existing chat session to append to; absent = create a new session. */
   sessionId: v.optional(v.pipe(v.string(), v.minLength(1))),
   /** UI language hint; the answer language (ID default, per product scope). */
