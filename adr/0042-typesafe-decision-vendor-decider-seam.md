@@ -265,8 +265,10 @@ The consumer now exists. The composition root emits **one** structured
 - the pre-gate state (`active` / `not_wired`) and the reviewer's,
 - `missingKeys` — the env var names whose keys were absent, including the
   optional decision role's, so an unbound key names exactly what to bind,
-- `ineligibleKeys` — the keyed decision candidates the personal-data posture
-  dropped.
+- `ineligibleKeys` — the decision candidates the personal-data posture dropped,
+  keyed or not: `resolveDecider` filters on personal-data eligibility before it
+  checks the key, so an unkeyed ineligible candidate is reported here rather
+  than as a missing key.
 
 It resolves through the same `createProvidersFromEnv` the request path uses, so
 the report cannot drift from what serving actually wires. **Env var names
