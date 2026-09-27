@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createLogger, type ProviderConfig } from "@app/infra";
 import { CHAT_SERVING_ROLES, createProvidersFromEnv } from "./chat-wiring";
-import { bindingsFromEnv, reportProviderPosture } from "./server";
+import { bindingsFromEnv, reportProviderPosture, serveApi } from "./server";
 
 /**
  * The Bun serving entry's env→bindings mapping (#181, ADR-0044). This is the
@@ -217,5 +217,44 @@ describe("reportProviderPosture — the boot ops report (#226)", () => {
     );
     expect(lines).not.toContain(SECRET);
     expect(JSON.stringify(fields)).not.toContain(SECRET);
+  });
+
+  it("is emitted exactly once by serveApi at boot, before the listening line", async () => {
+    // The composition-root call site is what the acceptance criterion names
+    // ("a serving boot ... emits"). This drives the real `serveApi` with a
+    // stubbed `Bun.serve` (the test runtime is Node) and captures the boot
+    // logger's stdout, so deleting the call is a red test, not a silent
+    // regression of the exact class #226 exists to close.
+    const key = await decisionKeyEnv();
+    const logged: string[] = [];
+    const spy = vi.spyOn(console, "log").mockImplementation((line: unknown) => {
+      logged.push(String(line));
+    });
+    const serve = vi.fn(() => ({ stop: async () => {} }));
+    const globals = globalThis as { Bun?: unknown };
+    const previousBun = globals.Bun;
+    globals.Bun = { serve };
+    try {
+      const { stop } = serveApi({
+        api: { fetch: () => new Response("ok") } as unknown as Parameters<
+          typeof serveApi
+        >[0]["api"],
+        hostname: "127.0.0.1",
+        port: 0,
+        env: { GEMINI_PAID_API_KEY: SECRET, DEEPSEEK_API_KEY: SECRET },
+      });
+      expect(serve).toHaveBeenCalledTimes(1);
+      await stop();
+    } finally {
+      globals.Bun = previousBun;
+      spy.mockRestore();
+    }
+
+    const postureLines = logged.filter((line) => line.includes("providers.posture"));
+    expect(postureLines).toHaveLength(1);
+    expect(logged[0]).toContain("providers.posture");
+    expect(postureLines[0]).toContain('"preGate":"not_wired"');
+    expect(postureLines[0]).toContain(key);
+    expect(logged.join("\n")).not.toContain(SECRET);
   });
 });
