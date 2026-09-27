@@ -8,7 +8,7 @@ synced: 2026-08-29
 
 # Ship — Deploy & Validate
 
-Take a change from CI-green on `main` through staging validation to production, with smoke tests and rollback capability at each step.
+Take a change from CI-green on `main` through staging validation to production, with smoke tests and a git-revert rollback path (Phase 8).
 
 **The serving host is the netcup VPS** (a plain Bun process behind nginx). There
 is one box: staging and production are the same host, distinguished by

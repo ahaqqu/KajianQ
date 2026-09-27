@@ -93,7 +93,7 @@ Engine/pipeline/API logic changes with test proof, or `None`.
 
 ## Backend runtime
 
-Alchemy/deploy/CI/lifecycle tooling changes, or `None`.
+VPS provisioning/deploy/CI/lifecycle tooling changes, or `None`.
 
 ## Frontend
 

@@ -13,13 +13,13 @@ Generate correct, guardrail-compliant tests at the right layer. Load this skill 
 
 Pick the right test layer before writing anything. The table from `docs/ARCHITECTURE.md` §10 is authoritative:
 
-| What you're testing                                                                         | Tool                         | Needs                                                                  |
-| ------------------------------------------------------------------------------------------- | ---------------------------- | ---------------------------------------------------------------------- |
-| Business logic, Valibot schemas, store queries, adapter logic, route handlers in isolation  | Vitest (unit)                | Mock adapters; test the contract, not the implementation               |
-| Engine programs and seam logic (Effect signatures)                                          | Vitest + `Effect.runPromise` | Run the Effect program under test; mock adapters behind the seam       |
-| Logic with laws (schema invariants, cost accounting, merge/CRDT logic if ever reintroduced) | fast-check (property)        | Randomly generated inputs; laws that must hold for all inputs          |
-| User-facing flows, PWA lifecycle                                                            | Playwright-BDD               | Full stack running against `alchemy dev` (local workerd); real browser |
-| Bundle size                                                                                 | size-limit                   | Every PR                                                               |
+| What you're testing                                                                         | Tool                         | Needs                                                                                |
+| ------------------------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------ |
+| Business logic, Valibot schemas, store queries, adapter logic, route handlers in isolation  | Vitest (unit)                | Mock adapters; test the contract, not the implementation                             |
+| Engine programs and seam logic (Effect signatures)                                          | Vitest + `Effect.runPromise` | Run the Effect program under test; mock adapters behind the seam                     |
+| Logic with laws (schema invariants, cost accounting, merge/CRDT logic if ever reintroduced) | fast-check (property)        | Randomly generated inputs; laws that must hold for all inputs                        |
+| User-facing flows, PWA lifecycle                                                            | Playwright-BDD               | Full stack running against the real Bun entry (`apps/api/src/boot.ts`); real browser |
+| Bundle size                                                                                 | size-limit                   | Every PR                                                                             |
 
 If unsure, start at the highest feasible layer: BDD for user flows, property tests for logic with laws, unit tests for everything else.
 
@@ -34,7 +34,7 @@ Each pattern below is exemplified by a real, CI-green file in this repo. Cite pa
 | Route handlers exercised directly at the unit layer                                       | `apps/api/src/app.test.ts`                                      |
 | Adapter implementation honoring its interface contract (incl. missing-key / delete paths) | `packages/infra/src/object-store.test.ts`                       |
 | Effect-signatured adapter behind its seam: fake store, `Effect.runPromise` harness        | `packages/rag-ingest/src/pipeline.test.ts`                      |
-| Store-seam contract suite against real Postgres semantics                                 | `packages/infra/src/rag-store-neon.test.ts`                     |
+| Store-seam contract suite against real Postgres semantics                                 | `packages/infra/src/rag-store-postgres.test.ts`                 |
 | BDD feature file + step definitions for a user-facing flow                                | `tests/features/shell.feature` and `tests/steps/shell.steps.ts` |
 
 This repo ships no payments or sync layer (see `CONTEXT.md` / spec §3.1), so there are no webhook-idempotency or CRDT exemplars. If a consuming project ever adds one, the same property-test discipline below applies — the first file written becomes the reference.
@@ -53,7 +53,7 @@ This repo ships no payments or sync layer (see `CONTEXT.md` / spec §3.1), so th
 - **Success path:** `await Effect.runPromise(effect)` — or the promise-level bridge under test (`runPipelinePromise`).
 - **Failure path:** `const exit = await Effect.runPromiseExit(effect)` then `Cause.failureOption(exit.cause)` — assert on the typed error (`_tag`, `kind`, `stage` — `StoreError` kinds, `ProviderErrorKind`), never on the `FiberFailure` wrapper (its `message` is the opaque "An error has occurred"; the cause rides a module symbol). Feed the fake a failing dependency to reach each failure kind — failure modes are data now; test each kind, not just the happy path.
 - **Services:** provide tags with `Effect.provideService` / a `Layer` (see `packages/rag-core/src/effect-spike.test.ts`); a `Context.Tag` service in tests is a plain object (see `packages/rag-core/src/run.test.ts` for the `RunContext` pattern). No `@effect/vitest`, no test-clock dependency — inject `now`/fakes through the same seams production uses.
-- **Interruption semantics (effect@3.22.1):** `Fiber.interrupt` must be _run_ as an Effect; interruption-tracking callbacks attach via `.pipe(Effect.onExit(...))` + `Cause.isInterruptedOnly` — `yield* Effect.onExit(...)` inside `Effect.gen` does not register.
+- **Interruption semantics:** `Fiber.interrupt` returns an `Effect<void>` — _run_ it (`yield* Fiber.interrupt(fiber)`), then read the interrupted fiber's `Exit` from `Fiber.await`. An interrupted exit is a `Failure` whose cause satisfies `Cause.hasInterruptsOnly(exit.cause)`. Attach interruption-tracking callbacks to the effect being tracked with `Effect.onExit` (see `packages/rag-ingest/src/pipeline.test.ts` and `packages/rag-core/src/effect-spike.test.ts`).
 - **Keep retry schedules fast:** inject `perKindRetrySchedule("1 millis", "1 millis")` in tests; never sleep through real backoff.
 
 ### Property tests (fast-check)
@@ -69,7 +69,7 @@ This repo ships no payments or sync layer (see `CONTEXT.md` / spec §3.1), so th
 
 ### Integration tests (adapter boundaries)
 
-- Adapter implementations also get integration tests that exercise the interface contract end to end: against real infrastructure (Neon Postgres, R2) in CI, or mocks locally. The unit-layer contract shape is the `packages/infra/src/object-store.test.ts` exemplar; the store-seam contract suite is `packages/infra/src/rag-store-neon.test.ts`; full-stack real-infra coverage rides the BDD layer (`alchemy dev` on local workerd).
+- Adapter implementations also get integration tests that exercise the interface contract end to end: the store-seam contract suite runs against a real Postgres + pgvector (the `postgres:contract` CI job, on a `pgvector/pgvector:pg18` service container), and the rest run against mocks locally. The unit-layer contract shape is the `packages/infra/src/object-store.test.ts` exemplar; the store-seam contract suite is `packages/infra/src/rag-store-postgres.test.ts`; full-stack coverage rides the BDD layer, whose webServer boots the real Bun entry (`apps/api/src/boot.ts`).
 
 ## Guards
 
