@@ -12,7 +12,7 @@
 // It emits exactly two sections, in this order, and appends nothing else:
 //
 //   ## Task              the manager-authored task text, trimmed
-//   ## Role definition   the role file's body verbatim, frontmatter stripped
+//   ## Role definition   the role file's body, frontmatter stripped and trimmed
 //
 // Authorization text a role carries travels inside ## Role definition with
 // the rest of its body (implementer and senior-implementer carry a
