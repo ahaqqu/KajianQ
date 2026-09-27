@@ -1,15 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import {
-  callLog,
-  git,
-  gitOk,
-  MAIN_ROOT,
-  makeFixture,
-  REAL_WORKTREES,
-  runClean,
-} from "./worktree-cleanup-fixture.mjs";
+import { callLog, git, gitOk, makeFixture, runClean } from "./worktree-cleanup-fixture.mjs";
 
 /**
  * `bun run worktree:clean` — the disposable-worktree rule (#229).
@@ -17,7 +9,14 @@ import {
  * Cases and assertions only: the throwaway-repo plumbing — fixture creation,
  * the fake `gh`, `runClean` — lives in `worktree-cleanup-fixture.mjs`. Each
  * case builds its own fixture, so cases share no state.
+ *
+ * The two cases whose subject is a shared-state surface or the tool's
+ * destructive boundary live apart: the real-checkout isolation canary in
+ * `worktree-cleanup-isolation.test.mjs`, and the deletion boundary — every
+ * deletion printed, every git command inside the run's own root — in
+ * `worktree-cleanup-destruction.test.mjs`.
  */
+
 describe("worktree-cleanup", () => {
   it("keeps a zero-commit worktree by default and prints why", () => {
     const fx = makeFixture();
@@ -452,32 +451,6 @@ describe("worktree-cleanup", () => {
     // The broken entry never reaches the gh consultation: exactly one lookup,
     // for the slug the run went on to dispose of.
     expect(callLog(fx)).toEqual(["pr view agent/z-healthy --json state,headRefOid"]);
-    fx.dispose();
-  });
-
-  it("resolves its root from the fixture repo, never the real checkout", () => {
-    const realBefore = existsSync(REAL_WORKTREES) ? readdirSync(REAL_WORKTREES).sort() : [];
-    const fx = makeFixture();
-    fx.addUnstarted("unstarted");
-    fx.fakeGh({ noPr: ["agent/unstarted"] });
-
-    const result = runClean(fx, ["--include-unstarted"]);
-
-    expect(result.status).toBe(0);
-    // The script acted on the fixture's own worktree — proof it resolved the
-    // fixture root, not the real checkout.
-    expect(result.stdout).toContain("removed unstarted (no unique commits vs origin/main)");
-    expect(fx.exists("unstarted")).toBe(false);
-    // Only that one lookup happened: a root-resolution leak would have produced
-    // a gh call per real slug, and this log has no other line.
-    expect(callLog(fx)).toEqual(["pr view agent/unstarted --json state,headRefOid"]);
-    // No real slug ever reached gh.
-    for (const slug of realBefore) expect(fx.ghCalls()).not.toContain(`agent/${slug}`);
-    // And the real checkout's .worktrees listing is untouched.
-    const realAfter = existsSync(REAL_WORKTREES) ? readdirSync(REAL_WORKTREES).sort() : [];
-    expect(realAfter).toEqual(realBefore);
-    expect(existsSync(join(REAL_WORKTREES, "unstarted"))).toBe(false);
-    expect(gitOk(MAIN_ROOT, ["rev-parse", "--verify", "--quiet", "agent/unstarted"])).toBe(false);
     fx.dispose();
   });
 });
