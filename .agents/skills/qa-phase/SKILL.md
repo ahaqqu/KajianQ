@@ -73,7 +73,7 @@ The verdict is the only thing that closes a QA-needed change: `verified` when th
 ## Safety rails
 
 - **Staging only.** Never production, never a prod dispatch.
-- **Anonymous sessions only**, no real user data, and every session the run creates is erased with its own token (`DELETE /v1/auth/me`) before the report is posted.
+- **Anonymous sessions only**, no real user data, and every session the run creates is erased with its own token (`DELETE /v1/auth/me`) before the report is posted. Keep each token in a **durable scratch path** until the run ends — a per-invocation `/tmp` loses it between tool calls, and erasure needs that token: a session whose token is gone cannot be deleted through the API. Disclose any session you could not erase in the report, with its `sessionId` and the reason.
 - **Read-only on the repo**: comments and finding tickets yes, commits/branches/merges/closures no.
 - **Nothing destructive** against the corpus or the store; no paid ingest; no money-spending operation past the ticket's cap.
 - **Report the spend actually consumed**, under or over the estimate.
