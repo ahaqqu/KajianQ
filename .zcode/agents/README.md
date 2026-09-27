@@ -34,22 +34,12 @@ changes reach new spawns only after a client restart. Removing a role
 file's `model:` field makes that role inherit its dispatcher's model (this
 is how a sub-reviewer can be made to share its coordinator's model).
 
-## Role GitHub identities (retired)
+## Role GitHub identities
 
-Role-separated GitHub identities (ADR-0025) were **retired in #133**: the
-PreToolUse deny hook and the `gh-as <role>` wrapper under
-`scripts/role-gh-identity/` were deleted, and `.zcode/config.json` wires no
-PreToolUse hook. On every harness — DSH included — a role subagent's `gh` runs
+On every harness — DSH included — a role subagent's `gh` runs
 under the dispatching session's ambient identity: no role is denied a bare
 `gh`, and the manager session (no role) is never denied. The DSH adapter states
 this as it applies on DSH.
-
-The dormant design, if the owner ever re-enables it, was deny-redirect:
-opt-in enforcement (`scripts/role-gh-identity/config.json`, `enabled: false` by
-default), a fail-open hook naming the compliant form
-`gh-as <role> <gh args…>` (per-invocation `GH_TOKEN`, token files outside the
-repo), and an auth failure surfacing as an ordinary command failure the
-manager relays and escalates like any CI failure — never bypassed.
 
 ## Implementer-class operating rules
 
@@ -65,8 +55,7 @@ the same commit.
 ### Todo discipline (canonical)
 
 Every implementer-class role maintains its plan in its own `todo_write` task
-list — a dispatch-contract duty, not a personal preference, and the fix for the
-live defect where dispatched subagents showed `todos=0` while working:
+list — a dispatch-contract duty, not a personal preference:
 
 - **Whole-list replacement.** Each `todo_write` call sends the complete list;
   there is no partial update.

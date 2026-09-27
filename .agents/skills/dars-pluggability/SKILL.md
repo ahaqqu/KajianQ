@@ -15,7 +15,7 @@ Know which seam you are standing on before writing code:
 | Seam                    | Interface lives in                             | Implementations live in              | What varies behind it                                         |
 | ----------------------- | ---------------------------------------------- | ------------------------------------ | ------------------------------------------------------------- |
 | Pipeline stages         | `packages/rag-core` (`StageEffect` signatures) | stage implementations per app wiring | Router, Retriever, Assembler, Generator, Reviewer             |
-| LLM / embedding vendors | `Provider` in `packages/rag-core`              | vendor adapters in `packages/infra`  | Gemini, DeepSeek, Qwen (config allowlist; ADR-0009/0022)      |
+| LLM / embedding vendors | `Provider` in `packages/rag-core`              | vendor adapters in `packages/infra`  | Gemini, DeepSeek, Qwen (config allowlist)                     |
 | Persistence             | `RagStore` in `packages/infra`                 | Postgres adapter over `pg`/TCP       | vectors, metadata filters, chat, traces, feedback, Golden Set |
 | Blob storage            | `ObjectStore` in `packages/infra`              | S3-compatible (Cloudflare R2)        | raw source archives, `text_raw` backups                       |
 
@@ -24,9 +24,8 @@ Stages communicate **in-process** through typed interfaces — no HTTP between p
 > **Vendor names here are the current configuration, not the seam's identity.**
 > The persistence adapter is named for its dialect (`rag-store-postgres*`,
 > provider `"postgres"`) precisely so a hosting move does not look like a
-> storage-engine change — ADR-0044 retired the `"neon"` naming and the
-> vendor-specific driver. ObjectStore's R2 row is the at-rest provenance archive
-> (ADR-0038 decision 4) and has no serving role.
+> storage-engine change. ObjectStore's R2 row is the at-rest provenance archive
+> and has no serving role.
 
 ## Hard rules
 

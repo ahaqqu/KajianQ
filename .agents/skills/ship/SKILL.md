@@ -10,11 +10,9 @@ synced: 2026-08-29
 
 Take a change from CI-green on `main` through staging validation to production, with smoke tests and rollback capability at each step.
 
-**Post-ADR-0044 the serving host is the netcup VPS** (a plain Bun process behind
-nginx), not Cloudflare Workers. There is one box: staging and production are the
-same host, distinguished by `APP_ENV`. The executable record of how the move
-happened is [`docs/VPS-CUTOVER-RECORD.md`](../../../docs/VPS-CUTOVER-RECORD.md);
-the operator's as-is manual is
+**The serving host is the netcup VPS** (a plain Bun process behind nginx). There
+is one box: staging and production are the same host, distinguished by
+`APP_ENV`. The operator's as-is manual is
 [`docs/VPS-OPERATIONS.md`](../../../docs/VPS-OPERATIONS.md), which is the authority
 for anything below that drifts.
 
@@ -55,7 +53,7 @@ gh workflow run "Deploy to VPS" -f environment=prod
 
 `--dry-run` prints actions without writing; `--no-smoke` skips step 4. A prod
 dispatch waits at the `prod` environment's required-reviewer gate — that
-approval **is** the recorded sign-off (ADR-0044 decision 2).
+approval **is** the recorded sign-off.
 
 Check the gates rather than re-running them locally:
 
@@ -121,8 +119,7 @@ do not promote.
 ## Phase 6 — Promote to production
 
 There is no separate production host to point DNS at: **the one box is
-production**, and `APP_ENV` names the current posture (`production` since the
-single-shot cutover). Promotion is:
+production**, and `APP_ENV` names the current posture (`production`). Promotion is:
 
 ```bash
 gh workflow run "Deploy to VPS" -f environment=prod   # waits at the approval gate
@@ -154,10 +151,9 @@ If a smoke fails, go to Phase 8.
 
 ## Phase 8 — Rollback
 
-**There is no instant rollback: ADR-0044 decision 2 made the cutover
-single-shot.** `wrangler rollback` went with the Cloudflare path, and the deploy
-is an `rsync --delete` of a content-hashed build — a stale file on the box is a
-stale file, not a rollback. The recorded rollback is git:
+**There is no instant rollback: the deploy is an `rsync --delete` of a
+content-hashed build — a stale file on the box is a stale file, not a
+rollback.** The recorded rollback is git:
 
 ```bash
 git revert <bad-commit>          # on main, via a PR
@@ -165,10 +161,8 @@ git revert <bad-commit>          # on main, via a PR
 gh workflow run "Deploy to VPS" -f environment=prod
 ```
 
-The single-shot decision was made against a measured condition — no live users —
-and the ADR names the revisit trigger: **when a real user base arrives, a
-rollback runway becomes a new ADR**, not an improvisation. Do not build
-blue/green choreography into a hotfix.
+**When a real user base arrives, a rollback runway becomes a new ADR**, not an
+improvisation. Do not build blue/green choreography into a hotfix.
 
 If the box is broken rather than the code (a failed migration, a wedged unit),
 that is [`docs/VPS-OPERATIONS.md`](../../../docs/VPS-OPERATIONS.md) §2–3 territory —
@@ -180,8 +174,8 @@ There is no separate staging environment to reset: staging and production share
 the box and the database. What the post-deploy jobs leave is their own test
 residue — the Golden Set smoke writes `eval_runs`/`eval_results` rows and
 `answer_traces`, and the ZAP/Schemathesis scans leave request residue. That
-residue is expected and is not cleaned automatically; the cutover record's
-live-flow verification shows the pattern for checking it, and `DELETE
+residue is expected and is not cleaned automatically; the pattern for checking it
+is in [`docs/VPS-CUTOVER-RECORD.md`](../../../docs/VPS-CUTOVER-RECORD.md), and `DELETE
 /v1/auth/me` covers any test _session_ you create by hand.
 
 ## Guards
@@ -202,7 +196,7 @@ live-flow verification shows the pattern for checking it, and `DELETE
   §2b–2c).
 - Production changes that alter the reported privacy posture require the
   register, retention values, and the Art. 30 record to be true in the same PR
-  (ADR-0043) — `/about` tells the same story or the PR pings #179.
+  — `/about` tells the same story or the PR pings #179.
 
 ## Completion criterion
 
