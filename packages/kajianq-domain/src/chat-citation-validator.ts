@@ -80,10 +80,31 @@ const CITATION_GRAMMARS: readonly (() => RegExp)[] = [
   () => /\bJilid\s+\d+\s*,\s*Hal\.\s*\d+/gi,
 ];
 
-/** Strip the trailing `(Grade)` suffix the hadith formatter appends. */
-function stripGradeSuffix(label: string): string {
-  return label.replace(/\s*\([^()]*\)\s*$/, "").trim();
-}
+/**
+ * Trailing citation noise: any run of non-address characters at the tail —
+ * punctuation, markdown markers/quotes, symbols and whitespace. A citation
+ * address always ends in its digits (every grammar ends in `\d+`), and the
+ * grammars disagree about which punctuation a match may absorb — the hadith
+ * number token stops at `;`, `.`, `)` and `]` but swallows `:`, `—`, `…` and a
+ * closing quote — so the same retrieved citation reached the comparison as a
+ * different string depending on the prose punctuation that followed it, and a
+ * grounded answer was refused (#253).
+ *
+ * One negated character class, anchored: linear, with no alternation that
+ * could match the same tail two ways (model-controlled text makes an ambiguous
+ * tail pattern a ReDoS shape).
+ */
+const TRAILING_CITATION_NOISE = /[^\p{L}\p{N}]+$/u;
+
+/**
+ * A closed-up em/en dash joins the citation to the prose that follows it
+ * (`… HR. Bukhari no. 5010—ia bersabda …`), and the hadith number token
+ * absorbs it into the label. A dash followed by a LETTER is prose and is cut
+ * here; one followed by a digit may be a closed-up range (`… no. 5010—5011`),
+ * whose second address must stay in the comparison and be refused when no
+ * retrieved chunk grounds it — so it is deliberately left whole.
+ */
+const CLOSED_UP_DASH_BEFORE_PROSE = /[—–](?=\p{L})/u;
 
 /**
  * Canonicalize the citation markers' spelling to the product's `QS.` / `HR.`
@@ -103,22 +124,57 @@ function canonicalizeMarkers(text: string): string {
 }
 
 /**
- * Normalize a label for comparison: collapse whitespace, trim, drop grade,
- * strip markdown emphasis, and canonicalize the marker spellings (`Q.S.` and
- * `QS` → `QS.`, `HR` → `HR.`).
+ * Strip the trailing `(Grade)` suffix the hadith formatter appends. It is only
+ * ever the LAST thing in a label: `formatHadithCitation` writes it at the end
+ * of the chunk's label, and no draft span can carry one at all — the hadith
+ * number token stops at whitespace, so the grammar's match ends at the number.
+ * A grade written *after* punctuation therefore cannot occur, and this stays a
+ * single anchored pass.
+ */
+function stripGradeSuffix(label: string): string {
+  return label.replace(/\s*\([^()]*\)\s*$/, "");
+}
+
+/**
+ * Reduce a label to its address by dropping the tail a generator attaches: the
+ * grade parenthetical the chunk formatter appends, then the punctuation,
+ * markdown or quote noise a draft wraps around it. Both patterns are linear
+ * and anchored, and neither can match what the other matched first.
+ */
+function trimCitationTail(label: string): string {
+  return stripGradeSuffix(label).replace(TRAILING_CITATION_NOISE, "").trim();
+}
+
+/**
+ * Normalize a label for comparison: collapse whitespace, trim, drop the tail
+ * (grade suffix, markdown emphasis, prose punctuation), and canonicalize the
+ * marker spellings (`Q.S.` and `QS` → `QS.`, `HR` → `HR.`).
  *
- * The markdown-emphasis strip matters because the grammar stops at sentence
- * punctuation but NOT at `*`/`_`/backticks, so a bolded citation
- * (`**HR. Malik no. 18**`) reached the comparison with its markers attached
- * and was reported UNGROUNDED. That false positive refused a grounded
- * answer on the first live size-5 smoke (gs-v0-015).
+ * The tail strip matters because the grammar stops at sentence punctuation but
+ * NOT at `*`/`_`/backticks or the punctuation above, so a styled citation
+ * (`**HR. Malik no. 18**`) or one written as ordinary prose (`… HR. Bukhari
+ * no. 5010: <matn> …`) reached the comparison with its markers attached and
+ * was reported UNGROUNDED — a grounded answer refused. The markdown case
+ * refused a grounded answer on the first live size-5 smoke (gs-v0-015); the
+ * colon case refused gs-v0-001 on staging (#253, trace f417d603-…), where
+ * chunk 94d2a731 carried `HR. Bukhari no. 5010` and the draft said
+ * `HR. Bukhari no. 5010:`. Both sides of the comparison — the chunk's label
+ * and the draft's extracted span — pass through this one function, so closing
+ * the tail class here closes both directions at once.
+ *
+ * Only the TAIL is touched, and only characters no address can end with, so
+ * the colon inside `QS. 2:255` and the comma inside `Jilid 1, Hal. 102`
+ * survive: a naive `replace(/:.*$/, "")` would erase every Quran citation.
  */
 export function normalizeCitationLabel(label: string): string {
+  const dashCut = CLOSED_UP_DASH_BEFORE_PROSE.exec(label);
   return canonicalizeMarkers(
-    stripGradeSuffix(label)
-      .replace(/[*_`]+/g, "")
-      .replace(/\s+/g, " ")
-      .trim(),
+    trimCitationTail(
+      (dashCut === null ? label : label.slice(0, dashCut.index))
+        .replace(/[*_`]+/g, "")
+        .replace(/\s+/g, " ")
+        .trim(),
+    ),
   );
 }
 

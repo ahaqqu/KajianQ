@@ -533,4 +533,18 @@ describe("#168 reviewer pre-gate — claim spans (domain grammar)", () => {
     });
     expect(plan?.items[0]?.passage).toBe("first\n\nsecond");
   });
+
+  it("carries the passage for a citation written with an introducing colon (#253)", () => {
+    // The tail is normalized on both sides, so a draft citation the gate
+    // grounds also finds its chunk's passage here. Before #253's fix the colon
+    // survived into the item's key, the map lookup missed, and the paid
+    // decision call judged this citation against an EMPTY passage.
+    const plan = planCitationPregate({
+      draft: "Rasulullah bersabda dalam HR. Bukhari no. 5010: matn hadith.",
+      chunks: [chunk("HR. Bukhari no. 5010", "bukhari passage")],
+    });
+    expect(plan?.items.map((item) => item.label)).toEqual(["HR. Bukhari no. 5010"]);
+    expect(plan?.items[0]?.passage).toBe("bukhari passage");
+    expect(plan?.items[0]?.claim).toContain("HR. Bukhari no. 5010:");
+  });
 });
