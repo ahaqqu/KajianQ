@@ -19,7 +19,7 @@ The product promise (spec §1.5): **never hide the machinery.** Traceability is 
 ## Trace-shaped thinking for each pipeline area
 
 - **Smart Router stages 1–3:** every stage's JSON output (intent, sub-queries, routing decisions, applied filters) lands in the trace. Query Expansion candidates — both offered and selected terms — are recorded.
-- **Retrieval:** chunk ids with both dense and sparse ranks plus fused score. When the posture is ID-fallback fusion (per the embedding-benchmark gate), per-track scores stay distinguishable.
+- **Retrieval:** chunk ids with both dense and sparse ranks plus fused score. When the posture is ID-fallback fusion, per-track scores stay distinguishable.
 - **Assembly & generation:** final presentation order, assembled context size, cache hits, model identity, tokens, cost. Deep Think additionally records per-round coverage: passages examined vs. relevant vs. used.
 - **Post-processing:** citation-validator verdict per citation, dhaif flags raised, refusal events with reason and stage (a refusal is first-class trace content, not silence). A suppressed or rewritten answer must leave a trace of why.
 - **Feedback:** thumbs + trace-anchored flags store the element reference; accepted reports link to the Golden Set case they became.

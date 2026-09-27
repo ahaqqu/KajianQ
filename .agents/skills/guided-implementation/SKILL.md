@@ -34,12 +34,12 @@ For each area the plan touches, verify compliance before writing code.
 
 - [ ] Raw SQL migration written in the owning package's `migrations/` dir — engine (`packages/infra/migrations`), product API (`apps/api/migrations`), or concept graph (`packages/kajianq-domain/migrations`); engine schema stays domain-agnostic.
 - [ ] Applied via the `db:up` / `db:down` / `db:status` scripts (root `package.json`); no ad hoc `psql`/driver calls.
-- [ ] SQL targets Postgres over TCP (`DATABASE_URL`, self-hosted on the VPS — ADR-0044) — standard SQL + `pgvector` where the feature demands it; no vendor-specific extensions.
+- [ ] SQL targets Postgres over TCP (`DATABASE_URL`, self-hosted on the VPS) — standard SQL + `pgvector` where the feature demands it; no vendor-specific extensions.
 - [ ] No direct DB client imports outside the `RagStore` adapter and migrations (enforced by the boundary gate).
 
 ### Client state
 
-- [ ] Client state is TanStack Query over the `/v1` API. There is no offline store — `@app/local-first` was dropped with D1 (spec §3.1); do not reintroduce client-side persistence layers without a new ADR.
+- [ ] Client state is TanStack Query over the `/v1` API. There is no offline store; do not reintroduce client-side persistence layers without a new ADR.
 - [ ] Server state mutations go through typed `/v1` endpoints validated by shared Valibot contracts; the web↔API contract is HTTP/JSON + Valibot only.
 
 ### Effect seams (backend only)
@@ -86,8 +86,8 @@ This monorepo also hosts the DARS engine (`packages/`) and the KajianQ domain pa
 - **Trace every LLM call.** Model identity, tokens, latency, computed cost attach to the trace of the answer/run that triggered it. Trace/TraceEvent/CostRecord shapes come from `packages/contracts`; refusal/suppression events are recorded with reason and stage, never silently swallowed. Checklist: `.agents/skills/kajianq-traceability/SKILL.md`.
 - **Per-stage models from config only.** Model choice per stage comes from `model_configs` config; no vendor or model names in engine or app code outside `packages/infra` Provider adapters.
 - **Batch jobs produce reports.** Ingestion, eval, glossary build, narrator resolution runs produce ingestion/eval reports (counts, sampled-review scores, quarantine count, cost) — stored and citable, never skipped.
-- **Respect go/no-go gates.** E.g. the embedding benchmark gate (#9) decides the retrieval posture before Kitab-scale ingestion starts. Check `adr/` and `SPECS.md` §7 for the gates your ticket touches.
-- **Keep personal-data paths GDPR-true.** When the change touches personal data (session tokens, chat content, persisted traces, feedback free-text, IPs/logs, backups, snapshot archives), the sub-processor register, retention values, and RoPA stay accurate in the same PR (`docs/GDPR-ARTICLE-30-RECORD.md`; register in ADR-0043 decision 3); a new processor, vendor, or hosting region joins the register before it sees data; personal-data calls route only through paid, DPA-covered vendors (`personalDataAllowed` — never a free tier), so any `models.json` `freeTier`/`personalDataAllowed` edit is privacy-relevant; and the erasure path (`DELETE /v1/auth/me` → `deleteUserCascade`) still cascades the whole subtree. Decision record: ADR-0043.
+- **Respect go/no-go gates.** E.g. the embedding benchmark gate decides the retrieval posture before Kitab-scale ingestion starts. Check `adr/` and `SPECS.md` §7 for the gates your ticket touches.
+- **Keep personal-data paths GDPR-true.** When the change touches personal data (session tokens, chat content, persisted traces, feedback free-text, IPs/logs, backups, snapshot archives), the sub-processor register, retention values, and RoPA stay accurate in the same PR (`docs/GDPR-ARTICLE-30-RECORD.md`; the register is ADR-0043 decision 3's table); a new processor, vendor, or hosting region joins the register before it sees data; personal-data calls route only through paid, DPA-covered vendors (`personalDataAllowed` — never a free tier), so any `models.json` `freeTier`/`personalDataAllowed` edit is privacy-relevant; and the erasure path (`DELETE /v1/auth/me` → `deleteUserCascade`) still cascades the whole subtree.
 
 ### Pre-PR verification (KajianQ-specific)
 
@@ -100,7 +100,7 @@ Before opening the PR, run the Quick review scans from `.agents/skills/dars-plug
 - [ ] `NOTICES/DATASETS.md` updated when a dataset or corpus resource is touched.
 - [ ] Touched `SPECS.md` sections updated in the same PR (architecture §3, data layer §3.5/§4, cost §5, plan §7, product scope §2); new ADR row in its §8 Record of Decisions.
 - [ ] Golden Set traps added where the ticket demands them (new refusal case, trap question, or validator).
-- [ ] Personal-data-touching changes: register, retention values, and RoPA current (ADR-0043), and the erasure cascade still complete.
+- [ ] Personal-data-touching changes: register, retention values, and RoPA current, and the erasure cascade still complete.
 
 ## During implementation
 
@@ -145,7 +145,7 @@ mandatory, not advisory:
 ## After implementation
 
 - Run the project CI gates locally: `bun run check`, `bun run lint` (Vite+ `vp check` + vite-pin guard), `bun run test` (Vitest under `vp test` — runs on vp's managed Node, not bun), `bun run boundary`, `bun run agentic-limits`, `bun run openapi:check`, `bun run size-limit`. See `docs/ARCHITECTURE.md` §16 for tooling.
-- The API/dev/deploy lifecycle goes through the VPS deploy path (ADR-0044): local dev and e2e boot the real Bun entry (`bun run api:serve`, or `playwright.config.ts` for the suite); deploys are `provision/vps/deploy/deploy.sh` (or a `Deploy to VPS` dispatch). Host preconditions — the deploy identity's grant, `VPS_USER`, `api.env` — are in `.agents/skills/ship/SKILL.md`; a bad deploy is rolled back with `git revert` (there is no instant rollback).
+- The API/dev/deploy lifecycle goes through the VPS deploy path: local dev and e2e boot the real Bun entry (`bun run api:serve`, or `playwright.config.ts` for the suite); deploys are `provision/vps/deploy/deploy.sh` (or a `Deploy to VPS` dispatch). Host preconditions — the deploy identity's grant, `VPS_USER`, `api.env` — are in `.agents/skills/ship/SKILL.md`; a bad deploy is rolled back with `git revert` (there is no instant rollback).
 - Verify against `AGENTS.md` Definition of Done.
 - Report what was implemented and what changed from the plan.
 - **Handoff:** in the test phase (Phase boundary 2), the fresh scoped context
