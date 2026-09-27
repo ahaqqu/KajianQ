@@ -1,185 +1,23 @@
 import { describe, expect, it } from "vitest";
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { execFileSync, spawnSync } from "node:child_process";
+  callLog,
+  git,
+  gitOk,
+  MAIN_ROOT,
+  makeFixture,
+  REAL_WORKTREES,
+  runClean,
+} from "./worktree-cleanup-fixture.mjs";
 
 /**
  * `bun run worktree:clean` — the disposable-worktree rule (#229).
  *
- * Every run is hermetic: the script resolves its root from
- * `git rev-parse --show-toplevel` of its cwd, so each case builds a throwaway
- * fixture repo under `mkdtempSync` and runs the script with `cwd` there. The
- * real checkout's `.worktrees/` and branches are never in the script's scope.
- *
- * `gh` is intercepted by a fixture `bin/gh` prepended to `PATH` rather than by
- * an env seam in the script: the script already resolves `gh` through the
- * inherited PATH, so the fake needs no production-only branch. The fake serves
- * a verdict only for the exact invocation a test declares — a branch with a PR
- * gets its JSON, a branch listed as no-PR exits the way `gh` does when nothing
- * matches, and anything else is recorded and fails loudly. `runClean` asserts
- * that record is empty on every run, so an undeclared lookup can never be
- * silently absorbed as "no PR", and a test can prove the MERGED path was
- * consulted instead of degrading when the network is absent.
- *
- * A fixture is removed only after a test's assertions pass; a failure leaves
- * the fixture repo on disk (its path is logged) so the state is inspectable.
+ * Cases and assertions only: the throwaway-repo plumbing — fixture creation,
+ * the fake `gh`, `runClean` — lives in `worktree-cleanup-fixture.mjs`. Each
+ * case builds its own fixture, so cases share no state.
  */
-
-const REAL_WORKTREE_ROOT = realpathSync(process.cwd());
-const SCRIPT = resolve(REAL_WORKTREE_ROOT, "scripts/worktree-cleanup.mjs");
-const MAIN_ROOT = realpathSync(
-  execFileSync("git", ["-C", REAL_WORKTREE_ROOT, "worktree", "list", "--porcelain"], {
-    encoding: "utf8",
-  })
-    .split("\n")[0]
-    .replace(/^worktree /, "")
-    .trim(),
-);
-const REAL_WORKTREES = join(MAIN_ROOT, ".worktrees");
-
-const GIT_ENV = {
-  ...process.env,
-  GIT_AUTHOR_NAME: "fixture",
-  GIT_AUTHOR_EMAIL: "fixture@example.invalid",
-  GIT_COMMITTER_NAME: "fixture",
-  GIT_COMMITTER_EMAIL: "fixture@example.invalid",
-  GIT_CONFIG_GLOBAL: "/dev/null",
-  GIT_CONFIG_NOSYSTEM: "1",
-  GIT_TERMINAL_PROMPT: "0",
-};
-
-function git(cwd, args) {
-  return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", env: GIT_ENV }).trim();
-}
-
-function gitOk(cwd, args) {
-  return spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8", env: GIT_ENV }).status === 0;
-}
-
-function callLog(fx) {
-  return fx.ghCalls().trim() === "" ? [] : fx.ghCalls().trim().split("\n");
-}
-
-// Run and reject any gh lookup the test did not declare. The fixture gh records
-// those and exits non-zero; the script would swallow that as "no PR", so the
-// assertion here is what makes an undeclared state a loud failure.
-function runClean(fx, args = []) {
-  const result = fx.run(args);
-  expect(fx.unexpectedGhCalls()).toBe("");
-  return result;
-}
-
-function makeFixture() {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), "worktree-clean-")));
-  if (dir === MAIN_ROOT || dir.startsWith(MAIN_ROOT + "/")) {
-    throw new Error(`fixture would live inside the real checkout: ${dir}`);
-  }
-  console.log(`fixture: ${dir}`);
-
-  git(dir, ["init", "-q", "-b", "main"]);
-  // Mirror the real checkout: .worktrees/ (and the fixture's own bookkeeping)
-  // never show up as untracked in the fixture repo.
-  writeFileSync(join(dir, ".gitignore"), ".worktrees/\nbin/\ngh-calls.log\ngh-unexpected.log\n");
-  git(dir, ["add", ".gitignore"]);
-  git(dir, ["commit", "-q", "-m", "base"]);
-  git(dir, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
-
-  const wtPath = (slug) => join(dir, ".worktrees", slug);
-  const run = (args = []) =>
-    spawnSync("bun", [SCRIPT, ...args], {
-      cwd: dir,
-      encoding: "utf8",
-      env: { ...GIT_ENV, PATH: `${join(dir, "bin")}:${process.env.PATH}` },
-    });
-
-  function installGh({ prs = {}, noPr = [] } = {}) {
-    mkdirSync(join(dir, "bin"), { recursive: true });
-    const calls = join(dir, "gh-calls.log");
-    const unexpected = join(dir, "gh-unexpected.log");
-    const arms = [
-      ...Object.entries(prs).map(
-        ([branch, pr]) =>
-          `  'pr view ${branch} --json state,headRefOid') printf '%s' '${JSON.stringify(pr)}' ;;`,
-      ),
-      ...noPr.map(
-        (branch) =>
-          `  'pr view ${branch} --json state,headRefOid') printf 'no pull requests found for %s\\n' '${branch}' >&2; exit 1 ;;`,
-      ),
-    ].join("\n");
-    writeFileSync(
-      join(dir, "bin", "gh"),
-      `#!/bin/sh
-printf '%s\\n' "$*" >> '${calls}'
-case "$*" in
-${arms}
-  *) printf '%s\\n' "$*" >> '${unexpected}'; printf 'unexpected gh invocation: %s\\n' "$*" >&2; exit 3 ;;
-esac
-`,
-    );
-    chmodSync(join(dir, "bin", "gh"), 0o755);
-  }
-
-  // Refuse everything until a test declares what it expects, so a missing
-  // declaration can never reach the real gh.
-  installGh();
-
-  return {
-    dir,
-    wtPath,
-    run,
-    fakeGh: installGh,
-    addUnstarted(slug) {
-      git(dir, ["worktree", "add", "-q", wtPath(slug), "-b", `agent/${slug}`]);
-    },
-    addDetached(slug) {
-      git(dir, ["worktree", "add", "-q", "--detach", wtPath(slug), "origin/main"]);
-    },
-    addCommitted(slug) {
-      git(dir, ["worktree", "add", "-q", wtPath(slug), "-b", `agent/${slug}`]);
-      writeFileSync(join(wtPath(slug), "wip.txt"), "work in progress\n");
-      git(wtPath(slug), ["add", "wip.txt"]);
-      git(wtPath(slug), ["commit", "-q", "-m", "wip"]);
-      return git(wtPath(slug), ["rev-parse", "HEAD"]);
-    },
-    // Move main and origin/main on, leaving earlier branches strictly behind.
-    advanceOrigin() {
-      writeFileSync(join(dir, "advance.txt"), "advance\n");
-      git(dir, ["add", "advance.txt"]);
-      git(dir, ["commit", "-q", "-m", "advance main"]);
-      git(dir, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
-      return git(dir, ["rev-parse", "HEAD"]);
-    },
-    ghCalls() {
-      const log = join(dir, "gh-calls.log");
-      return existsSync(log) ? readFileSync(log, "utf8") : "";
-    },
-    unexpectedGhCalls() {
-      const log = join(dir, "gh-unexpected.log");
-      return existsSync(log) ? readFileSync(log, "utf8") : "";
-    },
-    exists(slug) {
-      return existsSync(wtPath(slug));
-    },
-    branchExists(branch) {
-      return gitOk(dir, ["rev-parse", "--verify", "--quiet", branch]);
-    },
-    dispose() {
-      rmSync(dir, { recursive: true, force: true });
-    },
-  };
-}
-
 describe("worktree-cleanup", () => {
   it("keeps a zero-commit worktree by default and prints why", () => {
     const fx = makeFixture();
@@ -550,6 +388,37 @@ describe("worktree-cleanup", () => {
       "pr view agent/a-locked --json state,headRefOid",
       "pr view agent/z-healthy --json state,headRefOid",
     ]);
+    fx.dispose();
+  });
+
+  it("counts a worktree whose branch delete fails after removal as removed (A6)", () => {
+    const fx = makeFixture();
+    const tip = fx.addCommitted("half-done");
+    fx.fakeGh({ prs: { "agent/half-done": { state: "MERGED", headRefOid: tip } } });
+    // The disposal's first step succeeds and its second fails. A stale ref lock
+    // is the deterministic trigger: only the delete can fail, and the branch
+    // still resolves afterwards.
+    fx.refLock("refs/heads/agent/half-done");
+
+    const result = runClean(fx);
+
+    expect(result.status).toBe(0);
+    // The line claims only what happened: the removal is reported and the
+    // branch failure is named — never a `kept` prefix that contradicts the run.
+    // The assertion pins the script-owned prefix only: git's stderr prose past
+    // it is a third-party string this repo does not stabilize, so the state
+    // assertions below — worktree gone, branch still resolving at its old tip —
+    // are what prove this exact path fired.
+    expect(result.stdout).toMatch(/^removed half-done \(PR merged; branch delete failed: /m);
+    // The remedy is the load-bearing part of the line: no later sweep lists this
+    // slug again, so the operator only learns the branch is left from here.
+    expect(result.stdout).toContain("delete it with: git branch -D agent/half-done");
+    expect(result.stdout).not.toContain("kept  half-done");
+    // Summary and per-entry lines agree: this entry was removed, not kept.
+    expect(result.stdout).toMatch(/^done: 1 removed, 0 kept$/m);
+    expect(fx.exists("half-done")).toBe(false);
+    expect(fx.branchExists("agent/half-done")).toBe(true);
+    expect(git(fx.dir, ["rev-parse", "agent/half-done"])).toBe(tip);
     fx.dispose();
   });
 
