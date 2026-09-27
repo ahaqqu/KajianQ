@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 import type { Chunk, StoreError } from "@app/rag-core";
+import { withTextLayers } from "./chunk-text-layers";
 import { surahSourceKey } from "./quran-source";
 import { detectSurahReference } from "./surah-reference";
 
@@ -79,21 +80,17 @@ export type ScopeExpansion = {
 };
 
 /**
- * Build the expansion chunk with the same text-layer metadata the fused path
- * carries (the assembler's Arabic + labeled-translation rule reads
- * `metadata.textAr`/`textId`, so an expansion chunk must carry both or the
- * ADR-0006 rule goes dead on exactly the chunks this feature adds).
+ * Build the expansion chunk. The text-layer metadata comes from the shared
+ * `withTextLayers` owner (B1) — the same function the fused path calls — so the
+ * assembler's Arabic + labeled-translation rule (ADR-0006) cannot go dead on
+ * exactly the chunks this feature adds, and the rule has one implementation.
  */
 function scopeChunk(row: ScopeChildRow): Chunk {
   return {
     id: row.id,
     text: row.textAr,
     origin: SCOPE_EXPANSION_ORIGIN,
-    metadata: {
-      ...row.metadata,
-      textAr: row.textAr,
-      ...(row.textId !== null && row.textId !== "" ? { textId: row.textId } : {}),
-    },
+    metadata: withTextLayers(row.metadata, row.textAr, row.textId),
   };
 }
 

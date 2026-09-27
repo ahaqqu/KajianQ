@@ -258,6 +258,69 @@ describe("scoreQuestion", () => {
     expect(outcome.passed).toBe(false);
   });
 
+  it("records the expansion's contribution beside the unchanged metric (C1)", () => {
+    // The mask is real: `retrievalRecall` reads every ref regardless of
+    // origin, so the two expansion refs satisfy the second expected source.
+    // The outcome must still say WHICH path carried it — that is the whole
+    // point of the extra block.
+    const scoped: TraceEventLike = {
+      kind: "retrieval",
+      stage: "retriever",
+      detail: {
+        chunks: [
+          { id: "c1", score: 0.5, rankDense: 1 },
+          { id: "x1", origin: "expansion" },
+          { id: "x2", origin: "expansion" },
+        ],
+      },
+    };
+    const outcome = scoreQuestion(question, "… label-1 …", [scoped], {
+      sourceTypeOf: (id) =>
+        id === "c1" ? "source-a" : id.startsWith("x") ? "source-b" : undefined,
+      expansionOrigin: "expansion",
+    });
+    expect(outcome.retrievalRecall).toBe(1);
+    expect(outcome.expansion).toEqual({ chunks: 2, fusedOnlyRetrievalRecall: 0.5 });
+  });
+
+  it("records a recognised-but-empty scope honestly (0 chunks, fused-only = reported)", () => {
+    const outcome = scoreQuestion(
+      question,
+      "… label-1 …",
+      [
+        { kind: "retrieval", stage: "retriever", detail: { chunks: [{ id: "c1" }] } },
+        {
+          kind: "scope_expansion",
+          stage: "retriever",
+          detail: { key: "reference", value: "1", returned: 0, cap: 12, truncated: false },
+        },
+      ],
+      {
+        sourceTypeOf: (id) => (id === "c1" ? "source-a" : undefined),
+        expansionOrigin: "expansion",
+      },
+    );
+    // The scoped read ran and added nothing: the report says so, and the
+    // fused-only figure still exposes the missing second leg.
+    expect(outcome.expansion).toEqual({ chunks: 0, fusedOnlyRetrievalRecall: 0.5 });
+  });
+
+  it("omits the expansion block when the scoped path did not run", () => {
+    const outcome = scoreQuestion(question, "… label-1 …", [retrievalEvent], {
+      sourceTypeOf: (id) => (id === "c1" ? "source-a" : "source-b"),
+      expansionOrigin: "expansion",
+    });
+    expect(Object.hasOwn(outcome, "expansion")).toBe(false);
+  });
+
+  it("scores exactly as before when no origin label is injected", () => {
+    const outcome = scoreQuestion(question, "… label-1 …", [retrievalEvent], {
+      sourceTypeOf: (id) => (id === "c1" ? "source-a" : "source-b"),
+    });
+    expect(outcome.retrievalRecall).toBe(1);
+    expect(Object.hasOwn(outcome, "expansion")).toBe(false);
+  });
+
   it("passes a correct refusal via trace event", () => {
     const refuseCase: GoldenQuestion = {
       ...question,

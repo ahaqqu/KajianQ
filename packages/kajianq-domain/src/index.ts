@@ -193,6 +193,7 @@ export {
 
 // -- Surah-reference scoped expansion (ADR-0045, #142/#241) ----------------
 export {
+  SURAH_AYAH_COUNTS,
   SURAH_NAMES,
   normalizeSurahText,
   leadingArticle,

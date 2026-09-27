@@ -354,6 +354,26 @@ describe("evidence for #241 — expansion is independent of router paraphrase", 
     );
     expect(labels(chunks.filter((c) => c.origin === SCOPE_EXPANSION_ORIGIN))).toContain("QS. 1:1");
   });
+
+  it("does not expand when only the sub-queries name a surah (C2's asymmetric negative)", async () => {
+    // The inverse of the pair above, and the one that actually pins the
+    // mechanism: the question names no surah, so no scope may be read even
+    // though a sub-query names one loudly. Both #241 wordings above carry the
+    // `surah` marker, so a sub-query-keyed implementation would pass them by
+    // coincidence — it cannot pass this.
+    const { store } = await corpus();
+    const { retrieve, events, reads } = harness(store);
+    const chunks = await retrieve(
+      routed("What is the ruling on praying in a garment that contains gold?", [
+        "tafsir of Surah Al-Fatihah meaning and virtues",
+      ]),
+    );
+    expect(chunks.every((c) => c.origin !== SCOPE_EXPANSION_ORIGIN)).toBe(true);
+    expect(events.filter((e) => e.kind === "scope_expansion")).toHaveLength(0);
+    // The read must not happen at all — detection is the gate, not a filter
+    // applied after the store round trip.
+    expect(reads.count).toBe(0);
+  });
 });
 
 /**

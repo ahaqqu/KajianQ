@@ -1,5 +1,11 @@
 import { TOTAL_SURAHS } from "./quran-source";
-import { normalizeSurahText, SURAH_NAMES, withoutArticle, type SurahName } from "./surah-names";
+import {
+  normalizeSurahText,
+  SURAH_AYAH_COUNTS,
+  SURAH_NAMES,
+  withoutArticle,
+  type SurahName,
+} from "./surah-names";
 
 /**
  * Surah/verse-reference detection (KajianQ domain pack, ADR-0045).
@@ -22,10 +28,15 @@ import { normalizeSurahText, SURAH_NAMES, withoutArticle, type SurahName } from 
  * context, so only a clear reference matches):
  *
  * 1. An explicit address: `QS. 2:255`, `Q.S. 2`, `QS 2`, `surah 2`,
- *    `surat ke-2` (all spellings survive normalization).
+ *    `surat ke-2` (all spellings survive normalization). The verse is kept
+ *    only when the surah actually has it (the per-surah Tanzil counts): a
+ *    question asking about `QS. 1:999` references surah 1, and the trace never
+ *    names a verse that does not exist.
  * 2. A surah name immediately preceded by `surah`/`surat` (optionally `ke`),
- *    in either its canonical or its article-stripped form: `surah Al-Fatihah`,
- *    `surat Fatihah`, `surah Muhammad`, `surat Ya-Sin`.
+ *    in any of its marker-gated spellings: canonical (`surah Al-Fatihah`),
+ *    article-stripped (`surat Fatihah`), space-insensitive compact
+ *    (`surat Yasin`, `surat Annas`), elongation-collapsed (`surat Yaa Siin`)
+ *    or an explicit table alias (`surat Thaha`).
  *
  * A bare name is **not** a reference, even in its definite-article form.
  * Almost every surah name is also an ordinary Arabic word or a divine name,
@@ -35,9 +46,13 @@ import { normalizeSurahText, SURAH_NAMES, withoutArticle, type SurahName } from 
  * into a question that named none. Article-less names (`Muhammad`, `Yunus`,
  * `Maryam`, `Nuh`, `Sad`) and article-stripped short forms (`ikhlas`, `qadr`,
  * `asr`, `nas`, `tin`) are worse still. The marker is what makes a name a
- * reference; bare-name recognition is a recorded trade-off with a revisit
- * trigger (ADR-0045), not an oversight. Arabic-script names (`سورة الفاتحة`)
- * are not recognised — the table is Latin transliteration only.
+ * reference — and it is also what makes every spelling variant above safe:
+ * `surat Thaha` is unambiguous in a way bare `Thaha` never is. Bare-name
+ * recognition is a recorded trade-off with a revisit trigger (ADR-0045), not
+ * an oversight. Arabic-script names (`سورة الفاتحة`) are not recognised — the
+ * table is Latin transliteration only — and a Latin variant no table rule
+ * reaches (`Yaseen`, `Fatehah`) is a recorded revisit trigger, never a fuzzy
+ * match.
  */
 
 /** A surah reference detected in a question: the surah, and the verse if named. */
@@ -63,14 +78,31 @@ function isSurahNumber(n: number): boolean {
   return Number.isInteger(n) && n >= 1 && n <= TOTAL_SURAHS;
 }
 
+/**
+ * True when the surah actually has this ayah. The counts are the domain
+ * pack's own static Tanzil data (`SURAH_AYAH_COUNTS`), so detection needs no
+ * store read — and an address the surah cannot have degrades to the surah,
+ * never to a phantom verse on the trace.
+ */
+function isAyahInSurah(surah: number, ayah: number): boolean {
+  const count = SURAH_AYAH_COUNTS[surah - 1];
+  return Number.isInteger(ayah) && ayah >= 1 && count !== undefined && ayah <= count;
+}
+
 /** The earliest explicit numeric address in the normalized question, if any. */
 function firstNumericReference(q: string): { index: number; ref: SurahReference } | null {
   const verse = QS_VERSE.exec(q);
   if (verse) {
     const surah = Number(verse[1]);
     const ayah = Number(verse[2]);
-    if (isSurahNumber(surah) && Number.isInteger(ayah) && ayah >= 1) {
-      return { index: verse.index, ref: { surah, ayah } };
+    if (isSurahNumber(surah)) {
+      // The expansion reads the surah either way, so an impossible verse is
+      // not a failed reference: it is a surah reference whose verse the trace
+      // must not claim (`QS. 1:999` records surah 1, not verse 999).
+      return {
+        index: verse.index,
+        ref: isAyahInSurah(surah, ayah) ? { surah, ayah } : { surah },
+      };
     }
   }
   for (const pattern of [QS_SURAH, MARKER_NUMBER]) {
@@ -97,6 +129,35 @@ function hasSurahMarkerBefore(padded: string, index: number): boolean {
 }
 
 /**
+ * Every marker-gated comparison form of one name: its canonical normalized
+ * words, the article-stripped words, the space-insensitive compact of either
+ * (`ya sin` → `yasin`, `an nas` → `annas` — the common one-word
+ * transliteration of a two-word name), and the table's explicit aliases
+ * (`Thaha`). Every form is still only matched after a `surah`/`surat` marker
+ * (see the module comment), which is exactly what keeps the widening safe:
+ * `surat Thaha` is unambiguous, bare `Thaha` would not be.
+ */
+function nameForms(canonical: string, aliases: readonly string[]): string[] {
+  const forms = new Set<string>();
+  const bare = withoutArticle(canonical);
+  for (const form of [canonical, bare]) {
+    if (form === "") continue;
+    forms.add(form);
+    // Only a multi-word name has a compact variant — the space is the thing
+    // the one-word spelling drops.
+    if (form.includes(" ")) forms.add(form.replace(/ /g, ""));
+  }
+  for (const alias of aliases) {
+    const normalized = normalizeSurahText(alias);
+    if (normalized === "") continue;
+    forms.add(normalized);
+    const aliasBare = withoutArticle(normalized);
+    if (aliasBare !== "") forms.add(aliasBare);
+  }
+  return [...forms];
+}
+
+/**
  * The earliest surah name in the normalized question that satisfies the
  * marker rules. Scans the name table directly (word-boundary phrase lookup
  * with padded spaces) rather than compiling a pattern per name.
@@ -113,14 +174,7 @@ function firstNamedReference(
   for (const entry of names) {
     const canonical = normalizeSurahText(entry.name);
     if (canonical === "") continue;
-    // Both the canonical name and its article-stripped form are accepted —
-    // "surah Al-Fatihah" and "surat Fatihah" name the same surah — but only
-    // when the explicit `surah`/`surat` marker precedes them (see the module
-    // comment: a bare name is almost always some other word).
-    const forms = [canonical];
-    const bare = withoutArticle(canonical);
-    if (bare !== canonical && bare !== "") forms.push(bare);
-    for (const form of forms) {
+    for (const form of nameForms(canonical, entry.aliases ?? [])) {
       let from = 0;
       for (;;) {
         const index = padded.indexOf(` ${form} `, from);

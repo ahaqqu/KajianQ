@@ -73,6 +73,27 @@ export const EvalResultOutcomeSchema = v.object({
    * failure (thermo-review C1: the notes-prefix heuristic was brittle).
    */
   skipped: v.optional(v.boolean()),
+  /**
+   * ADR-0045 scope expansion, when the question's retrieval used it (#243 C1).
+   * The reported `retrievalRecall` reads the retrieval event's chunk refs and
+   * never inspects their `origin` label, so for a question that names a
+   * reference the expansion satisfies the scored leg **by construction**
+   * whenever the scoped read works: a fused-track regression on exactly those
+   * questions is invisible in `retrievalRecall` alone. This block makes it
+   * visible per question, deterministically (no LLM judge): `chunks` is how
+   * many of the retrieved refs the scoped read added, and
+   * `fusedOnlyRetrievalRecall` is the recall those same refs score with the
+   * expansion's refs excluded — a number below `retrievalRecall` is the exact
+   * statement "the expansion carried this question". Absent = the trace
+   * recorded no expansion for this question (no scoped read happened); older
+   * reports stay readable.
+   */
+  expansion: v.optional(
+    v.object({
+      chunks: v.pipe(v.number(), v.integer(), v.minValue(0)),
+      fusedOnlyRetrievalRecall: v.pipe(v.number(), v.minValue(0), v.maxValue(1)),
+    }),
+  ),
   /** Optional note (e.g. which required citation was missing). */
   notes: v.optional(v.array(v.pipe(v.string(), v.minLength(1)))),
 });

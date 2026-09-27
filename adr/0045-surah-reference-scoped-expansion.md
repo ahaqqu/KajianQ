@@ -63,10 +63,19 @@ Al-Fatihah meaning and virtues`), and Al-Fatihah verses retrieved went from
 2. **Detection is Islamic-domain logic and lives in `packages/kajianq-domain`.**
    `detectSurahReference` matches (a) an explicit address — `QS. 2:255`,
    `Q.S. 2`, `QS 2`, `surah 2`, `surat ke-2` — and (b) a surah name immediately
-   preceded by `surah`/`surat`, in canonical or article-stripped form. The name
-   table is a hand-maintained 114-entry Latin-transliteration list in the domain
-   pack (module `surah-names.ts`); it is not corpus data and deliberately does
-   not carry Kemenag's Indonesian translated names (human prerequisite #2 still
+   preceded by `surah`/`surat`, in its canonical, article-stripped,
+   space-insensitive compact (`yasin`, `annas`) or elongation-collapsed
+   (`yaa siin`) form, plus the table's explicit aliases (`Thaha`) — every form
+   gated on the marker, never matched bare. An address's verse number is
+   validated against the surah's own ayah count (the table carries the 114
+   Tanzil counts, Σ = 6,236, pinned in test against the committed surah-list
+   fixture and the corpus total), so the trace's `value` never names a verse
+   the surah does not have: `QS. 1:999` records surah 1, and a verse the
+   grammar cannot validate (`surat al-baqarah ayat 255` carries no number)
+   records the surah alone rather than inventing one. The name table is a
+   hand-maintained 114-entry Latin-transliteration list in the domain pack
+   (module `surah-names.ts`); it is not corpus data and deliberately does not
+   carry Kemenag's Indonesian translated names (human prerequisite #2 still
    gates their redistribution).
 
 3. **A bare surah name is not a reference.** Almost every surah name is also an
@@ -99,7 +108,13 @@ Al-Fatihah meaning and virtues`), and Al-Fatihah verses retrieved went from
    domain pack chose (e.g. `surah` / `1`), `returned`, `cap`, and `truncated`;
    and each chunk the expansion added carries `origin: "scope_expansion"` on
    its trace chunk ref, so a scorer can tell an expansion chunk from a fused
-   one. A recognised-but-empty scope is still recorded (`returned: 0`).
+   one. A recognised-but-empty scope is still recorded (`returned: 0`). The
+   label is projected end-to-end: the user-facing Trace frame's technical
+   layer carries it (`ChatTraceChunk.origin`, #243 A1), and the eval harness
+   records the expansion's per-question contribution on the outcome
+   (`expansion.chunks` / `expansion.fusedOnlyRetrievalRecall`, #243 C1) — the
+   path is visible to the panel reader and to the report reader, not only to
+   someone querying `answer_traces` directly.
 
 7. **The new engine surface is generic — zero domain vocabulary crosses into
    `rag-core`.** The additions are: `RoutedQuery.sourceText` (opaque),
@@ -173,12 +188,46 @@ Al-Fatihah meaning and virtues`), and Al-Fatihah verses retrieved went from
 
 ## Consequences
 
-- **A whole-surah question now grounds itself in that surah.** `QS. 1:1`
-  becomes reachable for a question about Surah Al-Fatihah, independent of the
-  router's wording, so `gs-v0-015`'s `retrievalRecall` no longer depends on a
-  coin flip. The belief that #241 is resolved rests on the hermetic tests and
-  on the mechanism, not on a single live run — closing #241 is the manager's
-  call after the change is observed on `main`.
+- **A whole-surah question now grounds itself in that surah — and the gate's
+  reading of that changed, so the report must say so.** `QS. 1:1` becomes
+  reachable for a question about Surah Al-Fatihah, independent of the router's
+  wording, so `gs-v0-015`'s `retrievalRecall` no longer depends on a coin
+  flip. The belief that #241 is resolved rests on the hermetic tests and on the
+  mechanism, not on a single live run — closing #241 is the manager's call
+  after the change is observed on `main`. Two properties have to be stated
+  together, because either one alone misreads the number:
+  - **For the four Golden Set questions that name a reference**
+    (`gs-v0-005`/`009`/`014`/`015`), the scored leg of `retrievalRecall` is
+    satisfied **by construction** whenever the scoped read works: the scorer
+    (`packages/eval/src/scorers.ts`) reads the retrieval event's chunk refs and
+    never inspects their `origin`, so on those four questions the metric
+    measures "the question saw its reference", not "the fused tracks found
+    it". The other sixteen questions still measure the fused path, and
+    `citationValidity` still binds verse-specific requirements (`gs-v0-009`'s
+    `QS. 89:28` sits outside surah 89's opening window, so a broken fused
+    track still fails that question on citations).
+  - **The looseness is reported, not silent.** Each scored outcome persists the
+    expansion's contribution (`expansion.chunks`, the count of expansion-origin
+    refs, and `expansion.fusedOnlyRetrievalRecall`, the recall the fused refs
+    alone would have scored — same resolver, same expected sources), the CLI
+    summary prints a `scoped:` line per such question, and the user-facing
+    Trace frame carries the ref's `origin`. A fused-only figure below the
+    reported one is the report's own statement that the expansion carried the
+    question, so a fused-Quran regression on those four is visible in
+    `eval_runs.report` instead of only in the raw trace. The metric itself is
+    unchanged and no LLM judge is involved.
+- **A failure on the expansion read fails the retrieval — deliberately
+  fail-closed, and recorded here because the code alone does not say so.** The
+  read is wrapped by the retriever's `toStageError("retriever", …)` exactly
+  like the fused `similaritySearch` calls, so a transport/timeout fault on this
+  additive read rejects the whole answer rather than degrading to the fused
+  hits. Chosen over mirroring `filter_relaxed`'s degrade-with-trace because the
+  two situations differ in kind: `filter_relaxed` handles a _successful_ read
+  that matched nothing (a wrong router hint, retried once wider), while this is
+  an infrastructure error — and degrading on it would let a store blip answer a
+  whole-surah question with no part of that surah, the exact silent failure
+  this ADR exists to close, behind a 200 response. Failing loudly is also
+  uniform with the fused path, so one posture governs both reads.
 - **Cost per scoped query rises by at most `cap` chunks of prompt.** No vendor
   call is added. The expansion is a bounded extra store read plus at most
   `cap` children in the assembled context; for unscoped questions the cost is
@@ -191,7 +240,11 @@ Al-Fatihah meaning and virtues`), and Al-Fatihah verses retrieved went from
 - **The trace contract grew by one optional chunk field and one event kind.**
   Both are additive (`ChunkRef.origin`, `scope_expansion`), so persisted traces
   stay readable per ADR-0007's forward-compatibility rule; the contract test
-  parses a trace containing each.
+  parses a trace containing each **and** a pre-change ref without it. The
+  user-facing frame grew the matching optional `ChatTraceChunk.origin`
+  (projected by `apps/api/src/lib/chat-trace.ts`), and the eval outcome the
+  optional `expansion` block — both additive, both pinned by a pre-change
+  fixture so an older persisted record still parses and renders.
 - **A store read was added to the seam.** `RagStore` gains
   `listDocChildrenByParentSourceKey`; the Postgres adapter implements it as an
   indexed point lookup on `doc_parents.source_key` joined to `doc_children`
@@ -214,11 +267,28 @@ virtues`) and the **passing one** (`meaning and tafsir of Surah Al-Fatihah`)
   pinning the exact set that expands (four of twenty), so a future name-table
   edit that starts matching an unrelated question fails the suite.
 - `packages/contracts/src/trace.test.ts` — the `scope_expansion` event and
-  `ChunkRef.origin` parse under the shared contract;
+  `ChunkRef.origin` parse under the shared contract, and a pre-change ref
+  without the label still parses;
   `packages/kajianq-domain/src/chat-scope-expansion.test.ts`'s last block runs
   the real `runChatPipeline` runner and reads the parsed trace.
+- `packages/contracts/src/chat.test.ts` — the user-facing frame carries the
+  optional `origin` label and a pre-change frame (no chunk labelled) still
+  parses; `apps/api/src/lib/chat-trace.test.ts` pins the projection and that a
+  pre-change trace derives a contract-valid frame with no `origin` key.
+- `packages/contracts/src/eval.test.ts`, `packages/eval/src/scorers.test.ts`,
+  `packages/eval/src/harness.test.ts` — the outcome's `expansion` block:
+  computed from the trace refs and the caller-supplied origin label, absent
+  when the scoped path did not run or no label was supplied, and persisted on
+  the per-question row; a pre-change outcome without it still parses.
+- `packages/kajianq-domain/src/surah-reference.test.ts` — the per-surah ayah
+  counts are pinned against the committed Tanzil surah-list fixture and the
+  corpus total (Σ = 6,236), so an impossible verse cannot be recorded; the
+  one-word marker-gated spellings (`yasin`, `thaha`, `yaa siin`) resolve.
 - `packages/infra/src/rag-store-postgres.unit.test.ts` — the new read binds the
-  source key and limit, orders by `ordinal`, and short-circuits `limit <= 0`.
+  source key and limit, orders by `ordinal`, and short-circuits `limit <= 0`;
+  the `insertAnswerTrace` fixture carries the `scope_expansion` event and an
+  `origin`-bearing ref, so the new variant's insert→read round trip is
+  exercised, not inferred from the shared contract.
 - The live ranked-recall measurement #142's acceptance criteria ask for
   (`QS. 1:1`, `QS. 112:1`, `QS. 103:1` before/after) requires staging secrets
   and the live corpus, so it is **not** claimed here; the hermetic tests prove
@@ -240,8 +310,14 @@ virtues`) and the **passing one** (`meaning and tafsir of Surah Al-Fatihah`)
   `rag-store-postgres-similarity.ts`, `rag-store-postgres-corpus.ts` — the
   parent-scoped read.
 - `apps/api/src/lib/chat-wiring.ts`, `env.ts`, `lib/server.ts` — the
-  `SCOPE_EXPANSION_CAP` config knob through the filtered env view.
-- `SPECS.md` §3.3/§8, `CONTEXT.md` — the spec kept true and the new term.
+  `SCOPE_EXPANSION_CAP` config knob through the filtered env view;
+  `apps/api/src/lib/chat-trace.ts` — the frame's `origin` projection (A1).
+- `packages/contracts/src/eval.ts`, `packages/eval/src/harness.ts`,
+  `packages/eval/scripts/{staging-harness,eval-cli,eval-run,eval-smoke}.mjs` —
+  the per-question expansion provenance and its report/CLI surfacing (C1); the
+  origin label is injected at the composition root, so the engine package
+  compares an opaque string and never names a caller's label.
+- `SPECS.md` §3.3/§3.7/§8, `CONTEXT.md` — the spec kept true and the new term.
 
 ## Revisit triggers
 
@@ -249,6 +325,14 @@ virtues`) and the **passing one** (`meaning and tafsir of Surah Al-Fatihah`)
   `surah`/`surat` (`What does Al-Fatihah mean?`) measurably matter, the marker
   requirement is revisited — the fix is a disambiguation rule, not a wider
   match, and `gs-v0-012` is the trap it must keep passing.
+- **Latin-spelling variants beyond the table's rules.** Under the explicit
+  `surah`/`surat` marker the detector matches the canonical name, its
+  article-stripped form, the space-insensitive compact form (`yasin`, `annas`),
+  the elongation-collapsed form (`yaa siin`) and the table's explicit aliases
+  (`Thaha`) — never a bare name, so the `gs-v0-012` trap is untouched. A variant
+  no rule reaches (an inserted or dropped consonant: `Yaseen`, `Fatehah`; or a
+  Kemenag Indonesian translated name, still gated by human prerequisite #2) is
+  not recognised; adding one is a table alias plus a test, not a wider match.
 - **A multi-surah comparison question** ("the difference between Al-Fatihah and
   Al-Ikhlas") needs both scopes expanded under one total budget; today only the
   first reference expands.

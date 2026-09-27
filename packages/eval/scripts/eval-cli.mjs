@@ -56,6 +56,25 @@ export function loadFixture(prefix, config, { assertV0 = false } = {}) {
 export const mean = (xs) => (xs.length === 0 ? null : xs.reduce((a, b) => a + b, 0) / xs.length);
 
 /**
+ * The per-question expansion provenance lines (C1). ADR-0045's scope expansion
+ * satisfies the scored leg of `retrievalRecall` by construction for a question
+ * that names a reference — the scorer reads chunk refs and never inspects
+ * their `origin` — so a mean of 1.000 on those questions can hide a broken
+ * fused track. Each scoped question prints its fused-only recall beside the
+ * reported one, making the loosening observable in the run's own output; a
+ * fused-only figure below the reported one is exactly "the expansion carried
+ * this question". Reports older than the field print nothing extra.
+ */
+export function expansionLines(scored) {
+  return scored
+    .filter((x) => x.expansion !== undefined)
+    .map(
+      (x) =>
+        `  scoped: ${x.questionId} — expansion chunks ${x.expansion.chunks}, fused-only recall ${x.expansion.fusedOnlyRetrievalRecall.toFixed(3)} (reported ${x.retrievalRecall.toFixed(3)})`,
+    );
+}
+
+/**
  * The run summary block both scripts print: per-direction score means, the
  * question counts, and the settled cost (the ledger's record when it exists,
  * else the live budget — the ledger is authoritative once the row is written).
@@ -70,6 +89,7 @@ export function printSummary(prefix, { runId, questionCount, result, costMicroUs
       `  mean retrieval recall: ${mean(scored.map((x) => x.retrievalRecall))?.toFixed(3) ?? "n/a"}`,
       `  mean citation validity: ${mean(scored.map((x) => x.citationValidity))?.toFixed(3) ?? "n/a"}`,
       `  cost: ${(costMicroUsd / 1e6).toFixed(6)} USD  budget exceeded: ${result.budgetExceeded}`,
+      ...expansionLines(scored),
     ].join("\n"),
   );
 }

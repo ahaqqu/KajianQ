@@ -14,12 +14,26 @@
  * keyed by Tanzil number, the same key the ingestion writes onto every surah
  * parent (`surahSourceKey`) and every ayah child (`citation.surah`), so a
  * detected reference and the corpus agree by number, never by string.
+ *
+ * It also carries the per-surah ayah counts (`SURAH_AYAH_COUNTS`) the detector
+ * validates an explicit address against, so a question can never put an
+ * impossible verse (`QS. 1:999`) on the trace. The counts are static Tanzil
+ * domain data, cross-checked in test against the committed surah-list fixture
+ * (`src/fixtures/surah_list.json`) and the corpus total (`TOTAL_AYAHS`).
  */
 
 /** One surah's canonical Latin name, keyed by Tanzil number (1–114). */
 export type SurahName = {
   number: number;
   name: string;
+  /**
+   * Additional marker-gated spellings no general rule reaches — the
+   * well-attested one-word Latin variants of a two-word canonical name
+   * (`Thaha` for Ta-Ha). Only ever matched after `surah`/`surat`, like every
+   * name form; kept explicit rather than inferred, so an alias is a reviewed
+   * table edit with a test, never a fuzzy rule.
+   */
+  aliases?: readonly string[];
 };
 
 /**
@@ -46,7 +60,7 @@ export const SURAH_NAMES: readonly SurahName[] = [
   { number: 17, name: "Al-Isra" },
   { number: 18, name: "Al-Kahf" },
   { number: 19, name: "Maryam" },
-  { number: 20, name: "Ta-Ha" },
+  { number: 20, name: "Ta-Ha", aliases: ["Taha", "Thaha"] },
   { number: 21, name: "Al-Anbiya" },
   { number: 22, name: "Al-Hajj" },
   { number: 23, name: "Al-Mu'minun" },
@@ -144,6 +158,24 @@ export const SURAH_NAMES: readonly SurahName[] = [
 ];
 
 /**
+ * The ayah count of each surah, Tanzil order (index 0 = surah 1). The
+ * detector uses them to bound an explicit verse address: a count that does not
+ * exist must never reach the trace as if it did (`QS. 1:999` names surah 1,
+ * not a verse). Static domain data, not corpus rows — the corpus's own
+ * `count_ayat` arrives with the ingest source, and this table exists so
+ * detection needs no store read. Pinned in `surah-reference.test.ts` against
+ * the committed Tanzil surah-list fixture (surahs 1/112/113/114) and against
+ * `TOTAL_AYAHS` (Σ = 6,236 — a typo anywhere breaks the sum).
+ */
+export const SURAH_AYAH_COUNTS: readonly number[] = [
+  7, 286, 200, 176, 120, 165, 206, 75, 129, 109, 123, 111, 43, 52, 99, 128, 111, 110, 98, 135, 112,
+  78, 118, 64, 77, 227, 93, 88, 69, 60, 34, 30, 73, 54, 45, 83, 182, 88, 75, 85, 54, 53, 89, 59, 37,
+  35, 38, 29, 18, 45, 60, 49, 62, 55, 78, 96, 29, 22, 24, 13, 14, 11, 11, 18, 12, 12, 30, 52, 52,
+  44, 28, 28, 20, 56, 40, 31, 50, 40, 46, 42, 29, 19, 36, 25, 22, 17, 19, 26, 30, 20, 15, 21, 11, 8,
+  8, 19, 5, 8, 8, 11, 11, 8, 3, 9, 5, 4, 7, 3, 6, 3, 5, 4, 5, 6,
+];
+
+/**
  * The transliterated Arabic definite article as a leading word, longest first
  * so `ash` is matched before `as`. Used only by the detector's "does this name
  * carry an article" test; the article itself is dropped by normalization.
@@ -165,7 +197,9 @@ export const NAME_PREFIX_ARTICLES: readonly string[] = [
 /**
  * Normalize a name or a question into the single comparison form: lowercase,
  * combining diacritics stripped, apostrophes dropped (so `Ma'idah` and
- * `Maidah` agree), every other non-alphanumeric run collapsed to one space.
+ * `Maidah` agree), repeated vowels collapsed to one (so the transliteration
+ * elongation `yaa siin` reads as `ya sin` — ADR-0045's marker-gated spelling
+ * rules), every other non-alphanumeric run collapsed to one space.
  */
 export function normalizeSurahText(text: string): string {
   return text
@@ -174,6 +208,7 @@ export function normalizeSurahText(text: string): string {
     .toLowerCase()
     .replace(/[\u2018\u2019\u02bc\u02bb'`]/g, "")
     .replace(/[^a-z0-9]+/g, " ")
+    .replace(/([aeiou])\1+/g, "$1")
     .trim();
 }
 

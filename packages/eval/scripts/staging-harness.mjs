@@ -24,12 +24,21 @@ import { createLogger, resolvePostgresStore } from "@app/infra";
 import { BudgetExceededError, postChatSse } from "@app/eval";
 import {
   DEFAULT_REFUSALS,
+  SCOPE_EXPANSION_ORIGIN,
   citationCandidatesIn,
   normalizeCitationLabel,
 } from "@app/kajianq-domain";
 
 /** The generator's refusal text in each answer language (domain-owned). */
 export const REFUSAL_MARKERS = [DEFAULT_REFUSALS.id, DEFAULT_REFUSALS.en];
+
+/**
+ * The opaque `origin` label the domain pack writes on scope-expansion chunks
+ * (ADR-0045), injected into the harness so each scored outcome records what
+ * the expansion contributed (C1). Domain vocabulary, so it is named HERE, at
+ * the composition root — the engine package only compares opaque labels.
+ */
+export const EXPANSION_ORIGIN = SCOPE_EXPANSION_ORIGIN;
 
 /**
  * The citation grammar the scorer normalizes labels with (C2 fix). It is the
@@ -151,5 +160,6 @@ export async function createStagingHarness(config, budget) {
     ledger,
     refusalMarkers: REFUSAL_MARKERS,
     citationGrammar: CITATION_GRAMMAR,
+    expansionOrigin: EXPANSION_ORIGIN,
   };
 }

@@ -1,5 +1,6 @@
 import type { EvalResultOutcome, EvalRunReport, GoldenQuestion, GoldenSet } from "@app/contracts";
 import { Budget, BudgetExceededError } from "./budget";
+import { expansionProvenance } from "./harness-expansion";
 import { citationValidity, detectRefusal, refusalCorrectness, retrievalRecall } from "./scorers";
 import type {
   CitationFrameLike,
@@ -80,6 +81,16 @@ export type HarnessDeps = {
    * context: scoring then falls back to the byte-exact substring check.
    */
   citationGrammar?: CitationGrammar;
+  /**
+   * The opaque `origin` label the domain pack puts on chunks its scope
+   * expansion added (ADR-0045), supplied by the composition root exactly like
+   * `refusalMarkers`/`citationGrammar` — the engine package must not hard-code
+   * a caller's label. When set, each scored outcome records the expansion's
+   * contribution to that question (C1: a scoped pass is visible in the report,
+   * never folded silently into `retrievalRecall`). Omitted = no accounting and
+   * no `expansion` block on the outcome.
+   */
+  expansionOrigin?: string;
   /** Run label persisted with the report. */
   label?: string;
   now?: () => number;
@@ -195,12 +206,22 @@ export async function runGoldenSet(set: GoldenSet, deps: HarnessDeps): Promise<H
  * prefers the frame (ADR-0040: a label in it is grounded by construction),
  * then the trace's reviewer `grounded` labels, then the text through the
  * injected citation grammar (see `citationValidity`).
+ *
+ * When the caller names the scope-expansion origin label
+ * (`deps.expansionOrigin`), the outcome also carries what the expansion
+ * contributed (C1): the number of expansion-origin refs and the recall the
+ * fused refs alone would have scored. `retrievalRecall` itself stays exactly
+ * what it always was — the metric is not redefined; the provenance is added
+ * beside it so the loosening is visible instead of inferred.
  */
 export function scoreQuestion(
   question: GoldenQuestion,
   answerText: string,
   events: readonly TraceEventLike[],
-  deps: Pick<HarnessDeps, "sourceTypeOf" | "refusalMarkers" | "citationGrammar">,
+  deps: Pick<
+    HarnessDeps,
+    "sourceTypeOf" | "refusalMarkers" | "citationGrammar" | "expansionOrigin"
+  >,
   frame?: CitationFrameLike | null,
 ): EvalResultOutcome {
   const retrieval = events.filter((e) => e.kind === "retrieval").at(-1);
@@ -221,6 +242,13 @@ export function scoreQuestion(
     retrievalRecall: recall,
     citationValidity: citations,
     refused,
+    ...expansionProvenance({
+      expectedSourceTypes: question.expectedSourceTypes,
+      chunks,
+      events,
+      sourceTypeOf: deps.sourceTypeOf,
+      ...(deps.expansionOrigin !== undefined ? { expansionOrigin: deps.expansionOrigin } : {}),
+    }),
   };
 }
 
