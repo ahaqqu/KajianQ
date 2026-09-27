@@ -1,10 +1,10 @@
 import type { Chunk } from "@app/rag-core";
 import {
   CITATION_GRAMMARS,
-  INVISIBLE_FORMATTING,
   canonicalizeCitationSpelling,
   foldAddressDigits,
   reduceCitationLabel,
+  stripInvisibleFormatting,
 } from "./chat-citation-grammar";
 
 /**
@@ -143,9 +143,7 @@ function trimCitationTail(label: string): string {
  * erase every Quran citation.
  */
 export function normalizeCitationLabel(label: string): string {
-  const flattened = foldAddressDigits(
-    label.replace(/[*_`]+/g, "").replace(INVISIBLE_FORMATTING, ""),
-  )
+  const flattened = foldAddressDigits(stripInvisibleFormatting(label.replace(/[*_`]+/g, "")))
     .replace(/\s+/g, " ")
     .trim();
   const reduction = reduceCitationLabel(flattened);
@@ -210,7 +208,7 @@ function scanCitations(text: string): { start: number; end: number; label: strin
  */
 export function citationMatchText(text: string): string {
   return canonicalizeCitationSpelling(
-    foldAddressDigits(text.replace(INVISIBLE_FORMATTING, "")).replace(/\s+/g, " "),
+    foldAddressDigits(stripInvisibleFormatting(text)).replace(/\s+/g, " "),
   );
 }
 

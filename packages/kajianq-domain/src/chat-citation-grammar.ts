@@ -16,7 +16,7 @@
  * {@link reduceCitationLabel} is the one consumer; `chat-citation-validator`
  * owns the rest of the normalization and the comparison. This module also owns
  * how the address's characters and separators are spelled in the comparison
- * form ({@link INVISIBLE_FORMATTING}, {@link foldAddressDigits},
+ * form ({@link stripInvisibleFormatting}, {@link foldAddressDigits},
  * {@link canonicalizeCitationSpelling}) — the same subject, one step later.
  * The split is only for the 300-line agentic limit, not a new seam: this module
  * is internal to the domain pack (not re-exported from `index.ts`) and imports
@@ -205,8 +205,17 @@ export function reduceCitationLabel(label: string): CitationReduction | null {
  * worse, a grounding of a *different* passage whenever a retrieved `no. 50`
  * existed (#264). Dropping them is the same move the markdown-marker strip
  * makes: the characters are invisible, so the comparison form is too.
+ *
+ * Private, like the fullwidth block below, and reached through a function: a
+ * module-level global regex is stateful (`lastIndex`), and a safety gate that
+ * depends on call order is no gate (rationale on {@link CITATION_GRAMMARS}).
  */
-export const INVISIBLE_FORMATTING = /\p{Cf}+/gu;
+const INVISIBLE_FORMATTING = /\p{Cf}+/gu;
+
+/** Drop the invisible formatting characters from a label or an answer. */
+export function stripInvisibleFormatting(text: string): string {
+  return text.replace(INVISIBLE_FORMATTING, "");
+}
 
 /**
  * Fullwidth digits (U+FF10–U+FF19) are the one `\p{Nd}` block that is a
