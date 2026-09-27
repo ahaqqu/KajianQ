@@ -172,6 +172,7 @@
       "expectedSourceTypes": [],
       "requiredCitations": [],
       "expectedBehavior": "refuse",
+      "$comment": "Expectation semantics for trap questions re-curated 2026-09-28 (owner decision, #250): a `refuse` question is accepted on a refusal OR on a grounded answer, so a grounded decline in the model's own words passes while a non-refusal with no verified citation still fails (ADR-0046). The question, expectedBehavior, tags and requiredCitations below are NOT re-curated — the empty requiredCitations/expectedSourceTypes are what make the grounded branch load-bearing, since citation validity and retrieval recall are trivially satisfied and the behavior dimension is the only live check.",
       "tags": ["refusal", "unanswerable"]
     },
     {

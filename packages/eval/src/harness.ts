@@ -1,7 +1,13 @@
 import type { EvalResultOutcome, EvalRunReport, GoldenQuestion, GoldenSet } from "@app/contracts";
 import { Budget, BudgetExceededError } from "./budget";
 import { expansionProvenance } from "./harness-expansion";
-import { citationValidity, detectRefusal, refusalCorrectness, retrievalRecall } from "./scorers";
+import {
+  behaviorAccepted,
+  citationValidity,
+  detectRefusal,
+  groundedAnswer,
+  retrievalRecall,
+} from "./scorers";
 import type {
   CitationFrameLike,
   CitationGrammar,
@@ -202,17 +208,8 @@ export async function runGoldenSet(set: GoldenSet, deps: HarnessDeps): Promise<H
 
 /**
  * Score one question from its answer text, trace events, and — when the
- * transport carried one — the server's citations frame. Citation validity
- * prefers the frame (ADR-0040: a label in it is grounded by construction),
- * then the trace's reviewer `grounded` labels, then the text through the
- * injected citation grammar (see `citationValidity`).
- *
- * When the caller names the scope-expansion origin label
- * (`deps.expansionOrigin`), the outcome also carries what the expansion
- * contributed (C1): the number of expansion-origin refs and the recall the
- * fused refs alone would have scored. `retrievalRecall` itself stays exactly
- * what it always was — the metric is not redefined; the provenance is added
- * beside it so the loosening is visible instead of inferred.
+ * transport carried one — the server's citations frame (see `citationValidity`).
+ * Trap rule + residual: `behaviorAccepted` (scorers.ts) + ADR-0046.
  */
 export function scoreQuestion(
   question: GoldenQuestion,
@@ -233,7 +230,8 @@ export function scoreQuestion(
     ...(deps.citationGrammar !== undefined ? { grammar: deps.citationGrammar } : {}),
   });
   const refused = detectRefusal(events, answerText, deps.refusalMarkers ?? []);
-  const correct = refusalCorrectness(question.expectedBehavior, refused);
+  const grounded = groundedAnswer({ frame, events });
+  const correct = behaviorAccepted(question.expectedBehavior, refused, grounded);
   const passed = correct && citations === 1 && recall === 1;
   return {
     questionId: question.id,
