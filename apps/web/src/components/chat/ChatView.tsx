@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { t, type Locale } from "../../lib/i18n";
-import type { ChatSessionMessage } from "@app/contracts";
+import { CHAT_MESSAGE_MAX_LENGTH, type ChatSessionMessage } from "@app/contracts";
 import { AppHeader } from "../AppHeader";
 import { Transcript, TranscriptMeta, type TranscriptError } from "./Transcript";
 
@@ -19,6 +19,14 @@ import { Transcript, TranscriptMeta, type TranscriptError } from "./Transcript";
  * param after reading it; the seed arrives here as a plain prop and the
  * composer stays local-only: nothing about the pre-fill touches the chat
  * session/server contract (ADR-0040).
+ *
+ * Message ceiling (#256): the composer mirrors the chat contract's
+ * `CHAT_MESSAGE_MAX_LENGTH` so a reader cannot build a message the API will
+ * refuse. Both halves are needed — the textarea's `maxLength` attribute bounds
+ * what the browser lets through, and the change handler clamps the value
+ * itself, because the attribute does not constrain a programmatically set
+ * value. Hitting the ceiling says so in the reader's language instead of
+ * leaving them to meet an unexplained 400.
  */
 
 const STAGE_KEYS = ["stagedContext", "stagedReview", "stagedCompose"] as const;
@@ -98,6 +106,16 @@ export function ChatView({
     return true;
   };
 
+  // The ceiling hint, derived from the draft rather than tracked in state: the
+  // clamped draft is the single source of truth, so the hint cannot go stale
+  // (a cleared draft clears it). The number is the contract's, formatted per
+  // locale via Intl (id: "2.000", en: "2,000").
+  const atMessageLimit = draft.length >= CHAT_MESSAGE_MAX_LENGTH;
+  const limitHint = t(locale, "composerLimit").replace(
+    "{max}",
+    new Intl.NumberFormat(locale).format(CHAT_MESSAGE_MAX_LENGTH),
+  );
+
   // Guard before clearing (thermo-review A1): a send rejected by the busy or
   // rehydration guard must preserve the draft, exactly as before the
   // submit/sendText split — never clear a message the user cannot recover.
@@ -154,11 +172,13 @@ export function ChatView({
             <textarea
               data-testid="composer"
               aria-label={t(locale, "composerPlaceholder")}
+              aria-describedby={atMessageLimit ? "composer-limit" : undefined}
+              maxLength={CHAT_MESSAGE_MAX_LENGTH}
               className="w-full resize-none bg-transparent px-4 pb-10 pt-3 text-[15px] text-card-foreground outline-none placeholder:text-muted-foreground"
               rows={2}
               value={draft}
               placeholder={t(locale, "composerPlaceholder")}
-              onChange={(event) => setDraft(event.target.value)}
+              onChange={(event) => setDraft(event.target.value.slice(0, CHAT_MESSAGE_MAX_LENGTH))}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
@@ -176,6 +196,17 @@ export function ChatView({
               <EnterIcon />
             </button>
           </form>
+          {/* Always in the DOM so the live region announces the transition
+              (a conditionally mounted role="status" often goes unannounced);
+              empty at rest, so it costs no visual space beyond one text line. */}
+          <p
+            id="composer-limit"
+            data-testid="composer-limit"
+            role="status"
+            className="min-h-4 pt-1 text-xs text-muted-foreground"
+          >
+            {atMessageLimit ? limitHint : ""}
+          </p>
           <TranscriptMeta locale={locale} />
         </div>
       </div>
