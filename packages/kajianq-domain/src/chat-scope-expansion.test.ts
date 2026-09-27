@@ -175,7 +175,7 @@ function labels(chunks: readonly Chunk[]): string[] {
 describe("surah-reference scoped expansion", () => {
   it("adds the named surah's children alongside the fused hits", async () => {
     const { store, hadithId } = await corpus();
-    const { retrieve, events } = harness(store);
+    const { retrieve } = harness(store);
     const chunks = await retrieve(routed(GS_V0_015, FAILING_SUB_QUERIES));
 
     // The fused track still contributes its hadith — expansion never replaces.

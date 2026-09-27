@@ -3,12 +3,12 @@ import type { Decider, Provider } from "@app/rag-core";
 import {
   loadProviderConfig,
   resolveDecider,
-  resolvePostgresStore,
   resolveRole,
   type Logger,
   type ProviderConfig,
   type RagStore,
 } from "@app/infra";
+import { ChatConfigError, createRagStoreFromEnv, parseScopeExpansionCap } from "./chat-config";
 export { authGuard } from "./auth";
 // Re-exported so the chat route keeps its 5-import agentic cap (same pattern
 // as the authGuard re-export): the route imports one name from its lib hub.
@@ -16,6 +16,9 @@ export { authGuard } from "./auth";
 // the old re-export hop through chat-citations had zero other consumers).
 export { answerFramesFor, rehydrateTranscript } from "./chat-citations";
 export { chunkFetcher } from "./chat-trace";
+// The config surface moved to `chat-config.ts` (agentic size cap); re-exported
+// here so `lib/index.ts`, `scheduled.ts`, and their tests keep one import hub.
+export { ChatConfigError, createRagStoreFromEnv, parseScopeExpansionCap } from "./chat-config";
 
 /**
  * Env-bound wiring for the chat route (#10): the one place the Worker's
@@ -25,39 +28,6 @@ export { chunkFetcher } from "./chat-trace";
  * effect runtime directly (it owns the store-seam bridge, mirroring the
  * composition-root exception ADR-0027 grants the wiring layer).
  */
-
-/**
- * A misconfigured chat wiring (thermo-review A7): typed so the route maps
- * configuration failures to 503 while anything else falls through to the
- * app's typed error handler — a bare `Error` + catch-all 503 used to mask
- * adapter bugs as "not configured".
- */
-export class ChatConfigError extends Error {
-  readonly missing?: string;
-  constructor(msg: string, missing?: string) {
-    super(msg);
-    this.name = "ChatConfigError";
-    if (missing !== undefined) this.missing = missing;
-  }
-}
-
-/**
- * Build the RagStore from the `DATABASE_URL` binding. Throws a typed
- * `ChatConfigError` (config-class) when the binding is missing — the route
- * answers 503 rather than silently degrading; anything else propagates to
- * the typed error handler.
- *
- * The URL is passed to the adapter's own composition helper: the app names the
- * connection and receives the seam, and never imports a database client
- * (ADR-0008 — the driver lives behind the adapter, ADR-0044).
- */
-export function createRagStoreFromEnv(env: { DATABASE_URL?: string }): RagStore {
-  const url = env.DATABASE_URL;
-  if (!url || url.trim() === "") {
-    throw new ChatConfigError("chat route: DATABASE_URL is not bound", "DATABASE_URL");
-  }
-  return resolvePostgresStore(url);
-}
 
 /**
  * The provider roles the chat composition root resolves, in one place. The
@@ -220,24 +190,6 @@ export type StoreWiring = {
 export function buildStoreWiring(env: { DATABASE_URL?: string }): StoreWiring {
   const store = createRagStoreFromEnv(env);
   return { fullStore: store, runStore: storeBridge(store) };
-}
-
-/**
- * Parse ADR-0045's scope-expansion budget from the environment. Absent/empty
- * is "use the domain default"; `0` disables expansion; anything that is not a
- * non-negative integer is a typed config failure, so a typo in deployment
- * config cannot silently leave the cap at a value the operator did not choose.
- */
-export function parseScopeExpansionCap(raw: string | undefined): number | undefined {
-  if (raw === undefined || raw.trim() === "") return undefined;
-  const value = Number(raw);
-  if (!Number.isInteger(value) || value < 0) {
-    throw new ChatConfigError(
-      `chat route: SCOPE_EXPANSION_CAP must be a non-negative integer (got "${raw}")`,
-      "SCOPE_EXPANSION_CAP",
-    );
-  }
-  return value;
 }
 
 /**
