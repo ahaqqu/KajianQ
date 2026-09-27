@@ -11,7 +11,7 @@ Generate correct, guardrail-compliant tests at the right layer. Load this skill 
 
 ## Test layer decision
 
-Pick the right test layer before writing anything. The table from `docs/ARCHITECTURE.md` §12 is authoritative:
+Pick the right test layer before writing anything. This table is a summary of the layers you choose between; `docs/ARCHITECTURE.md` §12 is the authoritative layer table and gate list — read it for the full set and the coverage gate:
 
 | What you're testing                                                                         | Tool                         | Needs                                                                                |
 | ------------------------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------ |
