@@ -104,6 +104,7 @@ Before opening the PR, run the Quick review scans from `.agents/skills/dars-plug
 
 ## During implementation
 
+- Writing or changing a skill, an adapter, or any other agent-facing document is done under the `writing-for-agents` rule: instruction only, no provenance.
 - Write contracts (Valibot schemas, types) before implementation.
 - Test intent ships with the contracts: name the cases before code exists, per
   `docs/ARCHITECTURE.md` §10 ("contracts, types, and tests exist before
