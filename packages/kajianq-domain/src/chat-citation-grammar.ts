@@ -1,6 +1,7 @@
 /**
- * The citation grammars the product renders (SPECS §2.1), and the **address
- * each grammar identifies inside its own match**.
+ * The citation grammars the product renders (SPECS §2.1), the **address each
+ * grammar identifies inside its own match**, and the spelling an address
+ * compares in.
  *
  * A grammar's token class absorbs whatever trails the address until it meets a
  * character it excludes (whitespace, a comma, a closing bracket), and that
@@ -13,9 +14,13 @@
  * eating the verse digits of `QS. 2:255` — but each grammar already knows its
  * own address, and `addressOf` is where it says so.
  * {@link reduceCitationLabel} is the one consumer; `chat-citation-validator`
- * owns the rest of the normalization and the comparison. The split is only for
- * the 300-line agentic limit, not a new seam: this module is internal to the
- * domain pack (not re-exported from `index.ts`) and imports nothing.
+ * owns the rest of the normalization and the comparison. This module also owns
+ * how the address's characters and separators are spelled in the comparison
+ * form ({@link INVISIBLE_FORMATTING}, {@link foldAddressDigits},
+ * {@link canonicalizeCitationSpelling}) — the same subject, one step later.
+ * The split is only for the 300-line agentic limit, not a new seam: this module
+ * is internal to the domain pack (not re-exported from `index.ts`) and imports
+ * nothing.
  */
 
 /** One citation grammar: a fresh matcher, plus the address inside its match. */
@@ -190,4 +195,70 @@ export function reduceCitationLabel(label: string): CitationReduction | null {
     address,
     keepWhole: DASH_JOINED_NUMBER_TAIL.test(label.slice(address.length)),
   };
+}
+
+/**
+ * Invisible formatting characters (`\p{Cf}`: zero-width space/non-joiner/
+ * joiner, the bidi marks, soft hyphen, BOM) carry no address information but
+ * split the tokens that read the digits around them: `no. 50\u200c10` used to
+ * reduce to `no. 50` — a false refusal against the retrieved `no. 5010`, and,
+ * worse, a grounding of a *different* passage whenever a retrieved `no. 50`
+ * existed (#264). Dropping them is the same move the markdown-marker strip
+ * makes: the characters are invisible, so the comparison form is too.
+ */
+export const INVISIBLE_FORMATTING = /\p{Cf}+/gu;
+
+/**
+ * Fullwidth digits (U+FF10–U+FF19) are the one `\p{Nd}` block that is a
+ * rendering variant of the ASCII digits the corpus labels carry, so they fold
+ * to their ASCII value: `no. ５０１０` is `no. 5010` (#264). Every other
+ * `\p{Nd}` block stays unfolded — a general fold needs a per-block zero table
+ * (Unicode decimal blocks are not aligned mod 10) and the generator is not
+ * observed to emit them — which leaves those scripts recognised and refused,
+ * never silently dropped (the posture is stated above on
+ * {@link CITATION_GRAMMARS}).
+ */
+const FULLWIDTH_DIGITS = /[\uFF10-\uFF19]/g;
+
+/** Fold the fullwidth digit block to the ASCII digits the corpus labels use. */
+export function foldAddressDigits(text: string): string {
+  return text.replace(FULLWIDTH_DIGITS, (digit) =>
+    String.fromCharCode(digit.charCodeAt(0) - 0xfee0),
+  );
+}
+
+/**
+ * Canonicalize the **spelling** of a citation's structural separators to the
+ * product's forms, so two spellings of one address compare equal. Two families
+ * are folded:
+ *
+ * - **Markers**: the dotted `Q.S.` variant, and — since the grammars accept
+ *   the dot-less spellings (round-3 A1) — the bare `QS` / `HR` forms. A model
+ *   that writes `Q.S. 2:255` or `QS 2:255` for a chunk labeled `QS. 2:255` is
+ *   citing the same address, and treating it as a different one would turn a
+ *   *grounded* answer into a refusal. The lookahead on the `HR` rule requires a
+ *   following whitespace, so an ordinary word ending in "HR" is never touched.
+ * - **Address spacing** (#264): every grammar above writes its separators with
+ *   `\s*`, so `no.5010`, `QS.2:255`, `QS. 2: 255` and `Jilid 1,Hal. 102` are
+ *   the same addresses as the canonical label a formatter renders. Left
+ *   unfolded, a grounded citation was refused for the spelling of its
+ *   separator — the same false-refusal class #253 closed for the tail.
+ *
+ * Fabricated addresses are unaffected by either family: folding separator
+ * spacing never changes which digits the address carries, so `no.99999` and
+ * `no. 99999` stay distinct from a retrieved `no. 5010`, and `Q.S. 9:99` and
+ * `QS 9:99` still normalize to `QS. 9:99`, which no retrieved chunk grounds.
+ *
+ * The replacements are anchored and idempotent; none of them can re-introduce
+ * what another removed.
+ */
+export function canonicalizeCitationSpelling(text: string): string {
+  return text
+    .replace(/\bQ\.?S\.?\s*/g, "QS. ")
+    .replace(/\bHR\.?(?=\s)/g, "HR.")
+    .replace(/\bno\.\s*/g, "no. ")
+    .replace(/\bJilid\s+/g, "Jilid ")
+    .replace(/\bHal\.\s*/g, "Hal. ")
+    .replace(/\s*,\s*/g, ", ")
+    .replace(/\s*:\s*/g, ":");
 }
