@@ -209,15 +209,7 @@ export async function runGoldenSet(set: GoldenSet, deps: HarnessDeps): Promise<H
 /**
  * Score one question from its answer text, trace events, and — when the
  * transport carried one — the server's citations frame (see `citationValidity`).
- *
- * The behavior dimension follows the trap rule (#250, ADR-0046): an `answer`
- * question must not be refused; a `refuse` question is accepted on a refusal
- * **or** on a grounded answer (`behaviorAccepted` / `groundedAnswer`). A
- * non-refusal with no verified citation still fails, and a grounded-but-dated
- * answer passes — the date prohibition is prompt-enforced only (ADR-0046).
- *
- * `deps.expansionOrigin` adds the expansion's contribution beside the
- * unchanged metric (C1), so the loosening is visible instead of inferred.
+ * Trap rule + residual: `behaviorAccepted` (scorers.ts) + ADR-0046.
  */
 export function scoreQuestion(
   question: GoldenQuestion,
