@@ -10,6 +10,12 @@ import {
   summaryCounts,
 } from "./worktree-cleanup-fixture.mjs";
 
+// Every spawn form the script could reach for — node's whole child_process
+// surface and Bun's spawn globals, with or without a receiver; the lookbehind
+// keeps a receiver-less RegExp `.exec(` out.
+const SPAWN =
+  /(?<![\w$.])(?:(?:Bun|cp|child_process)\.)?(?:execFileSync|execFile|execSync|exec|fork|spawnSync|spawn)\s*\(\s*([^\s,)]+)/g;
+
 /**
  * The deletion boundary of `bun run worktree:clean` (#246, A1): this run may
  * only delete what it names, and only inside its own root.
@@ -57,9 +63,9 @@ describe("worktree-cleanup destruction boundary", () => {
     for (const slug of ["merged", "unstarted", "review-7"]) expect(fx.exists(slug)).toBe(false);
     expect(existsSync(join(fx.dir, ".worktrees", "README"))).toBe(true);
 
-    // Every git command the run issued, from this run's own trace. The script's
-    // deletion primitives are git-only (pinned at the bottom), so these are
-    // every deletion the tool can perform — no shared directory sampled.
+    // Every git command the run issued, from this run's own trace. The script
+    // spawns only git and gh (pinned at the bottom), so these are every deletion
+    // the tool can perform — no shared directory sampled.
     const commands = gitCommands(trace);
     const removals = commands.filter((c) => c.args[0] === "worktree" && c.args[1] === "remove");
     const branchDeletes = commands.filter((c) => c.args[0] === "branch" && c.args[1] === "-D");
@@ -90,12 +96,17 @@ describe("worktree-cleanup destruction boundary", () => {
       ...commands.map((c) => c.repo).filter((repo) => repo !== null && !inside(repo)),
     ]).toEqual([]);
 
-    // Deletion primitives are git-only, which is what lets the trace above be
-    // read as "every deletion": a filesystem removal would escape git's
-    // boundary and the print accounting with it, so its arrival fails here.
-    expect(readFileSync(SCRIPT, "utf8")).not.toMatch(
-      /\b(?:rm|rmdir|unlink|rmSync|rmdirSync|unlinkSync)\s*\(/,
-    );
+    // Deletion primitives are pinned to the run's own git spawns: an fs-API
+    // removal, or a spawn whose command token is not git|gh, would escape git's
+    // boundary and the print accounting with it — so either fails here. Bun's
+    // `$` shell tag, the one spawn idiom with no command token to read, is
+    // refused the same way; a new primitive reddens until the trace matches it.
+    const source = readFileSync(SCRIPT, "utf8");
+    expect(source).not.toMatch(/\b(?:rm|rmdir|unlink|rmSync|rmdirSync|unlinkSync)\s*\(/);
+    expect(source).not.toMatch(/(?:^|[^\w$])\$\s*`/);
+    const spawnTokens = [...source.matchAll(SPAWN)].map((match) => match[1].replace(/^\[/, ""));
+    expect(spawnTokens.length).toBeGreaterThan(0);
+    expect(spawnTokens.filter((token) => !/^["'`](?:git|gh)["'`]$/.test(token))).toEqual([]);
     fx.dispose();
   });
 });
