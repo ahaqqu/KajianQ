@@ -238,7 +238,7 @@ export function scoreQuestion(
     ...(deps.citationGrammar !== undefined ? { grammar: deps.citationGrammar } : {}),
   });
   const refused = detectRefusal(events, answerText, deps.refusalMarkers ?? []);
-  const grounded = groundedAnswer({ frame: frame ?? null, events });
+  const grounded = groundedAnswer({ frame, events });
   const correct = behaviorAccepted(question.expectedBehavior, refused, grounded);
   const passed = correct && citations === 1 && recall === 1;
   return {

@@ -35,8 +35,8 @@ export function retrievalRecall(
 }
 
 /**
- * The citation labels the harness can treat as present for one answer, from
- * the strongest available evidence source down. The precedence is deliberate:
+ * The NON-TEXT evidence labels for one answer, from the strongest available
+ * source down — the single precedence walk both citation readers share:
  *
  *   1. **The citations frame** (ADR-0040). When the SSE `citations` frame (or
  *      the trace-derived frame) is reachable the caller passes it, and its
@@ -45,13 +45,43 @@ export function retrievalRecall(
  *      retrieves, so a label in it is grounded **by definition** — the
  *      invariant this scorer relies on: a label the frame does not contain is
  *      never scored present. A fabricated citation cannot reach the frame, so
- *      this direction cannot manufacture a pass.
+ *      this direction cannot manufacture a pass. An EMPTY frame is
+ *      authoritative and grounds nothing; the trace labels are never consulted
+ *      past it.
  *   2. **The trace's `grounded` list** (contracts `review` event, B4). The
  *      deterministic gate's grounded labels, recorded on the trace — the same
  *      provenance as (1) for every persisted trace that predates the frame.
  *      An EMPTY list is meaningful: a refusal records none, and scoring its
  *      required citations as absent is correct. Only an ABSENT list (older
- *      traces) falls through to (3).
+ *      traces) yields `undefined`.
+ *
+ * `undefined` therefore means there is no non-text evidence at all (no frame,
+ * no `grounded` field), and the caller decides its own fallback — only
+ * {@link citationLabelsPresent} has one (the answer text); a trap's
+ * {@link groundedAnswer} deliberately does not.
+ *
+ * Deliberately takes NO answer text, and must never take one: the text alone
+ * is not evidence (a fabricated citation is citation-shaped too), so an
+ * invented label cannot ground its own answer. Keeping the walk text-free
+ * makes that invariant structural instead of a property of the tests, and
+ * keeps a precedence change from being applied to one reader and forgotten in
+ * the other.
+ */
+function verifiedEvidenceLabels(input: {
+  frame?: CitationFrameLike | null | undefined;
+  events?: readonly TraceEventLike[] | undefined;
+}): string[] | undefined {
+  const { frame, events } = input;
+  if (frame != null) return frame.citations.map((citation) => citation.label);
+  return events === undefined ? undefined : reviewerGroundedLabels(events);
+}
+
+/**
+ * The citation labels the harness can treat as present for one answer. The
+ * non-text precedence — the citations frame first, else the trace's `grounded`
+ * list — is owned by {@link verifiedEvidenceLabels}; this function adds the
+ * final fallback:
+ *
  *   3. **The answer text**, through the injected citation grammar. This is the
  *      fallback for local/unit scoring with no frame and no trace. The grammar
  *      is the gate's own (`citationCandidatesIn` + `normalizeCitationLabel`),
@@ -72,17 +102,8 @@ export function citationLabelsPresent(input: {
   grammar?: CitationGrammar;
 }): string[] {
   const { required, answerText, frame, events, grammar } = input;
-  if (frame != null) {
-    return groundedLabels(
-      required,
-      frame.citations.map((citation) => citation.label),
-      grammar,
-    );
-  }
-  const grounded = events === undefined ? undefined : reviewerGroundedLabels(events);
-  if (grounded !== undefined) {
-    return groundedLabels(required, grounded, grammar);
-  }
+  const evidence = verifiedEvidenceLabels({ frame, events });
+  if (evidence !== undefined) return groundedLabels(required, evidence, grammar);
   return groundedLabels(required, textCandidateLabels(answerText, grammar), grammar);
 }
 
@@ -99,39 +120,26 @@ function reviewerGroundedLabels(events: readonly TraceEventLike[]): string[] | u
 }
 
 /**
- * Whether one answer is grounded by the citation evidence already on hand.
- *
- * This is the non-refusal branch of a trap question's acceptance (#250, "refuse,
- * or ground it"): the answer carries at least one citation that the EXISTING
- * evidence verifies. The evidence precedence is the same one
- * {@link citationLabelsPresent} uses — the server-derived citations frame
- * first, else the trace's reviewer-grounding labels:
- *
- *   1. **The citations frame** (ADR-0040). A non-empty frame means the server
- *      grounded at least one of the answer's own inline citation spans against
- *      a trace-retrieved chunk, so the answer cites something real. An empty
- *      frame grounds nothing and is authoritative: the trace labels are never
- *      consulted past it, exactly as in `citationLabelsPresent`.
- *   2. **The trace's `grounded` list** (contracts `review` event, B4). A
- *      non-empty list is the deterministic gate's own "labels this answer
- *      cites that the evidence carries". An EMPTY list is a real value (the
- *      gate grounded nothing), never "absent".
+ * Whether one answer is grounded by the citation evidence already on hand —
+ * the non-refusal branch of a trap question's acceptance (#250, "refuse, or
+ * ground it"; ADR-0046). True exactly when {@link verifiedEvidenceLabels}
+ * returns at least one label: a non-empty citations frame, else a non-empty
+ * trace `grounded` list.
  *
  * There is deliberately **no answer-text fallback**. The text alone is not
  * evidence — a fabricated citation is still citation-shaped — so a text path
  * would let an invented label ground its own answer into a pass, the one
  * direction this check must never allow. A trace with no frame and no
  * `grounded` field (an older trace) therefore scores ungrounded, which leaves
- * the refusal branch to carry the question: the pre-#250 behavior.
+ * the refusal branch to carry the question: the pre-#250 behavior. The shared
+ * helper cannot even receive the answer text, so that property cannot be
+ * reintroduced by drift.
  */
 export function groundedAnswer(input: {
-  frame?: CitationFrameLike | null;
+  frame?: CitationFrameLike | null | undefined;
   events?: readonly TraceEventLike[];
 }): boolean {
-  const { frame, events } = input;
-  if (frame != null) return frame.citations.length > 0;
-  const grounded = events === undefined ? undefined : reviewerGroundedLabels(events);
-  return grounded !== undefined && grounded.length > 0;
+  return (verifiedEvidenceLabels(input) ?? []).length > 0;
 }
 
 /**
