@@ -59,27 +59,81 @@ export function citationLabelsOf(chunk: Chunk): string[] {
 const TRAILING_CITATION_NOISE = /[^\p{L}\p{N}]+$/u;
 
 /**
- * Canonicalize the citation markers' spelling to the product's `QS.` / `HR.`
- * forms: the dotted `Q.S.` variant, and — since the grammars accept the
- * dot-less spellings (round-3 A1) — the bare `QS` / `HR` forms. A model that
- * writes `Q.S. 2:255` or `QS 2:255` for a chunk labeled `QS. 2:255` is citing
- * the same address, and treating it as a different one would turn a *grounded*
- * answer into a refusal. Fabricated addresses are unaffected — `Q.S. 9:99` and
+ * Canonicalize the **spelling** of a citation's structural separators to the
+ * product's forms, so two spellings of one address compare equal. Two families
+ * are folded:
+ *
+ * - **Markers**: the dotted `Q.S.` variant, and — since the grammars accept
+ *   the dot-less spellings (round-3 A1) — the bare `QS` / `HR` forms. A model
+ *   that writes `Q.S. 2:255` or `QS 2:255` for a chunk labeled `QS. 2:255` is
+ *   citing the same address, and treating it as a different one would turn a
+ *   *grounded* answer into a refusal. The lookahead on the `HR` rule requires a
+ *   following whitespace, so an ordinary word ending in "HR" is never touched.
+ * - **Address spacing** (#264): every grammar writes its separators with `\s*`,
+ *   so `no.5010`, `QS.2:255`, `QS. 2: 255` and `Jilid 1,Hal. 102` are the same
+ *   addresses as the canonical label a formatter renders. Left unfolded, a
+ *   grounded citation was refused for the spelling of its separator — the same
+ *   false-refusal class #253 closed for the tail.
+ *
+ * Fabricated addresses are unaffected by either family: folding separator
+ * spacing never changes which digits the address carries, so `no.99999` and
+ * `no. 99999` stay distinct from a retrieved `no. 5010`, and `Q.S. 9:99` and
  * `QS 9:99` still normalize to `QS. 9:99`, which no retrieved chunk grounds.
  *
- * The lookahead requires a following whitespace: a marker is only ever
- * canonicalized when an address follows it (the grammars guarantee one), so an
- * ordinary word ending in "QS"/"HR" is never touched.
+ * The replacements are anchored and idempotent; none of them can re-introduce
+ * what another removed.
  */
-function canonicalizeMarkers(text: string): string {
-  return text.replace(/\bQ\.?S\.?(?=\s)/g, "QS.").replace(/\bHR\.?(?=\s)/g, "HR.");
+function canonicalizeCitationSpelling(text: string): string {
+  return text
+    .replace(/\bQ\.?S\.?\s*/g, "QS. ")
+    .replace(/\bHR\.?(?=\s)/g, "HR.")
+    .replace(/\bno\.\s*/g, "no. ")
+    .replace(/\bJilid\s+/g, "Jilid ")
+    .replace(/\bHal\.\s*/g, "Hal. ")
+    .replace(/\s*,\s*/g, ", ")
+    .replace(/\s*:\s*/g, ":");
 }
 
 /**
- * Strip the trailing `(Grade)` suffix the hadith formatter appends. On the
- * chunk side it is only ever the LAST thing in a label — `formatHadithCitation`
- * writes `HR. X no. N (Grade)` — and this single anchored pass is what removes
- * it there.
+ * Invisible formatting characters (`\p{Cf}`: zero-width space/non-joiner/
+ * joiner, the bidi marks, soft hyphen, BOM) carry no address information but
+ * split the tokens that read the digits around them: `no. 50\u200c10` used to
+ * reduce to `no. 50` — a false refusal against the retrieved `no. 5010`, and,
+ * worse, a grounding of a *different* passage whenever a retrieved `no. 50`
+ * existed (#264). Dropping them is the same move the markdown-marker strip
+ * makes: the characters are invisible, so the comparison form is too.
+ */
+const INVISIBLE_FORMATTING = /\p{Cf}+/gu;
+
+/**
+ * Fullwidth digits (U+FF10–U+FF19) are the one `\p{Nd}` block that is a
+ * rendering variant of the ASCII digits the corpus labels carry, so they fold
+ * to their ASCII value: `no. ５０１０` is `no. 5010` (#264). Every other
+ * `\p{Nd}` block stays unfolded — a general fold needs a per-block zero table
+ * (Unicode decimal blocks are not aligned mod 10) and the generator is not
+ * observed to emit them — which leaves those scripts recognised and refused,
+ * never silently dropped (the posture is documented in
+ * `chat-citation-grammar`).
+ */
+const FULLWIDTH_DIGITS = /[\uFF10-\uFF19]/g;
+
+function foldAddressDigits(text: string): string {
+  return text.replace(FULLWIDTH_DIGITS, (digit) =>
+    String.fromCharCode(digit.charCodeAt(0) - 0xfee0),
+  );
+}
+
+/**
+ * Strip the trailing `(Grade)` suffix the hadith formatter appends. It is
+ * reachable only for a label that does **not** begin with a citation grammar —
+ * a full Kitab chunk label (`Al-Umm, … , Jilid 1, Hal. 102 (Sahih)`) is the
+ * shape it exists for. Every grammar-initial label is reduced to its grammar's
+ * address before this pass is reached, and that reduction already removes the
+ * grade: on the chunk side `formatHadithCitation` writes
+ * `HR. X no. N (Grade)`, whose address is the number word after `no.`, so
+ * `reduceCitationLabel("HR. Ibnu Majah no. 224 (Dhaif)")` returns
+ * `{address: "HR. Ibnu Majah no. 224", keepWhole: false}` and this anchored
+ * pass never sees it.
  *
  * On the draft side only the **spaced** form is out of reach: the grammar's
  * number token stops at whitespace, so `HR. X no. 573 (Sahih)` and
@@ -87,10 +141,10 @@ function canonicalizeMarkers(text: string): string {
  * `citationSpansIn("HR. Bukhari no. 573(Sahih) …")` yields the span
  * `HR. Bukhari no. 573(Sahih` (the token absorbs `(`, stops at `)`), which is a
  * real draft span carrying grade text. That shape is reduced by the
- * grammar-address rule in {@link normalizeCitationLabel}; this pass never sees
- * it. (An earlier docstring claimed no draft span could carry a grade at all —
- * false, and the glued shape it missed false-refused a grounded citation;
- * review B2/A2.)
+ * grammar-address rule in {@link normalizeCitationLabel}. (An earlier docstring
+ * claimed no draft span could carry a grade at all — false, and the glued shape
+ * it missed false-refused a grounded citation; review B2/A2. Review #264 then
+ * found the chunk-side clause of the same docstring stale in the same way.)
  */
 function stripGradeSuffix(label: string): string {
   return label.replace(/\s*\([^()]*\)\s*$/, "");
@@ -111,10 +165,10 @@ function trimCitationTail(label: string): string {
 }
 
 /**
- * Normalize a label for comparison: collapse whitespace, strip markdown
- * emphasis, reduce the label to the **address its own citation grammar
- * identifies**, then canonicalize the marker spellings (`Q.S.`/`QS ` → `QS.`,
- * `HR ` → `HR.`).
+ * Normalize a label for comparison: collapse whitespace, drop markdown
+ * emphasis and invisible formatting, fold the fullwidth digit block, reduce the
+ * label to the **address its own citation grammar identifies**, then
+ * canonicalize the address's separator spelling.
  *
  * The reduction is grammar-driven rather than a punctuation rule, because a
  * tail cannot be recognized by its characters alone (review A2): the footnote
@@ -133,7 +187,8 @@ function trimCitationTail(label: string): string {
  * are on their declarations in `chat-citation-grammar`):
  *
  * - a dash joined to a number, kept whole — the A3 precision-for-safety
- *   trade-off, with its cost and its follow-up;
+ *   trade-off, with its cost and its follow-up, now covering the Quran
+ *   compound (`QS. 2:255—256`) as well as the hadith one (#264);
  * - letters and digits glued straight onto the number, which are part of the
  *   address token itself, so `… no. 5010a` and `… no. 50102` stay distinct
  *   from `… no. 5010` instead of grounding on it.
@@ -147,14 +202,15 @@ function trimCitationTail(label: string): string {
  * erase every Quran citation.
  */
 export function normalizeCitationLabel(label: string): string {
-  const flattened = label
-    .replace(/[*_`]+/g, "")
+  const flattened = foldAddressDigits(
+    label.replace(/[*_`]+/g, "").replace(INVISIBLE_FORMATTING, ""),
+  )
     .replace(/\s+/g, " ")
     .trim();
   const reduction = reduceCitationLabel(flattened);
   const reduced =
     reduction === null || reduction.keepWhole ? trimCitationTail(flattened) : reduction.address;
-  return canonicalizeMarkers(reduced);
+  return canonicalizeCitationSpelling(reduced);
 }
 
 /**
@@ -202,8 +258,9 @@ function scanCitations(text: string): { start: number; end: number; label: strin
 }
 
 /**
- * The comparison form of a text for grounded-label matching: whitespace
- * collapsed and markers canonicalized, exactly as {@link validateCitations}
+ * The comparison form of a text for grounded-label matching: invisible
+ * formatting dropped, fullwidth digits folded, whitespace collapsed and the
+ * address separators canonicalized, exactly as {@link validateCitations}
  * matches a chunk's label against the answer. Exported so a consumer that must
  * find a grounded citation inside the draft (the reviewer pre-gate's claim
  * spans) compares the same way the gate that declared it grounded did — a
@@ -211,7 +268,9 @@ function scanCitations(text: string): { start: number; end: number; label: strin
  * passage states" means.
  */
 export function citationMatchText(text: string): string {
-  return canonicalizeMarkers(text.replace(/\s+/g, " "));
+  return canonicalizeCitationSpelling(
+    foldAddressDigits(text.replace(INVISIBLE_FORMATTING, "")).replace(/\s+/g, " "),
+  );
 }
 
 /**
