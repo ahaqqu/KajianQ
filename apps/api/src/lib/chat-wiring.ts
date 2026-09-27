@@ -90,10 +90,12 @@ export type ChatProviders = {
   /** Env names whose keys were absent — named once at boot (`providers.posture`), never client-facing. */
   missingKeys: readonly string[];
   /**
-   * Keyed decision candidates the personal-data posture excluded from serving
+   * Decision candidates the personal-data posture excluded from serving
    * (ADR-0043): a vendor whose config forbids personal data may never carry
-   * the pre-gate's claim spans, so it is dropped rather than wired. Reported
-   * once at boot (`providers.posture`) — the key being bound is not the problem.
+   * the pre-gate's claim spans, so it is dropped rather than wired. The filter
+   * runs before the key check, so an unkeyed ineligible candidate is listed
+   * here too — it is not a missing key. Reported once at boot
+   * (`providers.posture`) — the key being bound is not the problem.
    */
   ineligibleKeys: readonly string[];
 };
