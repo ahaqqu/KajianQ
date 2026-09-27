@@ -112,7 +112,8 @@ branches mid-run and corrupts each other's diffs. Therefore:
   is already locked is one an earlier round declared live, so leave the lock in
   place, or refresh its reason with `git worktree unlock .worktrees/<slug>` then
   `git worktree lock .worktrees/<slug> --reason "<role> #<issue>"` — never leave
-  a worktree you are working in unlocked, because an unlocked tree is sweepable.
+  a worktree you are working in unlocked: an unlocked, clean tree whose branch
+  looks merged is removed by the default sweep.
 - Never put a worktree under `/tmp` (on DSH it is per-invocation — see the DSH
   adapter). Never use `.wt/` either — `.worktrees/` is the one in-repo
   convention, it is committed to `.gitignore`, and `bun run worktree:clean`
