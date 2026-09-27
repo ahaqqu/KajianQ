@@ -43,6 +43,43 @@ export function citationLabelsOf(chunk: Chunk): string[] {
 }
 
 /**
+ * One citation grammar: a fresh matcher, plus the extractor that names the
+ * **address inside that matcher's own match**.
+ *
+ * Separating the two is the fix for review A1/A2. A grammar's token class
+ * absorbs whatever trails the address until it meets a character it excludes
+ * (whitespace, a comma, a closing bracket), and that absorbed tail is not
+ * address: the footnote in `HR. Bukhari no. 5010:1`, the superscript in
+ * `… no. 5010¹`, the glued grade in `… no. 5010(Sahih` and the prose in
+ * `… no. 5010-ia` are one shape — characters the token took along with it.
+ * Where an address ends is not decidable from the tail's characters (a
+ * trailing-character rule cannot reduce `5010:1` without also eating the verse
+ * digits of `QS. 2:255`), but each grammar already knows its own address, and
+ * `addressOf` is where it says so. See {@link normalizeCitationLabel}.
+ */
+interface CitationGrammar {
+  /** A fresh matcher per call (rationale on {@link CITATION_GRAMMARS}). */
+  readonly pattern: () => RegExp;
+  /**
+   * The address inside this grammar's match, or `null` when the match carries
+   * none to reduce to (a hadith number that is not ASCII-digit-led). Such a
+   * match is still a citation attempt and is still refused — it simply has no
+   * address core, so the lexical tail strip owns it.
+   */
+  readonly addressOf: (match: RegExpExecArray) => string | null;
+}
+
+/**
+ * The address at the head of a hadith match's number slot: the ASCII-digit-led
+ * number word — `HR. Bukhari no. 5010` out of `… no. 5010:1`, `… no. 5010¹`
+ * and `… no. 5010(Sahih`. Letters and further digits continue the number
+ * because they make a **different** address: `no. 5010a` and `no. 50102` must
+ * never reduce to `no. 5010`, or a wrong or fabricated sub-number would ride
+ * in on a retrieved one's grounding (fail-closed).
+ */
+const HADITH_ADDRESS = /^(.*?no\.\s*\d[\p{L}\p{Nd}]*)/u;
+
+/**
  * The citation grammars the product renders (SPECS §2.1). Literal regexes, not
  * strings compiled on the fly: a constructed regex is the ReDoS shape the
  * security scan blocks, and there is nothing dynamic here to justify it.
@@ -50,16 +87,22 @@ export function citationLabelsOf(chunk: Chunk): string[] {
  * Each entry is a **factory** returning a fresh regex, because a shared
  * module-level `g` regex carries `lastIndex` state between calls — which would
  * make validation order-dependent, and a non-deterministic safety gate is no
- * gate. Extending the validator for a new source type is a one-line addition.
+ * gate. Extending the validator for a new source type is one addition here.
  */
-const CITATION_GRAMMARS: readonly (() => RegExp)[] = [
+const CITATION_GRAMMARS: readonly CitationGrammar[] = [
   // Quran: `QS. 2:255` / `Q.S. 2:255` (both dotted spellings Indonesian prose
   // uses) or `QS. Al-Baqarah:255` (surah numeric or named). The marker closes
   // with a dot OR a space (round-3 A1): the dot-less `QS 2:255` is a common
   // model spelling, and requiring the dot let a fabricated citation bypass the
   // gate entirely. Requiring *some* separator keeps `QS2:255` (no boundary
-  // between marker and address) out of the grammar, as before.
-  () => /\bQ\.?S(?:\.|\s)\s*[^\s:,[\]()]+\s*:\s*\d+/gi,
+  // between marker and address) out of the grammar, as before. The match IS
+  // the address: the grammar ends at the verse digits, so the colon and both
+  // numbers are address, never tail — review A2's counter-case to the
+  // footnote.
+  {
+    pattern: () => /\bQ\.?S(?:\.|\s)\s*[^\s:,[\]()]+\s*:\s*\d+/gi,
+    addressOf: (match) => match[0],
+  },
   // Hadith: `HR. Bukhari no. 573` / `HR. Ibn Majah no. 224 (Dhaif)`, and the
   // dot-less `HR Bukhari no. 573` (round-3 A1, same rationale as the Quran
   // marker). Collection names may be multi-word ("Abu Dawud", "Ibn Majah")
@@ -73,22 +116,32 @@ const CITATION_GRAMMARS: readonly (() => RegExp)[] = [
   // derivation): `[HR. Malik no. 18]` used to capture a phantom `…no. 18]`
   // span that normalized to nothing a chunk grounds — a false UNGROUNDED,
   // i.e. a refused grounded answer; the Quran address already skipped them.
-  () => /\bHR(?:\.|\s)\s*[^\s,.]{1,24}(?:\s+[^\s,.]{1,24}){0,3}\s+no\.\s*[^\s,;.)[\]]+/gi,
+  // The match spans address + absorbed tail; `HADITH_ADDRESS` names the
+  // address inside it (review A1/A2).
+  {
+    pattern: () =>
+      /\bHR(?:\.|\s)\s*[^\s,.]{1,24}(?:\s+[^\s,.]{1,24}){0,3}\s+no\.\s*[^\s,;.)[\]]+/gi,
+    addressOf: (match) => HADITH_ADDRESS.exec(match[0])?.[1] ?? null,
+  },
   // Kitab (SPECS §2.1): `Al-Umm, Imam Syafi'i, Jilid 1, Hal. 102, Bab …`.
   // Kitab ingestion has not landed, so any such citation is ungrounded by
-  // definition today — detecting it is the point, not an accident.
-  () => /\bJilid\s+\d+\s*,\s*Hal\.\s*\d+/gi,
+  // definition today — detecting it is the point, not an accident. The match
+  // IS the address: the work and author a full Kitab label carries precede it
+  // and are not part of it.
+  {
+    pattern: () => /\bJilid\s+\d+\s*,\s*Hal\.\s*\d+/gi,
+    addressOf: (match) => match[0],
+  },
 ];
 
 /**
  * Trailing citation noise: any run of non-address characters at the tail —
- * punctuation, markdown markers/quotes, symbols and whitespace. A citation
- * address always ends in its digits (every grammar ends in `\d+`), and the
- * grammars disagree about which punctuation a match may absorb — the hadith
- * number token stops at `;`, `.`, `)` and `]` but swallows `:`, `—`, `…` and a
- * closing quote — so the same retrieved citation reached the comparison as a
- * different string depending on the prose punctuation that followed it, and a
- * grounded answer was refused (#253).
+ * punctuation, markdown markers/quotes, symbols and whitespace. This is the
+ * **fallback** rule, for labels that do not begin with a citation grammar (a
+ * full Kitab chunk label carries its work and author before `Jilid …`): such a
+ * label is not an address with a tail, so it is cleaned lexically. A label
+ * that does begin with a grammar is reduced to the address that grammar
+ * identified instead — see {@link normalizeCitationLabel}.
  *
  * One negated character class, anchored: linear, with no alternation that
  * could match the same tail two ways (model-controlled text makes an ambiguous
@@ -97,14 +150,34 @@ const CITATION_GRAMMARS: readonly (() => RegExp)[] = [
 const TRAILING_CITATION_NOISE = /[^\p{L}\p{N}]+$/u;
 
 /**
- * A closed-up em/en dash joins the citation to the prose that follows it
- * (`… HR. Bukhari no. 5010—ia bersabda …`), and the hadith number token
- * absorbs it into the label. A dash followed by a LETTER is prose and is cut
- * here; one followed by a digit may be a closed-up range (`… no. 5010—5011`),
- * whose second address must stay in the comparison and be refused when no
- * retrieved chunk grounds it — so it is deliberately left whole.
+ * A dash joined to the address and followed by a DECIMAL DIGIT — `… no. 5010—5011`,
+ * `… no. 5010–5011`, `… no. 5010-3`, `… no. 5010—٥٠١١` — is kept whole instead
+ * of being reduced to its first address. This is a deliberate
+ * **precision-for-safety trade-off** (review A3), not an oversight:
+ *
+ * - The dash family is the product's closed-up range joiner, so the compound
+ *   may carry a SECOND address. Reducing it to `… no. 5010` would validate
+ *   only the first address and silently drop the second from the comparison —
+ *   an unretrieved `no. 5011` would ride in on `no. 5010`'s grounding.
+ * - The cost is real and accepted: `… 5010—5011` is refused even when BOTH
+ *   addresses were retrieved, and digit-glued prose (`… 5010—3 kali sehari`)
+ *   is refused with it. Fail-closed is the safe direction for a
+ *   safety-critical gate (SPECS §2.2).
+ * - The follow-up that closes the cost without reopening the hole belongs at
+ *   the comparison site in {@link validateCitations}: split the compound into
+ *   its two addresses and require each grounded — an unretrieved second
+ *   address still refuses, a fully grounded range stops being a false
+ *   refusal. Until then this constant is the boundary.
+ *
+ * The class after the dash is `\p{Nd}` — a decimal digit of any script, the
+ * class an address number is made of — not `\p{N}`: a superscript or numeric
+ * form (`¹`, `½`, both `\p{No}`) is a footnote marker in this prose, not a
+ * second address, and `… no. 5010¹` must reduce like any other footnote tail
+ * (A2). The dash family covers every character the number token absorbs as a
+ * range joiner: `-`, U+2010, U+2011, U+2012, en dash, em dash, horizontal bar
+ * and the minus sign.
  */
-const CLOSED_UP_DASH_BEFORE_PROSE = /[—–](?=\p{L})/u;
+const DASH_JOINED_NUMBER_TAIL = /^[-‐‑‒–—―−]\p{Nd}/u;
 
 /**
  * Canonicalize the citation markers' spelling to the product's `QS.` / `HR.`
@@ -124,57 +197,101 @@ function canonicalizeMarkers(text: string): string {
 }
 
 /**
- * Strip the trailing `(Grade)` suffix the hadith formatter appends. It is only
- * ever the LAST thing in a label: `formatHadithCitation` writes it at the end
- * of the chunk's label, and no draft span can carry one at all — the hadith
- * number token stops at whitespace, so the grammar's match ends at the number.
- * A grade written *after* punctuation therefore cannot occur, and this stays a
- * single anchored pass.
+ * Strip the trailing `(Grade)` suffix the hadith formatter appends. On the
+ * chunk side it is only ever the LAST thing in a label — `formatHadithCitation`
+ * writes `HR. X no. N (Grade)` — and this single anchored pass is what removes
+ * it there.
+ *
+ * On the draft side only the **spaced** form is out of reach: the grammar's
+ * number token stops at whitespace, so `HR. X no. 573 (Sahih)` and
+ * `HR. X no. 573: (Sahih)` never enter a span. The **glued** form does:
+ * `citationSpansIn("HR. Bukhari no. 573(Sahih) …")` yields the span
+ * `HR. Bukhari no. 573(Sahih` (the token absorbs `(`, stops at `)`), which is a
+ * real draft span carrying grade text. That shape is reduced by the
+ * grammar-address rule in {@link normalizeCitationLabel}; this pass never sees
+ * it. (An earlier docstring claimed no draft span could carry a grade at all —
+ * false, and the glued shape it missed false-refused a grounded citation;
+ * review B2/A2.)
  */
 function stripGradeSuffix(label: string): string {
   return label.replace(/\s*\([^()]*\)\s*$/, "");
 }
 
 /**
- * Reduce a label to its address by dropping the tail a generator attaches: the
- * grade parenthetical the chunk formatter appends, then the punctuation,
- * markdown or quote noise a draft wraps around it. Both patterns are linear
- * and anchored, and neither can match what the other matched first.
+ * Reduce a label that does **not** begin with a citation grammar to its
+ * address-adjacent form: drop the grade parenthetical the chunk formatter
+ * appends, then the punctuation, markdown or quote noise a draft wraps around
+ * it. Both patterns are linear and anchored, and neither can match what the
+ * other matched first. Labels that DO begin with a grammar are reduced to that
+ * grammar's address instead — the tail there is whatever the grammar's token
+ * absorbed, and only the grammar knows whether a given tail character is
+ * address or noise.
  */
 function trimCitationTail(label: string): string {
   return stripGradeSuffix(label).replace(TRAILING_CITATION_NOISE, "").trim();
 }
 
 /**
- * Normalize a label for comparison: collapse whitespace, trim, drop the tail
- * (grade suffix, markdown emphasis, prose punctuation), and canonicalize the
- * marker spellings (`Q.S.` and `QS` → `QS.`, `HR` → `HR.`).
+ * The address a citation grammar identifies at the **start** of a label, or
+ * `null` when the label does not begin with one. Only a label that starts with
+ * the grammar is an address-with-tail; a grammar match later in the label (the
+ * work and author of `Al-Umm, Imam Syafi'i, Jilid 1, Hal. 102`) is not, and
+ * the lexical tail rule still owns that label.
+ */
+function addressAtStart(label: string): string | null {
+  for (const grammar of CITATION_GRAMMARS) {
+    const match = grammar.pattern().exec(label);
+    if (match?.index !== 0) continue;
+    const address = grammar.addressOf(match);
+    if (address !== null && address !== "") return address;
+  }
+  return null;
+}
+
+/**
+ * Normalize a label for comparison: collapse whitespace, strip markdown
+ * emphasis, reduce the label to the **address its own citation grammar
+ * identifies**, then canonicalize the marker spellings (`Q.S.`/`QS ` → `QS.`,
+ * `HR ` → `HR.`).
  *
- * The tail strip matters because the grammar stops at sentence punctuation but
- * NOT at `*`/`_`/backticks or the punctuation above, so a styled citation
- * (`**HR. Malik no. 18**`) or one written as ordinary prose (`… HR. Bukhari
- * no. 5010: <matn> …`) reached the comparison with its markers attached and
- * was reported UNGROUNDED — a grounded answer refused. The markdown case
- * refused a grounded answer on the first live size-5 smoke (gs-v0-015); the
- * colon case refused gs-v0-001 on staging (#253, trace f417d603-…), where
- * chunk 94d2a731 carried `HR. Bukhari no. 5010` and the draft said
- * `HR. Bukhari no. 5010:`. Both sides of the comparison — the chunk's label
- * and the draft's extracted span — pass through this one function, so closing
- * the tail class here closes both directions at once.
+ * The reduction is grammar-driven rather than a punctuation rule, because a
+ * tail cannot be recognized by its characters alone (review A2): the footnote
+ * `HR. Bukhari no. 5010:1` must reduce to `HR. Bukhari no. 5010`, while
+ * `QS. 2:255` must keep its colon and both numbers. No trailing-character rule
+ * can separate those two — the hadith grammar already knows its address ends
+ * at the number word after `no.`, and the Quran grammar knows its address IS
+ * the `surah:ayah` pair. So each grammar names its address (`addressOf`) and
+ * this function trims the match to it. That single rule also closes the rest
+ * of the tail family at once: `… no. 5010:` (#253), `… no. 5010—ia` / `-ia` /
+ * `‒ia` / `―ia` (A1), `… no. 5010:1`, `… no. 5010¹`, `… no. 5010(Sahih` (A2),
+ * `… no. 5010：`, `… no. 5010،` and the rest (B1).
  *
- * Only the TAIL is touched, and only characters no address can end with, so
- * the colon inside `QS. 2:255` and the comma inside `Jilid 1, Hal. 102`
- * survive: a naive `replace(/:.*$/, "")` would erase every Quran citation.
+ * Two things survive the reduction on purpose, both fail-closed:
+ *
+ * - a dash joined to a number, kept whole — the A3 trade-off, with its cost
+ *   and its follow-up, on {@link DASH_JOINED_NUMBER_TAIL};
+ * - letters and digits glued straight onto the number, which are part of the
+ *   address token itself (`HADITH_ADDRESS`), so `… no. 5010a` and
+ *   `… no. 50102` stay distinct from `… no. 5010` instead of grounding on it.
+ *
+ * Labels that do not begin with a grammar keep the lexical strip
+ * ({@link trimCitationTail}): the grade parenthetical the chunk formatter
+ * appends, then the trailing punctuation.
+ *
+ * Only the TAIL is touched, so the colon inside `QS. 2:255` and the comma
+ * inside `Jilid 1, Hal. 102` survive: a naive `replace(/:.*$/, "")` would
+ * erase every Quran citation.
  */
 export function normalizeCitationLabel(label: string): string {
-  const dashCut = CLOSED_UP_DASH_BEFORE_PROSE.exec(label);
+  const flattened = label
+    .replace(/[*_`]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const address = addressAtStart(flattened);
+  if (address === null) return canonicalizeMarkers(trimCitationTail(flattened));
+  const tail = flattened.slice(address.length);
   return canonicalizeMarkers(
-    trimCitationTail(
-      (dashCut === null ? label : label.slice(0, dashCut.index))
-        .replace(/[*_`]+/g, "")
-        .replace(/\s+/g, " ")
-        .trim(),
-    ),
+    DASH_JOINED_NUMBER_TAIL.test(tail) ? trimCitationTail(flattened) : address,
   );
 }
 
@@ -210,8 +327,8 @@ export function citationSpansIn(text: string): { start: number; end: number; lab
 function scanCitations(text: string): { start: number; end: number; label: string }[] {
   const found: { start: number; end: number; label: string }[] = [];
   const seen = new Set<string>();
-  for (const makePattern of CITATION_GRAMMARS) {
-    for (const match of text.matchAll(makePattern())) {
+  for (const grammar of CITATION_GRAMMARS) {
+    for (const match of text.matchAll(grammar.pattern())) {
       const label = normalizeCitationLabel(match[0]);
       if (label === "" || seen.has(label)) continue;
       seen.add(label);
