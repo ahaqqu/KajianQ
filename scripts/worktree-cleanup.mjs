@@ -40,12 +40,16 @@
 // reaches a declared-live worktree — and `git worktree remove` refuses a locked
 // tree, so the keep states the tool boundary, not a guess about branch state. A
 // lock left behind by a crashed dispatch is cleared deliberately, by slug, with
-// `--unlock <slug>` (repeatable): unlocking never happens automatically, and an
-// --unlock run never sweeps. The sweep itself is gated: a destructive run
-// requires --no-active-dispatches. Without it the run prints the verdict lines
-// it would print (`would remove <slug> (<reason>)`) and exits non-zero having
-// removed nothing, so forgetting the flag destroys nothing; --dry-run needs no
-// acknowledgement and still exits 0. The liveness heuristics #239 rejected
+// `--unlock <slug>` (repeatable): the slug must be one bare name under
+// .worktrees/ — a value that resolves anywhere else is refused before any git
+// call — unlocking never happens automatically, and an --unlock run never
+// sweeps. The sweep itself is gated: a destructive run requires
+// --no-active-dispatches. Without it a run that would remove something prints
+// those verdict lines (`would remove <slug> (<reason>)`) and exits non-zero
+// having removed nothing, so forgetting the flag destroys nothing; a gated run
+// with zero candidates withholds nothing, says so, and exits 0 — a no-op is not
+// a refusal. --dry-run needs no acknowledgement and still exits 0. The liveness
+// heuristics #239 rejected
 // (worktree admin-dir age, file mtimes, HEAD reflog) cannot separate a dispatch
 // reattached to a surviving squash-merged branch from deferred cleanup; the
 // declaration is the discriminator, and the gate covers the window before a
@@ -79,12 +83,28 @@ const refuseSweep = !dryRun && !noActiveDispatches;
 
 // --unlock takes a value and is repeatable, so it is read positionally instead
 // of with a presence check.
+//
+// The value must be one bare directory name. The tool's scope is
+// `.worktrees/<slug>`, and a slug carrying a separator or a `.`/`..` segment
+// makes `join(wtRoot, slug)` resolve to a registered worktree outside
+// .worktrees/, which this remedy has no business reaching: the escape is
+// refused here, in the parse loop, before any git call (#257 A1).
+function isBareSlug(slug) {
+  return !slug.includes("/") && slug !== "." && slug !== "..";
+}
+
 const unlockSlugs = [];
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] !== "--unlock") continue;
   const slug = argv[i + 1];
   if (slug === undefined || slug.startsWith("-")) {
     console.error("--unlock requires a slug: --unlock <slug>");
+    process.exit(1);
+  }
+  if (!isBareSlug(slug)) {
+    console.error(
+      `--unlock requires a slug within .worktrees/: "${slug}" is not a bare directory name (no "/", not "." or "..")`,
+    );
     process.exit(1);
   }
   unlockSlugs.push(slug);
@@ -339,16 +359,28 @@ for (const slug of readdirSync(wtRoot).filter((n) => !n.startsWith("."))) {
   removed++;
 }
 
-// Fail closed: the operator has not confirmed that no dispatch is active, so
-// nothing above was removed. The verdict lines already name what a gated run
-// would have done; this line names the flag that turns the preview into the
-// sweep, and the non-zero exit is what a script — or a manager's checklist —
-// reads.
-if (refuseSweep) {
+// Fail closed, but only where something was actually withheld: the operator has
+// not confirmed that no dispatch is active, so an entry a sweep would have
+// removed is withheld and the run exits non-zero. The verdict lines above
+// already name what a gated run would have done; this line names the flag that
+// turns the preview into the sweep, and the non-zero exit is what a script — or
+// a manager's checklist — reads.
+if (refuseSweep && wouldRemove > 0) {
   console.error(
     `refusing to remove ${wouldRemove} worktree${wouldRemove === 1 ? "" : "s"}: pass --no-active-dispatches once you have confirmed no dispatch is active`,
   );
   process.exit(1);
+}
+
+// Zero candidates is the one gated shape that withheld nothing, so it is not a
+// refusal and must not read as one: it says there is nothing to remove, and
+// that the flag is only needed when there is, then exits 0 like any other
+// no-op. Its own case pins this wording and the refusal above together, so the
+// two cannot silently converge again (#257 A2).
+if (refuseSweep) {
+  console.log(
+    "nothing to remove: --no-active-dispatches is only needed when there is something to remove",
+  );
 }
 
 console.log(`done: ${removed} removed, ${kept} kept${dryRun ? " (dry run)" : ""}`);

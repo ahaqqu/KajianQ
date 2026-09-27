@@ -211,6 +211,25 @@ esac
   // declaration can never reach the real gh.
   installGh();
 
+  // The liveness declaration the tool reads (#239): a real `git worktree lock`
+  // carrying the reason a dispatch would record, so no case has to reproduce
+  // git's lock-file format. Path-addressed, so the A1 case can lock and read a
+  // registered worktree outside .worktrees/ (#257).
+  const lockAt = (path, reason) => {
+    git(dir, ["worktree", "lock", path, ...(reason ? ["--reason", reason] : [])]);
+  };
+
+  // Git's own view of an entry's lock, read from the porcelain listing rather
+  // than from the script's parser, so a case can assert what git holds
+  // independently of what the run printed.
+  const lockStateAt = (path) => {
+    const block = git(dir, ["worktree", "list", "--porcelain"])
+      .split("\n\n")
+      .find((entry) => entry.startsWith(`worktree ${path}`));
+    const line = (block ?? "").split("\n").find((l) => l === "locked" || l.startsWith("locked "));
+    return { locked: line !== undefined, reason: line ? line.slice("locked".length).trim() : "" };
+  };
+
   return {
     dir,
     wtPath,
@@ -221,6 +240,15 @@ esac
     },
     addDetached(slug) {
       git(dir, ["worktree", "add", "-q", "--detach", wtPath(slug), "origin/main"]);
+    },
+    // A registered worktree OUTSIDE .worktrees/ — a sibling of the tool's own
+    // root. Git knows it; the tool's scope does not, so it is the shape an
+    // `--unlock` slug must never reach (#257 A1). Returns its path, which
+    // `lockAt`/`lockStateAt` address directly.
+    addOutside(name) {
+      const path = join(dir, name);
+      git(dir, ["worktree", "add", "-q", path, "-b", `agent/${name}`]);
+      return path;
     },
     addCommitted(slug) {
       git(dir, ["worktree", "add", "-q", wtPath(slug), "-b", `agent/${slug}`]);
@@ -253,23 +281,18 @@ esac
     },
     // The liveness declaration the tool reads (#239): a real `git worktree lock`
     // carrying the reason a dispatch would record, so no case has to reproduce
-    // git's lock-file format.
-    lock(slug, reason) {
-      git(dir, ["worktree", "lock", wtPath(slug), ...(reason ? ["--reason", reason] : [])]);
-    },
+    // git's lock-file format. The `…At` pair addresses a path directly, for the
+    // out-of-tree shape the A1 case asserts on (#257).
+    lock: (slug, reason) => lockAt(wtPath(slug), reason),
+    lockAt,
     unlock(slug) {
       git(dir, ["worktree", "unlock", wtPath(slug)]);
     },
     // Git's own view of an entry's lock, read from the porcelain listing rather
     // than from the script's parser, so a case can assert what git holds
     // independently of what the run printed.
-    lockState(slug) {
-      const block = git(dir, ["worktree", "list", "--porcelain"])
-        .split("\n\n")
-        .find((entry) => entry.startsWith(`worktree ${wtPath(slug)}`));
-      const line = (block ?? "").split("\n").find((l) => l === "locked" || l.startsWith("locked "));
-      return { locked: line !== undefined, reason: line ? line.slice("locked".length).trim() : "" };
-    },
+    lockState: (slug) => lockStateAt(wtPath(slug)),
+    lockStateAt,
     // A stale ref lock: git refuses to rewrite the ref while the file exists,
     // so `git branch -D` fails deterministically, while `rev-parse` still
     // resolves the branch — the lock blocks writes, not reads.

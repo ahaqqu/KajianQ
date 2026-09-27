@@ -610,6 +610,52 @@ describe("worktree-cleanup", () => {
     fx.dispose();
   });
 
+  it("a gated run with nothing to remove says so and exits 0, while a withheld removal still refuses (#257 A2)", () => {
+    const fx = makeFixture();
+    fx.addCommitted("live");
+    fx.addUnstarted("unstarted");
+    fx.fakeGh({ noPr: ["agent/unstarted"] });
+    fx.lock("live", "implementer #257");
+
+    // Two entries, both kept by default — a locked one (rule 0) and an unstarted
+    // one (rule 2) — so the gated run has zero candidates: nothing was withheld,
+    // and a run with nothing to do must not read as a refusal.
+    const nothing = runClean(fx, [], {}, { withholdGate: true });
+
+    expect(nothing.status).toBe(0);
+    expect(nothing.stderr).toBe("");
+    expect(nothing.stdout).toContain(
+      "nothing to remove: --no-active-dispatches is only needed when there is something to remove",
+    );
+    // None of the refusal's shape can appear here: no verdict line, no refusal
+    // line, and the run's own summary reports an ordinary no-op.
+    expect(nothing.stdout).not.toContain("refusing to remove");
+    expect(nothing.stdout).not.toContain("would remove");
+    expect(nothing.stdout).toContain("done: 0 removed, 2 kept");
+    expect(removedSlugs(nothing.stdout)).toEqual([]);
+    expect(fx.lockState("live")).toEqual({ locked: true, reason: "implementer #257" });
+    expect(fx.exists("unstarted")).toBe(true);
+    expect(fx.branchExists("agent/unstarted")).toBe(true);
+
+    // The same fixture with one candidate (`--include-unstarted`) is a real
+    // withheld removal and keeps the original refusal: non-zero, the count, the
+    // flag. Both wordings meet on one fixture, so they cannot silently converge
+    // into the same exit or the same message again.
+    const withheld = runClean(fx, ["--include-unstarted"], {}, { withholdGate: true });
+
+    expect(withheld.status).not.toBe(0);
+    expect(withheld.stdout).toContain("would remove unstarted (no unique commits vs origin/main)");
+    expect(withheld.stderr).toContain(
+      "refusing to remove 1 worktree: pass --no-active-dispatches once you have confirmed no dispatch is active",
+    );
+    expect(withheld.stderr).not.toContain("nothing to remove");
+    expect(withheld.stdout).not.toContain("nothing to remove");
+    expect(withheld.stdout).not.toContain("done:");
+    expect(fx.exists("unstarted")).toBe(true);
+    expect(fx.branchExists("agent/unstarted")).toBe(true);
+    fx.dispose();
+  });
+
   it("--unlock clears only the named lock, repeatably, and never sweeps (#239)", () => {
     const fx = makeFixture();
     const mergedTip = fx.addCommitted("one");
@@ -680,6 +726,68 @@ describe("worktree-cleanup", () => {
 
     expect(missing.status).not.toBe(0);
     expect(missing.stderr).toContain("--unlock requires a slug");
+    expect(callLog(fx)).toEqual([]);
+    fx.dispose();
+  });
+
+  it("--unlock refuses a slug that escapes .worktrees/, leaving an out-of-tree lock standing (#257 A1)", () => {
+    const fx = makeFixture();
+    fx.addCommitted("in-tree");
+    fx.lock("in-tree", "fixer #257");
+    // A registered, locked worktree outside .worktrees/ — a sibling of the
+    // tool's own root. Git knows it; the tool's scope does not, so before this
+    // guard `--unlock ../elsewhere` cleared this declaration and exited 0.
+    const outside = fx.addOutside("elsewhere");
+    fx.lockAt(outside, "implementer #999");
+
+    for (const escape of ["../elsewhere", "nested/slug", ".", ".."]) {
+      const trace = join(fx.dir, `git-trace-${escape.replace(/\W/g, "_")}.json`);
+      const result = runClean(
+        fx,
+        ["--unlock", escape],
+        { GIT_TRACE2_EVENT: trace },
+        { withholdGate: true },
+      );
+
+      // Refused in the argument-parse loop, in the same loud shape a missing
+      // value gets: non-zero, nothing on stdout, and — the claim the position
+      // makes — no git call at all, so git never wrote its trace.
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(
+        `--unlock requires a slug within .worktrees/: "${escape}" is not a bare directory name`,
+      );
+      expect(result.stdout).toBe("");
+      expect(existsSync(trace)).toBe(false);
+
+      // The declaration the escape aimed at survives, read from git's own
+      // listing: the out-of-tree worktree is still registered and still locked,
+      // and the in-tree declaration is untouched too.
+      expect(fx.lockStateAt(outside)).toEqual({ locked: true, reason: "implementer #999" });
+      expect(existsSync(outside)).toBe(true);
+      expect(fx.lockState("in-tree")).toEqual({ locked: true, reason: "fixer #257" });
+    }
+
+    // Every legitimate slug shape the manager uses still unlocks: a kebab slug,
+    // the reviewer's detached `review-<pr>`, and an interior dot, which the rule
+    // allows — the value only has to be one component under .worktrees/.
+    fx.addDetached("review-257");
+    fx.lock("review-257", "reviewer #257");
+    fx.addCommitted("v1.2-fix");
+    fx.lock("v1.2-fix", "implementer #257");
+
+    const legit = runClean(
+      fx,
+      ["--unlock", "in-tree", "--unlock", "review-257", "--unlock", "v1.2-fix"],
+      {},
+      { withholdGate: true },
+    );
+
+    expect(legit.status).toBe(0);
+    expect(legit.stdout).toContain("done: 3 unlocked, 0 failed");
+    expect(fx.lockState("in-tree")).toEqual({ locked: false, reason: "" });
+    expect(fx.lockState("review-257")).toEqual({ locked: false, reason: "" });
+    expect(fx.lockState("v1.2-fix")).toEqual({ locked: false, reason: "" });
+    // Neither mode sweeps: an --unlock run consults no PR history.
     expect(callLog(fx)).toEqual([]);
     fx.dispose();
   });
