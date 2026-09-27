@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { Budget, BudgetExceededError, budgetCapFromEnv } from "./budget";
 import {
+  behaviorAccepted,
   citationLabelsPresent,
   citationValidity,
   detectRefusal,
+  groundedAnswer,
   refusalCorrectness,
   retrievalRecall,
 } from "./scorers";
@@ -223,6 +225,74 @@ describe("detectRefusal", () => {
         "no match",
       ]),
     ).toBe(false);
+  });
+});
+
+describe("groundedAnswer (#250: the non-refusal branch)", () => {
+  const frameOf = (labels: string[]): CitationFrameLike => ({
+    citations: labels.map((label) => ({ label })),
+  });
+  const reviewWith = (grounded: string[] | undefined): TraceEventLike => ({
+    kind: "review",
+    stage: "reviewer",
+    detail: grounded === undefined ? { verdict: "{}" } : { verdict: "{}", grounded },
+  });
+
+  it("is true when the frame grounds at least one citation", () => {
+    expect(groundedAnswer({ frame: frameOf(["QS. 55:1"]) })).toBe(true);
+  });
+
+  it("is false for an EMPTY frame, even when the trace's grounded list is not", () => {
+    // Frame-first precedence, exactly as `citationLabelsPresent`: an empty frame
+    // is authoritative and the trace labels are never consulted past it. This is
+    // the direction that cannot manufacture a pass from a fabricated citation.
+    expect(groundedAnswer({ frame: frameOf([]), events: [reviewWith(["QS. 55:1"])] })).toBe(false);
+  });
+
+  it("falls back to the trace's grounded labels when no frame was carried", () => {
+    expect(groundedAnswer({ frame: null, events: [reviewWith(["QS. 55:1"])] })).toBe(true);
+  });
+
+  it("treats an EMPTY grounded list as evidence of nothing", () => {
+    expect(groundedAnswer({ frame: null, events: [reviewWith([])] })).toBe(false);
+  });
+
+  it("is false when the trace carries no review event at all", () => {
+    expect(groundedAnswer({ events: [{ kind: "retrieval", stage: "retriever" }] })).toBe(false);
+  });
+
+  it("is false for an older trace with no grounded field — the text never grounds itself", () => {
+    // The one shape `groundedAnswer` takes no answer text for: a citation-shaped
+    // span in the prose is not evidence (a fabricated citation is shaped the
+    // same way), so there is deliberately no text fallback here.
+    expect(groundedAnswer({ frame: null, events: [reviewWith(undefined)] })).toBe(false);
+  });
+});
+
+describe("behaviorAccepted (#250: refuse, or ground it)", () => {
+  it("passes a trap on a bare refusal — a refusal carries no citations by design", () => {
+    expect(behaviorAccepted("refuse", true, false)).toBe(true);
+  });
+
+  it("passes a trap on a grounded decline — the paraphrase exact-prose matching scored as an answer", () => {
+    expect(behaviorAccepted("refuse", false, true)).toBe(true);
+  });
+
+  it("fails a trap on a non-refusal with no grounded citation — this keeps the gate live", () => {
+    // `gs-v0-019` has no required citations and no expected source types, so
+    // this dimension is its only live check: accepting any non-refusal would
+    // make the question a no-op that always passes.
+    expect(behaviorAccepted("refuse", false, false)).toBe(false);
+  });
+
+  it("fails an answerable question that is refused, grounded or not (over-refusal)", () => {
+    expect(behaviorAccepted("answer", true, false)).toBe(false);
+    expect(behaviorAccepted("answer", true, true)).toBe(false);
+  });
+
+  it("accepts an answerable question that answers, ignoring the grounded flag", () => {
+    expect(behaviorAccepted("answer", false, false)).toBe(true);
+    expect(behaviorAccepted("answer", false, true)).toBe(true);
   });
 });
 
