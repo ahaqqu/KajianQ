@@ -102,7 +102,9 @@ ticket with its reason.
 `.zcode/agents/qa.md` defines the QA agent: it works against the **deployed
 staging environment** rather than a worktree, it is **read-only on the repo**
 (comments and finding tickets yes; commits, branches, merges, and closures
-no), it uses **anonymous sessions only and erases every session it creates**,
+no), it uses **anonymous sessions only and erases every session it creates —
+or discloses any session it could not erase, with its `sessionId`, contents
+and expiry under the 30-day reclamation**,
 it takes no destructive action against the corpus or the store, and it stays
 inside the ticket's cap. It does not fix code: **every real defect becomes its
 own ticket**. The role's model pin is a high-reasoning model, because

@@ -215,4 +215,6 @@ Deploy is done when:
       `blocked` — with per-probe evidence and every defect it found carrying its
       own ticket. A green `Staging` run is not a verdict.
 - [ ] Production dispatch approved at the `prod` gate and its deploy green.
-- [ ] Any test session you created by hand is erased.
+- [ ] Any test session you created by hand is erased, or its non-erasure
+      disclosed with its `sessionId`, contents and expiry (keep the token in a
+      durable path — a lost token cannot be erased; `qa-phase` safety rails).
