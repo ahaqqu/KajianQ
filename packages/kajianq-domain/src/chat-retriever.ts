@@ -14,6 +14,7 @@ import {
   expandSurahScope,
   type ScopeChildRow,
 } from "./chat-scope-expansion";
+import { withTextLayers } from "./chunk-text-layers";
 
 /**
  * KajianQRetriever — Smart Router stage 4 (spec §3.3): embed each routed
@@ -205,13 +206,14 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
                       // only place those layers exist — without this merge the
                       // ADR-0006 rule is dead on the real answer path and the
                       // prompt silently claims an original it does not carry.
-                      metadata: {
-                        ...hit.child.metadata,
-                        textAr: hit.child.textAr,
-                        ...(hit.child.textId !== null && hit.child.textId !== ""
-                          ? { textId: hit.child.textId }
-                          : {}),
-                      },
+                      // `withTextLayers` (B1) is the one owner of that merge,
+                      // shared with the surah-scope expansion below, so the two
+                      // paths cannot drift.
+                      metadata: withTextLayers(
+                        hit.child.metadata,
+                        hit.child.textAr,
+                        hit.child.textId,
+                      ),
                       rankDense: hit.rankDense,
                     },
                     rank: hit.rankDense,
