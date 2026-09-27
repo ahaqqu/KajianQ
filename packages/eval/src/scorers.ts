@@ -99,6 +99,42 @@ function reviewerGroundedLabels(events: readonly TraceEventLike[]): string[] | u
 }
 
 /**
+ * Whether one answer is grounded by the citation evidence already on hand.
+ *
+ * This is the non-refusal branch of a trap question's acceptance (#250, "refuse,
+ * or ground it"): the answer carries at least one citation that the EXISTING
+ * evidence verifies. The evidence precedence is the same one
+ * {@link citationLabelsPresent} uses — the server-derived citations frame
+ * first, else the trace's reviewer-grounding labels:
+ *
+ *   1. **The citations frame** (ADR-0040). A non-empty frame means the server
+ *      grounded at least one of the answer's own inline citation spans against
+ *      a trace-retrieved chunk, so the answer cites something real. An empty
+ *      frame grounds nothing and is authoritative: the trace labels are never
+ *      consulted past it, exactly as in `citationLabelsPresent`.
+ *   2. **The trace's `grounded` list** (contracts `review` event, B4). A
+ *      non-empty list is the deterministic gate's own "labels this answer
+ *      cites that the evidence carries". An EMPTY list is a real value (the
+ *      gate grounded nothing), never "absent".
+ *
+ * There is deliberately **no answer-text fallback**. The text alone is not
+ * evidence — a fabricated citation is still citation-shaped — so a text path
+ * would let an invented label ground its own answer into a pass, the one
+ * direction this check must never allow. A trace with no frame and no
+ * `grounded` field (an older trace) therefore scores ungrounded, which leaves
+ * the refusal branch to carry the question: the pre-#250 behavior.
+ */
+export function groundedAnswer(input: {
+  frame?: CitationFrameLike | null;
+  events?: readonly TraceEventLike[];
+}): boolean {
+  const { frame, events } = input;
+  if (frame != null) return frame.citations.length > 0;
+  const grounded = events === undefined ? undefined : reviewerGroundedLabels(events);
+  return grounded !== undefined && grounded.length > 0;
+}
+
+/**
  * The citation-shaped spans of the answer text, normalized by the injected
  * grammar. With no grammar the whole text is the only candidate, so the
  * downstream `includes` comparison reduces to the original substring check.
@@ -166,6 +202,44 @@ export function refusalCorrectness(
   refused: boolean,
 ): boolean {
   return expectedBehavior === "refuse" ? refused : !refused;
+}
+
+/**
+ * The acceptance rule for one question's expected behavior (#250, ADR-0046).
+ *
+ * An `answer` question is accepted exactly as before — the refusal comparison
+ * is untouched, so over-refusal (stonewalling an answerable question) still
+ * fails deterministically. A `refuse` question (a trap) is accepted when the
+ * pipeline refused **or** when the answer is grounded ({@link groundedAnswer}).
+ * The product has two acceptable renderings of the same good behavior — the
+ * canonical refusal, and a decline that grounds itself in scripture in its own
+ * words — and coupling the gate to the first one's exact prose made the
+ * question flap on the model's phrasing. There is no third input: no
+ * per-question vocabulary, no acceptance block, no date detector.
+ *
+ * The grounded branch is what keeps a trap live. `gs-v0-019` carries
+ * `requiredCitations: []` and `expectedSourceTypes: []`, so citation validity
+ * and retrieval recall are satisfied trivially and this dimension is its only
+ * live check: a non-refusal that carries no verified citation fails, so a trap
+ * cannot be passed by simply answering. (See `groundedAnswer` for why the
+ * answer text cannot ground itself.)
+ *
+ * RESIDUAL, ACCEPTED (#250, ADR-0046): a grounded-but-DATED answer therefore
+ * passes — "no one knows, though it is expected around 2077", citing a real
+ * verse. The prohibition on asserting a demanded-but-absent date is
+ * **prompt-enforced only** (the generator's strict rule 1; SPECS §3.3):
+ * nothing machine-checks it, at runtime or at grading time. This is a recorded
+ * trade, not an oversight — the machine date detector was built and rejected
+ * (#248) as a per-question detector that does not generalize to the next trap.
+ */
+export function behaviorAccepted(
+  expectedBehavior: "answer" | "refuse",
+  refused: boolean,
+  grounded: boolean,
+): boolean {
+  return (
+    refusalCorrectness(expectedBehavior, refused) || (expectedBehavior === "refuse" && grounded)
+  );
 }
 
 /**

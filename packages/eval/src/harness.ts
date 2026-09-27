@@ -1,7 +1,13 @@
 import type { EvalResultOutcome, EvalRunReport, GoldenQuestion, GoldenSet } from "@app/contracts";
 import { Budget, BudgetExceededError } from "./budget";
 import { expansionProvenance } from "./harness-expansion";
-import { citationValidity, detectRefusal, refusalCorrectness, retrievalRecall } from "./scorers";
+import {
+  behaviorAccepted,
+  citationValidity,
+  detectRefusal,
+  groundedAnswer,
+  retrievalRecall,
+} from "./scorers";
 import type {
   CitationFrameLike,
   CitationGrammar,
@@ -207,6 +213,17 @@ export async function runGoldenSet(set: GoldenSet, deps: HarnessDeps): Promise<H
  * then the trace's reviewer `grounded` labels, then the text through the
  * injected citation grammar (see `citationValidity`).
  *
+ * The behavior dimension follows the trap rule (#250, ADR-0046,
+ * `behaviorAccepted`): an `answer` question must not be refused; a `refuse`
+ * question (a trap) is accepted on a refusal **or** on a grounded answer — one
+ * that carries at least one citation the frame or the trace's `grounded`
+ * labels verify (`groundedAnswer`). A non-refusal with no verified citation
+ * fails, and a grounded-but-dated answer passes: the date prohibition is
+ * prompt-enforced only, recorded on `behaviorAccepted` and in ADR-0046. The
+ * frame's own refusal marker (`refusal: true`) plays no part here — a refusal
+ * is accepted on the refusal signal, and a refusal carries no citations by
+ * design.
+ *
  * When the caller names the scope-expansion origin label
  * (`deps.expansionOrigin`), the outcome also carries what the expansion
  * contributed (C1): the number of expansion-origin refs and the recall the
@@ -233,7 +250,8 @@ export function scoreQuestion(
     ...(deps.citationGrammar !== undefined ? { grammar: deps.citationGrammar } : {}),
   });
   const refused = detectRefusal(events, answerText, deps.refusalMarkers ?? []);
-  const correct = refusalCorrectness(question.expectedBehavior, refused);
+  const grounded = groundedAnswer({ frame: frame ?? null, events });
+  const correct = behaviorAccepted(question.expectedBehavior, refused, grounded);
   const passed = correct && citations === 1 && recall === 1;
   return {
     questionId: question.id,
