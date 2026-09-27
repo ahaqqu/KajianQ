@@ -23,6 +23,23 @@ import {
  * exactly why the suite stayed green on a head that still false-refused
  * grounded citations (A1/A2).
  *
+ * #264 moved two more classes, and the sweep moved with them — but a tail-only
+ * sweep cannot fail for either, which review B1 executed and showed:
+ *
+ *  - invisible formatting (`\p{Cf}`) is stripped in the flatten step, so it is
+ *    noise at **every position**, not only the tail: `HR. Bukhari no. 5\u200c010`
+ *    used to truncate to a retrieved prefix sibling, so the sweep below inserts
+ *    it before the marker, inside a number and after it;
+ *  - a fullwidth digit (`５`, U+FF15) folds to its ASCII value. Glued to a
+ *    number it still continues that number (pinned below), but that row is true
+ *    with or without the fold — the row that can fail is the fullwidth
+ *    **rendering** of an address, which must reduce to the ASCII address.
+ *
+ * The rest of the sweep is **tail-only on purpose**: for punctuation, symbols,
+ * superscripts, combining marks and whitespace, the tail is the whole claim —
+ * each carries no address information where a tail can sit. The classes that
+ * continue the token are pinned separately below.
+ *
  * The sweep states the boundary too, not only the noise. Two classes are
  * deliberately NOT noise, and a future widening of the tail rule that starts
  * grounding them fails here rather than in production:
@@ -32,7 +49,8 @@ import {
  *    addresses than `no. 5010`), so they must never reduce to the bare number;
  *  - a dash (`\p{Pd}`) joined to a number is the closed-up range form, kept
  *    whole so an unretrieved second address is never dropped from validation
- *    (A3's precision-for-safety trade-off, `DASH_JOINED_NUMBER_TAIL`).
+ *    (A3's precision-for-safety trade-off, `DASH_JOINED_NUMBER_TAIL`, which
+ *    #264 extended to the Quran compound `QS. 2:255—256`).
  */
 
 /** Addresses in the product's grammars. */
@@ -42,6 +60,26 @@ const ADDRESSES = ["QS. 2:255", "QS. 114:6", "HR. Bukhari no. 5010", "HR. Abu Da
 function chunk(label: string): Chunk {
   return { id: `c-${label}`, text: "evidence", metadata: { citation: label } };
 }
+
+/**
+ * The dash family (`\p{Pd}`) on its own, named so the closed-up-range property
+ * below cannot drift when a class is added to the sweep.
+ */
+const DASH_CHARS = ["-", "‐", "‑", "‒", "–", "—", "―", "−"] as const;
+
+/**
+ * The `\p{Cf}` characters the flatten step drops. Named because they are noise
+ * at **every** position, not only the tail (review B1), so they sweep
+ * differently from the tail-only classes below.
+ */
+const INVISIBLE_FORMATTING_CHARS = [
+  "\u200b",
+  "\u200c",
+  "\u200d",
+  "\u200e",
+  "\u00ad",
+  "\ufeff",
+] as const;
 
 /**
  * One representative per Unicode class that can appear in a citation's tail.
@@ -55,20 +93,23 @@ const NOISE_CLASSES = [
     name: "punctuation (\\p{P})",
     chars: [":", ";", ",", ".", ")", "]", "(", "…", '"', "'", "*", "،", "؛", "：", "؟"],
   },
-  { name: "dashes (\\p{Pd})", chars: ["-", "‐", "‑", "‒", "–", "—", "―", "−"] },
+  { name: "dashes (\\p{Pd})", chars: DASH_CHARS },
   { name: "symbols (\\p{S})", chars: ["+", "=", "$", "©", "°", "±"] },
   { name: "superscripts/subscripts (\\p{No})", chars: ["¹", "²", "⁵", "₀", "₃", "½"] },
   { name: "combining marks (\\p{M})", chars: ["\u0301", "\u0308", "\u0651"] },
   { name: "whitespace (\\s)", chars: [" ", "\u00a0", "\t", "\u2003"] },
+  { name: "invisible formatting (\\p{Cf})", chars: INVISIBLE_FORMATTING_CHARS },
 ] as const;
 
 /**
  * The address-bearing classes: characters that continue the number token
  * itself. They are NOT noise, and the tests below pin the fail-closed
  * direction — a label carrying one must never reduce to the bare address.
+ * `５` is here because #264 folds the fullwidth block to ASCII first: it is
+ * still a digit, so it still continues the number.
  */
 const ADDRESS_BEARING_CLASSES = [
-  { name: "digits (\\p{Nd})", chars: ["0", "2", "7", "9", "٣", "٥"] },
+  { name: "digits (\\p{Nd})", chars: ["0", "2", "7", "9", "٣", "٥", "５"] },
   { name: "letters (\\p{L})", chars: ["a", "Z", "é", "ا", "中"] },
 ] as const;
 
@@ -86,6 +127,56 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
           const { ungrounded } = validateCitations(`Lihat ${label} lanjut`, [chunk(address)]);
           expect(ungrounded, `${name} after ${address}`).toEqual([]);
         }
+      }
+    }
+  });
+
+  it("drops an invisible format character at EVERY position, not only the tail (B1)", () => {
+    // Review B1 executed the mutation: with the sweep above appending class
+    // characters at the tail only, reverting the `\p{Cf}` strip left this
+    // suite 9/9 green while four unit tests reddened — the row could not fail.
+    // The flatten step drops the class from the whole label before a grammar
+    // reads it, so it is noise at every position; sweeping the positions is
+    // what gives the row teeth (reverting the strip now reddens THIS test).
+    for (const address of ADDRESSES) {
+      for (const char of INVISIBLE_FORMATTING_CHARS) {
+        for (let at = 0; at <= address.length; at += 1) {
+          const glued = `${address.slice(0, at)}${char}${address.slice(at)}`;
+          expect(normalizeCitationLabel(glued), `${char} at ${at} of ${address}`).toBe(address);
+        }
+      }
+      // …and the gate grounds the citation however the glue is spelled, at the
+      // structural positions a tail-only sweep never reached.
+      for (const char of INVISIBLE_FORMATTING_CHARS) {
+        const glued = `${address.slice(0, 2)}${char}${address.slice(2)}`;
+        const { ungrounded } = validateCitations(`Lihat ${glued} lanjut`, [chunk(address)]);
+        expect(ungrounded, `${char} inside ${address}`).toEqual([]);
+      }
+    }
+  });
+
+  it("folds a fullwidth rendering of every address digit (B1)", () => {
+    // The ADDRESS_BEARING row below proves `５` continues a number — true with
+    // or without the fold, because `５` is `\p{Nd}` either way. What only the
+    // fold can satisfy is the fullwidth RENDERING of an address: without the
+    // fold the digits stay fullwidth, the label does not equal its ASCII
+    // address, and this test reddens (executed — that is its mutation proof).
+    const fullwidth = (text: string) =>
+      text.replace(/[0-9]/g, (digit) => String.fromCharCode((digit.charCodeAt(0) ?? 0) + 0xfee0));
+    for (const address of ADDRESSES) {
+      const rendered = fullwidth(address);
+      expect(normalizeCitationLabel(rendered), rendered).toBe(address);
+      expect(
+        validateCitations(`Lihat ${rendered} lanjut`, [chunk(address)]).ungrounded,
+        rendered,
+      ).toEqual([]);
+      // One digit at a time, so a mid-number fold is swept, not only a whole
+      // fullwidth number.
+      for (let at = 0; at < address.length; at += 1) {
+        const digit = address[at] ?? "";
+        if (!/[0-9]/.test(digit)) continue;
+        const mixed = `${address.slice(0, at)}${fullwidth(digit)}${address.slice(at + 1)}`;
+        expect(normalizeCitationLabel(mixed), mixed).toBe(address);
       }
     }
   });
@@ -141,19 +232,34 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
     expect(normalizeCitationLabel("QS. 2:2550")).toBe("QS. 2:2550");
   });
 
-  it("keeps a dash joined to a number whole — the deliberate A3 trade-off", () => {
-    for (const dash of NOISE_CLASSES[1].chars) {
+  it("keeps a dash joined to a number whole — the deliberate A3 trade-off, both grammars", () => {
+    // #264: one rule covers both grammars. The Quran compound used to slip
+    // through because the grammar's match ended at the first verse's digits,
+    // so the second address never reached this comparison.
+    const compounds: { compound: string; retrieved: string[] }[] = [];
+    for (const dash of DASH_CHARS) {
       for (const number of ["3", "5011", "٥٠١١"]) {
-        const compound = `HR. Bukhari no. 5010${dash}${number}`;
-        expect(normalizeCitationLabel(compound), compound).toBe(compound);
-        const { ungrounded } = validateCitations(`Lihat ${compound} menjelaskan`, [
-          chunk("HR. Bukhari no. 5010"),
-          chunk("HR. Bukhari no. 5011"),
-        ]);
-        // Refused even with both addresses retrieved: the accepted cost of
-        // never dropping a possibly-unretrieved second address.
-        expect(ungrounded, compound).toEqual([compound]);
+        compounds.push({
+          compound: `HR. Bukhari no. 5010${dash}${number}`,
+          retrieved: ["HR. Bukhari no. 5010", "HR. Bukhari no. 5011"],
+        });
       }
+      for (const number of ["256", "255", "٢٥٦"]) {
+        compounds.push({
+          compound: `QS. 2:255${dash}${number}`,
+          retrieved: ["QS. 2:255", "QS. 2:256"],
+        });
+      }
+    }
+    for (const { compound, retrieved } of compounds) {
+      expect(normalizeCitationLabel(compound), compound).toBe(compound);
+      const { ungrounded } = validateCitations(
+        `Lihat ${compound} menjelaskan`,
+        retrieved.map((label) => chunk(label)),
+      );
+      // Refused even with both addresses retrieved: the accepted cost of
+      // never dropping a possibly-unretrieved second address.
+      expect(ungrounded, compound).toEqual([compound]);
     }
   });
 
@@ -231,5 +337,27 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
       },
     );
     expect(fc.assert(property, { numRuns: 300 })).toBeUndefined();
+  });
+
+  it("still refuses a fabricated citation glued at a STRUCTURAL position (review A3)", () => {
+    // The scan side used to read the raw draft, so a format character between
+    // `no` and `.` (or between the marker and its address) made the whole
+    // citation invisible and a FABRICATED one passed the gate unseen. With the
+    // scan reading the stripped text these all refuse; reverting that strip
+    // reddens this test deterministically.
+    const cases: readonly (readonly [string, string])[] = [
+      ["HR. Bukhari no\u200c. 99999", "HR. Bukhari no. 5010"],
+      ["HR. Bukhari no\u200d. 99999", "HR. Bukhari no. 5010"],
+      ["QS\u200c. 9:99", "QS. 2:255"],
+      ["QS. 2:\u200c99", "QS. 2:255"],
+      ["QS. 2:\u200b99", "QS. 2:255"],
+    ];
+    for (const [fabricated, retrieved] of cases) {
+      const { grounded, ungrounded } = validateCitations(`Lihat ${fabricated} lanjut`, [
+        chunk(retrieved),
+      ]);
+      expect(ungrounded, fabricated).toEqual([fabricated.replace(/\p{Cf}+/gu, "")]);
+      expect(grounded, fabricated).toEqual([]);
+    }
   });
 });
