@@ -108,7 +108,11 @@ branches mid-run and corrupts each other's diffs. Therefore:
   unlock it (`git worktree unlock .worktrees/<slug>`) before reporting done: a
   locked worktree is kept by `bun run worktree:clean` whatever flags it is
   passed, so the lock is the liveness declaration that protects an active
-  dispatch's work through a cleanup.
+  dispatch's work through a cleanup. `lock` is not idempotent: a worktree that
+  is already locked is one an earlier round declared live, so leave the lock in
+  place, or refresh its reason with `git worktree unlock .worktrees/<slug>` then
+  `git worktree lock .worktrees/<slug> --reason "<role> #<issue>"` — never leave
+  a worktree you are working in unlocked, because an unlocked tree is sweepable.
 - Never put a worktree under `/tmp` (on DSH it is per-invocation — see the DSH
   adapter). Never use `.wt/` either — `.worktrees/` is the one in-repo
   convention, it is committed to `.gitignore`, and `bun run worktree:clean`
