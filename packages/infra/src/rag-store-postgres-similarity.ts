@@ -76,7 +76,10 @@ export function postgresChildMethods(
   sql: SqlRunner,
 ): Pick<
   RagStore,
-  "getDocChildrenByIds" | "countDocChildrenByMetadata" | "listDocChildrenByParentSourceKey"
+  | "getDocChildrenByIds"
+  | "countDocChildrenByMetadata"
+  | "listDocChildrenByParentSourceKey"
+  | "listDocChildNeighboursByChildIds"
 > {
   return {
     getDocChildrenByIds(ids) {
@@ -132,6 +135,60 @@ export function postgresChildMethods(
           LIMIT $2
         `,
               [parentSourceKey, opts.limit],
+            ) as Promise<(ChildRow & { parent_title: string | null })[]>,
+        ),
+        (rows) =>
+          Effect.forEach(rows, (r) =>
+            Effect.map(rowToChildEffect(r), (child): DocChildById => ({
+              ...child,
+              parentTitle: r.parent_title ?? null,
+            })),
+          ),
+      );
+    },
+
+    listDocChildNeighboursByChildIds(anchorChildIds, opts) {
+      // The anchors are the ids the caller already retrieved; their parent and
+      // ordinal come from the stored rows (`unnest … WITH ORDINALITY` keeps the
+      // caller's priority order), so the window is anchored on what was
+      // retrieved rather than on a second derivation of a chunk's position
+      // (ADR-0049). The inner `DISTINCT ON (id)` gives a neighbour reachable
+      // from several anchors to the earliest one, and `ORDER BY anchor, ordinal`
+      // makes the cap drop the least important windows — both bound parameters,
+      // as is the limit. A non-positive radius or limit is not a read at all.
+      const unique = [...new Set(anchorChildIds)].filter((id) => id.trim() !== "");
+      if (opts.radius <= 0 || opts.limit <= 0 || unique.length === 0) {
+        return Effect.succeed([] as readonly DocChildById[]);
+      }
+      return Effect.flatMap(
+        sqlEffect(
+          sql,
+          () =>
+            sql.query(
+              `
+          WITH anchors AS (
+            SELECT a.id AS anchor_id, a.ord AS anchor_pos, c.parent_id, c.ordinal
+            FROM unnest($1::uuid[]) WITH ORDINALITY AS a(id, ord)
+            JOIN doc_children c ON c.id = a.id
+          )
+          SELECT n.id, n.parent_id, n.text_raw, n.text_ar, n.text_id, n.citation,
+                 NULL::text AS embedding_primary, NULL::text AS embedding_fallback,
+                 n.ordinal, n.metadata, n.created_at, p.title AS parent_title
+          FROM (
+            SELECT DISTINCT ON (n.id) n.id, n.ordinal, n.parent_id, an.anchor_pos
+            FROM anchors an
+            JOIN doc_children n
+              ON n.parent_id = an.parent_id
+             AND n.ordinal BETWEEN an.ordinal - $2 AND an.ordinal + $2
+             AND n.id <> an.id
+            ORDER BY n.id, an.anchor_pos, n.ordinal
+          ) w
+          JOIN doc_children n ON n.id = w.id
+          LEFT JOIN doc_parents p ON p.id = n.parent_id
+          ORDER BY w.anchor_pos, w.ordinal, w.id
+          LIMIT $3
+        `,
+              [unique, opts.radius, opts.limit],
             ) as Promise<(ChildRow & { parent_title: string | null })[]>,
         ),
         (rows) =>

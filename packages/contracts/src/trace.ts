@@ -152,6 +152,25 @@ export const TraceEventSchema = v.variant("kind", [
     at: v.pipe(v.number(), v.integer()),
   }),
   v.object({
+    /** A deterministic neighbourhood expansion (ADR-0049): the retriever added
+     * the children neighbouring the verses already in context. `anchors` are
+     * the ids the read was keyed on, in its priority order, so every added
+     * chunk resolves to a read that produced it (same parent, within `radius`
+     * ordinals of a named anchor) instead of to "the expansion, somehow". */
+    stage: v.literal("retriever"),
+    kind: v.literal("neighbour_expansion"),
+    detail: v.object({
+      anchors: v.array(v.pipe(v.string(), v.minLength(1))),
+      /** Children added; the configured radius, cap, and truncation flag. */
+      returned: v.pipe(v.number(), v.integer(), v.minValue(0)),
+      radius: v.pipe(v.number(), v.integer(), v.minValue(0)),
+      cap: v.pipe(v.number(), v.integer(), v.minValue(0)),
+      truncated: v.boolean(),
+    }),
+    cost: v.optional(CostRecordSchema),
+    at: v.pipe(v.number(), v.integer()),
+  }),
+  v.object({
     stage: StageSchema,
     kind: v.literal("llm_call"),
     detail: v.optional(

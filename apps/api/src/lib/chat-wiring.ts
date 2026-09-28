@@ -8,7 +8,13 @@ import {
   type ProviderConfig,
   type RagStore,
 } from "@app/infra";
-import { ChatConfigError, createRagStoreFromEnv, parseScopeExpansionCap } from "./chat-config";
+import {
+  ChatConfigError,
+  createRagStoreFromEnv,
+  parseNeighbourCap,
+  parseNeighbourRadius,
+  parseScopeExpansionCap,
+} from "./chat-config";
 export { authGuard } from "./auth";
 // Re-exported so the chat route keeps its 5-import agentic cap (same pattern
 // as the authGuard re-export): the route imports one name from its lib hub.
@@ -18,7 +24,13 @@ export { answerFramesFor, rehydrateTranscript } from "./chat-citations";
 export { chunkFetcher } from "./chat-trace";
 // The config surface moved to `chat-config.ts` (agentic size cap); re-exported
 // here so `lib/index.ts`, `scheduled.ts`, and their tests keep one import hub.
-export { ChatConfigError, createRagStoreFromEnv, parseScopeExpansionCap } from "./chat-config";
+export {
+  ChatConfigError,
+  createRagStoreFromEnv,
+  parseNeighbourCap,
+  parseNeighbourRadius,
+  parseScopeExpansionCap,
+} from "./chat-config";
 
 /**
  * Env-bound wiring for the chat route (#10): the one place the Worker's
@@ -211,6 +223,8 @@ export function buildChatWiring(env: Record<string, string | undefined>): ChatWi
   }
   const store = createRagStoreFromEnv(env);
   const scopeExpansionCap = parseScopeExpansionCap(env["SCOPE_EXPANSION_CAP"]);
+  const neighbourRadius = parseNeighbourRadius(env["NEIGHBOUR_EXPANSION_RADIUS"]);
+  const neighbourCap = parseNeighbourCap(env["NEIGHBOUR_EXPANSION_CAP"]);
   return {
     pipeline: {
       routerProvider: providers.router,
@@ -225,6 +239,11 @@ export function buildChatWiring(env: Record<string, string | undefined>): ChatWi
       // ADR-0045: absent = the domain default; the knob is config, so the
       // per-query expansion budget is a deployment choice, not a code literal.
       ...(scopeExpansionCap !== undefined ? { scopeExpansionCap } : {}),
+      // ADR-0049: the same posture for the retrieved-verse neighbourhood
+      // window — how wide it is and how much of the prompt it may spend are
+      // deployment choices, and `<= 0` on either turns it off.
+      ...(neighbourRadius !== undefined ? { neighbourRadius } : {}),
+      ...(neighbourCap !== undefined ? { neighbourCap } : {}),
     },
     fullStore: store,
     runStore: storeBridge(store),

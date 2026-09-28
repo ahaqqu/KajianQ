@@ -37,7 +37,7 @@ export type ChatPipelineDeps = {
   embedder: RetrieverEmbedder;
   store: Pick<
     import("@app/infra").RagStore,
-    "similaritySearch" | "listDocChildrenByParentSourceKey"
+    "similaritySearch" | "listDocChildrenByParentSourceKey" | "listDocChildNeighboursByChildIds"
   >;
   /** Runs a store Effect to a promise (composition-root bridge). */
   bridge: StoreBridge;

@@ -1,12 +1,11 @@
 import type { Chunk } from "@app/rag-core";
+import { CITATION_GRAMMARS, addressesNamedBy, reduceCitationLabel } from "./chat-citation-grammar";
 import {
-  CITATION_GRAMMARS,
   canonicalizeCitationSpelling,
   foldAddressDigits,
-  reduceCitationLabel,
   stripInvisibleFormatting,
   stripInvisibleFormattingWithOffsets,
-} from "./chat-citation-grammar";
+} from "./chat-citation-spelling";
 
 /**
  * Deterministic citation validator (spec §3.3 step 7, ticket #10): every
@@ -250,6 +249,18 @@ export function citationMatchText(text: string): string {
  * appends a grade parenthetical is not falsely accused; and a retrieved label
  * whose text the answer extends (the model added `(Sahih)` to an ungraded
  * chunk) still counts as grounded.
+ *
+ * **A citation that names a LIST of addresses is checked address by address
+ * (ADR-0049).** The Quran range is such a form: `QS. 3:1-2` names `QS. 3:1`
+ * *and* `QS. 3:2`, so it grounds exactly when the retrieved labels hold every
+ * one of them — and still refuses when only the head, only the tail, or
+ * neither was retrieved. The list comes from the grammar that declared it
+ * (`addressesNamedBy`), never from splitting a dash at this site: a grammar
+ * with no list-valued form names one address and its dash-joined compound
+ * stays the opaque whole it was (#264's A3 boundary, unchanged for hadith).
+ * The candidate label itself is untouched, so the refusal reason, the
+ * reviewer pre-gate's claim spans and the citation the user reads keep naming
+ * what the draft named.
  */
 export function validateCitations(
   answer: string,
@@ -278,6 +289,12 @@ export function validateCitations(
     // carry (`HR. Bukhari no. 573` → `… (Sahih)`); the address is what must
     // be grounded, so a known-label prefix counts.
     if ([...known].some((k) => candidate.startsWith(`${k} `))) continue;
+    // ADR-0049: every address the citation's own grammar declares it names
+    // must be present. One declared address is the ordinary case already
+    // covered above; the check only ever ADDS a requirement, never drops one,
+    // so it cannot ground a citation the whole-label rule refused.
+    const named = addressesNamedBy(candidate).map(canonicalizeCitationSpelling);
+    if (named.length > 1 && named.every((address) => known.has(address))) continue;
     if (!ungrounded.includes(candidate)) ungrounded.push(candidate);
   }
   return { grounded, ungrounded };

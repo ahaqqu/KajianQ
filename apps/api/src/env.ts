@@ -52,6 +52,16 @@ export type AppBindings = {
    * filtered env view so the knob reaches the pipeline's wiring.
    */
   SCOPE_EXPANSION_CAP?: string;
+  /**
+   * ADR-0049's retrieved-verse neighbourhood expansion, as non-negative
+   * integer strings: how many ordinals on each side of a retrieved verse join
+   * the context, and how many chunks the expansion may add to one query.
+   * Absent = the domain defaults (`DEFAULT_NEIGHBOUR_RADIUS` /
+   * `DEFAULT_NEIGHBOUR_CAP`); `<= 0` on either disables the expansion. Config,
+   * never secrets, and they ride the same filtered env view as the scope cap.
+   */
+  NEIGHBOUR_EXPANSION_RADIUS?: string;
+  NEIGHBOUR_EXPANSION_CAP?: string;
 };
 
 /**

@@ -1,7 +1,7 @@
 /**
  * The citation grammars the product renders (SPECS §2.1), the **address each
- * grammar identifies inside its own match**, and the spelling an address
- * compares in.
+ * grammar identifies inside its own match**, and the **addresses a match names**
+ * when the form is a list rather than one address.
  *
  * A grammar's token class absorbs whatever trails the address until it meets a
  * character it excludes (whitespace, a comma, a closing bracket), and that
@@ -14,16 +14,15 @@
  * eating the verse digits of `QS. 2:255` — but each grammar already knows its
  * own address, and `addressOf` is where it says so. {@link reduceCitationLabel}
  * is the one consumer; `chat-citation-validator` owns the rest of the
- * normalization and the comparison. This module also owns how the address's
- * characters and separators are spelled in the comparison form
- * ({@link stripInvisibleFormatting}, {@link foldAddressDigits},
- * {@link canonicalizeCitationSpelling}) — the same subject, one step later.
- * The split is only for the 300-line agentic limit, not a new seam: this module
- * is internal to the domain pack (not re-exported from `index.ts`) and imports
- * nothing.
+ * normalization and the comparison. How an address's characters and separators
+ * are **spelled** in the comparison form lives in `chat-citation-spelling`
+ * (the same subject, one step later). The split is only for the 300-line
+ * agentic limit, not a new seam: this module is internal to the domain pack
+ * (not re-exported from `index.ts`) and imports nothing.
  */
 
-/** One citation grammar: a fresh matcher, plus the address inside its match. */
+/** One citation grammar: a fresh matcher, the address inside its match, and —
+ * where the form names several — the list of addresses it names. */
 export interface CitationGrammar {
   /** A fresh matcher per call (rationale on {@link CITATION_GRAMMARS}). */
   readonly pattern: () => RegExp;
@@ -33,6 +32,17 @@ export interface CitationGrammar {
    * citation attempt, still refused, with the lexical tail strip owning it.
    */
   readonly addressOf: (match: RegExpExecArray) => string | null;
+  /**
+   * Every address this grammar's match **names**, in order, or `undefined`
+   * when the grammar has no list-valued form — in which case a match names
+   * exactly the one address {@link addressOf} returns, and a dash-joined tail
+   * stays the opaque compound {@link DASH_JOINED_NUMBER_TAIL} keeps whole
+   * (ADR-0049). Declared per grammar rather than split at the comparison site:
+   * only the grammar that owns an address knows whether a dash joins two of
+   * them or is part of one token, so no other form is re-interpreted by a
+   * pattern that cannot see the difference.
+   */
+  readonly addressesOf?: (match: RegExpExecArray) => readonly string[];
 }
 
 /**
@@ -89,8 +99,22 @@ export const CITATION_GRAMMARS: readonly CitationGrammar[] = [
   // truncates the match and the compound is kept whole and refused.
   {
     pattern: () =>
-      /(\bQ\.?S(?:\.|\s)\s*[^\s:,[\]()]+\s*:\s*\p{Nd}+)(?:\p{Cf}*[-‐‑‒–—―−]\p{Cf}*\p{Nd}+)?/giu,
+      /(\bQ\.?S(?:\.|\s)\s*[^\s:,[\]()]+\s*:\s*\p{Nd}+)(?:\p{Cf}*[-‐‑‒–—―−]\p{Cf}*(\p{Nd}+))?/giu,
     addressOf: (match) => match[1] ?? null,
+    // A Quran range is a LIST of addresses, and the grammar is where that is
+    // declared (ADR-0049): `QS. 3:1-2` names `QS. 3:1` **and** `QS. 3:2`, so
+    // the comparison form can require every one of them present while the
+    // display form stays the range as written. The second member reuses the
+    // head's surah — the grammar's address is `surah:ayah`, so the tail number
+    // is a verse of the SAME surah (a named surah included:
+    // `QS. Al-Baqarah:255—256`, which is unverifiable and refuses anyway).
+    addressesOf: (match) => {
+      const head = match[1];
+      const tail = match[2];
+      if (head === undefined || head === "") return [];
+      if (tail === undefined) return [head];
+      return [head, head.replace(/:\s*\p{Nd}+$/u, `:${tail}`)];
+    },
   },
   // Hadith: `HR. Bukhari no. 573` / `HR. Ibn Majah no. 224 (Dhaif)`, and the
   // dot-less `HR Bukhari no. 573` (round-3 A1, same rationale as the Quran
@@ -136,13 +160,18 @@ export const CITATION_GRAMMARS: readonly CitationGrammar[] = [
  *   pattern absorbs the dash-joined tail, `addressOf` names the head, and the
  *   tail is what this constant tests. The Quran pattern grew that absorption in
  *   #264, where it used to stop at the first verse and ground on it alone.
- * - The cost is real and accepted: `… 5010—5011` is refused even when BOTH
- *   addresses were retrieved, and digit-glued prose (`… 5010—3 kali sehari`) is
- *   refused with it. Fail-closed is the safe direction for a safety-critical
- *   gate (SPECS §2.2).
- * - The follow-up that closes the cost without reopening the hole belongs at
- *   the comparison site in `chat-citation-validator`: split the compound and
- *   require each address grounded. Until then this constant is the boundary.
+ * - The cost is real: `… 5010—5011` is refused even when BOTH addresses were
+ *   retrieved, and digit-glued prose (`… 5010—3 kali sehari`) is refused with
+ *   it. Fail-closed is the safe direction for a safety-critical gate
+ *   (SPECS §2.2).
+ * - The follow-up A3 recorded **has landed for the Quran grammar** (ADR-0049,
+ *   #274): a grammar that declares {@link CitationGrammar.addressesOf} is
+ *   checked address-by-address at the comparison site, so `QS. 2:255—256`
+ *   grounds exactly when both verses are retrieved and still refuses when
+ *   either is missing. Keeping the label whole is now only the **display** and
+ *   refusal-report form, and the boundary this constant still is for a grammar
+ *   that declares no address list — the hadith number today, whose range form
+ *   is deliberately not bundled into that change.
  *
  * The class after the dash is `\p{Nd}` — a decimal digit of any script, the
  * class an address number is made of — not `\p{N}`, whose superscript and
@@ -152,15 +181,45 @@ export const CITATION_GRAMMARS: readonly CitationGrammar[] = [
  */
 const DASH_JOINED_NUMBER_TAIL = /^[-‐‑‒–—―−]\p{Nd}/u;
 
-/** The address a citation grammar identifies at the **start** of a label. */
-function addressAtStart(label: string): string | null {
+/** The grammar a label **begins** with, and its match, or `null`. */
+function grammarAtStart(
+  label: string,
+): { grammar: CitationGrammar; match: RegExpExecArray } | null {
   for (const grammar of CITATION_GRAMMARS) {
     const match = grammar.pattern().exec(label);
     if (match?.index !== 0) continue;
-    const address = grammar.addressOf(match);
-    if (address !== null && address !== "") return address;
+    return { grammar, match };
   }
   return null;
+}
+
+/** The address a citation grammar identifies at the **start** of a label. */
+function addressAtStart(label: string): string | null {
+  const at = grammarAtStart(label);
+  if (at === null) return null;
+  const address = at.grammar.addressOf(at.match);
+  return address !== null && address !== "" ? address : null;
+}
+
+/**
+ * Every address the **first** citation grammar in a label names, or `[]` when
+ * the label begins with no grammar at all. One entry per address for an
+ * ordinary citation; several for a grammar whose form is a list
+ * ({@link CitationGrammar.addressesOf}) — the Quran range, where the label is
+ * a set of addresses and grounding is decided per address (ADR-0049).
+ *
+ * The addresses come back in the grammar's own spelling; canonicalizing them
+ * for comparison belongs to `chat-citation-validator`, which owns the
+ * comparison form, exactly as it does for {@link reduceCitationLabel}'s
+ * address.
+ */
+export function addressesNamedBy(label: string): readonly string[] {
+  const at = grammarAtStart(label);
+  if (at === null) return [];
+  const declared = at.grammar.addressesOf?.(at.match);
+  if (declared !== undefined) return declared.filter((address) => address !== "");
+  const address = at.grammar.addressOf(at.match);
+  return address === null || address === "" ? [] : [address];
 }
 
 /** How a label that begins with a citation grammar reduces for comparison. */
@@ -186,113 +245,4 @@ export function reduceCitationLabel(label: string): CitationReduction | null {
     address,
     keepWhole: DASH_JOINED_NUMBER_TAIL.test(label.slice(address.length)),
   };
-}
-
-/**
- * Invisible formatting characters (`\p{Cf}`: zero-width space/non-joiner/
- * joiner, the bidi marks, soft hyphen, BOM) carry no address information but
- * split the tokens that read the digits around them: `no. 50\u200c10` used to
- * reduce to `no. 50` — a false refusal against the retrieved `no. 5010`, and,
- * worse, a grounding of a *different* passage whenever a retrieved `no. 50`
- * existed (#264). Dropping them is the same move the markdown-marker strip
- * makes: the characters are invisible, so the comparison form is too.
- *
- * Private, like the fullwidth block below, and reached through a function: a
- * module-level global regex is stateful (`lastIndex`), and a safety gate that
- * depends on call order is no gate (rationale on {@link CITATION_GRAMMARS}).
- */
-const INVISIBLE_FORMATTING = /\p{Cf}+/gu;
-
-/** One format character, stateless (no `g`, so no `lastIndex`). */
-const INVISIBLE_FORMATTING_CHAR = /\p{Cf}/u;
-
-/** Drop the invisible formatting characters from a label or an answer. */
-export function stripInvisibleFormatting(text: string): string {
-  return text.replace(INVISIBLE_FORMATTING, "");
-}
-
-/**
- * The same drop as {@link stripInvisibleFormatting}, carrying the **offset
- * policy** a scan of the stripped text needs (review A3): `offsets[i]` is the
- * index in `text` of the character at `i` in the returned string, plus a final
- * sentinel at `text.length`. The scan reads the stripped text — so the two
- * sides of the comparison read the same characters and a format character
- * cannot hide a citation from the ungrounded scan — and maps each match back
- * through this array, so a span still points at where the draft wrote it. An
- * end maps to the next surviving character, so dropped characters inside the
- * match stay inside the mapped span the reviewer pre-gate masks.
- */
-export function stripInvisibleFormattingWithOffsets(text: string): {
-  text: string;
-  offsets: number[];
-} {
-  let stripped = "";
-  const offsets: number[] = [];
-  for (let index = 0; index < text.length; index += 1) {
-    const character = text[index] ?? "";
-    if (INVISIBLE_FORMATTING_CHAR.test(character)) continue;
-    stripped += character;
-    offsets.push(index);
-  }
-  offsets.push(text.length);
-  return { text: stripped, offsets };
-}
-
-/**
- * Fullwidth digits (U+FF10–U+FF19) are the one `\p{Nd}` block that is a
- * rendering variant of the ASCII digits the corpus labels carry, so they fold
- * to their ASCII value: `no. ５０１０` is `no. 5010` (#264). Every other
- * `\p{Nd}` block stays unfolded — a general fold needs a per-block zero table
- * (Unicode decimal blocks are not aligned mod 10) and the generator is not
- * observed to emit them — which leaves those scripts recognised and refused,
- * never silently dropped (the posture is stated above on
- * {@link CITATION_GRAMMARS}).
- */
-const FULLWIDTH_DIGITS = /[\uFF10-\uFF19]/g;
-
-/** Fold the fullwidth digit block to the ASCII digits the corpus labels use. */
-export function foldAddressDigits(text: string): string {
-  return text.replace(FULLWIDTH_DIGITS, (digit) =>
-    String.fromCharCode(digit.charCodeAt(0) - 0xfee0),
-  );
-}
-
-/**
- * Canonicalize the **spelling** of a citation's structural separators to the
- * product's forms, so two spellings of one address compare equal. Two families
- * are folded:
- *
- * - **Markers**: the dotted `Q.S.` variant, and — since the grammars accept
- *   the dot-less spellings (round-3 A1) — the bare `QS` / `HR` forms. A model
- *   that writes `Q.S. 2:255` or `QS 2:255` for a chunk labeled `QS. 2:255` is
- *   citing the same address, and treating it as a different one would turn a
- *   *grounded* answer into a refusal. Each rule mirrors the separator its own
- *   grammar makes **mandatory**, so it never rewrites a spelling the scan
- *   cannot see: the `QS` rule requires the grammar's dot-or-space, leaving the
- *   grammar-excluded `QS2:255` alone (review A2 — that spelling stays a
- *   recorded residual, not a fold), and the `HR` rule requires a following
- *   whitespace, so an ordinary word ending in "HR" is never touched.
- * - **Address spacing** (#264): every grammar above writes its separators with
- *   `\s*`, so `no.5010`, `QS.2:255`, `QS. 2: 255` and `Jilid 1,Hal. 102` are
- *   the same addresses as the canonical label a formatter renders. Left
- *   unfolded, a grounded citation was refused for the spelling of its
- *   separator — the same false-refusal class #253 closed for the tail.
- *
- * Fabricated addresses are unaffected by either family: folding separator
- * spacing never changes which digits the address carries, so `no.99999` and
- * `no. 99999` stay distinct from a retrieved `no. 5010`, and `Q.S. 9:99` and
- * `QS 9:99` still normalize to `QS. 9:99`, which no retrieved chunk grounds.
- *
- * The replacements are anchored and idempotent; none of them can re-introduce
- * what another removed.
- */
-export function canonicalizeCitationSpelling(text: string): string {
-  return text
-    .replace(/\bQ\.?S(?:\.|\s)\s*/g, "QS. ")
-    .replace(/\bHR\.?(?=\s)/g, "HR.")
-    .replace(/\bno\.\s*/g, "no. ")
-    .replace(/\bJilid\s+/g, "Jilid ")
-    .replace(/\bHal\.\s*/g, "Hal. ")
-    .replace(/\s*,\s*/g, ", ")
-    .replace(/\s*:\s*/g, ":");
 }

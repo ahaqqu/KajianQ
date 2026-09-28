@@ -59,3 +59,33 @@ export function parseScopeExpansionCap(raw: string | undefined): number | undefi
   }
   return value;
 }
+
+/**
+ * The one parser behind ADR-0049's two neighbourhood knobs — the radius and
+ * the chunk cap. They share a shape and a failure mode, so they share the rule
+ * (absent/empty = the domain default; a malformed value is a typed config
+ * failure naming the variable, never a silent default). Both are read at the
+ * composition root like every other deployment choice; `<= 0` on either is the
+ * documented way to disable the expansion.
+ */
+function parseNeighbourKnob(raw: string | undefined, name: string): number | undefined {
+  if (raw === undefined || raw.trim() === "") return undefined;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 0) {
+    throw new ChatConfigError(
+      `chat route: ${name} must be a non-negative integer (got "${raw}")`,
+      name,
+    );
+  }
+  return value;
+}
+
+/** `NEIGHBOUR_EXPANSION_RADIUS` (ADR-0049): ordinals on each side of a verse. */
+export function parseNeighbourRadius(raw: string | undefined): number | undefined {
+  return parseNeighbourKnob(raw, "NEIGHBOUR_EXPANSION_RADIUS");
+}
+
+/** `NEIGHBOUR_EXPANSION_CAP` (ADR-0049): chunks the expansion may add. */
+export function parseNeighbourCap(raw: string | undefined): number | undefined {
+  return parseNeighbourKnob(raw, "NEIGHBOUR_EXPANSION_CAP");
+}

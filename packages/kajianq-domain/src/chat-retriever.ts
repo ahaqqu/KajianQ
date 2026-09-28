@@ -13,10 +13,14 @@ import {
 } from "@app/rag-core";
 import type { KajianQFilters } from "./filters";
 import {
+  DEFAULT_NEIGHBOUR_CAP,
+  DEFAULT_NEIGHBOUR_RADIUS,
   DEFAULT_SCOPE_EXPANSION_CAP,
   expandSurahScope,
+  expandVerseNeighbours,
+  type NeighbourChildRow,
   type ScopeChildRow,
-} from "./chat-scope-expansion";
+} from "./chat-expansions";
 import { withTextLayers } from "./chunk-text-layers";
 
 /**
@@ -77,6 +81,17 @@ export type RetrieverStore = {
     parentSourceKey: string,
     opts: { limit: number },
   ): Effect.Effect<readonly ScopeChildRow[], StoreError>;
+  /**
+   * The bounded anchored read behind ADR-0049's neighbour expansion: the
+   * children within `radius` ordinals of each anchor child, in the caller's
+   * priority order, capped. Anchors are opaque child ids — the store derives
+   * their parent and position from the row, so the window cannot be
+   * mis-anchored.
+   */
+  listDocChildNeighboursByChildIds(
+    anchorChildIds: readonly string[],
+    opts: { radius: number; limit: number },
+  ): Effect.Effect<readonly NeighbourChildRow[], StoreError>;
 };
 
 /** Effect bridge the wiring injects (keeps this module free of runner imports). */
@@ -95,6 +110,14 @@ export type KajianQRetrieverDeps = {
    * to `DEFAULT_SCOPE_EXPANSION_CAP`; `0` disables the expansion.
    */
   scopeExpansionCap?: number;
+  /**
+   * ADR-0049's retrieved-verse neighbourhood expansion: how many ordinals on
+   * each side of a retrieved verse join the context, and the total number of
+   * chunks it may add. Default to `DEFAULT_NEIGHBOUR_RADIUS` /
+   * `DEFAULT_NEIGHBOUR_CAP`; `<= 0` on **either** disables the expansion.
+   */
+  neighbourRadius?: number;
+  neighbourCap?: number;
   /** Trace/cost sink for the embed call (the run's collection point). */
   onEmbedCost?: (cost: CostRecord) => void;
 };
@@ -246,7 +269,33 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
               at: run.now(),
             });
           }
-          return [...fused, ...expansion.chunks];
+          const inContext = [...fused, ...expansion.chunks];
+          // ADR-0049: the neighbourhood of the verses now in context, read
+          // deterministically through the same bounded-read discipline. The
+          // gate requires every address a citation names to be present, and
+          // the observed defect is the generator extending a retrieved verse
+          // into a range whose head it was never given (#274) — so the fix is
+          // to have the address, not to weaken the gate. `inContext` is both
+          // the anchor source (in retrieval order, which is the read's
+          // priority order) and the dedup set, so nothing already present is
+          // added twice.
+          const neighbours = yield* expandVerseNeighbours({
+            retrieved: inContext,
+            radius: deps.neighbourRadius ?? DEFAULT_NEIGHBOUR_RADIUS,
+            cap: deps.neighbourCap ?? DEFAULT_NEIGHBOUR_CAP,
+            store: deps.store,
+            bridge: deps.bridge,
+          });
+          if (neighbours.detail !== null) {
+            const run = yield* RunContext;
+            run.record({
+              stage: "retriever",
+              kind: "neighbour_expansion",
+              detail: neighbours.detail,
+              at: run.now(),
+            });
+          }
+          return [...inContext, ...neighbours.chunks];
         }),
       ),
   };
