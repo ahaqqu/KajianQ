@@ -1,13 +1,12 @@
 import {
   ChatErrorSchema,
-  ChatSessionIdSchema,
   ChatSessionMessagesSchema,
+  isChatSessionId,
   type ChatSessionMessages,
   type Trace,
 } from "@app/contracts";
 import { createLogger, type ChatMessage } from "@app/infra";
 import { describeRoute, resolver } from "hono-openapi";
-import * as v from "valibot";
 import { newRouter } from "../lib/guard";
 import {
   authGuard,
@@ -101,7 +100,7 @@ export const chatSessionRoutes = newRouter().get(
     // indistinguishable from one that names nothing — the posture this route's
     // module comment claims is what this guard preserves. Auth runs first (401
     // for a malformed id with no token), so the guard is not an auth bypass.
-    if (!v.safeParse(ChatSessionIdSchema, sessionId).success) {
+    if (!isChatSessionId(sessionId)) {
       return c.json({ error: "invalid_request" }, 404);
     }
     const owner = (await runStore(fullStore.getChatSessionUser(sessionId))) as string | null;

@@ -60,6 +60,13 @@ export const ChatSessionIdSchema = v.pipe(
   ),
 );
 
+/**
+ * The predicate form of `ChatSessionIdSchema`, for the rehydration route's
+ * `:id` guard: that route validates a path param (there is no body to parse)
+ * and must read the SAME rule the body contract uses, never a second regex.
+ */
+export const isChatSessionId = (value: string): boolean => v.is(ChatSessionIdSchema, value);
+
 export const ChatRequestSchema = v.object({
   message: v.pipe(
     v.string(),

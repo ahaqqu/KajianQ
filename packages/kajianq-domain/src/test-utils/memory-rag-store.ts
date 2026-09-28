@@ -7,9 +7,9 @@ import type {
   RagStore,
   SimilarChild,
 } from "@app/infra";
-import { StoreError } from "@app/infra";
 import {
   memoryAuthMethods,
+  memoryChatMethods,
   memoryEvalMethods,
   memoryFeedbackMethods,
   memoryScopeMethods,
@@ -20,16 +20,6 @@ import {
  * In-memory RagStore with real cosine search — the test seam. Same upsert
  * semantics as the Postgres adapter, Effect-signatured like the seam (ADR-0027).
  */
-
-/**
- * Can the `chat_sessions.id` (uuid) column hold this value? Deliberately
- * LOOSE — Postgres also accepts braces, a `urn:uuid:` prefix, and hyphens in
- * any position — but decisive about the failure #271 is about: a short
- * non-hex value such as `en` or `sess1` is not a uuid and cannot be cast.
- */
-function uuidShaped(value: string): boolean {
-  return /^[{]?[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}[}]?$/i.test(value);
-}
 
 export function createMemoryRagStore(): RagStore & {
   allChildren: () => DocChildInsert[];
@@ -115,6 +105,8 @@ export function createMemoryRagStore(): RagStore & {
     feedback,
     nextId: () => (seq += 1),
   });
+  // The chat half lives in its own module too, sharing the same two maps.
+  const chatMethods = memoryChatMethods({ chatSessions, chatMessages });
 
   const cosine = (a: readonly number[], b: readonly number[]): number => {
     let dot = 0;
@@ -223,70 +215,10 @@ export function createMemoryRagStore(): RagStore & {
     getAnswerTraceById(id) {
       return Effect.succeed((traceRows.get(id) as never) ?? null);
     },
-    createChatSession(input) {
-      return Effect.sync(() => {
-        // A uuid, like the real `chat_sessions.id` (uuid, minted by the
-        // Postgres adapter with crypto.randomUUID): the API's request
-        // contracts address a chat session as a UUID (#271 — both the
-        // `sessionId` body member and the rehydration path param), so the
-        // stand-in must agree with the production shape or route tests would
-        // exercise an id the real store can never mint.
-        const id = crypto.randomUUID();
-        chatSessions.set(id, input.userId);
-        return id;
-      });
-    },
-    // A6: ownership validation for client-supplied session ids. The real
-    // column is `chat_sessions.id uuid`, so a non-UUID value fails the
-    // adapter's cast (SQLSTATE 22P02 → `StoreError` kind "constraint", #271);
-    // the stand-in reproduces that FAILURE, not just the id shape. Without it
-    // a route that hands the store an unrepresentable id looks healthy here
-    // and only breaks against Postgres — which is how the 500 shipped, and how
-    // a future regression past the boundary would ship again.
-    getChatSessionUser(sessionId) {
-      if (!uuidShaped(sessionId)) {
-        return Effect.fail(
-          new StoreError({
-            kind: "constraint",
-            cause: new Error(`invalid input syntax for type uuid: "${sessionId}"`),
-          }),
-        );
-      }
-      return Effect.succeed(chatSessions.get(sessionId) ?? null);
-    },
-    insertChatMessage(input) {
-      return Effect.sync(() => {
-        // A uuid, like the real `chat_messages.id` DEFAULT gen_random_uuid():
-        // the feedback route's contract admits only uuid message ids, and a
-        // rehydrated surface addresses answers by THIS id (thermo-review A2's
-        // test path) — the stand-in must agree with the production shape.
-        const id = crypto.randomUUID();
-        chatMessages.set(id, {
-          sessionId: input.sessionId,
-          role: input.role,
-          content: input.content,
-          answerTraceId: input.answerTraceId ?? null,
-        });
-        return id;
-      });
-    },
-    // Follow-up context (#10): the session's tail, oldest first — insertion
-    // order stands in for `created_at` (the memory store has no clock).
-    getChatMessages(sessionId, opts) {
-      return Effect.sync(() => {
-        const limit = opts?.limit ?? 20;
-        const all = [...chatMessages.entries()].map(([id, m], i) => ({
-          id,
-          sessionId: m.sessionId,
-          role: m.role,
-          content: m.content,
-          answerTraceId: m.answerTraceId,
-          createdAt: i,
-        }));
-        const tail = all.filter((m) => m.sessionId === sessionId).slice(-limit);
-        return tail;
-      });
-    },
+    createChatSession: chatMethods.createChatSession,
+    getChatSessionUser: chatMethods.getChatSessionUser,
+    insertChatMessage: chatMethods.insertChatMessage,
+    getChatMessages: chatMethods.getChatMessages,
     insertEvalRun: evalMethods.insertEvalRun,
     refreshEvalRun: evalMethods.refreshEvalRun,
     insertEvalResult: evalMethods.insertEvalResult,

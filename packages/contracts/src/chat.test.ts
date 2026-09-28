@@ -10,6 +10,7 @@ import {
   ChatSessionMessagesSchema,
   ChatTraceChunkSchema,
   ChatTraceFrameSchema,
+  isChatSessionId,
 } from "./chat";
 
 /**
@@ -123,6 +124,14 @@ describe("ChatRequestSchema sessionId (#271)", () => {
 
   it("rejects an empty sessionId (the pre-existing floor holds)", () => {
     expect(sessionIdOf("")).toBe(false);
+  });
+
+  it("exposes the same rule as the predicate the path-param guard uses", () => {
+    // The rehydration route validates a path param, not a body. It reads this
+    // predicate, so the two request surfaces cannot drift into two rules.
+    expect(isChatSessionId(crypto.randomUUID())).toBe(true);
+    expect(isChatSessionId("en")).toBe(false);
+    expect(isChatSessionId("")).toBe(false);
   });
 
   it("keeps the #256 message ceiling intact alongside the session-id rule", () => {
