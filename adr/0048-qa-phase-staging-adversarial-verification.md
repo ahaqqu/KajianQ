@@ -275,13 +275,19 @@ default_transaction_read_only = on` on the role) would make the boundary real.
   It requires a host provisioning step and is deliberately **not** taken by
   #295: no role, view, or migration is provisioned there, and nothing in the
   repo may imply one exists. The choice is recorded on #295's thread.
-- **The reported figure is recorded cost, and its calibration is under review.**
-  The spend line is the sum of the persisted `costMicroUsd`, not billed cost.
-  `models.json` records `deepseek-v4-flash` at `in: 140` micro-USD/MTok against
-  the unit the same file declares and its own `$0.14/$0.28` role comment — about
-  1000x low — so until #296 reconciles it the sum is a lower bound whose trend
-  is meaningful and which cannot enforce the cap on its own. Decision 7's
-  cap-comparison language is qualified by this bullet, not replaced.
+- **The reported figure and the cap are the same recorded cost, and their
+  calibration is under review.** The spend line is the sum of the persisted
+  `costMicroUsd`, not billed cost. `models.json` records `deepseek-v4-flash` at
+  `in: 140` micro-USD/MTok against the unit the same file declares and its own
+  `$0.14/$0.28` role comment — about 1000x low — so until #296 reconciles it the
+  sum is a lower bound whose trend is meaningful and which cannot enforce the
+  cap on its own. **The cap's own number rides that same understatement**:
+  decision 2's single `Budget` (`packages/eval/src/budget.ts`, fed by
+  `harness.ts`) accumulates the same recorded per-event costs, so a "$1" cap
+  aborts at roughly $1,000 of real spend and is not a $1 _money_ bound until
+  #296 lands. Decision 7's cap-comparison language is qualified by this bullet,
+  not replaced; what bounds real spend meanwhile is **probe discipline** — the
+  smallest probe set that proves the observable and its blast radius.
 - **The corpus arm stays out.** Planting a hostile chunk is a write; it belongs
   to a local falsification harness (#294), not to this grant. Query-level
   injection stays a QA probe.

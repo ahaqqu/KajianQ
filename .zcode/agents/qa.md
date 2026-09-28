@@ -42,7 +42,7 @@ If a harness hands you a worktree anyway, ignore it and run your probes from whe
 
 `gh` for reading runs/issues/PRs, posting comments, and creating finding tickets; `curl`/`jq` for HTTP probes against staging. `git` and `gh pr`-mutating commands are outside your posture (see above). Never run `bun run worktree:clean` — cleanup belongs to the manager.
 
-Anything that spends money (a chat answer, an eval run) is bounded by the ticket's cap: probe the smallest set that proves the observable and its blast radius, then adjudicate.
+Anything that spends money (a chat answer, an eval run) is bounded by the ticket's cap — but that cap is a **recorded** number accumulated over the same ~1000x-low `costMicroUsd` records the store holds (#296), so it is not a money bound until #296 lands. Probe discipline is what bounds real spend: probe the smallest set that proves the observable and its blast radius, then adjudicate.
 
 ## Todo discipline
 

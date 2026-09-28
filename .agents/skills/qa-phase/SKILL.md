@@ -35,7 +35,7 @@ The ticket is the QA brief, and it carries all of:
 - **The surfaces to probe** — routes, UI flows, persisted traces, SSE frames, the refusal/answer boundary, the rehydration endpoint.
 - **The abuse angles relevant to this change**, named from the taxonomy below rather than left to the QA agent's imagination.
 - **The environment and the run being verified** — staging, the merge SHA, the `Staging` run id whose deploy carries it.
-- **The spend cap** for the run, in micro-USD. The smoke job's cap is $1 per run (ADR-0034); a QA ticket defaults to that and may set it lower, never higher without the owner.
+- **The spend cap** for the run, in micro-USD. The smoke job's cap is $1 per run (ADR-0034); a QA ticket defaults to that and may set it lower, never higher without the owner. **That number is a _recorded_ cap, not a money bound.** It accumulates the same `costMicroUsd` records the store holds — the ~1000x-low ones (#296; see _Spend_ below) — so a "$1" cap aborts at roughly $1,000 of real spend. Until #296 lands, what bounds real spend is **probe discipline**: the smallest probe set that proves the observable and its blast radius.
 
 ## Probe taxonomy (required, not optional)
 
@@ -117,6 +117,8 @@ A `user_id`-less sum over `created_at >= '<run start>'` was measured at **537 mi
 Report the sum with the cap. A run whose spend cannot be read — tunnel down, ids lost — says exactly that in the report and gives no figure; the cap is then enforced by probe discipline alone, and the report must not imply a measurement it did not take.
 
 **The figure is _recorded_ cost, and its calibration is under review.** The sum is what the pipeline wrote from the `models.json` prices, and those values are ~1000x below the unit that file declares (its own `cheap` comment names $0.14/$0.28 per MTok, while `in: 140` computes an 8K-token call at 1.12 micro-USD against SPECS §5's ~1,300), so the store's ~2-micro-USD-per-event records understate real spend by the same order. Reconciliation is #296. Until it lands, report the sum as **recorded** cost: a lower bound whose trend is meaningful, whose absolute value cannot enforce the cap, and never a working budget control.
+
+**The cap's own number shares that understatement**, so the reframing does not stop at the report: the cap accumulates the same records — ADR-0034 decision 2's single `Budget` over the per-event `costMicroUsd` (`packages/eval/src/budget.ts`, `harness.ts`) — and a "$1" cap therefore aborts at roughly $1,000 of real spend. The $1 *recorded* cap is not a $1 _money_ bound until #296 lands, and no text may read it as one. Until then, **probe discipline is what bounds real spend**: probe the smallest set that proves the observable and its blast radius, and say in the report that the cap did not bind it.
 
 ### Reviewer/pre-gate span events
 
