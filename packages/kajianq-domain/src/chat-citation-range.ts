@@ -94,7 +94,9 @@ function boundFor(surahToken: string): number | null {
  * (the ordinary single address, and a grammar that declares no list at all),
  * so encoding an unverifiable range that way made the two meanings
  * indistinguishable at the comparison site and let a spaced, unenumerable range
- * ground on its head (review T1 of the fix round).
+ * ground on its head (review T1 of the fix round). That is also why the
+ * function no longer takes the written label: the refusal is a state of the
+ * declaration, not a one-element reading of the text.
  *
  * `head` and `chain` are the grammar's two captures — the `surah:ayah` head and
  * the raw dash-joined tail (`-2`, `-2-3`, `—256`), empty when the citation is a
@@ -104,7 +106,6 @@ function boundFor(surahToken: string): number | null {
 export function quranRangeAddresses(
   head: string | undefined,
   chain: string | undefined,
-  label: string,
 ): readonly string[] | null {
   if (head === undefined || head === "") return [];
   const tails = (chain ?? "").match(/\p{Nd}+/gu) ?? [];

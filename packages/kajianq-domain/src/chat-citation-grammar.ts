@@ -137,7 +137,7 @@ export const CITATION_GRAMMARS: readonly CitationGrammar[] = [
     // `surah:ayah`, so the tail numbers are verses of the SAME surah (a named
     // surah included: `QS. Al-Baqarah:255—256`, which is unverifiable and
     // refuses anyway).
-    addressesOf: (match) => quranRangeAddresses(match[1], match[2], match[0]),
+    addressesOf: (match) => quranRangeAddresses(match[1], match[2]),
   },
   // Hadith: `HR. Bukhari no. 573` / `HR. Ibn Majah no. 224 (Dhaif)`, and the
   // dot-less `HR Bukhari no. 573` (round-3 A1, same rationale as the Quran
