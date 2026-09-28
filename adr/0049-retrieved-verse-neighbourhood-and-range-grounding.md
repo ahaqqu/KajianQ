@@ -75,27 +75,66 @@ call, no paid dependency, no re-ingest, no migration.
    citation parsing, no metadata key — and the window cannot be mis-anchored,
    because there is no second source of truth for a chunk's position. The
    caller's array order is the priority order, so the cap truncates the
-   _least important_ windows rather than an arbitrary subset.
+   _least important_ windows rather than an arbitrary subset. That order is
+   total as far as this change can make it: `rrfFuse` breaks equal fusion
+   scores by chunk id (review A3 of the fix round — without it the order fell
+   back to `Map` insertion order, i.e. to the hit lists' order), and the
+   residual limit is upstream and named as a revisit trigger below: the ANN
+   search orders by vector distance alone, because a second `ORDER BY` key
+   would cost the HNSW index scan, so `rank_dense` among exactly-equal
+   distances can differ between runs.
 3. **Bounded twice, and configured at the composition root.**
    `DEFAULT_NEIGHBOUR_RADIUS = 1` (verses on each side of an anchor) and
    `DEFAULT_NEIGHBOUR_CAP = 12` (chunks the expansion may add, matching
    `SCOPE_EXPANSION_CAP`'s scale); `apps/api` reads
    `NEIGHBOUR_EXPANSION_RADIUS` and `NEIGHBOUR_EXPANSION_CAP` (non-negative
-   integers; malformed = typed config failure), and **either value `<= 0`
-   disables the expansion**. The cap is not decoration: uncapped, a radius-1
+   integers; malformed = typed config failure), and **either value at `0`
+   disables the expansion** — a negative value is a typed config failure at
+   boot, never a second spelling of "off" (review B3 of the fix round: the
+   operator-facing docs, SPECS §3.3/§5 and this decision said "`<= 0`
+   disables" while the parser rejected negatives, so the sentence an operator
+   read and the parser they ran disagreed; the domain module and the adapter
+   keep their defensive `<= 0` short-circuit for callers that are not that
+   parser). The cap is not decoration: uncapped, a radius-1
    window would have added **p50 46 / p90 63 / max 74** chunks on the 130
    traces that hold Quran anchors — roughly doubling the prompt. Capped at 12
-   the expansion can never become the bulk of the context.
+   the expansion can never become the bulk of the context. The two
+   deterministic expansions' budgets are **independent**, and their sum is the
+   query's combined expansion ceiling: a surah-naming Quran question can add
+   `SCOPE_EXPANSION_CAP` (12) **plus** `NEIGHBOUR_EXPANSION_CAP` (12) chunks
+   over the fused hits — 24 added chunks at the defaults, after the dedup in
+   decision 6 — which SPECS §5 now states in one sentence beside each path's
+   own bound (review B4 of the fix round).
 4. **The range citation names a list of addresses, and every one must be
-   present.** A `CitationGrammar` declares `addressesOf(match)` — the
-   addresses a match **names**. The Quran grammar declares that
-   `QS. 3:1-2` names `QS. 3:1` **and** `QS. 3:2`, so the comparison form
-   grounds only when both are in the retrieved labels. The **display** form is
-   unchanged: the candidate label stays the range as written (`QS. 3:1-2`),
-   so the refusal reason, the reviewer pre-gate's claim spans and the
-   user-visible citation text keep naming what the draft named. A grammar that
-   declares no address list (the hadith grammar today) is untouched: its
-   dash-joined compound stays the opaque whole it was, and refuses.
+   present — the interior included.** A `CitationGrammar` declares
+   `addressesOf(match)` — the addresses a match **names**. The Quran grammar
+   declares that `QS. 3:1-2` names `QS. 3:1` **and** `QS. 3:2`, that
+   `QS. 2:255-260` names 255 through 260, and that a multi-dash chain
+   (`QS. 3:1-2-3`) names every number it writes (3:1, 3:2 and 3:3), so the
+   comparison form grounds only when every one of them is in the retrieved
+   labels. The enumeration is bounded by the surah's own Tanzil ayah count
+   (`chat-citation-range`, the same `SURAH_AYAH_COUNTS` table
+   `detectSurahReference` validates against; a surah written by name is
+   bounded by the longest surah), and a span the bound cannot hold
+   (`QS. 2:1-999`) **refuses** rather than grounding on a shorter reading of
+   itself. This is the owner-decided **strict-whole** rule applied to what a
+   range actually names: endpoints-only was a third, smaller loosening the
+   original decision did not consider, and it left `QS. 3:1-2-3` scanned as
+   `QS. 3:1-2` with the trailing `-3` neither named nor refused (review A2 of
+   the fix round). The **display** form is unchanged: the candidate label stays
+   the range as written (`QS. 3:1-2`), so the refusal reason, the reviewer
+   pre-gate's claim spans and the user-visible citation text keep naming what
+   the draft named. A grammar that declares no address list (the hadith
+   grammar today) is untouched: its dash-joined compound stays the opaque whole
+   it was, and refuses. **The grounding decision has one owner**
+   (`chat-citation-validator`'s `groundingLabelsFor`): the comparison site and
+   the user-visible citations frame both read it, and the eval's citation
+   validity reads the same declaration through its injected grammar, so a range
+   the gate grounded is a range the user gets a citation chip for and the
+   scorer counts as cited — before that owner existed, the gate accepted
+   `QS. 3:1-2` while the frame emitted no citation for it and the eval's
+   authoritative frame path scored `citationValidity` 0, delivering only half
+   the ticket's observable (review A1 of the fix round).
 5. **Traceable as its own retrieval path.** Added chunks carry
    `origin: "verse_neighbours"` — distinct from the fused refs (no label) and
    from ADR-0045's `scope_expansion` — so a trace reader never has to infer a
@@ -184,16 +223,21 @@ call, no paid dependency, no re-ingest, no migration.
 
 - **A range citation now grounds when — and only when — every address it
   names is in the retrieved context.** `QS. 3:1-2` passes with `QS. 3:1` and
-  `QS. 3:2` in context; it still refuses with only the head, with only the
-  tail, and with a fabricated second address. A single fabricated verse still
-  refuses (unchanged). The behaviour change is visible to the user as an
-  answer where there used to be a stonewall, which is the point.
+  `QS. 3:2` in context; `QS. 2:255-260` passes only with all six of its verses
+  there; it still refuses with only the head, with only the tail, with an
+  impossible address (`QS. 2:1-999`) and with a fabricated second address. A
+  single fabricated verse still refuses (unchanged). The behaviour change is
+  visible to the user as an answer where there used to be a stonewall, which is
+  the point — and it is visible to the eval on every evidence path, because the
+  frame's labels, the trace's `grounded` labels and the scorer's required
+  citation are compared through one naming rule.
 - **Context grows on Quran-bearing queries, bounded by the cap.** Measured on
   the same 2-day window: with `radius = 1, cap = 12` the expansion adds up to
   12 chunks per affected query (p50 46 candidates before the cap), and its
   prompt cost is reported in the PR with the token delta the assembler
-  renders. For a query with no retrieved verse the expansion issues no store
-  read at all.
+  renders. This bound is the neighbour path's **own**; the query's combined
+  expansion ceiling is this cap plus `SCOPE_EXPANSION_CAP`, and a query with no
+  retrieved verse issues no store read at all.
 - **One more store read on the hot path, on Quran-bearing queries only.** It
   is a single batched, indexed query regardless of the anchor count (not one
   round trip per anchor), and it returns no anchors, so its row count is the
@@ -212,7 +256,17 @@ call, no paid dependency, no re-ingest, no migration.
   and on each chunk ref's `origin`; counting it inside `expansion.chunks`
   would silently redefine a metric ADR-0045 already published. Recorded here
   because the alternative (fold both into one number) was considered and
-  rejected.
+  rejected. **Its `fusedOnlyRetrievalRecall` leg is the refs that carry no
+  `origin` label** (review A4 of the fix round): the leg used to exclude only
+  this ADR's scope origin, which silently counted `verse_neighbours` chunks as
+  fused, so on a question the neighbour path carried the metric became equal to
+  the reported recall and the report could no longer say an expansion carried
+  it — the one statement #243 C1 exists to make. Defining the leg by the
+  absence of a label rather than by a named exclusion list is what stops the
+  next expansion path from reintroducing it. The block is still emitted only
+  when the **scope** path ran (a labelled chunk or the typed `scope_expansion`
+  event), so a neighbour-only question reports no block rather than a block
+  whose `chunks` would have to be redefined.
 - **Three modules were at or over the 300-line agentic cap, so three
   same-subject splits landed with this change** — `chat-citation-spelling.ts`,
   `chat-citation-normalize.ts` and `chat-fusion.ts` — plus the retriever's
@@ -240,11 +294,31 @@ call, no paid dependency, no re-ingest, no migration.
   store read; anchor priority is the fused order, so the cap keeps the
   best-ranked evidence's neighbours.
 - `packages/kajianq-domain/src/chat-retriever-assembler.test.ts` — the
-  acceptance row at the boundary the gate actually reads: the **real failing
-  retrieved set** (`QS. 3:2`, `QS. 3:18`, `QS. 3:189`) is retrieved, the
-  assembled context contains `QS. 3:1` and `QS. 3:2`, and
-  `validateCitations` on the **real failing label** (`QS. 3:1-2`) returns no
-  ungrounded citation. The negative rows ride the same assembled context.
+  assembled-context boundary rows (the context the gate reads), including the
+  neighbour path's contribution to a surah-naming question.
+- `packages/kajianq-domain/src/chat-neighbour-expansion.test.ts` — the
+  assembled-context acceptance row for this ADR: the trace's top-ranked label
+  (`QS. 3:2`) is the retrieved verse — the same fixture seeds only that one
+  label, with `QS. 3:18`/`QS. 3:189` out of the corpus — the assembled context
+  contains `QS. 3:1` and `QS. 3:2`, and `validateCitations` on the **real
+  failing label** (`QS. 3:1-2`) returns no ungrounded citation. The negative
+  rows ride the same assembled context. (The original Evidence bullet pointed
+  at `chat-retriever-assembler.test.ts` for these rows and described the
+  fixture as the real failing retrieved set of three labels; the file that
+  holds them and the fixture it seeds are both corrected here — review B1 of
+  the fix round, "every doc claim has code".)
+- `apps/api/src/lib/chat-citations.test.ts` — the frame boundary, through the
+  **real** `deriveCitationsFrame`: a range the gate grounded
+  (`{grounded: ["QS. 3:1"], ungrounded: []}`) is emitted as a citation whose
+  label is the range as written, and the plain-citation control emits the plain
+  label. This is the row the original change was missing — the gate said
+  grounded and the frame said nothing (review A1 of the fix round).
+- `packages/eval/src/scorers.test.ts` — the eval's three evidence paths agree
+  on the failing label: `citationValidity` is 1 through the frame, through the
+  trace's `grounded` labels and through the answer text, and 0 when the frame
+  omits the grounded range — the exact comparison that failed before the fix
+  (frame 0 / events 1). Also pins the A4 leg: a `verse_neighbours` ref is not
+  counted as fused.
 - `packages/infra/src/rag-store-postgres.unit.test.ts` — the new read at the
   adapter layer: the anchor array is bound and its order preserved, `radius`
   and `limit` are bound parameters, only neighbours are selected (never an
@@ -253,9 +327,66 @@ call, no paid dependency, no re-ingest, no migration.
 - The falsification row: with `NEIGHBOUR_EXPANSION_RADIUS=0` (the documented
   disable) the assembled-context acceptance row goes red and the negative rows
   stay red — the mutation is named in the PR body.
-- The generator measurement above is a query over `answer_traces`,
+- The generator measurement above is a read-only query over `answer_traces`,
   `doc_children` and `chat_messages`, recorded in #274's comment with its
-  before/after numbers.
+  before/after numbers. Its shape, so the revisit trigger can re-run it over a
+  fresh window instead of re-deriving it (review C1 of the fix round — the
+  historical window itself is not re-derivable from the repo, where the corpus
+  is a paid asset and the 2026-09-26→28 rows have moved):
+
+  ```sql
+  -- Refusal census: traces, refusals, and the trigger each refusal carried.
+  -- The labels a refused answer cited sit in the refusal event's `reason`
+  -- ("citation(s) not present in retrieved context: …") — the trace records
+  -- `review.detail.grounded` for the pass case only — so the 27-label census
+  -- was counted by reading the reasons.
+  SELECT count(*) AS traces,
+         count(*) FILTER (WHERE e.event->>'kind' = 'refusal') AS refusals
+  FROM answer_traces t
+  CROSS JOIN LATERAL jsonb_array_elements(t.trace->'events') AS e(event)
+  WHERE t.created_at >= $1 AND t.created_at < $2;
+
+  SELECT e.event->'detail'->>'trigger' AS trigger,
+         e.event->>'reason' AS reason,
+         count(*) AS occurrences
+  FROM answer_traces t
+  CROSS JOIN LATERAL jsonb_array_elements(t.trace->'events') AS e(event)
+  WHERE t.created_at >= $1 AND t.created_at < $2
+    AND e.event->>'kind' = 'refusal'
+  GROUP BY 1, 2
+  ORDER BY occurrences DESC;
+
+  -- The candidate set the cap truncates, per trace: the distinct same-parent
+  -- rows within one ordinal of a verse the run itself retrieved, minus the
+  -- anchors. This is where the p50 46 / p90 63 / max 74 came from.
+  WITH anchors AS (
+    SELECT DISTINCT t.id AS trace_id, c.id AS chunk_id, c.parent_id, c.ordinal
+    FROM answer_traces t
+    CROSS JOIN LATERAL jsonb_array_elements(t.trace->'events') AS e(event)
+    CROSS JOIN LATERAL jsonb_array_elements(e.event->'detail'->'chunks') AS ch(chunk)
+    JOIN doc_children c ON c.id = (ch.chunk->>'id')::uuid
+    WHERE t.created_at >= $1 AND t.created_at < $2
+      AND e.event->>'kind' = 'retrieval'
+      AND c.metadata->>'sourceType' = 'quran'
+  )
+  SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY n) AS p50,
+         percentile_cont(0.9) WITHIN GROUP (ORDER BY n) AS p90,
+         max(n) AS max
+  FROM (
+    SELECT a.trace_id, count(DISTINCT n.id) AS n
+    FROM anchors a
+    JOIN doc_children n
+      ON n.parent_id = a.parent_id
+     AND n.ordinal BETWEEN a.ordinal - 1 AND a.ordinal + 1
+     AND n.id <> a.chunk_id
+    GROUP BY a.trace_id
+  ) per_trace;
+  ```
+
+  The token regression beside it is a read-only `sum(length(m.content))` over
+  `chat_messages` for the same window, regressed on the answer length (slope
+  0.428 tokens/char there, against the assembler's rendered prompt). Neither
+  query is a runtime path, and neither spends anything.
 
 ## Implementation map
 
@@ -267,13 +398,26 @@ call, no paid dependency, no re-ingest, no migration.
   agentic cap) and `chat-fusion.ts` the pure fusion arithmetic split out of
   `chat-retriever.ts` (the 300-line cap).
 - `packages/kajianq-domain/src/chat-citation-grammar.ts`,
-  `chat-citation-spelling.ts`, `chat-citation-normalize.ts` —
-  `CitationGrammar.addressesOf`, `addressesNamedBy`, and the two same-subject
-  splits (spelling, then normalization/scan) that keep the family inside the
-  300-line agentic cap; `chat-citation-validator` re-exports both so its public
-  surface is unchanged.
+  `chat-citation-spelling.ts`, `chat-citation-normalize.ts`,
+  `chat-citation-range.ts` — `CitationGrammar.addressesOf`, `addressesNamedBy`,
+  the same-subject splits (spelling, then normalization/scan) that keep the
+  family inside the 300-line agentic cap, and the range module that owns **what
+  a Quran range names** (the interior enumeration and the surah's Tanzil ayah
+  bound); `chat-citation-validator` re-exports the public surface so the domain
+  barrel's citation family stays one import path.
 - `packages/kajianq-domain/src/chat-citation-validator.ts` — the ungrounded
-  decision consults the candidate's declared address list.
+  decision consults the candidate's declared address list through
+  `groundingLabelsFor`, the single owner of "which labels ground this span".
+- `packages/kajianq-domain/src/chat-fusion.ts` — `rrfFuse`'s total order (the
+  equal-score tie-break by chunk id).
+- `apps/api/src/lib/chat-citations.ts` — the citations frame derives its
+  intersection with `groundingLabelsFor`, so the gate and the frame agree.
+- `packages/eval/src/{harness-types.ts,scorers.ts,harness-expansion.ts}` and
+  `packages/eval/scripts/staging-harness.mjs` — the injected grammar's
+  `addressesNamedBy` (the naming declaration the scorer compares a required
+  citation against evidence with), the address-set comparison in
+  `groundedLabels`, and the fused-only leg defined by the absence of an origin
+  label.
 - `packages/kajianq-domain/src/chat-retriever.ts` — the expansion runs after
   ADR-0045's scope expansion, over `fused ∪ scope`; the typed event is
   recorded through the run's collection point (ADR-0021).
@@ -294,6 +438,28 @@ call, no paid dependency, no re-ingest, no migration.
   first: anchor priority is the fused rank today, and a citation-driven
   priority (cite the anchors whose neighbours the draft actually named) would
   need the gate's output, which the retriever does not see.
+- **The ANN search's tie order** (review A3 of the fix round). `rrfFuse` now
+  breaks equal scores by chunk id, but the similarity query orders by vector
+  distance alone and its `ROW_NUMBER()` with it, so ranks among
+  **exactly-equal distances** can still swap between runs — and with them the
+  fused order, the anchor priority and which windows the cap keeps. A second
+  `ORDER BY` key (`ORDER BY distance, id`) would make it total and is
+  deliberately **not** taken: the HNSW index provides distance order only, so a
+  second key costs the index scan and turns every search into a full scan and
+  sort (8 searches per query), against SPECS §5's cost posture. Revisit if the
+  corpus grows duplicate embeddings enough for a boundary tie to be observed
+  in the smoke, or if a pgvector release offers a deterministic tie order that
+  keeps the index; the trace records what happened either way
+  (`neighbour_expansion.anchors` in read order), so the audit trail does not
+  depend on this.
+- **The 5-import agentic cap counts declared imports, not coupling** (review B5
+  of the fix round). `chat-retriever-parts.ts` is a subject-scoped barrel, so
+  three real module dependencies reach `chat-retriever.ts` as one import; the
+  pattern is repo-sanctioned (`chat-stages.ts`) and this ADR discloses it, but
+  the cap bounds what a file declares, not what it depends on. If the cap is
+  meant to bound real coupling, `check-agentic-limits.mjs` should count
+  transitive first-party imports — a repo-wide cap-semantics decision, not this
+  change's.
 - **Hadith ranges.** The hadith grammar declares no address list, so
   `HR. Bukhari no. 5010—5011` stays refused even when both numbers were
   retrieved (the #264 A3 cost, unchanged). Extending `addressesOf` to it is a
