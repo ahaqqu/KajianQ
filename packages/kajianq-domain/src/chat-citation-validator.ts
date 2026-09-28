@@ -98,11 +98,18 @@ export function citationMatchText(text: string): string {
  * gate's order:
  *
  * 1. the span **is** a retrieved label (the ordinary case);
- * 2. the span **extends** a retrieved label with a grade the chunk did not
+ * 2. the span names a **list** of addresses (the Quran range) and every one of
+ *    them is retrieved — strict-whole, the interior included (ADR-0049);
+ * 3. the span **extends** a retrieved label with a grade the chunk did not
  *    carry (`HR. Bukhari no. 573 (Sahih)`), which is the answer's provenance,
- *    not a second address;
- * 3. the span names a **list** of addresses (the Quran range) and every one of
- *    them is retrieved — strict-whole, the interior included (ADR-0049).
+ *    not a second address.
+ *
+ * The list rule runs **before** the extension rule, and a declared list that is
+ * not fully retrieved returns `null` rather than falling through: a spaced
+ * range (`QS. 2:255 - 256`, review R5 of the fix round) *does* extend the
+ * retrieved head with a space, so the old order grounded it on the head alone
+ * — the very hole A2 closed for the glued spelling. A grammar that declares no
+ * list (the hadith number) keeps the extension rule as its only reading.
  *
  * Like the whole-label rule it replaces, no rule here can ground a citation
  * that rule refused. `null` means nothing retrieved grounds the span; every
@@ -114,17 +121,19 @@ export function groundingLabelsFor(
   known: ReadonlySet<string>,
 ): readonly string[] | null {
   if (known.has(candidate)) return [candidate];
-  // Rule 2 can match more than one known label (a shortened label and the same
-  // label carrying the grade), so all matches come back: this function's set is
-  // then equal to the gate's `grounded` list, which adds every label the answer
-  // text contains.
-  const extended = [...known].filter((label) => candidate.startsWith(`${label} `));
-  if (extended.length > 0) return extended;
   // ADR-0049: every address the citation's own grammar declares it names must
   // be present. One declared address is the ordinary case already covered
   // above; the check only ever ADDS a requirement, never drops one.
   const named = addressesNamedBy(candidate).map(canonicalizeCitationSpelling);
-  if (named.length > 1 && named.every((address) => known.has(address))) return named;
+  if (named.length > 1) {
+    return named.every((address) => known.has(address)) ? named : null;
+  }
+  // The extension rule can match more than one known label (a shortened label
+  // and the same label carrying the grade), so all matches come back: this
+  // function's set is then equal to the gate's `grounded` list, which adds
+  // every label the answer text contains.
+  const extended = [...known].filter((label) => candidate.startsWith(`${label} `));
+  if (extended.length > 0) return extended;
   return null;
 }
 

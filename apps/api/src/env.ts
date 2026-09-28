@@ -58,9 +58,12 @@ export type AppBindings = {
    * the context, and how many chunks the expansion may add to one query.
    * Absent = the domain defaults (`DEFAULT_NEIGHBOUR_RADIUS` /
    * `DEFAULT_NEIGHBOUR_CAP`); `0` disables the expansion and a negative value
-   * is a typed config failure at boot, not a second spelling of "off" (review
-   * B3 of the #274 fix round — this sentence is what an operator reads). Config,
-   * never secrets, and they ride the same filtered env view as the scope cap.
+   * is a typed config failure when the chat wiring builds — the route answers
+   * 503 for every `/v1/chat` request, while the process itself still boots —
+   * not a second spelling of "off" (review B3 of the #274 fix round; R2
+   * corrected the timing: the knobs are parsed per request, not at boot).
+   * Config, never secrets, and they ride the same filtered env view as the
+   * scope cap.
    */
   NEIGHBOUR_EXPANSION_RADIUS?: string;
   NEIGHBOUR_EXPANSION_CAP?: string;

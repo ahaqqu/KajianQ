@@ -59,8 +59,11 @@ export const DEFAULT_NEIGHBOUR_RADIUS = 1;
  * bounded addition instead of a second context. Configured at the composition
  * root (`NEIGHBOUR_EXPANSION_CAP`), which accepts **non-negative** integers
  * only: `0` is the operator's disable and a negative value is a typed config
- * failure at boot (review B3 of the #274 fix round — the knob an operator sets
- * and the sentence an operator reads must say the same thing). The `<= 0`
+ * failure when the chat wiring builds — the process itself boots green and
+ * every `/v1/chat` request answers 503 (review B3 of the #274 fix round; R2
+ * corrected the timing, which is per request, not at boot). The knob an
+ * operator sets and the sentence an operator reads must say the same thing. The
+ * `<= 0`
  * short-circuit below is the domain module's own defensive guard for a caller
  * that is not that parser, not a second documented spelling of "off".
  */

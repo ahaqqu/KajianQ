@@ -241,7 +241,10 @@ export function buildChatWiring(env: Record<string, string | undefined>): ChatWi
       ...(scopeExpansionCap !== undefined ? { scopeExpansionCap } : {}),
       // ADR-0049: the same posture for the retrieved-verse neighbourhood
       // window — how wide it is and how much of the prompt it may spend are
-      // deployment choices, and `<= 0` on either turns it off.
+      // deployment choices; `0` on either turns it off, and a negative value
+      // never reaches this object because the parsers above reject it as a
+      // typed config failure (review R3: the old "`<= 0` on either turns it
+      // off" sat three lines above that rejection).
       ...(neighbourRadius !== undefined ? { neighbourRadius } : {}),
       ...(neighbourCap !== undefined ? { neighbourCap } : {}),
     },

@@ -68,13 +68,17 @@ export function parseScopeExpansionCap(raw: string | undefined): number | undefi
  * composition root like every other deployment choice.
  *
  * **`0` is the documented disable; a negative value is malformed config**
- * (review B3 of the #274 fix round). The domain module and the store adapter
- * short-circuit `<= 0` defensively, but these two variables are what an
- * operator sets, and "`<= 0` disables" told an operator that `-1` was a legal
- * way to turn the expansion off — it is a boot-time `ChatConfigError` that
- * leaves the chat route unusable. The parser and the operator-facing docs now
- * say the same thing; accepting negatives would only add a second,
- * undocumented spelling of "off".
+ * (review B3 of the #274 fix round; R2 corrected the timing). The domain
+ * module and the store adapter short-circuit `<= 0` defensively, but these two
+ * variables are what an operator sets, and "`<= 0` disables" told an operator
+ * that `-1` was a legal way to turn the expansion off — it is a
+ * `ChatConfigError` that leaves the chat route unusable. It is raised when the
+ * chat wiring builds, which `apps/api/src/routes/chat.ts` does **per request**
+ * (`wiringOr503`), so the process boots green and every `/v1/chat` request
+ * answers 503: a config fault an operator sees in per-request logs, not a
+ * failed boot (`server.ts` uses "boot" for faults outside the wiring). The
+ * parser and the operator-facing docs now say the same thing; accepting
+ * negatives would only add a second, undocumented spelling of "off".
  */
 function parseNeighbourKnob(raw: string | undefined, name: string): number | undefined {
   if (raw === undefined || raw.trim() === "") return undefined;

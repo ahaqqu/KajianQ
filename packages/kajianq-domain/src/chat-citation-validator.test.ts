@@ -508,6 +508,58 @@ describe("validateCitations — grounded direction", () => {
     expect(addressesNamedBy("HR. Bukhari no. 5010-5011")).toEqual(["HR. Bukhari no. 5010-5011"]);
   });
 
+  it("names a spaced range's addresses too — the spaced twin of the A2 hole (review R5)", () => {
+    // `QS. 2:255 - 256` writes the same range with air around the joiner.
+    // While the chain group required the dash glued, the scan stopped at the
+    // head: the second verse the prose named was neither enumerated nor
+    // refused, and the gate grounded the citation on `QS. 2:255` alone (A2's
+    // class, spaced — pre-existing, and now closed rather than recorded,
+    // because the owner's strict-whole decision covers what the prose names).
+    const spaced = "Dalilnya QS. 2:255 - 256 tentang hal ini.";
+    expect(citationCandidatesIn(spaced)).toEqual(["QS. 2:255 - 256"]);
+    expect(addressesNamedBy("QS. 2:255 - 256")).toEqual(["QS. 2:255", "QS. 2:256"]);
+    // Both retrieved → grounded, and the provenance names both addresses (the
+    // tail is not a literal substring of the span).
+    expect(validateCitations(spaced, [chunk("QS. 2:255"), chunk("QS. 2:256")])).toEqual({
+      grounded: ["QS. 2:255", "QS. 2:256"],
+      ungrounded: [],
+    });
+    // Head only → REFUSED. This is the row that fails if the declared-list rule
+    // ever runs after the shortened-label rule again: the span extends
+    // `QS. 2:255` with a space, so that rule would ground it on the head.
+    expect(validateCitations(spaced, [chunk("QS. 2:255")]).ungrounded).toEqual(["QS. 2:255 - 256"]);
+    // The interior rule reaches the spaced form too.
+    expect(
+      validateCitations("Dalilnya QS. 2:255 - 260 tentang hal ini.", [
+        chunk("QS. 2:255"),
+        chunk("QS. 2:260"),
+      ]).ungrounded,
+    ).toEqual(["QS. 2:255 - 260"]);
+    // A newline is not a joiner: the chain never runs across a line boundary.
+    expect(citationCandidatesIn("Dalilnya QS. 2:255 -\n256 tentang hal ini.")).toEqual([
+      "QS. 2:255",
+    ]);
+  });
+
+  it("keeps the DRAFT-side spaced hadith form out of the grammar — recorded, not silent", () => {
+    // The hadith number token stops at whitespace, so the spaced hadith range
+    // is scanned as its head and grounds on it. That is a deliberate exclusion
+    // (the token rule), not a second reading of the chain rule: extending the
+    // hadith grammar to a spaced joiner is the "Hadith ranges" revisit trigger
+    // in ADR-0049, kept out of #274. Pinned here so a reader of the range rule
+    // cannot believe the spaced form is named (review R5's "silence is the one
+    // option that leaves a reader believing the range is named").
+    const draft = "HR. Bukhari no. 5010 - 5011 menjelaskan …";
+    expect(citationCandidatesIn(draft)).toEqual(["HR. Bukhari no. 5010"]);
+    expect(validateCitations(draft, [chunk("HR. Bukhari no. 5010")]).ungrounded).toEqual([]);
+    // The label side of the same spelling IS kept whole (the shared tail rule
+    // tolerates the air around the joiner), so a chunk label written that way
+    // never reduces to its head either.
+    expect(addressesNamedBy("HR. Bukhari no. 5010 - 5011")).toEqual([
+      "HR. Bukhari no. 5010 - 5011",
+    ]);
+  });
+
   it("leaves a grammar that declares no address list alone — the hadith compound stays whole", () => {
     // ADR-0049's split is declared per grammar, so a dash-joined hadith number
     // is NOT re-interpreted by a comparison-site pattern: the hadith grammar

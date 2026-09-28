@@ -112,12 +112,17 @@ export const CITATION_GRAMMARS: readonly CitationGrammar[] = [
   // and used to stop at it, grounding `QS. 2:255\u200c—256` on the first verse
   // alone. Only those two positions need it — glue inside either number
   // truncates the match and the compound is kept whole and refused. The chain
-  // group is linear: every iteration consumes a mandatory dash and at least one
-  // digit, and digits are neither `\p{Cf}` nor a dash, so no input splits an
-  // iteration two ways.
+  // also tolerates **horizontal whitespace** around the dash (review R5 of the
+  // fix round): `QS. 2:255 - 256` is the same range with air around the joiner,
+  // and while the dash had to be glued the scan stopped at the head — the second
+  // verse was neither enumerated nor refused (A2's class, spaced). A newline is
+  // deliberately not tolerated, so a chain never runs across a line boundary.
+  // The chain group is linear: every iteration consumes a mandatory dash and at
+  // least one digit, and digits are neither `\p{Cf}`, whitespace nor a dash, so
+  // no input splits an iteration two ways.
   {
     pattern: () =>
-      /(\bQ\.?S(?:\.|\s)\s*[^\s:,[\]()]+\s*:\s*\p{Nd}+)((?:\p{Cf}*[-‐‑‒–—―−]\p{Cf}*\p{Nd}+)*)/giu,
+      /(\bQ\.?S(?:\.|\s)\s*[^\s:,[\]()]+\s*:\s*\p{Nd}+)((?:[\p{Cf} \t]*[-‐‑‒–—―−][\p{Cf} \t]*\p{Nd}+)*)/giu,
     addressOf: (match) => match[1] ?? null,
     // A Quran range is a LIST of addresses, and the grammar is where that is
     // declared (ADR-0049): `QS. 3:1-2` names `QS. 3:1` **and** `QS. 3:2`, so
@@ -144,7 +149,10 @@ export const CITATION_GRAMMARS: readonly CitationGrammar[] = [
   // 18]` used to capture a phantom `…no. 18]` span that normalized to nothing a
   // chunk grounds — a false UNGROUNDED, i.e. a refused grounded answer; the
   // Quran address already skipped them. The match therefore spans address +
-  // absorbed tail; `HADITH_ADDRESS` names the address inside it (A1/A2).
+  // absorbed tail; `HADITH_ADDRESS` names the address inside it (A1/A2). A
+  // **spaced** joiner stays outside this token — `HR. Bukhari no. 5010 - 5011`
+  // scans as its head — a recorded exclusion (ADR-0049's "Hadith ranges"
+  // revisit trigger), pinned as deliberate in the validator test (review R5).
   {
     pattern: () =>
       /\bHR(?:\.|\s)\s*[^\s,.]{1,24}(?:\s+[^\s,.]{1,24}){0,3}\s+no\.\s*[^\s,;.)[\]]+/gi,
@@ -163,38 +171,47 @@ export const CITATION_GRAMMARS: readonly CitationGrammar[] = [
 /**
  * A dash joined to the address and followed by a DECIMAL DIGIT —
  * `… no. 5010—5011`, `… no. 5010–5011`, `… no. 5010-3`, `… no. 5010—٥٠١١`,
- * and `QS. 2:255—256` on the Quran side — is kept whole instead of being
- * reduced to its first address. This is a deliberate **precision-for-safety
- * trade-off** (review A3), not an oversight:
+ * `QS. 2:255—256` on the Quran side, and the **spaced** spelling
+ * `QS. 2:255 - 256` / `HR. Bukhari no. 5010 - 5011` (review R5 of the fix
+ * round) — is kept whole instead of being reduced to its first address. This is
+ * a deliberate **precision-for-safety trade-off** (review A3), not an
+ * oversight:
  *
- * - The dash family is the product's closed-up range joiner, so the compound
- *   may carry a SECOND address. Reducing it to `… no. 5010` would validate the
- *   first and silently drop the second — an unretrieved `no. 5011` would ride
- *   in on `no. 5010`'s grounding, and `QS. 2:256` on `QS. 2:255`'s.
+ * - The dash family is the product's range joiner, so the compound may carry a
+ *   SECOND address. Reducing it to `… no. 5010` would validate the first and
+ *   silently drop the second — an unretrieved `no. 5011` would ride in on
+ *   `no. 5010`'s grounding, and `QS. 2:256` on `QS. 2:255`'s.
+ * - Horizontal whitespace around the joiner is part of that same shape (R5):
+ *   while the dash had to be glued to the first number, a spaced range
+ *   normalised down to its head — the spaced twin of the hole A2 closed. A
+ *   newline is not tolerated, so a joiner cannot pull a number across a line.
  * - One rule covers both grammars because both feed it the same shape: the
  *   pattern absorbs the dash-joined tail, `addressOf` names the head, and the
  *   tail is what this constant tests. The Quran pattern grew that absorption in
  *   #264, where it used to stop at the first verse and ground on it alone.
  * - The cost is real: `… 5010—5011` is refused even when BOTH addresses were
- *   retrieved, and digit-glued prose (`… 5010—3 kali sehari`) is refused with
- *   it. Fail-closed is the safe direction for a safety-critical gate
- *   (SPECS §2.2).
+ *   retrieved, and digit-glued or digit-spaced prose (`… 5010—3 kali sehari`,
+ *   `… 5010 - 3 kali sehari`) is refused with it. Fail-closed is the safe
+ *   direction for a safety-critical gate (SPECS §2.2).
  * - The follow-up A3 recorded **has landed for the Quran grammar** (ADR-0049,
  *   #274): a grammar that declares {@link CitationGrammar.addressesOf} is
- *   checked address-by-address at the comparison site, so `QS. 2:255—256`
- *   grounds exactly when both verses are retrieved and still refuses when
- *   either is missing. Keeping the label whole is now only the **display** and
- *   refusal-report form, and the boundary this constant still is for a grammar
- *   that declares no address list — the hadith number today, whose range form
- *   is deliberately not bundled into that change.
+ *   checked address-by-address at the comparison site, so `QS. 2:255—256` —
+ *   and its spaced spelling — grounds exactly when both verses are retrieved
+ *   and still refuses when either is missing. Keeping the label whole is now
+ *   only the **display** and refusal-report form, and the boundary this
+ *   constant still is for a grammar that declares no address list — the hadith
+ *   number today, whose spaced *label* also keeps whole and refuses (the #264
+ *   A3 cost; its draft-side spaced form is a recorded exclusion on the pattern).
  *
  * The class after the dash is `\p{Nd}` — a decimal digit of any script, the
  * class an address number is made of — not `\p{N}`, whose superscript and
  * numeric forms (`¹`, `½`) are footnote markers here, not second addresses
- * (A2). The dash family is every joiner the number token absorbs: `-`, U+2010,
- * U+2011, U+2012, en dash, em dash, horizontal bar and the minus sign.
+ * (A2); the class around it is `\p{Cf}` (glue, as in the grammar's own tail)
+ * plus horizontal whitespace (space, tab). The dash family is every joiner the
+ * number token absorbs: `-`, U+2010, U+2011, U+2012, en dash, em dash,
+ * horizontal bar and the minus sign.
  */
-const DASH_JOINED_NUMBER_TAIL = /^[-‐‑‒–—―−]\p{Nd}/u;
+const DASH_JOINED_NUMBER_TAIL = /^[\p{Cf} \t]*[-‐‑‒–—―−][\p{Cf} \t]*\p{Nd}/u;
 
 /** The grammar a label **begins** with, and its match, or `null`. */
 function grammarAtStart(

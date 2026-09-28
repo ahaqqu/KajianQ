@@ -89,13 +89,21 @@ call, no paid dependency, no re-ingest, no migration.
    `SCOPE_EXPANSION_CAP`'s scale); `apps/api` reads
    `NEIGHBOUR_EXPANSION_RADIUS` and `NEIGHBOUR_EXPANSION_CAP` (non-negative
    integers; malformed = typed config failure), and **either value at `0`
-   disables the expansion** — a negative value is a typed config failure at
-   boot, never a second spelling of "off" (review B3 of the fix round: the
+   disables the expansion** — a negative value is a typed config failure when
+   the chat wiring builds: the process boots green and every `/v1/chat` request
+   then answers 503, never a second spelling of "off" (review B3 of the fix
+   round: the
    operator-facing docs, SPECS §3.3/§5 and this decision said "`<= 0`
    disables" while the parser rejected negatives, so the sentence an operator
    read and the parser they ran disagreed; the domain module and the adapter
    keep their defensive `<= 0` short-circuit for callers that are not that
-   parser). The cap is not decoration: uncapped, a radius-1
+   parser. R2 of the fix round corrected the timing this decision first
+   claimed: the parsers run when the chat wiring builds, which the route does
+   **per request** (`apps/api/src/routes/chat.ts`'s `wiringOr503`), so the
+   failure an operator sees is a permanent 503 on `/v1/chat`, not a failed
+   boot — a distinction this repo's own vocabulary already draws
+   (`apps/api/src/lib/server.ts` reserves "boot" for a fault outside the
+   wiring). The cap is not decoration: uncapped, a radius-1
    window would have added **p50 46 / p90 63 / max 74** chunks on the 130
    traces that hold Quran anchors — roughly doubling the prompt. Capped at 12
    the expansion can never become the bulk of the context. The two
@@ -117,7 +125,15 @@ call, no paid dependency, no re-ingest, no migration.
    `detectSurahReference` validates against; a surah written by name is
    bounded by the longest surah), and a span the bound cannot hold
    (`QS. 2:1-999`) **refuses** rather than grounding on a shorter reading of
-   itself. This is the owner-decided **strict-whole** rule applied to what a
+   itself. The chain also absorbs the **spaced** joiner (review R5 of the fix
+   round): `QS. 2:255 - 256` names 2:255 and 2:256 exactly as the glued
+   spelling does, because while the dash had to be glued the scan stopped at
+   the head and the second verse the prose named was neither enumerated nor
+   refused — A2's hole, spaced. A newline is deliberately not a joiner. The
+   declared-list rule runs **before** the comparison site's shortened-label rule
+   for the same reason: the spaced span extends the retrieved head with a
+   space, so the old order would have grounded it on the head alone. This is
+   the owner-decided **strict-whole** rule applied to what a
    range actually names: endpoints-only was a third, smaller loosening the
    original decision did not consider, and it left `QS. 3:1-2-3` scanned as
    `QS. 3:1-2` with the trailing `-3` neither named nor refused (review A2 of
@@ -126,7 +142,13 @@ call, no paid dependency, no re-ingest, no migration.
    pre-gate's claim spans and the user-visible citation text keep naming what
    the draft named. A grammar that declares no address list (the hadith
    grammar today) is untouched: its dash-joined compound stays the opaque whole
-   it was, and refuses. **The grounding decision has one owner**
+   it was, and refuses — and the **draft-side spaced hadith form** is an
+   explicit exclusion, not a silent one: the hadith number token stops at
+   whitespace, so `HR. Bukhari no. 5010 - 5011` is scanned as its head. It is
+   pinned as deliberate in the validator test and left to the "Hadith ranges"
+   revisit trigger below; the label side of that spelling _is_ kept whole by
+   the shared tail rule, so a chunk label written with air around the joiner
+   never reduces to its head either. **The grounding decision has one owner**
    (`chat-citation-validator`'s `groundingLabelsFor`): the comparison site and
    the user-visible citations frame both read it, and the eval's citation
    validity reads the same declaration through its injected grammar, so a range
@@ -298,15 +320,19 @@ call, no paid dependency, no re-ingest, no migration.
   neighbour path's contribution to a surah-naming question.
 - `packages/kajianq-domain/src/chat-neighbour-expansion.test.ts` — the
   assembled-context acceptance row for this ADR: the trace's top-ranked label
-  (`QS. 3:2`) is the retrieved verse — the same fixture seeds only that one
-  label, with `QS. 3:18`/`QS. 3:189` out of the corpus — the assembled context
+  (`QS. 3:2`) is the retrieved verse. The fixture (`seedSurah(store, 3, 200,
+[2])`) seeds **all 200 verses of surah 3 as rows**, each with its `QS. 3:n`
+  citation label, and gives only `QS. 3:2` the near embedding — so `QS. 3:18`
+  and `QS. 3:189` are in the fixture's corpus and out of the **retrieved** set
+  (their embeddings are far), and one label is retrieved. The assembled context
   contains `QS. 3:1` and `QS. 3:2`, and `validateCitations` on the **real
   failing label** (`QS. 3:1-2`) returns no ungrounded citation. The negative
   rows ride the same assembled context. (The original Evidence bullet pointed
   at `chat-retriever-assembler.test.ts` for these rows and described the
   fixture as the real failing retrieved set of three labels; the file that
-  holds them and the fixture it seeds are both corrected here — review B1 of
-  the fix round, "every doc claim has code".)
+  holds them, the fixture it seeds, and the seeded-versus-retrieved distinction
+  are all corrected here — review B1 and R7 of the fix round, "every doc claim
+  has code".)
 - `apps/api/src/lib/chat-citations.test.ts` — the frame boundary, through the
   **real** `deriveCitationsFrame`: a range the gate grounded
   (`{grounded: ["QS. 3:1"], ungrounded: []}`) is emitted as a citation whose
@@ -446,12 +472,17 @@ call, no paid dependency, no re-ingest, no migration.
   `ORDER BY` key (`ORDER BY distance, id`) would make it total and is
   deliberately **not** taken: the HNSW index provides distance order only, so a
   second key costs the index scan and turns every search into a full scan and
-  sort (8 searches per query), against SPECS §5's cost posture. Revisit if the
-  corpus grows duplicate embeddings enough for a boundary tie to be observed
-  in the smoke, or if a pgvector release offers a deterministic tie order that
-  keeps the index; the trace records what happened either way
-  (`neighbour_expansion.anchors` in read order), so the audit trail does not
-  depend on this.
+  sort (8 searches per query), against SPECS §5's cost posture. **The decider
+  is a measurement, not an assumption** (review R4 of the fix round): before a
+  second `ORDER BY` key is taken — or rejected again — compare the two plans
+  with `EXPLAIN (ANALYZE)` on staging (the query as it stands versus
+  `ORDER BY distance, id` with the matching window order), so the scan cost
+  this decision rests on is measured on the real corpus rather than reasoned
+  from the index definition. Revisit if the corpus grows duplicate embeddings
+  enough for a boundary tie to be observed in the smoke, or if a pgvector
+  release offers a deterministic tie order that keeps the index; the trace
+  records what happened either way (`neighbour_expansion.anchors` in read
+  order), so the audit trail does not depend on this.
 - **The 5-import agentic cap counts declared imports, not coupling** (review B5
   of the fix round). `chat-retriever-parts.ts` is a subject-scoped barrel, so
   three real module dependencies reach `chat-retriever.ts` as one import; the
