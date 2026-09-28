@@ -6,6 +6,7 @@ import {
   type Decider,
   type Draft,
   type Reviewer,
+  type RunContextService,
 } from "@app/rag-core";
 import { applyProductRules } from "./chat-postprocess";
 // Both citation screens arrive through one import (the pre-gate module
@@ -69,7 +70,10 @@ export type KajianQReviewerDeps = {
   /**
    * Apply the deterministic product rules (dhaif warning, machine-translation
    * label, ulama disclaimer) to a passed draft. Default on; a test or an eval
-   * refusal case can disable it.
+   * refusal case can disable it. Disabling it also suppresses the
+   * `product_rules` trace event — the event is recorded only where the rules
+   * actually run (#285), so a reader never sees "rules ran" for a run that
+   * skipped them.
    */
   applyProductRules?: boolean;
 };
@@ -131,7 +135,7 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
           }
 
           if (deps.provider === null || deps.skipLlm === true) {
-            return withRules(draft, context);
+            return withRules(draft, context, run);
           }
 
           // The pre-gate (ticket #168) sits between the free deterministic
@@ -148,7 +152,7 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
               ...(deps.pregateThreshold !== undefined ? { threshold: deps.pregateThreshold } : {}),
             });
             if (pregate.kind === "skip") {
-              return withRules(draft, context);
+              return withRules(draft, context, run);
             }
           }
 
@@ -196,7 +200,7 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
             });
             return { text: refusal("reviewer") };
           }
-          return withRules(draft, context);
+          return withRules(draft, context, run);
         }),
       ),
   };
@@ -206,10 +210,38 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
    * gains the dhaif warning, the machine-translation label, and the ulama
    * disclaimer when the model omitted them. Never applied to a refusal — the
    * refusal is the honest answer, and decorating it would bury the reason.
+   *
+   * **This is the ONE place the rules run, and therefore the one place the
+   * trace records that they did (#285, ADR-0007).** All three of the stage's
+   * "rules apply" exits funnel through here — no-provider/`skipLlm`,
+   * the ADR-0042 pre-gate skip, and reviewer-passed — so a fourth exit added
+   * later records the event by construction rather than by remembering to.
+   * The pre-gate skip path is why a dedicated event exists instead of a field
+   * on `review`: it records no `review` event at all, so a rule firing there
+   * was previously invisible.
+   *
+   * The recording is deliberately keyed on `applyProductRules !== false` (the
+   * same condition that gates the call), so the event means "the rules ran",
+   * never "the stage passed". The returned draft stays the single source of
+   * truth for the delivered text; `applied` names only which rules fired, and
+   * an empty list is the honest record of "ran, found everything already
+   * present" — the exact-copy suppression case that the text alone cannot
+   * distinguish from "never ran".
    */
-  function withRules(draft: Draft, context: AssembledContext<KajianQFilters>): Draft {
+  function withRules(
+    draft: Draft,
+    context: AssembledContext<KajianQFilters>,
+    run: RunContextService,
+  ): Draft {
     if (deps.applyProductRules === false) return draft;
-    return applyProductRules(draft, context, deps.language ?? "id").draft;
+    const result = applyProductRules(draft, context, deps.language ?? "id");
+    run.record({
+      stage: "reviewer",
+      kind: "product_rules",
+      detail: { applied: [...result.applied] },
+      at: run.now(),
+    });
+    return result.draft;
   }
 }
 

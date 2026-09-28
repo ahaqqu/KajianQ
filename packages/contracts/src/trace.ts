@@ -67,8 +67,8 @@ export type ChunkRef = v.InferOutput<typeof ChunkRefSchema>;
  * Split of responsibility: the pipeline runner emits the deterministic
  * stage-boundary events (`intent`, `subquery`, `retrieval`, `assembly`) from
  * each stage's structured result; stages that call an LLM or suppress an
- * answer append `llm_call`, `refusal`, and `review` through the run's trace
- * sink — the single collection point (ADR-0021).
+ * answer append `llm_call`, `refusal`, `review`, and `product_rules` through
+ * the run's trace sink — the single collection point (ADR-0021).
  *
  * `intent.attributes` is the one deliberately-opaque slot: it carries
  * domain-specific structured data (routing filters, tags) that the engine
@@ -189,6 +189,38 @@ export const TraceEventSchema = v.variant("kind", [
   }),
   v.object({
     /**
+     * The deterministic product rules ran (ADR-0007 typed detail, #285): the
+     * rules a domain pack applies to a passed draft after the reviewer gate,
+     * recorded wherever they are applied — including the ADR-0042 pre-gate
+     * skip path, which records no `review` event at all. Before this kind the
+     * only observable of a fired rule was the text it appended, so "the rule
+     * ran and found the copy already present" was indistinguishable from "the
+     * rule never ran".
+     *
+     * `applied` names the rule ids that appended text, in application order.
+     * An EMPTY array is a meaningful value, not a missing one: the rules ran
+     * and none of them appended, which is exactly the residual exact-copy
+     * suppression case a reader must be able to count. The ids are opaque to
+     * the engine — the domain pack owns what they mean.
+     *
+     * The PRESENCE of this event is the signal (the rules ran); absence is
+     * authoritative only for traces written after the kind shipped — a trace
+     * persisted before it simply has no such event (ADR-0007 amendment).
+     *
+     * Stage is pinned to `reviewer`: the rules are that stage's
+     * post-processing, so an event recorded elsewhere is a wiring defect
+     * rather than a new adopter.
+     */
+    stage: v.literal("reviewer"),
+    kind: v.literal("product_rules"),
+    detail: v.object({
+      applied: v.array(v.pipe(v.string(), v.minLength(1))),
+    }),
+    cost: v.optional(CostRecordSchema),
+    at: v.pipe(v.number(), v.integer()),
+  }),
+  v.object({
+    /**
      * A decision-model call's verdict (ADR-0042 serving pattern): the shape
      * every stage that asks a `Decider` to screen its fast path records, so a
      * later adoption (retrieval screening, rerank) reuses it verbatim instead
@@ -270,6 +302,17 @@ export type TraceEventKind = TraceEvent["kind"];
  * persisted traces. The RagStore reader uses `v.parse`, which tolerates
  * missing optional fields and strips unknown future keys, so older persisted
  * traces stay readable as the contract evolves (ADR-0007 amendment).
+ *
+ * A new event *kind* is additive on the same terms and does NOT bump
+ * `version`: a trace persisted before the kind shipped simply carries no
+ * event of it, so the enumeration's growth cannot make an older trace
+ * unreadable, and the version anchor covers `Trace`'s own fields rather than
+ * the event union's size (every kind added since `version` was introduced —
+ * `filter_relaxed`, `scope_expansion`, `decision`, and now `product_rules` —
+ * shipped without a bump, and the runner does not write `version` at all).
+ * What a reader MUST NOT do is read the absence of such an event as a
+ * negative for a trace written before the kind existed; presence is the
+ * signal, absence is ambiguous across the version boundary.
  */
 export const TraceSchema = v.object({
   id: v.pipe(v.string(), v.minLength(1)),

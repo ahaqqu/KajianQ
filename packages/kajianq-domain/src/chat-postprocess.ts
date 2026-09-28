@@ -25,19 +25,23 @@ import { MACHINE_TRANSLATION_LABEL } from "./chat-assembler";
  * the canonical copy is required (the dhaif rule's treatment) is an open
  * product-copy decision owned by ticket #284.
  *
- * Which rules fired is returned in `ProductRulesResult.applied`, not recorded
- * on the trace: the only production caller (`chat-reviewer.ts`'s `withRules`)
- * discards it, so a fired rule is observable today through the text it
- * appended to the delivered answer. Putting it on the trace is a trace-contract
- * addition (a new `TraceEventSchema` kind), tracked by ticket #285.
+ * Which rules fired is returned in `ProductRulesResult.applied` and recorded
+ * on the trace by the only production caller (`chat-reviewer.ts`'s
+ * `withRules`) as a `product_rules` event, on every path that applies the
+ * rules (#285). The event's PRESENCE is what says the rules ran; `applied`
+ * names the rules that appended text, so a delivered answer's trace
+ * distinguishes "the rule ran and found its copy already present" (an empty
+ * list) from "the rules never ran" (no event). The delivered text stays the
+ * single source of truth for what the answer says.
  */
 
 export type ProductRulesResult = {
   draft: Draft;
   /**
-   * Which deterministic rules appended text, in application order. Returned to
-   * the caller; the production caller currently discards it, so this is not on
-   * the trace (ticket #285).
+   * Which deterministic rules appended text, in application order. Recorded
+   * verbatim on the reviewer stage's `product_rules` trace event (#285); an
+   * empty list means every rule that had a trigger found its copy already
+   * present, not that the rules were skipped — that case records no event.
    */
   applied: readonly string[];
 };
