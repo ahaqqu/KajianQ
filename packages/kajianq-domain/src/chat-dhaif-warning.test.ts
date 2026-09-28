@@ -184,7 +184,7 @@ describe("#278 — the dhaif warning as the wiring runs it", () => {
     }[];
     const retrieval = events.find((e) => e.kind === "retrieval");
     const assembly = events.find((e) => e.kind === "assembly");
-    const ids = (retrieval?.detail["chunks"] as { id: string }[]).map((c) => c.id);
+    const ids = ((retrieval?.detail["chunks"] ?? []) as { id: string }[]).map((c) => c.id);
     expect(ids).toContain(dhaifId);
     expect(assembly?.detail["chunkCount"]).toBe(ids.length);
   });
