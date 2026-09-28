@@ -17,15 +17,28 @@ import { MACHINE_TRANSLATION_LABEL } from "./chat-assembler";
  *
  * They are appended, never rewritten: the model's own text is preserved, and
  * a rule whose own copy the text already carries is not duplicated (a double
- * disclaimer is a visible defect). "Already carries" means the product's copy,
- * never a model paraphrase of it — the control is deterministic precisely so
- * it does not depend on the model (ticket #278). Everything appended is
- * reported so the trace can show which rules fired.
+ * disclaimer is a visible defect). For the **dhaif rule**, "already carries"
+ * means the product's copy, never a model paraphrase of it — that control is
+ * deterministic precisely so it does not depend on the model (ticket #278).
+ * The disclaimer predicate is deliberately looser: `hasDisclaimer` accepts any
+ * "bukan fatwa" phrasing, and whether a paraphrase satisfies the disclaimer or
+ * the canonical copy is required (the dhaif rule's treatment) is an open
+ * product-copy decision owned by ticket #284.
+ *
+ * Which rules fired is returned in `ProductRulesResult.applied`, not recorded
+ * on the trace: the only production caller (`chat-reviewer.ts`'s `withRules`)
+ * discards it, so a fired rule is observable today through the text it
+ * appended to the delivered answer. Putting it on the trace is a trace-contract
+ * addition (a new `TraceEventSchema` kind), tracked by ticket #285.
  */
 
 export type ProductRulesResult = {
   draft: Draft;
-  /** Which deterministic rules appended text (for the trace). */
+  /**
+   * Which deterministic rules appended text, in application order. Returned to
+   * the caller; the production caller currently discards it, so this is not on
+   * the trace (ticket #285).
+   */
   applied: readonly string[];
 };
 
