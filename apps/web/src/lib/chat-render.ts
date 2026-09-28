@@ -182,13 +182,24 @@ export type SplitAnswer = {
   disclaimer: string | null;
 };
 
-/** The MT label as the postprocess appends it — bracketed, and bare. */
-const MACHINE_TRANSLATION_FORMS = [`[${MACHINE_TRANSLATION_LABEL}]`, MACHINE_TRANSLATION_LABEL];
+/**
+ * The MT label's opening forms — the postprocess appends it bracketed, and a
+ * rehydrated or hand-edited answer may carry it bare. Matched by prefix like
+ * the warning and disclaimer, so a wording tweak inside the label cannot
+ * silently stop the walk and resurrect the duplicate (#292).
+ */
+const MACHINE_TRANSLATION_MARKERS = [
+  `[${MACHINE_TRANSLATION_LABEL}`,
+  MACHINE_TRANSLATION_LABEL,
+] as const;
 
 /** The MT label is a rule paragraph too, but it peels into no field. */
 function isMachineTranslationLabel(paragraph: string): boolean {
   const trimmed = paragraph.trim();
-  return trimmed.length <= RULE_LINE_MAX && MACHINE_TRANSLATION_FORMS.includes(trimmed);
+  return (
+    trimmed.length <= RULE_LINE_MAX &&
+    MACHINE_TRANSLATION_MARKERS.some((marker) => trimmed.startsWith(marker))
+  );
 }
 
 /**

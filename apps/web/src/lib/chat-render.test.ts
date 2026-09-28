@@ -262,6 +262,16 @@ describe("splitAnswerBlocks", () => {
     expect(split.body).toBe(`Jawaban.\n\n[${MACHINE_TRANSLATION_LABEL}]`);
   });
 
+  it("recognizes the MT label by prefix, so a label tweak cannot hide the warning", () => {
+    const warning =
+      "[Peringatan] Hadits yang dikutip berderajat lemah (dhaif); tidak dapat dijadikan dalil utama.";
+    const split = splitAnswerBlocks(
+      ["Jawaban.", warning, "Terjemahan mesin — lihat teks Arab asli (beta)"].join("\n\n"),
+    );
+    expect(split.warning).toBe(warning);
+    expect(split.body).toContain("Terjemahan mesin");
+  });
+
   it("does not eat prose when the trailing rule paragraphs end", () => {
     // The walk must stop at the first non-rule paragraph: a warning-like line
     // earlier in the answer is ordinary prose, not a rule block.
