@@ -165,7 +165,7 @@ describe("ChatRequestSchema sessionId (#271)", () => {
    *
    * Mutation this row pins: widening `ChatSessionIdSchema` to PostgreSQL's
    * extra-hyphen form — e.g.
-   * `v.regex(/^[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i)`
+   * `v.regex(/^[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i)`
    * — and this row reddens, at which point the stand-in divergence stops being
    * inert and route tests would start refusing a value production accepts.
    */

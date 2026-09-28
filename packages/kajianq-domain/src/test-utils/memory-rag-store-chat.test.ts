@@ -18,10 +18,13 @@ import { memoryChatMethods } from "./memory-rag-store-chat";
  * The stand-in's own verdict is pinned here so that loosening `uuidShaped` to
  * PostgreSQL's rule — or widening the schema into this form — is visible rather
  * than silent, and so the neighbouring canonical spelling stays a live control.
+ * The extra hyphen is the INERT divergence; the same `Map` has a REACHABLE one —
+ * it keys on the exact spelling it was given, so an uppercase lookup misses a
+ * lowercase-seeded row where the real `uuid` column answers it — tracked in #315.
  *
  * Mutation this row pins: in `memory-rag-store-chat.ts`, relax `uuidShaped` to
  * the column's own rule — e.g.
- * `/^[{]?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}[}]?$/i`
+ * `/^[{]?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}[}]?$/i`
  * — and the extra-hyphen row reddens while the canonical control stays green.
  */
 
