@@ -9,7 +9,7 @@ import {
   NEIGHBOUR_EXPANSION_ORIGIN,
   SCOPE_EXPANSION_ORIGIN,
   expandVerseNeighbours,
-} from "./chat-expansions";
+} from "./chat-retriever-parts";
 import { createKajianQRetriever } from "./chat-retriever";
 import type { KajianQFilters } from "./filters";
 import { surahSourceKey } from "./quran-source";
@@ -397,9 +397,15 @@ describe("the assembled context grounds the real failing label (#274)", () => {
     const chunks = await retrieve(
       routed("Apa maksud Ayat Kursi?", ["makna ayat kursi", "tafsir ayat kursi"]),
     );
-    const assembled = await Effect.runPromise(
-      createKajianQAssembler().assemble({ text: "Apa maksud Ayat Kursi?", filters: {} }, chunks),
-    );
+    // The real assembler, run exactly as `chat-retriever-assembler.test.ts`
+    // runs it (its `RunContext` requirement is the runner's in production, and
+    // the assembler itself reads nothing from it).
+    const assembled = Effect.runSync(
+      createKajianQAssembler().assemble({ text: "Apa maksud Ayat Kursi?" }, chunks) as never,
+    ) as {
+      chunks: readonly Chunk[];
+      turns: readonly { content: string }[];
+    };
     return {
       chunks: assembled.chunks,
       context: assembled.turns.map((turn) => turn.content).join("\n"),

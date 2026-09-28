@@ -213,10 +213,14 @@ call, no paid dependency, no re-ingest, no migration.
   would silently redefine a metric ADR-0045 already published. Recorded here
   because the alternative (fold both into one number) was considered and
   rejected.
-- **`chat-citation-grammar.ts` is at the 300-line agentic cap, so the
-  comparison-form spelling helpers move to `chat-citation-spelling.ts`** — the
-  same-subject split the module's own docstring already anticipated, not a new
-  seam.
+- **Three modules were at or over the 300-line agentic cap, so three
+  same-subject splits landed with this change** — `chat-citation-spelling.ts`,
+  `chat-citation-normalize.ts` and `chat-fusion.ts` — plus the retriever's
+  companion barrel `chat-retriever-parts.ts` for the 5-import cap. Each split
+  is a line-count move, not a new seam: the public surface is unchanged
+  (`chat-citation-validator` re-exports the scan and the comparison form; the
+  domain barrel re-exports the fusion arithmetic), and every subject keeps one
+  owner.
 
 ## Evidence
 
@@ -258,17 +262,25 @@ call, no paid dependency, no re-ingest, no migration.
 - `packages/infra/src/rag-store-corpus-seam.ts`,
   `rag-store-postgres-similarity.ts` — `listDocChildNeighboursByChildIds`.
 - `packages/kajianq-domain/src/chat-neighbour-expansion.ts` — anchor
-  selection, the radius/cap, dedup, the origin label, the trace detail.
+  selection, the radius/cap, dedup, the origin label, the trace detail;
+  `chat-retriever-parts.ts` is the retriever's companion barrel (the 5-import
+  agentic cap) and `chat-fusion.ts` the pure fusion arithmetic split out of
+  `chat-retriever.ts` (the 300-line cap).
 - `packages/kajianq-domain/src/chat-citation-grammar.ts`,
-  `chat-citation-spelling.ts` — `CitationGrammar.addressesOf`,
-  `addressesNamedBy`, and the spelling split that keeps the module inside the
-  agentic cap.
+  `chat-citation-spelling.ts`, `chat-citation-normalize.ts` —
+  `CitationGrammar.addressesOf`, `addressesNamedBy`, and the two same-subject
+  splits (spelling, then normalization/scan) that keep the family inside the
+  300-line agentic cap; `chat-citation-validator` re-exports both so its public
+  surface is unchanged.
 - `packages/kajianq-domain/src/chat-citation-validator.ts` — the ungrounded
   decision consults the candidate's declared address list.
 - `packages/kajianq-domain/src/chat-retriever.ts` — the expansion runs after
   ADR-0045's scope expansion, over `fused ∪ scope`; the typed event is
   recorded through the run's collection point (ADR-0021).
-- `packages/contracts/src/trace.ts` — the `neighbour_expansion` variant.
+- `packages/contracts/src/trace.ts` — the `neighbour_expansion` variant;
+  `trace-events.ts` / `trace-primitives.ts` are the acyclic split of the event
+  vocabulary from its field schemas that keeps `trace.ts` inside the 300-line
+  cap, with the public surface re-exported unchanged.
 - `apps/api/src/{env.ts,lib/chat-config.ts,lib/chat-wiring.ts,lib/server.ts}`,
   `provision/vps/api.env.example` — the two config knobs through the filtered
   env view.

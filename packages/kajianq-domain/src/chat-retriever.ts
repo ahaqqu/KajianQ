@@ -18,11 +18,14 @@ import {
   DEFAULT_SCOPE_EXPANSION_CAP,
   expandSurahScope,
   expandVerseNeighbours,
+  hierarchyBonus,
+  metadataFilters,
+  rrfFuse,
   type NeighbourChildRow,
   type ScopeChildRow,
-} from "./chat-expansions";
+  type TrackHit,
+} from "./chat-retriever-parts";
 import { withTextLayers } from "./chunk-text-layers";
-
 /**
  * KajianQRetriever — Smart Router stage 4 (spec §3.3): embed each routed
  * sub-query, run `similaritySearch` over both embedding tracks (ADR-0013
@@ -30,16 +33,6 @@ import { withTextLayers } from "./chunk-text-layers";
  * the spec's hierarchy bonuses. Chunks carry their fused `score` and per-rank
  * provenance so the Trace shows retrieval provenance (ADR-0007).
  */
-
-/** RRF constant (spec §3.3: k=60). */
-export const RRF_K = 60;
-
-/** Hierarchy bonus magnitudes (spec §3.3). */
-export const HIERARCHY_BONUS = {
-  quran: 0.3,
-  sahih: 0.25,
-  hasan: 0.15,
-} as const;
 
 export type RetrieverEmbedder = {
   embed(spec: {
@@ -121,51 +114,6 @@ export type KajianQRetrieverDeps = {
   /** Trace/cost sink for the embed call (the run's collection point). */
   onEmbedCost?: (cost: CostRecord) => void;
 };
-
-/** One track's hit: the chunk plus its 1-based dense rank in that search. */
-type TrackHit = { chunk: Chunk; rank: number };
-
-/**
- * Fuse per-search hit lists with RRF(k=60) plus hierarchy bonuses.
- * Exported for tests: pure, deterministic.
- */
-export function rrfFuse(lists: readonly TrackHit[][], bonusOf: (chunk: Chunk) => number): Chunk[] {
-  const byId = new Map<string, { chunk: Chunk; score: number; ranks: number[] }>();
-  for (const list of lists) {
-    for (const { chunk, rank } of list) {
-      const entry = byId.get(chunk.id) ?? { chunk, score: 0, ranks: [] };
-      entry.score += (1 + bonusOf(chunk)) / (RRF_K + rank);
-      entry.ranks.push(rank);
-      byId.set(chunk.id, entry);
-    }
-  }
-  return [...byId.values()]
-    .sort((a, b) => b.score - a.score)
-    .map((e) => ({
-      ...e.chunk,
-      score: e.score,
-      rankDense: Math.min(...e.ranks),
-    }));
-}
-
-/** Hierarchy bonus from a chunk's opaque metadata (spec §3.3 magnitudes). */
-export function hierarchyBonus(chunk: Chunk): number {
-  const meta = (chunk.metadata ?? {}) as Record<string, unknown>;
-  let bonus = 0;
-  if (meta["sourceType"] === "quran") bonus += HIERARCHY_BONUS.quran;
-  if (meta["grade"] === "sahih") bonus += HIERARCHY_BONUS.sahih;
-  if (meta["grade"] === "hasan") bonus += HIERARCHY_BONUS.hasan;
-  return bonus;
-}
-
-/** Map the domain filters to the store's opaque metadata filter record. */
-export function metadataFilters(filters: KajianQFilters): Record<string, string> {
-  const out: Record<string, string> = {};
-  if (filters.madzhab) out["madzhab"] = filters.madzhab;
-  if (filters.grade) out["grade"] = filters.grade;
-  if (filters.textLayer) out["textLayer"] = filters.textLayer;
-  return out;
-}
 
 export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<KajianQFilters> {
   const limit = deps.limit ?? 10;

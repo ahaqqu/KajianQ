@@ -140,16 +140,21 @@ export {
 } from "./chat-router";
 export {
   createKajianQRetriever,
-  hierarchyBonus,
-  metadataFilters,
-  rrfFuse,
-  RRF_K,
-  HIERARCHY_BONUS,
   type KajianQRetrieverDeps,
   type RetrieverEmbedder,
   type RetrieverStore,
   type StoreBridge,
 } from "./chat-retriever";
+// The fusion arithmetic and the two deterministic expansions live in their own
+// modules (the 300-line and 5-import agentic caps); the barrel keeps one public
+// surface, so consumers import from `@app/kajianq-domain` exactly as before.
+export { hierarchyBonus, metadataFilters, rrfFuse, RRF_K, HIERARCHY_BONUS } from "./chat-fusion";
+export {
+  DEFAULT_NEIGHBOUR_CAP,
+  DEFAULT_NEIGHBOUR_RADIUS,
+  NEIGHBOUR_EXPANSION_ORIGIN,
+  expandVerseNeighbours,
+} from "./chat-retriever-parts";
 export {
   createKajianQAssembler,
   MACHINE_TRANSLATION_LABEL,
