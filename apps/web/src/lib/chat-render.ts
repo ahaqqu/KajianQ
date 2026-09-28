@@ -182,11 +182,30 @@ export type SplitAnswer = {
   disclaimer: string | null;
 };
 
+/** The MT label as the postprocess appends it — bracketed, and bare. */
+const MACHINE_TRANSLATION_FORMS = [`[${MACHINE_TRANSLATION_LABEL}]`, MACHINE_TRANSLATION_LABEL];
+
+/** The MT label is a rule paragraph too, but it peels into no field. */
+function isMachineTranslationLabel(paragraph: string): boolean {
+  const trimmed = paragraph.trim();
+  return trimmed.length <= RULE_LINE_MAX && MACHINE_TRANSLATION_FORMS.includes(trimmed);
+}
+
 /**
  * Peel the deterministic rule paragraphs off an answer: the dhaif warning
  * and the disclaimer render as their own visually distinct blocks (spec
  * §2.2), never as ordinary prose. Matching is exact-equality on the product's
  * own copy — our strings, not the model's phrasing.
+ *
+ * The peel walks the *consecutive trailing rule paragraphs* rather than
+ * assuming the last two are `[warning][disclaimer]` (#292). The postprocess
+ * appends warning → MT label → disclaimer, so on the common Indonesian path
+ * the MT label is last: a two-pop peel left the warning inside `body`, which
+ * `renderBodyBlocks` drew as prose *and* `AnswerCard` drew again from the
+ * frame flag — the canonical sentence rendered twice. The MT label itself
+ * peels into no field and stays in `body`, in its original order, so the
+ * provenance claim still renders with the text it describes. A paragraph that
+ * is not a rule paragraph stops the walk, so answer prose is never eaten.
  */
 export function splitAnswerBlocks(text: string): SplitAnswer {
   const paragraphs = text.split("\n\n");
@@ -198,15 +217,22 @@ export function splitAnswerBlocks(text: string): SplitAnswer {
       ? trimmed
       : null;
   };
-  if (paragraphs.length > 0) {
+  const trailing: string[] = [];
+  while (paragraphs.length > 0) {
     const last = paragraphs[paragraphs.length - 1]!;
-    disclaimer = takeIfMarked(last, DISCLAIMER_MARKERS);
-    if (disclaimer !== null) paragraphs.pop();
+    const markedWarning = warning === null ? takeIfMarked(last, WARNING_MARKERS) : null;
+    const markedDisclaimer = disclaimer === null ? takeIfMarked(last, DISCLAIMER_MARKERS) : null;
+    if (markedWarning !== null) {
+      warning = markedWarning;
+      paragraphs.pop();
+    } else if (markedDisclaimer !== null) {
+      disclaimer = markedDisclaimer;
+      paragraphs.pop();
+    } else if (isMachineTranslationLabel(last)) {
+      trailing.unshift(paragraphs.pop()!);
+    } else {
+      break;
+    }
   }
-  if (paragraphs.length > 0) {
-    const last = paragraphs[paragraphs.length - 1]!;
-    warning = takeIfMarked(last, WARNING_MARKERS);
-    if (warning !== null) paragraphs.pop();
-  }
-  return { body: paragraphs.join("\n\n"), warning, disclaimer };
+  return { body: [...paragraphs, ...trailing].join("\n\n"), warning, disclaimer };
 }
