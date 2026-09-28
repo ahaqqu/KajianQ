@@ -16,14 +16,29 @@ import { MACHINE_TRANSLATION_LABEL } from "./chat-assembler";
  *   not-a-fatwa disclaimer.
  *
  * They are appended, never rewritten: the model's own text is preserved, and
- * a rule already satisfied by the text is not duplicated (a double disclaimer
- * is a visible defect). Everything appended is reported so the trace can show
- * which rules fired.
+ * a rule whose own copy the text already carries is not duplicated (a double
+ * disclaimer is a visible defect). For the **dhaif rule**, "already carries"
+ * means the product's copy, never a model paraphrase of it — that control is
+ * deterministic precisely so it does not depend on the model (ticket #278).
+ * The disclaimer predicate is deliberately looser: `hasDisclaimer` accepts any
+ * "bukan fatwa" phrasing, and whether a paraphrase satisfies the disclaimer or
+ * the canonical copy is required (the dhaif rule's treatment) is an open
+ * product-copy decision owned by ticket #284.
+ *
+ * Which rules fired is returned in `ProductRulesResult.applied`, not recorded
+ * on the trace: the only production caller (`chat-reviewer.ts`'s `withRules`)
+ * discards it, so a fired rule is observable today through the text it
+ * appended to the delivered answer. Putting it on the trace is a trace-contract
+ * addition (a new `TraceEventSchema` kind), tracked by ticket #285.
  */
 
 export type ProductRulesResult = {
   draft: Draft;
-  /** Which deterministic rules appended text (for the trace). */
+  /**
+   * Which deterministic rules appended text, in application order. Returned to
+   * the caller; the production caller currently discards it, so this is not on
+   * the trace (ticket #285).
+   */
   applied: readonly string[];
 };
 
@@ -69,17 +84,30 @@ function hasDisclaimer(text: string): boolean {
   return /bukan fatwa|not a fatwa/i.test(text);
 }
 
-/** True when the text already carries a dhaif warning. */
-function hasWeakWarning(text: string): boolean {
-  // Anchored to the product's own warning vocabulary (thermo-review A6, then
-  // round-3 B4): the ±40-character proximity windows between `lemah` and a
-  // grading target were brittle in both directions — an unrelated "lemah"
-  // within the window suppressed the required warning, and a genuine weakness
-  // claim phrased just outside it duplicated it. The product owns the warning
-  // copy, so suppression matches the technical term `dhaif` plus the copy's
-  // own grade phrases; an informal "lemah" now gains the canonical warning,
-  // which is the deterministic rule doing its job, not a duplicate.
-  return /dhaif|berderajat lemah|graded weak/i.test(text);
+/**
+ * True when the text already carries the product's own dhaif warning copy, in
+ * either language. Exported because this IS what the citations frame's
+ * `dhaifWarning` flag means (`apps/api/src/lib/chat-citations.ts`): one
+ * predicate, two readers, so the delivered answer and the frame derived from
+ * it can never disagree about whether the warning is present.
+ *
+ * The predicate is deliberately the COPY, not the grade vocabulary (ticket
+ * #278). The deterministic evidence renders a weak-grade chunk's label as
+ * `(Dhaif)` — `renderEvidenceChunk` appends the store's grade — and the
+ * generator is instructed to reproduce the evidence's labels verbatim, so an
+ * answer whose context carries a dhaif chunk contains the bare token `dhaif`
+ * for a reason that is not a warning at all. Suppressing on the token
+ * therefore switched the control OFF on exactly the answers it exists for.
+ * Measured on the staging store (2026-09-28, read-only): of 95 non-refused
+ * answers whose assembled context carried a dhaif-graded chunk, 81 carried no
+ * canonical warning line and all 81 matched the token — zero cases lacked the
+ * line without a token match. Spec §2.2 makes the grade flag an "Always"
+ * control so it does not depend on the model, so only the copy suppresses; an
+ * informal weakness claim gains the canonical line exactly as an informal
+ * "lemah" already did (round-3 B4).
+ */
+export function hasWeakWarning(text: string): boolean {
+  return text.includes(dhaifWarning("id")) || text.includes(dhaifWarning("en"));
 }
 
 /**

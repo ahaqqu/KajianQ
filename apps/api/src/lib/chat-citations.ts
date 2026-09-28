@@ -13,7 +13,7 @@ import type { ChatMessage, DocChildById } from "@app/infra";
 import {
   citationCandidatesIn,
   citationLabelsOf,
-  dhaifWarning as dhaifWarningLine,
+  hasWeakWarning,
   normalizeCitationLabel,
 } from "@app/kajianq-domain";
 // The trace-frame module owns the shared chunk-ref + display-fetch plumbing;
@@ -115,8 +115,11 @@ export function deriveCitationsFrame(input: {
     messageId,
     citations,
     refusal: false,
-    dhaifWarning:
-      answerText.includes(dhaifWarningLine("id")) || answerText.includes(dhaifWarningLine("en")),
+    // The frame's flag and the postprocess's suppression check are the SAME
+    // predicate (one owner, `@app/kajianq-domain`), so "the warning is on the
+    // answer" cannot mean two different things on the two sides of the wire
+    // (ticket #278).
+    dhaifWarning: hasWeakWarning(answerText),
   };
 }
 
