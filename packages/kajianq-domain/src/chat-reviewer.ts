@@ -217,7 +217,7 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
    * the ADR-0042 pre-gate skip, and reviewer-passed — so a fourth exit added
    * later records the event by construction rather than by remembering to.
    * The pre-gate skip path is why a dedicated event exists instead of a field
-   * on `review`: it records no `review` event at all, so a rule firing there
+   * on `review`: it records no `review` event at all, so a rule running there
    * was previously invisible.
    *
    * The recording is deliberately keyed on `applyProductRules !== false` (the

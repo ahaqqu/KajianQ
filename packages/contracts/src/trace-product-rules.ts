@@ -12,15 +12,15 @@ import { CostRecordSchema } from "./trace-cost";
  * **What the event means.** The deterministic product rules ran: the rules a
  * domain pack applies to a passed draft after the reviewer gate. This contract
  * stays domain-agnostic, so the rule ids are opaque strings the domain pack
- * owns. Before this kind, the only observable of a fired rule was the text it
- * appended to the delivered answer, so "the rule ran and found the copy
+ * owns. Before this kind, the only observable of a rule that ran was the text
+ * it appended to the delivered answer, so "the rule ran and found the copy
  * already present" was indistinguishable from "the rule never ran".
  *
  * **Why a dedicated kind rather than a field on `review`.** The rules apply on
  * three exits from the reviewer stage — no reviewer configured/`skipLlm`, the
  * ADR-0042 pre-gate skip, and reviewer-passed — and the pre-gate skip records
- * **no `review` event at all**. Folding the rule firing into `review` would
- * have left the very path the #278 staging failure took unobservable.
+ * **no `review` event at all**. Folding the rules into `review` would have
+ * left the very path the #278 staging failure took unobservable.
  *
  * **Reading it.** `applied` names the rule ids that appended text, in
  * application order. An EMPTY array is a meaningful value, not a missing one:

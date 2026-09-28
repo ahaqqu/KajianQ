@@ -234,7 +234,7 @@ describe("#168 reviewer pre-gate — skip path", () => {
   it("records no product_rules event when the deterministic rules are disabled (#285)", async () => {
     // The same skip path with `applyProductRules: false` (this suite's default
     // wiring): the event means "the rules ran", so a run that skips them must
-    // not look like one that fired them — even though every rule would
+    // not look like one that ran them — even though every rule would
     // otherwise have appended something here.
     const out = await review(
       {

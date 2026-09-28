@@ -287,7 +287,7 @@ describe("#278 — the dhaif warning as the wiring runs it", () => {
 });
 
 /**
- * INTEGRATION TEST (#285) — the deterministic rules' firing on the delivery
+ * INTEGRATION TEST (#285) — where the deterministic rules run on the delivery
  * paths the WIRING takes.
  *
  * The invariant: **a delivered answer whose deterministic rules ran carries
@@ -298,7 +298,7 @@ describe("#278 — the dhaif warning as the wiring runs it", () => {
  * exits are `provider === null || skipLlm`, the ADR-0042 pre-gate skip, and
  * reviewer-passed, and the pre-gate skip records **no `review` event at all**
  * (the #278 staging trace dfd9d801 carried only a `decision` skip). A rule
- * firing on that path was invisible to the trace; this suite is what reddens
+ * running on that path was invisible to the trace; this suite is what reddens
  * if the event stops being recorded there, if it is recorded where the rules
  * were disabled, or if `applied` stops naming the rules that appended text. An
  * empty `applied` is only "ran, appended nothing": it does not separate "no
@@ -342,7 +342,7 @@ describe("#285 — the product_rules event on the wiring's delivery paths", () =
     });
     const events = eventsOf(answer);
     // The path: the cheap screen cleared every citation, so the paid reviewer
-    // was skipped and no `review` event exists to hang the rule firing on.
+    // was skipped and no `review` event exists to hang the rule record on.
     expect(events.find((e) => e.kind === "decision")?.detail["outcome"]).toBe("skip");
     expect(events.some((e) => e.kind === "review")).toBe(false);
 

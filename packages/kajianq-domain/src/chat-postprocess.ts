@@ -28,12 +28,14 @@ import { MACHINE_TRANSLATION_LABEL } from "./chat-assembler";
  * Which rules appended text is returned in `ProductRulesResult.applied` and
  * recorded on the trace by the only production caller (`chat-reviewer.ts`'s
  * `withRules`) as a `product_rules` event, on every path that applies the
- * rules (#285). The event's PRESENCE is what says the rules ran — absence says
- * they did not; `applied` names the rules that appended text. An empty
- * `applied` therefore says only "ran, appended nothing" — it does not separate
- * "no rule had a trigger" from "a trigger matched and the copy was already
- * present", and the delivered text is identical either way. The delivered text
- * stays the single source of truth for what the answer says.
+ * rules (#285). The event's PRESENCE is what says the rules ran; absence says
+ * they did not only for traces written after the kind shipped (ADR-0007) — a
+ * trace written before it carries no such event although the rules ran, which
+ * is the defect #285 records. `applied` names the rules that appended text. An
+ * empty `applied` therefore says only "ran, appended nothing" — it does not
+ * separate "no rule had a trigger" from "a trigger matched and the copy was
+ * already present", and the delivered text is identical either way. The
+ * delivered text stays the single source of truth for what the answer says.
  */
 
 export type ProductRulesResult = {
