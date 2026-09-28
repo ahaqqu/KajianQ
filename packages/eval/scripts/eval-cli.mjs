@@ -79,16 +79,22 @@ export function expansionLines(scored) {
  * excluded from the means above, so without its own line the count is the only
  * visible trace of it — and an operator reading the CI log could not tell a
  * client timeout from a 5xx without querying the store. The cause is printed
- * exactly as persisted (`skipped: <message>`), whitespace-collapsed so one
- * skip stays one log line whatever the transport error's own formatting is.
+ * once: the persisted note already carries its own `skipped:` prefix
+ * (`skippedOutcome`), and this line labels the row, so re-printing the prefix
+ * would read `skipped: q3 — skipped: transport down`. Whitespace is collapsed
+ * so one skip stays one log line whatever the transport error's own formatting
+ * is, and an empty `notes` array takes the same fallback as an absent one.
+ * Contract as `expansionLines`: `printSummary` hands it the run's skipped
+ * results, while the predicate filter below keeps it correct if it is ever
+ * handed the raw results too.
  */
-export function skipLines(results) {
-  return results
+export function skipLines(skipped) {
+  return skipped
     .filter((x) => x.skipped === true)
-    .map(
-      (x) =>
-        `  skipped: ${x.questionId} — ${(x.notes?.join("; ") ?? "no cause recorded").replace(/\s+/g, " ")}`,
-    );
+    .map((x) => {
+      const cause = (x.notes?.join("; ") || "").replace(/\s+/g, " ").replace(/^skipped:\s*/, "");
+      return `  skipped: ${x.questionId} — ${cause || "no cause recorded"}`;
+    });
 }
 
 /**
@@ -99,6 +105,7 @@ export function skipLines(results) {
  */
 export function printSummary(prefix, { runId, questionCount, result, costMicroUsd }) {
   const scored = result.results.filter((x) => x.skipped !== true);
+  const skipped = result.results.filter((x) => x.skipped === true);
   console.log(
     [
       "",
@@ -108,7 +115,7 @@ export function printSummary(prefix, { runId, questionCount, result, costMicroUs
       `  mean citation validity: ${mean(scored.map((x) => x.citationValidity))?.toFixed(3) ?? "n/a"}`,
       `  cost: ${(costMicroUsd / 1e6).toFixed(6)} USD  budget exceeded: ${result.budgetExceeded}`,
       ...expansionLines(scored),
-      ...skipLines(result.results),
+      ...skipLines(skipped),
     ].join("\n"),
   );
 }

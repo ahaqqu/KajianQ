@@ -52,8 +52,10 @@ export function expansionProvenance(input: {
 /**
  * The note a failed ledger write leaves on a question's outcome. Shared by
  * the scored and the skipped write path so a persistence failure reads the
- * same either way: the question's evidence is not in the store, and the
- * report says so rather than silently showing an unpersisted result.
+ * same either way. It is **report-only**: a write that fails leaves no row,
+ * and an ambiguous one (the INSERT committed, the response was lost) leaves a
+ * row still carrying the bare cause — so the report can name a cause the store
+ * does not, never the other way round.
  */
 export function ledgerFailureNote(err: unknown): string {
   return `ledger_write_failed: ${err instanceof Error ? err.message : String(err)}`;
@@ -66,9 +68,11 @@ export function ledgerFailureNote(err: unknown): string {
  * failures it otherwise resembles on `passed`/`citationValidity` alone:
  * #274's ungrounded-citation refusal is a scored outcome with `refused: true`,
  * and an ordinary scorer failure is a scored outcome with `skipped` absent.
- * The `notes` entry is the durable cause — the harness persists this same
- * outcome to the eval ledger, so the run's `eval_results` row and its report
- * carry one identical message and cannot disagree about why.
+ * The `notes` entry is the durable cause: the harness persists this same
+ * outcome to the eval ledger, so a row that lands and the report's entry for
+ * this question name the same message. A write that does not land has no row,
+ * and only the report gains the `ledger_write_failed:` note on top (see
+ * `ledgerFailureNote`).
  */
 export function skippedOutcome(question: GoldenQuestion, err: unknown): EvalResultOutcome {
   return {

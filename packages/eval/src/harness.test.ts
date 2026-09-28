@@ -153,6 +153,62 @@ describe("runGoldenSet", () => {
     }
   });
 
+  it("keeps the run and its report alive when the skip row's own write fails (A1)", async () => {
+    // The skip path's ledger guard (harness.ts, the `catch (ledgerErr)` around
+    // the skip's `saveResult`) is what keeps a failed row from taking the run
+    // down. Falsification: rethrowing there rejects `runGoldenSet` on the first
+    // skip — `refreshRun` never runs (no `eval_runs` report row) and every
+    // remaining question goes unmeasured. Both flags together are what pins it.
+    const { deps, getReport } = makeDeps({ failThird: true, failLedger: true });
+    const result = await runGoldenSet(set, deps);
+    expect(result.skipped).toBe(1);
+    expect(result.results).toHaveLength(set.questions.length);
+    const skip = result.results.find((r) => r.questionId === "q3");
+    expect(skip?.notes).toEqual([
+      "skipped: transport down",
+      "ledger_write_failed: An error has occurred",
+    ]);
+    // The report survived the failed write: refreshRun still ran, carrying the
+    // skip and BOTH notes (the store could not record either one).
+    const report = getReport() as {
+      skipped: number;
+      results: { questionId: string; skipped?: boolean; notes?: string[] }[];
+    };
+    expect(report).not.toBeNull();
+    expect(report.skipped).toBe(1);
+    expect(report.results.find((r) => r.questionId === "q3")).toMatchObject({
+      skipped: true,
+      notes: ["skipped: transport down", "ledger_write_failed: An error has occurred"],
+    });
+  });
+
+  it("keeps the store's copy of a skip free of the report's ledger-failure note (B3)", async () => {
+    // An ambiguous write: the store kept the object it was handed AND the
+    // caller saw a rejection (the INSERT committed, the response was lost).
+    // The report's extra note must not reach back into that stored object —
+    // the Postgres adapter stringifies at call time, but a store that holds
+    // the reference would otherwise observe an annotation it never received.
+    const observed: EvalResultOutcome[] = [];
+    const { deps } = makeDeps({ failThird: true });
+    const ambiguous = {
+      ...deps,
+      ledger: {
+        ...deps.ledger,
+        async saveResult(_runId: string, questionId: string, outcome: EvalResultOutcome) {
+          observed.push(outcome);
+          if (questionId === "q3") throw new Error("connection reset after commit");
+          return questionId;
+        },
+      },
+    };
+    const result = await runGoldenSet(set, ambiguous);
+    expect(observed.find((o) => o.questionId === "q3")?.notes).toEqual(["skipped: transport down"]);
+    expect(result.results.find((r) => r.questionId === "q3")?.notes).toEqual([
+      "skipped: transport down",
+      "ledger_write_failed: connection reset after commit",
+    ]);
+  });
+
   it("persists the final report with the real run id (A4)", async () => {
     const { deps, getReport } = makeDeps();
     const result = await runGoldenSet(set, deps);
