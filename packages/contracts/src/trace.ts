@@ -1,27 +1,9 @@
 import * as v from "valibot";
+import { CostRecordSchema } from "./trace-cost";
+import { productRulesEventSchema } from "./trace-product-rules";
 
-/**
- * Cost attribution for a single LLM/embedding call. Model identity arrives as
- * an opaque string resolved from `model_configs` at wiring time — contracts
- * never name a vendor or model (ADR-0009).
- */
-export const CostRecordSchema = v.object({
-  modelId: v.pipe(v.string(), v.minLength(1)),
-  tokensIn: v.pipe(v.number(), v.integer(), v.minValue(0)),
-  tokensOut: v.pipe(v.number(), v.integer(), v.minValue(0)),
-  latencyMs: v.pipe(v.number(), v.minValue(0)),
-  /** Computed monetary cost in micro-USD to keep integer arithmetic exact. */
-  costMicroUsd: v.pipe(v.number(), v.integer(), v.minValue(0)),
-  /**
-   * True when tokens were estimated (e.g. a vendor that reports no streamed
-   * usage) rather than metered — a trace must never present an estimate as
-   * metered (ADR-0022). Optional so pre-existing records stay readable;
-   * absent means metered.
-   */
-  estimated: v.optional(v.boolean()),
-});
-
-export type CostRecord = v.InferOutput<typeof CostRecordSchema>;
+/** Cost attribution is the trace's one cost shape — owner in `./trace-cost`. */
+export { CostRecordSchema, type CostRecord } from "./trace-cost";
 
 /**
  * Pipeline stages of the DARS engine (ADR-0005). Generic on purpose: domain
@@ -187,38 +169,8 @@ export const TraceEventSchema = v.variant("kind", [
     cost: v.optional(CostRecordSchema),
     at: v.pipe(v.number(), v.integer()),
   }),
-  v.object({
-    /**
-     * The deterministic product rules ran (ADR-0007 typed detail, #285): the
-     * rules a domain pack applies to a passed draft after the reviewer gate,
-     * recorded wherever they are applied — including the ADR-0042 pre-gate
-     * skip path, which records no `review` event at all. Before this kind the
-     * only observable of a fired rule was the text it appended, so "the rule
-     * ran and found the copy already present" was indistinguishable from "the
-     * rule never ran".
-     *
-     * `applied` names the rule ids that appended text, in application order.
-     * An EMPTY array is a meaningful value, not a missing one: the rules ran
-     * and none of them appended, which is exactly the residual exact-copy
-     * suppression case a reader must be able to count. The ids are opaque to
-     * the engine — the domain pack owns what they mean.
-     *
-     * The PRESENCE of this event is the signal (the rules ran); absence is
-     * authoritative only for traces written after the kind shipped — a trace
-     * persisted before it simply has no such event (ADR-0007 amendment).
-     *
-     * Stage is pinned to `reviewer`: the rules are that stage's
-     * post-processing, so an event recorded elsewhere is a wiring defect
-     * rather than a new adopter.
-     */
-    stage: v.literal("reviewer"),
-    kind: v.literal("product_rules"),
-    detail: v.object({
-      applied: v.array(v.pipe(v.string(), v.minLength(1))),
-    }),
-    cost: v.optional(CostRecordSchema),
-    at: v.pipe(v.number(), v.integer()),
-  }),
+  /** The deterministic product rules ran (#285); owner `./trace-product-rules`. */
+  productRulesEventSchema,
   v.object({
     /**
      * A decision-model call's verdict (ADR-0042 serving pattern): the shape

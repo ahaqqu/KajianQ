@@ -138,6 +138,16 @@ describe("trace contract", () => {
       },
       { stage: "reviewer", kind: "review", detail: { verdict: "faithful" }, at: 6 },
       {
+        // The deterministic product rules ran (#285): the rule ids that
+        // appended text are persisted trace content, recorded on every path
+        // that applies the rules — including the pre-gate skip path below,
+        // which records no `review` event. The ids stay opaque to the engine.
+        stage: "reviewer",
+        kind: "product_rules",
+        detail: { applied: ["dhaif_warning", "ulama_disclaimer"] },
+        at: 6,
+      },
+      {
         // The decision-model screen (ADR-0042 serving pattern): the skip and
         // its per-item scores are persisted trace content, and the call's own
         // spend rides on the sibling `llm_call` event above.
@@ -157,7 +167,100 @@ describe("trace contract", () => {
       { stage: "generator", kind: "refusal", reason: "insufficient evidence", at: 8 },
     ];
     const trace = parseTrace({ id: "t", createdAt: 0, events });
-    expect(trace.events).toHaveLength(10);
+    expect(trace.events).toHaveLength(11);
+  });
+
+  it("accepts an empty `applied` list — the rules ran and appended nothing (#285)", () => {
+    // The exact-copy suppression case is the reason this event exists: the
+    // model reproduced the canonical copy, so the rule found it already
+    // present and appended nothing. An empty list is that signal; a
+    // `minLength(1)` on the array (or treating [] as absent) would erase it
+    // and put the trace back where it started.
+    const parsed = v.safeParse(TraceSchema, {
+      id: "t",
+      createdAt: 1,
+      events: [{ stage: "reviewer", kind: "product_rules", detail: { applied: [] }, at: 1 }],
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      const event = parsed.output.events[0];
+      expect(event?.kind === "product_rules" ? event.detail.applied : undefined).toEqual([]);
+    }
+  });
+
+  it("rejects a product_rules event without an applied list", () => {
+    expect(
+      v.safeParse(TraceSchema, {
+        id: "t",
+        createdAt: 1,
+        events: [{ stage: "reviewer", kind: "product_rules", detail: {}, at: 1 }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a product_rules rule id that is not a non-empty string", () => {
+    // A blank id names no rule, so it cannot be counted per rule — the one
+    // thing an operator or the eval harness reads this event for.
+    expect(
+      v.safeParse(TraceSchema, {
+        id: "t",
+        createdAt: 1,
+        events: [{ stage: "reviewer", kind: "product_rules", detail: { applied: [""] }, at: 1 }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a product_rules event recorded on a stage that does not apply the rules", () => {
+    expect(
+      v.safeParse(TraceSchema, {
+        id: "t",
+        createdAt: 1,
+        events: [{ stage: "generator", kind: "product_rules", detail: { applied: ["x"] }, at: 1 }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps a pre-#285 persisted trace readable, with no fabricated product_rules event", () => {
+    // ADR-0007 forward compatibility, the direction that matters: traces
+    // written before the `product_rules` kind existed (e.g. the #278 staging
+    // trace dfd9d801, which carries a pre-gate `decision` skip and NO `review`
+    // event) still parse — `version` stays 1, nothing was renamed or made
+    // required, and the reader must not synthesize the event it never saw.
+    const legacy = parseTrace({
+      id: "dfd9d801-c3bc-42b9-9e09-39a5df785c94",
+      version: 1,
+      createdAt: 0,
+      events: [
+        {
+          stage: "retriever",
+          kind: "retrieval",
+          detail: { chunks: [{ id: "c1", score: 0.5, rankDense: 1, rankSparse: 2 }] },
+          at: 1,
+        },
+        { stage: "assembler", kind: "assembly", detail: { turnCount: 2, chunkCount: 1 }, at: 2 },
+        {
+          stage: "generator",
+          kind: "llm_call",
+          detail: { purpose: "generate" },
+          cost: { modelId: "m", tokensIn: 1, tokensOut: 2, latencyMs: 3, costMicroUsd: 4 },
+          at: 3,
+        },
+        {
+          stage: "reviewer",
+          kind: "decision",
+          detail: {
+            purpose: "citation_support",
+            outcome: "skip",
+            threshold: 0.5,
+            items: [{ index: 0, key: "citation-1", score: 0.94 }],
+          },
+          at: 4,
+        },
+      ],
+    });
+    expect(legacy.version).toBe(1);
+    expect(legacy.events).toHaveLength(4);
+    expect(legacy.events.some((event) => event.kind === "product_rules")).toBe(false);
   });
 
   it("keeps a chunk ref without `origin` readable (pre-ADR-0045 traces)", () => {
