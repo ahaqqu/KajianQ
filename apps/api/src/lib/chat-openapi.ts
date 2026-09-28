@@ -86,11 +86,27 @@ export async function parseChatRequest(
   }
   const parsed = v.safeParse(ChatRequestSchema, body);
   if (!parsed.success) {
-    const detail = parsed.issues
-      .map((i) => `${i.path?.join(".") ?? "<body>"}: ${i.message}`)
-      .join("; ");
+    const detail = parsed.issues.map((i) => `${issuePath(i.path)}: ${i.message}`).join("; ");
     log?.warn("chat.body_invalid", { detail: detail.slice(0, 200) });
     return { success: false, error: "invalid_request", detail: detail.slice(0, 200) };
   }
   return { success: true, output: parsed.output as import("@app/contracts").ChatRequest };
+}
+
+/**
+ * Render a valibot issue's `path` as a dotted field path (#271). Valibot's
+ * path holds PathItem OBJECTS, not strings: joining them raw stringified every
+ * element as `[object Object]`, so the 400's diagnostic named no field at all
+ * (`[object Object]: Invalid UUID: Received "en"`). Object and array items
+ * carry the property/index in `key`; a path with nothing nameable states
+ * `<body>` rather than inventing a field. The detail is ops-facing — the
+ * response body stays the route's one error shape.
+ */
+function issuePath(path: readonly { key?: unknown }[] | undefined): string {
+  const parts = (path ?? [])
+    .map((item) =>
+      typeof item.key === "string" || typeof item.key === "number" ? String(item.key) : null,
+    )
+    .filter((part): part is string => part !== null);
+  return parts.length > 0 ? parts.join(".") : "<body>";
 }

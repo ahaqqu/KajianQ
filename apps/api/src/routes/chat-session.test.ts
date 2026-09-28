@@ -108,20 +108,48 @@ async function getMessages(token: string | null, sessionId: string): Promise<Res
 }
 
 describe("GET /v1/chat/sessions/:id/messages", () => {
-  it("requires authentication (401)", async () => {
+  it("requires authentication (401), before the id-format guard", async () => {
+    // A malformed id must not short-circuit auth: the ownership/format checks
+    // are downstream of the guard, so an anonymous probe still gets 401.
     await wiredStore();
-    const res = await getMessages(null, "sess1");
+    const res = await getMessages(null, "en");
     expect(res.status).toBe(401);
   });
 
   it("answers 404 for an unknown session, indistinguishably from a foreign one", async () => {
     const { store, token } = await wiredStore();
-    await runStoreEffect<string>(store.createChatSession({ userId: "someone-else" }));
-    const unknownRes = await getMessages(token, "sess-unknown");
+    // A REAL session UUID owned by someone else — the format guard must not
+    // turn the foreign case into a different status.
+    const foreignSessionId = await runStoreEffect<string>(
+      store.createChatSession({ userId: "someone-else" }),
+    );
+    const unknownRes = await getMessages(token, crypto.randomUUID());
     expect(unknownRes.status).toBe(404);
-    const foreignRes = await getMessages(token, "sess1");
+    const foreignRes = await getMessages(token, foreignSessionId);
     expect(foreignRes.status).toBe(404);
     expect(await unknownRes.json()).toEqual(await foreignRes.json());
+  });
+
+  /**
+   * #271: the same seam as the chat route's `sessionId`, with no body schema
+   * in front of it — `c.req.param("id")` went straight into the store, whose
+   * `${id}::uuid` cast throws on anything that is not a UUID. The guard makes
+   * the refusal the route's documented 404 instead of a 500, and keeps the
+   * unknown/foreign indistinguishability posture (a malformed id names no
+   * session, so it is answered exactly like one that names nothing).
+   */
+  it("answers the documented 404 — not a 500 — for a malformed :id (#271)", async () => {
+    const { store, token } = await wiredStore();
+    const malformed = await getMessages(token, "en");
+    expect(malformed.status).toBe(404);
+    const malformedBody = await malformed.json();
+    expect(malformedBody).toEqual({ error: "invalid_request" });
+    // Same status AND same body as an unknown well-formed UUID: no oracle.
+    const unknown = await getMessages(token, crypto.randomUUID());
+    expect(malformed.status).toBe(unknown.status);
+    expect(malformedBody).toEqual(await unknown.json());
+    // And nothing was read into a session row: the guard runs before the store.
+    expect(store.allChatSessions()).toEqual([]);
   });
 
   it("rehydrates the full transcript with trace-derived citations", async () => {
