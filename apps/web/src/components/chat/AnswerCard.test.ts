@@ -105,6 +105,15 @@ describe("AnswerCard dhaif warning renders exactly once (#292)", () => {
     expect(screen.getAllByTestId("dhaif-warning")).toHaveLength(1);
   });
 
+  it("renders the answer's own canonical copy once when the UI switches the other way", () => {
+    // The symmetric case: an English answer read in the Indonesian UI. Only a
+    // copy set covering both locales keeps this at one render.
+    const card = renderCard(["Answer.", WARNING_EN, MT].join("\n\n"), true, "id");
+    expect(occurrences(card.textContent ?? "", WARNING_EN)).toBe(1);
+    expect(occurrences(card.textContent ?? "", WARNING_ID)).toBe(0);
+    expect(screen.getAllByTestId("dhaif-warning")).toHaveLength(1);
+  });
+
   /**
    * The trap direction. The peel removes the canonical warning from `body`, so
    * the card must render the peeled value even when the frame flag is false —

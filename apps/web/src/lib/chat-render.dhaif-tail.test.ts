@@ -197,7 +197,10 @@ describe("splitAnswerBlocks — marker tolerance (A3)", () => {
   it.each(["[peringatan] catatan tambahan", "[Peringatan: versi lain", "[Warning!] note"])(
     "still walks past %s to the canonical line above it",
     (variant) => {
-      const split = splitAnswerBlocks([PROSE, variant, WARNING_ID, MT].join("\n\n"));
+      // The variant sits BETWEEN the canonical line and the tail. Without the
+      // tolerant opening match it counts as prose, breaks the walk, and the
+      // canonical line stays in `body` — the #292 duplicate is back.
+      const split = splitAnswerBlocks([PROSE, WARNING_ID, variant, MT].join("\n\n"));
       expect(split.warning).toBe(WARNING_ID);
       expect(split.body).toBe([PROSE, variant, MT].join("\n\n"));
     },
