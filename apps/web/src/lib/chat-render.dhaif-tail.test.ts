@@ -206,11 +206,19 @@ describe("splitAnswerBlocks — marker tolerance (A3)", () => {
     },
   );
 
-  it("still walks past a reworded MT label head (the B1 failure shape)", () => {
-    const reworded = "[Terjemahan mesin — rujuk teks Arab asli]";
-    const split = splitAnswerBlocks([PROSE, WARNING_ID, reworded].join("\n\n"));
+  // The label peels bracket-optional (`RULE_KINDS` → `opensWith(…, false)`), so
+  // both forms are pinned: a rehydrated or hand-edited answer carries it bare,
+  // which is the branch `opensWith`'s ternary takes for the label. Making the
+  // label bracket-required must redden here rather than resurrect the #292
+  // duplicate silently (D1).
+  it.each([
+    ["bracketed + reworded head (B1 shape)", "[Terjemahan mesin — rujuk teks Arab asli]"],
+    ["bare + reworded head", "Terjemahan mesin — rujuk teks Arab asli"],
+    ["bare + canonical label", MACHINE_TRANSLATION_LABEL],
+  ])("still walks past the MT label: %s", (_name, label) => {
+    const split = splitAnswerBlocks([PROSE, WARNING_ID, label].join("\n\n"));
     expect(split.warning).toBe(WARNING_ID);
-    expect(split.body).toBe([PROSE, reworded].join("\n\n"));
+    expect(split.body).toBe([PROSE, label].join("\n\n"));
   });
 
   it("does not classify a paragraph that merely mentions the phrase mid-sentence", () => {
