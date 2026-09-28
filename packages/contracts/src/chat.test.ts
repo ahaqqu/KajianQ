@@ -105,6 +105,35 @@ describe("ChatRequestSchema sessionId (#271)", () => {
     expect(sessionIdOf(crypto.randomUUID())).toBe(true);
   });
 
+  /**
+   * Case-insensitivity is part of the accepted contract (#312), not an accident
+   * of the current pattern. valibot 1.4.2's `uuid()` tests
+   * `UUID_REGEX = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/iu` — the `i` flag
+   * is the contract — and the `chat_sessions.id` column behind it is
+   * case-insensitive too: QA #289 probe 8 rehydrated an existing session through
+   * its UPPERCASE id (`GET 200`, probe 8's per-form table). The API mints
+   * lowercase ids (`crypto.randomUUID()`), but a client that upper-cases or
+   * re-cases what it persisted still holds a value the store can address, so a
+   * lowercase-only "tightening" would refuse a valid id at the boundary — the
+   * regression direction of #271 itself, silently.
+   *
+   * Mutation these rows pin: in `ChatSessionIdSchema`, swap `v.uuid()` for the
+   * same canonical shape with the `i` flag dropped — e.g.
+   * `v.regex(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/)` — and both rows
+   * redden while "accepts a well-formed UUID" (a lowercase
+   * `crypto.randomUUID()`) stays green.
+   */
+  it("admits an UPPERCASE canonical-shaped id on both request surfaces (#312)", () => {
+    expect(sessionIdOf("7B1A712F-3990-46CE-9964-4EB344A867C5")).toBe(true);
+    // The rehydration route's path guard reads the same schema; the uppercase
+    // spelling is the exact form QA #289 probe 8 answered `GET 200` for.
+    expect(isChatSessionId("7B1A712F-3990-46CE-9964-4EB344A867C5")).toBe(true);
+  });
+
+  it("admits a MIXED-case canonical-shaped id (#312)", () => {
+    expect(sessionIdOf("7b1A712F-3990-46ce-9964-4EB344A867C5")).toBe(true);
+  });
+
   it("accepts an absent sessionId (a new session is the default)", () => {
     expect(v.safeParse(ChatRequestSchema, { message: "hi" }).success).toBe(true);
   });
@@ -120,6 +149,29 @@ describe("ChatRequestSchema sessionId (#271)", () => {
     expect(sessionIdOf("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a1")).toBe(false);
     expect(sessionIdOf("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11x")).toBe(false);
     expect(sessionIdOf("not-a-uuid-at-all-but-long-enough")).toBe(false);
+  });
+
+  /**
+   * The Postgres-legal extra hyphen STAYS refused (#312). PostgreSQL accepts a
+   * hyphen after any group of four digits (QA #289 probe 8 measured
+   * `7b1a-712f-3990-46ce-9964-4eb344a867c5` as PG-legal and naming an existing
+   * row), so the `uuid` column would take this spelling — the schema is the
+   * stricter of the two and refuses it first. That refusal is the only reason
+   * the memory stand-in's own, even-tighter rule for the same spelling
+   * (`uuidShaped` in
+   * `packages/kajianq-domain/src/test-utils/memory-rag-store-chat.ts`) is inert
+   * today, so both halves are pinned: the stand-in's verdict in that package's
+   * `memory-rag-store-chat.test.ts`, the boundary refusal here.
+   *
+   * Mutation this row pins: widening `ChatSessionIdSchema` to PostgreSQL's
+   * extra-hyphen form — e.g.
+   * `v.regex(/^[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i)`
+   * — and this row reddens, at which point the stand-in divergence stops being
+   * inert and route tests would start refusing a value production accepts.
+   */
+  it("rejects the Postgres-legal extra-hyphen spelling on both surfaces (#312)", () => {
+    expect(sessionIdOf("7b1a-712f-3990-46ce-9964-4eb344a867c5")).toBe(false);
+    expect(isChatSessionId("7b1a-712f-3990-46ce-9964-4eb344a867c5")).toBe(false);
   });
 
   it("rejects an empty sessionId (the pre-existing floor holds)", () => {
