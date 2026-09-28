@@ -58,7 +58,8 @@ const SESSION_MESSAGES_OPENAPI = describeRoute({
       content: { "application/json": { schema: resolver(ChatErrorSchema) } },
     },
     404: {
-      description: "Session not found or not owned by the authenticated user",
+      description:
+        "Session not found or not owned by the authenticated user — or an `id` that is not a UUID, which cannot name a session (`chat_sessions.id` is a uuid)",
       content: { "application/json": { schema: resolver(ChatErrorSchema) } },
     },
     429: {

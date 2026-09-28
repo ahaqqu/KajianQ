@@ -128,18 +128,28 @@ let chatPostBodies: string[] = [];
  */
 let clampedDraft = "";
 
-/** Intercept auth + chat endpoints with fixtures, then open the app. */
+/** Intercept auth + chat endpoints with fixtures, then open the app.
+ *
+ * `rehydrateStatus` mirrors the rehydration endpoint's documented answer for
+ * the scenario's stored session id: 200 with a transcript, or the 404 the API
+ * answers for a session it does not have (unknown, foreign, or — #271 — an id
+ * the store cannot represent). The fixtures mirror the wire contract; the API
+ * side of that contract is pinned by the route tests.
+ */
 async function openChatWithFixtures(
   page: import("@playwright/test").Page,
   answerFixture: string,
   transcriptFixture: Record<string, unknown> = TRANSCRIPT_FIXTURE,
+  rehydrateStatus = 200,
 ): Promise<void> {
   chatPosts = 0;
   chatPostBodies = [];
   clampedDraft = "";
   await page.route("**/v1/auth/anonymous", (route) => route.fulfill({ json: SESSION }));
   await page.route("**/v1/chat/sessions/*/messages", (route) =>
-    route.fulfill({ json: transcriptFixture }),
+    rehydrateStatus === 200
+      ? route.fulfill({ json: transcriptFixture })
+      : route.fulfill({ status: rehydrateStatus, json: { error: "invalid_request" } }),
   );
   await page.route("**/v1/chat", async (route) => {
     chatPosts += 1;
@@ -199,6 +209,43 @@ When("I open a chat whose stored transcript was capped", async ({ page }) => {
 
 Then("the transcript says older messages are not shown", async ({ page }) => {
   await expect(page.getByTestId("transcript-truncated")).toBeVisible();
+});
+
+/**
+ * #271: the user-facing half of the boundary fix. A stored session id the
+ * store cannot represent — the staging probe's own `"en"`, or any older or
+ * corrupted localStorage value — is answered by the rehydration endpoint with
+ * its documented 404 (never a 500: that is the route test's claim). What the
+ * reader experiences is the load-bearing part here: a fresh chat, no error
+ * banner, and no replay of the malformed id into a 400 on the next question.
+ */
+When("I open a chat whose stored session id is malformed", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("kajianq.chat.sessionId", "en");
+  });
+  await openChatWithFixtures(page, ANSWER_FIXTURE, TRANSCRIPT_FIXTURE, 404);
+});
+
+Then("the app starts a fresh chat without an error", async ({ page }) => {
+  // The empty state, not an error card: a session the server does not have is
+  // a fresh start (the same posture as a reclaimed session).
+  await expect(page.getByTestId("chat-empty")).toBeVisible();
+  await expect(page.getByTestId("chat-error")).toHaveCount(0);
+  // And the malformed id is cleared, so it cannot be sent again.
+  expect(await page.evaluate(() => localStorage.getItem("kajianq.chat.sessionId"))).toBeNull();
+});
+
+When("I ask a question in that fresh chat", async ({ page }) => {
+  await page.getByTestId("composer").fill("Apa itu ayat kursi?");
+  await page.getByTestId("send").click();
+});
+
+Then("the outgoing chat POST carries no session id", async () => {
+  // A real send is the precondition of this claim, as in the ceiling scenario.
+  await expect.poll(() => chatPosts).toBe(1);
+  const body = JSON.parse(chatPostBodies[0] ?? "{}") as { sessionId?: string };
+  // Absent — a new session is minted server-side — never the malformed value.
+  expect(body.sessionId).toBeUndefined();
 });
 
 When("I open the chat and paste a message longer than the ceiling", async ({ page }) => {

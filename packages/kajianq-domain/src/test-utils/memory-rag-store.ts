@@ -7,6 +7,7 @@ import type {
   RagStore,
   SimilarChild,
 } from "@app/infra";
+import { StoreError } from "@app/infra";
 import {
   memoryAuthMethods,
   memoryEvalMethods,
@@ -19,6 +20,16 @@ import {
  * In-memory RagStore with real cosine search — the test seam. Same upsert
  * semantics as the Postgres adapter, Effect-signatured like the seam (ADR-0027).
  */
+
+/**
+ * Can the `chat_sessions.id` (uuid) column hold this value? Deliberately
+ * LOOSE — Postgres also accepts braces, a `urn:uuid:` prefix, and hyphens in
+ * any position — but decisive about the failure #271 is about: a short
+ * non-hex value such as `en` or `sess1` is not a uuid and cannot be cast.
+ */
+function uuidShaped(value: string): boolean {
+  return /^[{]?[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}[}]?$/i.test(value);
+}
 
 export function createMemoryRagStore(): RagStore & {
   allChildren: () => DocChildInsert[];
@@ -225,8 +236,22 @@ export function createMemoryRagStore(): RagStore & {
         return id;
       });
     },
-    // A6: ownership validation for client-supplied session ids.
+    // A6: ownership validation for client-supplied session ids. The real
+    // column is `chat_sessions.id uuid`, so a non-UUID value fails the
+    // adapter's cast (SQLSTATE 22P02 → `StoreError` kind "constraint", #271);
+    // the stand-in reproduces that FAILURE, not just the id shape. Without it
+    // a route that hands the store an unrepresentable id looks healthy here
+    // and only breaks against Postgres — which is how the 500 shipped, and how
+    // a future regression past the boundary would ship again.
     getChatSessionUser(sessionId) {
+      if (!uuidShaped(sessionId)) {
+        return Effect.fail(
+          new StoreError({
+            kind: "constraint",
+            cause: new Error(`invalid input syntax for type uuid: "${sessionId}"`),
+          }),
+        );
+      }
       return Effect.succeed(chatSessions.get(sessionId) ?? null);
     },
     insertChatMessage(input) {

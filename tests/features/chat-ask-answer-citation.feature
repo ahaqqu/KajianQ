@@ -69,6 +69,16 @@ Feature: Chat — ask, answer, citations, warnings, disclaimer
     When I press Enter to send the clamped draft
     Then the outgoing chat POST carries the clamped message, no longer than the ceiling
 
+  # #271: a stored session id the store cannot represent (an older, hand-edited,
+  # or corrupted localStorage value) must not break the page. The rehydration
+  # endpoint answers its documented 404 — never a 500 — and the reader gets a
+  # fresh chat instead of a load error, with the malformed id never replayed.
+  Scenario: A stored session id the store cannot represent starts a fresh chat (#271)
+    When I open a chat whose stored session id is malformed
+    Then the app starts a fresh chat without an error
+    When I ask a question in that fresh chat
+    Then the outgoing chat POST carries no session id
+
   Scenario: The chat page has no serious accessibility violations
     When I open the chat and ask about ayat kursi
     And the answer renders with a citation chip

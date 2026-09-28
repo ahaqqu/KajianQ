@@ -140,8 +140,12 @@ describe("GET /v1/chat/sessions/:id/messages", () => {
    */
   it("answers the documented 404 — not a 500 — for a malformed :id (#271)", async () => {
     const { store, token } = await wiredStore();
+    // Measured, not inferred: the guard's whole job is that the store is
+    // never handed a value its `uuid` column cannot cast.
+    const storeCalls = vi.spyOn(store, "getChatSessionUser");
     const malformed = await getMessages(token, "en");
     expect(malformed.status).toBe(404);
+    expect(storeCalls).not.toHaveBeenCalled();
     const malformedBody = await malformed.json();
     expect(malformedBody).toEqual({ error: "invalid_request" });
     // Same status AND same body as an unknown well-formed UUID: no oracle.
