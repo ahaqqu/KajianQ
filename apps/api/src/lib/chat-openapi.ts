@@ -1,4 +1,4 @@
-import { ChatRequestSchema } from "@app/contracts";
+import { ChatRequestSchema, issuePath } from "@app/contracts";
 import { describeRoute, resolver } from "hono-openapi";
 import * as v from "valibot";
 
@@ -91,22 +91,4 @@ export async function parseChatRequest(
     return { success: false, error: "invalid_request", detail: detail.slice(0, 200) };
   }
   return { success: true, output: parsed.output as import("@app/contracts").ChatRequest };
-}
-
-/**
- * Render a valibot issue's `path` as a dotted field path (#271). Valibot's
- * path holds PathItem OBJECTS, not strings: joining them raw stringified every
- * element as `[object Object]`, so the 400's diagnostic named no field at all
- * (`[object Object]: Invalid UUID: Received "en"`). Object and array items
- * carry the property/index in `key`; a path with nothing nameable states
- * `<body>` rather than inventing a field. The detail is ops-facing — the
- * response body stays the route's one error shape.
- */
-function issuePath(path: readonly { key?: unknown }[] | undefined): string {
-  const parts = (path ?? [])
-    .map((item) =>
-      typeof item.key === "string" || typeof item.key === "number" ? String(item.key) : null,
-    )
-    .filter((part): part is string => part !== null);
-  return parts.length > 0 ? parts.join(".") : "<body>";
 }

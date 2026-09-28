@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createApi } from "../app";
+import { parseFeedbackRequest } from "../lib/feedback";
 import { runStoreEffect } from "@app/kajianq-domain";
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 import { createMemoryRateLimiter } from "@app/rate";
@@ -164,6 +165,34 @@ describe("POST /v1/feedback", () => {
       expect(res.status).toBe(400);
       expect(await res.json()).toEqual({ error: "invalid_request" });
     }
+  });
+
+  it("names the offending field in the logged 400 diagnostic (#283)", async () => {
+    // The body the client sees is the route's one error shape; the DETAIL is
+    // what makes the refusal diagnosable in ops — and it names the field, so a
+    // malformed messageId is not confused with a malformed rating.
+    //
+    // MUTATION THAT REDDENS THIS ROW: revert the parser's
+    // `${issuePath(i.path)}` to the pre-fix `i.path?.join(".") ?? "<body>"`,
+    // which stringifies each valibot PathItem OBJECT as `[object Object]`
+    // (`[object Object]: Invalid UUID: Received "msg1"`). Both the returned
+    // detail and the warn field lose the field name, so both assertions below
+    // fail. The one shared rendering is pinned independently by
+    // packages/contracts/src/issue-path.test.ts.
+    const warnings: string[] = [];
+    const parsed = await parseFeedbackRequest(
+      new Request("http://localhost/v1/feedback", {
+        method: "POST",
+        body: JSON.stringify({ messageId: "msg1", rating: "up" }),
+      }),
+      { warn: (msg, fields) => warnings.push(`${msg} ${JSON.stringify(fields ?? {})}`) },
+    );
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    expect(parsed.error).toBe("invalid_request");
+    expect(parsed.detail).toContain("messageId");
+    expect(parsed.detail).not.toContain("[object Object]");
+    expect(warnings.join(" ")).toContain("messageId");
   });
 
   it("answers 404 for an unknown answer, indistinguishably from a foreign one", async () => {

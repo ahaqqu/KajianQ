@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { issuePath } from "@app/contracts";
 import type { ExpansionCase } from "./embed-bench";
 
 /**
@@ -53,7 +54,7 @@ export function parseProbeSet(raw: unknown, source = "inline"): BenchProbeSet {
   if (!parsed.success) {
     throw new Error(
       `${source} failed validation: ${parsed.issues
-        .map((i) => `${i.path?.map((p) => String(p.key)).join(".") ?? "?"}: ${i.message}`)
+        .map((i) => `${issuePath(i.path)}: ${i.message}`)
         .join("; ")}`,
     );
   }
@@ -66,7 +67,7 @@ export function parseExpansionSet(raw: unknown, source = "inline"): ExpansionCas
   if (!parsed.success) {
     throw new Error(
       `${source} failed validation: ${parsed.issues
-        .map((i) => `${i.path?.map((p) => String(p.key)).join(".") ?? "?"}: ${i.message}`)
+        .map((i) => `${issuePath(i.path)}: ${i.message}`)
         .join("; ")}`,
     );
   }
