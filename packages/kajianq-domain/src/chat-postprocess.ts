@@ -25,23 +25,26 @@ import { MACHINE_TRANSLATION_LABEL } from "./chat-assembler";
  * the canonical copy is required (the dhaif rule's treatment) is an open
  * product-copy decision owned by ticket #284.
  *
- * Which rules fired is returned in `ProductRulesResult.applied` and recorded
- * on the trace by the only production caller (`chat-reviewer.ts`'s
+ * Which rules appended text is returned in `ProductRulesResult.applied` and
+ * recorded on the trace by the only production caller (`chat-reviewer.ts`'s
  * `withRules`) as a `product_rules` event, on every path that applies the
- * rules (#285). The event's PRESENCE is what says the rules ran; `applied`
- * names the rules that appended text, so a delivered answer's trace
- * distinguishes "the rule ran and found its copy already present" (an empty
- * list) from "the rules never ran" (no event). The delivered text stays the
- * single source of truth for what the answer says.
+ * rules (#285). The event's PRESENCE is what says the rules ran — absence says
+ * they did not; `applied` names the rules that appended text. An empty
+ * `applied` therefore says only "ran, appended nothing" — it does not separate
+ * "no rule had a trigger" from "a trigger matched and the copy was already
+ * present", and the delivered text is identical either way. The delivered text
+ * stays the single source of truth for what the answer says.
  */
 
 export type ProductRulesResult = {
   draft: Draft;
   /**
    * Which deterministic rules appended text, in application order. Recorded
-   * verbatim on the reviewer stage's `product_rules` trace event (#285); an
-   * empty list means every rule that had a trigger found its copy already
-   * present, not that the rules were skipped — that case records no event.
+   * verbatim on the reviewer stage's `product_rules` trace event (#285).
+   * `[]` says the rules ran and appended nothing; it does not separate "no
+   * rule had a trigger" from "a trigger matched and the copy was already
+   * present", and it is not the same as the rules being skipped (that records
+   * no event at all).
    */
   applied: readonly string[];
 };

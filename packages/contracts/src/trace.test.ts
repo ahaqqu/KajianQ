@@ -193,9 +193,11 @@ describe("trace contract", () => {
   it("accepts an empty `applied` list — the rules ran and appended nothing (#285)", () => {
     // The exact-copy suppression case is the reason this event exists: the
     // model reproduced the canonical copy, so the rule found it already
-    // present and appended nothing. An empty list is that signal; a
-    // `minLength(1)` on the array (or treating [] as absent) would erase it
-    // and put the trace back where it started.
+    // present and appended nothing. An empty list records exactly that — "the
+    // rules ran and appended nothing" — without separating it from a run where
+    // no rule had a trigger, so a `minLength(1)` on the array (or treating []
+    // as absent) would erase the record and put the trace back where it
+    // started.
     const parsed = v.safeParse(TraceSchema, {
       id: "t",
       createdAt: 1,
