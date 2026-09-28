@@ -2,7 +2,7 @@
 name: "reviewer"
 description: "Reviewer for the manager-orchestrated agentic workflow. Runs both thermos passes (security/correctness + maintainability) itself when the diff touches code, then posts itemized findings as GitHub review comments and a summary comment titled for the depth the diff determines."
 color: red
-model: "d5585e04-940a-41f6-a9ec-320bb4fccd7e/glm-5.3-flash:cloud"
+model: "d5585e04-940a-41f6-a9ec-320bb4fccd7e/deepseek-v4.1-flash:cloud"
 thoughtLevel: max
 tools:
   - "*"
