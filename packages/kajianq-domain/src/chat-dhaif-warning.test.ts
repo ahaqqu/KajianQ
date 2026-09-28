@@ -223,6 +223,37 @@ describe("#278 — the dhaif warning as the wiring runs it", () => {
     expect(text).not.toContain(dhaifWarning("id"));
   });
 
+  it("carries the warning when the dhaif chunk is assembled but never cited (the narrowing guard)", async () => {
+    // The ticket's own shape: several dhaif-graded chunks among the assembled
+    // evidence, and a draft that quotes none of them. The invariant reads the
+    // ASSEMBLED context, so this is the case that reddens if a future change
+    // narrows what the reviewer sees — to the cited chunks, to chunks with a
+    // text layer, or to any capped slice that drops the grade.
+    const store = createMemoryRagStore();
+    await seedChild(store, DHAIF_METADATA, 0);
+    await seedChild(
+      store,
+      { ...DHAIF_METADATA, citation: "HR. Tirmidhi no. 3364 (Dhaif)", hadithNo: "3364" },
+      1,
+    );
+    await seedChild(
+      store,
+      {
+        ...DHAIF_METADATA,
+        citation: "HR. Ibn Majah no. 4299 (Dhaif)",
+        hadithNo: "4299",
+        collection: "ibnmajah",
+      },
+      2,
+    );
+    await seedChild(store, SAHIH_METADATA, 3);
+
+    const answer = await answerFor(store, `Jawaban memakai [${SAHIH_CITATION}] saja.`);
+    const text = (answer as { text: string }).text;
+    expect(text).not.toContain("Dhaif");
+    expect(text).toContain(dhaifWarning("id"));
+  });
+
   it("carries no warning when the retrieved set holds no dhaif chunk (the narrowing regression)", async () => {
     // The same draft, the same informal note, the same "(Dhaif)"-shaped text —
     // but with the weak-grade chunk absent from the retrieved set. Nothing may
