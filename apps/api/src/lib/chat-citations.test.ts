@@ -5,6 +5,8 @@ import type { DocChildById } from "@app/infra";
 import type { Chunk } from "@app/rag-core";
 import {
   MACHINE_TRANSLATION_LABEL,
+  applyProductRules,
+  hasWeakWarning,
   normalizeCitationLabel,
   renderEvidenceChunk,
   runStoreEffect,
@@ -214,6 +216,50 @@ describe("deriveCitationsFrame — the invariant, adversarial shapes", () => {
     expect(
       frameOf(traceWithChunks(["c1"]), "Jawaban biasa.", [chunk("c1", "QS. 2:255")]).dhaifWarning,
     ).toBe(false);
+  });
+
+  it("does not read a grade mention as the warning (#278)", () => {
+    // The frame's flag is an observable, not the control: an answer that only
+    // names the grade — the "(Dhaif)" chip text or the model's own note — has
+    // no warning to report, and reporting one would hide a missing rule.
+    for (const text of [
+      "Hadits ini [HR. Tirmidhi no. 2878 (Dhaif)].",
+      "Catatan: hadits ini berlabel Dhaif.",
+      "The hadith is graded weak (dhaif).",
+    ]) {
+      expect(frameOf(traceWithChunks(["c1"]), text, [chunk("c1", "QS. 2:255")]).dhaifWarning).toBe(
+        false,
+      );
+    }
+  });
+
+  it("reads the postprocess's own predicate, so the flag cannot contradict the answer (#278)", () => {
+    // One owner for "the warning is present": the rule that appends it and the
+    // frame that reports it run the SAME predicate. The failing shape that
+    // motivated #278 — a dhaif-graded chunk in the assembled context and a
+    // draft that mentions the grade — now gains the canonical line, and the
+    // frame says so.
+    const { draft, applied } = applyProductRules(
+      { text: "Hadits ini [HR. Tirmidhi no. 2878 (Dhaif)]." },
+      {
+        query: { intent: "q", subQueries: [{ text: "q" }], filters: {} },
+        chunks: [
+          {
+            id: "c1",
+            text: "النص العربي",
+            metadata: { grade: "dhaif", citation: "HR. Tirmidhi no. 2878 (Dhaif)" },
+          },
+        ],
+        turns: [{ role: "user", content: "evidence" }],
+      } as never,
+      "id",
+    );
+    expect(applied).toContain("dhaif_warning");
+    expect(hasWeakWarning(draft.text)).toBe(true);
+    expect(
+      frameOf(traceWithChunks(["c1"]), draft.text, [chunk("c1", "HR. Tirmidhi no. 2878 (Dhaif)")])
+        .dhaifWarning,
+    ).toBe(true);
   });
 });
 

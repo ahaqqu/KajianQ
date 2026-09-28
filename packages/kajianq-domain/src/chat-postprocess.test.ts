@@ -5,6 +5,7 @@ import {
   applyProductRules,
   dhaifWarning,
   hasWeakGradeChunk,
+  hasWeakWarning,
   ulamaDisclaimer,
 } from "./chat-postprocess";
 import { chatSystemPrompt } from "./chat-prompts";
@@ -67,20 +68,29 @@ describe("applyProductRules", () => {
     expect(applied).toContain("dhaif_warning");
   });
 
-  it("does not append a dhaif warning when the answer already mentions the weakness", () => {
-    const { applied } = applyProductRules(
+  it("appends the canonical warning over the model's own informal weakness note (#278)", () => {
+    // #278 reversed this expectation. It used to assert that a bare
+    // "Hadits ini dhaif" suppressed the canonical line — but the model's
+    // paraphrase is not the deterministic warning spec §2.2 makes an "Always"
+    // control, and the live path proved the cost: the answers that mention
+    // `dhaif` are exactly the ones whose context carries a dhaif chunk (the
+    // evidence label itself reads "(Dhaif)"), so the token check switched the
+    // control off on its whole target set. The user saw a dhaif citation with
+    // no warning and read it as sound proof.
+    const { applied, draft } = applyProductRules(
       { text: "Hadits ini dhaif, jadi tidak dapat dijadikan dalil utama." },
       context([chunk({ grade: "dhaif" })]),
       "id",
     );
-    expect(applied).not.toContain("dhaif_warning");
+    expect(applied).toContain("dhaif_warning");
+    expect(draft.text).toContain(dhaifWarning("id"));
   });
 
   it("still appends the warning when the answer merely contains the substring 'lemah'", () => {
     // Thermo-review A6: the old `/dhaif|lemah/i` suppressed the warning on any
     // occurrence — including an unrelated sentence — so a genuinely weak
-    // hadith shipped with the grade hidden. Suppression must require a
-    // weakness claim, not a shared substring.
+    // hadith shipped with the grade hidden. Suppression must require the
+    // product's warning copy, not a shared substring.
     const { applied, draft } = applyProductRules(
       { text: "Angin malam ini terasa lemah, tetapi jawabannya tetap ini." },
       context([chunk({ sourceType: "hadith", grade: "dhaif" })]),
@@ -101,11 +111,11 @@ describe("applyProductRules", () => {
   });
 
   it("appends the canonical warning over an informal 'lemah' weakness claim", () => {
-    // Round-3 B4: suppression anchors to the product-owned warning copy plus
-    // the technical term, not to a ±40-char proximity window around the
-    // ordinary word "lemah" — the window was brittle in both directions. An
-    // informal claim now gains the canonical line: the deterministic rule
-    // doing its job, not a duplicate of the model's phrasing.
+    // Round-3 B4: suppression anchors to the product-owned warning copy, not
+    // to a ±40-char proximity window around the ordinary word "lemah" — the
+    // window was brittle in both directions. An informal claim gains the
+    // canonical line: the deterministic rule doing its job, not a duplicate
+    // of the model's phrasing.
     const { applied, draft } = applyProductRules(
       { text: "Riwayat ini lemah, sehingga tidak bisa dijadikan dalil." },
       context([chunk({ sourceType: "hadith", grade: "dhaif" })]),
@@ -115,16 +125,68 @@ describe("applyProductRules", () => {
     expect(draft.text).toContain(dhaifWarning("id"));
   });
 
-  it("suppresses on the warning copy's own grade phrase without the term 'dhaif'", () => {
-    // The copy phrases (`berderajat lemah` / `graded weak`) suppress too, so
-    // an answer restating the grade in the product's words is not decorated
-    // twice.
-    const { applied } = applyProductRules(
+  it("appends the canonical warning over a restatement of the copy's grade phrase (#278)", () => {
+    // The copy's grade phrases ("berderajat lemah" / "graded weak") are part of
+    // the COPY, not independent triggers: a sentence that uses the phrase
+    // without the warning statement is still a paraphrase, so it gains the
+    // canonical line rather than suppressing it.
+    const { applied, draft } = applyProductRules(
       { text: "Hadits ini berderajat lemah, sehingga tidak dapat dijadikan dalil utama." },
       context([chunk({ sourceType: "hadith", grade: "dhaif" })]),
       "id",
     );
+    expect(applied).toContain("dhaif_warning");
+    expect(draft.text).toContain(dhaifWarning("id"));
+  });
+
+  it("does not duplicate the canonical warning the answer already carries", () => {
+    // The anti-duplication property that remains: the rule's own copy present
+    // in the text is not appended a second time (a double warning is the
+    // visible defect the module exists to avoid).
+    const { applied, draft } = applyProductRules(
+      { text: `Jawaban.\n\n${dhaifWarning("id")}` },
+      context([chunk({ sourceType: "hadith", grade: "dhaif" })]),
+      "id",
+    );
     expect(applied).not.toContain("dhaif_warning");
+    expect(draft.text.split(dhaifWarning("id")).length - 1).toBe(1);
+  });
+
+  it("does not suppress on the copy of the OTHER language", () => {
+    // A bilingual answer that carries the EN copy suppresses the EN rule text
+    // too: the predicate is "the warning is present", not "the ID one is".
+    const { applied } = applyProductRules(
+      { text: `Answer.\n\n${dhaifWarning("en")}` },
+      context([chunk({ sourceType: "hadith", grade: "dhaif" })]),
+      "en",
+    );
+    expect(applied).not.toContain("dhaif_warning");
+  });
+
+  it("appends the warning for the live failing trace's shape (#278)", () => {
+    // The shape of the readable failing case (staging trace
+    // dfd9d801-c3bc-42b9-9e09-39a5df785c94, message
+    // 92853ab6-5626-40cc-a098-a7d7463832b0, 2026-09-27): 28 assembled chunks,
+    // 3 of them dhaif-graded, and a draft that reproduces the evidence labels
+    // verbatim — including the "(Dhaif)" the assembler renders from the store
+    // grade — plus the model's own note. The delivered answer carried no
+    // canonical line.
+    const { applied, draft } = applyProductRules(
+      {
+        text: [
+          'Hadits dari Abu Hurairah: "Setiap sesuatu memiliki puncak…"',
+          "**Catatan: hadits ini berlabel Dhaif** [HR. Tirmidhi no. 2878 (Dhaif)].",
+          "Hadits lain: [HR. Tirmidhi no. 2884 (Sahih)].",
+        ].join("\n\n"),
+      },
+      context([
+        chunk({ sourceType: "hadith", grade: "sahih" }),
+        chunk({ sourceType: "hadith", grade: "dhaif", citation: "HR. Tirmidhi no. 2878 (Dhaif)" }),
+      ]),
+      "id",
+    );
+    expect(applied).toContain("dhaif_warning");
+    expect(draft.text).toContain(dhaifWarning("id"));
   });
 
   it("appends no dhaif warning when every retrieved hadith is strong", () => {
@@ -199,6 +261,42 @@ describe("hasWeakGradeChunk", () => {
     expect(hasWeakGradeChunk([chunk({ grade: "sahih" })])).toBe(false);
     expect(hasWeakGradeChunk([chunk({})])).toBe(false);
     expect(hasWeakGradeChunk([])).toBe(false);
+  });
+});
+
+describe("hasWeakWarning — the one predicate the frame and the postprocess share", () => {
+  it("is true only for the product's own warning copy", () => {
+    expect(hasWeakWarning(dhaifWarning("id"))).toBe(true);
+    expect(hasWeakWarning(dhaifWarning("en"))).toBe(true);
+    expect(hasWeakWarning(`Jawaban.\n\n${dhaifWarning("en")}`)).toBe(true);
+  });
+
+  it("is false for every grade mention that is not the copy (#278)", () => {
+    // These are the shapes the live path actually produced. Every one of them
+    // is a reason an answer CONTAINS the token without carrying the warning.
+    for (const text of [
+      "[HR. Tirmidhi no. 2878 (Dhaif)]",
+      "Catatan: hadits ini berlabel Dhaif.",
+      "Hadits ini dhaif, jadi tidak dapat dijadikan dalil utama.",
+      "The hadith is graded weak (dhaif).",
+      "Riwayat ini berderajat lemah.",
+      "",
+    ]) {
+      expect(hasWeakWarning(text), text).toBe(false);
+    }
+  });
+
+  it("never matches a sound hadith's context (the rule cannot warn on sahih)", () => {
+    // The other half of the invariant: the predicate only gates whether the
+    // copy is duplicated. Warning on a sound answer still requires
+    // `hasWeakGradeChunk` — pinned here so a future edit to either side cannot
+    // make "sound" emit the warning.
+    const { applied } = applyProductRules(
+      { text: "Jawaban dengan [HR. Bukhari no. 5010 (Sahih)]." },
+      context([chunk({ sourceType: "hadith", grade: "sahih" })]),
+      "id",
+    );
+    expect(applied).not.toContain("dhaif_warning");
   });
 });
 
