@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { Chunk } from "@app/rag-core";
 import {
+  addressesNamedBy,
   citationCandidatesIn,
   citationLabelsOf,
   citationMatchText,
   citationSpansIn,
+  groundingLabelsFor,
   normalizeCitationLabel,
   validateCitations,
 } from "./chat-citation-validator";
@@ -435,6 +437,75 @@ describe("validateCitations — grounded direction", () => {
         dash,
       ).toEqual([]);
     }
+  });
+
+  it("names a range's INTERIOR, and every number a multi-dash chain writes (#274 A2 fix)", () => {
+    // Strict-whole, owner-decided: `QS. 2:255-260` **names** 255 through 260,
+    // so two retrieved endpoints are not the range — four of its addresses were
+    // never retrieved and the citation must refuse. The endpoint-pair
+    // implementation this replaces grounded it (review A2 of the fix round).
+    const interior = "Dalilnya QS. 2:255-260 tentang hal ini";
+    expect(
+      validateCitations(interior, [chunk("QS. 2:255"), chunk("QS. 2:260")]).ungrounded,
+    ).toEqual(["QS. 2:255-260"]);
+    const six = [255, 256, 257, 258, 259, 260].map((n) => chunk(`QS. 2:${n}`));
+    expect(validateCitations(interior, six).ungrounded).toEqual([]);
+    // A hole in the middle refuses exactly like a missing endpoint — that is
+    // the whole point of enumerating the interior.
+    const holed = six.filter((c) => c.id !== "c-QS. 2:257");
+    expect(validateCitations(interior, holed).ungrounded).toEqual(["QS. 2:255-260"]);
+    // The chain form names every number it writes. `QS. 3:1-2-3` used to be
+    // scanned as `QS. 3:1-2`, so the trailing `-3` was neither named nor
+    // refused and 3:1 + 3:2 grounded the citation.
+    const chain = "Dalilnya QS. 3:1-2-3 tentang hal ini";
+    expect(citationCandidatesIn(chain)).toEqual(["QS. 3:1-2-3"]);
+    expect(validateCitations(chain, [chunk("QS. 3:1"), chunk("QS. 3:2")]).ungrounded).toEqual([
+      "QS. 3:1-2-3",
+    ]);
+    expect(
+      validateCitations(chain, [chunk("QS. 3:1"), chunk("QS. 3:2"), chunk("QS. 3:3")]).ungrounded,
+    ).toEqual([]);
+    // An address the surah cannot have makes the span unenumerable, and an
+    // unverifiable list REFUSES rather than being shortened to the part it
+    // could enumerate — the refusal does not rest on the corpus being pure.
+    expect(validateCitations("Dalilnya QS. 2:1-999", [chunk("QS. 2:1")]).ungrounded).toEqual([
+      "QS. 2:1-999",
+    ]);
+    // A surah written by name is bounded by the longest surah and is
+    // unverifiable against the corpus's numeric labels, so it still refuses
+    // even with the whole span retrieved.
+    expect(
+      validateCitations("Dalilnya QS. Al-Baqarah:255-256", [chunk("QS. 2:255"), chunk("QS. 2:256")])
+        .ungrounded,
+    ).toEqual(["QS. Al-Baqarah:255-256"]);
+    // The display form is the range as written, interior enumeration or not.
+    expect(citationCandidatesIn(interior)).toEqual(["QS. 2:255-260"]);
+  });
+
+  it("answers which labels ground a span, so the gate and its consumers share one rule (#274 A1)", () => {
+    // The frame derivation and the eval's evidence paths read this instead of
+    // re-deciding: the returned labels are what the citation is backed by, and
+    // every one of them is in `known` by construction.
+    const known = new Set(["QS. 3:1", "QS. 3:2"]);
+    expect(groundingLabelsFor("QS. 3:1-2", known)).toEqual(["QS. 3:1", "QS. 3:2"]);
+    expect(groundingLabelsFor("QS. 3:1", known)).toEqual(["QS. 3:1"]);
+    expect(groundingLabelsFor("QS. 3:3", known)).toBeNull();
+    // The same strict-whole rule the validator applies: a range whose interior
+    // is not retrieved is not grounded, whoever asks.
+    expect(groundingLabelsFor("QS. 3:1-3", known)).toBeNull();
+    expect(groundingLabelsFor("QS. 9:99", known)).toBeNull();
+    // The naming declaration itself, per grammar: a range names its whole span;
+    // a grammar that declares no list names the label whole (so a hadith
+    // compound is never reduced to its head).
+    expect(addressesNamedBy("QS. 2:255-260")).toEqual([
+      "QS. 2:255",
+      "QS. 2:256",
+      "QS. 2:257",
+      "QS. 2:258",
+      "QS. 2:259",
+      "QS. 2:260",
+    ]);
+    expect(addressesNamedBy("HR. Bukhari no. 5010-5011")).toEqual(["HR. Bukhari no. 5010-5011"]);
   });
 
   it("leaves a grammar that declares no address list alone — the hadith compound stays whole", () => {

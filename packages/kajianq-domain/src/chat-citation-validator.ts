@@ -15,7 +15,11 @@ import {
 // pre-gate's claim spans, the eval scorer's injected grammar) is unchanged by
 // the split: the scan and the comparison form are one subject and one import
 // path, however many files the 300-line cap distributes them across.
-export { citationCandidatesIn, citationSpansIn, normalizeCitationLabel };
+// `addressesNamedBy` joins them because it IS the comparison form's other half:
+// the addresses a citation names are what the per-address rule compares, and
+// the eval's injected grammar reads the same declaration rather than a second
+// implementation of the range's semantics.
+export { addressesNamedBy, citationCandidatesIn, citationSpansIn, normalizeCitationLabel };
 
 /**
  * Deterministic citation validator (spec §3.3 step 7, ticket #10): every
@@ -76,6 +80,55 @@ export function citationMatchText(text: string): string {
 }
 
 /**
+ * **Which retrieved labels ground one citation-shaped span** — the single
+ * implementation of the gate's rule, returned rather than decided so every
+ * consumer of "grounded" reads the same answer (review A1 of the fix round).
+ *
+ * The gate's ungrounded direction and the user-visible citations frame
+ * (`deriveCitationsFrame`) both call this. Before it existed they each carried
+ * their own reading, so a range the gate had just accepted still produced no
+ * chip for the user and scored `citationValidity` 0 on the eval's authoritative
+ * frame path. A third consumer cannot be written by accident now: the rule has
+ * one owner, and its result is the accepted label(s) rather than a boolean —
+ * the frame needs the label to find the display row, and the eval's frame path
+ * matches on exactly those labels.
+ *
+ * `candidate` is a normalized span (the grammar scan's output); `known` is the
+ * retrieved chunks' normalized citation labels. All three rules run in the
+ * gate's order:
+ *
+ * 1. the span **is** a retrieved label (the ordinary case);
+ * 2. the span **extends** a retrieved label with a grade the chunk did not
+ *    carry (`HR. Bukhari no. 573 (Sahih)`), which is the answer's provenance,
+ *    not a second address;
+ * 3. the span names a **list** of addresses (the Quran range) and every one of
+ *    them is retrieved — strict-whole, the interior included (ADR-0049).
+ *
+ * Like the whole-label rule it replaces, no rule here can ground a citation
+ * that rule refused. `null` means nothing retrieved grounds the span; every
+ * returned label is in `known` by construction, so a caller can look each one
+ * up directly.
+ */
+export function groundingLabelsFor(
+  candidate: string,
+  known: ReadonlySet<string>,
+): readonly string[] | null {
+  if (known.has(candidate)) return [candidate];
+  // Rule 2 can match more than one known label (a shortened label and the same
+  // label carrying the grade), so all matches come back: this function's set is
+  // then equal to the gate's `grounded` list, which adds every label the answer
+  // text contains.
+  const extended = [...known].filter((label) => candidate.startsWith(`${label} `));
+  if (extended.length > 0) return extended;
+  // ADR-0049: every address the citation's own grammar declares it names must
+  // be present. One declared address is the ordinary case already covered
+  // above; the check only ever ADDS a requirement, never drops one.
+  const named = addressesNamedBy(candidate).map(canonicalizeCitationSpelling);
+  if (named.length > 1 && named.every((address) => known.has(address))) return named;
+  return null;
+}
+
+/**
  * Check the draft's answer: which of the retrieved chunks' citation labels
  * appear in the text (`grounded`), and which citation-shaped spans in the
  * text exist in no retrieved chunk (`ungrounded`).
@@ -86,16 +139,17 @@ export function citationMatchText(text: string): string {
  * chunk) still counts as grounded.
  *
  * **A citation that names a LIST of addresses is checked address by address
- * (ADR-0049).** The Quran range is such a form: `QS. 3:1-2` names `QS. 3:1`
- * *and* `QS. 3:2`, so it grounds exactly when the retrieved labels hold every
- * one of them — and still refuses when only the head, only the tail, or
- * neither was retrieved. The list comes from the grammar that declared it
- * (`addressesNamedBy`), never from splitting a dash at this site: a grammar
+ * (ADR-0049), by {@link groundingLabelsFor}.** The Quran range is such a form:
+ * `QS. 3:1-2` names `QS. 3:1` *and* `QS. 3:2`, so it grounds exactly when the
+ * retrieved labels hold every one of them — and still refuses when only the
+ * head, only the tail, or neither was retrieved. `QS. 2:255-260` names 255
+ * through 260, interior included. The list comes from the grammar that declared
+ * it (`addressesNamedBy`), never from splitting a dash at this site: a grammar
  * with no list-valued form names one address and its dash-joined compound
  * stays the opaque whole it was (#264's A3 boundary, unchanged for hadith).
- * The candidate label itself is untouched, so the refusal reason, the
- * reviewer pre-gate's claim spans and the citation the user reads keep naming
- * what the draft named.
+ * The candidate label itself is untouched, so the refusal reason, the reviewer
+ * pre-gate's claim spans and the citation the user reads keep naming what the
+ * draft named.
  */
 export function validateCitations(
   answer: string,
@@ -113,24 +167,26 @@ export function validateCitations(
   // spelling (`QS 2:255`) for a `QS. 2:255` chunk still counts as grounded
   // provenance rather than vanishing from the review trace's `grounded` list.
   const normalizedAnswer = citationMatchText(answer);
-  const grounded: string[] = [];
+  const grounded = new Set<string>();
   for (const label of known) {
-    if (normalizedAnswer.includes(label)) grounded.push(label);
+    if (normalizedAnswer.includes(label)) grounded.add(label);
   }
   const ungrounded: string[] = [];
   for (const candidate of citationCandidatesIn(answer)) {
-    if (known.has(candidate)) continue;
-    // The answer may extend a known label with a grade the chunk did not
-    // carry (`HR. Bukhari no. 573` → `… (Sahih)`); the address is what must
-    // be grounded, so a known-label prefix counts.
-    if ([...known].some((k) => candidate.startsWith(`${k} `))) continue;
-    // ADR-0049: every address the citation's own grammar declares it names
-    // must be present. One declared address is the ordinary case already
-    // covered above; the check only ever ADDS a requirement, never drops one,
-    // so it cannot ground a citation the whole-label rule refused.
-    const named = addressesNamedBy(candidate).map(canonicalizeCitationSpelling);
-    if (named.length > 1 && named.every((address) => known.has(address))) continue;
-    if (!ungrounded.includes(candidate)) ungrounded.push(candidate);
+    const accepted = groundingLabelsFor(candidate, known);
+    if (accepted === null) {
+      if (!ungrounded.includes(candidate)) ungrounded.push(candidate);
+      continue;
+    }
+    // A citation that names a list of addresses cites every one of them, so
+    // the provenance list names them all — not only the ones the substring
+    // pass found literally in the text. `QS. 3:1-2` written over retrieved
+    // `QS. 3:1` and `QS. 3:2` says `grounded: ["QS. 3:1", "QS. 3:2"]`, which
+    // is what makes the trace's evidence agree with the frame and with the
+    // scorer on a range (review A1 of the #274 fix round: the tail address is
+    // never a literal substring of `QS. 3:1-2`, so the events path used to
+    // score a required tail verse 0 while the frame path scored it 1).
+    for (const label of accepted) grounded.add(label);
   }
-  return { grounded, ungrounded };
+  return { grounded: [...grounded], ungrounded };
 }

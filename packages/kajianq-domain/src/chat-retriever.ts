@@ -106,7 +106,10 @@ export type KajianQRetrieverDeps = {
    * ADR-0049's retrieved-verse neighbourhood expansion: how many ordinals on
    * each side of a retrieved verse join the context, and the total number of
    * chunks it may add. Default to `DEFAULT_NEIGHBOUR_RADIUS` /
-   * `DEFAULT_NEIGHBOUR_CAP`; `<= 0` on **either** disables the expansion.
+   * `DEFAULT_NEIGHBOUR_CAP`; `0` on **either** disables the expansion — the
+   * composition root's parser accepts non-negative integers only, and the
+   * expansion guards `<= 0` defensively for any other caller (review B3 of the
+   * #274 fix round).
    */
   neighbourRadius?: number;
   neighbourCap?: number;

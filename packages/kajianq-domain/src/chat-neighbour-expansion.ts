@@ -57,8 +57,12 @@ export const DEFAULT_NEIGHBOUR_RADIUS = 1;
  * expansions are bounded alike. Against a measured p50 of 46 candidate
  * neighbours on Quran-bearing queries, this is what keeps the widening a
  * bounded addition instead of a second context. Configured at the composition
- * root (`NEIGHBOUR_EXPANSION_CAP`); `<= 0` on either knob disables the
- * expansion entirely.
+ * root (`NEIGHBOUR_EXPANSION_CAP`), which accepts **non-negative** integers
+ * only: `0` is the operator's disable and a negative value is a typed config
+ * failure at boot (review B3 of the #274 fix round — the knob an operator sets
+ * and the sentence an operator reads must say the same thing). The `<= 0`
+ * short-circuit below is the domain module's own defensive guard for a caller
+ * that is not that parser, not a second documented spelling of "off".
  */
 export const DEFAULT_NEIGHBOUR_CAP = 12;
 
@@ -118,9 +122,10 @@ function isVerse(chunk: Chunk): boolean {
  * surah-scope chunks, in that order — and it doubles as the dedup set, so a
  * verse already in context (by either path) is never added twice and a caller
  * cannot pass the two out of step. Returns no chunks and a null detail when
- * `radius <= 0` or `cap <= 0` (the documented disable), and when no retrieved
- * chunk is a verse — in both cases without issuing a store read at all, so a
- * query that cannot benefit pays nothing.
+ * `radius <= 0` or `cap <= 0` (the composition root passes non-negative values
+ * only, so in production this is `0`, the documented disable — review B3), and
+ * when no retrieved chunk is a verse — in both cases without issuing a store
+ * read at all, so a query that cannot benefit pays nothing.
  */
 export function expandVerseNeighbours(input: {
   retrieved: readonly Chunk[];

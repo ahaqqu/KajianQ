@@ -153,6 +153,89 @@ describe("citationValidity", () => {
     ];
     expect(citationValidity(["QS. 1:2"], "QS. 1:2", { frame, events })).toBe(0);
   });
+
+  /**
+   * The three evidence paths on a **grounded range** (review A1 of the #274 fix
+   * round). The reviewer's reproduction at head: with `QS. 2:255-256` grounded
+   * by the retrieved `QS. 2:255` + `QS. 2:256`, `citationValidity(["QS. 2:255"],
+   * answer, { frame })` was **0** — the frame carries the range as written
+   * (ADR-0049 Decision 4) and the required citation is the single verse, so
+   * comparing the two as strings scored a correctly grounded answer absent
+   * while the same call through the trace's `grounded` labels scored 1. The
+   * required citation and the evidence are now compared as the **sets of
+   * addresses they name**, through the same declaration the gate grounds with.
+   *
+   * The grammar double above gains that declaration (mirroring the domain
+   * pack's `addressesNamedBy`, the function the CLI composition root injects),
+   * and `labelsInText` gains the dash tail so the text path sees the same span
+   * the real scan produces.
+   */
+  describe("a grounded range on every evidence path (#274 A1)", () => {
+    const rangeGrammar = {
+      ...grammar,
+      labelsInText: (text: string) =>
+        [...text.matchAll(/Q\.?S\.?\s*[^\s:,[\]()]+\s*:\s*\d+(?:-\d+)*/g)].map((m) => canon(m[0]!)),
+      addressesNamedBy: (label: string): readonly string[] => {
+        const m = /^(Q\.?S\.?\s*[^\s:,[\]()]+\s*:\s*)(\d+)(?:-(\d+))?$/.exec(label);
+        if (m === null || m[3] === undefined) return [label];
+        const lo = Math.min(Number(m[2]), Number(m[3]));
+        const hi = Math.max(Number(m[2]), Number(m[3]));
+        const out: string[] = [];
+        for (let n = lo; n <= hi; n += 1) out.push(`${m[1]}${n}`);
+        return out;
+      },
+    };
+    const answer = "Dalilnya QS. 2:255-256 tentang hal ini.";
+    // What `deriveCitationsFrame` emits for this answer: the range as written,
+    // backed by its head verse's display row (pinned end-to-end against the
+    // real frame in `apps/api/src/lib/chat-citations.test.ts`).
+    const rangeFrame = { citations: [{ label: "QS. 2:255-256" }] };
+    // What the gate records on the trace: every address the grounded range
+    // cites, head and tail.
+    const events: TraceEventLike[] = [
+      {
+        kind: "review",
+        stage: "reviewer",
+        detail: { verdict: "{}", grounded: ["QS. 2:255", "QS. 2:256"] },
+      },
+    ];
+
+    it("scores the head verse 1 on the frame path, the events path and the text path", () => {
+      expect(
+        citationValidity(["QS. 2:255"], answer, { frame: rangeFrame, grammar: rangeGrammar }),
+      ).toBe(1);
+      expect(citationValidity(["QS. 2:255"], answer, { events, grammar: rangeGrammar })).toBe(1);
+      expect(citationValidity(["QS. 2:255"], answer, { grammar: rangeGrammar })).toBe(1);
+    });
+
+    it("scores the TAIL verse too — the range cites it, and it is never a literal substring", () => {
+      // `"… QS. 2:255-256 …".includes("QS. 2:256")` is false, which is why the
+      // provenance list has to name every address a grounded range cites.
+      expect(answer.includes("QS. 2:256")).toBe(false);
+      expect(
+        citationValidity(["QS. 2:256"], answer, { frame: rangeFrame, grammar: rangeGrammar }),
+      ).toBe(1);
+      expect(citationValidity(["QS. 2:256"], answer, { events, grammar: rangeGrammar })).toBe(1);
+      expect(citationValidity(["QS. 2:256"], answer, { grammar: rangeGrammar })).toBe(1);
+    });
+
+    it("still scores an address the range does NOT name as absent", () => {
+      // The relation only widens to what the range names: 2:257 is outside it.
+      expect(
+        citationValidity(["QS. 2:257"], answer, { frame: rangeFrame, grammar: rangeGrammar }),
+      ).toBe(0);
+      expect(citationValidity(["QS. 2:257"], answer, { events, grammar: rangeGrammar })).toBe(0);
+    });
+
+    it("keeps the frame authoritative: an empty frame is still 0", () => {
+      // The frame is the server's grounded set; the new relation reads its
+      // labels, it does not replace the frame with the answer text.
+      const empty = { citations: [] as { label: string }[] };
+      expect(
+        citationValidity(["QS. 2:255"], answer, { frame: empty, events, grammar: rangeGrammar }),
+      ).toBe(0);
+    });
+  });
 });
 
 describe("citationLabelsPresent", () => {
@@ -351,6 +434,34 @@ describe("scoreQuestion", () => {
     });
     expect(outcome.retrievalRecall).toBe(1);
     expect(outcome.expansion).toEqual({ chunks: 2, fusedOnlyRetrievalRecall: 0.5 });
+  });
+
+  it("keeps every expansion path out of the fused-only leg (A4 of the #274 fix round)", () => {
+    // `retrievalRecall` reads every ref, so the two expansions' refs satisfy
+    // the second expected source here. The fused-only leg must exclude BOTH:
+    // it used to exclude only the scope origin, so the neighbour chunk counted
+    // as fused, the metric equalled the reported recall, and the report could
+    // no longer state that an expansion carried the question — the one
+    // property #243 C1 exists for.
+    const scoped: TraceEventLike = {
+      kind: "retrieval",
+      stage: "retriever",
+      detail: {
+        chunks: [
+          { id: "c1", score: 0.5, rankDense: 1 },
+          { id: "x1", origin: "expansion" },
+          { id: "n1", origin: "verse_neighbours" },
+        ],
+      },
+    };
+    const outcome = scoreQuestion(question, "… label-1 …", [scoped], {
+      sourceTypeOf: (id) => (id === "c1" ? "source-a" : "source-b"),
+      expansionOrigin: "expansion",
+    });
+    expect(outcome.retrievalRecall).toBe(1);
+    // `chunks` counts the SCOPE path only (ADR-0045's published meaning), and
+    // the fused-only leg is the one ref that carries no origin label.
+    expect(outcome.expansion).toEqual({ chunks: 1, fusedOnlyRetrievalRecall: 0.5 });
   });
 
   it("records a recognised-but-empty scope honestly (0 chunks, fused-only = reported)", () => {

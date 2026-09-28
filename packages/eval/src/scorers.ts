@@ -156,6 +156,19 @@ function textCandidateLabels(answerText: string, grammar?: CitationGrammar): str
  * a grammar is injected, so the fixture's curated spelling (`QS. 1:2`) matches
  * an evidence label in any equivalent form the grammar canonicalizes. Without
  * a grammar the comparison stays the byte-exact substring test it always was.
+ *
+ * **Both sides are compared as the sets of addresses they name, not as
+ * strings** (review A1 of the #274 fix round). A required citation and the
+ * evidence that grounds it need not be the same shape: a question requires
+ * `QS. 2:255` and the answer may cite the range `QS. 2:255-256`, which the gate
+ * grounds once every address it names is retrieved. Comparing the two labels
+ * directly scored that answer 0 on the frame path while the trace path scored
+ * it 1 — the two paths disagreeing about a grounded citation. The relation is
+ * the gate's own (strict-whole: every address the required citation names must
+ * be named by the evidence), and the addresses come from the injected grammar's
+ * own declaration (`addressesNamedBy`, owned by the domain pack), so the engine
+ * re-derives nothing and a label that names only itself behaves exactly as it
+ * did before.
  */
 function groundedLabels(
   required: readonly string[],
@@ -165,8 +178,24 @@ function groundedLabels(
   if (grammar === undefined) {
     return required.filter((citation) => evidence.some((label) => label.includes(citation)));
   }
-  const known = new Set(evidence.map(grammar.normalizeLabel));
-  return required.filter((citation) => known.has(grammar.normalizeLabel(citation)));
+  const named = new Set(
+    evidence.flatMap((label) => namedAddressesOf(label, grammar).map(grammar.normalizeLabel)),
+  );
+  return required.filter((citation) =>
+    namedAddressesOf(citation, grammar).every((address) =>
+      named.has(grammar.normalizeLabel(address)),
+    ),
+  );
+}
+
+/**
+ * The addresses one label names, for the set comparison above. Without the
+ * grammar's declaration a label names exactly itself — the pre-range behavior,
+ * and the safe one: a label the grammar cannot describe can only match whole.
+ */
+function namedAddressesOf(label: string, grammar: CitationGrammar): readonly string[] {
+  const declared = grammar.addressesNamedBy?.(label);
+  return declared !== undefined && declared.length > 0 ? declared : [label];
 }
 
 /**

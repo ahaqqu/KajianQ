@@ -166,6 +166,13 @@ export {
   citationLabelsOf,
   citationCandidatesIn,
   normalizeCitationLabel,
+  // The per-address rule's two public halves (review A1/A2 of the #274 fix
+  // round): `groundingLabelsFor` is what the gate and the citations frame both
+  // read to decide what is grounded, and `addressesNamedBy` is the declaration
+  // the eval's injected grammar seam consumes, so the engine never re-derives
+  // what a Quran range names.
+  groundingLabelsFor,
+  addressesNamedBy,
 } from "./chat-citation-validator";
 export {
   createKajianQGenerator,

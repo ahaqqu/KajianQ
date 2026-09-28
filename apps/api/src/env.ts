@@ -57,7 +57,9 @@ export type AppBindings = {
    * integer strings: how many ordinals on each side of a retrieved verse join
    * the context, and how many chunks the expansion may add to one query.
    * Absent = the domain defaults (`DEFAULT_NEIGHBOUR_RADIUS` /
-   * `DEFAULT_NEIGHBOUR_CAP`); `<= 0` on either disables the expansion. Config,
+   * `DEFAULT_NEIGHBOUR_CAP`); `0` disables the expansion and a negative value
+   * is a typed config failure at boot, not a second spelling of "off" (review
+   * B3 of the #274 fix round — this sentence is what an operator reads). Config,
    * never secrets, and they ride the same filtered env view as the scope cap.
    */
   NEIGHBOUR_EXPANSION_RADIUS?: string;

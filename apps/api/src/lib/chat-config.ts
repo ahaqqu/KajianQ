@@ -65,15 +65,23 @@ export function parseScopeExpansionCap(raw: string | undefined): number | undefi
  * the chunk cap. They share a shape and a failure mode, so they share the rule
  * (absent/empty = the domain default; a malformed value is a typed config
  * failure naming the variable, never a silent default). Both are read at the
- * composition root like every other deployment choice; `<= 0` on either is the
- * documented way to disable the expansion.
+ * composition root like every other deployment choice.
+ *
+ * **`0` is the documented disable; a negative value is malformed config**
+ * (review B3 of the #274 fix round). The domain module and the store adapter
+ * short-circuit `<= 0` defensively, but these two variables are what an
+ * operator sets, and "`<= 0` disables" told an operator that `-1` was a legal
+ * way to turn the expansion off — it is a boot-time `ChatConfigError` that
+ * leaves the chat route unusable. The parser and the operator-facing docs now
+ * say the same thing; accepting negatives would only add a second,
+ * undocumented spelling of "off".
  */
 function parseNeighbourKnob(raw: string | undefined, name: string): number | undefined {
   if (raw === undefined || raw.trim() === "") return undefined;
   const value = Number(raw);
   if (!Number.isInteger(value) || value < 0) {
     throw new ChatConfigError(
-      `chat route: ${name} must be a non-negative integer (got "${raw}")`,
+      `chat route: ${name} must be a non-negative integer (got "${raw}"); 0 disables the expansion`,
       name,
     );
   }

@@ -22,6 +22,22 @@ export type TrackHit = { chunk: Chunk; rank: number };
 /**
  * Fuse per-search hit lists with RRF(k=60) plus hierarchy bonuses.
  * Exported for tests: pure, deterministic.
+ *
+ * **The order is total** (review A3 of the #274 fix round): equal scores are
+ * broken by chunk id, so two runs over the same hit lists produce the same
+ * sequence. Score ties are real — duplicate or near-identical verses are common
+ * in this corpus, and two chunks can occupy mirrored ranks — and without the
+ * tie-break the order fell back to `Map` insertion order, i.e. to the hit
+ * lists' order, which the ANN search does not guarantee for equal distances.
+ * The retriever's caller-order-is-priority-order contract (ADR-0049) and the
+ * neighbour cap that truncates on it both rest on this being a total order.
+ *
+ * The remaining determinism limit is upstream and is a revisit trigger in
+ * ADR-0049: the similarity query is ordered by the vector distance alone,
+ * because a second `ORDER BY` key would cost the HNSW index scan. `rank_dense`
+ * among exactly-equal distances can therefore differ between runs, and the
+ * scores with it. This sort makes the most of the ranks it is given; it cannot
+ * make the ranks themselves total.
  */
 export function rrfFuse(lists: readonly TrackHit[][], bonusOf: (chunk: Chunk) => number): Chunk[] {
   const byId = new Map<string, { chunk: Chunk; score: number; ranks: number[] }>();
@@ -34,12 +50,23 @@ export function rrfFuse(lists: readonly TrackHit[][], bonusOf: (chunk: Chunk) =>
     }
   }
   return [...byId.values()]
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => b.score - a.score || compareChunkIds(a.chunk.id, b.chunk.id))
     .map((e) => ({
       ...e.chunk,
       score: e.score,
       rankDense: Math.min(...e.ranks),
     }));
+}
+
+/**
+ * Byte-order comparison of two chunk ids — the tie-break above. Deliberately
+ * not `localeCompare`: the order must not depend on the runtime's locale or
+ * ICU data, or "same input, same order" would hold on one deployment and not
+ * another.
+ */
+function compareChunkIds(a: string, b: string): number {
+  if (a === b) return 0;
+  return a < b ? -1 : 1;
 }
 
 /** Hierarchy bonus from a chunk's opaque metadata (spec §3.3 magnitudes). */

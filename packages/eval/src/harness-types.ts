@@ -94,4 +94,20 @@ export type CitationGrammar = {
   normalizeLabel: (label: string) => string;
   /** Every citation-shaped span in the text, ALREADY normalized. */
   labelsInText: (text: string) => string[];
+  /**
+   * Every address one label **names**, in the grammar's own spelling: a list
+   * for a form whose citation names several (a range citation, whose interior
+   * is included — `QS. 2:255-260` names all six), and the label itself for an
+   * ordinary citation. Optional so a unit grammar with no list-valued form is
+   * still a valid injection; absent, every label names exactly itself, which is
+   * the behavior the scorer had before ranges existed.
+   *
+   * The scorer needs it because a required citation and the answer's evidence
+   * are not the same SHAPE: a question requires `QS. 2:255`, the answer cites
+   * `QS. 2:255-256`, and the gate grounds it — comparing the two as strings
+   * alone scored a correctly grounded answer 0 (review A1 of the #274 fix
+   * round). Injected from the domain pack (`addressesNamedBy`), so the range's
+   * semantics has one owner and the engine learns no domain vocabulary.
+   */
+  addressesNamedBy?: (label: string) => readonly string[];
 };
