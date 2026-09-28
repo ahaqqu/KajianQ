@@ -234,3 +234,58 @@ here (see the revisit trigger below).
 | `scripts/dsh-pin-check.mjs`                                                  | No code change needed — it reads every `.zcode/agents/*.md` pin, so the new pin is checked automatically                                                                                                                          |
 | `SPECS.md` §2.2, §3.7, §8                                                    | The control table row, the cadence sentence, this ADR's row                                                                                                                                                                       |
 | Runtime (`apps/`, `packages/`, pipeline, contracts)                          | **no change**                                                                                                                                                                                                                     |
+
+## Amendment (2026-09-28, carried with #295): the QA role's scoped store read
+
+Decision 5 enumerated the role's posture — repo read-only, anonymous sessions
+only, erasure, no destructive action, the ticket cap — and granted it no store
+read. The public API carries neither the spend the report owes nor the
+reviewer/pre-gate events the #272 probe needs, and the two tickets are the two
+halves of that gap. **#255/#272, owner option A** is the read path #295
+implements; this amendment records the posture it changes. It does not rewrite
+decision 5 or decision 8.
+
+Decision:
+
+- **The grant.** Over the documented staging tunnel (`docs/VPS-OPERATIONS.md`
+  §2.8, port 15433), with `default_transaction_read_only=on` set on the
+  connection, the role may run `SELECT` queries for exactly two purposes:
+  (a) cost aggregates on `answer_traces` scoped to the anonymous `user_id`s the
+  run created, and (b) the persisted traces of those same sessions.
+- **The scope is the data subject, not the purpose alone.** The run's own
+  `answer_traces.user_id`s are the scope; the span query carries the owner check
+  as well as the trace id. `chat_messages` content, `feedback` free text, and
+  any other subject's rows or `trace` JSONB are explicitly out of posture, and a
+  query that is not one of the two purposes is out of posture whatever it
+  returns. That is what keeps the grant consistent with ADR-0043 and with the
+  role's own "anonymous sessions only, no real user data" rail: the agent's
+  model context receives its own probe sessions and cost aggregates, never
+  another data subject's personal data, so no §8 register row moves.
+- **The read-only transaction is a discipline and an accident-guard, not a
+  privilege boundary.** Verified read-only against the live store during #295's
+  review: the documented credential is the application's own `kajianq` role
+  (`INSERT`/`UPDATE`/`DELETE` on `answer_traces`, `CREATE` on `public` and on the
+  database), and `default_transaction_read_only` is a `PGC_USERSET` GUC that one
+  statement — or a reconnect without `PGOPTIONS` — turns off. **The database
+  does not refuse a write**; the role's discipline does, and both `.zcode/agents/qa.md`
+  and the `qa-phase` skill say so.
+- **Open: the enforcement mechanism is an owner decision.** A dedicated
+  SELECT-only role (`pg_read_all_data`, no write grants, `ALTER ROLE … SET
+default_transaction_read_only = on` on the role) would make the boundary real.
+  It requires a host provisioning step and is deliberately **not** taken by
+  #295: no role, view, or migration is provisioned there, and nothing in the
+  repo may imply one exists. The choice is recorded on #295's thread.
+- **The reported figure is recorded cost, and its calibration is under review.**
+  The spend line is the sum of the persisted `costMicroUsd`, not billed cost.
+  `models.json` records `deepseek-v4-flash` at `in: 140` micro-USD/MTok against
+  the unit the same file declares and its own `$0.14/$0.28` role comment — about
+  1000x low — so until #296 reconciles it the sum is a lower bound whose trend
+  is meaningful and which cannot enforce the cap on its own. Decision 7's
+  cap-comparison language is qualified by this bullet, not replaced.
+- **The corpus arm stays out.** Planting a hostile chunk is a write; it belongs
+  to a local falsification harness (#294), not to this grant. Query-level
+  injection stays a QA probe.
+
+Revisit triggers added: the enforcement decision above when it is taken, and
+#296 when the cost calibration is corrected (decision 7's cap language and the
+skill's spend section change with it then).
