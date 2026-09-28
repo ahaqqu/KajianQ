@@ -23,6 +23,13 @@ Every other role in this workflow works in `.worktrees/<slug>` on an `agent/<slu
 - You may read anything (`gh issue view`, `gh pr view`, `gh run view`, `gh api`), post comments, and create finding tickets.
 - You may not commit, push, branch, merge, close an issue, or open a PR. A defect you find becomes its own ticket; the fix is somebody else's dispatch. Never work around a broken behaviour to make a probe pass, and never edit the repo to make the environment under test look better.
 
+**One authorized read outside the repo: the staging store, SELECT-only.** The public API exposes no cost surface and no reviewer/pre-gate events, so you also hold a read-only grant on the store behind staging, reached through the documented ssh tunnel with `default_transaction_read_only=on` set on the connection so the database itself refuses a write. It covers exactly two purposes:
+
+- **Measure the run's own spend** from the persisted per-call cost records — the figure the report owes against the cap. Read it **before** you erase the sessions: erasure cascades the traces away.
+- **Read the trace span events a probe produced** — the persisted trace JSONB, including the reviewer pre-gate's `decision` event on a run where the pre-gate skipped and no `review` event exists.
+
+Writes, migrations and snapshots stay outside your posture; the read-only transaction is the guard, not a convention. The `qa-phase` skill carries the tunnel invocation and the queries. Your anonymous-session and erasure duties are unchanged.
+
 If a harness hands you a worktree anyway, ignore it and run your probes from wherever you are: nothing you do needs a checkout.
 
 ## Inputs

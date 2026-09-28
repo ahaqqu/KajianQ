@@ -67,7 +67,7 @@ Post the report as a comment on the QA ticket, and link it from the release or P
 - **The environment and run identifiers**: staging base URL, merge SHA, `Staging` run id, and the ids of what the probes produced (trace ids, message ids, response bodies).
 - **Every probe, one entry each**: what was probed, the request, the observed result, and what it proves about the observable or the blast radius. A probe that passed and a probe that failed are reported the same way.
 - **The findings**: each real defect as its own ticket, linked. The QA agent does not fix code.
-- **The spend consumed**, against the cap.
+- **The spend consumed**, against the cap — the measured sum from _The two authorized store reads_, not an estimate. A run that could not read it says so and reports no figure rather than a derived one.
 
 The verdict is the only thing that closes a QA-needed change: `verified` when the observable holds and no blast-radius defect survived, `not verified` when a probe contradicted the acceptance criterion, `blocked` when the environment, the run, or the cap stopped the probes. "The workflow is green" is not a verdict, and a partially-run probe set never rounds up to `verified` — name the probes that did not run and why.
 
@@ -76,8 +76,70 @@ The verdict is the only thing that closes a QA-needed change: `verified` when th
 - **Staging only.** Never production, never a prod dispatch.
 - **Anonymous sessions only**, no real user data, and every session the run creates is erased with its own token (`DELETE /v1/auth/me`) before the report is posted. Keep each token in a **durable scratch path** until the run ends — a per-invocation `/tmp` loses it between tool calls, and erasure needs that token: a session whose token is gone cannot be deleted through the API. Disclose any session you could not erase in the report, with its `sessionId`, what it contains (e.g. no messages), and its expiry under the 30-day inactivity reclamation.
 - **Read-only on the repo**: comments and finding tickets yes, commits/branches/merges/closures no.
+- **The store read is SELECT-only, with two purposes.** Through the documented staging tunnel (`docs/VPS-OPERATIONS.md` §2.8, port 15433, password at `~/.config/kajianq/db-password`) you may run `SELECT` queries with `default_transaction_read_only=on` set on the connection, for (a) the run's own spend and (b) the trace events a probe produced — nothing else. Writes, migrations and snapshots are outside the grant. Read the spend **before** erasing the sessions: erasure cascades the traces away.
 - **Nothing destructive** against the corpus or the store; no paid ingest; no money-spending operation past the ticket's cap.
-- **Report the spend actually consumed**, under or over the estimate.
+- **Report the spend actually consumed** under the cap, measured per _The two authorized store reads_.
+
+## The two authorized store reads
+
+The public API carries neither the spend nor the reviewer/pre-gate events, so both are read from the store under the grant in the safety rails. Reach it through the documented ssh tunnel:
+
+```bash
+# docs/VPS-OPERATIONS.md §2.8 — keep this shell open for the run
+ssh -N -L 15433:127.0.0.1:5432 <user>@<host>
+# then, for every query:
+export DATABASE_URL='postgres://kajianq:<pw>@127.0.0.1:15433/kajianq'
+PGOPTIONS='-c default_transaction_read_only=on' psql "$DATABASE_URL" -c '<SELECT>'
+```
+
+### Spend
+
+Cost lives per call on the persisted trace's events: `answer_traces.trace` is the `Trace` contract verbatim, and each event may carry `cost.costMicroUsd`. Sum it per anonymous session (one session is one `user_id`) or over the run's whole window:
+
+```sql
+-- one session's total, by owner (answer_traces.user_id)
+SELECT coalesce(sum((e->'cost'->>'costMicroUsd')::bigint), 0) AS spend_micro_usd
+FROM answer_traces t
+CROSS JOIN LATERAL jsonb_array_elements(t.trace->'events') AS e
+WHERE t.user_id = '<the run''s anonymous user id>'
+  AND e->'cost'->>'costMicroUsd' IS NOT NULL;
+
+-- or the same sum over the run's window
+SELECT coalesce(sum((e->'cost'->>'costMicroUsd')::bigint), 0) AS spend_micro_usd
+FROM answer_traces t
+CROSS JOIN LATERAL jsonb_array_elements(t.trace->'events') AS e
+WHERE t.created_at >= '<run start, timestamptz>'
+  AND e->'cost'->>'costMicroUsd' IS NOT NULL;
+```
+
+Report the sum with the cap. A run whose spend cannot be read — tunnel down, grant absent — says exactly that in the report and gives no figure; the cap is then enforced by probe discipline alone, and the report must not imply a measurement it did not take.
+
+### Reviewer/pre-gate span events
+
+The SSE `trace` frame is the user-facing projection (`sources` + `technical`) and carries no reviewer/pre-gate events by contract, so read them from the persisted trace. The pre-gate records a `decision` event (`detail.purpose = 'citation_support'`) whose `detail.items` is **one entry per citation position** in the draft — never a merged span — with `key` the normalized label and `score` the vendor's Noul answer. That array is the per-citation span evidence:
+
+```sql
+SELECT e->>'kind' AS kind,
+       e->'detail'->>'purpose' AS purpose,
+       e->'detail'->>'outcome' AS outcome,
+       e->'detail'->'items' AS items,
+       e->'detail'->>'grounded' AS grounded
+FROM answer_traces t
+CROSS JOIN LATERAL jsonb_array_elements(t.trace->'events') AS e
+WHERE t.id = '<trace id from the SSE meta frame>'::uuid
+  AND e->>'kind' IN ('decision', 'review')
+ORDER BY (e->>'at')::bigint;
+```
+
+Read the result against the outcome, not against the event you expected:
+
+- `outcome = 'skip'` — every citation cleared, the paid reviewer was skipped, and **no `review` event exists on that trace**. The `decision` event's `items` is the span-level evidence, and the absent `review` event is the pre-gate working as designed.
+- `outcome = 'escalate'` — a `review` event follows, whose `detail.grounded` names the retrieved labels the answer cited.
+- `reason = 'no_items'` — the draft carried no citation, so nothing could be judged (`items: []`). A probe written for the pre-gate picks a draft citing at least two labels and reads this `decision` event; a no-citation draft carries no spans to show.
+
+### Corpus-injection belongs to a harness, not the QA role
+
+The adversarial persona names injection through the retrieved corpus. Planting a hostile chunk is a **write**, which the QA posture forbids — the store is the asset the QA phase judges, and the grant above is SELECT-only. Query-level injection (the same attack carried by the question) stays a QA probe and runs against the deployed surface. The corpus variant belongs in a **local falsification harness**: an implementer or reviewer dispatch inserts one hostile chunk into a scratch or fixture store, runs the pipeline, and asserts the answer is not swayed by it. It is #294.
 
 ## Completion criterion
 
