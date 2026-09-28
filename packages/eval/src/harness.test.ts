@@ -4,9 +4,10 @@ import {
   runGoldenSet,
   type AnswerTraceSource,
   type ChatTransport,
+  type HarnessDeps,
   type RunLedger,
 } from "./harness";
-import type { GoldenSet } from "@app/contracts";
+import type { EvalResultOutcome, GoldenSet } from "@app/contracts";
 import type { TraceEventLike } from "./harness-types";
 
 const set: GoldenSet = {
@@ -192,13 +193,120 @@ describe("runGoldenSet", () => {
     const { deps, savedResults } = makeDeps({ failThird: true });
     const result = await runGoldenSet(set, deps);
     expect(result.skipped).toBe(1);
-    expect(savedResults).toHaveLength(2);
+    // One row per question, the skipped one included (#290 persists it).
+    expect(savedResults).toHaveLength(3);
     const skipped = result.results.find((r) => r.questionId === "q3");
     expect(skipped?.skipped).toBe(true);
     expect(skipped?.notes?.[0]).toMatch(/^skipped: transport down/);
     // C1: a skipped result never counts as a scored failure.
     const scored = result.results.filter((r) => r.skipped !== true);
     expect(scored).toHaveLength(2);
+  });
+
+  it("persists the transport skip's cause to the ledger and carries it into the report (#290)", async () => {
+    const { deps, savedResults, getReport } = makeDeps({ failThird: true });
+    const result = await runGoldenSet(set, deps);
+    expect(result.skipped).toBe(1);
+    // The skip is an outcome like every other one: its own `eval_results` row,
+    // keyed by the real run id, naming the question and the error message.
+    expect(savedResults).toHaveLength(set.questions.length);
+    const row = savedResults.find((entry) => entry.questionId === "q3");
+    expect(row?.runId).toBe("run-1");
+    expect(row?.outcome).toMatchObject({
+      questionId: "q3",
+      skipped: true,
+      refused: false,
+      passed: false,
+      retrievalRecall: 0,
+      citationValidity: 0,
+      notes: ["skipped: transport down"],
+    });
+    // The run report carries the same note, so the store and the report cannot
+    // disagree about why the gate reddened.
+    const report = getReport() as {
+      results: { questionId: string; skipped?: boolean; notes?: string[] }[];
+    };
+    const reported = report.results.find((r) => r.questionId === "q3");
+    expect(reported?.skipped).toBe(true);
+    expect(reported?.notes).toEqual((row?.outcome as EvalResultOutcome).notes);
+  });
+
+  it("keeps a transport skip distinct from a refusal and a scorer failure in the persisted evidence (#290)", async () => {
+    // Three ways to land on `passed: false` with citation validity 0. The
+    // distinguishing field is `skipped` (never a notes-prefix heuristic):
+    // #274's ungrounded-citation refusal is a SCORED outcome with
+    // `refused: true`, an ordinary scorer failure is a SCORED outcome with
+    // neither flag, and only a transport failure is a skip. The test pins all
+    // three so the modes cannot silently collapse into one shape.
+    const refusal = "tidak menemukan dalil yang memadai";
+    const trio: GoldenSet = {
+      id: "set-trio",
+      status: "v0-draft",
+      questions: ["refused", "unscored", "skipped"].map((id) => ({
+        id,
+        question: `question ${id}`,
+        language: "id",
+        expectedSourceTypes: ["source-a"],
+        requiredCitations: ["label-1"],
+        expectedBehavior: "answer" as const,
+      })),
+    };
+    const saved: { questionId: string; outcome: EvalResultOutcome }[] = [];
+    const deps: HarnessDeps = {
+      transport: {
+        async ask(question) {
+          if (question.id === "skipped") throw new Error("fetch failed: ECONNRESET");
+          return {
+            text: question.id === "refused" ? refusal : "an answer with no citation",
+            messageId: `m-${question.id}`,
+            traceId: `t-${question.id}`,
+          };
+        },
+      },
+      traces: {
+        async eventsByMessage() {
+          return [{ kind: "retrieval", stage: "retriever", detail: { chunks: [{ id: "c1" }] } }];
+        },
+      },
+      ledger: {
+        async createRun() {
+          return "run-trio";
+        },
+        async refreshRun() {},
+        async saveResult(_runId, questionId, outcome) {
+          saved.push({ questionId, outcome });
+          return questionId;
+        },
+      },
+      sourceTypeOf: (id) => (id === "c1" ? "source-a" : undefined),
+      budget: new Budget(undefined),
+      refusalMarkers: [refusal],
+    };
+    await runGoldenSet(trio, deps);
+    const byId = new Map(saved.map((entry) => [entry.questionId, entry.outcome]));
+    expect(byId.get("skipped")).toMatchObject({
+      passed: false,
+      refused: false,
+      retrievalRecall: 0,
+      citationValidity: 0,
+      skipped: true,
+      notes: ["skipped: fetch failed: ECONNRESET"],
+    });
+    // #274: a scored refusal of an `answer` question — no `skipped` field.
+    expect(byId.get("refused")).toMatchObject({
+      passed: false,
+      refused: true,
+      citationValidity: 0,
+    });
+    expect(byId.get("refused")).not.toHaveProperty("skipped");
+    // An ordinary scorer failure: scored, unrefused, nothing skipped.
+    expect(byId.get("unscored")).toMatchObject({
+      passed: false,
+      refused: false,
+      retrievalRecall: 1,
+      citationValidity: 0,
+    });
+    expect(byId.get("unscored")).not.toHaveProperty("skipped");
   });
 
   it("persists the expansion's contribution on each scoped outcome (C1)", async () => {

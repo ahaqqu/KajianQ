@@ -1,6 +1,6 @@
 import type { EvalResultOutcome, EvalRunReport, GoldenQuestion, GoldenSet } from "@app/contracts";
 import { Budget, BudgetExceededError } from "./budget";
-import { expansionProvenance } from "./harness-expansion";
+import { expansionProvenance, ledgerFailureNote, skippedOutcome } from "./harness-outcomes";
 import {
   behaviorAccepted,
   citationValidity,
@@ -62,6 +62,12 @@ export interface RunLedger {
   createRun(label: string, report: unknown): Promise<string>;
   /** Idempotent upsert of the final report row (by run id). */
   refreshRun(runId: string, label: string, report: unknown): Promise<void>;
+  /**
+   * Persist one question's outcome. Called for a scored outcome AND for a
+   * transport-skipped one (#290): every outcome the run reports is also the
+   * outcome the store holds, so the report and `eval_results` cannot disagree
+   * about a question's cause.
+   */
   saveResult(
     runId: string,
     questionId: string,
@@ -69,7 +75,6 @@ export interface RunLedger {
     traceId: string | null,
   ): Promise<string>;
 }
-
 export type HarnessDeps = {
   transport: ChatTransport;
   traces: AnswerTraceSource;
@@ -117,9 +122,9 @@ export type HarnessRunResult = {
  * Run the whole set. The run is created FIRST so every `saveResult` and the
  * persisted report carry the real run id (A3/A4) and the caller needs no
  * post-hoc stamping (A9). Per question: ask → read trace → score → persist
- * → check budget. A transport failure marks the question skipped and keeps
- * the run going; a budget hit aborts the remaining questions (plan
- * decision 4).
+ * → check budget. A transport failure marks the question skipped, persists
+ * that skip with its error (#290), and keeps the run going; a budget hit
+ * aborts the remaining questions (plan decision 4).
  */
 export async function runGoldenSet(set: GoldenSet, deps: HarnessDeps): Promise<HarnessRunResult> {
   const now = deps.now ?? Date.now;
@@ -161,7 +166,7 @@ export async function runGoldenSet(set: GoldenSet, deps: HarnessDeps): Promise<H
         // disagreed with its own question count. Only a transport/trace failure,
         // which yields no score at all, is a skip.
         result.passed = false;
-        result.notes = [`ledger_write_failed: ${err instanceof Error ? err.message : String(err)}`];
+        result.notes = [ledgerFailureNote(err)];
       }
       results.push(result);
       if (result.passed) passed += 1;
@@ -172,17 +177,19 @@ export async function runGoldenSet(set: GoldenSet, deps: HarnessDeps): Promise<H
         break;
       }
       skipped += 1;
-      results.push({
-        questionId: question.id,
-        expectedBehavior: question.expectedBehavior,
-        passed: false,
-        retrievalRecall: 0,
-        citationValidity: 0,
-        refused: false,
-        skipped: true,
-        notes: [`skipped: ${err instanceof Error ? err.message : String(err)}`],
-        traceId: null,
-      });
+      // #290: a transport skip is an outcome like every other one — it gets a
+      // ledger row naming the question and the error, so the gate's red is
+      // actionable from `eval_results` alone. The row and the report carry the
+      // same outcome (buildReport persists `results` verbatim), so the two
+      // cannot disagree about the cause; a failed write is recorded in the
+      // note, never thrown, so one bad row cannot take the report with it.
+      const skip = skippedOutcome(question, err);
+      try {
+        await deps.ledger.saveResult(runId, question.id, skip, null);
+      } catch (ledgerErr) {
+        skip.notes = [...(skip.notes ?? []), ledgerFailureNote(ledgerErr)];
+      }
+      results.push({ ...skip, traceId: null });
     }
   }
 

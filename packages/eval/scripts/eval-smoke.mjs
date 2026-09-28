@@ -22,7 +22,14 @@
  *   EVAL_GOLDEN_SET_PATH   optional fixture path override
  *   EVAL_RUN_LABEL         optional run label
  *
- * Exit code is non-zero when any smoke question fails, so CI can gate on it.
+ * Exit code is non-zero when any smoke question fails OR is skipped, so CI can
+ * gate on it. A skip fails the gate because a skipped question is UNMEASURED,
+ * not passed: "we could not ask" must redden exactly as loudly as "we asked and
+ * the answer was wrong", or a transport outage would buy a green release. The
+ * cause is not left to the exit code alone — each skip is persisted as its own
+ * `eval_results` row and printed as a `skipped: <message>` line (#290), so the
+ * store, the run report and the CI log all name the same reason.
+ *
  * A live run needs staging secrets (the VPS store URL + vendor keys); when
  * they are absent the script fails fast with the missing name rather than
  * reporting a misleading pass — see the run instructions in SPECS §3.7.
@@ -86,6 +93,10 @@ printSummary("eval:smoke", {
   costMicroUsd: budget.total,
 });
 
+// Exit semantics (#290): a skip fails the gate exactly as a failure does —
+// an unmeasured question is not a pass (see the header). The skip's cause was
+// printed by printSummary above and persisted per question by the harness, so
+// this line can stay a count and the operator still has the reason.
 if (result.failed > 0 || result.skipped > 0) {
   console.error(
     `eval:smoke: FAILED — ${result.failed} failed, ${result.skipped} skipped. See eval_results for run ${result.runId}.`,

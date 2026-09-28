@@ -75,9 +75,27 @@ export function expansionLines(scored) {
 }
 
 /**
+ * The per-question lines for transport-skipped questions (#290). A skip is
+ * excluded from the means above, so without its own line the count is the only
+ * visible trace of it — and an operator reading the CI log could not tell a
+ * client timeout from a 5xx without querying the store. The cause is printed
+ * exactly as persisted (`skipped: <message>`), whitespace-collapsed so one
+ * skip stays one log line whatever the transport error's own formatting is.
+ */
+export function skipLines(results) {
+  return results
+    .filter((x) => x.skipped === true)
+    .map(
+      (x) =>
+        `  skipped: ${x.questionId} — ${(x.notes?.join("; ") ?? "no cause recorded").replace(/\s+/g, " ")}`,
+    );
+}
+
+/**
  * The run summary block both scripts print: per-direction score means, the
- * question counts, and the settled cost (the ledger's record when it exists,
- * else the live budget — the ledger is authoritative once the row is written).
+ * question counts, the skipped questions' causes, and the settled cost (the
+ * ledger's record when it exists, else the live budget — the ledger is
+ * authoritative once the row is written).
  */
 export function printSummary(prefix, { runId, questionCount, result, costMicroUsd }) {
   const scored = result.results.filter((x) => x.skipped !== true);
@@ -90,6 +108,7 @@ export function printSummary(prefix, { runId, questionCount, result, costMicroUs
       `  mean citation validity: ${mean(scored.map((x) => x.citationValidity))?.toFixed(3) ?? "n/a"}`,
       `  cost: ${(costMicroUsd / 1e6).toFixed(6)} USD  budget exceeded: ${result.budgetExceeded}`,
       ...expansionLines(scored),
+      ...skipLines(result.results),
     ].join("\n"),
   );
 }

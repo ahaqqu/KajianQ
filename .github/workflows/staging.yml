@@ -142,6 +142,11 @@ jobs:
         # The summary is written to the job page even when the smoke fails —
         # that is the evidence a reviewer reads, so it must not be skipped by
         # the failing exit code. The log is kept locally and teed to the job.
+        # Exit semantics (#290): this step fails on ANY failed OR skipped
+        # question. A skip is an unmeasured question, not a pass — a transport
+        # outage must not buy a green release — and the skip's cause is
+        # persisted per question and printed as a `skipped: <message>` line, so
+        # the red is actionable from the log and from `eval_results`.
         run: |
           set -uo pipefail
           bun run eval:smoke 2>&1 | tee /tmp/eval-smoke.log
