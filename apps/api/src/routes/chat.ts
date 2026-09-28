@@ -78,7 +78,11 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
 
   // Session + user message, via the store seam (promise-shaped bridge).
   // A6: an explicitly supplied sessionId appends to that session (validated
-  // to belong to the authenticated user); absent = a new session.
+  // to belong to the authenticated user); absent = a new session. The body
+  // contract has already refused a non-UUID id (#271 — 400 invalid_request
+  // above, before auth or the store), so the seam is never handed a value its
+  // `uuid` column cannot cast; a well-formed unknown or foreign UUID stays the
+  // documented 404, indistinguishable from one that does not exist.
   const runStore = wiring.runStore;
   let sessionId = req.sessionId ?? null;
   if (sessionId !== null) {

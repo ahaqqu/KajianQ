@@ -33,6 +33,8 @@ export function createMemoryRagStore(): RagStore & {
     content: string;
     answerTraceId: string | null;
   }[];
+  /** All chat sessions by owning user (test introspection, #271). */
+  allChatSessions: () => readonly { id: string; userId: string }[];
   allEvalResults: () => readonly {
     id: string;
     questionId: string;
@@ -212,7 +214,13 @@ export function createMemoryRagStore(): RagStore & {
     },
     createChatSession(input) {
       return Effect.sync(() => {
-        const id = `sess${(seq += 1)}`;
+        // A uuid, like the real `chat_sessions.id` (uuid, minted by the
+        // Postgres adapter with crypto.randomUUID): the API's request
+        // contracts address a chat session as a UUID (#271 — both the
+        // `sessionId` body member and the rehydration path param), so the
+        // stand-in must agree with the production shape or route tests would
+        // exercise an id the real store can never mint.
+        const id = crypto.randomUUID();
         chatSessions.set(id, input.userId);
         return id;
       });
@@ -275,6 +283,8 @@ export function createMemoryRagStore(): RagStore & {
     allPairs: () => [...pairs.values()],
     allTraces: () => traces,
     allChatMessages: () => [...chatMessages.entries()].map(([id, m]) => ({ id, ...m })),
+    /** Chat sessions by owning user, for "nothing was created" assertions (#271). */
+    allChatSessions: () => [...chatSessions.entries()].map(([id, userId]) => ({ id, userId })),
     allEvalResults: () => [...evalResults.values()],
     allFeedback: () => [...feedback.values()],
     cosineSearch: (track, query, limit) =>

@@ -9,6 +9,7 @@ export {
   ChatErrorSchema,
   ChatMetaSchema,
   ChatRequestSchema,
+  ChatSessionIdSchema,
   ChatCitationSchema,
   ChatCitationsFrameSchema,
   ChatTraceChunkSchema,

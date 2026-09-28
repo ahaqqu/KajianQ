@@ -1,11 +1,13 @@
 import {
   ChatErrorSchema,
+  ChatSessionIdSchema,
   ChatSessionMessagesSchema,
   type ChatSessionMessages,
   type Trace,
 } from "@app/contracts";
 import { createLogger, type ChatMessage } from "@app/infra";
 import { describeRoute, resolver } from "hono-openapi";
+import * as v from "valibot";
 import { newRouter } from "../lib/guard";
 import {
   authGuard,
@@ -27,8 +29,9 @@ import {
  * The wiring is store-only (no provider roles): a missing reviewer key must
  * not gate reading a transcript, exactly as it must not gate auth (thermo-
  * review A4). Ownership goes through the existing `getChatSessionUser` seam;
- * an unknown session and a foreign session are both 404, so the endpoint
- * leaks nothing about other users' sessions. 429 is documented for DAST.
+ * an unknown session, a foreign session, and a `:id` the store cannot
+ * represent (non-UUID, #271) are all the same 404, so the endpoint leaks
+ * nothing about other users' sessions. 429 is documented for DAST.
  */
 
 type SessionEnv = import("../env").ApiEnv["Bindings"] & Record<string, string | undefined>;
@@ -88,6 +91,18 @@ export const chatSessionRoutes = newRouter().get(
     const { userId } = c.get("authed");
 
     const sessionId = c.req.param("id");
+    // #271: the id must be a value `chat_sessions.id` (uuid) can hold before
+    // the store sees it — the adapter's `${sessionId}::uuid` cast throws on
+    // anything else, which surfaced as a 500 `{"error":"internal"}` with no
+    // server fault behind it. A malformed id leaves through the SAME documented
+    // 404 (and the same body) as an unknown or foreign one: the route adds no
+    // status to its published contract, and an id that cannot name a session is
+    // indistinguishable from one that names nothing — the posture this route's
+    // module comment claims is what this guard preserves. Auth runs first (401
+    // for a malformed id with no token), so the guard is not an auth bypass.
+    if (!v.safeParse(ChatSessionIdSchema, sessionId).success) {
+      return c.json({ error: "invalid_request" }, 404);
+    }
     const owner = (await runStore(fullStore.getChatSessionUser(sessionId))) as string | null;
     if (owner !== userId) {
       // Same posture as the chat route's A6 check: unknown and foreign are
