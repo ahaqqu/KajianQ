@@ -24,13 +24,15 @@ import { CostRecordSchema } from "./trace-cost";
  *
  * **Reading it.** `applied` names the rule ids that appended text, in
  * application order. An EMPTY array is a meaningful value, not a missing one:
- * the rules ran and none appended, which is exactly the residual exact-copy
- * suppression case an operator or the eval harness must be able to count.
- * PRESENCE is the signal (the rules ran) — a trace persisted before this kind
- * existed carries no such event, so absence is authoritative only for traces
- * written after it shipped (ADR-0007 amendment). The delivered text remains
- * the single source of truth for what the answer says; this event records only
- * which rules fired, never whether their text survived.
+ * the rules ran and appended nothing. It does NOT separate "no rule had a
+ * trigger" from "a trigger matched and the copy was already present" — the
+ * residual exact-copy suppression case is the motivating example, not a
+ * count the field carries. PRESENCE is the signal (the rules ran) — a trace
+ * persisted before this kind existed carries no such event, so absence is
+ * authoritative only for traces written after it shipped (ADR-0007
+ * amendment). The delivered text remains the single source of truth for what
+ * the answer says; this event records only which rules appended text, never
+ * whether their text survived.
  */
 export const productRulesEventSchema = v.object({
   /**

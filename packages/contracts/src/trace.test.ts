@@ -244,11 +244,13 @@ describe("trace contract", () => {
     // ADR-0007 forward compatibility, the direction that matters: traces
     // written before the `product_rules` kind existed (e.g. the #278 staging
     // trace dfd9d801, which carries a pre-gate `decision` skip and NO `review`
-    // event) still parse — `version` stays 1, nothing was renamed or made
-    // required, and the reader must not synthesize the event it never saw.
+    // event) still parse — nothing was renamed or made required, and the
+    // reader must not synthesize the event it never saw. The fixture is the
+    // shape the runner really persists: `run.ts` builds exactly `{ id,
+    // createdAt, events }` and no writer in the repo stamps `version`, so the
+    // version-less body IS the production shape, not a pre-versioning piece.
     const legacy = parseTrace({
       id: "dfd9d801-c3bc-42b9-9e09-39a5df785c94",
-      version: 1,
       createdAt: 0,
       events: [
         {
@@ -278,8 +280,16 @@ describe("trace contract", () => {
         },
       ],
     });
-    expect(legacy.version).toBe(1);
-    expect(legacy.events).toHaveLength(4);
+    // The parse result is what is asserted, not the input echoed back: the
+    // version-less shape reads, no version is fabricated, and every event kind
+    // survives the strict variant in order.
+    expect(legacy.version).toBeUndefined();
+    expect(legacy.events.map((event) => event.kind)).toEqual([
+      "retrieval",
+      "assembly",
+      "llm_call",
+      "decision",
+    ]);
     expect(legacy.events.some((event) => event.kind === "product_rules")).toBe(false);
   });
 
