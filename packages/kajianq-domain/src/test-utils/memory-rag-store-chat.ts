@@ -31,9 +31,21 @@ export type MemoryChatState = {
 
 /**
  * Can the `chat_sessions.id` (uuid) column hold this value? Deliberately
- * LOOSE — Postgres also accepts braces, a `urn:uuid:` prefix, and hyphens in
- * any position — but decisive about the failure #271 is about: a short
- * non-hex value such as `en` or `sess1` is not a uuid and cannot be cast.
+ * LOOSE — Postgres also accepts braces, a hyphen-less 32-hex form, extra
+ * hyphens in any position, and uppercase — but decisive about the failure #271
+ * is about: a short non-hex value such as `en` or `sess1` is not a uuid and
+ * cannot be cast. `urn:uuid:…` is NOT one of the accepted forms: a live
+ * read-only check against the real column on staging (PostgreSQL 17.11,
+ * QA #289) rejected it, and the stand-in refuses it too.
+ *
+ * The looseness is a superset of what `ChatSessionIdSchema` admits (only the
+ * canonical hyphenated lowercase form), which makes that schema's narrowing
+ * UNREACHABLE rather than merely untested. The other direction — a value the
+ * schema accepts that the column rejects — is empty, because the schema is the
+ * stricter of the two. And no client can hold one of the Postgres-only
+ * spellings the schema refuses: `chat_sessions.id` is `uuid`-typed (it stores
+ * canonical 16 bytes) and every id the API hands out is minted canonical
+ * (`crypto.randomUUID()`).
  */
 function uuidShaped(value: string): boolean {
   return /^[{]?[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}[}]?$/i.test(value);
