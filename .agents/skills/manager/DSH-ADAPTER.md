@@ -24,6 +24,6 @@ Load when running the manager loop on DSH; `SKILL.md` is harness-neutral.
 
 ## Session facts
 
-- **`gh` runs under the manager session's ambient identity** — no identity hook is wired, no role is denied a bare `gh`, and the manager session is never denied.
-- **Long mechanical jobs are background jobs.** A board-wide re-application pass or any `gh` loop longer than one command budget runs as a background bash job (`run_in_background: true`), read with `job_output` — never a foreground call. Keep the item-to-state mapping in a file so a kill loses only the current batch. Canonical: `SKILL.md` (Board API mechanics).
+- **`gh` runs under the manager session's ambient identity** — no identity hook is wired, no role is denied a bare `gh`, and the manager session is never denied. The `project` scope rides that ambient token; when it is absent, `gh project` fails closed with `missing required scopes [read:project]`, and only the owner can land the interactive refresh (`gh auth refresh -s project`). Failure mode and the loop's response: `SKILL.md` (Board API mechanics).
+- **Long mechanical jobs are background jobs.** A board-wide re-application pass or any `gh` loop longer than one command budget runs as a background bash job (`run_in_background: true`), read with `job_output` — never a foreground call. The pass's mapping-file and complete-read rules are harness-neutral: `SKILL.md` (Board API mechanics).
 - **Approvals disabled, workspace-write policy** — a dispatch, a background job, a commit or a `gh` call needs no per-action approval. Isolation is not harness-provided: it is the role files' worktree rule, which every dispatch must state.
