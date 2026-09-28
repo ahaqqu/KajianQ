@@ -141,10 +141,12 @@ describe("trace contract", () => {
         // The deterministic product rules ran (#285): the rule ids that
         // appended text are persisted trace content, recorded on every path
         // that applies the rules — including the pre-gate skip path below,
-        // which records no `review` event. The ids stay opaque to the engine.
+        // which records no `review` event. The ids are deliberately opaque
+        // placeholders here: a domain pack owns their meaning, and the engine
+        // contract must not know it (the boundary gate enforces that).
         stage: "reviewer",
         kind: "product_rules",
-        detail: { applied: ["dhaif_warning", "ulama_disclaimer"] },
+        detail: { applied: ["rule_one", "rule_two"] },
         at: 6,
       },
       {
@@ -169,6 +171,24 @@ describe("trace contract", () => {
     const trace = parseTrace({ id: "t", createdAt: 0, events });
     expect(trace.events).toHaveLength(11);
   });
+
+  // Schema invariant (ADR-0007 typed detail): the variant is lossless — any
+  // list of non-empty rule ids the domain pack reports survives the parse
+  // unchanged, and the empty list survives as the empty list rather than being
+  // dropped or defaulted. Hand-picked values would not cover the id space the
+  // domain pack owns, which is exactly the space this event persists.
+  fcTest.prop([fc.array(fc.string({ minLength: 1 }), { maxLength: 5 })])(
+    "round-trips a product_rules event's `applied` list unchanged (#285)",
+    (applied) => {
+      const trace = parseTrace({
+        id: "t",
+        createdAt: 0,
+        events: [{ stage: "reviewer", kind: "product_rules", detail: { applied }, at: 1 }],
+      });
+      const event = trace.events[0];
+      expect(event?.kind === "product_rules" ? event.detail.applied : undefined).toEqual(applied);
+    },
+  );
 
   it("accepts an empty `applied` list — the rules ran and appended nothing (#285)", () => {
     // The exact-copy suppression case is the reason this event exists: the
