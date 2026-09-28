@@ -42,18 +42,19 @@ export interface CitationGrammar {
    * grammar has no list-valued form — in which case a match names exactly the
    * one address {@link addressOf} identifies, and a dash-joined tail stays the
    * opaque compound {@link DASH_JOINED_NUMBER_TAIL} keeps whole (ADR-0049).
-   * Declared per grammar rather than split at the comparison site: only the
-   * grammar that owns an address knows whether a dash joins two of them or is
-   * part of one token, so no other form is re-interpreted by a pattern that
-   * cannot see the difference.
+   * Declared per grammar, not split at the comparison site: only the grammar
+   * that owns an address knows whether a dash joins two of them.
    *
-   * A declared list is **every** address the form names, interior included —
-   * a range is not its endpoints (review A2 of the fix round). The Quran
-   * grammar delegates that enumeration to `chat-citation-range`, which owns
-   * the surah's ayah bound; a list-valued form with no such bound would have
-   * to invent one.
+   * A declared list is **every** address the form names, interior included — a
+   * range is not its endpoints (review A2). The Quran grammar delegates that
+   * enumeration to `chat-citation-range`, which owns the surah's ayah bound.
+   *
+   * **`null`** is the third state (review T1): a list was declared and cannot
+   * be enumerated — not `[]` ("names nothing") and not a one-element list
+   * ("names exactly this one address"), whose conflation grounded an
+   * unverifiable spaced range on its head. A consumer must refuse it.
    */
-  readonly addressesOf?: (match: RegExpExecArray) => readonly string[];
+  readonly addressesOf?: (match: RegExpExecArray) => readonly string[] | null;
 }
 
 /**
@@ -115,7 +116,9 @@ export const CITATION_GRAMMARS: readonly CitationGrammar[] = [
   // also tolerates **horizontal whitespace** around the dash (review R5 of the
   // fix round): `QS. 2:255 - 256` is the same range with air around the joiner,
   // and while the dash had to be glued the scan stopped at the head — the second
-  // verse was neither enumerated nor refused (A2's class, spaced). A newline is
+  // verse was neither enumerated nor refused (A2's class, spaced). One verdict
+  // for both spellings also needs the span to be ENUMERABLE — an unenumerable
+  // range refuses in both (review T1), the `null` state below. A newline is
   // deliberately not tolerated, so a chain never runs across a line boundary.
   // The chain group is linear: every iteration consumes a mandatory dash and at
   // least one digit, and digits are neither `\p{Cf}`, whitespace nor a dash, so
@@ -234,40 +237,37 @@ function addressAtStart(label: string): string | null {
 }
 
 /**
- * Every address the **first** citation grammar in a label names, or `[]` when
- * the label begins with no grammar at all. One entry for an ordinary citation;
- * several for a grammar whose form is a list ({@link CitationGrammar.addressesOf})
- * — the Quran range, where the label is a set of addresses and grounding is
- * decided per address (ADR-0049) and the set includes the range's **interior**,
- * not only its endpoints (review A2 of the fix round).
+ * Every address the **first** citation grammar in a label names, `[]` when the
+ * label begins with no grammar at all, or **`null`** when the grammar declares
+ * a list it cannot enumerate. One entry for an ordinary citation; several for a
+ * grammar whose form is a list ({@link CitationGrammar.addressesOf}) — the
+ * Quran range, where the label is a set of addresses and grounding is decided
+ * per address (ADR-0049), the range's **interior** included (review A2).
  *
  * A grammar that declares **no** list names exactly one address, and that
  * address is the label itself — not the shorter address {@link
- * CitationGrammar.addressOf} reduces it to. This is the difference that keeps a
- * consumer comparing labels as **sets** honest: the hadith dash-joined compound
- * (`HR. Bukhari no. 5010—5011`) names that compound, which no retrieved label
- * equals, so `HR. Bukhari no. 5010` retrieved never grounds it (the #264 A3
- * boundary, unchanged). The only case that names nothing is a grammar match
- * with no address core at all — a hadith number that is not ASCII-digit-led,
- * which is still a citation attempt and still refuses.
+ * CitationGrammar.addressOf} reduces it to. That keeps a consumer comparing
+ * labels as **sets** honest: the hadith compound (`HR. Bukhari no. 5010—5011`)
+ * names that compound, which no retrieved label equals, so
+ * `HR. Bukhari no. 5010` retrieved never grounds it (the #264 A3 boundary,
+ * unchanged); a match with no address core names nothing and still refuses.
  *
- * A declared list is never **shortened**: a list-valued form whose addresses
- * cannot be enumerated (an ayah the surah cannot have, a range in another
- * script's digits — `chat-citation-range`) comes back as the label itself, a
- * list of one. That is the fail-closed encoding, not a claim that the form
- * names one address: the per-address rule applies only to a list of two or
- * more, so an unverifiable range can only ground whole — which a range never
- * is — instead of grounding on the part of itself it could enumerate.
+ * **The three states are distinct on purpose (review T1).** `[]` is "no
+ * grammar, or names no address"; a non-empty list is the declared addresses;
+ * **`null` is "declared, and unenumerable"**, which the caller refuses.
+ * Encoded as the label in a **one-element list** — the shape of a
+ * single-address declaration — it was indistinguishable, so the comparison
+ * site grounded a spaced `QS. 2:255 - 999` on its head.
  *
  * The addresses come back in the grammar's own spelling (a range in ascending
  * ayah order); canonicalizing them for comparison belongs to
- * `chat-citation-validator`, which owns the comparison form, exactly as it does
- * for {@link reduceCitationLabel}'s address.
+ * `chat-citation-validator`, which owns the comparison form.
  */
-export function addressesNamedBy(label: string): readonly string[] {
+export function addressesNamedBy(label: string): readonly string[] | null {
   const at = grammarAtStart(label);
   if (at === null) return [];
   const declared = at.grammar.addressesOf?.(at.match);
+  if (declared === null) return null;
   if (declared !== undefined) return declared.filter((address) => address !== "");
   const address = at.grammar.addressOf(at.match);
   return address === null || address === "" ? [] : [label];

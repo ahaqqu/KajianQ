@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { CITATION_GRAMMAR, REFUSAL_MARKERS } from "../../packages/eval/scripts/staging-harness.mjs";
+import { disposePostgresPools } from "../../packages/infra/src/index";
+import {
+  CITATION_GRAMMAR,
+  createStagingHarness,
+  REFUSAL_MARKERS,
+} from "../../packages/eval/scripts/staging-harness.mjs";
 import { DEFAULT_REFUSALS } from "../../packages/kajianq-domain/src/chat-reviewer";
 import {
   addressesNamedBy,
@@ -86,5 +91,46 @@ describe("CITATION_GRAMMAR (shared staging harness)", () => {
     expect(citationValidity(["QS. 2:255"], answer, { frame, grammar: CITATION_GRAMMAR })).toBe(1);
     expect(citationValidity(["QS. 2:256"], answer, { grammar: CITATION_GRAMMAR })).toBe(1);
     expect(citationValidity(["QS. 2:255"], answer, { events, grammar: CITATION_GRAMMAR })).toBe(1);
+  });
+
+  it("delivers the grammar from the real composition root, not only declares it (review T2)", async () => {
+    // R1 pinned the grammar OBJECT; this pins its DELIVERY. Deleting the one
+    // `citationGrammar: CITATION_GRAMMAR,` line from `createStagingHarness`
+    // still compiles and left every test in this suite green, so the scorer
+    // silently lost the normalization/range semantics (a marker-spelling
+    // variant scored 0 again). The assertion is behavioural and reads the
+    // harness the CLIs actually receive: what it returns must be the grammar,
+    // by identity, and it must still answer a naming question through the
+    // scorer. The URL is never dialled — `resolvePostgresStore` builds a lazy
+    // pool, so no staging secret is needed here — and the memoized pool is
+    // released below so the run does not leak a handle.
+    const harness = await createStagingHarness(
+      { databaseUrl: "postgres://unused:unused@127.0.0.1:1/unused" },
+      {},
+    );
+    try {
+      expect(harness.citationGrammar).toBe(CITATION_GRAMMAR);
+      // Through the harness's OWN reference, not the module constant: a dropped
+      // delivery is `undefined` here, and the scorer's documented no-grammar
+      // degradation then scores the marker spelling 0.
+      const delivered = harness.citationGrammar;
+      expect(delivered.addressesNamedBy("QS. 2:255-256")).toEqual(["QS. 2:255", "QS. 2:256"]);
+      expect(citationValidity(["QS. 1:2"], "… Q.S. 1:2 …", { grammar: delivered })).toBe(1);
+      expect(citationValidity(["QS. 1:2"], "… Q.S. 1:2 …", { grammar: delivered })).not.toBe(0);
+    } finally {
+      await disposePostgresPools();
+    }
+  });
+
+  it("forwards the harness's grammar into the scorer in both eval CLIs (review T2)", () => {
+    // The second half of the delivery: the harness can hold the grammar and
+    // both entry points still drop it on the floor. They are `#!/usr/bin/env
+    // bun` scripts that connect to staging on import, so the pass-through is
+    // pinned where it lives — the same instrument this file already uses for
+    // the refusal-marker drift between the two CLIs.
+    for (const script of ["eval-run.mjs", "eval-smoke.mjs"]) {
+      const source = readFileSync(resolve(process.cwd(), "packages/eval/scripts", script), "utf8");
+      expect(source).toMatch(/citationGrammar:\s*harness\.citationGrammar,/);
+    }
   });
 });

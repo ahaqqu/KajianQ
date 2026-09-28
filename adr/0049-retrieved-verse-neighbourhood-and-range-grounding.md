@@ -132,7 +132,23 @@ call, no paid dependency, no re-ingest, no migration.
    refused — A2's hole, spaced. A newline is deliberately not a joiner. The
    declared-list rule runs **before** the comparison site's shortened-label rule
    for the same reason: the spaced span extends the retrieved head with a
-   space, so the old order would have grounded it on the head alone. This is
+   space, so the old order would have grounded it on the head alone.
+   **"Exactly as the glued spelling does" holds for every range the grammar can
+   enumerate, and only for those** (review T1 of the fix round): a span the
+   bound cannot hold — `QS. 2:1 - 999`, `QS. 2:255 - 0`, or a tail in another
+   script's digits — **refuses in the spaced spelling too**, so the two
+   spellings of one range always get one verdict. Making that true required the
+   fail-closed case to become a **third state of the naming declaration**, not
+   a one-element list: `addressesNamedBy` returns `null` for "a list was
+   declared and cannot be enumerated", which is a different statement from
+   `[label]` ("this form names exactly this one address"). While the two shared
+   the `[label]` shape the comparison site could not tell them apart, skipped
+   the per-address rule on the unenumerable span, and the shortened-label rule
+   grounded it on its head — the spaced spelling weaker than the glued one at
+   the very address this decision names as the refusal case. `null` is a
+   refusal at every consumer: the gate's `groundingLabelsFor` returns `null`
+   outright, and the eval scorer treats such a label as naming nothing
+   verifiable, on either side of its comparison. This is
    the owner-decided **strict-whole** rule applied to what a
    range actually names: endpoints-only was a third, smaller loosening the
    original decision did not consider, and it left `QS. 3:1-2-3` scanned as
@@ -425,7 +441,10 @@ call, no paid dependency, no re-ingest, no migration.
   `chat-retriever.ts` (the 300-line cap).
 - `packages/kajianq-domain/src/chat-citation-grammar.ts`,
   `chat-citation-spelling.ts`, `chat-citation-normalize.ts`,
-  `chat-citation-range.ts` — `CitationGrammar.addressesOf`, `addressesNamedBy`,
+  `chat-citation-range.ts` — `CitationGrammar.addressesOf`, `addressesNamedBy`
+  (whose **three states** are the contract: `[]`, the declared addresses, and
+  `null` for a declared list that cannot be enumerated — review T1 of the fix
+  round),
   the same-subject splits (spelling, then normalization/scan) that keep the
   family inside the 300-line agentic cap, and the range module that owns **what
   a Quran range names** (the interior enumeration and the surah's Tanzil ayah
@@ -433,7 +452,9 @@ call, no paid dependency, no re-ingest, no migration.
   barrel's citation family stays one import path.
 - `packages/kajianq-domain/src/chat-citation-validator.ts` — the ungrounded
   decision consults the candidate's declared address list through
-  `groundingLabelsFor`, the single owner of "which labels ground this span".
+  `groundingLabelsFor`, the single owner of "which labels ground this span";
+  a `null` declaration refuses there before either the per-address or the
+  shortened-label rule can read a shorter version of the span.
 - `packages/kajianq-domain/src/chat-fusion.ts` — `rrfFuse`'s total order (the
   equal-score tie-break by chunk id).
 - `apps/api/src/lib/chat-citations.ts` — the citations frame derives its
@@ -441,9 +462,12 @@ call, no paid dependency, no re-ingest, no migration.
 - `packages/eval/src/{harness-types.ts,scorers.ts,harness-expansion.ts}` and
   `packages/eval/scripts/staging-harness.mjs` — the injected grammar's
   `addressesNamedBy` (the naming declaration the scorer compares a required
-  citation against evidence with), the address-set comparison in
+  citation against evidence with — `null` included, a refusal on either side of
+  the comparison), the address-set comparison in
   `groundedLabels`, and the fused-only leg defined by the absence of an origin
-  label.
+  label. `tests/scripts/eval-staging-harness.test.mjs` pins the declaration's
+  **delivery** from the real composition root, not only the object (review T2 of
+  the fix round).
 - `packages/kajianq-domain/src/chat-retriever.ts` — the expansion runs after
   ADR-0045's scope expansion, over `fused ∪ scope`; the typed event is
   recorded through the run's collection point (ADR-0021).

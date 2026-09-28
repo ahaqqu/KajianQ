@@ -168,6 +168,8 @@ function textCandidateLabels(answerText: string, grammar?: CitationGrammar): str
  * the injected grammar's required declaration (`citation-grammar.ts`), so the
  * engine re-derives nothing and a grammar declaring `(label) => [label]`
  * behaves exactly as labels-as-strings did.
+ *
+ * A `null` declaration (review T1) refuses on either side, as the gate does.
  */
 function groundedLabels(
   required: readonly string[],
@@ -178,22 +180,20 @@ function groundedLabels(
     return required.filter((citation) => evidence.some((label) => label.includes(citation)));
   }
   const named = new Set(
-    evidence.flatMap((label) => namedAddressesOf(label, grammar).map(grammar.normalizeLabel)),
+    evidence.flatMap((label) => namedAddressesOf(label, grammar) ?? []).map(grammar.normalizeLabel),
   );
-  return required.filter((citation) =>
-    namedAddressesOf(citation, grammar).every((address) =>
-      named.has(grammar.normalizeLabel(address)),
-    ),
-  );
+  return required.filter((citation) => {
+    const addresses = namedAddressesOf(citation, grammar);
+    return addresses !== null && addresses.every((a) => named.has(grammar.normalizeLabel(a)));
+  });
 }
 
-/** The addresses one label names, for the set comparison above; a declaration
- * naming nothing (a label the grammar cannot parse) falls back to the label
- * itself, so such a label can only match whole. */
-function namedAddressesOf(label: string, grammar: CitationGrammar): readonly string[] {
+/** The addresses one label names; `null` (review T1) is a refusal, and `[]`
+ * falls back to the label so a label the grammar cannot parse matches whole. */
+const namedAddressesOf = (label: string, grammar: CitationGrammar): readonly string[] | null => {
   const declared = grammar.addressesNamedBy(label);
-  return declared.length > 0 ? declared : [label];
-}
+  return declared === null ? null : declared.length > 0 ? declared : [label];
+};
 
 /**
  * Citation validity: the fraction of the question's required citations the

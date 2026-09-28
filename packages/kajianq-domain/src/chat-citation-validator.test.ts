@@ -541,6 +541,151 @@ describe("validateCitations — grounded direction", () => {
     ]);
   });
 
+  it("refuses a spaced range it cannot enumerate — the fail-closed state is its own (review T1)", () => {
+    // R5 closed the spaced joiner for a range the grammar can ENUMERATE. The
+    // unenumerable path came back as `[label]` — the same shape as "this
+    // grammar declares a single address" — so `named.length > 1` was false and
+    // the shortened-label rule three lines below grounded the span on its head.
+    // The spaced spelling was therefore weaker than its glued twin at exactly
+    // the address ADR-0049 names as the refusal case. `addressesNamedBy` now
+    // returns `null` for it (declared, and unenumerable), and the comparison
+    // site refuses before either rule runs.
+    const rows = [
+      ["Dalilnya QS. 2:1 - 999 tentang hal ini.", "QS. 2:1"],
+      ["Dalilnya QS. 2:255 - 0 tentang hal ini.", "QS. 2:255"],
+      // Another script's digits name a REAL second verse (2:256) that was not
+      // retrieved: the digit posture refuses it, and the refusal must not
+      // become a head-only grounding on the way through.
+      ["Dalilnya QS. 2:255 - ٢٥٦ tentang hal ini.", "QS. 2:255"],
+    ] as const;
+    for (const [spaced, retrieved] of rows) {
+      const span = citationCandidatesIn(spaced)[0]!;
+      // The declaration says "declared, and unenumerable" — NOT a one-element
+      // list, which is what a single-address grammar declares.
+      expect(addressesNamedBy(span), span).toBeNull();
+      expect(groundingLabelsFor(span, new Set([retrieved])), span).toBeNull();
+      // Head verse retrieved, tail not: BOTH spellings refuse, and the spaced
+      // one reports the whole span it could not verify.
+      expect(validateCitations(spaced, [chunk(retrieved)]), spaced).toEqual({
+        grounded: [retrieved],
+        ungrounded: [span],
+      });
+      const glued = span.replace(/ - /g, "-");
+      expect(validateCitations(glued, [chunk(retrieved)]).ungrounded, glued).toEqual([
+        citationCandidatesIn(glued)[0]!,
+      ]);
+    }
+    // The three states really are three, and the ordinary forms keep the other
+    // two: no grammar at all names nothing; a single address names itself.
+    expect(addressesNamedBy("bukan kutipan sama sekali")).toEqual([]);
+    expect(addressesNamedBy("QS. 2:255")).toEqual(["QS. 2:255"]);
+    expect(addressesNamedBy("HR. Bukhari no. 5010")).toEqual(["HR. Bukhari no. 5010"]);
+  });
+
+  it("keeps the accepted set where it was — the fix narrows only the unenumerable spaced form", () => {
+    // The differential this fix round re-ran, base `c64696f` vs this head, over
+    // 21,438 answer × retrieved-set combinations: **widened 0, narrowed 696**,
+    // and every narrowed combination is one of the three unenumerable spaced
+    // spans above (232 retrieved-sets each). Nothing else moved — which is the
+    // property this row guards: the accepted spellings, the enumerable ranges
+    // and the grammars that declare no list must behave exactly as before.
+    const accepted: Array<[string, string[], string[]]> = [
+      // [answer, retrieved, grounded]
+      [
+        "Dalilnya QS. 2:255-256 tentang hal ini.",
+        ["QS. 2:255", "QS. 2:256"],
+        ["QS. 2:255", "QS. 2:256"],
+      ],
+      [
+        "Dalilnya QS. 2:255—256 tentang hal ini.",
+        ["QS. 2:255", "QS. 2:256"],
+        ["QS. 2:255", "QS. 2:256"],
+      ],
+      [
+        "Dalilnya QS. 2:255‑256 tentang hal ini.",
+        ["QS. 2:255", "QS. 2:256"],
+        ["QS. 2:255", "QS. 2:256"],
+      ],
+      [
+        "Dalilnya QS. 2:255- 256 tentang hal ini.",
+        ["QS. 2:255", "QS. 2:256"],
+        ["QS. 2:255", "QS. 2:256"],
+      ],
+      [
+        "Dalilnya QS. 2:255 -256 tentang hal ini.",
+        ["QS. 2:255", "QS. 2:256"],
+        ["QS. 2:255", "QS. 2:256"],
+      ],
+      [
+        "Dalilnya QS. 2:255 - 256 tentang hal ini.",
+        ["QS. 2:255", "QS. 2:256"],
+        ["QS. 2:255", "QS. 2:256"],
+      ],
+      [
+        "Dalilnya Q.S. 2:255-256 tentang hal ini.",
+        ["QS. 2:255", "QS. 2:256"],
+        ["QS. 2:255", "QS. 2:256"],
+      ],
+      [
+        "Dalilnya QS 2:255-256 tentang hal ini.",
+        ["QS. 2:255", "QS. 2:256"],
+        ["QS. 2:255", "QS. 2:256"],
+      ],
+      [
+        "Dalilnya QS. 3:1-2-3 tentang hal ini.",
+        ["QS. 3:1", "QS. 3:2", "QS. 3:3"],
+        ["QS. 3:1", "QS. 3:2", "QS. 3:3"],
+      ],
+      [
+        "Dalilnya QS. 3:1 - 2 - 3 tentang hal ini.",
+        ["QS. 3:1", "QS. 3:2", "QS. 3:3"],
+        ["QS. 3:1", "QS. 3:2", "QS. 3:3"],
+      ],
+      [
+        "Dalilnya QS. 2:255-260 tentang hal ini.",
+        ["QS. 2:255", "QS. 2:256", "QS. 2:257", "QS. 2:258", "QS. 2:259", "QS. 2:260"],
+        ["QS. 2:255", "QS. 2:256", "QS. 2:257", "QS. 2:258", "QS. 2:259", "QS. 2:260"],
+      ],
+      [
+        "HR. Bukhari no. 573 (Sahih) menjelaskan …",
+        ["HR. Bukhari no. 573"],
+        ["HR. Bukhari no. 573"],
+      ],
+      ["QS. 2:255 disebut.", ["QS. 2:255"], ["QS. 2:255"]],
+    ];
+    for (const [answer, retrieved, grounded] of accepted) {
+      const result = validateCitations(
+        answer,
+        retrieved.map((label) => chunk(label)),
+      );
+      // Sets, not orders: a range's provenance is assembled from the substring
+      // pass and the declared list, and which one reaches each address first is
+      // not part of the claim.
+      expect([...result.grounded].sort(), answer).toEqual([...grounded].sort());
+      expect(result.ungrounded, answer).toEqual([]);
+    }
+    // Still refused, exactly as before (all four are in the differential's
+    // unchanged bucket): a surah written by name has no enumerable address, a
+    // fabricated verse grounds nothing, the #264 A3 hadith compound stays whole
+    // even when both addresses were retrieved, and the kitab form's tail is
+    // lexical.
+    expect(
+      validateCitations("Dalilnya QS. Al-Baqarah:255-256 tentang hal ini.", [
+        chunk("QS. 2:255"),
+        chunk("QS. 2:256"),
+      ]).ungrounded,
+    ).toEqual(["QS. Al-Baqarah:255-256"]);
+    expect(
+      validateCitations("Dalilnya QS. 9:99 tentang hal ini.", [chunk("QS. 2:255")]).ungrounded,
+    ).toEqual(["QS. 9:99"]);
+    expect(
+      validateCitations("HR. Bukhari no. 5010—5011 menjelaskan …", [
+        chunk("HR. Bukhari no. 5010"),
+        chunk("HR. Bukhari no. 5011"),
+      ]).ungrounded,
+    ).toEqual(["HR. Bukhari no. 5010—5011"]);
+  });
+
   it("keeps the DRAFT-side spaced hadith form out of the grammar — recorded, not silent", () => {
     // The hadith number token stops at whitespace, so the spaced hadith range
     // is scanned as its head and grounds on it. That is a deliberate exclusion

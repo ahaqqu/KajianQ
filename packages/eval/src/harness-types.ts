@@ -104,6 +104,15 @@ export type CitationGrammar = {
    * optional, deleting one property in the JavaScript composition root was a
    * silent return to the pre-range comparison).
    *
+   * **`null` is the third state** (review T1 of the #274 fix round): the
+   * grammar declares a list and **cannot enumerate it**, so the citation is
+   * unverifiable and must be treated as refused. It is neither `[]` ("names
+   * nothing") nor a one-element list ("names exactly this one address") — the
+   * domain pack encodes it distinctly because conflating it with a
+   * single-address declaration let an unverifiable spaced range ground on its
+   * head. The scorer therefore refuses such a label rather than comparing a
+   * shorter reading of it.
+   *
    * The scorer needs it because a required citation and the answer's evidence
    * are not the same SHAPE: a question requires `QS. 2:255`, the answer cites
    * `QS. 2:255-256`, and the gate grounds it — comparing the two as strings
@@ -114,5 +123,5 @@ export type CitationGrammar = {
    * engine's grammar-consuming entry: the composition root is JavaScript, so
    * the type alone cannot keep it honest.
    */
-  addressesNamedBy: (label: string) => readonly string[];
+  addressesNamedBy: (label: string) => readonly string[] | null;
 };

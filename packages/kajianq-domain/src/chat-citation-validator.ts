@@ -111,6 +111,15 @@ export function citationMatchText(text: string): string {
  * — the very hole A2 closed for the glued spelling. A grammar that declares no
  * list (the hadith number) keeps the extension rule as its only reading.
  *
+ * A declared list the grammar **cannot enumerate** refuses too, and that
+ * refusal is read from a distinct state rather than guessed from the list's
+ * length (review T1 of the fix round): `addressesNamedBy` returns `null` for
+ * it, never a one-element list. Encoded as `[label]` it was indistinguishable
+ * from a single-address declaration, so the rule below was skipped and the
+ * extension rule grounded `QS. 2:255 - 999` on `QS. 2:255` while its glued
+ * twin refused — the spaced spelling weaker than the glued one at exactly the
+ * address ADR-0049 names as the refusal case.
+ *
  * Like the whole-label rule it replaces, no rule here can ground a citation
  * that rule refused. `null` means nothing retrieved grounds the span; every
  * returned label is in `known` by construction, so a caller can look each one
@@ -121,10 +130,15 @@ export function groundingLabelsFor(
   known: ReadonlySet<string>,
 ): readonly string[] | null {
   if (known.has(candidate)) return [candidate];
+  // A declared list the grammar could not enumerate is unverifiable: refuse
+  // outright, before the length test below can mistake it for a single address.
+  const declared = addressesNamedBy(candidate);
+  if (declared === null) return null;
   // ADR-0049: every address the citation's own grammar declares it names must
   // be present. One declared address is the ordinary case already covered
-  // above; the check only ever ADDS a requirement, never drops one.
-  const named = addressesNamedBy(candidate).map(canonicalizeCitationSpelling);
+  // above; the check only ever ADDS a requirement, never drops one — and an
+  // unenumerable list, which no list can carry, refuses above instead.
+  const named = declared.map(canonicalizeCitationSpelling);
   if (named.length > 1) {
     return named.every((address) => known.has(address)) ? named : null;
   }

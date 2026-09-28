@@ -36,13 +36,24 @@ import { SURAH_AYAH_COUNTS } from "./surah-names";
  *   number written in another script's digits (the digit posture refuses those
  *   at the comparison site): a list that cannot be enumerated is a list the
  *   gate **cannot verify**, so the citation must refuse rather than ground on a
- *   shorter reading of it. The refusal is encoded as the **label itself, as a
- *   single entry** — a list of one, which the per-address rule never applies to
- *   (it needs a declared list it can check) — so it holds whatever the corpus
- *   holds. Returning the written numbers instead would make the refusal depend
- *   on the impossible member being absent from a corpus that is supposed to
- *   hold only Tanzil-valid addresses: true today, but a refusal that rests on
- *   corpus purity is not a refusal a safety gate may rest on.
+ *   shorter reading of it.
+ *
+ *   That refusal is returned as **`null`** — the third state of the naming
+ *   declaration, not a list at all (review T1 of the fix round). It used to be
+ *   encoded as the label itself in a **one-element list**, and that encoding
+ *   was indistinguishable from "this grammar declares a single address": both
+ *   reached the comparison site as `[label]`, so the per-address rule skipped
+ *   the unenumerable span and the shortened-label rule grounded it on its head.
+ *   The spaced form was therefore weaker than its glued twin at exactly the
+ *   address ADR-0049 names as the refusal case — `QS. 2:255 - 999` grounded on
+ *   `QS. 2:255` while `QS. 2:255-999` refused. `null` carries the one meaning a
+ *   list cannot ("declared, and unverifiable"), and `addressesNamedBy` passes it
+ *   through so the refusal is decided where the declaration is read.
+ *
+ *   Returning the written numbers instead would make the refusal depend on the
+ *   impossible member being absent from a corpus that is supposed to hold only
+ *   Tanzil-valid addresses: true today, but a refusal that rests on corpus
+ *   purity is not a refusal a safety gate may rest on.
  */
 
 /**
@@ -75,39 +86,44 @@ function boundFor(surahToken: string): number | null {
 
 /**
  * Every address the Quran grammar's match names: the range's whole span in
- * ascending ayah order, or `[label]` when the form cannot be enumerated (the
- * fail-closed path documented above).
+ * ascending ayah order, `[head]` for a single address (no chain), or **`null`**
+ * when the form declares a list it cannot enumerate.
+ *
+ * `null` is the fail-closed signal documented above and is deliberately not a
+ * list: a one-element list means "this form names exactly this one address"
+ * (the ordinary single address, and a grammar that declares no list at all),
+ * so encoding an unverifiable range that way made the two meanings
+ * indistinguishable at the comparison site and let a spaced, unenumerable range
+ * ground on its head (review T1 of the fix round).
  *
  * `head` and `chain` are the grammar's two captures — the `surah:ayah` head and
  * the raw dash-joined tail (`-2`, `-2-3`, `—256`), empty when the citation is a
- * single address; `label` is the match as the draft wrote it, the one address a
- * list this module refuses to enumerate is reported as. A single address comes
- * back as itself, so a caller can compare labels as sets without special-casing
- * the ordinary form.
+ * single address. A single address comes back as itself, so a caller can
+ * compare labels as sets without special-casing the ordinary form.
  */
 export function quranRangeAddresses(
   head: string | undefined,
   chain: string | undefined,
   label: string,
-): readonly string[] {
+): readonly string[] | null {
   if (head === undefined || head === "") return [];
   const tails = (chain ?? "").match(/\p{Nd}+/gu) ?? [];
   if (tails.length === 0) return [head];
   const parsed = RANGE_HEAD.exec(head);
   const ayah = parsed?.[2] === undefined ? Number.NaN : Number(parsed[2]);
   const bound = parsed?.[1] === undefined ? null : boundFor(parsed[1]);
-  if (bound === null || !Number.isInteger(ayah)) return [label];
+  if (bound === null || !Number.isInteger(ayah)) return null;
   let low = ayah;
   let high = ayah;
   for (const tail of tails) {
     const n = Number(tail);
-    if (!Number.isInteger(n)) return [label];
+    if (!Number.isInteger(n)) return null;
     if (n < low) low = n;
     if (n > high) high = n;
   }
   // An address the surah cannot have makes the span unenumerable as a set of
   // real addresses, and an unverifiable list refuses (never a shorter reading).
-  if (low < 1 || high > bound) return [label];
+  if (low < 1 || high > bound) return null;
   const named: string[] = [];
   for (let n = low; n <= high; n += 1) named.push(withAyah(head, String(n)));
   return named;

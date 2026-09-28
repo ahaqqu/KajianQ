@@ -170,7 +170,9 @@ export {
   // round): `groundingLabelsFor` is what the gate and the citations frame both
   // read to decide what is grounded, and `addressesNamedBy` is the declaration
   // the eval's injected grammar seam consumes, so the engine never re-derives
-  // what a Quran range names.
+  // what a Quran range names. Its three states are the contract — `[]`, the
+  // declared addresses, and `null` for a declared list that cannot be
+  // enumerated, which every consumer must refuse (review T1 of the fix round).
   groundingLabelsFor,
   addressesNamedBy,
 } from "./chat-citation-validator";

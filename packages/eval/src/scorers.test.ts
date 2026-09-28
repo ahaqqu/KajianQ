@@ -232,6 +232,36 @@ describe("citationValidity", () => {
       expect(citationValidity(["QS. 2:257"], answer, { events, grammar: rangeGrammar })).toBe(0);
     });
 
+    it("refuses a declared-but-unenumerable list on both sides of the comparison (review T1)", () => {
+      // The declaration's third state, from the domain pack: a grammar that
+      // declares a list and cannot enumerate it returns `null`. That is a
+      // REFUSAL — not `[]` ("names nothing", which falls back to the label) and
+      // not a one-element list (a single-address declaration). The engine must
+      // not read a shorter version of such a label in either direction, or the
+      // scorer would credit an answer the gate refused.
+      const unenumerable: CitationGrammar = {
+        ...rangeGrammar,
+        addressesNamedBy: (label: string): readonly string[] | null =>
+          label.includes("-") ? null : [label],
+      };
+      // As EVIDENCE a `null` label names nothing verifiable, so it grounds
+      // nothing — here the frame's range label cannot ground its own head.
+      const frame = { citations: [{ label: "QS. 2:255-256" }] };
+      expect(citationValidity(["QS. 2:255"], answer, { frame, grammar: unenumerable })).toBe(0);
+      // As a REQUIRED citation it is never present, even though the answer text
+      // contains its head and the evidence carries the range.
+      expect(
+        citationValidity(["QS. 2:255-256"], answer, { frame: rangeFrame, grammar: unenumerable }),
+      ).toBe(0);
+      expect(citationValidity(["QS. 2:255-256"], answer, { grammar: unenumerable })).toBe(0);
+      // `[]` is NOT `null`: a grammar that names nothing for a label still
+      // compares that label whole — the pre-existing fallback, unchanged.
+      const namesNothing: CitationGrammar = { ...rangeGrammar, addressesNamedBy: () => [] };
+      expect(
+        citationValidity(["QS. 2:255-256"], answer, { frame: rangeFrame, grammar: namesNothing }),
+      ).toBe(1);
+    });
+
     it("keeps the frame authoritative: an empty frame is still 0", () => {
       // The frame is the server's grounded set; the new relation reads its
       // labels, it does not replace the frame with the answer text.
