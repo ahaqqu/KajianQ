@@ -1,3 +1,4 @@
+import { requireCitationGrammar } from "./citation-grammar";
 import type {
   ChunkRefLike,
   CitationFrameLike,
@@ -102,6 +103,8 @@ export function citationLabelsPresent(input: {
   grammar?: CitationGrammar;
 }): string[] {
   const { required, answerText, frame, events, grammar } = input;
+  // The engine's grammar entry: an unwired grammar fails loudly (R1).
+  if (grammar !== undefined) requireCitationGrammar(grammar);
   const evidence = verifiedEvidenceLabels({ frame, events });
   if (evidence !== undefined) return groundedLabels(required, evidence, grammar);
   return groundedLabels(required, textCandidateLabels(answerText, grammar), grammar);
@@ -158,17 +161,13 @@ function textCandidateLabels(answerText: string, grammar?: CitationGrammar): str
  * a grammar the comparison stays the byte-exact substring test it always was.
  *
  * **Both sides are compared as the sets of addresses they name, not as
- * strings** (review A1 of the #274 fix round). A required citation and the
- * evidence that grounds it need not be the same shape: a question requires
- * `QS. 2:255` and the answer may cite the range `QS. 2:255-256`, which the gate
- * grounds once every address it names is retrieved. Comparing the two labels
- * directly scored that answer 0 on the frame path while the trace path scored
- * it 1 — the two paths disagreeing about a grounded citation. The relation is
- * the gate's own (strict-whole: every address the required citation names must
- * be named by the evidence), and the addresses come from the injected grammar's
- * own declaration (`addressesNamedBy`, owned by the domain pack), so the engine
- * re-derives nothing and a label that names only itself behaves exactly as it
- * did before.
+ * strings** (review A1 of the #274 fix round): a question requires
+ * `QS. 2:255`, the answer may cite the range `QS. 2:255-256` the gate grounds,
+ * and comparing the two labels as strings scored 0 on the frame path while the
+ * trace path scored 1. The relation is the gate's own (strict-whole), read from
+ * the injected grammar's required declaration (`citation-grammar.ts`), so the
+ * engine re-derives nothing and a grammar declaring `(label) => [label]`
+ * behaves exactly as labels-as-strings did.
  */
 function groundedLabels(
   required: readonly string[],
@@ -188,14 +187,12 @@ function groundedLabels(
   );
 }
 
-/**
- * The addresses one label names, for the set comparison above. Without the
- * grammar's declaration a label names exactly itself — the pre-range behavior,
- * and the safe one: a label the grammar cannot describe can only match whole.
- */
+/** The addresses one label names, for the set comparison above; a declaration
+ * naming nothing (a label the grammar cannot parse) falls back to the label
+ * itself, so such a label can only match whole. */
 function namedAddressesOf(label: string, grammar: CitationGrammar): readonly string[] {
-  const declared = grammar.addressesNamedBy?.(label);
-  return declared !== undefined && declared.length > 0 ? declared : [label];
+  const declared = grammar.addressesNamedBy(label);
+  return declared.length > 0 ? declared : [label];
 }
 
 /**
@@ -217,6 +214,9 @@ export function citationValidity(
     grammar?: CitationGrammar;
   },
 ): number {
+  // Guarded before the empty-required short-circuit, so an unwired grammar
+  // fails even on a question whose citations are trivially satisfied (R1).
+  if (evidence?.grammar !== undefined) requireCitationGrammar(evidence.grammar);
   if (requiredCitations.length === 0) return 1;
   const present = citationLabelsPresent({
     required: requiredCitations,

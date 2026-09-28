@@ -72,6 +72,11 @@ const grammar = {
   normalizeLabel: canon,
   labelsInText: (text: string) =>
     [...text.matchAll(/Q\.?S(?:\.|\s)\s*[^\s:,[\]()]+\s*:\s*\d+/gi)].map((m) => canon(m[0]!)),
+  // The historical rows carry no list-valued citation form, so this mirror
+  // declares the required member as identity rather than omitting it (review
+  // R1: omission is now a loud `CitationGrammarError`, never a silent
+  // string-only fallback).
+  addressesNamedBy: (label: string): readonly string[] => [label],
 };
 
 /** The row's evidence under the new precedence: the grounded list, or the text. */

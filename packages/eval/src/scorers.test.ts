@@ -11,7 +11,8 @@ import {
 } from "./scorers";
 import { scoreQuestion } from "./harness";
 import type { GoldenQuestion } from "@app/contracts";
-import type { CitationFrameLike, TraceEventLike } from "./harness-types";
+import type { CitationFrameLike, CitationGrammar, TraceEventLike } from "./harness-types";
+import { CitationGrammarError } from "./citation-grammar";
 
 const question: GoldenQuestion = {
   id: "gs-test-1",
@@ -76,6 +77,10 @@ describe("citationValidity", () => {
     normalizeLabel: canon,
     labelsInText: (text: string) =>
       [...text.matchAll(/Q\.?S\.?\s*[^\s:,[\]()]+\s*:\s*\d+/g)].map((m) => canon(m[0]!)),
+    // No list-valued citation form in this double, declared as such (the
+    // member is required — review R1; a grammar with ranges declares its
+    // enumeration instead, see `rangeGrammar` below).
+    addressesNamedBy: (label: string): readonly string[] => [label],
   };
 
   it("matches a marker-spelling variant the raw substring check misses", () => {
@@ -235,6 +240,52 @@ describe("citationValidity", () => {
         citationValidity(["QS. 2:255"], answer, { frame: empty, events, grammar: rangeGrammar }),
       ).toBe(0);
     });
+
+    /**
+     * R1 of the fix round: the declaration is required, and its absence is a
+     * loud typed error at the engine's grammar entry — never the silent
+     * string-only fallback that reproduced A1. Measured at head 171b858 with
+     * the real domain grammar and the real `deriveCitationsFrame` output on
+     * this fixture: declaration present 1/1/1 (frame/events/text), declaration
+     * absent 0/1/0. The fallback is deleted, not weakened.
+     */
+    const withoutDeclaration = (): CitationGrammar =>
+      ({
+        normalizeLabel: rangeGrammar.normalizeLabel,
+        labelsInText: rangeGrammar.labelsInText,
+      }) as unknown as CitationGrammar;
+
+    it("throws a typed error when the grammar omits the declaration, on every evidence path", () => {
+      for (const evidence of [{ frame: rangeFrame }, { events }, {}]) {
+        expect(() =>
+          citationValidity(["QS. 2:255"], answer, { ...evidence, grammar: withoutDeclaration() }),
+        ).toThrow(CitationGrammarError);
+      }
+    });
+
+    it("names the missing member, so the injector can be fixed without guessing", () => {
+      try {
+        citationValidity(["QS. 2:255"], answer, {
+          frame: rangeFrame,
+          grammar: withoutDeclaration(),
+        });
+        expect.unreachable("the engine scored with an unwired grammar");
+      } catch (error) {
+        expect(error).toBeInstanceOf(CitationGrammarError);
+        expect((error as CitationGrammarError).kind).toBe("citation_grammar_missing_naming");
+        expect((error as Error).message).toContain("addressesNamedBy");
+        expect((error as Error).name).toBe("CitationGrammarError");
+      }
+    });
+
+    it("fails even on a question with no required citations (no silent short-circuit)", () => {
+      // `citationValidity` returns 1 before touching the grammar when nothing
+      // is required; the guard runs BEFORE that, so an unwired grammar cannot
+      // hide behind a trap question and surface on a later one.
+      expect(() => citationValidity([], answer, { grammar: withoutDeclaration() })).toThrow(
+        CitationGrammarError,
+      );
+    });
   });
 });
 
@@ -264,6 +315,7 @@ describe("citationLabelsPresent", () => {
         grammar: {
           normalizeLabel: (label) => label.replace(/\s+/g, " ").replace("Q.S.", "QS."),
           labelsInText: () => [],
+          addressesNamedBy: (label) => [label],
         },
       }),
     ).toEqual(["QS. 1:2"]);
@@ -276,6 +328,20 @@ describe("citationLabelsPresent", () => {
     expect(citationLabelsPresent({ required: ["QS. 1:2"], answerText: "cites Q.S. 1:2" })).toEqual(
       [],
     );
+  });
+
+  it("refuses at its own entry a grammar that cannot say what a label names (R1)", () => {
+    expect(() =>
+      citationLabelsPresent({
+        required: ["QS. 1:2"],
+        answerText: "",
+        frame: frameOf(["QS. 1:2"]),
+        grammar: {
+          normalizeLabel: (label: string) => label,
+          labelsInText: () => [],
+        } as unknown as CitationGrammar,
+      }),
+    ).toThrow(CitationGrammarError);
   });
 });
 

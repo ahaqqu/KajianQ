@@ -82,9 +82,9 @@ export type CitationFrameLike = {
 /**
  * The chat-citation grammar the harness scores citation validity with,
  * injected by the composition root (the domain pack owns it; the engine
- * package must not). Both members are the SAME functions the deterministic
- * gate (`validateCitations`) and the citations-frame derivation use, so the
- * scorer and the gate cannot disagree about what a citation is.
+ * package must not). Every member is one of the SAME functions the
+ * deterministic gate (`validateCitations`) and the citations-frame derivation
+ * use, so the scorer and the gate cannot disagree about what a citation is.
  *
  * Absent on purpose in a unit context: with no grammar injected the scorer
  * keeps its original raw-substring behavior, so local tests are unchanged.
@@ -98,16 +98,21 @@ export type CitationGrammar = {
    * Every address one label **names**, in the grammar's own spelling: a list
    * for a form whose citation names several (a range citation, whose interior
    * is included — `QS. 2:255-260` names all six), and the label itself for an
-   * ordinary citation. Optional so a unit grammar with no list-valued form is
-   * still a valid injection; absent, every label names exactly itself, which is
-   * the behavior the scorer had before ranges existed.
+   * ordinary citation. **Required**: a grammar with no list-valued form says so
+   * as `(label) => [label]`, so an injector is always obliged to answer what a
+   * label names (review R1 of the #274 fix round — while this member was
+   * optional, deleting one property in the JavaScript composition root was a
+   * silent return to the pre-range comparison).
    *
    * The scorer needs it because a required citation and the answer's evidence
    * are not the same SHAPE: a question requires `QS. 2:255`, the answer cites
    * `QS. 2:255-256`, and the gate grounds it — comparing the two as strings
    * alone scored a correctly grounded answer 0 (review A1 of the #274 fix
    * round). Injected from the domain pack (`addressesNamedBy`), so the range's
-   * semantics has one owner and the engine learns no domain vocabulary.
+   * semantics has one owner and the engine learns no domain vocabulary. The
+   * runtime half of this contract is `citation-grammar.ts`, called from the
+   * engine's grammar-consuming entry: the composition root is JavaScript, so
+   * the type alone cannot keep it honest.
    */
-  addressesNamedBy?: (label: string) => readonly string[];
+  addressesNamedBy: (label: string) => readonly string[];
 };
