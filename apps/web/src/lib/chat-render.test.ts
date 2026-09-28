@@ -188,6 +188,9 @@ describe("renderBodyBlocks", () => {
   });
 });
 
+// The trailing rule run — the shapes, orders, and repeats of `[warning]`,
+// `[disclaimer]`, and the ADR-0006 MT label — has its own spec:
+// `chat-render.dhaif-tail.test.ts` (#292).
 describe("splitAnswerBlocks", () => {
   it("peels the disclaimer into its own block (ID copy)", () => {
     const disclaimer = "Jawaban ini bukan fatwa; rujuk ulama untuk keputusan hukum.";
@@ -214,85 +217,6 @@ describe("splitAnswerBlocks", () => {
       warning: null,
       disclaimer: null,
     });
-  });
-
-  // #292 — the order the postprocess actually appends (warning → MT label →
-  // disclaimer) leaves the MT label last on the common Indonesian path, and
-  // the pre-fix peel only looked at the last two paragraphs.
-  //
-  // Mutation named: restore the pre-fix two-pop peel (disclaimer first, then
-  // warning) — the last paragraph is the MT label, so `takeIfMarked` returns
-  // null, `split.warning` is null, and this row reddens on
-  // `expect(split.warning).toBe(WARNING_ID)`. It is the row that catches the
-  // duplicate: with the warning left in `body`, `AnswerCard` draws it once as
-  // prose and once from the frame-flag card.
-  it("peels the warning when the MT label follows it (#292 ID copy)", () => {
-    const warning =
-      "[Peringatan] Hadits yang dikutip berderajat lemah (dhaif); tidak dapat dijadikan dalil utama.";
-    const split = splitAnswerBlocks(
-      ["Jawaban.", warning, `[${MACHINE_TRANSLATION_LABEL}]`].join("\n\n"),
-    );
-    expect(split.warning).toBe(warning);
-    expect(split.disclaimer).toBeNull();
-    // The MT label is provenance, not a rule block: it stays in the body, once.
-    expect(split.body).toBe(`Jawaban.\n\n[${MACHINE_TRANSLATION_LABEL}]`);
-    expect(split.body).not.toContain("[Peringatan]");
-  });
-
-  it("peels the warning when the MT label follows it (#292 EN copy)", () => {
-    const warning =
-      "[Warning] The cited hadith is graded weak (dhaif); it may not be used as a primary proof.";
-    const split = splitAnswerBlocks(
-      ["Answer.", warning, `[${MACHINE_TRANSLATION_LABEL}]`].join("\n\n"),
-    );
-    expect(split.warning).toBe(warning);
-    expect(split.body).not.toContain("[Warning]");
-    expect(split.body).toContain(MACHINE_TRANSLATION_LABEL);
-  });
-
-  it("peels warning and disclaimer around an interleaved MT label (#292 full tail)", () => {
-    const warning =
-      "[Peringatan] Hadits yang dikutip berderajat lemah (dhaif); tidak dapat dijadikan dalil utama.";
-    const disclaimer = "Jawaban ini bukan fatwa; rujuk ulama untuk keputusan hukum.";
-    const split = splitAnswerBlocks(
-      ["Jawaban.", warning, `[${MACHINE_TRANSLATION_LABEL}]`, disclaimer].join("\n\n"),
-    );
-    expect(split.warning).toBe(warning);
-    expect(split.disclaimer).toBe(disclaimer);
-    expect(split.body).toBe(`Jawaban.\n\n[${MACHINE_TRANSLATION_LABEL}]`);
-  });
-
-  it("recognizes the MT label by prefix, so a label tweak cannot hide the warning", () => {
-    const warning =
-      "[Peringatan] Hadits yang dikutip berderajat lemah (dhaif); tidak dapat dijadikan dalil utama.";
-    const split = splitAnswerBlocks(
-      ["Jawaban.", warning, "Terjemahan mesin — lihat teks Arab asli (beta)"].join("\n\n"),
-    );
-    expect(split.warning).toBe(warning);
-    expect(split.body).toContain("Terjemahan mesin");
-  });
-
-  it("does not eat prose when the trailing rule paragraphs end", () => {
-    // The walk must stop at the first non-rule paragraph: a warning-like line
-    // earlier in the answer is ordinary prose, not a rule block.
-    const split = splitAnswerBlocks(
-      ["[Peringatan] ini kalimat pengantar.", "Jawaban.", `[${MACHINE_TRANSLATION_LABEL}]`].join(
-        "\n\n",
-      ),
-    );
-    expect(split.warning).toBeNull();
-    expect(split.body).toBe(
-      ["[Peringatan] ini kalimat pengantar.", "Jawaban.", `[${MACHINE_TRANSLATION_LABEL}]`].join(
-        "\n\n",
-      ),
-    );
-  });
-
-  it("peels by marker prefix, so wording tweaks cannot hide the blocks", () => {
-    const split = splitAnswerBlocks(
-      "Jawaban.\n\n[Peringatan] Hadits yang dikutip berderajat lemah (dhaif); tidak dapat dijadikan dalil utama.",
-    );
-    expect(split.warning).toContain("[Peringatan]");
   });
 
   it("does not peel a long paragraph that merely mentions the phrase", () => {
