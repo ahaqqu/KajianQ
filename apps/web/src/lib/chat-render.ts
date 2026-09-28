@@ -220,8 +220,10 @@ export function splitAnswerBlocks(text: string): SplitAnswer {
   const trailing: string[] = [];
   while (paragraphs.length > 0) {
     const last = paragraphs[paragraphs.length - 1]!;
-    const markedWarning = warning === null ? takeIfMarked(last, WARNING_MARKERS) : null;
-    const markedDisclaimer = disclaimer === null ? takeIfMarked(last, DISCLAIMER_MARKERS) : null;
+    const markedWarning: string | null =
+      warning === null ? takeIfMarked(last, WARNING_MARKERS) : null;
+    const markedDisclaimer: string | null =
+      disclaimer === null ? takeIfMarked(last, DISCLAIMER_MARKERS) : null;
     if (markedWarning !== null) {
       warning = markedWarning;
       paragraphs.pop();
