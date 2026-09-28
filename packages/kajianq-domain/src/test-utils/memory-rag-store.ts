@@ -9,6 +9,7 @@ import type {
 } from "@app/infra";
 import {
   memoryAuthMethods,
+  memoryChatMethods,
   memoryEvalMethods,
   memoryFeedbackMethods,
   memoryScopeMethods,
@@ -33,6 +34,8 @@ export function createMemoryRagStore(): RagStore & {
     content: string;
     answerTraceId: string | null;
   }[];
+  /** All chat sessions by owning user (test introspection, #271). */
+  allChatSessions: () => readonly { id: string; userId: string }[];
   allEvalResults: () => readonly {
     id: string;
     questionId: string;
@@ -102,6 +105,8 @@ export function createMemoryRagStore(): RagStore & {
     feedback,
     nextId: () => (seq += 1),
   });
+  // The chat half lives in its own module too, sharing the same two maps.
+  const chatMethods = memoryChatMethods({ chatSessions, chatMessages });
 
   const cosine = (a: readonly number[], b: readonly number[]): number => {
     let dot = 0;
@@ -210,50 +215,10 @@ export function createMemoryRagStore(): RagStore & {
     getAnswerTraceById(id) {
       return Effect.succeed((traceRows.get(id) as never) ?? null);
     },
-    createChatSession(input) {
-      return Effect.sync(() => {
-        const id = `sess${(seq += 1)}`;
-        chatSessions.set(id, input.userId);
-        return id;
-      });
-    },
-    // A6: ownership validation for client-supplied session ids.
-    getChatSessionUser(sessionId) {
-      return Effect.succeed(chatSessions.get(sessionId) ?? null);
-    },
-    insertChatMessage(input) {
-      return Effect.sync(() => {
-        // A uuid, like the real `chat_messages.id` DEFAULT gen_random_uuid():
-        // the feedback route's contract admits only uuid message ids, and a
-        // rehydrated surface addresses answers by THIS id (thermo-review A2's
-        // test path) — the stand-in must agree with the production shape.
-        const id = crypto.randomUUID();
-        chatMessages.set(id, {
-          sessionId: input.sessionId,
-          role: input.role,
-          content: input.content,
-          answerTraceId: input.answerTraceId ?? null,
-        });
-        return id;
-      });
-    },
-    // Follow-up context (#10): the session's tail, oldest first — insertion
-    // order stands in for `created_at` (the memory store has no clock).
-    getChatMessages(sessionId, opts) {
-      return Effect.sync(() => {
-        const limit = opts?.limit ?? 20;
-        const all = [...chatMessages.entries()].map(([id, m], i) => ({
-          id,
-          sessionId: m.sessionId,
-          role: m.role,
-          content: m.content,
-          answerTraceId: m.answerTraceId,
-          createdAt: i,
-        }));
-        const tail = all.filter((m) => m.sessionId === sessionId).slice(-limit);
-        return tail;
-      });
-    },
+    createChatSession: chatMethods.createChatSession,
+    getChatSessionUser: chatMethods.getChatSessionUser,
+    insertChatMessage: chatMethods.insertChatMessage,
+    getChatMessages: chatMethods.getChatMessages,
     insertEvalRun: evalMethods.insertEvalRun,
     refreshEvalRun: evalMethods.refreshEvalRun,
     insertEvalResult: evalMethods.insertEvalResult,
@@ -275,6 +240,8 @@ export function createMemoryRagStore(): RagStore & {
     allPairs: () => [...pairs.values()],
     allTraces: () => traces,
     allChatMessages: () => [...chatMessages.entries()].map(([id, m]) => ({ id, ...m })),
+    /** Chat sessions by owning user, for "nothing was created" assertions (#271). */
+    allChatSessions: () => [...chatSessions.entries()].map(([id, userId]) => ({ id, userId })),
     allEvalResults: () => [...evalResults.values()],
     allFeedback: () => [...feedback.values()],
     cosineSearch: (track, query, limit) =>

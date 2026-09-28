@@ -186,4 +186,29 @@ describe("generated OpenAPI doc", () => {
     // a client must not assume a body that trims to the ceiling is accepted.
     expect(message?.description).toContain("no trim");
   });
+
+  it("documents the sessionId's UUID format on the request body (#271)", async () => {
+    const { doc } = await getDoc();
+    // The format lives on the API's documented surface, not only in the code:
+    // a client reading /openapi.json can see that a non-UUID sessionId is a
+    // client error, not a server fault — the 500 this ticket removes was
+    // reachable by a body the published contract accepted.
+    const body = doc.paths["/v1/chat"]?.["post"]?.["requestBody"] as
+      | {
+          content: {
+            "application/json": {
+              schema: {
+                properties: { sessionId: { format?: string; description?: string } };
+              };
+            };
+          };
+        }
+      | undefined;
+    const sessionId = body?.content["application/json"].schema.properties.sessionId;
+    expect(sessionId?.format).toBe("uuid");
+    expect(sessionId?.description).toContain("invalid_request");
+    // The no-oracle half is published too: a well-formed unknown/foreign id
+    // still answers the documented 404.
+    expect(sessionId?.description).toContain("404");
+  });
 });

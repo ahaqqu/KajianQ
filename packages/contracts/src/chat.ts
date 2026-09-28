@@ -28,6 +28,45 @@ import * as v from "valibot";
  */
 export const CHAT_MESSAGE_MAX_LENGTH = 2000;
 
+/**
+ * A chat session id as a REQUEST value (#271): the format the store can
+ * represent, and therefore the only format the API may accept.
+ *
+ * `chat_sessions.id` is a Postgres `uuid` column, and every id the API hands
+ * out is minted by `crypto.randomUUID()` (`createChatSession`). A client-supplied
+ * id that is not a UUID cannot name a session — the adapter's `${sessionId}::uuid`
+ * cast raises before the ownership check can answer — so before this schema
+ * existed the request passed validation and surfaced as a 500 `{"error":"internal"}`,
+ * indistinguishable from a server fault. Validating here makes the refusal the
+ * documented one, before any store call or pipeline stage: `400 invalid_request`
+ * for the request body, the route's existing `404` for the rehydration path
+ * param. It is a format check ONLY: a well-formed but unknown or foreign UUID
+ * still answers exactly what it answered before, so it is no existence oracle
+ * (`apps/api/src/routes/chat-session.ts` states the same posture).
+ *
+ * Deliberately NOT applied to the server-produced `sessionId` members
+ * (`ChatMetaSchema`, `ChatSessionMessagesSchema`): those describe a value the
+ * store minted or returned, and the `RagStore` seam types chat session ids as
+ * opaque strings (`createChatSession(): Effect<string, StoreError>`) — a
+ * response schema claiming a UUID shape would over-constrain the seam (the same
+ * mismatch the trace-id note in `apps/api/src/routes/chat.ts` records) while
+ * preventing no 500, because a response assertion is not a boundary.
+ */
+export const ChatSessionIdSchema = v.pipe(
+  v.string(),
+  v.uuid(),
+  v.description(
+    "The chat session's UUID (`chat_sessions.id`). A value that is not a UUID is rejected with 400 invalid_request before the store or any pipeline stage runs; a well-formed but unknown or foreign UUID answers the same 404 as a session that does not exist.",
+  ),
+);
+
+/**
+ * The predicate form of `ChatSessionIdSchema`, for the rehydration route's
+ * `:id` guard: that route validates a path param (there is no body to parse)
+ * and must read the SAME rule the body contract uses, never a second regex.
+ */
+export const isChatSessionId = (value: string): boolean => v.is(ChatSessionIdSchema, value);
+
 export const ChatRequestSchema = v.object({
   message: v.pipe(
     v.string(),
@@ -37,8 +76,11 @@ export const ChatRequestSchema = v.object({
       `The user's question (1 to ${CHAT_MESSAGE_MAX_LENGTH} characters), measured in UTF-16 code units on the raw string with no trim — so a body that would only trim to the ceiling is still rejected, and a whitespace-only body inside the ceiling is accepted. An over-length message is rejected with 400 invalid_request before any pipeline stage runs.`,
     ),
   ),
-  /** Existing chat session to append to; absent = create a new session. */
-  sessionId: v.optional(v.pipe(v.string(), v.minLength(1))),
+  /**
+   * Existing chat session to append to; absent = create a new session. The
+   * format is the session-id contract (#271) — see `ChatSessionIdSchema`.
+   */
+  sessionId: v.optional(ChatSessionIdSchema),
   /** UI language hint; the answer language (ID default, per product scope). */
   language: v.optional(v.picklist(["id", "en"])),
 });

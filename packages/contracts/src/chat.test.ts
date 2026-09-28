@@ -4,11 +4,13 @@ import {
   CHAT_MESSAGE_MAX_LENGTH,
   ChatCitationSchema,
   ChatCitationsFrameSchema,
+  ChatMetaSchema,
   ChatRequestSchema,
   ChatSessionMessageSchema,
   ChatSessionMessagesSchema,
   ChatTraceChunkSchema,
   ChatTraceFrameSchema,
+  isChatSessionId,
 } from "./chat";
 
 /**
@@ -85,6 +87,92 @@ describe("ChatRequestSchema message ceiling (#256)", () => {
     expect(
       v.safeParse(ChatRequestSchema, { message: " ".repeat(CHAT_MESSAGE_MAX_LENGTH + 1) }).success,
     ).toBe(false);
+  });
+});
+
+/**
+ * The chat session id as a REQUEST value (#271): the store's `chat_sessions.id`
+ * is a `uuid`, so a non-UUID `sessionId` used to pass validation and die in the
+ * adapter's cast as a 500. The contract is the boundary — these rows pin that a
+ * malformed id is refused HERE, that the ceiling (#256) is untouched, and that
+ * the two server-produced `sessionId` members deliberately stay opaque.
+ */
+describe("ChatRequestSchema sessionId (#271)", () => {
+  const sessionIdOf = (sessionId: unknown) =>
+    v.safeParse(ChatRequestSchema, { message: "Apa maksud Ayat Kursi?", sessionId }).success;
+
+  it("accepts a well-formed UUID", () => {
+    expect(sessionIdOf(crypto.randomUUID())).toBe(true);
+  });
+
+  it("accepts an absent sessionId (a new session is the default)", () => {
+    expect(v.safeParse(ChatRequestSchema, { message: "hi" }).success).toBe(true);
+  });
+
+  it("rejects the staging probe's non-UUID value", () => {
+    expect(sessionIdOf("en")).toBe(false);
+  });
+
+  it("rejects a UUID-shaped value that is not one", () => {
+    // The near-misses matter more than an obviously wrong string: a client
+    // that truncates or over-pads an id must be refused at the boundary, not
+    // by the store's cast later.
+    expect(sessionIdOf("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a1")).toBe(false);
+    expect(sessionIdOf("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11x")).toBe(false);
+    expect(sessionIdOf("not-a-uuid-at-all-but-long-enough")).toBe(false);
+  });
+
+  it("rejects an empty sessionId (the pre-existing floor holds)", () => {
+    expect(sessionIdOf("")).toBe(false);
+  });
+
+  it("exposes the same rule as the predicate the path-param guard uses", () => {
+    // The rehydration route validates a path param, not a body. It reads this
+    // predicate, so the two request surfaces cannot drift into two rules.
+    expect(isChatSessionId(crypto.randomUUID())).toBe(true);
+    expect(isChatSessionId("en")).toBe(false);
+    expect(isChatSessionId("")).toBe(false);
+  });
+
+  it("keeps the #256 message ceiling intact alongside the session-id rule", () => {
+    const sessionId = crypto.randomUUID();
+    expect(
+      v.safeParse(ChatRequestSchema, {
+        message: "a".repeat(CHAT_MESSAGE_MAX_LENGTH),
+        sessionId,
+      }).success,
+    ).toBe(true);
+    expect(
+      v.safeParse(ChatRequestSchema, {
+        message: "a".repeat(CHAT_MESSAGE_MAX_LENGTH + 1),
+        sessionId,
+      }).success,
+    ).toBe(false);
+  });
+
+  /**
+   * The per-field decision, pinned rather than left to prose: the response
+   * schemas keep the opaque `minLength(1)` form. Their values come FROM the
+   * store (`ChatMetaSchema` echoes a minted or already-validated id;
+   * `ChatSessionMessagesSchema` echoes the route's own param), and the
+   * `RagStore` seam types chat session ids as `string` — a UUID claim there
+   * would over-constrain every adapter while preventing no 500.
+   */
+  it("leaves the server-produced sessionId members opaque", () => {
+    expect(
+      v.safeParse(ChatMetaSchema, {
+        sessionId: "sess-legacy",
+        messageId: "m1",
+        traceId: "t1",
+      }).success,
+    ).toBe(true);
+    expect(
+      v.safeParse(ChatSessionMessagesSchema, {
+        sessionId: "sess-legacy",
+        messages: [],
+        truncated: false,
+      }).success,
+    ).toBe(true);
   });
 });
 

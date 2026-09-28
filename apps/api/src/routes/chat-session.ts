@@ -1,6 +1,7 @@
 import {
   ChatErrorSchema,
   ChatSessionMessagesSchema,
+  isChatSessionId,
   type ChatSessionMessages,
   type Trace,
 } from "@app/contracts";
@@ -27,8 +28,9 @@ import {
  * The wiring is store-only (no provider roles): a missing reviewer key must
  * not gate reading a transcript, exactly as it must not gate auth (thermo-
  * review A4). Ownership goes through the existing `getChatSessionUser` seam;
- * an unknown session and a foreign session are both 404, so the endpoint
- * leaks nothing about other users' sessions. 429 is documented for DAST.
+ * an unknown session, a foreign session, and a `:id` the store cannot
+ * represent (non-UUID, #271) are all the same 404, so the endpoint leaks
+ * nothing about other users' sessions. 429 is documented for DAST.
  */
 
 type SessionEnv = import("../env").ApiEnv["Bindings"] & Record<string, string | undefined>;
@@ -55,7 +57,8 @@ const SESSION_MESSAGES_OPENAPI = describeRoute({
       content: { "application/json": { schema: resolver(ChatErrorSchema) } },
     },
     404: {
-      description: "Session not found or not owned by the authenticated user",
+      description:
+        "Session not found or not owned by the authenticated user — or an `id` that is not a UUID, which cannot name a session (`chat_sessions.id` is a uuid)",
       content: { "application/json": { schema: resolver(ChatErrorSchema) } },
     },
     429: {
@@ -88,6 +91,18 @@ export const chatSessionRoutes = newRouter().get(
     const { userId } = c.get("authed");
 
     const sessionId = c.req.param("id");
+    // #271: the id must be a value `chat_sessions.id` (uuid) can hold before
+    // the store sees it — the adapter's `${sessionId}::uuid` cast throws on
+    // anything else, which surfaced as a 500 `{"error":"internal"}` with no
+    // server fault behind it. A malformed id leaves through the SAME documented
+    // 404 (and the same body) as an unknown or foreign one: the route adds no
+    // status to its published contract, and an id that cannot name a session is
+    // indistinguishable from one that names nothing — the posture this route's
+    // module comment claims is what this guard preserves. Auth runs first (401
+    // for a malformed id with no token), so the guard is not an auth bypass.
+    if (!isChatSessionId(sessionId)) {
+      return c.json({ error: "invalid_request" }, 404);
+    }
     const owner = (await runStore(fullStore.getChatSessionUser(sessionId))) as string | null;
     if (owner !== userId) {
       // Same posture as the chat route's A6 check: unknown and foreign are

@@ -5,6 +5,7 @@ const { captureException } = vi.hoisted(() => ({ captureException: vi.fn() }));
 
 vi.mock("@sentry/bun", () => ({ captureException }));
 import { CHAT_MESSAGE_MAX_LENGTH } from "@app/contracts";
+import { parseChatRequest } from "../lib/chat-openapi";
 import { runStoreEffect } from "@app/kajianq-domain";
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 import { createStubChatProviders } from "@app/kajianq-domain/test-utils/stub-chat-providers";
@@ -193,6 +194,19 @@ async function postChat(
     traceId: string;
   };
   return { status: res.status, frames, answer, meta };
+}
+
+/** POST /v1/chat and return the raw response (the 4xx rows read its body). */
+async function postRaw(token: string, body: Record<string, unknown>): Promise<Response> {
+  return createApi().request(
+    "/v1/chat",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    },
+    env,
+  );
 }
 
 describe("POST /v1/chat", () => {
@@ -437,19 +451,68 @@ describe("POST /v1/chat", () => {
     expect(messages.map((m) => m.role)).toEqual(["user", "assistant", "user", "assistant"]);
   }, 15000);
 
-  it("rejects a session id that belongs to another user", async () => {
+  /**
+   * #271: the store's `chat_sessions.id` is a `uuid`, so a non-UUID
+   * `sessionId` used to pass validation and die in the adapter's `::uuid`
+   * cast — a 500 `{"error":"internal"}` with no server fault behind it,
+   * reproduced on staging with the body below (`sessionId: "en"`). The
+   * contract is the boundary: the refusal is the route's existing 400, before
+   * auth, the store, or any pipeline stage.
+   */
+  it("rejects a non-UUID sessionId with the documented 400 and creates nothing (#271)", async () => {
+    const { store, token } = await wiredStore();
+    currentStore = store;
+    await seed(store);
+    currentOverrides = { answerText: "an answer that must never be produced" };
+    spendCalls.length = 0;
+
+    const res = await postRaw(token, { message: "Apa maksud Ayat Kursi?", sessionId: "en" });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_request" });
+
+    // Nothing happened behind the refusal, measured rather than inferred:
+    // no stage on the pipeline seams, no persisted question, no trace, and no
+    // chat session row (a refused request must not leave one behind).
+    expect(spendCalls).toEqual([]);
+    expect(store.allChatMessages()).toEqual([]);
+    expect(store.allTraces().size).toBe(0);
+    expect(store.allChatSessions()).toEqual([]);
+  });
+
+  it("names the offending field in the 400's diagnostic detail (#271)", async () => {
+    // The body the client sees is the route's one error shape; the DETAIL is
+    // what makes the refusal diagnosable in ops — and it names the field, so
+    // a malformed sessionId is not confused with a malformed question.
+    const warnings: string[] = [];
+    const parsed = await parseChatRequest(
+      new Request("http://localhost/v1/chat", {
+        method: "POST",
+        body: JSON.stringify({ message: "hi", sessionId: "en" }),
+      }),
+      { warn: (msg, fields) => warnings.push(`${msg} ${JSON.stringify(fields ?? {})}`) },
+    );
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    expect(parsed.error).toBe("invalid_request");
+    expect(parsed.detail).toContain("sessionId");
+    expect(warnings.join(" ")).toContain("sessionId");
+  });
+
+  it("answers 404 for a well-formed but unknown session UUID, like a foreign one", async () => {
     const { store, token } = await wiredStore();
     currentStore = store;
     currentOverrides = { answerText: "ok" };
-    const res = await createApi().request(
-      "/v1/chat",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-        body: JSON.stringify({ message: "hi", sessionId: "sess-does-not-exist" }),
-      },
-      env,
+    // The format check must not become an existence oracle: a UUID that names
+    // nothing and a UUID owned by someone else answer identically.
+    const unknown = await postRaw(token, { message: "hi", sessionId: crypto.randomUUID() });
+    const foreignSessionId = await runStoreEffect<string>(
+      store.createChatSession({ userId: "someone-else" }),
     );
-    expect(res.status).toBe(404);
+    const foreign = await postRaw(token, { message: "hi", sessionId: foreignSessionId });
+
+    expect(unknown.status).toBe(404);
+    expect(foreign.status).toBe(404);
+    expect(await unknown.json()).toEqual(await foreign.json());
   });
 });
