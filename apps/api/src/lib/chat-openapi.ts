@@ -1,4 +1,4 @@
-import { ChatRequestSchema, issuePath } from "@app/contracts";
+import { ChatRequestSchema, describeIssue } from "@app/contracts";
 import { describeRoute, resolver } from "hono-openapi";
 import * as v from "valibot";
 
@@ -86,7 +86,7 @@ export async function parseChatRequest(
   }
   const parsed = v.safeParse(ChatRequestSchema, body);
   if (!parsed.success) {
-    const detail = parsed.issues.map((i) => `${issuePath(i.path)}: ${i.message}`).join("; ");
+    const detail = parsed.issues.map(describeIssue).join("; ");
     log?.warn("chat.body_invalid", { detail: detail.slice(0, 200) });
     return { success: false, error: "invalid_request", detail: detail.slice(0, 200) };
   }

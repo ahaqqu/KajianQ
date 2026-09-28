@@ -89,7 +89,7 @@ export {
   type AlignedPair,
   type MorphToken,
 } from "./ingestion";
-export { issuePath } from "./issue-path";
+export { describeIssue, issuePath, type ValidationIssue } from "./issue-path";
 export {
   ChunkRefSchema,
   CostRecordSchema,
