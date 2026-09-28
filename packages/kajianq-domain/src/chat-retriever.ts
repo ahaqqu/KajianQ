@@ -2,7 +2,6 @@ import { Effect } from "effect";
 import {
   RunContext,
   toStageError,
-  type Chunk,
   // `@app/rag-core` re-exports the engine's `CostRecord` (rag-core/src/index.ts),
   // so sourcing it here keeps this module inside the repo's 5-import agentic
   // limit while `withTextLayers` is imported from its single owner (R1).
