@@ -385,16 +385,25 @@ describe("#285 — the product_rules event on the wiring's delivery paths", () =
     // appended nothing. The delivered text is identical either way — only the
     // event distinguishes "ran, found the copy" from "never ran" (the next
     // test's negative), and `applied: []` is that record.
+    //
+    // The draft cites the retrieved dhaif chunk so the cheap screen clears it
+    // and the rules really run on the pre-gate SKIP path (the #278 path, which
+    // records no `review` event); the `decision` assertion below keeps this
+    // test honest about the path it pins, so a citation-free draft that
+    // silently escalates instead can never make it pass for the wrong reason.
     const store = createMemoryRagStore();
     await seedChild(store, DHAIF_METADATA, 0);
     const draft = [
-      "Jawaban sesuai konteks.",
+      `Jawaban sesuai konteks [${DHAIF_CITATION}].`,
       dhaifWarning("id"),
       `[${MACHINE_TRANSLATION_LABEL}]`,
       ulamaDisclaimer("id"),
     ].join("\n\n");
 
     const answer = await answerVia(store, draft, { reviewerDecider: SKIPPING_DECIDER });
+    const events = eventsOf(answer);
+    expect(events.find((e) => e.kind === "decision")?.detail["outcome"]).toBe("skip");
+    expect(events.some((e) => e.kind === "review")).toBe(false);
     const rules = productRulesEvents(answer);
     expect(rules).toHaveLength(1);
     expect(rules[0]?.detail["applied"]).toEqual([]);
