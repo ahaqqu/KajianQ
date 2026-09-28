@@ -228,7 +228,8 @@ describe("runGoldenSet", () => {
     };
     const reported = report.results.find((r) => r.questionId === "q3");
     expect(reported?.skipped).toBe(true);
-    expect(reported?.notes).toEqual((row?.outcome as EvalResultOutcome).notes);
+    const persisted = row?.outcome as EvalResultOutcome | undefined;
+    expect(reported?.notes).toEqual(persisted?.notes);
   });
 
   it("keeps a transport skip distinct from a refusal and a scorer failure in the persisted evidence (#290)", async () => {
