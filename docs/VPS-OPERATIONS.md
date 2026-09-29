@@ -567,6 +567,25 @@ world-readable: a world-readable repository key silently undoes the encryption
 it exists to provide. The target must never be a free tier (the register rule) —
 the repository holds a full-database dump carrying chat content and feedback.
 
+**The schedule's own product is proven** (2026-09-29, closing #214). The
+`03:15` fires of 2026-09-26…29 each started with **no operator command between
+it and the previous run**, logged `created "daily-<UTC>"` — a line the script
+prints only after `restic backup` _and_ `forget --prune` have exited 0 — and
+finished `Deactivated successfully` (`ExecMainStatus=0`). Their dump sizes track
+the corpus rather than a truncated dump: `359,306,990` bytes on 09-26 (the night
+#213's full-corpus load landed), then `669,165,338` / `670,417,700` /
+`670,537,885` as it settled, against `133,598,276` before the load. Read the
+proof the same way, per night:
+
+```bash
+journalctl -u kajianq-backup.service --since "-7 days" | grep -E 'Starting|created|Deactivated'
+```
+
+A hardening re-apply (`apply.sh`) re-installs the unit file, which makes the
+next deploy demand a fresh run — the gate cannot tell a re-installed identical
+unit from a changed one (#320). An operator-started run satisfies that gate but
+is **not** the proof above: the proof is a night the timer fired by itself.
+
 Operate it:
 
 ```bash
