@@ -1,6 +1,6 @@
 # Architecture (v1.0 — KajianQ & DARS)
 
-Pluggable · Traceable · Price-disciplined · Performance · Cross-Platform · Polished · Secure · Observable · Maintainable · Available · Reliable · Reproducible · Agentic · Privacy · EN / ID
+Pluggable · Traceable · Price-disciplined · Performance · Cross-Platform · Polished · Secure · Observable · Maintainable · Available · Reliable · Reproducible · Agentic · Scalable · Privacy · EN / ID
 
 ## Purpose
 
@@ -461,7 +461,38 @@ Gated by: cascade-delete tests (§4); the privacy guardrail and its Definition
 of Done line in [`AGENTS.md`](../AGENTS.md); the GDPR item in
 `.agents/skills/guided-implementation/SKILL.md`.
 
-## 18. Which document answers which question
+## 18. Scalable — one box by default, never locked to one process
+
+The deployment is **one instance**, and stays that way until measured load says
+otherwise — but no code may assume it (ADR-0049). The invariant is four clauses.
+**Every durable byte lives in a shared store**: Postgres is the single durable
+copy (corpus, traces, chat, feedback, sessions, ledger) behind the `RagStore`
+adapter and blobs behind `ObjectStore`, so nothing a second instance must read
+is written to host-local disk or held in process memory. **The request path is
+stateless**: no in-process session store, queue, scheduler, or client affinity —
+any instance serves any request, including a follow-up turn begun on another.
+**A stream is request-scoped**: `POST /v1/chat` persists the answer and its trace
+before the first SSE byte (`apps/api/src/routes/chat.ts`), so a lost stream is
+recoverable from the store rather than lost with the process. **In-process state
+carries a seam and a trigger**: where a per-process mechanism is deliberate, it
+sits behind one indirection point and names the condition that retires it.
+
+Two exceptions are sanctioned today, and ADR-0044 is their record: the
+rate-limit counter behind `resolveRateLimiter()` is per process, so the per-IP
+budget is global-for-the-deployment only while there is one process; and the
+provisioning topology is single-instance by construction (non-templated systemd
+unit, one deploy host, one nginx upstream, a sudoers grant naming that unit). A
+second instance closes an ordered list first — a shared counter, a pinned
+connection budget, an instance-addressable serving path, a single cron owner,
+and a store-touching readiness probe. A second **host** is a new ADR, because
+Postgres is loopback-only by decision.
+
+Gated by: the review duty in `.agents/skills/code-review/SKILL.md` (the
+principle range it enumerates) and the revisit triggers in ADR-0049. The
+automated scan for module-level mutable state in serving code is recorded there
+as an open gap, deliberately not built.
+
+## 19. Which document answers which question
 
 | Question                                           | Document                                                 |
 | -------------------------------------------------- | -------------------------------------------------------- |
