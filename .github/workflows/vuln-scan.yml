@@ -1,7 +1,17 @@
 name: Vulnerability scan
+# Runs on every merge to main and nightly.
+#
+# Deliberately NOT on `pull_request`: a PR push does not change the dependency
+# surface beyond what the lockfile already pins, so scanning every push would
+# pay a full run per commit for an answer the merge itself supplies — while the
+# advisory feed, which changes independently of this repository, is what the
+# nightly run covers. The merge trigger is what gives a red gate a reader: the
+# run lands on the merger's timeline instead of a 04:00 schedule nobody watches.
 on:
   schedule:
     - cron: "0 4 * * *"
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
