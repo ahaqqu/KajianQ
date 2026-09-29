@@ -1,4 +1,4 @@
-# ADR-0049: Scalability is an architecture principle — one box by default, never locked to one process
+# ADR-0050: Scalability is an architecture principle — one box by default, never locked to one process
 
 ## Status
 
@@ -12,6 +12,15 @@ second instance requires. It builds nothing. It does not relitigate ADR-0044
 ADR-0043 (netcup VPS hosting, EU residency), or ADR-0008 (the `RagStore` seam);
 ADR-0044's revisit triggers stay the operative record for the exceptions named
 in decision 3.
+
+**Numbered 0050, not 0049.** 0049 is claimed by a parallel in-flight ADR —
+retrieved-verse neighbourhood expansion and range grounding (PR #291) — which
+was authored first and had already cited the number across roughly twenty code
+and doc references and in issue #300's text. Renumbering that unmerged branch
+would have rewritten all of them to correct a number this record took by reading
+only `main`'s highest file; renumbering this merged record instead touches four
+references in three files and leaves the other side's citations correct. The
+sequence therefore reads 0048 → 0050 on `main` until PR #291 lands its 0049.
 
 ## Context
 

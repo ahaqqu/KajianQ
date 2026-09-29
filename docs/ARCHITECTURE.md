@@ -464,7 +464,7 @@ of Done line in [`AGENTS.md`](../AGENTS.md); the GDPR item in
 ## 18. Scalable — one box by default, never locked to one process
 
 The deployment is **one instance**, and stays that way until measured load says
-otherwise — but no code may assume it (ADR-0049). The invariant is four clauses.
+otherwise — but no code may assume it (ADR-0050). The invariant is four clauses.
 **Every durable byte lives in a shared store**: Postgres is the single durable
 copy (corpus, traces, chat, feedback, sessions, ledger) behind the `RagStore`
 adapter and blobs behind `ObjectStore`, so nothing a second instance must read
@@ -488,7 +488,7 @@ and a store-touching readiness probe. A second **host** is a new ADR, because
 Postgres is loopback-only by decision.
 
 Gated by: the review duty in `.agents/skills/code-review/SKILL.md` (the
-principle range it enumerates) and the revisit triggers in ADR-0049. The
+principle range it enumerates) and the revisit triggers in ADR-0050. The
 automated scan for module-level mutable state in serving code is recorded there
 as an open gap, deliberately not built.
 
