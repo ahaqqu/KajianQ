@@ -30,6 +30,7 @@ For each principle in `docs/ARCHITECTURE.md`, verify the plan addresses it. This
 - **Reproducible**: Does the plan introduce new tools not in the Nix flake?
 - **Agentic**: Can each module be understood in isolation? Are contracts clear?
 - **Privacy**: Does the plan touch personal data (session tokens, chat content, traces, feedback free-text, IPs/logs)? Do the sub-processor register, retention values, and RoPA (`docs/GDPR-ARTICLE-30-RECORD.md`) stay true, and does the erasure path (`DELETE /v1/auth/me`) still cascade?
+- **Scalable**: Does the plan add per-instance state, require client affinity, or put durable data on host-local disk? Would it need a shared counter or a second deploy target to work at N>1?
 
 ## Output
 
