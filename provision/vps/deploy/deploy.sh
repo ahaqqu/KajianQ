@@ -22,8 +22,9 @@
 #   KAJIANQ_PUBLIC_URL    the public base URL the smoke test hits
 #
 # The deploy identity is a dedicated unprivileged account, not a human admin
-# login (#181): its authorization is exactly two systemctl commands, installed
-# as code by provision/vps/apply.sh from provision/vps/sudoers/kajianq-deploy.
+# login (#181): its authorization is two systemctl commands plus two read-only
+# diagnostics (for the §5 doctor gate), installed as code by
+# provision/vps/apply.sh from provision/vps/sudoers/kajianq-deploy.
 # It owns the deployed tree, which is what lets the rsyncs below write it and
 # delete stale content-hashed assets without a group-write grant. The name is
 # fixed rather than configurable so the account, the sudoers grant, and CI's
@@ -33,6 +34,14 @@
 # there are no live users, so a single-shot replace + restart is the recorded
 # choice, not an omission. A reverse-proxy cache or a second port would be
 # choreography with no beneficiary.
+#
+# The deploy ends with a shared-box doctor gate (§5): the box hosts other apps
+# (the manifest lives in ahaqqu/homepage), so a deploy that leaves nginx or a
+# neighbour unhealthy turns THIS build red instead of surfacing later as a
+# mystery on the other side. The gate runs as this deploy identity and needs
+# the two read-only diagnostics in the sudoers grant (nginx -t, certbot
+# certificates) — until apply.sh has been re-run to install that widened
+# grant, the sweep degrades to a warning rather than failing every deploy.
 #
 # Exit non-zero on the first failure: a half-shipped tree that reports success
 # is worse than a failed deploy, because the operator would stop looking.
@@ -265,5 +274,28 @@ if [ "${RUN_SMOKE}" -eq 1 ]; then
     run curl -sSf --max-time 30 -H 'accept: text/html' "${PUBLIC_URL}/chat" |
         grep -qi '<!doctype html'
 fi
+
+# --- 5. doctor (the shared-box gate) ----------------------------------------
+# The box is shared (manifest: ahaqqu/homepage provision/vps/MACHINE.md): a
+# kajianq change that invalidates nginx or starves a neighbour must turn this
+# deploy red, not surface later as a mystery on the other app. doctor.sh is
+# the homepage repo's read-only sweep — nginx -t, sites-enabled hygiene,
+# failed units, every app's listeners and units, cert expiry — and this
+# identity may run it because the sudoers grant above carries the two
+# read-only diagnostics it needs. The URL is configuration (KAJIANQ_DOCTOR_URL
+# in the env file — this script ships placeholders only), fetched at deploy
+# time so all three repos share one copy of the check. Blocking on purpose: a
+# deploy that cannot prove the box healthy has not deployed. Until apply.sh
+# has been re-run to install the widened sudoers grant, the sweep's nginx
+# check degrades to a warning instead of failing every deploy.
+DOCTOR_URL="${KAJIANQ_DOCTOR_URL:-}"
+if [ -z "${DOCTOR_URL}" ]; then
+    echo "deploy: KAJIANQ_DOCTOR_URL is empty in ${ENV_FILE} — set it to the raw" >&2
+    echo "deploy: doctor.sh URL (ahaqqu/homepage, provision/vps/doctor.sh)" >&2
+    exit 1
+fi
+log "running the shared-box doctor (cross-app gate)"
+run ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" \
+    'f="$(mktemp)" && curl -fsSL --retry 2 "'"$DOCTOR_URL"'" -o "$f" && bash "$f"; r=$?; rm -f "$f"; exit $r'
 
 log "done. deployed and smoke-verified."
