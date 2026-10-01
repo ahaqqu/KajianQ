@@ -49,5 +49,5 @@ Defaults:kajianq-deploy !requiretty
 
 kajianq-deploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart kajianq-api.service, \
                                     /usr/bin/systemctl start kajianq-cron.service, \
-                                    /usr/bin/nginx -t, \
+                                    /usr/sbin/nginx -t, \
                                     /usr/bin/certbot certificates
