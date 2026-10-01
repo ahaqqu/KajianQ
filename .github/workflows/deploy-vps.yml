@@ -103,7 +103,6 @@ jobs:
             echo "KAJIANQ_DEPLOY_USER=${KAJIANQ_DEPLOY_USER}"
             echo "KAJIANQ_DEPLOY_ROOT=${KAJIANQ_DEPLOY_ROOT}"
             echo "KAJIANQ_PUBLIC_URL=${KAJIANQ_PUBLIC_URL}"
-            echo "KAJIANQ_DOCTOR_URL=${KAJIANQ_DOCTOR_URL}"
           } > /tmp/deploy.env
           provision/vps/deploy/deploy.sh --env /tmp/deploy.env
         env:
@@ -111,8 +110,3 @@ jobs:
           KAJIANQ_DEPLOY_USER: ${{ vars.VPS_USER }}
           KAJIANQ_DEPLOY_ROOT: ${{ vars.VPS_ROOT }}
           KAJIANQ_PUBLIC_URL: ${{ vars.VPS_PUBLIC_URL }}
-          # The shared-box doctor gate's fetch URL. Defaults to the canonical
-          # sweep in ahaqqu/homepage so the gate needs zero GitHub setup; a
-          # repository variable overrides it (pin to a homepage commit sha to
-          # decouple this deploy from homepage@main).
-          KAJIANQ_DOCTOR_URL: ${{ vars.KAJIANQ_DOCTOR_URL || 'https://raw.githubusercontent.com/ahaqqu/homepage/main/provision/vps/doctor.sh' }}

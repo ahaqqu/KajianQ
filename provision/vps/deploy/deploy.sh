@@ -36,12 +36,14 @@
 # choreography with no beneficiary.
 #
 # The deploy ends with a shared-box doctor gate (§5): the box hosts other apps
-# (the manifest lives in ahaqqu/homepage), so a deploy that leaves nginx or a
-# neighbour unhealthy turns THIS build red instead of surfacing later as a
-# mystery on the other side. The gate runs as this deploy identity and needs
-# the two read-only diagnostics in the sudoers grant (nginx -t, certbot
-# certificates) — until apply.sh has been re-run to install that widened
-# grant, the sweep degrades to a warning rather than failing every deploy.
+# (the manifest lives in the private ahaqqu/homepage repo), so a deploy that
+# leaves nginx or a neighbour unhealthy turns THIS build red instead of
+# surfacing later as a mystery on the other side. The sweep is vendored in
+# this repo and piped over ssh — no GitHub credential, no temp file on the
+# box — and needs the two read-only diagnostics in the sudoers grant
+# (nginx -t, certbot certificates); until apply.sh has been re-run to install
+# that widened grant, the sweep's nginx check degrades to a warning rather
+# than failing every deploy.
 #
 # Exit non-zero on the first failure: a half-shipped tree that reports success
 # is worse than a failed deploy, because the operator would stop looking.
@@ -276,26 +278,21 @@ if [ "${RUN_SMOKE}" -eq 1 ]; then
 fi
 
 # --- 5. doctor (the shared-box gate) ----------------------------------------
-# The box is shared (manifest: ahaqqu/homepage provision/vps/MACHINE.md): a
-# kajianq change that invalidates nginx or starves a neighbour must turn this
-# deploy red, not surface later as a mystery on the other app. doctor.sh is
-# the homepage repo's read-only sweep — nginx -t, sites-enabled hygiene,
-# failed units, every app's listeners and units, cert expiry — and this
-# identity may run it because the sudoers grant above carries the two
-# read-only diagnostics it needs. The URL is configuration (KAJIANQ_DOCTOR_URL
-# in the env file — this script ships placeholders only), fetched at deploy
-# time so all three repos share one copy of the check. Blocking on purpose: a
-# deploy that cannot prove the box healthy has not deployed. Until apply.sh
-# has been re-run to install the widened sudoers grant, the sweep's nginx
-# check degrades to a warning instead of failing every deploy.
-DOCTOR_URL="${KAJIANQ_DOCTOR_URL:-}"
-if [ -z "${DOCTOR_URL}" ]; then
-    echo "deploy: KAJIANQ_DOCTOR_URL is empty in ${ENV_FILE} — set it to the raw" >&2
-    echo "deploy: doctor.sh URL (ahaqqu/homepage, provision/vps/doctor.sh)" >&2
-    exit 1
-fi
+# The box is shared (manifest: the private ahaqqu/homepage repo): a kajianq
+# change that invalidates nginx or starves a neighbour must turn this deploy
+# red, not surface later as a mystery on the other app. The sweep is ONE COPY
+# ON THE BOX — homepage (the box's owner) updates /srv/vps-ops/doctor.sh on
+# every one of its deploys, and every app's deploy runs that same file: no
+# vendored duplicate to drift, nothing fetched, no credential. It checks
+# nginx -t, sites-enabled hygiene, failed units, every app's listeners and
+# units, cert expiry. Runs as the deploy identity, which may do so because
+# the sudoers grant above carries the two read-only diagnostics it needs.
+# Until homepage has deployed once since the ops-dir bootstrap the file may
+# be absent — a warning, not a failure. Until apply.sh has been re-run to
+# install the widened sudoers grant, the sweep's nginx check degrades to a
+# warning instead of failing every deploy. Blocking on purpose: a deploy that
+# cannot prove the box healthy has not deployed.
 log "running the shared-box doctor (cross-app gate)"
-run ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" \
-    'f="$(mktemp)" && curl -fsSL --retry 2 "'"$DOCTOR_URL"'" -o "$f" && bash "$f"; r=$?; rm -f "$f"; exit $r'
+run ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'if [ -x /srv/vps-ops/doctor.sh ]; then bash /srv/vps-ops/doctor.sh; else echo "deploy: ⚠ /srv/vps-ops/doctor.sh not present yet — has homepage deployed since the ops-dir bootstrap?" >&2; fi'
 
 log "done. deployed and smoke-verified."
