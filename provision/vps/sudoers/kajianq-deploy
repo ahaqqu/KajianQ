@@ -15,9 +15,17 @@
 # they stop agreeing.
 #
 # The deploy path (provision/vps/deploy/deploy.sh) runs exactly two privileged
-# operations, and this file is their whole authorization: restart the API unit
-# after the tree is shipped, and fire the session-reclamation oneshot once so a
-# rotated env var fails the deploy instead of surfacing at 03:17. Everything else
+# operations — restart the API unit after the tree is shipped, and fire the
+# session-reclamation oneshot once so a rotated env var fails the deploy instead
+# of surfacing at 03:17. A third rule carries two READ-ONLY diagnostics
+# (`nginx -t` validates, `certbot certificates` lists; neither writes state):
+# the post-deploy doctor gate (see deploy.sh §5) runs the shared-box sweep from
+# ahaqqu/homepage as this identity, and without the grant the sweep can only
+# warn that the config is unverifiable. They ride the same NOPASSWD rule as the
+# systemctl commands on purpose: the vps-hardening test parses the grant
+# bidirectionally (every granted command used, every used command granted) and
+# its parser tracks /usr/bin/systemctl entries — a separate rule line would
+# parse as a bogus systemctl entry and fail the build. Everything else
 # is unprivileged — the web build, both rsyncs, the smoke, and the read-only
 # `systemctl is-active` check, which needs no grant because unit state is
 # world-readable (verified on the box; the deploy runs it without sudo).
@@ -40,4 +48,6 @@
 Defaults:kajianq-deploy !requiretty
 
 kajianq-deploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart kajianq-api.service, \
-                                    /usr/bin/systemctl start kajianq-cron.service
+                                    /usr/bin/systemctl start kajianq-cron.service, \
+                                    /usr/sbin/nginx -t, \
+                                    /usr/bin/certbot certificates

@@ -2,7 +2,7 @@
 name: "qa"
 description: "Adversarial QA agent for the manager-orchestrated agentic workflow. Verifies a merged change against the deployed staging environment — the ticket's observable, its blast radius, boundaries, and the abuse angles — and reports a verdict with per-probe evidence. Read-only on the repo: no commits, branches, merges or closures."
 color: red
-model: "d5585e04-940a-41f6-a9ec-320bb4fccd7e/glm-5.3:cloud"
+model: "d5585e04-940a-41f6-a9ec-320bb4fccd7e/deepseek-v4.1-flash:cloud"
 thoughtLevel: max
 tools:
   - "*"

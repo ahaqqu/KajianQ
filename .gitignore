@@ -14,6 +14,12 @@ coverage/
 .vite/
 *.tsbuildinfo
 .scratch/
+
+# Agent-session scratch (QA evidence, pr/fix working files). Untracked by
+# design, but not ignored by `vp check` unless it is listed here — and an
+# unformatted scratch file then fails `bun run lint` (the pre-push gate) for
+# changes that have nothing to do with it.
+.cache/
 apps/api/.mf/
 .dev.vars
 

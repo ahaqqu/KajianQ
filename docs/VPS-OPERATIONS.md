@@ -35,7 +35,8 @@ sequence with the ADR-0038 snapshot gate.
 
 ```
 Internet
-   │  (the sslip.io wildcard name; no DNS provider of ours in the serving path)
+   │  (kajianq.ahaqqu.com — a DNS-only A record at the domain's own nameservers;
+   │   no CDN proxy sits in the serving path, per ADR-0044 decision 4, §1.6)
    ▼
 nginx  :443 (TLS)  ──static──▶  /srv/kajianq/web   (the React PWA build)
    │
@@ -206,7 +207,8 @@ the key is missing — an actionable failure rather than a silent no-op. The
 private key is written to a runner-local file the job removes when it ends.
 
 **Legacy variables removed (step 7 executed).** `STAGING_URL` is deleted;
-`PROD_URL` is re-pointed at the VPS host (`https://62.83.35.220.sslip.io`) —
+`PROD_URL` is re-pointed at the VPS's public origin
+(`https://kajianq.ahaqqu.com` since the hostname switch of 2026-09-29, §1.6) —
 no workflow reads either, the occurrences of the name `STAGING_URL` in
 `staging.yml` are that workflow's own local shell variable fed from
 `vars.VPS_PUBLIC_URL`. The Worker-era secrets (`CLOUDFLARE_API_TOKEN`,
@@ -274,6 +276,151 @@ password is required`, after the tree had already shipped (Staging run
 The API bundle is not written by the service account, so a deploy cannot leave a
 stale file the process still holds — the restart in step 3 is what swaps the
 code.
+
+### 1.6 The public hostname (and how to change it)
+
+The box serves **`https://kajianq.ahaqqu.com`**. It was cut over on the
+`62.83.35.220.sslip.io` wildcard name and moved to the custom domain on
+2026-09-29, which **retired** the old name — one canonical public origin, no
+alias server block. The executed migration's own record
+([`docs/VPS-CUTOVER-RECORD.md`](./VPS-CUTOVER-RECORD.md)) still names sslip.io:
+that is the name the recorded steps ran under, and a record is not rewritten
+when the world moves on.
+
+The name is configuration, not code, and it lives in exactly three places:
+
+| Where                    | Key                                                     | Read by                                                                      |
+| ------------------------ | ------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `/etc/kajianq/proxy.env` | `KAJIANQ_DOMAIN`, `KAJIANQ_TLS_CERT`, `KAJIANQ_TLS_KEY` | `apply.sh`, which renders them into nginx's `server_name`/`ssl_certificate*` |
+| `/etc/kajianq/api.env`   | `ALLOWED_ORIGINS`                                       | the API's strict CORS allowlist (§1.3)                                       |
+| GitHub variable          | `VPS_PUBLIC_URL` (§1.4, **both** scopes)                | deploy smoke, Staging smoke, ZAP, Schemathesis                               |
+
+The PWA needs no change either way: it calls the API same-origin
+(`apps/web/src/lib/api.ts` → `API_BASE = "/v1"`), and the API additionally
+accepts its own origin (`resolveCorsOrigin`), so a hostname switch cannot break
+the served app the way a split UI/API host would.
+
+**The other project on this box must keep serving.** Gunbatte Royale
+(`gunbatte.ahaqqu.com`, `play.gunbatte.ahaqqu.com` → `gunbatte.service` on
+:8321) shares nginx, certbot, and Postgres, so a hostname switch is written to
+touch none of its pieces:
+
+- `apply.sh` renders **only** `/etc/nginx/sites-available/kajianq.conf` (from
+  the repo template) and symlinks it; `gunbatte.conf` is never read, rewritten,
+  or removed, and its `server_name`s never match this project's names.
+- Certbot's lineage is per-name: this project's certificate lives under
+  `/etc/letsencrypt/live/<this-host>/`, gunbatte's under
+  `/etc/letsencrypt/live/play.gunbatte.ahaqqu.com/`. Renewal and
+  `certbot delete` act on one lineage each, so retiring our old name cannot
+  touch theirs.
+- Neither `/srv/kajianq` (the deploy's `rsync --delete` target) nor
+  `/etc/kajianq/*.env` overlaps gunbatte's static root
+  (`/home/kajianq-deploy/gunbatte/website`) or its unit.
+- What is box-wide and therefore a real, if momentary, effect: nginx **reloads**
+  (graceful — established connections drain, no dropped request) and `apply.sh`
+  restarts **Postgres** and **journald** (≈1 s each, so a shared database
+  connection may blip). `gunbatte.service` itself is never restarted.
+
+**The name must resolve directly to the box.** The nginx block overwrites
+`CF-Connecting-IP` with `$remote_addr` and the rate limiter trusts that header,
+so a CDN proxy in front of the origin would hand the limiter an edge address and
+collapse per-IP metering into one global bucket (ADR-0044 decision 4). The
+record is therefore DNS-only; there is no proxy toggle to remember, and a
+hostname whose DNS _is_ proxied must gain `ngx_http_realip_module`
+configuration first.
+
+To move the box to another name (root on the box):
+
+```bash
+# 0. Insurance on a shared box: with --webroot certbot edits no server block,
+#    and this snapshot makes that claim checkable afterwards (the compare in the
+#    checks below lists every file that changed under /etc/nginx).
+sudo tar czf "/root/nginx-config-$(date +%F).tgz" -C /etc nginx
+
+# 1. Certificate first: step 4 renders a server block that names these files,
+#    and `nginx -t` fails on a missing certificate. This box shares :80 with
+#    gunbatte, so use --webroot: the challenge is served from the stock
+#    default vhost's root (/var/www/html) and certbot edits no server block at
+#    all. (`--nginx`, the setup guide's command on a single-tenant box, would
+#    temporarily rewrite whichever block it picks.)
+sudo certbot certonly --webroot -w /var/www/html -d <new-host>
+
+# 2. The proxy's own identity — the domain plus the two paths certbot printed.
+sudoedit /etc/kajianq/proxy.env     # KAJIANQ_DOMAIN, KAJIANQ_TLS_CERT, KAJIANQ_TLS_KEY
+
+# 3. The API's allowlist — the origin exactly: scheme included, no trailing slash.
+sudoedit /etc/kajianq/api.env       # ALLOWED_ORIGINS=https://<new-host>
+
+# 4. Refresh the checkout apply.sh renders from, then render + validate + reload
+#    (idempotent; it also re-installs the units and the log-rotation stanzas, and
+#    restarts Postgres and journald — a second of downtime, not a deploy). If the
+#    pull cannot run (a bundle-transferred tree, no network), the existing
+#    checkout still renders the same template: nothing in a hostname switch
+#    touches provision/.
+sudo git -C /srv/kajianq-src pull --ff-only     # optional; skip if it cannot run
+sudo /srv/kajianq-src/provision/vps/apply.sh --env /etc/kajianq/proxy.env
+
+# 5. ALLOWED_ORIGINS is read at process start (systemd EnvironmentFile).
+sudo systemctl restart kajianq-api.service
+```
+
+Verify from **outside** the box, so the proxy and the certificate are what is
+tested rather than the loopback port:
+
+```bash
+curl -sS "https://<new-host>/v1/health"                              # {"status":"ok",…}
+curl -sS -o /dev/null -w '%{http_code}\n' "https://<new-host>/chat"  # 200 — the SPA, not nginx's 404
+echo | openssl s_client -connect <new-host>:443 -servername <new-host> 2>/dev/null |
+    openssl x509 -noout -subject -dates                              # CN/SAN is <new-host>
+# CORS: the new origin is echoed back, a retired or unknown one gets no header.
+curl -sSI -X OPTIONS "https://<new-host>/v1/chat" -H "Origin: https://<new-host>" |
+    grep -i '^access-control-allow-origin'
+curl -sSI -X OPTIONS "https://<new-host>/v1/chat" -H "Origin: https://<old-host>" |
+    grep -i '^access-control-allow-origin'                           # no output
+```
+
+And prove the neighbour is untouched — these answered `200` before the switch
+and must still answer `200` after it (they are the checks the guarantee above
+rests on, not a formality):
+
+```bash
+for u in https://gunbatte.ahaqqu.com/ https://play.gunbatte.ahaqqu.com/; do
+    printf '%s ' "$u"; curl -sS -o /dev/null -w '%{http_code}\n' "$u"
+done
+ssh <box> systemctl is-active gunbatte.service     # active
+ssh <box> sudo nginx -t                            # syntax ok — no foreign block was touched
+# Compare against step 0's snapshot: this project's rendered block should be the
+# only entry listed (tar exits 1 when it finds differences — the expected
+# outcome here, not a failure).
+ssh <box> sudo sh -c 'cd /etc && tar df /root/nginx-config-*.tgz'
+```
+
+Then retire the old name and move the variable that names the public origin —
+the switch and this step belong to the same sitting, because a
+`VPS_PUBLIC_URL` pointing at a name the box does not answer fails every deploy
+smoke and Staging run, and so does the reverse (a retired name still named by
+the variable):
+
+```bash
+# The old certificate — and only AFTER step 4 re-rendered the block: the
+# rendered server block names this lineage until then, so deleting it first
+# leaves nginx pointing at files that no longer exist. Without the delete,
+# certbot's timer keeps renewing a name the box no longer serves, and starts
+# failing once DNS stops resolving here.
+sudo certbot delete --cert-name <old-host>
+
+# Both scopes: the `prod` environment's copy overrides the repo-level one.
+gh variable set VPS_PUBLIC_URL --body "https://<new-host>"
+gh variable set PROD_URL       --body "https://<new-host>"
+gh api --method PATCH repos/{owner}/{repo}/environments/prod/variables/VPS_PUBLIC_URL \
+    -f name=VPS_PUBLIC_URL -f value="https://<new-host>"
+```
+
+Finally, prove the CI path end-to-end rather than the box alone: dispatch
+**Deploy to VPS** (`environment: staging`) and watch its smoke hit the new URL.
+Then record the new origin in §0 and §1.4 here and in the README's environment
+table — the repository is where the current name is written down, since the
+values that actually serve it are root-only on the box.
 
 ## 2. How to manage Postgres
 
@@ -419,6 +566,25 @@ The script **refuses to run** when the password file is group- or
 world-readable: a world-readable repository key silently undoes the encryption
 it exists to provide. The target must never be a free tier (the register rule) —
 the repository holds a full-database dump carrying chat content and feedback.
+
+**The schedule's own product is proven** (2026-09-29, closing #214). The
+`03:15` fires of 2026-09-26…29 each started with **no operator command between
+it and the previous run**, logged `created "daily-<UTC>"` — a line the script
+prints only after `restic backup` _and_ `forget --prune` have exited 0 — and
+finished `Deactivated successfully` (`ExecMainStatus=0`). Their dump sizes track
+the corpus rather than a truncated dump: `359,306,990` bytes on 09-26 (the night
+#213's full-corpus load landed), then `669,165,338` / `670,417,700` /
+`670,537,885` as it settled, against `133,598,276` before the load. Read the
+proof the same way, per night:
+
+```bash
+journalctl -u kajianq-backup.service --since "-7 days" | grep -E 'Starting|created|Deactivated'
+```
+
+A hardening re-apply (`apply.sh`) re-installs the unit file, which makes the
+next deploy demand a fresh run — the gate cannot tell a re-installed identical
+unit from a changed one (#320). An operator-started run satisfies that gate but
+is **not** the proof above: the proof is a night the timer fired by itself.
 
 Operate it:
 
@@ -590,6 +756,7 @@ monitoring must not create an unbounded personal-data-adjacent log surface. Issu
 | Deploy from the deploying machine     | `provision/vps/deploy/deploy.sh --env /etc/kajianq/deploy.env`                                                                                                                                                                                                                                          |
 | See what a deploy would do            | `provision/vps/deploy/deploy.sh --dry-run`                                                                                                                                                                                                                                                              |
 | Apply/refresh hardening               | `sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env` (idempotent)                                                                                                                                                                                                                                 |
+| Change the public hostname            | §1.6 — certbot, `proxy.env`, `ALLOWED_ORIGINS`, `apply.sh`, then `VPS_PUBLIC_URL` in both scopes                                                                                                                                                                                                        |
 | Check migrations                      | `DATABASE_URL=… bun run db:status:all` (§2.3)                                                                                                                                                                                                                                                           |
 | Take a snapshot                       | `DATABASE_URL=… bun run db:snapshot create <lowercase-label>` with the posture flag (§2.4)                                                                                                                                                                                                              |
 | Verify a snapshot                     | `bun run db:snapshot verify <label>`                                                                                                                                                                                                                                                                    |
