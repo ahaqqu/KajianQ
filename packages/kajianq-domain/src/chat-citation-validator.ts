@@ -1,12 +1,25 @@
 import type { Chunk } from "@app/rag-core";
+import { addressesNamedBy } from "./chat-citation-grammar";
 import {
-  CITATION_GRAMMARS,
+  citationCandidatesIn,
+  citationSpansIn,
+  normalizeCitationLabel,
+} from "./chat-citation-normalize";
+import {
   canonicalizeCitationSpelling,
   foldAddressDigits,
-  reduceCitationLabel,
   stripInvisibleFormatting,
-  stripInvisibleFormattingWithOffsets,
-} from "./chat-citation-grammar";
+} from "./chat-citation-spelling";
+
+// Re-exported so the gate's public surface (the domain barrel, the reviewer
+// pre-gate's claim spans, the eval scorer's injected grammar) is unchanged by
+// the split: the scan and the comparison form are one subject and one import
+// path, however many files the 300-line cap distributes them across.
+// `addressesNamedBy` joins them because it IS the comparison form's other half:
+// the addresses a citation names are what the per-address rule compares, and
+// the eval's injected grammar reads the same declaration rather than a second
+// implementation of the range's semantics.
+export { addressesNamedBy, citationCandidatesIn, citationSpansIn, normalizeCitationLabel };
 
 /**
  * Deterministic citation validator (spec §3.3 step 7, ticket #10): every
@@ -51,181 +64,6 @@ export function citationLabelsOf(chunk: Chunk): string[] {
 }
 
 /**
- * Trailing citation noise: any run of non-address characters at the tail —
- * punctuation, markdown markers/quotes, symbols and whitespace. This is the
- * **fallback** rule, for labels that do not begin with a citation grammar (a
- * full Kitab chunk label carries its work and author before `Jilid …`): such a
- * label is not an address with a tail, so it is cleaned lexically. A label
- * that does begin with a grammar is reduced to the address that grammar
- * identified instead — see {@link normalizeCitationLabel}.
- *
- * One negated character class, anchored: linear, with no alternation that
- * could match the same tail two ways (model-controlled text makes an ambiguous
- * tail pattern a ReDoS shape).
- */
-const TRAILING_CITATION_NOISE = /[^\p{L}\p{N}]+$/u;
-
-/**
- * Strip the trailing `(Grade)` suffix the hadith formatter appends. It is
- * reachable for a label that does **not** begin with a citation grammar — a
- * full Kitab chunk label (`Al-Umm, … , Jilid 1, Hal. 102 (Sahih)`) is the shape
- * it exists for — **or for a grammar-initial label that is kept whole**: a
- * dash-joined compound reduces to itself, so this pass is what removes the
- * grade from `HR. Bukhari no. 5010—5011 (Dhaif)` (executed). Every other
- * grammar-initial label is reduced to its grammar's address before this pass is
- * reached, and that reduction already removes the grade: on the chunk side
- * `formatHadithCitation` writes `HR. X no. N (Grade)`, whose address is the
- * number word after `no.`, so `reduceCitationLabel("HR. Ibnu Majah no. 224
- * (Dhaif)")` returns `{address: "HR. Ibnu Majah no. 224", keepWhole: false}` and
- * this anchored pass never sees it. The earlier rewording stopped at "does not
- * begin with a citation grammar", which the kept-whole compound falsifies
- * (review B2); both paths are executed in the unit test.
- *
- * On the draft side only the **spaced** form is out of reach: the grammar's
- * number token stops at whitespace, so `HR. X no. 573 (Sahih)` and
- * `HR. X no. 573: (Sahih)` never enter a span. The **glued** form does:
- * `citationSpansIn("HR. Bukhari no. 573(Sahih) …")` yields the span
- * `HR. Bukhari no. 573(Sahih` (the token absorbs `(`, stops at `)`), which is a
- * real draft span carrying grade text. That shape is reduced by the
- * grammar-address rule in {@link normalizeCitationLabel}. (An earlier docstring
- * claimed no draft span could carry a grade at all — false, and the glued shape
- * it missed false-refused a grounded citation; review B2/A2. Review #264 then
- * found the chunk-side clause of the same docstring stale in the same way.)
- */
-function stripGradeSuffix(label: string): string {
-  return label.replace(/\s*\([^()]*\)\s*$/, "");
-}
-
-/**
- * Reduce a label that does **not** begin with a citation grammar to its
- * address-adjacent form: drop the grade parenthetical the chunk formatter
- * appends, then the punctuation, markdown or quote noise a draft wraps around
- * it. Both patterns are linear and anchored, and neither can match what the
- * other matched first. Labels that DO begin with a grammar are reduced to that
- * grammar's address instead — the tail there is whatever the grammar's token
- * absorbed, and only the grammar knows whether a given tail character is
- * address or noise.
- */
-function trimCitationTail(label: string): string {
-  return stripGradeSuffix(label).replace(TRAILING_CITATION_NOISE, "").trim();
-}
-
-/**
- * Normalize a label for comparison: collapse whitespace, drop markdown
- * emphasis and invisible formatting, fold the fullwidth digit block, reduce the
- * label to the **address its own citation grammar identifies**, then
- * canonicalize the address's separator spelling.
- *
- * The reduction is grammar-driven rather than a punctuation rule, because a
- * tail cannot be recognized by its characters alone (review A2): the footnote
- * `HR. Bukhari no. 5010:1` must reduce to `HR. Bukhari no. 5010`, while
- * `QS. 2:255` must keep its colon and both numbers. No trailing-character rule
- * can separate those two — the hadith grammar already knows its address ends
- * at the number word after `no.`, and the Quran grammar knows its address IS
- * the `surah:ayah` pair. So each grammar names its address (`addressOf` in
- * `chat-citation-grammar`) and {@link reduceCitationLabel} trims the match to
- * it. That single rule also closes the rest of the tail family at once:
- * `… no. 5010:` (#253), `… no. 5010—ia` / `-ia` / `‒ia` / `―ia` (A1),
- * `… no. 5010:1`, `… no. 5010¹`, `… no. 5010(Sahih` (A2), and the rest of the
- * Unicode classes the property sweeps (B1).
- *
- * Two things survive the reduction on purpose, both fail-closed (the reasons
- * are on their declarations in `chat-citation-grammar`):
- *
- * - a dash joined to a number, kept whole — the A3 precision-for-safety
- *   trade-off, with its cost and its follow-up, now covering the Quran
- *   compound (`QS. 2:255—256`) as well as the hadith one (#264);
- * - letters and digits glued straight onto the number, which are part of the
- *   address token itself, so `… no. 5010a` and `… no. 50102` stay distinct
- *   from `… no. 5010` instead of grounding on it.
- *
- * Labels that do not begin with a grammar keep the lexical strip
- * ({@link trimCitationTail}): the grade parenthetical the chunk formatter
- * appends, then the trailing punctuation.
- *
- * Only the TAIL is touched, so the colon inside `QS. 2:255` and the comma
- * inside `Jilid 1, Hal. 102` survive: a naive `replace(/:.*$/, "")` would
- * erase every Quran citation.
- */
-export function normalizeCitationLabel(label: string): string {
-  const flattened = foldAddressDigits(stripInvisibleFormatting(label.replace(/[*_`]+/g, "")))
-    .replace(/\s+/g, " ")
-    .trim();
-  const reduction = reduceCitationLabel(flattened);
-  const reduced =
-    reduction === null || reduction.keepWhole ? trimCitationTail(flattened) : reduction.address;
-  return canonicalizeCitationSpelling(reduced);
-}
-
-/**
- * Every citation-shaped span in the text, normalized and de-duplicated in
- * first-appearance order. Grammar matches inside brackets are found by the
- * same scan (`[QS. 2:255]` matches `\bQS\.`), so no separate bracket rule is
- * needed — and no non-citation bracketed text is picked up.
- */
-export function citationCandidatesIn(text: string): string[] {
-  return scanCitations(text).map((citation) => citation.label);
-}
-
-/**
- * The same scan as {@link citationCandidatesIn}, but carrying each span's
- * offsets in the original text and ordered by **position in the text** rather
- * than by grammar (the candidate list is grammar-major: all Quran matches
- * before all hadith matches, whatever their order in the draft).
- *
- * The offset+position form is what a consumer that must locate a groundable
- * citation *inside* the draft needs — the reviewer pre-gate keys its judgment
- * by citation position (ADR-0042 adoption) and must not split a claim span in
- * the middle of a citation. Both exports read the one scan, so the grammar,
- * the normalization, and the de-duplication rule cannot drift between them.
- */
-export function citationSpansIn(text: string): { start: number; end: number; label: string }[] {
-  return scanCitations(text)
-    .map((citation) => ({ ...citation }))
-    .sort((a, b) => a.start - b.start);
-}
-
-/**
- * The one grammar scan behind both citation-list exports (first-seen wins).
- *
- * The scan reads the **stripped** text, not the raw draft (review A3): the
- * ungrounded direction used to match raw characters while the comparison form
- * dropped `\p{Cf}`, so a fabricated `HR. Bukhari no\u200c. 99999` was invisible
- * to the gate and passed unseen. Both sides now read the same characters, and
- * {@link stripInvisibleFormattingWithOffsets} carries the offset policy that
- * keeps each span pointing at where the draft wrote it.
- *
- * **Recorded residual (#264 review A3).** Two spellings stay outside every
- * grammar and so still pass unseen — the fail-open direction the digit posture
- * on {@link CITATION_GRAMMARS} promises not to take. They are recorded, not
- * closed, because closing either is a grammar widening:
- *
- * - `QS9:99` (no separator between marker and address) — round-3 A1 required
- *   one, and {@link canonicalizeCitationSpelling} now mirrors that exclusion
- *   instead of folding a spelling the scan cannot see (review A2);
- * - `HR. Bukhari no 99999` (dot-less address marker) — the hadith pattern
- *   requires `no.`.
- *
- * Both rows are pinned in the unit test so the next hunt does not re-find them.
- */
-function scanCitations(text: string): { start: number; end: number; label: string }[] {
-  const found: { start: number; end: number; label: string }[] = [];
-  const seen = new Set<string>();
-  const { text: scanned, offsets } = stripInvisibleFormattingWithOffsets(text);
-  for (const grammar of CITATION_GRAMMARS) {
-    for (const match of scanned.matchAll(grammar.pattern())) {
-      const label = normalizeCitationLabel(match[0]);
-      if (label === "" || seen.has(label)) continue;
-      seen.add(label);
-      const start = offsets[match.index] ?? text.length;
-      const end = offsets[match.index + match[0].length] ?? text.length;
-      found.push({ start, end, label });
-    }
-  }
-  return found;
-}
-
-/**
  * The comparison form of a text for grounded-label matching: invisible
  * formatting dropped, fullwidth digits folded, whitespace collapsed and the
  * address separators canonicalized, exactly as {@link validateCitations}
@@ -242,6 +80,78 @@ export function citationMatchText(text: string): string {
 }
 
 /**
+ * **Which retrieved labels ground one citation-shaped span** — the single
+ * implementation of the gate's rule, returned rather than decided so every
+ * consumer of "grounded" reads the same answer (review A1 of the fix round).
+ *
+ * The gate's ungrounded direction and the user-visible citations frame
+ * (`deriveCitationsFrame`) both call this. Before it existed they each carried
+ * their own reading, so a range the gate had just accepted still produced no
+ * chip for the user and scored `citationValidity` 0 on the eval's authoritative
+ * frame path. A third consumer cannot be written by accident now: the rule has
+ * one owner, and its result is the accepted label(s) rather than a boolean —
+ * the frame needs the label to find the display row, and the eval's frame path
+ * matches on exactly those labels.
+ *
+ * `candidate` is a normalized span (the grammar scan's output); `known` is the
+ * retrieved chunks' normalized citation labels. All three rules run in the
+ * gate's order:
+ *
+ * 1. the span **is** a retrieved label (the ordinary case);
+ * 2. the span names a **list** of addresses (the Quran range) and every one of
+ *    them is retrieved — strict-whole, the interior included (ADR-0049);
+ * 3. the span **extends** a retrieved label with a grade the chunk did not
+ *    carry (`HR. Bukhari no. 573 (Sahih)`), which is the answer's provenance,
+ *    not a second address.
+ *
+ * The list rule runs **before** the extension rule, and a declared list that is
+ * not fully retrieved returns `null` rather than falling through: a spaced
+ * range (`QS. 2:255 - 256`, review R5 of the fix round) *does* extend the
+ * retrieved head with a space, so the old order grounded it on the head alone
+ * — the very hole A2 closed for the glued spelling. A grammar that declares no
+ * list (the hadith number) keeps the extension rule as its only reading.
+ *
+ * A declared list the grammar **cannot enumerate** refuses too, and that
+ * refusal is read from a distinct state rather than guessed from the list's
+ * length (review T1 of the fix round): `addressesNamedBy` returns `null` for
+ * it, never a one-element list. Encoded as `[label]` it was indistinguishable
+ * from a single-address declaration, so the rule below was skipped and the
+ * extension rule grounded `QS. 2:255 - 999` on `QS. 2:255` while its glued
+ * twin refused — the spaced spelling weaker than the glued one at exactly the
+ * address ADR-0049 names as the refusal case.
+ *
+ * Like the whole-label rule it replaces, no rule here can ground a citation
+ * that rule refused. `null` means nothing retrieved grounds the span; every
+ * returned label is in `known` by construction, so a caller can look each one
+ * up directly.
+ */
+export function groundingLabelsFor(
+  candidate: string,
+  known: ReadonlySet<string>,
+): readonly string[] | null {
+  if (known.has(candidate)) return [candidate];
+  // A declared list the grammar could not enumerate is unverifiable: refuse
+  // outright, before the length test below can mistake it for a single address.
+  const declared = addressesNamedBy(candidate);
+  if (declared === null) return null;
+  // ADR-0049: every address the citation's own grammar declares it names must
+  // be present. One declared address is the ordinary case already covered
+  // above; the check only ever ADDS a requirement, never drops one — and an
+  // unenumerable list, which no list can carry, refuses above instead.
+  const named = declared.map(canonicalizeCitationSpelling);
+  if (named.length > 1) {
+    return named.every((address) => known.has(address)) ? named : null;
+  }
+  // The extension rule can match more than one known label (a shortened label
+  // and the same label carrying the grade), so all matches come back: this
+  // function's set is then equal to the gate's `grounded` list, which adds
+  // every label the answer text contains.
+  const extended = [...known].filter((label) => candidate.startsWith(`${label} `));
+  if (extended.length > 0) return extended;
+  return null;
+}
+
+/**
  * Check the draft's answer: which of the retrieved chunks' citation labels
  * appear in the text (`grounded`), and which citation-shaped spans in the
  * text exist in no retrieved chunk (`ungrounded`).
@@ -250,6 +160,19 @@ export function citationMatchText(text: string): string {
  * appends a grade parenthetical is not falsely accused; and a retrieved label
  * whose text the answer extends (the model added `(Sahih)` to an ungraded
  * chunk) still counts as grounded.
+ *
+ * **A citation that names a LIST of addresses is checked address by address
+ * (ADR-0049), by {@link groundingLabelsFor}.** The Quran range is such a form:
+ * `QS. 3:1-2` names `QS. 3:1` *and* `QS. 3:2`, so it grounds exactly when the
+ * retrieved labels hold every one of them — and still refuses when only the
+ * head, only the tail, or neither was retrieved. `QS. 2:255-260` names 255
+ * through 260, interior included. The list comes from the grammar that declared
+ * it (`addressesNamedBy`), never from splitting a dash at this site: a grammar
+ * with no list-valued form names one address and its dash-joined compound
+ * stays the opaque whole it was (#264's A3 boundary, unchanged for hadith).
+ * The candidate label itself is untouched, so the refusal reason, the reviewer
+ * pre-gate's claim spans and the citation the user reads keep naming what the
+ * draft named.
  */
 export function validateCitations(
   answer: string,
@@ -267,18 +190,26 @@ export function validateCitations(
   // spelling (`QS 2:255`) for a `QS. 2:255` chunk still counts as grounded
   // provenance rather than vanishing from the review trace's `grounded` list.
   const normalizedAnswer = citationMatchText(answer);
-  const grounded: string[] = [];
+  const grounded = new Set<string>();
   for (const label of known) {
-    if (normalizedAnswer.includes(label)) grounded.push(label);
+    if (normalizedAnswer.includes(label)) grounded.add(label);
   }
   const ungrounded: string[] = [];
   for (const candidate of citationCandidatesIn(answer)) {
-    if (known.has(candidate)) continue;
-    // The answer may extend a known label with a grade the chunk did not
-    // carry (`HR. Bukhari no. 573` → `… (Sahih)`); the address is what must
-    // be grounded, so a known-label prefix counts.
-    if ([...known].some((k) => candidate.startsWith(`${k} `))) continue;
-    if (!ungrounded.includes(candidate)) ungrounded.push(candidate);
+    const accepted = groundingLabelsFor(candidate, known);
+    if (accepted === null) {
+      if (!ungrounded.includes(candidate)) ungrounded.push(candidate);
+      continue;
+    }
+    // A citation that names a list of addresses cites every one of them, so
+    // the provenance list names them all — not only the ones the substring
+    // pass found literally in the text. `QS. 3:1-2` written over retrieved
+    // `QS. 3:1` and `QS. 3:2` says `grounded: ["QS. 3:1", "QS. 3:2"]`, which
+    // is what makes the trace's evidence agree with the frame and with the
+    // scorer on a range (review A1 of the #274 fix round: the tail address is
+    // never a literal substring of `QS. 3:1-2`, so the events path used to
+    // score a required tail verse 0 while the frame path scored it 1).
+    for (const label of accepted) grounded.add(label);
   }
-  return { grounded, ungrounded };
+  return { grounded: [...grounded], ungrounded };
 }

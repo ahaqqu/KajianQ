@@ -124,6 +124,23 @@ describe("trace contract", () => {
         at: 3,
       },
       {
+        // Neighbourhood expansion (ADR-0049): the retriever added the children
+        // neighbouring the verses already in context. `anchors` names the ids
+        // the read was keyed on — in its priority order — so a reader can
+        // resolve every added ref to the read that produced it. Engine package,
+        // so the ids stay opaque placeholders.
+        stage: "retriever",
+        kind: "neighbour_expansion",
+        detail: {
+          anchors: ["c1", "c2"],
+          returned: 3,
+          radius: 1,
+          cap: 12,
+          truncated: false,
+        },
+        at: 3,
+      },
+      {
         stage: "assembler",
         kind: "assembly",
         detail: { turnCount: 2, chunkCount: 1 },
@@ -157,7 +174,7 @@ describe("trace contract", () => {
       { stage: "generator", kind: "refusal", reason: "insufficient evidence", at: 8 },
     ];
     const trace = parseTrace({ id: "t", createdAt: 0, events });
-    expect(trace.events).toHaveLength(10);
+    expect(trace.events).toHaveLength(11);
   });
 
   it("keeps a chunk ref without `origin` readable (pre-ADR-0045 traces)", () => {
@@ -261,6 +278,37 @@ describe("trace contract", () => {
         events: [{ stage: "retriever", kind: "intent", detail: { intent: "x" }, at: 1 }],
       }).success,
     ).toBe(false);
+  });
+
+  it("rejects a neighbour expansion without its anchors or budget (ADR-0049)", () => {
+    // The event's whole point is that an added chunk resolves to the read that
+    // produced it, which is `anchors` + `radius`; a record without either is
+    // the silent path the trace rule exists to prevent, so it fails the parse
+    // rather than being persisted as an untyped detail.
+    for (const detail of [
+      undefined,
+      { returned: 1, radius: 1, cap: 2, truncated: false },
+      { anchors: [], returned: 1, radius: 1, cap: 2 },
+      { anchors: [""], returned: 1, radius: 1, cap: 2, truncated: false },
+      { anchors: ["c1"], returned: -1, radius: 1, cap: 2, truncated: false },
+      { anchors: ["c1"], returned: 1, radius: 1, cap: 2, truncated: "no" },
+    ]) {
+      expect(
+        v.safeParse(TraceSchema, {
+          id: "t",
+          createdAt: 1,
+          events: [
+            {
+              stage: "retriever",
+              kind: "neighbour_expansion",
+              ...(detail !== undefined ? { detail } : {}),
+              at: 1,
+            },
+          ],
+        }).success,
+        JSON.stringify(detail),
+      ).toBe(false);
+    }
   });
 
   it("rejects a malformed intent detail", () => {

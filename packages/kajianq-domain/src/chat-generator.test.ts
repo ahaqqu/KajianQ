@@ -373,6 +373,10 @@ describe("runChatPipeline — end-to-end trace", () => {
             rankDense: 1,
           },
         ]),
+      // ADR-0049: the one fused hit is a verse, so the neighbourhood read is
+      // asked for — it contributes nothing here (this test pins the trace's
+      // scores and costs), but the fake must implement the seam.
+      listDocChildNeighboursByChildIds: () => Effect.succeed([]),
     };
     const answer = await Effect.runPromise(
       runChatPipeline(

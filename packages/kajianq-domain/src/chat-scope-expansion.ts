@@ -80,16 +80,21 @@ export type ScopeExpansion = {
 };
 
 /**
- * Build the expansion chunk. The text-layer metadata comes from the shared
- * `withTextLayers` owner (B1) — the same function the fused path calls — so the
- * assembler's Arabic + labeled-translation rule (ADR-0006) cannot go dead on
- * exactly the chunks this feature adds, and the rule has one implementation.
+ * Build one deterministic-expansion chunk. The text-layer metadata comes from
+ * the shared `withTextLayers` owner (B1) — the same function the fused path
+ * calls — so the assembler's Arabic + labeled-translation rule (ADR-0006)
+ * cannot go dead on exactly the chunks these features add, and the rule has
+ * one implementation.
+ *
+ * Shared with ADR-0049's neighbour expansion, which adds chunks from the same
+ * kind of structural read and must carry the same layer rule; the `origin`
+ * label is the caller's, so the two paths stay distinguishable on the trace.
  */
-function scopeChunk(row: ScopeChildRow): Chunk {
+export function expansionChunk(row: ScopeChildRow, origin: string): Chunk {
   return {
     id: row.id,
     text: row.textAr,
-    origin: SCOPE_EXPANSION_ORIGIN,
+    origin,
     metadata: withTextLayers(row.metadata, row.textAr, row.textId),
   };
 }
@@ -132,7 +137,7 @@ export function expandSurahScope(input: {
     const chunks: Chunk[] = [];
     for (const row of rows.slice(0, input.cap)) {
       if (input.existingIds.has(row.id)) continue;
-      chunks.push(scopeChunk(row));
+      chunks.push(expansionChunk(row, SCOPE_EXPANSION_ORIGIN));
     }
     return {
       chunks,

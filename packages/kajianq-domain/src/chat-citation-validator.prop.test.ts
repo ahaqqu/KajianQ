@@ -232,34 +232,59 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
     expect(normalizeCitationLabel("QS. 2:2550")).toBe("QS. 2:2550");
   });
 
-  it("keeps a dash joined to a number whole — the deliberate A3 trade-off, both grammars", () => {
-    // #264: one rule covers both grammars. The Quran compound used to slip
-    // through because the grammar's match ended at the first verse's digits,
-    // so the second address never reached this comparison.
-    const compounds: { compound: string; retrieved: string[] }[] = [];
+  it("keeps a dash joined to a number whole — per grammar, whole-label vs per-address", () => {
+    // #264 gave both grammars the same absorption and the same whole-label
+    // rule. ADR-0049 keeps that rule for a grammar that declares no address
+    // list (the hadith number) and completes #264's own A3 follow-up for the
+    // one that does (the Quran range), so the two grammars no longer share the
+    // verdict — they share the constant. This property is what pins the split:
+    // every dash spelling, both directions of the range.
+    const hadith: string[] = [];
+    const quranGrounds: string[] = [];
+    const quranRefuses: string[] = [];
     for (const dash of DASH_CHARS) {
       for (const number of ["3", "5011", "٥٠١١"]) {
-        compounds.push({
-          compound: `HR. Bukhari no. 5010${dash}${number}`,
-          retrieved: ["HR. Bukhari no. 5010", "HR. Bukhari no. 5011"],
-        });
+        hadith.push(`HR. Bukhari no. 5010${dash}${number}`);
       }
-      for (const number of ["256", "255", "٢٥٦"]) {
-        compounds.push({
-          compound: `QS. 2:255${dash}${number}`,
-          retrieved: ["QS. 2:255", "QS. 2:256"],
-        });
+      // A tail that resolves to the retrieved second address (256) and tails
+      // that do not: 257 was never retrieved, and ٢٥٦ is another script's
+      // digits, which no ASCII corpus label grounds (the digit posture).
+      for (const number of ["256"]) {
+        quranGrounds.push(`QS. 2:255${dash}${number}`);
+      }
+      for (const number of ["257", "٢٥٦"]) {
+        quranRefuses.push(`QS. 2:255${dash}${number}`);
       }
     }
-    for (const { compound, retrieved } of compounds) {
+    for (const compound of hadith) {
+      // The label stays whole for display in both grammars.
       expect(normalizeCitationLabel(compound), compound).toBe(compound);
-      const { ungrounded } = validateCitations(
-        `Lihat ${compound} menjelaskan`,
-        retrieved.map((label) => chunk(label)),
-      );
-      // Refused even with both addresses retrieved: the accepted cost of
-      // never dropping a possibly-unretrieved second address.
-      expect(ungrounded, compound).toEqual([compound]);
+      // Refused even with both addresses retrieved: the accepted cost of never
+      // dropping a possibly-unretrieved second address, unchanged for a
+      // grammar with no declared list (ADR-0049's revisit trigger).
+      expect(
+        validateCitations(`Lihat ${compound} menjelaskan`, [
+          chunk("HR. Bukhari no. 5010"),
+          chunk("HR. Bukhari no. 5011"),
+        ]).ungrounded,
+        compound,
+      ).toEqual([compound]);
+    }
+    for (const compound of quranGrounds) {
+      expect(normalizeCitationLabel(compound), compound).toBe(compound);
+      expect(
+        validateCitations(`Lihat ${compound} menjelaskan`, [chunk("QS. 2:255"), chunk("QS. 2:256")])
+          .ungrounded,
+        compound,
+      ).toEqual([]);
+    }
+    for (const compound of quranRefuses) {
+      expect(normalizeCitationLabel(compound), compound).toBe(compound);
+      expect(
+        validateCitations(`Lihat ${compound} menjelaskan`, [chunk("QS. 2:255"), chunk("QS. 2:256")])
+          .ungrounded,
+        compound,
+      ).toEqual([compound]);
     }
   });
 

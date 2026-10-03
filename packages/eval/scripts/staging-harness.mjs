@@ -25,6 +25,7 @@ import { BudgetExceededError, postChatSse } from "@app/eval";
 import {
   DEFAULT_REFUSALS,
   SCOPE_EXPANSION_ORIGIN,
+  addressesNamedBy,
   citationCandidatesIn,
   normalizeCitationLabel,
 } from "@app/kajianq-domain";
@@ -46,10 +47,18 @@ export const EXPANSION_ORIGIN = SCOPE_EXPANSION_ORIGIN;
  * (`validateCitations`) and the citations-frame derivation use — injected here
  * by the composition root, so the engine package stays domain-agnostic while
  * the scorer and the gate cannot disagree about what a citation is.
+ *
+ * `addressesNamedBy` is the naming declaration the scorer compares a required
+ * citation against the answer's evidence with (A1 of the #274 fix round): the
+ * question requires `QS. 2:255`, the answer cites the grounded range
+ * `QS. 2:255-256`, and the two are the same evidence once the range's addresses
+ * are read from the grammar that declares them. The engine learns no domain
+ * vocabulary — it asks the injected grammar what a label names.
  */
 export const CITATION_GRAMMAR = {
   normalizeLabel: normalizeCitationLabel,
   labelsInText: citationCandidatesIn,
+  addressesNamedBy,
 };
 
 /**
