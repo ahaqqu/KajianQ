@@ -134,8 +134,8 @@ carries the required-reviewer rule and its own environment-scoped `VPS_*` vars
 and `VPS_DEPLOY_SSH_KEY`, and both point at the one box. The label itself is
 cosmetic (the `env` field on log lines plus the health JSON; no behavioral gate
 differs) and already reads `staging` — the flip ran on the box on 2026-10-03,
-and the commands are kept for a rebuild in
-[`docs/VPS-OPERATIONS.md`](../../../docs/VPS-OPERATIONS.md) §1.7.
+and [`docs/VPS-OPERATIONS.md`](../../../docs/VPS-OPERATIONS.md) §1.7 now holds the
+recovery commands for a box built from the pre-fix template.
 
 ## Phase 7 — Smoke tests
 

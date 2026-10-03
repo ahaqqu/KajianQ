@@ -133,9 +133,11 @@ the React PWA and the `/v1/*` API from the same host. **Production is not
 provisioned** — deferred, not pending: standing one up later is a decision for
 when the product needs it, and nothing waits on it now. The 2026-09-21 cutover
 left the box's `APP_ENV` reading `production`; that label was reverted to
-`staging` on 2026-10-03 (`/v1/health` reports it), and the one-line commands are
-recorded for a rebuild in
-[`docs/VPS-OPERATIONS.md`](docs/VPS-OPERATIONS.md) §1.7 (ADR-0044 amendment,
+`staging` on 2026-10-03 (`/v1/health` reports it), and
+[`provision/vps/api.env.example`](provision/vps/api.env.example) now ships
+`staging`, so a rebuild takes the recorded label from the template directly (the
+recovery commands for a box still reading `production` are in
+[`docs/VPS-OPERATIONS.md`](docs/VPS-OPERATIONS.md) §1.7 — ADR-0044 amendment,
 2026-10-03).
 
 The UI and API columns stay even with a single row: they record that the PWA

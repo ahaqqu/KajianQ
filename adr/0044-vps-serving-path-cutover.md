@@ -396,6 +396,12 @@ decision.
    commands are kept in `docs/VPS-OPERATIONS.md` §1.7 for a rebuild. `APP_ENV`
    is cosmetic before and after: the `env` field on every log line plus the
    health JSON — no log level, no filtering, no privacy behaviour.
+
+   _Clarification (2026-10-03, #355): the "for a rebuild" pointer above predates
+   the template fix — `provision/vps/api.env.example` now ships
+   `APP_ENV=staging`, so §1.7's commands are the recovery step for a box built
+   from the pre-fix template, and a fresh rebuild needs none of them._
+
 3. **The `Staging` workflow, the `staging` GitHub environment, the `staging`
    concurrency group and the `Deploy to VPS` `environment` input keep their
    names**, as does the `prod` environment with its required-reviewer gate.
