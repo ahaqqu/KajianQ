@@ -124,12 +124,12 @@ snapshot (§2.4), touch DNS, or restart the backup timer.
 
 ### 1.2 What triggers a deploy
 
-| Trigger                                                    | GitHub environment       | Where it comes from                                                                                                                   |
-| ---------------------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
-| Push to `main` with at least one code-bearing file         | staging                  | `Staging` workflow's `deploy` job (`paths-ignore` skips a **docs-only** push, where a deploy plus its paid smoke would be pure spend) |
-| Manual dispatch of `Staging`                               | staging                  | `workflow_dispatch`, with `eval_smoke_size` / `eval_budget_micro_usd` knobs                                                           |
-| Manual dispatch of `Deploy to VPS`                         | staging or prod (choice) | `workflow_dispatch`, `environment` input                                                                                              |
-| Manual dispatch of `Deploy to VPS` calling `workflow_call` | staging                  | This is how `Staging` invokes it — one implementation, so the two cannot drift                                                        |
+| Trigger                                                      | GitHub environment       | Where it comes from                                                                                                                                 |
+| ------------------------------------------------------------ | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Push to `main` with at least one file outside `paths-ignore` | staging                  | `Staging` workflow's `deploy` job (`paths-ignore` skips a **docs-only or tests-only** push, where a deploy plus its paid smoke would be pure spend) |
+| Manual dispatch of `Staging`                                 | staging                  | `workflow_dispatch`, with `eval_smoke_size` / `eval_budget_micro_usd` knobs                                                                         |
+| Manual dispatch of `Deploy to VPS`                           | staging or prod (choice) | `workflow_dispatch`, `environment` input                                                                                                            |
+| Manual dispatch of `Deploy to VPS` calling `workflow_call`   | staging                  | This is how `Staging` invokes it — one implementation, so the two cannot drift                                                                      |
 
 That column names a **GitHub environment**, not a deployment
 environment on a host. Both `staging` and `prod` deploy to **the one box** (§0):
