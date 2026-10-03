@@ -70,4 +70,5 @@ printSummary("eval:run", {
   questionCount: fixture.questions.length,
   result: r,
   costMicroUsd: report?.costMicroUsd ?? budget.total,
+  questions: fixture.questions,
 });
