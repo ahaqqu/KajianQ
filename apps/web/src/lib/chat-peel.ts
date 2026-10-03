@@ -104,11 +104,11 @@ const RULE_KINDS: readonly RuleKind[] = [
  * prose, whole (A2).
  */
 function repeatOfCanonicalWarning(paragraph: string): string | null {
-  for (const copy of CANONICAL_WARNINGS) {
-    if (!paragraph.includes(copy)) continue;
-    if (paragraph.split(copy).join("").trim() === "") return copy;
-  }
-  return null;
+  return (
+    CANONICAL_WARNINGS.find(
+      (copy) => paragraph.includes(copy) && paragraph.replaceAll(copy, "").trim() === "",
+    ) ?? null
+  );
 }
 
 /**
