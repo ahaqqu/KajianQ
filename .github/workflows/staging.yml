@@ -93,7 +93,8 @@ jobs:
       # stratified slice of the Golden Set — refusal, dhaif trap, English, and
       # Indonesian cases — answered by the *deployed* API and scored from its
       # persisted answer traces through the same harness and ledger as eval:run.
-      # It exits non-zero on any failure or skip, so a staging deploy that
+      # It exits non-zero on any failure, skip, or unmeasured question — the
+      # shared policy `eval:run` applies too (#364) — so a staging deploy that
       # breaks grounded answering or the refusal gate cannot go green. This is
       # also the post-cutover health signal against the VPS (issue #181: it was
       # red on the Cloudflare free-plan CPU wall before the move).

@@ -5,7 +5,11 @@
  * `runGoldenSet`) already lives in shared seams; this removes the residual
  * per-script copies of the same lines, which had started to drift (eval:run
  * reads the ledger's cost record for its summary, eval:smoke used the live
- * budget). What stays per-script: the subset selection and the exit policy.
+ * budget). The exit policy is shared here too (#364): the two commands had
+ * drifted into opposite failure semantics — the smoke reddened on a failed or
+ * skipped question while the full suite exited 0 on either — and one copy is
+ * what stops that recurring. What stays per-script: eval:smoke's subset
+ * selection, and eval:run's v0 content-bar assertion and ledger-backed cost.
  */
 import { readFileSync } from "node:fs";
 import * as evalpkg from "@app/eval";
@@ -218,4 +222,73 @@ export function printSummary(prefix, { runId, questionCount, result, costMicroUs
       ...skipLines(skipped),
     ].join("\n"),
   );
+}
+
+/**
+ * The exit policy both CLIs apply (#364) — the one place the gate's verdict is
+ * decided, so `eval:run` and `eval:smoke` cannot drift back into the opposite
+ * semantics they held before this ticket. It reddens on any question that
+ * failed, any question that was skipped, and any question the run never
+ * measured: `questionCount` is the set the caller handed `runGoldenSet`, and
+ * fewer outcomes than that means the loop stopped early. The budget abort is
+ * exactly that case — `harness.ts` breaks on the cap without counting the
+ * remainder, so `failed` and `skipped` both read 0 on a truncated run and a
+ * two-clause policy would call a half-measured release run green. An unmeasured
+ * question is not a pass, whichever way it went unmeasured.
+ *
+ * Its counts come from `result.results` — the rows behind the per-question
+ * `failed:`/`skipped:` lines, not the counter-derived `questions:` headline —
+ * so it cannot contradict those lines (#370 A2). A negative shortfall, which
+ * no harness path produces, still reddens and names it, not a negative count;
+ * `runGoldenSet` is the only producer, so the headline agrees today (#370 C1).
+ *
+ * Pure: it returns the verdict and the exact line to print, never exits, so
+ * `tests/scripts/eval-cli.test.mjs` pins every row (this glue is `.mjs`,
+ * outside the typechecked corpus — a `.ts` test importing it fails TS7016).
+ * `runId` only appears in the red line, and it is the run whose per-question
+ * rows carry the attribution printed above it.
+ */
+export function exitPolicy(prefix, { runId, questionCount, result }) {
+  // From the rows, as `printSummary`'s per-question lines do (#370 A2), not the counters.
+  const scored = result.results.filter((x) => x.skipped !== true);
+  const skipped = result.results.filter((x) => x.skipped === true).length;
+  const failed = scored.filter((x) => x.passed !== true).length;
+  const unmeasured = questionCount - result.results.length;
+  if (failed === 0 && skipped === 0 && unmeasured === 0) {
+    return { ok: true, message: `${prefix}: PASSED` };
+  }
+  const counts = [`${failed} failed`, `${skipped} skipped`];
+  // The failed/skipped rendering is byte-identical to the smoke's pre-#364
+  // line, so only the truncation case gains words. The cap is named only when
+  // the run's own record says the cap was hit — the counts stay the ones
+  // `printSummary` printed, and no cause is invented for a shortfall the data
+  // does not explain.
+  if (unmeasured > 0) {
+    counts.push(`${unmeasured} unmeasured${result.budgetExceeded ? " (budget exceeded)" : ""}`);
+  } else if (unmeasured < 0) {
+    // The other direction of the same disagreement: more rows than asked for.
+    // Unreachable through the harness, but the red must still name a reason.
+    counts.push(`${-unmeasured} recorded beyond the set asked`);
+  }
+  return {
+    ok: false,
+    message: `${prefix}: FAILED — ${counts.join(", ")}. See eval_results for run ${runId}.`,
+  };
+}
+
+/**
+ * Print `exitPolicy`'s verdict and exit non-zero when it reddens — the only
+ * effectful half, so both call sites stay one line and the decision itself
+ * stays testable. A red verdict goes to stderr (the smoke has always written
+ * there, and a gate's failure belongs in the error stream); a green one to
+ * stdout.
+ */
+export function exitWithPolicy(prefix, input) {
+  const { ok, message } = exitPolicy(prefix, input);
+  if (ok) {
+    console.log(message);
+    return;
+  }
+  console.error(message);
+  process.exit(1);
 }

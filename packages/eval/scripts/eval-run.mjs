@@ -29,11 +29,20 @@
  * printer are the shared CLI glue in `eval-cli.mjs` — one copy, no drift.
  * This script keeps only what is genuinely its own: the v0 content-bar
  * assertion, the golden-set banner line, and the ledger-backed cost figure
- * in the summary.
+ * in the summary. Its exit semantics are the shared policy too (#364):
+ * non-zero when any question failed, was skipped, or was never measured —
+ * before this ticket the full suite exited 0 on all three, so the documented
+ * release gate's green was an operator's read rather than a check.
  */
 import * as evalpkg from "@app/eval";
 import { createStagingHarness } from "./staging-harness.mjs";
-import { createBudget, loadConfig, loadFixture, printSummary } from "./eval-cli.mjs";
+import {
+  createBudget,
+  exitWithPolicy,
+  loadConfig,
+  loadFixture,
+  printSummary,
+} from "./eval-cli.mjs";
 
 const config = loadConfig("eval:run", process.env);
 const budget = createBudget("eval:run", config);
@@ -71,4 +80,15 @@ printSummary("eval:run", {
   result: r,
   costMicroUsd: report?.costMicroUsd ?? budget.total,
   questions: fixture.questions,
+});
+
+// The shared exit policy (#364): any failed, skipped, or unmeasured question
+// reddens this run, so the release gate's green is a script-readable verdict
+// and not a summary the operator has to choose to read. `questionCount` is the
+// same fixture count the summary above printed — a run the budget cap aborted
+// recorded fewer outcomes than that, which is the third clause.
+exitWithPolicy("eval:run", {
+  runId: r.runId,
+  questionCount: fixture.questions.length,
+  result: r,
 });
