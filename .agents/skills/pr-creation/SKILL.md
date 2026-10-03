@@ -28,6 +28,7 @@ Follow the Definition of Done in `AGENTS.md`:
 - No new paid dependency in the critical path.
 - Nothing sensitive in the diff.
 - Architectural changes documented in PR description.
+- A **runtime** or **gate-affecting** change (`qa-phase` skill, shape table) references its issue (`Refs #N`) and keeps it out of `## Closes` — the issue closes on the QA verdict, not the merge. The "Closing keywords" rule below owns which phrasings stay safe.
 - Human-review gate stated if triggered: destructive migration, new dependency, auth change.
 
 ## Layer & project separation

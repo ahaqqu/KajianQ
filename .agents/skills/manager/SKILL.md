@@ -154,6 +154,7 @@ After the owner merges, one-shot verify the post-merge workflows on `main` are g
 - An **inert** change gets no QA phase: record `QA phase: not needed because …` (the reason is that the change cannot alter deployed behaviour).
 - A **gate-affecting** change gets a QA ticket whose observable is a **falsification**, because staging user-behaviour probing cannot judge a gate — and **the ticket names the mutation set** (which defect classes must redden the gate — an ungrounded non-refusal, an over-refusal, whatever else the change touches), or says there that the choice is delegated to the QA agent, with the reason. A placeholder is not a mutation set.
 - A **runtime** change gets a QA ticket for full staging QA, adversarial persona included.
+- A **gate-affecting** or **runtime** change's PR carries no closing keyword for its issue: the issue closes on the verdict. **Check it as you classify, two ways** — `gh pr view <pr> --json body -q .body | grep -n '#<issue>'`, where every hit line must read as a safe phrasing per the `pr-creation` skill's closing-keyword rule (canonical there; its keyword list is not restated here), and `gh pr view <pr> --json closingIssuesReferences`, GitHub's own merge-time answer, which also sees commit messages and must not list the issue. A hit goes back to A for rewrite to `Refs #N` before you recommend merge.
 
 The shape is decided before merge — step 6's summary states it — and **a QA-needed change is not finished until its verdict is recorded**:
 
