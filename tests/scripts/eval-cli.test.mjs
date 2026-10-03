@@ -225,15 +225,31 @@ describe("printSummary (#290, #340)", () => {
     expect(printed).not.toContain("skipped: q1");
   });
 
-  it("prints no skip line for a run with none", () => {
+  it("leaves a passing run's summary unchanged (#340 acceptance: counts, means, expansion lines)", () => {
+    const scoped = {
+      questionId: "q3",
+      passed: true,
+      retrievalRecall: 1,
+      citationValidity: 1,
+      expansion: { chunks: 5, fusedOnlyRetrievalRecall: 1 },
+    };
     const printed = printedSummary({
       passed: 2,
       failed: 0,
       skipped: 0,
       budgetExceeded: false,
-      results: [scored, { ...scored, questionId: "q3" }],
+      results: [scored, scoped],
     });
-    expect(printed).not.toMatch(/^ {2}skipped: q/m);
+    expect(printed.split("\n")).toEqual([
+      "",
+      "eval:smoke summary — run run-1",
+      "  questions: 2  passed: 2  failed: 0  skipped: 0",
+      "  mean retrieval recall: 1.000",
+      "  mean citation validity: 1.000",
+      "  cost: 0.000025 USD  budget exceeded: false",
+      "  scoped: q3 — expansion chunks 5, fused-only recall 1.000 (reported 1.000)",
+    ]);
+    expect(printed).not.toMatch(/^ {2}(failed|skipped): /m);
   });
 
   it("keeps the summary shape and order, with the failure line between scoped and skipped", () => {

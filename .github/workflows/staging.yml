@@ -147,6 +147,12 @@ jobs:
         # outage must not buy a green release — and the skip's cause is
         # persisted per question and printed as a `skipped: <message>` line, so
         # the red is actionable from the log and from `eval_results`.
+        # Attribution (#340): a scored failure prints a `failed: <questionId> …`
+        # line naming the dimension that missed, so the block is what answers
+        # "which question, which dimension". The clip has to keep that block
+        # whole — with `eval_smoke_size` widened, a run can carry up to three
+        # per-question lines for every question in the subset, plus the counts
+        # and the three means the block opens with.
         run: |
           set -uo pipefail
           bun run eval:smoke 2>&1 | tee /tmp/eval-smoke.log
@@ -155,7 +161,7 @@ jobs:
             echo "### Golden Set smoke — staging"
             echo ""
             echo '```'
-            tail -n 30 /tmp/eval-smoke.log
+            tail -n 60 /tmp/eval-smoke.log
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
