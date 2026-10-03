@@ -42,7 +42,7 @@ push to main (code-bearing)
   └─ Staging workflow
        ├─ deploy            → deploy-vps.yml → provision/vps/deploy/deploy.sh
        │                       build → rsync → restart → smoke (public URL)
-       └─ post deploy checks → Golden Set smoke → ZAP · Schemathesis (only if the smoke passes)
+       └─ post deploy checks → Golden Set smoke → ZAP · Schemathesis (smoke-gated)
 ```
 
 To deploy by hand (an operator action, or a re-run):

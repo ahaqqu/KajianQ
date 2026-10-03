@@ -805,7 +805,8 @@ questions will fail on retrieval rather than on your configuration.
 ## 10. Prove it works
 
 Run the full `Staging` workflow (or push any non-docs commit to `main`). It
-deploys and then runs three checks against your live box:
+deploys, then runs the Golden Set smoke against your live box — and the ZAP
+baseline and Schemathesis fuzz only when that smoke passes:
 
 | Check            | What it proves                                                                                                                          |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
