@@ -45,13 +45,17 @@ jobs:
       - run: bun run agentic-limits
       - run: bun run boundary
       - run: bun run openapi:check
-      # Every relative doc link must resolve. Docs here cite each other as
-      # evidence (an Art. 30 TOMs row points at the executed cutover log, a
-      # skill points at the runbook it implements), so a dangling one is a
-      # compliance claim whose proof is gone — and GitHub renders it as plain
-      # text, so a reader cannot tell. The doc consolidation made this
-      # load-bearing: retiring a file means repointing its citations, and this
-      # is what proves that was done.
+      # Every relative doc link — and every inline code span naming a repo path
+      # or a skill — must resolve. Docs here cite each other as evidence (an
+      # Art. 30 TOMs row points at the executed cutover log, a skill points at
+      # the runbook it implements), so a dangling one is a compliance claim
+      # whose proof is gone — and GitHub renders it as plain text, so a reader
+      # cannot tell. Agent-facing prose cites files as code spans more often
+      # than as links, which is the shape that let a dead skill pointer pass CI
+      # until #368. The doc consolidation made this load-bearing: retiring a
+      # file means repointing its citations, and this is what proves that was
+      # done. Scope, resolution base and every accepted blind spot are stated
+      # in the script's header.
       - run: bun run docs:links
       - name: gitleaks
         run: |
