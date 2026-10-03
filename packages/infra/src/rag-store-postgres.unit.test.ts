@@ -1005,7 +1005,12 @@ describe("Postgres eval-ledger methods (unit, fake SQL)", () => {
     expect(sql._calls[0]?.values).toEqual([["c-anchor-1", "c-anchor-2"], 2, 7]);
     expect(sql._calls[0]?.text).toContain("unnest($1::uuid[]) WITH ORDINALITY");
     expect(sql._calls[0]?.text).toContain("n.ordinal BETWEEN an.ordinal - $2 AND an.ordinal + $2");
-    expect(sql._calls[0]?.text).toContain("n.id <> an.id");
+    // The join names the CTE's PROJECTED column (`anchor_id`). This is a cheap
+    // text canary only: the pre-fix `an.id` predicate passed it while real
+    // Postgres rejected the statement (42703), so the executable contract for
+    // this read lives in the real-Postgres suite
+    // (`rag-store-postgres.test.ts`, #334).
+    expect(sql._calls[0]?.text).toContain("n.id <> an.anchor_id");
     expect(sql._calls[0]?.text).toContain("DISTINCT ON (n.id)");
     expect(sql._calls[0]?.text).toContain("ORDER BY w.anchor_pos, w.ordinal, w.id");
     expect(sql._calls[0]?.text).toContain("LIMIT $3");

@@ -365,7 +365,20 @@ call, no paid dependency, no re-ingest, no migration.
   adapter layer: the anchor array is bound and its order preserved, `radius`
   and `limit` are bound parameters, only neighbours are selected (never an
   anchor row), `limit <= 0` and an empty anchor list short-circuit without a
-  query, and the returned order is the anchor-priority order.
+  query, and the returned order is the anchor-priority order. **This is a
+  text-level check against a fake runner, and alone it was not evidence that
+  the statement runs** (#334): the shipped join predicate named `an.id`, a
+  column the `anchors` CTE does not project (`a.id AS anchor_id`), so
+  PostgreSQL rejected the statement at parse time and every request that
+  reached this read failed while these assertions stayed green. The read's
+  executable contract is now the real-Postgres suite,
+  `packages/infra/src/rag-store-postgres.test.ts` (#334): the statement
+  executes, an anchor's window is its own `ordinal` neighbours inside its own
+  parent, the anchor is never its own neighbour, a neighbour shared by two
+  anchors belongs to the first in the caller's order, the outer order is
+  anchor position then `ordinal` (so the cap truncates the least important
+  windows — reversing the anchor array spends the cap on the other window),
+  and the radius/limit bounds hold, including at the parent's ordinal edge.
 - The falsification row: with `NEIGHBOUR_EXPANSION_RADIUS=0` (the documented
   disable) the assembled-context acceptance row goes red and the negative rows
   stay red — the mutation is named in the PR body.
