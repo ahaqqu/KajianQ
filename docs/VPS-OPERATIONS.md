@@ -124,21 +124,33 @@ snapshot (§2.4), touch DNS, or restart the backup timer.
 
 ### 1.2 What triggers a deploy
 
-| Trigger                                                    | Environment              | Where it comes from                                                                                                                   |
+| Trigger                                                    | GitHub environment       | Where it comes from                                                                                                                   |
 | ---------------------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
 | Push to `main` with at least one code-bearing file         | staging                  | `Staging` workflow's `deploy` job (`paths-ignore` skips a **docs-only** push, where a deploy plus its paid smoke would be pure spend) |
 | Manual dispatch of `Staging`                               | staging                  | `workflow_dispatch`, with `eval_smoke_size` / `eval_budget_micro_usd` knobs                                                           |
 | Manual dispatch of `Deploy to VPS`                         | staging or prod (choice) | `workflow_dispatch`, `environment` input                                                                                              |
 | Manual dispatch of `Deploy to VPS` calling `workflow_call` | staging                  | This is how `Staging` invokes it — one implementation, so the two cannot drift                                                        |
 
-**Order and approval.** Deploys go staging first, then prod, in one step each
-(single-shot cutover, ADR-0044 decision 2). The workflow sets
+The `Environment` column names a **GitHub environment**, not a deployment
+environment on a host. Both `staging` and `prod` deploy to **the one box** (§0):
+`deploy.sh` uses a single `DEPLOY_ROOT` and nginx serves one `root`, so the
+choice selects that environment's vars/secrets — and `prod`'s approval gate —
+and nothing else. **No production deployment is provisioned** (ADR-0044
+amendment, 2026-10-03): the box is labeled `staging`, provisioning production is
+deferred rather than pending, and a `prod` dispatch today deploys the same box
+the `staging` environment does.
+
+**Order and approval.** Deploys are run staging first, then prod, in one step
+each — the engineering order of the single-shot cutover (ADR-0044 decision 2),
+and there is no second host for a "prod" run to reach. The workflow sets
 `environment: ${{ inputs.environment }}`, so a **prod dispatch runs against the
 `prod` environment** — that environment's approval rule is where the owner's
-sign-off belongs (`deploy-vps.yml`'s own header comment records this as the
-intent), and its own `VPS_HOST`/`VPS_USER`/`VPS_PUBLIC_URL` vars and
-`VPS_DEPLOY_SSH_KEY` secret must be configured for it. Staging and prod
-therefore carry different host values under one repository.
+sign-off for a production-targeted deploy belongs (`deploy-vps.yml`'s own header
+comment records this as the intent), and its own
+`VPS_HOST`/`VPS_USER`/`VPS_PUBLIC_URL` vars and `VPS_DEPLOY_SSH_KEY` secret must
+be configured for it. Staging and prod therefore carry their own values under
+one repository, and today nothing requires their `VPS_HOST` to differ: there is
+no second host to name.
 
 > **The environment and its approval rule are owner setup, not code.** The
 > workflow names the environment; whether a required reviewer is attached is
@@ -221,10 +233,11 @@ environment-scoped copy of the same four (`VPS_HOST`, `VPS_USER`, `VPS_ROOT`,
 **The `prod` environment (owner sign-off gate).** A prod dispatch of
 `Deploy to VPS` targets the `prod` environment, which carries a
 required-reviewer protection rule (the owner) and a protected-branch policy —
-the approval is the single-shot cutover's recorded sign-off (ADR-0044
-decision 2). Its `VPS_*` variables and `VPS_DEPLOY_SSH_KEY` are
-environment-scoped, so staging and prod carry their own credentials under
-one repository.
+the approval is the owner's sign-off for a production-targeted deploy
+(ADR-0044 decision 2). Its `VPS_*` variables and `VPS_DEPLOY_SSH_KEY` are
+environment-scoped, so staging and prod carry their own credentials under one
+repository — and both point at the **one box** (§1.2), because no production
+deployment is provisioned (ADR-0044 amendment, 2026-10-03).
 
 ### 1.5 The permission model (deploy identity ↔ `kajianq`)
 
@@ -421,6 +434,44 @@ Finally, prove the CI path end-to-end rather than the box alone: dispatch
 Then record the new origin in §0 and §1.4 here and in the README's environment
 table — the repository is where the current name is written down, since the
 values that actually serve it are root-only on the box.
+
+### 1.7 The environment label (`APP_ENV`)
+
+**The box is the `staging` environment**, and the live health endpoint says so
+(re-measured 2026-10-03 — it read `production` from the cutover until then):
+
+```bash
+$ curl -s https://kajianq.ahaqqu.com/v1/health
+{"status":"ok","env":"staging","schemaVersion":1,"message":"Hello World"}
+```
+
+Production is **not provisioned** — deferred, not pending (ADR-0044 amendment,
+2026-10-03) — so there is one deployment and `staging` is its label. The GitHub
+environments `staging` and `prod` both deploy to it (§1.2); `prod` is the
+approval-gated path to the same box, not a second host.
+
+The 2026-09-21 cutover flipped this label to `production`, and
+`docs/VPS-CUTOVER-RECORD.md` keeps saying so — a record of executed steps is not
+rewritten when the world moves on (§1.6). The label was reverted on the box on
+2026-10-03, as root — the file is root-owned and 0600, and the deploy identity
+cannot read it (§1.5) — and the restart was clean (`GET /` still answers
+`200 text/html`). These are the commands, kept for a rebuild:
+
+```bash
+# on the box, as root
+sed -i 's/^APP_ENV=production$/APP_ENV=staging/' /etc/kajianq/api.env
+systemctl restart kajianq-api.service
+curl -s https://kajianq.ahaqqu.com/v1/health   # → "env":"staging"
+```
+
+`APP_ENV` is **cosmetic**: it reaches `createRequestContext` →
+`createLogger({ service: "api", env: envName, correlationId })`
+(`apps/api/src/lib/context.ts`, `packages/infra/src/logger.ts`), so it is the
+`env` field on every log line plus the health JSON. It gates no log level, no
+filtering, and no privacy or PII behaviour — the `api.env.example` comment
+"drives log posture" means exactly that label. Nothing about the running
+service's protection changes with it; only what the label says. Provisioning a
+production deployment is a new decision and a new host, never this edit.
 
 ## 2. How to manage Postgres
 
@@ -757,6 +808,7 @@ monitoring must not create an unbounded personal-data-adjacent log surface. Issu
 | See what a deploy would do            | `provision/vps/deploy/deploy.sh --dry-run`                                                                                                                                                                                                                                                              |
 | Apply/refresh hardening               | `sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env` (idempotent)                                                                                                                                                                                                                                 |
 | Change the public hostname            | §1.6 — certbot, `proxy.env`, `ALLOWED_ORIGINS`, `apply.sh`, then `VPS_PUBLIC_URL` in both scopes                                                                                                                                                                                                        |
+| Change the environment label          | §1.7 — `sed` `APP_ENV` in `/etc/kajianq/api.env` as root, restart the unit, then check `/v1/health` reports `"env":"staging"` (cosmetic: log labels + health JSON only)                                                                                                                                 |
 | Check migrations                      | `DATABASE_URL=… bun run db:status:all` (§2.3)                                                                                                                                                                                                                                                           |
 | Take a snapshot                       | `DATABASE_URL=… bun run db:snapshot create <lowercase-label>` with the posture flag (§2.4)                                                                                                                                                                                                              |
 | Verify a snapshot                     | `bun run db:snapshot verify <label>`                                                                                                                                                                                                                                                                    |

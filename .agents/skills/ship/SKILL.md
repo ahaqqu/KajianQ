@@ -11,8 +11,10 @@ synced: 2026-08-29
 Take a change from CI-green on `main` through staging validation to production, with smoke tests and a git-revert rollback path (Phase 8).
 
 **The serving host is the netcup VPS** (a plain Bun process behind nginx). There
-is one box: staging and production are the same host, distinguished by
-`APP_ENV`. The operator's as-is manual is
+is one box, and its environment label is `staging`: **no production is
+provisioned** (deferred, not pending — ADR-0044 amendment, 2026-10-03), so a
+`prod` dispatch runs the same box through its approval gate rather than a second
+host. The operator's as-is manual is
 [`docs/VPS-OPERATIONS.md`](../../../docs/VPS-OPERATIONS.md), which is the authority
 for anything below that drifts.
 
@@ -118,18 +120,22 @@ do not promote.
 
 ## Phase 6 — Promote to production
 
-There is no separate production host to point DNS at: **the one box is
-production**, and `APP_ENV` names the current posture (`production`). Promotion is:
+There is no separate production host to point DNS at: **the one box is the
+`staging` deployment** and no production is provisioned (deferred, not pending —
+ADR-0044 amendment, 2026-10-03), so this dispatch runs that box through the
+approval gate. Promotion is:
 
 ```bash
 gh workflow run "Deploy to VPS" -f environment=prod   # waits at the approval gate
 ```
 
-What distinguishes it from a staging deploy is the environment: `prod` carries
-the required-reviewer rule and its own environment-scoped `VPS_*` vars and
-`VPS_DEPLOY_SSH_KEY`. To change the reported posture itself (cosmetic — health
-JSON and log labels; no behavioral gate differs), edit `APP_ENV` in
-`/etc/kajianq/api.env` on the box and restart the unit.
+What distinguishes it from a staging deploy is the GitHub environment: `prod`
+carries the required-reviewer rule and its own environment-scoped `VPS_*` vars
+and `VPS_DEPLOY_SSH_KEY`, and both point at the one box. The label itself is
+cosmetic (the `env` field on log lines plus the health JSON; no behavioral gate
+differs) and already reads `staging` — the flip ran on the box on 2026-10-03,
+and the commands are kept for a rebuild in
+[`docs/VPS-OPERATIONS.md`](../../../docs/VPS-OPERATIONS.md) §1.7.
 
 ## Phase 7 — Smoke tests
 
@@ -170,8 +176,9 @@ unit status, Postgres, the restore path — not this skill's Phase 8.
 
 ## Phase 9 — Environment cleanup
 
-There is no separate staging environment to reset: staging and production share
-the box and the database. What the post-deploy jobs leave is their own test
+There is no separate environment to reset: the box is the `staging` deployment
+and it is the only one, so there is one box and one database. What the
+post-deploy jobs leave is their own test
 residue — the Golden Set smoke writes `eval_runs`/`eval_results` rows and
 `answer_traces`, and the ZAP/Schemathesis scans leave request residue. That
 residue is expected and is not cleaned automatically; the pattern for checking it

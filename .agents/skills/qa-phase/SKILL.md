@@ -73,7 +73,13 @@ The verdict is the only thing that closes a QA-needed change: `verified` when th
 
 ## Safety rails
 
-- **Staging only.** Never production, never a prod dispatch.
+- **Staging only.** The one deployment is the `staging` environment and it **is**
+  the public URL (`https://kajianq.ahaqqu.com`) — no production deployment is
+  provisioned (ADR-0044 amendment, 2026-10-03), so there is no second
+  environment a probe could reach or be pointed at. **Never a prod dispatch**
+  either: an operator deploy through the `prod` environment's approval gate
+  stays outside this role's reach, and with no production provisioned it would
+  land on the same box. The rails below are what bound the blast radius.
 - **Anonymous sessions only**, no real user data, and every session the run creates is erased with its own token (`DELETE /v1/auth/me`) before the report is posted. Keep each token in a **durable scratch path** until the run ends — a per-invocation `/tmp` loses it between tool calls, and erasure needs that token: a session whose token is gone cannot be deleted through the API. Disclose any session you could not erase in the report, with its `sessionId`, what it contains (e.g. no messages), and its expiry under the 30-day inactivity reclamation.
 - **Read-only on the repo**: comments and finding tickets yes, commits/branches/merges/closures no.
 - **The store read is SELECT-only, subject-scoped, with two purposes.** Through the documented staging tunnel (`docs/VPS-OPERATIONS.md` §2.8, port 15433, password at `~/.config/kajianq/db-password`) you may run `SELECT` queries with `default_transaction_read_only=on` set on the connection, over (a) cost aggregates on `answer_traces` scoped to the anonymous `user_id`s the run created and (b) the persisted traces of those same sessions — nothing else, and no other subject's rows. **Never `SELECT` `chat_messages` content, `feedback` free text, or another subject's `trace` JSONB**; a query that is not one of the two purposes is out of posture whatever it returns. Writes, migrations and snapshots are outside the grant. The connection option is a discipline and an accident-guard, **not** a privilege boundary — the credential is the application's own role, it can write, and the GUC is `PGC_USERSET` (ADR-0048 amendment, 2026-09-28) — so keeping the read a read is yours, not the database's. Read the spend and the probe's trace events **before** erasing the sessions: erasure cascades both away.

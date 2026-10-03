@@ -126,15 +126,22 @@ For readers who want the full picture, the working documents are open:
 | Environment | UI                         | API                        |
 | ----------- | -------------------------- | -------------------------- |
 | Staging     | https://kajianq.ahaqqu.com | https://kajianq.ahaqqu.com |
-| Production  | https://kajianq.ahaqqu.com | https://kajianq.ahaqqu.com |
 
-The UI and API columns are identical today: the React PWA is served by the
-same host (the Hono stack that exposes `/v1/*`, behind nginx on the VPS), so
-each environment has one host. The columns exist so a future split — a
-separate UI host — only updates one column. There is one box today: staging
-and production share it, with `APP_ENV` naming the current posture
-(`production` since the single-shot cutover, ADR-0044) — the legacy
-Cloudflare Workers hosts are decommissioned.
+There is **one deployment, and its environment label is `staging`**:
+`https://kajianq.ahaqqu.com`, a Bun process behind nginx on the VPS, serving
+the React PWA and the `/v1/*` API from the same host. **Production is not
+provisioned** — deferred, not pending: standing one up later is a decision for
+when the product needs it, and nothing waits on it now. The 2026-09-21 cutover
+left the box's `APP_ENV` reading `production`; that label was reverted to
+`staging` on 2026-10-03 (`/v1/health` reports it), and the one-line commands are
+recorded for a rebuild in
+[`docs/VPS-OPERATIONS.md`](docs/VPS-OPERATIONS.md) §1.7 (ADR-0044 amendment,
+2026-10-03).
+
+The UI and API columns stay even with a single row: they record that the PWA
+and the API are one host today, so a future split — a separate UI host —
+updates one column instead of rewriting the table. The legacy Cloudflare
+Workers hosts are decommissioned.
 
 ## Data sources & attribution
 
