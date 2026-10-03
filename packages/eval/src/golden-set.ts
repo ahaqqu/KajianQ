@@ -1,5 +1,10 @@
 import * as v from "valibot";
-import { GoldenSetSchema, type GoldenQuestion, type GoldenSet } from "@app/contracts";
+import {
+  describeIssue,
+  GoldenSetSchema,
+  type GoldenQuestion,
+  type GoldenSet,
+} from "@app/contracts";
 
 /**
  * GoldenSetLoader (#8): read/validate a versioned question-set fixture.
@@ -23,12 +28,7 @@ export class GoldenSetLoadError extends Error {
 export function parseGoldenSet(raw: unknown, source = "inline"): GoldenSet {
   const parsed = v.safeParse(GoldenSetSchema, raw);
   if (!parsed.success) {
-    throw new GoldenSetLoadError(
-      source,
-      parsed.issues.map(
-        (i) => `${i.path?.map((p) => String(p.key)).join(".") ?? "?"}: ${i.message}`,
-      ),
-    );
+    throw new GoldenSetLoadError(source, parsed.issues.map(describeIssue));
   }
   return parsed.output;
 }
