@@ -173,6 +173,17 @@
  *   the same chain: gitignored (derived from `.gitignore`, not from a list) →
  *   allowlisted (with a reason) → violation.
  *
+ *   PRECEDENCE IS A FIELD, not the table's order: `policyFor` takes the matching
+ *   rule with the highest `priority`, so permuting `POLICY` cannot change which
+ *   rule a shape gets. That is why every rule carries a `priority` and why the
+ *   `record` rule's predicate is disjoint from the link rules instead of merely
+ *   sitting after them: the array's first match used to decide, and moving
+ *   `record` to the head — a pure reorder, no logic touched — stopped the 19
+ *   Markdown links inside `adr/**` and the cutover log from being checked while
+ *   the gate still printed OK and exited 0 (finding B5). Priorities are unique,
+ *   so a tie cannot hand the decision back to source order; both properties are
+ *   pinned by tests.
+ *
  *   COST, named: a Markdown link to a gitignored build output is skipped and
  *   counted like a span, so a link a reader cannot follow in a fresh clone is
  *   not enforced. That is the price of the exemption being reachable for both
@@ -577,6 +588,8 @@ export const RESOLVED_STATUSES = new Set(["ok", "adr-id"]);
  * could not reach them, so a link to a build output was red with no escape).
  *
  * Each rule: `match` picks the finding, `counter` names the count it advances,
+ * `priority` is its precedence — the highest matching rule wins, never the
+ * first one in the array (see PRECEDENCE above; the values must stay unique),
  * `verdict` is one of
  *   - `counted`    — never a violation (a record's dead claim, a resolving target);
  *   - `violation`  — always a violation, exemption chain not consulted;
@@ -589,6 +602,7 @@ export const RESOLVED_STATUSES = new Set(["ok", "adr-id"]);
 export const POLICY = [
   {
     id: "link-root-absolute",
+    priority: 40,
     match: (f) => f.kind === "link" && f.status === "root-absolute",
     counter: "links",
     verdict: "violation",
@@ -596,6 +610,7 @@ export const POLICY = [
   },
   {
     id: "link",
+    priority: 30,
     match: (f) => f.kind === "link",
     counter: "links",
     verdict: "exemptible",
@@ -603,10 +618,13 @@ export const POLICY = [
     reason: () => "target does not exist",
   },
   {
-    // After the link rules on purpose: a record's Markdown links stay enforced
-    // (see RECORDS_RULE), only its code-span claims are counted.
+    // Disjoint from the link rules above, because a record's Markdown links stay
+    // enforced (see RECORDS_RULE): only its code-span claims are counted. Above
+    // `skill`/`path` by priority, so a record claim is never resolved — its
+    // count is reported separately.
     id: "record",
-    match: (f) => isRecord(f.file),
+    priority: 20,
+    match: (f) => f.kind !== "link" && isRecord(f.file),
     counter: "recordsClaims",
     verdict: "counted",
     countsResolved: false,
@@ -617,6 +635,7 @@ export const POLICY = [
   },
   {
     id: "skill",
+    priority: 10,
     match: (f) => f.kind === "skill",
     counter: "skills",
     verdict: "exemptible",
@@ -625,6 +644,7 @@ export const POLICY = [
   },
   {
     id: "path",
+    priority: 0,
     match: (f) => f.kind === "path",
     counter: "claims",
     verdict: "exemptible",
@@ -632,6 +652,27 @@ export const POLICY = [
     reason: () => "code-span path: no such tracked path at the repo root or beside this file",
   },
 ];
+
+/**
+ * The table in precedence order — highest `priority` first. Precedence is a
+ * field, not the array's source order, so permuting `POLICY` cannot change which
+ * rule a shape gets; a test runs the adjudicator over a reversed table and
+ * asserts identical verdicts.
+ */
+export function policyOrder(table = POLICY) {
+  return [...table].sort((a, b) => b.priority - a.priority);
+}
+
+/**
+ * The one rule that governs a finding: the highest-priority match, never the
+ * first. A shape no rule covers fails loud rather than silently taking the wrong
+ * chain.
+ */
+export function policyFor(finding, table = POLICY) {
+  const rule = policyOrder(table).find((candidate) => candidate.match(finding));
+  if (!rule) throw new Error(`no policy rule for ${finding.kind}/${finding.status}`);
+  return rule;
+}
 
 /**
  * Apply the policy table to findings. Every missing reference — Markdown link
@@ -646,13 +687,18 @@ export const POLICY = [
  * reported stale — but the same entry against the real corpus is, which is the
  * property that keeps the list honest.
  *
+ * `table` is the rule set, defaulting to `POLICY`; it exists so a test can hand
+ * this function a permuted table and prove the verdicts do not move (B5).
+ *
  * @param {object[]} findings from `analyse`
- * @param {{allowlist?: object[], ignored?: Set<string>, files?: Set<string>}} [policy]
+ * @param {{allowlist?: object[], ignored?: Set<string>, files?: Set<string>,
+ *   table?: object[]}} [policy]
  */
 export function adjudicate(findings, policy = {}) {
   const allowlist = policy.allowlist ?? KNOWN_RETIRED;
   const ignored = policy.ignored ?? new Set();
   const files = policy.files;
+  const table = policy.table ?? POLICY;
   const violations = [];
   const counters = {
     links: 0,
@@ -667,8 +713,7 @@ export function adjudicate(findings, policy = {}) {
   const used = new Set();
 
   for (const finding of findings) {
-    const rule = POLICY.find((candidate) => candidate.match(finding));
-    if (!rule) throw new Error(`no policy rule for ${finding.kind}/${finding.status}`);
+    const rule = policyFor(finding, table);
     counters[rule.counter] += 1;
     if (rule.also) rule.also(finding, counters);
 

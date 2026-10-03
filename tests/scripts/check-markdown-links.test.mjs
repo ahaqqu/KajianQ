@@ -25,6 +25,8 @@ import {
   loadCorpus,
   makeTree,
   normaliseSpanTarget,
+  policyFor,
+  policyOrder,
   prose,
   resolveClaim,
   runGate,
@@ -316,6 +318,55 @@ describe("markdown-links — the committed tree, not the working tree", () => {
       ]),
     ).toThrow("no policy rule");
   });
+
+  it("selects a rule by its declared precedence, not by array position (B5)", () => {
+    // B5: the branch below (`link` before `record`) made the *first* match win,
+    // so moving `record` to the head of the table — a pure reorder, no logic
+    // touched — stopped the 19 Markdown links inside `adr/**` and the cutover
+    // log from being checked while the gate still printed OK and exited 0.
+    // Precedence is now a field, so no permutation can do that.
+    const ctx = ctxOf({ paths: ["docs/a.md"], skills: [] });
+    const findings = analyse(
+      [
+        {
+          relPath: "docs/living.md",
+          text: [
+            "A [dead link](gone.md).",
+            "A [root-absolute link](/docs/a.md).",
+            "Retired `packages/gone/`.",
+            "The `no-such-skill` skill.",
+          ].join("\n"),
+        },
+        {
+          relPath: "adr/0001-a-record.md",
+          text: "Retired `packages/gone/`.\nStill [the runbook](./gone.md).",
+        },
+      ],
+      ctx,
+    );
+
+    // The array's order is not part of the table's meaning: a reversed copy
+    // decides every shape exactly as the shipped one does.
+    const shipped = adjudicate(findings, { allowlist: [] });
+    const permuted = adjudicate(findings, { allowlist: [], table: [...POLICY].reverse() });
+    expect(permuted.counters).toEqual(shipped.counters);
+    expect(permuted.violations).toEqual(shipped.violations);
+
+    // The precedences the corpus depends on, read off the resolved rule itself.
+    const inRecord = (kind) =>
+      findings.find((finding) => finding.kind === kind && finding.file.startsWith("adr/"));
+    expect(policyFor(inRecord("link")).id).toBe("link");
+    expect(policyFor(inRecord("path")).id).toBe("record");
+    expect(policyOrder().map((rule) => rule.id)).toEqual([
+      "link-root-absolute",
+      "link",
+      "record",
+      "skill",
+      "path",
+    ]);
+    // A tie would put source order back in charge, so the field is unique.
+    expect(new Set(POLICY.map((rule) => rule.priority)).size).toBe(POLICY.length);
+  });
 });
 
 describe("markdown-links — class A: ADR cited by number", () => {
@@ -381,6 +432,22 @@ describe("markdown-links — class B: records of a moment", () => {
       paths: [],
     });
     expect(targets(result)).toEqual(["./VPS-CUTOVER-RUNBOOK.md"]);
+  });
+
+  it("keeps the link rule ahead of the record rule, as a priority not a position (B5)", () => {
+    // B5's mutation, asserted on the counters: put `record` first and this
+    // record's dead link is counted as a record claim instead of enforced —
+    // `links` 1 → 0, `recordsClaims` 1 → 2, no violation, gate still OK.
+    const result = scan(
+      ["Retires `scripts/template-sync/`.", "See [the runbook](./VPS-CUTOVER-RUNBOOK.md)."].join(
+        "\n",
+      ),
+      { relPath: "adr/0030-retire-template-sync.md", paths: [] },
+    );
+    expect(targets(result)).toEqual(["./VPS-CUTOVER-RUNBOOK.md"]);
+    expect(result.counters.links).toBe(1);
+    expect(result.counters.recordsClaims).toBe(1);
+    expect(result.counters.recordsDead).toBe(1);
   });
 
   it("recognises exactly the two record shapes", () => {
@@ -734,6 +801,23 @@ describe("markdown-links — CLI fixtures", () => {
     const untrackedRun = runFixture(dir);
     expect(untrackedRun.status).toBe(1);
     expect(untrackedRun.stderr).toContain("docs/living.md:1 -> docs/untracked.md");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("reddens on a record's dead Markdown link through the CLI (B5)", () => {
+    // The shipping path for the B5 property: a reshuffle of `POLICY` used to
+    // make this exit 0 and print the link as a counted record claim.
+    const dir = fixtureRepo({
+      "adr/0030-retire-template-sync.md": [
+        "# ADR-0030",
+        "",
+        "Retires `scripts/template-sync/`; see [the runbook](./VPS-CUTOVER-RUNBOOK.md).",
+      ].join("\n"),
+    });
+    const run = runFixture(dir);
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain("1 dangling reference(s)");
+    expect(run.stderr).toContain("adr/0030-retire-template-sync.md:3 -> ./VPS-CUTOVER-RUNBOOK.md");
     rmSync(dir, { recursive: true, force: true });
   });
 
