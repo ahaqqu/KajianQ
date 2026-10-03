@@ -22,13 +22,13 @@ import {
   isPathClaim,
   isRecord,
   isSkillName,
+  judgeClaim,
   loadCorpus,
   makeTree,
   normaliseSpanTarget,
   policyFor,
   policyOrder,
   prose,
-  resolveClaim,
   runGate,
   skillMentionAt,
   toRepoPath,
@@ -219,6 +219,10 @@ describe("markdown-links — scope rules (#368)", () => {
       ["../docs/gone.md", "missing"],
       ["../web/dist", "missing"],
       ["../..", "missing"],
+      // The re-entry shape (A1): the file-relative reading overshoots into
+      // `repo/docs/`, while a root-first reading would land back on the real
+      // `docs/a.md`. One base, so the span agrees with the link.
+      ["../repo/docs/a.md", "missing"],
       ["../../etc/hosts", "missing"], // escaping: the decision, pinned below
     ]) {
       const span = analyse([{ relPath, text: `See \`${target}\`.` }], ctx);
@@ -324,6 +328,48 @@ describe("markdown-links — scope rules (#368)", () => {
     expect(link.counters.ignored).toBe(1);
   });
 
+  it("gives an escaping-and-re-entering target one reading, reported with its verdict (A1)", () => {
+    // The disagreement B2 collapsed: with the root base also in play, this target
+    // was `ok` as a span — the root reading landed back on the real `docs/a.md` —
+    // while its `repoPath` named `.agents/skills/repo/docs/a.md`, which does not
+    // exist, and the identical link was `missing`. One reading now decides both
+    // the verdict and the path, so the two halves agree.
+    const opts = { relPath: ".agents/skills/ship/SKILL.md", paths: ["docs/a.md"] };
+    const span = scan("See `../repo/docs/a.md`.", opts);
+    expect(targets(span)).toEqual(["../repo/docs/a.md"]);
+    expect(span.violations[0].kind).toBe("path");
+    expect(span.violations[0].repoPath).toBe(".agents/skills/repo/docs/a.md");
+    expect(span.counters.resolved).toBe(0);
+    expect(span.counters.claims).toBe(1);
+
+    const link = scan("See [x](../repo/docs/a.md).", opts);
+    expect(targets(link)).toEqual(["../repo/docs/a.md"]);
+    expect(link.violations[0].repoPath).toBe(".agents/skills/repo/docs/a.md");
+  });
+
+  it("names bare `../` as claimed and judged `missing` from a depth-1 directory (A3)", () => {
+    // A3, named rather than left to be discovered: `isFileRelativeTarget` claims
+    // bare `../` by its form, and from a depth-1 directory its reading is the
+    // repository root — whose repo-relative form is the empty string, which is not
+    // a tracked path. The link half reaches the same verdict on the same
+    // destination, so the span copies it instead of "fixing" it into a
+    // disagreement. From a deeper directory the same token reads as the tracked
+    // parent and resolves.
+    const depth1 = { relPath: "docs/living.md", paths: ["docs/a.md"] };
+    const span = scan("A relative path starts with `../` here.", depth1);
+    expect(targets(span)).toEqual(["../"]);
+    expect(span.violations[0].repoPath).toBe("");
+    const link = scan("A relative path looks like [x](../) here.", depth1);
+    expect(targets(link)).toEqual(["../"]);
+    expect(link.violations[0].repoPath).toBe("");
+
+    const deeper = {
+      relPath: ".agents/skills/ship/SKILL.md",
+      paths: ["docs/a.md", ".agents/skills/code-review/SKILL.md"],
+    };
+    expect(scan("Climb out with `../`.", deeper).violations).toEqual([]);
+    expect(scan("Climb out with `../`.", deeper).counters.resolved).toBe(1);
+  });
   it("reports a malformed percent-encoded destination instead of dying (#392)", () => {
     // #392: `decodeURIComponent` threw, so the run printed a Bun stack trace and
     // no `file:line -> target` line — the output contract broken even though the
@@ -351,7 +397,7 @@ describe("markdown-links — scope rules (#368)", () => {
 describe("markdown-links — resolution base", () => {
   it("resolves a root-relative claim against the repo root", () => {
     const ctx = ctxOf({ paths: ["scripts/check-boundary.mjs"] });
-    expect(resolveClaim("scripts/check-boundary.mjs", "docs", ctx)).toBe("tracked");
+    expect(judgeClaim("scripts/check-boundary.mjs", "docs", ctx).status).toBe("ok");
   });
 
   it("resolves a package-relative claim against the containing file", () => {
@@ -861,7 +907,7 @@ describe("markdown-links — the real tree", () => {
   it("resolves a real package-relative claim end to end", () => {
     // packages/infra/README.md:109 — `scripts/db-migrate.mjs`.
     const ctx = buildContext(ROOT);
-    expect(resolveClaim("scripts/db-migrate.mjs", "packages/infra", ctx)).toBe("tracked");
+    expect(judgeClaim("scripts/db-migrate.mjs", "packages/infra", ctx).status).toBe("ok");
   });
 
   it("resolves the `..` variant of that same control end to end (#391)", () => {

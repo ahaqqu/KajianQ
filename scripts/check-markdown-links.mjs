@@ -32,18 +32,24 @@
  *
  *   A reference resolves when its target is in the git index: a tracked file,
  *   or a tracked directory (`apps/`, `.agents/skills/manager/`,
- *   `provision/vps/`). Two bases are tried for a code span — the repository
- *   root and the containing file's directory — and the span resolves if
+ *   `provision/vps/`). A root-relative code span is read against two bases —
+ *   the repository root and the containing file's directory — and resolves if
  *   either finds it. `packages/infra/README.md` writes `scripts/db-migrate.mjs`
  *   meaning the package-relative `packages/infra/scripts/db-migrate.mjs`;
- *   a root-only rule would redden that honest reference. The claim test reads a
- *   target the same way, and that is the point: a `..`-rooted span is a claim
- *   whose *reading* is the containing file's directory, so it reaches the
- *   file-relative base instead of being vetoed on a raw first segment (`..`)
- *   that is not a tracked root (#391). Markdown links keep
- *   their single, correct base: a renderer resolves `(path)` against the
- *   containing file and nothing else, so accepting a root-relative fallback
- *   there would hide a link that is broken on GitHub.
+ *   a root-only rule would redden that honest reference.
+ *
+ *   A `..`-rooted span is read against one base and one only: the containing
+ *   file's directory. That is the reading the Markdown half gives the identical
+ *   destination, and one base is what removes the disagreement that failed
+ *   **open** (#391, A1): with the root base also in play, a target that
+ *   overshoots the file's directory and lands back inside the repository
+ *   through the root directory's own name was `ok` as a span and `missing` as a
+ *   link. One judge produces the reading and the verdict together
+ *   (`judgeClaim`), so a finding cannot report the verdict of one rule beside
+ *   the path of another. Markdown links keep their single, correct base for the
+ *   same reason: a renderer resolves `(path)` against the containing file and
+ *   nothing else, so accepting a root-relative fallback there would hide a link
+ *   that is broken on GitHub.
  *
  *   Why the index and not `existsSync`: `apps/web/dist/index.html` is cited by
  *   `docs/VPS-SETUP.md` and `docs/VPS-OPERATIONS.md` and is a *build output* —
@@ -79,15 +85,17 @@
  *
  *   A target that climbs out of its own directory — `..` alone, or anything
  *   under `../` — is a claim by its form (#391). Its *reading* is the containing
- *   file's directory, the second base above, and that is what decides where it
- *   resolves; the reading is deliberately not re-tested against CLAIM_ROOTS,
- *   because the tracked-root rule is a substitute for the "is this a path?"
- *   signal that a `..`-rooted token already carries — retesting it would veto
- *   `../web/dist` (which reads as `web/dist`) while the link half reddens on the
- *   identical target. Before this rule the raw first segment `..` vetoed the
- *   whole class, so a dead `../../../docs/x.md` in a living doc stayed green
- *   while the identical target in link form was red: one target, two verdicts,
- *   and the disagreement failed **open**.
+ *   file's directory, the second base above, and that reading decides where it
+ *   resolves — the root base is not consulted for this class, so the verdict and
+ *   the reported `repoPath` come from one rule and cannot disagree (A1). The
+ *   reading is deliberately not re-tested against CLAIM_ROOTS either, because
+ *   the tracked-root rule is a substitute for the "is this a path?" signal that
+ *   a `..`-rooted token already carries — retesting it would veto `../web/dist`
+ *   (which reads as `web/dist`) while the link half reddens on the identical
+ *   target. Before this rule the raw first segment `..` vetoed the whole class,
+ *   so a dead `../../../docs/x.md` in a living doc stayed green while the
+ *   identical target in link form was red: one target, two verdicts, and the
+ *   disagreement failed **open**.
  *
  *   ESCAPING TARGETS — decided, not inherited: a `..`-rooted target whose
  *   reading leaves the repository (`../../etc/passwd`) is a claim, and a missing
@@ -100,17 +108,28 @@
  *   `~/.dsh/settings.yaml` is a different class and is unaffected: it is not
  *   `..`-rooted, and its first segment is not a tracked root.
  *
- *   The one `..` case that stays out, named so it is not silently dropped: a
- *   *bare* `..` — a span that is nothing but the two dots — is stripped by the
- *   span normaliser as swallowed punctuation, so the span half never claims it.
- *   `../` and everything under it do claim. The halves part company on that one
- *   token: `[x](..)` reddens in the link half, whose `toRepoPath` folds the
- *   repository root to `""` and reads it as missing — a reading that same half
- *   contradicts from a deeper directory, where `..` resolves to a tracked parent
+ *   Two `..` cases are named rather than silently dropped. A *bare* `..` — a
+ *   span that is nothing but the two dots — is stripped by the span normaliser
+ *   as swallowed punctuation, so the span half never claims it. `../` and
+ *   everything under it do claim. The halves part company on that one token:
+ *   `[x](..)` reddens in the link half, whose `toRepoPath` folds the repository
+ *   root to `""` and reads it as missing — a reading that same half contradicts
+ *   from a deeper directory, where `..` resolves to a tracked parent
  *   (`.agents/skills/ship/` → `.agents/skills`). Copying it would import the
  *   defect rather than the judgement, so it is declared here and pinned by a
  *   test instead; the link half's root reading is a neighbouring defect this
  *   change does not touch.
+ *
+ *   A *bare* `../` — the token with its slash, which `isFileRelativeTarget`
+ *   claims by form like everything under `../` — is judged `missing` from a
+ *   depth-1 directory. Its reading is the repository root, whose repo-relative
+ *   form is the empty string, and an empty reading is not a tracked path. From a
+ *   deeper directory the same token reads as the tracked parent and is `ok`.
+ *   The Markdown half reaches the identical verdicts on the identical
+ *   destinations (`""` is falsy there too, so the root reading is missing in
+ *   both halves), which is why this half copies that reading rather than
+ *   "fixing" it into a disagreement. Named because it is the one reading that
+ *   looks as if it should resolve and does not.
  *
  *   Each of those exclusions carries its class out of scope, deliberately:
  *     - whitespace → `bun run lint`, `git stash`, and every command line;
@@ -128,8 +147,9 @@
  *       rule. The link half reddens on the identical destination; widening it
  *       here would redden two correct documents, `docs/VPS-SETUP.md` and
  *       `docs/VPS-OPERATIONS.md`, which quote `./apps/web/dist` as the *literal*
- *       value of the asset handler's default. Declared, not silently dropped —
- *       the divergence is real and needs its own decision, not this one.
+ *       value of the asset handler's default. The divergence is real, it fails
+ *       open, and it is **filed** as #396 rather than left as prose here — it
+ *       needs its own decision, not this one.
  *
  *   COST, named: a bare file name that is *not* a tracked root-level file is
  *   not a claim, so `` `models.json` `` and `` `apply.sh` `` (both real files
@@ -245,16 +265,17 @@
  *   every one of them resolving.
  *
  *   Deliberately NOT extended to "the `X` role". Measured at 07cb2914, that
- *   marker has 37 hits over 11 distinct names, and they name three different
+ *   marker has 37 hits over 12 distinct names, and they name four different
  *   things: 16 hits are live harness roles (`.zcode/agents/<role>.md` — `qa`,
- *   `reviewer`, `fixer`), 2 name `test-implementer`, a role ADR-0032 retired,
- *   and the remaining 19 are model-stage names (`embedder`, `cheap`,
- *   `decision-candidates`, `generator`, `kajianq`, …). The third class is a
- *   false-positive factory with no resolution target, which is why the marker
- *   is rejected as a whole — but the harness-role namespace
- *   (`.zcode/agents/<role>.md`) is a **second deliberately unchecked marker**,
- *   not an empty one, and this header says so rather than implying otherwise.
- *   A test pins that distinction.
+ *   `reviewer`, `fixer`), 2 name `test-implementer`, a role ADR-0032 retired, 1
+ *   is the price artifact `$0.14/$0.28` (a model-stage price pair at
+ *   `adr/0048-…:282`, not a role at all), and the remaining 18 are model-stage
+ *   names (`embedder`, `cheap`, `decision-candidates`, `generator`, `kajianq`,
+ *   …). The last two classes are a false-positive factory with no resolution
+ *   target, which is why the marker is rejected as a whole — but the
+ *   harness-role namespace (`.zcode/agents/<role>.md`) is a **second
+ *   deliberately unchecked marker**, not an empty one, and this header says so
+ *   rather than implying otherwise. A test pins that distinction.
  *
  *   COST, named: the marker *is* the claim, so a doc naming a skill that lives
  *   outside this repository (a harness-level skill such as `omarchy`) must not
@@ -480,19 +501,6 @@ export function isFileRelativeTarget(target) {
 }
 
 /**
- * The repo-relative path a reference is *judged by*: the reading the resolution
- * contract uses. A target written against the repository root is read from the
- * root; a `..`-rooted one is read from the containing file's directory, the
- * second base the contract blesses. `null` when that reading escapes the
- * repository — a target naming a path outside it (#391).
- */
-export function claimPath(root, fromDir, target) {
-  return isFileRelativeTarget(target)
-    ? toRepoPath(root, fromDir, target)
-    : toRepoPath(root, "", target);
-}
-
-/**
  * Is this code span a repo-path claim? See SCOPE RULES in the header — the
  * order of these checks is the contract, and each one names its class. The
  * text is normalised first (`normaliseSpanTarget`), so callers may pass the raw
@@ -558,17 +566,35 @@ export function adrIdResolves(target, adrNames) {
 }
 
 /**
- * Resolve a code span: the repo root first, then the containing file's
- * directory. `"tracked"` or `"missing"` — the two bases are both honest
- * readings of a repo-relative path, and a target neither finds is dead under
- * either.
+ * Judge a code span: the reading *and* the verdict, from one base rule. What
+ * `toRepoPath` returns under that rule is the path the finding reports and the
+ * key `git check-ignore` and the allowlist chain look up, so the two can never
+ * come from different rules (B2) — the disagreement that let a re-entry target
+ * be `ok` as a span and `missing` as a link, and let a finding carry `status ok`
+ * beside a `repoPath` that does not exist (A1).
+ *
+ * The base rule, chosen once, here:
+ *   - a `..`-rooted target is read from the containing file's directory and
+ *     nowhere else, exactly as the Markdown half reads the identical
+ *     destination (see SCOPE RULES);
+ *   - every other target is read from the repository root first, then from the
+ *     containing file's directory — the second base the header blesses for the
+ *     `packages/infra/README.md` control. `repoPath` names the reading that
+ *     actually resolved, falling back to the root reading so a dead target still
+ *     reports the form the exemptions look up.
+ *
+ * `null` when the reading escapes the repository (#391): a target naming a path
+ * outside it, which neither exemption can reach.
  */
-export function resolveClaim(target, fromDir, ctx) {
-  const viaRoot = toRepoPath(ctx.root, "", target);
-  if (viaRoot && isTracked(ctx.tree, viaRoot)) return "tracked";
-  const viaFile = toRepoPath(ctx.root, fromDir, target);
-  if (viaFile && isTracked(ctx.tree, viaFile)) return "tracked";
-  return "missing";
+export function judgeClaim(target, fromDir, ctx) {
+  const readings = isFileRelativeTarget(target)
+    ? [toRepoPath(ctx.root, fromDir, target)]
+    : [toRepoPath(ctx.root, "", target), toRepoPath(ctx.root, fromDir, target)];
+  const hit = readings.find((path) => path && isTracked(ctx.tree, path));
+  return {
+    repoPath: hit ?? readings[0] ?? null,
+    status: hit ? "ok" : adrIdResolves(target, ctx.adrNames) ? "adr-id" : "missing",
+  };
 }
 
 /**
@@ -580,9 +606,20 @@ export function resolveClaim(target, fromDir, ctx) {
  */
 export function analyse(sources, ctx) {
   const findings = [];
+  /**
+   * The one place a finding is built: every shape carries the same fields, with
+   * `repoPath` explicit rather than present-or-absent by branch. A branch names
+   * the shape it saw and, for the two path-shaped kinds, hands over the
+   * `{ repoPath, status }` pair `judgeClaim` produced — it never assembles one
+   * from a status read here and a path read there.
+   */
+  const record = (kind, at, { status, repoPath = null }) => {
+    findings.push({ kind, ...at, repoPath, status });
+  };
   for (const { relPath, text } of sources) {
     const dir = dirname(relPath);
     for (const [i, line] of prose(text).entries()) {
+      const at = (target) => ({ file: relPath, line: i + 1, target });
       for (const match of line.matchAll(LINK_RE)) {
         const raw = match[1];
         // External, protocol-relative, mailto, and same-page anchors are out
@@ -593,13 +630,7 @@ export function analyse(sources, ctx) {
         // domain root. Rather than guess, treat it as a violation: this repo has
         // none, and a future one should be an explicit decision.
         if (raw.startsWith("/")) {
-          findings.push({
-            kind: "link",
-            file: relPath,
-            line: i + 1,
-            target: raw,
-            status: "root-absolute",
-          });
+          record("link", at(raw), { status: "root-absolute" });
           continue;
         }
         const [pathPart] = raw.split("#");
@@ -612,22 +643,11 @@ export function analyse(sources, ctx) {
           // contract is a violation line per reference — never an uncaught
           // `URIError` with no `file:line -> target` to act on. Reported on the
           // destination as the document wrote it, which is what a reader sees.
-          findings.push({
-            kind: "link",
-            file: relPath,
-            line: i + 1,
-            target: raw,
-            repoPath: null,
-            status: "malformed-encoding",
-          });
+          record("link", at(raw), { status: "malformed-encoding" });
           continue;
         }
         const rel = toRepoPath(ctx.root, dir, destination);
-        findings.push({
-          kind: "link",
-          file: relPath,
-          line: i + 1,
-          target: raw,
+        record("link", at(raw), {
           // The repo-relative path whose absence is the violation — the form
           // `git check-ignore` needs, and the key the exemption chain looks up.
           repoPath: rel,
@@ -641,35 +661,16 @@ export function analyse(sources, ctx) {
         // one — `docs/X.md:42` is a claim on `docs/X.md`.
         const target = normaliseSpanTarget(rawTarget);
         if (isSkillName(target) && skillMentionAt(line, rawTarget, index)) {
-          findings.push({
-            kind: "skill",
-            file: relPath,
-            line: i + 1,
-            target,
+          record("skill", at(target), {
             repoPath: `.agents/skills/${target}/SKILL.md`,
             status: ctx.skillDirs.has(target) ? "ok" : "missing",
           });
           continue;
         }
         if (!isPathClaim(rawTarget, ctx.tree)) continue;
-        const status =
-          resolveClaim(target, dir, ctx) === "tracked"
-            ? "ok"
-            : adrIdResolves(target, ctx.adrNames)
-              ? "adr-id"
-              : "missing";
-        findings.push({
-          kind: "path",
-          file: relPath,
-          line: i + 1,
-          target,
-          // The reading the resolver judged — the root for a root-relative
-          // target, the containing file's directory for a `..`-rooted one. That
-          // is the form `git check-ignore` needs and the key the exemption chain
-          // looks up, so both halves of one target reach the same chain.
-          repoPath: claimPath(ctx.root, dir, target),
-          status,
-        });
+        // One reading, one verdict, one object — `judgeClaim` decides the base
+        // and returns both, so this kind cannot report them from two rules.
+        record("path", at(target), judgeClaim(target, dir, ctx));
       }
     }
   }
@@ -712,9 +713,19 @@ export const POLICY = [
   {
     // #392: the destination as written could not be decoded, so the reference
     // cannot resolve. A violation with its own reason, not the "target does not
-    // exist" of a decoded miss and never an uncaught `URIError`. Above `link` by
-    // priority, disjoint from it by `status`, so the malformed shape can never
-    // fall to the wrong rule.
+    // exist" of a decoded miss and never an uncaught `URIError`.
+    //
+    // The priority is the SOLE guard, not a second one beside a status test:
+    // `link`'s matcher is `f.kind === "link"`, which matches this finding too,
+    // and `link` is exemptible — so if this rule's priority were lost, the
+    // malformed finding would fall to it, `adjudicate` would drop it before the
+    // exemption chain (a status other than `missing` is never exempted, and
+    // `malformed-encoding` is not in RESOLVED_STATUSES either), and a document
+    // with a malformed link would pass at exit 0 with the reference neither
+    // reported nor counted resolved. Narrowing `link`'s matcher to
+    // `status === "missing"` cannot create the disjointness instead: `link` owns
+    // the `links` counter and the resolved total for *every* link finding, so an
+    // `ok` link would then match no rule and `policyFor` would throw.
     id: "link-malformed-encoding",
     priority: 35,
     match: (f) => f.kind === "link" && f.status === "malformed-encoding",
