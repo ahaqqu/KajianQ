@@ -32,13 +32,13 @@ for anything below that drifts.
 
 ## Phases 1–4 are automated — do not hand-run them
 
-The `Staging` workflow runs on every code-bearing push to `main`: it deploys via
+The `Staging` workflow runs on every push/merge outside `paths-ignore`: it deploys via
 the reusable `deploy-vps.yml`, then runs the Golden Set smoke; ZAP baseline and
 Schemathesis fuzz follow only when it passes. The deploy script performs its own
 post-deploy smoke (health, an anonymous-session mint, the SPA HTML check).
 
 ```
-push to main (code-bearing)
+push/merge outside paths-ignore
   └─ Staging workflow
        ├─ deploy            → deploy-vps.yml → provision/vps/deploy/deploy.sh
        │                       build → rsync → restart → smoke (public URL)

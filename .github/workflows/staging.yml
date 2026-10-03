@@ -1,5 +1,5 @@
 name: Staging
-# Deploy to the VPS staging environment on every code-bearing merge to main,
+# Deploy to the VPS staging environment on every push/merge outside `paths-ignore`,
 # and on demand (workflow_dispatch) for rollbacks/re-runs. Post-ADR-0044 the
 # serving host is the netcup VPS: the `deploy` job delegates to the reusable
 # `deploy-vps.yml` workflow, so the deploy command lives in exactly one place
@@ -8,7 +8,9 @@ name: Staging
 # cannot change the deployed artifact, so they skip the push trigger — a deploy
 # plus its paid smoke would be pure spend with no new artifact to verify.
 # GitHub skips a push only when EVERY changed file matches an ignore pattern,
-# so a push mixing docs/tests and code still deploys.
+# so a push mixing docs/tests and code still deploys. A tests-only merge
+# produces no `Staging` run by design; `CI`, `E2E` and `VPS restore drill`
+# still run on `main` (they do not ignore test patterns).
 #
 # This workflow carries NO corpus-ingest job (ADR-0037). Loading the corpus
 # costs real money (embeddings + cheap-tier parent summaries) and about two
@@ -32,11 +34,17 @@ on:
       - "NOTICES/**"
       - ".agents/**"
       - ".zcode/**"
-      # Test files, wherever they live: most *.test.ts are colocated under
-      # apps/ and packages/, so tests/** alone would leave them deploying.
-      # No step in this workflow executes a test and none of them reaches the
-      # bundle's explicit entry points (boot.ts, cleanup.ts, kajianq-backup.mjs),
-      # so a tests-only merge ships a byte-identical artifact — pure deploy spend.
+      # Test patterns by convention, not by directory: most *.test.ts are
+      # colocated under apps/ and packages/, so tests/** alone would leave them
+      # deploying. Runner configs and test-utils/ helpers sit outside these
+      # patterns (recorded residual: spend only).
+      # No step in this workflow executes a test, and no test-class file
+      # reaches a shipped artifact: deploy.sh builds build:web,
+      # apps/api/src/boot.ts, apps/api/src/cleanup.ts and
+      # provision/vps/backup/kajianq-backup.mjs; build:web typechecks
+      # apps/web/src/**/*.test.ts (22 files) as `tsc --noEmit` input, and
+      # `vp build` emits only index.html's import graph — so no test file
+      # enters dist/ and a tests-only merge ships a byte-identical artifact.
       - "tests/**"
       - "**/*.test.ts"
       - "**/*.test.mjs"

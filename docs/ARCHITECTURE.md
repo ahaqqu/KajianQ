@@ -223,7 +223,7 @@ user- and admin-visible, not just logs.
 **What is not yet collected, honestly:** there is no external uptime probe, no
 disk-space alert, no TLS-expiry alert, no backup-failure alert, and no host
 metrics dashboard. systemd restarts the API and journald records its logs; the
-post-deploy Golden Set smoke is the health signal on a code-bearing merge rather
+post-deploy Golden Set smoke is the health signal on a push/merge outside `paths-ignore` rather
 than on a clock. The gaps and the tool-choice constraints are tracked by issue
 #194; the operational detail is [`docs/VPS-OPERATIONS.md`](./VPS-OPERATIONS.md)
 §4.
@@ -340,7 +340,7 @@ flows. A change that breaks a gate cannot reach production. KajianQ adds the
 expected sources, required citations, and known traps (dhaif hadith,
 cross-madzhab differences, refusal cases) — deterministic citation validity,
 faithfulness judging, the full suite operator-invoked at the release gate, and
-the cost-capped smoke on every code-bearing merge to staging — the
+the cost-capped smoke on every push/merge outside `paths-ignore` — the
 `post deploy checks` job in `.github/workflows/staging.yml`. There is no nightly
 run and none is planned (#359, owner decision 2026-10-03): a nightly would
 re-measure, on a schedule, the commit the merge gate already measured.
