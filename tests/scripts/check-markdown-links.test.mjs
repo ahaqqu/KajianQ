@@ -5,11 +5,6 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
   ADR_ID_RE,
-  CLAIM_ROOTS,
-  KNOWN_RETIRED,
-  POLICY,
-  RECORD_DIRS,
-  RECORD_FILES,
   RESOLVED_STATUSES,
   ROOT,
   adjudicate,
@@ -20,7 +15,6 @@ import {
   ignoredTargets,
   inlineCodeSpans,
   isPathClaim,
-  isRecord,
   isSkillName,
   judgeClaim,
   loadCorpus,
@@ -33,6 +27,14 @@ import {
   skillMentionAt,
   toRepoPath,
 } from "../../scripts/check-markdown-links.mjs";
+import {
+  CLAIM_ROOTS,
+  KNOWN_RETIRED,
+  POLICY,
+  RECORD_DIRS,
+  RECORD_FILES,
+  isRecord,
+} from "../../scripts/markdown-links/policy.mjs";
 
 // `ROOT` comes from the gate's own `import.meta.url`, never `process.cwd()`:
 // the suite must judge the repository under test, not the directory a runner
@@ -989,10 +991,24 @@ describe("markdown-links — the real tree", () => {
 });
 
 /**
- * CLI fixtures: a throwaway git repo under mkdtemp, with a copy of the gate at
- * `<fixture>/scripts/` so it resolves its own root from `import.meta.dir`. The
- * index is the resolution base, so the fixture must be `git add`ed — that is
- * the rule under test, not incidental setup.
+ * Copy the gate into a fixture at `<fixture>/scripts/` so it resolves its own
+ * root from its own location. Both halves travel: the entry imports the policy
+ * module, so a fixture that carried only `check-markdown-links.mjs` would die on
+ * the import instead of on the rule under test.
+ */
+function copyGate(dir) {
+  mkdirSync(join(dir, "scripts", "markdown-links"), { recursive: true });
+  copyFileSync(SCRIPT, join(dir, "scripts", "check-markdown-links.mjs"));
+  copyFileSync(
+    join(ROOT, "scripts", "markdown-links", "policy.mjs"),
+    join(dir, "scripts", "markdown-links", "policy.mjs"),
+  );
+}
+
+/**
+ * CLI fixtures: a throwaway git repo under mkdtemp. The index is the resolution
+ * base, so the fixture must be `git add`ed — that is the rule under test, not
+ * incidental setup.
  */
 function fixtureRepo(files) {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "md-links-")));
@@ -1001,8 +1017,7 @@ function fixtureRepo(files) {
     mkdirSync(dirname(abs), { recursive: true });
     writeFileSync(abs, content);
   }
-  mkdirSync(join(dir, "scripts"), { recursive: true });
-  copyFileSync(SCRIPT, join(dir, "scripts", "check-markdown-links.mjs"));
+  copyGate(dir);
   execFileSync("git", ["init", "-q"], { cwd: dir });
   execFileSync("git", ["add", "-A"], { cwd: dir });
   return dir;
@@ -1105,8 +1120,7 @@ describe("markdown-links — CLI fixtures", () => {
 
   it("fails loudly when the checkout has no git index", () => {
     const dir = realpathSync(mkdtempSync(join(tmpdir(), "md-links-nogit-")));
-    mkdirSync(join(dir, "scripts"), { recursive: true });
-    copyFileSync(SCRIPT, join(dir, "scripts", "check-markdown-links.mjs"));
+    copyGate(dir);
     writeFileSync(join(dir, "SPECS.md"), "# spec\n");
     const run = spawnSync("bun", ["scripts/check-markdown-links.mjs"], {
       cwd: dir,
