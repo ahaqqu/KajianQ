@@ -18,7 +18,7 @@ There is no third depth. If a PR mixes code and docs, thermos applies to the who
 ## Inputs
 
 - The pull request diff.
-- `docs/ARCHITECTURE.md` — verify the changes align with the principles (§1–§14, including the KajianQ amendments).
+- `docs/ARCHITECTURE.md` — verify the changes align with the principles (§1–§14 and §17–§18, including the KajianQ amendments).
 - `AGENTS.md` — universal guardrails and Definition of Done.
 - `.agents/skills/dars-pluggability/SKILL.md` and `.agents/skills/kajianq-traceability/SKILL.md` — the domain checklists and anti-pattern lists.
 
@@ -30,6 +30,7 @@ Check the PR against the principles in `docs/ARCHITECTURE.md`. The KajianQ-speci
 - **Traceable (§2)** — every new LLM call records model identity, tokens, latency, and cost to the trace; the UI renders persisted trace records, not ad hoc reconstructions.
 - **Cost (§3)** — price weighed in every model decision. Paid LLM/embedding APIs are accepted in the critical path — do not flag them as violations, but verify the choice is recorded (config + ADR if surprising) and cost is traced per query.
 - **Domain boundary (§1 and §14 via `dars-pluggability`)** — no Islamic-domain logic, vendor names, or direct SQL in engine packages.
+- **Scalable (§18)** — every durable byte stays in a shared store (Postgres, `ObjectStore`), the request path carries no client affinity, and SSE work stays request-scoped. New in-process state on the serving path needs one seam and a recorded trigger: a per-process counter or cache breaks the deployment's global guarantee silently, so check for module-level mutable state explicitly.
 
 For the inherited principles (§5–§13), enumerate them from `docs/ARCHITECTURE.md` at review time and check the PR did not regress them — do not trust any summary in this file.
 

@@ -1,13 +1,17 @@
 import * as v from "valibot";
-import { CostRecordSchema } from "./trace-cost";
+import { CostRecordSchema } from "./trace-primitives";
 
 /**
  * The `product_rules` trace event variant (#285; ADR-0007 typed detail).
  *
- * It lives in its own module because `trace.ts` is at the agentic 300-line cap
- * and every variant costs ~10 lines of that union — the alternative was
- * deleting another variant's rationale to make room. It is composed into the
- * union verbatim, exactly like the inline variants around it.
+ * It lives in its own module because the event union (`./trace-events.ts`) is
+ * at the agentic 300-line cap and every variant costs ~10 lines of it plus its
+ * rationale — the alternative was deleting another variant's reasoning to make
+ * room, or splitting the union itself. It is composed into that union verbatim,
+ * exactly like the inline variants around it, so `kind` remains the union's one
+ * discriminator. The cost shape it carries is `./trace-primitives.ts`'s
+ * `CostRecordSchema` — the contract's one owner of that shape; a variant
+ * imports it from there and never restates it.
  *
  * **What the event means.** The deterministic product rules ran: the rules a
  * domain pack applies to a passed draft after the reviewer gate. This contract

@@ -108,4 +108,27 @@ export interface RagStoreCorpus {
     parentSourceKey: string,
     opts: { limit: number },
   ): Effect.Effect<readonly DocChildById[], StoreError>;
+
+  /**
+   * The children **neighbouring** the given anchor children inside their own
+   * parent: at most `radius` positions before and after each anchor, in the
+   * corpus's stable within-parent order (`ordinal`). The anchors are addressed
+   * by **child id** — ids the caller already holds from a read — and the store
+   * derives each anchor's parent and ordinal from the stored row itself, so a
+   * window is anchored on what was retrieved and cannot be mis-derived from
+   * the caller's copy of it (ADR-0049). Anchors are never returned; only their
+   * neighbours are.
+   *
+   * `anchorChildIds` is the caller's **priority order**: a neighbour reachable
+   * from two anchors belongs to the first one, and rows come back ordered by
+   * that anchor's position and then by `ordinal` — so a truncated read drops
+   * the least important windows rather than an arbitrary subset, and the
+   * caller spends a bounded budget on the best evidence first. `radius <= 0`,
+   * `limit <= 0` and an empty anchor list all return no rows without issuing a
+   * query; an id that does not exist simply anchors nothing.
+   */
+  listDocChildNeighboursByChildIds(
+    anchorChildIds: readonly string[],
+    opts: { radius: number; limit: number },
+  ): Effect.Effect<readonly DocChildById[], StoreError>;
 }

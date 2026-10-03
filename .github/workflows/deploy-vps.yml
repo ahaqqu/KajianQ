@@ -92,7 +92,7 @@ jobs:
           } >> ~/.ssh/config
         env:
           KAJIANQ_DEPLOY_HOST: ${{ vars.VPS_HOST }}
-      - name: Deploy (build → ship → restart → smoke)
+      - name: Deploy (build → ship → restart → smoke → doctor)
         # The env file is written 0600 (the script refuses looser permissions —
         # a sourced file with group/other bits is a local privilege issue).
         run: |

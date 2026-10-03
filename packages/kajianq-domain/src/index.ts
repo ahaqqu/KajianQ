@@ -140,16 +140,21 @@ export {
 } from "./chat-router";
 export {
   createKajianQRetriever,
-  hierarchyBonus,
-  metadataFilters,
-  rrfFuse,
-  RRF_K,
-  HIERARCHY_BONUS,
   type KajianQRetrieverDeps,
   type RetrieverEmbedder,
   type RetrieverStore,
   type StoreBridge,
 } from "./chat-retriever";
+// The fusion arithmetic and the two deterministic expansions live in their own
+// modules (the 300-line and 5-import agentic caps); the barrel keeps one public
+// surface, so consumers import from `@app/kajianq-domain` exactly as before.
+export { hierarchyBonus, metadataFilters, rrfFuse, RRF_K, HIERARCHY_BONUS } from "./chat-fusion";
+export {
+  DEFAULT_NEIGHBOUR_CAP,
+  DEFAULT_NEIGHBOUR_RADIUS,
+  NEIGHBOUR_EXPANSION_ORIGIN,
+  expandVerseNeighbours,
+} from "./chat-retriever-parts";
 export {
   createKajianQAssembler,
   MACHINE_TRANSLATION_LABEL,
@@ -161,6 +166,15 @@ export {
   citationLabelsOf,
   citationCandidatesIn,
   normalizeCitationLabel,
+  // The per-address rule's two public halves (review A1/A2 of the #274 fix
+  // round): `groundingLabelsFor` is what the gate and the citations frame both
+  // read to decide what is grounded, and `addressesNamedBy` is the declaration
+  // the eval's injected grammar seam consumes, so the engine never re-derives
+  // what a Quran range names. Its three states are the contract — `[]`, the
+  // declared addresses, and `null` for a declared list that cannot be
+  // enumerated, which every consumer must refuse (review T1 of the fix round).
+  groundingLabelsFor,
+  addressesNamedBy,
 } from "./chat-citation-validator";
 export {
   createKajianQGenerator,

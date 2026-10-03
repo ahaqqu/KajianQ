@@ -973,4 +973,96 @@ describe("Postgres eval-ledger methods (unit, fake SQL)", () => {
     ).toEqual([]);
     expect(sql._calls).toEqual([]);
   });
+
+  it("listDocChildNeighboursByChildIds binds the anchors, radius and limit in order (ADR-0049)", async () => {
+    const sql = makeFakeSql();
+    const store = createPostgresRagStore(sql);
+    // Domain-neutral fixtures: engine package, so the ids are placeholders.
+    sql._setQuery([
+      {
+        id: "n1",
+        parent_id: "p1",
+        text_raw: "raw-n1",
+        text_ar: "ar-n1",
+        text_id: "id-n1",
+        citation: { sourceType: "src", unit: 1, part: 1 },
+        embedding_primary: null,
+        embedding_fallback: null,
+        ordinal: 0,
+        metadata: { citation: "REF. 1:1" },
+        created_at: new Date(0),
+        parent_title: "Parent One",
+      },
+    ]);
+    const rows = await runOk(
+      store.listDocChildNeighboursByChildIds(["c-anchor-1", "c-anchor-2"], {
+        radius: 2,
+        limit: 7,
+      }),
+    );
+    // Every knob is a bound parameter: the anchor array (whose ORDER the
+    // adapter preserves as the read's priority order), the radius, the limit.
+    expect(sql._calls[0]?.values).toEqual([["c-anchor-1", "c-anchor-2"], 2, 7]);
+    expect(sql._calls[0]?.text).toContain("unnest($1::uuid[]) WITH ORDINALITY");
+    expect(sql._calls[0]?.text).toContain("n.ordinal BETWEEN an.ordinal - $2 AND an.ordinal + $2");
+    // The join names the CTE's PROJECTED column (`anchor_id`). This is a cheap
+    // text canary only: the pre-fix `an.id` predicate passed it while real
+    // Postgres rejected the statement (42703), so the executable contract for
+    // this read lives in the real-Postgres suite
+    // (`rag-store-postgres.test.ts`, #334).
+    expect(sql._calls[0]?.text).toContain("n.id <> an.anchor_id");
+    expect(sql._calls[0]?.text).toContain("DISTINCT ON (n.id)");
+    expect(sql._calls[0]?.text).toContain("ORDER BY w.anchor_pos, w.ordinal, w.id");
+    expect(sql._calls[0]?.text).toContain("LIMIT $3");
+    expect(rows.map((r) => r.id)).toEqual(["n1"]);
+    // Same embedding-stripping contract as the other corpus reads.
+    expect(rows[0]?.embeddingPrimary).toBeNull();
+    expect(rows[0]?.embeddingFallback).toBeNull();
+    expect(rows[0]).toMatchObject({ parentTitle: "Parent One", textAr: "ar-n1" });
+  });
+
+  it("listDocChildNeighboursByChildIds short-circuits radius, limit and empty anchors", async () => {
+    for (const opts of [
+      { radius: 0, limit: 7 },
+      { radius: -1, limit: 7 },
+      { radius: 2, limit: 0 },
+      { radius: 2, limit: -1 },
+    ]) {
+      const sql = makeFakeSql();
+      const store = createPostgresRagStore(sql);
+      expect(await runOk(store.listDocChildNeighboursByChildIds(["c-anchor-1"], opts))).toEqual([]);
+      // A disabled or unbounded read is not a read: no query reaches the driver.
+      expect(sql._calls, JSON.stringify(opts)).toEqual([]);
+    }
+    const sql = makeFakeSql();
+    const store = createPostgresRagStore(sql);
+    expect(
+      await runOk(store.listDocChildNeighboursByChildIds([], { radius: 1, limit: 7 })),
+    ).toEqual([]);
+    // Blank ids are dropped, and an all-blank list anchors nothing.
+    expect(
+      await runOk(store.listDocChildNeighboursByChildIds(["  "], { radius: 1, limit: 7 })),
+    ).toEqual([]);
+    expect(sql._calls).toEqual([]);
+  });
+
+  it("listDocChildNeighboursByChildIds deduplicates a repeated anchor", async () => {
+    const sql = makeFakeSql();
+    const store = createPostgresRagStore(sql);
+    sql._setQuery([]);
+    await runOk(
+      store.listDocChildNeighboursByChildIds(["c-1", "c-1", "c-2"], { radius: 1, limit: 4 }),
+    );
+    // The priority order survives the dedup: first occurrence wins.
+    expect(sql._calls[0]?.values?.[0]).toEqual(["c-1", "c-2"]);
+  });
+
+  it("listDocChildNeighboursByChildIds maps a driver exception to a StoreError", async () => {
+    const sql = makeBoomSql(() => new Error("ECONNREFUSED connect"));
+    const store = createPostgresRagStore(sql);
+    const err = await runFail(
+      store.listDocChildNeighboursByChildIds(["c-1"], { radius: 1, limit: 4 }),
+    );
+    expect(err.kind).toBe("transport");
+  });
 });

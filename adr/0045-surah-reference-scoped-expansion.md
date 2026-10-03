@@ -15,6 +15,18 @@ ADR-0008/ADR-0027 (the `RagStore` seam and its Effect signature), ADR-0021 (the
 pipeline runner owns the trace), or ADR-0009 (cost discipline, config-driven
 model choice). It adds no vendor call, no paid dependency, and no re-ingest.
 
+**Amendment (2026-09-28, #274) — a second trigger, ADR-0049.** The expansion
+this ADR defines is extended from "the question named a surah" to "a retrieved
+chunk is a verse": `adr/0049` adds a bounded ordinal-neighbourhood read anchored
+on the retrieved child ids (`RagStore.listDocChildNeighboursByChildIds`), its own
+`origin: "verse_neighbours"` label, a `neighbour_expansion` trace event, and the
+`NEIGHBOUR_EXPANSION_RADIUS` / `NEIGHBOUR_EXPANSION_CAP` knobs. ADR-0045's own
+decision, detection, window, cap, and trace shape are unchanged, and its
+`expansion.chunks` report keeps meaning the **scope** path only (ADR-0049
+records that choice). ADR-0049 also completes the follow-up #264 recorded on
+`DASH_JOINED_NUMBER_TAIL` — a range citation is now checked address by address
+at the comparison site.
+
 ## Context
 
 - **The measured gap.** Against the scoped staging corpus (Quran 6,236 + Malik

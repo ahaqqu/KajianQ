@@ -102,7 +102,7 @@ to answer you and improve the answers, never to profile you — and you can ask
 for all of it to be erased at once. Questions about fiqh or aqidah touch on
 belief, so that data is treated as sensitive by design. The short privacy
 notice sits on the
-[About page](https://62.83.35.220.sslip.io/about); the full record —
+[About page](https://kajianq.ahaqqu.com/about); the full record —
 what is stored, for how long, and which processors see it — is
 [`docs/GDPR-ARTICLE-30-RECORD.md`](docs/GDPR-ARTICLE-30-RECORD.md).
 
@@ -123,10 +123,10 @@ For readers who want the full picture, the working documents are open:
 
 ## Environments
 
-| Environment | UI                            | API                           |
-| ----------- | ----------------------------- | ----------------------------- |
-| Staging     | https://62.83.35.220.sslip.io | https://62.83.35.220.sslip.io |
-| Production  | https://62.83.35.220.sslip.io | https://62.83.35.220.sslip.io |
+| Environment | UI                         | API                        |
+| ----------- | -------------------------- | -------------------------- |
+| Staging     | https://kajianq.ahaqqu.com | https://kajianq.ahaqqu.com |
+| Production  | https://kajianq.ahaqqu.com | https://kajianq.ahaqqu.com |
 
 The UI and API columns are identical today: the React PWA is served by the
 same host (the Hono stack that exposes `/v1/*`, behind nginx on the VPS), so

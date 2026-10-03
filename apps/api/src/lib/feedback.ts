@@ -1,4 +1,5 @@
 import {
+  describeIssue,
   FeedbackErrorSchema,
   FeedbackRequestSchema,
   FeedbackResponseSchema,
@@ -112,9 +113,7 @@ export async function parseFeedbackRequest(
   }
   const parsed = v.safeParse(FeedbackRequestSchema, body);
   if (!parsed.success) {
-    const detail = parsed.issues
-      .map((i) => `${i.path?.join(".") ?? "<body>"}: ${i.message}`)
-      .join("; ");
+    const detail = parsed.issues.map(describeIssue).join("; ");
     log?.warn("feedback.body_invalid", { detail: detail.slice(0, 200) });
     return { success: false, error: "invalid_request", detail: detail.slice(0, 200) };
   }

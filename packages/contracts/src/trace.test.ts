@@ -124,6 +124,23 @@ describe("trace contract", () => {
         at: 3,
       },
       {
+        // Neighbourhood expansion (ADR-0049): the retriever added the children
+        // neighbouring the verses already in context. `anchors` names the ids
+        // the read was keyed on — in its priority order — so a reader can
+        // resolve every added ref to the read that produced it. Engine package,
+        // so the ids stay opaque placeholders.
+        stage: "retriever",
+        kind: "neighbour_expansion",
+        detail: {
+          anchors: ["c1", "c2"],
+          returned: 3,
+          radius: 1,
+          cap: 12,
+          truncated: false,
+        },
+        at: 3,
+      },
+      {
         stage: "assembler",
         kind: "assembly",
         detail: { turnCount: 2, chunkCount: 1 },
@@ -169,7 +186,27 @@ describe("trace contract", () => {
       { stage: "generator", kind: "refusal", reason: "insufficient evidence", at: 8 },
     ];
     const trace = parseTrace({ id: "t", createdAt: 0, events });
-    expect(trace.events).toHaveLength(11);
+    // 12 = the base rows plus BOTH sides' additions: main's
+    // `neighbour_expansion` (ADR-0049) and this branch's `product_rules`
+    // (#285). A count is not enough on its own — it cannot tell "both
+    // variants are in the union" from "one replaced the other" — so the
+    // kinds are named: `v.variant` throws on a kind the union does not carry,
+    // and the list is the record that both additions survived the re-layout.
+    expect(trace.events).toHaveLength(12);
+    expect(trace.events.map((event) => event.kind)).toEqual([
+      "intent",
+      "subquery",
+      "retrieval",
+      "filter_relaxed",
+      "scope_expansion",
+      "neighbour_expansion",
+      "assembly",
+      "llm_call",
+      "review",
+      "product_rules",
+      "decision",
+      "refusal",
+    ]);
   });
 
   // Schema invariant (ADR-0007 typed detail): the variant is lossless — any
@@ -396,6 +433,37 @@ describe("trace contract", () => {
         events: [{ stage: "retriever", kind: "intent", detail: { intent: "x" }, at: 1 }],
       }).success,
     ).toBe(false);
+  });
+
+  it("rejects a neighbour expansion without its anchors or budget (ADR-0049)", () => {
+    // The event's whole point is that an added chunk resolves to the read that
+    // produced it, which is `anchors` + `radius`; a record without either is
+    // the silent path the trace rule exists to prevent, so it fails the parse
+    // rather than being persisted as an untyped detail.
+    for (const detail of [
+      undefined,
+      { returned: 1, radius: 1, cap: 2, truncated: false },
+      { anchors: [], returned: 1, radius: 1, cap: 2 },
+      { anchors: [""], returned: 1, radius: 1, cap: 2, truncated: false },
+      { anchors: ["c1"], returned: -1, radius: 1, cap: 2, truncated: false },
+      { anchors: ["c1"], returned: 1, radius: 1, cap: 2, truncated: "no" },
+    ]) {
+      expect(
+        v.safeParse(TraceSchema, {
+          id: "t",
+          createdAt: 1,
+          events: [
+            {
+              stage: "retriever",
+              kind: "neighbour_expansion",
+              ...(detail !== undefined ? { detail } : {}),
+              at: 1,
+            },
+          ],
+        }).success,
+        JSON.stringify(detail),
+      ).toBe(false);
+    }
   });
 
   it("rejects a malformed intent detail", () => {

@@ -7,6 +7,8 @@ import {
   buildStoreWiring,
   ChatConfigError,
   createProvidersFromEnv,
+  parseNeighbourCap,
+  parseNeighbourRadius,
   parseScopeExpansionCap,
   sseFrame,
   storeBridge,
@@ -105,6 +107,38 @@ describe("parseScopeExpansionCap — ADR-0045's budget knob", () => {
         SCOPE_EXPANSION_CAP: "nope",
       }),
     ).toThrow(/SCOPE_EXPANSION_CAP/);
+  });
+
+  it("parses ADR-0049's neighbourhood knobs with the scope cap's rule", () => {
+    // The same contract as SCOPE_EXPANSION_CAP: absent/empty = the domain
+    // default, `0` is a real value (it disables), anything malformed is a typed
+    // config failure naming its own variable — never a silent default.
+    expect(parseNeighbourRadius(undefined)).toBeUndefined();
+    expect(parseNeighbourRadius("  ")).toBeUndefined();
+    expect(parseNeighbourRadius("2")).toBe(2);
+    expect(parseNeighbourRadius("0")).toBe(0);
+    expect(parseNeighbourCap("12")).toBe(12);
+    expect(parseNeighbourCap("0")).toBe(0);
+    for (const bad of ["-1", "abc", "1.5", "12x"]) {
+      expect(() => parseNeighbourRadius(bad)).toThrow(/NEIGHBOUR_EXPANSION_RADIUS/);
+      expect(() => parseNeighbourCap(bad)).toThrow(/NEIGHBOUR_EXPANSION_CAP/);
+    }
+  });
+
+  it("wires the configured neighbourhood window into the pipeline and omits it when unset", () => {
+    const keyed = { DATABASE_URL: "postgres://x", DEEPSEEK_API_KEY: "k" };
+    expect(
+      buildChatWiring({
+        ...keyed,
+        NEIGHBOUR_EXPANSION_RADIUS: "2",
+        NEIGHBOUR_EXPANSION_CAP: "6",
+      }).pipeline,
+    ).toMatchObject({ neighbourRadius: 2, neighbourCap: 6 });
+    // Unset = the domain's own defaults stand, so the wiring passes nothing and
+    // the retriever's `?? DEFAULT_…` is what applies.
+    const pipeline = buildChatWiring(keyed).pipeline;
+    expect(pipeline).not.toHaveProperty("neighbourRadius");
+    expect(pipeline).not.toHaveProperty("neighbourCap");
   });
 });
 
