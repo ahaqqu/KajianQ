@@ -35,6 +35,17 @@ let sql: import("./rag-store-postgres-errors").SqlRunner | null = null;
 let store: RagStore;
 let cleanup: () => Promise<void>;
 
+// The `doc_parents` source keys this suite creates, as suffixes of the per-run
+// PREFIX. Fixtures and cleanup read the SAME list, so a new fixture key cannot
+// silently outlive its run (the residue the prefix-suffixed keys caused before
+// #335) and cleanup's reach cannot exceed the rows this suite owns — which is
+// what deleting by a prefix `LIKE` would range over in the shared database
+// (review B1 of the #335 round).
+const SOURCE_KEY_SUFFIXES = ["", "-upsert", "-neigh-a", "-neigh-b"] as const;
+
+/** A `doc_parents` source key in this run's fixture namespace. */
+const corpusKey = (suffix: (typeof SOURCE_KEY_SUFFIXES)[number]) => `${PREFIX}${suffix}`;
+
 function vec(dim: number, seed: number): number[] {
   return Array.from({ length: dim }, (_, i) => Math.sin(seed * 1000 + i * 0.01));
 }
@@ -54,11 +65,14 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
       await sql!`DELETE FROM answer_traces WHERE message_id LIKE ${PREFIX + "-%"}`;
       await sql!`DELETE FROM eval_runs WHERE label LIKE ${PREFIX + "-%"}`;
       // The corpus fixtures key their source_key off PREFIX with a suffix
-      // (`-upsert`, `-neigh-a`, …), so an exact-equality delete left every one
-      // of them — and their cascade children — behind in the shared database
-      // on each contract run.
+      // (`-upsert`, `-neigh-a`, …), so an exact-equality delete on the bare
+      // prefix left every one of them — and their cascade children — behind in
+      // the shared database on each contract run. Deleting the exact keys the
+      // fixtures create keeps that reach equal to the rows this suite owns,
+      // and both sides read SOURCE_KEY_SUFFIXES so the list cannot go stale
+      // (#335 review B1).
       await sql!`DELETE FROM doc_parents
-        WHERE source_key = ${PREFIX} OR source_key LIKE ${PREFIX + "-%"}`;
+        WHERE source_key = ANY(${SOURCE_KEY_SUFFIXES.map(corpusKey)}::text[])`;
     };
   });
 
@@ -74,7 +88,7 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
     const ar = vec(1536, 1);
     const program = Effect.gen(function* () {
       const parentId = yield* store.insertDocParent({
-        sourceKey: PREFIX,
+        sourceKey: corpusKey(""),
         title: "contract-fixture",
         metadata: { pfx: PREFIX },
       });
@@ -114,7 +128,7 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
     const arEmb = vec(1536, 3);
     const program = Effect.gen(function* () {
       const parentId = yield* store.insertDocParent({
-        sourceKey: PREFIX,
+        sourceKey: corpusKey(""),
         title: "contract-fixture-2",
         metadata: { pfx: PREFIX },
       });
@@ -350,14 +364,14 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
     const ar = vec(1536, 7);
     const program = Effect.gen(function* () {
       const parentId = yield* store.insertDocParent({
-        sourceKey: `${PREFIX}-upsert`,
+        sourceKey: corpusKey("-upsert"),
         title: "first",
         metadata: { pfx: PREFIX, rev: 1 },
       });
       // Re-insert the same source_key with different metadata/title → same id,
       // updated fields, no duplicate row.
       const parentId2 = yield* store.insertDocParent({
-        sourceKey: `${PREFIX}-upsert`,
+        sourceKey: corpusKey("-upsert"),
         title: "second",
         metadata: { pfx: PREFIX, rev: 2 },
       });
@@ -445,13 +459,13 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
         });
       const program = Effect.gen(function* () {
         const parentId = yield* store.insertDocParent({
-          sourceKey: `${PREFIX}-neigh-a`,
+          sourceKey: corpusKey("-neigh-a"),
           title: parentTitle,
           metadata: { pfx: PREFIX },
         });
         at = yield* Effect.forEach(ORDINALS, (ordinal) => seed(parentId, ordinal));
         const otherParentId = yield* store.insertDocParent({
-          sourceKey: `${PREFIX}-neigh-b`,
+          sourceKey: corpusKey("-neigh-b"),
           title: `${PREFIX}-neighbour-fixture-b`,
           metadata: { pfx: PREFIX },
         });
