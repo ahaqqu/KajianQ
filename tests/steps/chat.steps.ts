@@ -49,6 +49,22 @@ const DHAIF_FIXTURE = [
   "event: done\ndata: {}\n\n",
 ].join("");
 
+// #292 — the live p1/p9 shape: the draft already carried its disclaimer, so
+// the postprocess appended the dhaif warning and then the MT label, leaving
+// `[warning][MT label]` as the tail. The pre-fix peel only looked at the last
+// two paragraphs and left the warning in the body, so the card drew the same
+// sentence twice.
+const DHAIF_MT_ANSWER =
+  `Hadits tersebut diriwayatkan [HR. Malik no. 18].\n\n${DISCLAIMER}\n\n${DHAIF_WARNING}\n\n` +
+  "[Terjemahan mesin — lihat teks Arab asli]";
+
+const DHAIF_MT_FIXTURE = [
+  'event: meta\ndata: {"sessionId":"sess-e2e","messageId":"m-dhaif-mt","traceId":"tr-dhaif-mt"}\n\n',
+  `event: delta\ndata: ${DHAIF_MT_ANSWER.replaceAll("\n", "\ndata: ")}\n\n`,
+  'event: citations\ndata: {"messageId":"m-dhaif-mt","refusal":false,"dhaifWarning":true,"citations":[{"label":"HR. Malik no. 18","arabic":"حدثنا مالك","machineTranslated":false,"grade":"dhaif","source":"Al-Muwatta"}]}\n\n',
+  "event: done\ndata: {}\n\n",
+].join("");
+
 const REFUSAL_FIXTURE = [
   'event: meta\ndata: {"sessionId":"sess-e2e","messageId":"m-ref","traceId":"tr-ref"}\n\n',
   "event: delta\ndata: tidak menemukan dalil yang memadai\n\n",
@@ -184,6 +200,15 @@ When("I ask a question whose answer carries a dhaif hadith", async ({ page }) =>
   await page.getByTestId("composer").fill("Hadits tentang amalan tertentu?");
   await page.getByTestId("send").click();
 });
+
+When(
+  "I ask a question whose dhaif answer ends with the machine-translation label",
+  async ({ page }) => {
+    await openChatWithFixtures(page, DHAIF_MT_FIXTURE);
+    await page.getByTestId("composer").fill("Hadits tentang amalan tertentu?");
+    await page.getByTestId("send").click();
+  },
+);
 
 When("I ask a question whose answer contains markdown", async ({ page }) => {
   await openChatWithFixtures(page, MD_FIXTURE);
@@ -328,6 +353,18 @@ Then("the dhaif warning renders as a warning card with the grade badge", async (
   await page.getByTestId("citation-chip").last().click();
   const sheet = page.getByTestId("citation-sheet");
   await expect(sheet.getByTestId("grade-badge")).toHaveText("dhaif");
+});
+
+Then("the dhaif warning renders exactly once beside the MT label", async ({ page }) => {
+  const assistant = page.getByTestId("message-assistant").last();
+  await expect(assistant.getByTestId("dhaif-warning")).toHaveCount(1);
+  const text = (await assistant.textContent()) ?? "";
+  // The canonical sentence appears once — not once as prose and once as card.
+  await expect(text.split(DHAIF_WARNING).length - 1).toBe(1);
+  // The MT label is provenance, not a warning: it still renders, once.
+  await expect(text.split("Terjemahan mesin").length - 1).toBe(1);
+  // The disclaimer that the draft already carried still renders as a footer.
+  await expect(assistant.getByTestId("ulama-disclaimer")).toHaveCount(1);
 });
 
 Then(

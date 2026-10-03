@@ -29,8 +29,10 @@ export function AnswerCard({
   const citations = message.citations?.citations ?? [];
   const blocks = renderBodyBlocks(split.body, citations);
   // The card shows the answer's own warning line when the deterministic
-  // rule appended it; the frame's dhaifWarning flag drives the card even
-  // when the line is missing from the (rehydrated) text.
+  // rule appended it. `split.warning` is the product's canonical copy only
+  // (A2), so a model paragraph that merely opens with a marker stays prose in
+  // `body`; the frame's dhaifWarning flag drives the card even when the line
+  // is missing from the (rehydrated) text.
   const warning =
     split.warning ??
     (message.citations?.dhaifWarning === true ? t(locale, "dhaifWarningCard") : null);

@@ -188,6 +188,9 @@ describe("renderBodyBlocks", () => {
   });
 });
 
+// The trailing rule run — the shapes, orders, and repeats of `[warning]`,
+// `[disclaimer]`, and the ADR-0006 MT label — has its own spec:
+// `chat-render.dhaif-tail.test.ts` (#292).
 describe("splitAnswerBlocks", () => {
   it("peels the disclaimer into its own block (ID copy)", () => {
     const disclaimer = "Jawaban ini bukan fatwa; rujuk ulama untuk keputusan hukum.";
@@ -214,13 +217,6 @@ describe("splitAnswerBlocks", () => {
       warning: null,
       disclaimer: null,
     });
-  });
-
-  it("peels by marker prefix, so wording tweaks cannot hide the blocks", () => {
-    const split = splitAnswerBlocks(
-      "Jawaban.\n\n[Peringatan] Hadits yang dikutip berderajat lemah (dhaif); tidak dapat dijadikan dalil utama.",
-    );
-    expect(split.warning).toContain("[Peringatan]");
   });
 
   it("does not peel a long paragraph that merely mentions the phrase", () => {
