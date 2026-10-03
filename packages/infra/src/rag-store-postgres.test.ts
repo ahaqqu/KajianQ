@@ -35,16 +35,26 @@ let sql: import("./rag-store-postgres-errors").SqlRunner | null = null;
 let store: RagStore;
 let cleanup: () => Promise<void>;
 
-// The `doc_parents` source keys this suite creates, as suffixes of the per-run
-// PREFIX. Fixtures and cleanup read the SAME list, so a new fixture key cannot
-// silently outlive its run (the residue the prefix-suffixed keys caused before
-// #335) and cleanup's reach cannot exceed the rows this suite owns — which is
-// what deleting by a prefix `LIKE` would range over in the shared database
-// (review B1 of the #335 round).
+// Every key this suite creates is `${PREFIX}${suffix}`, and cleanup deletes
+// those exact keys rather than a `LIKE ${PREFIX}-%` pattern: the suite shares a
+// real database with everything else, so a pattern's reach would exceed the
+// rows this suite owns (the residue the prefix-suffixed corpus keys caused
+// before #335, and the over-reach review B1 of that round named). Each suffix
+// is declared once and read by BOTH the fixture that writes the key and the
+// cleanup that removes it, so a new fixture key cannot silently outlive its run
+// (review B1 of #338).
 const SOURCE_KEY_SUFFIXES = ["", "-upsert", "-neigh-a", "-neigh-b"] as const;
+const TRACE_MESSAGE_SUFFIX = "-msg-1";
+const EVAL_RUN_LABEL_SUFFIX = "-run";
 
 /** A `doc_parents` source key in this run's fixture namespace. */
 const corpusKey = (suffix: (typeof SOURCE_KEY_SUFFIXES)[number]) => `${PREFIX}${suffix}`;
+
+/** The `answer_traces.message_id` this suite creates, in the run's namespace. */
+const traceMessageId = () => `${PREFIX}${TRACE_MESSAGE_SUFFIX}`;
+
+/** The `eval_runs.label` this suite creates, in the run's namespace. */
+const evalRunLabel = () => `${PREFIX}${EVAL_RUN_LABEL_SUFFIX}`;
 
 function vec(dim: number, seed: number): number[] {
   return Array.from({ length: dim }, (_, i) => Math.sin(seed * 1000 + i * 0.01));
@@ -57,13 +67,15 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
     sql = postgresSqlRunner(postgresPool(URL));
     store = createPostgresRagStore(sql);
     cleanup = async () => {
-      // Remove this run's fixture rows. userId/messageId keys carry PREFIX so
-      // a failed run cannot collide with the next.
+      // Remove this run's fixture rows, each by the exact key its fixture
+      // writes. No statement here deletes by a `LIKE ${PREFIX}-%` pattern: the
+      // database is shared, so a pattern's reach exceeds the rows this suite
+      // owns (review B1 of #338).
       await sql!`DELETE FROM users WHERE id IN (
         SELECT user_id FROM chat_sessions WHERE metadata->>'pfx' = ${PREFIX}
       )`;
-      await sql!`DELETE FROM answer_traces WHERE message_id LIKE ${PREFIX + "-%"}`;
-      await sql!`DELETE FROM eval_runs WHERE label LIKE ${PREFIX + "-%"}`;
+      await sql!`DELETE FROM answer_traces WHERE message_id = ${traceMessageId()}`;
+      await sql!`DELETE FROM eval_runs WHERE label = ${evalRunLabel()}`;
       // The corpus fixtures key their source_key off PREFIX with a suffix
       // (`-upsert`, `-neigh-a`, …), so an exact-equality delete on the bare
       // prefix left every one of them — and their cascade children — behind in
@@ -207,7 +219,7 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
         },
       ],
     };
-    const messageId = `${PREFIX}-msg-1`;
+    const messageId = traceMessageId();
     const program = Effect.gen(function* () {
       const { userId, token } = yield* store.createSession();
       const chatSessionId = yield* store.createChatSession({ userId, metadata: { pfx: PREFIX } });
@@ -229,7 +241,7 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
       // made every statement a syntax error (42601) — and nothing covered it, so
       // `eval_results` stayed empty while the spec claimed per-question rows.
       const evalRunId = yield* store.insertEvalRun({
-        label: `${PREFIX}-run`,
+        label: evalRunLabel(),
         report: {} as never,
       });
       yield* store.insertEvalResult({
