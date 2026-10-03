@@ -197,11 +197,13 @@ export const ROOTS = [
 /**
  * First path segments that make an inline code span a repo-path claim. This is
  * every tracked top-level directory of the repository — the ticket's list plus
- * `.github/` and `.githooks/`, which carry no such span today and cost nothing
- * to include. A new top-level directory is a new claim root: add it here, or
- * paths into it are unchecked. `tests/scripts/check-markdown-links.test.mjs`
- * fails if this list stops covering the tracked tree, so that gap cannot open
- * silently.
+ * `.github/` and `.githooks/`, which the list omitted and which turned out to
+ * carry 17 real claims (the deploy, staging and restore-drill workflows and
+ * `.github/zap-rules.tsv`, cited by `SPECS.md`, `docs/ARCHITECTURE.md`, the
+ * Art. 30 record and the `ship` skill). A new top-level directory is a new
+ * claim root: add it here, or paths into it are unchecked.
+ * `tests/scripts/check-markdown-links.test.mjs` fails if this list stops
+ * covering the tracked tree, so that gap cannot open silently.
  */
 export const CLAIM_ROOTS = [
   "apps",
@@ -257,11 +259,11 @@ export const ADR_ID_RE = /^adr\/(\d{4})$/;
 const SKILL_NAME_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 
 /**
- * Strip fenced code blocks before scanning. A markdown link written inside a
- * fence is an example, not a citation — this file's own header would otherwise
- * be scanned as prose. Indented (4-space) blocks are not stripped: this
- * repository uses fences throughout, and treating indentation as code would
- * silently skip real links in nested list items.
+ * Strip fenced code blocks before scanning. A link or code span written inside
+ * a fence is an example, not a citation — a doc that illustrates a shape must
+ * be able to do so without claiming the path in it exists. Indented (4-space)
+ * blocks are not stripped: this repository uses fences throughout, and treating
+ * indentation as code would silently skip real links in nested list items.
  */
 export function prose(text) {
   const out = [];
