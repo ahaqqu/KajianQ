@@ -72,6 +72,22 @@ describe("AnswerCard dhaif warning renders exactly once (#292)", () => {
     },
     { name: "[D][MT][W]", tail: [DISCLAIMER, MT, WARNING_ID], warning: WARNING_ID, footer: true },
     { name: "[W][MT][D]", tail: [WARNING_ID, MT, DISCLAIMER], warning: WARNING_ID, footer: true },
+    // #348 — QA #345 probe p9b: the model repeated the canonical line inside
+    // ONE trailing paragraph, so the wire carried 2 copies and the page showed
+    // 3 (both as body prose, plus the flag-driven card). These rows count the
+    // DOM: they read 3 before the collapse, 1 after.
+    {
+      name: "[D][W ×2 in one paragraph]",
+      tail: [DISCLAIMER, `${WARNING_ID}\n${WARNING_ID}`],
+      warning: WARNING_ID,
+      footer: true,
+    },
+    {
+      name: "[W ×2 in one paragraph]",
+      tail: [`${WARNING_ID}\n${WARNING_ID}`],
+      warning: WARNING_ID,
+      footer: false,
+    },
   ];
 
   for (const shape of SHAPES) {
