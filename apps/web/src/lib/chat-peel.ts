@@ -92,15 +92,35 @@ const RULE_KINDS: readonly RuleKind[] = [
 ];
 
 /**
+ * The canonical dhaif line this paragraph repeats, or `null` when it is not a
+ * repeat. The model writes the repeat two ways: one copy per line (#348) and
+ * the copies space-separated on ONE line (#361 — three ID copies are 281 chars,
+ * so the single line fails both the equality test and the 200-char
+ * `RULE_LINE_MAX`, classifies as `null` and stops the walk). Both are the same
+ * fact — the paragraph is nothing but the product's own copy — so the test is a
+ * copy remainder, not a line split: drop every occurrence of a canonical line
+ * and require whitespace only. A copy mixed with the model's own words, or a
+ * paragraph that merely opens with a marker, leaves a remainder and stays
+ * prose, whole (A2).
+ */
+function repeatOfCanonicalWarning(paragraph: string): string | null {
+  for (const copy of CANONICAL_WARNINGS) {
+    if (!paragraph.includes(copy)) continue;
+    if (paragraph.split(copy).join("").trim() === "") return copy;
+  }
+  return null;
+}
+
+/**
  * Classify one paragraph as a rule line (`kind` + trimmed text) or `null` for
  * prose. Short lines only — except the canonical copy, whose equality counts;
- * a paragraph of byte-identical copies collapses to one, which the card draws
- * once, so its repeats are dropped with it and never reach `body` (#348).
+ * a paragraph of byte-identical copies collapses to the one copy the card
+ * draws, so its repeats are dropped with it and never reach `body` (#348 for
+ * line-separated copies, #361 when they are space-separated on one line).
  */
 function classifyRule(paragraph: string): { kind: RuleKind; text: string } | null {
-  const lines = paragraph.split("\n").map((line) => line.trim());
-  const repeat = CANONICAL_WARNINGS.includes(lines[0]!) && lines.every((l) => l === lines[0]);
-  const text = repeat ? lines[0]! : paragraph.trim();
+  const repeat = repeatOfCanonicalWarning(paragraph);
+  const text = repeat ?? paragraph.trim();
   if (text.length > RULE_LINE_MAX && !CANONICAL_WARNINGS.includes(text)) return null;
   const kind = RULE_KINDS.find((candidate) => candidate.matches(text));
   return kind === undefined ? null : { kind, text };
@@ -119,8 +139,9 @@ function classifyRule(paragraph: string): { kind: RuleKind; text: string } | nul
  *
  * - the **warning** peels only when it equals the product's canonical line
  *   (`CANONICAL_WARNINGS`), so marker-prefixed model prose stays prose and can
- *   never become a trust card (A2); a byte-identical repeat of an already-
- *   peeled copy is dropped, because the card renders that copy once;
+ *   never become a trust card (A2); a repeat of an already-peeled copy — one
+ *   copy per line (#348) or copies space-separated on one line (#361) — is
+ *   dropped, because the card renders that copy once;
  * - the **disclaimer** peels into its footer whatever `bukan fatwa` phrasing
  *   opens it (the server's own loose predicate, #284); an identical repeat is
  *   dropped, a different one stays in `body`;

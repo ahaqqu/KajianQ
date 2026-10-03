@@ -83,6 +83,23 @@ const DHAIF_REPEAT_FIXTURE = [
   "event: done\ndata: {}\n\n",
 ].join("");
 
+// #361 — QA #356 probes p4/p9: the model repeated the canonical line THREE
+// times on ONE line, SPACE-SEPARATED (3 × 93 = 281 chars, so the paragraph is
+// a single over-cap line). The #348 collapse split on `\n` and never saw a line
+// equal to the copy; the paragraph classified as null, which stops the peel, so
+// it stayed in `body` as prose while the citations frame still reported
+// `dhaifWarning: true` — the wire carried 3, the page displayed 4.
+const DHAIF_SPACE_REPEAT_ANSWER =
+  `Hadits tersebut diriwayatkan [HR. Malik no. 18].\n\n${DISCLAIMER}\n\n` +
+  [DHAIF_WARNING, DHAIF_WARNING, DHAIF_WARNING].join(" ");
+
+const DHAIF_SPACE_REPEAT_FIXTURE = [
+  'event: meta\ndata: {"sessionId":"sess-e2e","messageId":"m-dhaif-space","traceId":"tr-dhaif-space"}\n\n',
+  `event: delta\ndata: ${DHAIF_SPACE_REPEAT_ANSWER.replaceAll("\n", "\ndata: ")}\n\n`,
+  'event: citations\ndata: {"messageId":"m-dhaif-space","refusal":false,"dhaifWarning":true,"citations":[{"label":"HR. Malik no. 18","arabic":"حدثنا مالك","machineTranslated":false,"grade":"dhaif","source":"Al-Muwatta"}]}\n\n',
+  "event: done\ndata: {}\n\n",
+].join("");
+
 const REFUSAL_FIXTURE = [
   'event: meta\ndata: {"sessionId":"sess-e2e","messageId":"m-ref","traceId":"tr-ref"}\n\n',
   "event: delta\ndata: tidak menemukan dalil yang memadai\n\n",
@@ -232,6 +249,15 @@ When(
   "I ask a question whose dhaif answer repeats the canonical line in its last paragraph",
   async ({ page }) => {
     await openChatWithFixtures(page, DHAIF_REPEAT_FIXTURE);
+    await page.getByTestId("composer").fill("Hadits tentang amalan tertentu?");
+    await page.getByTestId("send").click();
+  },
+);
+
+When(
+  "I ask a question whose dhaif answer repeats the canonical line space-separated",
+  async ({ page }) => {
+    await openChatWithFixtures(page, DHAIF_SPACE_REPEAT_FIXTURE);
     await page.getByTestId("composer").fill("Hadits tentang amalan tertentu?");
     await page.getByTestId("send").click();
   },
@@ -407,6 +433,24 @@ Then("the dhaif warning renders exactly once despite the repeated line", async (
   await expect(assistant).toContainText("Hadits tersebut diriwayatkan");
   await expect(assistant.getByTestId("ulama-disclaimer")).toHaveCount(1);
 });
+
+Then(
+  "the dhaif warning renders exactly once despite the space-separated repeat",
+  async ({ page }) => {
+    // The same DOM count QA ran on staging (probe p4/p9). Pre-fix this read 4 —
+    // three copies in one prose paragraph, plus the flag-driven card — while
+    // the wire had carried 3.
+    const assistant = page.getByTestId("message-assistant").last();
+    await expect(assistant.getByTestId("dhaif-warning")).toHaveCount(1);
+    const text = (await assistant.textContent()) ?? "";
+    await expect(text.split(DHAIF_WARNING).length - 1).toBe(1);
+    // The paragraph is consumed by the card, so the answer text itself still
+    // renders and the disclaimer — one paragraph left of the repeat — still
+    // reaches its footer instead of being stranded in the body.
+    await expect(assistant).toContainText("Hadits tersebut diriwayatkan");
+    await expect(assistant.getByTestId("ulama-disclaimer")).toHaveCount(1);
+  },
+);
 
 Then(
   "the answer renders bold, emphasis, and list items with no literal markdown",
