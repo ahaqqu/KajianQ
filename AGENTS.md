@@ -32,7 +32,7 @@ These apply to every role and every task. Each bullet names the skill that carri
 
 ## The agentic workflow
 
-The recommended end-to-end pipeline is the three sections below, in order: § Prior to implementation (`grill-with-docs` → `to-spec` → `to-tickets` → `plan-review`) → § During implementation (`guided-implementation`, `writing-tests`) → § After implementation (`pr-creation`, `code-review`, `ship`).
+The recommended end-to-end pipeline is the three sections below, in order: § Prior to implementation → § During implementation → § After implementation.
 
 For autonomous, multi-agent orchestration of the implement → review → fix loop, invoke the `manager` skill (`.agents/skills/manager/SKILL.md`). It spawns role subagents (implementer, reviewer, fixer), monitors until the PR is green, relays itemized review findings, and recommends next steps. After the owner merges, the manager one-shot verifies the post-merge workflows on `main` (e.g. `Staging`) are green for the merge commit and relays any red log to the user — never silently absorbing it; cleanup duty sits behind this check. Role models are configured in `.zcode/agents/`; the manager skill's _Harness adapters_ router loads the per-harness dispatch adapter (and its routing rules) for your harness.
 
