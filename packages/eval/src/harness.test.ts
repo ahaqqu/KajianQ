@@ -7,7 +7,9 @@ import {
   type HarnessDeps,
   type RunLedger,
 } from "./harness";
+import { ledgerFailureNote } from "./harness-outcomes";
 import type { EvalResultOutcome, GoldenSet } from "@app/contracts";
+import { StoreError } from "@app/rag-core";
 import type { TraceEventLike } from "./harness-types";
 
 const set: GoldenSet = {
@@ -50,6 +52,11 @@ function makeDeps(
     traceEvents?: () => TraceEventLike[];
     /** Make every `saveResult` reject, to exercise the ledger-failure path. */
     failLedger?: boolean;
+    /**
+     * What `saveResult` rejects with (default `new Error("An error has
+     * occurred")`). A real ledger rejects with the seam's `StoreError` (A2).
+     */
+    ledgerError?: unknown;
     /** The opaque origin label injected as the harness's expansion marker. */
     expansionOrigin?: string;
   } = {},
@@ -97,7 +104,7 @@ function makeDeps(
       savedReport = report;
     },
     async saveResult(runId, questionId, outcome) {
-      if (opts.failLedger) throw new Error("An error has occurred");
+      if (opts.failLedger) throw opts.ledgerError ?? new Error("An error has occurred");
       savedResults.push({ questionId, outcome, runId });
       return questionId;
     },
@@ -206,6 +213,77 @@ describe("runGoldenSet", () => {
     expect(result.results.find((r) => r.questionId === "q3")?.notes).toEqual([
       "skipped: transport down",
       "ledger_write_failed: connection reset after commit",
+    ]);
+  });
+
+  it("names a real StoreError's kind and cause, not its empty message (A2)", () => {
+    // `StoreError` — what the ledger seam's `saveResult` actually rejects with
+    // — is an `Error` whose `message` is `""` (store-error.ts:43), so the shape
+    // this note used to read printed `ledger_write_failed: ` and nothing else.
+    // Each of the five kinds carries its meaning in `kind` + the wrapped
+    // `cause`; these pins go red the moment the note loses either one.
+    expect(
+      ledgerFailureNote(
+        new StoreError({ kind: "transport", cause: new Error("connection reset") }),
+      ),
+    ).toBe("ledger_write_failed: transport: connection reset");
+    expect(
+      ledgerFailureNote(
+        new StoreError({ kind: "constraint", cause: new RangeError("invalid vector dimension") }),
+      ),
+    ).toBe("ledger_write_failed: constraint: invalid vector dimension");
+    expect(
+      ledgerFailureNote(
+        new StoreError({
+          kind: "timeout",
+          cause: new Error("statement timeout", { cause: "57014" }),
+        }),
+      ),
+    ).toBe("ledger_write_failed: timeout: statement timeout");
+    // A cause the adapter could not wrap: still named, never blank.
+    expect(ledgerFailureNote(new StoreError({ kind: "config", cause: undefined }))).toBe(
+      "ledger_write_failed: config: no cause",
+    );
+    expect(ledgerFailureNote(new StoreError({ kind: "not_found", cause: { code: "23505" } }))).toBe(
+      'ledger_write_failed: not_found: {"code":"23505"}',
+    );
+  });
+
+  it("falls back for a throwable that is not a StoreError (A2)", () => {
+    expect(ledgerFailureNote(new Error("connection reset"))).toBe(
+      "ledger_write_failed: connection reset",
+    );
+    // An empty-message non-StoreError Error keeps its name; nothing prints blank.
+    expect(ledgerFailureNote(new Error(""))).toBe("ledger_write_failed: Error");
+    expect(ledgerFailureNote("boom")).toBe("ledger_write_failed: boom");
+    expect(ledgerFailureNote(undefined)).toBe("ledger_write_failed: no cause");
+  });
+
+  it("names a real StoreError on both ledger-write failure paths (A2)", async () => {
+    // The two call sites share `ledgerFailureNote`: the scored write
+    // (harness.ts:167) and the skip's own row (harness.ts:189). Before this,
+    // both printed a bare `ledger_write_failed:` for the one error the real
+    // ledger raises.
+    const scored = makeDeps({
+      failLedger: true,
+      ledgerError: new StoreError({ kind: "transport", cause: new Error("connection reset") }),
+    });
+    const scoredRun = await runGoldenSet(set, scored.deps);
+    expect(scoredRun.results.map((r) => r.notes)).toEqual([
+      ["ledger_write_failed: transport: connection reset"],
+      ["ledger_write_failed: transport: connection reset"],
+      ["ledger_write_failed: transport: connection reset"],
+    ]);
+
+    const skipped = makeDeps({
+      failThird: true,
+      failLedger: true,
+      ledgerError: new StoreError({ kind: "constraint", cause: new Error("duplicate key value") }),
+    });
+    const skippedRun = await runGoldenSet(set, skipped.deps);
+    expect(skippedRun.results.find((r) => r.questionId === "q3")?.notes).toEqual([
+      "skipped: transport down",
+      "ledger_write_failed: constraint: duplicate key value",
     ]);
   });
 

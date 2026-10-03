@@ -1,4 +1,5 @@
 import type { EvalResultOutcome, GoldenQuestion } from "@app/contracts";
+import { StoreError } from "@app/rag-core";
 import type { ChunkRefLike, TraceEventLike } from "./harness-types";
 import { retrievalRecall } from "./scorers";
 
@@ -70,15 +71,48 @@ export function expansionProvenance(input: {
 }
 
 /**
+ * The text for anything a `catch` can hand us (review A2). `cause` is `unknown`
+ * by contract (`store-error.ts:43`), so a wrapped vendor exception, a bare
+ * string, a plain object and `undefined` all arrive here.
+ */
+function thrownText(value: unknown): string {
+  if (value === undefined || value === null) return "no cause";
+  if (typeof value === "string") return value;
+  if (value instanceof Error) return value.message !== "" ? value.message : value.name;
+  if (typeof value === "object") {
+    const { message } = value as { message?: unknown };
+    if (typeof message === "string" && message !== "") return message;
+    try {
+      return JSON.stringify(value);
+    } catch {
+      // Circular or otherwise unserialisable: the caller's fallback applies.
+      return "";
+    }
+  }
+  return String(value);
+}
+
+/**
  * The note a failed ledger write leaves on a question's outcome. Shared by
  * the scored and the skipped write path so a persistence failure reads the
  * same either way. It is **report-only**: a write that fails leaves no row,
  * and an ambiguous one (the INSERT committed, the response was lost) leaves a
  * row still carrying the bare cause — so the report can name a cause the store
  * does not, never the other way round.
+ *
+ * The cause is read from what the throwable actually carries (review A2).
+ * `StoreError` — the seam's own typed failure, and the error this path really
+ * sees — is an `Error` with an EMPTY `message` (`store-error.ts:43`): `kind`
+ * and the wrapped `cause` are its whole payload, and its own `toString` is the
+ * bare word `"StoreError"`. Reading `.message` first, as the round-2 shape did,
+ * rendered `ledger_write_failed: ` with no cause at all — the blank red this
+ * ticket exists to remove, on the one run whose store evidence is already
+ * missing.
  */
 export function ledgerFailureNote(err: unknown): string {
-  return `ledger_write_failed: ${err instanceof Error ? err.message : String(err)}`;
+  const cause =
+    err instanceof StoreError ? `${err.kind}: ${thrownText(err.cause)}` : thrownText(err);
+  return `ledger_write_failed: ${cause === "" ? "no cause" : cause}`;
 }
 
 /**

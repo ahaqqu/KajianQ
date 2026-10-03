@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { failureLines, printSummary, skipLines } from "../../packages/eval/scripts/eval-cli.mjs";
+// The producer side of the ledger-failure note, imported by path so the note
+// these lines render is the one the harness really writes (round-2 A2). A
+// hand-written note string is exactly the false pin that round found: it can
+// spell a cause the producer cannot emit, and passes forever.
+import { ledgerFailureNote } from "../../packages/eval/src/harness-outcomes.ts";
+import { StoreError } from "../../packages/rag-core/src/store-error.ts";
 
 /**
  * The run summary's two per-question lines are the gate's whole attribution.
@@ -135,23 +141,36 @@ describe("failureLines (#340)", () => {
     ]);
   });
 
-  it("prints the ledger write's cause when no dimension failed", () => {
-    expect(
-      failureLines(
-        [
-          scoredOutcome("gs-v0-003", {
-            notes: ["ledger_write_failed: connection reset"],
-          }),
-        ],
-        FIXTURE,
-      ),
-    ).toEqual(["  failed: gs-v0-003 not-persisted (ledger_write_failed: connection reset)"]);
+  it("prints the ledger write's real cause — a StoreError's kind and cause (A2)", () => {
+    // The note comes from the producer itself, not a hand-written string. A
+    // `StoreError` carries no `message` at all, so the round-2 shape rendered
+    // `ledger_write_failed: ` here and this line lost its cause.
+    const note = ledgerFailureNote(
+      new StoreError({ kind: "transport", cause: new Error("connection reset") }),
+    );
+    expect(failureLines([scoredOutcome("gs-v0-003", { notes: [note] })], FIXTURE)).toEqual([
+      "  failed: gs-v0-003 not-persisted (ledger_write_failed: transport: connection reset)",
+    ]);
   });
 
-  it("degrades to the bare value for a question the fixture does not hold", () => {
-    expect(failureLines([scoredOutcome("q9", { retrievalRecall: 0.5 })])).toEqual([
+  it("degrades to the bare value only for a fixture that genuinely lacks the question (B4)", () => {
+    // The `[]` is deliberate and says so: no fixture is in hand, so no rule
+    // label exists to print. An *omitted* fixture is a different thing and
+    // fails loudly (see the guard case below) instead of degrading every line.
+    expect(failureLines([scoredOutcome("q9", { retrievalRecall: 0.5 })], [])).toEqual([
       "  failed: q9 retrievalRecall=0.500",
     ]);
+  });
+
+  it("refuses a missing fixture rather than degrading every failure line (B4)", () => {
+    expect(() => failureLines([scoredOutcome("gs-v0-015", { citationValidity: 0 })])).toThrow(
+      /requires the fixture's questions/,
+    );
+    // Not a fixture either: `fixture.questions` is the argument, never the
+    // fixture itself.
+    expect(() =>
+      failureLines([scoredOutcome("gs-v0-015", { citationValidity: 0 })], FIXTURE[0]),
+    ).toThrow(/requires the fixture's questions/);
   });
 
   it("prints nothing for a passing or a skipped row", () => {
@@ -192,7 +211,9 @@ describe("printSummary (#290, #340)", () => {
     refused: false,
   };
 
-  function printedSummary(result, questions = []) {
+  // `questions` has no default (B4): every caller hands the fixture it holds,
+  // exactly as `eval-smoke.mjs` and `eval-run.mjs` do with `fixture.questions`.
+  function printedSummary(result, questions) {
     const spy = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
       printSummary("eval:smoke", {
@@ -210,13 +231,16 @@ describe("printSummary (#290, #340)", () => {
   }
 
   it("carries the skip's cause into the printed summary block", () => {
-    const printed = printedSummary({
-      passed: 1,
-      failed: 0,
-      skipped: 1,
-      budgetExceeded: false,
-      results: [scored, skipped],
-    });
+    const printed = printedSummary(
+      {
+        passed: 1,
+        failed: 0,
+        skipped: 1,
+        budgetExceeded: false,
+        results: [scored, skipped],
+      },
+      FIXTURE,
+    );
     expect(printed).toContain("  questions: 2  passed: 1  failed: 0  skipped: 1");
     expect(printed).toContain("  skipped: q2 — transport down");
     // The duplicated-prefix shape the operator used to read.
@@ -233,13 +257,16 @@ describe("printSummary (#290, #340)", () => {
       citationValidity: 1,
       expansion: { chunks: 5, fusedOnlyRetrievalRecall: 1 },
     };
-    const printed = printedSummary({
-      passed: 2,
-      failed: 0,
-      skipped: 0,
-      budgetExceeded: false,
-      results: [scored, scoped],
-    });
+    const printed = printedSummary(
+      {
+        passed: 2,
+        failed: 0,
+        skipped: 0,
+        budgetExceeded: false,
+        results: [scored, scoped],
+      },
+      FIXTURE,
+    );
     expect(printed.split("\n")).toEqual([
       "",
       "eval:smoke summary — run run-1",
@@ -260,13 +287,16 @@ describe("printSummary (#290, #340)", () => {
       citationValidity: 1,
       expansion: { chunks: 5, fusedOnlyRetrievalRecall: 1 },
     };
-    const printed = printedSummary({
-      passed: 2,
-      failed: 1,
-      skipped: 1,
-      budgetExceeded: false,
-      results: [scored, scoped, failed, skipped],
-    });
+    const printed = printedSummary(
+      {
+        passed: 2,
+        failed: 1,
+        skipped: 1,
+        budgetExceeded: false,
+        results: [scored, scoped, failed, skipped],
+      },
+      FIXTURE,
+    );
     expect(printed.split("\n")).toEqual([
       "",
       "eval:smoke summary — run run-1",
@@ -281,16 +311,32 @@ describe("printSummary (#290, #340)", () => {
   });
 
   it("distinguishes a scored failure from a skip: one line each, never the other's label", () => {
-    const printed = printedSummary({
-      passed: 1,
-      failed: 1,
-      skipped: 1,
-      budgetExceeded: false,
-      results: [scored, failed, skipped],
-    });
+    const printed = printedSummary(
+      {
+        passed: 1,
+        failed: 1,
+        skipped: 1,
+        budgetExceeded: false,
+        results: [scored, failed, skipped],
+      },
+      FIXTURE,
+    );
     expect(printed).toMatch(/^ {2}failed: q3 /m);
     expect(printed).not.toMatch(/^ {2}skipped: q3 /m);
     expect(printed).toMatch(/^ {2}skipped: q2 — /m);
     expect(printed).not.toMatch(/^ {2}failed: q2 /m);
+  });
+
+  it("refuses to print a summary with no fixture in hand (B4)", () => {
+    const result = {
+      passed: 0,
+      failed: 1,
+      skipped: 0,
+      budgetExceeded: false,
+      results: [failed],
+    };
+    expect(() =>
+      printSummary("eval:smoke", { runId: "run-1", questionCount: 1, result, costMicroUsd: 25 }),
+    ).toThrow(/requires the fixture's questions/);
   });
 });

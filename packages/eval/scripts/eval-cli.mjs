@@ -98,6 +98,24 @@ export function skipLines(skipped) {
 }
 
 /**
+ * The fixture is a REQUIRED argument, never a defaulted one (round-2 B4).
+ * Every label a `failed:` line carries — the expected source types and the
+ * required citations — comes from it, so a call site that merely forgot it
+ * would print the bare, unattributable value #340 exists to remove, and no
+ * test would catch that: degrading to the bare value is the *correct*
+ * rendering for a question the fixture genuinely does not hold. A caller with
+ * no fixture must pass `[]` and say why in a line; an omission fails here
+ * instead of silently costing the attribution.
+ */
+function requireFixture(questions, caller) {
+  if (!Array.isArray(questions)) {
+    throw new TypeError(
+      `${caller}: requires the fixture's questions (pass [] explicitly if there is genuinely none) — an omitted fixture silently drops every rule label from the failure lines (#340)`,
+    );
+  }
+}
+
+/**
  * The per-question lines for scored questions that failed (#340). The counts
  * and the three means above never named one: a red run's only pointer was a
  * store read of `eval_results` on a run whose reader may hold no grant at all,
@@ -110,7 +128,9 @@ export function skipLines(skipped) {
  * and a question expecting a `refuse` misses by answering ungrounded
  * (ADR-0046). `questions` (the fixture in hand, never a store read) supplies
  * the rule's own labels: the expected source types and the required citations.
- * A question the fixture does not hold degrades to the bare value.
+ * A question the fixture does not hold degrades to the bare value; the fixture
+ * itself is required (`requireFixture`) so that degradation is only ever the
+ * deliberate one.
  *
  * The behavior verdict is printed only where the outcome decides it. For an
  * `answer` question `refused` decides it; for a `refuse` question it is decided
@@ -127,7 +147,8 @@ export function skipLines(skipped) {
  * cause rather than an empty line, so the one run whose evidence is missing
  * from the store is not also silent in the log.
  */
-export function failureLines(failed, questions = []) {
+export function failureLines(failed, questions) {
+  requireFixture(questions, "failureLines");
   const byId = new Map(questions.map((q) => [q.id, q]));
   return failed
     .filter((x) => x.skipped !== true && x.passed !== true)
@@ -176,11 +197,11 @@ export function failureLines(failed, questions = []) {
  * question counts, the failed questions' missed rules, the skipped questions'
  * causes, and the settled cost (the ledger's record when it exists, else the
  * live budget — the ledger is authoritative once the row is written).
+ * `questions` is the caller's loaded fixture and is required — see
+ * `requireFixture`.
  */
-export function printSummary(
-  prefix,
-  { runId, questionCount, result, costMicroUsd, questions = [] },
-) {
+export function printSummary(prefix, { runId, questionCount, result, costMicroUsd, questions }) {
+  requireFixture(questions, "printSummary");
   const scored = result.results.filter((x) => x.skipped !== true);
   const skipped = result.results.filter((x) => x.skipped === true);
   const failed = scored.filter((x) => x.passed !== true);
