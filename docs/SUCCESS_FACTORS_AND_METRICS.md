@@ -42,7 +42,7 @@ Each phase has its own definition of working — the project fails in stages, no
 
 - **Working means:** Smart Router improves retrieval measurably, Principle questions explain the lens, feedback lands in the queue, harness results are browsable.
 - **Measure:** Golden Set v0 recall improvement vs single-query baseline (#14); principle-question pass rate (#16); admin Trace browser coverage; feedback → accepted-Golden-Set promotion count.
-- **Gate to public beta:** Golden Set v1 (~50–100 with traps) green nightly, faithfulness judged cross-vendor.
+- **Gate to public beta:** Golden Set v1 (~50–100 with traps) green nightly (**#359** — plan, no nightly run exists today), faithfulness judged cross-vendor.
 
 ### Phase 4 — Kitab ingestion (exit: priority corpus answers with citations)
 
@@ -68,7 +68,7 @@ The project already has the right storage surfaces; this is the reading discipli
 | Ingestion reports            | R2 + Postgres metadata                          | `rag-ingest` CLI (#6, #7, #21, #22, #29, #33, #35) | phase 4 exit reviews                                                                                                                                                                                                                                                                               |
 | `model_configs`              | config files (source of truth) + mirrored table | PRs                                                | admin display; #9's decision lands here                                                                                                                                                                                                                                                            |
 
-**Cadence (from spec §3.7 / #20):** cost-capped 5–10 question smoke per PR; full Golden Set gates every release + nightly; cross-vendor faithfulness judge on the full set.
+**Cadence (from spec §3.7 / #20):** cost-capped 5–10 question smoke on every staging deploy, not in the PR gate set; full Golden Set gates every release + nightly (**#359** — plan, no nightly run exists today); cross-vendor faithfulness judge on the full set.
 
 **The rule a metric has to obey:** every number above is queryable from Postgres or recorded in-repo — no "check the logs," no "re-run it later." If a monitoring question can't be answered from the stored surfaces, the surface is missing a field and that belongs in the same PR as the feature.
 
