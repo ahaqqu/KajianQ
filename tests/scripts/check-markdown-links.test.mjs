@@ -289,6 +289,27 @@ describe("markdown-links — scope rules (#368)", () => {
     );
   });
 
+  it("keeps a `./`-rooted span out of scope, as the header declares", () => {
+    // DECLARED, not silently dropped: `./apps/web/dist` in docs/VPS-SETUP.md and
+    // docs/VPS-OPERATIONS.md quotes the asset handler's *default literal*, so
+    // widening this class would redden two correct documents. The divergence
+    // from the link half is real and is named in the header's SCOPE RULES.
+    const tree = makeTree(["docs/a.md", "apps/web/dist/index.html"]);
+    expect(isPathClaim("./apps/web/dist", tree)).toBe(false);
+    expect(isPathClaim("./docs/a.md", tree)).toBe(false);
+    const span = scan("The default is `./apps/web/dist`.", {
+      relPath: "docs/VPS-OPERATIONS.md",
+      paths: ["docs/a.md"],
+    });
+    expect(span.violations).toEqual([]);
+    // ...while the identical destination in link form is the link half's call.
+    const link = scan("The default is [x](./apps/web/dist).", {
+      relPath: "docs/VPS-OPERATIONS.md",
+      paths: ["docs/a.md"],
+    });
+    expect(targets(link)).toEqual(["./apps/web/dist"]);
+  });
+
   it("offers a `..` span the same gitignore exemption as its link form (A1)", () => {
     // TRAP: this pins the reading `repoPath` carries. With a root reading the
     // span's repoPath is null, `git check-ignore` is never asked, and the span

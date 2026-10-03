@@ -124,6 +124,12 @@
  *       `prose()` filter this gate has always applied).
  *     - root-absolute or `~`-rooted targets, and prose that merely mentions a
  *       path outside backticks, are not repo-relative claims.
+ *     - a `./`-rooted span (`./apps/web/dist`) is out by the same tracked-root
+ *       rule. The link half reddens on the identical destination; widening it
+ *       here would redden two correct documents, `docs/VPS-SETUP.md` and
+ *       `docs/VPS-OPERATIONS.md`, which quote `./apps/web/dist` as the *literal*
+ *       value of the asset handler's default. Declared, not silently dropped —
+ *       the divergence is real and needs its own decision, not this one.
  *
  *   COST, named: a bare file name that is *not* a tracked root-level file is
  *   not a claim, so `` `models.json` `` and `` `apply.sh` `` (both real files
