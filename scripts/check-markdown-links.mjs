@@ -36,7 +36,11 @@
  *   root and the containing file's directory — and the span resolves if
  *   either finds it. `packages/infra/README.md` writes `scripts/db-migrate.mjs`
  *   meaning the package-relative `packages/infra/scripts/db-migrate.mjs`;
- *   a root-only rule would redden that honest reference. Markdown links keep
+ *   a root-only rule would redden that honest reference. The claim test reads a
+ *   target the same way, and that is the point: a `..`-rooted span is a claim
+ *   whose *reading* is the containing file's directory, so it reaches the
+ *   file-relative base instead of being vetoed on a raw first segment (`..`)
+ *   that is not a tracked root (#391). Markdown links keep
  *   their single, correct base: a renderer resolves `(path)` against the
  *   containing file and nothing else, so accepting a root-relative fallback
  *   there would hide a link that is broken on GitHub.
@@ -72,6 +76,41 @@
  *   (`normaliseSpanTarget`). This is the rule the link half already applied to
  *   its `#fragment`; without it the two halves disagreed, and a line citation —
  *   the sanctioned way to point at a line — would redden a correct document.
+ *
+ *   A target that climbs out of its own directory — `..` alone, or anything
+ *   under `../` — is a claim by its form (#391). Its *reading* is the containing
+ *   file's directory, the second base above, and that is what decides where it
+ *   resolves; the reading is deliberately not re-tested against CLAIM_ROOTS,
+ *   because the tracked-root rule is a substitute for the "is this a path?"
+ *   signal that a `..`-rooted token already carries — retesting it would veto
+ *   `../web/dist` (which reads as `web/dist`) while the link half reddens on the
+ *   identical target. Before this rule the raw first segment `..` vetoed the
+ *   whole class, so a dead `../../../docs/x.md` in a living doc stayed green
+ *   while the identical target in link form was red: one target, two verdicts,
+ *   and the disagreement failed **open**.
+ *
+ *   ESCAPING TARGETS — decided, not inherited: a `..`-rooted target whose
+ *   reading leaves the repository (`../../etc/passwd`) is a claim, and a missing
+ *   one is a violation. That is what the Markdown-link half already does with
+ *   the identical destination — `toRepoPath` returns `null`, `repoPath` stays
+ *   empty, and neither exemption is reachable — so the span half agrees with it
+ *   rather than leaving a class that is neither judged nor declared. COST,
+ *   named: an inline span naming a path outside this repository must be written
+ *   inside a fence (an example, not a citation) or as prose, or it reddens.
+ *   `~/.dsh/settings.yaml` is a different class and is unaffected: it is not
+ *   `..`-rooted, and its first segment is not a tracked root.
+ *
+ *   The one `..` case that stays out, named so it is not silently dropped: a
+ *   *bare* `..` — a span that is nothing but the two dots — is stripped by the
+ *   span normaliser as swallowed punctuation, so the span half never claims it.
+ *   `../` and everything under it do claim. The halves part company on that one
+ *   token: `[x](..)` reddens in the link half, whose `toRepoPath` folds the
+ *   repository root to `""` and reads it as missing — a reading that same half
+ *   contradicts from a deeper directory, where `..` resolves to a tracked parent
+ *   (`.agents/skills/ship/` → `.agents/skills`). Copying it would import the
+ *   defect rather than the judgement, so it is declared here and pinned by a
+ *   test instead; the link half's root reading is a neighbouring defect this
+ *   change does not touch.
  *
  *   Each of those exclusions carries its class out of scope, deliberately:
  *     - whitespace → `bun run lint`, `git stash`, and every command line;
@@ -171,7 +210,9 @@
  *   skipped and counted. Now every rule names its counter and its verdict, and
  *   every *missing* reference — link or span, living doc or record — is offered
  *   the same chain: gitignored (derived from `.gitignore`, not from a list) →
- *   allowlisted (with a reason) → violation.
+ *   allowlisted (with a reason) → violation. A destination that cannot be
+ *   decoded at all never reaches that chain: it is a violation of its own, with
+ *   its own reason (#392).
  *
  *   PRECEDENCE IS A FIELD, not the table's order: `policyFor` takes the matching
  *   rule with the highest `priority`, so permuting `POLICY` cannot change which
@@ -214,7 +255,11 @@
  *   write it as `` `omarchy` skill ``. The failure message says so.
  *
  * Exits non-zero and prints `file:line -> target (reason)` for each dangling
- * reference, plus any stale allowlist entry.
+ * reference, plus any stale allowlist entry. A Markdown destination whose
+ * percent-encoding is malformed (`[pct](./100%.md)`) is one of those references:
+ * it cannot resolve, so it is reported as a violation with its own reason
+ * instead of escaping as an uncaught `URIError` that prints a stack trace and
+ * no line for the contributor to act on (#392).
  *
  * A GREEN RUN PRINTS WHAT IT DID NOT CHECK. The OK line names how many
  * references were *checked* and how many actually *resolved*, then every
@@ -264,9 +309,12 @@ export const ROOTS = [
  * First path segments that make an inline code span a repo-path claim. This is
  * every tracked top-level directory of the repository — the ticket's list plus
  * `.github/` and `.githooks/`, which the list omitted and which turned out to
- * carry 17 real claims (the deploy, staging and restore-drill workflows and
+ * carry 18 live references: 17 code-span path claims (16 under `.github/`, 1
+ * under `.githooks/`) and one Markdown link, with 11 more claims inside records,
+ * 3 of them dead. Counted with this gate's own `link`/`path`/`record` rules at
+ * `b6827d0`; the targets are the deploy, staging and restore-drill workflows and
  * `.github/zap-rules.tsv`, cited by `SPECS.md`, `docs/ARCHITECTURE.md`, the
- * Art. 30 record and the `ship` skill). A new top-level directory is a new
+ * Art. 30 record and the `ship` skill. A new top-level directory is a new
  * claim root: add it here, or paths into it are unchecked.
  * `tests/scripts/check-markdown-links.test.mjs` fails if this list stops
  * covering the tracked tree, so that gap cannot open silently.
@@ -418,6 +466,27 @@ export function normaliseSpanTarget(text) {
 }
 
 /**
+ * Is this a target written against the containing file rather than against the
+ * repository root — `..` itself, or anything under `../`? See SCOPE RULES.
+ */
+export function isFileRelativeTarget(target) {
+  return target === ".." || target.startsWith("../");
+}
+
+/**
+ * The repo-relative path a reference is *judged by*: the reading the resolution
+ * contract uses. A target written against the repository root is read from the
+ * root; a `..`-rooted one is read from the containing file's directory, the
+ * second base the contract blesses. `null` when that reading escapes the
+ * repository — a target naming a path outside it (#391).
+ */
+export function claimPath(root, fromDir, target) {
+  return isFileRelativeTarget(target)
+    ? toRepoPath(root, fromDir, target)
+    : toRepoPath(root, "", target);
+}
+
+/**
  * Is this code span a repo-path claim? See SCOPE RULES in the header — the
  * order of these checks is the contract, and each one names its class. The
  * text is normalised first (`normaliseSpanTarget`), so callers may pass the raw
@@ -436,6 +505,12 @@ export function isPathClaim(text, tree) {
   if (/[<>]/.test(target)) return false; // `<slug>`, `<role>`, `<label>`
   if (/^(?:https?:|mailto:|tel:|#|\/\/)/.test(target)) return false; // URLs, anchors
   if (target.startsWith("/")) return false; // not repo-relative
+  // `..`-rooted: a claim by its form, never by its reading's first segment. The
+  // rules above already reject every non-path shape, and re-testing the reading
+  // against CLAIM_ROOTS would veto a target the link half reddens on (from
+  // `adr/`, `../web/dist` reads as `web/dist`, and `web` is not a tracked root).
+  // See SCOPE RULES — #391.
+  if (isFileRelativeTarget(target)) return true;
   if (!target.includes("/")) return tree.rootFiles.has(target);
   return CLAIM_ROOTS.includes(target.split("/")[0]);
 }
@@ -523,7 +598,25 @@ export function analyse(sources, ctx) {
         }
         const [pathPart] = raw.split("#");
         if (!pathPart) continue; // pure anchor: `#section` handled above
-        const rel = toRepoPath(ctx.root, dir, decodeURIComponent(pathPart));
+        let destination;
+        try {
+          destination = decodeURIComponent(pathPart);
+        } catch {
+          // #392: a malformed `%` escape cannot resolve, and the output
+          // contract is a violation line per reference — never an uncaught
+          // `URIError` with no `file:line -> target` to act on. Reported on the
+          // destination as the document wrote it, which is what a reader sees.
+          findings.push({
+            kind: "link",
+            file: relPath,
+            line: i + 1,
+            target: raw,
+            repoPath: null,
+            status: "malformed-encoding",
+          });
+          continue;
+        }
+        const rel = toRepoPath(ctx.root, dir, destination);
         findings.push({
           kind: "link",
           file: relPath,
@@ -564,9 +657,11 @@ export function analyse(sources, ctx) {
           file: relPath,
           line: i + 1,
           target,
-          // `resolveClaim` tries the root first; when both bases fail, the
-          // root-relative reading is the one `git check-ignore` can judge.
-          repoPath: toRepoPath(ctx.root, "", target),
+          // The reading the resolver judged — the root for a root-relative
+          // target, the containing file's directory for a `..`-rooted one. That
+          // is the form `git check-ignore` needs and the key the exemption chain
+          // looks up, so both halves of one target reach the same chain.
+          repoPath: claimPath(ctx.root, dir, target),
           status,
         });
       }
@@ -607,6 +702,19 @@ export const POLICY = [
     counter: "links",
     verdict: "violation",
     reason: () => "root-absolute path (resolve it relative to the file instead)",
+  },
+  {
+    // #392: the destination as written could not be decoded, so the reference
+    // cannot resolve. A violation with its own reason, not the "target does not
+    // exist" of a decoded miss and never an uncaught `URIError`. Above `link` by
+    // priority, disjoint from it by `status`, so the malformed shape can never
+    // fall to the wrong rule.
+    id: "link-malformed-encoding",
+    priority: 35,
+    match: (f) => f.kind === "link" && f.status === "malformed-encoding",
+    counter: "links",
+    verdict: "violation",
+    reason: () => "malformed percent-encoding in the link destination (write %25 for a literal %)",
   },
   {
     id: "link",
