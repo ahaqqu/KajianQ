@@ -10,6 +10,7 @@ import {
   runClean,
 } from "./worktree-cleanup-fixture.mjs";
 
+// #280 AC 2 probe: this commit is intentionally tests-only — see the PR body.
 /**
  * `bun run worktree:clean` — the disposable-worktree rule (#229).
  *

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { allowedOrigins, resolveEnvName } from "./env";
 
+// #280 AC 2 probe: this commit is intentionally tests-only — see the PR body.
 describe("resolveEnvName", () => {
   it("maps known values", () => {
     expect(resolveEnvName("staging")).toBe("staging");
