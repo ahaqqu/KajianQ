@@ -85,7 +85,7 @@ Tickets carry model routing labels applied by the `to-tickets` skill and consume
 
 ## Definition of Done
 
-- [ ] All CI gates green: `bun run check`, `bun run lint`, `bun run test`, `bun run boundary`, `bun run size-limit`, `bun run agentic-limits`, `bun run openapi:check`, plus security scans.
+- [ ] All CI gates green: `bun run check`, `bun run lint`, `bun run test`, `bun run boundary`, `bun run size-limit`, `bun run agentic-limits`, `bun run openapi:check`, plus security scans (OSV-Scanner runs on merge to main + nightly, not on PRs).
 - [ ] Domain boundary holds: the verification scans in `.agents/skills/dars-pluggability/SKILL.md` return only allowed hits.
 - [ ] Traceability holds: any new LLM call records model/tokens/cost to a trace; any new persisted answer path writes a trace record the UI can render. Checklist: `.agents/skills/kajianq-traceability/SKILL.md`.
 - [ ] Personal-data-touching PRs: sub-processor register + retention values + RoPA (`docs/GDPR-ARTICLE-30-RECORD.md`) current, erasure path (`DELETE /v1/auth/me`) still cascades (ADR-0043).
