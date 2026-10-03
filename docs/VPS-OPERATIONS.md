@@ -131,7 +131,7 @@ snapshot (§2.4), touch DNS, or restart the backup timer.
 | Manual dispatch of `Deploy to VPS`                         | staging or prod (choice) | `workflow_dispatch`, `environment` input                                                                                              |
 | Manual dispatch of `Deploy to VPS` calling `workflow_call` | staging                  | This is how `Staging` invokes it — one implementation, so the two cannot drift                                                        |
 
-The `Environment` column names a **GitHub environment**, not a deployment
+That column names a **GitHub environment**, not a deployment
 environment on a host. Both `staging` and `prod` deploy to **the one box** (§0):
 `deploy.sh` uses a single `DEPLOY_ROOT` and nginx serves one `root`, so the
 choice selects that environment's vars/secrets — and `prod`'s approval gate —
