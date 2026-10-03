@@ -409,8 +409,8 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
    * how the shipped defect survived every gate: the `anchors` CTE projects
    * `a.id AS anchor_id`, the join predicate read `an.id`, and PostgreSQL
    * rejected the whole statement at parse time (`ERROR: column an.id does not
-   * exist`) — so every Quran-bearing `/v1/chat` request answered 500 while the
-   * SQL-text assertions stayed green. These rows assert the statement
+   * exist`) — so every chat request that reached this read answered 500 while
+   * the SQL-text assertions stayed green. These rows assert the statement
    * EXECUTES and that its behaviour is the one ADR-0049 documents: each
    * anchor's ordinal window inside the anchor's own parent, the anchor never
    * its own neighbour, a neighbour reachable from several anchors deduplicated
