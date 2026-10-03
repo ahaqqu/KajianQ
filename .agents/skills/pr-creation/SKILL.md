@@ -138,4 +138,5 @@ Any limitations, or `None`.
 - You MUST NEVER add a co-author to the PR description or commit messages, directly or via an author-email override.
 - You MUST reference relevant GitHub issues in the PR description so they close automatically upon merge.
 - PR titles/descriptions in English; create via `gh api --input` with a JSON payload file — never `gh pr edit --field body=…`.
+- Normalise a body's trailing whitespace to **exactly one trailing newline** before you PATCH it: the `--input` payload carries the intended text exactly once, so a re-PATCH of unchanged content stores the identical string and hashes to the identical sha256, however many times the body was edited.
 - Hash a body over the **exact API-stored string**, never a `gh` read-back: `gh api repos/{owner}/{repo}/pulls/<n> | jq -j '.body' | sha256sum` (`jq -j` emits the raw value with no trailing newline; `gh api -q .body`, `gh pr view --json body -q .body`, and `jq -r` each append one, so their hashes never match). PATCHed issue-comment reports take the same recipe on `repos/{owner}/{repo}/issues/comments/<id>`.
