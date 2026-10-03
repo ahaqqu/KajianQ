@@ -399,6 +399,17 @@ describe("markdown-links — the skill-name half", () => {
     expect(result.violations).toEqual([]);
   });
 
+  it("matches by the span's own position, never by a line-wide search", () => {
+    // The comparison is literal and index-anchored — no regex is built from
+    // the span text (Semgrep blocks that as a ReDoS surface). So a name that
+    // merely appears elsewhere on the line cannot borrow the marker.
+    const line = "the `not-a-skill` prose and the `manager` skill";
+    const spans = inlineCodeSpans(line);
+    expect(spans).toHaveLength(2);
+    expect(skillMentionAt(line, spans[0].target, spans[0].index)).toBe(false);
+    expect(skillMentionAt(line, spans[1].target, spans[1].index)).toBe(true);
+  });
+
   it("reproduces #367's two dead references from one line", () => {
     const text = "invoke the `agentic-workflow` skill (`.agents/skills/agentic-workflow/SKILL.md`)";
     const findings = analyse([{ relPath: "AGENTS.md", text }], ctxOf({ paths: [], skills: [] }));

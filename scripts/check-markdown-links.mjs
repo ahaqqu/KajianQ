@@ -348,12 +348,16 @@ export function isSkillName(target) {
  * `` `x` skill `` or `skill `x``? The marker is the claim; see SKILLS_RULE.
  */
 export function skillMentionAt(line, name, index) {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const before = line.slice(0, index);
   const after = line.slice(index);
-  return (
-    /\bskills?\s+$/i.test(before) || new RegExp("^`" + escaped + "`\\s*skills?\\b", "i").test(after)
-  );
+  if (/\bskills?\s+$/i.test(before)) return true;
+  // A literal comparison, not a `RegExp` built from the span text: skill names
+  // are `[a-z0-9-]+` so there is nothing to escape, and a dynamic regex over
+  // file content is a ReDoS surface (Semgrep
+  // javascript.lang.security.audit.detect-non-literal-regexp blocks it).
+  const span = `\`${name}\``;
+  if (!after.startsWith(span)) return false;
+  return /^skills?\b/i.test(after.slice(span.length).replace(/^\s+/, ""));
 }
 
 /** Is this document a record of a moment rather than a living doc? */
