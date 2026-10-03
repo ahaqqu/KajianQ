@@ -10,6 +10,8 @@ A merged change with a green `Staging` workflow has proven that the deploy took 
 
 The manager owns the decision and the ticket; the `qa` role agent runs the probes and reports the verdict. This skill is the contract both sides answer to.
 
+**A QA-needed change's PR must not carry a closing keyword for its issue** — the issue closes on the verdict, and a mechanical closure at merge asserts a verification that has not happened. The `pr-creation` skill's closing-keyword rule owns which phrasings close and which stay safe; a QA-needed PR references its issue inside that safe class (`Refs #N`).
+
 ## Three shapes — every change is classified
 
 A change is classified before its PR merges, and the manager records the decision either way (a `QA phase: not needed because …` line in the final summary counts as the record).
@@ -156,4 +158,4 @@ The adversarial persona names injection through the retrieved corpus. Planting a
 
 ## Completion criterion
 
-The QA phase is done when the verdict is posted on the QA ticket with every probe's evidence, every defect has its own ticket, the spend is reported against the cap, and every session the run created is **erased or its non-erasure disclosed** (safety rails). Until then the QA-needed change is not finished — and its cleanup does not start.
+The QA phase is done when the verdict is posted on the QA ticket with every probe's evidence, every defect has its own ticket, the spend is reported against the cap, and every session the run created is **erased or its non-erasure disclosed** (safety rails). **The verdict is the closing event**: the issue stays open until the manager closes it on a recorded verdict — `verified`, the only verdict that completes the change, or, where a `not verified` or `blocked` change is reverted or superseded, a closure whose reason is that verdict — never on the merge. Until then the QA-needed change is not finished — and its cleanup does not start.
