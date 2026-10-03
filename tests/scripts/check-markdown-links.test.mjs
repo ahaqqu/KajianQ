@@ -435,9 +435,12 @@ describe("markdown-links — class B: records of a moment", () => {
   });
 
   it("keeps the link rule ahead of the record rule, as a priority not a position (B5)", () => {
-    // B5's mutation, asserted on the counters: put `record` first and this
-    // record's dead link is counted as a record claim instead of enforced —
-    // `links` 1 → 0, `recordsClaims` 1 → 2, no violation, gate still OK.
+    // B5's mutation, asserted on the counters: the table before this round let
+    // the record rule swallow a link, so putting it first counted this record's
+    // dead link as a record claim instead of enforcing it — `links` 1 → 0,
+    // `recordsClaims` 1 → 2, no violation, gate still OK. The split this pins is
+    // the one the corpus depends on in both directions: the span is counted, the
+    // link is enforced.
     const result = scan(
       ["Retires `scripts/template-sync/`.", "See [the runbook](./VPS-CUTOVER-RUNBOOK.md)."].join(
         "\n",
