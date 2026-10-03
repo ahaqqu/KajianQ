@@ -42,12 +42,24 @@ const MD_FIXTURE = [
   `event: done\ndata: {}\n\n`,
 ].join("");
 
-const DHAIF_FIXTURE = [
-  'event: meta\ndata: {"sessionId":"sess-e2e","messageId":"m-dhaif","traceId":"tr-dhaif"}\n\n',
-  `event: delta\ndata: Hadits tersebut diriwayatkan [HR. Malik no. 18].\ndata: \ndata: ${DHAIF_WARNING}\ndata: \ndata: ${DISCLAIMER}\n\n`,
-  'event: citations\ndata: {"messageId":"m-dhaif","refusal":false,"dhaifWarning":true,"citations":[{"label":"HR. Malik no. 18","arabic":"حدثنا مالك","machineTranslated":false,"grade":"dhaif","source":"Al-Muwatta"}]}\n\n',
-  "event: done\ndata: {}\n\n",
-].join("");
+/**
+ * The one DHAIF wire fixture the four dhaif scenarios share (#292, #348, #361
+ * and the plain warning): meta → one delta carrying `answer` (one `data:` line
+ * per raw line, the route's sseFrame escaping) → the citations frame that
+ * flags the warning → done. `slug` names the conversation: its message id is
+ * `m-<slug>` and its trace id `tr-<slug>`.
+ */
+const dhaifFixture = (slug: string, answer: string): string =>
+  [
+    `event: meta\ndata: {"sessionId":"sess-e2e","messageId":"m-${slug}","traceId":"tr-${slug}"}\n\n`,
+    `event: delta\ndata: ${answer.replaceAll("\n", "\ndata: ")}\n\n`,
+    `event: citations\ndata: {"messageId":"m-${slug}","refusal":false,"dhaifWarning":true,"citations":[{"label":"HR. Malik no. 18","arabic":"حدثنا مالك","machineTranslated":false,"grade":"dhaif","source":"Al-Muwatta"}]}\n\n`,
+    "event: done\ndata: {}\n\n",
+  ].join("");
+
+const DHAIF_ANSWER = `Hadits tersebut diriwayatkan [HR. Malik no. 18].\n\n${DHAIF_WARNING}\n\n${DISCLAIMER}`;
+
+const DHAIF_FIXTURE = dhaifFixture("dhaif", DHAIF_ANSWER);
 
 // #292 — the live p1/p9 shape: the draft already carried its disclaimer, so
 // the postprocess appended the dhaif warning and then the MT label, leaving
@@ -58,12 +70,7 @@ const DHAIF_MT_ANSWER =
   `Hadits tersebut diriwayatkan [HR. Malik no. 18].\n\n${DISCLAIMER}\n\n${DHAIF_WARNING}\n\n` +
   "[Terjemahan mesin — lihat teks Arab asli]";
 
-const DHAIF_MT_FIXTURE = [
-  'event: meta\ndata: {"sessionId":"sess-e2e","messageId":"m-dhaif-mt","traceId":"tr-dhaif-mt"}\n\n',
-  `event: delta\ndata: ${DHAIF_MT_ANSWER.replaceAll("\n", "\ndata: ")}\n\n`,
-  'event: citations\ndata: {"messageId":"m-dhaif-mt","refusal":false,"dhaifWarning":true,"citations":[{"label":"HR. Malik no. 18","arabic":"حدثنا مالك","machineTranslated":false,"grade":"dhaif","source":"Al-Muwatta"}]}\n\n',
-  "event: done\ndata: {}\n\n",
-].join("");
+const DHAIF_MT_FIXTURE = dhaifFixture("dhaif-mt", DHAIF_MT_ANSWER);
 
 // #348 — QA #345 probe p9b: the model repeated the canonical line INSIDE one
 // trailing paragraph (one `\n`, not a paragraph break), so the wire carried two
@@ -76,12 +83,7 @@ const DHAIF_REPEAT_ANSWER =
   `Hadits tersebut diriwayatkan [HR. Malik no. 18].\n\n${DISCLAIMER}\n\n` +
   `${DHAIF_WARNING}\n${DHAIF_WARNING}`;
 
-const DHAIF_REPEAT_FIXTURE = [
-  'event: meta\ndata: {"sessionId":"sess-e2e","messageId":"m-dhaif-repeat","traceId":"tr-dhaif-repeat"}\n\n',
-  `event: delta\ndata: ${DHAIF_REPEAT_ANSWER.replaceAll("\n", "\ndata: ")}\n\n`,
-  'event: citations\ndata: {"messageId":"m-dhaif-repeat","refusal":false,"dhaifWarning":true,"citations":[{"label":"HR. Malik no. 18","arabic":"حدثنا مالك","machineTranslated":false,"grade":"dhaif","source":"Al-Muwatta"}]}\n\n',
-  "event: done\ndata: {}\n\n",
-].join("");
+const DHAIF_REPEAT_FIXTURE = dhaifFixture("dhaif-repeat", DHAIF_REPEAT_ANSWER);
 
 // #361 — QA #356 probes p4/p9: the model repeated the canonical line THREE
 // times on ONE line, SPACE-SEPARATED (3 × 93 = 281 chars, so the paragraph is
@@ -93,12 +95,7 @@ const DHAIF_SPACE_REPEAT_ANSWER =
   `Hadits tersebut diriwayatkan [HR. Malik no. 18].\n\n${DISCLAIMER}\n\n` +
   [DHAIF_WARNING, DHAIF_WARNING, DHAIF_WARNING].join(" ");
 
-const DHAIF_SPACE_REPEAT_FIXTURE = [
-  'event: meta\ndata: {"sessionId":"sess-e2e","messageId":"m-dhaif-space","traceId":"tr-dhaif-space"}\n\n',
-  `event: delta\ndata: ${DHAIF_SPACE_REPEAT_ANSWER.replaceAll("\n", "\ndata: ")}\n\n`,
-  'event: citations\ndata: {"messageId":"m-dhaif-space","refusal":false,"dhaifWarning":true,"citations":[{"label":"HR. Malik no. 18","arabic":"حدثنا مالك","machineTranslated":false,"grade":"dhaif","source":"Al-Muwatta"}]}\n\n',
-  "event: done\ndata: {}\n\n",
-].join("");
+const DHAIF_SPACE_REPEAT_FIXTURE = dhaifFixture("dhaif-space", DHAIF_SPACE_REPEAT_ANSWER);
 
 const REFUSAL_FIXTURE = [
   'event: meta\ndata: {"sessionId":"sess-e2e","messageId":"m-ref","traceId":"tr-ref"}\n\n',
