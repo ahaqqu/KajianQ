@@ -60,12 +60,17 @@ const bodyText = (body: string): string =>
     .join("\n\n");
 
 /**
- * The two display surfaces of one answer: `body` as prose, and the peeled
- * values as the card/footer (the frame-flag card is the only third surface,
- * and it renders the canonical copy — never the body's own wording).
+ * The three display surfaces of one answer: `body` as prose, the card's
+ * warning line, and the footer's disclaimer. The card draws `split.warning`
+ * when the peel found the product's copy, and otherwise — only while the
+ * frame's `dhaifWarning` flag is set — the canonical copy itself
+ * (`AnswerCard.tsx`: `split.warning ?? (citations.dhaifWarning ?
+ * t(locale, "dhaifWarningCard") : null)`). `cardFlag` models that second case,
+ * so a row that says "4 displayed" can assert the 4 instead of the 3 the peel
+ * fields alone carry.
  */
-const displayed = (split: SplitAnswer): string =>
-  [split.body, split.warning ?? "", split.disclaimer ?? ""].join("\n\n");
+const displayed = (split: SplitAnswer, cardFlag = false): string =>
+  [split.body, split.warning ?? (cardFlag ? WARNING_ID : ""), split.disclaimer ?? ""].join("\n\n");
 
 describe("splitAnswerBlocks — a space-separated one-line repeat (#361)", () => {
   it("pins the delivered geometry: three ID copies on one line, 281 chars", () => {
@@ -169,10 +174,12 @@ describe("splitAnswerBlocks — the A2 guard on a space-separated line (#361)", 
     // canonical disclaimer literal — only its opening marker, by design (A2,
     // and the parity spec's no-third-literal rule) — so collapsing it would
     // need either a hand-copied disclaimer string here or a marker-based
-    // match, which is the widening the ticket forbids. Residual, unchanged:
-    // the warning still renders in `body` as prose beside the card (4
-    // displayed) and the disclaimer sentence renders both in `body` and in the
-    // footer. This row is the falsifier for whoever covers it.
+    // match, which is the widening the ticket forbids. Residual, unchanged,
+    // and filed as **#365** ("A trailing paragraph that interleaves the dhaif
+    // line with the disclaimer still renders the warning four times"): the
+    // warning still renders in `body` as prose, the flag-driven card draws the
+    // canonical copy on top of it, and the disclaimer sentence renders both in
+    // `body` and in the footer. This row is the falsifier for #365.
     for (const paraphrase of [
       DISCLAIMER, // the canonical ID phrasing
       "Jawaban ini bukan fatwa; untuk keputusan hukum, rujuklah ulama yang terpercaya.",
@@ -189,7 +196,8 @@ describe("splitAnswerBlocks — the A2 guard on a space-separated line (#361)", 
       expect(split.warning).toBeNull();
       expect(split.body).toBe([PROSE, interleave, MT].join("\n\n"));
       expect(split.disclaimer).toBe(paraphrase); // the footer still gets its copy
-      expect(occurrences(displayed(split), WARNING_ID)).toBe(3); // 4 with the flag-driven card
+      expect(occurrences(displayed(split), WARNING_ID)).toBe(3); // the peel fields: `body` only
+      expect(occurrences(displayed(split, true), WARNING_ID)).toBe(4); // + the frame-flag card
       expect(occurrences(displayed(split), paraphrase)).toBe(4); // 3 in prose, 1 in the footer
     }
   });
