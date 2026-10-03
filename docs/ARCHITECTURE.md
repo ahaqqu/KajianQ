@@ -202,13 +202,13 @@ Account deletion cascades across all data stores, including `answer_traces`
   only. ZAP findings may only be suppressed in `.github/zap-rules.tsv` with an
   inline justification; staging runs with `fail_action: true`.
 
-| Layer                      | Tool               | When                                                                                                   |
-| -------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------ |
-| Static analysis            | Semgrep            | Every PR                                                                                               |
-| Dependency vulnerabilities | OSV-Scanner        | Merge to main + nightly (deliberately not on PRs — see `vuln-scan.yml`)                                |
-| Secret scanning            | gitleaks           | Every PR                                                                                               |
-| Dynamic security scan      | OWASP ZAP Baseline | Every main merge against staging, outside `paths-ignore`, after the Golden Set smoke passes (see #360) |
-| API fuzzing                | Schemathesis       | Every main merge against staging, outside `paths-ignore`, after the Golden Set smoke passes            |
+| Layer                      | Tool               | When                                                                                                                                                                         |
+| -------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Static analysis            | Semgrep            | Every PR                                                                                                                                                                     |
+| Dependency vulnerabilities | OSV-Scanner        | Merge to main + nightly (deliberately not on PRs — see `vuln-scan.yml`)                                                                                                      |
+| Secret scanning            | gitleaks           | Every PR                                                                                                                                                                     |
+| Dynamic security scan      | OWASP ZAP Baseline | Every main merge against staging, outside `paths-ignore`, after the Golden Set smoke passes (deliberate — a deployment that fails its own smoke is not worth scanning; #360) |
+| API fuzzing                | Schemathesis       | Every main merge against staging, outside `paths-ignore`, after the Golden Set smoke passes (deliberate — a deployment that fails its own smoke is not worth scanning; #360) |
 
 ## 9. Observable — easy to monitor _(inherited)_
 
@@ -340,23 +340,26 @@ flows. A change that breaks a gate cannot reach production. KajianQ adds the
 expected sources, required citations, and known traps (dhaif hadith,
 cross-madzhab differences, refusal cases) — deterministic citation validity,
 faithfulness judging, the full suite operator-invoked at the release gate, and
-the cost-capped smoke on every code-bearing merge to staging. No nightly run
-exists today — #359 owns that decision. **The faithfulness judge's cross-vendor
+the cost-capped smoke on every code-bearing merge to staging — the
+`post deploy checks` job in `.github/workflows/staging.yml`. There is no nightly
+run and none is planned (#359, owner decision 2026-10-03): a nightly would
+re-measure, on a schedule, the commit the merge gate already measured.
+**The faithfulness judge's cross-vendor
 separation is relaxed for the current key set** (the reviewer shares the
 generator's vendor — §1); what does not relax is the deterministic gate: the
 citation validator runs on 100% of answers, and a fabricated citation is refused
 regardless of who reviews.
 
-| Layer           | Tool                             | Required when                                                                               |
-| --------------- | -------------------------------- | ------------------------------------------------------------------------------------------- |
-| Unit            | Vitest                           | All business logic, schemas, store queries                                                  |
-| Property        | fast-check                       | Adapter invariants (idempotency, immutability)                                              |
-| E2E/BDD         | Playwright-BDD                   | User-facing flows (+ axe accessibility)                                                     |
-| Golden Set      | `packages/eval`                  | Release gate (on demand); smoke on every staging deploy; no nightly (#359)                  |
-| Bundle          | size-limit                       | Every PR                                                                                    |
-| API fuzz / DAST | Schemathesis / ZAP               | Every main merge against staging, outside `paths-ignore`, after the Golden Set smoke passes |
-| Security        | Semgrep + OSV-Scanner + gitleaks | Every PR; OSV-Scanner on merge to main + nightly                                            |
-| Boundary        | `scripts/check-boundary.mjs`     | Every PR                                                                                    |
+| Layer           | Tool                             | Required when                                                                                                                                                                |
+| --------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit            | Vitest                           | All business logic, schemas, store queries                                                                                                                                   |
+| Property        | fast-check                       | Adapter invariants (idempotency, immutability)                                                                                                                               |
+| E2E/BDD         | Playwright-BDD                   | User-facing flows (+ axe accessibility)                                                                                                                                      |
+| Golden Set      | `packages/eval`                  | Release gate (operator-invoked); smoke on every staging deploy (`staging.yml` `post deploy checks`); no nightly, none planned (#359)                                         |
+| Bundle          | size-limit                       | Every PR                                                                                                                                                                     |
+| API fuzz / DAST | Schemathesis / ZAP               | Every main merge against staging, outside `paths-ignore`, after the Golden Set smoke passes (deliberate — a deployment that fails its own smoke is not worth scanning; #360) |
+| Security        | Semgrep + OSV-Scanner + gitleaks | Every PR; OSV-Scanner on merge to main + nightly                                                                                                                             |
+| Boundary        | `scripts/check-boundary.mjs`     | Every PR                                                                                                                                                                     |
 
 Coverage gate: 80% lines/functions/statements, 70% branches over logic globs
 (packages, API, web lib) — UI components are covered by BDD + axe instead.
@@ -411,20 +414,20 @@ Gated by: `bun run agentic-limits`, `bun run boundary`.
 
 Root `package.json` scripts are the single source of truth for gates:
 
-| Script                                                                        | Purpose                                                                                 |
-| ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `bun run check`                                                               | typecheck (root + all packages)                                                         |
-| `bun run test`                                                                | unit + property tests (coverage gate)                                                   |
-| `bun run boundary`                                                            | engine domain/vendor/SQL boundary gate                                                  |
-| `bun run agentic-limits`                                                      | file-size / import-count caps                                                           |
-| `bun run size-limit`                                                          | bundle budget (<200 KB gzipped)                                                         |
-| `bun run e2e`                                                                 | Playwright-BDD against the local **Bun** entry (`apps/api/src/boot.ts`)                 |
-| `bun run build` / `dev` / `api:serve` / `deploy`                              | web build, local dev, the Bun server, the VPS deploy (`provision/vps/deploy/deploy.sh`) |
-| `bun run db:status:all` / `db:up:all` / `db:down:all`                         | the three migration sets against `DATABASE_URL` in one pass                             |
-| `bun run db:snapshot <create\|verify\|require\|list\|download\|restore-plan>` | the paid corpus's durability layer (ADR-0038); `require` gates a paid run               |
-| `bun run provider:smoke`                                                      | drills every keyed vendor through the `Provider` seam; absent keys report NOT RUN       |
-| `bun run eval:run` / `eval:smoke`                                             | the Golden Set harness; the cost-capped smoke subset runs on every staging deploy       |
-| `bun run ingest:quran` / `ingest:hadith` (+ `-- --check`)                     | operator-driven corpus ingestion (ADR-0037); `--check` proves the store is untouched    |
+| Script                                                                        | Purpose                                                                                                                                                                                    |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `bun run check`                                                               | typecheck (root + all packages)                                                                                                                                                            |
+| `bun run test`                                                                | unit + property tests (coverage gate)                                                                                                                                                      |
+| `bun run boundary`                                                            | engine domain/vendor/SQL boundary gate                                                                                                                                                     |
+| `bun run agentic-limits`                                                      | file-size / import-count caps                                                                                                                                                              |
+| `bun run size-limit`                                                          | bundle budget (<200 KB gzipped)                                                                                                                                                            |
+| `bun run e2e`                                                                 | Playwright-BDD against the local **Bun** entry (`apps/api/src/boot.ts`)                                                                                                                    |
+| `bun run build` / `dev` / `api:serve` / `deploy`                              | web build, local dev, the Bun server, the VPS deploy (`provision/vps/deploy/deploy.sh`)                                                                                                    |
+| `bun run db:status:all` / `db:up:all` / `db:down:all`                         | the three migration sets against `DATABASE_URL` in one pass                                                                                                                                |
+| `bun run db:snapshot <create\|verify\|require\|list\|download\|restore-plan>` | the paid corpus's durability layer (ADR-0038); `require` gates a paid run                                                                                                                  |
+| `bun run provider:smoke`                                                      | drills every keyed vendor through the `Provider` seam; absent keys report NOT RUN                                                                                                          |
+| `bun run eval:run` / `eval:smoke`                                             | the Golden Set harness; `eval:smoke` is the cost-capped subset in `staging.yml`'s `post deploy checks`, `eval:run` the full suite at the operator-invoked release gate (no nightly — #359) |
+| `bun run ingest:quran` / `ingest:hadith` (+ `-- --check`)                     | operator-driven corpus ingestion (ADR-0037); `--check` proves the store is untouched                                                                                                       |
 
 ## 17. Privacy by design — GDPR posture
 
