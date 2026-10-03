@@ -236,11 +236,11 @@ export function printSummary(prefix, { runId, questionCount, result, costMicroUs
  * two-clause policy would call a half-measured release run green. An unmeasured
  * question is not a pass, whichever way it went unmeasured.
  *
- * The counts it prints are derived from `result.results`, as `printSummary`
- * derives its own lines — one source of truth, so the FAILED line cannot
- * contradict the block above it (#370 A2). A negative shortfall, which no harness
- * path produces, still reddens and names that disagreement, not a negative
- * count.
+ * Its counts come from `result.results` — the rows behind the per-question
+ * `failed:`/`skipped:` lines, not the counter-derived `questions:` headline —
+ * so it cannot contradict those lines (#370 A2). A negative shortfall, which
+ * no harness path produces, still reddens and names it, not a negative count;
+ * `runGoldenSet` is the only producer, so the headline agrees today (#370 C1).
  *
  * Pure: it returns the verdict and the exact line to print, never exits, so
  * `tests/scripts/eval-cli.test.mjs` pins every row (this glue is `.mjs`,
@@ -249,7 +249,7 @@ export function printSummary(prefix, { runId, questionCount, result, costMicroUs
  * rows carry the attribution printed above it.
  */
 export function exitPolicy(prefix, { runId, questionCount, result }) {
-  // From the rows, as `printSummary` does (#370 A2) — never the run's counters.
+  // From the rows, as `printSummary`'s per-question lines do (#370 A2), not the counters.
   const scored = result.results.filter((x) => x.skipped !== true);
   const skipped = result.results.filter((x) => x.skipped === true).length;
   const failed = scored.filter((x) => x.passed !== true).length;
