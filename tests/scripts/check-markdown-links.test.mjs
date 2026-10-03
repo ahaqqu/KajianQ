@@ -1,40 +1,41 @@
 import { describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
   ADR_ID_RE,
   CLAIM_ROOTS,
   KNOWN_RETIRED,
-  ROOTS,
+  POLICY,
+  RECORD_DIRS,
+  RECORD_FILES,
+  RESOLVED_STATUSES,
+  ROOT,
   adjudicate,
   adrIdResolves,
   analyse,
   buildContext,
+  formatOkLine,
   ignoredTargets,
   inlineCodeSpans,
   isPathClaim,
   isRecord,
   isSkillName,
+  loadCorpus,
   makeTree,
+  normaliseSpanTarget,
   prose,
   resolveClaim,
+  runGate,
   skillMentionAt,
   toRepoPath,
-  walk,
 } from "../../scripts/check-markdown-links.mjs";
 
-const SCRIPT = resolve(process.cwd(), "scripts/check-markdown-links.mjs");
+// `ROOT` comes from the gate's own `import.meta.url`, never `process.cwd()`:
+// the suite must judge the repository under test, not the directory a runner
+// happened to start in.
+const SCRIPT = resolve(ROOT, "scripts/check-markdown-links.mjs");
 const CLI = SCRIPT;
 const FAKE_ROOT = "/repo";
 
@@ -105,6 +106,30 @@ describe("markdown-links — scope rules (#368)", () => {
   it("treats an elided label as a display label, not a path (class D)", () => {
     expect(isPathClaim("adr/0037-…", tree)).toBe(false);
     expect(isPathClaim("adr/0043-...", tree)).toBe(false);
+  });
+
+  it("reads a line citation, a fragment or swallowed punctuation as the path (A6)", () => {
+    // A6: a citation points *into* a path. `path:42`, `path:42-58`, `path#L24`
+    // and `path,` are all claims on `path` — the link half already stripped its
+    // `#fragment`, and without the same rule here a doc that cites a line (the
+    // sanctioned form) reddens on a target that exists.
+    const aTree = makeTree(["docs/a.md", "README.md"]);
+    for (const raw of [
+      "docs/a.md:42",
+      "docs/a.md:42-58",
+      "docs/a.md#L24",
+      "docs/a.md,",
+      "docs/a.md).",
+    ]) {
+      expect(normaliseSpanTarget(raw), raw).toBe("docs/a.md");
+      expect(isPathClaim(raw, aTree), raw).toBe(true);
+    }
+    // A directory keeps its trailing slash; a line citation on a dead path is
+    // still dead, reported on the stripped claim.
+    expect(normaliseSpanTarget("provision/vps/")).toBe("provision/vps/");
+    expect(targets(scan("See `docs/gone.md:42-58,`.", { paths: ["docs/a.md"] }))).toEqual([
+      "docs/gone.md",
+    ]);
   });
 
   it("never reads a code span inside a fenced block", () => {
@@ -202,6 +227,94 @@ describe("markdown-links — the committed tree, not the working tree", () => {
     });
     expect(result.violations).toEqual([]);
     expect(result.counters.ignored).toBe(1);
+  });
+
+  it("offers a Markdown link the same exemption chain as a code span (A1)", () => {
+    // A1: the link half used to be handled first and `continue`d, so the
+    // gitignore and allowlist exemptions were structurally unreachable for it —
+    // a link to a build output was red with no escape, while the identical
+    // target in a code span was skipped and counted.
+    const relPath = "docs/living.md";
+    const text = "The deploy needs [the bundle](../apps/web/dist/index.html).";
+    const opts = { relPath, paths: ["docs/a.md"] };
+
+    // Gitignored: skipped and counted, exactly like the span half...
+    const ignored = scan(text, { ...opts, ignored: new Set(["apps/web/dist/index.html"]) });
+    expect(ignored.violations).toEqual([]);
+    expect(ignored.counters.ignored).toBe(1);
+
+    // ...and the escape is real: without an exemption the same link is red.
+    const bare = scan(text, opts);
+    expect(targets(bare)).toEqual(["../apps/web/dist/index.html"]);
+    expect(bare.violations[0].repoPath).toBe("apps/web/dist/index.html");
+
+    // An allowlist entry silences it too, on the destination as written.
+    const allowlisted = scan(text, {
+      ...opts,
+      allowlist: [
+        {
+          file: relPath,
+          target: "../apps/web/dist/index.html",
+          reason: "the deploy guide cites the build output it tells you to produce",
+        },
+      ],
+    });
+    expect(allowlisted.violations).toEqual([]);
+    expect(allowlisted.counters.allowlisted).toBe(1);
+  });
+
+  it("routes every missing reference through one chain (B1)", () => {
+    // B1: which shape gets which rule is data in `POLICY`, not the order of
+    // `continue`s. Every shape `analyse` emits must have a rule, and a shape
+    // that has none fails loud instead of silently getting the wrong chain.
+    const ctx = ctxOf({ paths: ["docs/a.md"], skills: [] });
+    const findings = [
+      ...analyse(
+        [
+          {
+            relPath: "docs/living.md",
+            text: [
+              "A [dead link](gone.md).",
+              "A [root-absolute link](/docs/a.md).",
+              "A [good link](a.md).",
+              "Retired `packages/gone/`.",
+              "The `no-such-skill` skill.",
+            ].join("\n"),
+          },
+          { relPath: "adr/0001-a-record.md", text: "Retired `packages/gone/`." },
+        ],
+        ctx,
+      ),
+    ];
+    const fired = new Set();
+    for (const finding of findings) {
+      const rule = POLICY.find((candidate) => candidate.match(finding));
+      expect(rule, `${finding.kind}/${finding.status}`).toBeDefined();
+      expect(rule.verdict).toBeOneOf(POLICY.map((r) => r.verdict));
+      // The status vocabulary is closed: a resolved status, a missing one, or
+      // the one shape violation. Anything else is a classifier bug.
+      expect(
+        finding.status === "missing" ||
+          finding.status === "root-absolute" ||
+          RESOLVED_STATUSES.has(finding.status),
+        finding.status,
+      ).toBe(true);
+      fired.add(rule.id);
+    }
+    expect([...fired].sort()).toEqual(["link", "link-root-absolute", "path", "record", "skill"]);
+
+    expect(() =>
+      adjudicate([
+        {
+          kind: "mystery",
+          status: "missing",
+          file: "docs/x.md",
+          line: 1,
+          target: "x",
+          repoPath: "x",
+        },
+      ]),
+    ).toThrow("no policy rule");
   });
 });
 
@@ -393,8 +506,12 @@ describe("markdown-links — the skill-name half", () => {
   });
 
   it('does NOT extend to "the `X` role" — that marker has no resolution target', () => {
-    // 21 unresolved role names (cheap, embedder, generator, decision-candidates,
-    // kajianq) make this a false-positive factory; the ticket rejects it.
+    // A2: this marker is not a false-positive factory across one namespace but
+    // three — live harness roles (`.zcode/agents/<role>.md`: qa, reviewer,
+    // fixer), model-stage names (cheap, embedder, generator,
+    // decision-candidates, kajianq) and `test-implementer`, retired by
+    // ADR-0032. The harness-role namespace is a *second deliberately unchecked*
+    // marker; the real-tree suite pins that it is neither empty nor checked.
     const result = scan("The `cheap` role does the work.", { paths: [], skills: [] });
     expect(result.violations).toEqual([]);
   });
@@ -423,30 +540,6 @@ describe("markdown-links — the skill-name half", () => {
 });
 
 describe("markdown-links — the real tree", () => {
-  /** The real corpus, read the same way the CLI reads it. */
-  function realScan() {
-    const ctx = buildContext(process.cwd());
-    const files = ROOTS.map((r) => join(process.cwd(), r))
-      .filter((p) => existsSync(p))
-      .flatMap((p) => walk(p));
-    const sources = files.map((file) => ({
-      relPath: file.slice(process.cwd().length + 1),
-      text: readFileSync(file, "utf8"),
-    }));
-    const findings = analyse(sources, ctx);
-    const dead = findings.filter((f) => f.kind === "path" && f.status === "missing");
-    return {
-      files,
-      result: adjudicate(findings, {
-        files: new Set(sources.map((s) => s.relPath)),
-        ignored: ignoredTargets(
-          process.cwd(),
-          dead.map((f) => f.target),
-        ),
-      }),
-    };
-  }
-
   it("is green on the repository as it stands, with the narrowing visible", () => {
     const out = execFileSync("bun", [CLI], { encoding: "utf8" });
     expect(out).toContain("markdown-links: OK");
@@ -455,23 +548,44 @@ describe("markdown-links — the real tree", () => {
     expect(out).toMatch(/\d+ dead claims inside record files unchecked/);
   });
 
+  it("prints exactly what `runGate` decided — one driver, not two", () => {
+    // The gate used to be implemented twice (`main()` and a `realScan()` here),
+    // so the suite could pass against wiring the CLI no longer had. The CLI must
+    // now print the same counters the tests assert on.
+    const run = runGate(ROOT);
+    const corpus = loadCorpus(ROOT);
+    const out = execFileSync("bun", [CLI], { encoding: "utf8" }).trim();
+    expect(run.violations).toEqual([]);
+    // The corpus loader is the CLI's, not a second implementation of it.
+    expect(corpus.files.length).toBe(run.files.length);
+    expect(corpus.sources.some((s) => s.relPath === "SPECS.md")).toBe(true);
+    expect(out).toBe(formatOkLine(run.counters, run.files.length));
+  });
+
+  it("closes the OK line's arithmetic: checked = resolved + allowlisted + ignored", () => {
+    // A5: "resolve" used to be the verb for the *checked* total, which counted
+    // the 4 allowlisted and the 2 gitignored as if they had been proved. The
+    // line now separates them, and this is the invariant that keeps it honest.
+    const { counters } = runGate(ROOT);
+    const checked = counters.links + counters.claims + counters.skills;
+    expect(checked).toBe(counters.resolved + counters.allowlisted + counters.ignored);
+    expect(counters.resolved).toBeLessThan(checked);
+  });
+
   it("uses every shipped allowlist entry — none is stale against the real corpus", () => {
-    const { result } = realScan();
-    expect(result.violations).toEqual([]);
-    expect(result.counters.allowlisted).toBe(KNOWN_RETIRED.length);
+    const { violations, counters } = runGate(ROOT);
+    expect(violations).toEqual([]);
+    expect(counters.allowlisted).toBe(KNOWN_RETIRED.length);
   });
 
   it("resolves a real package-relative claim end to end", () => {
     // packages/infra/README.md:109 — `scripts/db-migrate.mjs`.
-    const ctx = buildContext(process.cwd());
+    const ctx = buildContext(ROOT);
     expect(resolveClaim("scripts/db-migrate.mjs", "packages/infra", ctx)).toBe("tracked");
   });
 
   it("knows which real targets git ignores", () => {
-    const ignored = ignoredTargets(process.cwd(), [
-      "apps/web/dist/index.html",
-      "docs/ARCHITECTURE.md",
-    ]);
+    const ignored = ignoredTargets(ROOT, ["apps/web/dist/index.html", "docs/ARCHITECTURE.md"]);
     expect(ignored.has("apps/web/dist/index.html")).toBe(true);
     expect(ignored.has("docs/ARCHITECTURE.md")).toBe(false);
   });
@@ -479,13 +593,49 @@ describe("markdown-links — the real tree", () => {
   it("covers every tracked top-level directory — the scope cannot shrink silently", () => {
     // CLAIM_ROOTS is the stated scope rule. A new top-level directory that does
     // not join it stops being a claim root, and this is what says so.
-    const ctx = buildContext(process.cwd());
+    const ctx = buildContext(ROOT);
     const topDirs = [...ctx.tree.dirs].filter((d) => !d.includes("/"));
     expect(topDirs.filter((d) => !CLAIM_ROOTS.includes(d))).toEqual([]);
     // And the roots the ticket names are all still there.
     for (const root of ["apps", "packages", "scripts", "docs", "adr", ".agents", ".zcode"]) {
       expect(topDirs).toContain(root);
     }
+  });
+
+  it("keeps record membership to real, tracked records", () => {
+    // B4: the membership rule is stated in the header — a record is an executed
+    // log or a decision record, never a living how-to. This pins that every
+    // member is a real tracked path, so a typo cannot silently widen the
+    // exemption the gate takes.
+    const { tree } = buildContext(ROOT);
+    for (const dir of RECORD_DIRS) expect(tree.dirs.has(dir), dir).toBe(true);
+    for (const file of RECORD_FILES) expect(tree.files.has(file), file).toBe(true);
+    // A record's own ADRs are records; a living doc is not.
+    expect(isRecord("adr/0030-retire-template-sync.md")).toBe(true);
+    expect(RECORD_DIRS.some((d) => isRecord(`${d}/x.md`))).toBe(true);
+    for (const living of ["AGENTS.md", "SPECS.md", "docs/ARCHITECTURE.md"]) {
+      expect(isRecord(living), living).toBe(false);
+    }
+  });
+
+  it("distinguishes the two deliberately unchecked role markers", () => {
+    // A2: "the `X` role" is not one namespace but two — live harness roles
+    // (`.zcode/agents/<role>.md`) and model-stage names — plus one role retired
+    // by ADR-0032. The harness namespace is a second *deliberately* unchecked
+    // marker; this pins that it is neither empty nor a skill claim.
+    const { tree } = buildContext(ROOT);
+    for (const role of ["qa", "reviewer", "fixer"]) {
+      expect(tree.files.has(`.zcode/agents/${role}.md`), role).toBe(true);
+    }
+    expect(tree.files.has(".zcode/agents/test-implementer.md")).toBe(false);
+    expect(isSkillName("qa")).toBe(true);
+    expect(scan("The `qa` role owns the probes.", { paths: [], skills: [] }).violations).toEqual(
+      [],
+    );
+    // ...and only the *skill* marker makes it a claim — the role marker does
+    // not, which is exactly the unchecked namespace this test documents.
+    const roleLine = "The `qa` role owns the probes.";
+    expect(skillMentionAt(roleLine, "qa", roleLine.indexOf("`qa`"))).toBe(false);
   });
 });
 
@@ -560,6 +710,10 @@ describe("markdown-links — CLI fixtures", () => {
     // 2 path claims + 1 gitignored build path + 1 skill name.
     expect(run.stdout).toContain("3 code-span path claims + 1 skill names");
     expect(run.stdout).toContain("1 gitignored build paths skipped");
+    // A5: the line separates what was checked from what resolved — the
+    // gitignored one is checked and *not* resolved, and says so.
+    expect(run.stdout).toContain("3 resolve");
+    expect(run.stdout).toContain("0 record-file claims counted");
     rmSync(dir, { recursive: true, force: true });
   });
 
