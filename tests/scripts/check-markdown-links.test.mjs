@@ -290,7 +290,10 @@ describe("markdown-links — the committed tree, not the working tree", () => {
     ];
     const fired = new Set();
     for (const finding of findings) {
-      const rule = POLICY.find((candidate) => candidate.match(finding));
+      // The shipped selector, not the array-order one: `policyFor` takes the
+      // highest matching `priority`, so this completeness case fires the rule
+      // production fires and stays green under any permutation of `POLICY`.
+      const rule = policyFor(finding);
       expect(rule, `${finding.kind}/${finding.status}`).toBeDefined();
       expect(rule.verdict).toBeOneOf(POLICY.map((r) => r.verdict));
       // The status vocabulary is closed: a resolved status, a missing one, or
