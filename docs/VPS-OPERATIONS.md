@@ -455,10 +455,14 @@ The 2026-09-21 cutover flipped this label to `production`, and
 rewritten when the world moves on (§1.6). The label was reverted on the box on
 2026-10-03, as root — the file is root-owned and 0600, and the deploy identity
 cannot read it (§1.5) — and the restart was clean (`GET /` still answers
-`200 text/html`). These are the commands, kept for a rebuild:
+`200 text/html`). A fresh rebuild needs none of that: the template now ships
+`APP_ENV=staging` (`provision/vps/api.env.example`, installed verbatim by
+`docs/VPS-SETUP.md`), so the commands below are the **recovery step for a box
+built from the pre-fix template**, or any box whose file still reads
+`production`:
 
 ```bash
-# on the box, as root
+# on the box, as root — only for a file still reading production
 sed -i 's/^APP_ENV=production$/APP_ENV=staging/' /etc/kajianq/api.env
 systemctl restart kajianq-api.service
 curl -s https://kajianq.ahaqqu.com/v1/health   # → "env":"staging"
@@ -808,7 +812,7 @@ monitoring must not create an unbounded personal-data-adjacent log surface. Issu
 | See what a deploy would do            | `provision/vps/deploy/deploy.sh --dry-run`                                                                                                                                                                                                                                                              |
 | Apply/refresh hardening               | `sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env` (idempotent)                                                                                                                                                                                                                                 |
 | Change the public hostname            | §1.6 — certbot, `proxy.env`, `ALLOWED_ORIGINS`, `apply.sh`, then `VPS_PUBLIC_URL` in both scopes                                                                                                                                                                                                        |
-| Change the environment label          | §1.7 — `sed` `APP_ENV` in `/etc/kajianq/api.env` as root, restart the unit, then check `/v1/health` reports `"env":"staging"` (cosmetic: log labels + health JSON only)                                                                                                                                 |
+| Change the environment label          | §1.7 — a fresh rebuild already reads `"env":"staging"`; for a box still reading `production`, `sed` `APP_ENV` in `/etc/kajianq/api.env` as root, restart the unit, then check `/v1/health` (cosmetic: log labels + health JSON only)                                                                    |
 | Check migrations                      | `DATABASE_URL=… bun run db:status:all` (§2.3)                                                                                                                                                                                                                                                           |
 | Take a snapshot                       | `DATABASE_URL=… bun run db:snapshot create <lowercase-label>` with the posture flag (§2.4)                                                                                                                                                                                                              |
 | Verify a snapshot                     | `bun run db:snapshot verify <label>`                                                                                                                                                                                                                                                                    |

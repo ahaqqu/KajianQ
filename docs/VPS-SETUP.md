@@ -423,6 +423,13 @@ sudo install -o root -g root -m 0600 /srv/kajianq-src/provision/vps/api.env.exam
 sudoedit /etc/kajianq/api.env
 ```
 
+The template already carries the recorded environment label —
+`APP_ENV=staging`, the one deployment with production deferred (ADR-0044
+amendment, 2026-10-03) — so the box's `/v1/health` reports `"env":"staging"`
+with no edit here. The `sudoedit` pass is for the placeholders (database
+credentials, origin, provider keys); flipping `APP_ENV` is the deliberate change
+that provisions production, never a setup step.
+
 Two keys are **hard preconditions of the chat path**, not optional:
 
 - `DEEPSEEK_API_KEY` — the generator/router head and the reviewer

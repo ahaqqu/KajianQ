@@ -921,6 +921,18 @@ describe("provisioning config as code stays true to the ADR", () => {
     for (const key of keys) {
       expect(example, key).toMatch(new RegExp(`^${key}=`, "m"));
     }
+    // The APP_ENV *value* is pinned too, not just the key's presence (#355).
+    // The recorded posture is one deployment labeled `staging`, with production
+    // deferred (ADR-0044 amendment, 2026-10-03), and this template is what a
+    // rebuild installs verbatim (docs/VPS-SETUP.md) — so a template edit that
+    // shipped `production` would label a fresh box against the record, silently
+    // and on every rebuild. Provisioning production is the deliberate change
+    // that flips this value; until then this row is what makes the
+    // contradiction redden a test instead of re-arming. The negative control
+    // matters on its own: systemd's EnvironmentFile takes the last assignment,
+    // so a second `APP_ENV=production` line would win over the pinned one.
+    expect(example).toMatch(/^APP_ENV=staging$/m);
+    expect(example).not.toMatch(/^APP_ENV=production$/m);
     expect(example).toMatch(/^KAJIANQ_WEB_ROOT=\/srv\/kajianq\/web$/m);
     const noLoopback = example.replace(/127\.0\.0\.1/g, "<loopback>");
     expect(noLoopback).not.toMatch(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/);
