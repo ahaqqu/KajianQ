@@ -116,3 +116,15 @@ The end-to-end behaviour this ticket makes work, from the user's perspective —
 </issue-template>
 
 In either form, avoid specific file paths or code snippets — they go stale fast. Exception: if a prototype produced a snippet that encodes a decision more precisely than prose can (state machine, reducer, schema, type shape), inline it and note briefly that it came from a prototype. Trim to the decision-rich parts — not a working demo, just the important bits.
+
+### 6. Card every ticket you filed
+
+When the tickets went to a real tracker, publishing them (step 5) is not done until each one's card carries a state: the board is what answers "where is this ticket?", the issue what answers "what is this ticket?" (`manager` skill, § Project board — the ticket state surface; it is canonical for the states, the transition rules, and the board API mechanics this step uses).
+
+**Set each filed ticket's card Status to `Ready`** — the state the `Backlog → Ready` rule moves a ticket to once triage settles it as dispatchable.
+
+**Resolve the item before creating one.** An item whose Status is unset belongs to no column, so a column-based read cannot find the ticket — a filing puts a ticket in the repo, not in a column. Add an item only when the ticket has none: the step is a Status **set** on the item the ticket already has, never a second add. Read the field's option ids and each item's id fresh at use time, per that section's mechanics.
+
+A ticket filed outside this skill — a review round's defect ticket, a finding the QA role opens, the owner's own filing — arrives the same way, and the manager cards it: the manager owns every board move and no role subagent touches the board (`.zcode/agents/README.md`).
+
+**Completion criterion:** every ticket filed in step 5 appears in a **complete** read (`gh project item-list <number> --owner <owner> --format json --limit <n>`, per that section's Board API mechanics — a fresh filing is appended last, so a truncated read hides the ticket it is meant to confirm) with its Status set.

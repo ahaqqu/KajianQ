@@ -73,6 +73,18 @@ Post the report as a comment on the QA ticket, and link it from the release or P
 
 The verdict is the only thing that closes a QA-needed change: `verified` when the observable holds and no blast-radius defect survived, `not verified` when a probe contradicted the acceptance criterion, `blocked` when the environment, the run, or the cap stopped the probes. "The workflow is green" is not a verdict, and a partially-run probe set never rounds up to `verified` — name the probes that did not run and why.
 
+## The verdict and the board
+
+**The QA phase owns the verdict; the manager owns the card move.** `In QA` is the card of a merged and deployed change whose verdict is still pending, and the manager's transition rules are what take a card out of it — on the verdict the QA role posts, never on a move the role makes. Roles report artifacts and do not touch the board (`.zcode/agents/README.md`); the `manager` skill's § Project board — the ticket state surface is canonical for the states, their transitions, and what **Done** means.
+
+Each verdict implies one card state:
+
+- **`verified`** — the observable holds and no blast-radius defect survived. This is the verdict the card's move to **Done** records.
+- **`not verified`** — a probe contradicted the acceptance criterion. The card stays in **In QA**, where the column names the work outstanding: the failing probe goes to the user verbatim, every defect becomes its own ticket through the normal implement → review loop, and the change is not finished.
+- **`blocked`** — the environment, the run, or the cap stopped the probes. The card stays in **In QA** and the change is not finished; the verdict carries the exact command that failed in place of a verification the run did not produce, and the probes re-run when the blocker clears.
+
+A non-`verified` verdict is never withheld for the card's sake — post it with the same per-probe evidence and let the manager's transition rules take the card from there.
+
 ## Safety rails
 
 - **Staging only.** The one deployment is the `staging` environment and it **is**
