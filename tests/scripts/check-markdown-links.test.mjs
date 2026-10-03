@@ -224,10 +224,11 @@ describe("markdown-links — class A: ADR cited by number", () => {
     expect(targets(scan("See `adr/004`.", { paths: [], adr }))).toEqual(["adr/004"]);
   });
 
-  it("accepts a duplicated number — the spec row is right, the tree is wrong", () => {
-    // adr/0005 is currently carried by two files (0005-monorepo-…,
-    // 0005-role-model-pins-…). The gate cannot police numbering, and the
-    // spec's §8 row label is a correct reference; follow-up filed.
+  it("accepts a deliberately duplicated number", () => {
+    // adr/0005 is carried by two files on purpose: the operative monorepo ADR
+    // and a template-heritage near-duplicate that declares itself superseded by
+    // ADR-0023 (and that 0005 belongs to the monorepo ADR). The spec's §8 row is
+    // a correct reference, so "exactly one" would fail a correct row.
     const adr = [
       "0005-monorepo-engine-plus-product.md",
       "0005-role-model-pins-honored-per-harness.md",

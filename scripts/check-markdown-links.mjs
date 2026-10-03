@@ -94,10 +94,14 @@
  *       one file in `adr/` is named `NNNN-*.md`. The four-digit requirement is
  *       the precision: `adr/004` and `adr/00455` are typos, not identifiers,
  *       and stay flagged. "At least one" rather than "exactly one" because the
- *       gate cannot police ADR *numbering*: `adr/0005` is currently duplicated
- *       (`0005-monorepo-…`, `0005-role-model-pins-…`), and the spec row is
- *       right while the tree is wrong (follow-up filed). This resolves all 49
- *       class-A spans.
+ *       gate resolves identifiers, not numbering: `adr/0005` is deliberately
+ *       carried by two files — the operative monorepo ADR and a
+ *       template-heritage near-duplicate that declares itself superseded by
+ *       ADR-0023 and states that the number `0005` belongs to the monorepo ADR.
+ *       The spec's §8 row points at the operative one, and the identifier is
+ *       real under either reading; a stricter rule would fail a correct row
+ *       over a record the repository keeps on purpose. All 49 class-A spans
+ *       resolve.
  *
  *   B — an artifact its own ADR retired: 43 spans across 13 files inside `adr/` at
  *       the time of writing (ADR-0030 names `scripts/template-sync/` because it
