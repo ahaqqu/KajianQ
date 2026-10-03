@@ -79,6 +79,18 @@ Work the **frontier**: any ticket whose blockers are all done. For a purely line
 
 Do NOT close or modify any parent issue.
 
+### 6. Card every ticket you filed
+
+When the tickets went to a real tracker, publishing them (step 5) is not done until each one's card carries a state: the board is what answers "where is this ticket?", the issue what answers "what is this ticket?" (`manager` skill, § Project board — the ticket state surface; it is canonical for the states, the transition rules, and the board API mechanics this step uses).
+
+**Set each filed ticket's card Status to `Ready`** — the state the `Backlog → Ready` rule moves a ticket to once triage settles it as dispatchable, which this skill's published output and routing labels are what satisfy.
+
+**Resolve the item before creating one.** An item whose Status is unset belongs to no column, so a column-based read cannot find the ticket — a filing puts a ticket in the repo, not in a column. Add an item only when the ticket has none: the step is a Status **set** on the item the ticket already has, never a second add. Read the field's option ids and each item's id fresh at use time, per that section's mechanics.
+
+A ticket filed outside this skill — a review round's defect ticket, a finding the QA role opens, the owner's own filing — arrives the same way, and the manager cards it: the manager owns every board move and no role subagent touches the board (`.zcode/agents/README.md`).
+
+**Completion criterion:** every ticket filed in step 5 appears in a `gh project item-list <number> --owner <owner> --format json --limit <n>` read with its Status set.
+
 <local-ticket-template>
 
 # <NN> — <Ticket title>

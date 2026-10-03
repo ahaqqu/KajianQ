@@ -42,6 +42,19 @@ under the dispatching session's ambient identity: no role is denied a bare
 `gh`, and the manager session (no role) is never denied. The DSH adapter states
 this as it applies on DSH.
 
+## Board moves belong to the manager
+
+The project board is the manager's state surface, and it has one writer. **The
+manager owns every move; a role subagent never touches the board.** A role
+reports the artifact its work earned — a branch, a PR, a review comment, a
+verdict — and the manager reflects it as a card move. Reading the board is open
+to any role; a state-changing call (`gh project item-add`, `gh project
+item-edit`, a field update) is the manager's alone.
+
+The state vocabulary, the transition rules, and the board API mechanics are
+canonical in `.agents/skills/manager/SKILL.md` § Project board — the ticket
+state surface.
+
 ## Implementer-class operating rules
 
 The implementer-class roles follow the phase-boundary discipline from the
