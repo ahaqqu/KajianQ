@@ -472,7 +472,7 @@ call, no paid dependency, no re-ingest, no migration.
   equal-score tie-break by chunk id).
 - `apps/api/src/lib/chat-citations.ts` — the citations frame derives its
   intersection with `groundingLabelsFor`, so the gate and the frame agree.
-- `packages/eval/src/{harness-types.ts,scorers.ts,harness-expansion.ts}` and
+- `packages/eval/src/{harness-types.ts,scorers.ts,harness-outcomes.ts}` and
   `packages/eval/scripts/staging-harness.mjs` — the injected grammar's
   `addressesNamedBy` (the naming declaration the scorer compares a required
   citation against evidence with — `null` included, a refusal on either side of

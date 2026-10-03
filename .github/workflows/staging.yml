@@ -142,15 +142,37 @@ jobs:
         # The summary is written to the job page even when the smoke fails —
         # that is the evidence a reviewer reads, so it must not be skipped by
         # the failing exit code. The log is kept locally and teed to the job.
+        # Exit semantics (#290): this step fails on ANY failed OR skipped
+        # question. A skip is an unmeasured question, not a pass — a transport
+        # outage must not buy a green release — and the skip's cause is
+        # persisted per question and printed as a `skipped: <message>` line, so
+        # the red is actionable from the log and from `eval_results`.
+        # Attribution (#340): a scored failure prints a `failed: <questionId> …`
+        # line naming the dimension that missed, so the block is what answers
+        # "which question, which dimension". The extraction below is
+        # size-INDEPENDENT by construction: it takes the log from the summary's
+        # own header to EOF, so the counts, the three means and every
+        # per-question line stay whole at any `eval_smoke_size`. (`tail -n 60`
+        # was the opposite of that: it keeps the BOTTOM of the log, so once a
+        # widened subset pushed the log past 60 lines, the counts and means this
+        # block opens with were the lines clipped away.)
         run: |
           set -uo pipefail
           bun run eval:smoke 2>&1 | tee /tmp/eval-smoke.log
           status=${PIPESTATUS[0]}
+          # From the summary's header line to EOF — everything the block needs,
+          # nothing sized by a constant. When the smoke died before printing a
+          # summary (a config or secret failure), there is no header to match:
+          # fall back to the whole log, which is short and is the entire failure.
+          block=$(awk '/^eval:smoke summary/{found=1} found' /tmp/eval-smoke.log)
+          if [ -z "$block" ]; then
+            block=$(cat /tmp/eval-smoke.log)
+          fi
           {
             echo "### Golden Set smoke — staging"
             echo ""
             echo '```'
-            tail -n 30 /tmp/eval-smoke.log
+            printf '%s\n' "$block"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
