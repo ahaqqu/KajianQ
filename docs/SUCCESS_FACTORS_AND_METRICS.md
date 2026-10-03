@@ -42,7 +42,7 @@ Each phase has its own definition of working — the project fails in stages, no
 
 - **Working means:** Smart Router improves retrieval measurably, Principle questions explain the lens, feedback lands in the queue, harness results are browsable.
 - **Measure:** Golden Set v0 recall improvement vs single-query baseline (#14); principle-question pass rate (#16); admin Trace browser coverage; feedback → accepted-Golden-Set promotion count.
-- **Gate to public beta:** Golden Set v1 (~50–100 with traps) green in a full-suite run at the release gate (`bun run eval:run`, operator-invoked; the recurring eval gate is the cost-capped smoke on every staging deploy, and there is no nightly run, nor one planned, #359), faithfulness judged cross-vendor.
+- **Gate to public beta:** Golden Set v1 (~50–100 with traps) green in a full-suite operator run (`bun run eval:run`) recorded for the beta decision — the same full-suite gate phase 5 repeats at the release gate. The run summary is read by the operator, not enforced by an exit code (#364), while the mechanical eval gate is the cost-capped smoke on every staging deploy (#359 — no nightly run, nor one planned). Faithfulness is judged by the pipeline reviewer — same-vendor since 2026-09-21, vendor separation deliberately relaxed (§3.4; revisited once a second paid vendor key exists).
 
 ### Phase 4 — Kitab ingestion (exit: priority corpus answers with citations)
 
@@ -68,7 +68,7 @@ The project already has the right storage surfaces; this is the reading discipli
 | Ingestion reports            | R2 + Postgres metadata                          | `rag-ingest` CLI (#6, #7, #21, #22, #29, #33, #35) | phase 4 exit reviews                                                                                                                                                                                                                                                                               |
 | `model_configs`              | config files (source of truth) + mirrored table | PRs                                                | admin display; #9's decision lands here                                                                                                                                                                                                                                                            |
 
-**Cadence (from spec §3.7 / #20):** cost-capped 5–10 question smoke on every staging deploy, not in the PR gate set; the full Golden Set is operator-invoked at the release gate — no nightly run, nor one planned (#359, owner decision 2026-10-03); cross-vendor faithfulness judge on the full set.
+**Cadence (from spec §3.7 / #20):** cost-capped 5–10 question smoke on every staging deploy, not in the PR gate set; the full Golden Set is operator-invoked at the release gate — no nightly run, nor one planned (#359, owner decision 2026-10-03) — and its summary is read by the operator, not enforced by an exit code (#364); faithfulness judged by the pipeline reviewer — same-vendor since 2026-09-21, vendor separation deliberately relaxed (§3.4; revisited once a second paid vendor key exists).
 
 **The rule a metric has to obey:** every number above is queryable from Postgres or recorded in-repo — no "check the logs," no "re-run it later." If a monitoring question can't be answered from the stored surfaces, the surface is missing a field and that belongs in the same PR as the feature.
 
