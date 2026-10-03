@@ -36,6 +36,7 @@ Each adapter carries only its own harness's mechanics — spawn, continue, resul
 - **Never report a step done without observable evidence**: a PR URL that exists, comments present on the PR, `gh pr checks` output green. Subagent prose alone is not evidence.
 - **Never paper over failure.** If a subagent stalls or CI stays red after retries, escalate to the user with the concrete blocker. A flaky or silently-skipped step is unacceptable.
 - **Relay CI failures verbatim.** When CI goes red on A's PR, send A the raw failing-check logs. A fixes; you do not debug.
+- **Never exceed the three-concurrent-session cap.** You are one of the three, so at most **two live subagents** at any moment — counted across the whole tree you spawned, descendants included. Count before every dispatch, and queue the work at the cap instead of oversubscribing: an over-cap dispatch is killed by the provider, not queued by it (canonical bullet: Reliability & supervision).
 
 ## Project board — the ticket state surface
 
@@ -165,6 +166,7 @@ Step 6's cleanup duty moves behind both checks: remove worktrees only once the p
 
 ## Reliability & supervision
 
+- **Concurrency cap (canonical).** The provider allows **three concurrent sessions**, and the manager is one of them: hold at most **two live subagents** at any moment, counted across the whole tree you spawned — a subagent's own child is a session too, so the budget is on live sessions, never on direct children. Count live descendants with your harness adapter's agent-list tool (DSH: `list_agents`, descendants scope) before every dispatch, and read anything not settled as live. **At the cap you queue; you never oversubscribe.** An over-cap dispatch is not slower, it is killed: the session dies mid-task, usually before it pushes or reports, and the respawn-intake cost of recovering it lands on you. The loop's own A → B → C sequence is already serial, so the cap binds only where rounds overlap — a QA probe, a scoped re-review, and a fixer round at once. Run the two that unblock the merge and park the third; if the parked work cannot wait, finish or absorb a running dispatch first, or kill it deliberately. The budget is ADR-0033's, still accepted: the reviewer absorbing both thermo passes is what buys it, so never reintroduce a sub-reviewer or a second reviewer to parallelize a review.
 - **Subagent results.** Capture each spawn's agent/subagent id. Continue a running child with your adapter's continue mechanism. Read a child's result from its report/settle notice — not from a transcript-style output tool (your adapter documents the specifics).
 - **Objective verification over prose.** Every awaited artifact is verified independently (`gh pr view`, `gh pr checks`, `gh api`), not trusted from a subagent's message.
 - **Evidence provenance (canonical).** Every quoted measurement — a number, a hash, a pass count — states the revision it was measured at, **by ref and sha, never by relative position** (`HEAD~N` re-points as soon as a commit lands). Re-derive each number and hash at the head you are publishing against before it enters a PR body, a brief, a review, or the final summary; a count relayed from another PR, an earlier round, or a reviewer's comment is re-measured at the current head, or carries the comment id and tree it belongs to. When a fix commit lands, re-run every command in the body that names a revision and diff its output against the quote. A value that no longer reproduces at its stated head is a **stale-evidence finding**, not a cosmetic slip: report it, correct the quote, and name the revision the corrected value was measured at.
@@ -184,6 +186,7 @@ Step 6's cleanup duty moves behind both checks: remove worktrees only once the p
 ## Anti-patterns
 
 - Re-dispatching the whole workflow because one step failed — resume the specific subagent.
+- Dispatching past the concurrency cap — a third subagent while two are live does not queue, it kills one of them silently mid-task. Count live sessions first and park the excess work (Concurrency cap).
 - Respawning a dead subagent from scratch without the respawn intake check — pushed commits, a dirty worktree, or an open draft PR mean the run has a checkpoint to resume from.
 - Posting summary text to the PR before verifying individual comments landed.
 - Marking the loop done on subagent-reported status without independent `gh` verification.
