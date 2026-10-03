@@ -156,6 +156,10 @@ export function postgresChildMethods(
       // from several anchors to the earliest one, and `ORDER BY anchor, ordinal`
       // makes the cap drop the least important windows — both bound parameters,
       // as is the limit. A non-positive radius or limit is not a read at all.
+      // Each reference to an anchor's own id names the CTE's **projected**
+      // column (`anchor_id`): the CTE has no `id` column, and a predicate
+      // naming one is a parse-time error a fake-runner text check cannot see —
+      // which is why the real-Postgres suite covers this read.
       const unique = [...new Set(anchorChildIds)].filter((id) => id.trim() !== "");
       if (opts.radius <= 0 || opts.limit <= 0 || unique.length === 0) {
         return Effect.succeed([] as readonly DocChildById[]);
@@ -180,7 +184,7 @@ export function postgresChildMethods(
             JOIN doc_children n
               ON n.parent_id = an.parent_id
              AND n.ordinal BETWEEN an.ordinal - $2 AND an.ordinal + $2
-             AND n.id <> an.id
+             AND n.id <> an.anchor_id
             ORDER BY n.id, an.anchor_pos, n.ordinal
           ) w
           JOIN doc_children n ON n.id = w.id
