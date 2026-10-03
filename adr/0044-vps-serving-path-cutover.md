@@ -373,3 +373,42 @@ is a root-owned installer that fetches the artifact itself rather than
 executing a deploy-supplied entrypoint); a second deploy target arrives; or a
 human operator needs to deploy from a workstation, which means its key joins
 the same `authorized_keys` — supported, but a separately-recorded choice.
+
+## Amendment (2026-10-03, owner decision, revised): the one box is labeled `staging`; production is deferred
+
+Decision 2's cutover ran to a box whose `APP_ENV` was flipped to `production` at
+the end, which reads as "the one deployment _is_ production". The owner first
+affirmed that reading and then revised it: _"or better to rename env to staging
+then, production will be provision later if required."_ This records the revised
+decision.
+
+1. **One deployment exists, and its label is `staging`.** Decision 2's
+   _infrastructure_ outcome stands unchanged — one box, Cloudflare and Neon
+   decommissioned, the corpus and database on the VPS. What is reverted is the
+   **label**, not the facts; `docs/VPS-CUTOVER-RECORD.md` keeps naming what it
+   did, under the convention that a record of executed steps is not rewritten
+   when the world moves on (`docs/VPS-OPERATIONS.md` §1.6).
+2. **Production is not provisioned — deferred, not pending.** Provisioning it
+   later is a future decision if the product needs it, and nothing waits on it
+   now. The label was reverted on the box on 2026-10-03 — an owner action on
+   `/etc/kajianq/api.env` (root:root 0600, unreadable by the deploy identity),
+   verified from outside (`GET /v1/health` → `"env":"staging"`) — and the
+   commands are kept in `docs/VPS-OPERATIONS.md` §1.7 for a rebuild. `APP_ENV`
+   is cosmetic before and after: the `env` field on every log line plus the
+   health JSON — no log level, no filtering, no privacy behaviour.
+3. **The `Staging` workflow, the `staging` GitHub environment, the `staging`
+   concurrency group and the `Deploy to VPS` `environment` input keep their
+   names**, as does the `prod` environment with its required-reviewer gate.
+   With no production provisioned, a `prod` dispatch deploys the same box; what
+   distinguishes the two GitHub environments is their vars/secrets and that
+   gate, never a second host (`docs/VPS-OPERATIONS.md` §1.2/§1.4).
+
+The QA phase's _staging only, never production_ rail (ADR-0048 decision 5) is
+true as written again — there is no production deployment to hit — and it keeps
+every protection that bounds a probe's blast radius: anonymous sessions only,
+erasure of every session with its own token, the `SELECT`-only subject-scoped
+store read, the recorded spend cap, no writes and no corpus changes.
+
+Revisit trigger: **production is provisioned** — a second host, or a second tree
+behind `prod` — which is the condition ADR-0048's _alternatives considered_ note
+waits on, and which supersedes this amendment rather than editing it.
