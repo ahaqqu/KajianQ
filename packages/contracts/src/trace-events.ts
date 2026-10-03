@@ -1,5 +1,6 @@
 import * as v from "valibot";
 import { ChunkRefSchema, CostRecordSchema, StageSchema } from "./trace-primitives";
+import { productRulesEventSchema } from "./trace-product-rules";
 
 /**
  * Every recordable pipeline occurrence, keyed on `kind` with `detail` typed
@@ -10,8 +11,17 @@ import { ChunkRefSchema, CostRecordSchema, StageSchema } from "./trace-primitive
  * Split of responsibility: the pipeline runner emits the deterministic
  * stage-boundary events (`intent`, `subquery`, `retrieval`, `assembly`) from
  * each stage's structured result; stages that call an LLM or suppress an
- * answer append `llm_call`, `refusal`, and `review` through the run's trace
- * sink — the single collection point (ADR-0021).
+ * answer append `llm_call`, `refusal`, `review`, and `product_rules` through
+ * the run's trace sink — the single collection point (ADR-0021).
+ *
+ * A variant whose rationale would push this file past the agentic 300-line cap
+ * gets its own module and is composed in verbatim here (that is why the field
+ * schemas live in `./trace-primitives`); every variant is still one member of
+ * this one union, so `kind` stays the only discriminator and no reader branches
+ * on a module. `./trace-product-rules` holds the `product_rules` variant: that
+ * split was forced when the union lived in `trace.ts` and had run out of room,
+ * but with this file at 233 lines against the cap the module now stands as the
+ * variant's home rather than a cap escape.
  *
  * `intent.attributes` is the one deliberately-opaque slot: it carries
  * domain-specific structured data (routing filters, tags) that the engine
@@ -149,6 +159,8 @@ export const TraceEventSchema = v.variant("kind", [
     cost: v.optional(CostRecordSchema),
     at: v.pipe(v.number(), v.integer()),
   }),
+  /** The deterministic product rules ran (#285); owner `./trace-product-rules`. */
+  productRulesEventSchema,
   v.object({
     /**
      * A decision-model call's verdict (ADR-0042 serving pattern): the shape

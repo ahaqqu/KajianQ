@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
-import { dhaifWarning, hasWeakWarning } from "./chat-postprocess";
+import { dhaifWarning, hasWeakWarning, ulamaDisclaimer } from "./chat-postprocess";
+import { MACHINE_TRANSLATION_LABEL } from "./chat-assembler";
 import { runChatPipeline } from "./chat-pipeline";
 import { createMemoryRagStore } from "./test-utils/memory-rag-store";
 import { createStubChatProviders } from "./test-utils/stub-chat-providers";
@@ -81,6 +82,10 @@ async function seedChild(
   store: ReturnType<typeof createMemoryRagStore>,
   metadata: Record<string, unknown>,
   ordinal: number,
+  // `null` seeds a row with no translation layer: `withTextLayers` then omits
+  // `textId`, so the assembler renders no machine-translation label and the
+  // label rule has no trigger. The default keeps the ingestion-shaped row.
+  textId: string | null = TRANSLATION,
 ): Promise<string> {
   const parentId = await Effect.runPromise(
     store.insertDocParent({
@@ -94,7 +99,7 @@ async function seedChild(
       parentId,
       textRaw: ARABIC,
       textAr: ARABIC,
-      textId: TRANSLATION,
+      textId,
       citation: { sourceType: "hadith" },
       embeddingPrimary: PRIMARY_VEC,
       embeddingFallback: PRIMARY_VEC,
@@ -278,5 +283,187 @@ describe("#278 — the dhaif warning as the wiring runs it", () => {
     const text = (answer as { text: string }).text;
     expect(text).not.toContain(dhaifWarning("id"));
     expect(hasWeakWarning(text)).toBe(false);
+  });
+});
+
+/**
+ * INTEGRATION TEST (#285) — where the deterministic rules run on the delivery
+ * paths the WIRING takes.
+ *
+ * The invariant: **a delivered answer whose deterministic rules ran carries
+ * exactly one `product_rules` event naming the rules that appended text — on
+ * every path that applies them — and no such event where they did not run.**
+ *
+ * Why the wiring and not the reviewer seam alone: the three rules-applying
+ * exits are `provider === null || skipLlm`, the ADR-0042 pre-gate skip, and
+ * reviewer-passed, and the pre-gate skip records **no `review` event at all**
+ * (the #278 staging trace dfd9d801 carried only a `decision` skip). A rule
+ * running on that path was invisible to the trace; this suite is what reddens
+ * if the event stops being recorded there, if it is recorded where the rules
+ * were disabled, or if `applied` stops naming the rules that appended text. An
+ * empty `applied` is only "ran, appended nothing": it does not separate "no
+ * rule had a trigger" from "a trigger matched and the copy was already
+ * present" (the exact-copy case that motivated the event), and this suite pins
+ * both of those empty-list paths.
+ */
+
+/** The typed trace events of a settled pipeline answer. */
+const eventsOf = (answer: unknown) =>
+  (answer as { trace: { events: readonly unknown[] } }).trace.events as {
+    stage: string;
+    kind: string;
+    detail: Record<string, unknown>;
+  }[];
+
+const productRulesEvents = (answer: unknown) =>
+  eventsOf(answer).filter((event) => event.kind === "product_rules");
+
+/** The same wired pipeline as `answerFor`, with per-test deps overrides. */
+async function answerVia(
+  store: ReturnType<typeof createMemoryRagStore>,
+  answerText: string,
+  overrides: Record<string, unknown> = {},
+) {
+  return Effect.runPromise(
+    runChatPipeline(
+      { ...depsFor(store, answerText, null), language: "id", ...overrides } as never,
+      { text: "Apa keutamaan ayat kursi?" },
+    ) as never,
+  );
+}
+
+describe("#285 — the product_rules event on the wiring's delivery paths", () => {
+  it("records the rules that appended text on the pre-gate skip path (the #278 trace's path)", async () => {
+    const store = createMemoryRagStore();
+    await seedChild(store, DHAIF_METADATA, 0);
+
+    const answer = await answerVia(store, `Jawaban memakai [${DHAIF_CITATION}] saja.`, {
+      reviewerDecider: SKIPPING_DECIDER,
+    });
+    const events = eventsOf(answer);
+    // The path: the cheap screen cleared every citation, so the paid reviewer
+    // was skipped and no `review` event exists to hang the rule record on.
+    expect(events.find((e) => e.kind === "decision")?.detail["outcome"]).toBe("skip");
+    expect(events.some((e) => e.kind === "review")).toBe(false);
+
+    const rules = productRulesEvents(answer);
+    expect(rules).toHaveLength(1);
+    expect(rules[0]?.stage).toBe("reviewer");
+    expect(rules[0]?.detail["applied"]).toEqual([
+      "dhaif_warning",
+      "machine_translation_label",
+      "ulama_disclaimer",
+    ]);
+    // The event and the delivered text agree rule-for-rule.
+    const text = (answer as { text: string }).text;
+    expect(text).toContain(dhaifWarning("id"));
+    expect(text).toContain(MACHINE_TRANSLATION_LABEL);
+    expect(text).toContain(ulamaDisclaimer("id"));
+  });
+
+  it("records the rules that appended text on the reviewer-passed path", async () => {
+    const store = createMemoryRagStore();
+    await seedChild(store, DHAIF_METADATA, 0);
+
+    // No decider wired → the stub reviewer runs and passes.
+    const answer = await answerVia(store, `Jawaban memakai [${DHAIF_CITATION}] saja.`);
+    expect(eventsOf(answer).some((e) => e.kind === "review")).toBe(true);
+    expect(productRulesEvents(answer)).toHaveLength(1);
+  });
+
+  it.each([
+    ["no reviewer provider wired", { reviewerProvider: null }],
+    ["skipLlm", { skipReviewer: true }],
+  ])(
+    "records the rules that appended text when the stage stops before the reviewer (%s)",
+    async (_label, overrides) => {
+      const store = createMemoryRagStore();
+      await seedChild(store, DHAIF_METADATA, 0);
+
+      const answer = await answerVia(store, `Jawaban memakai [${DHAIF_CITATION}] saja.`, overrides);
+      expect(eventsOf(answer).some((e) => e.kind === "review")).toBe(false);
+      expect(productRulesEvents(answer)).toHaveLength(1);
+    },
+  );
+
+  it("records `applied: []` when the draft already carries every rule's copy (the exact-copy path)", async () => {
+    // The case this event exists for: the model reproduced the canonical copy
+    // character-for-character, so every rule found its own text present and
+    // appended nothing. `applied: []` records "the rules ran and appended
+    // nothing" — the same value the next test records for a run where no rule
+    // had a trigger, because the event does not separate the two. What
+    // separates either from "the rules never ran" is the event's PRESENCE, not
+    // its `applied` value (the refusal test below is that negative).
+    //
+    // The draft cites the retrieved dhaif chunk so the cheap screen clears it
+    // and the rules really run on the pre-gate SKIP path (the #278 path, which
+    // records no `review` event); the `decision` assertion below keeps this
+    // test honest about the path it pins, so a citation-free draft that
+    // silently escalates instead can never make it pass for the wrong reason.
+    const store = createMemoryRagStore();
+    await seedChild(store, DHAIF_METADATA, 0);
+    const draft = [
+      `Jawaban sesuai konteks [${DHAIF_CITATION}].`,
+      dhaifWarning("id"),
+      `[${MACHINE_TRANSLATION_LABEL}]`,
+      ulamaDisclaimer("id"),
+    ].join("\n\n");
+
+    const answer = await answerVia(store, draft, { reviewerDecider: SKIPPING_DECIDER });
+    const events = eventsOf(answer);
+    expect(events.find((e) => e.kind === "decision")?.detail["outcome"]).toBe("skip");
+    expect(events.some((e) => e.kind === "review")).toBe(false);
+    const rules = productRulesEvents(answer);
+    expect(rules).toHaveLength(1);
+    expect(rules[0]?.detail["applied"]).toEqual([]);
+    // Nothing was appended: the rules are not a second source of truth for
+    // what the answer says.
+    expect((answer as { text: string }).text).toBe(draft);
+  });
+
+  it("records `applied: []` when no rule has a trigger (the no-trigger path)", async () => {
+    // The other way `applied` can be empty, and the reason the event must not
+    // be read as a suppression count: nothing is suppressed here. The only
+    // retrieved chunk is sound (no dhaif trigger) and carries no translation
+    // layer (no label trigger), and the draft already ends with the
+    // disclaimer (no disclaimer trigger) — yet the recorded value is the same
+    // `[]` the exact-copy test above records. The two runs are separable only
+    // by reading the context and the draft, never from the event.
+    //
+    // The draft cites the sound chunk, so the deterministic citation gate
+    // clears it and the decider skips the paid reviewer: this pins the
+    // pre-gate SKIP path (the #278 path, which records no `review` event), and
+    // the `decision` assertion below keeps the test honest about that path.
+    const store = createMemoryRagStore();
+    await seedChild(store, SAHIH_METADATA, 0, null);
+    const draft = [`Jawaban memakai [${SAHIH_CITATION}].`, ulamaDisclaimer("id")].join("\n\n");
+
+    const answer = await answerVia(store, draft, { reviewerDecider: SKIPPING_DECIDER });
+    const events = eventsOf(answer);
+    expect(events.find((e) => e.kind === "decision")?.detail["outcome"]).toBe("skip");
+    expect(events.some((e) => e.kind === "review")).toBe(false);
+    const rules = productRulesEvents(answer);
+    expect(rules).toHaveLength(1);
+    expect(rules[0]?.stage).toBe("reviewer");
+    expect(rules[0]?.detail["applied"]).toEqual([]);
+    // Nothing had a trigger, so nothing was appended: the delivered text is
+    // the draft, byte for byte — the same shape the exact-copy run delivers.
+    expect((answer as { text: string }).text).toBe(draft);
+  });
+
+  it("records nothing when the answer is the canonical refusal (the rules never ran)", async () => {
+    const store = createMemoryRagStore();
+    await seedChild(store, DHAIF_METADATA, 0);
+
+    const answer = await answerVia(
+      store,
+      "Mohon maaf, kami tidak menemukan dalil yang memadai untuk pertanyaan ini.",
+      { reviewerDecider: SKIPPING_DECIDER },
+    );
+    // The refusal short-circuits before any rule runs — and must not gain a
+    // disclaimer, nor an event claiming the rules ran.
+    expect(eventsOf(answer).some((e) => e.kind === "refusal")).toBe(true);
+    expect(productRulesEvents(answer)).toHaveLength(0);
+    expect((answer as { text: string }).text).not.toContain(ulamaDisclaimer("id"));
   });
 });

@@ -155,6 +155,18 @@ describe("trace contract", () => {
       },
       { stage: "reviewer", kind: "review", detail: { verdict: "faithful" }, at: 6 },
       {
+        // The deterministic product rules ran (#285): the rule ids that
+        // appended text are persisted trace content, recorded on every path
+        // that applies the rules — including the pre-gate skip path below,
+        // which records no `review` event. The ids are deliberately opaque
+        // placeholders here: a domain pack owns their meaning, and the engine
+        // contract must not know it (the boundary gate enforces that).
+        stage: "reviewer",
+        kind: "product_rules",
+        detail: { applied: ["rule_one", "rule_two"] },
+        at: 6,
+      },
+      {
         // The decision-model screen (ADR-0042 serving pattern): the skip and
         // its per-item scores are persisted trace content, and the call's own
         // spend rides on the sibling `llm_call` event above.
@@ -174,7 +186,150 @@ describe("trace contract", () => {
       { stage: "generator", kind: "refusal", reason: "insufficient evidence", at: 8 },
     ];
     const trace = parseTrace({ id: "t", createdAt: 0, events });
-    expect(trace.events).toHaveLength(11);
+    // 12 = the base rows plus BOTH sides' additions: main's
+    // `neighbour_expansion` (ADR-0049) and this branch's `product_rules`
+    // (#285). A count is not enough on its own — it cannot tell "both
+    // variants are in the union" from "one replaced the other" — so the
+    // kinds are named: `v.variant` throws on a kind the union does not carry,
+    // and the list is the record that both additions survived the re-layout.
+    expect(trace.events).toHaveLength(12);
+    expect(trace.events.map((event) => event.kind)).toEqual([
+      "intent",
+      "subquery",
+      "retrieval",
+      "filter_relaxed",
+      "scope_expansion",
+      "neighbour_expansion",
+      "assembly",
+      "llm_call",
+      "review",
+      "product_rules",
+      "decision",
+      "refusal",
+    ]);
+  });
+
+  // Schema invariant (ADR-0007 typed detail): the variant is lossless — any
+  // list of non-empty rule ids the domain pack reports survives the parse
+  // unchanged, and the empty list survives as the empty list rather than being
+  // dropped or defaulted. Hand-picked values would not cover the id space the
+  // domain pack owns, which is exactly the space this event persists.
+  fcTest.prop([fc.array(fc.string({ minLength: 1 }), { maxLength: 5 })])(
+    "round-trips a product_rules event's `applied` list unchanged (#285)",
+    (applied) => {
+      const trace = parseTrace({
+        id: "t",
+        createdAt: 0,
+        events: [{ stage: "reviewer", kind: "product_rules", detail: { applied }, at: 1 }],
+      });
+      const event = trace.events[0];
+      expect(event?.kind === "product_rules" ? event.detail.applied : undefined).toEqual(applied);
+    },
+  );
+
+  it("accepts an empty `applied` list — the rules ran and appended nothing (#285)", () => {
+    // The exact-copy suppression case is the reason this event exists: the
+    // model reproduced the canonical copy, so the rule found it already
+    // present and appended nothing. An empty list records exactly that — "the
+    // rules ran and appended nothing" — without separating it from a run where
+    // no rule had a trigger, so a `minLength(1)` on the array (or treating []
+    // as absent) would erase the record and put the trace back where it
+    // started.
+    const parsed = v.safeParse(TraceSchema, {
+      id: "t",
+      createdAt: 1,
+      events: [{ stage: "reviewer", kind: "product_rules", detail: { applied: [] }, at: 1 }],
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      const event = parsed.output.events[0];
+      expect(event?.kind === "product_rules" ? event.detail.applied : undefined).toEqual([]);
+    }
+  });
+
+  it("rejects a product_rules event without an applied list", () => {
+    expect(
+      v.safeParse(TraceSchema, {
+        id: "t",
+        createdAt: 1,
+        events: [{ stage: "reviewer", kind: "product_rules", detail: {}, at: 1 }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a product_rules rule id that is not a non-empty string", () => {
+    // A blank id names no rule, so it cannot be counted per rule — the one
+    // thing an operator or the eval harness reads this event for.
+    expect(
+      v.safeParse(TraceSchema, {
+        id: "t",
+        createdAt: 1,
+        events: [{ stage: "reviewer", kind: "product_rules", detail: { applied: [""] }, at: 1 }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a product_rules event recorded on a stage that does not apply the rules", () => {
+    expect(
+      v.safeParse(TraceSchema, {
+        id: "t",
+        createdAt: 1,
+        events: [{ stage: "generator", kind: "product_rules", detail: { applied: ["x"] }, at: 1 }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps a pre-#285 persisted trace readable, with no fabricated product_rules event", () => {
+    // ADR-0007 forward compatibility, the direction that matters: traces
+    // written before the `product_rules` kind existed (e.g. the #278 staging
+    // trace dfd9d801, which carries a pre-gate `decision` skip and NO `review`
+    // event) still parse — nothing was renamed or made required, and the
+    // reader must not synthesize the event it never saw. The fixture is the
+    // shape the runner really persists: `run.ts` builds exactly `{ id,
+    // createdAt, events }` and no writer in the repo stamps `version`, so the
+    // version-less body IS the production shape, not a pre-versioning piece.
+    const legacy = parseTrace({
+      id: "dfd9d801-c3bc-42b9-9e09-39a5df785c94",
+      createdAt: 0,
+      events: [
+        {
+          stage: "retriever",
+          kind: "retrieval",
+          detail: { chunks: [{ id: "c1", score: 0.5, rankDense: 1, rankSparse: 2 }] },
+          at: 1,
+        },
+        { stage: "assembler", kind: "assembly", detail: { turnCount: 2, chunkCount: 1 }, at: 2 },
+        {
+          stage: "generator",
+          kind: "llm_call",
+          detail: { purpose: "generate" },
+          cost: { modelId: "m", tokensIn: 1, tokensOut: 2, latencyMs: 3, costMicroUsd: 4 },
+          at: 3,
+        },
+        {
+          stage: "reviewer",
+          kind: "decision",
+          detail: {
+            purpose: "citation_support",
+            outcome: "skip",
+            threshold: 0.5,
+            items: [{ index: 0, key: "citation-1", score: 0.94 }],
+          },
+          at: 4,
+        },
+      ],
+    });
+    // The parse result is what is asserted, not the input echoed back: the
+    // version-less shape reads, no version is fabricated, and every event kind
+    // survives the strict variant in order.
+    expect(legacy.version).toBeUndefined();
+    expect(legacy.events.map((event) => event.kind)).toEqual([
+      "retrieval",
+      "assembly",
+      "llm_call",
+      "decision",
+    ]);
+    expect(legacy.events.some((event) => event.kind === "product_rules")).toBe(false);
   });
 
   it("keeps a chunk ref without `origin` readable (pre-ADR-0045 traces)", () => {

@@ -11,6 +11,7 @@ import {
 } from "@app/rag-core";
 import { parseTrace, type CostRecord, type TraceEvent } from "@app/contracts";
 import { createKajianQReviewer, type KajianQReviewerDeps } from "./chat-reviewer";
+import { ulamaDisclaimer } from "./chat-postprocess";
 import {
   CITATION_SUPPORT_PURPOSE,
   CITATION_SUPPORT_THRESHOLD,
@@ -208,6 +209,44 @@ describe("#168 reviewer pre-gate — skip path", () => {
     );
     expect(decisionEvent(belowThreshold.events).detail.outcome).toBe("escalate");
     expect(belowThreshold.events.some((e) => e.kind === "review")).toBe(true);
+  });
+
+  it("records a product_rules event on the skip path when the rules are on (#285)", async () => {
+    // The skip path reaches the rules through `withRules` and records no
+    // `review` event — so this event is the only trace evidence that the
+    // deterministic controls ran on an answer the cheap screen cleared.
+    const out = await review(
+      {
+        applyProductRules: true,
+        provider: countingReviewer().provider as never,
+        decider: fakeDecider(() => Effect.succeed(noulResult({ c0: 1 }))).decider,
+      },
+      "Lihat QS. 2:255.",
+      [chunk("QS. 2:255")],
+    );
+    const event = out.events.find((e) => e.kind === "product_rules");
+    if (event?.kind !== "product_rules") throw new Error("no product_rules event recorded");
+    expect(event.stage).toBe("reviewer");
+    expect(event.detail.applied).toEqual(["ulama_disclaimer"]);
+    expect(out.text).toContain(ulamaDisclaimer("id"));
+  });
+
+  it("records no product_rules event when the deterministic rules are disabled (#285)", async () => {
+    // The same skip path with `applyProductRules: false` (this suite's default
+    // wiring): the event means "the rules ran", so a run that skips them must
+    // not look like one that ran them — even though every rule would
+    // otherwise have appended something here.
+    const out = await review(
+      {
+        provider: countingReviewer().provider as never,
+        decider: fakeDecider(() => Effect.succeed(noulResult({ c0: 1 }))).decider,
+      },
+      "Lihat QS. 2:255.",
+      [chunk("QS. 2:255")],
+    );
+    expect(decisionEvent(out.events).detail.outcome).toBe("skip");
+    expect(out.events.some((e) => e.kind === "product_rules")).toBe(false);
+    expect(out.text).not.toContain(ulamaDisclaimer("id"));
   });
 });
 
