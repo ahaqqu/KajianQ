@@ -463,6 +463,18 @@ describe("markdown-links — the real tree", () => {
     expect(ignored.has("apps/web/dist/index.html")).toBe(true);
     expect(ignored.has("docs/ARCHITECTURE.md")).toBe(false);
   });
+
+  it("covers every tracked top-level directory — the scope cannot shrink silently", () => {
+    // CLAIM_ROOTS is the stated scope rule. A new top-level directory that does
+    // not join it stops being a claim root, and this is what says so.
+    const ctx = buildContext(process.cwd());
+    const topDirs = [...ctx.tree.dirs].filter((d) => !d.includes("/"));
+    expect(topDirs.filter((d) => !CLAIM_ROOTS.includes(d))).toEqual([]);
+    // And the roots the ticket names are all still there.
+    for (const root of ["apps", "packages", "scripts", "docs", "adr", ".agents", ".zcode"]) {
+      expect(topDirs).toContain(root);
+    }
+  });
 });
 
 /**

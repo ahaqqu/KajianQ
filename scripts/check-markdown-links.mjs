@@ -61,9 +61,9 @@
  *   A code span is a repo-path claim when its text has no whitespace, no glob
  *   character (`*?[]{}`), no template placeholder (`<slug>`, `<role>`,
  *   `<label>`), no URL/anchor prefix (`https:`, `mailto:`, `tel:`, `#`, `//`),
- *   no ellipsis (`…`, `...`), and either starts with a tracked root
- *   (`apps/ packages/ scripts/ docs/ adr/ .agents/ .zcode/ provision/ tests/
- *   NOTICES/`) or is exactly a tracked root-level file name.
+ *   no ellipsis (`…`, `...`), and either starts with a tracked root — every
+ *   top-level directory of the tree, listed in CLAIM_ROOTS — or is exactly a
+ *   tracked root-level file name.
  *
  *   Each of those exclusions carries its class out of scope, deliberately:
  *     - whitespace → `bun run lint`, `git stash`, and every command line;
@@ -99,8 +99,9 @@
  *       right while the tree is wrong (follow-up filed). This resolves all 49
  *       class-A spans.
  *
- *   B — an artifact its own ADR retired (40 spans in 14 files inside `adr/`).
- *       RECORDS_RULE below covers the class.
+ *   B — an artifact its own ADR retired: 43 spans across 13 files inside `adr/` at
+ *       the time of writing (ADR-0030 names `scripts/template-sync/` because it
+ *       retired it). RECORDS_RULE below covers the class.
  *
  *   C — a living doc naming an artifact that is gone: four spans total, in
  *       `SPECS.md` and `docs/ARCHITECTURE.md`, each narrating its target's
@@ -115,7 +116,7 @@
  *   *because* it retired it; the cutover record is the executed log of a
  *   one-shot procedure. AGENTS.md forbids editing `adr/` to make a gate pass,
  *   so those 40 spans cannot be repaired, only exempted — and an allowlist of
- *   40 entries across 14 files is not the "tiny, reasoned" kind this gate
+ *   40 entries across 13 files is not the "tiny, reasoned" kind this gate
  *   tolerates. This is the rule instead, stated with its cost:
  *
  *     COST, named: dead code-span claims inside records are not failures. They
@@ -140,7 +141,8 @@
  *   `.agents/skills/` that contains a `SKILL.md`. This is the half that would
  *   have caught #367 mechanically: both of its dead references were
  *   `` `agentic-workflow` skill ``-shaped. Measured at 07cb2914: 29 such
- *   references, 0 unresolved.
+ *   references across the scanned roots — 23 in living docs, 6 in records —
+ *   every one of them resolving.
  *
  *   Deliberately NOT extended to "the `X` role": that marker has 21 unresolved
  *   hits which are all model-stage role names (`cheap`, `embedder`,
@@ -189,9 +191,13 @@ export const ROOTS = [
 ];
 
 /**
- * First path segments that make an inline code span a repo-path claim. A new
- * top-level directory is a new claim root — add it here, or paths into it are
- * unchecked (COST, named in the header).
+ * First path segments that make an inline code span a repo-path claim. This is
+ * every tracked top-level directory of the repository — the ticket's list plus
+ * `.github/` and `.githooks/`, which carry no such span today and cost nothing
+ * to include. A new top-level directory is a new claim root: add it here, or
+ * paths into it are unchecked. `tests/scripts/check-markdown-links.test.mjs`
+ * fails if this list stops covering the tracked tree, so that gap cannot open
+ * silently.
  */
 export const CLAIM_ROOTS = [
   "apps",
@@ -201,6 +207,8 @@ export const CLAIM_ROOTS = [
   "adr",
   ".agents",
   ".zcode",
+  ".githooks",
+  ".github",
   "provision",
   "tests",
   "NOTICES",
