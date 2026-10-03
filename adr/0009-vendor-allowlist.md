@@ -57,8 +57,8 @@ were exercised against the vendors' real endpoints, not assumed:
 
 **Consequences / standing duty.** The cheaper pair is a hypothesis, not a proven
 posture: `bun run eval:run` (Golden Set, free-tier capped) must show it neither
-lets ungrounded citations through nor inflates refusals, and the PR-time
-`bun run eval:smoke` now runs against live staging on every Staging deploy. A
+lets ungrounded citations through nor inflates refusals, and `bun run eval:smoke`
+runs against live staging on every Staging deploy — not at PR time (SPECS §3.7). A
 regression in either direction reverts the chain head — one line per role. The
 reviewer's promotion path stays recorded in SPECS §3.4's Alt column
 (`gemini-3.1-pro-preview`); restoring a generator fallback means **re-adding**
