@@ -13,6 +13,7 @@ import type { ChatMessage, DocChildById } from "@app/infra";
 import {
   citationCandidatesIn,
   citationLabelsOf,
+  groundingLabelsFor,
   hasWeakWarning,
   normalizeCitationLabel,
 } from "@app/kajianq-domain";
@@ -43,6 +44,15 @@ import * as v from "valibot";
  * inline citation spans that some trace-retrieved chunk grounds. A
  * citation-shaped span with no matching chunk (fabricated or whose row
  * vanished) is absent from the payload — never a chip without provenance.
+ *
+ * **"Grounds" is the gate's own decision, not a second reading of it (review
+ * A1 of the #274 fix round).** The intersection is decided by
+ * `groundingLabelsFor`, the domain pack's single implementation of the rule the
+ * gate applies — so a span the gate accepted (a Quran range whose every named
+ * address is retrieved, interior included) is emitted here too, and one it
+ * refused cannot be. Matching by the span's exact label alone, which this
+ * derivation used to do, silently dropped every range: the gate grounded
+ * `QS. 3:1-2` and the user saw the range in prose with no chip for it.
  */
 
 /** The chunk's citation labels, normalized exactly as the gate normalizes. */
@@ -106,9 +116,20 @@ export function deriveCitationsFrame(input: {
     }
   }
   const citations: ChatCitation[] = [];
+  // The grounding decision is the gate's, so the frame and the gate cannot
+  // disagree about a range (or about any future list-valued citation form).
+  const known = new Set(grounded.keys());
   for (const span of citationCandidatesIn(answerText)) {
-    const chunk = grounded.get(span);
-    if (!chunk || citations.some((c) => c.label === span)) continue;
+    const labels = groundingLabelsFor(span, known);
+    if (labels === null) continue;
+    // The citation keeps the span as the draft wrote it (ADR-0049 Decision 4:
+    // the display form is the range, not its parts) and is backed by the first
+    // address that grounds it — for a range, its head verse, which is the
+    // verse the prose names first and the one its Arabic layer should show.
+    const chunk = labels
+      .map((label) => grounded.get(label))
+      .find((candidate): candidate is DocChildById => candidate !== undefined);
+    if (chunk === undefined || citations.some((c) => c.label === span)) continue;
     citations.push(toCitation(span, chunk));
   }
   return {

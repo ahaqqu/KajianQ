@@ -35,6 +35,27 @@ let sql: import("./rag-store-postgres-errors").SqlRunner | null = null;
 let store: RagStore;
 let cleanup: () => Promise<void>;
 
+// Every key this suite creates is `${PREFIX}${suffix}`, and cleanup deletes
+// those exact keys rather than a `LIKE ${PREFIX}-%` pattern: the suite shares a
+// real database with everything else, so a pattern's reach would exceed the
+// rows this suite owns (the residue the prefix-suffixed corpus keys caused
+// before #335, and the over-reach review B1 of that round named). Each suffix
+// is declared once and read by BOTH the fixture that writes the key and the
+// cleanup that removes it, so a new fixture key cannot silently outlive its run
+// (review B1 of #338).
+const SOURCE_KEY_SUFFIXES = ["", "-upsert", "-neigh-a", "-neigh-b"] as const;
+const TRACE_MESSAGE_SUFFIX = "-msg-1";
+const EVAL_RUN_LABEL_SUFFIX = "-run";
+
+/** A `doc_parents` source key in this run's fixture namespace. */
+const corpusKey = (suffix: (typeof SOURCE_KEY_SUFFIXES)[number]) => `${PREFIX}${suffix}`;
+
+/** The `answer_traces.message_id` this suite creates, in the run's namespace. */
+const traceMessageId = () => `${PREFIX}${TRACE_MESSAGE_SUFFIX}`;
+
+/** The `eval_runs.label` this suite creates, in the run's namespace. */
+const evalRunLabel = () => `${PREFIX}${EVAL_RUN_LABEL_SUFFIX}`;
+
 function vec(dim: number, seed: number): number[] {
   return Array.from({ length: dim }, (_, i) => Math.sin(seed * 1000 + i * 0.01));
 }
@@ -46,14 +67,24 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
     sql = postgresSqlRunner(postgresPool(URL));
     store = createPostgresRagStore(sql);
     cleanup = async () => {
-      // Remove this run's fixture rows. userId/messageId keys carry PREFIX so
-      // a failed run cannot collide with the next.
+      // Remove this run's fixture rows, each by the exact key its fixture
+      // writes. No statement here deletes by a `LIKE ${PREFIX}-%` pattern: the
+      // database is shared, so a pattern's reach exceeds the rows this suite
+      // owns (review B1 of #338).
       await sql!`DELETE FROM users WHERE id IN (
         SELECT user_id FROM chat_sessions WHERE metadata->>'pfx' = ${PREFIX}
       )`;
-      await sql!`DELETE FROM answer_traces WHERE message_id LIKE ${PREFIX + "-%"}`;
-      await sql!`DELETE FROM eval_runs WHERE label LIKE ${PREFIX + "-%"}`;
-      await sql!`DELETE FROM doc_parents WHERE source_key = ${PREFIX}`;
+      await sql!`DELETE FROM answer_traces WHERE message_id = ${traceMessageId()}`;
+      await sql!`DELETE FROM eval_runs WHERE label = ${evalRunLabel()}`;
+      // The corpus fixtures key their source_key off PREFIX with a suffix
+      // (`-upsert`, `-neigh-a`, …), so an exact-equality delete on the bare
+      // prefix left every one of them — and their cascade children — behind in
+      // the shared database on each contract run. Deleting the exact keys the
+      // fixtures create keeps that reach equal to the rows this suite owns,
+      // and both sides read SOURCE_KEY_SUFFIXES so the list cannot go stale
+      // (#335 review B1).
+      await sql!`DELETE FROM doc_parents
+        WHERE source_key = ANY(${SOURCE_KEY_SUFFIXES.map(corpusKey)}::text[])`;
     };
   });
 
@@ -69,7 +100,7 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
     const ar = vec(1536, 1);
     const program = Effect.gen(function* () {
       const parentId = yield* store.insertDocParent({
-        sourceKey: PREFIX,
+        sourceKey: corpusKey(""),
         title: "contract-fixture",
         metadata: { pfx: PREFIX },
       });
@@ -109,7 +140,7 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
     const arEmb = vec(1536, 3);
     const program = Effect.gen(function* () {
       const parentId = yield* store.insertDocParent({
-        sourceKey: PREFIX,
+        sourceKey: corpusKey(""),
         title: "contract-fixture-2",
         metadata: { pfx: PREFIX },
       });
@@ -188,7 +219,7 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
         },
       ],
     };
-    const messageId = `${PREFIX}-msg-1`;
+    const messageId = traceMessageId();
     const program = Effect.gen(function* () {
       const { userId, token } = yield* store.createSession();
       const chatSessionId = yield* store.createChatSession({ userId, metadata: { pfx: PREFIX } });
@@ -210,7 +241,7 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
       // made every statement a syntax error (42601) — and nothing covered it, so
       // `eval_results` stayed empty while the spec claimed per-question rows.
       const evalRunId = yield* store.insertEvalRun({
-        label: `${PREFIX}-run`,
+        label: evalRunLabel(),
         report: {} as never,
       });
       yield* store.insertEvalResult({
@@ -345,14 +376,14 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
     const ar = vec(1536, 7);
     const program = Effect.gen(function* () {
       const parentId = yield* store.insertDocParent({
-        sourceKey: `${PREFIX}-upsert`,
+        sourceKey: corpusKey("-upsert"),
         title: "first",
         metadata: { pfx: PREFIX, rev: 1 },
       });
       // Re-insert the same source_key with different metadata/title → same id,
       // updated fields, no duplicate row.
       const parentId2 = yield* store.insertDocParent({
-        sourceKey: `${PREFIX}-upsert`,
+        sourceKey: corpusKey("-upsert"),
         title: "second",
         metadata: { pfx: PREFIX, rev: 2 },
       });
@@ -396,4 +427,165 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
     expect(me?.child.citation).toEqual({ s: 3, a: 7 });
     expect(me?.child.metadata).toMatchObject({ rev: 2 });
   }, 60_000);
+
+  /**
+   * The neighbour read against real Postgres (#334).
+   *
+   * The fake-runner unit test pins this statement's *text*, which is exactly
+   * how the shipped defect survived every gate: the `anchors` CTE projects
+   * `a.id AS anchor_id`, the join predicate read `an.id`, and PostgreSQL
+   * rejected the whole statement at parse time (`ERROR: column an.id does not
+   * exist`) — so every chat request that reached this read answered 500 while
+   * the SQL-text assertions stayed green. These rows assert the statement
+   * EXECUTES and that its behaviour is the one ADR-0049 documents: each
+   * anchor's ordinal window inside the anchor's own parent, the anchor never
+   * its own neighbour, a neighbour reachable from several anchors deduplicated
+   * onto the FIRST anchor in the caller's order, ordering by anchor position
+   * then `ordinal` (the cap's truncation depends on it), and the radius/limit
+   * bounds honoured.
+   */
+  describe("listDocChildNeighboursByChildIds (real Postgres, ADR-0049, #334)", () => {
+    // Parent A carries ordinals 0..8 (wide enough for a radius-3 window with
+    // room on both sides); parent B carries rows at some of the SAME ordinals,
+    // so a window that leaked across the parent join would be visible.
+    const ORDINALS = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+    const OTHER_ORDINALS = [2, 4, 6];
+    let parentTitle = "";
+    let at: string[] = []; // parent A: index is the ordinal
+    let otherAt = new Map<number, string>(); // parent B: ordinal -> child id
+
+    beforeAll(async () => {
+      if (!URL) return;
+      parentTitle = `${PREFIX}-neighbour-fixture-a`;
+      const seed = (parentId: string, ordinal: number) =>
+        store.insertDocChild({
+          parentId,
+          textRaw: `raw-neigh-${ordinal}`,
+          textAr: `ar-neigh-${ordinal}`,
+          textId: `id-neigh-${ordinal}`,
+          citation: { fixture: "neigh", ordinal },
+          embeddingPrimary: vec(1536, 500 + ordinal),
+          embeddingFallback: null,
+          ordinal,
+          metadata: { pfx: PREFIX, ordinal },
+        });
+      const program = Effect.gen(function* () {
+        const parentId = yield* store.insertDocParent({
+          sourceKey: corpusKey("-neigh-a"),
+          title: parentTitle,
+          metadata: { pfx: PREFIX },
+        });
+        at = yield* Effect.forEach(ORDINALS, (ordinal) => seed(parentId, ordinal));
+        const otherParentId = yield* store.insertDocParent({
+          sourceKey: corpusKey("-neigh-b"),
+          title: `${PREFIX}-neighbour-fixture-b`,
+          metadata: { pfx: PREFIX },
+        });
+        const otherIds = yield* Effect.forEach(OTHER_ORDINALS, (ordinal) =>
+          seed(otherParentId, ordinal),
+        );
+        otherAt = new Map(OTHER_ORDINALS.map((ordinal, i) => [ordinal, otherIds[i]!]));
+      });
+      await Effect.runPromise(program);
+    });
+
+    const read = (anchors: readonly string[], radius: number, limit: number) =>
+      Effect.runPromise(store.listDocChildNeighboursByChildIds(anchors, { radius, limit }));
+
+    it("executes on real Postgres and returns the anchor's ordinal window, never the anchor (the #334 row)", async () => {
+      if (!URL) return;
+      const rows = await read([at[3]!], 1, 10);
+      // Exactly the two ordinal neighbours, in ordinal order. Pre-fix this
+      // call rejected the statement (`column an.id does not exist`).
+      expect(rows.map((r) => r.id)).toEqual([at[2], at[4]]);
+      // The anchor is never returned as its own neighbour (decision 2).
+      expect(rows.map((r) => r.id)).not.toContain(at[3]);
+      // And the window never crosses the parent join: parent B holds rows at
+      // the same ordinals 2 and 4, and neither may appear here.
+      expect(rows.map((r) => r.id)).not.toContain(otherAt.get(2));
+      expect(rows.map((r) => r.id)).not.toContain(otherAt.get(4));
+      // The mapped row carries the full read contract: the text layers, the
+      // opaque citation, the parent's display title, and no vectors (the same
+      // embedding-stripping contract as every other corpus read).
+      expect(rows[0]).toMatchObject({
+        textRaw: "raw-neigh-2",
+        textAr: "ar-neigh-2",
+        textId: "id-neigh-2",
+        citation: { fixture: "neigh", ordinal: 2 },
+        metadata: { pfx: PREFIX, ordinal: 2 },
+        parentTitle,
+      });
+      expect(rows[0]?.embeddingPrimary).toBeNull();
+      expect(rows[0]?.embeddingFallback).toBeNull();
+    }, 60_000);
+
+    it("honours the radius, including at the parent's ordinal edge", async () => {
+      if (!URL) return;
+      // Radius 2 on ordinal 3 reaches one further on each side.
+      expect((await read([at[3]!], 2, 10)).map((r) => r.id)).toEqual([at[1], at[2], at[4], at[5]]);
+      // One step outside the radius stays out — the bound the radius is for.
+      expect((await read([at[3]!], 1, 10)).map((r) => r.id)).not.toContain(at[1]);
+      // The last ordinal has no rows beyond it: the window clamps rather than
+      // failing or inventing rows.
+      expect((await read([at[8]!], 3, 10)).map((r) => r.id)).toEqual([at[5], at[6], at[7]]);
+    }, 60_000);
+
+    it("deduplicates a neighbour shared by two anchors onto the FIRST anchor, and orders by anchor position then ordinal", async () => {
+      if (!URL) return;
+      // Anchors at ordinals 2 and 5 with radius 3: ordinals 3 and 4 fall in
+      // BOTH windows, so each must be attributed to the first anchor (2), and
+      // the result groups anchor 2's window before anchor 5's. Ordinals 5 and
+      // 2 below are the anchors inside the *other* anchor's window — the read
+      // excludes an anchor from its own window only (decision 2's "never the
+      // anchor"), and the domain expansion drops any id already in context.
+      expect((await read([at[2]!, at[5]!], 3, 20)).map((r) => r.id)).toEqual([
+        at[0],
+        at[1],
+        at[3],
+        at[4],
+        at[5],
+        at[2],
+        at[6],
+        at[7],
+        at[8],
+      ]);
+    }, 60_000);
+
+    it("truncates by anchor priority, so the cap keeps the best-ranked anchor's window", async () => {
+      if (!URL) return;
+      // The same read capped at four keeps anchor 2's window. Had the shared
+      // neighbours (3 and 4) been attributed to the LATEST anchor instead, the
+      // surviving four would be at[0], at[1], at[5], at[2] — a different set.
+      // That difference is what "the caller's array order is the priority
+      // order" buys ADR-0049's cap.
+      expect((await read([at[2]!, at[5]!], 3, 4)).map((r) => r.id)).toEqual([
+        at[0],
+        at[1],
+        at[3],
+        at[4],
+      ]);
+      // The priority order is the caller's array order, NOT the anchors'
+      // ordinal order: the same two anchors reversed spend the cap on the
+      // other window.
+      expect((await read([at[5]!, at[2]!], 3, 4)).map((r) => r.id)).toEqual([
+        at[2],
+        at[3],
+        at[4],
+        at[6],
+      ]);
+      // A limit of one returns exactly the first row of that order.
+      expect((await read([at[4]!], 2, 2)).map((r) => r.id)).toEqual([at[2], at[3]]);
+    }, 60_000);
+
+    it("drops an anchor id no stored row backs, without failing the read", async () => {
+      if (!URL) return;
+      // A retrieved id with no row behind it cannot anchor a window (the CTE's
+      // join drops it); the read stays a read and the known anchor still
+      // returns its own window.
+      expect((await read([crypto.randomUUID(), at[1]!], 1, 10)).map((r) => r.id)).toEqual([
+        at[0],
+        at[2],
+      ]);
+    }, 60_000);
+  });
 });

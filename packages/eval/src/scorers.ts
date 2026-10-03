@@ -1,3 +1,4 @@
+import { requireCitationGrammar } from "./citation-grammar";
 import type {
   ChunkRefLike,
   CitationFrameLike,
@@ -102,6 +103,8 @@ export function citationLabelsPresent(input: {
   grammar?: CitationGrammar;
 }): string[] {
   const { required, answerText, frame, events, grammar } = input;
+  // The engine's grammar entry: an unwired grammar fails loudly (R1).
+  if (grammar !== undefined) requireCitationGrammar(grammar);
   const evidence = verifiedEvidenceLabels({ frame, events });
   if (evidence !== undefined) return groundedLabels(required, evidence, grammar);
   return groundedLabels(required, textCandidateLabels(answerText, grammar), grammar);
@@ -156,6 +159,17 @@ function textCandidateLabels(answerText: string, grammar?: CitationGrammar): str
  * a grammar is injected, so the fixture's curated spelling (`QS. 1:2`) matches
  * an evidence label in any equivalent form the grammar canonicalizes. Without
  * a grammar the comparison stays the byte-exact substring test it always was.
+ *
+ * **Both sides are compared as the sets of addresses they name, not as
+ * strings** (review A1 of the #274 fix round): a question requires
+ * `QS. 2:255`, the answer may cite the range `QS. 2:255-256` the gate grounds,
+ * and comparing the two labels as strings scored 0 on the frame path while the
+ * trace path scored 1. The relation is the gate's own (strict-whole), read from
+ * the injected grammar's required declaration (`citation-grammar.ts`), so the
+ * engine re-derives nothing and a grammar declaring `(label) => [label]`
+ * behaves exactly as labels-as-strings did.
+ *
+ * A `null` declaration (review T1) refuses on either side, as the gate does.
  */
 function groundedLabels(
   required: readonly string[],
@@ -165,9 +179,21 @@ function groundedLabels(
   if (grammar === undefined) {
     return required.filter((citation) => evidence.some((label) => label.includes(citation)));
   }
-  const known = new Set(evidence.map(grammar.normalizeLabel));
-  return required.filter((citation) => known.has(grammar.normalizeLabel(citation)));
+  const named = new Set(
+    evidence.flatMap((label) => namedAddressesOf(label, grammar) ?? []).map(grammar.normalizeLabel),
+  );
+  return required.filter((citation) => {
+    const addresses = namedAddressesOf(citation, grammar);
+    return addresses !== null && addresses.every((a) => named.has(grammar.normalizeLabel(a)));
+  });
 }
+
+/** The addresses one label names; `null` (review T1) is a refusal, and `[]`
+ * falls back to the label so a label the grammar cannot parse matches whole. */
+const namedAddressesOf = (label: string, grammar: CitationGrammar): readonly string[] | null => {
+  const declared = grammar.addressesNamedBy(label);
+  return declared === null ? null : declared.length > 0 ? declared : [label];
+};
 
 /**
  * Citation validity: the fraction of the question's required citations the
@@ -188,6 +214,9 @@ export function citationValidity(
     grammar?: CitationGrammar;
   },
 ): number {
+  // Guarded before the empty-required short-circuit, so an unwired grammar
+  // fails even on a question whose citations are trivially satisfied (R1).
+  if (evidence?.grammar !== undefined) requireCitationGrammar(evidence.grammar);
   if (requiredCitations.length === 0) return 1;
   const present = citationLabelsPresent({
     required: requiredCitations,

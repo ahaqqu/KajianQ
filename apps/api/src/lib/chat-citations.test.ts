@@ -10,6 +10,7 @@ import {
   normalizeCitationLabel,
   renderEvidenceChunk,
   runStoreEffect,
+  validateCitations,
 } from "@app/kajianq-domain";
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 import { chunkFetcher, traceChunkIds } from "./chat-trace";
@@ -67,6 +68,72 @@ const frameOf = (trace: Trace, text: string, chunks: readonly DocChildById[]) =>
     answerText: text,
     chunksById: new Map(chunks.map((c) => [c.id, c])),
   });
+
+/** The retrieval-side view of a display row, for the gate the frame must agree with. */
+const asChunk = (row: DocChildById): Chunk => ({
+  id: row.id,
+  text: row.textAr,
+  metadata: row.metadata,
+});
+
+describe("deriveCitationsFrame — a grounded range gets its chip (#274 A1)", () => {
+  it("emits the range the gate accepts, with the range as written as its label", () => {
+    // The reviewer's reproduction, at head before this fix: with `QS. 3:1` and
+    // `QS. 3:2` retrieved the gate returned `{grounded: ["QS. 3:1"],
+    // ungrounded: []}` for the real failing label `QS. 3:1-2`, while the frame
+    // — matching each span against the chunk's EXACT label — emitted
+    // `citations: []`. The user saw the range in prose with no source chip for
+    // an answer the server's own gate had just grounded.
+    const answer = "Dalilnya QS. 3:1-2 tentang hal ini.";
+    const chunks = [chunk("c1", "QS. 3:1"), chunk("c2", "QS. 3:2")];
+    expect(validateCitations(answer, chunks.map(asChunk))).toEqual({
+      grounded: ["QS. 3:1", "QS. 3:2"],
+      ungrounded: [],
+    });
+    const frame = frameOf(traceWithChunks(["c1", "c2"]), answer, chunks);
+    // The display form is the range as written (ADR-0049 Decision 4), backed by
+    // the head address's display row.
+    expect(frame.citations.map((c) => c.label)).toEqual(["QS. 3:1-2"]);
+    expect(frame.citations[0]).toMatchObject({ arabic: "النص العربي", source: "Sumber Tampilan" });
+    // Control: the same two chunks with a plain citation emit the plain label,
+    // so the new row is the range, not a changed ordinary path.
+    expect(
+      frameOf(
+        traceWithChunks(["c1", "c2"]),
+        "Dalilnya QS. 3:1 tentang hal ini.",
+        chunks,
+      ).citations.map((c) => c.label),
+    ).toEqual(["QS. 3:1"]);
+  });
+
+  it("still emits nothing for a range the gate refuses — the other direction", () => {
+    // Only `QS. 3:2` retrieved: the gate refuses the range, so the frame must
+    // not invent a chip for it (ADR-0040's invariant, unchanged). Note the
+    // provenance list is empty too: `QS. 3:2` is not a literal substring of
+    // the written `QS. 3:1-2`, and a refused citation contributes none of the
+    // addresses it names — the provenance the answer earns is what it can
+    // actually back.
+    const answer = "Dalilnya QS. 3:1-2 tentang hal ini.";
+    const chunks = [chunk("c2", "QS. 3:2")];
+    expect(validateCitations(answer, chunks.map(asChunk))).toEqual({
+      grounded: [],
+      ungrounded: ["QS. 3:1-2"],
+    });
+    expect(frameOf(traceWithChunks(["c2"]), answer, chunks).citations).toEqual([]);
+  });
+
+  it("follows the gate into the range's interior (the #274 A2 rule)", () => {
+    const answer = "Dalilnya QS. 2:255-257 tentang hal ini.";
+    const partial = [chunk("c255", "QS. 2:255"), chunk("c257", "QS. 2:257")];
+    expect(validateCitations(answer, partial.map(asChunk)).ungrounded).toEqual(["QS. 2:255-257"]);
+    expect(frameOf(traceWithChunks(["c255", "c257"]), answer, partial).citations).toEqual([]);
+    const full = [255, 256, 257].map((n) => chunk(`c${n}`, `QS. 2:${n}`));
+    expect(validateCitations(answer, full.map(asChunk)).ungrounded).toEqual([]);
+    expect(
+      frameOf(traceWithChunks(full.map((c) => c.id)), answer, full).citations.map((c) => c.label),
+    ).toEqual(["QS. 2:255-257"]);
+  });
+});
 
 describe("traceChunkIds", () => {
   it("extracts retrieval chunk refs in order, deduplicated, ignoring other events", () => {

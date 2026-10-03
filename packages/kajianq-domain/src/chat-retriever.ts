@@ -2,7 +2,6 @@ import { Effect } from "effect";
 import {
   RunContext,
   toStageError,
-  type Chunk,
   // `@app/rag-core` re-exports the engine's `CostRecord` (rag-core/src/index.ts),
   // so sourcing it here keeps this module inside the repo's 5-import agentic
   // limit while `withTextLayers` is imported from its single owner (R1).
@@ -13,12 +12,19 @@ import {
 } from "@app/rag-core";
 import type { KajianQFilters } from "./filters";
 import {
+  DEFAULT_NEIGHBOUR_CAP,
+  DEFAULT_NEIGHBOUR_RADIUS,
   DEFAULT_SCOPE_EXPANSION_CAP,
   expandSurahScope,
+  expandVerseNeighbours,
+  hierarchyBonus,
+  metadataFilters,
+  rrfFuse,
+  type NeighbourChildRow,
   type ScopeChildRow,
-} from "./chat-scope-expansion";
+  type TrackHit,
+} from "./chat-retriever-parts";
 import { withTextLayers } from "./chunk-text-layers";
-
 /**
  * KajianQRetriever — Smart Router stage 4 (spec §3.3): embed each routed
  * sub-query, run `similaritySearch` over both embedding tracks (ADR-0013
@@ -26,16 +32,6 @@ import { withTextLayers } from "./chunk-text-layers";
  * the spec's hierarchy bonuses. Chunks carry their fused `score` and per-rank
  * provenance so the Trace shows retrieval provenance (ADR-0007).
  */
-
-/** RRF constant (spec §3.3: k=60). */
-export const RRF_K = 60;
-
-/** Hierarchy bonus magnitudes (spec §3.3). */
-export const HIERARCHY_BONUS = {
-  quran: 0.3,
-  sahih: 0.25,
-  hasan: 0.15,
-} as const;
 
 export type RetrieverEmbedder = {
   embed(spec: {
@@ -77,6 +73,17 @@ export type RetrieverStore = {
     parentSourceKey: string,
     opts: { limit: number },
   ): Effect.Effect<readonly ScopeChildRow[], StoreError>;
+  /**
+   * The bounded anchored read behind ADR-0049's neighbour expansion: the
+   * children within `radius` ordinals of each anchor child, in the caller's
+   * priority order, capped. Anchors are opaque child ids — the store derives
+   * their parent and position from the row, so the window cannot be
+   * mis-anchored.
+   */
+  listDocChildNeighboursByChildIds(
+    anchorChildIds: readonly string[],
+    opts: { radius: number; limit: number },
+  ): Effect.Effect<readonly NeighbourChildRow[], StoreError>;
 };
 
 /** Effect bridge the wiring injects (keeps this module free of runner imports). */
@@ -95,54 +102,20 @@ export type KajianQRetrieverDeps = {
    * to `DEFAULT_SCOPE_EXPANSION_CAP`; `0` disables the expansion.
    */
   scopeExpansionCap?: number;
+  /**
+   * ADR-0049's retrieved-verse neighbourhood expansion: how many ordinals on
+   * each side of a retrieved verse join the context, and the total number of
+   * chunks it may add. Default to `DEFAULT_NEIGHBOUR_RADIUS` /
+   * `DEFAULT_NEIGHBOUR_CAP`; `0` on **either** disables the expansion — the
+   * composition root's parser accepts non-negative integers only, and the
+   * expansion guards `<= 0` defensively for any other caller (review B3 of the
+   * #274 fix round).
+   */
+  neighbourRadius?: number;
+  neighbourCap?: number;
   /** Trace/cost sink for the embed call (the run's collection point). */
   onEmbedCost?: (cost: CostRecord) => void;
 };
-
-/** One track's hit: the chunk plus its 1-based dense rank in that search. */
-type TrackHit = { chunk: Chunk; rank: number };
-
-/**
- * Fuse per-search hit lists with RRF(k=60) plus hierarchy bonuses.
- * Exported for tests: pure, deterministic.
- */
-export function rrfFuse(lists: readonly TrackHit[][], bonusOf: (chunk: Chunk) => number): Chunk[] {
-  const byId = new Map<string, { chunk: Chunk; score: number; ranks: number[] }>();
-  for (const list of lists) {
-    for (const { chunk, rank } of list) {
-      const entry = byId.get(chunk.id) ?? { chunk, score: 0, ranks: [] };
-      entry.score += (1 + bonusOf(chunk)) / (RRF_K + rank);
-      entry.ranks.push(rank);
-      byId.set(chunk.id, entry);
-    }
-  }
-  return [...byId.values()]
-    .sort((a, b) => b.score - a.score)
-    .map((e) => ({
-      ...e.chunk,
-      score: e.score,
-      rankDense: Math.min(...e.ranks),
-    }));
-}
-
-/** Hierarchy bonus from a chunk's opaque metadata (spec §3.3 magnitudes). */
-export function hierarchyBonus(chunk: Chunk): number {
-  const meta = (chunk.metadata ?? {}) as Record<string, unknown>;
-  let bonus = 0;
-  if (meta["sourceType"] === "quran") bonus += HIERARCHY_BONUS.quran;
-  if (meta["grade"] === "sahih") bonus += HIERARCHY_BONUS.sahih;
-  if (meta["grade"] === "hasan") bonus += HIERARCHY_BONUS.hasan;
-  return bonus;
-}
-
-/** Map the domain filters to the store's opaque metadata filter record. */
-export function metadataFilters(filters: KajianQFilters): Record<string, string> {
-  const out: Record<string, string> = {};
-  if (filters.madzhab) out["madzhab"] = filters.madzhab;
-  if (filters.grade) out["grade"] = filters.grade;
-  if (filters.textLayer) out["textLayer"] = filters.textLayer;
-  return out;
-}
 
 export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<KajianQFilters> {
   const limit = deps.limit ?? 10;
@@ -246,7 +219,33 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
               at: run.now(),
             });
           }
-          return [...fused, ...expansion.chunks];
+          const inContext = [...fused, ...expansion.chunks];
+          // ADR-0049: the neighbourhood of the verses now in context, read
+          // deterministically through the same bounded-read discipline. The
+          // gate requires every address a citation names to be present, and
+          // the observed defect is the generator extending a retrieved verse
+          // into a range whose head it was never given (#274) — so the fix is
+          // to have the address, not to weaken the gate. `inContext` is both
+          // the anchor source (in retrieval order, which is the read's
+          // priority order) and the dedup set, so nothing already present is
+          // added twice.
+          const neighbours = yield* expandVerseNeighbours({
+            retrieved: inContext,
+            radius: deps.neighbourRadius ?? DEFAULT_NEIGHBOUR_RADIUS,
+            cap: deps.neighbourCap ?? DEFAULT_NEIGHBOUR_CAP,
+            store: deps.store,
+            bridge: deps.bridge,
+          });
+          if (neighbours.detail !== null) {
+            const run = yield* RunContext;
+            run.record({
+              stage: "retriever",
+              kind: "neighbour_expansion",
+              detail: neighbours.detail,
+              at: run.now(),
+            });
+          }
+          return [...inContext, ...neighbours.chunks];
         }),
       ),
   };

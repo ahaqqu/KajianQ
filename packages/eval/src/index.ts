@@ -22,6 +22,7 @@ export {
   retrievalRecall,
 } from "./scorers";
 export { Budget, BudgetExceededError, budgetCapFromEnv } from "./budget";
+export { CitationGrammarError, requireCitationGrammar } from "./citation-grammar";
 export { EvalConfigError, loadEvalRunConfig, type EvalRunConfig } from "./eval-config";
 export {
   consumeSseToText,

@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { Chunk } from "@app/rag-core";
 import {
+  addressesNamedBy,
   citationCandidatesIn,
   citationLabelsOf,
   citationMatchText,
   citationSpansIn,
+  groundingLabelsFor,
   normalizeCitationLabel,
   validateCitations,
 } from "./chat-citation-validator";
@@ -156,14 +158,15 @@ describe("validateCitations — grounded direction", () => {
     expect(normalizeCitationLabel("QS. Al-Baqarah:255")).toBe("QS. Al-Baqarah:255");
   });
 
-  it("keeps the dash-joined numeric compound whole — the stated A3 trade-off", () => {
+  it("keeps the hadith dash-joined numeric compound whole — the A3 trade-off that stands", () => {
     // Fail-closed on purpose (`DASH_JOINED_NUMBER_TAIL` in the source): the
     // dash is the closed-up range joiner, so the compound may carry a SECOND
     // address, and reducing it to `no. 5010` would let an unretrieved
     // `no. 5011` ride in on the first address's grounding. The cost is this
-    // false refusal — paid even when BOTH addresses were retrieved — and the
-    // follow-up (split the compound at the comparison site, require each
-    // grounded) is recorded in the source comment, not left to be rediscovered.
+    // false refusal — paid even when BOTH addresses were retrieved — and it
+    // STANDS for this grammar: the hadith grammar declares no address list, so
+    // ADR-0049's per-address check does not touch it (extending `addressesOf`
+    // to it is that ADR's recorded revisit trigger, not this change).
     const bothRetrieved = [chunk("HR. Bukhari no. 5010"), chunk("HR. Bukhari no. 5011")];
     expect(
       validateCitations("HR. Bukhari no. 5010—5011 menjelaskan …", bothRetrieved).ungrounded,
@@ -330,30 +333,33 @@ describe("validateCitations — grounded direction", () => {
     ]);
   });
 
-  it("keeps a dash-joined Quran range whole — the hadith rule, one grammar over (#264 item 4)", () => {
+  it("keeps a dash-joined Quran range whole for DISPLAY, and grounds it per address (#274)", () => {
     // The Quran grammar used to end at the first verse's digits, so the second
     // address never reached the comparison and `QS. 2:255—256` grounded on
-    // `QS. 2:255` alone. The match now absorbs the dash-joined tail and the
-    // SHARED `DASH_JOINED_NUMBER_TAIL` rule keeps the compound whole — exactly
-    // how the hadith compound is handled, so there is one rule and not two.
+    // `QS. 2:255` alone. #264 absorbed the dash-joined tail and the SHARED
+    // `DASH_JOINED_NUMBER_TAIL` rule kept the compound whole — which closed
+    // that hole but, as #264's own A3 note recorded, refused the range even
+    // when BOTH addresses were retrieved. ADR-0049 completes the follow-up that
+    // note assigned to this comparison site: the label still normalizes to the
+    // range as written (the display form, the refusal reason and the pre-gate
+    // span), while grounding is decided **per address the grammar declares**.
     expect(normalizeCitationLabel("QS. 2:255—256")).toBe("QS. 2:255—256");
     expect(normalizeCitationLabel("QS. 2:255–256")).toBe("QS. 2:255–256");
-    expect(
-      validateCitations("Lihat QS. 2:255—256 tentang hal ini", [chunk("QS. 2:255")]).ungrounded,
-    ).toEqual(["QS. 2:255—256"]);
-    // The accepted cost is the hadith trade-off's own: refused even with both
-    // addresses retrieved (the follow-up recorded on the rule).
-    expect(
-      validateCitations("Lihat QS. 2:255—256 tentang hal ini", [
-        chunk("QS. 2:255"),
-        chunk("QS. 2:256"),
-      ]).ungrounded,
-    ).toEqual(["QS. 2:255—256"]);
-    // The span now covers the whole compound, so the reviewer pre-gate masks
-    // the range as one citation rather than half of it.
     expect(citationSpansIn("Lihat QS. 2:255—256 ya")).toEqual([
       { start: 6, end: 19, label: "QS. 2:255—256" },
     ]);
+
+    const both = [chunk("QS. 2:255"), chunk("QS. 2:256")];
+    const headOnly = [chunk("QS. 2:255"), chunk("QS. 2:18")];
+    const tailOnly = [chunk("QS. 2:256"), chunk("QS. 2:18")];
+    const draft = "Lihat QS. 2:255—256 tentang hal ini";
+    // The whole range is present: the answer stands (the #276 B2 stonewall).
+    expect(validateCitations(draft, both).ungrounded).toEqual([]);
+    // One address missing is still a refusal, whichever one — fail-closed, and
+    // strictly tighter than both rejected options (head-first, any-member).
+    expect(validateCitations(draft, headOnly).ungrounded).toEqual(["QS. 2:255—256"]);
+    expect(validateCitations(draft, tailOnly).ungrounded).toEqual(["QS. 2:255—256"]);
+    expect(validateCitations(draft, [chunk("QS. 2:18")]).ungrounded).toEqual(["QS. 2:255—256"]);
   });
 
   it("keeps the glued Quran compound whole too — the item-4 hole, closed for glue (A1)", () => {
@@ -362,35 +368,358 @@ describe("validateCitations — grounded direction", () => {
     // tail at the first number — so `QS. 2:255\u200c—256` grounded on the first
     // verse, with only `2:255` retrieved AND with both, while the plain form
     // refuses in both cases. The tail tolerates `\p{Cf}` on either side of the
-    // dash, so every glued spelling now behaves exactly like the plain one.
+    // dash, so every glued spelling now behaves exactly like the plain one —
+    // which under ADR-0049 means: refused with the head alone, grounded with
+    // every declared address present.
     const onlyFirst = [chunk("QS. 2:255")];
     const both = [chunk("QS. 2:255"), chunk("QS. 2:256")];
     for (const glued of [
       "QS. 2:255\u200c—256", // before the dash: the fail-open the review found
       "QS. 2:255—\u200c256", // after the dash
       "QS. 2:255\u200c—\u200c256",
-      "QS. 2:255—2\u200c56", // inside the second number: truncates, refuses
+      "QS. 2:255—2\u200c56", // inside the second number
     ]) {
+      // The comparison form drops the glue, so every glued spelling names the
+      // same two addresses and compares exactly like the plain one.
       expect(normalizeCitationLabel(glued), glued).toBe("QS. 2:255—256");
       expect(validateCitations(`Lihat ${glued} lanjut`, onlyFirst).ungrounded, glued).toEqual([
         "QS. 2:255—256",
       ]);
-      expect(validateCitations(`Lihat ${glued} lanjut`, both).ungrounded, glued).toEqual([
-        "QS. 2:255—256",
-      ]);
+      expect(validateCitations(`Lihat ${glued} lanjut`, both).ungrounded, glued).toEqual([]);
     }
     // The plain spelling is the reference every glued one now matches.
     expect(validateCitations("Lihat QS. 2:255—256 lanjut", onlyFirst).ungrounded).toEqual([
       "QS. 2:255—256",
     ]);
-    expect(validateCitations("Lihat QS. 2:255—256 lanjut", both).ungrounded).toEqual([
-      "QS. 2:255—256",
-    ]);
+    expect(validateCitations("Lihat QS. 2:255—256 lanjut", both).ungrounded).toEqual([]);
     // The glued span covers the whole compound too, so the pre-gate mask does
     // not leave the second verse outside it.
     expect(citationSpansIn("Lihat QS. 2:255\u200c—256 ya")).toEqual([
       { start: 6, end: 20, label: "QS. 2:255—256" },
     ]);
+  });
+
+  it("grounds a range on every address the grammar declares, and only then (#274)", () => {
+    // The real failing label from the incident (eval run 4bfc315f…, trace
+    // 3c87fc7a…, question gs-v0-001): the draft cited `QS. 3:1-2` while the
+    // retrieved set held `QS. 3:2` and not `QS. 3:1`. The gate correctly
+    // withheld it; ADR-0049 puts the head in context at retrieval, and this is
+    // the comparison half — the range grounds exactly when the context holds
+    // every address it names.
+    const real = "Dalilnya QS. 3:1-2 tentang hal ini";
+    expect(
+      validateCitations(real, [chunk("QS. 3:2"), chunk("QS. 3:18"), chunk("QS. 3:189")]).ungrounded,
+    ).toEqual(["QS. 3:1-2"]);
+    expect(validateCitations(real, [chunk("QS. 3:1"), chunk("QS. 3:2")]).ungrounded).toEqual([]);
+    // A fabricated second address never rides in on the head's grounding.
+    expect(
+      validateCitations("Dalilnya QS. 3:1-999", [chunk("QS. 3:1"), chunk("QS. 3:2")]).ungrounded,
+    ).toEqual(["QS. 3:1-999"]);
+    // A range whose tail extends past what was retrieved refuses too.
+    expect(
+      validateCitations("Dalilnya QS. 3:1-3", [chunk("QS. 3:1"), chunk("QS. 3:2")]).ungrounded,
+    ).toEqual(["QS. 3:1-3"]);
+    // A single fabricated verse is unchanged (#264's matrix, negative side).
+    expect(validateCitations("Dalilnya QS. 9:99", [chunk("QS. 2:255")]).ungrounded).toEqual([
+      "QS. 9:99",
+    ]);
+    // Another script's digits are still recognised and refused (the digit
+    // posture on CITATION_GRAMMARS): the list is built from what the grammar
+    // names, and Arabic-Indic digits match no ASCII corpus label.
+    expect(
+      validateCitations("Dalilnya QS. ٣:١-٢", [chunk("QS. 3:1"), chunk("QS. 3:2")]).ungrounded,
+    ).toEqual(["QS. ٣:١-٢"]);
+    // The dash family is the range joiner in every spelling the token absorbs.
+    for (const dash of ["-", "‐", "‑", "‒", "–", "—", "―", "−"]) {
+      expect(
+        validateCitations(`Dalilnya QS. 3:1${dash}2`, [chunk("QS. 3:1"), chunk("QS. 3:2")])
+          .ungrounded,
+        dash,
+      ).toEqual([]);
+    }
+  });
+
+  it("names a range's INTERIOR, and every number a multi-dash chain writes (#274 A2 fix)", () => {
+    // Strict-whole, owner-decided: `QS. 2:255-260` **names** 255 through 260,
+    // so two retrieved endpoints are not the range — four of its addresses were
+    // never retrieved and the citation must refuse. The endpoint-pair
+    // implementation this replaces grounded it (review A2 of the fix round).
+    const interior = "Dalilnya QS. 2:255-260 tentang hal ini";
+    expect(
+      validateCitations(interior, [chunk("QS. 2:255"), chunk("QS. 2:260")]).ungrounded,
+    ).toEqual(["QS. 2:255-260"]);
+    const six = [255, 256, 257, 258, 259, 260].map((n) => chunk(`QS. 2:${n}`));
+    expect(validateCitations(interior, six).ungrounded).toEqual([]);
+    // A hole in the middle refuses exactly like a missing endpoint — that is
+    // the whole point of enumerating the interior.
+    const holed = six.filter((c) => c.id !== "c-QS. 2:257");
+    expect(validateCitations(interior, holed).ungrounded).toEqual(["QS. 2:255-260"]);
+    // The chain form names every number it writes. `QS. 3:1-2-3` used to be
+    // scanned as `QS. 3:1-2`, so the trailing `-3` was neither named nor
+    // refused and 3:1 + 3:2 grounded the citation.
+    const chain = "Dalilnya QS. 3:1-2-3 tentang hal ini";
+    expect(citationCandidatesIn(chain)).toEqual(["QS. 3:1-2-3"]);
+    expect(validateCitations(chain, [chunk("QS. 3:1"), chunk("QS. 3:2")]).ungrounded).toEqual([
+      "QS. 3:1-2-3",
+    ]);
+    expect(
+      validateCitations(chain, [chunk("QS. 3:1"), chunk("QS. 3:2"), chunk("QS. 3:3")]).ungrounded,
+    ).toEqual([]);
+    // An address the surah cannot have makes the span unenumerable, and an
+    // unverifiable list REFUSES rather than being shortened to the part it
+    // could enumerate — the refusal does not rest on the corpus being pure.
+    expect(validateCitations("Dalilnya QS. 2:1-999", [chunk("QS. 2:1")]).ungrounded).toEqual([
+      "QS. 2:1-999",
+    ]);
+    // A surah written by name is bounded by the longest surah and is
+    // unverifiable against the corpus's numeric labels, so it still refuses
+    // even with the whole span retrieved.
+    expect(
+      validateCitations("Dalilnya QS. Al-Baqarah:255-256", [chunk("QS. 2:255"), chunk("QS. 2:256")])
+        .ungrounded,
+    ).toEqual(["QS. Al-Baqarah:255-256"]);
+    // The display form is the range as written, interior enumeration or not.
+    expect(citationCandidatesIn(interior)).toEqual(["QS. 2:255-260"]);
+  });
+
+  it("answers which labels ground a span, so the gate and its consumers share one rule (#274 A1)", () => {
+    // The frame derivation and the eval's evidence paths read this instead of
+    // re-deciding: the returned labels are what the citation is backed by, and
+    // every one of them is in `known` by construction.
+    const known = new Set(["QS. 3:1", "QS. 3:2"]);
+    expect(groundingLabelsFor("QS. 3:1-2", known)).toEqual(["QS. 3:1", "QS. 3:2"]);
+    expect(groundingLabelsFor("QS. 3:1", known)).toEqual(["QS. 3:1"]);
+    expect(groundingLabelsFor("QS. 3:3", known)).toBeNull();
+    // The same strict-whole rule the validator applies: a range whose interior
+    // is not retrieved is not grounded, whoever asks.
+    expect(groundingLabelsFor("QS. 3:1-3", known)).toBeNull();
+    expect(groundingLabelsFor("QS. 9:99", known)).toBeNull();
+    // The naming declaration itself, per grammar: a range names its whole span;
+    // a grammar that declares no list names the label whole (so a hadith
+    // compound is never reduced to its head).
+    expect(addressesNamedBy("QS. 2:255-260")).toEqual([
+      "QS. 2:255",
+      "QS. 2:256",
+      "QS. 2:257",
+      "QS. 2:258",
+      "QS. 2:259",
+      "QS. 2:260",
+    ]);
+    expect(addressesNamedBy("HR. Bukhari no. 5010-5011")).toEqual(["HR. Bukhari no. 5010-5011"]);
+  });
+
+  it("names a spaced range's addresses too — the spaced twin of the A2 hole (review R5)", () => {
+    // `QS. 2:255 - 256` writes the same range with air around the joiner.
+    // While the chain group required the dash glued, the scan stopped at the
+    // head: the second verse the prose named was neither enumerated nor
+    // refused, and the gate grounded the citation on `QS. 2:255` alone (A2's
+    // class, spaced — pre-existing, and now closed rather than recorded,
+    // because the owner's strict-whole decision covers what the prose names).
+    const spaced = "Dalilnya QS. 2:255 - 256 tentang hal ini.";
+    expect(citationCandidatesIn(spaced)).toEqual(["QS. 2:255 - 256"]);
+    expect(addressesNamedBy("QS. 2:255 - 256")).toEqual(["QS. 2:255", "QS. 2:256"]);
+    // Both retrieved → grounded, and the provenance names both addresses (the
+    // tail is not a literal substring of the span).
+    expect(validateCitations(spaced, [chunk("QS. 2:255"), chunk("QS. 2:256")])).toEqual({
+      grounded: ["QS. 2:255", "QS. 2:256"],
+      ungrounded: [],
+    });
+    // Head only → REFUSED. This is the row that fails if the declared-list rule
+    // ever runs after the shortened-label rule again: the span extends
+    // `QS. 2:255` with a space, so that rule would ground it on the head.
+    expect(validateCitations(spaced, [chunk("QS. 2:255")]).ungrounded).toEqual(["QS. 2:255 - 256"]);
+    // The interior rule reaches the spaced form too.
+    expect(
+      validateCitations("Dalilnya QS. 2:255 - 260 tentang hal ini.", [
+        chunk("QS. 2:255"),
+        chunk("QS. 2:260"),
+      ]).ungrounded,
+    ).toEqual(["QS. 2:255 - 260"]);
+    // A newline is not a joiner: the chain never runs across a line boundary.
+    expect(citationCandidatesIn("Dalilnya QS. 2:255 -\n256 tentang hal ini.")).toEqual([
+      "QS. 2:255",
+    ]);
+  });
+
+  it("refuses a spaced range it cannot enumerate — the fail-closed state is its own (review T1)", () => {
+    // R5 closed the spaced joiner for a range the grammar can ENUMERATE. The
+    // unenumerable path came back as `[label]` — the same shape as "this
+    // grammar declares a single address" — so `named.length > 1` was false and
+    // the shortened-label rule three lines below grounded the span on its head.
+    // The spaced spelling was therefore weaker than its glued twin at exactly
+    // the address ADR-0049 names as the refusal case. `addressesNamedBy` now
+    // returns `null` for it (declared, and unenumerable), and the comparison
+    // site refuses before either rule runs.
+    const rows = [
+      ["Dalilnya QS. 2:1 - 999 tentang hal ini.", "QS. 2:1"],
+      ["Dalilnya QS. 2:255 - 0 tentang hal ini.", "QS. 2:255"],
+      // Another script's digits name a REAL second verse (2:256) that was not
+      // retrieved: the digit posture refuses it, and the refusal must not
+      // become a head-only grounding on the way through.
+      ["Dalilnya QS. 2:255 - ٢٥٦ tentang hal ini.", "QS. 2:255"],
+    ] as const;
+    for (const [spaced, retrieved] of rows) {
+      const span = citationCandidatesIn(spaced)[0]!;
+      // The declaration says "declared, and unenumerable" — NOT a one-element
+      // list, which is what a single-address grammar declares.
+      expect(addressesNamedBy(span), span).toBeNull();
+      expect(groundingLabelsFor(span, new Set([retrieved])), span).toBeNull();
+      // Head verse retrieved, tail not: BOTH spellings refuse, and the spaced
+      // one reports the whole span it could not verify.
+      expect(validateCitations(spaced, [chunk(retrieved)]), spaced).toEqual({
+        grounded: [retrieved],
+        ungrounded: [span],
+      });
+      const glued = span.replace(/ - /g, "-");
+      expect(validateCitations(glued, [chunk(retrieved)]).ungrounded, glued).toEqual([
+        citationCandidatesIn(glued)[0]!,
+      ]);
+    }
+    // The three states really are three, and the ordinary forms keep the other
+    // two: no grammar at all names nothing; a single address names itself.
+    expect(addressesNamedBy("bukan kutipan sama sekali")).toEqual([]);
+    expect(addressesNamedBy("QS. 2:255")).toEqual(["QS. 2:255"]);
+    expect(addressesNamedBy("HR. Bukhari no. 5010")).toEqual(["HR. Bukhari no. 5010"]);
+  });
+
+  it("keeps the accepted set where it was — the fix narrows only the unenumerable spaced form", () => {
+    // The differential this fix round re-ran, base `c64696f` vs this head, over
+    // 21,438 answer × retrieved-set combinations: **widened 0, narrowed 696**,
+    // and every narrowed combination is one of the three unenumerable spaced
+    // spans above (232 retrieved-sets each). Nothing else moved — which is the
+    // property this row guards: the accepted spellings, the enumerable ranges
+    // and the grammars that declare no list must behave exactly as before.
+    const accepted: Array<[string, string[], string[]]> = [
+      // [answer, retrieved, grounded]
+      [
+        "Dalilnya QS. 2:255-256 tentang hal ini.",
+        ["QS. 2:255", "QS. 2:256"],
+        ["QS. 2:255", "QS. 2:256"],
+      ],
+      [
+        "Dalilnya QS. 2:255—256 tentang hal ini.",
+        ["QS. 2:255", "QS. 2:256"],
+        ["QS. 2:255", "QS. 2:256"],
+      ],
+      [
+        "Dalilnya QS. 2:255‑256 tentang hal ini.",
+        ["QS. 2:255", "QS. 2:256"],
+        ["QS. 2:255", "QS. 2:256"],
+      ],
+      [
+        "Dalilnya QS. 2:255- 256 tentang hal ini.",
+        ["QS. 2:255", "QS. 2:256"],
+        ["QS. 2:255", "QS. 2:256"],
+      ],
+      [
+        "Dalilnya QS. 2:255 -256 tentang hal ini.",
+        ["QS. 2:255", "QS. 2:256"],
+        ["QS. 2:255", "QS. 2:256"],
+      ],
+      [
+        "Dalilnya QS. 2:255 - 256 tentang hal ini.",
+        ["QS. 2:255", "QS. 2:256"],
+        ["QS. 2:255", "QS. 2:256"],
+      ],
+      [
+        "Dalilnya Q.S. 2:255-256 tentang hal ini.",
+        ["QS. 2:255", "QS. 2:256"],
+        ["QS. 2:255", "QS. 2:256"],
+      ],
+      [
+        "Dalilnya QS 2:255-256 tentang hal ini.",
+        ["QS. 2:255", "QS. 2:256"],
+        ["QS. 2:255", "QS. 2:256"],
+      ],
+      [
+        "Dalilnya QS. 3:1-2-3 tentang hal ini.",
+        ["QS. 3:1", "QS. 3:2", "QS. 3:3"],
+        ["QS. 3:1", "QS. 3:2", "QS. 3:3"],
+      ],
+      [
+        "Dalilnya QS. 3:1 - 2 - 3 tentang hal ini.",
+        ["QS. 3:1", "QS. 3:2", "QS. 3:3"],
+        ["QS. 3:1", "QS. 3:2", "QS. 3:3"],
+      ],
+      [
+        "Dalilnya QS. 2:255-260 tentang hal ini.",
+        ["QS. 2:255", "QS. 2:256", "QS. 2:257", "QS. 2:258", "QS. 2:259", "QS. 2:260"],
+        ["QS. 2:255", "QS. 2:256", "QS. 2:257", "QS. 2:258", "QS. 2:259", "QS. 2:260"],
+      ],
+      [
+        "HR. Bukhari no. 573 (Sahih) menjelaskan …",
+        ["HR. Bukhari no. 573"],
+        ["HR. Bukhari no. 573"],
+      ],
+      ["QS. 2:255 disebut.", ["QS. 2:255"], ["QS. 2:255"]],
+    ];
+    for (const [answer, retrieved, grounded] of accepted) {
+      const result = validateCitations(
+        answer,
+        retrieved.map((label) => chunk(label)),
+      );
+      // Sets, not orders: a range's provenance is assembled from the substring
+      // pass and the declared list, and which one reaches each address first is
+      // not part of the claim.
+      expect([...result.grounded].sort(), answer).toEqual([...grounded].sort());
+      expect(result.ungrounded, answer).toEqual([]);
+    }
+    // Still refused, exactly as before (all four are in the differential's
+    // unchanged bucket): a surah written by name has no enumerable address, a
+    // fabricated verse grounds nothing, the #264 A3 hadith compound stays whole
+    // even when both addresses were retrieved, and the kitab form's tail is
+    // lexical.
+    expect(
+      validateCitations("Dalilnya QS. Al-Baqarah:255-256 tentang hal ini.", [
+        chunk("QS. 2:255"),
+        chunk("QS. 2:256"),
+      ]).ungrounded,
+    ).toEqual(["QS. Al-Baqarah:255-256"]);
+    expect(
+      validateCitations("Dalilnya QS. 9:99 tentang hal ini.", [chunk("QS. 2:255")]).ungrounded,
+    ).toEqual(["QS. 9:99"]);
+    expect(
+      validateCitations("HR. Bukhari no. 5010—5011 menjelaskan …", [
+        chunk("HR. Bukhari no. 5010"),
+        chunk("HR. Bukhari no. 5011"),
+      ]).ungrounded,
+    ).toEqual(["HR. Bukhari no. 5010—5011"]);
+  });
+
+  it("keeps the DRAFT-side spaced hadith form out of the grammar — recorded, not silent", () => {
+    // The hadith number token stops at whitespace, so the spaced hadith range
+    // is scanned as its head and grounds on it. That is a deliberate exclusion
+    // (the token rule), not a second reading of the chain rule: extending the
+    // hadith grammar to a spaced joiner is the "Hadith ranges" revisit trigger
+    // in ADR-0049, kept out of #274. Pinned here so a reader of the range rule
+    // cannot believe the spaced form is named (review R5's "silence is the one
+    // option that leaves a reader believing the range is named").
+    const draft = "HR. Bukhari no. 5010 - 5011 menjelaskan …";
+    expect(citationCandidatesIn(draft)).toEqual(["HR. Bukhari no. 5010"]);
+    expect(validateCitations(draft, [chunk("HR. Bukhari no. 5010")]).ungrounded).toEqual([]);
+    // The label side of the same spelling IS kept whole (the shared tail rule
+    // tolerates the air around the joiner), so a chunk label written that way
+    // never reduces to its head either.
+    expect(addressesNamedBy("HR. Bukhari no. 5010 - 5011")).toEqual([
+      "HR. Bukhari no. 5010 - 5011",
+    ]);
+  });
+
+  it("leaves a grammar that declares no address list alone — the hadith compound stays whole", () => {
+    // ADR-0049's split is declared per grammar, so a dash-joined hadith number
+    // is NOT re-interpreted by a comparison-site pattern: the hadith grammar
+    // names one address, `DASH_JOINED_NUMBER_TAIL` keeps the compound whole,
+    // and the #264 A3 cost stands there unchanged (both retrieved, still
+    // refused). Extending `addressesOf` to it is a recorded revisit trigger.
+    const both = [chunk("HR. Bukhari no. 5010"), chunk("HR. Bukhari no. 5011")];
+    expect(validateCitations("HR. Bukhari no. 5010—5011 menjelaskan …", both).ungrounded).toEqual([
+      "HR. Bukhari no. 5010—5011",
+    ]);
+    // Digit-glued prose is refused with it: the accepted cost, not a bug.
+    expect(
+      validateCitations("HR. Bukhari no. 5010—3 kali sehari", [chunk("HR. Bukhari no. 5010")])
+        .ungrounded,
+    ).toEqual(["HR. Bukhari no. 5010—3"]);
   });
 
   it("keeps the glued compound whole in the grammar itself, not only via the strip (A1)", () => {

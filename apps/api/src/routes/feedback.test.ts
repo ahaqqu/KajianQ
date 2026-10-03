@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createApi } from "../app";
+import { parseFeedbackRequest } from "../lib/feedback";
 import { runStoreEffect } from "@app/kajianq-domain";
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 import { createMemoryRateLimiter } from "@app/rate";
@@ -164,6 +165,66 @@ describe("POST /v1/feedback", () => {
       expect(res.status).toBe(400);
       expect(await res.json()).toEqual({ error: "invalid_request" });
     }
+  });
+
+  it("names the offending field in the logged 400 diagnostic (#283)", async () => {
+    // The body the client sees is the route's one error shape; the DETAIL is
+    // what makes the refusal diagnosable in ops — and it names the field, so a
+    // malformed messageId is not confused with a malformed rating.
+    //
+    // MUTATION THAT REDDENS THIS ROW: revert the parser's `describeIssue` to
+    // the pre-fix `i.path?.join(".") ?? "<body>"`, which stringifies each
+    // valibot PathItem OBJECT as `[object Object]`
+    // (`[object Object]: Invalid UUID: Received "msg1"`). Both the returned
+    // detail and the warn field lose the field name, so both assertions below
+    // fail. The one shared rendering is pinned independently by
+    // packages/contracts/src/issue-path.test.ts.
+    const warnings: string[] = [];
+    const parsed = await parseFeedbackRequest(
+      new Request("http://localhost/v1/feedback", {
+        method: "POST",
+        body: JSON.stringify({ messageId: "msg1", rating: "up" }),
+      }),
+      { warn: (msg, fields) => warnings.push(`${msg} ${JSON.stringify(fields ?? {})}`) },
+    );
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    expect(parsed.error).toBe("invalid_request");
+    expect(parsed.detail).toContain("messageId");
+    expect(parsed.detail).not.toContain("[object Object]");
+    expect(warnings.join(" ")).toContain("messageId");
+  });
+
+  it("names the field behind a union failure too (thermo A1)", async () => {
+    // `rating: "meh"` fails the thumb/flag union structurally: valibot reports
+    // ONE path-less `union` issue whose nested `issues` carry the real path, so
+    // without the nested-issue descent the detail read
+    // `<body>: Invalid type: Expected Object but received Object` — the exact
+    // symptom #283 exists to remove. This runs the real parser on the real
+    // body; the response body and status for the same payload are pinned by
+    // the "neither thumb nor flag" row above (400 `{"error":"invalid_request"}`)
+    // and are unchanged — only the log-only detail moves.
+    //
+    // MUTATION THAT REDDENS THIS ROW: drop the nested-issue descent in
+    // `describeIssue` (mostSpecificIssue's loop), which restores the path-less
+    // `<body>` prefix and fails both `toContain("rating")` assertions.
+    const warnings: string[] = [];
+    const parsed = await parseFeedbackRequest(
+      new Request("http://localhost/v1/feedback", {
+        method: "POST",
+        body: JSON.stringify({
+          messageId: "550e8400-e29b-41d4-a716-446655440000",
+          rating: "meh",
+        }),
+      }),
+      { warn: (msg, fields) => warnings.push(`${msg} ${JSON.stringify(fields ?? {})}`) },
+    );
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    expect(parsed.error).toBe("invalid_request");
+    expect(parsed.detail).toContain("rating");
+    expect(parsed.detail).not.toContain("[object Object]");
+    expect(warnings.join(" ")).toContain("rating");
   });
 
   it("answers 404 for an unknown answer, indistinguishably from a foreign one", async () => {

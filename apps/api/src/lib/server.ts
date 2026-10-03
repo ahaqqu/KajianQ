@@ -50,6 +50,11 @@ const PASSTHROUGH_KEYS = [
   // Config, not a secret — but it must ride the same filtered view the request
   // bindings get, or the knob would be dead in serving.
   "SCOPE_EXPANSION_CAP",
+  // ADR-0049 retrieved-verse neighbourhood window (optional; absent = the
+  // domain defaults). Same reason as the scope cap: config, not a secret, but
+  // it must ride this filtered view or the knob is dead in serving.
+  "NEIGHBOUR_EXPANSION_RADIUS",
+  "NEIGHBOUR_EXPANSION_CAP",
 ] as const;
 
 /**

@@ -43,6 +43,12 @@ function makeRetriever(opts: { hitsWhenFiltered: number }) {
         : [hit("c1")];
       return Effect.succeed(rows);
     },
+    // ADR-0049's anchored neighbour read. The fused hits here are verses
+    // (`sourceType: "quran"`), so the expansion does ask for their
+    // neighbourhood; this test is about relaxation, so the read contributes
+    // nothing — but it must exist, or the retriever would fail on a store that
+    // does not implement the seam.
+    listDocChildNeighboursByChildIds: () => Effect.succeed([]),
   };
   const retriever = createKajianQRetriever({
     store: store as never,

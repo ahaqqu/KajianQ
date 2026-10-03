@@ -59,3 +59,45 @@ export function parseScopeExpansionCap(raw: string | undefined): number | undefi
   }
   return value;
 }
+
+/**
+ * The one parser behind ADR-0049's two neighbourhood knobs — the radius and
+ * the chunk cap. They share a shape and a failure mode, so they share the rule
+ * (absent/empty = the domain default; a malformed value is a typed config
+ * failure naming the variable, never a silent default). Both are read at the
+ * composition root like every other deployment choice.
+ *
+ * **`0` is the documented disable; a negative value is malformed config**
+ * (review B3 of the #274 fix round; R2 corrected the timing). The domain
+ * module and the store adapter short-circuit `<= 0` defensively, but these two
+ * variables are what an operator sets, and "`<= 0` disables" told an operator
+ * that `-1` was a legal way to turn the expansion off — it is a
+ * `ChatConfigError` that leaves the chat route unusable. It is raised when the
+ * chat wiring builds, which `apps/api/src/routes/chat.ts` does **per request**
+ * (`wiringOr503`), so the process boots green and every `/v1/chat` request
+ * answers 503: a config fault an operator sees in per-request logs, not a
+ * failed boot (`server.ts` uses "boot" for faults outside the wiring). The
+ * parser and the operator-facing docs now say the same thing; accepting
+ * negatives would only add a second, undocumented spelling of "off".
+ */
+function parseNeighbourKnob(raw: string | undefined, name: string): number | undefined {
+  if (raw === undefined || raw.trim() === "") return undefined;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 0) {
+    throw new ChatConfigError(
+      `chat route: ${name} must be a non-negative integer (got "${raw}"); 0 disables the expansion`,
+      name,
+    );
+  }
+  return value;
+}
+
+/** `NEIGHBOUR_EXPANSION_RADIUS` (ADR-0049): ordinals on each side of a verse. */
+export function parseNeighbourRadius(raw: string | undefined): number | undefined {
+  return parseNeighbourKnob(raw, "NEIGHBOUR_EXPANSION_RADIUS");
+}
+
+/** `NEIGHBOUR_EXPANSION_CAP` (ADR-0049): chunks the expansion may add. */
+export function parseNeighbourCap(raw: string | undefined): number | undefined {
+  return parseNeighbourKnob(raw, "NEIGHBOUR_EXPANSION_CAP");
+}
