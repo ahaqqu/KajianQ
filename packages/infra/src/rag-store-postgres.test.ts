@@ -35,6 +35,27 @@ let sql: import("./rag-store-postgres-errors").SqlRunner | null = null;
 let store: RagStore;
 let cleanup: () => Promise<void>;
 
+// Every key this suite creates is `${PREFIX}${suffix}`, and cleanup deletes
+// those exact keys rather than a `LIKE ${PREFIX}-%` pattern: the suite shares a
+// real database with everything else, so a pattern's reach would exceed the
+// rows this suite owns (the residue the prefix-suffixed corpus keys caused
+// before #335, and the over-reach review B1 of that round named). Each suffix
+// is declared once and read by BOTH the fixture that writes the key and the
+// cleanup that removes it, so a new fixture key cannot silently outlive its run
+// (review B1 of #338).
+const SOURCE_KEY_SUFFIXES = ["", "-upsert", "-neigh-a", "-neigh-b"] as const;
+const TRACE_MESSAGE_SUFFIX = "-msg-1";
+const EVAL_RUN_LABEL_SUFFIX = "-run";
+
+/** A `doc_parents` source key in this run's fixture namespace. */
+const corpusKey = (suffix: (typeof SOURCE_KEY_SUFFIXES)[number]) => `${PREFIX}${suffix}`;
+
+/** The `answer_traces.message_id` this suite creates, in the run's namespace. */
+const traceMessageId = () => `${PREFIX}${TRACE_MESSAGE_SUFFIX}`;
+
+/** The `eval_runs.label` this suite creates, in the run's namespace. */
+const evalRunLabel = () => `${PREFIX}${EVAL_RUN_LABEL_SUFFIX}`;
+
 function vec(dim: number, seed: number): number[] {
   return Array.from({ length: dim }, (_, i) => Math.sin(seed * 1000 + i * 0.01));
 }
@@ -46,19 +67,24 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
     sql = postgresSqlRunner(postgresPool(URL));
     store = createPostgresRagStore(sql);
     cleanup = async () => {
-      // Remove this run's fixture rows. userId/messageId keys carry PREFIX so
-      // a failed run cannot collide with the next.
+      // Remove this run's fixture rows, each by the exact key its fixture
+      // writes. No statement here deletes by a `LIKE ${PREFIX}-%` pattern: the
+      // database is shared, so a pattern's reach exceeds the rows this suite
+      // owns (review B1 of #338).
       await sql!`DELETE FROM users WHERE id IN (
         SELECT user_id FROM chat_sessions WHERE metadata->>'pfx' = ${PREFIX}
       )`;
-      await sql!`DELETE FROM answer_traces WHERE message_id LIKE ${PREFIX + "-%"}`;
-      await sql!`DELETE FROM eval_runs WHERE label LIKE ${PREFIX + "-%"}`;
+      await sql!`DELETE FROM answer_traces WHERE message_id = ${traceMessageId()}`;
+      await sql!`DELETE FROM eval_runs WHERE label = ${evalRunLabel()}`;
       // The corpus fixtures key their source_key off PREFIX with a suffix
-      // (`-upsert`, `-neigh-a`, …), so an exact-equality delete left every one
-      // of them — and their cascade children — behind in the shared database
-      // on each contract run.
+      // (`-upsert`, `-neigh-a`, …), so an exact-equality delete on the bare
+      // prefix left every one of them — and their cascade children — behind in
+      // the shared database on each contract run. Deleting the exact keys the
+      // fixtures create keeps that reach equal to the rows this suite owns,
+      // and both sides read SOURCE_KEY_SUFFIXES so the list cannot go stale
+      // (#335 review B1).
       await sql!`DELETE FROM doc_parents
-        WHERE source_key = ${PREFIX} OR source_key LIKE ${PREFIX + "-%"}`;
+        WHERE source_key = ANY(${SOURCE_KEY_SUFFIXES.map(corpusKey)}::text[])`;
     };
   });
 
@@ -74,7 +100,7 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
     const ar = vec(1536, 1);
     const program = Effect.gen(function* () {
       const parentId = yield* store.insertDocParent({
-        sourceKey: PREFIX,
+        sourceKey: corpusKey(""),
         title: "contract-fixture",
         metadata: { pfx: PREFIX },
       });
@@ -114,7 +140,7 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
     const arEmb = vec(1536, 3);
     const program = Effect.gen(function* () {
       const parentId = yield* store.insertDocParent({
-        sourceKey: PREFIX,
+        sourceKey: corpusKey(""),
         title: "contract-fixture-2",
         metadata: { pfx: PREFIX },
       });
@@ -193,7 +219,7 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
         },
       ],
     };
-    const messageId = `${PREFIX}-msg-1`;
+    const messageId = traceMessageId();
     const program = Effect.gen(function* () {
       const { userId, token } = yield* store.createSession();
       const chatSessionId = yield* store.createChatSession({ userId, metadata: { pfx: PREFIX } });
@@ -215,7 +241,7 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
       // made every statement a syntax error (42601) — and nothing covered it, so
       // `eval_results` stayed empty while the spec claimed per-question rows.
       const evalRunId = yield* store.insertEvalRun({
-        label: `${PREFIX}-run`,
+        label: evalRunLabel(),
         report: {} as never,
       });
       yield* store.insertEvalResult({
@@ -350,14 +376,14 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
     const ar = vec(1536, 7);
     const program = Effect.gen(function* () {
       const parentId = yield* store.insertDocParent({
-        sourceKey: `${PREFIX}-upsert`,
+        sourceKey: corpusKey("-upsert"),
         title: "first",
         metadata: { pfx: PREFIX, rev: 1 },
       });
       // Re-insert the same source_key with different metadata/title → same id,
       // updated fields, no duplicate row.
       const parentId2 = yield* store.insertDocParent({
-        sourceKey: `${PREFIX}-upsert`,
+        sourceKey: corpusKey("-upsert"),
         title: "second",
         metadata: { pfx: PREFIX, rev: 2 },
       });
@@ -445,13 +471,13 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
         });
       const program = Effect.gen(function* () {
         const parentId = yield* store.insertDocParent({
-          sourceKey: `${PREFIX}-neigh-a`,
+          sourceKey: corpusKey("-neigh-a"),
           title: parentTitle,
           metadata: { pfx: PREFIX },
         });
         at = yield* Effect.forEach(ORDINALS, (ordinal) => seed(parentId, ordinal));
         const otherParentId = yield* store.insertDocParent({
-          sourceKey: `${PREFIX}-neigh-b`,
+          sourceKey: corpusKey("-neigh-b"),
           title: `${PREFIX}-neighbour-fixture-b`,
           metadata: { pfx: PREFIX },
         });
