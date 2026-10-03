@@ -161,7 +161,12 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ROOT = resolve(import.meta.dir, "..");
+/**
+ * `dirname(fileURLToPath(import.meta.url))` rather than Bun's `import.meta.dir`:
+ * this module is imported by `tests/scripts/check-markdown-links.test.mjs`,
+ * which runs under Vitest on Node, where `import.meta.dir` is undefined.
+ */
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 /**
  * Files scanned. `.agents/` and `.zcode/` are included deliberately: a skill
@@ -437,14 +442,21 @@ export function analyse(sources, ctx) {
  * Apply the policy rules to findings: records are counted, not enforced;
  * `ignored` targets are build outputs; the allowlist silences named
  * exceptions; anything still missing is a violation. Every allowlist entry
- * that matched nothing is a violation too, so the list cannot rot.
+ * whose file the gate scanned but whose dead reference it did not match is a
+ * violation too, so the list cannot rot.
+ *
+ * `files` is the set of documents the gate read. An entry naming a file that is
+ * not in that corpus (a fixture checkout, say) cannot be evaluated and is not
+ * reported stale — but the same entry against the real corpus is, which is the
+ * property that keeps the list honest.
  *
  * @param {object[]} findings from `analyse`
- * @param {{allowlist?: object[], ignored?: Set<string>}} [policy]
+ * @param {{allowlist?: object[], ignored?: Set<string>, files?: Set<string>}} [policy]
  */
 export function adjudicate(findings, policy = {}) {
   const allowlist = policy.allowlist ?? KNOWN_RETIRED;
   const ignored = policy.ignored ?? new Set();
+  const files = policy.files;
   const violations = [];
   const counters = {
     links: 0,
@@ -504,6 +516,7 @@ export function adjudicate(findings, policy = {}) {
 
   for (const entry of allowlist) {
     if (used.has(entry)) continue;
+    if (files && !files.has(entry.file)) continue; // not this corpus — not evaluable
     violations.push({
       kind: "stale-allowlist",
       file: entry.file,
@@ -543,6 +556,19 @@ function git(root, args, input) {
   });
 }
 
+/**
+ * A missing `adr/` or `.agents/skills/` means the directory is gone, not that
+ * the rule is off: with no names to match, every `adr/NNNN` and every skill
+ * mention is reported as dangling. Failing loud is the point.
+ */
+function listing(dir, options) {
+  try {
+    return readdirSync(dir, options);
+  } catch {
+    return [];
+  }
+}
+
 /** The committed tree: one `git ls-files`, then one `git check-ignore` for the dead ends. */
 export function buildContext(root) {
   let listed;
@@ -556,10 +582,9 @@ export function buildContext(root) {
     process.exit(1);
   }
   const tree = makeTree(listed.split("\0").filter(Boolean));
-  const adrNames = readdirSync(join(root, "adr"));
-  const skillsDir = join(root, ".agents", "skills");
+  const adrNames = listing(join(root, "adr"));
   const skillDirs = new Set(
-    readdirSync(skillsDir, { withFileTypes: true })
+    listing(join(root, ".agents", "skills"), { withFileTypes: true })
       .filter((e) => e.isDirectory() && tree.files.has(`.agents/skills/${e.name}/SKILL.md`))
       .map((e) => e.name),
   );
@@ -591,6 +616,7 @@ function main() {
   const findings = analyse(sources, ctx);
   const dead = findings.filter((f) => f.kind !== "link" && f.status === "missing");
   const { violations, counters } = adjudicate(findings, {
+    files: new Set(sources.map((s) => s.relPath)),
     ignored: ignoredTargets(
       ROOT,
       dead.filter((f) => f.kind === "path").map((f) => f.target),
