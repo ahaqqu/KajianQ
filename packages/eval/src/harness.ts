@@ -140,8 +140,7 @@ export async function runGoldenSet(set: GoldenSet, deps: HarnessDeps): Promise<H
   for (const question of set.questions) {
     if (deps.budget.wouldExceed()) {
       budgetExceeded = true;
-      // The remainder is deliberately uncounted here — no row is invented for a
-      // question never asked; the CLI's exit policy reddens on it (#364).
+      // The remainder is deliberately uncounted; the CLI's exit policy reddens on it (#364).
       break;
     }
     try {

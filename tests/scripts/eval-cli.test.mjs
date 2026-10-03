@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   exitPolicy,
+  exitWithPolicy,
   failureLines,
   printSummary,
   skipLines,
@@ -366,6 +367,11 @@ describe("printSummary (#290, #340)", () => {
  * literals are the CI-observable contract (`gh run view`, the `Staging` log);
  * changing one is a deliberate contract change, which is exactly what a pin is
  * for.
+ *
+ * The last two rows drive `exitWithPolicy`, the effectful half: the verdict
+ * rows above pin `ok: false`, and only these pin that `ok: false` ends the
+ * process (#370 A1). A pin that stops at the return value leaves the gate's
+ * blocking half free to be deleted with the suite green.
  */
 describe("exitPolicy (#364)", () => {
   const passed = scoredOutcome("gs-v0-015", { passed: true });
@@ -513,5 +519,126 @@ describe("exitPolicy (#364)", () => {
       message:
         "eval:run: FAILED — 0 failed, 0 skipped, 2 unmeasured. See eval_results for run run-11.",
     });
+  });
+
+  it("takes its counts from the recorded rows, not from the run's counters (#370 A2)", () => {
+    // Mutation: reading `result.failed`/`result.skipped` — the two
+    // representations of one fact that `printSummary` already resolves in
+    // favour of the rows. Here the counters claim a clean pass while the one
+    // recorded row did not pass, and a verdict that trusted the counters would
+    // return ok: true: the silent green this policy exists to close, reached
+    // through the disagreement the counters make possible.
+    const input = {
+      runId: "run-12",
+      questionCount: 1,
+      result: {
+        passed: 1,
+        failed: 0,
+        skipped: 0,
+        budgetExceeded: false,
+        results: [failedQuestion],
+      },
+    };
+    expect(exitPolicy("eval:run", input)).toEqual({
+      ok: false,
+      message: "eval:run: FAILED — 1 failed, 0 skipped. See eval_results for run run-12.",
+    });
+  });
+
+  it("names the disagreement when more rows were recorded than the set asked for (#370 A2)", () => {
+    // Mutation: guarding the truncation segment with `unmeasured > 0` alone.
+    // A negative shortfall — unreachable through the harness, reachable through
+    // this function's input — then reddens with no clause naming why, or (if
+    // the shortfall were clamped) does not redden at all. Every red line must
+    // name its reason, so the excess direction gets its own clause rather than
+    // a negative count.
+    const input = {
+      runId: "run-13",
+      questionCount: 1,
+      result: {
+        passed: 2,
+        failed: 0,
+        skipped: 0,
+        budgetExceeded: false,
+        results: [passed, passed],
+      },
+    };
+    expect(exitPolicy("eval:run", input)).toEqual({
+      ok: false,
+      message:
+        "eval:run: FAILED — 0 failed, 0 skipped, 1 recorded beyond the set asked. See eval_results for run run-13.",
+    });
+  });
+
+  it("exits 1 on a red verdict, to stderr — the half that makes the gate blocking (#370 A1)", () => {
+    // Mutation: deleting the `process.exit(1)` from `exitWithPolicy`. The
+    // verdict rows above pin `ok: false`; not one of them pins that the red
+    // verdict ends the process, so that deletion kept every row green while
+    // both CLIs printed the red line and exited 0 — the exact silent green
+    // #364 exists to close, on the release gate.
+    const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("__exit__");
+    });
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const input = {
+        runId: "run-14",
+        questionCount: 1,
+        result: {
+          passed: 0,
+          failed: 1,
+          skipped: 0,
+          budgetExceeded: false,
+          results: [failedQuestion],
+        },
+      };
+      // The throwing stub is how a real exit is observed without ending the
+      // test process: control must not continue past `process.exit`.
+      expect(() => exitWithPolicy("eval:run", input)).toThrow("__exit__");
+      expect(exit).toHaveBeenCalledTimes(1);
+      expect(exit).toHaveBeenCalledWith(1);
+      // The red line goes to stderr and nowhere else — the same stream the
+      // smoke has always written to.
+      expect(err).toHaveBeenCalledTimes(1);
+      expect(err).toHaveBeenCalledWith(
+        "eval:run: FAILED — 1 failed, 0 skipped. See eval_results for run run-14.",
+      );
+      expect(log).not.toHaveBeenCalled();
+    } finally {
+      exit.mockRestore();
+      err.mockRestore();
+      log.mockRestore();
+    }
+  });
+
+  it("does not exit on a green verdict, to stdout (#370 A1)", () => {
+    // The other half of the A1 pin: a mutation that exits unconditionally — or
+    // moves the exit above the ok early-return — would redden every healthy
+    // run, the smoke on a good deploy included. A gate that cannot be green is
+    // not a gate.
+    const exit = vi.spyOn(process, "exit").mockImplementation(() => {});
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      exitWithPolicy("eval:run", {
+        runId: "run-15",
+        questionCount: 1,
+        result: {
+          passed: 1,
+          failed: 0,
+          skipped: 0,
+          budgetExceeded: false,
+          results: [passed],
+        },
+      });
+      expect(exit).not.toHaveBeenCalled();
+      expect(err).not.toHaveBeenCalled();
+      expect(log).toHaveBeenCalledWith("eval:run: PASSED");
+    } finally {
+      exit.mockRestore();
+      err.mockRestore();
+      log.mockRestore();
+    }
   });
 });

@@ -236,6 +236,12 @@ export function printSummary(prefix, { runId, questionCount, result, costMicroUs
  * two-clause policy would call a half-measured release run green. An unmeasured
  * question is not a pass, whichever way it went unmeasured.
  *
+ * The counts it prints are derived from `result.results`, as `printSummary`
+ * derives its own lines — one source of truth, so the FAILED line cannot
+ * contradict the block above it (#370 A2). A negative shortfall, which no harness
+ * path produces, still reddens and names that disagreement, not a negative
+ * count.
+ *
  * Pure: it returns the verdict and the exact line to print, never exits, so
  * `tests/scripts/eval-cli.test.mjs` pins every row (this glue is `.mjs`,
  * outside the typechecked corpus — a `.ts` test importing it fails TS7016).
@@ -243,11 +249,15 @@ export function printSummary(prefix, { runId, questionCount, result, costMicroUs
  * rows carry the attribution printed above it.
  */
 export function exitPolicy(prefix, { runId, questionCount, result }) {
+  // From the rows, as `printSummary` does (#370 A2) — never the run's counters.
+  const scored = result.results.filter((x) => x.skipped !== true);
+  const skipped = result.results.filter((x) => x.skipped === true).length;
+  const failed = scored.filter((x) => x.passed !== true).length;
   const unmeasured = questionCount - result.results.length;
-  if (result.failed === 0 && result.skipped === 0 && unmeasured === 0) {
+  if (failed === 0 && skipped === 0 && unmeasured === 0) {
     return { ok: true, message: `${prefix}: PASSED` };
   }
-  const counts = [`${result.failed} failed`, `${result.skipped} skipped`];
+  const counts = [`${failed} failed`, `${skipped} skipped`];
   // The failed/skipped rendering is byte-identical to the smoke's pre-#364
   // line, so only the truncation case gains words. The cap is named only when
   // the run's own record says the cap was hit — the counts stay the ones
@@ -255,6 +265,10 @@ export function exitPolicy(prefix, { runId, questionCount, result }) {
   // does not explain.
   if (unmeasured > 0) {
     counts.push(`${unmeasured} unmeasured${result.budgetExceeded ? " (budget exceeded)" : ""}`);
+  } else if (unmeasured < 0) {
+    // The other direction of the same disagreement: more rows than asked for.
+    // Unreachable through the harness, but the red must still name a reason.
+    counts.push(`${-unmeasured} recorded beyond the set asked`);
   }
   return {
     ok: false,
