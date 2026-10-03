@@ -30,6 +30,15 @@ Feature: Chat — ask, answer, citations, warnings, disclaimer
     When I ask a question whose dhaif answer ends with the machine-translation label
     Then the dhaif warning renders exactly once beside the MT label
 
+  # #348: the model can repeat the canonical line INSIDE one trailing
+  # paragraph (QA #345 probe p9b). The A2 byte-equality gate rejected that
+  # paragraph — it is not byte-equal to the canonical line — so the peel put it
+  # back into the body and the frame-flag card drew a third copy: the wire
+  # carried 2, the page displayed 3.
+  Scenario: The dhaif warning renders once when the trailing paragraph repeats it (#348)
+    When I ask a question whose dhaif answer repeats the canonical line in its last paragraph
+    Then the dhaif warning renders exactly once despite the repeated line
+
   Scenario: Markdown in the answer renders as rich text, never literal markers (#150)
     When I ask a question whose answer contains markdown
     Then the answer renders bold, emphasis, and list items with no literal markdown

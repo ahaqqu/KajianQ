@@ -65,6 +65,24 @@ const DHAIF_MT_FIXTURE = [
   "event: done\ndata: {}\n\n",
 ].join("");
 
+// #348 — QA #345 probe p9b: the model repeated the canonical line INSIDE one
+// trailing paragraph (one `\n`, not a paragraph break), so the wire carried two
+// copies and the page displayed three — both as body prose, plus the flag-driven
+// card. The A2 byte-equality gate rejected the paragraph (it is not byte-equal
+// to the canonical line), the peel pushed it back into `body`, and
+// `split.warning` stayed null while the citations frame still reported
+// `dhaifWarning: true`.
+const DHAIF_REPEAT_ANSWER =
+  `Hadits tersebut diriwayatkan [HR. Malik no. 18].\n\n${DISCLAIMER}\n\n` +
+  `${DHAIF_WARNING}\n${DHAIF_WARNING}`;
+
+const DHAIF_REPEAT_FIXTURE = [
+  'event: meta\ndata: {"sessionId":"sess-e2e","messageId":"m-dhaif-repeat","traceId":"tr-dhaif-repeat"}\n\n',
+  `event: delta\ndata: ${DHAIF_REPEAT_ANSWER.replaceAll("\n", "\ndata: ")}\n\n`,
+  'event: citations\ndata: {"messageId":"m-dhaif-repeat","refusal":false,"dhaifWarning":true,"citations":[{"label":"HR. Malik no. 18","arabic":"حدثنا مالك","machineTranslated":false,"grade":"dhaif","source":"Al-Muwatta"}]}\n\n',
+  "event: done\ndata: {}\n\n",
+].join("");
+
 const REFUSAL_FIXTURE = [
   'event: meta\ndata: {"sessionId":"sess-e2e","messageId":"m-ref","traceId":"tr-ref"}\n\n',
   "event: delta\ndata: tidak menemukan dalil yang memadai\n\n",
@@ -205,6 +223,15 @@ When(
   "I ask a question whose dhaif answer ends with the machine-translation label",
   async ({ page }) => {
     await openChatWithFixtures(page, DHAIF_MT_FIXTURE);
+    await page.getByTestId("composer").fill("Hadits tentang amalan tertentu?");
+    await page.getByTestId("send").click();
+  },
+);
+
+When(
+  "I ask a question whose dhaif answer repeats the canonical line in its last paragraph",
+  async ({ page }) => {
+    await openChatWithFixtures(page, DHAIF_REPEAT_FIXTURE);
     await page.getByTestId("composer").fill("Hadits tentang amalan tertentu?");
     await page.getByTestId("send").click();
   },
@@ -364,6 +391,20 @@ Then("the dhaif warning renders exactly once beside the MT label", async ({ page
   // The MT label is provenance, not a warning: it still renders, once.
   await expect(text.split("Terjemahan mesin").length - 1).toBe(1);
   // The disclaimer that the draft already carried still renders as a footer.
+  await expect(assistant.getByTestId("ulama-disclaimer")).toHaveCount(1);
+});
+
+Then("the dhaif warning renders exactly once despite the repeated line", async ({ page }) => {
+  // Mirrors how QA measured it on staging: a DOM count on the assistant
+  // article. Pre-fix this read 3 — both copies as one prose paragraph, plus the
+  // flag-driven card — while the wire had carried 2.
+  const assistant = page.getByTestId("message-assistant").last();
+  await expect(assistant.getByTestId("dhaif-warning")).toHaveCount(1);
+  const text = (await assistant.textContent()) ?? "";
+  await expect(text.split(DHAIF_WARNING).length - 1).toBe(1);
+  // The repeat paragraph is consumed by the card, so the answer text itself
+  // still renders and the disclaimer still reaches its footer.
+  await expect(assistant).toContainText("Hadits tersebut diriwayatkan");
   await expect(assistant.getByTestId("ulama-disclaimer")).toHaveCount(1);
 });
 

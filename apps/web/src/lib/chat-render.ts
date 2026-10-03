@@ -235,10 +235,14 @@ const RULE_KINDS: readonly RuleKind[] = [
 
 /**
  * Classify one paragraph as a rule line (`kind` + trimmed text) or `null` for
- * prose. Short lines only — except the canonical copy, whose equality counts.
+ * prose. Short lines only — except the canonical copy, whose equality counts;
+ * a paragraph of byte-identical copies collapses to one, which the card draws
+ * once, so its repeats are dropped with it and never reach `body` (#348).
  */
 function classifyRule(paragraph: string): { kind: RuleKind; text: string } | null {
-  const text = paragraph.trim();
+  const lines = paragraph.split("\n").map((line) => line.trim());
+  const repeat = CANONICAL_WARNINGS.includes(lines[0]!) && lines.every((l) => l === lines[0]);
+  const text = repeat ? lines[0]! : paragraph.trim();
   if (text.length > RULE_LINE_MAX && !CANONICAL_WARNINGS.includes(text)) return null;
   const kind = RULE_KINDS.find((candidate) => candidate.matches(text));
   return kind === undefined ? null : { kind, text };
