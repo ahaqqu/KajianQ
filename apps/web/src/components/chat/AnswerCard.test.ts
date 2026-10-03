@@ -50,9 +50,11 @@ function occurrences(haystack: string, needle: string): number {
  * it again.
  *
  * Mutation named: restore the pre-fix two-pop peel and every row below reddens
- * on the count — the ID row reads 2. The `[W][W]` / `[W][MT][W]` /
- * `[D][W][W]` rows are the reviewer's re-seen-marker shapes (A1): a rule
- * paragraph that has already been classified must not terminate the walk.
+ * on the count — the ID row reads 2. Restore the line-based repeat check
+ * instead and the two `space-separated` rows redden, reading 4 (#361). The
+ * `[W][W]` / `[W][MT][W]` / `[D][W][W]` rows are the reviewer's re-seen-marker
+ * shapes (A1): a rule paragraph that has already been classified must not
+ * terminate the walk.
  */
 describe("AnswerCard dhaif warning renders exactly once (#292)", () => {
   const SHAPES: readonly {
@@ -85,6 +87,23 @@ describe("AnswerCard dhaif warning renders exactly once (#292)", () => {
     {
       name: "[W ×2 in one paragraph]",
       tail: [`${WARNING_ID}\n${WARNING_ID}`],
+      warning: WARNING_ID,
+      footer: false,
+    },
+    // #361 — QA #356 probes p4/p9: the model repeated the copy SPACE-SEPARATED
+    // on ONE line (3 × 93 chars = 281, over `RULE_LINE_MAX`), so the line-based
+    // collapse missed it, the peel stopped on the paragraph, and the page showed
+    // 4 (the paragraph as body prose, plus the flag-driven card). These rows
+    // count the DOM: they read 4 before the copy-remainder collapse, 1 after.
+    {
+      name: "[D][W ×3 space-separated in one paragraph]",
+      tail: [DISCLAIMER, [WARNING_ID, WARNING_ID, WARNING_ID].join(" ")],
+      warning: WARNING_ID,
+      footer: true,
+    },
+    {
+      name: "[W ×3 space-separated in one paragraph]",
+      tail: [[WARNING_ID, WARNING_ID, WARNING_ID].join(" ")],
       warning: WARNING_ID,
       footer: false,
     },

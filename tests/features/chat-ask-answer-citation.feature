@@ -39,6 +39,15 @@ Feature: Chat — ask, answer, citations, warnings, disclaimer
     When I ask a question whose dhaif answer repeats the canonical line in its last paragraph
     Then the dhaif warning renders exactly once despite the repeated line
 
+  # #361: QA #356 probes p4/p9 — the model repeated the canonical line THREE
+  # times on ONE line, SPACE-SEPARATED (3 × 93 = 281 chars). The #348 collapse
+  # split the paragraph on "\n", so the single over-cap line classified as null
+  # and stopped the peel: the paragraph stayed in the body as prose and the
+  # flag-driven card drew on top — the wire carried 3, the page displayed 4.
+  Scenario: The dhaif warning renders once when the trailing paragraph repeats it space-separated (#361)
+    When I ask a question whose dhaif answer repeats the canonical line space-separated
+    Then the dhaif warning renders exactly once despite the space-separated repeat
+
   Scenario: Markdown in the answer renders as rich text, never literal markers (#150)
     When I ask a question whose answer contains markdown
     Then the answer renders bold, emphasis, and list items with no literal markdown

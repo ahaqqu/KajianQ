@@ -17,6 +17,10 @@ name: Staging
 # never sit in the same workflow graph as this evidence job: previously a failed
 # ingest skipped the smoke entirely, spending money and producing no evidence
 # for it.
+#
+# A red Golden Set smoke deliberately stops `post deploy checks`: `ZAP baseline`
+# and `Schemathesis fuzz` do not run after it — not an oversight but the accepted
+# trade of #360 (two extra job starts to scan an unhealthy deployment, declined).
 on:
   push:
     branches: [main]
