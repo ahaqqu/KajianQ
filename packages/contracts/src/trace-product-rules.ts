@@ -4,14 +4,17 @@ import { CostRecordSchema } from "./trace-primitives";
 /**
  * The `product_rules` trace event variant (#285; ADR-0007 typed detail).
  *
- * It lives in its own module because the event union (`./trace-events.ts`) is
- * at the agentic 300-line cap and every variant costs ~10 lines of it plus its
- * rationale — the alternative was deleting another variant's reasoning to make
- * room, or splitting the union itself. It is composed into that union verbatim,
- * exactly like the inline variants around it, so `kind` remains the union's one
- * discriminator. The cost shape it carries is `./trace-primitives.ts`'s
- * `CostRecordSchema` — the contract's one owner of that shape; a variant
- * imports it from there and never restates it.
+ * It was extracted when the union had run out of room: the inline variant took
+ * `trace.ts` from 297 lines to 340, past the agentic 300-line cap, and pulling
+ * it into this module brought the file back to 292. #291 has since moved the
+ * union into `./trace-events.ts` — 233 lines today against the same cap, so
+ * inlining this module (its whole length, less the import edge and one-line
+ * pointer it would replace there, 3 lines) would still land the union at 287.
+ * The cap no longer forces the split: the module is kept as the variant's home.
+ * It is composed into that union verbatim, exactly like the inline variants
+ * around it, so `kind` remains the union's one discriminator. The cost shape it
+ * carries is `./trace-primitives.ts`'s `CostRecordSchema` — the contract's one
+ * owner of that shape; a variant imports it from there and never restates it.
  *
  * **What the event means.** The deterministic product rules ran: the rules a
  * domain pack applies to a passed draft after the reviewer gate. This contract
