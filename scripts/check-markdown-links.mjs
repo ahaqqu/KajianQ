@@ -17,7 +17,13 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { CLAIM_ROOTS, KNOWN_RETIRED, POLICY, ROOTS } from "./markdown-links/policy.mjs";
+import {
+  CLAIM_ROOTS,
+  KNOWN_RETIRED,
+  POLICY,
+  ROOTS,
+  isFileRelativeTarget,
+} from "./markdown-links/policy.mjs";
 
 /**
  * `dirname(fileURLToPath(import.meta.url))` rather than Bun's `import.meta.dir`:
@@ -129,14 +135,6 @@ export function normaliseSpanTarget(text) {
 }
 
 /**
- * Is this a target written against the containing file rather than against the
- * repository root — `..` itself, or anything under `../`? See SCOPE RULES.
- */
-export function isFileRelativeTarget(target) {
-  return target === ".." || target.startsWith("../");
-}
-
-/**
  * Is this code span a repo-path claim? See SCOPE RULES in the header — the
  * order of these checks is the contract, and each one names its class. The
  * text is normalised first (`normaliseSpanTarget`), so callers may pass the raw
@@ -155,11 +153,12 @@ export function isPathClaim(text, tree) {
   if (/[<>]/.test(target)) return false; // `<slug>`, `<role>`, `<label>`
   if (/^(?:https?:|mailto:|tel:|#|\/\/)/.test(target)) return false; // URLs, anchors
   if (target.startsWith("/")) return false; // not repo-relative
-  // `..`-rooted: a claim by its form, never by its reading's first segment. The
-  // rules above already reject every non-path shape, and re-testing the reading
-  // against CLAIM_ROOTS would veto a target the link half reddens on (from
-  // `adr/`, `../web/dist` reads as `web/dist`, and `web` is not a tracked root).
-  // See SCOPE RULES — #391.
+  // `./`- and `..`-rooted: a claim by its form, never by its reading's first
+  // segment. The rules above already reject every non-path shape, and re-testing
+  // the reading against CLAIM_ROOTS would veto a target the link half reddens on
+  // (from `adr/`, `../web/dist` reads as `web/dist`, and `web` is not a tracked
+  // root; `./web/dist` reads the same way from `adr/`). See SCOPE RULES — #391
+  // and #396.
   if (isFileRelativeTarget(target)) return true;
   if (!target.includes("/")) return tree.rootFiles.has(target);
   return CLAIM_ROOTS.includes(target.split("/")[0]);
@@ -202,8 +201,8 @@ export function adrIdResolves(target, adrNames) {
  * beside a `repoPath` that does not exist (A1).
  *
  * The base rule, chosen once, here:
- *   - a `..`-rooted target is read from the containing file's directory and
- *     nowhere else, exactly as the Markdown half reads the identical
+ *   - a `./`- or `..`-rooted target is read from the containing file's directory
+ *     and nowhere else, exactly as the Markdown half reads the identical
  *     destination (see SCOPE RULES);
  *   - every other target is read from the repository root first, then from the
  *     containing file's directory — the second base the header blesses for the
