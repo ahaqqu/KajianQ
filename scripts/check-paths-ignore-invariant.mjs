@@ -220,6 +220,11 @@ export function compilePattern(pattern) {
     source += pattern[i].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
   // `i` (case-insensitive) is the deliberate fail-closed widening: over-report only.
+  // The source is a checked-in `staging.yml` pattern, escaped above (`.`/`(`/`|`…
+  // become literals) before the only deliberate expansions (`*`, `**`) are added;
+  // it is compiled once at gate startup, in build/CI time, over repo paths — never
+  // over runtime input, so there is no attacker-controlled pattern here.
+  // nosemgrep: detect-non-literal-regexp
   return new RegExp(`^${source}$`, "i");
 }
 
@@ -502,7 +507,10 @@ function matchExport(exportsMap, subpath) {
     const prefix = key.slice(0, -1);
     if (!subpath.startsWith(prefix)) continue;
     const target = exportTarget(exportsMap[key]);
-    if (target) return target.replace("*", subpath.slice(prefix.length));
+    // Node's subpath-pattern semantics: EVERY `*` in the target is replaced by
+    // the matched portion (not a sanitization step — the value comes from a
+    // checked-in package.json, and the result must resolve to a real file).
+    if (target) return target.replaceAll("*", subpath.slice(prefix.length));
   }
   return null;
 }
