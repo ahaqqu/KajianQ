@@ -180,9 +180,11 @@ and are what the implementation conforms to.
      after its successor was verified. The immutable-label rule stands — that is
      an explicit deletion by label after a documented window, never an
      overwrite.
-   - GDPR-E (#181) must generalize the CLI's `NEON_DATABASE_URL` source and
-     re-do this analysis at cutover; the pre/post labels bracketing the
-     migration are themselves personal-data-bearing archives.
+   - GDPR-E (#181) must generalize the CLI's connection-env source — the live
+     env name is the script's to own (`packages/infra/scripts/db-snapshot.mjs`),
+     never this record's — and re-do this analysis at cutover; the pre/post
+     labels bracketing the migration are themselves personal-data-bearing
+     archives.
 
    **A corpus-only projection is explicitly _not_ decided here.** It would be
    the clean answer (a durable archive that provably carries no personal data),
@@ -261,8 +263,10 @@ and are what the implementation conforms to.
   `RetrieverEmbedder`) declare `personalData: true` as a **required**, literal-
   true field — dropping the flag is a compile error — and the serving chains
   carry paid, personal-data-allowed heads (the `cheap`/`generator` roles on
-  DeepSeek, the reviewer on Kimi, the embedder on a new paid-terms `gemini-paid`
-  row for the same model and embedding space). `apps/api/src/lib/personal-data-serving.test.ts`
+  DeepSeek, the reviewer on the paid chain the live role map records
+  (`packages/infra/src/providers/models.json`) — re-headed in this record's
+  2026-09-21 amendment — the embedder on a new paid-terms `gemini-paid` row for
+  the same model and embedding space). `apps/api/src/lib/personal-data-serving.test.ts`
   fails CI if a serving role loses its keyed personal-data-allowed candidate or
   a free-tier vendor returns to a chain head. The free-tier Gemini row remains
   for non-personal calls (ingestion, tagging) and as a skipped tail.
@@ -281,7 +285,8 @@ and are what the implementation conforms to.
   drills, and the nightly session reclamation cron all become VPS
   responsibilities (#180/#181). The seams are already in place — which is why
   this is a deploy-path change, not an engine change.
-- `bun run db:snapshot` reads `NEON_DATABASE_URL` and requires R2 credentials;
+- `bun run db:snapshot` reads its connection env where the script owns the name
+  (`packages/infra/scripts/db-snapshot.mjs`) and requires R2 credentials;
   post-cutover the source env var, the manifest's `source.host`, and the
   ObjectStore target all change (or the CLI gains a vendor-free env name). The
   manifest stays a provenance record, not a privacy record. **Resolved by
@@ -305,15 +310,16 @@ and are what the implementation conforms to.
   `personalDataAllowed` (enforced by `provider-factory.ts`) are the register's
   machine-checkable shadow; the chat-path flag gap is a serving-path change
   outside this docs PR.
-- `apps/api/src/lib/scheduled.ts` + `packages/infra/src/rag-store-neon-session.ts`
-  — the 30-day reclamation the retention section describes (already implemented).
+- `apps/api/src/lib/scheduled.ts` + the `RagStore` session adapter under
+  `packages/infra/src/` — the 30-day reclamation the retention section describes
+  (already implemented).
 - `packages/infra/scripts/db-snapshot.mjs`, `pg-conn.mjs`, `snapshot-store.mjs`
   — snapshot creation/verification and the corpus-vs-ledger partition.
 - Downstream tickets that cite this ADR: #178 (DPA + Art. 30 + DPIA-lite),
   #179 (notice copy), #180 (log/backup TOMs), #181 (the migration).
-- `docs/ARCHITECTURE.md` §15 (Platform row) and §8 (secrets landing as
-  Cloudflare `secret_text`) describe the _current_ stack truthfully and change
-  with GDPR-E (#181), not here — this ADR records the decision, it does not
+- `docs/ARCHITECTURE.md` §15 (Platform row) and §8 (secrets) describe the
+  _current_ stack truthfully and move with it — that file, not this record, is
+  the live stack statement; this ADR records the decision, it does not
   pretend the migration happened.
 
 ## Revisit triggers

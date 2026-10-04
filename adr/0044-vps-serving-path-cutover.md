@@ -220,10 +220,11 @@ checklist — in `docs/VPS-CUTOVER-RECORD.md`. A fresh box follows
 ## Consequences
 
 - **The e2e harness tests the production runtime.** `playwright.config.ts` boots
-  `apps/api/src/boot.ts` with `KAJIANQ_WEB_ROOT` at the fresh web build; the 33
-  BDD scenarios run green against it. This is a fidelity _gain_ (the served host
-  is the tested host) and a fidelity _loss_ in one respect: the workerd runtime
-  is no longer exercised at all, which is fine because it is no longer a target.
+  `apps/api/src/boot.ts` with `KAJIANQ_WEB_ROOT` at the fresh web build; the BDD
+  scenarios under `tests/features/` run green against it. This is a fidelity
+  _gain_ (the served host is the tested host) and a fidelity _loss_ in one
+  respect: the workerd runtime is no longer exercised at all, which is fine
+  because it is no longer a target.
 - **The rate limiter's guarantee narrows to one process.** A scale-out to
   several API processes would need a shared counter (a store-backed limiter, or
   sticky routing) — recorded as the revisit trigger, not built.

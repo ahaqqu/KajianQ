@@ -58,19 +58,23 @@ Run of 2026-09-10 04:10 WIB (paid tier), report at
 | `gemini-embedding-2`   | recall@10 **1.000**, MRR **0.9975** (n=200) | recall@10 **1.000**, MRR **1.000** (n=200) | ✅ pass              |
 
 Corpus: 1,500-doc deterministic stratified subset of the real v1 sources
-(6,236-ayah Tanzil/Kemenag Quran + 30,778 aligned hadith across the seven
-ADR-0026 collections), fingerprint `fnv1a64:478dc7ce1bae2d30:1500`. Probes:
+(6,236-ayah Tanzil/Kemenag Quran + the aligned hadith of the ADR-0026
+collections, whose landed per-collection counts the corpus record owns —
+`docs/CORPUS-INGEST.md`), fingerprint `fnv1a64:478dc7ce1bae2d30:1500`. Probes:
 200 cross-lingual + 200 monolingual self-retrieval probes per model. Total
 recorded spend: **$0.000012** of the $5 cap (the vendor's OpenAI-compat
 endpoint reported no usage for these calls; the free-tier-priced config
 records 0).
 
-**Expansion micro-task (ADR-0014): 12/12 correct (accuracy 1.000)** — the
-cheap-tier router LLM picked the correct Arabic expansion term in every case,
-including contextual disambiguation (wudhu vs. ghusl vs. tayammum for purity
-queries; firdaus as the narrower pick inside the paradise slice; zakat
-al-fitr vs. zakat). ADR-0014's prompt-injection consumption design is
-de-risked at this sample size.
+**Expansion micro-task (ADR-0014): scored under the strict distractor-aware
+contract from the next gate re-run on** (see the amendment below) — the
+cheap-tier router LLM picked the correct Arabic expansion term, including
+contextual disambiguation (wudhu vs. ghusl vs. tayammum for purity queries;
+firdaus as the narrower pick inside the paradise slice; zakat al-fitr vs.
+zakat). The recorded run's score lives in the committed report
+(`packages/kajianq-domain/fixtures/embed-bench-results.json`), not in this
+record; ADR-0014's prompt-injection consumption design still draws on the
+micro-task qualitatively.
 
 ### Interpretation — read the MRR, not just the recall
 
@@ -107,10 +111,11 @@ recall ever justifies it.
 - **Live-API model-id correction (surfaced by this gate's expansion task):**
   the API's chat-completions surface does not expose `gemini-3-flash` /
   `gemini-3.1-pro` (404 — only the `-preview` ids exist on this account), so
-  the `cheap` and `reviewer` role pins now read `gemini-3-flash-preview` and
-  `gemini-3.1-pro-preview` (SPECS §3.4 updated). The ingestion-translation and
-  generator roles (Qwen) are unchanged; their DashScope key is absent in this
-  environment and out of this gate's scope.
+  the `cheap` and `reviewer` pins were corrected (SPECS §3.4 updated); which
+  role holds which chain is the live role map's business, never this record's —
+  `packages/infra/src/providers/models.json`. That goes for the
+  ingestion-translation and generator roles too: the only part still in this
+  gate's scope is the DashScope key's absence in this environment.
 
 ## Consequences
 

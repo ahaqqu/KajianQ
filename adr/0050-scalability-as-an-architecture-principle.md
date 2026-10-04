@@ -19,8 +19,9 @@ was authored first and had already cited the number across roughly twenty code
 and doc references and in issue #300's text. Renumbering that unmerged branch
 would have rewritten all of them to correct a number this record took by reading
 only `main`'s highest file; renumbering this merged record instead touches four
-references in three files and leaves the other side's citations correct. The
-sequence therefore reads 0048 → 0050 on `main` until PR #291 lands its 0049.
+references in three files and leaves the other side's citations correct. That
+gap has since closed — PR #291 landed its 0049 — so read the `adr/` directory,
+not this note, for the live sequence.
 
 ## Context
 
