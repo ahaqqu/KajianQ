@@ -39,11 +39,12 @@ plain files over a CDN with no key and automated upstream updates.
 
 The consolidation is lopsided: the compound gradings in the source are weaker than a plain authentic verdict, and
 under-grading is the safe failure mode — weak material is always flagged at retrieval, whereas over-grading would
-silently upgrade weak evidence in a trust-first product. Three named classes only look weak: a "sound chain,
-interrupted" verdict is self-contradictory, so the interrupted chain demotes; `Mawdu` is the fabricated class; and the
-attribution-scope classes combine freely with positive grades in the source ("Mauquf Sahih" is the common form), while
-`Marfoo` is a chain form rather than a defect. The source ships empty Arabic at scale, so gating on it would abort a
-whole collection run. Grades stay flattened because hadith science grades chains rather than texts.
+silently upgrade weak evidence in a trust-first product. The borderline classes need their treatment stated: the
+interrupted chain demotes, because a "sound chain, interrupted" verdict is self-contradictory, and `Mawdu` demotes
+because it is the fabricated class, while the attribution-scope classes combine freely with positive grades in the
+source ("Mauquf Sahih" is the common form) and `Marfoo` is a chain form rather than a defect. The source ships empty
+Arabic at scale, so gating on it would abort a whole collection run. Grades stay flattened because hadith science
+grades chains rather than texts.
 
 ## Consequences
 
