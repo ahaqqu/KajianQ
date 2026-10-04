@@ -1,13 +1,17 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  MAX_CAPTURE_BYTES,
   ZAP_CLASSES,
   ZAP_EXIT_CONTRACT,
   chooseContainer,
   classifyZapFailure,
   parseZapReport,
   renderAttribution,
+  runCapture,
   withReportSummary,
 } from "../../scripts/zap-failure-attribution.mjs";
 
@@ -184,6 +188,25 @@ describe("the class is decidable from evidence that survives the failed step", (
     expect(result.headline).toMatch(/downstream of the scan/);
   });
 
+  it("trap 4 at the consumer (A2): an unparseable report is not proof the scan completed", () => {
+    // `present` alone is not evidence: a truncated write or a proxy error body
+    // leaves a report file that proves nothing about the scan, and the branch
+    // must not reassure from it — its own signal table two lines below already
+    // prints `present, UNPARSEABLE`.
+    const result = classifyZapFailure({
+      imageOutcome: "success",
+      scanOutcome: "failure",
+      container: null,
+      report: parseZapReport("<html><body>502 Bad Gateway</body></html>"),
+    });
+    expect(result.class).toBe(ZAP_CLASSES.noContainer);
+    expect(result.headline).toMatch(/could not be parsed/);
+    expect(result.headline).toMatch(/unproven/);
+    expect(result.headline).not.toMatch(/downstream of the scan|SITE REGRESSED/);
+    expect(result.meaning).not.toMatch(/so the scan itself completed/);
+    expect(renderAttribution(result)).toContain("| `report_json.json` | present, UNPARSEABLE |");
+  });
+
   it("over the whole input cross-product, only a scan that RAN can be blamed on the site", () => {
     const outcomes = ["success", "failure", "skipped", "cancelled"];
     const exits = [0, 1, 2, 3, 137, null];
@@ -194,7 +217,7 @@ describe("the class is decidable from evidence that survives the failed step", (
         for (const exitCode of exits) {
           for (const rep of reports) {
             checked += 1;
-            const { class: klass } = classifyZapFailure({
+            const { class: klass, headline } = classifyZapFailure({
               imageOutcome,
               scanOutcome,
               container: exitCode === null ? null : container({ exitCode }),
@@ -209,6 +232,13 @@ describe("the class is decidable from evidence that survives the failed step", (
             if (klass === ZAP_CLASSES.scanAborted) expect(exitCode).toBe(3);
             if (klass === ZAP_CLASSES.postScan) expect(exitCode).toBe(0);
             if (klass === ZAP_CLASSES.imagePreflight) expect(imageOutcome).toBe("failure");
+            if (klass === ZAP_CLASSES.noContainer && !rep.parseable) {
+              // Absent OR unreadable is never proof that the scan completed —
+              // trap 4 has to hold at the consumer, not only at the probe (A2).
+              expect(headline, `completed-scan claim from ${JSON.stringify(rep)}`).not.toMatch(
+                /downstream of the scan/,
+              );
+            }
           }
         }
       }
@@ -218,38 +248,118 @@ describe("the class is decidable from evidence that survives the failed step", (
 });
 
 describe("the container lookup cannot invent a container", () => {
-  it("prefers the ancestor filter, then the pre-pull diff, then the newest container", () => {
-    expect(
-      chooseContainer({ ancestor: ["a"], before: ["b"], after: ["a", "b"], latest: "c" }),
-    ).toEqual({ id: "a", method: "docker ps --filter ancestor" });
-    expect(
-      chooseContainer({ ancestor: [], before: ["b"], after: ["b", "a"], latest: "c" }),
-    ).toEqual({
+  it("prefers the ancestor filter, then the pre-pull diff, and names the lookup that worked", () => {
+    expect(chooseContainer({ ancestor: ["a"], before: ["b"], after: ["a", "b"] })).toEqual({
+      id: "a",
+      method: "docker ps --filter ancestor, appeared since the pre-pull snapshot",
+    });
+    expect(chooseContainer({ ancestor: [], before: ["b"], after: ["b", "a"] })).toEqual({
       id: "a",
       method: "new container since the pre-pull snapshot",
-    });
-    expect(chooseContainer({ ancestor: [], before: [], after: [], latest: "c" })).toEqual({
-      id: "c",
-      method: "most recently created container",
     });
   });
 
   it("says it found nothing rather than returning a wrong id", () => {
-    const chosen = chooseContainer({ ancestor: [], before: ["b"], after: ["b"], latest: null });
+    const chosen = chooseContainer({ ancestor: [], before: ["b"], after: ["b"] });
     expect(chosen.id).toBeNull();
     expect(chosen.method).toMatch(/none/);
   });
 
-  it("trap 5: a container that predates the pre-pull snapshot is not the scan's container", () => {
-    // The diff direction matters: `before` ⊆ `after` means nothing new started,
-    // so the fallback must not pick a leftover container as this run's scan.
+  it("trap 5 (A1): a newest-container fallback would print SITE REGRESSED from another run's container", () => {
+    // The reviewer's reproduction at c44394fb, verbatim: tiers 1–2 have proven
+    // that nothing appeared during this run, so `b` predates the snapshot and is
+    // not this run's scan. Tier 3 used to hand it to the classifier, which then
+    // claimed `scan-found-fail-alerts` — the one wrong answer this diagnostic
+    // exists to prevent.
+    const chosen = chooseContainer({ ancestor: [], before: ["a"], after: ["a"], latest: "b" });
+    expect(chosen).toEqual({ id: null, method: "none — no container found" });
+    const result = classifyZapFailure({
+      imageOutcome: "success",
+      scanOutcome: "failure",
+      container: chosen.id === null ? null : { ...chosen, exitCode: 1 },
+      report: parseZapReport(null),
+    });
+    expect(result.class).toBe(ZAP_CLASSES.noContainer);
+    expect(result.headline).not.toMatch(/SITE REGRESSED|regress/i);
+  });
+
+  it("trap 5 (A1): an ancestor hit that predates the snapshot is not this run's scan either", () => {
+    // Tier 1 runs first, so it needs the same provenance filter: on a reused or
+    // self-hosted runner a stale container of the pinned image matches the
+    // ancestor filter without belonging to this job.
     expect(
-      chooseContainer({ ancestor: [], before: ["x", "y"], after: ["x", "y"], latest: null }),
+      chooseContainer({
+        ancestor: ["bbbbbbbbbbbb"],
+        before: ["bbbbbbbbbbbb"],
+        after: ["bbbbbbbbbbbb"],
+      }),
     ).toEqual({ id: null, method: "none — no container found" });
+    // …and the filter never rejects the scan's own container, which by
+    // construction appeared after the snapshot.
+    expect(
+      chooseContainer({
+        ancestor: ["bbbbbbbbbbbb"],
+        before: ["aaaaaaaaaaaa"],
+        after: ["aaaaaaaaaaaa", "bbbbbbbbbbbb"],
+      }),
+    ).toEqual({
+      id: "bbbbbbbbbbbb",
+      method: "docker ps --filter ancestor, appeared since the pre-pull snapshot",
+    });
+  });
+
+  it("refuses to guess when the pre-pull snapshot could not be read", () => {
+    // An unreadable snapshot is not an empty runner: with nothing to intersect
+    // against, any id in `ancestor` could be from another run.
+    const chosen = chooseContainer({
+      ancestor: ["a"],
+      before: [],
+      after: ["a"],
+      snapshotTaken: false,
+    });
+    expect(chosen.id).toBeNull();
+    expect(chosen.method).toMatch(/pre-pull snapshot is unavailable/);
   });
 
   it("ignores empty lines from docker's output", () => {
-    expect(chooseContainer({ ancestor: [""], before: [], after: [], latest: null }).id).toBeNull();
+    expect(chooseContainer({ ancestor: [""], before: [], after: [] }).id).toBeNull();
+  });
+
+  it("property (A1): over the whole lookup cross-product, only a container that appeared since the snapshot can yield a site verdict", () => {
+    const ids = ["a", "b", "c"];
+    const lists = [[], ["a"], ["b"], ["c"], ["a", "b"]];
+    const exits = [0, 1, 2, 3, 137];
+    let checked = 0;
+    let siteVerdicts = 0;
+    for (const ancestor of lists) {
+      for (const before of lists) {
+        for (const after of lists) {
+          for (const exitCode of exits) {
+            checked += 1;
+            const chosen = chooseContainer({ ancestor, before, after });
+            if (!ids.includes(chosen.id)) continue;
+            // Provenance: whatever was chosen must not have been on the runner
+            // before the pre-pull snapshot, from either lookup.
+            expect(before, `${chosen.id} predates the snapshot`).not.toContain(chosen.id);
+            const result = classifyZapFailure({
+              imageOutcome: "success",
+              scanOutcome: "failure",
+              container: { ...chosen, exitCode },
+              report: parseZapReport(null),
+            });
+            if (
+              result.class === ZAP_CLASSES.failAlerts ||
+              result.class === ZAP_CLASSES.warnAlerts
+            ) {
+              siteVerdicts += 1;
+              expect([1, 2]).toContain(exitCode);
+            }
+          }
+        }
+      }
+    }
+    expect(checked).toBe(lists.length ** 3 * exits.length);
+    expect(siteVerdicts).toBeGreaterThan(0);
   });
 });
 
@@ -360,6 +470,35 @@ describe("the job-summary block is what a reader (or triage) sees first", () => 
     const md = renderAttribution(abort);
     expect(md.endsWith("\n")).toBe(true);
     expect(md.endsWith("\n\n")).toBe(false);
+  });
+
+  it("carries the capture notes into the signals and the summary (B1)", () => {
+    // `captured <path>` is the only record of which of the three candidate log
+    // locations existed; dropping it on the floor made the artifact's own
+    // account of itself unreadable.
+    const notes = [
+      "docker logs captured 4096 bytes into zap-container.log",
+      "captured /home/zap/zap.log",
+    ];
+    const result = classifyZapFailure({
+      imageOutcome: "success",
+      scanOutcome: "failure",
+      container: container({ exitCode: 3 }),
+      report: parseZapReport(null),
+      notes,
+    });
+    expect(result.signals.captureNotes).toEqual(notes);
+    const md = renderAttribution(result);
+    expect(md).toMatch(/Capture notes/);
+    expect(md).toContain("- docker logs captured 4096 bytes into zap-container.log");
+    expect(md).toContain("- captured /home/zap/zap.log");
+    // The claim the :408 comment used to make: containers.txt is the raw
+    // `docker ps -aq` id list, and no note lives there.
+    expect(md).not.toMatch(/containers\.txt/);
+  });
+
+  it("prints no capture-notes section when there is nothing to report", () => {
+    expect(renderAttribution(abort)).not.toMatch(/Capture notes/);
   });
 });
 
@@ -504,5 +643,152 @@ describe("staging.yml: the attribution must not weaken the gate", () => {
     expect(script).toMatch(/docker", \["logs", chosen\.id\]/);
     expect(script).toMatch(/docker", \["cp",/);
     expect(script).toMatch(/state\.ExitCode|\{\{\.State\.ExitCode\}\}/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The capture half (B2, #397). Docker answers nothing here or on CI, so the
+// buffer behaviour is pinned on the capture helper itself and then end-to-end:
+// the CLI runs against a throwaway `docker` earlier on PATH, and what is
+// asserted is the evidence that survives into the artifact directory.
+// ---------------------------------------------------------------------------
+describe("the capture keeps the evidence it takes (B2, #397)", () => {
+  it("captures output larger than node's 1 MiB default instead of returning null", () => {
+    const captured = runCapture(process.execPath, [
+      "-e",
+      "process.stdout.write('x'.repeat(3*1024*1024))",
+    ]);
+    expect(captured.error).toBeNull();
+    expect(captured.ok).toBe(true);
+    expect(captured.stdout).toHaveLength(3 * 1024 * 1024);
+    expect(MAX_CAPTURE_BYTES).toBeGreaterThan(captured.stdout.length);
+  });
+
+  it("keeps 'no output' and 'capture failed' distinguishable", () => {
+    expect(runCapture(process.execPath, ["-e", "process.exit(0)"])).toEqual({
+      ok: true,
+      stdout: "",
+      error: null,
+    });
+    expect(runCapture(process.execPath, ["-e", "process.exit(7)"])).toEqual({
+      ok: false,
+      stdout: null,
+      error: "exit 7",
+    });
+  });
+});
+
+describe("the CLI writes the evidence it gathered into the artifact (A1/B1/B2, #397)", () => {
+  const SCRIPT = resolve(process.cwd(), "scripts/zap-failure-attribution.mjs");
+  const IMAGE = `ghcr.io/zaproxy/zaproxy@sha256:${"a".repeat(64)}`;
+  const SCAN = "d9f0a1b2c3d4";
+  const STALE = "aaaaaaaaaaaa";
+
+  /**
+   * Run the CLI against a stub `docker` on PATH and hand the artifact directory
+   * to `check`. `before`/`after` are the container id lists around the pre-pull
+   * snapshot; the stub answers exactly the calls the CLI makes, and exits 0 with
+   * no output for anything else (a capture that found nothing).
+   */
+  function withFakeDocker(fixture, check) {
+    const root = mkdtempSync(join(tmpdir(), "zap-attribution-"));
+    try {
+      const bin = join(root, "bin");
+      const artifact = join(root, "zap-failure");
+      const workspace = join(root, "workspace");
+      mkdirSync(bin, { recursive: true });
+      mkdirSync(artifact, { recursive: true });
+      mkdirSync(workspace, { recursive: true });
+      writeFileSync(join(artifact, "containers-before.txt"), `${fixture.before.join("\n")}\n`);
+      const dockerLog = join(root, "docker-logs");
+      writeFileSync(dockerLog, "z".repeat(fixture.logBytes));
+      const zapLog = join(root, "zap.log");
+      writeFileSync(zapLog, "zap home log\n");
+
+      // The stale arms exist so a resurrected "newest container" fallback finds
+      // a readable exit 1 on the leftover container and prints SITE REGRESSED —
+      // the failure mode review A1 reproduced, reachable from this stub.
+      const stub = `#!/bin/sh
+case "$*" in
+  "ps -aq --filter ancestor=${IMAGE}") printf '%s\\n' ${fixture.ancestor.join(" ")} ;;
+  "ps -aq") printf '%s\\n' ${fixture.after.join(" ")} ;;
+  "ps -aql") echo ${STALE} ;;
+  "inspect -f {{.State.ExitCode}} ${SCAN}") echo ${fixture.exitCode} ;;
+  "inspect -f {{.State.Status}} ${SCAN}") echo exited ;;
+  "inspect ${SCAN}") echo '{}' ;;
+  "logs ${SCAN}") cat "${dockerLog}" ;;
+  "inspect -f {{.State.ExitCode}} ${STALE}") echo 1 ;;
+  "inspect -f {{.State.Status}} ${STALE}") echo exited ;;
+  "inspect ${STALE}") echo '{}' ;;
+  "logs ${STALE}") echo "another run's container log" ;;
+  "cp ${SCAN}:/home/zap/zap.log"*) cp "${zapLog}" "$3" ;;
+  "cp "*) exit 1 ;;
+esac
+exit 0
+`;
+      writeFileSync(join(bin, "docker"), stub, { mode: 0o755 });
+
+      const run = spawnSync(process.execPath, [SCRIPT], {
+        encoding: "utf8",
+        cwd: workspace,
+        env: {
+          ...process.env,
+          PATH: `${bin}:${process.env.PATH}`,
+          ZAP_ARTIFACT_DIR: artifact,
+          GITHUB_WORKSPACE: workspace,
+          ZAP_IMAGE: IMAGE,
+          ZAP_IMAGE_OUTCOME: "success",
+          ZAP_SCAN_OUTCOME: "failure",
+        },
+      });
+      return check({ artifact, run });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+
+  it("never picks a container that predates the pre-pull snapshot (A1)", () => {
+    // The reviewer's reproduction, end to end: the runner holds the same image's
+    // container from an earlier run (readable, exit 1), and nothing appeared
+    // during this one. Both lookups must refuse it rather than print the site
+    // verdict its exit code would imply.
+    withFakeDocker(
+      {
+        before: [STALE],
+        after: [STALE],
+        ancestor: [STALE],
+        exitCode: 1,
+        logBytes: 16,
+      },
+      ({ artifact, run }) => {
+        expect(run.status).toBe(0);
+        expect(run.stdout).toContain(`**${ZAP_CLASSES.noContainer}**`);
+        expect(run.stdout).not.toMatch(/SITE REGRESSED/);
+        expect(readFileSync(join(artifact, "notes.txt"), "utf8")).toMatch(/no container chosen/);
+        expect(() => readFileSync(join(artifact, "zap-container.log"))).toThrow();
+      },
+    );
+  });
+
+  it("keeps a >1 MiB container log, and names it, instead of dropping it (B1/B2)", () => {
+    withFakeDocker(
+      { before: [], after: [SCAN], ancestor: [SCAN], exitCode: 3, logBytes: 3 * 1024 * 1024 },
+      ({ artifact, run }) => {
+        expect(run.status).toBe(0);
+        expect(run.stdout).toContain(`**${ZAP_CLASSES.scanAborted}**`);
+        expect(run.stdout).toMatch(/docker logs captured 3145728 bytes/);
+        expect(run.stdout).toContain("- captured /home/zap/zap.log");
+        expect(readFileSync(join(artifact, "zap-container.log"), "utf8")).toHaveLength(
+          3 * 1024 * 1024,
+        );
+        const notes = readFileSync(join(artifact, "notes.txt"), "utf8");
+        expect(notes).toMatch(/docker logs captured 3145728 bytes into zap-container\.log/);
+        expect(notes).toMatch(/captured \/home\/zap\/zap\.log/);
+        // The same notes ride the signals, so attribution.json — the artifact a
+        // future triage reads — carries them too.
+        const { signals } = JSON.parse(readFileSync(join(artifact, "attribution.json"), "utf8"));
+        expect(signals.captureNotes).toEqual(notes.trimEnd().split("\n"));
+      },
+    );
   });
 });
