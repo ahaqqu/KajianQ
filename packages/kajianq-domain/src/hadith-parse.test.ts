@@ -32,7 +32,7 @@ async function loadSlices() {
   };
 }
 
-describe("hadith grade consolidation (ADR-0025 dhaif-wins)", () => {
+describe("hadith grade consolidation (ADR-0026 dhaif-wins)", () => {
   it("maps every real grade class in the fixture: dhaif wins, hasan beats sahih", async () => {
     const { arabicText } = await loadSlices();
     const edition = parseHadithEdition("abudawud", "arabic", JSON.parse(arabicText));

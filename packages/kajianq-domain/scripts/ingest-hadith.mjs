@@ -25,7 +25,7 @@
  *   5. persist the IngestionReport to `eval_runs` (the report ledger) via
  *      the RagStore batch-report seam.
  *
- * Source: fawazahmed0/hadith-api editions (Unlicense; ADR-0025). Idempotency:
+ * Source: fawazahmed0/hadith-api editions (Unlicense; ADR-0026). Idempotency:
  * parents upsert by sourceKey, children by (parentId, ordinal), pairs by
  * pairKey, reports by run id — re-running the script is safe by construction
  * (rows), but NOT by cost (a pass re-embeds every row it reads, ADR-0037):

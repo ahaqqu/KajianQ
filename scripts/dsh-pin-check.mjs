@@ -19,7 +19,8 @@
 // the configured list, never a session's recorded one.
 //
 // A failure is fixed by editing the harness config, never by rerouting the
-// pin (ADR-0023 decision 3). An id the catalog does not serve cannot be fixed
+// pin: a per-harness fallback forks the pin truth and makes the run silently
+// weaker than the pin declares. An id the catalog does not serve cannot be fixed
 // by declaring it: that failure means the pin or the provider must change, and
 // --fix refuses to write for it.
 //

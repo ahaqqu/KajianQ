@@ -1,8 +1,9 @@
 import { defineConfig } from "vite-plus";
 
 // Vite+ (vp) owns the check layer (lint via Oxlint, format via Oxfmt) plus
-// the web dev/build/test surface (ADR-0029): apps/web scripts and the root
-// test run via vp. apps/api stays bun + Alchemy (ADR-0027/0028); bun stays
+// the web dev/build/test surface: apps/web scripts and the root test run via
+// vp, version-coupled to vp's own bundled Vite/Vitest (`scripts/check-vp-vite-pin.mjs`
+// is the guard). apps/api stays bun on the VPS (ADR-0027, ADR-0044); bun stays
 // package manager and script router.
 //
 // only ones in the lint/format corpus. Byte-exact fixture dirs are excluded
@@ -17,7 +18,7 @@ export default defineConfig({
       "**/test-results/**",
       "**/playwright-report/**",
       ...byteExactFixtures,
-      // Harness config is project-owned (ADR-0030).
+      // Harness config is project-owned (template-sync is retired).
       ".zcode/**",
       "bun.lock",
     ],

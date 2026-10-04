@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Vite+ version-coupling guard (ADR-0029, decision 5): apps/web's direct
+// Vite+ version-coupling guard: apps/web's direct
 // `vite` devDependency is the import site for vite.config.ts and the peer
 // the Vite plugins resolve against, while `vp dev/build/preview` execute
 // vp's own bundled Vite. The two must stay on the same revision or the
@@ -33,7 +33,7 @@ if (!vitePin || !bundledVite) {
 }
 if (vitePin !== bundledVite) {
   console.error(
-    `vp-vite-pin: apps/web vite ${vitePin} !== vite-plus bundled vite ${bundledVite} — align them (ADR-0029 decision 5) before bumping either`,
+    `vp-vite-pin: apps/web vite ${vitePin} !== vite-plus bundled vite ${bundledVite} — align them before bumping either`,
   );
   process.exit(1);
 }
@@ -47,7 +47,7 @@ if (!vitestPin || !coveragePin || !bundledVitest) {
 }
 if (vitestPin !== bundledVitest || coveragePin !== bundledVitest) {
   console.error(
-    `vp-vitest-pin: root vitest ${vitestPin} / @vitest/coverage-v8 ${coveragePin} !== vite-plus bundled vitest ${bundledVitest} — align them (ADR-0029 decision 5) before bumping either`,
+    `vp-vitest-pin: root vitest ${vitestPin} / @vitest/coverage-v8 ${coveragePin} !== vite-plus bundled vitest ${bundledVitest} — align them before bumping either`,
   );
   process.exit(1);
 }

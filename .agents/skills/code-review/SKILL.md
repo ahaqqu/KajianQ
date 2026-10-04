@@ -11,7 +11,7 @@ Use this skill when reviewing a pull request after it has been created. It is th
 ## Review depth (determined by the change, not negotiated)
 
 - **Normal** — this skill's philosophy and guardrail review only. Allowed only when the PR touches **no code**: docs, skills, agent-instruction files, ADRs, specs, and similar non-runtime surfaces.
-- **Thermos (mandatory for code)** — if the diff touches any runtime code (`apps/`, `packages/`, `scripts/`, migrations, CI workflows), dispatch `.agents/skills/thermos-with-comments/SKILL.md` and post its itemized findings. This is not optional and not a recommendation — a PR that changes code is always reviewed at thermos depth.
+- **Thermos (mandatory for code)** — if the diff touches any runtime code (`apps/`, `packages/`, `scripts/`, migrations, CI workflows), load `.agents/skills/thermos-with-comments/SKILL.md` and post its itemized findings, running both thermo passes yourself (security/correctness with `thermo-nuclear-review`, then maintainability with `thermo-nuclear-code-quality-review`) instead of delegating them to sub-reviewers: the provider allows three concurrent sessions with the manager as one of them, so one reviewer running both passes is what keeps a review inside the loop's budget. This is not optional and not a recommendation — a PR that changes code is always reviewed at thermos depth.
 
 There is no third depth. If a PR mixes code and docs, thermos applies to the whole PR.
 

@@ -3,12 +3,12 @@
  *
  * This module owns the hadith-specific shapes: the (collection, hadith
  * number) address, the `HR. Collection no. N (Grade)` citation format
- * (CONTEXT.md), and the per-grader grade consolidation policy (ADR-0025).
+ * (CONTEXT.md), and the per-grader grade consolidation policy (ADR-0026).
  * The engine packages never name any of this vocabulary (dars-pluggability
  * rule 1); it arrives here as typed values and is handed to `@app/rag-ingest`
  * through its generic seams.
  *
- * v1 source is fawazahmed0/hadith-api (Unlicense; ADR-0025): per-grader
+ * v1 source is fawazahmed0/hadith-api (Unlicense; ADR-0026): per-grader
  * grades ship on the *Arabic* edition entries; sanad is not structured in any
  * v1 dataset — the isnad stays embedded in the verbatim `text_raw`, and
  * per-chain grades remain v2 (ADR-0012, Sanadset).
@@ -27,7 +27,7 @@ export const GRADES = ["mutawatir", "sahih", "hasan", "dhaif"] as const;
 export type Grade = (typeof GRADES)[number];
 
 /**
- * The v1 collections (ADR-0025): the source provides Arabic + Indonesian
+ * The v1 collections (ADR-0026): the source provides Arabic + Indonesian
  * editions with per-grader grades for these seven. Musnad Ahmad and Sunan
  * ad-Darimi are absent from the source and are documented, not force-merged
  * from an ungraded scraper.
@@ -109,7 +109,7 @@ export function isWeakGrade(grade: string): boolean {
 
 /**
  * Consolidate the source's per-grader grades into the single filterable
- * `Grade` (CONTEXT.md vocabulary), conservative dhaif-wins (ADR-0025): any
+ * `Grade` (CONTEXT.md vocabulary), conservative dhaif-wins (ADR-0026): any
  * grader asserting a weak class (Daif/Munkar/Shadh/Mawdu/…) makes the hadith
  * `dhaif` — under-grading is the safe failure mode because dhaif material is
  * always flagged at retrieval. Otherwise the strongest agreed positive

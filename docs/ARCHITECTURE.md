@@ -12,7 +12,7 @@ plan — the current package tree, data layer, cost model, and phased plan — s
 `adr/` (0005 onward, numbered to continue the sequence); vocabulary in [`CONTEXT.md`](../CONTEXT.md).
 
 This project was originally forked from `agentic-project-template`, but
-mechanical template-sync has been retired (ADR-0030). Its `docs/ARCHITECTURE.md`
+mechanical template-sync has been retired. Its `docs/ARCHITECTURE.md`
 is project-owned and was never synced wholesale: two of the template's
 foundational pillars are superseded here by decision, and it predates DARS
 entirely. This file keeps the template's pillar structure, marks each pillar
@@ -183,7 +183,7 @@ Account deletion cascades across all data stores, including `answer_traces`
   and global-for-the-deployment are the same set; the Durable Object backend was
   removed with the Cloudflare serving path. The counter is named by a digest
   (`fnv1aHex`), so no raw IP is held. Originally inherited from the template;
-  now project-owned (ADR-0030). **Two consequences of the move, stated rather
+  now project-owned. **Two consequences of the move, stated rather
   than discovered later:** (1) the counter lives in the process, so a restart or
   a deploy resets it — a burst straddling a restart gets a fresh budget; and (2)
   with the Cloudflare CDN proxy **off** (ADR-0044 decision 4, DNS-only), a
