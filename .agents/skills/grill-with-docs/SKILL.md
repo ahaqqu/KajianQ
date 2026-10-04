@@ -104,6 +104,6 @@ Grilling is done when:
 - [ ] Every architecture principle has been checked against the design.
 - [ ] Every design pressure question has a concrete answer (no "we'll figure it out later").
 - [ ] The glossary covers every noun and verb in the design with unambiguous definitions.
-- [ ] Every structural decision has an ADR, or a note explaining why it doesn't need one.
+- [ ] Every decision the `AGENTS.md` bar makes a record has one, or a note explaining why it doesn't need one.
 - [ ] The user has reviewed and approved the glossary and ADRs.
 - [ ] The user has confirmed shared understanding and permission to proceed.

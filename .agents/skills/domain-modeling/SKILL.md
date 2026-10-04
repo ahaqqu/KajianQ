@@ -26,7 +26,7 @@ This repo is single-context. Maintain one glossary at the root and ADRs under `a
 ├── CONTEXT.md                ← concise mental model (already exists)
 ├── docs/
 │   └── ARCHITECTURE.md       ← architecture principles
-├── adr/                      ← architecture decision records
+├── adr/                      ← product and architecture decision records
 └── .agents/skills/...        ← skills (do not write here)
 ```
 
@@ -69,12 +69,12 @@ When a term is resolved, update `docs/GLOSSARY.md` right there. Don't batch thes
 
 Whether a decision earns a record is stated once, in `AGENTS.md`'s Decisions
 bullet — read the bar there before offering one. `adr/TEMPLATE.md` is the shape to
-copy (decision first, then why, 20–40 lines). Most sessions have no ADR to write.
+copy. Most sessions have no ADR to write.
 
 ## Completion criterion
 
 Domain modeling is done when:
 
 - [ ] Every noun and verb in the design has an unambiguous definition in `docs/GLOSSARY.md`.
-- [ ] Every structural decision that meets the ADR threshold has an ADR, or a note explaining why it doesn't need one.
+- [ ] Every decision the `AGENTS.md` bar makes a record has one, or a note explaining why it doesn't need one.
 - [ ] The user has reviewed and approved the glossary and ADRs.

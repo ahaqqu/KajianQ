@@ -2,7 +2,9 @@
 
 Copy to `adr/NNNN-<slug>.md`, continuing the numbered sequence. This file is a
 template, not a record: it takes no number, and the shapes in it are examples,
-not citations.
+not citations. A code-span path written here is counted, never checked, and
+nothing pins that count — keep the examples placeholders, and re-derive it when
+they change.
 
 ## The shape
 
@@ -24,6 +26,10 @@ block has the decision.>
 carries its values, the gate that enforces it.>
 ```
 
+The record carries no `Status` or `Date` field: a decision is accepted by being
+recorded, and its state lives in its `SPECS.md` §8 row — a changed record is
+rewritten in place and a deleted one leaves the tombstone there, not here.
+
 ## The budget
 
 Target 20–40 lines; 60 is the hard cap; the Decision block comes first and stays
@@ -37,7 +43,7 @@ Counts, percentages, sizes and prices; model ids and versions; run, sha and trac
 ids; `file:line` citations and test enumerations; implementation maps, evidence
 dumps and PR play-by-play; "today" and "currently", because a record has no
 present tense; amendment chains, because a changed decision is rewritten in place
-and a superseded one is deleted.
+and a superseded one is deleted, leaving one tombstone line in `SPECS.md` §8.
 
 How a mechanism works is out too: a gate's internals, a script's algorithm, a
 prompt's wording, a workflow's step order. State the decision the mechanism
