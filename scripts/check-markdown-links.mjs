@@ -1,323 +1,34 @@
 #!/usr/bin/env bun
 /**
- * Doc reference-resolution gate (Markdown links + inline code spans).
+ * Doc reference-resolution gate — the driver.
  *
- * THE INVARIANT. A living document that routes a reader to a path that does
- * not exist must redden `bun run docs:links`. Why this is a gate and not a
- * nice-to-have: this repository's docs cite each other as *evidence* — an
- * Art. 30 TOMs row points at the executed cutover log, the privacy notice
- * points at the register's decisions, a skill points at the runbook it
- * implements. A dangling one of those is not a typo; it is a compliance claim
- * whose proof has gone missing, and nothing else in CI would notice. GitHub
- * renders a dead relative link as ordinary text, so a reader cannot tell they
- * are looking at a broken citation either.
+ * THE CONTRACT, in full, is the header of `./markdown-links/policy.mjs`: the
+ * invariant, the resolution base, every scope rule and class rule with its named
+ * cost, and the policy data below it. Read that header to know what this gate
+ * enforces and what it deliberately does not; read this file for how it runs.
  *
- * This exists because the docs were consolidated (the VPS set was reduced to a
- * setup guide, an operations manual, and the evidence record) and every
- * deletion had to repoint its citations. Without this gate that repointing is
- * done by hand and verified by eye — the exact shape of check that rots.
- *
- * TWO SHAPES OF THE SAME CLAIM
- *
- *   1. `[text](relative/path)` — a Markdown link.
- *   2. `` `relative/path` `` — an inline code span naming a repo path, and
- *      `` `skill-name` skill `` — an inline code span naming a skill.
- *
- * Shape 2 was invisible until #368: agent-facing prose cites files as code
- * spans far more often than as links, and `AGENTS.md` routed every role to two
- * skills deleted in #133 while this gate stayed green. #367 repointed those
- * three references by hand; this gate is what would have caught them.
- *
- * RESOLUTION BASE — the committed tree, never the working tree.
- *
- *   A reference resolves when its target is in the git index: a tracked file,
- *   or a tracked directory (`apps/`, `.agents/skills/manager/`,
- *   `provision/vps/`). Two bases are tried for a code span — the repository
- *   root and the containing file's directory — and the span resolves if
- *   either finds it. `packages/infra/README.md` writes `scripts/db-migrate.mjs`
- *   meaning the package-relative `packages/infra/scripts/db-migrate.mjs`;
- *   a root-only rule would redden that honest reference. Markdown links keep
- *   their single, correct base: a renderer resolves `(path)` against the
- *   containing file and nothing else, so accepting a root-relative fallback
- *   there would hide a link that is broken on GitHub.
- *
- *   Why the index and not `existsSync`: `apps/web/dist/index.html` is cited by
- *   `docs/VPS-SETUP.md` and `docs/VPS-OPERATIONS.md` and is a *build output* —
- *   present after `bun run build:web`, absent in a fresh clone. A
- *   filesystem-resolving gate would be green for whoever just ran
- *   `bun run size-limit` and red in CI, so its verdict would measure the
- *   caller's build state rather than the commit. A gate that is not the same
- *   for every caller is not evidence. Targets git ignores are counted and
- *   skipped (`gitignored build paths` in the OK line), derived from
- *   `.gitignore` rather than a hand-kept list.
- *
- *   COST, named: a new file must be `git add`ed before the gate can see it,
- *   and a tracked file deleted from the working tree without being staged
- *   still counts as present. Both are the same rule working as intended —
- *   the gate resolves the commit, not the checkout.
- *
- * SCOPE RULES — what is a claim, and what is deliberately not
- *
- *   A code span is a repo-path claim when its text has no whitespace, no glob
- *   character (`*?[]{}`), no template placeholder (`<slug>`, `<role>`,
- *   `<label>`), no URL/anchor prefix (`https:`, `mailto:`, `tel:`, `#`, `//`),
- *   no ellipsis (`…`, `...`), and either starts with a tracked root — every
- *   top-level directory of the tree, listed in CLAIM_ROOTS — or is exactly a
- *   tracked root-level file name.
- *
- *   The span is normalised before any of that: a trailing line citation
- *   (`path:42`, `path:42-58`), an in-file fragment (`path#L24`) and punctuation
- *   the prose swallowed into the span (`docs/X.md,`) are not part of the path,
- *   so `docs/X.md:42` is a claim on `docs/X.md` and is checked as one
- *   (`normaliseSpanTarget`). This is the rule the link half already applied to
- *   its `#fragment`; without it the two halves disagreed, and a line citation —
- *   the sanctioned way to point at a line — would redden a correct document.
- *
- *   Each of those exclusions carries its class out of scope, deliberately:
- *     - whitespace → `bun run lint`, `git stash`, and every command line;
- *     - globs → `**\/*.ts`;  placeholders → `<slug>`;  URLs → `https://…`;
- *     - `~/.dsh/settings.yaml` is out by the tracked-root rule (its first
- *       segment is neither a tracked root nor a root-level file);
- *     - ellipsis → a truncated *display label*, never a path: class D of the
- *       #368 corpus (`adr/0037-…`, 5 spans). Where such a label is the text of
- *       a Markdown link, the link's own target is still resolved below.
- *     - a span inside a fenced code block is an example, not a citation (the
- *       `prose()` filter this gate has always applied).
- *     - root-absolute or `~`-rooted targets, and prose that merely mentions a
- *       path outside backticks, are not repo-relative claims.
- *
- *   COST, named: a bare file name that is *not* a tracked root-level file is
- *   not a claim, so `` `models.json` `` and `` `apply.sh` `` (both real files
- *   under subdirectories) stay prose, and a *deleted* root-level file named
- *   bare — `VPS-CUTOVER-RUNBOOK.md` — would not be caught. Measured, a wider
- *   "any bare dotted token" rule is a false-positive factory: 300+ such tokens
- *   are version strings (`4.0.0-rc.113`), TS member expressions
- *   (`Effect.runPromise`) or model ids (`glm-5.3`). A bare name only becomes a
- *   checked claim when it is a *path* (has a `/`) or is a tracked root file.
- *
- * CLASS RULES (the #368 corpus map, re-derived at 07cb2914 — see the PR body)
- *
- *   A — ADR cited by number: `` `adr/0045` `` in the spec's §8 Record of
- *       Decisions. `adr/NNNN` with exactly four digits resolves when at least
- *       one file in `adr/` is named `NNNN-*.md`. The four-digit requirement is
- *       the precision: `adr/004` and `adr/00455` are typos, not identifiers,
- *       and stay flagged. "At least one" rather than "exactly one" because the
- *       gate resolves identifiers, not numbering: `adr/0005` is deliberately
- *       carried by two files — the operative monorepo ADR and a
- *       template-heritage near-duplicate that declares itself superseded by
- *       ADR-0023 and states that the number `0005` belongs to the monorepo ADR.
- *       The spec's §8 row points at the operative one, and the identifier is
- *       real under either reading; a stricter rule would fail a correct row
- *       over a record the repository keeps on purpose. All 49 class-A spans
- *       resolve.
- *
- *   B — an artifact its own ADR retired: 43 spans across the 13 files of `adr/`
- *       at the time of writing (ADR-0030 names `scripts/template-sync/` because
- *       it retired it), plus 2 in the executed cutover log — 45 dead claims over
- *       14 record files in total. RECORDS_RULE below covers the class.
- *
- *   C — a living doc naming an artifact that is gone: four spans total, in
- *       `SPECS.md` and `docs/ARCHITECTURE.md`, each narrating its target's
- *       removal (`Dropped from template: packages/local-first`, `Before the
- *       move, apps/api/alchemy.run.ts …`). Covered by KNOWN_RETIRED, below.
- *
- *   D — elided display labels, handled by the ellipsis scope rule above.
- *
- * RECORDS_RULE — `adr/**` and `docs/VPS-CUTOVER-RECORD.md` are *records of a
- *   moment*, not living docs: a path in them is evidence of what was, not an
- *   instruction to a reader. ADR-0030 names `scripts/template-sync/` precisely
- *   *because* it retired it; the cutover record is the executed log of a
- *   one-shot procedure. AGENTS.md forbids editing `adr/` to make a gate pass,
- *   so those 45 spans cannot be repaired, only exempted — and an allowlist of
- *   45 entries across 14 files is not the "tiny, reasoned" kind this gate
- *   tolerates. This is the rule instead, stated with its cost:
- *
- *     WHICH FILE IS A RECORD (the membership rule): `RECORD_DIRS` /
- *     `RECORD_FILES` may only list a document whose content is an executed log
- *     or a decision record — a file whose *past tense is the point*: the ADR
- *     that retired an artifact, the cutover that executed a procedure. A living
- *     how-to, a spec or a skill never joins it, because a reader is meant to act
- *     on those. Adding a file is a deliberate, reviewable line in the diff, and
- *     the dead count printed on every run is what makes the narrowing's growth
- *     visible; a test asserts each member is a tracked path.
- *
- *     COST, named: dead code-span claims inside records are not failures. They
- *     are counted and printed on every green run (`N dead claims inside record
- *     files unchecked`), so the narrowing is visible and its growth is a
- *     reviewable diff, not a silent hole. The Markdown-link half still applies
- *     inside records — a record whose `[link](path)` rots is still red, and is
- *     still fixable — and `INITIAL_IDEA.md`, frozen history that nobody may
- *     edit, needs no exemption: it carries no dead claim today.
- *
- * KNOWN_RETIRED — an allowlist of four (file, target) pairs, one reason each,
- *   for the class-C living-doc spans that survive the records rule. It is
- *   deliberately tiny and self-pruning: every entry must still match a dead
- *   reference or the gate fails with `stale allowlist entry`, so an entry
- *   cannot outlive the mention it silences. An entry matches the target **as
- *   the document writes it** — the normalised code span, or a link's
- *   destination — and either shape can be silenced by it. The count is printed
- *   in the OK line. Residual risk, named: an entry silences that (file, target)
- *   pair wherever it appears in that file, so if `SPECS.md` later routes a
- *   reader to `packages/local-first` as though it existed, the entry would hide
- *   it.
- *
- * THE POLICY TABLE — one shape → rule matrix, in `POLICY`
- *
- *   Which shape gets which rule is data in this script, not the order of the
- *   `if`s that used to encode it. That order was a defect generator: the
- *   Markdown-link half was handled first and `continue`d, so the gitignore and
- *   allowlist exemptions were unreachable for links — a link to a build output
- *   was red with no escape, while the identical target in a code span was
- *   skipped and counted. Now every rule names its counter and its verdict, and
- *   every *missing* reference — link or span, living doc or record — is offered
- *   the same chain: gitignored (derived from `.gitignore`, not from a list) →
- *   allowlisted (with a reason) → violation.
- *
- *   PRECEDENCE IS A FIELD, not the table's order: `policyFor` takes the matching
- *   rule with the highest `priority`, so permuting `POLICY` cannot change which
- *   rule a shape gets. That is why every rule carries a `priority` and why the
- *   `record` rule's predicate is disjoint from the link rules instead of merely
- *   sitting after them: the array's first match used to decide, and moving
- *   `record` to the head — a pure reorder, no logic touched — stopped the 19
- *   Markdown links inside `adr/**` and the cutover log from being checked while
- *   the gate still printed OK and exited 0 (finding B5). Priorities are unique,
- *   so a tie cannot hand the decision back to source order; both properties are
- *   pinned by tests.
- *
- *   COST, named: a Markdown link to a gitignored build output is skipped and
- *   counted like a span, so a link a reader cannot follow in a fresh clone is
- *   not enforced. That is the price of the exemption being reachable for both
- *   halves at all; it is printed on every run, and a test pins both verdicts.
- *
- * SKILLS_RULE — a backticked kebab-case token adjacent to the word `skill`
- *   (`the `code-review` skill`, `skill `manager``) must name a directory under
- *   `.agents/skills/` that contains a `SKILL.md`. This is the half that would
- *   have caught #367 mechanically: both of its dead references were
- *   `` `agentic-workflow` skill ``-shaped. Measured at 07cb2914: 28 such
- *   references across the scanned roots — 23 in living docs, 5 in records —
- *   every one of them resolving.
- *
- *   Deliberately NOT extended to "the `X` role". Measured at 07cb2914, that
- *   marker has 37 hits over 11 distinct names, and they name three different
- *   things: 16 hits are live harness roles (`.zcode/agents/<role>.md` — `qa`,
- *   `reviewer`, `fixer`), 2 name `test-implementer`, a role ADR-0032 retired,
- *   and the remaining 19 are model-stage names (`embedder`, `cheap`,
- *   `decision-candidates`, `generator`, `kajianq`, …). The third class is a
- *   false-positive factory with no resolution target, which is why the marker
- *   is rejected as a whole — but the harness-role namespace
- *   (`.zcode/agents/<role>.md`) is a **second deliberately unchecked marker**,
- *   not an empty one, and this header says so rather than implying otherwise.
- *   A test pins that distinction.
- *
- *   COST, named: the marker *is* the claim, so a doc naming a skill that lives
- *   outside this repository (a harness-level skill such as `omarchy`) must not
- *   write it as `` `omarchy` skill ``. The failure message says so.
- *
- * Exits non-zero and prints `file:line -> target (reason)` for each dangling
- * reference, plus any stale allowlist entry.
- *
- * A GREEN RUN PRINTS WHAT IT DID NOT CHECK. The OK line names how many
- * references were *checked* and how many actually *resolved*, then every
- * exemption the run took (`N known-retired allowlisted`, `N gitignored build
- * paths skipped`) and the record narrowing (`N record-file claims counted, N
- * dead claims inside record files unchecked`). "resolve" used to be the verb for
- * the checked total, which counted the exempted references as if they had been
- * proved.
- *
- * Exports the classifier, resolver, policy and gate driver — `loadCorpus`,
- * `runGate`, `formatOkLine` — for `tests/scripts/check-markdown-links.test.mjs`,
- * which drives the same function the CLI does instead of a second copy of it.
+ * This half is the mechanism: read the scan roots (the committed tree — never
+ * the working tree), parse prose and inline code spans, judge each reference
+ * through `judgeClaim` (one reading, one verdict), and adjudicate the findings
+ * against the policy table. Exits non-zero and prints `file:line -> target
+ * (reason)` for each dangling reference, plus any stale allowlist entry.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { CLAIM_ROOTS, KNOWN_RETIRED, POLICY, ROOTS } from "./markdown-links/policy.mjs";
 
 /**
  * `dirname(fileURLToPath(import.meta.url))` rather than Bun's `import.meta.dir`:
  * this module is imported by `tests/scripts/check-markdown-links.test.mjs`,
  * which runs under Vitest on Node, where `import.meta.dir` is undefined.
+ *
+ * The gate is self-rooting — it reads its repository from its own location, so a
+ * caller's cwd cannot point it at a different tree — and this line is what
+ * carries that, not the layout beside it.
  */
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-
-/**
- * Files scanned. `.agents/` and `.zcode/` are included deliberately: a skill
- * that points at a retired runbook sends the next agent somewhere that no
- * longer exists, which is how a repo teaches a stale procedure to an
- * autonomous worker.
- */
-export const ROOTS = [
-  "README.md",
-  "AGENTS.md",
-  "CONTEXT.md",
-  "SPECS.md",
-  "INITIAL_IDEA.md",
-  "docs",
-  "adr",
-  "NOTICES",
-  ".agents",
-  ".zcode",
-  "packages",
-];
-
-/**
- * First path segments that make an inline code span a repo-path claim. This is
- * every tracked top-level directory of the repository — the ticket's list plus
- * `.github/` and `.githooks/`, which the list omitted and which turned out to
- * carry 17 real claims (the deploy, staging and restore-drill workflows and
- * `.github/zap-rules.tsv`, cited by `SPECS.md`, `docs/ARCHITECTURE.md`, the
- * Art. 30 record and the `ship` skill). A new top-level directory is a new
- * claim root: add it here, or paths into it are unchecked.
- * `tests/scripts/check-markdown-links.test.mjs` fails if this list stops
- * covering the tracked tree, so that gap cannot open silently.
- */
-export const CLAIM_ROOTS = [
-  "apps",
-  "packages",
-  "scripts",
-  "docs",
-  "adr",
-  ".agents",
-  ".zcode",
-  ".githooks",
-  ".github",
-  "provision",
-  "tests",
-  "NOTICES",
-];
-
-/** Directories and files whose code spans are records of a moment. */
-export const RECORD_DIRS = ["adr"];
-export const RECORD_FILES = ["docs/VPS-CUTOVER-RECORD.md"];
-
-/**
- * The complete allowlist. Every entry must still match a dead reference, or
- * the gate reports it as stale — see the header.
- */
-export const KNOWN_RETIRED = [
-  {
-    file: "SPECS.md",
-    target: "packages/local-first",
-    reason:
-      "§3.1 'Dropped from template' — the sentence's own subject is the pillar this repo dropped",
-  },
-  {
-    file: "SPECS.md",
-    target: "apps/api/alchemy.run.ts",
-    reason:
-      "§8 ADR-0028 row — records that the lifecycle this file owned was superseded by ADR-0044",
-  },
-  {
-    file: "docs/ARCHITECTURE.md",
-    target: "packages/local-first",
-    reason: "'Deviated from the template' — names the local-first pillar as deliberately dropped",
-  },
-  {
-    file: "docs/ARCHITECTURE.md",
-    target: "apps/api/alchemy.run.ts",
-    reason: "'Before the move' — past-tense reference to the retired app-file hosting path",
-  },
-];
 
 const LINK_RE = /\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 const SPAN_RE = /`([^`\n]+)`/g;
@@ -418,6 +129,14 @@ export function normaliseSpanTarget(text) {
 }
 
 /**
+ * Is this a target written against the containing file rather than against the
+ * repository root — `..` itself, or anything under `../`? See SCOPE RULES.
+ */
+export function isFileRelativeTarget(target) {
+  return target === ".." || target.startsWith("../");
+}
+
+/**
  * Is this code span a repo-path claim? See SCOPE RULES in the header — the
  * order of these checks is the contract, and each one names its class. The
  * text is normalised first (`normaliseSpanTarget`), so callers may pass the raw
@@ -436,6 +155,12 @@ export function isPathClaim(text, tree) {
   if (/[<>]/.test(target)) return false; // `<slug>`, `<role>`, `<label>`
   if (/^(?:https?:|mailto:|tel:|#|\/\/)/.test(target)) return false; // URLs, anchors
   if (target.startsWith("/")) return false; // not repo-relative
+  // `..`-rooted: a claim by its form, never by its reading's first segment. The
+  // rules above already reject every non-path shape, and re-testing the reading
+  // against CLAIM_ROOTS would veto a target the link half reddens on (from
+  // `adr/`, `../web/dist` reads as `web/dist`, and `web` is not a tracked root).
+  // See SCOPE RULES — #391.
+  if (isFileRelativeTarget(target)) return true;
   if (!target.includes("/")) return tree.rootFiles.has(target);
   return CLAIM_ROOTS.includes(target.split("/")[0]);
 }
@@ -462,14 +187,6 @@ export function skillMentionAt(line, name, index) {
   return /^skills?\b/i.test(after.slice(span.length).replace(/^\s+/, ""));
 }
 
-/** Is this document a record of a moment rather than a living doc? */
-export function isRecord(relPath) {
-  return (
-    RECORD_DIRS.some((d) => relPath === d || relPath.startsWith(`${d}/`)) ||
-    RECORD_FILES.includes(relPath)
-  );
-}
-
 /** `` `adr/0045` `` resolves against `adr/0045-*.md`; see class A in the header. */
 export function adrIdResolves(target, adrNames) {
   const match = ADR_ID_RE.exec(target);
@@ -477,17 +194,35 @@ export function adrIdResolves(target, adrNames) {
 }
 
 /**
- * Resolve a code span: the repo root first, then the containing file's
- * directory. `"tracked"` or `"missing"` — the two bases are both honest
- * readings of a repo-relative path, and a target neither finds is dead under
- * either.
+ * Judge a code span: the reading *and* the verdict, from one base rule. What
+ * `toRepoPath` returns under that rule is the path the finding reports and the
+ * key `git check-ignore` and the allowlist chain look up, so the two can never
+ * come from different rules (B2) — the disagreement that let a re-entry target
+ * be `ok` as a span and `missing` as a link, and let a finding carry `status ok`
+ * beside a `repoPath` that does not exist (A1).
+ *
+ * The base rule, chosen once, here:
+ *   - a `..`-rooted target is read from the containing file's directory and
+ *     nowhere else, exactly as the Markdown half reads the identical
+ *     destination (see SCOPE RULES);
+ *   - every other target is read from the repository root first, then from the
+ *     containing file's directory — the second base the header blesses for the
+ *     `packages/infra/README.md` control. `repoPath` names the reading that
+ *     actually resolved, falling back to the root reading so a dead target still
+ *     reports the form the exemptions look up.
+ *
+ * `null` when the reading escapes the repository (#391): a target naming a path
+ * outside it, which neither exemption can reach.
  */
-export function resolveClaim(target, fromDir, ctx) {
-  const viaRoot = toRepoPath(ctx.root, "", target);
-  if (viaRoot && isTracked(ctx.tree, viaRoot)) return "tracked";
-  const viaFile = toRepoPath(ctx.root, fromDir, target);
-  if (viaFile && isTracked(ctx.tree, viaFile)) return "tracked";
-  return "missing";
+export function judgeClaim(target, fromDir, ctx) {
+  const readings = isFileRelativeTarget(target)
+    ? [toRepoPath(ctx.root, fromDir, target)]
+    : [toRepoPath(ctx.root, "", target), toRepoPath(ctx.root, fromDir, target)];
+  const hit = readings.find((path) => path && isTracked(ctx.tree, path));
+  return {
+    repoPath: hit ?? readings[0] ?? null,
+    status: hit ? "ok" : adrIdResolves(target, ctx.adrNames) ? "adr-id" : "missing",
+  };
 }
 
 /**
@@ -499,9 +234,20 @@ export function resolveClaim(target, fromDir, ctx) {
  */
 export function analyse(sources, ctx) {
   const findings = [];
+  /**
+   * The one place a finding is built: every shape carries the same fields, with
+   * `repoPath` explicit rather than present-or-absent by branch. A branch names
+   * the shape it saw and, for the two path-shaped kinds, hands over the
+   * `{ repoPath, status }` pair `judgeClaim` produced — it never assembles one
+   * from a status read here and a path read there.
+   */
+  const record = (kind, at, { status, repoPath = null }) => {
+    findings.push({ kind, ...at, repoPath, status });
+  };
   for (const { relPath, text } of sources) {
     const dir = dirname(relPath);
     for (const [i, line] of prose(text).entries()) {
+      const at = (target) => ({ file: relPath, line: i + 1, target });
       for (const match of line.matchAll(LINK_RE)) {
         const raw = match[1];
         // External, protocol-relative, mailto, and same-page anchors are out
@@ -512,23 +258,24 @@ export function analyse(sources, ctx) {
         // domain root. Rather than guess, treat it as a violation: this repo has
         // none, and a future one should be an explicit decision.
         if (raw.startsWith("/")) {
-          findings.push({
-            kind: "link",
-            file: relPath,
-            line: i + 1,
-            target: raw,
-            status: "root-absolute",
-          });
+          record("link", at(raw), { status: "root-absolute" });
           continue;
         }
         const [pathPart] = raw.split("#");
         if (!pathPart) continue; // pure anchor: `#section` handled above
-        const rel = toRepoPath(ctx.root, dir, decodeURIComponent(pathPart));
-        findings.push({
-          kind: "link",
-          file: relPath,
-          line: i + 1,
-          target: raw,
+        let destination;
+        try {
+          destination = decodeURIComponent(pathPart);
+        } catch {
+          // #392: a malformed `%` escape cannot resolve, and the output
+          // contract is a violation line per reference — never an uncaught
+          // `URIError` with no `file:line -> target` to act on. Reported on the
+          // destination as the document wrote it, which is what a reader sees.
+          record("link", at(raw), { status: "malformed-encoding" });
+          continue;
+        }
+        const rel = toRepoPath(ctx.root, dir, destination);
+        record("link", at(raw), {
           // The repo-relative path whose absence is the violation — the form
           // `git check-ignore` needs, and the key the exemption chain looks up.
           repoPath: rel,
@@ -542,33 +289,16 @@ export function analyse(sources, ctx) {
         // one — `docs/X.md:42` is a claim on `docs/X.md`.
         const target = normaliseSpanTarget(rawTarget);
         if (isSkillName(target) && skillMentionAt(line, rawTarget, index)) {
-          findings.push({
-            kind: "skill",
-            file: relPath,
-            line: i + 1,
-            target,
+          record("skill", at(target), {
             repoPath: `.agents/skills/${target}/SKILL.md`,
             status: ctx.skillDirs.has(target) ? "ok" : "missing",
           });
           continue;
         }
         if (!isPathClaim(rawTarget, ctx.tree)) continue;
-        const status =
-          resolveClaim(target, dir, ctx) === "tracked"
-            ? "ok"
-            : adrIdResolves(target, ctx.adrNames)
-              ? "adr-id"
-              : "missing";
-        findings.push({
-          kind: "path",
-          file: relPath,
-          line: i + 1,
-          target,
-          // `resolveClaim` tries the root first; when both bases fail, the
-          // root-relative reading is the one `git check-ignore` can judge.
-          repoPath: toRepoPath(ctx.root, "", target),
-          status,
-        });
+        // One reading, one verdict, one object — `judgeClaim` decides the base
+        // and returns both, so this kind cannot report them from two rules.
+        record("path", at(target), judgeClaim(target, dir, ctx));
       }
     }
   }
@@ -577,81 +307,6 @@ export function analyse(sources, ctx) {
 
 /** A status that means the target was found; anything else needs the policy. */
 export const RESOLVED_STATUSES = new Set(["ok", "adr-id"]);
-
-/**
- * THE POLICY TABLE — the shape → rule matrix, as data.
- *
- * This is deliberately a table rather than the order of `continue`s in
- * `adjudicate`: a rule set encoded as control flow is how the two halves of one
- * claim drifted apart in review (the code-span half consulted the gitignore and
- * allowlist exemptions; the Markdown-link half — handled by an earlier `if` —
- * could not reach them, so a link to a build output was red with no escape).
- *
- * Each rule: `match` picks the finding, `counter` names the count it advances,
- * `priority` is its precedence — the highest matching rule wins, never the
- * first one in the array (see PRECEDENCE above; the values must stay unique),
- * `verdict` is one of
- *   - `counted`    — never a violation (a record's dead claim, a resolving target);
- *   - `violation`  — always a violation, exemption chain not consulted;
- *   - `exemptible` — a *missing* target goes through the one chain below:
- *                    gitignored → allowlisted → violation.
- * `countsResolved: false` keeps a rule's findings out of the OK line's resolving
- * total (record claims are reported separately). A test asserts this table
- * covers every shape `analyse` can emit.
- */
-export const POLICY = [
-  {
-    id: "link-root-absolute",
-    priority: 40,
-    match: (f) => f.kind === "link" && f.status === "root-absolute",
-    counter: "links",
-    verdict: "violation",
-    reason: () => "root-absolute path (resolve it relative to the file instead)",
-  },
-  {
-    id: "link",
-    priority: 30,
-    match: (f) => f.kind === "link",
-    counter: "links",
-    verdict: "exemptible",
-    countsResolved: true,
-    reason: () => "target does not exist",
-  },
-  {
-    // Disjoint from the link rules above, because a record's Markdown links stay
-    // enforced (see RECORDS_RULE): only its code-span claims are counted. Above
-    // `skill`/`path` by priority, so a record claim is never resolved — its
-    // count is reported separately.
-    id: "record",
-    priority: 20,
-    match: (f) => f.kind !== "link" && isRecord(f.file),
-    counter: "recordsClaims",
-    verdict: "counted",
-    countsResolved: false,
-    reason: () => "record of a moment: counted, not enforced",
-    also: (finding, counters) => {
-      if (finding.status === "missing") counters.recordsDead += 1;
-    },
-  },
-  {
-    id: "skill",
-    priority: 10,
-    match: (f) => f.kind === "skill",
-    counter: "skills",
-    verdict: "exemptible",
-    countsResolved: true,
-    reason: (f) => `skill name: no .agents/skills/${f.target}/SKILL.md`,
-  },
-  {
-    id: "path",
-    priority: 0,
-    match: (f) => f.kind === "path",
-    counter: "claims",
-    verdict: "exemptible",
-    countsResolved: true,
-    reason: () => "code-span path: no such tracked path at the repo root or beside this file",
-  },
-];
 
 /**
  * The table in precedence order — highest `priority` first. Precedence is a

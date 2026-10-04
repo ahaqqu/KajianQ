@@ -1,65 +1,28 @@
+// The docs:links gate's contract, case by case: what is a claim (scope rules),
+// whether the two shapes of one target agree, and what the policy does with each
+// finding. Every case here is hermetic — a synthetic tree, no filesystem, no git;
+// `check-markdown-links-tree.test.mjs` holds the real-tree and CLI cases.
 import { describe, expect, it } from "vitest";
-import { execFileSync, spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { KNOWN_RETIRED, POLICY, isRecord } from "../../scripts/markdown-links/policy.mjs";
 import {
   ADR_ID_RE,
-  CLAIM_ROOTS,
-  KNOWN_RETIRED,
-  POLICY,
-  RECORD_DIRS,
-  RECORD_FILES,
   RESOLVED_STATUSES,
-  ROOT,
   adjudicate,
   adrIdResolves,
   analyse,
-  buildContext,
-  formatOkLine,
-  ignoredTargets,
   inlineCodeSpans,
   isPathClaim,
-  isRecord,
   isSkillName,
-  loadCorpus,
+  judgeClaim,
   makeTree,
   normaliseSpanTarget,
   policyFor,
   policyOrder,
   prose,
-  resolveClaim,
-  runGate,
   skillMentionAt,
   toRepoPath,
 } from "../../scripts/check-markdown-links.mjs";
-
-// `ROOT` comes from the gate's own `import.meta.url`, never `process.cwd()`:
-// the suite must judge the repository under test, not the directory a runner
-// happened to start in.
-const SCRIPT = resolve(ROOT, "scripts/check-markdown-links.mjs");
-const CLI = SCRIPT;
-const FAKE_ROOT = "/repo";
-
-/**
- * Every pure case builds a synthetic tree and never touches the filesystem —
- * the classifier, the resolver and the adjudicator are the contract, and the
- * CLI fixtures at the bottom prove the wiring end to end.
- */
-function ctxOf({ paths = [], adr = [], skills = [], root = FAKE_ROOT } = {}) {
-  return { root, tree: makeTree(paths), adrNames: adr, skillDirs: new Set(skills) };
-}
-
-function scan(text, options = {}) {
-  const { relPath = "docs/living.md", allowlist = [], ignored, files, ...treeOptions } = options;
-  const ctx = ctxOf(treeOptions);
-  const findings = analyse([{ relPath, text }], ctx);
-  return adjudicate(findings, { allowlist, ignored, files });
-}
-
-function targets(result) {
-  return result.violations.map((v) => v.target);
-}
+import { FAKE_ROOT, ctxOf, scan, targets } from "./check-markdown-links-fixture.mjs";
 
 describe("markdown-links — scope rules (#368)", () => {
   const tree = makeTree(["AGENTS.md", "package.json", "docs/a.md", "apps/web/index.html"]);
@@ -150,12 +113,259 @@ describe("markdown-links — scope rules (#368)", () => {
     expect(spans.map((s) => s.target)).toEqual(["bun run lint", "docs/a.md"]);
     expect(spans[1].index).toBe("run `bun run lint` then ".length);
   });
+
+  it("claims a `..`-rooted target by its form, never by its reading (#391)", () => {
+    // #391: the class used to be vetoed on the raw first segment, so it never
+    // reached `resolveClaim`'s file-relative base — the base the header blesses
+    // for the `packages/infra/README.md` control. A `..`-rooted token that
+    // survived the lexical rules is a path by its form; its *reading* decides
+    // where it resolves, not whether it is a claim.
+    const tree = makeTree(["README.md", "docs/a.md", "packages/infra/README.md"]);
+    expect(isPathClaim("../docs/a.md", tree)).toBe(true);
+    expect(isPathClaim("../../../docs/a.md", tree)).toBe(true);
+    expect(isPathClaim("../", tree)).toBe(true);
+    // A *bare* `..` is the declared exception: the span normaliser strips it as
+    // swallowed punctuation, so the span half never claims it while the link
+    // half reddens on it. Pinned in the invariant table below and named in the
+    // header's SCOPE RULES.
+    expect(normaliseSpanTarget("..")).toBe("");
+    expect(isPathClaim("..", tree)).toBe(false);
+    // The reading's first segment (`web`) is not a tracked root, and the class
+    // is still a claim: re-testing the reading would veto a target the link
+    // half reddens on (`../web/dist` from `adr/`, an ADR-0028 site).
+    expect(isPathClaim("../web/dist", tree)).toBe(true);
+    // The lexical scope rules run first, so a `..`-rooted non-path stays out.
+    for (const target of ["../a b.md", "../*.ts", "../<slug>", "../adr/0037-…"]) {
+      expect(isPathClaim(target, tree), target).toBe(false);
+    }
+    // ...and the normaliser runs before the claim test, so a line citation or an
+    // in-file fragment into a `..`-relative path is still a claim on the path.
+    expect(isPathClaim("../../../docs/a.md:42-58", tree)).toBe(true);
+    expect(isPathClaim("../../../docs/a.md#L24", tree)).toBe(true);
+    // ...and a `~`-rooted host path is still a different class.
+    expect(isPathClaim("~/.dsh/settings.yaml", tree)).toBe(false);
+  });
+
+  it("keeps a `./`-rooted span out of scope, as the header declares", () => {
+    // DECLARED, not silently dropped: `./apps/web/dist` in docs/VPS-SETUP.md and
+    // docs/VPS-OPERATIONS.md quotes the asset handler's *default literal*, so
+    // widening this class would redden two correct documents. The divergence
+    // from the link half is real and is named in the header's SCOPE RULES.
+    const tree = makeTree(["docs/a.md", "apps/web/dist/index.html"]);
+    expect(isPathClaim("./apps/web/dist", tree)).toBe(false);
+    expect(isPathClaim("./docs/a.md", tree)).toBe(false);
+    const span = scan("The default is `./apps/web/dist`.", {
+      relPath: "docs/VPS-OPERATIONS.md",
+      paths: ["docs/a.md"],
+    });
+    expect(span.violations).toEqual([]);
+    // ...while the identical destination in link form is the link half's call.
+    const link = scan("The default is [x](./apps/web/dist).", {
+      relPath: "docs/VPS-OPERATIONS.md",
+      paths: ["docs/a.md"],
+    });
+    expect(targets(link)).toEqual(["./apps/web/dist"]);
+  });
+});
+
+describe("markdown-links — the two shapes agree (#391)", () => {
+  it("counts a `..` span that resolves through the file-relative base (#391)", () => {
+    const result = scan("See `../docs/a.md`.", {
+      relPath: "docs/living.md",
+      paths: ["docs/a.md"],
+    });
+    expect(result.violations).toEqual([]);
+    expect(result.counters.claims).toBe(1);
+    expect(result.counters.resolved).toBe(1);
+  });
+
+  it("flags a dead `..` span on a living doc — the fail-open #391 closed", () => {
+    const result = scan("The runbook is `../../../docs/VPS-ABSENT.md`.", {
+      relPath: ".agents/skills/ship/SKILL.md",
+      paths: ["docs/a.md"],
+    });
+    expect(targets(result)).toEqual(["../../../docs/VPS-ABSENT.md"]);
+    expect(result.violations[0].kind).toBe("path");
+    expect(result.violations[0].reason).toContain("no such tracked path");
+    // The reading the resolver judged, not the root reading — the form the
+    // gitignore/allowlist chain looks up.
+    expect(result.violations[0].repoPath).toBe("docs/VPS-ABSENT.md");
+  });
+
+  it("judges one target the same way in both shapes — the #391 invariant", () => {
+    // The invariant this ticket exists for, as a table: for each target the
+    // Markdown link and the inline code span must reach the *same* status. The
+    // shapes may word their reasons differently; they may not disagree on
+    // whether the target is there.
+    const ctx = ctxOf({ paths: ["docs/a.md", "README.md"] });
+    const relPath = "docs/living.md";
+    for (const [target, expected] of [
+      ["../docs/a.md", "ok"],
+      ["../README.md", "ok"],
+      ["../docs/gone.md", "missing"],
+      ["../web/dist", "missing"],
+      ["../..", "missing"],
+      // The re-entry shape (A1): the file-relative reading overshoots into
+      // `repo/docs/`, while a root-first reading would land back on the real
+      // `docs/a.md`. One base, so the span agrees with the link.
+      ["../repo/docs/a.md", "missing"],
+      ["../../etc/hosts", "missing"], // escaping: the decision, pinned below
+    ]) {
+      const span = analyse([{ relPath, text: `See \`${target}\`.` }], ctx);
+      const link = analyse([{ relPath, text: `See [x](${target}).` }], ctx);
+      expect(
+        span.map((f) => f.status),
+        `span ${target}`,
+      ).toEqual([expected]);
+      expect(
+        link.map((f) => f.status),
+        `link ${target}`,
+      ).toEqual([expected]);
+    }
+
+    // The one declared exception, pinned rather than hidden: a bare `..` is
+    // nothing but punctuation, so the span normaliser strips it and the span
+    // half never claims it — while `[x](..)` reddens in the link half, whose
+    // `toRepoPath` folds the repository root to `""` and reads it as missing.
+    // That reading is not copied into the span half: the link half contradicts
+    // it from a deeper directory, where `..` resolves to a tracked parent
+    // (`.agents/skills/ship/` → `.agents/skills`). Named in the header's SCOPE
+    // RULES and reported for the re-verification round.
+    expect(analyse([{ relPath, text: "See `..`." }], ctx)).toEqual([]);
+    expect(analyse([{ relPath, text: "See [x](..)." }], ctx).map((f) => f.status)).toEqual([
+      "missing",
+    ]);
+  });
+
+  it("reddens on an escaping target in both shapes — decided, not inherited (#391)", () => {
+    // The decision recorded in the header's SCOPE RULES: a `..`-rooted target
+    // whose reading leaves the repository is a claim, and a missing one is a
+    // violation. Evidence, not assumption: the Markdown half already judges the
+    // identical destination missing (`toRepoPath` → null, so no exemption is
+    // reachable) and prints it.
+    const result = scan(["`../../../../etc/passwd`", "[t](../../../../etc/passwd)"].join("\n"), {
+      relPath: ".agents/skills/ship/SKILL.md",
+      paths: [],
+    });
+    expect(targets(result)).toEqual(["../../../../etc/passwd", "../../../../etc/passwd"]);
+    expect(result.violations.map((v) => v.kind)).toEqual(["path", "link"]);
+    expect(result.violations[0].reason).toContain("no such tracked path");
+    expect(result.violations[1].reason).toBe("target does not exist");
+    // Escaping readings are `null`, so neither shape can reach the ignore chain.
+    expect(result.violations.map((v) => v.repoPath)).toEqual([null, null]);
+    expect(result.counters.ignored).toBe(0);
+  });
+
+  it("counts a dead `..` span inside a record instead of enforcing it (#391)", () => {
+    // The two live `..` span sites in the corpus are both ADR-0028's
+    // `../web/dist`: claim-ness changes, enforcement does not — the record rule
+    // counts them, and the OK line prints the count on every green run.
+    const result = scan("Output lives in `../web/dist`.", {
+      relPath: "adr/0028-alchemy-iac-cloudflare.md",
+      paths: [],
+    });
+    expect(result.violations).toEqual([]);
+    expect(result.counters.claims).toBe(0);
+    expect(result.counters.recordsClaims).toBe(1);
+    expect(result.counters.recordsDead).toBe(1);
+  });
+
+  it("never lets the `..` rule read a span inside a fence", () => {
+    // TRAP: the class is claimed by form, so the fence rule has to run first —
+    // an example that shows the shape must stay inert.
+    const text = ["# Doc", "```md", "`../../../docs/absent.md`", "```"].join("\n");
+    expect(scan(text, { relPath: ".agents/skills/ship/SKILL.md", paths: [] }).violations).toEqual(
+      [],
+    );
+  });
+
+  it("offers a `..` span the same gitignore exemption as its link form (A1)", () => {
+    // TRAP: this pins the reading `repoPath` carries. With a root reading the
+    // span's repoPath is null, `git check-ignore` is never asked, and the span
+    // reddens while the identical link is skipped and counted — the A1 class.
+    const ignored = new Set(["apps/web/dist/index.html"]);
+    const opts = { relPath: "docs/living.md", paths: [], ignored };
+    const span = scan("The deploy needs `../apps/web/dist/index.html`.", opts);
+    expect(span.violations).toEqual([]);
+    expect(span.counters.ignored).toBe(1);
+    const link = scan("The deploy needs [x](../apps/web/dist/index.html).", opts);
+    expect(link.violations).toEqual([]);
+    expect(link.counters.ignored).toBe(1);
+  });
+
+  it("gives an escaping-and-re-entering target one reading, reported with its verdict (A1)", () => {
+    // The disagreement B2 collapsed: with the root base also in play, this target
+    // was `ok` as a span — the root reading landed back on the real `docs/a.md` —
+    // while its `repoPath` named `.agents/skills/repo/docs/a.md`, which does not
+    // exist, and the identical link was `missing`. One reading now decides both
+    // the verdict and the path, so the two halves agree.
+    const opts = { relPath: ".agents/skills/ship/SKILL.md", paths: ["docs/a.md"] };
+    const span = scan("See `../repo/docs/a.md`.", opts);
+    expect(targets(span)).toEqual(["../repo/docs/a.md"]);
+    expect(span.violations[0].kind).toBe("path");
+    expect(span.violations[0].repoPath).toBe(".agents/skills/repo/docs/a.md");
+    expect(span.counters.resolved).toBe(0);
+    expect(span.counters.claims).toBe(1);
+
+    const link = scan("See [x](../repo/docs/a.md).", opts);
+    expect(targets(link)).toEqual(["../repo/docs/a.md"]);
+    expect(link.violations[0].repoPath).toBe(".agents/skills/repo/docs/a.md");
+  });
+
+  it("names bare `../` as claimed and judged `missing` from a depth-1 directory (A3)", () => {
+    // A3, named rather than left to be discovered: `isFileRelativeTarget` claims
+    // bare `../` by its form, and from a depth-1 directory its reading is the
+    // repository root — whose repo-relative form is the empty string, which is not
+    // a tracked path. The link half reaches the same verdict on the same
+    // destination, so the span copies it instead of "fixing" it into a
+    // disagreement. From a deeper directory the same token reads as the tracked
+    // parent and resolves.
+    const depth1 = { relPath: "docs/living.md", paths: ["docs/a.md"] };
+    const span = scan("A relative path starts with `../` here.", depth1);
+    expect(targets(span)).toEqual(["../"]);
+    expect(span.violations[0].repoPath).toBe("");
+    const link = scan("A relative path looks like [x](../) here.", depth1);
+    expect(targets(link)).toEqual(["../"]);
+    expect(link.violations[0].repoPath).toBe("");
+
+    const deeper = {
+      relPath: ".agents/skills/ship/SKILL.md",
+      paths: ["docs/a.md", ".agents/skills/code-review/SKILL.md"],
+    };
+    expect(scan("Climb out with `../`.", deeper).violations).toEqual([]);
+    expect(scan("Climb out with `../`.", deeper).counters.resolved).toBe(1);
+  });
+});
+
+describe("markdown-links — malformed destinations (#392)", () => {
+  it("reports a malformed percent-encoded destination instead of dying (#392)", () => {
+    // #392: `decodeURIComponent` threw, so the run printed a Bun stack trace and
+    // no `file:line -> target` line — the output contract broken even though the
+    // exit code was already non-zero.
+    const result = scan("See [pct](./100%.md).", { paths: [] });
+    expect(targets(result)).toEqual(["./100%.md"]);
+    expect(result.violations[0].kind).toBe("link");
+    expect(result.violations[0].reason).toContain("malformed percent-encoding");
+    expect(result.counters.links).toBe(1);
+  });
+
+  it("still decodes well-formed percent-encoding — the guard is not a bypass", () => {
+    expect(
+      scan("See [ok](./a%20b.md).", { relPath: "docs/living.md", paths: ["docs/a b.md"] })
+        .violations,
+    ).toEqual([]);
+    // A literal `%` in a file name is written `%25` and resolves to `100%.md`.
+    expect(
+      scan("See [pct](./100%25.md).", { relPath: "docs/living.md", paths: ["docs/100%.md"] })
+        .violations,
+    ).toEqual([]);
+  });
 });
 
 describe("markdown-links — resolution base", () => {
   it("resolves a root-relative claim against the repo root", () => {
     const ctx = ctxOf({ paths: ["scripts/check-boundary.mjs"] });
-    expect(resolveClaim("scripts/check-boundary.mjs", "docs", ctx)).toBe("tracked");
+    expect(judgeClaim("scripts/check-boundary.mjs", "docs", ctx).status).toBe("ok");
   });
 
   it("resolves a package-relative claim against the containing file", () => {
@@ -279,6 +489,7 @@ describe("markdown-links — the committed tree, not the working tree", () => {
               "A [dead link](gone.md).",
               "A [root-absolute link](/docs/a.md).",
               "A [good link](a.md).",
+              "A [malformed link](./100%.md).",
               "Retired `packages/gone/`.",
               "The `no-such-skill` skill.",
             ].join("\n"),
@@ -297,16 +508,25 @@ describe("markdown-links — the committed tree, not the working tree", () => {
       expect(rule, `${finding.kind}/${finding.status}`).toBeDefined();
       expect(rule.verdict).toBeOneOf(POLICY.map((r) => r.verdict));
       // The status vocabulary is closed: a resolved status, a missing one, or
-      // the one shape violation. Anything else is a classifier bug.
+      // one of the two shapes that are violations in themselves. Anything else
+      // is a classifier bug.
       expect(
         finding.status === "missing" ||
           finding.status === "root-absolute" ||
+          finding.status === "malformed-encoding" ||
           RESOLVED_STATUSES.has(finding.status),
         finding.status,
       ).toBe(true);
       fired.add(rule.id);
     }
-    expect([...fired].sort()).toEqual(["link", "link-root-absolute", "path", "record", "skill"]);
+    expect([...fired].sort()).toEqual([
+      "link",
+      "link-malformed-encoding",
+      "link-root-absolute",
+      "path",
+      "record",
+      "skill",
+    ]);
 
     expect(() =>
       adjudicate([
@@ -362,6 +582,7 @@ describe("markdown-links — the committed tree, not the working tree", () => {
     expect(policyFor(inRecord("path")).id).toBe("record");
     expect(policyOrder().map((rule) => rule.id)).toEqual([
       "link-root-absolute",
+      "link-malformed-encoding",
       "link",
       "record",
       "skill",
@@ -609,235 +830,5 @@ describe("markdown-links — the skill-name half", () => {
       ".agents/skills/agentic-workflow/SKILL.md",
       "agentic-workflow",
     ]);
-  });
-});
-
-describe("markdown-links — the real tree", () => {
-  it("is green on the repository as it stands, with the narrowing visible", () => {
-    const out = execFileSync("bun", [CLI], { encoding: "utf8" });
-    expect(out).toContain("markdown-links: OK");
-    // The blind spots this change accepted must be printed on every green run.
-    expect(out).toMatch(/\d+ known-retired allowlisted/);
-    expect(out).toMatch(/\d+ dead claims inside record files unchecked/);
-  });
-
-  it("prints exactly what `runGate` decided — one driver, not two", () => {
-    // The gate used to be implemented twice (`main()` and a `realScan()` here),
-    // so the suite could pass against wiring the CLI no longer had. The CLI must
-    // now print the same counters the tests assert on.
-    const run = runGate(ROOT);
-    const corpus = loadCorpus(ROOT);
-    const out = execFileSync("bun", [CLI], { encoding: "utf8" }).trim();
-    expect(run.violations).toEqual([]);
-    // The corpus loader is the CLI's, not a second implementation of it.
-    expect(corpus.files.length).toBe(run.files.length);
-    expect(corpus.sources.some((s) => s.relPath === "SPECS.md")).toBe(true);
-    expect(out).toBe(formatOkLine(run.counters, run.files.length));
-  });
-
-  it("closes the OK line's arithmetic: checked = resolved + allowlisted + ignored", () => {
-    // A5: "resolve" used to be the verb for the *checked* total, which counted
-    // the 4 allowlisted and the 2 gitignored as if they had been proved. The
-    // line now separates them, and this is the invariant that keeps it honest.
-    const { counters } = runGate(ROOT);
-    const checked = counters.links + counters.claims + counters.skills;
-    expect(checked).toBe(counters.resolved + counters.allowlisted + counters.ignored);
-    expect(counters.resolved).toBeLessThan(checked);
-  });
-
-  it("uses every shipped allowlist entry — none is stale against the real corpus", () => {
-    const { violations, counters } = runGate(ROOT);
-    expect(violations).toEqual([]);
-    expect(counters.allowlisted).toBe(KNOWN_RETIRED.length);
-  });
-
-  it("resolves a real package-relative claim end to end", () => {
-    // packages/infra/README.md:109 — `scripts/db-migrate.mjs`.
-    const ctx = buildContext(ROOT);
-    expect(resolveClaim("scripts/db-migrate.mjs", "packages/infra", ctx)).toBe("tracked");
-  });
-
-  it("knows which real targets git ignores", () => {
-    const ignored = ignoredTargets(ROOT, ["apps/web/dist/index.html", "docs/ARCHITECTURE.md"]);
-    expect(ignored.has("apps/web/dist/index.html")).toBe(true);
-    expect(ignored.has("docs/ARCHITECTURE.md")).toBe(false);
-  });
-
-  it("covers every tracked top-level directory — the scope cannot shrink silently", () => {
-    // CLAIM_ROOTS is the stated scope rule. A new top-level directory that does
-    // not join it stops being a claim root, and this is what says so.
-    const ctx = buildContext(ROOT);
-    const topDirs = [...ctx.tree.dirs].filter((d) => !d.includes("/"));
-    expect(topDirs.filter((d) => !CLAIM_ROOTS.includes(d))).toEqual([]);
-    // And the roots the ticket names are all still there.
-    for (const root of ["apps", "packages", "scripts", "docs", "adr", ".agents", ".zcode"]) {
-      expect(topDirs).toContain(root);
-    }
-  });
-
-  it("keeps record membership to real, tracked records", () => {
-    // B4: the membership rule is stated in the header — a record is an executed
-    // log or a decision record, never a living how-to. This pins that every
-    // member is a real tracked path, so a typo cannot silently widen the
-    // exemption the gate takes.
-    const { tree } = buildContext(ROOT);
-    for (const dir of RECORD_DIRS) expect(tree.dirs.has(dir), dir).toBe(true);
-    for (const file of RECORD_FILES) expect(tree.files.has(file), file).toBe(true);
-    // A record's own ADRs are records; a living doc is not.
-    expect(isRecord("adr/0030-retire-template-sync.md")).toBe(true);
-    expect(RECORD_DIRS.some((d) => isRecord(`${d}/x.md`))).toBe(true);
-    for (const living of ["AGENTS.md", "SPECS.md", "docs/ARCHITECTURE.md"]) {
-      expect(isRecord(living), living).toBe(false);
-    }
-  });
-
-  it("distinguishes the two deliberately unchecked role markers", () => {
-    // A2: "the `X` role" is not one namespace but two — live harness roles
-    // (`.zcode/agents/<role>.md`) and model-stage names — plus one role retired
-    // by ADR-0032. The harness namespace is a second *deliberately* unchecked
-    // marker; this pins that it is neither empty nor a skill claim.
-    const { tree } = buildContext(ROOT);
-    for (const role of ["qa", "reviewer", "fixer"]) {
-      expect(tree.files.has(`.zcode/agents/${role}.md`), role).toBe(true);
-    }
-    expect(tree.files.has(".zcode/agents/test-implementer.md")).toBe(false);
-    expect(isSkillName("qa")).toBe(true);
-    expect(scan("The `qa` role owns the probes.", { paths: [], skills: [] }).violations).toEqual(
-      [],
-    );
-    // ...and only the *skill* marker makes it a claim — the role marker does
-    // not, which is exactly the unchecked namespace this test documents.
-    const roleLine = "The `qa` role owns the probes.";
-    expect(skillMentionAt(roleLine, "qa", roleLine.indexOf("`qa`"))).toBe(false);
-  });
-});
-
-/**
- * CLI fixtures: a throwaway git repo under mkdtemp, with a copy of the gate at
- * `<fixture>/scripts/` so it resolves its own root from `import.meta.dir`. The
- * index is the resolution base, so the fixture must be `git add`ed — that is
- * the rule under test, not incidental setup.
- */
-function fixtureRepo(files) {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), "md-links-")));
-  for (const [rel, content] of Object.entries(files)) {
-    const abs = join(dir, rel);
-    mkdirSync(dirname(abs), { recursive: true });
-    writeFileSync(abs, content);
-  }
-  mkdirSync(join(dir, "scripts"), { recursive: true });
-  copyFileSync(SCRIPT, join(dir, "scripts", "check-markdown-links.mjs"));
-  execFileSync("git", ["init", "-q"], { cwd: dir });
-  execFileSync("git", ["add", "-A"], { cwd: dir });
-  return dir;
-}
-
-function runFixture(dir) {
-  return spawnSync("bun", ["scripts/check-markdown-links.mjs"], { cwd: dir, encoding: "utf8" });
-}
-
-describe("markdown-links — CLI fixtures", () => {
-  it("reddens on #367's shape: a dead code-span path and a dead skill name", () => {
-    const dir = fixtureRepo({
-      ".gitignore": "dist/\n",
-      "docs/living.md": [
-        "# Living doc",
-        "",
-        "Replaced in #133: the `agentic-workflow` skill",
-        "(`.agents/skills/agentic-workflow/SKILL.md`).",
-        "",
-        "```md",
-        "This example is inert: `packages/gone.ts` and the `no-such-skill` skill.",
-        "```",
-      ].join("\n"),
-    });
-    const run = runFixture(dir);
-    expect(run.status).toBe(1);
-    expect(run.stderr).toContain("2 dangling reference(s)");
-    expect(run.stderr).toContain("docs/living.md:3 -> agentic-workflow");
-    expect(run.stderr).toContain("docs/living.md:4 -> .agents/skills/agentic-workflow/SKILL.md");
-    // The fenced copy of the same shapes is an example, never a citation.
-    expect(run.stderr).not.toContain("packages/gone.ts");
-    expect(run.stderr).not.toContain("no-such-skill");
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  it("is green on a fixture that exercises every rule at once", () => {
-    const dir = fixtureRepo({
-      ".gitignore": "dist/\n",
-      "adr/0045-surah-reference-scoped-expansion.md": "# ADR-0045\n",
-      ".agents/skills/code-review/SKILL.md": "# code-review\n",
-      "packages/infra/scripts/db-migrate.mjs": "// migrate\n",
-      "packages/infra/README.md": "Run `scripts/db-migrate.mjs` to migrate.\n",
-      "docs/living.md": [
-        "# Living doc",
-        "",
-        "Recorded in `adr/0045`, applied by the `code-review` skill. The deploy",
-        "needs `apps/web/dist/index.html`. A prose line mentioning",
-        "packages/local-first is not a claim.",
-      ].join("\n"),
-    });
-    const run = runFixture(dir);
-    expect(run.status).toBe(0);
-    expect(run.stdout).toContain("markdown-links: OK");
-    // 2 path claims + 1 gitignored build path + 1 skill name.
-    expect(run.stdout).toContain("3 code-span path claims + 1 skill names");
-    expect(run.stdout).toContain("1 gitignored build paths skipped");
-    // A5: the line separates what was checked from what resolved — the
-    // gitignored one is checked and *not* resolved, and says so.
-    expect(run.stdout).toContain("3 resolve");
-    expect(run.stdout).toContain("0 record-file claims counted");
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  it("reddens on an ignored build path only by policy, never by presence on disk", () => {
-    const dir = fixtureRepo({
-      ".gitignore": "docs/untracked.md\n",
-      "docs/living.md": "See `docs/untracked.md`.\n",
-    });
-    // Real on disk, absent from the index: ignored, so skipped.
-    writeFileSync(join(dir, "docs", "untracked.md"), "# notes\n");
-    const ignoredRun = runFixture(dir);
-    expect(ignoredRun.status).toBe(0);
-    expect(ignoredRun.stdout).toContain("1 gitignored build paths skipped");
-
-    // Stop ignoring it, keep it untracked: now the gate must refuse it, even
-    // though the file is right there on disk.
-    writeFileSync(join(dir, ".gitignore"), "# nothing ignored\n");
-    const untrackedRun = runFixture(dir);
-    expect(untrackedRun.status).toBe(1);
-    expect(untrackedRun.stderr).toContain("docs/living.md:1 -> docs/untracked.md");
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  it("reddens on a record's dead Markdown link through the CLI (B5)", () => {
-    // The shipping path for the B5 property: a reshuffle of `POLICY` used to
-    // make this exit 0 and print the link as a counted record claim.
-    const dir = fixtureRepo({
-      "adr/0030-retire-template-sync.md": [
-        "# ADR-0030",
-        "",
-        "Retires `scripts/template-sync/`; see [the runbook](./VPS-CUTOVER-RUNBOOK.md).",
-      ].join("\n"),
-    });
-    const run = runFixture(dir);
-    expect(run.status).toBe(1);
-    expect(run.stderr).toContain("1 dangling reference(s)");
-    expect(run.stderr).toContain("adr/0030-retire-template-sync.md:3 -> ./VPS-CUTOVER-RUNBOOK.md");
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  it("fails loudly when the checkout has no git index", () => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), "md-links-nogit-")));
-    mkdirSync(join(dir, "scripts"), { recursive: true });
-    copyFileSync(SCRIPT, join(dir, "scripts", "check-markdown-links.mjs"));
-    writeFileSync(join(dir, "SPECS.md"), "# spec\n");
-    const run = spawnSync("bun", ["scripts/check-markdown-links.mjs"], {
-      cwd: dir,
-      encoding: "utf8",
-    });
-    expect(run.status).toBe(1);
-    expect(run.stderr).toContain("not a git checkout");
-    rmSync(dir, { recursive: true, force: true });
   });
 });

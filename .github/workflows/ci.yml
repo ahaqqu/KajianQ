@@ -55,7 +55,9 @@ jobs:
       # until #368. The doc consolidation made this load-bearing: retiring a
       # file means repointing its citations, and this is what proves that was
       # done. Scope, resolution base and every accepted blind spot are stated
-      # in the script's header.
+      # in the gate's policy module (`scripts/markdown-links/policy.mjs`),
+      # which is the contract its driver (`scripts/check-markdown-links.mjs`)
+      # is checked against.
       - run: bun run docs:links
       - name: gitleaks
         run: |
