@@ -33,7 +33,7 @@
 
 A short, formulaic verse is an unreachable semantic neighbour of a whole-surah meta-question, and the router's paraphrase flipped even the reachable verses in and out of the set — so the reference the user already stated is read, not inferred.
 
-- **Deterministic beats semantic for a reference the user already stated** — reading the named surah's children is a lookup whose result cannot vary between runs.
+- **Deterministic beats semantic for a reference the user already stated** — reading the named surah's children is a lookup whose result cannot vary between runs, and detecting on the verbatim question means a paraphrase that drops the surah name still expands.
 - **The fix is worth more than the flaky gate**: the defect is a whole-surah question answered with no part of that surah, and fixing the class removes the coin flip with it.
 - **Bounded by construction, because context is the cost** — an uncapped expansion of a long surah would blow the assembly budget, which is why the cap is an operator's number and the trace shows what it spent.
 - **Traceability is the product boundary here** — a path that adds chunks without leaving a record is the silent machinery the trace exists to prevent.

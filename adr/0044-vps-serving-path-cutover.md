@@ -6,30 +6,34 @@
    draining on SIGTERM — with the Cloudflare Worker entry, the Durable Object
    limiter and the R2 binding deleted.
 2. **Single-shot cutover, with no rollback runway.** Staging is verified first and
-   prod then points at the VPS in one step, because there is no live traffic to
-   preserve; ADR-0038's snapshot criteria and the restore drill stay strict. One
-   box exists, labelled `staging`: production is deferred, not pending, so a
-   `prod` dispatch deploys the same box behind its approval gate.
+   prod then points at the VPS in one step: there is no live traffic to preserve,
+   and ADR-0038's snapshot criteria and the restore drill stay strict. One box
+   exists, labelled `staging`; production is deferred, not pending, so a `prod`
+   dispatch deploys the same box behind its approval gate.
 3. **The deployer lives in its own home, outside `apps/`** — one build → ship →
-   restart → smoke implementation, called by the Staging workflow, with
-   provisioning under `provision/vps/` and the box name and key from environment
+   restart → smoke implementation, called by the Staging workflow; provisioning
+   stays under `provision/vps/`, and the box name and key come from environment
    secrets, never the repo.
-4. **nginx replaces the bootstrap's Caddy, and the CDN proxy stays off**: with the
-   proxy on, the client address nginx sees is a Cloudflare edge IP, so per-IP
-   metering collapses silently — enabling it requires real-IP configuration first.
+4. **nginx replaces the bootstrap's Caddy, and the CDN proxy stays off.** nginx is
+   fixed because the access-log format must be controlled field-by-field and the
+   code already assumes its semantics; the API reads the client address from a
+   header nginx overwrites from `$remote_addr`, a name kept deliberately because
+   renaming it buys nothing. With the CDN proxy on, that address is a Cloudflare
+   edge IP, so per-IP metering collapses silently — enabling it requires real-IP
+   configuration first.
 5. **The adapter speaks Postgres over TCP and is named for its dialect**: `pg`
    replaces the vendor's serverless transport, the provider is `postgres`, and the
    connection env is the vendor-free `DATABASE_URL`. Engine code still never
    imports a driver — one module adapts a `Pool` to the `SqlRunner` seam and
    reproduces the lazy tagged-template contract, so `transaction([...])` stays atomic.
 6. **One process, one timer, one deploy identity.** The limiter is the bounded
-   in-memory backend with digest-named counters; the nightly reclamation is its own
-   systemd timer, alive when the API is not; a dedicated unprivileged account owns
-   the deployed tree and holds exactly two granted systemctl commands, installed
-   only after a `visudo` parse.
+   in-memory backend with digest-named counters, the retention notice's claim; the
+   nightly reclamation is its own systemd timer, alive when the API is not; and a
+   dedicated unprivileged account owning the deployed tree holds exactly two
+   granted systemctl commands, installed only after a `visudo` parse.
 7. **The reviewer chain is paid and, for the current key set, same-vendor** —
-   accepted deliberately, with a second paid vendor key restoring cross-vendor
-   review by configuration alone.
+   accepted deliberately; a second paid vendor key restores cross-vendor review by
+   configuration alone.
 
 ## Why
 
@@ -51,5 +55,5 @@ The Alchemy-era path had app code owning hosting, a partly broken deploy (one wo
 
 ## Where it lives
 
-- `provision/vps/deploy/deploy.sh`, `.github/workflows/deploy-vps.yml`, `provision/vps/systemd/`, `provision/vps/sudoers/kajianq-deploy` and `provision/vps/nginx/` — the deploy path, the units, the grant and the proxy site.
-- `apps/api/src/boot.ts`, `apps/api/src/cleanup.ts`, `packages/infra/src/rag-store-postgres-driver.ts` and `apps/api/src/lib/assets.ts` — the entries, the `pg` adapter and the asset reader; `docs/VPS-OPERATIONS.md`, `docs/VPS-SETUP.md` and `docs/VPS-CUTOVER-RECORD.md` — manual, rebuild path and executed-cutover evidence.
+- `provision/vps/deploy/deploy.sh`, `.github/workflows/deploy-vps.yml`, `provision/vps/systemd/`, `provision/vps/sudoers/kajianq-deploy` and `provision/vps/nginx/` — the deploy path, the units, the grant and the proxy site; `.github/workflows/ci.yml` carries the self-contained contract suite (a Postgres service container with the migrations applied, so it runs in every environment including fork PRs).
+- `apps/api/src/boot.ts`, `apps/api/src/cleanup.ts`, `packages/infra/src/rag-store-postgres-driver.ts` and `apps/api/src/lib/assets.ts` — the entries, the `pg` adapter and the asset reader, with the error reporter keeping its errors-only posture; `docs/VPS-OPERATIONS.md`, `docs/VPS-SETUP.md` and `docs/VPS-CUTOVER-RECORD.md` — manual, rebuild path and executed-cutover evidence.

@@ -7,22 +7,25 @@
    ordinal neighbours in the same parent join the context: the same
    deterministic, vendor-free read, on a second anchor.
 2. **The anchor is the retrieved child id, not a derived ordinal.** The read
-   derives parent and `ordinal` from the stored row and orders neighbours by the
-   caller's array — the priority order, so the cap truncates the least important
-   windows. `NEIGHBOUR_EXPANSION_RADIUS` and `NEIGHBOUR_EXPANSION_CAP` bound the
-   expansion at the composition root: `0` on either disables, and a negative
-   value is a typed config failure, never a silent default.
+   derives parent and `ordinal` from the stored row, returns neighbours only
+   (never the anchor), and orders them by the caller's array — the priority
+   order, so the cap truncates the least important windows. It learns nothing
+   about Quran — no domain term, no citation grammar, no metadata key — and
+   `NEIGHBOUR_EXPANSION_RADIUS`/`NEIGHBOUR_EXPANSION_CAP` bound it at the
+   composition root: `0` on either disables, and a negative value is a typed
+   config failure, never a silent default.
 3. **A range citation grounds only when every address it names is present, the
    interior included.** `addressesOf` declares that list (`QS. 3:1-2` names
    `QS. 3:1` and `QS. 3:2`; a chain names every number it writes), bounded by the
-   surah's own ayah count — a span that bound cannot hold refuses. A spaced
-   joiner names the same addresses; a grammar that declares no list (the hadith
-   number) stays whole and refuses, and the display form stays the range as
-   written.
+   surah's own ayah count — a span that bound cannot hold refuses. A spaced joiner
+   names the same addresses, a newline is not one, and a grammar that declares no
+   list (the hadith number) stays whole and refuses; the display form stays the
+   range as written.
 4. **One owner, and the path is on the trace.** `groundingLabelsFor` serves the
    gate, the citations frame and the eval alike; added chunks carry
-   `origin: "verse_neighbours"`, and a typed `neighbour_expansion` event records
-   the anchors read in priority order.
+   `origin: "verse_neighbours"`, a typed `neighbour_expansion` event records the
+   anchors read in priority order, and a neighbour already in context is not
+   added twice.
 
 ## Why
 
@@ -51,6 +54,6 @@ The draft extended a retrieved verse into a range whose head was never retrieved
 
 ## Where it lives
 
-- `packages/kajianq-domain/src/chat-neighbour-expansion.ts` — anchor selection, the radius and cap, dedup, the origin label and the trace detail; `packages/kajianq-domain/src/chat-retriever.ts` runs it after ADR-0045's expansion.
+- `packages/kajianq-domain/src/chat-neighbour-expansion.ts` — anchor selection, the radius and cap, dedup, the origin label and the trace detail; `packages/kajianq-domain/src/chat-retriever.ts` runs it after ADR-0045's expansion, and `chat-fusion.ts` carries `rrfFuse`'s equal-score tie-break by chunk id.
 - `packages/kajianq-domain/src/chat-citation-range.ts` and `chat-citation-grammar.ts` — what a Quran range names; `chat-citation-validator.ts`'s `groundingLabelsFor` is the one owner of what grounds a span, read by `apps/api/src/lib/chat-citations.ts` and the eval.
 - `packages/infra/src/rag-store-corpus-seam.ts` and the Postgres adapter — the id-anchored read; `packages/contracts/src/trace.ts` — the event variant; the composition root — the two config knobs. Evidence: `packages/kajianq-domain/src/chat-neighbour-expansion.test.ts` and `chat-citation-validator.test.ts` at the gate boundary, with the read's executable contract in the real-Postgres suite.
