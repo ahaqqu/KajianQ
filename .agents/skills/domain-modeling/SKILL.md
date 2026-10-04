@@ -67,40 +67,9 @@ When a term is resolved, update `docs/GLOSSARY.md` right there. Don't batch thes
 
 ### Offer ADRs sparingly
 
-Only offer to create an ADR when all three are true:
-
-1. **Hard to reverse** — the cost of changing your mind later is meaningful.
-2. **Surprising without context** — a future reader will wonder "why did they do it this way?"
-3. **The result of a real trade-off** — there were genuine alternatives and you picked one for specific reasons.
-
-If any of the three is missing, skip the ADR.
-
-Use this ADR format:
-
-```markdown
-# ADR-<NNN>: <title>
-
-**Status:** proposed | accepted | superseded
-**Date:** YYYY-MM-DD
-
-## Context
-
-What is the problem we're solving? What constraints are we under?
-
-## Decision
-
-What did we decide? One sentence.
-
-## Rationale
-
-Why this over the alternatives? What does this enable downstream?
-
-## Consequences
-
-What becomes easier? What becomes harder? What must we remember?
-```
-
-Write the ADR under `adr/` and number it sequentially.
+Whether a decision earns a record is stated once, in `AGENTS.md`'s Decisions
+bullet — read the bar there before offering one. `adr/TEMPLATE.md` is the shape to
+copy (decision first, then why, 20–40 lines). Most sessions have no ADR to write.
 
 ## Completion criterion
 

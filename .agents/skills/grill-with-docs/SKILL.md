@@ -90,13 +90,8 @@ Every user action must have answers for:
 
 ## Phase 3 — ADR
 
-Use the `domain-modeling` skill to write an Architecture Decision Record for any decision that is:
-
-- A structural tradeoff (two viable paths, one chosen)
-- A constraint the team must remember
-- A departure from `ARCHITECTURE.md` defaults
-
-Write the ADR under `adr/` and number it sequentially.
+For a decision that clears the bar in `AGENTS.md`'s Decisions bullet, use the
+`domain-modeling` skill to write the record in the shape `adr/TEMPLATE.md` gives.
 
 ## Phase 4 — Glossary
 

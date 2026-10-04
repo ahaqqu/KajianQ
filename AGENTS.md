@@ -25,7 +25,16 @@ These apply to every role and every task. Each bullet names the skill that carri
 - **Scalable by design** — one instance is the posture, not an assumption: durable state lives in a shared store (Postgres through `RagStore`, blobs through `ObjectStore`), the request path carries no client affinity, and new in-process state goes behind one seam with a recorded trigger. Adding a per-process counter or cache is the failure this catches — it breaks a deployment-global guarantee silently. Checklist: `docs/ARCHITECTURE.md` §18 and its Scalable bullet in `.agents/skills/code-review/SKILL.md`.
 - **Data integrity** — never overwrite raw source data (`text_raw` and original exports are immutable; cleaning/translation writes new fields); re-runnable ingestion is idempotent; Matn and Sharh are never mixed in one chunk; disputed attributions are quarantined or labeled, never force-merged. The staged corpus is a **paid asset**: no money-spending ingest starts without a verified pre-ingest snapshot, and every successful one is followed by a post-ingest snapshot taken at two independent layers (`bun run db:snapshot`, ADR-0038). A snapshot is superseded by a new label, never overwritten in place.
 - **Cost discipline** — price is weighed in every model decision; model choice per stage comes from config (`model_configs`) only. Vendor allowlist and the paid-API amendment: ADR-0009.
-- **Decisions** — hard-to-reverse, surprising, trade-off decisions get an ADR in `adr/` (numbered to continue the existing sequence) before or with the implementing PR. Never relitigate an accepted ADR in code comments; amend the ADR instead. Respect the go/no-go gates recorded in ADRs.
+- **Decisions** — a hard-to-reverse decision about what KajianQ _is or does for its users_ gets an ADR in `adr/`,
+  numbered to continue the sequence, before or with the implementing PR: the corpus, retrieval, prompts,
+  answer and citation behaviour, traces, data posture, cost, serving, or the engine seams the product is built on.
+  A decision that only changes how the repo is maintained — agent roles, skills, CI gates that judge repo
+  hygiene, test conventions, worktrees, board process — is **not** an ADR: it lives in the skill, role file or
+  script header that implements it. An ADR states its **decision** first and its **why** second, in at most 60
+  lines (`adr/TEMPLATE.md`); a value is named only where the decision is meaningless without it, and the config
+  holds the truth. A changed decision is rewritten in place, never amended; a superseded record is deleted,
+  leaving one tombstone line in `SPECS.md` §8. Never relitigate an accepted ADR in code comments. Respect the
+  go/no-go gates recorded in ADRs.
 - **Living documents** — a PR that changes what `SPECS.md` describes (architecture §3, data layer §3.5/§4, cost §5, plan §7, product scope §2) updates those sections in the same PR, and any new ADR gets its row in the spec's §8 Record of Decisions. `INITIAL_IDEA.md` is frozen history — never update it.
 - **Datasets** — update `NOTICES/DATASETS.md` when a dataset or corpus resource is touched.
 - **Language** — all agent communication with the user is in English, without exception; technical docs and code in English; UI copy Indonesian-first (externalized `en`/`id`).
