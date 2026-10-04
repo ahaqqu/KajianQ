@@ -8,19 +8,21 @@
    deterministic, vendor-free read, on a second anchor.
 2. **The anchor is the retrieved child id, not a derived ordinal.** The read
    derives parent and `ordinal` from the stored row, returns neighbours only
-   (never the anchor), and orders them by the caller's array — the priority
-   order, so the cap truncates the least important windows. It learns nothing
-   about Quran — no domain term, no citation grammar, no metadata key — and
-   `NEIGHBOUR_EXPANSION_RADIUS`/`NEIGHBOUR_EXPANSION_CAP` bound it at the
-   composition root: `0` on either disables, and a negative value is a typed
-   config failure, never a silent default.
+   (never the anchor), and orders them by the caller's array and then by
+   `ordinal`. It learns nothing about Quran — no domain term, no citation
+   grammar, no metadata key — and `NEIGHBOUR_EXPANSION_RADIUS`/`NEIGHBOUR_EXPANSION_CAP`
+   bound it at the composition root: `0` on either disables, and a negative
+   value is a typed config failure, never a silent default.
 3. **A range citation grounds only when every address it names is present, the
    interior included.** `addressesOf` declares that list (`QS. 3:1-2` names
    `QS. 3:1` and `QS. 3:2`; a chain names every number it writes), bounded by the
-   surah's own ayah count — a span that bound cannot hold refuses. A spaced joiner
-   names the same addresses, a newline is not one, and a grammar that declares no
-   list (the hadith number) stays whole and refuses; the display form stays the
-   range as written.
+   surah's own ayah count — a span that bound cannot hold refuses. A spaced
+   joiner names the same addresses, a newline is not one, and a grammar that
+   declares no list (the hadith number) stays whole and refuses: its _spaced_
+   draft form is scanned as its head, an explicit exclusion rather than a
+   silent one, revisitable only by declaring an address list for it, while a
+   chunk label with air around the joiner is kept whole. The display form stays
+   the range as written.
 4. **One owner, and the path is on the trace.** `groundingLabelsFor` serves the
    gate, the citations frame and the eval alike; added chunks carry
    `origin: "verse_neighbours"`, a typed `neighbour_expansion` event records the
@@ -29,7 +31,7 @@
 
 ## Why
 
-The draft extended a retrieved verse into a range whose head was never retrieved, and withholding a citation nobody retrieved is the product's #1 control — so the addresses had to become present, not the rule looser.
+The draft extended a retrieved verse into a range whose head was never retrieved, and withholding a citation nobody retrieved is the product's first control (`SPECS.md` §2.2) — so the addresses had to become present, not the rule looser.
 
 - **Cause-side keeps safety and fluency.** Grounding a fully-retrieved range is fidelity to the stated rule, and the read is keyed on what is already in context.
 - **The cap makes the widening affordable; the order makes it useful.** The budget goes to the best-ranked evidence's neighbourhood, and the truncated set follows the run's own retrieval order.
@@ -50,10 +52,5 @@ The draft extended a retrieved verse into a range whose head was never retrieved
 - **A failure on the neighbour read is fail-closed**, uniform with the fused and scope reads; degrading would reproduce the refusal this record removes, behind a 200 response.
 - **The trace contract grows additively** — one event kind — so persisted traces stay readable (ADR-0007); the eval's `expansion` block keeps its ADR-0045 meaning (the **scope** path only), because folding the two together would redefine a published metric.
 - **Context grows on Quran-bearing queries**, bounded by the cap; no retrieved verse means no store read, and the two expansions' budgets are independent, their sum being the query's ceiling.
-- **Revisit when** the cap truncates a range the draft writes (revisit the ordering, not the radius, first); the ANN search's tie order matters (a second `ORDER BY` key costs the HNSW index scan — measure first); or a reranker or second channel must decide whether it sees neighbour chunks (`origin` is the hook).
-
-## Where it lives
-
-- `packages/kajianq-domain/src/chat-neighbour-expansion.ts` — anchor selection, the radius and cap, dedup, the origin label and the trace detail; `packages/kajianq-domain/src/chat-retriever.ts` runs it after ADR-0045's expansion, and `chat-fusion.ts` carries `rrfFuse`'s equal-score tie-break by chunk id.
-- `packages/kajianq-domain/src/chat-citation-range.ts` and `chat-citation-grammar.ts` — what a Quran range names; `chat-citation-validator.ts`'s `groundingLabelsFor` is the one owner of what grounds a span, read by `apps/api/src/lib/chat-citations.ts` and the eval.
-- `packages/infra/src/rag-store-corpus-seam.ts` and the Postgres adapter — the id-anchored read; `packages/contracts/src/trace.ts` — the event variant; the composition root — the two config knobs. Evidence: `packages/kajianq-domain/src/chat-neighbour-expansion.test.ts` and `chat-citation-validator.test.ts` at the gate boundary, with the read's executable contract in the real-Postgres suite.
+- **The read runs after ADR-0045's surah expansion and before assembly**, and `rrfFuse` breaks equal fusion scores by chunk id so the anchor priority is total; the corpus seam and its Postgres adapter carry the read, `packages/contracts/src/trace.ts` the event variant, the citations frame reads the same one owner, and the two config knobs sit at the composition root.
+- **Revisit when** the cap truncates a range the draft writes (revisit the ordering, not the radius, first); the ANN search's tie order matters (a second `ORDER BY` key costs the HNSW index scan — measure first); a reranker or second channel must decide whether it sees neighbour chunks (`origin` is the hook); the hadith number's spaced exclusion above is revisited (declaring an address list for it is a grammar-level change, one grammar at a time); a third grammar with a list-valued address must declare its own `addressesOf`; non-decimal or Arabic-script ranges are wanted; or the expansion's cost measurably moves per-query cost (`NEIGHBOUR_EXPANSION_CAP` is the knob, and the measurement belongs in `SPECS.md` §5).
