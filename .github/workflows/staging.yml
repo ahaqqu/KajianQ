@@ -133,6 +133,33 @@ jobs:
     name: post deploy checks
     needs: deploy
     runs-on: ubuntu-latest
+    # The ZAP container image, pinned BY DIGEST — the single bump site for the
+    # scan's image, referenced by the pre-pull step, the `docker_name` input and
+    # the failure classifier. Never `:stable`: a floating tag is the one input
+    # that can change between two runs of an unchanged commit (#382).
+    #
+    # Sourced from the registry, because the run logs do NOT carry it: the
+    # action calls `docker pull <image> -q`, and `-q` suppresses the digest
+    # line, so the logs of both cited runs name only
+    # `ghcr.io/zaproxy/zaproxy:stable`. The digest below is that tag's OCI
+    # index digest as resolved on 2026-10-03:
+    #   docker buildx imagetools inspect ghcr.io/zaproxy/zaproxy:stable \
+    #     --format '{{.Manifest.Digest}}'
+    # It is also the build both cited runs used: the index's linux/amd64
+    # manifest was created 2026-08-07 from zaproxy@2665d972, weeks before both
+    # runs of 07cb2914, and the tag still resolves to it — so it cannot have
+    # moved between them. The pin therefore closes the class "the image changed
+    # under an unchanged commit"; it is not the proven cause of run
+    # 37118454475's abort.
+    #
+    # Update trigger — a deliberate bump, in its own commit, never a floating
+    # tag: a ZAP stable release (the image is rebuilt from zaproxy main), or a
+    # ZAP security advisory affecting the baseline scan. Bump by re-resolving
+    # the digest with the command above; the merge's own `Staging` run then
+    # exercises the new image end-to-end, because `.github/**` is not in this
+    # workflow's paths-ignore.
+    env:
+      ZAP_IMAGE: ghcr.io/zaproxy/zaproxy@sha256:781a2bdaea47324e7bab583e2263f21d257b0aee61ed51521a5be45f5f5081ef
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -241,7 +268,33 @@ jobs:
           EVAL_BUDGET_MICRO_USD: ${{ github.event.inputs.eval_budget_micro_usd || '1000000' }}
           EVAL_SMOKE_SIZE: ${{ github.event.inputs.eval_smoke_size || '5' }}
           EVAL_RUN_LABEL: staging-smoke-${{ github.sha }}
+      # The image is prepared in its own step so a registry or image failure is
+      # attributed BEFORE the scan: this step goes red by name, the scan never
+      # runs, and "did the site regress?" is not even a possible reading. The
+      # action's own `docker pull` then hits the local cache — no second
+      # download. The pre-scan container list is snapshotted here for the
+      # classifier below, which identifies the scan's container from the
+      # difference when `docker ps --filter ancestor` does not resolve a digest
+      # reference on the runner.
+      - name: ZAP image pre-pull
+        id: zap-image
+        run: |
+          set -euo pipefail
+          mkdir -p zap-failure
+          docker ps -aq > zap-failure/containers-before.txt
+          docker pull "$ZAP_IMAGE" >/dev/null
+          digests=$(docker image inspect "$ZAP_IMAGE" --format '{{json .RepoDigests}}')
+          case "$digests" in
+            *"$ZAP_IMAGE"*)
+              echo "pinned image ready: $ZAP_IMAGE (repo digests: $digests)"
+              ;;
+            *)
+              echo "::error::docker resolved $ZAP_IMAGE to unexpected repo digests: $digests"
+              exit 1
+              ;;
+          esac
       - name: ZAP baseline
+        id: zap
         uses: zaproxy/action-baseline@de8ad967d3548d44ef623df22cf95c3b0baf8b25 # v0.15.0
         with:
           target: ${{ vars.VPS_PUBLIC_URL }}
@@ -249,8 +302,42 @@ jobs:
           # justifications — never a workflow-level bypass.
           rules_file_name: .github/zap-rules.tsv
           fail_action: true
+          # Pinned by digest through the job-level ZAP_IMAGE (the single bump
+          # site): EVERY input to this step is pinned — the action by SHA
+          # (…de8ad967), the container image by digest (…sha256:781a2bda…), and
+          # the rule file by the commit this run checks out. #382
+          docker_name: ${{ env.ZAP_IMAGE }}
         # ZAP stays metered (its action interface makes header injection
         # unreliable); the baseline scan's request volume fits the /v1 budget.
+      # Attribution (#382), never a gate: this runs only after the scan (or its
+      # pre-pull) has already failed, so it cannot turn the job green. It names
+      # the CLASS in the job summary — "the scanner broke" versus "the site
+      # regressed", which the job's colour alone cannot tell apart — and keeps
+      # the container logs that the abort path otherwise loses with the run (the
+      # action's `docker run` carries no --rm, so the aborted container is still
+      # on the runner here). The `|| echo` fallback belongs to THIS diagnostic
+      # step only: the scan above keeps `fail_action: true` and has no fallback
+      # of any kind.
+      - name: ZAP failure attribution
+        if: failure() && (steps.zap.outcome == 'failure' || steps.zap-image.outcome == 'failure')
+        env:
+          ZAP_IMAGE_OUTCOME: ${{ steps.zap-image.outcome }}
+          ZAP_SCAN_OUTCOME: ${{ steps.zap.outcome }}
+        run: |
+          set -uo pipefail
+          bun scripts/zap-failure-attribution.mjs >> "$GITHUB_STEP_SUMMARY" || \
+            echo "### ZAP baseline attribution — unavailable (the classifier itself failed; the step log above is the evidence)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload ZAP failure diagnostics
+        if: failure() && (steps.zap.outcome == 'failure' || steps.zap-image.outcome == 'failure')
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: zap-failure-diagnostics
+          path: zap-failure/
+          if-no-files-found: warn
+          # 14 days, the window the Art. 30 record declares for ops logs
+          # (ADR-0043 decision 4). The baseline scan is unauthenticated, so this
+          # artifact holds no personal data — the cap is posture, not exposure.
+          retention-days: 14
       - name: Schemathesis fuzz
         # schemathesis.toml suppresses unsupported_method (an intermediary may
         # return 405 without an Allow header — not our app's behavior). See the
