@@ -1,13 +1,59 @@
-# User-facing pipeline transparency with trace-anchored feedback
+# ADR-0007: Every answer ships its trace, and feedback is anchored to a trace element
 
-Every KajianQ answer ships with an expandable trace showing how it was built — router intent, sub-queries, retrieved chunks with scores, model identity — not just final citations. Feedback is anchored to specific trace elements (wrong citation, irrelevant chunk, mistranslation, questionable grade), flows to an admin review queue, and accepted items become golden-set eval cases. This deliberately deviates from the norm of hiding pipeline internals: the project is open source and explicitly wants users to help improve quality — a vague "bad answer" report is not actionable, but "this chunk is mistranslated" is. Do not "clean up" the trace panel as UI clutter; it is the feedback instrument. Admin keeps a fuller trace view (tokens, latency, raw JSON).
+## Decision
 
-**Amended (2026-08-23, alongside ADR-0015/0016):** traceability is a first-class type, not a serialization detail. `Trace` / `TraceEvent` / `CostRecord` are defined in `packages/contracts` and consumed by the pipeline, the PWA, admin, and the eval harness from a single shared shape. Two invariants ride on the contract: (1) every LLM call's token/latency/cost attaches to the trace of the answer or run that triggered it, and a run's recorded cost equals the sum of its recorded LLM calls — an untraced call is a defect; (2) refusal and suppression events are recorded with reason and stage, so "we said nothing confidently" stays as auditable as an answered question. Trace-anchored feedback targets identifiers from the shared contract only.
+Every KajianQ answer ships with an expandable trace of how it was built — router intent, sub-queries, retrieved chunks
+with scores, model identity — not just its final citations. The panel is the feedback instrument, never UI clutter.
 
-**Amended (2026-08-25, PR #54 follow-up):** a `Trace` is owned by the user it answers, and is erased with that user on anonymous self-deletion. `answer_traces` gains a `user_id` FK (`ON DELETE CASCADE` to `users`); `deleteUserCascade` therefore removes the user's full Q&A record (sessions, chat, feedback, traces), not just their session token. This resolves the tension between trace retention for auditability and the user's right to erasure in favor of erasure for the anonymous case — the PWA's trace panel is the feedback instrument, but it is per-user and perishes with the user. At the same time the `Trace` contract gains an optional `version` field (default `1`) as a forward-compatibility anchor, with a binding contract: the `Trace` shape may only ever **add optional** fields (version-bumped) and must never add a required field or rename/remove an existing one without migrating persisted traces. The RagStore reader (`v.parse`) tolerates missing optional fields and strips unknown future keys, so older persisted traces stay readable as the contract evolves.
+`Trace`, `TraceEvent`, and `CostRecord` are first-class types in `packages/contracts`, one shape consumed by the
+pipeline, the UI, admin, and the eval harness. Two invariants ride on it: every call's tokens, latency, and cost
+attach to the trace of the answer or run that triggered it, and a run's recorded cost equals the sum of its recorded
+calls, so an untraced call is a defect; refusals and suppressions carry reason and stage, so silence stays as
+auditable as an answer.
 
-**Amended (2026-09-14, #13):** the feedback surface ships. `POST /v1/feedback` takes one feedback shape per request — an anonymous thumb (`rating: up|down`) or a trace-anchored flag — guarded by the ADR-0017 anonymous Bearer session (zero friction, no account) and metered by the shared /v1 rate limiter (ADR-0041). The category↔anchor-type pairing (wrong_citation↔citation, irrelevant_chunk↔chunk, bad_machine_translation↔translation, questionable_grade↔grade) is enforced by the shared contract, so a malformed combination fails the parse, never a store write. A flag is stored only if the persisted trace grounds its anchor — chunk ids against the retrieval refs, citation/translation/grade labels against the re-derived citations frame, and a translation/grade flag only when the cited sheet actually carries that layer; a flag the trace does not ground is a 422, never a row. Feedback rows carry the user id (anonymous self-deletion cascade erases them, amendment 3) and resolve their target by the trace's `message_id` or a rehydrated chat row id — the two identifiers the user's client legitimately holds. Anchored flags persist as rating −1: a flag is negative feedback by definition. A verdict is idempotent per (user, answer, element): a functional unique index (migration 0003) plus the store's upsert keeps repeat thumbs and re-submitted flags to ONE row, the latest rating/free text winning — the review queue counts verdicts, not retries (thermo-review A1). The row is keyed by the trace's canonical `message_id`, whichever of the two legitimate identifiers the client used to address the answer, and the response echoes that canonical id back (thermo-review A2). A degraded server-side derivation — answer text reclaimed, chunk lookup failed — answers 503 `anchor_unavailable`, never a user-blaming 422; 422 remains reserved for an anchor the trace genuinely does not ground (thermo-review A3). The PWA affordances are the thumbs bar per answer, a flag button per Trace-panel source row, and flag buttons in the citation sheet footer.
+A trace belongs to the user it answers and is erased with them on self-deletion. Feedback names contract identifiers
+only — one shape per request, an anonymous thumb or a flag on a trace element — and is stored only when the persisted
+trace grounds the anchor; accepted items become golden-set eval cases.
 
-**Amended (2026-09-28, #285):** a new event **kind** is additive on the same terms as a new optional field, and it does **not** bump `Trace.version`. `TraceEventSchema` is a strict `v.variant("kind", …)` and `parseTrace` rejects an unknown kind — but the enumeration only ever _grows_, so a trace persisted before a kind existed carries no event of it and still parses: nothing already on disk becomes unreadable, which is the property the version anchor exists to protect. The anchor covers `Trace`'s own fields, not the union's size — every kind added since `version` was introduced (`filter_relaxed`, `scope_expansion`, `decision`, and now `product_rules`) shipped unbumped, and the runner does not write `version` at all. What a reader must **not** do is read the _absence_ of such an event as a negative for a trace written before that kind existed: presence is the signal, absence is ambiguous across the version boundary. (The converse — a reader older than the writer — still rejects the newer kind by design, since the strict variant is what stops an untyped record from persisting; that is the standing posture for every kind added here, and the reason a rollback past a kind's introduction must expect `parseTrace` to throw on traces written by the newer build.) That version boundary is not machine-readable in the record itself — no writer stamps `version`, and no other field separates a pre-kind trace from a post-kind one — so the cutoff is **the merge instant of this change, read as the deploy instant of its merge commit in the environment under inspection**, and the field to compare is `answer_traces.created_at` (the row's storage write time, indexed for exactly that range read; the JSONB trace's own `createdAt` is the runner's clock, not a deploy marker). A QA count of "no rules ran" that does not name that instant is not reproducible, so the QA brief cites it.
+## Why
 
-The first kind to carry that reading rule is **`product_rules`**: recorded by the reviewer stage wherever the deterministic product rules are applied — all three of its rules-applying exits, including the ADR-0042 pre-gate skip, which records **no `review` event at all** — carrying the rule ids that appended text, so a rule that appended text is visible on the trace — and the event's presence says the rules ran — instead of either being inferred from the delivered answer. An empty `applied` list means the rules ran and appended nothing — the exact-copy suppression case ("a trigger matched and the copy was already present") is the motivating example, not a separable record, and the field does not distinguish it from "no rule had a trigger"; a run that skips the rules records no event, because the event means "the rules ran", never "the stage passed". The delivered text remains the single source of truth for what the answer says.
+Hiding the machinery is the norm and this product deliberately deviates: it is open source and asks users to help
+improve quality. A vague "bad answer" report is not actionable; "this chunk is mistranslated" is, and the trace is
+what makes a specific element addressable at all.
+
+The shared contract is what keeps the trace honest. Model identity, tokens, latency, and cost are recorded where the
+call happens rather than reconstructed for display, and a refusal is recorded like an answer, so the panel renders
+persisted evidence and a cost figure cannot come from anywhere but the calls that ran. A per-user trace is the tension
+between auditability and erasure resolved in favour of erasure: the anonymous case has no retention claim worth the
+exception.
+
+Anchoring is enforced against the trace rather than trusted from the client. A flag the evidence contradicts is
+refused rather than stored, because a row asserting a defect that did not happen would train the review queue on
+invented findings. The same flag is idempotent per user, answer, and element, so a repeated submission cannot inflate
+the queue it feeds.
+
+## Consequences
+
+The `Trace` shape only ever grows by optional, version-bumped fields; it never gains a required field and never
+renames or removes one without migrating persisted traces. The store reader tolerates missing optional fields and
+strips unknown future keys, so older traces stay readable.
+
+A new event kind is additive on the same terms and does not bump the version: the kind union only grows, so a trace
+persisted before a kind existed carries no event of it and still parses. Presence of an event is the signal; absence
+is ambiguous across the kind's deploy instant, and no reader may take a missing event as a negative. A reader older
+than the writer still rejects the unknown kind, which is what stops an untyped record from persisting.
+
+The reviewer stage records the product-rules event wherever the deterministic product rules are applied, including the
+exit that skips them for the decision pre-gate and records no review event. Its presence means the rules ran; an empty
+applied list means they ran and appended nothing. The delivered text stays the single source of truth for what the
+answer says.
+
+Category↔anchor-type pairing is enforced by the shared contract, so a malformed combination fails the parse instead of
+reaching the store. An ungrounded flag is a validation error, while a degraded server-side derivation answers a
+service-unavailable error rather than blaming the user.
+
+Feedback rows carry the user id and cascade with it, and resolve their target by the trace's canonical message id,
+which the response echoes back. The queue counts verdicts, not retries. The flag affordances live on the answer, on
+each trace source row, and in the citation sheet footer.
+
+The feedback surface rides the anonymous Bearer session and the shared `/v1` rate limiter.

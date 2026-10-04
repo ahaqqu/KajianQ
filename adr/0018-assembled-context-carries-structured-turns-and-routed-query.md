@@ -1,59 +1,54 @@
 # ADR-0018: AssembledContext carries structured turns and the routed query
 
-## Status
-
-Accepted (2026-08-23). Bounds the `Generator`/`Assembler`/`Reviewer` interfaces in `packages/rag-core` before #5 implements the `Generator` and #6 implements the `Retriever`. Supersedable by a future ADR if streaming or multi-turn chat demands a richer turn shape.
-
-Amended (2026-08-26, ADR-0021): stage methods gain a `run: RunContext` parameter (single trace collection point + per-run disposal), and `Generator`/`Reviewer` now return a `Draft` (`{ text }`) instead of `Answer` — the runner owns the final `Trace`. No implementation existed yet at the time of the amendment, so the change is non-breaking for callers.
-
-Amended (2026-09-11, #10): `Query<TFilters>` gains an optional `history?: readonly Turn[]` — prior conversation turns, oldest first, passed through opaquely by the engine and rendered (or ignored) by the domain pack's Assembler. This is the "multi-turn chat may amend this ADR" case the original text anticipated. The field is additive and optional: a single-turn caller is unchanged, no stage signature moved, and the engine still names no role or history semantics — KajianQ's Assembler decides how a prior turn appears in the prompt. Rationale for the engine carrying it rather than the app re-threading it: `runPipeline` passes the caller's `Query` to the Assembler unchanged, so a domain pack that reads history from a field on `Query` needs no engine change at all, whereas an app-side side-channel (a closure over mutable state, a second assembler) would either break the runner's single-collection-point discipline or fork the assembler per call site.
-
-## Context
-
-The foundation PR (#36) shipped the five pipeline interfaces in `packages/rag-core/src/pipeline.ts`. A thermos review flagged two shapes that would force breaking changes once #5/#6 implement against them:
-
-1. **`AssembledContext.prompt: string`** — the Assembler handed the Generator a pre-rendered string. The Generator could not re-template, stream a preamble, or apply reviewer-driven reformatting without re-parsing the string. For a traceable, pluggable system this is unusually lossy: the Assembler owns context selection, but the Generator must own the final prompt to the `Provider` (it branches the system prompt by `intent`, applies the citation discipline from `filters`, and is bounded by ADR-0015's no-synthesis rules). A frozen string at the seam makes all of that a re-parse.
-
-2. **`Generator.generate(context)` took no `Query`/`RoutedQuery`** — by the time the pipeline reached the Generator, the Router's `intent`, `subQueries`, and `filters` were gone; only the rendered `prompt` survived. `Reviewer.review(answer, context)` had the same blindness. If #5 had implemented against that shape, either `AssembledContext` would grow a `query` field (non-breaking) or the `Generator` signature would change to `generate(query, context)` (a breaking change to a just-shipped interface).
-
-3. **`RoutedQuery.filters` as `Record<string, string | readonly string[]>`** erased the domain pack's typed `KajianQFilters` (`{ madzhab?, grade?, textLayer? }`). Building a `Query` from `KajianQFilters` required spreading a typed object into an open string map (lossy), and a Retriever reading filters back got strings it had to re-cast to `Madzhab`/`Grade`. The "filters are opaque to the engine" intent was right; the shape was not — it made the domain pack's types advisory only.
-
-The spec (`SPECS.md` §1.5 hard boundaries, §2.2 quality/safety policy, §3.3 pipeline stages) and ADR-0015 together prescribe: the Assembler orders Principles first then evidence; the Generator applies a strict-grounding system prompt, branches by intent, and refuses on insufficient evidence; the Reviewer cross-checks "no claim beyond retrieved evidence." All of these need the Generator to see the routed query, not just a frozen prompt.
-
 ## Decision
 
-Reshape the `rag-core` pipeline interfaces, in one non-breaking-for-callers change (no implementation exists yet):
+**The assembled context carries structured turns, not a rendered prompt string.** A turn is a role and its content,
+minimal and generic; the Assembler owns context selection and ordering — principles first, then evidence — and the
+Generator owns the final prompt it hands the provider. The engine treats the role as opaque, and the domain pack names
+the roles its templates use.
 
-1. **`AssembledContext` carries structured `Turn[]`, not a `prompt: string`.** A `Turn` is `{ role: string; content: string }` — minimal and generic. The Assembler owns context _selection and ordering_ (Principles first, then evidence); the Generator owns final prompt assembly to the `Provider`. The engine treats `role` as opaque — the domain pack names the roles its prompt templates use.
+**The assembled context carries the routed query.** Intent, sub-queries, and filters travel with the context.
 
-2. **`AssembledContext` carries the `RoutedQuery`.** `query: RoutedQuery<TFilters>` threads `intent`, `subQueries`, and `filters` through to the Generator and Reviewer, so the system-prompt branch and citation discipline have typed access without re-parsing.
+**The query, the routed query, the assembled context, and the five stage interfaces are generic over the filter
+type.** They default to an open string map for domain-agnostic callers, while the domain pack instantiates its own
+filter type and the Retriever gets typed filter access with no string re-casts at the boundary.
 
-3. **`Query`, `RoutedQuery`, `AssembledContext`, and the five stage interfaces are generic over `TFilters`.** `Query<TFilters extends Record<string, unknown> = DefaultFilters>` defaults to the open string map (`DefaultFilters = Record<string, string | readonly string[]>`) for domain-agnostic callers, so the engine stays generic. The domain pack instantiates `Query<KajianQFilters>` and the Retriever gets typed filter access — no string re-casts at the boundary.
+**The query also carries an optional history of prior turns**, oldest first, passed through opaquely by the engine and
+rendered or ignored by the domain pack's Assembler. The field is additive and optional: a single-turn caller is
+unchanged, no stage signature moved, and the engine still names no role or history semantics.
 
-The `Generator.generate(context)` signature is unchanged (it still takes `AssembledContext`); the reshape is additive because no code implements these interfaces yet.
+**Stage methods take a run context** — one trace collection point and per-run disposal — and the Generator and
+Reviewer return a draft rather than an answer.
 
-## Rationale
+## Why
 
-1. **The Generator owns the prompt; the Assembler owns the context.** A frozen string at the seam inverts this — the Assembler becomes the prompt renderer and the Generator becomes a forwarder. Structured turns keep the separation that the pluggable principle (AGENTS.md §1.1) and ADR-0015 both require.
-
-2. **Threading the routed query prevents a breaking change later.** Without `query` on `AssembledContext`, #5's Generator would need the intent/filters and would either grow the type (a second construction site) or change its signature. Carrying it now is the one-line change that the review flagged as cheap-today, expensive-after-#6.
-
-3. **`TFilters` keeps the domain boundary intact without erasing types.** The engine stays domain-agnostic (it never names `Madzhab`/`Grade`); the domain pack gets typed filters that survive the boundary. This is the pluggable principle's "parameterize the concept instead" applied to the filter shape.
-
-4. **`Turn` is minimal on purpose.** A richer messages shape (tool calls, multimodal parts) can grow later without breaking callers; starting with `{ role, content }` is the smallest shape that lets the Generator own assembly. Streaming and multi-turn chat may amend this ADR.
+A frozen prompt string at the seam inverts the ownership the rest of the design rests on: the Assembler becomes the
+prompt renderer and the Generator a forwarder, unable to re-template, stream a preamble, or apply reviewer-driven
+reformatting without re-parsing. The Generator is the one component that must branch the system prompt by intent,
+apply the citation discipline the filters carry, and refuse on insufficient evidence, and a rendered string at the
+seam makes all of that a parse. Carrying the routed query is the cheap version of the same property: without it the
+Generator would need either a second construction site or a signature change to a just-shipped interface, and carrying
+it on the context is additive — so the system-prompt branch and the citation discipline reach the Generator and the
+Reviewer in typed form instead of through re-parsing a string. Making the interfaces generic over the filter type
+keeps the domain boundary intact without erasing types — the engine never names a domain filter, the default keeps the
+engine generic for callers that need no domain type, and the domain pack's types stop being advisory. Carrying
+conversation history on the query rather than re-threading it in the app is the same argument: the runner passes the
+caller's query to the Assembler unchanged, whereas an app-side side-channel — a closure over mutable state, a second
+assembler — would break the runner's single-collection-point discipline or fork the assembler per call site. The turn
+shape is minimal on purpose. A richer message shape can grow later without breaking callers, and starting from the
+smallest shape is what lets the Generator own assembly. The runner owns the final trace (ADR-0021), which is why the
+Generator and Reviewer return a draft rather than an answer. Rejected: keeping the prompt string and adding the query
+to the context, which leaves the Generator unable to re-template or stream a preamble and still forces re-parsing for
+reviewer-driven reformatting — the stringly-typed prompt is the core smell. Rejected: changing the generate signature
+to take the query beside the context, a breaking change to a just-shipped interface and unnecessary because the query
+rides on the context. Rejected: typing the filters as unknown at the engine boundary, which loses the default shape
+for domain-agnostic callers and forces every caller to cast.
 
 ## Consequences
 
-- **#5** implements `Generator` against `AssembledContext<TFilters>`: it reads `context.query.intent` for the system-prompt branch, sends `context.turns` to the `Provider`, and records tokens/latency/cost into the `Trace` (ADR-0007).
-- **#6** implements `Retriever` against `RoutedQuery<TFilters>`: it reads typed filters (`RoutedQuery<KajianQFilters>.filters.madzhab`) without re-casting.
-- **#7** (Assembler) produces the ordered `Turn[]` — Principles first, then evidence — and returns `AssembledContext` with the routed query attached.
-- The `kajianq-domain` pack instantiates `Query<KajianQFilters>` / `RoutedQuery<KajianQFilters>` at the product boundary; the engine never imports that type.
-- `Turn.role` being a string (not an enum) is deliberate: the engine does not name roles. If a shared role vocabulary becomes necessary, it lives in `kajianq-domain`, not `rag-core`.
-
-## Alternatives considered
-
-1. **Keep `prompt: string` and add `query` to `AssembledContext`.** Rejected — leaves the Generator unable to re-template or stream a preamble, and ADR-0015's reviewer-driven reformatting still requires re-parsing. The stringly-typed prompt is the core smell.
-
-2. **Change `Generator.generate(context)` to `generate(query, context)`.** Rejected — a breaking signature change to a just-shipped interface, and unnecessary because `query` can ride on `AssembledContext` without changing the signature. Carrying `query` on the context is additive.
-
-3. **Type `filters` as `unknown` at the engine boundary.** Rejected — loses the default shape for domain-agnostic callers and forces every caller to cast. The `TFilters` generic with a `DefaultFilters` default keeps the engine generic and the domain pack typed.
+The Generator reads the intent from the context's routed query for its system-prompt branch, sends the turns to the
+provider, and records tokens, latency, and cost on the trace. The Retriever reads typed filters off the routed query
+without re-casting; the Assembler produces the ordered turns and returns the context with the routed query attached.
+The domain pack instantiates the typed query at the product boundary, and the engine never imports that type. A turn's
+role being a string is deliberate: the engine does not name roles, and a shared role vocabulary, if one is ever
+needed, lives in the domain pack.
