@@ -26,7 +26,7 @@ This repo is single-context. Maintain one glossary at the root and ADRs under `a
 ├── CONTEXT.md                ← concise mental model (already exists)
 ├── docs/
 │   └── ARCHITECTURE.md       ← architecture principles
-├── adr/                      ← architecture decision records
+├── adr/                      ← product and architecture decision records
 └── .agents/skills/...        ← skills (do not write here)
 ```
 
@@ -67,45 +67,14 @@ When a term is resolved, update `docs/GLOSSARY.md` right there. Don't batch thes
 
 ### Offer ADRs sparingly
 
-Only offer to create an ADR when all three are true:
-
-1. **Hard to reverse** — the cost of changing your mind later is meaningful.
-2. **Surprising without context** — a future reader will wonder "why did they do it this way?"
-3. **The result of a real trade-off** — there were genuine alternatives and you picked one for specific reasons.
-
-If any of the three is missing, skip the ADR.
-
-Use this ADR format:
-
-```markdown
-# ADR-<NNN>: <title>
-
-**Status:** proposed | accepted | superseded
-**Date:** YYYY-MM-DD
-
-## Context
-
-What is the problem we're solving? What constraints are we under?
-
-## Decision
-
-What did we decide? One sentence.
-
-## Rationale
-
-Why this over the alternatives? What does this enable downstream?
-
-## Consequences
-
-What becomes easier? What becomes harder? What must we remember?
-```
-
-Write the ADR under `adr/` and number it sequentially.
+Whether a decision earns a record is stated once, in `AGENTS.md`'s Decisions
+bullet — read the bar there before offering one. `adr/TEMPLATE.md` is the shape to
+copy. Most sessions have no ADR to write.
 
 ## Completion criterion
 
 Domain modeling is done when:
 
 - [ ] Every noun and verb in the design has an unambiguous definition in `docs/GLOSSARY.md`.
-- [ ] Every structural decision that meets the ADR threshold has an ADR, or a note explaining why it doesn't need one.
+- [ ] Every decision the `AGENTS.md` bar makes a record has one, or a note explaining why it doesn't need one.
 - [ ] The user has reviewed and approved the glossary and ADRs.

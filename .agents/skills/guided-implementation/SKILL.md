@@ -96,7 +96,7 @@ Before opening the PR, run the Quick review scans from `.agents/skills/dars-plug
 - [ ] Any new LLM call records model/tokens/cost to a trace.
 - [ ] Any new persisted answer path writes a trace record the UI can render.
 - [ ] Vocabulary matches `CONTEXT.md`; new domain terms added to `CONTEXT.md` in this PR.
-- [ ] New ADRs added for hard-to-reverse decisions; PR description cites the issue + relevant ADRs.
+- [ ] New ADRs added where `AGENTS.md`'s Decisions bullet calls for one; PR description cites the issue + relevant ADRs.
 - [ ] `NOTICES/DATASETS.md` updated when a dataset or corpus resource is touched.
 - [ ] Touched `SPECS.md` sections updated in the same PR (architecture §3, data layer §3.5/§4, cost §5, plan §7, product scope §2); new ADR row in its §8 Record of Decisions.
 - [ ] Golden Set traps added where the ticket demands them (new refusal case, trap question, or validator).

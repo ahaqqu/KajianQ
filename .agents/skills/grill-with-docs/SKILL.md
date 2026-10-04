@@ -33,7 +33,7 @@ This skill is an orchestrator. It runs the `/grilling` interview discipline, the
    - Stress-test relationships with concrete edge-case scenarios.
    - Cross-reference the user's claims with the actual code.
    - Write resolved terms to `docs/GLOSSARY.md` immediately.
-   - Write hard/surprising/trade-off decisions to `adr/`.
+   - Write an ADR where `AGENTS.md`'s Decisions bullet calls for one, to `adr/`.
 
 ## Phase 1 — Domain modeling
 
@@ -90,13 +90,8 @@ Every user action must have answers for:
 
 ## Phase 3 — ADR
 
-Use the `domain-modeling` skill to write an Architecture Decision Record for any decision that is:
-
-- A structural tradeoff (two viable paths, one chosen)
-- A constraint the team must remember
-- A departure from `ARCHITECTURE.md` defaults
-
-Write the ADR under `adr/` and number it sequentially.
+For a decision that clears the bar in `AGENTS.md`'s Decisions bullet, use the
+`domain-modeling` skill to write the record in the shape `adr/TEMPLATE.md` gives.
 
 ## Phase 4 — Glossary
 
@@ -109,6 +104,6 @@ Grilling is done when:
 - [ ] Every architecture principle has been checked against the design.
 - [ ] Every design pressure question has a concrete answer (no "we'll figure it out later").
 - [ ] The glossary covers every noun and verb in the design with unambiguous definitions.
-- [ ] Every structural decision has an ADR, or a note explaining why it doesn't need one.
+- [ ] Every decision the `AGENTS.md` bar makes a record has one, or a note explaining why it doesn't need one.
 - [ ] The user has reviewed and approved the glossary and ADRs.
 - [ ] The user has confirmed shared understanding and permission to proceed.
