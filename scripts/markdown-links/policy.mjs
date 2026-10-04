@@ -194,11 +194,15 @@
  *   moment*, not living docs: a path in them is evidence of what was, not an
  *   instruction to a reader. A decision record that removed an artifact names
  *   it precisely *because* it removed it — a record has no present tense — and
- *   the cutover record is the executed log of a one-shot procedure. AGENTS.md
- *   forbids editing `adr/` to make a gate pass, so those spans cannot be
- *   repaired, only exempted — and an allowlist of every one of them, growing
- *   with each record, is not the "tiny, reasoned" kind this gate tolerates. This
- *   is the rule instead, stated with its cost:
+ *   the cutover record is the executed log of a one-shot procedure. A dead span
+ *   in a record is usually the record's own evidence of what it removed: repair
+ *   would make the record claim what it never claimed, deletion would erase the
+ *   evidence, so the span is exempted rather than repaired and the count printed
+ *   on every green run makes its growth a reviewable diff, never a silent hole.
+ *   The corpus-wide rewrite is filed as #408/#409 and the audit of the thirteen
+ *   spans this rule's adoption left behind as #410 (one verdict per span); a
+ *   growing allowlist of every one of them is not the "tiny, reasoned" kind this
+ *   gate tolerates. This is the rule instead, stated with its cost:
  *
  *     WHICH FILE IS A RECORD (the membership rule): `RECORD_DIRS` /
  *     `RECORD_FILES` may only list a document whose content is an executed log
@@ -263,9 +267,9 @@
  *   (`the `code-review` skill`, `skill `manager``) must name a directory under
  *   `.agents/skills/` that contains a `SKILL.md`. This is the half that would
  *   have caught #367 mechanically: both of its dead references were
- *   `` `agentic-workflow` skill ``-shaped. Measured at 07cb2914: 28 such
- *   references across the scanned roots — 23 in living docs, 5 in records —
- *   every one of them resolving.
+ *   `` `agentic-workflow` skill ``-shaped. The gate reports its own population — the
+ *   OK line's `N skill names checked` — so this comment states the marker and the
+ *   resolution rule, and no hand-kept census drifts here on the next doc edit.
  *
  *   Deliberately NOT extended to "the `X` role". That marker names four
  *   different things: live harness roles (`.zcode/agents/<role>.md` — `qa`,

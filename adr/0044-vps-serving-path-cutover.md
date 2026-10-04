@@ -410,12 +410,15 @@ decision.
    distinguishes the two GitHub environments is their vars/secrets and that
    gate, never a second host (`docs/VPS-OPERATIONS.md` §1.2/§1.4).
 
-The QA phase's _staging only, never production_ rail (ADR-0048 decision 5) is
-true as written again — there is no production deployment to hit — and it keeps
-every protection that bounds a probe's blast radius: anonymous sessions only,
-erasure of every session with its own token, the `SELECT`-only subject-scoped
-store read, the recorded spend cap, no writes and no corpus changes.
+The QA phase's _staging only, never production_ rail
+(`.agents/skills/qa-phase/SKILL.md`; formerly ADR-0048 decision 5) is true as
+written again — there is no production deployment to hit — and it keeps every
+protection that bounds a probe's blast radius: anonymous sessions only, erasure
+of every session with its own token, the `SELECT`-only subject-scoped store read,
+the recorded spend cap, no writes and no corpus changes.
 
 Revisit trigger: **production is provisioned** — a second host, or a second tree
-behind `prod` — which is the condition ADR-0048's _alternatives considered_ note
-waits on, and which supersedes this amendment rather than editing it.
+behind `prod` — which is the condition `.agents/skills/qa-phase/SKILL.md`'s
+_staging only, never production_ rail is bounded by (formerly ADR-0048's
+_alternatives considered_ note), and which supersedes this amendment rather than
+editing it.
