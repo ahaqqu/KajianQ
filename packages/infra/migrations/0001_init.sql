@@ -14,7 +14,7 @@
 --   * Idempotent ingestion (AGENTS.md rule 11): doc_parents.source_key is
 --     UNIQUE so re-running ingestion upserts by provenance key, and
 --     doc_children are upserted by (parent_id, ordinal).
---   * Dual embeddings from the start (ADR-0013 decision 1): each child chunk
+--   * Dual embeddings from the start (ADR-0013): each child chunk
 --     carries embedding_primary (canonical) and embedding_fallback
 --     (fusion), both VECTOR(1536), nullable until embedded. The column names
 --     are role-based on purpose: KajianQ maps primary/fallback onto its AR/ID
