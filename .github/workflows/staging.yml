@@ -4,9 +4,10 @@ name: Staging
 # serving host is the netcup VPS: the `deploy` job delegates to the reusable
 # `deploy-vps.yml` workflow, so the deploy command lives in exactly one place
 # (issue #181's deployer separation). Docs-and-tests-only pushes (markdown,
-# docs/, adr/, NOTICES/, .agents/, .zcode/, tests/**, *.test.ts, *.test.mjs)
-# cannot change the deployed artifact, so they skip the push trigger — a deploy
-# plus its paid smoke would be pure spend with no new artifact to verify.
+# docs/, adr/, NOTICES/, .agents/, .zcode/, tests/**, *.test.ts, *.test.mjs,
+# and the test-support class stated at the patterns below) cannot change the
+# deployed artifact, so they skip the push trigger — a deploy plus its paid
+# smoke would be pure spend with no new artifact to verify.
 # GitHub skips a push only when EVERY changed file matches an ignore pattern,
 # so a push mixing docs/tests and code still deploys. A tests-only merge
 # produces no `Staging` run by design; `CI`, `E2E` and `VPS restore drill`
@@ -36,8 +37,25 @@ on:
       - ".zcode/**"
       # Test patterns by convention, not by directory: most *.test.ts are
       # colocated under apps/ and packages/, so tests/** alone would leave them
-      # deploying. Runner configs and test-utils/ helpers sit outside these
-      # patterns (recorded residual: spend only).
+      # deploying.
+      # Test SUPPORT is coupled by purpose instead (#380): a helper, a shared
+      # fixture, or a runner config whose whole purpose is to serve tests. It
+      # has to be named somewhere, because a test-only change almost always
+      # travels with the suites that use it, and GitHub skips a push only when
+      # EVERY changed file matches — so one unmatched support file used to make
+      # the whole merge deploy and pay the smoke (#280's spend, re-entered).
+      # The invariant that makes the coupling safe is:
+      #   "a file whose whole purpose is test support is never imported by
+      #    production code"
+      # Verified, not assumed, at the commit that added these patterns: every
+      # importer of a matched path is itself a *.test.ts or another member of
+      # this class, and fresh builds of all four deploy artifacts contain zero
+      # occurrences of any matched name.
+      # The failure mode of this coupling is a SILENTLY SKIPPED DEPLOY: a
+      # production module placed under a test-utils/ directory, or named
+      # *test-utils* / test-fixtures*, stops deploying while CI and E2E stay
+      # green. Nothing in CI enforces the invariant — this comment is the guard,
+      # so a change moving production code into this class must re-check it.
       # No step in this workflow executes a test, and no test-class file
       # reaches a shipped artifact: deploy.sh builds build:web,
       # apps/api/src/boot.ts, apps/api/src/cleanup.ts and
@@ -48,6 +66,11 @@ on:
       - "tests/**"
       - "**/*.test.ts"
       - "**/*.test.mjs"
+      - "**/test-utils/**"
+      - "**/*test-utils*"
+      - "**/test-fixtures*"
+      - "vitest.config.ts"
+      - "playwright.config.ts"
   workflow_dispatch:
     inputs:
       # Operator knobs for the Golden Set smoke (SPECS §3.7). On a push these
