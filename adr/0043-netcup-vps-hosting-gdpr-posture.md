@@ -181,10 +181,9 @@ and are what the implementation conforms to.
      an explicit deletion by label after a documented window, never an
      overwrite.
    - GDPR-E (#181) must generalize the CLI's connection-env source — the live
-     env name is the script's to own (`packages/infra/scripts/db-snapshot.mjs`),
-     never this record's — and re-do this analysis at cutover; the pre/post
-     labels bracketing the migration are themselves personal-data-bearing
-     archives.
+     env name is the script's to own (`packages/infra/scripts/db-snapshot.mjs`)
+     — and re-do this analysis at cutover; the pre/post labels bracketing the
+     migration are themselves personal-data-bearing archives.
 
    **A corpus-only projection is explicitly _not_ decided here.** It would be
    the clean answer (a durable archive that provably carries no personal data),

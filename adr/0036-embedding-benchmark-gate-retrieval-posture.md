@@ -72,9 +72,9 @@ cheap-tier router LLM picked the correct Arabic expansion term, including
 contextual disambiguation (wudhu vs. ghusl vs. tayammum for purity queries;
 firdaus as the narrower pick inside the paradise slice; zakat al-fitr vs.
 zakat). The recorded run's score lives in the committed report
-(`packages/kajianq-domain/fixtures/embed-bench-results.json`), not in this
-record; ADR-0014's prompt-injection consumption design still draws on the
-micro-task qualitatively.
+(`packages/kajianq-domain/fixtures/embed-bench-results.json`); ADR-0014's
+prompt-injection consumption design still draws on the micro-task
+qualitatively.
 
 ### Interpretation — read the MRR, not just the recall
 
