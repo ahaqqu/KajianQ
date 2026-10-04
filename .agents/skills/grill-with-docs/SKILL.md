@@ -33,7 +33,7 @@ This skill is an orchestrator. It runs the `/grilling` interview discipline, the
    - Stress-test relationships with concrete edge-case scenarios.
    - Cross-reference the user's claims with the actual code.
    - Write resolved terms to `docs/GLOSSARY.md` immediately.
-   - Write hard/surprising/trade-off decisions to `adr/`.
+   - Write an ADR where `AGENTS.md`'s Decisions bullet calls for one, to `adr/`.
 
 ## Phase 1 — Domain modeling
 
