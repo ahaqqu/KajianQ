@@ -28,7 +28,7 @@ export { TraceEventSchema, type TraceEvent, type TraceEventKind } from "./trace-
  * add a required field or rename/remove an existing one without migrating
  * persisted traces. The RagStore reader uses `v.parse`, which tolerates
  * missing optional fields and strips unknown future keys, so older persisted
- * traces stay readable as the contract evolves (ADR-0007 amendment).
+ * traces stay readable as the contract evolves (ADR-0007).
  *
  * A new event *kind* is additive on the same terms and does NOT bump
  * `version`: a trace persisted before the kind shipped simply carries no
@@ -59,8 +59,8 @@ export function totalCostMicroUsd(trace: Trace): number {
 /**
  * Validate and return a Trace, throwing on a malformed event. The pipeline
  * runner calls this once when assembling the final trace so a mis-shaped or
- * unknown-kind event fails the run instead of persisting silently (ADR-0007
- * amendment, #45).
+ * unknown-kind event fails the run instead of persisting silently (ADR-0007;
+ * #45).
  */
 export function parseTrace(trace: unknown): Trace {
   return v.parse(TraceSchema, trace);

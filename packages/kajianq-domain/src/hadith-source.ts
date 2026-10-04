@@ -93,7 +93,7 @@ export type HadithCitation = {
 
 /**
  * The weak-class vocabulary of the source's grade strings (verified against
- * the live editions, ADR-0026 amendment 2026-09-05): any occurrence of one
+ * the live editions, ADR-0026): any occurrence of one
  * of these tokens makes the hadith `dhaif`. `Mauquf`/`Muquf`/`Maqtu` are
  * deliberately absent — they are attribution-scope classes that combine with
  * positive grades ("Mauquf Sahih"), not defects; `Marfoo` is an elevated

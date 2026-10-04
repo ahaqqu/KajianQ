@@ -113,7 +113,7 @@ export function createKajianQAssembler(): Assembler<KajianQFilters> {
 }
 
 /**
- * Prior turns ride `Query.history` (the ADR-0018 amendment: the engine carries
+ * Prior turns ride `Query.history` (ADR-0018: the engine carries
  * multi-turn context opaquely, the domain pack renders it). Malformed entries
  * are dropped rather than crashing the answer path — a bad history row must
  * not take down a question.

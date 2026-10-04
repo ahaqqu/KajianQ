@@ -46,7 +46,7 @@ export type DecisionSpec = {
    * the state reaches the vendor verbatim, so the caller must declare whether
    * it carries personal data. A `true` spec may only be answered by a vendor
    * whose config says `personalDataAllowed: true` — the register rule
-   * (ADR-0009 amendment / ADR-0043) that personal data never routes through a
+   * (ADR-0009 / ADR-0043) that personal data never routes through a
    * free tier is enforced at this seam, not only at resolution.
    */
   readonly personalData: boolean;

@@ -38,7 +38,7 @@ import { CHAT_SERVING_ROLES } from "./chat-wiring";
  *      first, in CI, instead of in production traffic. The `decision` role is
  *      in scope: the pre-gate sends claim spans (personal data) and the
  *      `Decider` seam carries its own required label plus a pre-wire refusal
- *      and a serving-resolution filter (ADR-0042 amendment, #168) — this test
+ *      and a serving-resolution filter (ADR-0042 adoption, #168) — this test
  *      is what keeps a free-tier decision candidate out of that chain.
  *
  * Trap cases named before writing:
@@ -73,7 +73,7 @@ const SERVING_ROLES = CHAT_SERVING_ROLES;
  * GEMINI_PAID_API_KEY (the paid-terms embedder head) is an owner-provisioned
  * precondition of the chat path: without it the embedder stage fails a
  * serving call with a typed error. The reviewer is DeepSeek (same-vendor
- * amendment, 2026-09-21) and shares DEEPSEEK_API_KEY). They are named in the cutover
+ * since the 2026-09-21 re-head) and shares DEEPSEEK_API_KEY). They are named in the cutover
  * runbook's step-0 preconditions and `provision/vps/api.env.example`; this
  * test pins the config side only — that the checked-in `models.json` shapes a
  * fully-keyed serving graph — and cannot observe the live environment.

@@ -23,7 +23,7 @@ const stageArb = fc.constantFrom(
 
 /**
  * `llm_call` is the cost-carrying event kind, so the cost-sum invariants
- * (ADR-0007 amendment) are expressed over it. `cost` is built conditionally
+ * (ADR-0007) are expressed over it. `cost` is built conditionally
  * so the generated value omits the key when undefined — matching the exact
  * optionality of the typed contract.
  */
@@ -37,7 +37,7 @@ const llmCallArb = fc
   }));
 
 describe("trace contract", () => {
-  // ADR-0007 amendment invariant: a run's recorded cost equals the sum of its
+  // ADR-0007 invariant: a run's recorded cost equals the sum of its
   // recorded LLM calls — an untraced call is a defect.
   //
   // The properties below test *independent* invariants rather than mirroring

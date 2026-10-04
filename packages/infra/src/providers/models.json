@@ -128,15 +128,15 @@
   },
   "roles": {
     "generator": {
-      "$comment": "Cost posture decided 2026-09-12 (ADR-0009 amendment): the answer generator runs on the cheap tier \u2014 DeepSeek V4-Flash at $0.14/$0.28 per MTok vs Qwen3.7-Max's $2.50/$7.50 \u2014 because the trust invariant is carried by the deterministic citation gate and the cross-vendor reviewer, not by generator price. The Qwen3.7-Max tail was REMOVED on 2026-09-12 (owner decision): DashScope is not provisioned and will not be, and resolveRole silently filters candidates whose apiKeyEnv is unset \u2014 so the chain advertised a failover that could never be wired. Single candidate, accepted single point of failure: a generator failure costs one <=$1 smoke re-run, not data. Re-adding a fallback means adding a candidate whose key is actually bound.",
+      "$comment": "Cost posture decided 2026-09-12 (ADR-0009): the answer generator runs on the cheap tier \u2014 DeepSeek V4-Flash at $0.14/$0.28 per MTok vs Qwen3.7-Max's $2.50/$7.50 \u2014 because the trust invariant is carried by the deterministic citation gate and the reviewer gate, not by generator price. The Qwen3.7-Max tail was REMOVED on 2026-09-12 (owner decision): DashScope is not provisioned and will not be, and resolveRole silently filters candidates whose apiKeyEnv is unset \u2014 so the chain advertised a failover that could never be wired. Single candidate, accepted single point of failure: a generator failure costs one <=$1 smoke re-run, not data. Re-adding a fallback means adding a candidate whose key is actually bound.",
       "chain": ["deepseek:deepseek-v4-flash"]
     },
     "reviewer": {
-      "$comment": "Personal-data posture (ADR-0043 gap closure, #181; amended 2026-09-21 per owner): the serving reviewer's prompt embeds the user's question and the drafted answer, so with PromptSpec.personalData required on every serving call only a paid candidate may serve. The designed head was kimi:kimi-k2.6 (cross-vendor, ADR-0009/ADR-0015), but the owner holds no Moonshot key and elected (issue #181 thread) to remove Moonshot from the register and head the reviewer with the DeepSeek generator model instead. This accepts same-vendor review \u2014 the property ADR-0015 named 'anti-self-review' is relaxed for the current key set, recorded as a deliberate trade-off rather than drifted into. Revisit when a second paid vendor key (kimi, qwen) is provisioned.",
+      "$comment": "Personal-data posture (ADR-0043 decision 3, #181; reviewer re-headed 2026-09-21 per owner): the serving reviewer's prompt embeds the user's question and the drafted answer, so with PromptSpec.personalData required on every serving call only a paid candidate may serve. The designed head was kimi:kimi-k2.6 (cross-vendor, ADR-0009/ADR-0015), but the owner holds no Moonshot key and elected (issue #181 thread) to remove Moonshot from the register and head the reviewer with the DeepSeek generator model instead. This accepts same-vendor review \u2014 the property ADR-0015 named 'anti-self-review' is relaxed for the current key set, recorded as a deliberate trade-off rather than drifted into. Revisit when a second paid vendor key (kimi, qwen) is provisioned.",
       "chain": ["deepseek:deepseek-v4-flash"]
     },
     "reviewer-live": {
-      "$comment": "Same amendment as the reviewer chain: the live reviewer is DeepSeek until a second paid vendor key exists.",
+      "$comment": "Same re-head as the reviewer chain: the live reviewer is DeepSeek until a second paid vendor key exists.",
       "chain": ["deepseek:deepseek-v4-flash"]
     },
     "cheap": {
@@ -159,7 +159,7 @@
       "chain": ["typesafe:jev-1.13.0"]
     },
     "decision": {
-      "$comment": "The decision-model SERVING role (ADR-0042 adoption, ticket #168): the reviewer pre-gate's pinned decision model, adopted on the committed multilingual gate report (packages/kajianq-domain/fixtures/decision-bench-results.json: jev-1.13.0 scored 21/21 overall and per-language ar/id/en \u2014 relevance 12/12, rerank 3/3, citation 6/6, 21 micro-USD total). Separate from the bench-only `decision-candidates` role so a re-bench can add challengers without changing what serves. Always active wherever JEV_API_KEY is bound (owner decision 2026-09-19, recorded as the ADR-0042 consequence amendment); absent key = the pre-gate is not wired and the reviewer behaves as it did before adoption \u2014 no enable/disable flag exists. Batched: one call per answer, input-priced, ~$0.0001 per screen at the pinned 42 micro-USD/MTok.",
+      "$comment": "The decision-model SERVING role (ADR-0042 adoption, ticket #168): the reviewer pre-gate's pinned decision model, adopted on the committed multilingual gate report (packages/kajianq-domain/fixtures/decision-bench-results.json: jev-1.13.0 scored 21/21 overall and per-language ar/id/en \u2014 relevance 12/12, rerank 3/3, citation 6/6, 21 micro-USD total). Separate from the bench-only `decision-candidates` role so a re-bench can add challengers without changing what serves. Always active wherever JEV_API_KEY is bound (owner decision 2026-09-19, recorded as the ADR-0042 consequence); absent key = the pre-gate is not wired and the reviewer behaves as it did before adoption \u2014 no enable/disable flag exists. Batched: one call per answer, input-priced, ~$0.0001 per screen at the pinned 42 micro-USD/MTok.",
       "chain": ["typesafe:jev-1.13.0"]
     }
   }

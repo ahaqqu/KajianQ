@@ -156,7 +156,7 @@ When("I see the privacy notice rendered from the register", async ({ page }) => 
   await expect(notice.getByTestId("about-privacy-controller")).toContainText("Angga (@ahaqqu)");
   // Every register row is its own card (netcup, Cloudflare, Neon, and the LLM
   // vendors), and the rule that governs them is stated. Seven rows since the
-  // 2026-09-21 amendment removed Moonshot (ADR-0043/0044 amendments); the
+  // the 2026-09-21 owner decision removed Moonshot (ADR-0044 decision 7); the
   // decommissioning (2026-09-21) keeps Cloudflare and Neon registered as
   // no-serving-role rows.
   const processors = notice.getByTestId("about-privacy-processor");

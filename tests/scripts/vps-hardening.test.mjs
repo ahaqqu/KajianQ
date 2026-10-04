@@ -922,8 +922,8 @@ describe("provisioning config as code stays true to the ADR", () => {
       expect(example, key).toMatch(new RegExp(`^${key}=`, "m"));
     }
     // The template must ship the recorded `staging` label, and a re-arm has to
-    // redden here rather than on a rebuilt box (ADR-0044 amendment, 2026-10-03;
-    // #355). Asserted on the parsed value — systemd strips whitespace and
+    // redden here rather than on a rebuilt box (ADR-0044 decision 2;
+    // deferred 2026-10-03; #355). Asserted on the parsed value — systemd strips whitespace and
     // quotes, and takes the last assignment — and on there being one assignment:
     // one exact spelling is what a re-arm slips past, not the invariant.
     const assignments = example.match(/^\s*APP_ENV\s*=/gm) ?? [];

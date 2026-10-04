@@ -102,7 +102,7 @@ export function postgresTraceMethods(
         (rows) => {
           const [row] = rows;
           if (!row) return Effect.succeed<Trace | null>(null);
-          // Tolerant reader (ADR-0007 amendment): the Trace contract only ever
+          // Tolerant reader (ADR-0007): the Trace contract only ever
           // ADDS optional fields (versioned), so parseTrace accepts older
           // traces and strips unknown future keys rather than failing. Never
           // add a required field to TraceSchema without a migration of
@@ -202,7 +202,7 @@ export function postgresTraceMethods(
         (rows) => {
           const row = rows[0];
           if (!row) return Effect.succeed<AnswerFeedbackTarget | null>(null);
-          // Tolerant reader (ADR-0007 amendment), same as every trace read:
+          // Tolerant reader (ADR-0007), same as every trace read:
           // older persisted traces stay parseable; a corrupt one is
           // constraint-class, never silently coerced.
           return Effect.map(

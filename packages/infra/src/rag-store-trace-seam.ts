@@ -15,7 +15,7 @@ export interface RagStoreTrace {
    * the @app/contracts `Trace` shape verbatim — it never re-serializes or
    * invents a parallel trace schema (ADR-0007). The user link makes the
    * trace cascade-delete with its owner on anonymous self-deletion
-   * (ADR-0007 amendment).
+   * (ADR-0007).
    */
   insertAnswerTrace(input: {
     messageId: string;

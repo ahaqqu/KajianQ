@@ -131,7 +131,7 @@ describe("systemone adapter", () => {
   });
 
   it("refuses a personal-data spec on a vendor that forbids it — before the wire (A1)", async () => {
-    // The register rule (ADR-0009 amendment / ADR-0043) is enforced at the
+    // The register rule (ADR-0009 / ADR-0043) is enforced at the
     // seam, not only at resolution: a free-tier vendor may never receive the
     // reviewer pre-gate's claim spans. The hard stop must fire with NO request,
     // so the refusal spends nothing and the caller's fail-open path runs.

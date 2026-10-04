@@ -6,7 +6,7 @@
 -- religious vocabulary anchored to aligned Quran/hadith pairs — so it lives
 -- here, not in packages/infra. ADR-0014 originally placed these four tables
 -- in the engine migration (#4); that was domain leakage into an engine
--- package and is amended here (ADR-0014 amendment) by relocating them.
+-- package and is amended here (ADR-0014) by relocating them.
 --
 -- Column sets follow ADR-0014's DDL verbatim. The graph is self-contained:
 -- no FK to the engine schema, so it applies and rolls back independently.

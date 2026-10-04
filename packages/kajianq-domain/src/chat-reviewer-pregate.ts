@@ -43,7 +43,7 @@ export { validateCitations } from "./chat-citation-validator";
  *     a low or out-of-range score, a missing/unreadable answer, a vendor
  *     failure, or no items at all — returns `escalate`, i.e. the existing path.
  *
- * Adoption #2 extracts the generic half of this runner (ADR-0042 amendment).
+ * Adoption #2 extracts the generic half of this runner (ADR-0042 Adoption #2).
  *
  * The trust property it protects: *an answer is never cleared by the decision
  * model alone.* The pre-gate can only ever **skip** the LLM reviewer when the

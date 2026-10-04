@@ -109,7 +109,7 @@ export function runChatPipeline(
   options: RunOptions = {},
 ): Effect.Effect<Answer, import("@app/rag-core").StageError> {
   const stages = buildChatStages(deps);
-  // Follow-up context rides `Query.history` (the ADR-0018 amendment); it is
+  // Follow-up context rides `Query.history` (ADR-0018); it is
   // attached here, not on the deps, so one deps object can serve a whole
   // session while each question carries its own history window.
   const withHistory = {

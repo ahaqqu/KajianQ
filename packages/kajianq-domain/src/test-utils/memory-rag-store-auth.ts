@@ -16,7 +16,7 @@ export type MemoryAuthState = {
   /** Hash-standin token → userId. */
   tokens: Map<string, string>;
   chatSessions: Map<string, string>;
-  /** Traces by message id, plus their owners (ADR-0007 amendment). */
+  /** Traces by message id, plus their owners (ADR-0007). */
   traces: Map<string, unknown>;
   traceOwners: Map<string, string | null>;
   feedback: Map<string, { userId: string }>;

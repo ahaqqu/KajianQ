@@ -89,7 +89,7 @@ A non-`verified` verdict is never withheld for the card's sake — post it with 
 
 - **Staging only.** The one deployment is the `staging` environment and it **is**
   the public URL (`https://kajianq.ahaqqu.com`) — no production deployment is
-  provisioned (ADR-0044 amendment, 2026-10-03), so there is no second
+  provisioned (ADR-0044 decision 2; deferred 2026-10-03), so there is no second
   environment a probe could reach or be pointed at. **Never a prod dispatch**
   either: an operator deploy through the `prod` environment's approval gate
   stays outside this role's reach, and with no production provisioned it would

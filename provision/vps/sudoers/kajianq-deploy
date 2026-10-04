@@ -1,5 +1,5 @@
 # provision/vps/sudoers/kajianq-deploy — the deploy identity's entire root grant
-# (#181, ADR-0044 decision 3 and its 2026-09-21 deploy-identity amendment).
+# (#181, ADR-0044 decision 6; the 2026-09-21 deploy identity).
 #
 # Installed by provision/vps/apply.sh at /etc/sudoers.d/kajianq-deploy, owned
 # root:root mode 0440, and only after the candidate has passed `visudo -cf`: a

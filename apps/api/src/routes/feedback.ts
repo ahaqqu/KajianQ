@@ -20,7 +20,7 @@ import {
  * citation, irrelevant chunk, bad machine translation, questionable grade)
  * from the Trace panel. Zero friction: the anonymous Bearer session the chat
  * already uses is the only credential (ADR-0017 — no account), and the row
- * carries the user id so the self-deletion cascade (ADR-0007 amendment)
+ * carries the user id so the self-deletion cascade (ADR-0007)
  * erases the feedback with its author.
  *
  * Invariants, enforced in order:

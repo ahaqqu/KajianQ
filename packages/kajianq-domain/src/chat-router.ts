@@ -31,7 +31,7 @@ export type RouterProvider = {
      * (ADR-0043 Consequences — the measured gap this type now closes). A
      * non-optional field makes dropping the flag a compile error at the
      * call site, and the flag makes `FallbackProvider` skip free-tier
-     * candidates for the call (`personalDataAllowed`, ADR-0009 amendment).
+     * candidates for the call (`personalDataAllowed`, ADR-0009).
      */
     personalData: true;
   }): Effect.Effect<{ text: string; cost: CostRecord }, unknown>;

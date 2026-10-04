@@ -137,8 +137,7 @@ left the box's `APP_ENV` reading `production`; that label was reverted to
 [`provision/vps/api.env.example`](provision/vps/api.env.example) now ships
 `staging`, so a rebuild takes the recorded label from the template directly (the
 recovery commands for a box still reading `production` are in
-[`docs/VPS-OPERATIONS.md`](docs/VPS-OPERATIONS.md) §1.7 — ADR-0044 amendment,
-2026-10-03).
+[`docs/VPS-OPERATIONS.md`](docs/VPS-OPERATIONS.md) §1.7 — ADR-0044 decision 2; deferred 2026-10-03).
 
 The UI and API columns stay even with a single row: they record that the PWA
 and the API are one host today, so a future split — a separate UI host —
