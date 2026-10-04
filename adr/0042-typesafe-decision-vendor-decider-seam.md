@@ -61,9 +61,11 @@ stage is gated on a multilingual benchmark run.**
 3. **Allowlist amendment (ADR-0009).** The `typesafe` vendor enters
    `models.json`: pinned model, input-only price, `freeTier: false`,
    `personalDataAllowed: true`. The bench-only `decision-candidates` role
-   holds it — mirroring `embedder-candidates` — and is **not** referenced
-   by any serving role. Adding a serving role (e.g. a reviewer pre-gate) is
-   a future PR that must cite this ADR's gate result.
+   holds it — mirroring `embedder-candidates` — and stays bench-only; the
+   serving role is the separate row the 2026-09-27 Amendment below records, and
+   the live role map is `packages/infra/src/providers/models.json`. Adding a
+   further serving role (e.g. a reviewer pre-gate) is a future PR that must
+   cite this ADR's gate result.
 
 4. **The multilingual gate bench.** `bun run eval:decision-bench`
    (`packages/eval/scripts/decision-bench.mjs` + the `@app/eval`
