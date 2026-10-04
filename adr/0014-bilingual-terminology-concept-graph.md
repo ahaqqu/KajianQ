@@ -26,16 +26,16 @@ an interchangeable synonym. The concept model is a decades-old, well-specified i
 standards and lexical models converge on a concept node with per-language lemmas and typed relations, and Postgres is
 the right store for this scale and consumer — a model wanting structured data, not a graph query language. It
 sacrifices only reasoning features nothing here needs, leaving interchange RDF emittable later. The graph is
-product-domain logic — religious vocabulary anchored to aligned Quran and hadith pairs — so an engine package would
-put Islamic-domain logic in the engine and force a second consumer to inherit an Islamic-knowledge schema. The
-licences shape the pipeline: permissive corpora seed and validate, a share-alike Arabic wordnet keeps derived
-redistributions share-alike, and copyleft ontology may be consulted but never copied into this MIT repository.
-Indonesian is the weak side, so candidate generation stays generous there, the model tie-breaking rather than a
-threshold; the word-alignment toolchain is archived and sentence encoders are unvalidated at word level, so embeddings
-propose candidates, the human the precision gate. Disambiguation belongs at the router: the same term means different
-Arabic terms before and after a major impurity, which no static lookup can call. Document-graph builders are
-rejected: they build graphs from corpora. Ruled out: a non-commercial lexical database, incompatible with this
-licence; a dictionary with no clean permissive digital edition; a modern copyrighted dictionary, a human reference
+product-domain logic — religious vocabulary anchored to the aligned Quran ayah pairs and the aligned hadith pairs — so
+an engine package would put Islamic-domain logic in the engine and force a second consumer to inherit an
+Islamic-knowledge schema. The licences shape the pipeline: permissive corpora seed and validate, a share-alike Arabic
+wordnet keeps derived redistributions share-alike, and copyleft ontology may be consulted but never copied into this
+MIT repository. Indonesian is the weak side, so candidate generation stays generous there, the model tie-breaking
+rather than a threshold; the word-alignment toolchain is archived and sentence encoders are unvalidated at word level,
+so embeddings propose candidates, the human the precision gate. Disambiguation belongs at the router: the same term
+means different Arabic terms before and after a major impurity, which no static lookup can call. Document-graph
+builders are rejected: they build graphs from corpora. Ruled out: a non-commercial lexical database, incompatible with
+this licence; a dictionary with no clean permissive digital edition; a modern copyrighted dictionary, a human reference
 only; and the institutional glossaries, with no open machine-readable version, so the mapping stays human-curated.
 
 ## Consequences
