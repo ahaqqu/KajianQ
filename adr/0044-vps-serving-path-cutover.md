@@ -2,9 +2,7 @@
 
 ## Decision
 
-1. **The serving path is a plain Bun process behind nginx** — loopback-bound,
-   draining on SIGTERM — with the Cloudflare Worker entry, the Durable Object
-   limiter and the R2 binding deleted.
+1. **The serving path is a plain Bun process behind nginx** — loopback-bound and draining on SIGTERM, with the Cloudflare Worker entry, the Durable Object limiter and the R2 binding deleted.
 2. **Single-shot cutover, with no rollback runway.** Staging is verified first and
    prod then points at the VPS in one step: there is no live traffic to preserve,
    and ADR-0038's snapshot criteria and the restore drill stay strict. One box
@@ -42,6 +40,7 @@ The Alchemy-era path had app code owning hosting, a partly broken deploy (one wo
 - **Single-shot is a choice against a measured condition**, recorded so a future reader does not "fix" it; cutting uptime tolerance relaxes no snapshot criterion.
 - **The lazy-driver contract is documented because its failure is silent** — an eager driver runs `transaction` statements on separate pooled connections with no error, tearing `createSession`'s atomicity.
 - **One process justifies dropping Durable Objects; the guarantee moves, not the rule** — the limiter still holds one digest-named counter per key.
+- **The deploy grant is exactly the commands the deploy runs because the precondition it replaces had no executable existence** — the earlier arrangement rode a temporary blanket rule and broke the first deploy after its removal, and an unused grant is privilege widening that looks harmless.
 - Rejected: keeping the Worker as a rollback — the window is gone, and the git history is the rollback.
 - Rejected: the vendor's serverless driver against a self-hosted Postgres — it means a vendor's proxy mediating access to your own database.
 - Rejected: the vendor's name as a provider/env alias — it would outlive its reason and mislead the next reader about where the data lives.
