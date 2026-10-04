@@ -347,15 +347,17 @@ export const ROOTS = [
 /**
  * First path segments that make an inline code span a repo-path claim. This is
  * every tracked top-level directory of the repository — the ticket's list plus
- * `.github/` and `.githooks/`, which the list omitted and which turned out to
- * carry 18 live references: 17 code-span path claims (16 under `.github/`, 1
- * under `.githooks/`) and one Markdown link, with 11 more claims inside records,
- * 3 of them dead. Counted with this gate's own `link`/`path`/`record` rules at
- * `b6827d0`; the targets are the deploy, staging and restore-drill workflows and
- * `.github/zap-rules.tsv`, cited by `SPECS.md`, `docs/ARCHITECTURE.md`, the
- * Art. 30 record and the `ship` skill. A new top-level directory is a new
- * claim root: add it here, or paths into it are unchecked.
- * `tests/scripts/check-markdown-links.test.mjs` fails if this list stops
+ * `.github/` and `.githooks/`, which the list omitted. Both belong here because
+ * living documents cite into them: the deploy, staging and restore-drill
+ * workflows and `.github/zap-rules.tsv` are named by `SPECS.md`,
+ * `docs/ARCHITECTURE.md`, the Art. 30 record and the `ship` skill, and
+ * `AGENTS.md` names a versioned hook. That citation is the reason, and it is the
+ * whole comment: a hand-kept census of the namespace is a snapshot of a corpus
+ * that keeps moving, so it has been wrong twice (#389, #401) — the gate's own OK
+ * line prints what a run actually checked, and this comment states the decision
+ * instead of restating those numbers. A new top-level directory is a new claim
+ * root: add it here, or paths into it are unchecked.
+ * `tests/scripts/check-markdown-links-tree.test.mjs` fails if this list stops
  * covering the tracked tree, so that gap cannot open silently.
  */
 export const CLAIM_ROOTS = [
