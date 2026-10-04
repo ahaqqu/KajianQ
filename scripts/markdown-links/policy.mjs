@@ -205,13 +205,12 @@
  *   claim otherwise. A target that still exists at another path moved, and the
  *   span is repointed at the artifact that carries the rule now; a malformed
  *   span is a defect and is repaired like any other. The count is therefore not
- *   a backlog to drive to zero — it is the baseline the count printed on every
- *   green run makes **growth** against, so a new dead claim is a reviewable
- *   diff, never a silent hole. The corpus-wide rewrite is filed as #408/#409,
- *   and #410 is the audit that derived one verdict per span and closed the
- *   initial sets; a growing allowlist of every one of them is not the "tiny,
- *   reasoned" kind this gate tolerates. This is the rule instead, stated with
- *   its cost:
+ *   a backlog to drive to zero — it is a baseline, and the count printed on
+ *   every green run is what makes its **growth** a reviewable diff, never a
+ *   silent hole. The corpus-wide rewrite is filed as #408/#409, and #410 is the
+ *   audit that derived one verdict per span and closed the initial sets; a
+ *   growing allowlist of every one of them is not the "tiny, reasoned" kind this
+ *   gate tolerates. This is the rule instead, stated with its cost:
  *
  *     WHICH FILE IS A RECORD (the membership rule): `RECORD_DIRS` /
  *     `RECORD_FILES` may only list a document whose content is an executed log
