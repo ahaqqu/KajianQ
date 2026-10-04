@@ -25,7 +25,9 @@ jobs:
         with:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
-      # Installs the vp CLI pinned via the `vite-plus` devDependency (ADR-0029).
+      # Installs the vp CLI pinned via the `vite-plus` devDependency; its version
+      # coupling to apps/web's `vite` and the root vitest pins is guarded by
+      # `scripts/check-vp-vite-pin.mjs`.
       - uses: voidzero-dev/setup-vp@24d870228786dc83ae73482406bdd1e7befaec14 # v1.21.0
       - run: bun run check
       - run: bun run lint
@@ -136,7 +138,8 @@ jobs:
         run: bun run db:up:all
         env:
           DATABASE_URL: postgres://contract:contract@127.0.0.1:5432/postgres
-      # vp is the single test runner (ADR-0029): vp resolves from
+      # vp is the single test runner (version-coupled to the root vitest pins,
+      # guarded by `scripts/check-vp-vite-pin.mjs`): vp resolves from
       # node_modules/.bin, no setup-vp step needed here.
       - name: Run the Effect-shaped Postgres contract suite
         if: steps.infra.outputs.touched == 'true'

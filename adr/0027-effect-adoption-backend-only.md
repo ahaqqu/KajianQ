@@ -36,7 +36,7 @@ Effect (v3) was chosen over cordis and over more hand-rolling because it is runt
 ## Consequences
 
 - Signature churn across ~97 backend source files and 37 test files, executed incrementally (rag-core → infra → api → rag-ingest/eval), one PR per phase, all CI gates green per PR. Tests keep vitest + fast-check; programs run under test via `Effect.runPromise`; coverage thresholds (80/70) unchanged.
-- `packages/` is the template-sync merge path (ADR-0024): forks inherit Effect in the engine. Accepted — it makes a future DARS extraction (ADR-0005) more coherent, and forks consume `packages/` as a unit either way.
+- `packages/` is the shared-engine merge path (SPECS §3.1; formerly the template-sync merge path, ADR-0024): forks inherit Effect in the engine. Accepted — it makes a future DARS extraction (ADR-0005) more coherent, and forks consume `packages/` as a unit either way.
 - Engine purity holds structurally: `effect` is domain- and vendor-neutral, so the boundary gate needs no rule changes and no exemptions; the `truth` gate is satisfied by the migration PRs' importers.
 - The agentic-limits gate (≤300 lines, ≤5 direct imports per file) applies to Effect-style files like any other; `Effect.gen` pipelines are expected to fit, with file splits preferred over exemptions.
 - Learning curve is a real cost: every contributor to engine packages needs Effect fluency. Mitigated by the seam-first architecture — the API edge, frontend, and domain pack stay readable without it.

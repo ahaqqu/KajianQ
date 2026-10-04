@@ -132,7 +132,7 @@ describe("markdown-links — scope rules (#368)", () => {
     expect(isPathClaim("..", tree)).toBe(false);
     // The reading's first segment (`web`) is not a tracked root, and the class
     // is still a claim: re-testing the reading would veto a target the link
-    // half reddens on (`../web/dist` from `adr/`, an ADR-0028 site).
+    // half reddens on (`../web/dist` from `adr/`).
     expect(isPathClaim("../web/dist", tree)).toBe(true);
     // The lexical scope rules run first, so a `..`-rooted non-path stays out.
     for (const target of ["../a b.md", "../*.ts", "../<slug>", "../adr/0037-…"]) {
@@ -257,11 +257,11 @@ describe("markdown-links — the two shapes agree (#391)", () => {
   });
 
   it("counts a dead `..` span inside a record instead of enforcing it (#391)", () => {
-    // The two live `..` span sites in the corpus are both ADR-0028's
-    // `../web/dist`: claim-ness changes, enforcement does not — the record rule
-    // counts them, and the OK line prints the count on every green run.
+    // A record's `..` span is a claim like any other: claim-ness changes,
+    // enforcement does not — the record rule counts it, and the OK line prints
+    // the count on every green run.
     const result = scan("Output lives in `../web/dist`.", {
-      relPath: "adr/0028-alchemy-iac-cloudflare.md",
+      relPath: "adr/0044-vps-serving-path-cutover.md",
       paths: [],
     });
     expect(result.violations).toEqual([]);
@@ -612,18 +612,6 @@ describe("markdown-links — class A: ADR cited by number", () => {
     expect(targets(scan("See `adr/004`.", { paths: [], adr }))).toEqual(["adr/004"]);
   });
 
-  it("accepts a deliberately duplicated number", () => {
-    // adr/0005 is carried by two files on purpose: the operative monorepo ADR
-    // and a template-heritage near-duplicate that declares itself superseded by
-    // ADR-0023 (and that 0005 belongs to the monorepo ADR). The spec's §8 row is
-    // a correct reference, so "exactly one" would fail a correct row.
-    const adr = [
-      "0005-monorepo-engine-plus-product.md",
-      "0005-role-model-pins-honored-per-harness.md",
-    ];
-    expect(adrIdResolves("adr/0005", adr)).toBe(true);
-  });
-
   it("reports every adr/NNNN as dangling when adr/ is gone", () => {
     expect(targets(scan("See `adr/0045`.", { paths: [], adr: [] }))).toEqual(["adr/0045"]);
   });
@@ -632,7 +620,7 @@ describe("markdown-links — class A: ADR cited by number", () => {
 describe("markdown-links — class B: records of a moment", () => {
   it("does not enforce code-span paths inside adr/", () => {
     const result = scan("Retires `scripts/template-sync/` and `docs/QUOTA.md`.", {
-      relPath: "adr/0030-retire-template-sync.md",
+      relPath: "adr/0044-vps-serving-path-cutover.md",
       paths: [],
     });
     expect(result.violations).toEqual([]);
@@ -652,7 +640,7 @@ describe("markdown-links — class B: records of a moment", () => {
     // The exemption is scoped to code-span claims: a record whose link rots
     // is still red, and is still fixable without editing the record's argument.
     const result = scan("See [the runbook](./VPS-CUTOVER-RUNBOOK.md).", {
-      relPath: "adr/0030-retire-template-sync.md",
+      relPath: "adr/0044-vps-serving-path-cutover.md",
       paths: [],
     });
     expect(targets(result)).toEqual(["./VPS-CUTOVER-RUNBOOK.md"]);
@@ -669,7 +657,7 @@ describe("markdown-links — class B: records of a moment", () => {
       ["Retires `scripts/template-sync/`.", "See [the runbook](./VPS-CUTOVER-RUNBOOK.md)."].join(
         "\n",
       ),
-      { relPath: "adr/0030-retire-template-sync.md", paths: [] },
+      { relPath: "adr/0044-vps-serving-path-cutover.md", paths: [] },
     );
     expect(targets(result)).toEqual(["./VPS-CUTOVER-RUNBOOK.md"]);
     expect(result.counters.links).toBe(1);
@@ -678,7 +666,7 @@ describe("markdown-links — class B: records of a moment", () => {
   });
 
   it("recognises exactly the two record shapes", () => {
-    expect(isRecord("adr/0030-retire-template-sync.md")).toBe(true);
+    expect(isRecord("adr/0044-vps-serving-path-cutover.md")).toBe(true);
     expect(isRecord("docs/VPS-CUTOVER-RECORD.md")).toBe(true);
     expect(isRecord("docs/ARCHITECTURE.md")).toBe(false);
     expect(isRecord("SPECS.md")).toBe(false);
@@ -803,8 +791,9 @@ describe("markdown-links — the skill-name half", () => {
     // A2: this marker is not a false-positive factory across one namespace but
     // three — live harness roles (`.zcode/agents/<role>.md`: qa, reviewer,
     // fixer), model-stage names (cheap, embedder, generator,
-    // decision-candidates, kajianq) and `test-implementer`, retired by
-    // ADR-0032. The harness-role namespace is a *second deliberately unchecked*
+    // decision-candidates, kajianq) and `test-implementer`, a role the workflow
+    // retired (its duties live with the senior implementer). The harness-role
+    // namespace is a *second deliberately unchecked*
     // marker; the real-tree suite pins that it is neither empty nor checked.
     const result = scan("The `cheap` role does the work.", { paths: [], skills: [] });
     expect(result.violations).toEqual([]);

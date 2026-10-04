@@ -17,7 +17,7 @@ import {
  * section title as title, one child per hadith with the consolidated grade
  * in metadata, and one aligned (Arabic, Indonesian) pair per fully-aligned
  * hadith for #24's concept-graph build (ADR-0014; morphology arrives later —
- * ADR-0025 defers CAMeL Tools lemmatization to the pre-#24 enrichment step).
+ * ADR-0026 defers CAMeL Tools lemmatization to the pre-#24 enrichment step).
  *
  * Everything here is KajianQ domain logic — the engine seams
  * (`@app/rag-ingest`, `RagStore`, `Provider`) receive it as typed values.

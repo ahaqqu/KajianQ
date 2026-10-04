@@ -3,7 +3,7 @@ import { HADITH_COLLECTIONS, type HadithCollection, type HadithRecord } from "./
 /**
  * Parsers for the hadith corpus sources (#7): decode and normalize one
  * edition file at a time. The parsed `arabicnumber`/`reference.book` pair
- * is what cross-edition alignment consumes (`hadith-align.ts`, ADR-0025).
+ * is what cross-edition alignment consumes (`hadith-align.ts`, ADR-0026).
  *
  * Upstream format (fawazahmed0/hadith-api editions, Unlicense): one JSON
  * file per edition with `metadata.sections` (book number → title),

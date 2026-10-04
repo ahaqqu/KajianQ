@@ -22,7 +22,7 @@ You are the senior implementer for the manager-orchestrated workflow. You are di
 
 ## Tests on `model:high` tickets
 
-On **all** tickets, including `model:high`, you write the test suite yourself as part of the same run.
+On **all** tickets, including `model:high`, you write the test suite yourself as part of the same run. That is deliberate: the retired `test-implementer` split burned a handoff on a brief too thin to carry the implementation context, so its tests were weaker rather than more independent — the anti-bias rules below replace it.
 
 - Name adversarial and trap cases in your test intent before writing them.
 - A failing test means either fix the implementation or report a suspected bug — **never weaken an assertion to force a pass**.

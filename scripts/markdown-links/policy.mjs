@@ -171,25 +171,19 @@
  * CLASS RULES (the #368 corpus map, re-derived at 07cb2914 — see the PR body)
  *
  *   A — ADR cited by number: `` `adr/0045` `` in the spec's §8 Record of
- *       Decisions. `adr/NNNN` with exactly four digits resolves when at least
- *       one file in `adr/` is named `NNNN-*.md`. The four-digit requirement is
- *       the precision: `adr/004` and `adr/00455` are typos, not identifiers,
- *       and stay flagged. "At least one" rather than "exactly one" because the
- *       gate resolves identifiers, not numbering: `adr/0005` is deliberately
- *       carried by two files — the operative monorepo ADR and a
- *       template-heritage near-duplicate that declares itself superseded by
- *       ADR-0023 and states that the number `0005` belongs to the monorepo ADR.
- *       The spec's §8 row points at the operative one, and the identifier is
- *       real under either reading; a stricter rule would fail a correct row
- *       over a record the repository keeps on purpose. All 49 class-A spans
- *       resolve.
+ *       Decisions. `adr/NNNN` with exactly four digits resolves when a file in
+ *       `adr/` is named `NNNN-*.md`; existence is the whole test, because the
+ *       gate resolves identifiers, not numbering. The four-digit requirement is
+ *       the precision: `adr/004` and `adr/00455` are typos, not identifiers, and
+ *       stay flagged.
  *
- *   B — an artifact its own ADR retired: 43 spans across the 13 files of `adr/`
- *       at the time of writing (ADR-0030 names `scripts/template-sync/` because
- *       it retired it), plus 2 in the executed cutover log — 45 dead claims over
- *       14 record files in total. RECORDS_RULE below covers the class.
+ *   B — an artifact its own decision retired: a record names the path it
+ *       removed, so the span is evidence of what was, not an instruction to a
+ *       reader (the executed cutover log is the same shape). RECORDS_RULE below
+ *       covers the class; the dead-claim count it leaves behind is printed on
+ *       every green run.
  *
- *   C — a living doc naming an artifact that is gone: four spans total, in
+ *   C — a living doc naming an artifact that is gone: three spans total, in
  *       `SPECS.md` and `docs/ARCHITECTURE.md`, each narrating its target's
  *       removal (`Dropped from template: packages/local-first`, `Before the
  *       move, apps/api/alchemy.run.ts …`). Covered by KNOWN_RETIRED, below.
@@ -198,12 +192,17 @@
  *
  * RECORDS_RULE — `adr/**` and `docs/VPS-CUTOVER-RECORD.md` are *records of a
  *   moment*, not living docs: a path in them is evidence of what was, not an
- *   instruction to a reader. ADR-0030 names `scripts/template-sync/` precisely
- *   *because* it retired it; the cutover record is the executed log of a
- *   one-shot procedure. AGENTS.md forbids editing `adr/` to make a gate pass,
- *   so those 45 spans cannot be repaired, only exempted — and an allowlist of
- *   45 entries across 14 files is not the "tiny, reasoned" kind this gate
- *   tolerates. This is the rule instead, stated with its cost:
+ *   instruction to a reader. A decision record that removed an artifact names
+ *   it precisely *because* it removed it — a record has no present tense — and
+ *   the cutover record is the executed log of a one-shot procedure. A dead span
+ *   in a record is usually the record's own evidence of what it removed: repair
+ *   would make the record claim what it never claimed, deletion would erase the
+ *   evidence, so the span is exempted rather than repaired and the count printed
+ *   on every green run makes its growth a reviewable diff, never a silent hole.
+ *   The corpus-wide rewrite is filed as #408/#409 and the audit of the thirteen
+ *   spans this rule's adoption left behind as #410 (one verdict per span); a
+ *   growing allowlist of every one of them is not the "tiny, reasoned" kind this
+ *   gate tolerates. This is the rule instead, stated with its cost:
  *
  *     WHICH FILE IS A RECORD (the membership rule): `RECORD_DIRS` /
  *     `RECORD_FILES` may only list a document whose content is an executed log
@@ -222,7 +221,7 @@
  *     still fixable — and `INITIAL_IDEA.md`, frozen history that nobody may
  *     edit, needs no exemption: it carries no dead claim today.
  *
- * KNOWN_RETIRED — an allowlist of four (file, target) pairs, one reason each,
+ * KNOWN_RETIRED — an allowlist of three (file, target) pairs, one reason each,
  *   for the class-C living-doc spans that survive the records rule. It is
  *   deliberately tiny and self-pruning: every entry must still match a dead
  *   reference or the gate fails with `stale allowlist entry`, so an entry
@@ -268,22 +267,21 @@
  *   (`the `code-review` skill`, `skill `manager``) must name a directory under
  *   `.agents/skills/` that contains a `SKILL.md`. This is the half that would
  *   have caught #367 mechanically: both of its dead references were
- *   `` `agentic-workflow` skill ``-shaped. Measured at 07cb2914: 28 such
- *   references across the scanned roots — 23 in living docs, 5 in records —
- *   every one of them resolving.
+ *   `` `agentic-workflow` skill ``-shaped. The gate reports its own population — the
+ *   OK line's `N skill names checked` — so this comment states the marker and the
+ *   resolution rule, and no hand-kept census drifts here on the next doc edit.
  *
- *   Deliberately NOT extended to "the `X` role". Measured at 07cb2914, that
- *   marker has 37 hits over 12 distinct names, and they name four different
- *   things: 16 hits are live harness roles (`.zcode/agents/<role>.md` — `qa`,
- *   `reviewer`, `fixer`), 2 name `test-implementer`, a role ADR-0032 retired, 1
- *   is the price artifact `$0.14/$0.28` (a model-stage price pair at
- *   `adr/0048-…:282`, not a role at all), and the remaining 18 are model-stage
- *   names (`embedder`, `cheap`, `decision-candidates`, `generator`, `kajianq`,
- *   …). The last two classes are a false-positive factory with no resolution
- *   target, which is why the marker is rejected as a whole — but the
- *   harness-role namespace (`.zcode/agents/<role>.md`) is a **second
- *   deliberately unchecked marker**, not an empty one, and this header says so
- *   rather than implying otherwise. A test pins that distinction.
+ *   Deliberately NOT extended to "the `X` role". That marker names four
+ *   different things: live harness roles (`.zcode/agents/<role>.md` — `qa`,
+ *   `reviewer`, `fixer`), a role the workflow retired (its duties live with the
+ *   senior implementer), a price pair in prose (`$0.14/$0.28`, caught only
+ *   because the marker is lexical), and model-stage names (`embedder`, `cheap`,
+ *   `decision-candidates`, `generator`, `kajianq`, …). The last two classes are a
+ *   false-positive factory with no resolution target, which is why the marker is
+ *   rejected as a whole — but the harness-role namespace
+ *   (`.zcode/agents/<role>.md`) is a **second deliberately unchecked marker**,
+ *   not an empty one, and this header says so rather than implying otherwise. A
+ *   test pins that distinction.
  *
  *   COST, named: the marker *is* the claim, so a doc naming a skill that lives
  *   outside this repository (a harness-level skill such as `omarchy`) must not
@@ -381,12 +379,6 @@ export const KNOWN_RETIRED = [
     target: "packages/local-first",
     reason:
       "§3.1 'Dropped from template' — the sentence's own subject is the pillar this repo dropped",
-  },
-  {
-    file: "SPECS.md",
-    target: "apps/api/alchemy.run.ts",
-    reason:
-      "§8 ADR-0028 row — records that the lifecycle this file owned was superseded by ADR-0044",
   },
   {
     file: "docs/ARCHITECTURE.md",

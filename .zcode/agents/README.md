@@ -15,6 +15,8 @@ applies the `code-review` skill end-to-end, runs both thermo passes itself when 
 
 The manager is the session agent itself — it has no role file.
 
+The `senior-implementer` writing its own tests is deliberate: the earlier `test-implementer` split burned a handoff on a brief too thin to carry the implementation context, so its traps were weaker rather than more independent. The anti-bias rules live in the role file instead — state the invariant before the code, name the adversarial cases in the test intent, and never weaken an assertion to make it pass.
+
 Dispatch mechanics live in `.agents/skills/manager/SKILL.md` and its
 per-harness adapters; this directory only defines the roles.
 
@@ -33,7 +35,7 @@ A pin that fails to resolve fails the spawn with
 provider config — never reroute a committed pin to a different model. Pin
 changes reach new spawns only after a client restart. Removing a role
 file's `model:` field makes that role inherit its dispatcher's model (this
-is how a sub-reviewer can be made to share its coordinator's model).
+is how a child can be made to share its dispatcher's model).
 
 ## Role GitHub identities
 

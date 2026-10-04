@@ -14,7 +14,7 @@ import { Effect } from "effect";
  *
  * The invariants under test (fail silently in production if broken):
  *   1. Grade is structured, filterable metadata — a hadith graded Daif by
- *      any grader carries grade "dhaif" on its chunk metadata (ADR-0025
+ *      any grader carries grade "dhaif" on its chunk metadata (ADR-0026
  *      dhaif-wins), so generation can flag weak narrations at retrieval time.
  *   2. A query phrased in INDONESIAN about a hadith's meaning, searched
  *      against the PRIMARY (Arabic) track only, returns that hadith with a

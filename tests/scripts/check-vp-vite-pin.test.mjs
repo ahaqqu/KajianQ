@@ -42,7 +42,7 @@ const VERSIONS = `export const versions = {
 // imported, and its allowlist entry is load-bearing.
 const COVERAGE_PKG = `@vitest/coverage-v${8}`;
 
-describe("vp version-coupling guard (ADR-0029 decision 5)", () => {
+describe("vp version-coupling guard", () => {
   let dir;
 
   beforeEach(() => {

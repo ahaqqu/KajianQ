@@ -69,7 +69,7 @@ export function hadithSectionSummaryPrompt(input: {
  * hadith pair through the RagStore's aligned-pair seam (ADR-0014: #24's
  * concept-graph build consumes these rows alongside the Quran pairs).
  * Morphology is empty for hadith in v1 — CAMeL Tools lemmatization is the
- * pre-#24 enrichment step (ADR-0025). The default CLI wiring passes
+ * pre-#24 enrichment step (ADR-0026). The default CLI wiring passes
  * `pairKeyFor` = `hadithPairId(citation.collection, citation.hadithNo)` so
  * persisted rows use the domain's stable `hadith-pair:{collection}:{no}`
  * address (the format #24's build and the citation validator resolve

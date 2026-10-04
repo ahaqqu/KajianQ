@@ -115,7 +115,7 @@ describe("collection data", () => {
   });
 
   it("keeps no planned v1-collection entry (all seven collections are available, #213)", () => {
-    // Musnad Ahmad and Sunan ad-Darimi stay planned (ADR-0025: absent from
+    // Musnad Ahmad and Sunan ad-Darimi stay planned (ADR-0026: absent from
     // the v1 source) — what must NOT reappear as planned is any of the seven
     // fawazahmed0 collections (#141's staging entry did exactly that).
     const hadithPlanned = COLLECTION_ENTRIES.filter(

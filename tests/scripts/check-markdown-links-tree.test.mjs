@@ -124,7 +124,7 @@ describe("markdown-links — the real tree", () => {
     for (const dir of RECORD_DIRS) expect(tree.dirs.has(dir), dir).toBe(true);
     for (const file of RECORD_FILES) expect(tree.files.has(file), file).toBe(true);
     // A record's own ADRs are records; a living doc is not.
-    expect(isRecord("adr/0030-retire-template-sync.md")).toBe(true);
+    expect(isRecord("adr/0044-vps-serving-path-cutover.md")).toBe(true);
     expect(RECORD_DIRS.some((d) => isRecord(`${d}/x.md`))).toBe(true);
     for (const living of ["AGENTS.md", "SPECS.md", "docs/ARCHITECTURE.md"]) {
       expect(isRecord(living), living).toBe(false);
@@ -133,8 +133,9 @@ describe("markdown-links — the real tree", () => {
 
   it("distinguishes the two deliberately unchecked role markers", () => {
     // A2: "the `X` role" is not one namespace but two — live harness roles
-    // (`.zcode/agents/<role>.md`) and model-stage names — plus one role retired
-    // by ADR-0032. The harness namespace is a second *deliberately* unchecked
+    // (`.zcode/agents/<role>.md`) and model-stage names — plus one role the
+    // workflow retired (its duties live with the senior implementer). The
+    // harness namespace is a second *deliberately* unchecked
     // marker; this pins that it is neither empty nor a skill claim.
     const { tree } = buildContext(ROOT);
     for (const role of ["qa", "reviewer", "fixer"]) {
@@ -267,8 +268,8 @@ describe("markdown-links — CLI fixtures", () => {
     // The shipping path for the B5 property: a reshuffle of `POLICY` used to
     // make this exit 0 and print the link as a counted record claim.
     const dir = fixtureRepo({
-      "adr/0030-retire-template-sync.md": [
-        "# ADR-0030",
+      "adr/0044-vps-serving-path-cutover.md": [
+        "# ADR-0044",
         "",
         "Retires `scripts/template-sync/`; see [the runbook](./VPS-CUTOVER-RUNBOOK.md).",
       ].join("\n"),
@@ -276,7 +277,9 @@ describe("markdown-links — CLI fixtures", () => {
     const run = runFixture(dir);
     expect(run.status).toBe(1);
     expect(run.stderr).toContain("1 dangling reference(s)");
-    expect(run.stderr).toContain("adr/0030-retire-template-sync.md:3 -> ./VPS-CUTOVER-RUNBOOK.md");
+    expect(run.stderr).toContain(
+      "adr/0044-vps-serving-path-cutover.md:3 -> ./VPS-CUTOVER-RUNBOOK.md",
+    );
     rmSync(dir, { recursive: true, force: true });
   });
 
