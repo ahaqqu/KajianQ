@@ -54,18 +54,24 @@ on:
       # The failure mode of this coupling is a SILENTLY SKIPPED DEPLOY: a
       # production module placed under a test-utils/ directory, or named
       # *test-utils* / test-fixtures*, stops deploying while CI and E2E stay
-      # green. Nothing in CI enforces the invariant — this comment is the guard,
-      # so a change moving production code into this class must re-check it.
-      # The enforcing check is deferred, not dropped: it is filed as #399 — parse
-      # paths-ignore, match it over git ls-files, fail when a matched path is in
-      # the import closure of the four deploy entries named below — so the
-      # deferral has an owner and this paragraph is not its only record.
+      # green.
+      # ENFORCED, not merely documented (#399): `bun run lint` runs
+      # scripts/check-paths-ignore-invariant.mjs, which parses the patterns
+      # below, matches them over `git ls-files` with GitHub's glob semantics
+      # (`*` never crosses `/`, `**` does), and fails when a matched path is in
+      # the STATIC IMPORT CLOSURE of the four deploy entries named at the end of
+      # this block. That closure is computed from imports, never from a name
+      # list, so a rename that moves a production module into this class fails
+      # the gate; and when the check cannot read this trigger it refuses
+      # (non-zero) rather than passing.
       # This class is repo-wide, not a staging.yml property: e2e.yml and
       # vps-restore-drill.yml ignore only the docs patterns and are recorded as
       # #379. Do not copy this block into them — both also trigger on
       # pull_request, where a path-ignored workflow never reports at all, so each
       # workflow's patterns and invariant must be derived from its own trigger
-      # set; a pasted class statement is the drift #378's B4 removed.
+      # set; a pasted class statement is the drift #378's B4 removed. The check
+      # polices THIS push trigger only, and refuses if either workflow grows a
+      # non-docs class, so #379's class cannot land there unguarded.
       # No step in this workflow executes a test, and no test-class file
       # reaches a shipped artifact: deploy.sh builds build:web,
       # apps/api/src/boot.ts, apps/api/src/cleanup.ts and
