@@ -48,12 +48,12 @@ empirical property of the next staging smoke, not of the hermetic suite, and the
 observation. Residual, accepted: a grounded but dated answer passes, so the prohibition on asserting a
 demanded-but-absent date is prompt-enforced only, machine-checked at neither runtime nor grading time. That is a
 recorded trade, not an oversight — the machine date detector was built and rejected as a per-question detector that
-does not generalize; if a trap ever needs a machine-checked prohibition, the route is Shape B or a general runtime
-reviewer rule, never a per-question detector here. The fabricated-attribution trap carries the same
-trivially-satisfied legs, so its acceptance widens identically. Metric definitions do not change: recall, citation
-validity, the refusal flag, and the persisted outcome shape are untouched, and historical rows are not re-scored. The
-refusal-detector coupling remains for answer questions — that is the over-refusal check, and it is cheap. The runtime
-prompt mandate is untouched: the generator is still told to emit the canonical sentence and the reviewer still fails a
-decline-to-answer draft onto a refusal. Those protect users; this record only stops the gate depending on them. Adding
-a trap question is still an owner decision under the human curation gate; what this removes is the extra acceptance
-machinery adding one used to imply.
+does not generalize; if a trap ever needs a machine-checked prohibition, the route is having the pipeline declare
+its outcome for the grader to compare, or a general runtime reviewer rule, never a per-question detector here. The
+fabricated-attribution trap carries the same trivially-satisfied legs, so its acceptance widens identically. Metric
+definitions do not change: recall, citation validity, the refusal flag, and the persisted outcome shape are
+untouched, and historical rows are not re-scored. The refusal-detector coupling remains for answer questions — that
+is the over-refusal check, and it is cheap. The runtime prompt mandate is untouched: the generator is still told to
+emit the canonical sentence and the reviewer still fails a decline-to-answer draft onto a refusal. Those protect
+users; this record only stops the gate depending on them. Adding a trap question is still an owner decision under
+the human curation gate; what this removes is the extra acceptance machinery adding one used to imply.
