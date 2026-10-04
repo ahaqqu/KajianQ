@@ -228,6 +228,15 @@
  *     still fixable — and `INITIAL_IDEA.md`, frozen history that nobody may
  *     edit, needs no exemption: it carries no dead claim today.
  *
+ *   THE CLAUSE GAP, named: the class-A rule (`adrIdResolves`) resolves an ADR
+ *   *identifier* against the tree — does a file `adr/NNNN-*.md` exist — and
+ *   never a clause *label* inside the record it names: `adr/0045` resolves, and
+ *   `adr/0045 decision 2` passes whether or not that record has a decision 2,
+ *   because a clause written into the span is not a path claim at all. A bare
+ *   `ADR-0013` identifier is not resolved either — only `adr/NNNN` is. A clause
+ *   citation is therefore never vouched for by this gate; opening it is a
+ *   reviewer's obligation, not this gate's.
+ *
  * KNOWN_RETIRED — an allowlist of three (file, target) pairs, one reason each,
  *   for the class-C living-doc spans that survive the records rule. It is
  *   deliberately tiny and self-pruning: every entry must still match a dead

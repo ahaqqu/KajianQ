@@ -45,6 +45,7 @@ For each changed file, verify against `AGENTS.md` universal guardrails and the `
 - `text_raw` immutable; ingestion idempotent; Matn and Sharh never mixed in one chunk; disputed attributions quarantined or labeled.
 - User-facing strings externalized for `en` and `id`; logging via the Logger adapter, no `console.log`; secrets via the root-owned `/etc/kajianq/api.env` (`EnvironmentFile=`, mode 0600), nothing committed.
 - Files 300 lines or fewer with 5 or fewer direct dependencies; trace/response shapes shared via `packages/contracts` (`@app/contracts`).
+- A citation naming a clause (`decision N`, `dN`, `Appendix X`, `§N`) is opened and verified against the record before it is trusted — `bun run docs:links` resolves record identifiers only, never the clause labels inside them.
 - Run the Quick review scans from `dars-pluggability` (domain leakage, vendor names, direct SQL) — each hit is a refactor or a recorded ADR exception.
 
 ## Posting
