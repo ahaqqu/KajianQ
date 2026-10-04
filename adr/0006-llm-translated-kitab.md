@@ -1,5 +1,32 @@
-# LLM-translated kitab at ingestion, labeled as machine translation
+# ADR-0006: Kitab is LLM-translated at ingestion, labeled, with the Arabic always shown
 
-Most pre-600 H kitab have no Indonesian translation, but KajianQ's audience does not read Arabic. We LLM-translate every kitab chunk at ingestion into `text_indonesia`, always displayed with the label "Terjemahan mesin — lihat teks Arab asli" alongside the Arabic original. Chosen over (a) Indonesian summaries only — paraphrases defeat strict citation — and (b) ingesting only already-translated kitab — which would gut the pre-600 H moat since almost none have Indonesian translations. Mistranslation risk is accepted and mitigated by the visible label, the always-present Arabic, and faithfulness spot-checks in eval. `text_raw` is always preserved as the untouched source.
+## Decision
 
-**Amended by ADR-0013 (accepted 2026-08-15):** The embedding strategy is no longer concatenation of Arabic + Indonesian as peers. Embedding is now **Arabic-first**: `text_ar` / `embedding_ar` is the canonical evidence index; `text_id` / `embedding_id` is a built-from-the-start fallback/fusion track, not a peer. Machine translation is still produced, stored, and labeled — it is a display-layer artifact and an optional retrieval fallback, not the basis for retrieval or scholarly reasoning. The citation validator checks against `text_ar`. The retrieval-layer choice (AR-only vs. ID-fallback fusion) is decided by the #9 benchmark.
+Every kitab chunk is machine-translated at ingestion into `text_indonesia`, stored beside the
+untouched `text_raw`, and displayed as the Arabic original plus a translation carrying the label
+"Terjemahan mesin — lihat teks Arab asli".
+
+Arabic is canonical evidence: `text_ar` / `embedding_ar` is the index the answer cites against and
+the citation validator checks against, while `text_id` / `embedding_id` is a built-from-the-start
+fallback track and a display layer, never a peer. Machine translation is not the basis for
+retrieval or scholarly reasoning.
+
+## Why
+
+The corpus's pre-600 H kitab are the product's moat and almost none have an Indonesian translation,
+while the audience does not read Arabic. Two alternatives were rejected. Indonesian summaries only:
+a paraphrase cannot be cited, and strict citation is the trust invariant the product is built on.
+Ingesting only kitab that already have an Indonesian translation: nearly none do, so the moat would
+be given up for a language the audience reads.
+
+Mistranslation is the accepted cost, mitigated rather than hidden — the visible label, the Arabic
+that is always present, and faithfulness spot-checks in eval. The reader is told what they are
+looking at, and the text an answer cites is the Arabic.
+
+## Consequences
+
+- Translation is a display-layer artifact and an optional retrieval fallback; the citation validator
+  resolves against `text_ar`.
+- `text_raw` stays immutable at every step: cleaning and translation write new fields, never the
+  source.
+- Which of the two tracks serves retrieval is the embedding benchmark gate's decision (ADR-0036).
