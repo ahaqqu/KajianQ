@@ -21,8 +21,8 @@ compactly, and injects it as Arabic expansion candidates for the model to pick. 
 ## Why
 
 One-to-one word translation is the minority case here: Arabic is root-and-pattern, Indonesian is affixing, and the
-mappings are often many-to-many with hierarchical structure a flat variants set throws away: a narrower term is not an
-interchangeable synonym. The concept model is a decades-old, well-specified idea, not an invention: terminology
+mappings are often many-to-many with hierarchical structure a flat variants set throws away — a narrower term is not
+an interchangeable synonym. The concept model is a decades-old, well-specified idea, not an invention: terminology
 standards and lexical models converge on a concept node with per-language lemmas and typed relations, and Postgres is
 the right store for this scale and consumer — a model wanting structured data, not a graph query language. It
 sacrifices only reasoning features nothing here needs, leaving interchange RDF emittable later. The graph is
@@ -33,27 +33,27 @@ redistributions share-alike, and copyleft ontology may be consulted but never co
 Indonesian is the weak side, so candidate generation stays generous there, the model tie-breaking rather than a
 threshold; the word-alignment toolchain is archived and sentence encoders are unvalidated at word level, so embeddings
 propose candidates, the human the precision gate. Disambiguation belongs at the router: the same term means different
-Arabic terms before and after a major impurity, which no static lookup can call. and document-graph builders are
+Arabic terms before and after a major impurity, which no static lookup can call — and document-graph builders are
 rejected because they build graphs from corpora. Ruled out: a non-commercial lexical database, incompatible with this
 licence; a dictionary with no clean permissive digital edition; a modern copyrighted dictionary, a human reference
 only; and the institutional glossaries, with no open machine-readable version, so the mapping stays human-curated.
 
 ## Consequences
 
-The build pipeline, in order: seed from the licence-safe resources; lemmatize: hand-verified Quranic morphology whose
-annotation _is_ the lemma, a morphology tool with root-based clustering for classical hadith forms, and an Indonesian
-lemma pipeline whose dictionary fallback carries a curated list of Arabic-derived religious terms; extract term pairs
-per aligned sentence under a strict schema, each phrase a verbatim span anchorable back to the corpus; cluster by
-embedding lemmas into a shared space and resolving neighbours into concept nodes with typed edges in a second pass —
-the embeddings group, the model types and places; review in uncertainty order — cross-pair merges, then pairs where
-two independent passes disagreed, then low-confidence items — with confidence ranking review order, never replacing
-it; load, each lemma tied to its source ayah pairs. The deliverable is a concept graph, not a flat bilingual table;
-the glossary stays query-enrichment-only and trace-visible, and the engine schema gains none of the terminology
-tables, so DARS stays domain-agnostic. Arabic-canonical retrieval gains a structured expansion channel bridging
-Indonesian queries to Arabic evidence explicitly and verifiably, reducing reliance on the embedding model's unverified
-cross-lingual behaviour. The embedding gate's expansion micro-task remains the first real evidence for word-level
-cross-lingual alignment; hadith Arabic lemmatization quality stays an honest gap mitigated by root-based clustering
-and human review. Glossary completeness at v1 is unknown until extraction runs; missing concepts degrade to no
-expansion, so the risk is graceful, and the graph grows incrementally. Two future paths are recorded, not taken: a
+The build pipeline, in order: seed from the licence-safe resources; lemmatize with the hand-verified Quranic
+morphology whose annotation _is_ the lemma, a morphology tool with root-based clustering for classical hadith forms,
+and an Indonesian lemma pipeline whose dictionary fallback carries a curated list of Arabic-derived religious terms;
+extract term pairs per aligned sentence under a strict schema, each phrase a verbatim span anchorable back to the
+corpus; cluster by embedding lemmas into a shared space and resolving neighbours into concept nodes with typed edges
+in a second pass — the embeddings group, the model types and places; review in uncertainty order — cross-pair merges,
+then pairs where two independent passes disagreed, then low-confidence items — with confidence ranking review order,
+never replacing it; load, each lemma tied to its source ayah pairs. The deliverable is a concept graph, not a flat
+bilingual table; the glossary stays query-enrichment-only and trace-visible, and the engine schema gains none of the
+terminology tables, so DARS stays domain-agnostic. Arabic-canonical retrieval gains a structured expansion channel
+bridging Indonesian queries to Arabic evidence explicitly and verifiably, reducing reliance on the embedding model's
+unverified cross-lingual behaviour. The embedding gate's expansion micro-task remains the first real evidence for
+word-level cross-lingual alignment; hadith Arabic lemmatization quality stays an honest gap mitigated by root-based
+clustering and human review. Glossary completeness at v1 is unknown until extraction runs; missing concepts degrade to
+no expansion, so the risk is graceful, and the graph grows incrementally. Two future paths are recorded, not taken: a
 graph-query backend if the graph outgrows a single prompt slice, and a possible merge of the passage-level
 `concept_links` table with the term-level graph once it is in use.
