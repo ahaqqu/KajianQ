@@ -32,10 +32,11 @@ rewritten in place and a deleted one leaves the tombstone there, not here.
 
 ## The budget
 
-Target 20–40 lines; 60 is the hard cap; the Decision block comes first and stays
-within 15. Say the decision and its why, and leave the mechanism to the artifact
-that implements it. Name a value only where the decision is meaningless without
-it — the config holds the truth.
+Target 20–40 lines; 60 is the hard cap; the Decision block comes first and holds
+the decision alone — a prose decision fits within 15 lines, and a decision that is
+itself a set of enumerated binding clauses runs to the clauses. Say the decision and
+its why, and leave the mechanism to the artifact that implements it. Name a value
+only where the decision is meaningless without it — the config holds the truth.
 
 ## Keep out of the record
 
