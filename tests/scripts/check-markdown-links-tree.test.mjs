@@ -4,7 +4,15 @@
 // they exercise the same wiring CI runs.
 import { describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -101,6 +109,30 @@ describe("markdown-links — the real tree", () => {
     const ignored = ignoredTargets(ROOT, ["apps/web/dist/index.html", "docs/ARCHITECTURE.md"]);
     expect(ignored.has("apps/web/dist/index.html")).toBe(true);
     expect(ignored.has("docs/ARCHITECTURE.md")).toBe(false);
+  });
+
+  it("keeps the two `./`-rooted literals exact and out of the claim set (#396)", () => {
+    // The #396 decision against the shipped documents, not a fixture: both live
+    // sites quote the asset handler's inline default — a *value* the operator
+    // must be able to read, never a reference to a path in this repository — and
+    // render it as a fenced literal. So the reader still sees the exact string,
+    // the span half no longer skips the class silently, and no exemption entry
+    // was added to keep either site green. Un-fencing one re-claims it, which
+    // this assertion catches.
+    const ctx = buildContext(ROOT);
+    for (const relPath of ["docs/VPS-SETUP.md", "docs/VPS-OPERATIONS.md"]) {
+      const text = readFileSync(join(ROOT, relPath), "utf8");
+      expect(text, relPath).toContain("./apps/web/dist");
+      const spanClaims = analyse([{ relPath, text }], ctx).filter(
+        (f) => f.kind === "path" && f.target.startsWith("./"),
+      );
+      expect(spanClaims, relPath).toEqual([]);
+    }
+    // ...and the literal the docs quote is the code's own default, so the two
+    // cannot drift apart.
+    expect(readFileSync(join(ROOT, "apps/api/src/lib/server.ts"), "utf8")).toContain(
+      'env.KAJIANQ_WEB_ROOT ?? "./apps/web/dist"',
+    );
   });
 
   it("covers every tracked top-level directory — the scope cannot shrink silently", () => {
@@ -325,6 +357,41 @@ describe("markdown-links — CLI fixtures", () => {
     expect(run.status).toBe(0);
     expect(run.stdout).toContain("1 code-span path claims + 0 skill names");
     expect(run.stdout).toContain("1 resolve");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("reddens on a dead `./` span and the same target in link form (#396)", () => {
+    // The fail-open, end to end: before the widening only the link line
+    // reddened, and the span line was not even counted. One living doc, one dead
+    // target, both shapes, `git add -A`ed so the index is the base.
+    const dir = fixtureRepo({
+      "docs/living.md": [
+        "# Living doc",
+        "",
+        "The handler's default is `./apps/web/dist` in span form.",
+        "The handler's default is [in link form](./apps/web/dist).",
+      ].join("\n"),
+    });
+    const run = runFixture(dir);
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain("2 dangling reference(s)");
+    expect(run.stderr).toContain("docs/living.md:3 -> ./apps/web/dist");
+    expect(run.stderr).toContain("docs/living.md:4 -> ./apps/web/dist");
+    // The reading is the file's directory, and the reason says so — the root
+    // base is not consulted for this class.
+    expect(run.stderr).toContain("no such tracked path beside this file");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("stays green on a `./` span that resolves, and prints it as checked (#396)", () => {
+    const dir = fixtureRepo({
+      "docs/living.md": "The runbook is `./runbook.md` and [also here](./runbook.md).\n",
+      "docs/runbook.md": "# runbook\n",
+    });
+    const run = runFixture(dir);
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain("1 relative links + 1 code-span path claims + 0 skill names");
+    expect(run.stdout).toContain("2 resolve");
     rmSync(dir, { recursive: true, force: true });
   });
 

@@ -196,9 +196,15 @@ and anonymous minting stay green — so the deploy's smokes alone do not prove
 they are present.
 
 `KAJIANQ_WEB_ROOT=/srv/kajianq/web` is load-bearing. The unit's
-`WorkingDirectory` is `/srv/kajianq/api`, so the code's default
-(`./apps/web/dist`) resolves to a path that does not exist on the deployed tree
-and every SPA route would 503 while health stayed green.
+`WorkingDirectory` is `/srv/kajianq/api`, so the code's inline default, the
+literal value
+
+```text
+./apps/web/dist
+```
+
+resolves to a path that does not exist on the deployed tree and every SPA route
+would 503 while health stayed green.
 
 ### 1.4 GitHub variables and secrets
 

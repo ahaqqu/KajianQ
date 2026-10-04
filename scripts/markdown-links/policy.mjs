@@ -46,18 +46,18 @@
  *   meaning the package-relative `packages/infra/scripts/db-migrate.mjs`;
  *   a root-only rule would redden that honest reference.
  *
- *   A `..`-rooted span is read against one base and one only: the containing
- *   file's directory. That is the reading the Markdown half gives the identical
- *   destination, and one base is what removes the disagreement that failed
- *   **open** (#391, A1): with the root base also in play, a target that
- *   overshoots the file's directory and lands back inside the repository
- *   through the root directory's own name was `ok` as a span and `missing` as a
- *   link. One judge produces the reading and the verdict together
- *   (`judgeClaim`), so a finding cannot report the verdict of one rule beside
- *   the path of another. Markdown links keep their single, correct base for the
- *   same reason: a renderer resolves `(path)` against the containing file and
- *   nothing else, so accepting a root-relative fallback there would hide a link
- *   that is broken on GitHub.
+ *   A `./`- or `..`-rooted span is read against one base and one only: the
+ *   containing file's directory. That is the reading the Markdown half gives the
+ *   identical destination, and one base is what removes the disagreement that
+ *   failed **open** in both prefix classes (#391 for `..`, #396 for `./`): with
+ *   the root base also in play, a target that overshoots the file's directory
+ *   and lands back inside the repository through the root directory's own name
+ *   was `ok` as a span and `missing` as a link. One judge produces the reading
+ *   and the verdict together (`judgeClaim`), so a finding cannot report the
+ *   verdict of one rule beside the path of another. Markdown links keep their
+ *   single, correct base for the same reason: a renderer resolves `(path)`
+ *   against the containing file and nothing else, so accepting a root-relative
+ *   fallback there would hide a link that is broken on GitHub.
  *
  *   Why the index and not `existsSync`: `apps/web/dist/index.html` is cited by
  *   `docs/VPS-SETUP.md` and `docs/VPS-OPERATIONS.md` and is a *build output* —
@@ -81,7 +81,9 @@
  *   `<label>`), no URL/anchor prefix (`https:`, `mailto:`, `tel:`, `#`, `//`),
  *   no ellipsis (`…`, `...`), and either starts with a tracked root — every
  *   top-level directory of the tree, listed in CLAIM_ROOTS — or is exactly a
- *   tracked root-level file name.
+ *   tracked root-level file name. A target written against the containing file
+ *   instead (`./`, `../`) is a claim by that form, and the two paragraphs below
+ *   say what it claims (#391, #396).
  *
  *   The span is normalised before any of that: a trailing line citation
  *   (`path:42`, `path:42-58`), an in-file fragment (`path#L24`) and punctuation
@@ -104,6 +106,33 @@
  *   so a dead `../../../docs/x.md` in a living doc stayed green while the
  *   identical target in link form was red: one target, two verdicts, and the
  *   disagreement failed **open**.
+ *
+ *   A target under `./` is a claim by its form too, read from that same one base
+ *   (#396). `./` is the explicit "beside this file" prefix, so the span half
+ *   judges it exactly as the Markdown half judges the identical destination, and
+ *   neither the root base nor CLAIM_ROOTS is consulted — either would give one
+ *   target two verdicts, which is how this class failed **open**. Before this
+ *   rule the raw first segment `.` vetoed the class, so a dead
+ *   `./apps/web/dist` in a living doc was not a claim at all: no finding, no
+ *   counter, nothing in the OK line's totals, while `[x](./apps/web/dist)`
+ *   reddened. Two live sites were in the corpus, and both quote a *value* rather
+ *   than a reference — the asset handler's inline default in
+ *   `apps/api/src/lib/server.ts` (`env.KAJIANQ_WEB_ROOT ?? "./apps/web/dist"`),
+ *   narrated by `docs/VPS-SETUP.md` and `docs/VPS-OPERATIONS.md`. Both now show
+ *   that string as a fenced literal, the one rendering this gate already reads
+ *   as "a value, not a citation" in **both** shapes, so a reader still sees the
+ *   exact literal and the gate takes no exemption for it. DECIDED, not
+ *   inherited: the alternative was a "known literal" allowlist of its own, and
+ *   that is a mechanism whose only job is to let a dead reference pass green —
+ *   in the change that closes the class which failed open. A literal is not a
+ *   claim, and the fence is how both halves are told so at once.
+ *
+ *   COST, named: a `./`-rooted span that *is* a citation is now judged from the
+ *   containing file, so a dead one reddens — that is the point — and a live one
+ *   resolves only where the reader's renderer would. `./` names the containing
+ *   directory, never the repository root, in both halves; the root spelling of
+ *   the same target is the CLAIM_ROOTS form with no prefix, which keeps its
+ *   second, file-relative base.
  *
  *   ESCAPING TARGETS — decided, not inherited: a `..`-rooted target whose
  *   reading leaves the repository (`../../etc/passwd`) is a claim, and a missing
@@ -139,6 +168,13 @@
  *   "fixing" it into a disagreement. Named because it is the one reading that
  *   looks as if it should resolve and does not.
  *
+ *   The *bare* `.` is the same declared exception one token shorter: the span
+ *   normaliser strips a lone dot as swallowed punctuation, so the span half never
+ *   claims it, while `[x](.)` reads as the containing directory and resolves
+ *   there. #396 left that reading untouched — the class it widened is `./` and
+ *   below — so the halves part company on the token exactly as they do on `..`,
+ *   and a test pins both directions rather than leaving either to be discovered.
+ *
  *   Each of those exclusions carries its class out of scope, deliberately:
  *     - whitespace → `bun run lint`, `git stash`, and every command line;
  *     - globs → `**\/*.ts`;  placeholders → `<slug>`;  URLs → `https://…`;
@@ -151,13 +187,9 @@
  *       `prose()` filter this gate has always applied).
  *     - root-absolute or `~`-rooted targets, and prose that merely mentions a
  *       path outside backticks, are not repo-relative claims.
- *     - a `./`-rooted span (`./apps/web/dist`) is out by the same tracked-root
- *       rule. The link half reddens on the identical destination; widening it
- *       here would redden two correct documents, `docs/VPS-SETUP.md` and
- *       `docs/VPS-OPERATIONS.md`, which quote `./apps/web/dist` as the *literal*
- *       value of the asset handler's default. The divergence is real, it fails
- *       open, and it is **filed** as #396 rather than left as prose here — it
- *       needs its own decision, not this one.
+ *     - a `./`-rooted target is no longer an exclusion at all: it is a claim
+ *       read against the containing file, and a *value* that looks like one is
+ *       written inside a fence (#396, above).
  *
  *   COST, named: a bare file name that is *not* a tracked root-level file is
  *   not a claim, so `` `models.json` `` and `` `apply.sh` `` (both real files
@@ -351,12 +383,12 @@ export const ROOTS = [
  * living documents cite into them: the deploy, staging and restore-drill
  * workflows and `.github/zap-rules.tsv` are named by `SPECS.md`,
  * `docs/ARCHITECTURE.md`, the Art. 30 record and the `ship` skill, and
- * `AGENTS.md` names a versioned hook. That citation is the reason, and it is the
- * whole comment: a hand-kept census of the namespace is a snapshot of a corpus
- * that keeps moving, so it has been wrong twice (#389, #401) — the gate's own OK
- * line prints what a run actually checked, and this comment states the decision
- * instead of restating those numbers. A new top-level directory is a new claim
- * root: add it here, or paths into it are unchecked.
+ * `AGENTS.md` routes every role to `.githooks/`. That citation is the reason,
+ * and it is the whole comment: a hand-kept census of the namespace is a snapshot
+ * of a corpus that keeps moving, so it has been wrong twice (#389, #401) — the
+ * gate's own OK line prints what a run actually checked, and this comment states
+ * the decision instead of restating those numbers. A new top-level directory is
+ * a new claim root: add it here, or paths into it are unchecked.
  * `tests/scripts/check-markdown-links-tree.test.mjs` fails if this list stops
  * covering the tracked tree, so that gap cannot open silently.
  */
@@ -378,6 +410,26 @@ export const CLAIM_ROOTS = [
 /** Directories and files whose code spans are records of a moment. */
 export const RECORD_DIRS = ["adr"];
 export const RECORD_FILES = ["docs/VPS-CUTOVER-RECORD.md"];
+
+/**
+ * Is this a target written against the containing file rather than against the
+ * repository root — `./` or anything under it, `..` itself, or anything under
+ * `../`? Both prefixes carry the "resolve me against this file's directory"
+ * signal a renderer honours, and the resolver reads both against that one base
+ * (see SCOPE RULES).
+ *
+ * `.` and `..` are in the predicate for completeness only: the span normaliser
+ * strips a lone dot as swallowed punctuation before the claim test, so neither
+ * reaches here from a span (see SCOPE RULES).
+ *
+ * It lives in this module, not in the driver, because it is a scope rule the
+ * policy also states: the `path` rule's reason names the base this predicate
+ * implies, and that reason and the resolver's reading must come from one
+ * predicate — a second copy is the disagreement this gate exists to stop (B2).
+ */
+export function isFileRelativeTarget(target) {
+  return target === "." || target.startsWith("./") || target === ".." || target.startsWith("../");
+}
 
 /** Is this document a record of a moment rather than a living doc? */
 export function isRecord(relPath) {
@@ -504,6 +556,13 @@ export const POLICY = [
     counter: "claims",
     verdict: "exemptible",
     countsResolved: true,
-    reason: () => "code-span path: no such tracked path at the repo root or beside this file",
+    // The reason names the base(s) the resolver actually consulted, from the
+    // same predicate it uses: a `./`- or `..`-rooted target has one reading, so
+    // naming the root reading here would be the verdict/reason split of B2 in
+    // prose.
+    reason: (f) =>
+      isFileRelativeTarget(f.target)
+        ? "code-span path: no such tracked path beside this file"
+        : "code-span path: no such tracked path at the repo root or beside this file",
   },
 ];

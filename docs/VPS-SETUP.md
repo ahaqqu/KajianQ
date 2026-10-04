@@ -467,9 +467,16 @@ received it.
 
 Two more values are easy to overlook and both are load-bearing:
 
-- `KAJIANQ_WEB_ROOT=/srv/kajianq/web` — without it, the asset handler's default
-  (`./apps/web/dist`) resolves to a path that does not exist on the deployed
-  tree, and every SPA route returns 503 while health stays green.
+- `KAJIANQ_WEB_ROOT=/srv/kajianq/web` — without it, the asset handler falls back
+  to its inline default, the literal value
+
+  ```text
+  ./apps/web/dist
+  ```
+
+  which does not exist on the deployed tree, so every SPA route returns 503
+  while health stays green.
+
 - `ALLOWED_ORIGINS` — set it to your public origin, exactly. This is a strict
   CORS allowlist, not a wildcard.
 

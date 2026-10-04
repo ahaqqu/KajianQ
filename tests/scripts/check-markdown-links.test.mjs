@@ -3,7 +3,12 @@
 // finding. Every case here is hermetic — a synthetic tree, no filesystem, no git;
 // `check-markdown-links-tree.test.mjs` holds the real-tree and CLI cases.
 import { describe, expect, it } from "vitest";
-import { KNOWN_RETIRED, POLICY, isRecord } from "../../scripts/markdown-links/policy.mjs";
+import {
+  KNOWN_RETIRED,
+  POLICY,
+  isFileRelativeTarget,
+  isRecord,
+} from "../../scripts/markdown-links/policy.mjs";
 import {
   ADR_ID_RE,
   RESOLVED_STATUSES,
@@ -146,25 +151,85 @@ describe("markdown-links — scope rules (#368)", () => {
     expect(isPathClaim("~/.dsh/settings.yaml", tree)).toBe(false);
   });
 
-  it("keeps a `./`-rooted span out of scope, as the header declares", () => {
-    // DECLARED, not silently dropped: `./apps/web/dist` in docs/VPS-SETUP.md and
-    // docs/VPS-OPERATIONS.md quotes the asset handler's *default literal*, so
-    // widening this class would redden two correct documents. The divergence
-    // from the link half is real and is named in the header's SCOPE RULES.
-    const tree = makeTree(["docs/a.md", "apps/web/dist/index.html"]);
-    expect(isPathClaim("./apps/web/dist", tree)).toBe(false);
-    expect(isPathClaim("./docs/a.md", tree)).toBe(false);
-    const span = scan("The default is `./apps/web/dist`.", {
-      relPath: "docs/VPS-OPERATIONS.md",
-      paths: ["docs/a.md"],
-    });
-    expect(span.violations).toEqual([]);
-    // ...while the identical destination in link form is the link half's call.
-    const link = scan("The default is [x](./apps/web/dist).", {
-      relPath: "docs/VPS-OPERATIONS.md",
-      paths: ["docs/a.md"],
-    });
+  it("claims a `./`-rooted target by its form, read beside the file (#396)", () => {
+    // #396: the raw first segment `.` used to veto the whole class, so the span
+    // half never judged it while the link half reddened on the identical
+    // destination — the #391 shape one prefix over, and it failed **open**. A
+    // `./`-rooted token that survives the lexical rules is a path by its form,
+    // exactly as a `..`-rooted one is; its reading is the containing file's
+    // directory, and neither the root reading nor CLAIM_ROOTS is consulted.
+    const tree = makeTree(["README.md", "docs/a.md", "apps/web/dist/index.html"]);
+    expect(isFileRelativeTarget("./docs/a.md")).toBe(true);
+    expect(isPathClaim("./docs/a.md", tree)).toBe(true);
+    // The reading's first segment (`web`) is not a tracked root, and the class is
+    // still a claim: re-testing the reading would veto a target the link half
+    // reddens on (`./web/dist` from `adr/`).
+    expect(isPathClaim("./web/dist", tree)).toBe(true);
+    // The prefix alone is the containing directory, claimed like bare `../`.
+    expect(isPathClaim("./", tree)).toBe(true);
+    // The lexical scope rules run first, so a `./`-rooted non-path stays out.
+    for (const target of ["./a b.md", "./*.ts", "./<slug>", "./adr/0037-…"]) {
+      expect(isPathClaim(target, tree), target).toBe(false);
+    }
+    // ...and the normaliser runs before the claim test, so a line citation or an
+    // in-file fragment into a `./`-relative path is still a claim on the path.
+    expect(isPathClaim("./docs/a.md:42-58", tree)).toBe(true);
+    expect(isPathClaim("./docs/a.md#L24", tree)).toBe(true);
+    // A *bare* `.` is the declared exception one token shorter than `..`: the
+    // normaliser strips it as swallowed punctuation, so the span half never
+    // claims it (the link half reads it as the containing directory). #396 left
+    // that reading untouched and the header names it.
+    expect(normaliseSpanTarget(".")).toBe("");
+    expect(isPathClaim(".", tree)).toBe(false);
+    // The link half's side of that declared exception, so the header's sentence
+    // has code: `[x](.)` is the containing directory, and from a nested file
+    // that directory is tracked.
+    expect(
+      scan("See [x](.).", { relPath: "docs/living.md", paths: ["docs/a.md"] }).violations,
+    ).toEqual([]);
+    // A `~`-rooted host path is still a different class.
+    expect(isPathClaim("~/.dsh/settings.yaml", tree)).toBe(false);
+  });
+
+  it("flags a dead `./` span and its link form alike — the fail-open #396 closed", () => {
+    // The proof the ticket is about, as a unit case: the two references below
+    // name the same target, in the same file, and used to disagree — the span
+    // emitted no finding at all (not counted, so absent from the OK line's
+    // totals) while the link was a violation. Both are `missing` now, and both
+    // report the reading the file-relative base produced.
+    const opts = { relPath: "docs/VPS-OPERATIONS.md", paths: ["docs/a.md"] };
+    const span = scan("The default is `./apps/web/dist`.", opts);
+    expect(targets(span)).toEqual(["./apps/web/dist"]);
+    expect(span.violations[0].kind).toBe("path");
+    expect(span.violations[0].repoPath).toBe("docs/apps/web/dist");
+    // The reason names the one base actually consulted, not the root reading.
+    expect(span.violations[0].reason).toBe("code-span path: no such tracked path beside this file");
+    expect(span.counters.claims).toBe(1);
+    expect(span.counters.resolved).toBe(0);
+    const link = scan("The default is [x](./apps/web/dist).", opts);
     expect(targets(link)).toEqual(["./apps/web/dist"]);
+    expect(link.violations[0].repoPath).toBe("docs/apps/web/dist");
+    expect(link.counters.links).toBe(1);
+  });
+
+  it("keeps a `./`-rooted *value* inert in both shapes inside a fence (#396)", () => {
+    // DECIDED, not exempted: `./apps/web/dist` is the asset handler's inline
+    // default — a value, not a reference to a path on disk — and the two live
+    // sites that quote it (docs/VPS-SETUP.md, docs/VPS-OPERATIONS.md) render it
+    // as a fenced literal. A fence is the one rendering this gate already reads
+    // as "a value, not a citation" in **both** halves, so no allowlist entry is
+    // taken for it and nothing can later slip through under one.
+    const text = ["# Doc", "```text", "./apps/web/dist", "```"].join("\n");
+    expect(scan(text, { relPath: "docs/VPS-OPERATIONS.md", paths: [] }).violations).toEqual([]);
+    const asSpan = ["# Doc", "```md", "`./apps/web/dist`", "```"].join("\n");
+    expect(scan(asSpan, { relPath: "docs/VPS-OPERATIONS.md", paths: [] }).violations).toEqual([]);
+    const asLink = ["# Doc", "```md", "[x](./apps/web/dist)", "```"].join("\n");
+    expect(scan(asLink, { relPath: "docs/VPS-OPERATIONS.md", paths: [] }).violations).toEqual([]);
+    // ...and the identical literal outside a fence is judged, so the fence is
+    // the only thing keeping it inert.
+    expect(targets(scan("The default is `./apps/web/dist`.", { paths: [] }))).toEqual([
+      "./apps/web/dist",
+    ]);
   });
 });
 
@@ -192,11 +257,12 @@ describe("markdown-links — the two shapes agree (#391)", () => {
     expect(result.violations[0].repoPath).toBe("docs/VPS-ABSENT.md");
   });
 
-  it("judges one target the same way in both shapes — the #391 invariant", () => {
+  it("judges one target the same way in both shapes — the #391/#396 invariant", () => {
     // The invariant this ticket exists for, as a table: for each target the
     // Markdown link and the inline code span must reach the *same* status. The
     // shapes may word their reasons differently; they may not disagree on
-    // whether the target is there.
+    // whether the target is there. The `..` rows are #391, the `./` rows #396 —
+    // one prefix over, and only widening the span half's class made them agree.
     const ctx = ctxOf({ paths: ["docs/a.md", "README.md"] });
     const relPath = "docs/living.md";
     for (const [target, expected] of [
@@ -210,6 +276,12 @@ describe("markdown-links — the two shapes agree (#391)", () => {
       // `docs/a.md`. One base, so the span agrees with the link.
       ["../repo/docs/a.md", "missing"],
       ["../../etc/hosts", "missing"], // escaping: the decision, pinned below
+      // #396: the same table for the `./` prefix. `./a.md` reads as the tracked
+      // `docs/a.md`; the other two are the fail-open the class used to hide —
+      // the span emitted no finding at all while the link was a violation.
+      ["./a.md", "ok"],
+      ["./gone.md", "missing"],
+      ["./web/dist", "missing"], // first segment is not a tracked root, still claimed
     ]) {
       const span = analyse([{ relPath, text: `See \`${target}\`.` }], ctx);
       const link = analyse([{ relPath, text: `See [x](${target}).` }], ctx);
