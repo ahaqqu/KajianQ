@@ -197,12 +197,21 @@
  *   the cutover record is the executed log of a one-shot procedure. A dead span
  *   in a record is usually the record's own evidence of what it removed: repair
  *   would make the record claim what it never claimed, deletion would erase the
- *   evidence, so the span is exempted rather than repaired and the count printed
- *   on every green run makes its growth a reviewable diff, never a silent hole.
- *   The corpus-wide rewrite is filed as #408/#409 and the audit of the thirteen
- *   spans this rule's adoption left behind as #410 (one verdict per span); a
- *   growing allowlist of every one of them is not the "tiny, reasoned" kind this
- *   gate tolerates. This is the rule instead, stated with its cost:
+ *   evidence, so the span is exempted rather than repaired.
+ *
+ *   THE DISPOSITION RULE — a dead reference in a record is history unless the
+ *   target moved. History is kept: the record is naming what it removed or
+ *   superseded, in the past tense, and a repointed or deleted mention would
+ *   claim otherwise. A target that still exists at another path moved, and the
+ *   span is repointed at the artifact that carries the rule now; a malformed
+ *   span is a defect and is repaired like any other. The count is therefore not
+ *   a backlog to drive to zero — it is the baseline the count printed on every
+ *   green run makes **growth** against, so a new dead claim is a reviewable
+ *   diff, never a silent hole. The corpus-wide rewrite is filed as #408/#409,
+ *   and #410 is the audit that derived one verdict per span and closed the
+ *   initial sets; a growing allowlist of every one of them is not the "tiny,
+ *   reasoned" kind this gate tolerates. This is the rule instead, stated with
+ *   its cost:
  *
  *     WHICH FILE IS A RECORD (the membership rule): `RECORD_DIRS` /
  *     `RECORD_FILES` may only list a document whose content is an executed log
