@@ -121,7 +121,7 @@ In either form, avoid specific file paths or code snippets — they go stale fas
 
 When the tickets went to a real tracker, publishing them (step 5) is not done until each one's card carries a state: the board is what answers "where is this ticket?", the issue what answers "what is this ticket?" (`manager` skill, § Project board — the ticket state surface; it is canonical for the states, the transition rules, and the board API mechanics this step uses).
 
-**Set each filed ticket's card Status to `Ready`** — the state the `Backlog → Ready` rule moves a ticket to once triage settles it as dispatchable.
+**Set the card Status of each ticket you filed in step 5 to `Ready`** — the state the `Backlog → Ready` rule moves a ticket to once triage settles it as dispatchable.
 
 **Resolve the item before creating one.** An item whose Status is unset belongs to no column, so a column-based read cannot find the ticket — a filing puts a ticket in the repo, not in a column. Add an item only when the ticket has none: the step is a Status **set** on the item the ticket already has, never a second add. Read the field's option ids and each item's id fresh at use time, per that section's mechanics.
 

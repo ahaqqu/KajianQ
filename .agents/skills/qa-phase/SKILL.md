@@ -80,8 +80,8 @@ The verdict is the only thing that closes a QA-needed change: `verified` when th
 Each verdict implies one card state:
 
 - **`verified`** — the observable holds and no blast-radius defect survived. This is the verdict the card's move to **Done** records.
-- **`not verified`** — a probe contradicted the acceptance criterion. The card stays in **In QA**, where the column names the work outstanding: the failing probe goes to the user verbatim, every defect becomes its own ticket through the normal implement → review loop, and the change is not finished.
-- **`blocked`** — the environment, the run, or the cap stopped the probes. The card stays in **In QA** and the change is not finished; the verdict carries the exact command that failed in place of a verification the run did not produce, and the probes re-run when the blocker clears.
+- **`not verified`** — a probe contradicted the acceptance criterion. The card stays in **In QA** — where the column names the work outstanding — until the manager's transition rules take it to **Done** on a revert or a supersede: the failing probe goes to the user verbatim, every defect becomes its own ticket through the normal implement → review loop, and the change is not finished.
+- **`blocked`** — the environment, the run, or the cap stopped the probes. The card stays in **In QA** until the manager's transition rules take it to **Done** on a revert or a supersede, and the change is not finished; the verdict carries the exact command that failed in place of a verification the run did not produce, and the probes re-run when the blocker clears.
 
 A non-`verified` verdict is never withheld for the card's sake — post it with the same per-probe evidence and let the manager's transition rules take the card from there.
 

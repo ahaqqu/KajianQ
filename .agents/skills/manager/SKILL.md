@@ -58,6 +58,7 @@ Seven states, and who moves what:
 
 The manager owns every board move; role subagents never touch the board — they report an artifact, and the manager reflects it as a move. The rules govern every ticket, this skill's own workflow ticket included. The transition rules:
 
+- **A ticket arriving with no Status is carded at intake.** An unset Status leaves an item in no column — a review round's defect ticket, a finding the QA role opens, the owner's own filing — so intake places it in **Backlog** the moment the manager sees it, and the transition rules below reach every ticket, not only one already sitting in **Backlog**.
 - **Backlog → Ready** once triage settles the ticket as dispatchable (`to-tickets` output and routing labels in place).
 - **Ready → In progress** at A's dispatch (step 1), on the dispatch's returned agent id — the id is the artifact that proves the dispatch exists, and the `agent/<slug>` branch and the PR URL (`gh pr view`) join it as they appear.
 - **In progress → In review** at B's dispatch (step 3), on an open PR for the ticket (`gh pr view`) and B's returned reviewer dispatch id; it stays there through a fixer round, because a reviewer/fixer round is what the state means. A ticket sits in **In review** only while that round is actually in flight — the moment the review artifact (posted item comments covering the head) and green `gh pr checks` land, move it to **Waiting for merge**.
