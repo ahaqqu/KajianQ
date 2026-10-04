@@ -193,25 +193,32 @@
  * RECORDS_RULE — `adr/**` and `docs/VPS-CUTOVER-RECORD.md` are *records of a
  *   moment*, not living docs: a path in them is evidence of what was, not an
  *   instruction to a reader. A decision record that removed an artifact names
- *   it precisely *because* it removed it — a record has no present tense — and
- *   the cutover record is the executed log of a one-shot procedure. A dead span
- *   in a record is usually the record's own evidence of what it removed: repair
- *   would make the record claim what it never claimed, deletion would erase the
- *   evidence, so the span is exempted rather than repaired and the count printed
- *   on every green run makes its growth a reviewable diff, never a silent hole.
- *   The corpus-wide rewrite is filed as #408/#409 and the audit of the thirteen
- *   spans this rule's adoption left behind as #410 (one verdict per span); a
- *   growing allowlist of every one of them is not the "tiny, reasoned" kind this
- *   gate tolerates. This is the rule instead, stated with its cost:
+ *   it precisely *because* it removed it, and the cutover record is the
+ *   executed log of a one-shot procedure. A dead span in a record is usually
+ *   the record's own evidence of what it removed: repair would make the record
+ *   claim what it never claimed, deletion would erase the evidence, so the span
+ *   is exempted rather than repaired.
+ *
+ *   THE DISPOSITION RULE — a dead code-span claim in a record is history
+ *   unless the target moved. History is usually the record naming what it
+ *   removed or superseded: a repointed or deleted mention would claim what the
+ *   record never claimed, so the span is kept when no surviving artifact still
+ *   carries the rule it named. A target that still exists at another path
+ *   moved, and the span is repointed at the artifact that carries the rule now;
+ *   a malformed span is a defect and is repaired like any other. The count is
+ *   therefore not a backlog to drive to zero — it is a baseline. The
+ *   corpus-wide rewrite is filed as #408/#409, and #410 is the audit that
+ *   derived one verdict per span and closed the initial sets; a growing
+ *   allowlist of every one of them is not the "tiny, reasoned" kind this gate
+ *   tolerates. This is the rule instead, stated with its cost:
  *
  *     WHICH FILE IS A RECORD (the membership rule): `RECORD_DIRS` /
  *     `RECORD_FILES` may only list a document whose content is an executed log
  *     or a decision record — a file whose *past tense is the point*: the ADR
  *     that retired an artifact, the cutover that executed a procedure. A living
  *     how-to, a spec or a skill never joins it, because a reader is meant to act
- *     on those. Adding a file is a deliberate, reviewable line in the diff, and
- *     the dead count printed on every run is what makes the narrowing's growth
- *     visible; a test asserts each member is a tracked path.
+ *     on those. Adding a file is a deliberate, reviewable line in the diff; a
+ *     test asserts each member is a tracked path.
  *
  *     COST, named: dead code-span claims inside records are not failures. They
  *     are counted and printed on every green run (`N dead claims inside record

@@ -54,7 +54,7 @@ choices were non-obvious:
   vocabulary-free), `scorers.ts` (deterministic recall/citation/refusal),
   `budget.ts`, `api-client.ts`, `harness.ts` (`runGoldenSet` over
   `ChatTransport`/`AnswerTraceSource`/`RunLedger` seams).
-- `packages/infra/src/rag-store-neon-eval.ts` — eval-ledger SQL
+- `packages/infra/src/rag-store-postgres-eval.ts` — eval-ledger SQL
   (`insertEvalResult`, `getEvalRun`, `listEvalRuns`, `getEvalResultsByRun`) on
   the existing `eval_runs`/`eval_results` tables.
 - `packages/kajianq-domain/src/chat-*.ts` — the five Smart Router stages,
