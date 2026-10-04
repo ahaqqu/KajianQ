@@ -1,186 +1,51 @@
-# ADR-0036: Embedding benchmark gate result — `gemini-embedding-001` ships as default with AR-only + ID-fallback retrieval posture
-
-## Status
-
-Accepted (2026-09-10). Closes the #9 go/no-go gate (ADR-0013 amendment 2): the
-retrieval-layer choice (AR-only vs. ID-fallback fusion) and the embedding
-default are decided by the benchmark numbers below, not asserted in advance.
-Amends ADR-0013's open questions 1 and 3; the `embedder` role chain in
-`packages/infra/src/providers/models.json` carries the winner.
-
-## Context
-
-ADR-0013 made Arabic the canonical evidence layer (`text_primary`/
-`embedding_primary`) with Indonesian as a built-from-the-start fallback track,
-and deferred the retrieval posture to this gate. The ticket (#9) fixed the
-floors: the default model ships only if **cross-lingual (ID→AR) recall@10 ≥
-0.70** and **monolingual (AR→AR) recall@10 ≥ 0.75** over the real corpus.
-ADR-0014 additionally required an **expansion micro-task**: given a glossary
-slice + an Indonesian query, does the router LLM pick the correct Arabic
-expansion term? (the Terminology Glossary consumption de-risk).
-
-`gemini-embedding-2` was the required challenger: explicitly cross-lingual
-(100+ languages), and — critically — **not embedding-space-compatible** with
-`gemini-embedding-001`, so adopting it is a clean-slate re-embed of the whole
-corpus, not an upgrade.
-
-### Method
-
-Harness: `bun run eval:embed-bench` (`packages/eval/scripts/embed-bench.mjs` +
-the `@app/eval` `embed-bench` engine module). Both models are compared through
-the same `Provider` seam (ADR-0022), each resolved alone from the checked-in
-`embedder-candidates` role — never behind a fallback chain that could silently
-substitute another model. Cosine recall@10 + MRR over three directions
-(secondary→primary, primary→primary, secondary→secondary).
-
-Corpus: the **real v1 sources** — Tanzil Uthmani + Kemenag Quran (via the
-`hangsbreaker/quran-json` mirror) and fawazahmed0/hadith-api Arabic+Indonesian
-editions — parsed by the same ingest-grade parsers the ingester consumes.
-Probes are **self-retrieval**: a probe's query text is a doc's own track text
-and its query vector reuses that doc's already-computed track vector, so the
-metric measures the pure cross-lingual alignment of the embedding space with
-no second embedding pass. The gate corpus is a deterministic stratified
-subset (free-tier embed-content quota counts _items_, not requests — the full
-660k-row corpus would be ~8 hours of window per track); the subset preserves
-each source group's share and its fingerprint is recorded in the report.
-Numbers below cite the exact corpus fingerprint so re-runs are comparable.
+# ADR-0036: The embedding benchmark gate decides the default model and the retrieval posture
 
 ## Decision
 
-**Both floors are met; `gemini-embedding-001` ships as the default and the
-retrieval posture is AR-only serving with the ID-fallback track retained.**
-Run of 2026-09-10 04:10 WIB (paid tier), report at
-`packages/kajianq-domain/fixtures/embed-bench-results.json`:
+The embedding default ships only if the benchmark gate passes, and the gate makes the retrieval-layer decision
+ADR-0013 deferred to it: cross-lingual recall from the secondary (Indonesian) track to the primary (Arabic) track, and
+monolingual recall within the primary track, over the real v1 sources. The winning candidate is what the `embedder`
+role holds; the committed report carries every number, and which role holds which chain is the live role map's
+business, never this record's.
 
-| Candidate              | ID→AR (secondary→primary)                   | AR→AR (primary→primary)                    | Gate (≥0.70 / ≥0.75) |
-| ---------------------- | ------------------------------------------- | ------------------------------------------ | -------------------- |
-| `gemini-embedding-001` | recall@10 **1.000**, MRR **1.000** (n=200)  | recall@10 **1.000**, MRR **1.000** (n=200) | ✅ pass              |
-| `gemini-embedding-2`   | recall@10 **1.000**, MRR **0.9975** (n=200) | recall@10 **1.000**, MRR **1.000** (n=200) | ✅ pass              |
+The retrieval posture is **Arabic-only serving with the Indonesian fallback track retained**: the primary track serves
+retrieval, and the fallback column stays built and switchable without re-embedding for a future fusion posture if
+real-user paraphrase recall ever justifies it.
 
-Corpus: 1,500-doc deterministic stratified subset of the real v1 sources
-(6,236-ayah Tanzil/Kemenag Quran + the aligned hadith of the ADR-0026
-collections, whose landed per-collection counts the corpus record owns —
-`docs/CORPUS-INGEST.md`), fingerprint `fnv1a64:478dc7ce1bae2d30:1500`. Probes:
-200 cross-lingual + 200 monolingual self-retrieval probes per model. Total
-recorded spend: **$0.000012** of the $5 cap (the vendor's OpenAI-compat
-endpoint reported no usage for these calls; the free-tier-priced config
-records 0).
+The expansion micro-task — given a glossary slice and an Indonesian query, does the router pick the correct Arabic
+expansion term? — is scored under the strict distractor-aware contract: any distractor pick alongside the expected
+term fails the case, a distractor identical to the expected term is ignored as a fixture-authoring slip, and a parse
+error always fails. That contract is the intended posture; the recorded figure came from an earlier, lenient contract
+and is not reproducible under this one. The task has no gate floor, so it does not affect the go decision.
 
-**Expansion micro-task (ADR-0014): scored under the strict distractor-aware
-contract from the next gate re-run on** (see the amendment below) — the
-cheap-tier router LLM picked the correct Arabic expansion term, including
-contextual disambiguation (wudhu vs. ghusl vs. tayammum for purity queries;
-firdaus as the narrower pick inside the paradise slice; zakat al-fitr vs.
-zakat). The recorded run's score lives in the committed report
-(`packages/kajianq-domain/fixtures/embed-bench-results.json`); ADR-0014's
-prompt-injection consumption design still draws on the micro-task
-qualitatively.
+## Why
 
-### Interpretation — read the MRR, not just the recall
+Self-retrieval probes have a ceiling that recall cannot see: the relevant document ranks high because the query text
+_is_ a corpus entry, so a saturated recall figure is the expected strong-model outcome rather than evidence of
+quality. The discriminating statistic is therefore the ranking statistic on the cross-lingual direction, and the
+default is retained on three grounds together — equal gate pass, equal-or-better cross-lingual ranking, and zero
+re-embedding cost, because the corpus is already embedded in its space while adopting the challenger is a clean-slate
+re-embed of an incompatible space.
 
-Self-retrieval probes (a doc's own track text as the query) have a _ceiling_:
-the relevant doc trivially ranks high because the query text is identical to
-a corpus entry, so recall@10 saturating at 1.000 was the expected strong-model
-outcome and cannot by itself discriminate model quality. The discriminating
-statistic is MRR on the cross-lingual direction: `gemini-embedding-001` put
-its own AR doc at rank 1 for all 200 ID queries, `gemini-embedding-2` missed
-top-1 on 0.5% of them (MRR 0.9975). Both are comfortably past the floors;
-`gemini-embedding-001` retains the default on (a) equal gate pass, (b) equal
-or better cross-lingual MRR, (c) zero re-embedding cost — the whole corpus is
-already embedded in its space, while adopting `gemini-embedding-2` is a
-clean-slate re-embed (incompatible space) priced at ~$6.08 batch / $12.16
-standard for the current Quran+hadith corpus (both tracks).
+Rejected: a full-corpus run, infeasible inside the free-tier item quota's wall-clock and unnecessary for a recall
+gate, since a deterministic stratified subset preserving each source group's share bounds the estimate tightly and
+keeps re-runs comparable; and a separate query-embedding pass, because self-retrieval probes reuse the corpus vectors
+and measure the same alignment for half the spend.
 
-The sharper discriminative test (natural-language Indonesian _user_ queries —
-paraphrases, not verbatim doc text — against the AR corpus) lands with the
-Golden Set runs against the live pipeline (#8's harness), which exercises the
-full ID→AR path including query expansion. The floors defined in #9 are met
-as specified; the posture decision is made.
-
-### Retrieval posture
-
-**AR-only serving, ID-fallback track retained.** The cross-lingual floor
-passed with margin, so the primary (Arabic) track serves retrieval; the
-`embedding_fallback` column stays built and switchable without re-embedding
-(ADR-0013 amendment 1) for a future fusion posture if real-user paraphrase
-recall ever justifies it.
-
-### Config updates in the same commit
-
-- `embedder` role: `gemini-embedding-001` confirmed as the chain head.
-- **Live-API model-id correction (surfaced by this gate's expansion task):**
-  the API's chat-completions surface does not expose `gemini-3-flash` /
-  `gemini-3.1-pro` (404 — only the `-preview` ids exist on this account), so
-  the `cheap` and `reviewer` pins were corrected (SPECS §3.4 updated); which
-  role holds which chain is the live role map's business, never this record's —
-  `packages/infra/src/providers/models.json`. That goes for the
-  ingestion-translation and generator roles too: the only part still in this
-  gate's scope is the DashScope key's absence in this environment.
+The recorded expansion run is not re-scored retroactively — its picks include the contextual distractors the
+consumption design blesses — and the next re-run, whose prompt asks for exactly the expected term, is the first
+strict-contract measurement. That deferral is deliberate, not budgetary. The sharper test of natural-language
+Indonesian user queries against the Arabic corpus arrives with the Golden Set runs against the live pipeline, which
+exercise the full cross-lingual path including query expansion.
 
 ## Consequences
 
-- Kitab-scale ingestion (#22, #33, #35) may proceed once this ADR is accepted
-  (the gate it waited on).
-- `SPECS.md` §3.4's "embedding default is unproven" warning is resolved; the
-  §8 Record of Decisions gains this row.
-- The expansion micro-task's accuracy number feeds ADR-0014's consumption
-  design (router LLM picks expansion terms from a verbalized slice).
+Kitab-scale ingestion may proceed: this is the gate it waited on. Spec currency: the spec's stale warning that the
+embedding default was unproven is resolved by this record.
 
-## Alternatives considered
+The bench resolves each candidate alone from the bench-only candidate role through the same provider seam, never
+behind a fallback chain that could silently substitute another model, and its subset is deterministic so re-runs stay
+comparable.
 
-- **Full-corpus run**: infeasible on the free tier (≈48k embed items ≈ 8 h of
-  quota wall-clock per track set) and unnecessary for a recall gate — a
-  stratified subset with n≥200 probes per direction bounds the estimate
-  tightly; the deterministic stride sampling keeps re-runs comparable.
-- **Separate query embedding pass**: rejected — self-retrieval probes reuse
-  the corpus vectors, halving the spend while measuring the same alignment.
-
-## Amendment (2026-09-11): expansion micro-task scoring contract tightened post-review (PR #138, review item C2)
-
-This amendment records an owner decision made after PR #138 merged
-(commit `31f88fbd`). It changes no decision above; it makes an implicit
-contract explicit so the recorded expansion number and the merged scorer are
-not a silent trap.
-
-**(a) The scoring contract was tightened.** Post-review, the expansion
-micro-task scorer (`scoreExpansionCase` in `packages/eval/src/embed-bench-expansion.ts`,
-PR #138, review item C2) moved from the original **lenient contract** — the
-case passes if the expected term is present anywhere in the model's picks —
-to a **strict distractor-aware contract**:
-
-- Any distractor pick (trim/lowercase-normalized before comparison) alongside
-  the expected term **fails** the case, not just a distractor-only selection.
-- A distractor identical to the expected term is ignored — treated as a
-  fixture-authoring slip, not a model error.
-- A `parseError` always fails.
-
-All three paths are pinned by tests in `packages/eval/src/embed-bench.test.ts`.
-
-**(b) The recorded 12/12 was measured under the lenient contract and is NOT
-reproducible under the strict contract.** The checked-in run report
-(`packages/kajianq-domain/fixtures/embed-bench-results.json`) records
-expansion accuracy **1.000 (12/12)**, scored under the original
-expected-term-presence-only contract. Re-scoring the same recorded picks
-under the strict contract yields **1/12** — 11 of the 12 recorded picks
-include a contextual distractor alongside the expected term. This is
-expected and legitimate: the expansion prompt asked the model to pick 1–2
-terms, inviting exactly the contextual picks this ADR blesses above as
-contextual disambiguation (wudhu vs. ghusl vs. tayammum; firdaus; zakat
-al-fitr vs. zakat). The fixture is not re-measured retroactively; the
-strict-contract measurement begins with the next gate re-run.
-
-**(c) The strict contract is the intended posture; no gate re-run is forced
-now.** The owner decision (2026-09-11) keeps the merged strict scorer and
-defers the re-run deliberately — not budgetarily (a re-run costs fractions of
-a cent: the recorded run spent $0.000012 of the $5 cap). The next natural
-gate re-run, with the expansion prompt reworded to ask for **exactly the
-expected term** (removing the 1–2-terms invitation that produces legitimate
-contextual distractors), is the first strict-contract measurement.
-
-**(d) The go decision is unaffected.** The expansion micro-task has **no gate
-floor** — the gate floors are cross-lingual recall@10 ≥ 0.70 and monolingual
-recall@10 ≥ 0.75, both passed — so this contract change does not affect the
-recorded go decision (`gemini-embedding-001` confirmation) or the retrieval
-posture. The expansion number still feeds ADR-0014's consumption design
-qualitatively; its first strict-contract figure arrives with the next gate
-re-run.
+The expansion micro-task's figure still feeds ADR-0014's consumption design qualitatively, but the value belongs to
+the committed report, not to this record.
