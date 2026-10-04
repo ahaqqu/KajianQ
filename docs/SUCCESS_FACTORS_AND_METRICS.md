@@ -80,7 +80,7 @@ These don't announce themselves in a single failing test; they drift:
 - **Untraced LLM calls.** Cache warming, side validations, gap-detection calls. Watch `recorded cost = Σ calls` per run; a gap means an invisible call.
 - **"Helpful" gap-closing synthesis.** Post-ADR-0015, the Golden Set needs at least one novel-qiyas bait question per suite version — or the drift only shows up as scholar complaints.
 - **Curation debt.** Principle Index, terminology graph review, Ghazali bibliography: these are human-gated and will slip quietly while code tickets look green. Track the _accepted-review_ counts, not just the pipeline runs.
-- **Template-sync divergence.** Upstream template fixes vs. fork guardrail amendment (#3): watch that ADR-0009's paid-critical-path amendment isn't silently reverted by a sync.
+- **Template-sync divergence.** Upstream template fixes vs. fork guardrail amendment (#3): watch that ADR-0009's paid-critical-path posture isn't silently reverted by a sync.
 
 ## 5. One-sentence summary
 

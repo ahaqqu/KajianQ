@@ -36,8 +36,8 @@ import { CostRecordSchema } from "./trace-primitives";
  * residual exact-copy suppression case is the motivating example, not a
  * count the field carries. PRESENCE is the signal (the rules ran) — a trace
  * persisted before this kind existed carries no such event, so absence is
- * authoritative only for traces written after it shipped (ADR-0007
- * amendment). The delivered text remains the single source of truth for what
+ * authoritative only for traces written after it shipped (ADR-0007).
+ * The delivered text remains the single source of truth for what
  * the answer says; this event records only which rules appended text, never
  * whether their text survived.
  */

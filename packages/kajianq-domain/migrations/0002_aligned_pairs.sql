@@ -43,7 +43,7 @@ CREATE TABLE aligned_pairs (
 CREATE INDEX aligned_pairs_citation ON aligned_pairs (citation);
 
 -- Promote lemma_evidence.ayah_pair_id to a true FK now that the table
--- exists (ADR-0014 amendment). Existing rows (none yet — the graph build is
+-- exists (ADR-0014). Existing rows (none yet — the graph build is
 -- #24) would be validated by the constraint; the promotion is safe because
 -- the column was constrained by shape only until now.
 DO $$

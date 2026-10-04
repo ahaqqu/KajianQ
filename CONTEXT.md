@@ -101,7 +101,7 @@ The go/no-go gate harness (#9, ADR-0036) that compares candidate embedding model
 _Avoid_: leaderboard comparison (implies hosted benchmarks), recall test (unqualified — the gate measures specific directions with fixed floors)
 
 **Retrieval Posture**:
-The decided shape of the retrieval layer from the Embedding Benchmark: which embedding model serves as the `embedder` default and whether serving is AR-only or ID-fallback fusion over the dual-index schema. Recorded in ADR-0036; switchable without re-embedding (ADR-0013 amendment 1).
+The decided shape of the retrieval layer from the Embedding Benchmark: which embedding model serves as the `embedder` default and whether serving is AR-only or ID-fallback fusion over the dual-index schema. Recorded in ADR-0036; switchable without re-embedding (ADR-0013 decision 1).
 _Avoid_: retrieval strategy (vague), embedding config (implies the whole provider config)
 
 **Surah-Reference Scoped Expansion**:

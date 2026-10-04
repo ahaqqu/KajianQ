@@ -18,7 +18,7 @@ export type MemoryFeedbackState = {
   traces: Map<string, unknown>;
   /** Persisted traces keyed by row id (the FK stand-in for answer_traces.id). */
   traceRows: Map<string, unknown>;
-  /** Trace owners by message id, as inserted (ADR-0007 amendment). */
+  /** Trace owners by message id, as inserted (ADR-0007). */
   traceOwners: Map<string, string | null>;
   /** Trace owners by row id (the dual-id resolution the feedback route uses). */
   traceRowOwners: Map<string, string | null>;

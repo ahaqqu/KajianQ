@@ -199,7 +199,7 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
   it("persists and reads back a @app/contracts Trace, and cascade-deletes it with the user", async () => {
     if (!URL) return;
     // The trace must be owned by a user so it cascades on anonymous deletion
-    // (ADR-0007 amendment). Create a session and tag its chat_session with
+    // (ADR-0007). Create a session and tag its chat_session with
     // pfx so the run's cleanup can find the user.
     const trace = {
       id: "trace-1",
@@ -258,7 +258,7 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
         },
       });
       // Tolerant reader: a trace stored without `version` reads back unchanged
-      // (version is an optional forward-compat anchor, ADR-0007 amendment).
+      // (version is an optional forward-compat anchor, ADR-0007).
       const fetched = yield* store.getAnswerTraceByMessage(messageId);
       const absent = yield* store.getAnswerTraceByMessage(`${PREFIX}-nope`);
       // Cascade: deleting the user removes their traces (the user_id FK), so the

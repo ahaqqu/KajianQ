@@ -11,8 +11,8 @@ import { Data } from "effect";
  * The taxonomy is CLOSED: exactly these five kinds, each carrying the
  * wrapped original in `cause`. Consumers switch on `kind` — never on
  * adapter classes or vendor exception types, which must not appear in seam
- * signatures at all. A new kind is a seam-contract change that requires an
- * ADR amendment, not a silent union extension.
+ * signatures at all. A new kind is a seam-contract change that requires the
+ * ADR to be rewritten, not a silent union extension.
  */
 export type StoreErrorKind =
   /** Network/transport-level failure: connection error, fetch failure, DNS. */

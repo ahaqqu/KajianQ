@@ -425,10 +425,10 @@ sudoedit /etc/kajianq/api.env
 
 The template already carries the recorded environment label —
 `APP_ENV=staging`, the one deployment with production deferred (ADR-0044
-amendment, 2026-10-03) — so the box's `/v1/health` reports `"env":"staging"`
+decision 2; deferred 2026-10-03) — so the box's `/v1/health` reports `"env":"staging"`
 with no edit here. The `sudoedit` pass is for the placeholders (database
 credentials, origin, provider keys); `APP_ENV` is not one of them — production
-arrives as a new decision and a new host (ADR-0044 amendment revisit trigger),
+arrives as a new decision and a new host (ADR-0044's revisit trigger for a second host),
 never an edit here.
 
 Two keys are **hard preconditions of the chat path**, not optional:

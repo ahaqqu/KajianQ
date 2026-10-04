@@ -4,7 +4,7 @@ import { productRulesEventSchema } from "./trace-product-rules";
 
 /**
  * Every recordable pipeline occurrence, keyed on `kind` with `detail` typed
- * per variant (#45; ADR-0007 amendment "typed, checked every change"). An
+ * per variant (#45; ADR-0007 "typed, checked every change"). An
  * unknown `kind` or a malformed `detail` now fails `v.parse` instead of
  * persisting an untyped record.
  *

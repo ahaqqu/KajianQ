@@ -37,8 +37,8 @@ ENV_FILE="/etc/kajianq/proxy.env"
 DRY_RUN=0
 DEPLOY_PUBKEY=""
 
-# The deploy identity is fixed, not configurable (#181, ADR-0044 deploy-identity
-# amendment). Three places must agree on it: this account here, the sudoers
+# The deploy identity is fixed, not configurable (#181, ADR-0044 decision 6).
+# Three places must agree on it: this account here, the sudoers
 # grant in provision/vps/sudoers/kajianq-deploy, and the CI variable VPS_USER
 # that the deploy workflow passes as KAJIANQ_DEPLOY_USER. A configurable name
 # would let the grant and the caller disagree, and the deploy would then fail
@@ -127,7 +127,7 @@ if ! id -u kajianq >/dev/null 2>&1; then
     run useradd --system --home /srv/kajianq --shell /usr/sbin/nologin kajianq
 fi
 
-# The deploy identity (#181, ADR-0044 deploy-identity amendment): a real login
+# The deploy identity (#181, ADR-0044 decision 6): a real login
 # account whose entire purpose is the deploy path, so CI's key is not the
 # owner's admin account and the root grant is scoped to it. `system` because it
 # runs no interactive session; bash (not nologin) because ssh executes the

@@ -205,7 +205,7 @@ export interface RagStore
   /**
    * Delete a user and everything they own (sessions, chat sessions and their
    * messages, feedback, and the user's answer traces) via cascade. Anonymous
-   * self-deletion endpoint in #10. Trace cascade is the ADR-0007 amendment.
+   * self-deletion endpoint in #10. The trace cascade is decided by ADR-0007.
    */
   deleteUserCascade(userId: string): Effect.Effect<void, StoreError>;
 

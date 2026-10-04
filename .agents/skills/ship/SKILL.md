@@ -12,7 +12,7 @@ Take a change from CI-green on `main` through staging validation to production, 
 
 **The serving host is the netcup VPS** (a plain Bun process behind nginx). There
 is one box, and its environment label is `staging`: **no production is
-provisioned** (deferred, not pending — ADR-0044 amendment, 2026-10-03), so a
+provisioned** (deferred, not pending — ADR-0044 decision 2, 2026-10-03), so a
 `prod` dispatch runs the same box through its approval gate rather than a second
 host. The operator's as-is manual is
 [`docs/VPS-OPERATIONS.md`](../../../docs/VPS-OPERATIONS.md), which is the authority
@@ -122,7 +122,8 @@ do not promote.
 
 There is no separate production host to point DNS at: **the one box is the
 `staging` deployment** and no production is provisioned (deferred, not pending —
-ADR-0044 amendment, 2026-10-03), so this dispatch runs that box through the
+ADR-0044 decision 2), so this dispatch runs that box
+through the
 approval gate. Promotion is:
 
 ```bash

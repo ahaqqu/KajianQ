@@ -136,7 +136,7 @@ environment on a host. Both `staging` and `prod` deploy to **the one box** (§0)
 `deploy.sh` uses a single `DEPLOY_ROOT` and nginx serves one `root`, so the
 choice selects that environment's vars/secrets — and `prod`'s approval gate —
 and nothing else. **No production deployment is provisioned** (ADR-0044
-amendment, 2026-10-03): the box is labeled `staging`, provisioning production is
+decision 2; deferred 2026-10-03): the box is labeled `staging`, provisioning production is
 deferred rather than pending, and a `prod` dispatch today deploys the same box
 the `staging` environment does.
 
@@ -190,7 +190,7 @@ entry's, which reads the same `DATABASE_URL`). Its keys mirror
 (`tests/scripts/vps-hardening.test.mjs`) keeps the two in sync. Two keys are
 chat-path preconditions rather than optional: `DEEPSEEK_API_KEY` (the
 generator/router chain head **and** the reviewer, per the 2026-09-21
-same-vendor amendment) and `GEMINI_PAID_API_KEY` (the embedder head). Without
+same-vendor owner decision; ADR-0044 decision 7) and `GEMINI_PAID_API_KEY` (the embedder head). Without
 them the reviewer or embedder stage fails with a typed error while `/v1/health`
 and anonymous minting stay green — so the deploy's smokes alone do not prove
 they are present.
@@ -237,7 +237,7 @@ the approval is the owner's sign-off for a production-targeted deploy
 (ADR-0044 decision 2). Its `VPS_*` variables and `VPS_DEPLOY_SSH_KEY` are
 environment-scoped, so staging and prod carry their own credentials under one
 repository — and both point at the **one box** (§1.2), because no production
-deployment is provisioned (ADR-0044 amendment, 2026-10-03).
+deployment is provisioned (ADR-0044 decision 2; deferred 2026-10-03).
 
 ### 1.5 The permission model (deploy identity ↔ `kajianq`)
 
@@ -283,7 +283,7 @@ Three distinct identities, deliberately:
 password is required`, after the tree had already shipped (Staging run
 > 35548824035). The fix moved the grant into the repository and put executable
 > pins on it, so the host precondition and the deploy script can no longer
-> disagree silently. Record: ADR-0044's deploy-identity amendment.
+> disagree silently. Record: ADR-0044 decision 6.
 
 `rsync --chmod=D755,F644` normalizes what lands: directories 0755, files 0644.
 The API bundle is not written by the service account, so a deploy cannot leave a
@@ -445,8 +445,8 @@ $ curl -s https://kajianq.ahaqqu.com/v1/health
 {"status":"ok","env":"staging","schemaVersion":1,"message":"Hello World"}
 ```
 
-Production is **not provisioned** — deferred, not pending (ADR-0044 amendment,
-2026-10-03) — so there is one deployment and `staging` is its label. The GitHub
+Production is **not provisioned** — deferred, not pending (ADR-0044 decision 2;
+deferred 2026-10-03) — so there is one deployment and `staging` is its label. The GitHub
 environments `staging` and `prod` both deploy to it (§1.2); `prod` is the
 approval-gated path to the same box, not a second host.
 
@@ -557,8 +557,9 @@ create <label> | verify <label> | require <label> | list | download <label> --ou
     pre-cutover R2 path).
 
   Neither set ⇒ `refused`. There is no third snapshot tool: the encrypted-at-rest
-  path is the GDPR-D backup tooling (§2.5), and ADR-0044's alternatives section
-  records why a second one was rejected.
+  path is the GDPR-D backup tooling (§2.5), and
+  `packages/infra/scripts/snapshot-privacy.mjs` records why a second one was
+  rejected (ADR-0043 decision 5).
 
 - **Labels are immutable.** A label that already exists is never overwritten —
   take a new label instead. The regex is lowercase letters, digits, and dashes

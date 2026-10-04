@@ -91,7 +91,7 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
     name: "Google (Gemini API)",
     status: "current",
     role: {
-      // Not the reviewer: ADR-0044's 2026-09-21 amendment re-headed the reviewer
+      // Not the reviewer: ADR-0044 decision 7 re-headed the reviewer (2026-09-21)
       // to DeepSeek, and this free-tier row's verdict is not-for-personal-data —
       // so it cannot serve a reviewer call (every serving call site sets
       // PromptSpec.personalData). It is a fallback candidate on the cheap role

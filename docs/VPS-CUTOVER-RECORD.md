@@ -336,7 +336,7 @@ Set smoke, ZAP, Schemathesis) skipped for that commit. The three-command grant
 host precondition with no executable existence is the defect, and this record
 stated the removal without stating the dependency.
 
-The fix is recorded in ADR-0044's deploy-identity amendment: a dedicated
+The fix is recorded in ADR-0044 decision 6 (the deploy identity): a dedicated
 `kajianq-deploy` account owning the deployed tree, with exactly two granted
 `systemctl` commands shipped as code (`provision/vps/sudoers/kajianq-deploy`,
 installed by `apply.sh` behind `visudo -cf` and pinned by

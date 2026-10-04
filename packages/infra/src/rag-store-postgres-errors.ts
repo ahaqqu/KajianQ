@@ -113,8 +113,8 @@ export function postgresErrorToStoreError(cause: unknown): StoreError {
   // Caller-aborted fetch: the caller (or Effect's interruption channel)
   // cancelled the operation. It maps to the closed default `transport`
   // because the taxonomy has no dedicated `cancelled` kind (ADR-0027
-  // decision 7 — a new kind is a seam-contract change requiring an ADR
-  // amendment); consumers retrying `transport` may see a rare retry of a
+  // decision 7 — a new kind is a seam-contract change requiring the ADR
+  // to be rewritten); consumers retrying `transport` may see a rare retry of a
   // cancelled operation, which is harmless (the query is idempotent or
   // guarded by upsert keys). Documented here so the classification is not
   // underdocumented.

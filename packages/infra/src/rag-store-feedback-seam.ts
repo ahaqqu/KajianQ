@@ -48,7 +48,7 @@ export type AnswerFeedbackTarget = {
    * feedback row by, so the same answer is never keyed two ways.
    */
   messageId: string;
-  /** The trace's owning user (ADR-0007 amendment); null when unowned. */
+  /** The trace's owning user (ADR-0007); null when unowned. */
   userId: string | null;
   trace: Trace;
   /** The answer's persisted text, when its chat message row survives. */

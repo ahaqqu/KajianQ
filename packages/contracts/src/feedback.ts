@@ -6,7 +6,7 @@ import * as v from "valibot";
  * reports the exact failing element (wrong citation, irrelevant chunk, bad
  * machine translation, questionable grade) by referencing an identifier from
  * the shared Trace/citation contract, never free-form coordinates
- * (ADR-0007 amendment 2: "trace-anchored feedback targets identifiers from
+ * (ADR-0007: "trace-anchored feedback targets identifiers from
  * the shared contract only").
  *
  * One request carries EXACTLY ONE of `rating` (an anonymous thumb on the

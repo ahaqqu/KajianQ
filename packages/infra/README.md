@@ -20,7 +20,7 @@ vendor client directly (ADR-0008, ADR-0009). What lives here:
   the app resolves its backend from the `RATE_LIMITER` Durable Object
   binding via `resolveRateLimiter`.
 
-> **Domain boundary (AGENTS.md rule 1, ADR-0014 amendment).** This package is
+> **Domain boundary (AGENTS.md rule 1, ADR-0014).** This package is
 > domain-agnostic. Product-owned tables (`principle_index`, `golden_questions`)
 > and the bilingual terminology concept graph (`concept`/`lemma`/
 > `concept_relation`/`lemma_evidence`) were originally placed in the engine
@@ -57,7 +57,7 @@ bridge (`@app/rag-ingest` pipeline) is the canonical one.
   atomic batched transaction; `resolveUserId(token)` resolves it (rejects
   expired rows); `deleteUserCascade(userId)` removes the user and everything
   they own via `ON DELETE CASCADE` (sessions, chat, feedback, and — per the
-  ADR-0007 amendment — the user's `answer_traces`); `cleanupExpiredSessions()`
+  ADR-0007 — the user's `answer_traces`); `cleanupExpiredSessions()`
   reclaims expired session rows (wire to a cron). The auth routes these feed
   are mounted in #10, not here.
 - Ingestion is idempotent (AGENTS.md rule 13): `insertDocParent` upserts by
@@ -73,7 +73,7 @@ bridge (`@app/rag-ingest` pipeline) is the canonical one.
 - `answer_traces` stores the `@app/contracts` `Trace` shape verbatim and now
   carries `user_id`; the reader is tolerant — the `Trace` contract only ever
   adds optional fields (versioned), so older persisted traces stay readable
-  (ADR-0007 amendment).
+  (ADR-0007).
 
 ## Migrations (db-migrate)
 

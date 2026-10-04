@@ -20,7 +20,7 @@ import { authGuard, buildStoreWiring, wiringOr503 } from "../lib/chat-wiring";
  *
  * `DELETE /v1/auth/me` is guarded: the Bearer token identifies the user, and
  * the cascade delete (sessions, chat sessions/messages, feedback, and the
- * user's answer traces — the ADR-0007 amendment) is one store call. Deleting
+ * user's answer traces — ADR-0007) is one store call. Deleting
  * with an unauthenticated request is a 401, never a no-op.
  */
 
@@ -49,7 +49,7 @@ const ANONYMOUS_OPENAPI = describeRoute({
 const DELETE_ME_OPENAPI = describeRoute({
   summary: "Delete the current anonymous user",
   description:
-    "Erases the authenticated user and everything they own (sessions, chat sessions and messages, feedback, answer traces) via cascade (ADR-0017, ADR-0007 amendment).",
+    "Erases the authenticated user and everything they own (sessions, chat sessions and messages, feedback, answer traces) via cascade (ADR-0017, ADR-0007).",
   responses: {
     200: {
       description: "The user and their data are gone",

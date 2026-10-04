@@ -162,7 +162,7 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
   );
 
   // The SSE wire contract (meta → deltas → citations → trace → done,
-  // ADR-0034 + ADR-0040 as amended for the `trace` frame — #11/#12). A refused
+  // ADR-0034 + ADR-0040 for the `trace` frame — #11/#12). A refused
   // answer never ships the vendor's text: the
   // reviewer recorded a `refusal` event on the trace (the same signal the
   // eval harness reads), and the frames carry the plain refusal instead.

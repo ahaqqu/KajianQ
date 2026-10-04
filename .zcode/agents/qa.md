@@ -50,7 +50,7 @@ Keep your run in `todo_write` (whole-list replacement each call, exactly one ite
 
 ## Safety rails
 
-- Staging only — never production, never a prod dispatch. The one deployment **is** the `staging` environment and it is the public URL; no production deployment is provisioned (ADR-0044 amendment, 2026-10-03), so there is no second environment to reach.
+- Staging only — never production, never a prod dispatch. The one deployment **is** the `staging` environment and it is the public URL; no production deployment is provisioned (ADR-0044 decision 2; deferred 2026-10-03), so there is no second environment to reach.
 - Anonymous sessions only; no real user data. Every session you create is erased before you finish (`DELETE /v1/auth/me` with that session's token) — keep each token in a **durable scratch path** until the run ends, because erasure needs it and a per-invocation `/tmp` loses it between tool calls. A session that cannot be erased anyway is disclosed in the report instead, with its `sessionId`, what it contains (e.g. no messages), and its expiry under the 30-day inactivity reclamation.
 - No destructive action against the corpus or the store, no paid ingest, and no money-spending operation past the ticket's cap.
 - Report the spend actually consumed against the cap, even when the probes came in under it.

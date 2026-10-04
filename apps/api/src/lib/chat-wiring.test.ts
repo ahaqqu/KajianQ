@@ -234,7 +234,7 @@ describe("createProvidersFromEnv", () => {
   });
 
   it("wires the reviewer pre-gate only when the decision role's key is bound (#168)", async () => {
-    // The always-on-where-the-key-is-bound posture (ADR-0042 amendment, owner
+    // The always-on-where-the-key-is-bound posture (ADR-0042 adoption, owner
     // decision 2026-09-19) has no enable flag to assert: the key IS the flag.
     // The env name is read from the config data (ADR-0022), never hard-coded.
     const { loadProviderConfig } = await awaitImportConfig();

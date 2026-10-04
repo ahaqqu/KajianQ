@@ -58,7 +58,7 @@ export function createMemoryRagStore(): RagStore & {
   const pairs = new Map<string, AlignedPairInsert & { id: string }>();
   const traces = new Map<string, unknown>();
   const traceRows = new Map<string, unknown>();
-  const traceOwners = new Map<string, string | null>(); // messageId → user (ADR-0007 amendment)
+  const traceOwners = new Map<string, string | null>(); // messageId → user (ADR-0007)
   const traceRowOwners = new Map<string, string | null>(); // trace row id → user
   const traceRowMessageIds = new Map<string, string>(); // trace row id → canonical messageId
   const feedback = new Map<string, FeedbackInsert & { id: string }>();

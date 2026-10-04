@@ -5,7 +5,7 @@
 --     corpus chunks, traces, chat, anonymous sessions, feedback, the generic
 --     eval run/result ledger, and model configs. Product-owned tables were
 --     originally placed here by ADR-0014 but are domain leakage into an engine
---     package; they have been relocated (ADR-0014 amendment):
+--     package; they have been relocated (ADR-0014):
 --       - the bilingual terminology concept graph (concept / lemma /
 --         concept_relation / lemma_evidence) → packages/kajianq-domain.
 --       - principle_index + golden_questions → apps/api.
@@ -14,7 +14,7 @@
 --   * Idempotent ingestion (AGENTS.md rule 11): doc_parents.source_key is
 --     UNIQUE so re-running ingestion upserts by provenance key, and
 --     doc_children are upserted by (parent_id, ordinal).
---   * Dual embeddings from the start (ADR-0013 amendment): each child chunk
+--   * Dual embeddings from the start (ADR-0013 decision 1): each child chunk
 --     carries embedding_primary (canonical) and embedding_fallback
 --     (fusion), both VECTOR(1536), nullable until embedded. The column names
 --     are role-based on purpose: KajianQ maps primary/fallback onto its AR/ID
@@ -26,7 +26,7 @@
 --     chat_sessions / chat_messages; 30-day Bearer tokens, cascade delete.
 --   * answer_traces stores the @app/contracts Trace shape verbatim as JSONB
 --     (ADR-0007) AND carries user_id so a user's traces cascade-delete with
---     the user on anonymous self-deletion (ADR-0007 amendment).
+--     the user on anonymous self-deletion (ADR-0007).
 
 BEGIN;
 
@@ -134,7 +134,7 @@ CREATE INDEX chat_messages_session_created
 -- One row per answer. `trace` JSONB is the @app/contracts Trace shape
 -- verbatim; `message_id` indexes it back to the chat surface. `user_id`
 -- cascade-deletes the trace with its owner on anonymous self-deletion
--- (ADR-0007 amendment), so a user's Q&A record is erased with them.
+-- (ADR-0007), so a user's Q&A record is erased with them.
 CREATE TABLE answer_traces (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   message_id  text NOT NULL UNIQUE,
