@@ -12,8 +12,8 @@ layer, never a peer. Machine translation is not the basis for retrieval or schol
 ## Why
 
 The corpus's pre-600 H kitab are the product's moat and almost none have an Indonesian translation, while the audience
-does not read Arabic. Two alternatives were rejected. Indonesian summaries only: a paraphrase cannot be cited, and
-strict citation is the trust invariant the product is built on. Ingesting only kitab that already have an Indonesian
+does not read Arabic. Two alternatives were rejected. Indonesian summaries only: a paraphrase cannot be cited, so it
+defeats strict citation. Ingesting only kitab that already have an Indonesian
 translation: nearly none do, so the moat would be given up for a language the audience reads.
 
 Mistranslation is the accepted cost, mitigated rather than hidden — the visible label, the Arabic that is always
@@ -23,6 +23,6 @@ cites is the Arabic.
 ## Consequences
 
 Translation is a display-layer artifact and an optional retrieval fallback; the citation validator resolves against
-`text_ar`. - `text_raw` stays immutable at every step: cleaning and translation write new fields, never the source.
+`text_ar`. `text_raw` stays immutable at every step: cleaning and translation write new fields, never the source.
 
 Which of the two tracks serves retrieval is the embedding benchmark gate's decision (ADR-0036).

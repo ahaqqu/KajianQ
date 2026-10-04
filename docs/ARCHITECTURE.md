@@ -61,7 +61,7 @@ chunks with scores (`rrf_score`, `rank_dense`, `rank_sparse`), routing filters,
 model identity, tokens in/out, latency, computed cost. `Trace` / `TraceEvent` /
 `CostRecord` are typed in `packages/contracts` and consumed by the pipeline,
 PWA, admin, and eval from one shape; `TraceEvent` is a strict discriminated
-union — an unknown kind fails `v.parse` (ADR-0007 amendments). The
+union — an unknown kind fails `v.parse` (ADR-0007 Consequences). The
 `runPipeline` runner is the single trace collection point; stages append
 `llm_call` / `refusal` / `review` through `RunContext.record` — never by
 hand-assembling a trace (ADR-0021). Refusal and suppression are recorded with
@@ -76,7 +76,7 @@ recorded LLM calls).
 
 ## 3. Cost — price-disciplined, not zero-cost
 
-**Deviated from the template (ADR-0009 fork guardrail amendment).** The
+**Deviated from the template (ADR-0009 Decision).** The
 template's "zero-cost free tier, never paid services on the critical path" does
 not hold here: no free tier exists at generator quality among the allowlisted
 vendors, so **paid LLM/embedding APIs are accepted in the critical path**.
@@ -123,7 +123,7 @@ retrieval; an offline mode cannot answer. Instead:
   Bearer tokens (SHA-256-hashed), no hosted identity in v1 (ADR-0017).
 - **Erasure is complete**: `deleteUserCascade` removes the user's sessions,
   chat, feedback, and traces (`ON DELETE CASCADE`) — the anonymous user's right
-  to erasure wins over trace retention (ADR-0007 amendment).
+  to erasure wins over trace retention (ADR-0007 Decision).
 - **Raw sources are immutable**: `text_raw` is never overwritten; re-runnable
   ingestion is idempotent (AGENTS.md rule 13).
 
@@ -176,7 +176,7 @@ environment secrets. Values come from the owner's environment — never the
 repository, which is public.
 
 Account deletion cascades across all data stores, including `answer_traces`
-(ADR-0007 amendment).
+(ADR-0007 Decision).
 
 - **Rate limiting** — `@app/rate` (`packages/rate`): the process-wide bounded
   in-memory limiter. Post-ADR-0044 the API is one Bun process, so per-process
@@ -394,7 +394,7 @@ Gated by: `bun run agentic-limits`, `bun run boundary`.
 | Database         | **Self-hosted Postgres + pgvector behind `RagStore`**, `pg` over TCP                                               | Smart Router needs vector HNSW + tsvector + rich SQL filtering — D1/Vectorize cannot express it (ADR-0008). Self-hosted for residency (ADR-0043/ADR-0044); dual 1536-dim vector schema sized in ADR-0020. Loopback-only listener, scram over TCP.                                                                 |
 | API framework    | Hono + hono-openapi                                                                                                | Valibot route definitions produce validation, TS types, OpenAPI 3.1.                                                                                                                                                                                                                                              |
 | Auth             | **Anonymous sessions in Postgres (RagStore)**                                                                      | 30-day Bearer tokens; full erasure cascade; hosted identity rejected for v1 (ADR-0017).                                                                                                                                                                                                                           |
-| Migrations       | Raw SQL per owning package                                                                                         | Engine (`packages/infra/migrations`), product (`apps/api/migrations`), concept graph (`packages/kajianq-domain/migrations`) — engine schema stays domain-agnostic (ADR-0014 amendment, ADR-0019). One shared `schema_migrations` ledger; names unique across dirs.                                                |
+| Migrations       | Raw SQL per owning package                                                                                         | Engine (`packages/infra/migrations`), product (`apps/api/migrations`), concept graph (`packages/kajianq-domain/migrations`) — engine schema stays domain-agnostic (ADR-0014 Decision, ADR-0019). One shared `schema_migrations` ledger; names unique across dirs.                                                 |
 | LLM / embeddings | `Provider` interface; allowlist Gemini/Gemini-paid/DeepSeek/Qwen (+ TypeSafe `Decider`); `model_configs` per stage | ADR-0009; paid critical path accepted with price discipline; every call traced. **Same-vendor review accepted by owner amendment 2026-09-21** (generator and reviewer both `deepseek:deepseek-v4-flash`; cross-vendor separation relaxed for the current key set, revisit trigger recorded) — ADR-0044 amendment. |
 | Pipeline         | `packages/rag-core`: Router → Retriever → Assembler → Generator → Reviewer + `runPipeline`                         | Typed seams, single trace collection point (ADR-0021).                                                                                                                                                                                                                                                            |
 | Domain pack      | `packages/kajianq-domain`                                                                                          | Zero Islamic-domain logic in engine packages (AGENTS.md rule 1).                                                                                                                                                                                                                                                  |
@@ -405,7 +405,7 @@ Gated by: `bun run agentic-limits`, `bun run boundary`.
 | Routing / UI     | TanStack Router; shadcn/ui + Tailwind                                                                              | Inherited.                                                                                                                                                                                                                                                                                                        |
 | PWA              | vite-plugin-pwa                                                                                                    | Shell precache + update prompt; data requires network.                                                                                                                                                                                                                                                            |
 | i18n             | Build-time en/id translations                                                                                      | Indonesian-first product (spec).                                                                                                                                                                                                                                                                                  |
-| Trace contract   | `packages/contracts`: `Trace`/`TraceEvent`/`CostRecord`                                                            | One shape for pipeline, PWA, admin, eval (ADR-0007 amendments).                                                                                                                                                                                                                                                   |
+| Trace contract   | `packages/contracts`: `Trace`/`TraceEvent`/`CostRecord`                                                            | One shape for pipeline, PWA, admin, eval (ADR-0007 Decision).                                                                                                                                                                                                                                                     |
 | Evaluation       | `packages/eval` + Golden Set                                                                                       | Versioned test sets; #9 embedding benchmark is the retrieval go/no-go gate.                                                                                                                                                                                                                                       |
 | Payments         | Deferred                                                                                                           | Not in KajianQ v1; template guidance (Xendit/Polar behind one adapter) stands if ever adopted.                                                                                                                                                                                                                    |
 | Tooling          | Bun scripts; TypeScript strict; Nix optional                                                                       | Inherited.                                                                                                                                                                                                                                                                                                        |
@@ -447,7 +447,7 @@ answer the product can render. **Erasure is a first-class flow**:
 feedback), and a backup restore re-applies it so a restored row cannot
 resurrect deleted data. Personal data routes only through paid, DPA-covered
 vendors — never a free tier — as a **decided rule** that `personalDataAllowed`
-gates at the `Provider` seam (ADR-0009 amendment). **It is enforced on the
+gates at the `Provider` seam (ADR-0009 Decision). **It is enforced on the
 serving path, and CI proves it.** Every serving call site declares
 `personalData: true` from its stage seam's own type, as a **required literal**
 (`RouterProvider`, `GeneratorProvider`, `ReviewerProvider`, `RetrieverEmbedder`
@@ -497,7 +497,7 @@ and a store-touching readiness probe. A second **host** is a new ADR, because
 Postgres is loopback-only by decision.
 
 Gated by: the review duty in `.agents/skills/code-review/SKILL.md` (the
-principle range it enumerates) and the revisit triggers in ADR-0050. The
+principle range it enumerates) and the triggers recorded in ADR-0050. The
 automated scan for module-level mutable state in serving code is recorded there
 as an open gap, deliberately not built.
 

@@ -6,7 +6,8 @@ The embedding default ships only if the benchmark gate passes, and the gate make
 ADR-0013 deferred to it: cross-lingual recall from the secondary (Indonesian) track to the primary (Arabic) track, and
 monolingual recall within the primary track, over the real v1 sources. The winning candidate is what the `embedder`
 role holds; the committed report carries every number, and which role holds which chain is the live role map's
-business, never this record's.
+business, never this record's. What "passes" means is the harness's contract, not this record's: `GATE_FLOORS` in
+`packages/eval/src/embed-bench.ts` holds the cross-lingual and monolingual recall floors it enforces.
 
 The retrieval posture is **Arabic-only serving with the Indonesian fallback track retained**: the primary track serves
 retrieval, and the fallback column stays built and switchable without re-embedding for a future fusion posture if

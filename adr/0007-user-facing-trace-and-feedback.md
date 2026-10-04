@@ -13,7 +13,7 @@ auditable as an answer.
 
 A trace belongs to the user it answers and is erased with them on self-deletion. Feedback names contract identifiers
 only — one shape per request, an anonymous thumb or a flag on a trace element — and is stored only when the persisted
-trace grounds the anchor.
+trace grounds the anchor; accepted items become golden-set eval cases.
 
 ## Why
 
