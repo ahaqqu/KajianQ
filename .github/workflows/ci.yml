@@ -28,7 +28,7 @@ jobs:
       # Installs the vp CLI pinned via the `vite-plus` devDependency; its version
       # coupling to apps/web's `vite` and the root vitest pins is guarded by
       # `scripts/check-vp-vite-pin.mjs`.
-      - uses: voidzero-dev/setup-vp@24d870228786dc83ae73482406bdd1e7befaec14 # v1.21.0
+      - uses: voidzero-dev/setup-vp@3754dd7dbdb32bd8f6d28b6043de13ad3a75f21f # v1.21.1
       - run: bun run check
       - run: bun run lint
       # The default unit/coverage gate runs WITHOUT a database: the RagStore
