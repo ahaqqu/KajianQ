@@ -27,6 +27,9 @@ function routed(intent: string, subQueries: readonly string[]): RoutedQuery<Defa
     intent,
     subQueries: subQueries.map((text) => ({ text })),
     filters: { scope: "all" },
+    // The runner stamps this from the caller's query; a test literal carries it
+    // so the value the stages read is the one production stamps.
+    sourceText: query.text,
   };
 }
 
@@ -76,6 +79,102 @@ describe("runPipeline", () => {
       "subquery",
       "retrieval",
       "assembly",
+    ]);
+  });
+
+  it("stamps the caller's verbatim question and prior turns onto the routed query", async () => {
+    // The Router returns only its reading; the run's query context is the
+    // runner's to stamp, so every stage downstream reads one guaranteed object
+    // instead of an echo field a router could get wrong (ADR-0018).
+    const seen: RoutedQuery<DefaultFilters>[] = [];
+    const history = [{ role: "user", content: "an earlier turn" }];
+    const stages = makeStages({
+      router: {
+        route: () =>
+          Effect.succeed({ intent: "ruling", subQueries: [{ text: "sub" }], filters: {} }),
+      },
+      retriever: {
+        retrieve: (routed) =>
+          Effect.sync(() => {
+            seen.push(routed);
+            return [] as readonly Chunk[];
+          }),
+      },
+      assembler: {
+        assemble: (routed, chunks) =>
+          Effect.sync(() => {
+            seen.push(routed);
+            return contextFor(chunks);
+          }),
+      },
+    });
+    await Effect.runPromise(
+      runPipeline(stages, { text: "a question", history }, config, { traceId: "t", now: () => 0 }),
+    );
+    expect(seen).toHaveLength(2);
+    for (const routed of seen) {
+      expect(routed.sourceText).toBe("a question");
+      expect(routed.history).toEqual(history);
+    }
+  });
+
+  it("records the router's classification, its account of it, and each sub-query's labels", async () => {
+    const stages = makeStages({
+      router: {
+        route: () =>
+          Effect.succeed({
+            intent: "analogy",
+            subQueries: [
+              { text: "sub one", role: "factual", origin: "model" },
+              { text: "sub two", role: "principle", origin: "rule" },
+            ],
+            filters: { scope: "all" },
+            confidence: 0.5,
+            reasoning: "the question asks why",
+            attributes: { category: "fikih" },
+          }),
+      },
+    });
+    const result = await Effect.runPromise(
+      runPipeline(stages, query, config, { traceId: "t", now: () => 3 }),
+    );
+    expect(result.trace.events.slice(0, 3)).toEqual([
+      {
+        stage: "router",
+        kind: "intent",
+        detail: {
+          intent: "analogy",
+          confidence: 0.5,
+          reasoning: "the question asks why",
+          attributes: { category: "fikih" },
+        },
+        at: 3,
+      },
+      {
+        stage: "router",
+        kind: "subquery",
+        detail: { text: "sub one", role: "factual", origin: "model" },
+        at: 3,
+      },
+      {
+        stage: "router",
+        kind: "subquery",
+        detail: { text: "sub two", role: "principle", origin: "rule" },
+        at: 3,
+      },
+    ]);
+  });
+
+  it("omits the optional router fields the router did not supply", async () => {
+    // A router with nothing to add must not write `undefined` keys: the Trace
+    // is a persisted contract, and an absent field is not an empty one.
+    const result = await Effect.runPromise(
+      runPipeline(makeStages(), query, config, { traceId: "t", now: () => 0 }),
+    );
+    expect(result.trace.events.slice(0, 3)).toEqual([
+      { stage: "router", kind: "intent", detail: { intent: "factual" }, at: 0 },
+      { stage: "router", kind: "subquery", detail: { text: "sub1" }, at: 0 },
+      { stage: "router", kind: "subquery", detail: { text: "sub2" }, at: 0 },
     ]);
   });
 

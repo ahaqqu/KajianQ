@@ -14,9 +14,11 @@ const stages: PipelineStages = {
   router: { route: () => Effect.succeed({ intent: "factual", subQueries: [], filters: {} }) },
   retriever: { retrieve: () => Effect.succeed<readonly Chunk[]>([]) },
   assembler: {
-    assemble: (_q, chunks) =>
+    // The assembler receives the routed query and returns it on the context
+    // (ADR-0018), so the stub mirrors production instead of rebuilding one.
+    assemble: (routed, chunks) =>
       Effect.succeed({
-        query: { intent: "factual", subQueries: [], filters: {} },
+        query: routed,
         chunks,
         turns: [],
       }),

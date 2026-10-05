@@ -10,6 +10,7 @@ import {
 } from "./chat-postprocess";
 import { chatSystemPrompt } from "./chat-prompts";
 import type { KajianQFilters } from "./filters";
+import { routedQuery } from "./test-utils/routed-query";
 
 /**
  * The deterministic product rules (spec §2.2, ticket #10 ACs): dhaif warning,
@@ -22,7 +23,7 @@ const context = (
   chunks: readonly Chunk[],
   withTranslation = false,
 ): AssembledContext<KajianQFilters> => ({
-  query: { intent: "q", subQueries: [{ text: "q" }], filters: {} },
+  query: routedQuery("q"),
   chunks,
   turns: [
     {

@@ -41,21 +41,60 @@ export type Chunk = {
   metadata?: Record<string, unknown>;
 };
 
-export type RoutedQuery<TFilters extends Record<string, unknown> = DefaultFilters> = {
-  intent: string;
-  subQueries: readonly Query<TFilters>[];
-  filters: TFilters;
-  /**
-   * The verbatim caller question this routing decomposed, carried opaquely.
-   * It exists because a domain retriever may need to apply a *deterministic*
-   * rule keyed on what the user actually asked (e.g. ADR-0045's scope
-   * expansion), and a model-generated sub-query paraphrase is not a faithful
-   * stand-in — the same question routed twice yields different sub-query
-   * wording. Absent for callers that route without a source text; the engine
-   * never inspects it.
-   */
-  sourceText?: string;
+/**
+ * One retrieval query a question was decomposed into. `role` and `origin` are
+ * caller-chosen opaque labels (like `Chunk.origin`): the engine carries them
+ * into the Trace and interprets neither — the domain pack names the roles its
+ * composition rules use and the origins its repair records.
+ */
+export type SubQuery = {
+  text: string;
+  /** What the sub-query is for (domain vocabulary; opaque to the engine). */
+  role?: string;
+  /** What produced it — the router's model or a deterministic rule (opaque). */
+  origin?: string;
 };
+
+/**
+ * What a Router understood: the classification, the decomposed sub-queries,
+ * the filters its reading implies, and the optional evidence for that reading.
+ * `confidence`/`reasoning`/`attributes` are the router's own account of its
+ * classification — the engine types them (so the Trace can carry them) and
+ * names nothing inside `attributes`.
+ */
+export type Routing<TFilters extends Record<string, unknown> = DefaultFilters> = {
+  intent: string;
+  subQueries: readonly SubQuery[];
+  filters: TFilters;
+  /** The router's self-reported confidence in `intent`, if it reports one. */
+  confidence?: number;
+  /** The router's own rationale for the classification, if it gives one. */
+  reasoning?: string;
+  /** Domain-specific structured data (classification tags, effective filters). */
+  attributes?: Record<string, unknown>;
+};
+
+/**
+ * The run's query after routing: the caller's query context plus the router's
+ * reading of it. The runner builds it (the router returns only {@link Routing}),
+ * which is why the verbatim `sourceText` and the caller's `history` are
+ * guaranteed present downstream instead of being echo fields a router could
+ * get wrong. Every stage after the Router receives this one object.
+ */
+export type RoutedQuery<TFilters extends Record<string, unknown> = DefaultFilters> =
+  Routing<TFilters> & {
+    /**
+     * The verbatim caller question this routing decomposed, stamped by the
+     * runner. It exists because a domain retriever may need to apply a
+     * *deterministic* rule keyed on what the user actually asked (e.g. ADR-0045's
+     * scope expansion), and a model-generated sub-query paraphrase is not a
+     * faithful stand-in — the same question routed twice yields different
+     * sub-query wording. The engine never inspects it.
+     */
+    sourceText: string;
+    /** The caller's prior turns, stamped by the runner (ADR-0018). */
+    history?: readonly Turn[];
+  };
 
 /**
  * The turns handed to the Generator. The Assembler owns context *selection
@@ -107,9 +146,11 @@ export type StageEffect<A> = Effect.Effect<A, StageError, RunContext | Scope.Sco
  * Not a mere classifier. Implementations hold an injected Provider; they never
  * name a vendor. Accesses the run through the `RunContext` Tag so it can
  * record `llm_call` cost and register per-run finalizers via `Effect.addFinalizer`.
+ * Returns {@link Routing} — what it understood — not the run's query: the
+ * runner stamps the caller's verbatim text and history onto it.
  */
 export interface Router<TFilters extends Record<string, unknown> = DefaultFilters> {
-  route(query: Query<TFilters>): StageEffect<RoutedQuery<TFilters>>;
+  route(query: Query<TFilters>): StageEffect<Routing<TFilters>>;
 }
 
 /** Retriever: hybrid search over the store, fused and scored. */
@@ -119,11 +160,14 @@ export interface Retriever<TFilters extends Record<string, unknown> = DefaultFil
 
 /**
  * Assembler: pack retrieved chunks into the Generator's context. Produces the
- * ordered turn list; the Generator owns final prompt assembly.
+ * ordered turn list; the Generator owns final prompt assembly. Receives the
+ * *routed* query — the run's query context plus the router's reading — so the
+ * context it returns carries that reading rather than a rebuilt lookalike
+ * (ADR-0018).
  */
 export interface Assembler<TFilters extends Record<string, unknown> = DefaultFilters> {
   assemble(
-    query: Query<TFilters>,
+    routed: RoutedQuery<TFilters>,
     chunks: readonly Chunk[],
   ): StageEffect<AssembledContext<TFilters>>;
 }

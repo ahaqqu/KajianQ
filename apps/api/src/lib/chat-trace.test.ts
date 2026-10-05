@@ -62,7 +62,7 @@ const derive = (trace: Trace, rows: readonly DocChildById[]) =>
 const INTENT = {
   stage: "router" as const,
   kind: "intent" as const,
-  detail: { intent: "dalil_umum", confidence: 0.87 },
+  detail: { intent: "ruling", confidence: 0.87 },
   at: 0,
 };
 const SUBQ = (text: string) => ({
@@ -155,7 +155,7 @@ describe("deriveTraceFrame — the technical layer", () => {
       ),
       [chunkRow("c1", "Al-Baqarah")],
     );
-    expect(frame.technical.intent).toBe("dalil_umum");
+    expect(frame.technical.intent).toBe("ruling");
     expect(frame.technical.confidence).toBe(0.87);
     expect(frame.technical.subQueries).toEqual(["ayat kursi", "QS 2:255 terjemahan"]);
     expect(frame.technical.chunks).toEqual([

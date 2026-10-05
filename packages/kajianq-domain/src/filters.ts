@@ -10,10 +10,12 @@ export const MADZHABS = ["hanafi", "maliki", "syafii", "hambali"] as const;
 export type Madzhab = (typeof MADZHABS)[number];
 
 /** Hadith authenticity classification (CONTEXT.md "Grade"). */
-export type Grade = "mutawatir" | "sahih" | "hasan" | "dhaif";
+export const GRADES = ["mutawatir", "sahih", "hasan", "dhaif"] as const;
+export type Grade = (typeof GRADES)[number];
 
 /** Body of a work vs. commentary on it (CONTEXT.md "Matn"/"Sharh"). */
-export type TextLayer = "matn" | "sharh";
+export const TEXT_LAYERS = ["matn", "sharh"] as const;
+export type TextLayer = (typeof TEXT_LAYERS)[number];
 
 /**
  * Retrieval metadata filters supplied to the engine's Query.filters. The

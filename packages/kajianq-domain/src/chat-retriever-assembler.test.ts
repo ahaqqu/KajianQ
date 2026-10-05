@@ -1,10 +1,10 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
-import { RunContext, type Chunk, type Query, type RoutedQuery } from "@app/rag-core";
+import { RunContext, type Chunk } from "@app/rag-core";
 import { MACHINE_TRANSLATION_LABEL, createKajianQAssembler } from "./chat-assembler";
 import { createKajianQRetriever } from "./chat-retriever";
 import { createMemoryRagStore } from "./test-utils/memory-rag-store";
-import type { KajianQFilters } from "./filters";
+import { routedQuery } from "./test-utils/routed-query";
 
 /**
  * INTEGRATION TEST (thermo-review C1) — the retriever ↔ assembler contract.
@@ -65,11 +65,7 @@ async function retrieve(
     embedder: { embed: () => Effect.succeed({ vectors: [vector], cost: stubCost() }) },
     bridge: (effect) => Effect.runPromise(effect),
   });
-  const routed: RoutedQuery<KajianQFilters> = {
-    intent: "Apa itu Ayat Kursi?",
-    subQueries: [{ text: "Apa itu Ayat Kursi?" }],
-    filters: {},
-  };
+  const routed = routedQuery("Apa itu Ayat Kursi?");
   // The stage's R channel is RunContext (the runner provides it in production);
   // this test provides a minimal sink, mirroring the other stage tests.
   return Effect.runPromise(
@@ -87,7 +83,7 @@ function stubCost() {
 
 /** Assemble the retrieved chunks through the real assembler. */
 function assemble(chunks: readonly Chunk[]): string {
-  const query: Query<KajianQFilters> = { text: "Apa itu Ayat Kursi?" };
+  const query = routedQuery("Apa itu Ayat Kursi?");
   const ctx = Effect.runSync(createKajianQAssembler().assemble(query, chunks) as never) as {
     turns: readonly { content: string }[];
   };

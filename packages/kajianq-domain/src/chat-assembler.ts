@@ -4,7 +4,7 @@ import {
   type AssembledContext,
   type Assembler,
   type Chunk,
-  type Query,
+  type RoutedQuery,
   type Turn,
 } from "@app/rag-core";
 import type { KajianQFilters } from "./filters";
@@ -84,7 +84,7 @@ function renderHistory(history: readonly { role: string; content: string }[]): s
 
 export function createKajianQAssembler(): Assembler<KajianQFilters> {
   return {
-    assemble: (query: Query<KajianQFilters>, chunks: readonly Chunk[]) =>
+    assemble: (routed: RoutedQuery<KajianQFilters>, chunks: readonly Chunk[]) =>
       toStageError(
         "assembler",
         Effect.sync(() => {
@@ -92,17 +92,17 @@ export function createKajianQAssembler(): Assembler<KajianQFilters> {
             (a, b) => presentationRank(a) - presentationRank(b) || (b.score ?? 0) - (a.score ?? 0),
           );
           const context = ordered.map(renderEvidenceChunk).join("\n\n");
-          const history = historyOf(query);
+          const history = historyOf(routed);
           const preamble = renderHistory(history);
           const turns: Turn[] = [];
           if (preamble !== "") turns.push({ role: "user", content: preamble });
           turns.push({ role: "user", content: context });
+          // The context carries the *routed* query itself — the run's query
+          // context (verbatim question, history) plus the router's reading
+          // (intent, sub-queries, filters). Rebuilding a lookalike here is what
+          // let the verbatim question ride the field named `intent` (ADR-0018).
           const ctx: AssembledContext<KajianQFilters> = {
-            query: {
-              intent: query.text,
-              subQueries: [{ text: query.text }],
-              filters: query.filters ?? {},
-            },
+            query: routed,
             chunks: ordered,
             turns,
           };
@@ -113,13 +113,13 @@ export function createKajianQAssembler(): Assembler<KajianQFilters> {
 }
 
 /**
- * Prior turns ride `Query.history` (ADR-0018: the engine carries
- * multi-turn context opaquely, the domain pack renders it). Malformed entries
- * are dropped rather than crashing the answer path — a bad history row must
- * not take down a question.
+ * Prior turns ride the routed query (ADR-0018: the engine stamps the caller's
+ * `Query.history` onto it and carries it opaquely; the domain pack renders it).
+ * Malformed entries are dropped rather than crashing the answer path — a bad
+ * history row must not take down a question.
  */
-function historyOf(query: Query<KajianQFilters>): Turn[] {
-  const raw = query.history;
+function historyOf(routed: RoutedQuery<KajianQFilters>): Turn[] {
+  const raw = routed.history;
   if (!Array.isArray(raw)) return [];
   return raw.flatMap((turn) => {
     if (turn === null || typeof turn !== "object") return [];

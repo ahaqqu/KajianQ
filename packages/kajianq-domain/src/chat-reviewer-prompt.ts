@@ -118,7 +118,10 @@ export function buildReviewMessages(
     {
       role: "user",
       content: [
-        `Question: ${context.query.intent}`,
+        // The verbatim question (`sourceText`), never the router's intent: the
+        // reviewer judges the draft against what the user actually asked, and
+        // the engine stamps that text onto the routed query (ADR-0018).
+        `Question: ${context.query.sourceText}`,
         "",
         "Evidence:",
         evidence,

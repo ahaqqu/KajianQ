@@ -22,7 +22,7 @@ const ANSWER_FIXTURE = [
   // sseFrame escaping) — a literal blank line would terminate the frame.
   `event: delta\ndata: [QS. 2:255].\ndata: \ndata: ${DISCLAIMER}\n\n`,
   'event: citations\ndata: {"messageId":"m-live","refusal":false,"dhaifWarning":false,"citations":[{"label":"QS. 2:255","arabic":"اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ","translation":"Allah, tidak ada tuhan selain Dia.","machineTranslated":true,"source":"Al-Baqarah"}]}\n\n',
-  'event: trace\ndata: {"messageId":"m-live","sources":[{"id":"chunk-1","source":"Al-Baqarah"}],"technical":{"intent":"dalil_umum","subQueries":["apa itu ayat kursi","QS 2:255 makna"],"chunks":[{"id":"chunk-1","source":"Al-Baqarah","score":0.03125}],"models":["router-stub","generator-stub"]}}\n\n',
+  'event: trace\ndata: {"messageId":"m-live","sources":[{"id":"chunk-1","source":"Al-Baqarah"}],"technical":{"intent":"ruling","subQueries":["apa itu ayat kursi","QS 2:255 makna"],"chunks":[{"id":"chunk-1","source":"Al-Baqarah","score":0.03125}],"models":["router-stub","generator-stub"]}}\n\n',
   "event: done\ndata: {}\n\n",
 ].join("");
 
@@ -133,7 +133,7 @@ const TRANSCRIPT_FIXTURE = {
         messageId: "m1",
         sources: [{ id: "chunk-1", source: "Al-Baqarah" }],
         technical: {
-          intent: "dalil_umum",
+          intent: "ruling",
           subQueries: ["apa itu ayat kursi"],
           chunks: [{ id: "chunk-1", source: "Al-Baqarah", score: 0.03125 }],
           models: ["router-stub", "generator-stub"],
@@ -510,7 +510,7 @@ Then(
   async ({ page }) => {
     const tech = page.getByTestId("trace-technical");
     await expect(tech).toBeVisible();
-    await expect(tech.getByTestId("trace-intent")).toContainText("dalil_umum");
+    await expect(tech.getByTestId("trace-intent")).toContainText("ruling");
     await expect(tech.getByTestId("trace-subqueries")).toContainText("ayat kursi");
     // Scores format through Intl (0.03125 → "0,0313" in the id locale,
     // "0.0313" in en) — assert the rounded digits, not the separator.

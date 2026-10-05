@@ -46,6 +46,15 @@ export const TraceEventSchema = v.variant("kind", [
     kind: v.literal("subquery"),
     detail: v.object({
       text: v.pipe(v.string(), v.minLength(1)),
+      /**
+       * Caller-chosen opaque labels for why this sub-query exists and what
+       * produced it (e.g. a composition role and whether the model or a
+       * deterministic rule supplied it). The engine carries them into the
+       * Trace and interprets neither — a repaired or fallback sub-query is
+       * visible as such instead of passing for the model's own judgment.
+       */
+      role: v.optional(v.pipe(v.string(), v.minLength(1))),
+      origin: v.optional(v.pipe(v.string(), v.minLength(1))),
     }),
     cost: v.optional(CostRecordSchema),
     at: v.pipe(v.number(), v.integer()),
