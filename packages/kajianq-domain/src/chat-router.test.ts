@@ -58,7 +58,7 @@ function harness(replyText: string): {
 const REPLY = JSON.stringify({
   intent: "analogy",
   category: "fikih",
-  madzhab: "syafii",
+  madzhab: ["syafii"],
   needsPrinciple: true,
   principleTags: ["yusr"],
   confidence: 0.9,
@@ -84,12 +84,12 @@ describe("createKajianQRouter", () => {
     expect(routed.intent).toBe("analogy");
     expect(routed.confidence).toBe(0.9);
     expect(routed.reasoning).toBe("the question asks why the rule is lenient");
-    expect(routed.filters).toEqual({ madzhab: "syafii" });
+    expect(routed.filters).toEqual({ madzhab: ["syafii"] });
     expect(routed.attributes).toMatchObject({
       category: "fikih",
       needsPrinciple: true,
       principleTags: ["yusr"],
-      madzhab: "syafii",
+      madzhab: ["syafii"],
     });
     // The model's two sub-queries, plus the dalil rule the fikih category
     // fired and the principle rule the tag fired — the deterministic half.
@@ -145,13 +145,13 @@ describe("createKajianQRouter", () => {
     const h = harness(JSON.stringify({ not: "a router reply" }));
     const routed = (await h.route({
       text: "Apa hukum riba?",
-      filters: { madzhab: "hambali" },
+      filters: { madzhab: ["hambali"] },
     })) as { filters: KajianQFilters; attributes: Record<string, unknown> };
-    expect(routed.filters).toEqual({ madzhab: "hambali" });
+    expect(routed.filters).toEqual({ madzhab: ["hambali"] });
     // The fallback applied those filters to retrieval, so the payload that says
     // what was understood carries them too — `{fallback: true}` alone would
     // leave a trace reader unable to tell what the route ran with (review A4).
-    expect(routed.attributes).toEqual({ fallback: true, madzhab: "hambali" });
+    expect(routed.attributes).toEqual({ fallback: true, madzhab: ["hambali"] });
   });
 
   it("stamps the factual rule onto a model echo of the question with no role", async () => {

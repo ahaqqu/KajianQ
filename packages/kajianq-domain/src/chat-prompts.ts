@@ -26,6 +26,16 @@ export type ChatLanguage = "id" | "en";
  * The system prompt for the generator. Parameterized by language; the
  * grounding, citation, grade-flag, and disclaimer rules are identical in
  * both.
+ *
+ * Rule 8 is the **authority order** (spec §2.2, per _kaidah usul_): Quran →
+ * Hadith (mutawatir > sahih > hasan; dhaif flagged) → Tafsir → Kitab. It is
+ * deliberately NOT the order the context is laid out in — the assembler
+ * presents the Principle lens first, then the evidence by source — and the two
+ * orderings must not be conflated: the lens is *how* the evidence is read, the
+ * authority order is *which* evidence governs when the sources disagree. The
+ * rule is scoped to what the context contains ("when the context carries more
+ * than one source") so it can never license reaching outside the grounding
+ * rule above it.
  */
 export function chatSystemPrompt(language: ChatLanguage): string {
   if (language === "id") {
@@ -39,6 +49,7 @@ export function chatSystemPrompt(language: ChatLanguage): string {
       "5. Tampilkan teks Arab untuk setiap ayat/hadits yang dikutip, lalu terjemahannya. Pertahankan label terjemahan mesin apa adanya bila ada di konteks.",
       "6. Jawab dalam bahasa yang sama dengan pertanyaan pengguna.",
       '7. Jangan menambahkan tafsir, takwil, pendapat ulama, atau penjelasan makna (glosarium) yang tidak ada di konteks — termasuk penjelasan yang Anda ketahui benar. Kutip dan terjemahkan hanya apa yang konteks berikan. Jangan menyatakan hubungan antar-bukti (misalnya "X sesuai dengan Y") kecuali konteks menyatakannya.',
+      "8. Bila konteks memuat lebih dari satu jenis sumber, dahulukan menurut kaidah usul: Quran → Hadits (mutawatir > sahih > hasan; dhaif diberi peringatan) → Tafsir → Kitab. Dalil yang lebih tinggi derajatnya mengalahkan yang lebih rendah; bila sumber-sumber itu berbeda pendapat, sebutkan perbedaannya apa adanya dan jangan menyeragamkannya. Kaidah (prinsip) yang diberikan di awal konteks adalah sudut pandang untuk membaca dalil, bukan dalil yang berdiri sendiri.",
     ].join("\n");
   }
   return [
@@ -51,6 +62,7 @@ export function chatSystemPrompt(language: ChatLanguage): string {
     "5. Show the Arabic text for every quoted ayah/hadith, followed by its translation. Keep any machine-translation label exactly as the context renders it.",
     "6. Answer in the same language as the user's question.",
     '7. Do not add tafsir, interpretation, scholarly opinion, or meaning glosses the context does not contain — including explanations you know to be correct. Quote and translate only what the context provides. Do not assert relationships between evidence items (for example "X corresponds to Y") unless the context states them.',
+    "8. When the context carries more than one kind of source, prefer them in the usul authority order: Quran → Hadith (mutawatir > sahih > hasan; dhaif flagged) → Tafsir → Kitab. Higher authority governs lower; where those sources differ, state the difference plainly and do not flatten it. The principles placed at the start of the context are the lens for reading the evidence, not evidence standing on their own.",
   ].join("\n");
 }
 

@@ -75,7 +75,15 @@ export const runPipeline = <TFilters extends Record<string, unknown> = DefaultFi
   };
 
   const program = Effect.gen(function* () {
+    // Every stage's wall clock is measured here, by the single owner of the
+    // run, and stamped on the stage's boundary event. A stage that makes no
+    // model call has no `cost.latencyMs` to read, so without this the
+    // deterministic half of the pipeline — routing rules, the store round
+    // trips, assembly — had no latency on the trace at all, and "stage latency
+    // per query" was answerable only for the stages that spent money.
+    const routerStartedAt = now();
     const routing = yield* stages.router.route(query);
+    const routerMs = now() - routerStartedAt;
     // The run's query after routing: the router supplies only its reading of
     // the question, and the runner stamps the caller's verbatim text and prior
     // turns onto it. Stamping here (not in each router) is what makes
@@ -95,6 +103,7 @@ export const runPipeline = <TFilters extends Record<string, unknown> = DefaultFi
         ...(routed.reasoning !== undefined ? { reasoning: routed.reasoning } : {}),
         ...(routed.attributes !== undefined ? { attributes: routed.attributes } : {}),
       },
+      durationMs: routerMs,
       at: now(),
     });
     for (const sub of routed.subQueries) {
@@ -110,19 +119,23 @@ export const runPipeline = <TFilters extends Record<string, unknown> = DefaultFi
       });
     }
 
+    const retrieveStartedAt = now();
     const chunks = yield* stages.retriever.retrieve(routed);
     events.push({
       stage: "retriever",
       kind: "retrieval",
       detail: { chunks: chunks.map(toChunkRef) },
+      durationMs: now() - retrieveStartedAt,
       at: now(),
     });
 
+    const assembleStartedAt = now();
     const context = yield* stages.assembler.assemble(routed, chunks);
     events.push({
       stage: "assembler",
       kind: "assembly",
       detail: { turnCount: context.turns.length, chunkCount: context.chunks.length },
+      durationMs: now() - assembleStartedAt,
       at: now(),
     });
 

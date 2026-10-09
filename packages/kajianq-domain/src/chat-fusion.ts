@@ -1,21 +1,32 @@
 import type { Chunk } from "@app/rag-core";
-import type { KajianQFilters } from "./filters";
 
 /**
- * The pure half of the retriever: Reciprocal Rank Fusion (spec §3.3, k=60), the
- * hierarchy bonuses, and the metadata-filter mapping. Split out of
- * `chat-retriever.ts` for the 300-line agentic cap — that module is the wiring
- * (`RetrieverStore`/`RetrieverEmbedder` in, `Retriever` out); this one is the
- * arithmetic the fused path and its tests read. No state, no store, no effects.
+ * The pure half of the retriever: Reciprocal Rank Fusion (spec §3.3, k=60) and
+ * the hierarchy bonuses. Split out of `chat-retriever.ts` for the 300-line
+ * agentic cap — that module is the wiring (`RetrieverStore`/`RetrieverEmbedder`
+ * in, `Retriever` out); this one is the arithmetic the fused path and its
+ * tests read. No state, no store, no effects.
+ *
+ * (The metadata-filter mapping that used to live here moved to
+ * `chat-filter-policy.ts`, which owns the store-facing side of the same stage
+ * — including the loud failure the mapping owes a dimension it cannot
+ * express.)
  */
 /** RRF constant (spec §3.3: k=60). */
 export const RRF_K = 60;
 
-/** Hierarchy bonus magnitudes (spec §3.3). */
+/**
+ * Hierarchy bonus magnitudes (spec §3.3 item 4): Quran +0.3, Sahih +0.25,
+ * Hasan +0.15, Kitab +0.1, and Principle +0.2 **on an analogy question**. The
+ * Principle bonus is the only one that depends on what was asked rather than
+ * on what the chunk is — see {@link hierarchyBonus}.
+ */
 export const HIERARCHY_BONUS = {
   quran: 0.3,
   sahih: 0.25,
   hasan: 0.15,
+  kitab: 0.1,
+  principleOnAnalogy: 0.2,
 } as const;
 /** One track's hit: the chunk plus its 1-based dense rank in that search. */
 export type TrackHit = { chunk: Chunk; rank: number };
@@ -69,21 +80,28 @@ function compareChunkIds(a: string, b: string): number {
   return a < b ? -1 : 1;
 }
 
-/** Hierarchy bonus from a chunk's opaque metadata (spec §3.3 magnitudes). */
-export function hierarchyBonus(chunk: Chunk): number {
+/**
+ * Hierarchy bonus from a chunk's opaque metadata (spec §3.3 item 4 magnitudes).
+ *
+ * Four bonuses are properties of the chunk — Quran, the two trustworthy hadith
+ * grades, Kitab. The fifth is a property of the **question**: a Principle
+ * chunk is boosted only when the question is an analogy (`intent: "analogy"`),
+ * because a Principle is the *evidence* of an analogy — the case a new ruling
+ * is measured against — and on a factual question the same chunk is commentary
+ * and must not outrank a direct dalil. `intent` is opaque here: the engine and
+ * this function never interpret it beyond equality with the caller's label.
+ */
+export function hierarchyBonus(chunk: Chunk, intent?: string): number {
   const meta = (chunk.metadata ?? {}) as Record<string, unknown>;
+  const sourceType = meta["sourceType"];
   let bonus = 0;
-  if (meta["sourceType"] === "quran") bonus += HIERARCHY_BONUS.quran;
-  if (meta["grade"] === "sahih") bonus += HIERARCHY_BONUS.sahih;
-  if (meta["grade"] === "hasan") bonus += HIERARCHY_BONUS.hasan;
+  if (sourceType === "quran") bonus += HIERARCHY_BONUS.quran;
+  if (sourceType === "kitab") bonus += HIERARCHY_BONUS.kitab;
+  if (sourceType === "principle" && intent === "analogy") {
+    bonus += HIERARCHY_BONUS.principleOnAnalogy;
+  }
+  const grade = meta["grade"];
+  if (grade === "sahih") bonus += HIERARCHY_BONUS.sahih;
+  if (grade === "hasan") bonus += HIERARCHY_BONUS.hasan;
   return bonus;
-}
-
-/** Map the domain filters to the store's opaque metadata filter record. */
-export function metadataFilters(filters: KajianQFilters): Record<string, string> {
-  const out: Record<string, string> = {};
-  if (filters.madzhab) out["madzhab"] = filters.madzhab;
-  if (filters.grade) out["grade"] = filters.grade;
-  if (filters.textLayer) out["textLayer"] = filters.textLayer;
-  return out;
 }

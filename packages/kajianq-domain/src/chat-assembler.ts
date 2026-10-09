@@ -11,10 +11,12 @@ import type { KajianQFilters } from "./filters";
 
 /**
  * KajianQAssembler — Smart Router stage 5 (spec §3.3): order the retrieved
- * chunks into the Generator's turn list. Presentation order: Quran first,
- * then hadith, then other sources (kitab lands later); each chunk's citation
- * label rides the context so the Generator can cite verbatim. Deterministic —
- * the runner records the `assembly` boundary event from the result.
+ * chunks into the Generator's turn list. Presentation order is
+ * {@link PRESENTATION_ORDER} (Principles → Quran → Hadith → Kitab → concept
+ * links), never the authority order the system prompt states; within a slot,
+ * fused score decides. Each chunk's citation label rides the context so the
+ * Generator can cite verbatim. Deterministic — the runner records the
+ * `assembly` boundary event from the result.
  *
  * Two product rules live here (ticket #10 acceptance criteria):
  *
@@ -27,12 +29,39 @@ import type { KajianQFilters } from "./filters";
  *   resolve "dan apa dalilnya?" against what was already asked.
  */
 
-/** Presentation rank per source type (opaque metadata keys, spec §3.3.5). */
+/**
+ * The **presentation order** (spec §3.3 item 5): Principles → Quran → Hadith →
+ * Kitab → concept links. It is *how the Generator's turn is laid out*, and it
+ * is deliberately NOT the usul **authority order** the system prompt enforces
+ * (Quran → Hadith → Tafsir → Kitab): the Principle lens is presented first
+ * because it is the reading frame for everything after it, while the prompt
+ * says which source governs when they disagree. Conflating the two — sorting
+ * the evidence by authority and dropping the lens to the back, or reading the
+ * presentation order as a claim about authority — is the silent failure this
+ * constant exists to prevent, so the order is stated once, here, and pinned by
+ * its own test.
+ *
+ * `tafsir` sits immediately after `quran` (commentary with the text it
+ * explains) — the spec's presentation list does not name it, and the authority
+ * order puts it third; being explicit keeps it out of the trailing bucket where
+ * a future source type would land by accident. Anything the corpus grows that
+ * is not listed here sorts LAST, below every named source, never interleaved by
+ * score into a slot it was not given.
+ */
+export const PRESENTATION_ORDER: readonly string[] = [
+  "principle",
+  "quran",
+  "tafsir",
+  "hadith",
+  "kitab",
+];
+
+/** Presentation rank per source type; an unlisted source type sorts last. */
 function presentationRank(chunk: Chunk): number {
   const meta = (chunk.metadata ?? {}) as Record<string, unknown>;
-  if (meta["sourceType"] === "quran") return 0;
-  if (meta["sourceType"] === "hadith") return 1;
-  return 2;
+  const sourceType = meta["sourceType"];
+  const rank = typeof sourceType === "string" ? PRESENTATION_ORDER.indexOf(sourceType) : -1;
+  return rank === -1 ? PRESENTATION_ORDER.length : rank;
 }
 
 /** The machine-translation label (ADR-0006). Domain vocabulary lives here. */

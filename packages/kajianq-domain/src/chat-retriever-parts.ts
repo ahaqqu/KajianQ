@@ -6,20 +6,23 @@
  * files the 300-line cap splits them across.
  *
  * The split itself stays meaningful. `chat-fusion` is the pure arithmetic
- * (RRF + hierarchy bonuses + the filter mapping); `chat-scope-expansion` widens
+ * (RRF + hierarchy bonuses); `chat-filter-policy` is the store-facing filter
+ * mapping (the exhaustive dimension map, the loud unexpressible-dimension
+ * failure, and the relaxation order); `chat-scope-expansion` widens
  * around a scope the **question named** (ADR-0045); `chat-neighbour-expansion`
  * widens around the verses **retrieval returned** (ADR-0049). The two
  * expansions share the bounded-read discipline, the trace-reporting shape and
  * the chunk builder; they do not share a trigger.
  */
+export { HIERARCHY_BONUS, RRF_K, hierarchyBonus, rrfFuse, type TrackHit } from "./chat-fusion";
 export {
-  HIERARCHY_BONUS,
-  RRF_K,
-  hierarchyBonus,
+  FilterNotExpressibleError,
+  RELAXATION_ORDER,
+  filterEntries,
   metadataFilters,
-  rrfFuse,
-  type TrackHit,
-} from "./chat-fusion";
+  nextRelaxation,
+  type FilterEntry,
+} from "./chat-filter-policy";
 export {
   DEFAULT_SCOPE_EXPANSION_CAP,
   SCOPE_EXPANSION_ORIGIN,

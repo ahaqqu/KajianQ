@@ -142,9 +142,11 @@
         "@app/rag-ingest": "workspace:*",
         "@aws-sdk/client-s3": "^3.1127.0",
         "effect": "4.0.0-rc.112",
+        "valibot": "1.4.2",
       },
       "devDependencies": {
         "@types/node": "26.2.0",
+        "fast-check": "4.9.0",
         "typescript": "7.0.2",
       },
     },

@@ -74,10 +74,12 @@ const routed = (filters: KajianQFilters) => routedQuery("apa maksud ayat kursi",
 describe("retriever filter relaxation", () => {
   it("retries unfiltered when the inferred filters match nothing, and records the drop", async () => {
     const { retriever, calls, recorded, run } = makeRetriever({ hitsWhenFiltered: 0 });
-    const chunks = await run<{ id: string }[]>(retriever.retrieve(routed({ textLayer: "sharh" })));
+    const chunks = await run<{ id: string }[]>(
+      retriever.retrieve(routed({ textLayer: ["sharh"] })),
+    );
 
     expect(chunks.length).toBeGreaterThan(0);
-    expect(calls[0]).toEqual({ textLayer: "sharh" });
+    expect(calls[0]).toEqual({ textLayer: ["sharh"] });
     expect(calls[1]).toEqual({});
 
     const relaxed = recorded.filter((e) => e.kind === "filter_relaxed");
@@ -89,11 +91,11 @@ describe("retriever filter relaxation", () => {
 
   it("does not relax when the filtered search already has hits", async () => {
     const { retriever, calls, recorded, run } = makeRetriever({ hitsWhenFiltered: 1 });
-    await run(retriever.retrieve(routed({ grade: "sahih" })));
+    await run(retriever.retrieve(routed({ grade: ["sahih"] })));
 
     // One search per track per sub-query, all still filtered.
     expect(calls).toHaveLength(2);
-    for (const c of calls) expect(c).toEqual({ grade: "sahih" });
+    for (const c of calls) expect(c).toEqual({ grade: ["sahih"] });
     expect(recorded.filter((e) => e.kind === "filter_relaxed")).toHaveLength(0);
   });
 

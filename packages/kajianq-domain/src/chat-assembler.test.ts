@@ -127,7 +127,7 @@ describe("createKajianQAssembler", () => {
         { text: "makna ayat kursi", role: "factual", origin: "model" },
         { text: "dalil Al-Quran tentang: makna ayat kursi", role: "dalil", origin: "rule" },
       ],
-      filters: { madzhab: "syafii" },
+      filters: { madzhab: ["syafii"] },
     });
     const context = Effect.runSync(stage.assemble(routed, []) as never) as {
       query: unknown;
