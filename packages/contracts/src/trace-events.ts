@@ -42,10 +42,11 @@ export const TraceEventSchema = v.variant("kind", [
     cost: v.optional(CostRecordSchema),
     /**
      * The stage's own wall-clock duration, in milliseconds, measured by the
-     * runner around the stage call — recorded for EVERY stage on its boundary
-     * event, so "stage latency per query" is on the trace even for a stage
-     * that makes no model call and therefore has no `cost.latencyMs`. Absent on
-     * traces persisted before the field existed.
+     * runner around the stage call and recorded on each boundary event it emits
+     * (`intent`, `retrieval`, `assembly`) — so a stage that makes no model call
+     * and has no `cost.latencyMs` still carries its latency, and a stage that
+     * emits no boundary event carries it in `cost.latencyMs` on its `llm_call`
+     * event. Absent on traces persisted before the field existed.
      */
     durationMs: v.optional(v.pipe(v.number(), v.minValue(0))),
     at: v.pipe(v.number(), v.integer()),
@@ -108,12 +109,13 @@ export const TraceEventSchema = v.variant("kind", [
        * single dimension at fault, the record as a SET was what matched
        * nothing, and one retry with `{}` followed — recorded as an adopted drop
        * of the whole surviving record, so a wrong hint cannot turn into a
-       * refusal. Recorded so a relaxation is VISIBLE machinery, never a silent
-       * fallback (traceability rule): the router's filters are hints inferred
-       * by a cheap model, and an inferred hint that empties the result set
-       * makes the answer ungrounded — so the search is retried without it, and
-       * the trace says so. Values were strings before set-valued dimensions
-       * existed; both parse.
+       * refusal. (A lone live dimension's own probe drops it too; no separate
+       * retry follows, so that trace carries one event, not two.) Recorded so a
+       * relaxation is VISIBLE machinery, never a silent fallback (traceability
+       * rule): the router's filters are hints inferred by a cheap model, and an
+       * inferred hint that empties the result set makes the answer ungrounded —
+       * so the search is retried without it, and the trace says so. (`dropped`
+       * values were bare strings before sets existed; both parse.)
        */
       dropped: v.record(
         v.string(),
