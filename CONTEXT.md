@@ -44,6 +44,22 @@ _Avoid_: principle table, rules index
 DARS's 4-stage retrieval orchestrator: (1) intent & principle detection, (2) query decomposition, (3) source routing with metadata filters, (4) context assembly. Not a mere classifier.
 _Avoid_: classifier, router (unqualified)
 
+**Source routing**:
+The Smart Router's stage 3: choosing which source types a question is answered from and which metadata filters retrieval runs with. The **rules decide and the model only hints** — a reply's Query category selects the sources (an area no rule covers selects none, so a reading that settled nothing cannot narrow the corpus on a guess), a caller's own filters always win, and the decision is recorded on the Trace as the typed `source_routing` event carrying the selected sources and the exact filter record the searches were handed. The filter dimensions are `sourceType`, `madzhab`, `grade`, `textLayer` and `principleTags`; each is a set, bound as `metadata->>key = ANY($n::text[])`, and a dimension the store cannot express is a failure, never a dropped key.
+_Avoid_: index selection (that is one half of the decision), routing hint (that is the model's suggestion, not the decision), reranking (a different stage)
+
+**Authority order**:
+The precedence the **system prompt** enforces when the context carries more than one kind of source, per _kaidah usul_: Quran → Hadith (mutawatir > sahih > hasan; dhaif flagged) → Tafsir → Kitab. It says which evidence governs when sources disagree, and it is deliberately **not** the Presentation order.
+_Avoid_: source priority (vague), ranking (that is fusion scoring), presentation order (the other one)
+
+**Presentation order**:
+The order the **assembler** lays the Generator's context out in: Principles → Quran → Tafsir → Hadith → Kitab → anything the order does not name, last. It says how the evidence is presented — the Principle is first because it is the lens the rest is read through — and it is deliberately **not** the Authority order. A source type the order does not name sorts below every named one rather than being interleaved by score; within a slot, the fused score decides.
+_Avoid_: authority order (the other one), source order (ambiguous between the two), context order (vague)
+
+**Filter relaxation**:
+What the retriever does when the routing decision's filters match nothing: it **probes** them, one dimension at a time, instead of discarding the whole record. Each probe omits a single dimension, runs a search, and is recorded on the Trace (the dimension, the record the retry ran with, the hits it returned, whether it was adopted); only a drop that finds hits is kept for the run, so the record any search ran with is `intended − every adopted drop`, and a probe that changed nothing leaves the route's own decision intact. It exists because an inferred hint that empties the context makes the answer uncitable, and the wholesale drop it replaces silently widened the question. Bounded to **one diagnosis per run**: the hints are a property of the request, not of one sub-query's embedding.
+_Avoid_: fallback search (the Router fallback is a different mechanism, about an unusable reply), retry (unqualified), filter pruning (loses the recorded probe)
+
 **Intent**:
 The router's classification of what kind of question was asked — `factual | ruling | analogy | comparison | history | aqidah` — recorded on the answer's Trace and shown in its technical layer. One of the closed classification vocabularies the domain pack owns; a value outside it is unusable, never recorded as an understanding.
 _Avoid_: query type (the spec's older field name — the field is `intent` in every stage, trace and contract), category (that is Query category), classification (vague)
