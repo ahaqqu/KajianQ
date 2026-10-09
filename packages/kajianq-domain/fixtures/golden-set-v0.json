@@ -1,6 +1,7 @@
 {
   "id": "golden-set-v0",
   "status": "v0-draft",
+  "$comment": "Tags are vocabulary-checked (#14): every tag must be a subject area or an eval label from the domain pack's taxonomy module, which the router's own classification reads too. Two labels were re-spelled/removed to make that hold — `fiqh` became `fikih` (one spelling of the subject area across the router and the fixture) and the duplicated `khilaliyah` label was dropped from gs-v0-018, which already carries `cross-madzhab`. The questions, expected behaviors, source types and required citations are NOT re-curated by that change.",
   "questions": [
     {
       "id": "gs-v0-001",
@@ -18,7 +19,7 @@
       "expectedSourceTypes": ["quran"],
       "requiredCitations": ["QS. 2:43"],
       "expectedBehavior": "answer",
-      "tags": ["fiqh", "quran"]
+      "tags": ["fikih", "quran"]
     },
     {
       "id": "gs-v0-003",
@@ -27,7 +28,7 @@
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": ["HR. Bukhari no. 149"],
       "expectedBehavior": "answer",
-      "tags": ["fiqh", "hadith"]
+      "tags": ["fikih", "hadith"]
     },
     {
       "id": "gs-v0-004",
@@ -54,7 +55,7 @@
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": ["HR. Bukhari no. 1101"],
       "expectedBehavior": "answer",
-      "tags": ["fiqh", "hadith"]
+      "tags": ["fikih", "hadith"]
     },
     {
       "id": "gs-v0-007",
@@ -90,7 +91,7 @@
       "expectedSourceTypes": ["quran", "hadith"],
       "requiredCitations": ["QS. 2:275"],
       "expectedBehavior": "answer",
-      "tags": ["fiqh", "quran", "hadith"]
+      "tags": ["fikih", "quran", "hadith"]
     },
     {
       "id": "gs-v0-011",
@@ -145,7 +146,7 @@
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": ["HR. Bukhari no. 1395"],
       "expectedBehavior": "answer",
-      "tags": ["fiqh", "hadith", "english"]
+      "tags": ["fikih", "hadith", "english"]
     },
     {
       "id": "gs-v0-017",
@@ -154,7 +155,7 @@
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": ["HR. Muslim no. 2064"],
       "expectedBehavior": "answer",
-      "tags": ["fiqh", "hadith", "english"]
+      "tags": ["fikih", "hadith", "english"]
     },
     {
       "id": "gs-v0-018",
@@ -163,7 +164,7 @@
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": [],
       "expectedBehavior": "answer",
-      "tags": ["fiqh", "khilaliyah", "cross-madzhab"]
+      "tags": ["fikih", "cross-madzhab"]
     },
     {
       "id": "gs-v0-019",

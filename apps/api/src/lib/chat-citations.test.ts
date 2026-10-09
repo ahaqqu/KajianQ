@@ -13,6 +13,7 @@ import {
   validateCitations,
 } from "@app/kajianq-domain";
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
+import { routedQuery } from "@app/kajianq-domain/test-utils/routed-query";
 import { chunkFetcher, traceChunkIds } from "./chat-trace";
 import { answerFramesFor, deriveCitationsFrame } from "./chat-citations";
 
@@ -309,7 +310,7 @@ describe("deriveCitationsFrame — the invariant, adversarial shapes", () => {
     const { draft, applied } = applyProductRules(
       { text: "Hadits ini [HR. Tirmidhi no. 2878 (Dhaif)]." },
       {
-        query: { intent: "q", subQueries: [{ text: "q" }], filters: {} },
+        query: routedQuery("q"),
         chunks: [
           {
             id: "c1",

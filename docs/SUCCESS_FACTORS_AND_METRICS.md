@@ -41,7 +41,7 @@ Each phase has its own definition of working — the project fails in stages, no
 ### Phase 3 — Router + Principles + admin (exit: public beta)
 
 - **Working means:** Smart Router improves retrieval measurably, Principle questions explain the lens, feedback lands in the queue, harness results are browsable.
-- **Measure:** Golden Set v0 recall improvement vs single-query baseline (#14); principle-question pass rate (#16); admin Trace browser coverage; feedback → accepted-Golden-Set promotion count.
+- **Measure:** Golden Set v0 recall **held or improved** across a router change — a before/after full-suite run on one deployment (#14; the "single-query baseline" the ticket named was never a shipped state, the router having shipped with the chat route itself); principle-question pass rate (#16); admin Trace browser coverage; feedback → accepted-Golden-Set promotion count.
 - **Gate to public beta:** Golden Set v1 (~50–100 with traps) green in a full-suite operator run (`bun run eval:run`) recorded for the beta decision — the same full-suite gate phase 5 repeats at the release gate. The run exits non-zero on any failed, skipped, or unmeasured question (#364), so its green is machine-checked rather than an operator's read, while the eval gate on every staging deploy is the cost-capped smoke (#359 — no nightly run, nor one planned). Faithfulness is judged by the pipeline reviewer — same-vendor since 2026-09-21, vendor separation deliberately relaxed (§3.4; revisited once a second paid vendor key exists).
 
 ### Phase 4 — Kitab ingestion (exit: priority corpus answers with citations)

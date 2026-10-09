@@ -7,6 +7,7 @@ import { createKajianQReviewer } from "./chat-reviewer";
 import type { KajianQFilters } from "./filters";
 import { runChatPipeline } from "./chat-pipeline";
 import { createStubChatProviders } from "./test-utils/stub-chat-providers";
+import { routedQuery } from "./test-utils/routed-query";
 
 /**
  * Generator + reviewer behavior (ticket #10): the generator streams from the
@@ -27,9 +28,9 @@ const cost = (modelId: string, microUsd: number): CostRecord => ({
 
 const context = (
   chunks: readonly Chunk[],
-  intent = "Apa itu Ayat Kursi?",
+  question = "Apa itu Ayat Kursi?",
 ): AssembledContext<KajianQFilters> => ({
-  query: { intent, subQueries: [{ text: intent }], filters: {} },
+  query: routedQuery(question),
   chunks,
   turns: [{ role: "user", content: chunks.map((c) => c.text).join("\n") }],
 });
@@ -96,6 +97,30 @@ describe("createKajianQGenerator — streaming", () => {
     const gen = createKajianQGenerator({ provider: provider as never, language: "id" });
     const draft = await runStage<{ text: string }>(gen.generate(context([chunk("QS. 2:255")])));
     expect(draft.text).toBe("ok:bound-provider");
+  });
+
+  it("sends the verbatim question — never the router's intent — in the user turn", async () => {
+    // Regression (#14): the assembled context used to carry the question in the
+    // field named `intent`, so the prompt got the question only by accident of
+    // that hijack. It now reads `sourceText`, the text the engine stamped.
+    let turns: readonly { role: string; content: string }[] = [];
+    const gen = createKajianQGenerator({
+      provider: {
+        generate: () => Effect.die("generate must not be used when stream exists"),
+        stream: (spec) => {
+          turns = spec.turns;
+          return Effect.succeed({
+            deltas: Stream.fromIterable(["ok"]),
+            cost: () => Effect.succeed(cost("stub", 1)),
+          });
+        },
+      },
+      language: "id",
+    });
+    await runStage(gen.generate(context([chunk("QS. 2:255")])));
+    const user = turns.at(-1)?.content ?? "";
+    expect(user).toContain("Pertanyaan / Question: Apa itu Ayat Kursi?");
+    expect(user).not.toContain("Question: factual");
   });
 
   it("falls back to a single generate call when the provider cannot stream", async () => {

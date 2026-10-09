@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Chunk, Query } from "@app/rag-core";
 import { MACHINE_TRANSLATION_LABEL, createKajianQAssembler } from "./chat-assembler";
 import type { KajianQFilters } from "./filters";
+import { routedQuery } from "./test-utils/routed-query";
 
 /**
  * The assembler's product rules (ticket #10 acceptance criteria): Arabic
@@ -10,6 +11,10 @@ import type { KajianQFilters } from "./filters";
  * (ADR-0006), and prior turns ride the prompt so follow-up questions have
  * context. Deterministic, so these are direct assertions on the assembled
  * turns — no provider, no run.
+ *
+ * The assembler takes the *routed* query (ADR-0018); these tests build one from
+ * the caller's query the way the runner does, so the history and verbatim-text
+ * assertions exercise the same shape production hands the stage.
  */
 
 function assemble(
@@ -17,7 +22,11 @@ function assemble(
   query: Query<KajianQFilters> = { text: "Apa itu Ayat Kursi?" },
 ): { turns: readonly { role: string; content: string }[]; chunks: readonly Chunk[] } {
   const stage = createKajianQAssembler();
-  return Effect.runSync(stage.assemble(query, chunks) as never) as never;
+  const routed = routedQuery(query.text, {
+    ...(query.filters !== undefined ? { filters: query.filters } : {}),
+    ...(query.history !== undefined ? { history: query.history } : {}),
+  });
+  return Effect.runSync(stage.assemble(routed, chunks) as never) as never;
 }
 
 describe("createKajianQAssembler", () => {
@@ -106,10 +115,23 @@ describe("createKajianQAssembler", () => {
     expect(preamble).not.toContain("empty role");
   });
 
-  it("passes the query text through as the routed intent", () => {
-    const { turns } = assemble([], { text: "Apa itu Ayat Kursi?" });
-    // The assembler's own turn list carries only evidence; the intent rides
-    // the AssembledContext, which the generator's prompt renders.
-    expect(turns).toHaveLength(1);
+  it("carries the routed query itself, not a rebuilt lookalike", () => {
+    // ADR-0018: the context carries the router's reading. Before this, the
+    // assembler rebuilt the query and put the verbatim question in the field
+    // named `intent` — which is what the generator and reviewer prompts read.
+    const stage = createKajianQAssembler();
+    const routed = routedQuery("Apa itu Ayat Kursi?", {
+      intent: "aqidah",
+      confidence: 0.7,
+      subQueries: [
+        { text: "makna ayat kursi", role: "factual", origin: "model" },
+        { text: "dalil Al-Quran tentang: makna ayat kursi", role: "dalil", origin: "rule" },
+      ],
+      filters: { madzhab: "syafii" },
+    });
+    const context = Effect.runSync(stage.assemble(routed, []) as never) as {
+      query: unknown;
+    };
+    expect(context.query).toBe(routed);
   });
 });

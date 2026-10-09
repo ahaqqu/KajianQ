@@ -11,7 +11,9 @@ export {
   type Reviewer,
   type RoutedQuery,
   type Router,
+  type Routing,
   type StageEffect,
+  type SubQuery,
   type Turn,
 } from "./pipeline";
 export { type RunConfig, RunContext, type RunContextService } from "./context";

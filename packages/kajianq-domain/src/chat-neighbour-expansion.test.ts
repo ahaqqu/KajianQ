@@ -14,6 +14,7 @@ import { createKajianQRetriever } from "./chat-retriever";
 import type { KajianQFilters } from "./filters";
 import { surahSourceKey } from "./quran-source";
 import { createMemoryRagStore } from "./test-utils/memory-rag-store";
+import { routedQuery } from "./test-utils/routed-query";
 
 /**
  * Retrieved-verse neighbourhood expansion (ADR-0049) — the retrieval half of
@@ -401,7 +402,7 @@ describe("the assembled context grounds the real failing label (#274)", () => {
     // runs it (its `RunContext` requirement is the runner's in production, and
     // the assembler itself reads nothing from it).
     const assembled = Effect.runSync(
-      createKajianQAssembler().assemble({ text: "Apa maksud Ayat Kursi?" }, chunks) as never,
+      createKajianQAssembler().assemble(routedQuery("Apa maksud Ayat Kursi?"), chunks) as never,
     ) as {
       chunks: readonly Chunk[];
       turns: readonly { content: string }[];

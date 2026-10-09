@@ -22,6 +22,14 @@ export type SmokeSelection = {
   reasons: readonly { id: string; reason: string }[];
 };
 
+/**
+ * A `trapTag` the fixture does not carry: the caller and the set disagree about
+ * the vocabulary. Thrown, never skipped — see `selectSmokeSubset`.
+ */
+export class SmokeSubsetError extends Error {
+  override readonly name = "SmokeSubsetError";
+}
+
 export type SmokeSelectOptions = {
   /** Maximum questions in the subset (default 5 — the spec's PR-time size). */
   size?: number;
@@ -60,10 +68,20 @@ export function selectSmokeSubset(set: GoldenSet, opts: SmokeSelectOptions = {})
     "refusal coverage",
   );
   if (trapTag !== undefined && trapTag !== "") {
-    take(
-      set.questions.find((q) => (q.tags ?? []).includes(trapTag)),
-      "trap coverage",
-    );
+    const trap = set.questions.find((q) => (q.tags ?? []).includes(trapTag));
+    // Fail loudly, never shrink quietly. A `trapTag` no question carries means
+    // the caller and the fixture disagree about the vocabulary — a rename that
+    // reached one side only. Skipping it would drop the adversarial case from
+    // the subset while the run still printed a clean plan, and `eval:smoke` is
+    // the gate that runs on every staging deploy (#359): a gate that silently
+    // stops testing what it exists to test is worse than a red one.
+    if (trap === undefined) {
+      throw new SmokeSubsetError(
+        `no question in "${set.id}" carries the trap tag "${trapTag}" (${set.questions.length} questions, ` +
+          `${set.questions.filter((q) => (q.tags ?? []).length > 0).length} tagged)`,
+      );
+    }
+    take(trap, "trap coverage");
   }
   take(
     set.questions.find((q) => q.language === "en"),

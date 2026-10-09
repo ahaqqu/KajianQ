@@ -20,6 +20,7 @@ import {
 } from "./chat-reviewer-pregate";
 import { CITATION_CRITERIA, CITATION_INSTRUCTIONS } from "./decision-bench-prompts";
 import type { KajianQFilters } from "./filters";
+import { routedQuery } from "./test-utils/routed-query";
 
 /**
  * Reviewer pre-gate at the Reviewer-stage seam (ticket #168, ADR-0042
@@ -63,9 +64,9 @@ const chunk = (label: string, text = "passage text"): Chunk => ({
 
 const context = (
   chunks: readonly Chunk[],
-  intent = "Apa itu Ayat Kursi?",
+  question = "Apa itu Ayat Kursi?",
 ): AssembledContext<KajianQFilters> => ({
-  query: { intent, subQueries: [{ text: intent }], filters: {} },
+  query: routedQuery(question),
   chunks,
   turns: [{ role: "user", content: chunks.map((c) => c.text).join("\n") }],
 });

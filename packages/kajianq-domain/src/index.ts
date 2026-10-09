@@ -11,30 +11,22 @@
  * consumption arrive with the corpus and Smart Router tickets.
  */
 
-import type { Grade } from "./hadith-source";
-
-/** One of the four Sunni legal schools (CONTEXT.md "Madzhab"). */
-export const MADZHABS = ["hanafi", "maliki", "syafii", "hambali"] as const;
-export type Madzhab = (typeof MADZHABS)[number];
-
 /**
- * Hadith authenticity classification (CONTEXT.md "Grade"). Owned by
- * `hadith-source.ts` (review B1: no barrel self-imports); re-exported here.
+ * The filter dimensions (Madzhab / Grade / Matn-Sharh) and their types are
+ * owned by `./filters` — one list each, and the router narrows the model's
+ * hints against the same ones retrieval is filtered by. Re-exported here so
+ * the pack has one public surface; nothing in this barrel declares a second
+ * copy.
  */
-export { GRADES, type Grade } from "./hadith-source";
-
-/** Body of a work vs. commentary on it (CONTEXT.md "Matn"/"Sharh"). */
-export type TextLayer = "matn" | "sharh";
-
-/**
- * Retrieval metadata filters supplied to the engine's Query.filters. The
- * engine threads them through untouched; only this pack names the dimensions.
- */
-export type KajianQFilters = {
-  madzhab?: Madzhab;
-  grade?: Grade;
-  textLayer?: TextLayer;
-};
+export {
+  GRADES,
+  MADZHABS,
+  TEXT_LAYERS,
+  type Grade,
+  type KajianQFilters,
+  type Madzhab,
+  type TextLayer,
+} from "./filters";
 
 export {
   TOTAL_SURAHS,
@@ -132,12 +124,50 @@ export { DECISION_BENCH_PROMPTS } from "./decision-bench-prompts";
 // -- Chat pipeline (#8): Smart Router stages over the DARS seams -----------
 // (Filter vocabulary (Madzhab/Grade/TextLayer/KajianQFilters) stays exported
 // from the top of this barrel — chat stages import it via ./filters.)
+//
+// Smart Router stages 1–2 (#14) split across three modules for the agentic
+// caps: this barrel is still the one public surface. `taxonomy` owns the
+// classification vocabularies, `chat-router-output` the reply reader, and
+// `chat-router-decompose` the deterministic sub-query repair.
 export {
   createKajianQRouter,
   extractJsonObject,
   ROUTER_SYSTEM_PROMPT,
   type RouterProvider,
 } from "./chat-router";
+export {
+  readRouterReply,
+  readRouterText,
+  RouterReplySchema,
+  type RouterReading,
+  type RouterReply,
+} from "./chat-router-output";
+export {
+  decomposeQuery,
+  MAX_SUB_QUERIES,
+  MIN_SUB_QUERIES,
+  type DecompositionInput,
+  type ModelSubQuery,
+} from "./chat-router-decompose";
+export {
+  DAIF_TRAP_LABEL,
+  GOLDEN_SET_LABELS,
+  GOLDEN_SET_TAG_VOCABULARY,
+  INTENTS,
+  isIntent,
+  isPrincipleTag,
+  isSubjectArea,
+  PRINCIPLE_TAGS,
+  SUB_QUERY_ORIGINS,
+  SUB_QUERY_ROLES,
+  SUBJECT_AREAS,
+  type GoldenSetLabel,
+  type Intent,
+  type PrincipleTag,
+  type SubjectArea,
+  type SubQueryOrigin,
+  type SubQueryRole,
+} from "./taxonomy";
 export {
   createKajianQRetriever,
   type KajianQRetrieverDeps,

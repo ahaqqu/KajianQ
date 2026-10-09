@@ -48,6 +48,11 @@
  * genuinely its own: the subset selection.
  */
 import * as evalpkg from "@app/eval";
+// The trap marker is the Golden Set's own label vocabulary, owned by the
+// domain pack (#14) — the same import `eval-cli.mjs` makes for `eval:run`. A
+// literal here would let a rename strand THIS gate, and this is the gate that
+// runs on every staging deploy (#359).
+import { DAIF_TRAP_LABEL } from "@app/kajianq-domain";
 import { createStagingHarness } from "./staging-harness.mjs";
 import {
   createBudget,
@@ -73,7 +78,15 @@ const size = (() => {
 const budget = createBudget("eval:smoke", config);
 const fixture = loadFixture("eval:smoke", config);
 
-const selection = evalpkg.selectSmokeSubset(fixture, { size, trapTag: "dhaif-trap" });
+const selection = (() => {
+  try {
+    return evalpkg.selectSmokeSubset(fixture, { size, trapTag: DAIF_TRAP_LABEL });
+  } catch (err) {
+    // A fixture that no longer carries the trap tag must redden the gate, not
+    // shrink it: the selector refuses to skip the adversarial case silently.
+    fail("eval:smoke", err instanceof Error ? err.message : String(err));
+  }
+})();
 console.log(
   [
     `eval:smoke: ${selection.set.questions.length} of ${fixture.questions.length} questions from "${fixture.id}"`,

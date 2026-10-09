@@ -14,6 +14,7 @@ import type {
   Query,
   Retriever,
   Reviewer,
+  RoutedQuery,
   Router,
 } from "./pipeline";
 
@@ -74,18 +75,37 @@ export const runPipeline = <TFilters extends Record<string, unknown> = DefaultFi
   };
 
   const program = Effect.gen(function* () {
-    const routed = yield* stages.router.route(query);
+    const routing = yield* stages.router.route(query);
+    // The run's query after routing: the router supplies only its reading of
+    // the question, and the runner stamps the caller's verbatim text and prior
+    // turns onto it. Stamping here (not in each router) is what makes
+    // `sourceText` and `history` guaranteed for every stage downstream, and
+    // leaves a router no echo field to get wrong (ADR-0018).
+    const routed: RoutedQuery<TFilters> = {
+      ...routing,
+      sourceText: query.text,
+      ...(query.history !== undefined ? { history: query.history } : {}),
+    };
     events.push({
       stage: "router",
       kind: "intent",
-      detail: { intent: routed.intent, attributes: routed.filters },
+      detail: {
+        intent: routed.intent,
+        ...(routed.confidence !== undefined ? { confidence: routed.confidence } : {}),
+        ...(routed.reasoning !== undefined ? { reasoning: routed.reasoning } : {}),
+        ...(routed.attributes !== undefined ? { attributes: routed.attributes } : {}),
+      },
       at: now(),
     });
     for (const sub of routed.subQueries) {
       events.push({
         stage: "router",
         kind: "subquery",
-        detail: { text: sub.text },
+        detail: {
+          text: sub.text,
+          ...(sub.role !== undefined ? { role: sub.role } : {}),
+          ...(sub.origin !== undefined ? { origin: sub.origin } : {}),
+        },
         at: now(),
       });
     }
@@ -98,7 +118,7 @@ export const runPipeline = <TFilters extends Record<string, unknown> = DefaultFi
       at: now(),
     });
 
-    const context = yield* stages.assembler.assemble(query, chunks);
+    const context = yield* stages.assembler.assemble(routed, chunks);
     events.push({
       stage: "assembler",
       kind: "assembly",

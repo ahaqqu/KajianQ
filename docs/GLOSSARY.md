@@ -92,3 +92,10 @@ Canonical terms beyond `CONTEXT.md`, captured per the domain-modeling discipline
 **Context:** ingestion (ops)
 **Definition:** A labelled, immutable, restorable copy of a corpus-bearing store taken at a named checkpoint — before or after a paid ingest — held at both a provider layer and as a portable dump plus manifest, so no single provider, plan change, or deletion can lose the corpus.
 **Also known as:** backup, dump (both rejected — "backup" hides the two-layer requirement, and "dump" names only the portable artifact rather than the checkpoint)
+
+### Routed Query
+
+**Type:** value object
+**Context:** pipeline (engine seam)
+**Definition:** The run's query after routing — the caller's verbatim text and prior turns stamped by the runner, plus the Router's reading of it (intent, sub-queries, filters, the router's account of its classification). It is the single query object downstream of routing, and the object the Assembled Context carries; a Router returns only its reading, never this.
+**Also known as:** routing result (rejected — that is the Router's own output, which carries no caller state), routed query state (rejected — redundant)

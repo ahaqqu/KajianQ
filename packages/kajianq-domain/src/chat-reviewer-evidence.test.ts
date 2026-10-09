@@ -1,10 +1,11 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
-import { RunContext, type AssembledContext, type Chunk, type Query } from "@app/rag-core";
+import { RunContext, type AssembledContext, type Chunk } from "@app/rag-core";
 import type { CostRecord } from "@app/contracts";
 import { createKajianQReviewer } from "./chat-reviewer";
 import { createKajianQAssembler } from "./chat-assembler";
 import type { KajianQFilters } from "./filters";
+import { routedQuery } from "./test-utils/routed-query";
 
 /**
  * What the reviewer is actually shown.
@@ -62,7 +63,7 @@ const CHUNKS: Chunk[] = [
 /** The context the REAL assembler builds for those chunks (no drift in test). */
 function assembledContext(): Promise<AssembledContext<KajianQFilters>> {
   const assembler = createKajianQAssembler();
-  const query = { text: "Apa maksud Ayat Kursi?" } as Query<KajianQFilters>;
+  const query = routedQuery("Apa maksud Ayat Kursi?");
   return Effect.runPromise(assembler.assemble(query, CHUNKS) as never) as never;
 }
 
@@ -90,6 +91,15 @@ async function runReviewer(captured: { user?: string }): Promise<void> {
 }
 
 describe("reviewer evidence rendering", () => {
+  it("shows the reviewer the verbatim question, not the router's intent", async () => {
+    // The reviewer judges the draft against what the user asked; the context's
+    // `intent` is the router's classification and must never stand in for it.
+    const captured: { user?: string } = {};
+    await runReviewer(captured);
+    expect(captured.user).toContain("Question: Apa maksud Ayat Kursi?");
+    expect(captured.user).not.toContain("Question: factual");
+  });
+
   it("shows each chunk's citation label so a citation can actually be verified", async () => {
     const captured: { user?: string } = {};
     await runReviewer(captured);

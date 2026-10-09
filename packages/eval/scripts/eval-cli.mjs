@@ -13,6 +13,10 @@
  */
 import { readFileSync } from "node:fs";
 import * as evalpkg from "@app/eval";
+// The Golden Set's label vocabulary and the router's classification vocabulary
+// are one list in the domain pack (#14): the trap marker this CLI asserts on
+// comes from there, so a rename cannot leave the gate looking for a stale tag.
+import { DAIF_TRAP_LABEL } from "@app/kajianq-domain";
 
 /** Print a prefixed failure and exit non-zero. */
 export function fail(prefix, msg) {
@@ -50,7 +54,7 @@ export function loadFixture(prefix, config, { assertV0 = false } = {}) {
       readFileSync(fixturePath, "utf8"),
       "golden-set-v0.json",
     );
-    if (assertV0) evalpkg.assertV0Shape(fixture, { trapTag: "dhaif-trap" });
+    if (assertV0) evalpkg.assertV0Shape(fixture, { trapTag: DAIF_TRAP_LABEL });
     return fixture;
   } catch (err) {
     fail(prefix, err instanceof Error ? err.message : String(err));

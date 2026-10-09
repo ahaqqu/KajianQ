@@ -2,6 +2,8 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import { RunContext } from "@app/rag-core";
 import { createKajianQRetriever } from "./chat-retriever";
+import type { KajianQFilters } from "./filters";
+import { routedQuery } from "./test-utils/routed-query";
 
 /**
  * Filter relaxation (found by the first live Golden Set run).
@@ -67,8 +69,7 @@ function makeRetriever(opts: { hitsWhenFiltered: number }) {
   return { retriever, calls, recorded, run };
 }
 
-const routed = (filters: Record<string, string>) =>
-  ({ intent: "factual", subQueries: [{ text: "apa maksud ayat kursi" }], filters }) as never;
+const routed = (filters: KajianQFilters) => routedQuery("apa maksud ayat kursi", { filters });
 
 describe("retriever filter relaxation", () => {
   it("retries unfiltered when the inferred filters match nothing, and records the drop", async () => {

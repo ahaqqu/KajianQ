@@ -44,8 +44,28 @@ _Avoid_: principle table, rules index
 DARS's 4-stage retrieval orchestrator: (1) intent & principle detection, (2) query decomposition, (3) source routing with metadata filters, (4) context assembly. Not a mere classifier.
 _Avoid_: classifier, router (unqualified)
 
+**Intent**:
+The router's classification of what kind of question was asked — `factual | ruling | analogy | comparison | history | aqidah` — recorded on the answer's Trace and shown in its technical layer. One of the closed classification vocabularies the domain pack owns; a value outside it is unusable, never recorded as an understanding.
+_Avoid_: query type (the spec's older field name — the field is `intent` in every stage, trace and contract), category (that is Query category), classification (vague)
+
+**Query category**:
+The subject area a question falls in — `quran | hadith | tafsir | fikih | aqidah | tasawuf | sejarah | adab | general` — which decides the decomposition rules that fire and, later, the sources source routing selects. Distinct from Intent: the category says what the question is about, the intent says what kind of question it is.
+_Avoid_: subject (ambiguous with a source type), topic, domain (that is KajianQ's whole domain), tag (the Golden Set's labels are tags)
+
+**Sub-query**:
+One retrieval query a question is decomposed into (2–4; one when the verbatim question is the only distinct text available). It carries a role (`factual`, `principle`, `dalil`, `sanad`) and an origin (`model`, `rule`, `fallback`), is embedded and searched on its own, and its results are fused with the others'. The role says what the sub-query is for and the origin says what produced it, so a rule-added or fallback sub-query reads as such on the persisted trace row; the user-visible Trace frame's technical layer shows the intent and the sub-query texts, not the role/origin labels.
+_Avoid_: fan-out query, expansion (that is Query Expansion), variant (that is a terminology-graph lemma)
+
+**Query decomposition**:
+The Smart Router's stage 2: turning one question into the Sub-queries retrieval fans out over. The router LLM phrases them; the domain guarantees the rules' coverage — a factual sub-query always, a principle/dalil/sanad one when its rule fires — and the count.
+_Avoid_: query splitting, fan-out (that is the retrieval behaviour, not the stage)
+
+**Router fallback**:
+What the router routes to when the model's reply is unusable — unparseable, or a classification outside the vocabularies: one factual Sub-query made of the verbatim question, marked as the fallback on both the sub-query and the intent event, so the Trace never presents it as a classification the model made.
+_Avoid_: default route, degraded mode (implies a configuration state rather than a per-reply failure)
+
 **Trace**:
-The per-answer record of how it was built — router intent, sub-queries, retrieved chunks with scores, model identity, tokens, cost. User-visible in expanded form per ADR-0007; a fuller version lives in admin.
+The per-answer record of how it was built — router intent and Query category, Sub-queries with their roles, retrieved chunks with scores, model identity, tokens, cost. User-visible in expanded form per ADR-0007; a fuller version lives in admin.
 _Avoid_: log, debug info
 
 **Golden Set**:

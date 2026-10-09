@@ -80,7 +80,11 @@ export function createKajianQGenerator(deps: KajianQGeneratorDeps): Generator<Ka
             {
               role: "user",
               content: chatUserPrompt(
-                context.query.intent,
+                // The verbatim question the user asked — not the router's
+                // intent: the engine stamps `sourceText` from the caller's
+                // query (ADR-0018), so the prompt is exactly what it was
+                // before the router's reading started riding this context.
+                context.query.sourceText,
                 context.turns.map((t) => t.content).join("\n"),
               ),
             },

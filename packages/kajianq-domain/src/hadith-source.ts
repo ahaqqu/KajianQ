@@ -17,14 +17,16 @@
 /** The source-type discriminator written into every hadith chunk's metadata. */
 export type HadithSourceType = "hadith";
 
+import { GRADES, type Grade } from "./filters";
+
 /**
- * Hadith authenticity classification (CONTEXT.md "Grade"). Owned here — the
- * grades the hadith consolidation produces — so `hadith-source.ts` never
- * imports from its own barrel (circular runtime imports, review B1);
- * `index.ts` re-exports it.
+ * Hadith authenticity classification (CONTEXT.md "Grade"). Owned by
+ * `./filters` — the one list retrieval filters by and the one the router
+ * narrows the model's hint against — and re-exported here for this module's
+ * readers. A leaf import, never the barrel: `filters.ts` imports nothing, so
+ * there is no cycle (review B1/B2).
  */
-export const GRADES = ["mutawatir", "sahih", "hasan", "dhaif"] as const;
-export type Grade = (typeof GRADES)[number];
+export { GRADES, type Grade };
 
 /**
  * The v1 collections (ADR-0026): the source provides Arabic + Indonesian
