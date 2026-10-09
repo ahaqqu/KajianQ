@@ -298,4 +298,55 @@ describe("the routing decision in the technical layer", () => {
     expect(frame.technical).not.toHaveProperty("routing");
     expect(() => v.parse(ChatTraceFrameSchema, frame)).not.toThrow();
   });
+
+  it("names the filters the run GAVE UP, from the retriever's own events", () => {
+    // `filters` is the route's DECISION; a relaxed run ran without some of it, so
+    // without these the panel would show a `principleTags` hint for the Principle
+    // Index that does not exist yet (#16) as a filter that ran. A probe that
+    // changed nothing (`adopted: false`) is machinery, not a relaxation; an
+    // absent `adopted` is a trace persisted before probing, where every recorded
+    // drop was applied.
+    const relaxedEvent = (adopted: boolean | undefined, dropped: Record<string, string[]>) =>
+      ({
+        stage: "retriever" as const,
+        kind: "filter_relaxed" as const,
+        detail: {
+          dropped,
+          retained: { dim_a: ["v1"] },
+          track: "primary",
+          hits: adopted === false ? 0 : 3,
+          ...(adopted !== undefined ? { adopted } : {}),
+        },
+        at: 3,
+      }) satisfies Trace["events"][number];
+    const frame = deriveTraceFrame({
+      trace: traceOf(
+        [{ id: "c1" }],
+        [
+          routingEvent(["src_a"], { dim_a: ["v1"], dim_c: ["v4"], dim_d: ["v5"] }),
+          relaxedEvent(false, { dim_c: ["v4"] }),
+          relaxedEvent(true, { dim_c: ["v4"] }),
+          relaxedEvent(undefined, { dim_d: ["v5"] }),
+        ],
+      ),
+      messageId: "m1",
+      chunksById: new Map<string, DocChildById>(),
+    });
+    expect(frame.technical.routing?.relaxed).toEqual([
+      { key: "dim_c", values: ["v4"] },
+      { key: "dim_d", values: ["v5"] },
+    ]);
+    expect(() => v.parse(ChatTraceFrameSchema, frame)).not.toThrow();
+  });
+
+  it("carries no `relaxed` list when the run gave nothing up", () => {
+    // Absent, not empty: a run that relaxed nothing must not read as one whose
+    // drops were recorded as an empty list.
+    const frame = deriveTraceFrame({
+      trace: traceOf([{ id: "c1" }], [routingEvent(["src_a"], { dim_a: ["v1"] })]),
+      messageId: "m1",
+      chunksById: new Map<string, DocChildById>(),
+    });
+    expect(frame.technical.routing).toEqual({ sources: ["src_a"], filters: { dim_a: ["v1"] } });
+  });
 });

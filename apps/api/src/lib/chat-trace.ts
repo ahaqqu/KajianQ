@@ -119,12 +119,27 @@ export function deriveTraceFrame(input: {
     if (modelId !== undefined && !models.includes(modelId)) models.push(modelId);
   }
   // The routing decision (#15), projected verbatim from the persisted trace:
-  // which sources the route selected and the filter record retrieval ran with.
-  // Opaque strings — this module names neither a source type nor a filter
-  // dimension. Absent on traces persisted before the event existed, and on a
-  // trace with no routing event the frame omits the block rather than claiming
-  // "no sources were searched" (an EMPTY `sources` list says that, explicitly).
+  // which sources the route selected and the filter record it decided retrieval
+  // should run with. Opaque strings — this module names neither a source type
+  // nor a filter dimension. Absent on traces persisted before the event
+  // existed, and on a trace with no routing event the frame omits the block
+  // rather than claiming "no sources were searched" (an EMPTY `sources` list
+  // says that, explicitly).
   const routingEvent = trace.events.find((event) => event.kind === "source_routing");
+  // ... and the dimensions the run actually GAVE UP, from the retriever's own
+  // `filter_relaxed` events. Without them the block shows a filter the search had
+  // already dropped, so a `principleTags` hint for the Principle Index that does
+  // not exist yet (#16) reads as a filter that ran. `adopted: false` is a probe
+  // that changed nothing (machinery, not a relaxation); an absent `adopted` is a
+  // trace persisted before probing, where every recorded drop was applied.
+  const relaxed: { key: string; values: string[] }[] = [];
+  for (const event of trace.events) {
+    if (event.kind !== "filter_relaxed" || event.detail.adopted === false) continue;
+    for (const [key, values] of Object.entries(event.detail.dropped)) {
+      if (relaxed.some((entry) => entry.key === key)) continue;
+      relaxed.push({ key, values: [...(typeof values === "string" ? [values] : values)] });
+    }
+  }
   return {
     messageId,
     sources: refs.map((ref) => toSource(ref, chunksById)),
@@ -137,7 +152,14 @@ export function deriveTraceFrame(input: {
               : {}),
           }
         : {}),
-      ...(routingEvent !== undefined ? { routing: routingEvent.detail } : {}),
+      ...(routingEvent !== undefined
+        ? {
+            routing: {
+              ...routingEvent.detail,
+              ...(relaxed.length > 0 ? { relaxed } : {}),
+            },
+          }
+        : {}),
       subQueries,
       chunks: refs.map((ref) => toTechnicalChunk(ref, chunksById)),
       models,

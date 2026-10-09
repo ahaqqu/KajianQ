@@ -126,6 +126,23 @@ export function TracePanel({
                         .join(" · ")}
                     </p>
                   )}
+                  {/* The filters the run GAVE UP — a hint that matched nothing is
+                      probed away and retried, and the panel says which one, so a
+                      `principleTags` filter the missing Principle Index (#16)
+                      cannot serve is not displayed as one that ran. */}
+                  {(technical.routing.relaxed?.length ?? 0) > 0 && (
+                    <p
+                      data-testid="trace-routing-relaxed"
+                      className="mt-1 text-sm text-card-foreground"
+                    >
+                      <span className="mr-2 text-muted-foreground">
+                        {t(locale, "traceRoutingRelaxedLabel")}
+                      </span>
+                      {technical.routing.relaxed
+                        ?.map(({ key, values }) => `${key}: ${values.join(", ")}`)
+                        .join(" · ")}
+                    </p>
+                  )}
                 </div>
               )}
               {technical.subQueries.length > 0 && (

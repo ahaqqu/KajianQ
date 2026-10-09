@@ -22,7 +22,7 @@ const ANSWER_FIXTURE = [
   // sseFrame escaping) — a literal blank line would terminate the frame.
   `event: delta\ndata: [QS. 2:255].\ndata: \ndata: ${DISCLAIMER}\n\n`,
   'event: citations\ndata: {"messageId":"m-live","refusal":false,"dhaifWarning":false,"citations":[{"label":"QS. 2:255","arabic":"اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ","translation":"Allah, tidak ada tuhan selain Dia.","machineTranslated":true,"source":"Al-Baqarah"}]}\n\n',
-  'event: trace\ndata: {"messageId":"m-live","sources":[{"id":"chunk-1","source":"Al-Baqarah"}],"technical":{"intent":"ruling","routing":{"sources":["quran","hadith"],"filters":{"grade":["sahih"]}},"subQueries":["apa itu ayat kursi","QS 2:255 makna"],"chunks":[{"id":"chunk-1","source":"Al-Baqarah","score":0.03125}],"models":["router-stub","generator-stub"]}}\n\n',
+  'event: trace\ndata: {"messageId":"m-live","sources":[{"id":"chunk-1","source":"Al-Baqarah"}],"technical":{"intent":"ruling","routing":{"sources":["quran","hadith"],"filters":{"grade":["sahih"],"textLayer":["sharh"]},"relaxed":[{"key":"textLayer","values":["sharh"]}]},"subQueries":["apa itu ayat kursi","QS 2:255 makna"],"chunks":[{"id":"chunk-1","source":"Al-Baqarah","score":0.03125}],"models":["router-stub","generator-stub"]}}\n\n',
   "event: done\ndata: {}\n\n",
 ].join("");
 
@@ -522,6 +522,10 @@ Then(
     await expect(tech.getByTestId("trace-routing-sources")).toContainText("quran");
     await expect(tech.getByTestId("trace-routing-sources")).toContainText("hadith");
     await expect(tech.getByTestId("trace-routing-filters")).toContainText("grade: sahih");
+    // ... and the filters the run GAVE UP, so a hint the corpus cannot serve
+    // (the `textLayer` hint here, the `principleTags` hint for the missing
+    // Principle Index #16 in the live path) is not displayed as one that ran.
+    await expect(tech.getByTestId("trace-routing-relaxed")).toContainText("textLayer: sharh");
   },
 );
 
