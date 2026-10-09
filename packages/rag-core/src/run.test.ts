@@ -148,6 +148,11 @@ describe("runPipeline", () => {
           reasoning: "the question asks why",
           attributes: { category: "fikih" },
         },
+        // The stage's wall clock, measured by the runner. The clock here is a
+        // constant, so it is 0 — that the field is PRESENT on every boundary
+        // event is the contract (a stage with no model call has no
+        // `cost.latencyMs` to read instead).
+        durationMs: 0,
         at: 3,
       },
       {
@@ -172,10 +177,31 @@ describe("runPipeline", () => {
       runPipeline(makeStages(), query, config, { traceId: "t", now: () => 0 }),
     );
     expect(result.trace.events.slice(0, 3)).toEqual([
-      { stage: "router", kind: "intent", detail: { intent: "factual" }, at: 0 },
+      { stage: "router", kind: "intent", detail: { intent: "factual" }, durationMs: 0, at: 0 },
       { stage: "router", kind: "subquery", detail: { text: "sub1" }, at: 0 },
       { stage: "router", kind: "subquery", detail: { text: "sub2" }, at: 0 },
     ]);
+  });
+
+  it("stamps each stage's own wall clock on its boundary event", async () => {
+    // Stage latency per query must be on the trace for the stages that spend
+    // nothing too: the deterministic router, retriever and assembler make no
+    // model call, so `cost.latencyMs` cannot answer for them. The runner owns
+    // the measurement, so the numbers cannot drift from the run.
+    let clock = 0;
+    const tick = () => (clock += 1);
+    const result = await Effect.runPromise(
+      runPipeline(makeStages(), query, config, { traceId: "t", now: tick }),
+    );
+    const boundary = result.trace.events.filter(
+      (event) => event.kind === "intent" || event.kind === "retrieval" || event.kind === "assembly",
+    );
+    expect(boundary.map((event) => [event.kind, event.durationMs])).toEqual([
+      ["intent", expect.any(Number)],
+      ["retrieval", expect.any(Number)],
+      ["assembly", expect.any(Number)],
+    ]);
+    for (const event of boundary) expect(event.durationMs).toBeGreaterThanOrEqual(0);
   });
 
   it("provides the run config to every stage through the RunContext service", async () => {

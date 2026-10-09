@@ -10,9 +10,9 @@ import { CostRecordSchema } from "./trace-primitives";
  * answer different questions and must be readable apart. `intent` is *what the
  * system understood*; `source_routing` is *what it decided to do about it* —
  * which sources were in play and with which filters. Burying the second inside
- * `intent.attributes` made "the model hinted `textLayer: sharh`" and "the route
- * decided to search only the Quran" the same opaque bag, so a trace reader
- * could not tell a decision from a suggestion.
+ * `intent.attributes` made a hint the model offered and a restriction the route
+ * chose the same opaque bag, so a trace reader could not tell a decision from a
+ * suggestion.
  *
  * The filter keys and values stay opaque strings the domain pack owns — this
  * module names no dimension, no source type and no domain vocabulary. A route

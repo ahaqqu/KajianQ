@@ -23,7 +23,7 @@ describe("readRouterText", () => {
       JSON.stringify({
         intent: "analogy",
         category: "fikih",
-        madzhab: ["syafii"],
+        madzhab: "syafii",
         grade: "sahih",
         textLayer: "matn",
         needsPrinciple: true,
@@ -42,7 +42,11 @@ describe("readRouterText", () => {
     expect(reading?.category).toBe("fikih");
     expect(reading?.needsPrinciple).toBe(true);
     expect(reading?.principleTags).toEqual(["yusr", "rahmah"]);
-    expect(reading?.filters).toEqual({ madzhab: ["syafii"], grade: "sahih", textLayer: "matn" });
+    expect(reading?.filters).toEqual({
+      madzhab: ["syafii"],
+      grade: ["sahih"],
+      textLayer: ["matn"],
+    });
     expect(reading?.confidence).toBe(0.82);
     expect(reading?.reasoning).toBe("the question asks why the rule is lenient");
     expect(reading?.modelSubQueries).toEqual([
@@ -54,8 +58,8 @@ describe("readRouterText", () => {
       category: "fikih",
       principleTags: ["yusr", "rahmah"],
       madzhab: ["syafii"],
-      grade: "sahih",
-      textLayer: "matn",
+      grade: ["sahih"],
+      textLayer: ["matn"],
     });
   });
 
