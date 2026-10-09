@@ -17,7 +17,14 @@ import {
  *
  *   1. every composition rule that fired has a sub-query with its role
  *      (factual always; principle when the question needs a lens; dalil for
- *      fikih; sanad for hadith) — a missing one is added from a template;
+ *      fikih; sanad for hadith) — a missing one is added from a template, and
+ *      when that rule's text is already in the set under no role of its own
+ *      (the model echoed the question, or labelled it outside the vocabulary)
+ *      the rule's role is stamped onto that entry instead of a duplicate text
+ *      being added, so the duplicate filter never costs a rule its coverage
+ *      (review R2-A1). One exception, because the model's label is never
+ *      overwritten: an entry that already carries a *different* declared role
+ *      keeps it, and that rule's coverage is not shown;
  *   2. the total stays within the stage's bound, dropping the model's extra
  *      phrasings before any rule-derived one;
  *   3. every entry says where it came from, so the Trace shows a repaired set
@@ -92,7 +99,27 @@ export function decomposeQuery(input: DecompositionInput): SubQuery[] {
 
   for (const role of requiredRoles(input)) {
     if (kept.some((sub) => sub.role === role)) continue;
-    push({ text: ruleText(role, input), role, origin: "rule" });
+    const text = ruleText(role, input);
+    // The rule's text may already be in the set — most often `factual`, whose
+    // text *is* the caller's question, which the model may have echoed. Adding
+    // it would put one retrieval text in twice (two embed slots for one
+    // search); dropping it would leave the fired rule uncovered and the Trace
+    // unable to explain the route. So when the entry carrying that text has no
+    // role of its own — the model gave none, or gave one the vocabulary drops —
+    // the rule's role is stamped onto it: the text stays the model's phrasing
+    // and keeps its `model` origin, and the rule's coverage becomes visible
+    // (review R2-A1). An entry the model labelled with a *different* declared
+    // role keeps that label — overwriting it would pass the rule's role off as
+    // the model's own — so that coincidence stays the exception the header
+    // states.
+    const holder = kept.find(
+      (sub) => sub.role === undefined && normalize(sub.text) === normalize(text),
+    );
+    if (holder !== undefined) {
+      holder.role = role;
+      continue;
+    }
+    push({ text, role, origin: "rule" });
   }
 
   // The floor, on distinct texts: the model phrased one sub-query and no rule

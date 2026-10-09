@@ -19,15 +19,21 @@ import { PRINCIPLE_TAGS, SUBJECT_AREAS, SUB_QUERY_ROLES } from "./taxonomy";
  *   1. the ceiling holds: never more than `MAX_SUB_QUERIES`;
  *   2. every rule that fired is covered: a factual sub-query always exists, a
  *      principle one whenever the question needs a lens, and the dalil/sanad
- *      ones for fikih/hadith;
+ *      ones for fikih/hadith — either the rule added its own entry, or it
+ *      stamped its role onto the role-less entry already carrying its text.
+ *      The one coincidence it cannot cover is the model having labelled that
+ *      entry with a different declared role: that label is never overwritten,
+ *      so the law accepts exactly that case as the exception the header states;
  *   3. the floor holds on distinct texts: the stage returns a single sub-query
  *      only when that sub-query *is* the question — never a padded
  *      near-duplicate of it (`MIN_SUB_QUERIES`);
  *   4. no two sub-queries carry the same text (duplicates waste an embed slot
  *      and make the Trace claim angles the model never offered);
  *   5. every kept sub-query has non-empty text and, if labelled, a role from
- *      the vocabulary (a role may repeat: the model's own entries are kept as
- *      it wrote them, and only the *rules* are deduplicated by role);
+ *      the vocabulary (a role may repeat: the model's text is kept as it wrote
+ *      it — the repair may stamp a fired rule's role onto a role-less entry
+ *      carrying that rule's text, but never overwrites a label — and only the
+ *      *rules* are deduplicated by role);
  *   6. nothing is returned only when there was nothing to search;
  *   7. re-running the repair over its own output changes nothing but the
  *      provenance labels (idempotence over text and role);
@@ -39,7 +45,16 @@ const subQueryArb: fc.Arbitrary<{ text: string; role?: string }> = fc
     {
       text: fc.oneof(
         fc.string({ minLength: 1, maxLength: 40 }),
-        fc.constantFrom("hukum riba", "prinsip yusr", "dalil Al-Quran", "  spaced   text  "),
+        // `"hukum riba?"` coincides with a question constant below, so the
+        // generator can produce the one class law 2 must reason about: a model
+        // entry whose text *is* the rule's own text (review R2-A1).
+        fc.constantFrom(
+          "hukum riba",
+          "hukum riba?",
+          "prinsip yusr",
+          "dalil Al-Quran",
+          "  spaced   text  ",
+        ),
       ),
       role: fc.option(fc.constantFrom(...SUB_QUERY_ROLES, "tafsir", ""), { nil: undefined }),
     },
@@ -86,15 +101,32 @@ describe("decomposeQuery laws", () => {
   // a question that actually carries text — the blank case is its own law below.
   const answerableArb = inputArb.filter((input) => input.question.trim() !== "");
 
-  fcTest.prop([answerableArb])("covers every rule that fired", (input) => {
-    const roles = decomposeQuery(input).flatMap((sub) =>
-      sub.role === undefined ? [] : [sub.role],
-    );
-    expect(roles).toContain("factual");
-    if (input.needsPrinciple) expect(roles).toContain("principle");
-    if (input.category === "fikih") expect(roles).toContain("dalil");
-    if (input.category === "hadith") expect(roles).toContain("sanad");
-  });
+  fcTest.prop([answerableArb])(
+    "covers every rule that fired, or names its one exception",
+    (input) => {
+      const subs = decomposeQuery(input);
+      const roles = subs.flatMap((sub) => (sub.role === undefined ? [] : [sub.role]));
+      // The coverage rule, with the coincidence it cannot close stated as a
+      // precondition rather than left as prose: the `factual` rule's text is the
+      // question, so it can only go unshown when the model's own reply already
+      // labelled that text with a *different* declared role — the one label the
+      // repair never overwrites. The generator can produce that input
+      // (`"hukum riba?"` in `subQueryArb` against the same question constant) and
+      // the role-less echo beside it; without that reach this law would pass
+      // over the class it exists to guard (review R2-A1).
+      const modelEchoLabelledOtherwise = input.modelSubQueries.some(
+        (entry) =>
+          entry.role !== undefined &&
+          entry.role !== "factual" &&
+          (SUB_QUERY_ROLES as readonly string[]).includes(entry.role) &&
+          norm(entry.text) === norm(input.question),
+      );
+      if (!roles.includes("factual")) expect(modelEchoLabelledOtherwise).toBe(true);
+      if (input.needsPrinciple) expect(roles).toContain("principle");
+      if (input.category === "fikih") expect(roles).toContain("dalil");
+      if (input.category === "hadith") expect(roles).toContain("sanad");
+    },
+  );
 
   fcTest.prop([answerableArb])(
     "returns one sub-query only when that sub-query is the question",

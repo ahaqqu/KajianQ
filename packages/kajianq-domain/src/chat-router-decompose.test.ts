@@ -171,6 +171,34 @@ describe("decomposeQuery", () => {
     expect(subs[0]).toEqual({ text: "hukum riba", origin: "model" });
   });
 
+  it("stamps the fired rule's role onto a role-less echo of the question", () => {
+    // The class the property generator cannot reach (review R2-A1): the model's
+    // only sub-query *is* the question, so the `factual` rule's own text
+    // collides with it. Without the stamp the rule's entry is dropped by the
+    // duplicate filter and the Trace shows a route it cannot explain.
+    const Q = "hukum riba?";
+    const echo = (entry: { text: string; role?: string }) =>
+      decomposeQuery(input({ question: Q, modelSubQueries: [entry] }));
+
+    // No role at all, and a role the vocabulary drops: both reach the rule
+    // role-less, so both take the stamp. Text and `model` origin stand — the
+    // model phrased it, the rule labelled it.
+    expect(echo({ text: Q })).toEqual([{ text: Q, role: "factual", origin: "model" }]);
+    expect(echo({ text: Q, role: "tafsir" })).toEqual([
+      { text: Q, role: "factual", origin: "model" },
+    ]);
+
+    // A *different* declared role is the model's own label and is never
+    // overwritten — the exception the module header states: the `factual` rule
+    // goes unshown rather than the model's claim being rewritten.
+    expect(echo({ text: Q, role: "sanad" })).toEqual([{ text: Q, role: "sanad", origin: "model" }]);
+
+    // Control: the model labelled the echo `factual` itself; nothing to stamp.
+    expect(echo({ text: Q, role: "factual" })).toEqual([
+      { text: Q, role: "factual", origin: "model" },
+    ]);
+  });
+
   it("has nothing to search for a whitespace-only question with no usable reply", () => {
     // The HTTP contract accepts a whitespace-only body inside the ceiling, so
     // the stage must not invent a sub-query out of it: an empty decomposition

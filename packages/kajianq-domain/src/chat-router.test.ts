@@ -154,6 +154,20 @@ describe("createKajianQRouter", () => {
     expect(routed.attributes).toEqual({ fallback: true, madzhab: "hambali" });
   });
 
+  it("stamps the factual rule onto a model echo of the question with no role", async () => {
+    // Reachable from the wire: `SubQueryReplySchema` accepts a bare string, so a
+    // cheap reply can hand over exactly the question with no role — the class
+    // R2-A1 measured. The stage must still label the rule it fired, without
+    // duplicating the retrieval text (see chat-router-decompose.test.ts).
+    const h = harness(JSON.stringify({ intent: "factual", subQueries: ["Apa hukum riba?"] }));
+    const routed = (await h.route({ text: "Apa hukum riba?" })) as {
+      subQueries: readonly { text: string; role?: string; origin?: string }[];
+    };
+    expect(routed.subQueries).toEqual([
+      { text: "Apa hukum riba?", role: "factual", origin: "model" },
+    ]);
+  });
+
   it("offers exactly the declared vocabularies in the prompt", () => {
     // The prompt *composes* its vocabulary lists from their owners (taxonomy,
     // filters) rather than re-spelling them, so a value cannot reach the reader
