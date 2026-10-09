@@ -42,6 +42,15 @@ import { nextRelaxation, type FilterEntry } from "./chat-filter-policy";
  * evidence that no single dimension was at fault. Without it a wrong hint turns
  * into a refusal for a question the corpus can serve — which is the failure the
  * pre-#15 unfiltered retry rescued, and the reason this policy exists at all.
+ *
+ * **The last resort runs a record nothing has run yet, or it does not run.**
+ * It is issued only with two or more live dimensions. One live dimension's own
+ * probe already ran `{}` (its `retained` is empty), and with none the run's
+ * first search ran it, so repeating it there would be a byte-identical search
+ * and a duplicate `filter_relaxed` event — and would break the discriminator
+ * the trace reads by (`trace-events.ts`: an event naming *every* live dimension
+ * is the last resort), which is indistinguishable from a lone dimension's probe
+ * when only that one was live.
  */
 export type FilterRelaxation = {
   /** The record the next search should run with. */
@@ -81,9 +90,17 @@ export function createFilterRelaxation(intended: readonly FilterEntry[]): Filter
       }
       // Every dimension in play survived its own probe, so no single hint is at
       // fault: the record as a SET is what matched nothing. One last resort,
-      // then this run is out of diagnoses either way.
+      // then this run is out of diagnoses either way — but only when it runs a
+      // record no search has run yet. Reaching here means no untried live
+      // dimension is left, so every live entry's own probe has already run the
+      // record without it: one live dimension's probe ran exactly `{}`, and with
+      // none the run's first search did. Firing again there would repeat the
+      // same search and record a byte-identical event, and would make the trace
+      // unable to tell a lone dimension's probe from the last resort. With two
+      // or more live dimensions every probe still carried the other dead
+      // dimension, so `{}` is genuinely untried and the rescue applies.
       settled = true;
-      if (live.length === 0) return undefined;
+      if (live.length <= 1) return undefined;
       return { dropped: [...live], retained: record([]) };
     },
     adopt: (dropped) => {

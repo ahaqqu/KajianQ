@@ -305,4 +305,95 @@ describe("filter relaxation gives up one dimension at a time", () => {
     // adopted one names the record the search went on to run with.
     expect(relaxed[1]?.detail.retained).toEqual({ grade: ["sahih"] });
   });
+
+  it("does not repeat the `{}` search — or its event — when exactly one dimension is live", async () => {
+    // The last resort exists for TWO OR MORE live dimensions, where every probe
+    // still carried the other dead one. With a single live dimension its own
+    // probe already ran `{}` (its `retained` is empty), so a last resort would
+    // repeat a byte-identical search and record a byte-identical event — and the
+    // trace's own discriminator ("an event naming EVERY live dimension is the
+    // record-level last resort") would read that event as one, while the lone
+    // dimension's probe says the opposite: that dimension WAS at fault. The store
+    // here matches nothing under any filter, which is what makes the probe's `{}`
+    // come back empty too — the configuration that exposed the duplicate.
+    const calls: Record<string, string[]>[] = [];
+    const recorded: { kind: string }[] = [];
+    const store = {
+      similaritySearch: (
+        _track: string,
+        _embedding: readonly number[],
+        o: { filters?: Record<string, string[]> },
+      ) => {
+        calls.push(o.filters ?? {});
+        return Effect.succeed([]);
+      },
+      listDocChildNeighboursByChildIds: () => Effect.succeed([]),
+    };
+
+    const chunks = await runWith<{ id: string }[]>(store, recorded, { textLayer: ["sharh"] });
+
+    // One unfiltered search, and it is the rescue: the run REACHES a `{}` search
+    // instead of refusing at the filtered one (A1's property, unbroken) …
+    expect(calls[0]).toEqual({ textLayer: ["sharh"] });
+    expect(calls[1]).toEqual({});
+    expect(calls.filter((call) => Object.keys(call).length === 0)).toHaveLength(1);
+    // … and the corpus genuinely holds nothing for this embedding, so the run
+    // ends empty rather than looping.
+    expect(chunks).toHaveLength(0);
+
+    // One diagnosis, recorded once: the drop and the record it left behind, so
+    // `intended − dropped` reconstructs exactly what every search ran with.
+    const relaxed = recorded.filter((e) => e.kind === "filter_relaxed") as unknown as {
+      detail: {
+        dropped: Record<string, string[]>;
+        retained: Record<string, string[]>;
+        hits: number;
+        adopted: boolean;
+      };
+    }[];
+    expect(relaxed).toHaveLength(1);
+    expect(relaxed[0]?.detail.dropped).toEqual({ textLayer: ["sharh"] });
+    expect(relaxed[0]?.detail.retained).toEqual({});
+    expect(relaxed[0]?.detail.hits).toBe(0);
+    expect(relaxed[0]?.detail.adopted).toBe(false);
+  });
+
+  it("still issues the record-level rescue at the two-live-dimension boundary", async () => {
+    // The boundary of the guard above: TWO live dimensions, neither individually
+    // at fault. Every probe carried the other dead dimension, so `{}` is genuinely
+    // untried and the rescue must fire — this is the case the last resort exists
+    // for, and the case a tighter guard would silently turn back into a refusal.
+    const { store, calls } = makeStore(["principleTags", "textLayer"]);
+    const recorded: { kind: string }[] = [];
+    const chunks = await runWith<{ id: string }[]>(store, recorded, {
+      principleTags: ["yusr"],
+      textLayer: ["sharh"],
+    });
+
+    expect(calls.slice(0, 3)).toEqual([
+      { principleTags: ["yusr"], textLayer: ["sharh"] },
+      { textLayer: ["sharh"] },
+      { principleTags: ["yusr"] },
+    ]);
+    expect(calls[3]).toEqual({});
+    expect(chunks.length).toBeGreaterThan(0);
+
+    const relaxed = recorded.filter((e) => e.kind === "filter_relaxed") as unknown as {
+      detail: {
+        dropped: Record<string, string[]>;
+        retained: Record<string, string[]>;
+        hits: number;
+        adopted: boolean;
+      };
+    }[];
+    expect(relaxed.map((e) => [e.detail.dropped, e.detail.adopted])).toEqual([
+      [{ principleTags: ["yusr"] }, false],
+      [{ textLayer: ["sharh"] }, false],
+      // Every live dimension at once — the record-level last resort, adopted, so
+      // `intended − adopted drops` is `{}`: what the search that found the
+      // context ran with.
+      [{ principleTags: ["yusr"], textLayer: ["sharh"] }, true],
+    ]);
+    expect(relaxed.at(-1)?.detail.retained).toEqual({});
+  });
 });
