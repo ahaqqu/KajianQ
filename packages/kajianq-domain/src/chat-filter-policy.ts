@@ -49,7 +49,12 @@ export class FilterNotExpressibleError extends Error {
 
 /** One expressible filter dimension: its metadata key and its value set. */
 export type FilterEntry = {
-  dimension: string;
+  /**
+   * The domain dimension — one of `KajianQFilters`' keys, held by the compiler
+   * so the relaxation order (which matches on the dimension) and this entry
+   * cannot drift apart without a typecheck failure.
+   */
+  dimension: keyof KajianQFilters;
   /** The `metadata` JSONB key the store binds — always a parameter, never SQL. */
   key: string;
   values: readonly string[];
@@ -94,7 +99,10 @@ export function filterEntries(filters: KajianQFilters | undefined): FilterEntry[
     }
   }
   const entries: FilterEntry[] = [];
-  for (const [dimension, key] of Object.entries(FILTER_DIMENSIONS)) {
+  for (const [dimension, key] of Object.entries(FILTER_DIMENSIONS) as [
+    keyof KajianQFilters,
+    string,
+  ][]) {
     const values = valuesOf(dimension, source[dimension]);
     if (values !== null) entries.push({ dimension, key, values });
   }
@@ -102,14 +110,26 @@ export function filterEntries(filters: KajianQFilters | undefined): FilterEntry[
 }
 
 /**
- * Map the domain filters to the store's opaque metadata-filter record. Values
- * are always lists, matching the seam's `string | readonly string[]` — the one
- * shape `metadata->>key = ANY($n::text[])` can bind for every dimension.
+ * The store's opaque metadata-filter record for already-read entries. Every
+ * values list is a list, matching the seam's `string | readonly string[]` — the
+ * one shape `metadata->>key = ANY($n::text[])` can bind for every dimension.
+ * The record is keyed by the store's own key, which is also the space the
+ * relaxation's `retained`/`dropped` pair is written in.
+ */
+export function entriesToFilters(entries: readonly FilterEntry[]): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const entry of entries) out[entry.key] = [...entry.values];
+  return out;
+}
+
+/**
+ * Map the domain filters to the store's opaque metadata-filter record — the
+ * same record `entriesToFilters` builds from `filterEntries`, so a caller that
+ * has already read the entries (the routing decision, which also needs the
+ * source selection out of them) does not map them twice or by a second rule.
  */
 export function metadataFilters(filters: KajianQFilters | undefined): Record<string, string[]> {
-  const out: Record<string, string[]> = {};
-  for (const entry of filterEntries(filters)) out[entry.key] = [...entry.values];
-  return out;
+  return entriesToFilters(filterEntries(filters));
 }
 
 /**
@@ -126,14 +146,20 @@ export function metadataFilters(filters: KajianQFilters | undefined): Record<str
  *    `sourceType` goes last because dropping it is the widest possible
  *    widening (every source back in play) and the trace must show the route
  *    gave up its own decision only after every cheaper hint.
+ *
+ * The type is `keyof KajianQFilters` on purpose: the order matches on the
+ * domain *dimension*, while the trace records the store *key*, and this is the
+ * one place the two names meet. Naming a dimension the type does not declare is
+ * a typecheck failure; omitting one is caught by the set-equality test beside
+ * this module, so neither direction of drift is silent.
  */
-export const RELAXATION_ORDER: readonly string[] = [
+export const RELAXATION_ORDER = [
   "principleTags",
   "textLayer",
   "grade",
   "madzhab",
   "sourceType",
-];
+] as const satisfies readonly (keyof KajianQFilters)[];
 
 /**
  * The next dimension still in play to drop, or `undefined` when none is left.

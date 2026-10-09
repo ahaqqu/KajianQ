@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { sourceRoutingDetailSchema } from "./trace-source-routing";
 
 /**
  * Chat API contracts (#8): the `/v1/chat` request/response surface. The
@@ -208,20 +209,32 @@ export const ChatTraceFrameSchema = v.object({
     confidence: v.optional(v.number()),
     /**
      * The routing decision (#15): which source types the route selected and the
-     * metadata filter record retrieval ran with, projected verbatim from the
-     * persisted trace's `source_routing` event. Opaque strings — the domain pack
-     * owns what a source type or a filter dimension means; the frame neither
-     * names nor interprets one. An empty `sources` list is a decision ("every
-     * source was in play") and is rendered as such, never as "unknown".
-     * Optional and absent by default: traces persisted before the field existed
-     * must keep rendering.
+     * metadata filter record it decided retrieval should run with, projected
+     * verbatim from the persisted trace's `source_routing` event. Opaque
+     * strings — the domain pack owns what a source type or a filter dimension
+     * means; the frame neither names nor interprets one. An empty `sources`
+     * list is a decision ("every source was in play") and is rendered as such,
+     * never as "unknown". `relaxed` names the dimensions the run actually gave
+     * up on the trace's `filter_relaxed` events, so `filters` reads as the
+     * route's decision and the effective record is `filters − relaxed` — for a
+     * relaxed run the panel would otherwise show a filter the search had
+     * already given up. Optional and absent by default: traces persisted before
+     * the field existed must keep rendering.
+     *
+     * The shared half is the trace variant's own schema (one owner, one shape
+     * for the routing decision); only the drop list, which exists on the
+     * retriever's events rather than on the routing event, is declared here.
      */
     routing: v.optional(
       v.object({
-        sources: v.array(v.pipe(v.string(), v.minLength(1))),
-        filters: v.record(
-          v.string(),
-          v.pipe(v.array(v.pipe(v.string(), v.minLength(1))), v.minLength(1)),
+        ...sourceRoutingDetailSchema.entries,
+        relaxed: v.optional(
+          v.array(
+            v.object({
+              key: v.pipe(v.string(), v.minLength(1)),
+              values: v.pipe(v.array(v.pipe(v.string(), v.minLength(1))), v.minLength(1)),
+            }),
+          ),
         ),
       }),
     ),

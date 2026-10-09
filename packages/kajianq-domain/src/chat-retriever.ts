@@ -162,16 +162,20 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
               let hits = yield* search(relaxation.active());
               // Filter relaxation: a hint that matches nothing is probed away one
               // dimension at a time, and only a drop that returns hits is adopted.
-              // The policy, its rationale and the one-diagnosis-per-run bound live
-              // in `chat-filter-relaxation.ts`; this loop only runs the searches it
-              // asks for, and records each probe so the trace carries the machinery.
+              // When no single dimension is at fault the sweep ends in ONE
+              // record-level retry with every remaining dimension dropped, so a
+              // wrong hint cannot turn into a refusal for a question the corpus
+              // can serve. The policy, its rationale and the one-diagnosis-per-run
+              // bound live in `chat-filter-relaxation.ts`; this loop only runs the
+              // searches it asks for, and records each probe so the trace carries
+              // the machinery.
               while (hits.length === 0 && relaxation.probing()) {
                 const probe = relaxation.next();
                 if (probe === undefined) break;
                 const retry = yield* search(probe.retained);
                 const adopted = retry.length > 0;
                 if (adopted) {
-                  relaxation.adopt(probe.drop);
+                  relaxation.adopt(probe.dropped);
                   hits = retry;
                 }
                 const run = yield* RunContext;
@@ -179,9 +183,15 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
                   stage: "retriever",
                   kind: "filter_relaxed",
                   detail: {
-                    dropped: {
-                      [probe.drop.key]: [...probe.drop.values],
-                    } as Record<string, string | string[]>,
+                    // Recorded by the store's KEY — the same space `retained` is
+                    // written in, so `intended − dropped` reconstructs what a
+                    // search ran with. The dimension and the key are held
+                    // together by `chat-filter-policy`'s exhaustive map; an entry
+                    // naming EVERY live dimension (with `retained: {}`) is the
+                    // record-level last resort.
+                    dropped: Object.fromEntries(
+                      probe.dropped.map((entry) => [entry.key, [...entry.values]]),
+                    ) as Record<string, string | string[]>,
                     // What the retry actually ran with, adopted or not.
                     retained: probe.retained,
                     track,

@@ -45,7 +45,5 @@ export const sourceRoutingEventSchema = v.object({
   kind: v.literal("source_routing"),
   detail: sourceRoutingDetailSchema,
   cost: v.optional(CostRecordSchema),
-  /** The stage's wall-clock duration, measured by the runner (see `intent`). */
-  durationMs: v.optional(v.pipe(v.number(), v.minValue(0))),
   at: v.pipe(v.number(), v.integer()),
 });

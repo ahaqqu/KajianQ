@@ -98,17 +98,22 @@ export const TraceEventSchema = v.variant("kind", [
     kind: v.literal("filter_relaxed"),
     detail: v.object({
       /**
-       * The ONE inferred filter dimension a search dropped because it matched
-       * nothing, and the values it dropped (a single string, or the list a
-       * set-valued dimension carried). One dimension per event on purpose: the
+       * The inferred filter dimensions a search gave up because they matched
+       * nothing, and the values it gave up (a single string, or the list a
+       * set-valued dimension carried). One dimension per probe on purpose: the
        * search's effective filter record is then `intended − every dropped
        * dimension recorded before it`, so the trace says *which* hint was
-       * wrong instead of "all of them were". Recorded so a relaxation is
-       * VISIBLE machinery, never a silent fallback (traceability rule): the
-       * router's filters are hints inferred by a cheap model, and an inferred
-       * hint that empties the result set makes the answer ungrounded — so the
-       * search is retried without it, and the trace says so. Values were
-       * strings before set-valued dimensions existed; both parse.
+       * wrong instead of "all of them were". An event naming **every** live
+       * dimension at once is the record-level last resort: the sweep found no
+       * single dimension at fault, the record as a SET was what matched
+       * nothing, and one retry with `{}` followed — recorded as an adopted drop
+       * of the whole surviving record, so a wrong hint cannot turn into a
+       * refusal. Recorded so a relaxation is VISIBLE machinery, never a silent
+       * fallback (traceability rule): the router's filters are hints inferred
+       * by a cheap model, and an inferred hint that empties the result set
+       * makes the answer ungrounded — so the search is retried without it, and
+       * the trace says so. Values were strings before set-valued dimensions
+       * existed; both parse.
        */
       dropped: v.record(
         v.string(),
@@ -127,9 +132,11 @@ export const TraceEventSchema = v.variant("kind", [
        * declared order and adopts only a drop that returns hits, so an event with
        * `adopted: false` is a probe that changed nothing — machinery the trace
        * still shows, but not a relaxation the run applied. The record a search
-       * ran with is therefore `intended − every ADOPTED drop before it`. Optional
-       * and absent on traces persisted before probing existed, where every
-       * recorded drop was applied.
+       * ran with is therefore `intended − every ADOPTED drop before it`. When no
+       * single dimension is at fault the probe names every live dimension and
+       * `retained` is `{}` — the record-level last resort. Optional and absent on
+       * traces persisted before probing existed, where every recorded drop was
+       * applied.
        */
       adopted: v.optional(v.boolean()),
       /** Which embedding track the relaxation applied to. */
@@ -142,7 +149,6 @@ export const TraceEventSchema = v.variant("kind", [
       hits: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
     }),
     cost: v.optional(CostRecordSchema),
-    durationMs: v.optional(v.pipe(v.number(), v.minValue(0))),
     at: v.pipe(v.number(), v.integer()),
   }),
   v.object({

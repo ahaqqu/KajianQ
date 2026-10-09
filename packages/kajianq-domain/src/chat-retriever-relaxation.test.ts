@@ -142,13 +142,13 @@ describe("filter relaxation gives up one dimension at a time", () => {
     return { store, calls };
   }
 
-  const runWith = (
+  const runWith = <T = unknown>(
     store: unknown,
     recorded: { kind: string }[],
     filters: KajianQFilters,
     /** How many sub-queries the run fans out over (one embed vector each). */
     subQueries = 2,
-  ) => {
+  ): Promise<T> => {
     const retriever = createKajianQRetriever({
       store: store as never,
       embedder: {
@@ -180,8 +180,63 @@ describe("filter relaxation gives up one dimension at a time", () => {
           record: (e: unknown) => recorded.push(e as { kind: string }),
         } as never,
       ) as never,
-    ) as Promise<unknown>;
+    ) as Promise<T>;
   };
+
+  it("retries the WHOLE record once when no single hint is at fault", async () => {
+    // Two dimensions are unsatisfiable at once — the expected state today, since
+    // no corpus row carries `principleTags` or `textLayer` while the router prompt
+    // offers both as hints. Every per-dimension probe still carries the other
+    // dead dimension and returns nothing, so the sweep alone would leave the run
+    // searching a record that matches no rows: an empty context and a refusal for
+    // a question the corpus can serve.
+    const { store, calls } = makeStore(["principleTags", "textLayer"]);
+    const recorded: { kind: string }[] = [];
+    const chunks = await runWith<{ id: string }[]>(store, recorded, {
+      principleTags: ["yusr"],
+      textLayer: ["sharh"],
+      grade: ["sahih"],
+    });
+
+    // The probes run in the declared order, each omitting exactly one dimension,
+    // and each is recorded as NOT adopted — the evidence that no single hint was
+    // at fault.
+    expect(calls.slice(0, 4)).toEqual([
+      { principleTags: ["yusr"], textLayer: ["sharh"], grade: ["sahih"] },
+      { textLayer: ["sharh"], grade: ["sahih"] },
+      { principleTags: ["yusr"], grade: ["sahih"] },
+      { principleTags: ["yusr"], textLayer: ["sharh"] },
+    ]);
+    // Then ONE record-level retry with `{}`, adopted: the record as a SET was
+    // what matched nothing. This is the pre-#15 rescue, recorded as a whole-record
+    // drop on the trace instead of a silent widening — and it is what keeps a
+    // wrong hint from turning into a refusal.
+    expect(calls[4]).toEqual({});
+    expect(chunks.length).toBeGreaterThan(0);
+
+    const relaxed = recorded.filter((e) => e.kind === "filter_relaxed") as unknown as {
+      detail: {
+        dropped: Record<string, string[]>;
+        retained: Record<string, string[]>;
+        hits: number;
+        adopted: boolean;
+      };
+    }[];
+    expect(relaxed.map((e) => [e.detail.dropped, e.detail.adopted])).toEqual([
+      [{ principleTags: ["yusr"] }, false],
+      [{ textLayer: ["sharh"] }, false],
+      [{ grade: ["sahih"] }, false],
+      // Every live dimension at once: the record-level last resort.
+      [{ principleTags: ["yusr"], textLayer: ["sharh"], grade: ["sahih"] }, true],
+    ]);
+    expect(relaxed.at(-1)?.detail.retained).toEqual({});
+    expect(relaxed.at(-1)?.detail.hits).toBeGreaterThan(0);
+
+    // Adopted for the RUN: the fan-out's remaining searches (the fallback track
+    // and the second sub-query) run unfiltered rather than paying the sweep again.
+    expect(calls).toHaveLength(8);
+    for (const call of calls.slice(4)) expect(call).toEqual({});
+  });
 
   it("gives up only the dimension that matched nothing, and records what survived", async () => {
     const { store, calls } = makeStore(["textLayer"]);
@@ -249,40 +304,5 @@ describe("filter relaxation gives up one dimension at a time", () => {
     // The probe that changed nothing is still machinery on the trace, and the
     // adopted one names the record the search went on to run with.
     expect(relaxed[1]?.detail.retained).toEqual({ grade: ["sahih"] });
-  });
-
-  it("probes in the declared order, cheapest-to-be-wrong hint first", async () => {
-    const { store, calls } = makeStore(["principleTags", "textLayer"]);
-    const recorded: { kind: string }[] = [];
-    await runWith(store, recorded, {
-      principleTags: ["yusr"],
-      textLayer: ["sharh"],
-      grade: ["sahih"],
-    });
-    // Two dimensions block at once, so no single drop finds the context: the
-    // probes run in the declared order, each omitting exactly one dimension, and
-    // every one of them is recorded as NOT adopted — the run's live record is
-    // left exactly as the route decided it, because nothing was proven wrong.
-    expect(calls[0]).toEqual({ principleTags: ["yusr"], textLayer: ["sharh"], grade: ["sahih"] });
-    expect(calls[1]).toEqual({ textLayer: ["sharh"], grade: ["sahih"] });
-    expect(calls[2]).toEqual({ principleTags: ["yusr"], grade: ["sahih"] });
-    expect(calls[3]).toEqual({ principleTags: ["yusr"], textLayer: ["sharh"] });
-    // One sweep for the run: the fan-out's remaining searches pay nothing.
-    expect(calls).toHaveLength(7);
-    const relaxed = recorded.filter((e) => e.kind === "filter_relaxed") as unknown as {
-      detail: { dropped: Record<string, string[]>; adopted: boolean; hits: number };
-    }[];
-    expect(relaxed.map((e) => [Object.keys(e.detail.dropped)[0], e.detail.adopted])).toEqual([
-      ["principleTags", false],
-      ["textLayer", false],
-      ["grade", false],
-    ]);
-    // Nothing was adopted, so nothing was relaxed: every search after the sweep
-    // still runs with the route's own record, all three dimensions intact.
-    expect(calls.at(-1)).toEqual({
-      principleTags: ["yusr"],
-      textLayer: ["sharh"],
-      grade: ["sahih"],
-    });
   });
 });

@@ -30,17 +30,31 @@ import { nextRelaxation, type FilterEntry } from "./chat-filter-policy";
  * which is a property of the request rather than of one sub-query's embedding, so
  * a sweep already made holds for the searches after it — a request the filters
  * cannot serve pays for the probing once, not once per sub-query per track.
+ *
+ * **The record-level last resort.** A per-dimension probe can only help when
+ * *exactly one* dimension is unsatisfiable: with two, every probe still carries
+ * the other and every probe returns nothing. Two dead dimensions are the
+ * expected state today, not a corner case — no row carries `madzhab`,
+ * `textLayer` or `principleTags`, and the router prompt offers all three as
+ * hints. So when the sweep exhausts with nothing adopted, the policy hands out
+ * **one more** probe that omits every live dimension at once: the retry runs
+ * with `{}`, and the earlier `adopted: false` probes stay on the trace as the
+ * evidence that no single dimension was at fault. Without it a wrong hint turns
+ * into a refusal for a question the corpus can serve — which is the failure the
+ * pre-#15 unfiltered retry rescued, and the reason this policy exists at all.
  */
 export type FilterRelaxation = {
   /** The record the next search should run with. */
   active(): Record<string, string[]>;
   /**
-   * The next probe to run for a zero-hit search — the dimension to omit and the
-   * record to omit it from — or `undefined` once there is nothing left to try.
+   * The next probe to run for a zero-hit search — the dimensions to omit and the
+   * record to omit them from — or `undefined` once there is nothing left to try.
+   * One dimension for a per-dimension probe; every live dimension for the
+   * record-level last resort.
    */
-  next(): { drop: FilterEntry; retained: Record<string, string[]> } | undefined;
+  next(): { dropped: readonly FilterEntry[]; retained: Record<string, string[]> } | undefined;
   /** Keep a drop for the rest of the run, because its probe found hits. */
-  adopt(drop: FilterEntry): void;
+  adopt(dropped: readonly FilterEntry[]): void;
   /** This search is over: stop probing for the remainder of the run. */
   settle(): void;
   /** Whether a zero-hit search may still probe. */
@@ -61,15 +75,19 @@ export function createFilterRelaxation(intended: readonly FilterEntry[]): Filter
     next: () => {
       if (settled) return undefined;
       const drop = nextRelaxation(live.filter((entry) => !tried.includes(entry)));
-      if (drop === undefined) {
-        settled = true;
-        return undefined;
+      if (drop !== undefined) {
+        tried.push(drop);
+        return { dropped: [drop], retained: record(live.filter((entry) => entry !== drop)) };
       }
-      tried.push(drop);
-      return { drop, retained: record(live.filter((entry) => entry !== drop)) };
+      // Every dimension in play survived its own probe, so no single hint is at
+      // fault: the record as a SET is what matched nothing. One last resort,
+      // then this run is out of diagnoses either way.
+      settled = true;
+      if (live.length === 0) return undefined;
+      return { dropped: [...live], retained: record([]) };
     },
-    adopt: (drop) => {
-      live = live.filter((entry) => entry !== drop);
+    adopt: (dropped) => {
+      live = live.filter((entry) => !dropped.includes(entry));
       settled = true;
     },
     settle: () => {

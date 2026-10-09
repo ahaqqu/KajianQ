@@ -1,7 +1,12 @@
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
-import { metadataFilters } from "./chat-filter-policy";
+import { RunContext } from "@app/rag-core";
+import { createKajianQRetriever } from "./chat-retriever";
 import { routeFilters, sourceRoutingDetail, sourceTypesOf } from "./chat-source-routing";
 import type { SourceRoutingInput } from "./chat-source-routing";
+import { routedQuery } from "./test-utils/routed-query";
+
+const cost = { modelId: "m", tokensIn: 1, tokensOut: 1, latencyMs: 1, costMicroUsd: 1 };
 
 /**
  * **Smart Router stage 3** (spec §3.3 item 3, CONTEXT.md "Smart Router"): the
@@ -109,19 +114,66 @@ describe("routeFilters decides, the reply only hints", () => {
 });
 
 describe("the decision the trace publishes is the record retrieval runs with", () => {
-  it("projects the same filter record the retriever maps", () => {
+  it("hands the retriever the very record the trace published", async () => {
     const filters = routeFilters(
       reading({ category: "fikih", needsPrinciple: true, principleTags: ["yusr"] }),
     );
     const detail = sourceRoutingDetail(filters);
     expect(detail.sources).toEqual(["quran", "hadith", "kitab", "principle"]);
-    // One mapping, two readers — the trace entry cannot disagree with the SQL.
-    expect(detail.filters).toEqual(metadataFilters(filters));
+
+    // The coupling, asserted across the seam instead of against the mapping
+    // that produced the value: the REAL retriever's first store call must carry
+    // the record the trace published. `expect(detail.filters).toEqual(
+    // metadataFilters(filters))` could not fail — the projection IS that call —
+    // so it pinned nothing.
+    const calls: (Record<string, string | readonly string[]> | undefined)[] = [];
+    const retriever = createKajianQRetriever({
+      store: {
+        similaritySearch: (
+          _track: string,
+          _embedding: readonly number[],
+          o: { filters?: Record<string, string | readonly string[]> },
+        ) => {
+          calls.push(o.filters);
+          return Effect.succeed([
+            {
+              child: { id: "c1", textAr: "نص", textId: null, metadata: {} },
+              distance: 0.1,
+              rankDense: 1,
+            },
+          ]);
+        },
+        listDocChildNeighboursByChildIds: () => Effect.succeed([]),
+      } as never,
+      embedder: { embed: () => Effect.succeed({ vectors: [[0.1, 0.2]], cost }) },
+      bridge: ((e: unknown) => Effect.runPromise(e as never)) as never,
+      limit: 5,
+    });
+    await Effect.runPromise(
+      Effect.provideService(
+        retriever.retrieve(routedQuery("apa hukumnya", { intent: "ruling", filters })) as never,
+        RunContext,
+        { config: {}, now: () => 1, record: () => {} } as never,
+      ) as never,
+    );
+
+    expect(calls[0]).toEqual(detail.filters);
   });
 
   it("records an EMPTY source list rather than omitting the decision", () => {
     // "Every source was in play" must not read the same as "nothing recorded".
     expect(sourceRoutingDetail({})).toEqual({ sources: [], filters: {} });
+  });
+
+  it("normalizes the sources it publishes from the same entries as the record", () => {
+    // One `filterEntries` pass produces both halves, so a caller value the store
+    // would simply not bind — blank, untidy, duplicated — is absent from the
+    // published `sources` too. Reading them from the raw array instead let a
+    // blank reach the contract's `minLength(1)` and fail the run at its END,
+    // after the spend, rather than at the router that decided (A5).
+    expect(
+      sourceRoutingDetail({ sourceType: ["quran", "", " quran ", "hadith"] } as never),
+    ).toEqual({ sources: ["quran", "hadith"], filters: { sourceType: ["quran", "hadith"] } });
   });
 
   it("fails at the stage that decided, before any search runs", () => {

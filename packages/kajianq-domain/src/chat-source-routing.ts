@@ -1,4 +1,4 @@
-import { metadataFilters } from "./chat-filter-policy";
+import { entriesToFilters, filterEntries } from "./chat-filter-policy";
 import type { KajianQFilters, RoutableSource } from "./filters";
 import type { Intent, PrincipleTag, SubjectArea } from "./taxonomy";
 
@@ -102,12 +102,27 @@ export function sourceTypesOf(input: SourceRoutingInput): readonly RoutableSourc
  * `FilterNotExpressibleError` for a dimension the store cannot express, from
  * the stage that decided it: the route fails before a single search runs,
  * rather than answering a question it did not choose.
+ *
+ * Both halves are read from one `filterEntries` pass, so the normalized filter
+ * record and the selected sources cannot disagree either: `sources` carries the
+ * same trimmed, deduplicated, blank-free values the store binds, and a caller
+ * value the store would simply not bind fails here — at the router, before the
+ * spend — instead of failing the contract at the end of the run.
  */
 export function sourceRoutingDetail(filters: KajianQFilters): {
   /** The selected source types; empty means every source was in play. */
   sources: string[];
-  /** The metadata filter record retrieval runs with, keyed as the store binds. */
+  /**
+   * The metadata filter record the route decided retrieval should run with,
+   * keyed as the store binds. A run may give dimensions up (the retriever's
+   * relaxation) — those drops are `filter_relaxed` events, not this record.
+   */
   filters: Record<string, string[]>;
 } {
-  return { sources: [...(filters.sourceType ?? [])], filters: metadataFilters(filters) };
+  const entries = filterEntries(filters);
+  const sourceType: keyof KajianQFilters = "sourceType";
+  return {
+    sources: [...(entries.find((entry) => entry.dimension === sourceType)?.values ?? [])],
+    filters: entriesToFilters(entries),
+  };
 }
