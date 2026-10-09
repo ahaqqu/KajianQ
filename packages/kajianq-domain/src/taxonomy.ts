@@ -52,9 +52,14 @@ export type PrincipleTag = (typeof PRINCIPLE_TAGS)[number];
 
 /**
  * Sub-query role (CONTEXT.md "Sub-query") — what a decomposed retrieval query
- * is for. The first three are Smart Router stage 2's composition rules; the
- * remaining ones arrive with the corpus and knowledge layers that can retrieve
- * them.
+ * is for.
+ *
+ * All four are Smart Router stage 2's composition rules, and all four fire as
+ * rules on today's path: `factual` always, `principle` when the question needs a
+ * lens, `dalil` when the category is fikih, and `sanad` when it is hadith — see
+ * `requiredRoles` in `chat-router-decompose.ts`. No role here waits for a later
+ * layer: the corpus and knowledge layers that arrive later add the content a
+ * role retrieves, not the role itself.
  */
 export const SUB_QUERY_ROLES = ["factual", "principle", "dalil", "sanad"] as const;
 export type SubQueryRole = (typeof SUB_QUERY_ROLES)[number];
