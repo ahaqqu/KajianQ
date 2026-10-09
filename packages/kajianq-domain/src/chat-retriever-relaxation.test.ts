@@ -69,8 +69,7 @@ function makeRetriever(opts: { hitsWhenFiltered: number }) {
   return { retriever, calls, recorded, run };
 }
 
-const routed = (filters: KajianQFilters) =>
-  routedQuery("apa maksud ayat kursi", { filters }) as never;
+const routed = (filters: KajianQFilters) => routedQuery("apa maksud ayat kursi", { filters });
 
 describe("retriever filter relaxation", () => {
   it("retries unfiltered when the inferred filters match nothing, and records the drop", async () => {

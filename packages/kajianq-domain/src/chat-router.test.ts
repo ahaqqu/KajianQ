@@ -157,10 +157,18 @@ describe("createKajianQRouter", () => {
   it("offers exactly the declared vocabularies in the prompt", () => {
     // The prompt *composes* its vocabulary lists from their owners (taxonomy,
     // filters) rather than re-spelling them, so a value cannot reach the reader
-    // unrequested (review A1) and a value the model is offered cannot be
-    // undeclared. This asserts the forward direction over all six vocabularies
-    // — the guard the prompt's own comment used to promise for three of them
-    // (review B1).
+    // unrequested (review A1). This asserts the forward direction over all
+    // seven of those lists — the guard the prompt's own comment used to promise
+    // for three of them (review B1).
+    //
+    // The reverse direction — a vocabulary value in the prompt that no list
+    // declares — is not asserted here, and this loop cannot assert it: the
+    // prompt's one hand-written line (the `subQueries` rules) names `factual`,
+    // `principle`, `dalil`, `sanad` and the two subject areas it keys on as
+    // prose. What ties those names to their lists is the compiler, not this
+    // test: `chat-router-output.ts` names each through the owner's own type, so
+    // renaming one there fails the build (review R1-B1). A vocabulary literal
+    // hand-written anywhere else would be this test's blind spot.
     for (const value of [
       ...INTENTS,
       ...SUBJECT_AREAS,
