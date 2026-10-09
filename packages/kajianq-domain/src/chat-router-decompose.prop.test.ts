@@ -1,6 +1,11 @@
 import { fc, test as fcTest } from "@fast-check/vitest";
 import { describe, expect } from "vitest";
-import { decomposeQuery, MAX_SUB_QUERIES, type DecompositionInput } from "./chat-router-decompose";
+import {
+  decomposeQuery,
+  MAX_SUB_QUERIES,
+  MIN_SUB_QUERIES,
+  type DecompositionInput,
+} from "./chat-router-decompose";
 import { PRINCIPLE_TAGS, SUBJECT_AREAS, SUB_QUERY_ROLES } from "./taxonomy";
 
 /**
@@ -10,17 +15,23 @@ import { PRINCIPLE_TAGS, SUBJECT_AREAS, SUB_QUERY_ROLES } from "./taxonomy";
  * because the repair is the only thing standing between a cheap model's reply
  * and the stage's published contract.
  *
- * Laws under test:
+ * One `fcTest.prop` case per law, in this order:
  *   1. the ceiling holds: never more than `MAX_SUB_QUERIES`;
  *   2. every rule that fired is covered: a factual sub-query always exists, a
  *      principle one whenever the question needs a lens, and the dalil/sanad
  *      ones for fikih/hadith;
- *   3. no two sub-queries carry the same text (duplicates waste an embed slot
+ *   3. the floor holds on distinct texts: the stage returns a single sub-query
+ *      only when that sub-query *is* the question — never a padded
+ *      near-duplicate of it (`MIN_SUB_QUERIES`);
+ *   4. no two sub-queries carry the same text (duplicates waste an embed slot
  *      and make the Trace claim angles the model never offered);
- *   4. every kept sub-query has non-empty text and, if labelled, a role from
- *      the vocabulary — and a role is claimed at most once;
- *   5. re-running the repair over its own output changes nothing but the
- *      provenance labels (idempotence over text and role).
+ *   5. every kept sub-query has non-empty text and, if labelled, a role from
+ *      the vocabulary (a role may repeat: the model's own entries are kept as
+ *      it wrote them, and only the *rules* are deduplicated by role);
+ *   6. nothing is returned only when there was nothing to search;
+ *   7. re-running the repair over its own output changes nothing but the
+ *      provenance labels (idempotence over text and role);
+ *   8. every entry is marked as the model's or a rule's.
  */
 
 const subQueryArb: fc.Arbitrary<{ text: string; role?: string }> = fc
@@ -62,6 +73,9 @@ const inputArb: fc.Arbitrary<DecompositionInput> = fc
 const shapeOf = (subs: readonly { text: string; role?: string }[]) =>
   subs.map((sub) => ({ text: sub.text, role: sub.role }));
 
+/** The repair's own duplicate key, restated: what makes two texts "the same text". */
+const norm = (text: string): string => text.trim().replace(/\s+/g, " ").toLowerCase();
+
 describe("decomposeQuery laws", () => {
   fcTest.prop([inputArb])("never exceeds the stage's ceiling", (input) => {
     expect(decomposeQuery(input).length).toBeLessThanOrEqual(MAX_SUB_QUERIES);
@@ -81,6 +95,22 @@ describe("decomposeQuery laws", () => {
     if (input.category === "fikih") expect(roles).toContain("dalil");
     if (input.category === "hadith") expect(roles).toContain("sanad");
   });
+
+  fcTest.prop([answerableArb])(
+    "returns one sub-query only when that sub-query is the question",
+    (input) => {
+      const subs = decomposeQuery(input);
+      if (subs.length >= MIN_SUB_QUERIES) return;
+      // Contrapositive of the floor: whenever the stage drops below
+      // `MIN_SUB_QUERIES` it must have nothing but the caller's own question to
+      // search — a model reply that echoed the question, or no usable sub-query
+      // at all. Anything else (a model text of its own, or a rule beyond
+      // `factual`) reaches the floor by construction; padding to two here would
+      // put a synthetic near-duplicate in the Trace.
+      expect(subs).toHaveLength(1);
+      expect(norm(subs[0]?.text ?? "")).toBe(norm(input.question));
+    },
+  );
 
   fcTest.prop([inputArb])("keeps every sub-query's text distinct and non-empty", (input) => {
     const subs = decomposeQuery(input);

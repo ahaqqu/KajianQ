@@ -5,7 +5,8 @@ import { RunContext, type CostRecord } from "@app/rag-core";
 import { createKajianQRouter, type RouterProvider } from "./chat-router";
 import { ROUTER_SYSTEM_PROMPT } from "./chat-router-output";
 import type { KajianQFilters } from "./filters";
-import { PRINCIPLE_TAGS, SUBJECT_AREAS, SUB_QUERY_ROLES } from "./taxonomy";
+import { GRADES, MADZHABS, TEXT_LAYERS } from "./filters";
+import { INTENTS, PRINCIPLE_TAGS, SUBJECT_AREAS, SUB_QUERY_ROLES } from "./taxonomy";
 
 /**
  * The router stage (#14) — Smart Router stages 1–2 at the seam. It had no test
@@ -145,15 +146,30 @@ describe("createKajianQRouter", () => {
     const routed = (await h.route({
       text: "Apa hukum riba?",
       filters: { madzhab: "hambali" },
-    })) as { filters: KajianQFilters };
+    })) as { filters: KajianQFilters; attributes: Record<string, unknown> };
     expect(routed.filters).toEqual({ madzhab: "hambali" });
+    // The fallback applied those filters to retrieval, so the payload that says
+    // what was understood carries them too — `{fallback: true}` alone would
+    // leave a trace reader unable to tell what the route ran with (review A4).
+    expect(routed.attributes).toEqual({ fallback: true, madzhab: "hambali" });
   });
 
   it("offers exactly the declared vocabularies in the prompt", () => {
-    // One source of truth: a value added to the taxonomy without reaching the
-    // prompt would be unclassifiable, and a value the prompt offers that the
-    // taxonomy does not declare would be dropped on arrival.
-    for (const value of [...SUBJECT_AREAS, ...PRINCIPLE_TAGS, ...SUB_QUERY_ROLES]) {
+    // The prompt *composes* its vocabulary lists from their owners (taxonomy,
+    // filters) rather than re-spelling them, so a value cannot reach the reader
+    // unrequested (review A1) and a value the model is offered cannot be
+    // undeclared. This asserts the forward direction over all six vocabularies
+    // — the guard the prompt's own comment used to promise for three of them
+    // (review B1).
+    for (const value of [
+      ...INTENTS,
+      ...SUBJECT_AREAS,
+      ...PRINCIPLE_TAGS,
+      ...SUB_QUERY_ROLES,
+      ...MADZHABS,
+      ...GRADES,
+      ...TEXT_LAYERS,
+    ]) {
       expect(ROUTER_SYSTEM_PROMPT, `prompt is missing "${value}"`).toContain(value);
     }
   });

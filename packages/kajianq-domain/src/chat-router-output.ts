@@ -9,6 +9,10 @@ import {
   type TextLayer,
 } from "./filters";
 import {
+  INTENTS,
+  PRINCIPLE_TAGS,
+  SUBJECT_AREAS,
+  SUB_QUERY_ROLES,
   isIntent,
   isPrincipleTag,
   isSubjectArea,
@@ -16,6 +20,7 @@ import {
   type PrincipleTag,
   type SubjectArea,
 } from "./taxonomy";
+import type { ModelSubQuery } from "./chat-router-decompose";
 
 /**
  * The router LLM's reply, read into the domain's classification vocabulary
@@ -83,9 +88,6 @@ export function extractJsonObject(text: string): unknown {
     return undefined;
   }
 }
-
-/** The model's own sub-query, before the decomposition rules run. */
-export type ModelSubQuery = { text: string; role?: string };
 
 /** What the domain read out of one reply. */
 export type RouterReading = {
@@ -209,23 +211,33 @@ function narrowTextLayer(value: string | undefined): TextLayer | undefined {
 
 /**
  * The router's prompt — stages 1–2 in one cheap-tier call: the classification,
- * the filters, and the role-tagged sub-queries. The composition rules are
+ * the filter hints, and the role-tagged sub-queries. The composition rules are
  * stated here for the model, and enforced afterwards by the domain (a cheap
  * model obeying a count is exactly what it does not reliably do); a sub-query
  * the model leaves out for a rule that fired is added deterministically, and
  * the Trace shows which one.
+ *
+ * Every vocabulary the reply may use is *composed* from the list that owns it
+ * (the taxonomy and the filter dimensions) at module load, never re-spelled as
+ * prose here — so a value added to one list is offered to the model in the
+ * same edit, and a value the reader would narrow cannot go unrequested. This
+ * is the same one-owner rule the reader's narrowing follows.
  */
+const alternatives = (values: readonly string[]): string => values.join("|");
+
 export const ROUTER_SYSTEM_PROMPT = [
   "You are the routing stage of a classical Islamic knowledge retrieval system.",
   "Given the user's question, reply with ONLY a JSON object:",
-  '{"intent": "factual|ruling|analogy|comparison|history|aqidah",',
-  ' "category": "quran|hadith|tafsir|fikih|aqidah|tasawuf|sejarah|adab|general",',
-  ' "madzhab": "" | "hanafi"|"maliki"|"syafii"|"hambali",',
+  `{"intent": "${alternatives(INTENTS)}",`,
+  ` "category": "${alternatives(SUBJECT_AREAS)}",`,
+  ` "madzhab": "" | "${alternatives(MADZHABS)}",`,
+  ` "grade": "" | "${alternatives(GRADES)}",`,
+  ` "textLayer": "" | "${alternatives(TEXT_LAYERS)}",`,
   ' "needsPrinciple": true | false,',
-  ' "principleTags": [] | ["yusr"|"rahmah"|"masyaqqah"|"dharar"|"umum_balwa"|"istihsan"|"sad_zari"],',
+  ` "principleTags": [] | ["${alternatives(PRINCIPLE_TAGS)}"],`,
   ' "confidence": 0.0-1.0,',
   ' "reasoning": "one short sentence",',
-  ' "subQueries": [{"text": "a focused retrieval query", "role": "factual"|"principle"|"dalil"|"sanad"}]}',
+  ` "subQueries": [{"text": "a focused retrieval query", "role": "${alternatives(SUB_QUERY_ROLES)}"}]}`,
   "Rules for subQueries — 2 to 4 of them, each phrased as a retrieval query:",
   'always one "factual"; one "principle" when needsPrinciple; one "dalil" when category is fikih; one "sanad" when category is hadith.',
   "Mix the question's language with its classical terms, and use different angles rather than repeating the question.",

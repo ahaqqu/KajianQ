@@ -11,8 +11,11 @@ one, never on an invented classification.
 Decomposition is **repaired deterministically after the model replies**: every composition rule that fired has a
 sub-query carrying its role (a factual one always; a principle one when the question needs a lens; a Quranic dalil one
 for fikih; a sanad one for hadith), a missing one is added from a template, and the set is bounded to the stage's
-published floor and ceiling. Each sub-query records what it is for and what produced it — the model, a rule, or the
-fallback — so a repaired route reads as repaired.
+ceiling, with a floor on **distinct retrieval texts**: 2–4 whenever the caller's question plus a differing model
+sub-query or a rule beyond `factual` gives two texts to search, and exactly 1 when the question is the only one — the
+floor is never padded with a near-duplicate, which would claim a decomposition that never happened. Each sub-query
+records what it is for and what produced it — the model, a rule, or the fallback — so a repaired route reads as
+repaired on the persisted trace (the user-visible frame projects the intent and the sub-query texts).
 
 The payload is **Trace content**: the classification rides the `intent` event's typed confidence and reasoning slots
 plus its opaque attributes; each sub-query rides its own `subquery` event with its role and origin. **One module in

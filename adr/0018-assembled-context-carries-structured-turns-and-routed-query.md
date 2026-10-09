@@ -57,5 +57,7 @@ recording tokens, latency, and cost on the trace. The Retriever reads typed filt
 re-casting, and a deterministic rule keyed on what the user actually asked reads the stamped verbatim text. The domain
 pack instantiates the typed query at the product boundary, and the engine never imports that type. A turn's role being
 a string is deliberate: the engine does not name roles, and a shared role vocabulary, if one is ever needed, lives in
-the domain pack. One stage signature moved for this — `Assembler.assemble` — and the assembled context's own shape is
-unchanged.
+the domain pack. Two stage interfaces moved for this, and one engine field: `Assembler.assemble` now receives the
+routed query, `Router.route` returns the router's own reading (`StageEffect<Routing<TFilters>>`) instead of the run's
+query, and `RoutedQuery.sourceText` is stamped by the runner rather than optional — so a second consumer implementing
+`Router`, the engine's stated reuse boundary, changes with them. The assembled context's own shape is unchanged.

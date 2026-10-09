@@ -112,6 +112,11 @@ function fallbackRouting(
     intent: "factual",
     subQueries: [{ text: question, role: "factual", origin: "fallback" }],
     filters: overrides,
-    attributes: { fallback: true },
+    // The effective filters reach retrieval, so they belong in the payload that
+    // claims to say what was understood: a trace reader must be able to tell
+    // which filters this route actually ran with (chat-router-output.ts's
+    // `attributes` contract). `fallback: true` is what marks the route as the
+    // deterministic one; it is never the whole payload.
+    attributes: { fallback: true, ...overrides },
   };
 }

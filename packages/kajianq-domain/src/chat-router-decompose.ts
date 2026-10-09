@@ -26,9 +26,30 @@ import {
  * Pure: same input, same sub-queries, no clock, no model, no store.
  */
 
-/** The stage's bound. The floor is what the model's reply can carry; the ceiling is unconditional. */
+/**
+ * The stage's bound. The ceiling is unconditional; the floor is a floor on
+ * *distinct retrieval texts*, not a promise of two entries.
+ *
+ * The set is 2–4 whenever two distinct texts are actually available — the
+ * caller's verbatim question plus either a model sub-query that differs from
+ * it or a composition rule beyond `factual`. It is **1** when the only text
+ * available is the question itself: the model phrased nothing, phrased the
+ * question back, or phrased nothing usable (`SubQueryReplySchema` accepts a
+ * bare string, and a cheap model echoing the question is exactly what the
+ * prompt's "different angles" rule is written against). Padding that case to
+ * two would put a synthetic near-duplicate of the question in the trace and
+ * claim a decomposition that never happened — see `decomposeQuery`'s own note.
+ */
 export const MIN_SUB_QUERIES = 2;
 export const MAX_SUB_QUERIES = 4;
+
+/**
+ * One sub-query as the router's reader hands it over: the model's own text and
+ * its claimed role, before the rules run and before any origin is assigned.
+ * Owned here beside `DecompositionInput` — the consumer — and imported by the
+ * reader, so the two ends of that hand-off cannot drift apart unnoticed.
+ */
+export type ModelSubQuery = { text: string; role?: string };
 
 export type DecompositionInput = {
   /** The verbatim caller question — the factual sub-query's text. */
@@ -37,15 +58,18 @@ export type DecompositionInput = {
   principleTags: readonly PrincipleTag[];
   category?: SubjectArea;
   /** The model's own sub-queries, in its order. */
-  modelSubQueries: readonly { text: string; role?: string }[];
+  modelSubQueries: readonly ModelSubQuery[];
 };
 
 /**
  * The sub-queries retrieval fans out over: the model's own, plus the ones the
- * rules require, bounded and role-labelled. A model reply that carried no
- * sub-query at all yields the single factual fallback — the floor is not
- * padded with a synthetic near-duplicate of the question, which would make the
- * Trace claim a decomposition that never happened.
+ * rules require, bounded and role-labelled.
+ *
+ * The floor is a floor on distinct texts (see `MIN_SUB_QUERIES`): it adds the
+ * caller's verbatim question — a genuinely different retrieval query from the
+ * model's paraphrase, the same reason the engine carries `sourceText` — but it
+ * is deduplicated like every other entry, so a model that only echoed the
+ * question leaves exactly one entry rather than two spellings of one query.
  */
 export function decomposeQuery(input: DecompositionInput): SubQuery[] {
   const kept: SubQuery[] = [];
@@ -71,11 +95,14 @@ export function decomposeQuery(input: DecompositionInput): SubQuery[] {
     push({ text: ruleText(role, input), role, origin: "rule" });
   }
 
-  // The floor: the model phrased one sub-query and no rule fired (a plain
-  // factual question outside fikih/hadith). The verbatim question is a
-  // genuinely different retrieval query from the model's paraphrase — the
-  // same reason the engine carries `sourceText` — so it is added rather than
-  // leaving the stage at a single query.
+  // The floor, on distinct texts: the model phrased one sub-query and no rule
+  // beyond the factual one fired (a plain factual question outside
+  // fikih/hadith). The verbatim question is a genuinely different retrieval
+  // query from the model's paraphrase — the same reason the engine carries
+  // `sourceText` — so it is added rather than leaving the stage at a single
+  // query. It runs through the same dedup as everything else: when the model's
+  // only entry already *is* the question there is no second distinct text to
+  // add, and one entry is the honest answer (`MIN_SUB_QUERIES`).
   if (kept.length < MIN_SUB_QUERIES) {
     push({ text: input.question.trim(), role: "factual", origin: "rule" });
   }

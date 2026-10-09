@@ -72,7 +72,12 @@ describe("decomposeQuery", () => {
     );
     expect(hadith.find((s) => s.role === "sanad")?.origin).toBe("rule");
 
-    // A subject area with no rule of its own adds nothing beyond the factual.
+    // A subject area with no rule of its own adds nothing beyond the factual —
+    // so the floor is what put the second entry there, and both entries are
+    // labelled `factual`. That repeat is deliberate, not a duplicate: the
+    // caller's verbatim question and the model's paraphrase are two different
+    // retrieval texts for the same role, which is exactly what the floor adds
+    // (review A2 of the fix round).
     const adab = decomposeQuery(
       input({ category: "adab", modelSubQueries: [{ text: "adab makan", role: "factual" }] }),
     );
