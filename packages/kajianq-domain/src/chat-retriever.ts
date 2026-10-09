@@ -17,11 +17,11 @@ import {
   DEFAULT_SCOPE_EXPANSION_CAP,
   expandSurahScope,
   expandVerseNeighbours,
+  createFilterRelaxation,
   filterEntries,
   hierarchyBonus,
   nextRelaxation,
   rrfFuse,
-  type FilterEntry,
   type NeighbourChildRow,
   type ScopeChildRow,
   type TrackHit,
@@ -145,9 +145,7 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
           // `IS NOT NULL` guard screens — so an unsatisfiable dimension is
           // unsatisfiable for every search here, and probing it once per
           // sub-query per track would pay repeatedly for the same answer.
-          let live: readonly FilterEntry[] = intended;
-          const activeFilters = (): Record<string, string[]> =>
-            Object.fromEntries(live.map((entry) => [entry.key, [...entry.values]]));
+          const relaxation = createFilterRelaxation(intended);
           const lists: TrackHit[][] = [];
           for (let i = 0; i < routed.subQueries.length; i += 1) {
             const vector = embedded.vectors[i];
@@ -161,39 +159,40 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
                     ),
                   catch: (cause: unknown) => ({ cause }),
                 });
-              let hits = yield* search(activeFilters());
-              // Filter relaxation, ONE DIMENSION AT A TIME. The router's filters
-              // are hints inferred by a cheap model and it does not reliably
-              // leave unconstrained attributes empty (observed: a Quran question
-              // routed with `textLayer: "sharh"`), so a hint that matches nothing
-              // is dropped and the search retried — an empty context makes the
-              // answer uncitable, which is far worse than a relaxed search. But
-              // dropping the WHOLE set, as this once did, silently widened the
-              // question: a `grade` hint screening out dhaif material vanished
-              // together with the wrong `textLayer`, and the trace could not say
-              // which hint was at fault. Each drop is now its own recorded event,
-              // in a declared order, so `intended − dropped` reconstructs the
-              // exact record every search ran with.
-              while (hits.length === 0) {
-                const drop = nextRelaxation(live);
-                if (drop === undefined) break;
-                live = live.filter((entry) => entry !== drop);
-                const retained = activeFilters();
-                const retry = yield* search(retained);
+              let hits = yield* search(relaxation.active());
+              // Filter relaxation: a hint that matches nothing is probed away one
+              // dimension at a time, and only a drop that returns hits is adopted.
+              // The policy, its rationale and the one-diagnosis-per-run bound live
+              // in `chat-filter-relaxation.ts`; this loop only runs the searches it
+              // asks for, and records each probe so the trace carries the machinery.
+              while (hits.length === 0 && relaxation.probing()) {
+                const probe = relaxation.next();
+                if (probe === undefined) break;
+                const retry = yield* search(probe.retained);
+                const adopted = retry.length > 0;
+                if (adopted) {
+                  relaxation.adopt(probe.drop);
+                  hits = retry;
+                }
                 const run = yield* RunContext;
                 run.record({
                   stage: "retriever",
                   kind: "filter_relaxed",
                   detail: {
-                    dropped: { [drop.key]: [...drop.values] } as Record<string, string | string[]>,
-                    retained,
+                    dropped: {
+                      [probe.drop.key]: [...probe.drop.values],
+                    } as Record<string, string | string[]>,
+                    // What the retry actually ran with, adopted or not.
+                    retained: probe.retained,
                     track,
                     hits: retry.length,
+                    adopted,
                   },
                   at: run.now(),
                 });
-                hits = retry;
               }
+              // Whatever this search concluded, it is the run's one diagnosis.
+              relaxation.settle();
               for (const hit of hits) {
                 lists.push([
                   {

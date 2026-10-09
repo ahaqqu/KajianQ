@@ -112,14 +112,26 @@ export const TraceEventSchema = v.variant("kind", [
        */
       dropped: v.record(
         v.string(),
-        v.union([v.string(), v.array(v.pipe(v.string(), v.minLength(1)))]),
+        v.union([v.string(), v.pipe(v.array(v.pipe(v.string(), v.minLength(1))), v.minLength(1))]),
       ),
       /**
-       * The filter record the retry actually ran with — `intended` minus this
-       * drop and every earlier one. Carried directly as well as derivable, so
-       * a reader never has to replay the event order to know what was searched.
+       * The filter record the retry actually ran with — the intended set minus
+       * this dimension. Carried directly as well as derivable, so a reader never
+       * has to replay the event order to know what was searched.
        */
-      retained: v.optional(v.record(v.string(), v.array(v.pipe(v.string(), v.minLength(1))))),
+      retained: v.optional(
+        v.record(v.string(), v.pipe(v.array(v.pipe(v.string(), v.minLength(1))), v.minLength(1))),
+      ),
+      /**
+       * Whether the drop was KEPT. A zero-hit search probes each dimension in a
+       * declared order and adopts only a drop that returns hits, so an event with
+       * `adopted: false` is a probe that changed nothing — machinery the trace
+       * still shows, but not a relaxation the run applied. The record a search
+       * ran with is therefore `intended − every ADOPTED drop before it`. Optional
+       * and absent on traces persisted before probing existed, where every
+       * recorded drop was applied.
+       */
+      adopted: v.optional(v.boolean()),
       /** Which embedding track the relaxation applied to. */
       track: v.pipe(v.string(), v.minLength(1)),
       /**

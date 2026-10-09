@@ -27,7 +27,17 @@ import { CostRecordSchema } from "./trace-primitives";
 /** The variant's `detail` payload, composed into {@link sourceRoutingEventSchema}. */
 export const sourceRoutingDetailSchema = v.object({
   sources: v.array(v.pipe(v.string(), v.minLength(1))),
-  filters: v.record(v.string(), v.array(v.pipe(v.string(), v.minLength(1)))),
+  /**
+   * Each dimension's value set is non-empty. An empty set is not a filter: the
+   * store binds `metadata->>key = ANY('{}')`, which matches NOTHING — so a record
+   * carrying one would read as "this dimension was constrained" while emptying
+   * the search. A dimension that constrains nothing is absent from the record,
+   * and the contract says so rather than leaving it to the writer's care.
+   */
+  filters: v.record(
+    v.string(),
+    v.pipe(v.array(v.pipe(v.string(), v.minLength(1))), v.minLength(1)),
+  ),
 });
 
 export const sourceRoutingEventSchema = v.object({

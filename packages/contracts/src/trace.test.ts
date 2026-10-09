@@ -476,3 +476,132 @@ describe("trace contract", () => {
     ).toBe(false);
   });
 });
+
+/**
+ * Smart Router stage 3's decision on the trace (#15), and the relaxation events
+ * that qualify it.
+ *
+ * The persisted-trace invariant these variants exist for: the routing decision
+ * — which sources were searched and with which filters — is derivable from the
+ * trace, and the relaxation that follows it says which dimension was given up.
+ * A schema that let either side be recorded loosely (an untyped bag, a
+ * single-valued filter map) would let the trace and the search drift apart with
+ * nothing failing.
+ */
+describe("the source_routing variant", () => {
+  const base = { id: "6b1a1e0e-0f4e-4c4c-9b1e-2a2f5f7c9d10", createdAt: 0 };
+
+  it("carries the selected sources and the filter record retrieval runs with", () => {
+    // Opaque labels only: this is the engine contract, and the sources and
+    // filter dimensions a domain pack names must not appear in it.
+    const trace = parseTrace({
+      ...base,
+      events: [
+        {
+          stage: "router",
+          kind: "source_routing",
+          detail: {
+            sources: ["src_a", "src_b"],
+            filters: { dim_a: ["src_a"], dim_b: ["v1", "v2"], dim_c: ["v3"] },
+          },
+          durationMs: 4,
+          at: 1,
+        },
+      ],
+    });
+    expect(trace.events[0]).toMatchObject({
+      kind: "source_routing",
+      detail: { filters: { dim_b: ["v1", "v2"] } },
+    });
+  });
+
+  it("accepts an EMPTY source list and an empty filter record as a decision", () => {
+    // "Every source was in play" is a decision, not a missing field: the run
+    // must be able to say so rather than omit the event.
+    expect(() =>
+      parseTrace({
+        ...base,
+        events: [
+          { stage: "router", kind: "source_routing", detail: { sources: [], filters: {} }, at: 1 },
+        ],
+      }),
+    ).not.toThrow();
+  });
+
+  it("rejects a filter value that is not a non-empty list of non-empty strings", () => {
+    // The store binds strings and string arrays; anything else cannot be
+    // searched, so it must not be persistable as if it had been. An EMPTY set is
+    // included: `key = ANY('{}')` matches nothing, so a record carrying one would
+    // read as "this dimension was constrained" while emptying the search.
+    for (const filters of [{ dim_a: "v1" }, { dim_a: [] }, { dim_a: ["v1", ""] }, { dim_a: [1] }]) {
+      expect(() =>
+        parseTrace({
+          ...base,
+          events: [
+            {
+              stage: "router",
+              kind: "source_routing",
+              detail: { sources: ["src_a"], filters },
+              at: 1,
+            },
+          ],
+        }),
+      ).toThrow();
+    }
+  });
+});
+
+describe("the filter_relaxed event after probing replaced the whole-set drop", () => {
+  const base = { id: "8f0f1a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b", createdAt: 0 };
+
+  it("still parses a pre-probing event whose dropped values were bare strings", () => {
+    // Traces persisted before this ticket recorded one event naming the whole
+    // dropped record with single string values; a panel that read them must
+    // keep rendering (ADR-0007: the Trace only ever ADDS optional fields).
+    const trace = parseTrace({
+      ...base,
+      events: [
+        {
+          stage: "retriever",
+          kind: "filter_relaxed",
+          detail: { dropped: { dim_a: "v1", dim_b: "v2" }, track: "primary" },
+          at: 1,
+        },
+      ],
+    });
+    expect(trace.events[0]).toMatchObject({ kind: "filter_relaxed" });
+  });
+
+  it("records one dimension per event, the record the retry ran with, and whether it was adopted", () => {
+    const trace = parseTrace({
+      ...base,
+      events: [
+        {
+          stage: "retriever",
+          kind: "filter_relaxed",
+          detail: {
+            dropped: { dim_a: ["v1"] },
+            retained: { dim_b: ["v2"] },
+            adopted: true,
+            track: "primary",
+            hits: 3,
+          },
+          at: 1,
+        },
+        {
+          stage: "retriever",
+          kind: "filter_relaxed",
+          detail: {
+            dropped: { dim_b: ["v2"] },
+            retained: { dim_c: ["v3"] },
+            adopted: false,
+            track: "fallback",
+            hits: 0,
+          },
+          at: 2,
+        },
+      ],
+    });
+    expect(trace.events).toHaveLength(2);
+  });
+});

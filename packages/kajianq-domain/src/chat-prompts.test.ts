@@ -92,3 +92,65 @@ describe("the specific-fact refusal rule", () => {
     expect(chatSystemPrompt("en")).toMatch(/MUST be answered from the context/);
   });
 });
+
+/**
+ * **The authority order** (spec §2.2, per _kaidah usul_): Quran → Hadith
+ * (mutawatir > sahih > hasan; dhaif flagged) → Tafsir → Kitab.
+ *
+ * It is enforced by the *system prompt*, while the *presentation* order
+ * (Principles → Quran → Hadith → Kitab → concept links) is how the assembler
+ * lays out the turn. The two orderings are deliberately distinct, and the
+ * silent failure this suite guards against is their conflation: a prompt that
+ * carried the presentation order would tell the model the lens *governs* the
+ * evidence rather than framing it — a claim about authority the product does
+ * not make — and the assembler's ordering would then look like a legal
+ * ranking. So this asserts the authority sequence is present, in order, in
+ * both languages, AND that the presentation order is not restated here as
+ * authority.
+ */
+describe("the usul authority order", () => {
+  // Each language names the sources in its own copy (the Indonesian text says
+  // "Hadits", as the product's Indonesian copy does everywhere else).
+  it.each([
+    ["id", ["Quran", "Hadits", "Tafsir", "Kitab"]],
+    ["en", ["Quran", "Hadith", "Tafsir", "Kitab"]],
+  ] as const)("states the authority order in order (%s)", (language, sources) => {
+    const rule = chatSystemPrompt(language)
+      .split("\n")
+      .find((line) => line.startsWith("8."));
+    expect(rule).toBeDefined();
+    // Every source of the authority order is named, and named in that order —
+    // the sequence is the content, so its absence is the defect.
+    const positions = sources.map((source) => rule!.indexOf(source));
+    for (const position of positions) expect(position).toBeGreaterThan(-1);
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+  });
+
+  it.each([["id"], ["en"]] as const)("carries the hadith grade precedence (%s)", (language) => {
+    // mutawatir > sahih > hasan, with dhaif flagged: the grade order is part of
+    // the authority rule, not a separate hint.
+    const rule = chatSystemPrompt(language)
+      .split("\n")
+      .find((line) => line.startsWith("8."))!;
+    const grades = ["mutawatir", "sahih", "hasan"].map((grade) => rule.indexOf(grade));
+    for (const grade of grades) expect(grade).toBeGreaterThan(-1);
+    expect(grades).toEqual([...grades].sort((a, b) => a - b));
+    expect(rule).toMatch(/dhaif/i);
+  });
+
+  it("scopes the rule to the context so it cannot license outside knowledge", () => {
+    // The authority order must never become a second source of evidence: rule 2
+    // forbids any citation the context does not print, and rule 8 may only order
+    // what is already there.
+    expect(chatSystemPrompt("id")).toMatch(/Bila konteks memuat lebih dari satu jenis sumber/);
+    expect(chatSystemPrompt("en")).toMatch(/When the context carries more than one kind of source/);
+  });
+
+  it("keeps the lens out of the authority order — the two orderings are distinct", () => {
+    // The presentation order's first slot must NOT be the prompt's first
+    // authority, and the prompt must not present the lens as governing
+    // evidence; it frames the reading of it.
+    expect(chatSystemPrompt("id")).toMatch(/bukan dalil yang berdiri sendiri/);
+    expect(chatSystemPrompt("en")).toMatch(/not evidence standing on their own/);
+  });
+});

@@ -23,6 +23,7 @@ export {
   nextRelaxation,
   type FilterEntry,
 } from "./chat-filter-policy";
+export { createFilterRelaxation } from "./chat-filter-relaxation";
 export {
   DEFAULT_SCOPE_EXPANSION_CAP,
   SCOPE_EXPANSION_ORIGIN,
