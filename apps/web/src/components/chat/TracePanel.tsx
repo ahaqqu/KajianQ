@@ -100,6 +100,34 @@ export function TracePanel({
                   {technical.intent}
                 </p>
               )}
+              {technical.routing !== undefined && (
+                <div data-testid="trace-routing">
+                  <MonoLabel>{t(locale, "traceRoutingLabel")}</MonoLabel>
+                  <p
+                    data-testid="trace-routing-sources"
+                    className="mt-1 text-sm text-card-foreground"
+                  >
+                    {/* An EMPTY list is the route's own statement that it did not
+                        restrict the corpus — rendered as such, never as "unknown". */}
+                    {technical.routing.sources.length === 0
+                      ? t(locale, "traceRoutingAllSources")
+                      : technical.routing.sources.join(" · ")}
+                  </p>
+                  {Object.entries(technical.routing.filters).length > 0 && (
+                    <p
+                      data-testid="trace-routing-filters"
+                      className="mt-1 text-sm text-card-foreground"
+                    >
+                      <span className="mr-2 text-muted-foreground">
+                        {t(locale, "traceRoutingFiltersLabel")}
+                      </span>
+                      {Object.entries(technical.routing.filters)
+                        .map(([key, values]) => `${key}: ${values.join(", ")}`)
+                        .join(" · ")}
+                    </p>
+                  )}
+                </div>
+              )}
               {technical.subQueries.length > 0 && (
                 <div data-testid="trace-subqueries">
                   <MonoLabel>{t(locale, "traceSubqueriesLabel")}</MonoLabel>

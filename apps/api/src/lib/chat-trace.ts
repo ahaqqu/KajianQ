@@ -118,6 +118,13 @@ export function deriveTraceFrame(input: {
     const modelId = event.cost?.modelId;
     if (modelId !== undefined && !models.includes(modelId)) models.push(modelId);
   }
+  // The routing decision (#15), projected verbatim from the persisted trace:
+  // which sources the route selected and the filter record retrieval ran with.
+  // Opaque strings — this module names neither a source type nor a filter
+  // dimension. Absent on traces persisted before the event existed, and on a
+  // trace with no routing event the frame omits the block rather than claiming
+  // "no sources were searched" (an EMPTY `sources` list says that, explicitly).
+  const routingEvent = trace.events.find((event) => event.kind === "source_routing");
   return {
     messageId,
     sources: refs.map((ref) => toSource(ref, chunksById)),
@@ -130,6 +137,7 @@ export function deriveTraceFrame(input: {
               : {}),
           }
         : {}),
+      ...(routingEvent !== undefined ? { routing: routingEvent.detail } : {}),
       subQueries,
       chunks: refs.map((ref) => toTechnicalChunk(ref, chunksById)),
       models,

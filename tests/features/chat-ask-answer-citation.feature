@@ -68,12 +68,12 @@ Feature: Chat — ask, answer, citations, warnings, disclaimer
     And I expand the answer's Trace
     Then I see the sources consulted with no technical detail
 
-  Scenario: The Trace's deeper layer shows intent, sub-queries, scores, and model identity
+  Scenario: The Trace's deeper layer shows intent, the routing decision, sub-queries, scores, and model identity
     When I open the chat and ask about ayat kursi
     And the answer renders with a citation chip
     And I expand the answer's Trace
     And I open the Trace's technical details
-    Then I see the router intent, sub-queries, retrieval scores, and model identity
+    Then I see the router intent, the routing decision, sub-queries, retrieval scores, and model identity
 
   Scenario: The expanded Trace has no serious accessibility violations
     When I open the chat and ask about ayat kursi

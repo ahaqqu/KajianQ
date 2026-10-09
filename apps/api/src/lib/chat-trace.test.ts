@@ -243,3 +243,59 @@ describe("chunkFetcher", () => {
     expect(rows[0]?.parentTitle).toBe("Al-Baqarah");
   });
 });
+
+/**
+ * The routing decision on the panel (#15). The frame is derived, never
+ * reconstructed: the technical layer's `routing` block is the persisted
+ * `source_routing` event's typed detail, projected verbatim. The distinction
+ * that matters to a reader is between "the route restricted the corpus to these
+ * sources" (`sources` non-empty), "the route did not restrict it" (an EMPTY
+ * list — a decision), and "this trace recorded no routing decision at all"
+ * (the block absent, as on traces persisted before the event existed).
+ */
+describe("the routing decision in the technical layer", () => {
+  const routingEvent = (sources: string[], filters: Record<string, string[]>) =>
+    ({
+      stage: "router" as const,
+      kind: "source_routing" as const,
+      detail: { sources, filters },
+      at: 2,
+    }) satisfies Trace["events"][number];
+
+  it("projects the source selection and the filter record verbatim", () => {
+    const frame = deriveTraceFrame({
+      trace: traceOf(
+        [{ id: "c1" }],
+        [routingEvent(["src_a", "src_b"], { dim_a: ["v1"], dim_b: ["v2", "v3"] })],
+      ),
+      messageId: "m1",
+      chunksById: new Map<string, DocChildById>(),
+    });
+    expect(frame.technical.routing).toEqual({
+      sources: ["src_a", "src_b"],
+      filters: { dim_a: ["v1"], dim_b: ["v2", "v3"] },
+    });
+    expect(() => v.parse(ChatTraceFrameSchema, frame)).not.toThrow();
+  });
+
+  it("keeps an empty source list as the route's own statement, not as absence", () => {
+    const frame = deriveTraceFrame({
+      trace: traceOf([{ id: "c1" }], [routingEvent([], {})]),
+      messageId: "m1",
+      chunksById: new Map<string, DocChildById>(),
+    });
+    expect(frame.technical.routing).toEqual({ sources: [], filters: {} });
+  });
+
+  it("omits the block entirely when the trace recorded no routing decision", () => {
+    // Absent is not the same claim as empty: an older trace must not be read as
+    // "the corpus was not restricted".
+    const frame = deriveTraceFrame({
+      trace: traceOf([{ id: "c1" }]),
+      messageId: "m1",
+      chunksById: new Map<string, DocChildById>(),
+    });
+    expect(frame.technical).not.toHaveProperty("routing");
+    expect(() => v.parse(ChatTraceFrameSchema, frame)).not.toThrow();
+  });
+});

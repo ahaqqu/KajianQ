@@ -206,6 +206,25 @@ export const ChatTraceFrameSchema = v.object({
     /** The router's classified intent, when the trace recorded one. */
     intent: v.optional(v.pipe(v.string(), v.minLength(1))),
     confidence: v.optional(v.number()),
+    /**
+     * The routing decision (#15): which source types the route selected and the
+     * metadata filter record retrieval ran with, projected verbatim from the
+     * persisted trace's `source_routing` event. Opaque strings — the domain pack
+     * owns what a source type or a filter dimension means; the frame neither
+     * names nor interprets one. An empty `sources` list is a decision ("every
+     * source was in play") and is rendered as such, never as "unknown".
+     * Optional and absent by default: traces persisted before the field existed
+     * must keep rendering.
+     */
+    routing: v.optional(
+      v.object({
+        sources: v.array(v.pipe(v.string(), v.minLength(1))),
+        filters: v.record(
+          v.string(),
+          v.pipe(v.array(v.pipe(v.string(), v.minLength(1))), v.minLength(1)),
+        ),
+      }),
+    ),
     subQueries: v.array(v.pipe(v.string(), v.minLength(1))),
     chunks: v.array(ChatTraceChunkSchema),
     /** Distinct model identities, in first-call order (ADR-0009 opaque ids). */
