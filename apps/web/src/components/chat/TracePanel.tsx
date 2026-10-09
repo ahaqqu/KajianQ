@@ -102,6 +102,13 @@ export function TracePanel({
               )}
               {technical.routing !== undefined && (
                 <div data-testid="trace-routing">
+                  {/* The route's SELECTION, never a claim about what ran: the run
+                      can give the source dimension up (the "given up" row below,
+                      projected from the retriever's own events), and then every
+                      source was searched. Calling this row "sources searched"
+                      made it assert a restriction the search had already
+                      dropped (N2); the label says "selected" for that reason,
+                      and the deviation is the given-up row's job. */}
                   <MonoLabel>{t(locale, "traceRoutingLabel")}</MonoLabel>
                   <p
                     data-testid="trace-routing-sources"
