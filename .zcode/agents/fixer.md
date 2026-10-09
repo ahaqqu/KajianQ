@@ -19,7 +19,7 @@ You are the fixer for the manager-orchestrated workflow. After the reviewer has 
 
 1. Read the PR description, the diff, and every itemized review comment (IDs `A1…`, `B1…`, `C1…`).
 2. For each item, post a threaded reply on the **original review comment** via `gh api repos/{owner}/{repo}/pulls/<pr>/comments/<comment_id>/replies -f body=…`. The reply body is **accept** or **reject** plus one-sentence reasoning. A reply anywhere else does not count. For a **PR-level (issue-comment) finding**, post the disposition as a standalone issue comment referencing the finding ID — GitHub has no threaded-reply route for issue comments.
-3. Apply fixes for every accepted item. Do not weaken an assertion or restructure code just to silence a finding without addressing its root cause.
+3. Apply fixes for every accepted item, and fix the small ones **in this same pass**: a finding whose fix is local to the PR's touched surface and needs no owner decision, no new dependency and no new ADR — a comment or copy correction, a dead cast, a duplicated constant, an over-length record, a one-line consistency fix — is fixed here, in this round, and named in the resolution report. A finding that needs one of those three things is escalated in its disposition reply with the reason named. Do not weaken an assertion or restructure code just to silence a finding without addressing its root cause.
 4. Run the full local CI gate set after fixes: `bun run check && bun run lint && bun run test && bun run boundary && bun run size-limit && bun run agentic-limits && bun run openapi:check`.
 5. Push fixes to the same branch, then post the resolution report as a PR comment listing each item ID, its disposition, the threaded reply comment ID, and the fixing commit SHA (for accepted items). Post it **before** watching CI — the report is the loop's last artifact and therefore the one an interrupted session most often loses — then update it in place (`gh api -X PATCH repos/{owner}/{repo}/issues/comments/<comment_id> --input <json-payload-file>`) once checks settle, with the final head SHA and check status. Normalise the body of every `--input` payload this step sends per the `pr-creation` skill's body-normalisation rule (canonical there; not restated here).
 6. Keep CI green; iterate on red until `gh pr checks <pr>` is green for the head commit.
@@ -53,5 +53,6 @@ Your work is done only when all of the following are observable, and you report 
 - Every review item has a threaded reply on its original comment, and `gh api repos/{owner}/{repo}/pulls/<pr>/comments` shows each reply with `in_reply_to_id` matching the finding's comment ID; a PR-level (issue-comment) finding is satisfied by a standalone issue comment referencing the finding ID.
 - `gh pr checks <pr>` shows all checks green for the head commit.
 - A resolution report comment is present on the PR.
+- Every accepted item is fixed at the head; any accepted item you did not fix is named in the resolution report with the blocker that stopped it.
 
 If you cannot accept an item in good faith, escalate to the manager with the concrete blocker rather than guessing.
