@@ -46,9 +46,11 @@ engine's trace projection and duplicate corpus text into every trace row for dat
 New shared contracts carry the citation, the citations frame, and the session transcript — engine package, domain
 values travelling as plain strings — and new store reads serve the chunk-children join and the answer trace by id. No
 engine logic changed: the runner, the stages, and the refusal gate are untouched, and ledger keying is unchanged. The
-eval harness does read the frame — citation validity's first evidence source — so a hybrid refusal now scores the
-citations its text grounds instead of 0 while the refusal dimension still reads the trace's `refusal` event (#436). A new session is an explicit control and follow-ups ride the stored id. A chunk
-row deleted after an answer was persisted simply loses its chip, the invariant by omission; a lost or unreadable trace
+frame has been the eval harness's first evidence source since #250 (the precedence postdates this record); this change
+is what makes it non-empty for a hybrid refusal — it scores the citations its text grounds instead of 0, while the
+refusal dimension still reads the trace's `refusal` event (#436). A new session is an explicit control and follow-ups
+ride the stored id. A chunk row deleted after an answer was persisted simply loses its chip, the invariant by
+omission; a lost or unreadable trace
 degrades to a plain-text transcript, never to invented citations. The rehydration transcript is capped: a session is
 an anonymous conversation, not an archive. The cap is visible rather than silent — a truncated flag tells the client
 it is seeing the newest tail and the UI says older messages are not shown. The translation-layer flag tracks the

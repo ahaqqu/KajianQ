@@ -296,25 +296,75 @@ describe("deriveCitationsFrame — the invariant, adversarial shapes", () => {
     );
     expect(frame.citations.map((c) => c.label)).toEqual(HYBRID_SPANS);
     expect(frame).not.toEqual(PURE_REFUSAL_FRAME);
-    // The refusal is a separate projection: the decision the reviewer recorded
-    // is still on the wire, so a hybrid is not presented as an ordinary answer
-    // either (ADR-0007 — the machinery is never hidden).
+    // The refusal stays a separate projection: the decision the reviewer
+    // recorded is on the wire exactly as the trace persists it. No surface
+    // renders that flag today — the card draws its chips from `citations` and
+    // its warning from `dhaifWarning` — so it is auditability on the trace and
+    // the wire, not machinery the reader can see, and a hybrid is presented as
+    // the cited answer it is.
     expect(frame.refusal).toBe(true);
   });
 
-  it("the refusal event only ever flips the flag, never the citation list (#436)", () => {
-    // The invariant as an identity, not a fixed expectation: deriving the same
-    // text over the same chunks with and without the refusal decision differs
-    // in exactly one field. This is what "a `refusal` event alone must never be
+  it("the refusal decision never touches the citation list (#436)", () => {
+    // The invariant at its true scope: the same text over the same chunks,
+    // derived from a trace with and without the refusal decision, yields the
+    // SAME citation list. That is what "a `refusal` event alone must never be
     // read as 'there are no citations'" means, and it holds for every refusal
-    // trigger, not only `generator_refusal`.
+    // trigger, not only `generator_refusal` (the property below randomizes the
+    // hybrid composition; this is the named QA shape).
     const refused = frameOf(
       traceWithChunks(HYBRID_TRACE_IDS, [GENERATOR_REFUSAL]),
       HYBRID_ANSWER,
       hybridChunks(),
     );
     const plain = frameOf(traceWithChunks(HYBRID_TRACE_IDS), HYBRID_ANSWER, hybridChunks());
-    expect(refused).toEqual({ ...plain, refusal: true });
+    expect(refused.citations).toEqual(plain.citations);
+    expect(refused.citations.map((c) => c.label)).toEqual(HYBRID_SPANS);
+    // ... and the decision itself is still projected, separately from the list.
+    expect(refused.refusal).toBe(true);
+    expect(plain.refusal).toBe(false);
+  });
+
+  it("the base→head delta is `citations` + `dhaifWarning`, with `refusal` constant (#436)", () => {
+    // The whole delta, asserted against an EXECUTABLE model of the retired
+    // `4ea8acb8` shortcut rather than described in prose. That branch froze TWO
+    // fields on any refusal-bearing trace — `citations: []` and
+    // `dhaifWarning: false` — and did NOT move `refusal` (which was `true`
+    // before the change and after it). This is the assertion an identity that
+    // holds the answer text fixed structurally cannot make, so the hybrid text
+    // is driven through both semantics here.
+    type FrameInput = Parameters<typeof deriveCitationsFrame>[0];
+    const baseFrameOf = (input: FrameInput) =>
+      input.trace.events.some((event) => event.kind === "refusal")
+        ? { messageId: input.messageId, citations: [], refusal: true, dhaifWarning: false }
+        : deriveCitationsFrame(input);
+
+    const warningText =
+      "Hadits tersebut diriwayatkan [HR. Malik no. 18].\n\n" +
+      "[Peringatan] Hadits yang dikutip berderajat lemah (dhaif); tidak dapat dijadikan dalil utama.";
+    const rows = [
+      chunk("h1", "HR. Malik no. 18", {
+        metadata: { citation: "HR. Malik no. 18", grade: "dhaif" },
+      }),
+    ];
+    const input = {
+      trace: traceWithChunks(["h1"], [GENERATOR_REFUSAL]),
+      messageId: "m1",
+      answerText: warningText,
+      chunksById: new Map(rows.map((row) => [row.id, row])),
+    };
+    const head = deriveCitationsFrame(input);
+    const base = baseFrameOf(input);
+    // The base revision, byte for byte: both frozen fields, flag already true.
+    expect(base).toEqual({ messageId: "m1", citations: [], refusal: true, dhaifWarning: false });
+    expect(head.citations.map((c) => c.label)).toEqual(["HR. Malik no. 18"]);
+    expect(head.refusal).toBe(true);
+    // The delta, enumerated: exactly the two un-frozen fields.
+    const changed = Object.keys(head).filter(
+      (key) => head[key as keyof typeof head] !== base[key as keyof typeof base],
+    );
+    expect(changed).toEqual(["citations", "dhaifWarning"]);
+    expect(head.dhaifWarning).toBe(true);
   });
 
   it("a pure refusal still yields the empty-citations refusal frame it always did (#436 control)", () => {
@@ -675,11 +725,14 @@ describe("deriveCitationsFrame — property (fast-check)", () => {
    * #436, as a property over randomized HYBRID drafts: a grounded partial
    * answer that runs into a refusal tail. For every composition of grounded
    * spans, fabricated spans, and a refusal/disclaimer tail, the frame derived
-   * from a trace that records the refusal differs from the same text's
-   * refusal-free frame in **exactly** the flag — so no refusal decision, from
-   * any trigger, can ever drop a grounded citation. Before the fix this
-   * property failed on every case where the tail was present: the frame came
-   * back with an empty list.
+   * from a trace that records the refusal has an **identical citation list**
+   * and an identical warning flag — the decision moves the `refusal` flag and
+   * nothing else — so no refusal decision, from any trigger, can ever drop a
+   * grounded citation. (The same removal also un-froze `dhaifWarning`; because
+   * this property holds the text fixed, that field is the same predicate on the
+   * same text in both frames, and the base-delta test above is where the second
+   * un-frozen field is asserted.) Before the fix this property failed on every
+   * case where the tail was present: the frame came back with an empty list.
    */
   it("a refusal tail never drops the grounded citations of a hybrid draft (#436)", () => {
     const tailArb = fc.constantFrom(
@@ -704,7 +757,10 @@ describe("deriveCitationsFrame — property (fast-check)", () => {
         const extra: Trace["events"] = refused ? [GENERATOR_REFUSAL] : [];
         const framed = frameOf(traceWithChunks(ids, extra), text, chunks);
         const plain = frameOf(traceWithChunks(ids), text, chunks);
-        expect(framed).toEqual({ ...plain, refusal: refused });
+        expect(framed.citations).toEqual(plain.citations);
+        expect(framed.dhaifWarning).toBe(plain.dhaifWarning);
+        expect(framed.refusal).toBe(refused);
+        expect(plain.refusal).toBe(false);
       },
     );
     expect(fc.assert(property, { numRuns: 300 })).toBeUndefined();

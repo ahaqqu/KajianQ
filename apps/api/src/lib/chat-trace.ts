@@ -60,6 +60,20 @@ export function traceChunkIds(trace: Trace): string[] {
   return traceChunkRefs(trace).map((ref) => ref.id);
 }
 
+/**
+ * True when the trace records a refusal decision — the reviewer's `refusal`
+ * event with its trigger, the same signal the eval harness's refusal detection
+ * reads (ADR-0007). ONE owner for "did the pipeline refuse?": both the
+ * citations frame's flag (`chat-citations.ts`) and the route's chunking branch
+ * (`chat.ts`) ask it, so the two spellings cannot drift apart (#436) — for a
+ * `generator_refusal` the reviewer returns the draft unchanged and the route
+ * must chunk the settled text, for `ungrounded_citation`/`reviewer_fail` it
+ * replaced the text and must not replay the vendor's deltas.
+ */
+export function traceRefused(trace: Trace): boolean {
+  return trace.events.some((event) => event.kind === "refusal");
+}
+
 /** The chunk's display title, when the store row resolves with a non-empty one. */
 function sourceTitleOf(row: DocChildById | undefined): string | undefined {
   const title = row?.parentTitle;
@@ -93,9 +107,13 @@ function toTechnicalChunk(
 
 /**
  * Pure core: derive the two-layer Trace frame from a persisted trace and the
- * display rows of the trace's chunks. Refusals carry no retrieval events, so
- * their frame is legitimately empty (the UI says "no sources consulted" —
- * honest, not an error). Parsed against the contract by the callers, exactly
+ * display rows of the trace's chunks. A PURE refusal's trace carries no
+ * retrieval events, so its frame is legitimately empty (the UI says "no
+ * sources consulted" — honest, not an error). A HYBRID refusal (#436) is a
+ * refusal recorded over a partial answer, so it carries the retrieval refs
+ * that answer was built from and its panel is populated — the panel reports
+ * what was consulted, never whether the run decided to refuse. Parsed against
+ * the contract by the callers, exactly
  * as the citations derivation is. The live route's combined entry (one shared
  * store read for both frames, thermo-review B1) is `answerFramesFor` in
  * `chat-citations.ts` — this module stays below it in the import graph.

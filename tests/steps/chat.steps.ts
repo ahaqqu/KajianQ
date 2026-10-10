@@ -113,9 +113,11 @@ const REFUSAL_FIXTURE = [
  * retrieved verse and then continues into the canonical insufficiency sentence
  * plus the disclaimer, while the citations frame carries BOTH the grounded chip
  * and `refusal: true` (the refusal decision the trace records). The server
- * derives that frame from the persisted trace — the derivation, the route and
- * the rehydration entry are pinned in `apps/api/src/lib/chat-citations.test.ts`
- * and the route tests — so what this scenario owns is the user-facing half: the
+ * derives that frame from the persisted trace — the derivation, the live and
+ * rehydration entries are pinned in `apps/api/src/lib/chat-citations.test.ts`,
+ * and the emitted SSE frame through `POST /v1/chat` in
+ * `apps/api/src/routes/chat.test.ts` — so what this scenario owns is the
+ * user-facing half: the
  * answer's chip survives, and the refusal tail is prose beside it rather than a
  * substitute for the citation sheet.
  */

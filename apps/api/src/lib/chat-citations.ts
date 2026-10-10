@@ -25,6 +25,7 @@ import {
   chunksByIdOrEmpty,
   deriveTraceFrame,
   traceChunkIds,
+  traceRefused,
   type CitationChunkSource,
   type Warn,
 } from "./chat-trace";
@@ -142,8 +143,9 @@ export function deriveCitationsFrame(input: {
     citations,
     // The refusal flag is the trace's own decision, projected verbatim: a
     // hybrid answer carries it AND its chips (#436). Deriving one field from
-    // the other is what emptied the frame while the text quoted verses.
-    refusal: trace.events.some((event) => event.kind === "refusal"),
+    // the other is what emptied the frame while the text quoted verses; the
+    // decision itself has one reader, `traceRefused` (chat-trace.ts).
+    refusal: traceRefused(trace),
     // The frame's flag and the postprocess's suppression check are the SAME
     // predicate (one owner, `@app/kajianq-domain`), so "the warning is on the
     // answer" cannot mean two different things on the two sides of the wire
@@ -172,8 +174,9 @@ export async function answerFramesFor(input: {
   warn: Warn;
 }): Promise<{ citations: ChatCitationsFrame; trace: ChatTraceFrame }> {
   const { trace, messageId, answerText, fetchChunks, warn } = input;
-  // A trace with no retrieval events (a pure refusal) needs no store read at
-  // all: an empty id list would only round-trip the seam.
+  // A trace with no retrieval events (a pure refusal — a hybrid refusal
+  // carries the partial answer's refs, #436) needs no store read at all: an
+  // empty id list would only round-trip the seam.
   const ids = traceChunkIds(trace);
   const chunksById =
     ids.length === 0

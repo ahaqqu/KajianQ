@@ -5,6 +5,7 @@ import {
   buildChatWiring,
   chunkFetcher,
   sseFrame,
+  traceRefused,
   wiringOr503,
   type ChatWiring,
 } from "../lib/chat-wiring";
@@ -162,20 +163,23 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
   );
 
   // The SSE wire contract (meta → deltas → citations → trace → done,
-  // ADR-0034 + ADR-0040 for the `trace` frame — #11/#12). On a refusal the
-  // reviewer recorded a `refusal` event on the trace (the same signal the eval
-  // harness reads) and the vendor's delta sequence is not replayed — the
-  // settled text is chunked instead, so a reviewer-REPLACED answer never ships
-  // the draft. On a HYBRID draft (a generator-emitted refusal inside a partial
-  // answer, #436) the reviewer returns the draft unchanged, so this path
-  // chunks the very text the user is shown, chips and all: the flag below
-  // decides how the text is framed on the wire, never which citations it
-  // earns. Otherwise the vendor's own delta sequence is replayed when it
-  // reproduces the delivered text; post-processing may have APPENDED
-  // deterministic rules (disclaimer, dhaif warning), which ride one trailing
-  // delta so the model's streamed text stays byte-identical on the wire. When
-  // generation did not stream at all, the text is chunked.
-  const refused = answer.trace.events.some((e) => e.kind === "refusal");
+  // ADR-0034 + ADR-0040 for the `trace` frame — #11/#12). This branch's real
+  // question is "was the settled text replaced?", asked through the trace's
+  // own refusal decision, which has ONE owner (`traceRefused`, chat-trace.ts)
+  // so the flag below and this branch cannot drift apart (#436). The two
+  // meanings coincide for every replacement trigger: an `ungrounded_citation`
+  // or `reviewer_fail` refusal replaces the draft, so the vendor's delta
+  // sequence is not replayed and the settled text is chunked instead; a
+  // `generator_refusal` — including the HYBRID shape (a refusal sentence inside
+  // a partial answer) — returns the draft unchanged, so this path chunks the
+  // very text the user is shown, chips and all. Which citations that text earns
+  // is the frame derivation's decision, never this flag's. Otherwise the
+  // vendor's own delta sequence is replayed when it reproduces the delivered
+  // text; post-processing may have APPENDED deterministic rules (disclaimer,
+  // dhaif warning), which ride one trailing delta so the model's streamed text
+  // stays byte-identical on the wire. When generation did not stream at all,
+  // the text is chunked.
+  const refused = traceRefused(answer.trace);
   const streamed = deltas.join("");
   const frames = refused
     ? chunkText(answer.text)
