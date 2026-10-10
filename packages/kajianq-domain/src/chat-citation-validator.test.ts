@@ -594,10 +594,19 @@ describe("validateCitations — grounded direction", () => {
     // range of one names one.
     const retrieved = [chunk("QS. 1:1"), chunk("QS. 1:5")];
     const rows = [
+      // The fix's class: every glued rendering was refused at base (`null`),
+      // because a range continues with a dash while the shortened-label rule
+      // needs `<label>` + a space.
       ["QS. 1:1-1", "QS. 1:1"],
       ["QS. 1:1–1", "QS. 1:1"],
       ["QS. 1:1—1", "QS. 1:1"],
+      // NOT the fix's class — a no-regression pin. The head address here is
+      // followed by a space, so the extension rule already grounded this
+      // spelling at base; what the row proves is that the spaced verdict did
+      // not move (the whole spaced family, 8 joiners x 2 addresses, is 0 moved).
       ["QS. 1:1 - 1", "QS. 1:1"],
+      // Spelling coverage, not new shapes: `citationCandidatesIn` folds both
+      // marker spellings to the candidate the first row already asserts.
       ["Q.S. 1:1-1", "QS. 1:1"],
       ["QS 1:1-1", "QS. 1:1"],
       ["QS. 1:5–5", "QS. 1:5"],
@@ -783,6 +792,20 @@ describe("validateCitations — grounded direction", () => {
     expect(addressesNamedBy("HR. Bukhari no. 5010 - 5011")).toEqual([
       "HR. Bukhari no. 5010 - 5011",
     ]);
+    // The comparison half, and the reason it is pinned rather than inferred:
+    // this label is the one input the #444 branch deliberately routes AROUND
+    // the declared-list rule. The declaration is the whole label
+    // (`named[0] === candidate`), so the extension rule decides it and grounds
+    // the compound on its head. No draft path can produce this span — the
+    // hadith number token stops at the space before the dash — which is exactly
+    // why it needs an assertion here or nowhere: weaken the branch to an
+    // unconditional `named.length >= 1` (review A1's mutation 2, which left the
+    // whole suite green before this row existed) and this expectation reddens,
+    // so the next simplification of the predicate cannot retire the exclusion
+    // silently.
+    expect(
+      groundingLabelsFor("HR. Bukhari no. 5010 - 5011", new Set(["HR. Bukhari no. 5010"])),
+    ).toEqual(["HR. Bukhari no. 5010"]);
   });
 
   it("leaves a grammar that declares no address list alone — the hadith compound stays whole", () => {

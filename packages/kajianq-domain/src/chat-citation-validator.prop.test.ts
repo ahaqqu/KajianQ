@@ -295,8 +295,11 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
     // The invariant, swept over the shapes the grammar admits: a range whose
     // endpoints are equal names exactly the address its two endpoints spell, so
     // it grounds iff that address is in the retrieved set — for every joiner
-    // spelling, in the glued AND the spaced form, and in the refused direction
-    // when only a NEIGHBOURING verse was retrieved. The rule used to be gated on
+    // spelling, in the glued form (the fix's class: refused at base) and in the
+    // spaced form (a **no-regression** pin, not a widening of this fix: the head
+    // address there is followed by a space, so the extension rule already
+    // accepted all 16 of those shapes at base — 0 moved) — and in the refused
+    // direction when only a NEIGHBOURING verse was retrieved. The rule used to be gated on
     // the declared list's length, so every one of these spans was refused with
     // the address in hand: on staging that replaced a 31-chunk grounded answer
     // with the canonical refusal (trace `b8812e2d-…`), silently — the refusal is
@@ -310,6 +313,9 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
         const ayah = 1 + (rawAyah % count);
         const address = `QS. ${surah}:${ayah}`;
         const neighbour = `QS. ${surah}:${1 + (ayah % count)}`;
+        // The glued form is the fix's class; the spaced twin was already
+        // accepted at base through the extension rule, so it pins no
+        // regression rather than a widening this change caused.
         const forms = [`${address}${dash}${ayah}`, `${address} ${dash} ${ayah}`];
         for (const form of forms) {
           // The declaration half: the range names ONE address — the one its
