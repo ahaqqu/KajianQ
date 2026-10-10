@@ -868,14 +868,15 @@ describe("validateCitations — grounded direction", () => {
     ]);
     // The comparison half, and the reason it is pinned rather than inferred:
     // this label is the one input the #444 branch deliberately routes AROUND
-    // the declared-list rule. The declaration is the whole label
-    // (`named[0] === candidate`), so the extension rule decides it and grounds
-    // the compound on its head. No draft path can produce this span — the
-    // hadith number token stops at the space before the dash — which is exactly
-    // why it needs an assertion here or nowhere: weaken the branch to an
-    // unconditional `named.length >= 1` (review A1's mutation 2, which left the
-    // whole suite green before this row existed) and this expectation reddens,
-    // so the next simplification of the predicate cannot retire the exclusion
+    // the declared-list rule. The hadith grammar declares no address list
+    // (`declaresAddressList` is false; `addressesNamedBy` names the label whole),
+    // so the extension rule decides it and grounds the compound on its head. No
+    // draft path can produce this span — the hadith number token stops at the
+    // space before the dash — which is exactly why it needs an assertion here or
+    // nowhere: weaken the predicate to a constant `true` (executed, #449) or to
+    // an unconditional `named.length >= 1` (review A1's mutation 2, which left the
+    // whole suite green before this row existed) and this expectation reddens, so
+    // the next simplification of the predicate cannot retire the exclusion
     // silently.
     expect(
       groundingLabelsFor("HR. Bukhari no. 5010 - 5011", new Set(["HR. Bukhari no. 5010"])),

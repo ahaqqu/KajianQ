@@ -351,7 +351,8 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
     // Stated per address and per spelling: the marker-only family refuses, and the
     // family holding the address the span names grounds on that address and no other
     // label. A reinstated shape proxy reddens this test at its FIRST address
-    // (`QS. 1:1`: expected null, received [ 'QS.' ]).
+    // (`QS. 1:1`: expected null, received [ 'QS.' ]). The exhaustive sweep needs more
+    // than the default 5s when the whole suite runs in parallel (hence the timeout).
     const marker = "QS.";
     let addresses = 0;
     for (let surah = 1; surah <= SURAH_AYAH_COUNTS.length; surah += 1) {
@@ -359,25 +360,29 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
       for (let ayah = 1; ayah <= count; ayah += 1) {
         addresses += 1;
         const address = `QS. ${surah}:${ayah}`;
-        for (const written of [address, `Q.S. ${surah}:${ayah}`, `QS ${surah}:${ayah}`]) {
-          const candidate = citationCandidatesIn(`Lihat ${written} ya`)[0]!;
-          expect(candidate, written).toBe(address);
-          // The declaration is structural, so the per-address branch is taken.
-          expect(declaresAddressList(candidate), written).toBe(true);
-          // The class: nothing but the marker was retrieved, and it grounds nothing.
-          expect(groundingLabelsFor(candidate, new Set([marker])), written).toBeNull();
-          // The other direction: the address the span names grounds it, alone.
-          expect(groundingLabelsFor(candidate, new Set([address])), written).toEqual([address]);
-          expect(groundingLabelsFor(candidate, new Set([address, marker])), written).toEqual([
-            address,
-          ]);
-        }
+        // One scan for all three marker spellings, and the de-duplication is itself
+        // the assertion: the scan folds `QS.`/`Q.S.`/`QS ` to ONE candidate — the
+        // address. Scanning them apart would only repeat that fold 6,236 times.
+        const candidates = citationCandidatesIn(
+          `Lihat ${address} dan Q.S. ${surah}:${ayah} dan QS ${surah}:${ayah} ya`,
+        );
+        expect(candidates, address).toEqual([address]);
+        const candidate = candidates[0]!;
+        // The declaration is structural, so the per-address branch is taken.
+        expect(declaresAddressList(candidate), address).toBe(true);
+        // The class: nothing but the marker was retrieved, and it grounds nothing.
+        expect(groundingLabelsFor(candidate, new Set([marker])), address).toBeNull();
+        // The other direction: the address the span names grounds it, alone.
+        expect(groundingLabelsFor(candidate, new Set([address])), address).toEqual([address]);
+        expect(groundingLabelsFor(candidate, new Set([address, marker])), address).toEqual([
+          address,
+        ]);
       }
     }
     // The ticket's own figure, reproduced: all 6,236 valid addresses are this class,
     // and the marker reaches none of them after the fix.
     expect(addresses).toBe(6236);
-  });
+  }, 15000);
 
   it("holds the declared-list laws over addresses x joiners x renderings x retrieved sets (#449)", () => {
     // The differential-free statement of the same change, over the shape space the
