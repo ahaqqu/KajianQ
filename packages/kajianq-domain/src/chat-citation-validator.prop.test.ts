@@ -9,6 +9,7 @@ import {
   validateCitations,
 } from "./chat-citation-validator";
 import { SURAH_AYAH_COUNTS } from "./surah-names";
+import { declaresAddressList } from "./chat-citation-grammar";
 
 /**
  * The #253 invariant, machine-checked: **a citation's tail is punctuation, not
@@ -337,6 +338,120 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
       },
     );
     expect(fc.assert(property, { numRuns: 300 })).toBeUndefined();
+  });
+
+  it("never grounds a plain span on a marker it did not name — the whole address space (#449)", () => {
+    // The class the declared-list branch's shape proxy left open, exhausted rather
+    // than sampled: with a retrieved set holding the bare marker `QS.`, EVERY numeric
+    // `surah:ayah` address this sweep enumerates (6,236 — the Tanzil table's own
+    // total) was grounded on the marker by the extension rule, in all three marker
+    // spellings the scan folds to one candidate. The class is plain Quran spans, wider
+    // than this rendering: a named-surah plain span narrows the same way and is pinned
+    // in `chat-citation-validator.test.ts` (review A2). The branch is keyed to the
+    // grammar's declaration now, so the span's own declared list of one decides it, and
+    // the marker grounds nothing.
+    //
+    // Stated per address and per spelling: the marker-only family refuses, and the
+    // family holding the address the span names grounds on that address and no other
+    // label. A reinstated shape proxy reddens this test at its FIRST address
+    // (`QS. 1:1`: expected null, received [ 'QS.' ]). The exhaustive sweep needs more
+    // than the default 5s when the whole suite runs in parallel (hence the timeout).
+    const marker = "QS.";
+    let addresses = 0;
+    for (let surah = 1; surah <= SURAH_AYAH_COUNTS.length; surah += 1) {
+      const count = SURAH_AYAH_COUNTS[surah - 1]!;
+      for (let ayah = 1; ayah <= count; ayah += 1) {
+        addresses += 1;
+        const address = `QS. ${surah}:${ayah}`;
+        // One scan for all three marker spellings, and the de-duplication is itself
+        // the assertion: the scan folds `QS.`/`Q.S.`/`QS ` to ONE candidate — the
+        // address. Scanning them apart would only repeat that fold 6,236 times.
+        const candidates = citationCandidatesIn(
+          `Lihat ${address} dan Q.S. ${surah}:${ayah} dan QS ${surah}:${ayah} ya`,
+        );
+        expect(candidates, address).toEqual([address]);
+        const candidate = candidates[0]!;
+        // The declaration is structural, so the per-address branch is taken.
+        expect(declaresAddressList(candidate), address).toBe(true);
+        // The class: nothing but the marker was retrieved, and it grounds nothing.
+        expect(groundingLabelsFor(candidate, new Set([marker])), address).toBeNull();
+        // The other direction: the address the span names grounds it, alone.
+        expect(groundingLabelsFor(candidate, new Set([address])), address).toEqual([address]);
+        expect(groundingLabelsFor(candidate, new Set([address, marker])), address).toEqual([
+          address,
+        ]);
+      }
+    }
+    // The ticket's own figure, reproduced: all 6,236 valid addresses are this class,
+    // and the marker reaches none of them after the fix.
+    expect(addresses).toBe(6236);
+  }, 15000);
+
+  it("holds the declared-list laws over addresses x joiners x renderings x retrieved sets (#449)", () => {
+    // The differential-free statement of the same change, over the numeric-address
+    // shape space the sweep measured (6,236 addresses x 8 joiners x 4 renderings x
+    // 6 retrieved-set families = 1,197,348 combinations; 0 widened / 6,236 narrowed at
+    // base `4003527`): however a retrieved set is composed, the verdict obeys the laws
+    // the gate promises — never a label outside the retrieved set, never a grounding
+    // that skips an address the span declares, never a marker grounding a span that
+    // does not name the marker, and adding retrieved labels never refuses a citation
+    // the gate already accepted.
+    const marker = "QS.";
+    const property = fc.property(
+      fc.integer({ min: 1, max: 114 }),
+      fc.integer({ min: 1, max: 286 }),
+      fc.constantFrom(...DASH_CHARS),
+      fc.integer({ min: 0, max: 3 }),
+      fc.integer({ min: 0, max: 5 }),
+      (surah, rawAyah, dash, rendering, family) => {
+        const count = SURAH_AYAH_COUNTS[surah - 1]!;
+        const ayah = 1 + (rawAyah % count);
+        const second = 1 + (ayah % count);
+        const address = `QS. ${surah}:${ayah}`;
+        const spans = [
+          address,
+          `${address}${dash}${ayah}`,
+          `${address} ${dash} ${ayah}`,
+          `${address}${dash}${second}`,
+        ];
+        const families: readonly (readonly string[])[] = [
+          [address],
+          [address, `QS. ${surah}:${second}`],
+          [marker],
+          [`QS. ${surah}:${second}`],
+          [],
+          [address, marker],
+        ];
+        const known = new Set(families[family]!);
+        const span = spans[rendering]!;
+        const candidate = citationCandidatesIn(`Lihat ${span} ya`)[0]!;
+        const verdict = groundingLabelsFor(candidate, known);
+        // Every shape in this space begins with the Quran grammar, which declares an
+        // address list — the branch that decides a span per address.
+        expect(declaresAddressList(candidate), span).toBe(true);
+        if (verdict !== null) {
+          // (a) every returned label is retrieved — "grounded" is never invented.
+          for (const label of verdict) expect(known.has(label), `${span} -> ${label}`).toBe(true);
+          // (b) strict-whole: no address the span declares is skipped.
+          for (const one of addressesNamedBy(candidate)!) {
+            expect(known.has(one), `${span} declares ${one}`).toBe(true);
+          }
+          // (c) the marker grounds only a span that names the marker.
+          if (known.size === 1 && known.has(marker)) {
+            expect(candidate, "marker-only retrieved set").toBe(marker);
+          }
+        }
+        // (d) monotonicity in the retrieved set: more context never refuses a
+        // citation the gate accepted with less.
+        if (verdict !== null) {
+          expect(
+            groundingLabelsFor(candidate, new Set([...known, address, marker])),
+            span,
+          ).not.toBeNull();
+        }
+      },
+    );
+    expect(fc.assert(property, { numRuns: 400 })).toBeUndefined();
   });
 
   it("never lets a tail of noise classes change a label", () => {

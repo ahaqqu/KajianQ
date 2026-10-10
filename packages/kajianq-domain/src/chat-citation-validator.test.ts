@@ -10,7 +10,8 @@ import {
   normalizeCitationLabel,
   validateCitations,
 } from "./chat-citation-validator";
-import { CITATION_GRAMMARS, reduceCitationLabel } from "./chat-citation-grammar";
+import { CITATION_GRAMMARS, declaresAddressList } from "./chat-citation-grammar";
+import { reduceCitationLabel } from "./chat-citation-reduce";
 
 /**
  * The deterministic citation validator (the #10 trust invariant). These tests
@@ -671,6 +672,101 @@ describe("validateCitations — grounded direction", () => {
     });
   });
 
+  it("reads the declared-list branch off the grammar's declaration, never off its shape (#449)", () => {
+    // The proxy this replaces, `named.length > 0 && named[0] !== candidate`, answers
+    // "the declaration names an address other than the span itself". For a plain,
+    // marker-prefixed span the answer is FALSE — `addressesNamedBy` names the span
+    // itself — so the span reached the EXTENSION rule, and a retrieved set holding a
+    // bare `QS.` marker grounded it on the marker. That verdict is silent: a marker
+    // is a legal chunk label, the answer cites a real-looking address, no refusal is
+    // raised, and no chip is missing. Measured at base `4003527` over **the measured
+    // numeric-address space** — 6,236 addresses x 8 joiners x 4 renderings x
+    // 6 retrieved-set families = 1,197,348 combinations (935,418 distinct span x
+    // family pairs): **widened 0, narrowed 6,236** — every narrowed pair a plain span
+    // whose retrieved set held only the marker, one per numeric address, and no pair
+    // outside that class. The divergence class itself is "plain Quran spans"
+    // generically, not those 6,236: a plain span written with a surah NAME narrows
+    // the same way and this sweep does not enumerate it (the `QS. Al-Fatihah:1` row
+    // below pins it).
+    const marker = "QS.";
+    for (const written of ["QS. 2:4", "Q.S. 2:4", "QS 2:4"] as const) {
+      const candidate = citationCandidatesIn(`Lihat ${written} ya`)[0]!;
+      expect(candidate, written).toBe("QS. 2:4");
+      // The declaration read is structural — this grammar declares `addressesOf` —
+      // so the per-address branch is taken for a span of ANY width, plain included.
+      expect(declaresAddressList(candidate), written).toBe(true);
+      expect(addressesNamedBy(candidate), written).toEqual(["QS. 2:4"]);
+      // The class: the span names `QS. 2:4` and the marker is not that address, so
+      // nothing grounds it. At base this was `["QS."]` — the fail-open direction.
+      expect(groundingLabelsFor(candidate, new Set([marker])), written).toBeNull();
+      // The other direction, same span: its own address grounds it, on itself — the
+      // branch is not a refusal for a plain citation the corpus does carry.
+      expect(groundingLabelsFor(candidate, new Set(["QS. 2:4"])), written).toEqual(["QS. 2:4"]);
+      expect(validateCitations(`Lihat ${written} ya`, [chunk("QS. 2:4")]), written).toEqual({
+        grounded: ["QS. 2:4"],
+        ungrounded: [],
+      });
+      // Through the gate, on a chunk whose label IS a bare marker: the span stays
+      // ungrounded. `grounded` holds `QS` because the marker is literally present in
+      // the answer text — the gate's substring pass, never a grounding of this span.
+      expect(validateCitations(`Lihat ${written} ya`, [chunk(marker)]), written).toEqual({
+        grounded: ["QS"],
+        ungrounded: ["QS. 2:4"],
+      });
+    }
+    // The class is "a plain Quran span", not the 6,236 numeric addresses: the
+    // named-surah rendering narrows identically — at base `4003527` it grounded on
+    // the marker, at this head it refuses — because the named address is unverifiable
+    // against the corpus's numeric labels, so the marker was a citation the draft
+    // never named. The exhaustive sweeps enumerate the numeric rendering only; this
+    // row is where the wider, unbounded class is pinned (review A2).
+    const namedSurah = citationCandidatesIn("Lihat QS. Al-Fatihah:1 ya")[0]!;
+    expect(namedSurah).toBe("QS. Al-Fatihah:1");
+    expect(declaresAddressList(namedSurah)).toBe(true);
+    expect(addressesNamedBy(namedSurah)).toEqual(["QS. Al-Fatihah:1"]);
+    expect(groundingLabelsFor(namedSurah, new Set([marker]))).toBeNull();
+    // Its numeric twin — the label a real chunk would carry — does not ground it
+    // either: `canonicalizeCitationSpelling` leaves the named spelling alone.
+    expect(groundingLabelsFor(namedSurah, new Set(["QS. 1:1"]))).toBeNull();
+    expect(validateCitations("Lihat QS. Al-Fatihah:1 ya", [chunk("QS. 1:1")])).toEqual({
+      grounded: [],
+      ungrounded: ["QS. Al-Fatihah:1"],
+    });
+    // Why the class was latent, recorded so nobody reads this fix as a live
+    // incident: the gate builds `known` through `normalizeCitationLabel`, which reads
+    // a bare marker as `QS` — no chunk label can put the raw `QS.` in `known`. The
+    // branch must not rest on that, which is the point of reading the grammar.
+    expect(normalizeCitationLabel(marker)).toBe("QS");
+    // A grammar that declares NO list keeps the extension rule as its only reading
+    // (ADR-0049, #264's A3 boundary): the branch must not swallow it. Its behaviour
+    // row is the spaced compound pinned below in this suite.
+    expect(declaresAddressList("HR. Bukhari no. 5010"), "hadith").toBe(false);
+    expect(declaresAddressList(normalizeCitationLabel("Jilid 1, Hal. 102")), "kitab").toBe(false);
+    expect(declaresAddressList("bukan kutipan sama sekali"), "no grammar").toBe(false);
+    // The #447 QA set still refuses — with the marker family in `known` too, so the
+    // new branch cannot open a shape the fail-closed boundary already closed.
+    const refusals: ReadonlyArray<readonly [string, string]> = [
+      ["QS. 2:0-0", "QS. 2:255"],
+      ["QS. 2:999–999", "QS. 2:255"],
+      ["QS. 115:1-1", "QS. 2:255"],
+      ["QS. 2:٢٥٥–٢٥٥", "QS. 2:255"],
+      ["QS. Al-Fatihah:1–1", "QS. 1:1"],
+      ["QS. 1:1-9", "QS. 1:1"],
+      ["QS. 1:1–2", "QS. 1:1"],
+    ];
+    for (const [span, retrieved] of refusals) {
+      const candidate = citationCandidatesIn(`Lihat ${span} ya`)[0]!;
+      expect(groundingLabelsFor(candidate, new Set([retrieved])), span).toBeNull();
+      expect(groundingLabelsFor(candidate, new Set([retrieved, marker])), span).toBeNull();
+    }
+    // The class this branch exists for, at the width of one (#444), is untouched by
+    // it: a degenerate range whose address is retrieved still grounds, marker or no
+    // marker in the retrieved set.
+    expect(declaresAddressList("QS. 1:1–1")).toBe(true);
+    expect(groundingLabelsFor("QS. 1:1–1", new Set(["QS. 1:1"]))).toEqual(["QS. 1:1"]);
+    expect(groundingLabelsFor("QS. 1:1–1", new Set(["QS. 1:1", marker]))).toEqual(["QS. 1:1"]);
+  });
+
   it("keeps the accepted set where it was — the fix narrows only the unenumerable spaced form", () => {
     // The differential this fix round re-ran, base `c64696f` vs this head, over
     // 21,438 answer × retrieved-set combinations: **widened 0, narrowed 696**,
@@ -794,14 +890,15 @@ describe("validateCitations — grounded direction", () => {
     ]);
     // The comparison half, and the reason it is pinned rather than inferred:
     // this label is the one input the #444 branch deliberately routes AROUND
-    // the declared-list rule. The declaration is the whole label
-    // (`named[0] === candidate`), so the extension rule decides it and grounds
-    // the compound on its head. No draft path can produce this span — the
-    // hadith number token stops at the space before the dash — which is exactly
-    // why it needs an assertion here or nowhere: weaken the branch to an
-    // unconditional `named.length >= 1` (review A1's mutation 2, which left the
-    // whole suite green before this row existed) and this expectation reddens,
-    // so the next simplification of the predicate cannot retire the exclusion
+    // the declared-list rule. The hadith grammar declares no address list
+    // (`declaresAddressList` is false; `addressesNamedBy` names the label whole),
+    // so the extension rule decides it and grounds the compound on its head. No
+    // draft path can produce this span — the hadith number token stops at the
+    // space before the dash — which is exactly why it needs an assertion here or
+    // nowhere: weaken the predicate to a constant `true` (executed, #449) or to
+    // an unconditional `named.length >= 1` (review A1's mutation 2, which left the
+    // whole suite green before this row existed) and this expectation reddens, so
+    // the next simplification of the predicate cannot retire the exclusion
     // silently.
     expect(
       groundingLabelsFor("HR. Bukhari no. 5010 - 5011", new Set(["HR. Bukhari no. 5010"])),

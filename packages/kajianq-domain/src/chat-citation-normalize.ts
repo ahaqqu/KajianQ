@@ -1,4 +1,5 @@
-import { CITATION_GRAMMARS, reduceCitationLabel } from "./chat-citation-grammar";
+import { CITATION_GRAMMARS } from "./chat-citation-grammar";
+import { reduceCitationLabel } from "./chat-citation-reduce";
 import {
   canonicalizeCitationSpelling,
   foldAddressDigits,
