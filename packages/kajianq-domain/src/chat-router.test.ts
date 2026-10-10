@@ -110,6 +110,42 @@ describe("createKajianQRouter", () => {
     ]);
   });
 
+  it("searches every source the route's own parts imply — the gs-v0-015 shape", async () => {
+    // The base-sha failure, as a router reply shapes it: the category reads
+    // `tafsir` and the reply's own third part asks for the hadith on reciting
+    // Al-Fatihah, labelled `dalil` — the role the staging traces carry. The old
+    // rule searched Quran + tafsir only, every hadith row was excluded by
+    // construction, and the run over-refused (issue #435).
+    const h = harness(
+      JSON.stringify({
+        intent: "comparison",
+        category: "tafsir",
+        needsPrinciple: false,
+        subQueries: [
+          { text: "makna Surah Al-Fatihah", role: "factual" },
+          { text: "mengapa dibaca dalam setiap salat", role: "factual" },
+          { text: "hadith no prayer for one who does not recite Al-Fatihah", role: "dalil" },
+        ],
+      }),
+    );
+    const routed = (await h.route({
+      text: "What does Surah Al-Fatihah mean and why is it recited in every prayer?",
+    })) as { filters: KajianQFilters };
+
+    expect(routed.filters.sourceType).toEqual(["quran", "tafsir", "hadith"]);
+    // The record the trace publishes IS the record retrieval is handed — one
+    // derivation, so the decision and the search cannot drift apart.
+    expect(h.events.at(-1)).toEqual({
+      stage: "router",
+      kind: "source_routing",
+      detail: {
+        sources: ["quran", "tafsir", "hadith"],
+        filters: { sourceType: ["quran", "tafsir", "hadith"] },
+      },
+      at: 7,
+    });
+  });
+
   it("sends the question as personal data through the provider seam", async () => {
     const h = harness(REPLY);
     await h.route({ text: "Apa hukum riba?" });
