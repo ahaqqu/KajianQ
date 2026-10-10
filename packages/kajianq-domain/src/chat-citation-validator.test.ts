@@ -10,7 +10,7 @@ import {
   normalizeCitationLabel,
   validateCitations,
 } from "./chat-citation-validator";
-import { CITATION_GRAMMARS } from "./chat-citation-grammar";
+import { CITATION_GRAMMARS, declaresAddressList } from "./chat-citation-grammar";
 import { reduceCitationLabel } from "./chat-citation-reduce";
 
 /**
@@ -670,6 +670,79 @@ describe("validateCitations — grounded direction", () => {
       grounded: [],
       ungrounded: ["QS. Al-Fatihah:1–1"],
     });
+  });
+
+  it("reads the declared-list branch off the grammar's declaration, never off its shape (#449)", () => {
+    // The proxy this replaces, `named.length > 0 && named[0] !== candidate`, answers
+    // "the declaration names an address other than the span itself". For a plain,
+    // marker-prefixed span the answer is FALSE — `addressesNamedBy` names the span
+    // itself — so the span reached the EXTENSION rule, and a retrieved set holding a
+    // bare `QS.` marker grounded it on the marker. That verdict is silent: a marker
+    // is a legal chunk label, the answer cites a real-looking address, no refusal is
+    // raised, and no chip is missing. Measured at base `4003527` over 6,236 addresses
+    // x 8 joiners x 4 renderings x 6 retrieved-set families = 1,197,348 combinations
+    // (935,418 distinct span x family pairs): **widened 0, narrowed 6,236** — every
+    // narrowed pair a plain span whose retrieved set held only the marker, one per
+    // valid address, and no pair outside that class.
+    const marker = "QS.";
+    for (const written of ["QS. 2:4", "Q.S. 2:4", "QS 2:4"] as const) {
+      const candidate = citationCandidatesIn(`Lihat ${written} ya`)[0]!;
+      expect(candidate, written).toBe("QS. 2:4");
+      // The declaration read is structural — this grammar declares `addressesOf` —
+      // so the per-address branch is taken for a span of ANY width, plain included.
+      expect(declaresAddressList(candidate), written).toBe(true);
+      expect(addressesNamedBy(candidate), written).toEqual(["QS. 2:4"]);
+      // The class: the span names `QS. 2:4` and the marker is not that address, so
+      // nothing grounds it. At base this was `["QS."]` — the fail-open direction.
+      expect(groundingLabelsFor(candidate, new Set([marker])), written).toBeNull();
+      // The other direction, same span: its own address grounds it, on itself — the
+      // branch is not a refusal for a plain citation the corpus does carry.
+      expect(groundingLabelsFor(candidate, new Set(["QS. 2:4"])), written).toEqual(["QS. 2:4"]);
+      expect(validateCitations(`Lihat ${written} ya`, [chunk("QS. 2:4")]), written).toEqual({
+        grounded: ["QS. 2:4"],
+        ungrounded: [],
+      });
+      // Through the gate, on a chunk whose label IS a bare marker: the span stays
+      // ungrounded. `grounded` holds `QS` because the marker is literally present in
+      // the answer text — the gate's substring pass, never a grounding of this span.
+      expect(validateCitations(`Lihat ${written} ya`, [chunk(marker)]), written).toEqual({
+        grounded: ["QS"],
+        ungrounded: ["QS. 2:4"],
+      });
+    }
+    // Why the class was latent, recorded so nobody reads this fix as a live
+    // incident: the gate builds `known` through `normalizeCitationLabel`, which reads
+    // a bare marker as `QS` — no chunk label can put the raw `QS.` in `known`. The
+    // branch must not rest on that, which is the point of reading the grammar.
+    expect(normalizeCitationLabel(marker)).toBe("QS");
+    // A grammar that declares NO list keeps the extension rule as its only reading
+    // (ADR-0049, #264's A3 boundary): the branch must not swallow it. Its behaviour
+    // row is the spaced compound pinned below in this suite.
+    expect(declaresAddressList("HR. Bukhari no. 5010"), "hadith").toBe(false);
+    expect(declaresAddressList(normalizeCitationLabel("Jilid 1, Hal. 102")), "kitab").toBe(false);
+    expect(declaresAddressList("bukan kutipan sama sekali"), "no grammar").toBe(false);
+    // The #447 QA set still refuses — with the marker family in `known` too, so the
+    // new branch cannot open a shape the fail-closed boundary already closed.
+    const refusals: ReadonlyArray<readonly [string, string]> = [
+      ["QS. 2:0-0", "QS. 2:255"],
+      ["QS. 2:999–999", "QS. 2:255"],
+      ["QS. 115:1-1", "QS. 2:255"],
+      ["QS. 2:٢٥٥–٢٥٥", "QS. 2:255"],
+      ["QS. Al-Fatihah:1–1", "QS. 1:1"],
+      ["QS. 1:1-9", "QS. 1:1"],
+      ["QS. 1:1–2", "QS. 1:1"],
+    ];
+    for (const [span, retrieved] of refusals) {
+      const candidate = citationCandidatesIn(`Lihat ${span} ya`)[0]!;
+      expect(groundingLabelsFor(candidate, new Set([retrieved])), span).toBeNull();
+      expect(groundingLabelsFor(candidate, new Set([retrieved, marker])), span).toBeNull();
+    }
+    // The class this branch exists for, at the width of one (#444), is untouched by
+    // it: a degenerate range whose address is retrieved still grounds, marker or no
+    // marker in the retrieved set.
+    expect(declaresAddressList("QS. 1:1–1")).toBe(true);
+    expect(groundingLabelsFor("QS. 1:1–1", new Set(["QS. 1:1"]))).toEqual(["QS. 1:1"]);
+    expect(groundingLabelsFor("QS. 1:1–1", new Set(["QS. 1:1", marker]))).toEqual(["QS. 1:1"]);
   });
 
   it("keeps the accepted set where it was — the fix narrows only the unenumerable spaced form", () => {
