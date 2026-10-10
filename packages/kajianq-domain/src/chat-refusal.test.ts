@@ -65,7 +65,8 @@ describe("the earned refusal shape (#439)", () => {
 });
 
 /**
- * The ASSERTING refusal draft (#443) — the residual #439 deliberately left.
+ * The ASSERTING refusal draft (#443) — the residual #439 deliberately left, and
+ * the fold #452 closed inside it.
  *
  * `isRefusalDraft` reads the SENTENCE, and the earned shape used to read "cites
  * nothing" as "declines". A draft whose own sentences assert something and
@@ -74,12 +75,14 @@ describe("the earned refusal shape (#439)", () => {
  * unconditional copy, and the trace recorded no `product_rules` event because
  * no rule ever ran. The failure is silent — no gate scores the delivered text.
  *
- * The signal is `isRefusalOnly`: the refusal and nothing else. It is a SHAPE
- * test, not a claim classifier, so its false positives take the SAFE direction
- * — an unrecognised text becomes the product's own refusal rather than the
- * model's words. One shape is the exception, and it fails OPEN rather than
- * safe: an assertion folded into the refusal's own sentence. It is recorded
- * where it bites, at the bottom of this file, and tracked as #452.
+ * The signal is `isRefusalOnly`: the refusal plus the framing the product
+ * itself pins, and nothing else — a positive vocabulary, not a claim
+ * classifier. An unrecognised text takes the SAFE direction (the product's own
+ * refusal rather than the model's words); #452 closed the one shape that failed
+ * OPEN instead, an assertion folded into the refusal's own sentence, which no
+ * sentence boundary can see. Both directions of that closure are pinned at the
+ * bottom of this file: the fold leaving the exemption, and the legitimate
+ * declines that must keep shipping their own text.
  */
 describe("the asserting refusal draft (#443)", () => {
   const CHUNKS = [
@@ -238,33 +241,78 @@ describe("the asserting refusal draft (#443)", () => {
     expect(decision?.delivery).toBe("product_refusal");
   });
 
-  it("records its limit: a second framing sentence is not the refusal-only shape", () => {
-    // Recorded, not hidden. A multi-sentence polite decline is not recognised as
-    // the refusal-only shape (the refusal must be the text's only sentence), so
-    // it takes the backstop — and the backstop's delivery is still a refusal the
-    // reader recognises, which is the SAFE direction this signal fails in (the
-    // model's politeness is lost, nothing unvouched ships).
+  it("keeps a legitimate decline that says more shipping its own text (#452)", () => {
+    // The OVER-NARROWING direction of #452's fix, and a pin that MOVED: it used
+    // to read "a second framing sentence is not the refusal-only shape" and
+    // recorded `product_refusal` as the safe direction. `Mohon maaf.` is the
+    // floor's own apology frame standing as its own sentence — the frame the
+    // product itself pins — and it carries nothing of the model's, so refusing
+    // it costs the reader the model's politeness for no safety gain. A positive
+    // framing vocabulary is exactly what can over-narrow here (an exemption
+    // granted only to the sentence plus a frame welded to it refuses this
+    // text), so the shipped text is pinned, not just the predicate.
     const twoSentences = `Mohon maaf. Kami ${DEFAULT_REFUSALS.id}.`;
-    expect(isRefusalOnly(twoSentences)).toBe(false);
-    expect(
-      refusalDraftDecision(twoSentences, validateCitations(twoSentences, CHUNKS))?.delivery,
-    ).toBe("product_refusal");
-  });
-
-  it("records the residual that fails OPEN: an assertion folded into the refusal's own sentence (#452)", () => {
-    // This is NOT the safe direction and the record no longer says it is. The
-    // fold and the pinned #285 floor are the same shape — "<clause>,
-    // <connector> kami <sentence>." — so no boundary separates the claim from
-    // the framing, and telling them apart needs vocabulary knowledge, i.e. the
-    // claim classifier this predicate deliberately is not. The exemption is
-    // granted, the draft's own words ship, and the defect is the #443 shape
-    // narrowed to this one input: tracked as #452. This pin is the record — if
-    // the fold is ever closed, this test is what forces the change to be
-    // deliberate.
-    const fold = `Haditsnya sahih dan wajib diamalkan, namun kami ${DEFAULT_REFUSALS.id}.`;
-    expect(isRefusalOnly(fold)).toBe(true);
-    const decision = refusalDraftDecision(fold, validateCitations(fold, CHUNKS));
+    const citations = validateCitations(twoSentences, CHUNKS);
+    expect(citations.grounded).toEqual([]);
+    expect(citations.ungrounded).toEqual([]);
+    expect(isRefusalOnly(twoSentences)).toBe(true);
+    const decision = refusalDraftDecision(twoSentences, citations);
     expect(decision?.shape).toBe("pure_refusal");
     expect(decision?.delivery).toBe("draft");
+  });
+
+  it("keeps the EN floor shipping its own text (#452)", () => {
+    // The other over-narrowing shape: a vocabulary built from the ID floor
+    // alone would leave the EN floor outside the exemption. Its predicate pin
+    // is above; this is the decision, because "reads it" and "ships it" are
+    // different claims.
+    const en = `Sorry, we ${DEFAULT_REFUSALS.en} for this question.`;
+    const citations = validateCitations(en, CHUNKS);
+    expect(citations.grounded).toEqual([]);
+    expect(citations.ungrounded).toEqual([]);
+    expect(isRefusalOnly(en)).toBe(true);
+    expect(refusalDraftDecision(en, citations)?.delivery).toBe("draft");
+  });
+
+  it("closes the fold: an assertion inside the refusal's own sentence leaves the exemption (#452)", () => {
+    // The residual #443 recorded as failing OPEN, and the spellings a test that
+    // only reads sentence boundaries would still miss: a connector other than
+    // `namun`, and the clause written AFTER the sentence. Every row carries the
+    // canonical sentence, cites nothing, and asserts something of its own — so
+    // no boundary separates them, and each must take the backstop: the reader
+    // gets the product's own refusal rather than the model's assertion.
+    const rows: [string, string][] = [
+      ["the fold", `Haditsnya sahih dan wajib diamalkan, namun kami ${DEFAULT_REFUSALS.id}.`],
+      [
+        "another connector",
+        `Haditsnya sahih dan wajib diamalkan, tetapi kami ${DEFAULT_REFUSALS.id}.`,
+      ],
+      [
+        "clause after the sentence",
+        `Kami ${DEFAULT_REFUSALS.id}, namun haditsnya sahih dan wajib diamalkan.`,
+      ],
+    ];
+    for (const [name, draft] of rows) {
+      const citations = validateCitations(draft, CHUNKS);
+      expect(citations.grounded, name).toEqual([]);
+      expect(citations.ungrounded, name).toEqual([]);
+      expect(isRefusalOnly(draft), name).toBe(false);
+      const decision = refusalDraftDecision(draft, citations);
+      expect(decision?.shape, name).toBe("asserting_refusal");
+      expect(decision?.delivery, name).toBe("product_refusal");
+    }
+  });
+
+  it("reads the sentence's own vocabulary as content, not framing (the negation flip)", () => {
+    // The trap in the fix itself: a vocabulary that admitted the canonical
+    // sentence's own words as "framing" would grant the exemption to the
+    // sentence with its negation dropped — the opposite claim, written in the
+    // refusal's own vocabulary. The residue is read against the PINNED FRAME
+    // only, so this leaves the exemption and is refused.
+    const flipped = `Kami menemukan dalil yang memadai. Mohon maaf, kami ${DEFAULT_REFUSALS.id}.`;
+    expect(isRefusalOnly(flipped)).toBe(false);
+    expect(refusalDraftDecision(flipped, validateCitations(flipped, CHUNKS))?.delivery).toBe(
+      "product_refusal",
+    );
   });
 });

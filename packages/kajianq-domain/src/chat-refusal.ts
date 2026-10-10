@@ -27,6 +27,9 @@ export const DEFAULT_REFUSALS = {
   en: "could not find adequate evidence",
 } as const;
 
+/** The two sentences `chat-prompts.ts` instructs the generator to emit verbatim. */
+const CANONICAL_SENTENCES = [DEFAULT_REFUSALS.id, DEFAULT_REFUSALS.en];
+
 /** The refusal text a language resolves to (kept beside the sentence it stands in for). */
 export function refusalTextFor(language: ChatLanguage, reason: "ungrounded" | "reviewer"): string {
   if (reason === "reviewer") {
@@ -58,7 +61,7 @@ export function refusalTextFor(language: ChatLanguage, reason: "ungrounded" | "r
  */
 export function isRefusalDraft(text: string): boolean {
   const t = text.toLowerCase();
-  return t.includes(DEFAULT_REFUSALS.id) || t.includes(DEFAULT_REFUSALS.en);
+  return CANONICAL_SENTENCES.some((sentence) => t.includes(sentence));
 }
 
 /**
@@ -75,44 +78,77 @@ export function isRefusalDraft(text: string): boolean {
 const SENTENCE_BOUNDARIES = /[.!?؟۔]+|\r?\n[ \t]*\r?\n|^[ \t]*(?:[-*•]|\d+[.)])[ \t]+/mu;
 
 /**
- * True when the draft is the refusal and NOTHING else (#443): every sentence of
- * it carries the canonical sentence, so what surrounds the refusal is its own
- * framing ("Mohon maaf, … untuk pertanyaan ini.") and never a claim of its own.
- * This is the DETERMINISTIC signal the earned-refusal exemption was missing —
- * the decline backstop, the symmetric counterpart to the reviewer's "declines
- * to answer" case, and the reason a citation-free draft that asserts can no
- * longer pass as a decline because the machinery saw no citations.
+ * The framing vocabulary: the only words the exemption may ignore, because the
+ * product itself pins them around the canonical sentence and none of them can
+ * carry a claim — an apology, the speaker, the pointer to the question. The
+ * #285 floor's frame in both languages, and EXHAUSTIVE: any other word is
+ * content of the model's own and takes the refusal backstop (#452). The
+ * sentence's own vocabulary is deliberately NOT here — admitting `menemukan`,
+ * `dalil` or `memadai` would grant the exemption to the sentence with its
+ * negation dropped, `"Kami menemukan dalil yang memadai."`, the opposite claim
+ * written in the refusal's own words.
+ */
+const FRAMING_WORDS = new Set([
+  "mohon",
+  "maaf",
+  "kami",
+  "untuk",
+  "pertanyaan",
+  "ini", // the ID floor's frame
+  "sorry",
+  "we",
+  "for",
+  "this",
+  "question", // the EN floor's frame
+]);
+
+/** True when every word of a residue is one the product pins as framing. */
+function isFraming(residue: string): boolean {
+  return (residue.match(/[\p{L}\p{N}]+/gu) ?? []).every((word) => FRAMING_WORDS.has(word));
+}
+
+/**
+ * True when one sentence of the draft carries nothing but the canonical
+ * sentence and that framing: every canonical occurrence is stripped first, and
+ * the residue is read as words (`[\p{L}\p{N}]+`, so a digit-leading token like
+ * `2026`, or a citation label, is content and never framing).
+ */
+function isRefusalSegment(sentence: string): boolean {
+  let residue = sentence.toLowerCase();
+  for (const canonical of CANONICAL_SENTENCES) {
+    residue = residue.split(canonical).join(" ");
+  }
+  return isFraming(residue);
+}
+
+/**
+ * True when the draft is the refusal and NOTHING else (#443, #452): it carries
+ * the canonical sentence, and every word beside it is one the product itself
+ * pins as framing — so what surrounds the refusal is its own frame ("Mohon
+ * maaf, … untuk pertanyaan ini.") and never a claim of its own. This is the
+ * DETERMINISTIC signal the earned-refusal exemption was missing — the decline
+ * backstop, the symmetric counterpart to the reviewer's "declines to answer"
+ * case, and the reason a citation-free draft that asserts can no longer pass as
+ * a decline because the machinery saw no citations.
  *
- * It is a SHAPE test, deliberately not a claim classifier: the product cannot
- * read assertions, so the exemption is granted only to a text that adds nothing
- * of its own beyond framing. Any text this does not recognise takes the refusal
- * backstop, whose delivery is the product's own refusal — a refusal the reader
- * recognises is never worse than an assertion nobody vouches for (SPECS §1.5
- * boundary 2), while decorating an assertion leaves the assertion standing
- * (SPECS §2.2).
- *
- * Its limits are recorded rather than hidden, and the two directions are NOT
- * the same one:
- *
- * - A multi-sentence polite decline ("Mohon maaf. Kami tidak menemukan dalil
- *   yang memadai.") is not the refusal-only shape, so it takes the backstop: the
- *   product's canonical refusal in place of the model's words. Safe — the reader
- *   still gets a refusal, and only the model's politeness is lost.
- * - A draft that folds its assertion into the refusal's OWN sentence is still
- *   read as the refusal only, and it **fails OPEN: the draft ships verbatim**,
- *   assertion and all. No boundary separates the two — the fold
- *   (`"Haditsnya sahih dan wajib diamalkan, namun kami <sentence>."`) and the
- *   pinned #285 floor (`"Mohon maaf, kami <sentence> untuk pertanyaan ini."`) are
- *   the same shape, and telling them apart needs vocabulary knowledge, i.e. the
- *   claim classifier this predicate deliberately is not. Narrowed and tracked as
- *   #452; it is a defect, not a safe direction.
+ * It is a SHAPE test, deliberately not a claim classifier: any text it does not
+ * recognise takes the refusal backstop, whose delivery is the product's own
+ * refusal — a refusal the reader recognises is never worse than an assertion
+ * nobody vouches for (SPECS §1.5 boundary 2), while decorating an assertion
+ * leaves the assertion standing (SPECS §2.2). The fold is why vocabulary closes
+ * it rather than a fourth boundary (#452): an assertion inside the refusal's
+ * OWN sentence is the floor's own shape — `"<clause>, <connector> kami
+ * <sentence>."` — and only vocabulary separates the claim (`haditsnya`,
+ * `sahih`, `namun`) from the frame. Both directions are pinned in
+ * `chat-refusal.test.ts`.
  */
 export function isRefusalOnly(text: string): boolean {
+  if (!isRefusalDraft(text)) return false;
   const sentences = text
     .split(SENTENCE_BOUNDARIES)
     .map((sentence) => sentence.trim())
     .filter((sentence) => sentence !== "");
-  return sentences.length > 0 && sentences.every((sentence) => isRefusalDraft(sentence));
+  return sentences.length > 0 && sentences.every(isRefusalSegment);
 }
 
 /**

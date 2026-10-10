@@ -668,4 +668,34 @@ describe("#443 — a citation-free asserting refusal draft ships the product's r
     expect(productRulesEvents(second)).toHaveLength(0);
     expect(hasWeakWarning(text)).toBe(false);
   });
+
+  it("ships the wrapped floor byte-identical and refuses the folded sentence, on the same wiring (#452)", async () => {
+    // The floors' predicate/decision pins live in `chat-refusal.test.ts`; the
+    // unwrapped floor's DELIVERED text is pinned in the test above. The wrapped
+    // variant carries its own predicate pin there and had no delivered-text pin
+    // anywhere — a narrowing of the exemption could have moved it without this
+    // suite noticing (#452, observation 3 of the #451 re-review), so the gap is
+    // closed here: what the reader receives is the model's text, byte for byte,
+    // with no rule run and no warning invented for a text that cites nothing.
+    const store = createMemoryRagStore();
+    await seedChild(store, DHAIF_METADATA, 0);
+    const wrapped = `Mohon maaf,\nkami ${DEFAULT_REFUSALS.id}\nuntuk pertanyaan ini.`;
+    const floor = await answerVia(store, wrapped);
+    expect((floor as { text: string }).text).toBe(wrapped);
+    expect(productRulesEvents(floor)).toHaveLength(0);
+
+    // The fold: the same sentence, on the same wiring, with a claim of the
+    // model's own inside it. `isRefusalOnly` reads it as content now, so the
+    // reader gets the product's refusal rather than the draft's assertion.
+    const fold = `Haditsnya sahih dan wajib diamalkan, namun kami ${DEFAULT_REFUSALS.id}.`;
+    const refused = await answerVia(store, fold);
+    const text = (refused as { text: string }).text;
+    expect(text).toBe(DEFAULT_REFUSALS.id);
+    expect(text).not.toContain("wajib diamalkan");
+    expect(eventsOf(refused).find((e) => e.kind === "refusal")?.detail["trigger"]).toBe(
+      "asserting_refusal_draft",
+    );
+    expect(productRulesEvents(refused)).toHaveLength(0);
+    expect(hasWeakWarning(text)).toBe(false);
+  });
 });
