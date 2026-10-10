@@ -171,6 +171,33 @@ describe("deriveCitationsFrame — a grounded range gets its chip (#274 A1)", ()
     ).toEqual(["QS. 3:1"]);
   });
 
+  it("emits the chip for a range of ONE address the gate grounds (#444)", () => {
+    // The live staging span (trace `b8812e2d-…`, merge `d30c40cf`): the draft
+    // wrote `QS. 1:1–1` over a retrieved `QS. 1:1`. The gate used to refuse it,
+    // its `ungrounded_citation` trigger replaced the whole draft with the
+    // canonical refusal, and the frame was `[]` on both sides of the failure —
+    // which is why only a test asserting BOTH halves can see it. The label is
+    // the span as written (ADR-0049 Decision 4: the display form is the range),
+    // backed by the address's display row.
+    const answer = "Dalilnya QS. 1:1–1 tentang hal ini.";
+    const chunks = [chunk("c1", "QS. 1:1")];
+    expect(validateCitations(answer, chunks.map(asChunk))).toEqual({
+      grounded: ["QS. 1:1"],
+      ungrounded: [],
+    });
+    const frame = frameOf(traceWithChunks(["c1"]), answer, chunks);
+    expect(frame.citations.map((c) => c.label)).toEqual(["QS. 1:1–1"]);
+    expect(frame.citations[0]).toMatchObject({ arabic: "النص العربي", source: "Sumber Tampilan" });
+    // The other direction, unchanged: only a sibling verse retrieved — the gate
+    // refuses the span (naming it as written) and the frame invents no chip.
+    const sibling = [chunk("c2", "QS. 1:2")];
+    expect(validateCitations(answer, sibling.map(asChunk))).toEqual({
+      grounded: [],
+      ungrounded: ["QS. 1:1–1"],
+    });
+    expect(frameOf(traceWithChunks(["c2"]), answer, sibling).citations).toEqual([]);
+  });
+
   it("still emits nothing for a range the gate refuses — the other direction", () => {
     // Only `QS. 3:2` retrieved: the gate refuses the range, so the frame must
     // not invent a chip for it (ADR-0040's invariant, unchanged). Note the
