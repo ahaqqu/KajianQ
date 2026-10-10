@@ -1,12 +1,60 @@
 import { fc, test as fcTest } from "@fast-check/vitest";
-import { describe, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   decomposeQuery,
   MAX_SUB_QUERIES,
   MIN_SUB_QUERIES,
   type DecompositionInput,
 } from "./chat-router-decompose";
-import { PRINCIPLE_TAGS, SUBJECT_AREAS, SUB_QUERY_ROLES } from "./taxonomy";
+import {
+  PRINCIPLE_TAGS,
+  SUBJECT_AREAS,
+  SUB_QUERY_ROLES,
+  type SubjectArea,
+  type SubQueryRole,
+} from "./taxonomy";
+
+/**
+ * Reply texts that carry a letter or a digit in some script (#450): one ASCII
+ * word, bare numerals, Arabic-Indic and full-width digits, a single Arabic word,
+ * Jawi, Han, and punctuation or a zero-width space beside content. The repair's
+ * content test must keep every one of them, and only the non-ASCII entries can
+ * separate `\p{L}`/`\p{N}` from an ASCII `/[a-z0-9]/i` reading.
+ */
+const CONTENT_TEXTS = [
+  "riba",
+  "5",
+  "٥",
+  "٢٥٥",
+  "５",
+  "الربا",
+  "حكم ربا",
+  "漢字",
+  "QS. 2:255",
+  "\u200briba",
+] as const;
+
+/**
+ * Texts with no letter and no digit in any script, over the same range of
+ * scripts: whitespace, punctuation, symbols, an emoji, control characters, a
+ * zero-width space, an Arabic question mark, an Arabic letter mark and an
+ * Arabic star. A content-free *non-ASCII* text is what tells a script-agnostic
+ * drop apart from an ASCII-only one in the other direction.
+ */
+const CONTENT_FREE_TEXTS = [
+  "",
+  "   ",
+  "\t\n",
+  "!",
+  '"',
+  "—…?!",
+  "\u0000\u0007",
+  "🎉🎉",
+  "\u200b",
+  "؟",
+  "\u061c",
+  "٭",
+] as const;
 
 /**
  * The decomposition repair's laws (#14). These are properties, not examples:
@@ -37,13 +85,23 @@ import { PRINCIPLE_TAGS, SUBJECT_AREAS, SUB_QUERY_ROLES } from "./taxonomy";
  *   6. nothing is returned only when there was nothing to search;
  *   7. re-running the repair over its own output changes nothing but the
  *      provenance labels (idempotence over text and role) — the law #450 was
- *      filed about — over both the plain and the collision generator below, so
- *      its verdict is a property of the repair and not of the seed draw;
- *   8. every entry is marked as the model's or a rule's;
- *   9. no text the reply phrased with nothing to search with survives — blank,
- *      whitespace-only, punctuation-only, emoji-only, control-only — unless it
- *      is the caller's own question, which the `factual` rule adds back anyway
- *      and which is therefore never refused (#450).
+ *      filed about — over both the plain and the collision generator below, at a
+ *      budget (2 000 runs, ~1 000 per generator) whose verdict is a property of
+ *      the repair and not of the seed draw: reverting only the ceiling's
+ *      stand-in protection reddens it in 20 of 20 runs (review A1);
+ *   8. no text the reply phrased with nothing to search with survives — blank,
+ *      whitespace-only, punctuation-only, emoji-only, control-only, in ASCII or
+ *      in any other script — unless it is the caller's own question, which the
+ *      `factual` rule adds back anyway and which is therefore never dropped
+ *      (#450);
+ *   9. and the other direction: a reply text that carries content is kept,
+ *      trimmed and as the reply labelled it — the half an ASCII reading of
+ *      "content" would narrow away (#450 A2);
+ *  10. the ceiling never spends the slot of the entry a fired-but-uncovered
+ *      rule's own text lives in — the invariant the module's prose used to
+ *      argue rather than check — over both generators at the same budget as
+ *      law 7 (#450 B1);
+ *  11. every entry is marked as the model's or a rule's.
  */
 
 const subQueryArb: fc.Arbitrary<{ text: string; role?: string }> = fc
@@ -60,7 +118,22 @@ const subQueryArb: fc.Arbitrary<{ text: string; role?: string }> = fc
           "prinsip yusr",
           "dalil Al-Quran",
           "  spaced   text  ",
+          // The three non-factual rule templates, whole, for the fixed question
+          // the rules are built on: an echo of one of these under another declared
+          // role is the coincidence law 2's exception is written for, at every
+          // fired role rather than `factual` alone (review A3). They match only
+          // when the question, tags and category line up, which is what makes the
+          // reach real but rare — the law's own comment says so.
+          "prinsip yusr dalam menjawab: hukum riba?",
+          "dalil Al-Quran tentang: hukum riba?",
+          "sanad dan derajat hadis tentang: hukum riba?",
         ),
+        // The content laws' boundary in both directions (#450 A2). `fc.string`
+        // above is printable ASCII and every other constant is ASCII too, so
+        // without these the generators cannot separate `\p{L}`/`\p{N}` from an
+        // ASCII `/[a-z0-9]/i` reading at all — which is how the law's claim to
+        // catch that narrowing went unproven.
+        fc.constantFrom(...CONTENT_TEXTS, ...CONTENT_FREE_TEXTS),
       ),
       role: fc.option(fc.constantFrom(...SUB_QUERY_ROLES, "tafsir", ""), { nil: undefined }),
     },
@@ -116,7 +189,10 @@ const hasContent = (text: string): boolean => /[\p{L}\p{N}]/u.test(text);
 const collisionArb: fc.Arbitrary<DecompositionInput> = fc
   .record(
     {
-      question: fc.constantFrom("hukum riba?", "q"),
+      // One non-ASCII question: the entry that carries it is the one law 2's
+      // exception and the ceiling both reason about, and its content must
+      // survive in either script.
+      question: fc.constantFrom("hukum riba?", "q", "حكم الربا"),
       needsPrinciple: fc.boolean(),
       principleTags: fc.array(fc.constantFrom(...PRINCIPLE_TAGS), { maxLength: 2 }),
       category: fc.option(fc.constantFrom(...SUBJECT_AREAS), { nil: undefined }),
@@ -124,7 +200,21 @@ const collisionArb: fc.Arbitrary<DecompositionInput> = fc
         minLength: 5,
         maxLength: 8,
       }),
-      texts: fc.array(fc.constantFrom("a", "b", "c", "d", "e"), { minLength: 5, maxLength: 8 }),
+      texts: fc.array(
+        fc.constantFrom(
+          "a",
+          "b",
+          "c",
+          "d",
+          "e",
+          "٥",
+          "الربا",
+          "prinsip yusr dalam menjawab: hukum riba?",
+          "dalil Al-Quran tentang: hukum riba?",
+          "sanad dan derajat hadis tentang: hukum riba?",
+        ),
+        { minLength: 5, maxLength: 8 },
+      ),
     },
     { requiredKeys: ["question", "needsPrinciple", "principleTags", "roles", "texts"] },
   )
@@ -140,6 +230,79 @@ const collisionArb: fc.Arbitrary<DecompositionInput> = fc
       };
     }),
   }));
+
+/** The composition rules that fire for a question, restated from the module (#450). */
+const firedRoles = (needsPrinciple: boolean, category: SubjectArea | undefined): SubQueryRole[] => {
+  const roles: SubQueryRole[] = ["factual"];
+  if (needsPrinciple) roles.push("principle");
+  if (category === "fikih") roles.push("dalil");
+  if (category === "hadith") roles.push("sanad");
+  return roles;
+};
+
+/**
+ * The module's rule templates, restated (#450): the text a rule adds for a
+ * question. Law 2's exception and the stand-in law both key on a rule's *own*
+ * text, so deriving it here lets them say "this rule's text, under another
+ * declared role" instead of naming one template — which is how the exception
+ * stops being written for the `factual` rule alone (review A3).
+ */
+const ruleTextOf = (
+  role: SubQueryRole,
+  input: Pick<DecompositionInput, "question" | "principleTags">,
+): string => {
+  const question = input.question.trim();
+  if (role === "principle") {
+    const lens = input.principleTags.length > 0 ? input.principleTags.join(", ") : "syariat";
+    return `prinsip ${lens} dalam menjawab: ${question}`;
+  }
+  if (role === "dalil") return `dalil Al-Quran tentang: ${question}`;
+  if (role === "sanad") return `sanad dan derajat hadis tentang: ${question}`;
+  return question;
+};
+
+/**
+ * The positive content law's input class (#450 A2): a reply phrasing one or two
+ * *different* content-bearing texts, each under a distinct role the rules also
+ * fired. Every entry then takes a slot of its own below the ceiling, so the only
+ * way a text can leave the fan-out is the content test narrowing — which is what
+ * makes the law's expectation exact ("this text, under this role") rather than
+ * "present somewhere", and what lets an ASCII `/[a-z0-9]/i` reading redden a law
+ * instead of one example. The roles come from the fired set because an entry
+ * whose role no rule fired is an extra, and the ceiling may spend it.
+ */
+const contentReplyArb = (
+  fired: readonly SubQueryRole[],
+): fc.Arbitrary<{ text: string; role: SubQueryRole }[]> =>
+  fc
+    .record({
+      texts: fc.uniqueArray(fc.constantFrom(...CONTENT_TEXTS), { minLength: 1, maxLength: 2 }),
+      roles: fc.uniqueArray(fc.constantFrom(...fired), { minLength: 1, maxLength: 2 }),
+    })
+    .map(({ texts, roles }) =>
+      roles.flatMap((role, index) => {
+        const text = texts[index];
+        return text === undefined ? [] : [{ text, role }];
+      }),
+    );
+
+const contentInputArb: fc.Arbitrary<DecompositionInput> = fc
+  .record(
+    {
+      question: fc.constantFrom("hukum riba?", "q", "حكم الربا"),
+      needsPrinciple: fc.boolean(),
+      principleTags: fc.array(fc.constantFrom(...PRINCIPLE_TAGS), { maxLength: 2 }),
+      category: fc.option(fc.constantFrom(...SUBJECT_AREAS), { nil: undefined }),
+    },
+    { requiredKeys: ["question", "needsPrinciple", "principleTags"] },
+  )
+  .chain(({ category, ...core }) =>
+    contentReplyArb(firedRoles(core.needsPrinciple, category)).map((modelSubQueries) => ({
+      ...core,
+      ...(category === undefined ? {} : { category }),
+      modelSubQueries,
+    })),
+  );
 
 describe("decomposeQuery laws", () => {
   fcTest.prop([inputArb])("never exceeds the stage's ceiling", (input) => {
@@ -157,26 +320,77 @@ describe("decomposeQuery laws", () => {
       const subs = decomposeQuery(input);
       const roles = subs.flatMap((sub) => (sub.role === undefined ? [] : [sub.role]));
       // The coverage rule, with the coincidence it cannot close stated as a
-      // precondition rather than left as prose: the `factual` rule's text is the
-      // question, so it can only go unshown when the model's own reply already
-      // labelled that text with a *different* declared role — the one label the
-      // repair never overwrites. The generator can produce that input
-      // (`"hukum riba?"` in `subQueryArb` against the same question constant) and
-      // the role-less echo beside it; without that reach this law would pass
-      // over the class it exists to guard (review R2-A1).
-      const modelEchoLabelledOtherwise = input.modelSubQueries.some(
-        (entry) =>
-          entry.role !== undefined &&
-          entry.role !== "factual" &&
-          (SUB_QUERY_ROLES as readonly string[]).includes(entry.role) &&
-          norm(entry.text) === norm(input.question),
-      );
-      if (!roles.includes("factual")) expect(modelEchoLabelledOtherwise).toBe(true);
-      if (input.needsPrinciple) expect(roles).toContain("principle");
-      if (input.category === "fikih") expect(roles).toContain("dalil");
-      if (input.category === "hadith") expect(roles).toContain("sanad");
+      // precondition rather than left as prose, and stated per fired role rather
+      // than for `factual` alone (review A3): a rule goes unshown only when the
+      // reply itself already labelled the rule's *own text* with a different
+      // declared role — the one label the repair never overwrites. The generator
+      // reaches the shape (`"hukum riba?"` in `subQueryArb` against the same
+      // question constant, and every rule's whole template beside it) and the
+      // role-less echo too; without that reach this law would pass over the class
+      // it exists to guard (review R2-A1). The `factual`-only guard this replaces
+      // went red on a `principle`/`dalil`/`sanad` template echoed under another
+      // role — which the module header, `SPECS.md` §3.3 stage 2 and ADR-0051 all
+      // document as intended behaviour — and the block below pins those three
+      // coincidences directly rather than leaving them to the draw (review A3).
+      for (const role of firedRoles(input.needsPrinciple, input.category)) {
+        if (roles.includes(role)) continue;
+        expect(
+          input.modelSubQueries.some(
+            (entry) =>
+              entry.role !== undefined &&
+              entry.role !== role &&
+              (SUB_QUERY_ROLES as readonly string[]).includes(entry.role) &&
+              norm(entry.text) === norm(ruleTextOf(role, input)),
+          ),
+        ).toBe(true);
+      }
     },
   );
+
+  // Law 2's exception, per fired role, pinned as three examples: the reach the
+  // generators can only make rare (review A3). Each case is the documented
+  // coincidence — the reply labelled a fired rule's *own text* with another
+  // declared role, so that rule's coverage goes unshown while the text it would
+  // have added is already what the reply carried. The `factual`-only guard this
+  // law replaced reddened on all three.
+  it("accepts a non-factual rule's template echoed under another declared role", () => {
+    const cases: { input: DecompositionInput; role: SubQueryRole }[] = [
+      {
+        input: {
+          question: "q",
+          needsPrinciple: true,
+          principleTags: ["yusr"],
+          modelSubQueries: [{ text: "prinsip yusr dalam menjawab: q", role: "sanad" }],
+        },
+        role: "principle",
+      },
+      {
+        input: {
+          question: "q",
+          needsPrinciple: false,
+          principleTags: [],
+          category: "fikih",
+          modelSubQueries: [{ text: "dalil Al-Quran tentang: q", role: "factual" }],
+        },
+        role: "dalil",
+      },
+      {
+        input: {
+          question: "q",
+          needsPrinciple: false,
+          principleTags: [],
+          category: "hadith",
+          modelSubQueries: [{ text: "sanad dan derajat hadis tentang: q", role: "factual" }],
+        },
+        role: "sanad",
+      },
+    ];
+    for (const { input, role } of cases) {
+      const subs = decomposeQuery(input);
+      expect(subs.some((sub) => sub.role === role)).toBe(false);
+      expect(subs.some((sub) => norm(sub.text) === norm(ruleTextOf(role, input)))).toBe(true);
+    }
+  });
 
   fcTest.prop([answerableArb])(
     "returns one sub-query only when that sub-query is the question",
@@ -214,7 +428,18 @@ describe("decomposeQuery laws", () => {
     if (decomposeQuery(input).length === 0) expect(input.question.trim()).toBe("");
   });
 
-  fcTest.prop([fc.oneof(inputArb, collisionArb)])(
+  // The headline law, budgeted so that its verdict is a property of the repair
+  // and not of the seed draw (#450 A1). At fast-check's default `numRuns: 100`
+  // the second generator only bought about two thirds of a verdict: with *only*
+  // the ceiling's stand-in protection reverted, the mutant stayed green in 7 of
+  // 20 runs (review A1), because it differs from head on ~4 % of `collisionArb`
+  // draws. `fc.oneof` splits the budget, so 2 000 runs keep each generator above
+  // the 100 draws it had before `fc.oneof` halved them (~1 000 each). Measured at
+  // this budget: reverting the stand-in protection reddens this law in 20 of 20
+  // runs; the example `keeps the entry a fired rule's coverage lives in when the
+  // ceiling spends its budget` and the stand-in law below redden deterministically
+  // at any budget, which is what makes the pair robust rather than lucky.
+  fcTest.prop([fc.oneof(inputArb, collisionArb)], { numRuns: 2000 })(
     "is idempotent over the sub-queries it produced",
     (input) => {
       const once = decomposeQuery(input);
@@ -230,17 +455,65 @@ describe("decomposeQuery laws", () => {
   );
 
   fcTest.prop([inputArb])("keeps no reply text with nothing to search with", (input) => {
-    // The reply's claim is refused unless it carries a letter or a digit in any
-    // script — `\p{L}`/`\p{N}`, so Arabic, Jawi and a bare numeral all count and
-    // an ASCII `isalnum` reading is the failure this law catches. The one text
-    // allowed to survive without content is the caller's own question, which the
-    // `factual` rule adds back whether or not the reply phrased it, so refusing
-    // it could only move it (#450).
+    // The reply's claim is dropped unless it carries a letter or a digit in any
+    // script — `\p{L}`/`\p{N}`, so Arabic, Jawi, Arabic-Indic digits and an ASCII
+    // word all count. This law is the *removal* direction (delete the content
+    // test and it reddens); the narrowing direction — an ASCII `/[a-z0-9]/i`
+    // reading, which this law can only make greener — is the next law's, whose
+    // generator draws the non-ASCII texts that tell the two readings apart. The
+    // one text allowed to survive without content is the caller's own question,
+    // which the `factual` rule adds back whether or not the reply phrased it, so
+    // dropping it could only move it (#450).
     const question = norm(input.question);
     for (const sub of decomposeQuery(input)) {
       expect(hasContent(sub.text) || norm(sub.text) === question).toBe(true);
     }
   });
+
+  // The other half of the content law, and the one an ASCII reading has to
+  // redden (#450 A2): a reply text that carries content in any script reaches the
+  // fan-out, trimmed and under the role the reply declared. Before this law, the
+  // only pin on that direction was a single example in `chat-router-decompose.test.ts`
+  // — replacing the content test with `/[a-z0-9]/i` reddened exactly one example
+  // and left every law green, so the laws could not see the narrowing the comment
+  // above them claimed to catch.
+  fcTest.prop([contentInputArb])(
+    "keeps a reply text that carries content, trimmed and as the reply labelled it",
+    (input) => {
+      const subs = decomposeQuery(input);
+      for (const entry of input.modelSubQueries) {
+        expect(
+          subs.some(
+            (sub) =>
+              sub.text === entry.text.trim() && sub.role === entry.role && sub.origin === "model",
+          ),
+        ).toBe(true);
+      }
+    },
+  );
+
+  // B1: the ceiling's protection as a checked invariant rather than a proof in
+  // the module's prose. When the ceiling fires it must not spend the slot of the
+  // entry a fired-but-uncovered rule's own text lives in — that entry is the
+  // rule's only evidence, and dropping it makes the next pass re-add the rule's
+  // entry at a different position, which is the #450 defect. The argument for
+  // `chosen` ≤ `MAX_SUB_QUERIES` is the module's; this is what checks it, over the
+  // plain generator and over `collisionArb`, which draws the class (over-production
+  // plus a rule's own text under another declared role) on most of its cases.
+  // Budgeted like the idempotence law above, and for the same reason: at the
+  // default 100 runs this law reddened in only 14 of 20 runs against the pre-fix
+  // source; at 2 000 it is red in 20 of 20 (measured).
+  fcTest.prop([fc.oneof(answerableArb, collisionArb)], { numRuns: 2000 })(
+    "keeps a fired rule's own text when the rule is left uncovered",
+    (input) => {
+      const subs = decomposeQuery(input);
+      const roles = subs.flatMap((sub) => (sub.role === undefined ? [] : [sub.role]));
+      for (const role of firedRoles(input.needsPrinciple, input.category)) {
+        if (roles.includes(role)) continue;
+        expect(subs.some((sub) => norm(sub.text) === norm(ruleTextOf(role, input)))).toBe(true);
+      }
+    },
+  );
 
   fcTest.prop([inputArb])("always marks provenance as the model's or a rule's", (input) => {
     const origins = decomposeQuery(input).map((sub) => sub.origin);

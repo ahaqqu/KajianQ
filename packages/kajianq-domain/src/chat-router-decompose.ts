@@ -27,11 +27,11 @@ import {
  *      keeps it, and that rule's coverage is not shown;
  *   2. every entry is trimmed, and a text the reply phrased with no letter and
  *      no digit in any script — whitespace, punctuation, an emoji, a control
- *      character — is refused rather than embedded: it cannot retrieve, and it
+ *      character — is dropped rather than embedded: it cannot retrieve, and it
  *      would spend an embed slot and a pair of searches inside the ceiling's
  *      window where a real angle belongs (#450). The rules' own texts are the
  *      caller's question and templates built on it, never the reply's claim, so
- *      the refusal is the reply's alone;
+ *      the drop is the reply's alone;
  *   3. the total stays within the stage's bound, dropping the model's extra
  *      phrasings before any rule-derived one — and never the entry a fired
  *      rule's own text lives in, which is that rule's coverage;
@@ -57,8 +57,8 @@ import {
  * two would put a synthetic near-duplicate of the question in the trace and
  * claim a decomposition that never happened — see `decomposeQuery`'s own note.
  * It is **0** when there is nothing to search at all: a blank question (whose
- * rule text is blank, and which `push` refuses) and a reply whose every text
- * was refused for carrying no letter and no digit.
+ * rule text is blank, and which `push` drops) and a reply whose every text
+ * was dropped for carrying no letter and no digit.
  */
 export const MIN_SUB_QUERIES = 2;
 export const MAX_SUB_QUERIES = 4;
@@ -107,31 +107,35 @@ export function decomposeQuery(input: DecompositionInput): SubQuery[] {
   };
 
   // The texts the rules below will add, keyed the way the duplicate filter keys
-  // them. One of them is the caller's own question — the `factual` rule's text,
-  // and the floor's — which is what the exception in the reply's filter is for.
-  const ruleTextKeys = new Set(firedRoles.map((role) => normalize(ruleText(role, input))));
+  // them — one concept, derived once, so the reply's filter, the rule loop and
+  // the ceiling's stand-in protection cannot drift apart. One of them is the
+  // caller's own question — the `factual` rule's text, and the floor's — which
+  // is what the exception in the reply's filter is for.
+  const ruleTexts = new Map<SubQueryRole, string>(
+    firedRoles.map((role): [SubQueryRole, string] => [role, ruleText(role, input)]),
+  );
+  const ruleTextKeys = new Set([...ruleTexts.values()].map((text) => normalize(text)));
 
   for (const entry of input.modelSubQueries) {
     const role = narrowRole(entry.role);
-    // The reply's text is a claim this repair may refuse. Refuse one carrying
+    // The reply's text is a claim this repair may drop. Drop one carrying
     // nothing to search with — no letter and no digit in any script: whitespace,
     // punctuation, an emoji, a control character. It cannot retrieve (the
     // sparse track tokenizes nothing out of it, the dense track returns its
     // nearest neighbours to noise), and below the ceiling it would spend an
     // embed slot and a pair of searches where a rule's or a real angle's query
-    // belongs (#450). The one text it may not refuse is one a fired rule adds
+    // belongs (#450). The one text it may not drop is one a fired rule adds
     // back anyway: the reply echoing the caller's question is that rule's own
-    // text, and refusing it here would only move it down the fan-out when the
+    // text, and dropping it here would only move it down the fan-out when the
     // rule re-adds it — the re-ordering that made the idempotence law's verdict
-    // depend on the seed. Trimming is not a refusal: padded text is the same
+    // depend on the seed. Trimming is not a drop: padded text is the same
     // query, so it is kept, trimmed.
     if (!hasSearchableContent(entry.text) && !ruleTextKeys.has(normalize(entry.text))) continue;
     push({ text: entry.text, ...(role !== undefined ? { role } : {}), origin: "model" });
   }
 
-  for (const role of firedRoles) {
+  for (const [role, text] of ruleTexts) {
     if (kept.some((sub) => sub.role === role)) continue;
-    const text = ruleText(role, input);
     // The rule's text may already be in the set — most often `factual`, whose
     // text *is* the caller's question, which the model may have echoed. Adding
     // it would put one retrieval text in twice (two embed slots for one
@@ -162,7 +166,7 @@ export function decomposeQuery(input: DecompositionInput): SubQuery[] {
   // query. It runs through the same dedup as everything else: when the model's
   // only entry already *is* the question there is no second distinct text to
   // add, and one entry is the honest answer (`MIN_SUB_QUERIES`). It is the
-  // caller's own text, so it is never refused for carrying no letter or digit —
+  // caller's own text, so it is never dropped for carrying no letter or digit —
   // only a blank question has no query in it at all, and then the floor adds
   // nothing.
   if (kept.length < MIN_SUB_QUERIES) {
@@ -179,11 +183,15 @@ export function decomposeQuery(input: DecompositionInput): SubQuery[] {
   // it and the set loses the rule's text *and* the rule's role at once, so
   // feeding the repair its own output would re-add the rule's entry and change
   // the answer — the exact way the idempotence law failed (#450). One text
-  // appears at most once, so at most one entry stands in for a given rule.
+  // appears at most once, so at most one entry stands in for a given rule. The
+  // bound this argument gives — `chosen` ≤ `MAX_SUB_QUERIES`, so the slice never
+  // cuts a stand-in — is a checked invariant, not prose: the law `keeps a fired
+  // rule's own text when the rule is left uncovered` runs it over both
+  // generators in `chat-router-decompose.prop.test.ts`.
   const standInKeys = new Set(
-    firedRoles
-      .filter((role) => !kept.some((sub) => sub.role === role))
-      .map((role) => normalize(ruleText(role, input))),
+    [...ruleTexts]
+      .filter(([role]) => !kept.some((sub) => sub.role === role))
+      .map(([, text]) => normalize(text)),
   );
 
   // The ceiling. A plain truncation would let a reply that labelled five
@@ -202,11 +210,16 @@ export function decomposeQuery(input: DecompositionInput): SubQuery[] {
   const rolesTaken = new Set<string>();
   for (const sub of ordered) {
     const { role } = sub;
-    const coversRole = role !== undefined && !rolesTaken.has(role);
-    if (coversRole && role !== undefined) rolesTaken.add(role);
+    // One entry per distinct role first: that is the slot the ceiling owes a
+    // fired rule's coverage.
+    if (role !== undefined && !rolesTaken.has(role)) {
+      rolesTaken.add(role);
+      chosen.push(sub);
+      continue;
+    }
     // A rule's stand-in takes a slot of its own, ahead of the extras: it is
     // what keeps a fired rule's coverage and the text that carries it.
-    if (coversRole || standInKeys.has(normalize(sub.text))) chosen.push(sub);
+    if (standInKeys.has(normalize(sub.text))) chosen.push(sub);
     else extras.push(sub);
   }
   return [...chosen, ...extras].slice(0, MAX_SUB_QUERIES);

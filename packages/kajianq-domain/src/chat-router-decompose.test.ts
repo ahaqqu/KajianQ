@@ -220,7 +220,7 @@ describe("decomposeQuery", () => {
  *      position — and the answer changed.
  *
  * Every case below is one of those, plus the boundary in the other direction:
- * trimming and refusing must not cost a short, numeric or non-Latin sub-query
+ * trimming and dropping must not cost a short, numeric or non-Latin sub-query
  * its place in the fan-out.
  */
 describe("decomposeQuery — what it keeps from the reply (#450)", () => {
@@ -245,7 +245,7 @@ describe("decomposeQuery — what it keeps from the reply (#450)", () => {
       }),
     );
 
-  it("refuses the reply's texts that carry nothing to search with", () => {
+  it("drops the reply's texts that carry nothing to search with", () => {
     // The CI counterexample's junk, with the neighbours that look similar and
     // must all go too: whitespace, punctuation, a lone quote, a dash run, an
     // emoji (a surrogate pair), a control character. Each one would be an embed
@@ -357,10 +357,10 @@ describe("decomposeQuery — what it keeps from the reply (#450)", () => {
     expect(again(source, subs)).toEqual(shape(subs));
   });
 
-  it("never refuses the caller's own question, even when it carries no letter or digit", () => {
-    // The refusal is the reply's, not the caller's: the `factual` rule's text is
+  it("never drops the caller's own question, even when it carries no letter or digit", () => {
+    // The drop is the reply's, not the caller's: the `factual` rule's text is
     // the question itself, and a rule adds it back whether or not the reply
-    // phrased it — so refusing it here is not a saving, only a re-ordering.
+    // phrased it — so dropping it here is not a saving, only a re-ordering.
     const source = input({
       question: "!!",
       modelSubQueries: [{ text: "x", role: "sanad" }],
