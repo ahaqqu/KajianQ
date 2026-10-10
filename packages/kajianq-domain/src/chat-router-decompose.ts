@@ -201,8 +201,9 @@ export function decomposeQuery(input: DecompositionInput): SubQuery[] {
   const extras: SubQuery[] = [];
   const rolesTaken = new Set<string>();
   for (const sub of ordered) {
-    const coversRole = sub.role !== undefined && !rolesTaken.has(sub.role);
-    if (coversRole) rolesTaken.add(sub.role);
+    const { role } = sub;
+    const coversRole = role !== undefined && !rolesTaken.has(role);
+    if (coversRole && role !== undefined) rolesTaken.add(role);
     // A rule's stand-in takes a slot of its own, ahead of the extras: it is
     // what keeps a fired rule's coverage and the text that carries it.
     if (coversRole || standInKeys.has(normalize(sub.text))) chosen.push(sub);
