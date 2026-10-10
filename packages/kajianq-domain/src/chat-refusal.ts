@@ -80,27 +80,22 @@ const SENTENCE_BOUNDARIES = /[.!?؟۔]+|\r?\n[ \t]*\r?\n|^[ \t]*(?:[-*•]|\d+[.
 /**
  * The framing vocabulary: the only words the exemption may ignore, because the
  * product itself pins them around the canonical sentence and none of them can
- * carry a claim — an apology, the speaker, the pointer to the question. The
- * #285 floor's frame in both languages, and EXHAUSTIVE: any other word is
- * content of the model's own and takes the refusal backstop (#452). The
- * sentence's own vocabulary is deliberately NOT here — admitting `menemukan`,
- * `dalil` or `memadai` would grant the exemption to the sentence with its
- * negation dropped, `"Kami menemukan dalil yang memadai."`, the opposite claim
- * written in the refusal's own words.
+ * carry a claim — an apology, the speaker, the pointer to the question. It is
+ * the #285 floor's frame in both languages ("Mohon maaf, kami … untuk pertanyaan
+ * ini." / "Sorry, we … for this question."), and it is EXHAUSTIVE: any other
+ * word is content of the model's own and takes the refusal backstop (#452).
+ *
+ * The sentence's own vocabulary is deliberately NOT here — admitting
+ * `menemukan`, `dalil` or `memadai` would grant the exemption to the sentence
+ * with its negation dropped, `"Kami menemukan dalil yang memadai."`, the
+ * opposite claim written in the refusal's own words.
+ *
+ * One space-separated string rather than an array of literals: the words cost a
+ * line each when broken, and this module sits under the agentic 300-line cap.
  */
-const FRAMING_WORDS = new Set([
-  "mohon",
-  "maaf",
-  "kami",
-  "untuk",
-  "pertanyaan",
-  "ini", // the ID floor's frame
-  "sorry",
-  "we",
-  "for",
-  "this",
-  "question", // the EN floor's frame
-]);
+const FRAMING_WORDS = new Set(
+  "mohon maaf kami untuk pertanyaan ini sorry we for this question".split(" "),
+);
 
 /** True when every word of a residue is one the product pins as framing. */
 function isFraming(residue: string): boolean {
@@ -109,9 +104,12 @@ function isFraming(residue: string): boolean {
 
 /**
  * True when one sentence of the draft carries nothing but the canonical
- * sentence and that framing: every canonical occurrence is stripped first, and
- * the residue is read as words (`[\p{L}\p{N}]+`, so a digit-leading token like
- * `2026`, or a citation label, is content and never framing).
+ * sentence and the framing — a sentence carrying no canonical occurrence at all
+ * ("Mohon maaf." standing alone) must be framing-only, which is what keeps a
+ * multi-sentence polite decline shipping. Every canonical occurrence is
+ * stripped, and the residue is read as words (`[\p{L}\p{N}]+`, so a
+ * digit-leading token like `2026`, or a citation label, is content and never
+ * framing).
  */
 function isRefusalSegment(sentence: string): boolean {
   let residue = sentence.toLowerCase();
