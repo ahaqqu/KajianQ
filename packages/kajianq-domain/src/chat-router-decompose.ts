@@ -29,9 +29,9 @@ import {
  *      no digit in any script — whitespace, punctuation, an emoji, a control
  *      character — is refused rather than embedded: it cannot retrieve, and it
  *      would spend an embed slot and a pair of searches inside the ceiling's
- *      window where a real angle belongs (#450). The rule's own text is the
- *      caller's question, never the reply's claim, so this refusal is the
- *      reply's alone;
+ *      window where a real angle belongs (#450). The rules' own texts are the
+ *      caller's question and templates built on it, never the reply's claim, so
+ *      the refusal is the reply's alone;
  *   3. the total stays within the stage's bound, dropping the model's extra
  *      phrasings before any rule-derived one — and never the entry a fired
  *      rule's own text lives in, which is that rule's coverage;
