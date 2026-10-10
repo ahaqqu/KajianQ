@@ -2,10 +2,13 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import type { Chunk } from "@app/rag-core";
 import {
+  addressesNamedBy,
   citationCandidatesIn,
+  groundingLabelsFor,
   normalizeCitationLabel,
   validateCitations,
 } from "./chat-citation-validator";
+import { SURAH_AYAH_COUNTS } from "./surah-names";
 
 /**
  * The #253 invariant, machine-checked: **a citation's tail is punctuation, not
@@ -286,6 +289,54 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
         compound,
       ).toEqual([compound]);
     }
+  });
+
+  it("grounds a range of ONE address exactly when the address it names is retrieved (#444)", () => {
+    // The invariant, swept over the shapes the grammar admits: a range whose
+    // endpoints are equal names exactly the address its two endpoints spell, so
+    // it grounds iff that address is in the retrieved set — for every joiner
+    // spelling, in the glued form (the fix's class: refused at base) and in the
+    // spaced form (a **no-regression** pin, not a widening of this fix: the head
+    // address there is followed by a space, so the extension rule already
+    // accepted all 16 of those shapes at base — 0 moved) — and in the refused
+    // direction when only a NEIGHBOURING verse was retrieved. The rule used to be gated on
+    // the declared list's length, so every one of these spans was refused with
+    // the address in hand: on staging that replaced a 31-chunk grounded answer
+    // with the canonical refusal (trace `b8812e2d-…`), silently — the refusal is
+    // a legal answer, an empty frame is a legal frame, and nothing reddened.
+    const property = fc.property(
+      fc.integer({ min: 1, max: 114 }),
+      fc.integer({ min: 1, max: 286 }),
+      fc.constantFrom(...DASH_CHARS),
+      (surah, rawAyah, dash) => {
+        const count = SURAH_AYAH_COUNTS[surah - 1]!;
+        const ayah = 1 + (rawAyah % count);
+        const address = `QS. ${surah}:${ayah}`;
+        const neighbour = `QS. ${surah}:${1 + (ayah % count)}`;
+        // The glued form is the fix's class; the spaced twin was already
+        // accepted at base through the extension rule, so it pins no
+        // regression rather than a widening this change caused.
+        const forms = [`${address}${dash}${ayah}`, `${address} ${dash} ${ayah}`];
+        for (const form of forms) {
+          // The declaration half: the range names ONE address — the one its
+          // endpoints spell — and not merely the head of a written string.
+          expect(addressesNamedBy(form), form).toEqual([address]);
+          // The comparison half, at the one owner the gate and the frame share.
+          expect(groundingLabelsFor(form, new Set([address])), form).toEqual([address]);
+          expect(validateCitations(`Lihat ${form} ya`, [chunk(address)]).ungrounded, form).toEqual(
+            [],
+          );
+          // The refused direction: a neighbouring verse retrieved is not the
+          // address the span names, and the refusal still names the span.
+          expect(groundingLabelsFor(form, new Set([neighbour])), form).toBeNull();
+          expect(
+            validateCitations(`Lihat ${form} ya`, [chunk(neighbour)]).ungrounded,
+            form,
+          ).toEqual([normalizeCitationLabel(form)]);
+        }
+      },
+    );
+    expect(fc.assert(property, { numRuns: 300 })).toBeUndefined();
   });
 
   it("never lets a tail of noise classes change a label", () => {
