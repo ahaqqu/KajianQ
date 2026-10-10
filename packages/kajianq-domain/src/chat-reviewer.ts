@@ -15,8 +15,7 @@ import { applyProductRules } from "./chat-postprocess";
 import { runCitationPregate, validateCitations } from "./chat-reviewer-pregate";
 import {
   buildReviewMessages,
-  isEarnedRefusal,
-  isRefusalDraft,
+  refusalDraftDecision,
   refusalTextFor,
   type KajianQFilters,
   type ReviewerLlmSeam,
@@ -119,23 +118,25 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
             return { text: refusal("ungrounded") };
           }
 
-          // A generator-emitted refusal IS the refusal (round-3 A2): it must
-          // not pay a reviewer LLM call, and it must be visible on the trace as
-          // a `refusal` event — the signal the eval harness's refusal detection
-          // reads. The classification skips the PAID reviewer, never a rule the
-          // spec makes `Always` (#439): the EARNED shape ships verbatim, the
-          // hybrid funnels through `withRules`. The boundary and its reasoning
-          // live with `isEarnedRefusal`, next to the predicate they qualify.
-          if (isRefusalDraft(draft.text)) {
+          // A generator-emitted refusal IS the refusal (round-3 A2): it must not
+          // pay a reviewer LLM call, and it must be visible on the trace as a
+          // `refusal` event — the signal the eval harness's refusal detection
+          // reads. WHICH shape the draft is, and what each shape ships, is
+          // `refusalDraftDecision`'s, next to the predicates that decide it: the
+          // classification may skip the PAID reviewer (ADR-0009 cost
+          // discipline), never a rule the spec makes `Always` (#439), and never
+          // the reader's ability to recognise a refusal as one (#443).
+          const decision = refusalDraftDecision(draft.text, { grounded, ungrounded });
+          if (decision !== null) {
             run.record({
               stage: "reviewer",
               kind: "refusal",
-              detail: { trigger: "generator_refusal" },
-              reason: "generator emitted the canonical insufficiency refusal",
+              detail: { trigger: decision.trigger },
+              reason: decision.reason,
               at: run.now(),
             });
-            if (isEarnedRefusal(draft.text, { grounded, ungrounded })) return { text: draft.text };
-            return withRules(draft, context, run);
+            if (decision.delivery === "rules") return withRules(draft, context, run);
+            return { text: decision.delivery === "draft" ? draft.text : refusal("ungrounded") };
           }
 
           if (deps.provider === null || deps.skipLlm === true) {
@@ -223,8 +224,10 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
    * a dedicated event exists instead of a field on `review`: it records no
    * `review` event at all, so a rule running there was previously invisible.
    *
-   * A pure refusal does not reach here (it is the honest answer); a HYBRID does
-   * — its text answers from the evidence and then declines, so the "Always"
+   * A pure refusal does not reach here (it is the honest answer), and neither
+   * does an asserting refusal draft — the product's own refusal ships for it
+   * (#443), so there is no text of the model's to decorate; a HYBRID does —
+   * its text answers from the evidence and then declines, so the "Always"
    * controls are computed for what ships (#439).
    *
    * The recording is deliberately keyed on `applyProductRules !== false` (the

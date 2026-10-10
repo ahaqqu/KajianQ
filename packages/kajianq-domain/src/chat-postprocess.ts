@@ -123,9 +123,17 @@ export function hasWeakWarning(text: string): boolean {
  * Apply the deterministic product rules to a draft. It is called for every
  * text the run delivers as answer content — the reviewer-passed draft, the
  * pre-gate skip, the no-provider exit, and, since #439, a HYBRID refusal (a
- * grounded partial answer that runs into the canonical sentence). A refusal
- * that carries no grounded span does not reach here: it is already the honest
- * answer, and decorating it would bury the reason the user got one.
+ * grounded partial answer that runs into the canonical sentence).
+ *
+ * Two shapes do NOT reach here, and neither is decorated. A PURE refusal — the
+ * sentence citing nothing and asserting nothing of its own (`isRefusalOnly`) —
+ * is already the honest answer, and decorating it would bury the reason the
+ * user got one; a warning on it would also be invented, its trigger being the
+ * assembled context rather than the text (the #285 pin). An ASSERTING refusal
+ * draft (#443) — the sentence riding a text that cites nothing and is not a
+ * decline — takes the reviewer stage's backstop instead: the product's own
+ * refusal text ships in place of the draft's words, so there is no text of the
+ * model's to decorate and no rule to invent a trigger for.
  */
 export function applyProductRules(
   draft: Draft,
