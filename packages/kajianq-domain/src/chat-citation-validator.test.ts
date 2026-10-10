@@ -10,7 +10,8 @@ import {
   normalizeCitationLabel,
   validateCitations,
 } from "./chat-citation-validator";
-import { CITATION_GRAMMARS, reduceCitationLabel } from "./chat-citation-grammar";
+import { CITATION_GRAMMARS } from "./chat-citation-grammar";
+import { reduceCitationLabel } from "./chat-citation-reduce";
 
 /**
  * The deterministic citation validator (the #10 trust invariant). These tests
