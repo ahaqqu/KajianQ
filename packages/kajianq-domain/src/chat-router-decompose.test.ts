@@ -207,3 +207,181 @@ describe("decomposeQuery", () => {
     expect(decomposeQuery(input({ question: "   " }))).toEqual([]);
   });
 });
+
+/**
+ * #450. The law `decomposeQuery is idempotent over the sub-queries it produced`
+ * failed on a share of seeds, so `gate` reddened on PRs whose diff had nothing to
+ * do with the router. Two defects were behind it, and only one of them is junk:
+ *
+ *   1. the reply's texts reached the fan-out untested for content, so a
+ *      punctuation-only `"!"` or a lone quote was embedded and searched;
+ *   2. the ceiling could spend the slot of the entry a fired rule's own text
+ *      lived in, so the next pass re-added that rule's entry — at a different
+ *      position — and the answer changed.
+ *
+ * Every case below is one of those, plus the boundary in the other direction:
+ * trimming and refusing must not cost a short, numeric or non-Latin sub-query
+ * its place in the fan-out.
+ */
+describe("decomposeQuery — what it keeps from the reply (#450)", () => {
+  const Q = "hukum riba?";
+
+  /** Text + role: the law's own shape — provenance is the repair's bookkeeping. */
+  const shape = (subs: ReturnType<typeof decomposeQuery>) =>
+    subs.map((sub) => ({ text: sub.text, role: sub.role }));
+
+  /** The repair's own output, handed back as the model's reply. */
+  const again = (
+    source: Parameters<typeof decomposeQuery>[0],
+    subs: ReturnType<typeof decomposeQuery>,
+  ) =>
+    shape(
+      decomposeQuery({
+        ...source,
+        modelSubQueries: subs.map((sub) => ({
+          text: sub.text,
+          ...(sub.role !== undefined ? { role: sub.role } : {}),
+        })),
+      }),
+    );
+
+  it("refuses the reply's texts that carry nothing to search with", () => {
+    // The CI counterexample's junk, with the neighbours that look similar and
+    // must all go too: whitespace, punctuation, a lone quote, a dash run, an
+    // emoji (a surrogate pair), a control character. Each one would be an embed
+    // and a pair of searches spent on a query that cannot retrieve. The reply
+    // phrased nothing searchable, so what is left is the caller's question under
+    // the `factual` rule.
+    expect(
+      decomposeQuery(
+        input({
+          question: Q,
+          modelSubQueries: [
+            { text: "", role: "dalil" },
+            { text: "   ", role: "principle" },
+            { text: "\t\n", role: "sanad" },
+            { text: "!", role: "dalil" },
+            { text: '"', role: "principle" },
+            { text: "—…?!", role: "principle" },
+            { text: "\u0000\u0007", role: "dalil" },
+            { text: "🎉🎉", role: "principle" },
+          ],
+        }),
+      ),
+    ).toEqual([{ text: Q, role: "factual", origin: "rule" }]);
+
+    // A zero-width space is not whitespace to `trim`, so it is the content test
+    // that has to catch it.
+    expect(
+      decomposeQuery(input({ question: Q, modelSubQueries: [{ text: "\u200b", role: "dalil" }] })),
+    ).toEqual([{ text: Q, role: "factual", origin: "rule" }]);
+  });
+
+  it("keeps a short, numeric or non-Latin sub-query: content is a letter or a digit, in any script", () => {
+    // The failure this fix could introduce, and the reason the content test is a
+    // Unicode property rather than `/[a-z0-9]/i`: an ASCII reading drops every
+    // one of these, and a dropped sub-query narrows retrieval silently — the
+    // angle is gone from the fan-out and nothing on the trace says so.
+    const kept = (text: string) =>
+      decomposeQuery(input({ question: Q, modelSubQueries: [{ text, role: "sanad" }] })).map(
+        (sub) => sub.text,
+      );
+
+    expect(kept("riba")).toEqual(["riba", Q]); // one word
+    expect(kept("5")).toEqual(["5", Q]); // one numeral
+    expect(kept("٥")).toEqual(["٥", Q]); // an Arabic-Indic numeral
+    expect(kept("a")).toEqual(["a", Q]); // one ASCII letter
+    expect(kept("الربا")).toEqual(["الربا", Q]); // Arabic
+    expect(kept("حكم الربا")).toEqual(["حكم الربا", Q]); // an Arabic phrase
+    expect(kept("QS. 2:255")).toEqual(["QS. 2:255", Q]); // punctuation around content
+    expect(kept("riba 🎉")).toEqual(["riba 🎉", Q]); // an emoji beside content
+    expect(kept("\u200briba")).toEqual(["\u200briba", Q]); // a marker beside content
+    expect(kept("dalil")).toEqual(["dalil", Q]); // a bare role word is still a word
+  });
+
+  it("keeps the whitespace-padded text from the counterexample, trimmed", () => {
+    // The third text CI printed is legitimate: padding is not content, and the
+    // query the model meant is `spaced   text`. Refusing a padded text would be
+    // over-normalisation; keeping it untrimmed is what the repair's own
+    // idempotence forbids.
+    const subs = decomposeQuery(
+      input({ question: Q, modelSubQueries: [{ text: "  spaced   text  ", role: "principle" }] }),
+    );
+    expect(subs.map((sub) => sub.text)).toEqual(["spaced   text", Q]);
+  });
+
+  it("keeps the entry a fired rule's coverage lives in when the ceiling spends its budget", () => {
+    // The junk-free half of #450, and the reason the content test alone is not
+    // the fix. The reply echoed the question under `sanad` and over-produced, so
+    // the ceiling used to spend the echo's slot on a duplicate-role extra. The
+    // rule's own text went with it, and the next pass re-added the `factual`
+    // entry at the front — the law reddening on an input with nothing to trim.
+    const source = input({
+      question: Q,
+      modelSubQueries: [
+        { text: "a", role: "principle" },
+        { text: "x", role: "principle" },
+        { text: "b", role: "dalil" },
+        { text: "c", role: "sanad" },
+        { text: Q, role: "sanad" },
+      ],
+    });
+    const subs = decomposeQuery(source);
+    expect(subs).toEqual([
+      { text: "a", role: "principle", origin: "model" },
+      { text: "b", role: "dalil", origin: "model" },
+      { text: "c", role: "sanad", origin: "model" },
+      { text: Q, role: "sanad", origin: "model" },
+    ]);
+    // The headline law as an example: the second pass keeps the same set.
+    expect(again(source, subs)).toEqual(shape(subs));
+  });
+
+  it("is idempotent over the CI counterexample's reply", () => {
+    const source = input({
+      question: Q,
+      modelSubQueries: [
+        { text: "!", role: "dalil" },
+        { text: "hukum riba", role: "sanad" },
+        { text: "  spaced   text  ", role: "principle" },
+        { text: Q, role: "sanad" },
+        { text: '"', role: "principle" },
+      ],
+    });
+    const subs = decomposeQuery(source);
+    expect(subs).toEqual([
+      { text: "hukum riba", role: "sanad", origin: "model" },
+      { text: "spaced   text", role: "principle", origin: "model" },
+      { text: Q, role: "sanad", origin: "model" },
+    ]);
+    expect(again(source, subs)).toEqual(shape(subs));
+  });
+
+  it("never refuses the caller's own question, even when it carries no letter or digit", () => {
+    // The refusal is the reply's, not the caller's: the `factual` rule's text is
+    // the question itself, and a rule adds it back whether or not the reply
+    // phrased it — so refusing it here is not a saving, only a re-ordering.
+    const source = input({
+      question: "!!",
+      modelSubQueries: [{ text: "x", role: "sanad" }],
+    });
+    const subs = decomposeQuery(source);
+    expect(subs).toEqual([
+      { text: "x", role: "sanad", origin: "model" },
+      { text: "!!", role: "factual", origin: "rule" },
+    ]);
+    expect(again(source, subs)).toEqual(shape(subs));
+
+    // And the reply's echo of it is still one entry, stamped by the rule rather
+    // than duplicated beside it.
+    expect(decomposeQuery(input({ question: "!!", modelSubQueries: [{ text: "!!" }] }))).toEqual([
+      { text: "!!", role: "factual", origin: "model" },
+    ]);
+  });
+
+  it("leaves nothing to search when the question is blank and the reply phrased no text", () => {
+    expect(
+      decomposeQuery(input({ question: "   ", modelSubQueries: [{ text: "!", role: "dalil" }] })),
+    ).toEqual([]);
+  });
+});

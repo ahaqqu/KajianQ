@@ -36,8 +36,14 @@ import { PRINCIPLE_TAGS, SUBJECT_AREAS, SUB_QUERY_ROLES } from "./taxonomy";
  *      *rules* are deduplicated by role);
  *   6. nothing is returned only when there was nothing to search;
  *   7. re-running the repair over its own output changes nothing but the
- *      provenance labels (idempotence over text and role);
- *   8. every entry is marked as the model's or a rule's.
+ *      provenance labels (idempotence over text and role) — the law #450 was
+ *      filed about — over both the plain and the collision generator below, so
+ *      its verdict is a property of the repair and not of the seed draw;
+ *   8. every entry is marked as the model's or a rule's;
+ *   9. no text the reply phrased with nothing to search with survives — blank,
+ *      whitespace-only, punctuation-only, emoji-only, control-only — unless it
+ *      is the caller's own question, which the `factual` rule adds back anyway
+ *      and which is therefore never refused (#450).
  */
 
 const subQueryArb: fc.Arbitrary<{ text: string; role?: string }> = fc
@@ -90,6 +96,50 @@ const shapeOf = (subs: readonly { text: string; role?: string }[]) =>
 
 /** The repair's own duplicate key, restated: what makes two texts "the same text". */
 const norm = (text: string): string => text.trim().replace(/\s+/g, " ").toLowerCase();
+
+/**
+ * The repair's own content test, restated: a letter or a digit in any script is
+ * something to search with (#450).
+ */
+const hasContent = (text: string): boolean => /[\p{L}\p{N}]/u.test(text);
+
+/**
+ * The input class that made the idempotence law seed-dependent (#450): a reply
+ * that both over-produces and echoes a fired rule's own text under a *different*
+ * declared role, so the `factual` rule's coverage rides on an entry the ceiling
+ * may spend. The plain generator reaches that class in roughly one case in five
+ * thousand — which is why a green run proved nothing and four sightings were read
+ * as noise. This one draws it nearly always: five to eight entries (the ceiling
+ * fires), the last carrying the question itself under a role drawn from the
+ * vocabulary, beside same-role duplicates the ceiling has to choose between.
+ */
+const collisionArb: fc.Arbitrary<DecompositionInput> = fc
+  .record(
+    {
+      question: fc.constantFrom("hukum riba?", "q"),
+      needsPrinciple: fc.boolean(),
+      principleTags: fc.array(fc.constantFrom(...PRINCIPLE_TAGS), { maxLength: 2 }),
+      category: fc.option(fc.constantFrom(...SUBJECT_AREAS), { nil: undefined }),
+      roles: fc.array(fc.constantFrom(...SUB_QUERY_ROLES, "tafsir"), {
+        minLength: 5,
+        maxLength: 8,
+      }),
+      texts: fc.array(fc.constantFrom("a", "b", "c", "d", "e"), { minLength: 5, maxLength: 8 }),
+    },
+    { requiredKeys: ["question", "needsPrinciple", "principleTags", "roles", "texts"] },
+  )
+  .map(({ question, roles, texts, category, ...rest }) => ({
+    ...rest,
+    question,
+    ...(category === undefined ? {} : { category }),
+    modelSubQueries: texts.map((text, index) => {
+      const role = roles[index];
+      return {
+        text: index === texts.length - 1 ? question : text,
+        ...(role === undefined ? {} : { role }),
+      };
+    }),
+  }));
 
 describe("decomposeQuery laws", () => {
   fcTest.prop([inputArb])("never exceeds the stage's ceiling", (input) => {
@@ -164,16 +214,32 @@ describe("decomposeQuery laws", () => {
     if (decomposeQuery(input).length === 0) expect(input.question.trim()).toBe("");
   });
 
-  fcTest.prop([inputArb])("is idempotent over the sub-queries it produced", (input) => {
-    const once = decomposeQuery(input);
-    const twice = decomposeQuery({
-      ...input,
-      modelSubQueries: once.map((sub) => ({
-        text: sub.text,
-        ...(sub.role !== undefined ? { role: sub.role } : {}),
-      })),
-    });
-    expect(shapeOf(twice)).toEqual(shapeOf(once));
+  fcTest.prop([fc.oneof(inputArb, collisionArb)])(
+    "is idempotent over the sub-queries it produced",
+    (input) => {
+      const once = decomposeQuery(input);
+      const twice = decomposeQuery({
+        ...input,
+        modelSubQueries: once.map((sub) => ({
+          text: sub.text,
+          ...(sub.role !== undefined ? { role: sub.role } : {}),
+        })),
+      });
+      expect(shapeOf(twice)).toEqual(shapeOf(once));
+    },
+  );
+
+  fcTest.prop([inputArb])("keeps no reply text with nothing to search with", (input) => {
+    // The reply's claim is refused unless it carries a letter or a digit in any
+    // script — `\p{L}`/`\p{N}`, so Arabic, Jawi and a bare numeral all count and
+    // an ASCII `isalnum` reading is the failure this law catches. The one text
+    // allowed to survive without content is the caller's own question, which the
+    // `factual` rule adds back whether or not the reply phrased it, so refusing
+    // it could only move it (#450).
+    const question = norm(input.question);
+    for (const sub of decomposeQuery(input)) {
+      expect(hasContent(sub.text) || norm(sub.text) === question).toBe(true);
+    }
   });
 
   fcTest.prop([inputArb])("always marks provenance as the model's or a rule's", (input) => {
