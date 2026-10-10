@@ -126,20 +126,13 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
           // **The classification skips the paid reviewer, never a rule the
           // spec makes unconditional (#439).** `isRefusalDraft` is a substring
           // match, so it also catches the HYBRID shape: a grounded partial
-          // answer that runs into the sentence (QA #432 probe P7, trace
-          // `fff2a012`). That text is answer content the user reads, and the
-          // deterministic grade flag / disclaimer are "Always" (SPECS §2.2) —
-          // returning before `withRules` shipped a quoted dhaif-graded hadith
-          // with no warning line and, because the citations frame's
-          // `dhaifWarning` is `hasWeakWarning` of the delivered text, no
-          // warning card. So the rules exemption is keyed to the EARNED refusal
-          // shape — the sentence with no grounded span — while the
-          // classification itself is unchanged: a refusal that cites nothing
-          // still ships undecorated (a disclaimer appended to a refusal buries
-          // the reason, and a warning would be invented for a text that cites
-          // no weak evidence), and a hybrid funnels through `withRules`, whose
-          // `product_rules` event is what makes "the rules ran for this hybrid"
-          // observable on the trace.
+          // answer that runs into the sentence, whose text the user reads. The
+          // grade flag and the disclaimer are "Always" (SPECS §2.2), so the
+          // rules exemption is keyed to the EARNED refusal shape — the sentence
+          // with no grounded span — and a hybrid funnels through `withRules`,
+          // whose `product_rules` event makes "the rules ran for a hybrid"
+          // observable. A refusal that cites nothing still ships undecorated:
+          // no invented warning, no disclaimer burying the reason.
           if (isRefusalDraft(draft.text)) {
             run.record({
               stage: "reviewer",

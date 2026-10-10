@@ -479,9 +479,9 @@ describe("POST /v1/chat", () => {
     expect(answer).toContain(DEFAULT_REFUSALS.id);
     // The decision is on the persisted trace, as the generator's own trigger.
     const trace = store.allTraces().get(meta.messageId) as
-      | { events: { kind: string; detail?: { trigger?: string } }[] }
+      | { events: { kind: string; detail?: Record<string, unknown> }[] }
       | undefined;
-    expect(trace?.events.find((e) => e.kind === "refusal")?.detail?.trigger).toBe(
+    expect(trace?.events.find((e) => e.kind === "refusal")?.detail?.["trigger"]).toBe(
       "generator_refusal",
     );
     // #439 closed the debt this assertion was written to record: the refusal
@@ -489,11 +489,8 @@ describe("POST /v1/chat", () => {
     // SPECS §2.2 marks "Always", so the hybrid ships decorated like any other
     // delivered answer (no dhaif chunk in this store, so only the disclaimer).
     expect(answer).toContain(ulamaDisclaimer("id"));
-    expect(
-      trace?.events.some(
-        (e) => e.kind === "product_rules" && e.detail?.["applied"].includes("ulama_disclaimer"),
-      ),
-    ).toBe(true);
+    const applied = trace?.events.find((e) => e.kind === "product_rules")?.detail?.["applied"];
+    expect(Array.isArray(applied) && applied.includes("ulama_disclaimer")).toBe(true);
   }, 15000);
 
   it("computes the grade flag for a hybrid refusal: warning line in the text, warning card in the frame (#439)", async () => {
