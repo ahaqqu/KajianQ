@@ -171,7 +171,8 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
   // or `reviewer_fail` refusal replaces the draft, so the vendor's delta
   // sequence is not replayed and the settled text is chunked instead; a
   // `generator_refusal` — including the HYBRID shape (a refusal sentence inside
-  // a partial answer) — returns the draft unchanged, so this path chunks the
+  // a partial answer) — returns the draft with the `Always` rules applied (a
+  // pure refusal alone comes back unchanged, #439), so this path chunks the
   // very text the user is shown, chips and all. Which citations that text earns
   // is the frame derivation's decision, never this flag's. Otherwise the
   // vendor's own delta sequence is replayed when it reproduces the delivered

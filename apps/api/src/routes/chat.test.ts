@@ -443,10 +443,11 @@ describe("POST /v1/chat", () => {
   it("ships a hybrid refusal with its grounded chip on the wire (#436)", async () => {
     // The shape #436 is about, end to end through the route: the store holds
     // QS. 2:255, the draft quotes it and then runs into the canonical
-    // insufficiency sentence, so the reviewer records `generator_refusal` and
-    // returns the draft unchanged. The emitted frame must carry the chip the
-    // text earns BESIDE `refusal: true` — the user reads a cited answer whose
-    // last line is the refusal, not the empty pure-refusal sheet.
+    // insufficiency sentence, so the reviewer records `generator_refusal`,
+    // skips the paid call, and returns the draft WITH the `Always` rules
+    // applied (#439). The emitted frame must carry the chip the text earns
+    // BESIDE `refusal: true` — the user reads a cited answer whose last line is
+    // the refusal, not the empty pure-refusal sheet.
     const { store, token } = await wiredStore();
     currentStore = store;
     await seed(store);
@@ -471,9 +472,10 @@ describe("POST /v1/chat", () => {
     // The chip is resolved, not a label without display data.
     expect(frame.citations[0]?.arabic).toBe(AYAT_KURSI.textAr);
     expect(frame.dhaifWarning).toBe(false);
-    // The reader's text is the draft itself: partial answer, its verse, and the
-    // refusal sentence — the reviewer replaced nothing (that is what makes this
-    // a hybrid, and why the route chunks the settled text).
+    // The reader's text still carries the draft: partial answer, its verse, and
+    // the refusal sentence — the reviewer replaced nothing (that is what makes
+    // this a hybrid, and why the route chunks the settled text); the
+    // deterministic rules only APPENDED to it.
     expect(answer).toContain("Allah Mahahidup");
     expect(answer).toContain("[QS. 2:255]");
     expect(answer).toContain(DEFAULT_REFUSALS.id);
