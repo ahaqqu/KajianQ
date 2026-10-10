@@ -291,6 +291,9 @@ describe("the asserting refusal draft (#443)", () => {
         "clause after the sentence",
         `Kami ${DEFAULT_REFUSALS.id}, namun haditsnya sahih dan wajib diamalkan.`,
       ],
+      // The EN sentence with the same fold, so the vocabulary cannot be read as
+      // an ID-only frame plus whatever the EN half happens to permit.
+      ["an EN fold", `The hadith is sound and binding, but we ${DEFAULT_REFUSALS.en}.`],
     ];
     for (const [name, draft] of rows) {
       const citations = validateCitations(draft, CHUNKS);
