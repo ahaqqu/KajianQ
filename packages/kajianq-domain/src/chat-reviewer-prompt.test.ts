@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { REVIEWER_SYSTEM_PROMPT } from "./chat-reviewer";
+import { validateCitations } from "./chat-citation-validator";
+import { DEFAULT_REFUSALS, isEarnedRefusal } from "./chat-reviewer-prompt";
 
 /**
  * The reviewer gate's fail criteria, pinned against the exact prompt string
@@ -85,5 +87,52 @@ describe("the reviewer's anti-over-fail guarantees (unchanged)", () => {
   it("still fixes the reply contract: ONLY JSON, pass|fail, with a reason", () => {
     expect(REVIEWER_SYSTEM_PROMPT).toContain('{"verdict": "pass" | "fail", "reason": "..."}');
     expect(REVIEWER_SYSTEM_PROMPT).toContain("reply with ONLY JSON");
+  });
+});
+
+/**
+ * The EARNED refusal shape (#439): the decision the stage takes ON TOP of the
+ * sentence predicate, and the reason it is a predicate of its own.
+ *
+ * `isRefusalDraft` is a substring match, so it also catches a HYBRID (the
+ * sentence riding a grounded partial answer). Only a draft that cites NOTHING
+ * ships verbatim — no rules, no invented warning for a text that cites no weak
+ * evidence; a hybrid runs the rules the spec marks "Always". Every case below
+ * feeds the REAL deterministic validator's partition to the decision, so the
+ * pin is on the composition the stage uses, not on hand-built arrays.
+ */
+describe("the earned refusal shape (#439)", () => {
+  const CHUNKS = [
+    { id: "c1", text: "اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ", metadata: { citation: "QS. 2:255" } },
+  ] as never;
+  const sentence = `Mohon maaf, kami ${DEFAULT_REFUSALS.id} untuk pertanyaan ini.`;
+
+  it("is the sentence with no citation-shaped span, in either language", () => {
+    expect(isEarnedRefusal(sentence, validateCitations(sentence, CHUNKS))).toBe(true);
+    const en = `Sorry, we ${DEFAULT_REFUSALS.en} for this question.`;
+    expect(isEarnedRefusal(en, validateCitations(en, CHUNKS))).toBe(true);
+  });
+
+  it("is NOT a hybrid: the same sentence riding a grounded span", () => {
+    const hybrid = ["Allah Mahahidup dalam [QS. 2:255].", sentence].join("\n\n");
+    const citations = validateCitations(hybrid, CHUNKS);
+    expect(citations.grounded).toEqual(["QS. 2:255"]);
+    expect(isEarnedRefusal(hybrid, citations)).toBe(false);
+  });
+
+  it("is NOT a draft whose only span the gate refused, even before that gate runs", () => {
+    // The reorder-immunity case: `grounded.length === 0` alone would read this
+    // as the earned shape and ship a refused citation verbatim, because the
+    // span it does cite sits on the partition's OTHER side.
+    const refused = ["Haditsnya [HR. Bukhari no. 99999].", sentence].join("\n\n");
+    const citations = validateCitations(refused, CHUNKS);
+    expect(citations.ungrounded).toEqual(["HR. Bukhari no. 99999"]);
+    expect(citations.grounded).toEqual([]);
+    expect(isEarnedRefusal(refused, citations)).toBe(false);
+  });
+
+  it("is NOT an ordinary answer that never carried the sentence", () => {
+    const grounded = "Allah Mahahidup dalam [QS. 2:255].";
+    expect(isEarnedRefusal(grounded, validateCitations(grounded, CHUNKS))).toBe(false);
   });
 });

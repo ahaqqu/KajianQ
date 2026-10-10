@@ -6,7 +6,12 @@ const { captureException } = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock("@sentry/bun", () => ({ captureException }));
 import { CHAT_MESSAGE_MAX_LENGTH } from "@app/contracts";
 import { parseChatRequest } from "../lib/chat-openapi";
-import { DEFAULT_REFUSALS, runStoreEffect } from "@app/kajianq-domain";
+import {
+  DEFAULT_REFUSALS,
+  dhaifWarning,
+  runStoreEffect,
+  ulamaDisclaimer,
+} from "@app/kajianq-domain";
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 import { createStubChatProviders } from "@app/kajianq-domain/test-utils/stub-chat-providers";
 
@@ -59,6 +64,12 @@ const AYAT_KURSI = {
   embeddingPrimary: [1, 0, 0],
   ordinal: 0,
 };
+
+/**
+ * The weak-grade hadith the #439 route test quotes: the citation label the
+ * ingestion renders, and the `grade` key the deterministic rule reads.
+ */
+const DHAIF_HADITH_CITATION = "HR. Tirmidhi no. 2878 (Dhaif)";
 
 /** Seed a store with one retrievable parent + child chunk. */
 async function seed(
@@ -432,10 +443,11 @@ describe("POST /v1/chat", () => {
   it("ships a hybrid refusal with its grounded chip on the wire (#436)", async () => {
     // The shape #436 is about, end to end through the route: the store holds
     // QS. 2:255, the draft quotes it and then runs into the canonical
-    // insufficiency sentence, so the reviewer records `generator_refusal` and
-    // returns the draft unchanged. The emitted frame must carry the chip the
-    // text earns BESIDE `refusal: true` — the user reads a cited answer whose
-    // last line is the refusal, not the empty pure-refusal sheet.
+    // insufficiency sentence, so the reviewer records `generator_refusal`,
+    // skips the paid call, and returns the draft WITH the `Always` rules
+    // applied (#439). The emitted frame must carry the chip the text earns
+    // BESIDE `refusal: true` — the user reads a cited answer whose last line is
+    // the refusal, not the empty pure-refusal sheet.
     const { store, token } = await wiredStore();
     currentStore = store;
     await seed(store);
@@ -460,23 +472,92 @@ describe("POST /v1/chat", () => {
     // The chip is resolved, not a label without display data.
     expect(frame.citations[0]?.arabic).toBe(AYAT_KURSI.textAr);
     expect(frame.dhaifWarning).toBe(false);
-    // The reader's text is the draft itself: partial answer, its verse, and the
-    // refusal sentence — the reviewer replaced nothing (that is what makes this
-    // a hybrid, and why the route chunks the settled text).
+    // The reader's text still carries the draft: partial answer, its verse, and
+    // the refusal sentence — the reviewer replaced nothing (that is what makes
+    // this a hybrid, and why the route chunks the settled text); the
+    // deterministic rules only APPENDED to it.
     expect(answer).toContain("Allah Mahahidup");
     expect(answer).toContain("[QS. 2:255]");
     expect(answer).toContain(DEFAULT_REFUSALS.id);
     // The decision is on the persisted trace, as the generator's own trigger.
     const trace = store.allTraces().get(meta.messageId) as
-      | { events: { kind: string; detail?: { trigger?: string } }[] }
+      | { events: { kind: string; detail?: Record<string, unknown> }[] }
       | undefined;
-    expect(trace?.events.find((e) => e.kind === "refusal")?.detail?.trigger).toBe(
+    expect(trace?.events.find((e) => e.kind === "refusal")?.detail?.["trigger"]).toBe(
       "generator_refusal",
     );
-    // The product rules were skipped with that classification (SPECS §2.2's
-    // "Grade flag — Always" debt is #439): no disclaimer rides a hybrid, which
-    // is exactly why the frame cannot claim a warning the pipeline never wrote.
-    expect(answer).not.toContain("bukan fatwa");
+    // #439 closed the debt this assertion was written to record: the refusal
+    // classification skips the PAID reviewer, never the deterministic rules
+    // SPECS §2.2 marks "Always", so the hybrid ships decorated like any other
+    // delivered answer (no dhaif chunk in this store, so only the disclaimer).
+    expect(answer).toContain(ulamaDisclaimer("id"));
+    const applied = trace?.events.find((e) => e.kind === "product_rules")?.detail?.["applied"];
+    expect(Array.isArray(applied) && applied.includes("ulama_disclaimer")).toBe(true);
+  }, 15000);
+
+  it("computes the grade flag for a hybrid refusal: warning line in the text, warning card in the frame (#439)", async () => {
+    // The defect's user-visible shape, end to end: a draft that quotes a
+    // dhaif-graded hadith and then runs into the canonical refusal sentence.
+    // Before #439 the refusal branch returned before the rules, so the frame's
+    // `dhaifWarning` (the citations frame's own predicate over the delivered
+    // text) read false and `AnswerCard` rendered no warning card — for an
+    // answer that quotes the weak hadith. SPECS §2.2 marks the grade flag
+    // "Always".
+    const { store, token } = await wiredStore();
+    currentStore = store;
+    await seed(store, {
+      textRaw: "طَلَبُ الْعِلْمِ فَرِيضَةٌ",
+      textAr: "طَلَبُ الْعِلْمِ فَرِيضَةٌ",
+      textId: "Menuntut ilmu itu kewajiban.",
+      citation: { sourceType: "hadith" },
+      metadata: {
+        sourceType: "hadith",
+        citation: DHAIF_HADITH_CITATION,
+        grade: "dhaif",
+      },
+    } as never);
+    currentOverrides = {
+      answerText:
+        `Haditsnya berbunyi demikian [${DHAIF_HADITH_CITATION}], namun sanadnya lemah.\n\n` +
+        `Untuk bagian lain dari pertanyaan ini saya ${DEFAULT_REFUSALS.id}.`,
+    };
+
+    const { status, answer, frames, meta } = await postChat(token, {
+      message: "Sebutkan hadits menuntut ilmu sampai ke negeri China dan sanadnya!",
+    });
+    expect(status).toBe(200);
+
+    const frame = JSON.parse(frames.find((f) => f.event === "citations")?.data ?? "null") as {
+      refusal: boolean;
+      dhaifWarning: boolean;
+      citations: { label: string }[];
+    };
+    // The hybrid keeps its chip AND its refusal flag (#436) — and now the grade
+    // flag the spec makes unconditional is computed for the same text (#439).
+    // (The chip's label is the citation grammar's span, `HR. Tirmidhi no. 2878`;
+    // the grade rides the sheet's badge and the warning card, not the label.)
+    expect(frame.refusal).toBe(true);
+    expect(
+      frame.citations
+        .map((c) => c.label)
+        .some((label) => label.startsWith("HR. Tirmidhi no. 2878")),
+    ).toBe(true);
+    expect(frame.dhaifWarning).toBe(true);
+    // The surfaces of the invariant agree: the delivered text carries the
+    // warning line, the frame reports the flag the card renders from, and the
+    // trace names the rule that appended it.
+    expect(answer).toContain(dhaifWarning("id"));
+    expect(answer).toContain(DEFAULT_REFUSALS.id);
+    const trace = store.allTraces().get(meta.messageId) as
+      | { events: { kind: string; detail?: Record<string, unknown> }[] }
+      | undefined;
+    const rules = trace?.events.find((e) => e.kind === "product_rules");
+    expect(rules?.detail?.["applied"]).toContain("dhaif_warning");
+    expect(trace?.events.find((e) => e.kind === "refusal")?.detail?.["trigger"]).toBe(
+      "generator_refusal",
+    );
+    // No paid reviewer call was spent on the classified refusal.
+    expect(trace?.events.some((e) => e.kind === "review")).toBe(false);
   }, 15000);
 
   it("uses prior turns of the session as follow-up context", async () => {

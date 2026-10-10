@@ -43,14 +43,49 @@ export function refusalTextFor(
 }
 
 /**
- * True when the draft IS the canonical insufficiency refusal the generator was
- * instructed to emit verbatim (`chat-prompts.ts`). Both language markers are
- * detected: the model may answer in the wrong language, and a refusal in
- * either is still a refusal.
+ * True when the canonical insufficiency refusal SENTENCE appears in the draft,
+ * in either language (a substring match, `chat-prompts.ts` instructs the
+ * generator to emit it verbatim). The model may answer in the wrong language,
+ * and a refusal in either is still a refusal.
+ *
+ * It is deliberately NOT "this text is a refusal": the same sentence is the
+ * tail of a HYBRID draft — a grounded partial answer that runs into it (#436,
+ * #439). Which decision each shape earns is `isEarnedRefusal`'s, below: both
+ * skip the paid reviewer, but only the shape that cites nothing is delivered
+ * undecorated, because the deterministic rules the spec marks "Always" are
+ * computed for whatever text actually ships. Renaming or narrowing this
+ * predicate silently moves that boundary, which is why the hybrid half is
+ * pinned by `chat-reviewer-evidence.test.ts` and `chat-dhaif-warning.test.ts`.
  */
 export function isRefusalDraft(text: string): boolean {
   const t = text.toLowerCase();
   return t.includes(DEFAULT_REFUSALS.id) || t.includes(DEFAULT_REFUSALS.en);
+}
+
+/**
+ * The EARNED refusal shape (#439): the canonical sentence in a draft with no
+ * citation-shaped span at all — the shape that ships verbatim and invents no
+ * warning. `citations` is the deterministic validator's partition of the
+ * draft's spans (`chat-citation-validator.ts`): a refused span lands in
+ * `ungrounded`, an accepted one contributes at least one label to `grounded`,
+ * so both lists empty is the positive reading of "this draft cites nothing".
+ * Reading `grounded.length === 0` alone means the weaker "no grounded span",
+ * true only while the stage's ungrounded gate returns first — a reorder would
+ * ship a refused text verbatim.
+ *
+ * The classification may skip the PAID reviewer (ADR-0009 cost discipline); it
+ * may not skip a rule the spec makes `Always` (SPECS §2.2), which is why a
+ * HYBRID — the sentence riding an answer that cites something — funnels through
+ * the stage's `withRules` instead. The shape vocabulary is normative in
+ * `CONTEXT.md` (Refusal).
+ */
+export function isEarnedRefusal(
+  text: string,
+  citations: { grounded: readonly string[]; ungrounded: readonly string[] },
+): boolean {
+  return (
+    isRefusalDraft(text) && citations.grounded.length === 0 && citations.ungrounded.length === 0
+  );
 }
 
 /**

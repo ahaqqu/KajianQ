@@ -15,6 +15,7 @@ import { applyProductRules } from "./chat-postprocess";
 import { runCitationPregate, validateCitations } from "./chat-reviewer-pregate";
 import {
   buildReviewMessages,
+  isEarnedRefusal,
   isRefusalDraft,
   refusalTextFor,
   type KajianQFilters,
@@ -119,10 +120,12 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
           }
 
           // A generator-emitted refusal IS the refusal (round-3 A2): it must
-          // not pay a reviewer LLM call, must not gain the product rules (a
-          // disclaimer appended to a refusal buries the reason), and must be
-          // visible on the trace as a `refusal` event — the same signal the
-          // eval harness's refusal detection reads.
+          // not pay a reviewer LLM call, and it must be visible on the trace as
+          // a `refusal` event — the signal the eval harness's refusal detection
+          // reads. The classification skips the PAID reviewer, never a rule the
+          // spec makes `Always` (#439): the EARNED shape ships verbatim, the
+          // hybrid funnels through `withRules`. The boundary and its reasoning
+          // live with `isEarnedRefusal`, next to the predicate they qualify.
           if (isRefusalDraft(draft.text)) {
             run.record({
               stage: "reviewer",
@@ -131,7 +134,8 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
               reason: "generator emitted the canonical insufficiency refusal",
               at: run.now(),
             });
-            return { text: draft.text };
+            if (isEarnedRefusal(draft.text, { grounded, ungrounded })) return { text: draft.text };
+            return withRules(draft, context, run);
           }
 
           if (deps.provider === null || deps.skipLlm === true) {
@@ -208,17 +212,20 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
   /**
    * The deterministic product rules (spec §2.2, ticket #10): a passed draft
    * gains the dhaif warning, the machine-translation label, and the ulama
-   * disclaimer when the model omitted them. Never applied to a refusal — the
-   * refusal is the honest answer, and decorating it would bury the reason.
+   * disclaimer when the model omitted them.
    *
    * **This is the ONE place the rules run, and therefore the one place the
-   * trace records that they did (#285, ADR-0007).** All three of the stage's
-   * "rules apply" exits funnel through here — no-provider/`skipLlm`,
-   * the ADR-0042 pre-gate skip, and reviewer-passed — so a fourth exit added
-   * later records the event by construction rather than by remembering to.
-   * The pre-gate skip path is why a dedicated event exists instead of a field
-   * on `review`: it records no `review` event at all, so a rule running there
-   * was previously invisible.
+   * trace records that they did (#285, ADR-0007).** All four of the stage's
+   * "rules apply" exits funnel through here — the hybrid-refusal exit added by
+   * #439, no-provider/`skipLlm`, the ADR-0042 pre-gate skip, and
+   * reviewer-passed — so a fifth exit added later records the event by
+   * construction rather than by remembering to. The pre-gate skip path is why
+   * a dedicated event exists instead of a field on `review`: it records no
+   * `review` event at all, so a rule running there was previously invisible.
+   *
+   * A pure refusal does not reach here (it is the honest answer); a HYBRID does
+   * — its text answers from the evidence and then declines, so the "Always"
+   * controls are computed for what ships (#439).
    *
    * The recording is deliberately keyed on `applyProductRules !== false` (the
    * same condition that gates the call), so the event means "the rules ran",

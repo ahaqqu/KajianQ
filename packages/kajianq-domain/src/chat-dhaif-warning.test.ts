@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
+import { DEFAULT_REFUSALS } from "./chat-reviewer";
 import { dhaifWarning, hasWeakWarning, ulamaDisclaimer } from "./chat-postprocess";
 import { MACHINE_TRANSLATION_LABEL } from "./chat-assembler";
 import { runChatPipeline } from "./chat-pipeline";
@@ -465,5 +466,110 @@ describe("#285 — the product_rules event on the wiring's delivery paths", () =
     expect(eventsOf(answer).some((e) => e.kind === "refusal")).toBe(true);
     expect(productRulesEvents(answer)).toHaveLength(0);
     expect((answer as { text: string }).text).not.toContain(ulamaDisclaimer("id"));
+    // And no warning is invented for a text that cites nothing, even though
+    // this run's ASSEMBLED context carries a dhaif chunk (#439): the rule's
+    // trigger reads the context, so this is the case that reddens if the
+    // exemption stops being keyed to the earned refusal shape.
+    expect((answer as { text: string }).text).not.toContain(dhaifWarning("id"));
+    expect(hasWeakWarning((answer as { text: string }).text)).toBe(false);
+  });
+});
+
+/**
+ * INTEGRATION TEST (#439) — a HYBRID refusal runs the rules the spec marks
+ * "Always".
+ *
+ * The invariant: **whatever text the run delivers, the grade flag and the
+ * disclaimer are computed for it.** The refusal classification may skip the
+ * paid reviewer (ADR-0009 cost discipline) — it must not skip a deterministic
+ * rule SPECS §2.2 makes unconditional.
+ *
+ * The failure it closes was silent and shipped: `isRefusalDraft` is a
+ * substring match on the canonical sentence, so a draft that quoted retrieved,
+ * graded evidence and THEN ran into that sentence (QA #432 probe P7, trace
+ * `fff2a012`) took the reviewer's refusal branch, which returned before
+ * `applyProductRules`. A dhaif-graded hadith quoted in such a draft reached the
+ * user with no warning line — and, because the citations frame's
+ * `dhaifWarning` flag is `hasWeakWarning(deliveredText)` (one predicate,
+ * `@app/kajianq-domain`), with no warning card either. No gate read it: the
+ * eval harness scores refusal, citations and recall, never the warning line.
+ *
+ * Why the wired pipeline and not the stage seam alone: the defect lived in the
+ * ORDER of two decisions (classification, then rules), and only the wiring
+ * shows the delivered text, the trace the frame is derived from, and whether a
+ * paid call was spent.
+ */
+describe("#439 — a hybrid refusal still runs the Always rules", () => {
+  /** The hybrid shape: a grounded partial answer that runs into the sentence. */
+  const HYBRID_DRAFT = [
+    `Dalilnya hadits ini [${DHAIF_CITATION}].`,
+    `Untuk bagian lain dari pertanyaan ini saya ${DEFAULT_REFUSALS.id}.`,
+  ].join("\n\n");
+
+  it("appends the dhaif warning and the disclaimer to the hybrid text, and records the rules", async () => {
+    const store = createMemoryRagStore();
+    await seedChild(store, DHAIF_METADATA, 0);
+
+    // A reviewer stub that FAILS the draft: it is wired but must never be
+    // called — if the classification stopped short-circuiting, the answer
+    // would become the reviewer-refusal copy and every assertion below would
+    // fail. That is the "no paid reviewer call spent on a classified refusal"
+    // half, pinned in the same run as the rules-ran half.
+    const providers = createStubChatProviders({
+      answerText: HYBRID_DRAFT,
+      reviewerVerdict: "fail",
+    });
+    const answer = await answerVia(store, HYBRID_DRAFT, {
+      reviewerProvider: providers.reviewerProvider,
+    });
+    const events = eventsOf(answer);
+    const text = (answer as { text: string }).text;
+
+    // The classification is still taken, and the trace still records it.
+    expect(events.find((e) => e.kind === "refusal")?.detail["trigger"]).toBe("generator_refusal");
+    // The paid reviewer was not spent (no `review` verdict, no reviewer call —
+    // the generator's own call is not a review).
+    expect(events.some((e) => e.kind === "review")).toBe(false);
+    expect(events.some((e) => e.kind === "llm_call" && e.detail["purpose"] === "review")).toBe(
+      false,
+    );
+    // The Always rules ran for the text that ships, and the trace says which
+    // appended — the event's PRESENCE beside the `refusal` event is what makes
+    // "the rules ran for a hybrid" observable (#285's contract).
+    const rules = productRulesEvents(answer);
+    expect(rules).toHaveLength(1);
+    expect(rules[0]?.stage).toBe("reviewer");
+    expect(rules[0]?.detail["applied"]).toEqual([
+      "dhaif_warning",
+      "machine_translation_label",
+      "ulama_disclaimer",
+    ]);
+    // And the delivered text carries them, appended after the model's own words.
+    expect(text.startsWith(HYBRID_DRAFT)).toBe(true);
+    expect(text).toContain(dhaifWarning("id"));
+    expect(text).toContain(MACHINE_TRANSLATION_LABEL);
+    expect(text).toContain(ulamaDisclaimer("id"));
+    // The citations frame's own predicate — the warning card's flag — agrees
+    // with the delivered text (one predicate, two readers).
+    expect(hasWeakWarning(text)).toBe(true);
+  });
+
+  it("keeps the rule's context trigger on the hybrid path (an assembled but uncited dhaif chunk still warns)", async () => {
+    // The adversarial half: the hybrid cites only a SOUND hadith while the
+    // assembled context also holds a dhaif chunk. The rule reads the assembled
+    // context, so the warning must appear — a "fix" that quietly narrowed the
+    // trigger to the hybrid's own citations would pass the test above and fail
+    // this one.
+    const store = createMemoryRagStore();
+    await seedChild(store, SAHIH_METADATA, 0);
+    await seedChild(store, DHAIF_METADATA, 1);
+    const draft = [
+      `Jawaban memakai [${SAHIH_CITATION}].`,
+      `Sisanya mohon maaf, ${DEFAULT_REFUSALS.id}.`,
+    ].join("\n\n");
+
+    const answer = await answerVia(store, draft, { reviewerDecider: SKIPPING_DECIDER });
+    const text = (answer as { text: string }).text;
+    expect(text).toContain(dhaifWarning("id"));
   });
 });
