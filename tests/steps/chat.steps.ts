@@ -108,6 +108,25 @@ const REFUSAL_FIXTURE = [
   "event: done\ndata: {}\n\n",
 ].join("");
 
+/**
+ * #436 — the HYBRID wire shape: a grounded partial answer that quotes a
+ * retrieved verse and then continues into the canonical insufficiency sentence
+ * plus the disclaimer, while the citations frame carries BOTH the grounded chip
+ * and `refusal: true` (the refusal decision the trace records). The server
+ * derives that frame from the persisted trace — the derivation, the route and
+ * the rehydration entry are pinned in `apps/api/src/lib/chat-citations.test.ts`
+ * and the route tests — so what this scenario owns is the user-facing half: the
+ * answer's chip survives, and the refusal tail is prose beside it rather than a
+ * substitute for the citation sheet.
+ */
+const HYBRID_FIXTURE = [
+  'event: meta\ndata: {"sessionId":"sess-e2e","messageId":"m-hybrid","traceId":"tr-hybrid"}\n\n',
+  "event: delta\ndata: Allah Mahahidup sebagaimana firman-Nya ",
+  `event: delta\ndata: [QS. 2:255].\ndata: \ndata: Untuk bagian lain dari pertanyaan ini saya tidak menemukan dalil yang memadai.\ndata: \ndata: ${DISCLAIMER}\n\n`,
+  'event: citations\ndata: {"messageId":"m-hybrid","refusal":true,"dhaifWarning":false,"citations":[{"label":"QS. 2:255","arabic":"اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ","translation":"Allah, tidak ada tuhan selain Dia.","machineTranslated":true,"source":"Al-Baqarah"}]}\n\n',
+  "event: done\ndata: {}\n\n",
+].join("");
+
 const TRANSCRIPT_FIXTURE = {
   sessionId: "sess-e2e",
   truncated: false,
@@ -273,6 +292,12 @@ When("I ask a question whose answer contains markdown", async ({ page }) => {
 When("I ask something the corpus cannot answer", async ({ page }) => {
   await openChatWithFixtures(page, REFUSAL_FIXTURE);
   await page.getByTestId("composer").fill("Pertanyaan di luar cakupan?");
+  await page.getByTestId("send").click();
+});
+
+When("I ask a question whose answer answers in part and then refuses", async ({ page }) => {
+  await openChatWithFixtures(page, HYBRID_FIXTURE);
+  await page.getByTestId("composer").fill("Apa itu ayat kursi, dan kapan Kiamat?");
   await page.getByTestId("send").click();
 });
 
@@ -473,6 +498,18 @@ Then("the refusal renders as a plain card with no citation chips", async ({ page
   const assistant = page.getByTestId("message-assistant").last();
   await expect(assistant).toContainText("tidak menemukan dalil yang memadai");
   await expect(page.getByTestId("citation-chip")).toHaveCount(0);
+  await expect(page.getByTestId("dhaif-warning")).toHaveCount(0);
+});
+
+Then("the hybrid answer renders its grounded citation chip", async ({ page }) => {
+  const assistant = page.getByTestId("message-assistant").last();
+  // The partial answer and the grounded verse it quotes are what the reader
+  // sees — one chip, resolved from the frame (#436).
+  await expect(assistant).toContainText("Allah Mahahidup");
+  await expect(assistant.getByTestId("citation-chip")).toHaveText("[QS. 2:255]");
+  // ... and the refusal tail is still there, as prose in the same card.
+  await expect(assistant).toContainText("tidak menemukan dalil yang memadai");
+  await expect(assistant.getByTestId("ulama-disclaimer")).toHaveCount(1);
   await expect(page.getByTestId("dhaif-warning")).toHaveCount(0);
 });
 
