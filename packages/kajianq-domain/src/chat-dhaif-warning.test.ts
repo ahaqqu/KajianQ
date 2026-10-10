@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_REFUSALS, refusalTextFor } from "./chat-reviewer";
+import { REFUSAL_FLOORS, refusalFloorText } from "./chat-refusal";
 import { dhaifWarning, hasWeakWarning, ulamaDisclaimer } from "./chat-postprocess";
 import { MACHINE_TRANSLATION_LABEL } from "./chat-assembler";
 import { runChatPipeline } from "./chat-pipeline";
@@ -456,11 +457,9 @@ describe("#285 — the product_rules event on the wiring's delivery paths", () =
     const store = createMemoryRagStore();
     await seedChild(store, DHAIF_METADATA, 0);
 
-    const answer = await answerVia(
-      store,
-      "Mohon maaf, kami tidak menemukan dalil yang memadai untuk pertanyaan ini.",
-      { reviewerDecider: SKIPPING_DECIDER },
-    );
+    const answer = await answerVia(store, refusalFloorText("id"), {
+      reviewerDecider: SKIPPING_DECIDER,
+    });
     // The refusal short-circuits before any rule runs — and must not gain a
     // disclaimer, nor an event claiming the rules ran.
     expect(eventsOf(answer).some((e) => e.kind === "refusal")).toBe(true);
@@ -647,7 +646,7 @@ describe("#443 — a citation-free asserting refusal draft ships the product's r
     // second turn a follow-up rather than a fresh question (ADR-0018).
     const store = createMemoryRagStore();
     await seedChild(store, DHAIF_METADATA, 0);
-    const decline = `Mohon maaf, kami ${DEFAULT_REFUSALS.id} untuk pertanyaan ini.`;
+    const decline = refusalFloorText("id");
     const first = await answerVia(store, decline);
     expect((first as { text: string }).text).toBe(decline);
     expect(productRulesEvents(first)).toHaveLength(0);
@@ -667,5 +666,61 @@ describe("#443 — a citation-free asserting refusal draft ships the product's r
     );
     expect(productRulesEvents(second)).toHaveLength(0);
     expect(hasWeakWarning(text)).toBe(false);
+  });
+
+  it("ships the wrapped floor byte-identical and refuses the folded sentence, on the same wiring (#452)", async () => {
+    // The floors' predicate/decision pins live in `chat-refusal.test.ts`; the
+    // unwrapped floor's DELIVERED text is pinned in the test above. The wrapped
+    // variant carries its own predicate pin there and had no delivered-text pin
+    // anywhere — a narrowing of the exemption could have moved it without this
+    // suite noticing (#452, observation 3 of the #451 re-review), so the gap is
+    // closed here: what the reader receives is the model's text, byte for byte,
+    // with no rule run and no warning invented for a text that cites nothing.
+    const store = createMemoryRagStore();
+    await seedChild(store, DHAIF_METADATA, 0);
+    const { head, tail } = REFUSAL_FLOORS.id;
+    // BOTH wrap spellings the round-1 review certified byte-identical: the
+    // newline after `kami` (this round's input) and the reviewed head's space
+    // there, which no suite covered once that input moved (review N4).
+    const wrappedAfterKami = `${head.replace(", ", ",\n")}\n${DEFAULT_REFUSALS.id}\n${tail}.`;
+    const wrappedAfterComma = `${head.replace(", ", ",\n")} ${DEFAULT_REFUSALS.id}\n${tail}.`;
+    const floor = await answerVia(store, wrappedAfterKami);
+    expect((floor as { text: string }).text).toBe(wrappedAfterKami);
+    expect(productRulesEvents(floor)).toHaveLength(0);
+    const spaced = await answerVia(store, wrappedAfterComma);
+    expect((spaced as { text: string }).text).toBe(wrappedAfterComma);
+    expect(productRulesEvents(spaced)).toHaveLength(0);
+
+    // The fold: the same sentence, on the same wiring, with a claim of the
+    // model's own inside it. `isRefusalOnly` reads it as content now, so the
+    // reader gets the product's refusal rather than the draft's assertion.
+    const fold = `Haditsnya sahih dan wajib diamalkan, namun kami ${DEFAULT_REFUSALS.id}.`;
+    const refused = await answerVia(store, fold);
+    const text = (refused as { text: string }).text;
+    expect(text).toBe(DEFAULT_REFUSALS.id);
+    expect(text).not.toContain("wajib diamalkan");
+    expect(eventsOf(refused).find((e) => e.kind === "refusal")?.detail["trigger"]).toBe(
+      "asserting_refusal_draft",
+    );
+    expect(productRulesEvents(refused)).toHaveLength(0);
+    expect(hasWeakWarning(text)).toBe(false);
+  });
+
+  it("ships a terminal-mark run with the draft, as the boundary decision it is (review N1)", async () => {
+    // The run is the sentence boundary `SENTENCE_BOUNDARIES` reads, not a
+    // segment residue, so the reader receives the draft with its marks and no
+    // rule is invented for a text that cites nothing. The predicate and decision
+    // pins live in `chat-refusal.test.ts`; this is the DELIVERED-text level the
+    // review measured, now a gate on the recorded decision (`SPECS.md` §3.3,
+    // `CONTEXT.md` Refusal) rather than on an omission.
+    const store = createMemoryRagStore();
+    await seedChild(store, DHAIF_METADATA, 0);
+    const draft = `!!! Kami ${DEFAULT_REFUSALS.id}.`;
+    const answer = await answerVia(store, draft);
+    expect((answer as { text: string }).text).toBe(draft);
+    expect(eventsOf(answer).find((e) => e.kind === "refusal")?.detail["trigger"]).toBe(
+      "generator_refusal",
+    );
+    expect(productRulesEvents(answer)).toHaveLength(0);
   });
 });
