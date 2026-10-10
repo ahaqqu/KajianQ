@@ -86,6 +86,7 @@ Every state change below follows the transition rules under **Project board — 
 
 - Establish the task scope: what the change is, what done looks like, and the target branch (default `main`).
 - If the task is underspecified, grill the user (`grill-with-docs`) or escalate before spawning A. A clear task up front prevents flaky downstream runs.
+- A task that is a **day** rather than a ticket takes the batch path: order the day first (§ The day's sweep), then run this step once per ticket in that order.
 
 ### 1. Dispatch A (implement)
 
@@ -166,6 +167,28 @@ The shape is decided before merge — step 6's summary states it — and **a QA-
 4. **Verify the verdict once, one-shot**: `gh issue view <qa-ticket> --comments` shows a verdict of `verified`, `not verified`, or `blocked`, with per-probe evidence, the spend against the cap, and **every session erased or its non-erasure disclosed** (`sessionId`, contents, and expiry per the skill's safety rails — a disclosed session is compliant, not a failure); every real defect has its own linked ticket. `not verified` or `blocked` → relay the failing probe to the user verbatim and send the defect tickets through the normal implement → review loop; the change is not finished. A green `Staging` run is not a verdict, and neither is a subagent's prose.
 
 Step 6's cleanup duty moves behind both checks: remove worktrees only once the post-merge runs are verified or the failure is relayed, **and** a QA-needed change's verdict is recorded.
+
+## The day's sweep
+
+The loop resolves one ticket; a day is resolved as a batch, and closed with a retrospective. **Trigger:** the owner hands you a day. Order first, then run the loop once per ticket.
+
+**Enumerate.** `gh issue list --state all --limit <n> --search "created:<date>"` for the day you are in (UTC), then a board read for each. Done when every issue opened that date is in the queue, or named with the reason it is out of scope.
+
+**Order.** Impact first, coupling second:
+
+1. **Impact.** **Wrong answer** — the product answers wrongly, refuses what it must answer, or ships a missing mandatory warning — outranks **wrong record** (what the product reports about the answer disagrees with the answer: the frame, the citation list, a trace projection), which outranks **wrong machinery** (the gates, scripts and skills the repo runs on). A defect that blocks another ticket's verdict goes first of all: a fix no verdict can reach is not a fix.
+2. **Coupling.** Within a tier, order so each fix lands as one green deploy. Work sharing a file, a seam or a deployment runs as one dispatch or sequentially; the widest blast radius runs alone. Park the rest by name with what it waits for — the cap is two live subagents, and the queue is the answer to it.
+
+**Resolve** each ticket through steps 0–7, and close it on its verdict, never on its merge.
+
+**Retrospective.** Close the sweep with the day's retrospective to the owner: the queue in resolution order, every defect's class from the taxonomy below with its count per class, and one reduction per class that **lands as a change** — a process gap becomes an edit to this skill or a role file, a code gap a ticket through the loop. A retrospective that leaves no artifact is prose.
+
+The taxonomy, from the classes this loop keeps meeting:
+
+- **Unearned coverage** — a claim of exhaustiveness (every category, every source, every rule) carried by a hand-written list instead of by construction, so the missing member is invisible. Reduce: derive the map from the union it covers and walk that union in a test, so the next member fails the build.
+- **Overloaded flag** — one field carrying two meanings, so a shape the author never pictured collapses them. Reduce: one field, one meaning; a projection derives from its own trace event, never from another projection's flag.
+- **Coupling** — a policy decision (what we spend) gating a guarantee (what we must compute). Reduce: a classification may skip the paid reviewer, never a rule the spec marks unconditional.
+- **Single sample** — a verdict read off one nondeterministic observation, where the outcome flips on a branch the change does not control. Reduce: name the branch the fix covers, probe **that** branch deliberately, and read a pass on another branch as no evidence either way.
 
 ## Reliability & supervision
 
