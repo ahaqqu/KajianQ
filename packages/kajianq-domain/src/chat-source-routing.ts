@@ -187,9 +187,11 @@ export function routeFilters(input: SourceRoutingInput): KajianQFilters {
  * An empty category selection is returned as it is: an area no rule covers has
  * no claim to widen, and an unfiltered search already covers every part, so a
  * role (or the lens rule) can add to a selection but can never turn "every
- * source" into a filter. The union is in the order the sources are first
- * implied — category row, then each part in the decomposition's own order, then
- * the lens rule — so two equal readings publish identical lists.
+ * source" into a filter — and no role has to be expressed at all, so a label
+ * this module cannot map is no coverage loss on an unfiltered route. The union is
+ * in the order the sources are first implied — category row, then each part in
+ * the decomposition's own order, then the lens rule — so two equal readings
+ * publish identical lists.
  */
 export function sourceTypesOf(input: SourceRoutingInput): readonly RoutableSource[] {
   const categorySources = CATEGORY_SOURCES[input.category ?? "general"];
