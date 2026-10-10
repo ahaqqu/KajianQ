@@ -65,10 +65,19 @@ export function traceChunkIds(trace: Trace): string[] {
  * event with its trigger, the same signal the eval harness's refusal detection
  * reads (ADR-0007). ONE owner for "did the pipeline refuse?": both the
  * citations frame's flag (`chat-citations.ts`) and the route's chunking branch
- * (`chat.ts`) ask it, so the two spellings cannot drift apart (#436) — for a
- * `generator_refusal` the reviewer returns the draft unchanged and the route
- * must chunk the settled text, for `ungrounded_citation`/`reviewer_fail` it
- * replaced the text and must not replay the vendor's deltas.
+ * (`chat.ts`) ask it, so the two spellings cannot drift apart (#436).
+ *
+ * The trigger→delivery map this predicate relies on, stated once here for every
+ * reader of it (`chat.ts`'s chunking branch included): a `generator_refusal`
+ * returns the draft — the pure refusal unchanged, the hybrid through the Always
+ * rules — so the settled text must be chunked; **anything else REPLACES the
+ * delivered text with product copy** and must not replay the vendor's deltas.
+ * The replacement triggers today are `ungrounded_citation` (the deterministic
+ * gate), `reviewer_fail` (the paid reviewer) and `asserting_refusal_draft` (the
+ * #443 decline backstop); adding one keeps this invariant, which is why the
+ * route asks this predicate rather than the trigger value. The vocabulary
+ * itself has one owner: `RefusalTrigger` in `@app/kajianq-domain`
+ * (`chat-refusal.ts`).
  */
 export function traceRefused(trace: Trace): boolean {
   return trace.events.some((event) => event.kind === "refusal");

@@ -18,6 +18,7 @@ import {
   refusalDraftDecision,
   refusalTextFor,
   type KajianQFilters,
+  type RefusalTrigger,
   type ReviewerLlmSeam,
 } from "./chat-reviewer-prompt";
 
@@ -79,19 +80,20 @@ export type KajianQReviewerDeps = {
 };
 
 /**
- * The prompt half lives in `chat-reviewer-prompt.ts` (its own named seam,
- * pinned by `chat-reviewer-prompt.test.ts`); every name keeps its historical
- * import surface through these re-exports. The prompt strings are shared with
- * the generator's rule 1 (`chat-prompts.ts` imports `DEFAULT_REFUSALS`), so
- * the copy and the detector must never drift apart.
+ * The stage's two seams live beside it, each with its own named test: the
+ * prompt half in `chat-reviewer-prompt.ts`, the refusal vocabulary — sentence,
+ * predicates, decision table, trigger union — in `chat-refusal.ts` (round B1 of
+ * the #443 review). Every name keeps its historical import surface through these
+ * re-exports; the prompt module re-exports the vocabulary so this file keeps ONE
+ * import statement for its whole seam, being at the agentic 5-import cap.
  */
 export {
   DEFAULT_REFUSALS,
-  REVIEWER_SYSTEM_PROMPT,
-  buildReviewMessages,
   isRefusalDraft,
   refusalTextFor,
-} from "./chat-reviewer-prompt";
+  type RefusalTrigger,
+} from "./chat-refusal";
+export { REVIEWER_SYSTEM_PROMPT, buildReviewMessages } from "./chat-reviewer-prompt";
 
 export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<KajianQFilters> {
   const refusal = deps.refusalText ?? ((reason) => refusalTextFor("id", reason));
@@ -103,29 +105,16 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
           const run = yield* RunContext;
           const { grounded, ungrounded } = validateCitations(draft.text, context.chunks);
 
-          // The deterministic gate first, and unconditionally: a fabricated
-          // citation is refused whether or not the reviewer LLM is wired.
-          // Recorded as a `refusal` event so the trace (and the eval harness's
-          // refusal detection) shows why the user got a refusal.
-          if (ungrounded.length > 0) {
-            run.record({
-              stage: "reviewer",
-              kind: "refusal",
-              detail: { trigger: "ungrounded_citation" },
-              reason: `citation(s) not present in retrieved context: ${ungrounded.join(", ")}`,
-              at: run.now(),
-            });
-            return { text: refusal("ungrounded") };
-          }
-
-          // A generator-emitted refusal IS the refusal (round-3 A2): it must not
-          // pay a reviewer LLM call, and it must be visible on the trace as a
-          // `refusal` event — the signal the eval harness's refusal detection
-          // reads. WHICH shape the draft is, and what each shape ships, is
-          // `refusalDraftDecision`'s, next to the predicates that decide it: the
-          // classification may skip the PAID reviewer (ADR-0009 cost
-          // discipline), never a rule the spec makes `Always` (#439), and never
-          // the reader's ability to recognise a refusal as one (#443).
+          // The refusal decision: one owner for every shape that reaches this
+          // path, and its FIRST row is the deterministic gate's own — a
+          // fabricated citation is refused whether or not the reviewer LLM is
+          // wired and whether or not the draft carries the sentence, so the
+          // order is structural, not a convention across two call sites (review
+          // A2 of #443). Every row is recorded as a `refusal` event, the trace's
+          // record of why the user got a refusal; WHICH shape a sentence-carrying
+          // draft is and what each ships is the table's (skip the paid reviewer,
+          // ADR-0009, never an `Always` rule (#439) or the reader's ability to
+          // tell a refusal from prose (#443)).
           const decision = refusalDraftDecision(draft.text, { grounded, ungrounded });
           if (decision !== null) {
             run.record({
@@ -135,8 +124,17 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
               reason: decision.reason,
               at: run.now(),
             });
-            if (decision.delivery === "rules") return withRules(draft, context, run);
-            return { text: decision.delivery === "draft" ? draft.text : refusal("ungrounded") };
+            // Exhaustive on purpose (B2 of #443): a new delivery must fail the typecheck here.
+            switch (decision.delivery) {
+              case "rules":
+                return withRules(draft, context, run);
+              case "draft":
+                return { text: draft.text };
+              case "product_refusal":
+                return { text: refusal("ungrounded") };
+              default:
+                return assertNeverDelivery(decision.delivery);
+            }
           }
 
           if (deps.provider === null || deps.skipLlm === true) {
@@ -199,7 +197,7 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
             run.record({
               stage: "reviewer",
               kind: "refusal",
-              detail: { trigger: "reviewer_fail" },
+              detail: { trigger: "reviewer_fail" satisfies RefusalTrigger },
               reason: "reviewer: answer not supported by retrieved evidence",
               at: run.now(),
             });
@@ -224,11 +222,11 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
    * a dedicated event exists instead of a field on `review`: it records no
    * `review` event at all, so a rule running there was previously invisible.
    *
-   * A pure refusal does not reach here (it is the honest answer), and neither
-   * does an asserting refusal draft — the product's own refusal ships for it
-   * (#443), so there is no text of the model's to decorate; a HYBRID does —
-   * its text answers from the evidence and then declines, so the "Always"
-   * controls are computed for what ships (#439).
+   * Three shapes do NOT reach here, and none is decorated: a pure refusal (a
+   * warning on it would be invented from the assembled context — the #285 pin),
+   * an asserting refusal draft, and the gate's own ungrounded-citation refusal
+   * (#443) — the product's own refusal ships for those. A HYBRID does: it
+   * answers from the evidence and then declines (#439).
    *
    * The recording is deliberately keyed on `applyProductRules !== false` (the
    * same condition that gates the call), so the event means "the rules ran",
@@ -254,6 +252,11 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
     });
     return result.draft;
   }
+}
+
+/** A delivery with no branch here is a compile error, never a fall-through (B2 of #443). */
+function assertNeverDelivery(delivery: never): never {
+  throw new Error(`unhandled refusal delivery: ${String(delivery)}`);
 }
 
 /**

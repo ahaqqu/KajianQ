@@ -236,6 +236,9 @@ export {
   REVIEWER_SYSTEM_PROMPT,
   parseReviewerVerdict,
   type ReviewerProvider,
+  // The `refusal` event's trigger vocabulary, one home for the stage, the
+  // route's `traceRefused` and the eval harness (review A2/C1 of #443).
+  type RefusalTrigger,
 } from "./chat-reviewer";
 export {
   applyProductRules,
