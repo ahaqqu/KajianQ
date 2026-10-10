@@ -6,6 +6,7 @@ import {
   type Query,
   type Router,
   type Routing,
+  type SubQuery,
 } from "@app/rag-core";
 import { decomposeQuery } from "./chat-router-decompose";
 import { readRouterText, ROUTER_SYSTEM_PROMPT, type RouterReading } from "./chat-router-output";
@@ -88,16 +89,20 @@ export function createKajianQRouter(
           });
           const overrides = query.filters ?? {};
           const reading = readRouterText(reply.text, overrides);
-          const routing =
-            reading === undefined
-              ? fallbackRouting(query.text, overrides)
-              : routingOf(reading, query.text);
-          // Stage 3's decision, recorded by the stage that made it. Built by
-          // the same mapping retrieval uses, so the decision and the search
-          // cannot drift; a dimension the store cannot express throws here,
-          // before any search runs, instead of being silently dropped.
-          const decision = yield* Effect.try({
-            try: () => sourceRoutingDetail(routing.filters),
+          // Stage 3's decision, recorded by the stage that made it — and built
+          // by the same mapping retrieval uses, over the same decomposition, so
+          // the sources the trace publishes and the sources the searches run
+          // cannot drift. A role or a dimension the route cannot express fails
+          // here, before any search runs, instead of being silently dropped or
+          // silently contributing nothing.
+          const { routing, decision } = yield* Effect.try({
+            try: () => {
+              const routing =
+                reading === undefined
+                  ? fallbackRouting(query.text, overrides)
+                  : routingOf(reading, query.text);
+              return { routing, decision: sourceRoutingDetail(routing.filters) };
+            },
             catch: (cause: unknown) => ({ cause }),
           });
           run.record({
@@ -117,16 +122,21 @@ function routingOf(
   reading: RouterReading,
   question: string,
 ): Routing<import("./filters").KajianQFilters> {
-  const filters = routeFilters(routingInputOf(reading));
+  // The decomposition first, deliberately: stage 3's source selection is the
+  // union of the category and the roles of the parts retrieval will *actually*
+  // fan out over — repairs and the ceiling included — so a source is never
+  // selected for a part the route dropped, nor missed for a part it runs.
+  const subQueries = decomposeQuery({
+    question,
+    needsPrinciple: reading.needsPrinciple,
+    principleTags: reading.principleTags,
+    ...(reading.category !== undefined ? { category: reading.category } : {}),
+    modelSubQueries: reading.modelSubQueries,
+  });
+  const filters = routeFilters(routingInputOf(reading, subQueries));
   return {
     intent: reading.intent,
-    subQueries: decomposeQuery({
-      question,
-      needsPrinciple: reading.needsPrinciple,
-      principleTags: reading.principleTags,
-      ...(reading.category !== undefined ? { category: reading.category } : {}),
-      modelSubQueries: reading.modelSubQueries,
-    }),
+    subQueries,
     filters,
     ...(reading.confidence !== undefined ? { confidence: reading.confidence } : {}),
     ...(reading.reasoning !== undefined ? { reasoning: reading.reasoning } : {}),
@@ -138,13 +148,17 @@ function routingOf(
 }
 
 /** The router's reading, as source routing reads it. */
-function routingInputOf(reading: RouterReading): SourceRoutingInput {
+function routingInputOf(
+  reading: RouterReading,
+  subQueries: readonly SubQuery[],
+): SourceRoutingInput {
   return {
     intent: reading.intent,
     ...(reading.category !== undefined ? { category: reading.category } : {}),
     needsPrinciple: reading.needsPrinciple,
     principleTags: reading.principleTags,
     filters: reading.filters,
+    subQueries,
   };
 }
 

@@ -189,7 +189,13 @@ export {
   metadataFilters,
   nextRelaxation,
 } from "./chat-filter-policy";
-export { routeFilters, sourceRoutingDetail, sourceTypesOf } from "./chat-source-routing";
+export {
+  SourceRoleNotExpressibleError,
+  roleSources,
+  routeFilters,
+  sourceRoutingDetail,
+  sourceTypesOf,
+} from "./chat-source-routing";
 export {
   DEFAULT_NEIGHBOUR_CAP,
   DEFAULT_NEIGHBOUR_RADIUS,
