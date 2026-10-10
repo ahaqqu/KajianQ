@@ -12,7 +12,10 @@ Decomposition is **repaired deterministically after the model replies**: every c
 sub-query carrying its role (a factual one always; a principle one when the question needs a lens; a Quranic dalil one
 for fikih; a sanad one for hadith), a missing one is added from a template — or stamped onto the set's role-less entry
 for that same text, so the duplicate filter never costs a rule its coverage; an entry the model already labelled with a
-different declared role keeps its label, and only that coincidence goes unshown. The set is bounded to the stage's
+different declared role keeps its label, and only that coincidence goes unshown. A text the reply phrased that carries
+no letter and no digit in any script is **refused**, not embedded, and the ceiling never spends the slot of the entry a
+fired rule's own text lives in — so the repair is a fixed point over its own output; the caller's question is not the
+reply's claim and is never refused. The set is bounded to the stage's
 ceiling, with a floor on **distinct retrieval texts**: 2–4 whenever the caller's question plus a differing model
 sub-query or a rule beyond `factual` gives two texts to search, and exactly 1 when the question is the only one — the
 floor is never padded with a near-duplicate, which would claim a decomposition that never happened. Each sub-query
