@@ -42,7 +42,9 @@ export interface CitationGrammar {
    * Every address this grammar's match **names**, or `undefined` when the
    * grammar has no list-valued form — in which case a match names exactly the
    * one address {@link addressOf} identifies, and a dash-joined tail stays the
-   * opaque compound {@link DASH_JOINED_NUMBER_TAIL} keeps whole (ADR-0049).
+   * opaque compound `DASH_JOINED_NUMBER_TAIL` keeps whole — the constant
+   * `chat-citation-reduce` declares, where this module moved it to stay inside the
+   * 300-line agentic limit (ADR-0049).
    * Declared per grammar, not split at the comparison site: only the grammar
    * that owns an address knows whether a dash joins two of them.
    *
@@ -200,13 +202,18 @@ export function addressAtStart(label: string): string | null {
  * ({@link CitationGrammar.addressesOf}) — read from the grammar's own
  * structure, never inferred from the shape of the addresses {@link
  * addressesNamedBy} named. A consumer that decides a citation **per address**
- * must branch on this and on nothing else: the shape test "the declaration names
- * an address other than the span itself" is true for a plain marker-prefixed span
- * too — `addressesNamedBy` names that span itself — so with a retrieved set
- * holding a bare `QS.` marker such a span took the extension rule and grounded on
- * the marker the draft never named (#449). `false` covers both `[]` states, "no
- * grammar at all" and "the grammar declares no list": each names exactly one
- * address and takes the extension rule, as before.
+ * must branch on this and on nothing else, and **this docstring is the one owner
+ * of why**: the comparison site in `chat-citation-validator` points here instead
+ * of restating it, and `SPECS.md` §3.7 keeps the reader-facing form.
+ *
+ * The shape test "the declaration names an address other than the span itself"
+ * is **false** for a plain, marker-prefixed span — `addressesNamedBy` names that
+ * span itself — so such a span skipped the per-address rule, took the extension
+ * rule, and with a retrieved set holding a bare `QS.` marker grounded on the
+ * marker the draft never named (#449).
+ *
+ * `false` covers both `[]` states, "no grammar at all" and "the grammar declares
+ * no list": each names exactly one address and takes the extension rule, as before.
  */
 export function declaresAddressList(label: string): boolean {
   return grammarAtStart(label)?.grammar.addressesOf !== undefined;

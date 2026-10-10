@@ -342,11 +342,14 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
 
   it("never grounds a plain span on a marker it did not name — the whole address space (#449)", () => {
     // The class the declared-list branch's shape proxy left open, exhausted rather
-    // than sampled: with a retrieved set holding the bare marker `QS.`, EVERY valid
-    // `surah:ayah` address (6,236 — the Tanzil table's own total) was grounded on the
-    // marker by the extension rule, in all three marker spellings the scan folds to
-    // one candidate. The branch is keyed to the grammar's declaration now, so the
-    // span's own declared list of one decides it, and the marker grounds nothing.
+    // than sampled: with a retrieved set holding the bare marker `QS.`, EVERY numeric
+    // `surah:ayah` address this sweep enumerates (6,236 — the Tanzil table's own
+    // total) was grounded on the marker by the extension rule, in all three marker
+    // spellings the scan folds to one candidate. The class is plain Quran spans, wider
+    // than this rendering: a named-surah plain span narrows the same way and is pinned
+    // in `chat-citation-validator.test.ts` (review A2). The branch is keyed to the
+    // grammar's declaration now, so the span's own declared list of one decides it, and
+    // the marker grounds nothing.
     //
     // Stated per address and per spelling: the marker-only family refuses, and the
     // family holding the address the span names grounds on that address and no other
@@ -385,14 +388,14 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
   }, 15000);
 
   it("holds the declared-list laws over addresses x joiners x renderings x retrieved sets (#449)", () => {
-    // The differential-free statement of the same change, over the shape space the
-    // sweep measured (6,236 addresses x 8 joiners x 4 renderings x 6 retrieved-set
-    // families = 1,197,348 combinations; 0 widened / 6,236 narrowed at base
-    // `4003527`): however a retrieved set is composed, the verdict obeys the laws the
-    // gate promises — never a label outside the retrieved set, never a grounding that
-    // skips an address the span declares, never a marker grounding a span that does
-    // not name the marker, and adding retrieved labels never refuses a citation the
-    // gate already accepted.
+    // The differential-free statement of the same change, over the numeric-address
+    // shape space the sweep measured (6,236 addresses x 8 joiners x 4 renderings x
+    // 6 retrieved-set families = 1,197,348 combinations; 0 widened / 6,236 narrowed at
+    // base `4003527`): however a retrieved set is composed, the verdict obeys the laws
+    // the gate promises — never a label outside the retrieved set, never a grounding
+    // that skips an address the span declares, never a marker grounding a span that
+    // does not name the marker, and adding retrieved labels never refuses a citation
+    // the gate already accepted.
     const marker = "QS.";
     const property = fc.property(
       fc.integer({ min: 1, max: 114 }),

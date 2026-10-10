@@ -119,15 +119,15 @@ export function citationMatchText(text: string): string {
  *
  * That branch is taken **exactly when the grammar declares an address list**
  * (`declaresAddressList`), read from the grammar's own structure rather than
- * inferred from the shape of what the declaration named. The shape test
- * `named[0] !== candidate` — "the declaration names an address other than the span
- * itself" — is true for a plain, marker-prefixed span too, and that proxy is what
- * let such a span past rule 2 into rule 3 and onto a marker the draft never named
- * (#449). A plain span's own address is the list of one its grammar declares, so
- * it grounds on that address and on nothing else; a grammar that declares no list
- * has no per-address reading to take and keeps the extension rule whole. A range
- * of one the surah cannot hold (`QS. 2:0-0`, `QS. 2:999–999`) stays unenumerable
- * and refuses above, like any other list that cannot be verified.
+ * inferred from the shape of what the declaration named. The proxy it replaced and
+ * the class that proxy let past rule 2 into rule 3 are stated once, on
+ * `declaresAddressList` — the one owner of that mechanism — so this site points
+ * there rather than keeping a copy that can drift from it (#449). A plain span's own
+ * address is the list of one its grammar declares, so it grounds on that address and
+ * on nothing else; a grammar that declares no list has no per-address reading to take
+ * and keeps the extension rule whole. A range of one the surah cannot hold
+ * (`QS. 2:0-0`, `QS. 2:999–999`) stays unenumerable and refuses above, like any other
+ * list that cannot be verified.
  *
  * The list rule runs **before** the extension rule, and a declared list that is
  * not fully retrieved returns `null` rather than falling through: a spaced
@@ -162,16 +162,14 @@ export function groundingLabelsFor(
   // ADR-0049: every address the citation's own grammar declares it names must be
   // present — a declared list of ONE exactly like a list of two (#444). The branch
   // is keyed to the grammar's DECLARATION (`declaresAddressList`), read from the
-  // grammar's own structure — never to the shape of the addresses it named (#449).
-  // That shape test, `named[0] !== candidate`, is true for a plain marker-prefixed
-  // span too, since `addressesNamedBy` names that span itself: with a `known` set
-  // holding the bare marker `QS.` the span fell through to the extension rule and
-  // grounded on the marker (`"QS."`) — every one of the 6,236 valid `surah:ayah`
-  // addresses, a citation the draft never named. No caller can build such a set
-  // from a chunk label today (`normalizeCitationLabel` reads `QS.` as `QS`), which
-  // is why the hole was latent; the branch no longer rests on that. A grammar that
-  // declares no list has no address list to decide address by address: it names the
-  // label itself whole and keeps the extension rule below.
+  // grammar's own structure — never to the shape of the addresses it named (#449);
+  // the proxy it replaces, and the marker class that proxy let through, are stated
+  // once on `declaresAddressList` — the one owner of the fact. No caller can build a
+  // set holding the bare marker from a chunk label today (`normalizeCitationLabel`
+  // reads `QS.` as `QS`), which is why the hole was latent; the branch no longer
+  // rests on that. A grammar that declares no list has no address list to decide
+  // address by address: it names the label itself whole and keeps the extension rule
+  // below.
   const named = declared.map(canonicalizeCitationSpelling);
   if (declaresAddressList(candidate)) {
     // A declared list that enumerated nothing is unverifiable too: refuse it

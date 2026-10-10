@@ -679,11 +679,15 @@ describe("validateCitations — grounded direction", () => {
     // itself — so the span reached the EXTENSION rule, and a retrieved set holding a
     // bare `QS.` marker grounded it on the marker. That verdict is silent: a marker
     // is a legal chunk label, the answer cites a real-looking address, no refusal is
-    // raised, and no chip is missing. Measured at base `4003527` over 6,236 addresses
-    // x 8 joiners x 4 renderings x 6 retrieved-set families = 1,197,348 combinations
-    // (935,418 distinct span x family pairs): **widened 0, narrowed 6,236** — every
-    // narrowed pair a plain span whose retrieved set held only the marker, one per
-    // valid address, and no pair outside that class.
+    // raised, and no chip is missing. Measured at base `4003527` over **the measured
+    // numeric-address space** — 6,236 addresses x 8 joiners x 4 renderings x
+    // 6 retrieved-set families = 1,197,348 combinations (935,418 distinct span x
+    // family pairs): **widened 0, narrowed 6,236** — every narrowed pair a plain span
+    // whose retrieved set held only the marker, one per numeric address, and no pair
+    // outside that class. The divergence class itself is "plain Quran spans"
+    // generically, not those 6,236: a plain span written with a surah NAME narrows
+    // the same way and this sweep does not enumerate it (the `QS. Al-Fatihah:1` row
+    // below pins it).
     const marker = "QS.";
     for (const written of ["QS. 2:4", "Q.S. 2:4", "QS 2:4"] as const) {
       const candidate = citationCandidatesIn(`Lihat ${written} ya`)[0]!;
@@ -710,6 +714,24 @@ describe("validateCitations — grounded direction", () => {
         ungrounded: ["QS. 2:4"],
       });
     }
+    // The class is "a plain Quran span", not the 6,236 numeric addresses: the
+    // named-surah rendering narrows identically — at base `4003527` it grounded on
+    // the marker, at this head it refuses — because the named address is unverifiable
+    // against the corpus's numeric labels, so the marker was a citation the draft
+    // never named. The exhaustive sweeps enumerate the numeric rendering only; this
+    // row is where the wider, unbounded class is pinned (review A2).
+    const namedSurah = citationCandidatesIn("Lihat QS. Al-Fatihah:1 ya")[0]!;
+    expect(namedSurah).toBe("QS. Al-Fatihah:1");
+    expect(declaresAddressList(namedSurah)).toBe(true);
+    expect(addressesNamedBy(namedSurah)).toEqual(["QS. Al-Fatihah:1"]);
+    expect(groundingLabelsFor(namedSurah, new Set([marker]))).toBeNull();
+    // Its numeric twin — the label a real chunk would carry — does not ground it
+    // either: `canonicalizeCitationSpelling` leaves the named spelling alone.
+    expect(groundingLabelsFor(namedSurah, new Set(["QS. 1:1"]))).toBeNull();
+    expect(validateCitations("Lihat QS. Al-Fatihah:1 ya", [chunk("QS. 1:1")])).toEqual({
+      grounded: [],
+      ungrounded: ["QS. Al-Fatihah:1"],
+    });
     // Why the class was latent, recorded so nobody reads this fix as a live
     // incident: the gate builds `known` through `normalizeCitationLabel`, which reads
     // a bare marker as `QS` — no chunk label can put the raw `QS.` in `known`. The
