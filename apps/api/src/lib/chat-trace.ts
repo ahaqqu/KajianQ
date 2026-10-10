@@ -113,10 +113,10 @@ function toTechnicalChunk(
  * refusal recorded over a partial answer, so it carries the retrieval refs
  * that answer was built from and its panel is populated — the panel reports
  * what was consulted, never whether the run decided to refuse. Parsed against
- * the contract by the callers, exactly
- * as the citations derivation is. The live route's combined entry (one shared
- * store read for both frames, thermo-review B1) is `answerFramesFor` in
- * `chat-citations.ts` — this module stays below it in the import graph.
+ * the contract by the callers, exactly as the citations derivation is. The live
+ * route's combined entry (one shared store read for both frames, thermo-review
+ * B1) is `answerFramesFor` in `chat-citations.ts` — this module stays below it
+ * in the import graph.
  */
 export function deriveTraceFrame(input: {
   trace: Trace;
