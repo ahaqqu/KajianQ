@@ -115,7 +115,7 @@ Performance implications, or `None`.
 
 ## Acceptance Criteria
 
-Checklist from AGENTS.md Definition of Done.
+Checklist from AGENTS.md Definition of Done. A PR that makes an unconditional promise names its gate here (see § Rules).
 
 ## Documentation
 
@@ -138,7 +138,7 @@ Any limitations, or `None`.
 - You MUST create a PR even for trivial changes.
 - You MUST NEVER add a co-author to the PR description or commit messages, directly or via an author-email override.
 - You MUST reference relevant GitHub issues in the PR description so they close automatically upon merge.
-- **An unconditional promise names its gate.** A PR that makes a promise the spec marks unconditional true — an `Always` / `Never` row in `SPECS.md` §2.2, a hard product boundary in `AGENTS.md` — states the check that would redden if that promise regressed, or adds one in the same PR. A promise no gate reads is prose the next regression passes through.
+- **An unconditional promise names its gate.** When your PR makes a promise the repo marks unconditional — a `Coverage`-column `Always` row in `SPECS.md` §2.2, or one of the seven numbered hard boundaries in `SPECS.md` §1.5 — you MUST name its gate in the PR description's `## Acceptance Criteria`, as the `bun run <script>` script, the test file and case name, or the CI job that reddens if that promise regresses, together with the mutation the gate has been seen red under; or you MUST add that gate in this PR. Backing code is not a gate — the Definition of Done's "every doc claim has code" holds while nothing reads the promise. A promise no gate reads is prose the next regression passes through, and a reviewer can falsify a named gate but not a promise that names none.
 - PR titles/descriptions in English; create via `gh api --input` with a JSON payload file — never `gh pr edit --field body=…`.
 - Normalise a body's trailing whitespace to **exactly one trailing newline** in every `--input` payload — the creating POST included — before you send it: the payload's `body` value ends in exactly one `\n`, so the payload carries the intended text exactly once, and a re-PATCH of unchanged content stores the identical string and hashes to the identical sha256, however many times the body was edited.
 - Hash a body over the **exact API-stored string**, never a `gh` read-back: `gh api repos/{owner}/{repo}/pulls/<n> | jq -j '.body' | sha256sum` (`jq -j` emits the raw value with no trailing newline; `gh api -q .body`, `gh pr view --json body -q .body`, and `jq -r` each append one, so their hashes never match). PATCHed issue-comment reports take the same recipe on `repos/{owner}/{repo}/issues/comments/<id>`.
