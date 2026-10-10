@@ -8,7 +8,7 @@ import {
   type Routing,
   type SubQuery,
 } from "@app/rag-core";
-import { decomposeQuery } from "./chat-router-decompose";
+import { decomposeQuery, hasSearchableContent } from "./chat-router-decompose";
 import { readRouterText, ROUTER_SYSTEM_PROMPT, type RouterReading } from "./chat-router-output";
 import { routeFilters, sourceRoutingDetail, type SourceRoutingInput } from "./chat-source-routing";
 
@@ -42,7 +42,10 @@ export { extractJsonObject, ROUTER_SYSTEM_PROMPT } from "./chat-router-output";
  * intent event's attributes, so the Trace never presents an invented
  * classification as the model's reading. The fallback selects no source — a
  * route that understood nothing must not narrow the corpus on a guess — and
- * says so with an empty `sources` list.
+ * says so with an empty `sources` list. A question carrying no letter and no
+ * digit is not a query, so this arm adds no sub-query either: the content
+ * invariant is one text-level test, owned by the decomposer and shared here
+ * (#462).
  */
 
 export type RouterProvider = {
@@ -172,7 +175,16 @@ function fallbackRouting(
 ): Routing<import("./filters").KajianQFilters> {
   return {
     intent: "factual",
-    subQueries: [{ text: question, role: "factual", origin: "fallback" }],
+    // The verbatim question — unless it is not a query at all. The fallback is a
+    // third origin the caller's text can reach the fan-out from (beside the
+    // reply's phrasing and a rule's own text), and the content invariant is
+    // stated without an origin: a text with no letter and no digit never becomes
+    // a sub-query (#462). A zero-width, control-only or blank question has
+    // nothing to search, so this arm selects no sub-query and retrieval fans out
+    // over nothing — the shape a blank question already produced.
+    subQueries: hasSearchableContent(question)
+      ? [{ text: question, role: "factual", origin: "fallback" }]
+      : [],
     filters: overrides,
     // The effective filters reach retrieval, so they belong in the payload that
     // claims to say what was understood: a trace reader must be able to tell
