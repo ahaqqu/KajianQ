@@ -43,10 +43,19 @@ export function refusalTextFor(
 }
 
 /**
- * True when the draft IS the canonical insufficiency refusal the generator was
- * instructed to emit verbatim (`chat-prompts.ts`). Both language markers are
- * detected: the model may answer in the wrong language, and a refusal in
- * either is still a refusal.
+ * True when the canonical insufficiency refusal SENTENCE appears in the draft,
+ * in either language (a substring match, `chat-prompts.ts` instructs the
+ * generator to emit it verbatim). The model may answer in the wrong language,
+ * and a refusal in either is still a refusal.
+ *
+ * It is deliberately NOT "this text is a refusal": the same sentence is the
+ * tail of a HYBRID draft — a grounded partial answer that runs into it (#436,
+ * #439). Which decision each shape earns is the stage's (`chat-reviewer.ts`):
+ * both skip the paid reviewer, but only the shape that carries no grounded span
+ * is delivered undecorated, because the deterministic rules the spec marks
+ * "Always" are computed for whatever text actually ships. Renaming or narrowing
+ * this predicate silently moves that boundary, which is why the hybrid half is
+ * pinned by `chat-reviewer-evidence.test.ts` and `chat-dhaif-warning.test.ts`.
  */
 export function isRefusalDraft(text: string): boolean {
   const t = text.toLowerCase();

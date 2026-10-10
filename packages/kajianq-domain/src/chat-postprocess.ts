@@ -120,9 +120,12 @@ export function hasWeakWarning(text: string): boolean {
 }
 
 /**
- * Apply the deterministic product rules to a passed draft. The refusal path
- * does not reach here: a refusal is already the honest answer, and decorating
- * it with a disclaimer would bury the reason the user got one.
+ * Apply the deterministic product rules to a draft. It is called for every
+ * text the run delivers as answer content — the reviewer-passed draft, the
+ * pre-gate skip, the no-provider exit, and, since #439, a HYBRID refusal (a
+ * grounded partial answer that runs into the canonical sentence). A refusal
+ * that carries no grounded span does not reach here: it is already the honest
+ * answer, and decorating it would bury the reason the user got one.
  */
 export function applyProductRules(
   draft: Draft,

@@ -141,14 +141,25 @@ describe("reviewer evidence rendering", () => {
 });
 
 /**
- * Round-3 A2: a generator-emitted refusal must short-circuit. The old flow ran
- * the canonical refusal draft through the reviewer LLM (a paid call), appended
- * the ulama disclaimer to it, and recorded no `refusal` event — contradicting
- * the invariant that product rules are "never applied to a refusal" and
- * hiding the refusal from the trace signal the eval harness reads.
+ * Round-3 A2 + #439: a generator-emitted refusal must short-circuit. The old
+ * flow ran the canonical refusal draft through the reviewer LLM (a paid call),
+ * appended the ulama disclaimer to it, and recorded no `refusal` event —
+ * contradicting the invariant that product rules are "never applied to a
+ * refusal" and hiding the refusal from the trace signal the eval harness reads.
+ *
+ * #439 adds the other side of the same boundary: the short-circuit is a
+ * SUBSTRING match, so a HYBRID draft (a grounded partial answer that runs into
+ * the sentence) used to be returned before `applyProductRules` too, shipping a
+ * quoted dhaif-graded hadith with no warning line — a control SPECS §2.2 marks
+ * "Always". The classification may still skip the PAID reviewer (ADR-0009
+ * cost discipline); it may not skip a deterministic rule. The exemption is now
+ * keyed to the earned refusal shape: the sentence with no grounded span.
  */
 describe("generator-emitted refusal short-circuit", () => {
-  async function runRefusalReview(draftText: string): Promise<{
+  async function runRefusalReview(
+    draftText: string,
+    options: { applyProductRules?: boolean } = {},
+  ): Promise<{
     result: { text: string };
     events: { kind: string; detail?: Record<string, unknown> }[];
     providerCalled: boolean;
@@ -164,6 +175,7 @@ describe("generator-emitted refusal short-circuit", () => {
       },
       // applyProductRules deliberately left at its default (on): the refusal
       // must come out undecorated even with the rules enabled.
+      ...options,
       language: "id",
     });
     const result = (await Effect.runPromise(
@@ -189,6 +201,49 @@ describe("generator-emitted refusal short-circuit", () => {
     expect(refusalEvent).toBeDefined();
     expect(refusalEvent?.detail?.["trigger"]).toBe("generator_refusal");
     expect(events.some((e) => e.kind === "llm_call")).toBe(false);
+    // The earned refusal shape takes the whole exemption: no rule runs and the
+    // trace records no `product_rules` event (#439's negative half).
+    expect(events.some((e) => e.kind === "product_rules")).toBe(false);
+  });
+
+  it("runs the Always rules on a hybrid but still spends no reviewer call (#439)", async () => {
+    // A grounded span (QS. 2:255 is in this context) makes the draft a hybrid:
+    // its text answers from the evidence and then declines. The rules must run
+    // — the provider above would have been called under the un-fixed
+    // classification and this draft is where the grade flag went missing.
+    const hybrid = [
+      "Allah Mahahidup dalam [QS. 2:255].",
+      "Untuk bagian lain dari pertanyaan ini saya tidak menemukan dalil yang memadai.",
+    ].join("\n\n");
+    const { result, events, providerCalled } = await runRefusalReview(hybrid);
+    // The classification is still taken and still skips the paid reviewer.
+    expect(providerCalled).toBe(false);
+    expect(events.find((e) => e.kind === "refusal")?.detail?.["trigger"]).toBe("generator_refusal");
+    // The deterministic rules ran on the delivered text, and the trace says so.
+    // (No dhaif-graded chunk is in this context, so the grade flag has no
+    // trigger here; the grade half is pinned by chat-dhaif-warning.test.ts.)
+    const rules = events.filter((e) => e.kind === "product_rules");
+    expect(rules).toHaveLength(1);
+    expect(rules[0]?.detail?.["applied"]).toEqual([
+      "machine_translation_label",
+      "ulama_disclaimer",
+    ]);
+    expect(result.text.startsWith(hybrid)).toBe(true);
+    expect(result.text).toContain("bukan fatwa");
+    expect(result.text).toContain("Terjemahan mesin");
+  });
+
+  it("honours a disabled-rules wiring on the hybrid path: no event, no append (#285's other half)", async () => {
+    // `applyProductRules: false` is how an eval or test wiring turns the rules
+    // off. The hybrid exit must honour it and record no event claiming they
+    // ran — the same contract the pre-gate skip path is pinned to.
+    const hybrid = [
+      "Allah Mahahidup dalam [QS. 2:255].",
+      "Untuk bagian lain dari pertanyaan ini saya tidak menemukan dalil yang memadai.",
+    ].join("\n\n");
+    const { result, events } = await runRefusalReview(hybrid, { applyProductRules: false });
+    expect(events.some((e) => e.kind === "product_rules")).toBe(false);
+    expect(result.text).toBe(hybrid);
   });
 
   it("returns the EN refusal verbatim and appends no disclaimer", async () => {

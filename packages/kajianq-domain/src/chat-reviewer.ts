@@ -119,10 +119,27 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
           }
 
           // A generator-emitted refusal IS the refusal (round-3 A2): it must
-          // not pay a reviewer LLM call, must not gain the product rules (a
-          // disclaimer appended to a refusal buries the reason), and must be
-          // visible on the trace as a `refusal` event — the same signal the
-          // eval harness's refusal detection reads.
+          // not pay a reviewer LLM call, and it must be visible on the trace as
+          // a `refusal` event — the same signal the eval harness's refusal
+          // detection reads.
+          //
+          // **The classification skips the paid reviewer, never a rule the
+          // spec makes unconditional (#439).** `isRefusalDraft` is a substring
+          // match, so it also catches the HYBRID shape: a grounded partial
+          // answer that runs into the sentence (QA #432 probe P7, trace
+          // `fff2a012`). That text is answer content the user reads, and the
+          // deterministic grade flag / disclaimer are "Always" (SPECS §2.2) —
+          // returning before `withRules` shipped a quoted dhaif-graded hadith
+          // with no warning line and, because the citations frame's
+          // `dhaifWarning` is `hasWeakWarning` of the delivered text, no
+          // warning card. So the rules exemption is keyed to the EARNED refusal
+          // shape — the sentence with no grounded span — while the
+          // classification itself is unchanged: a refusal that cites nothing
+          // still ships undecorated (a disclaimer appended to a refusal buries
+          // the reason, and a warning would be invented for a text that cites
+          // no weak evidence), and a hybrid funnels through `withRules`, whose
+          // `product_rules` event is what makes "the rules ran for this hybrid"
+          // observable on the trace.
           if (isRefusalDraft(draft.text)) {
             run.record({
               stage: "reviewer",
@@ -131,7 +148,8 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
               reason: "generator emitted the canonical insufficiency refusal",
               at: run.now(),
             });
-            return { text: draft.text };
+            if (grounded.length === 0) return { text: draft.text };
+            return withRules(draft, context, run);
           }
 
           if (deps.provider === null || deps.skipLlm === true) {
@@ -208,17 +226,22 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
   /**
    * The deterministic product rules (spec §2.2, ticket #10): a passed draft
    * gains the dhaif warning, the machine-translation label, and the ulama
-   * disclaimer when the model omitted them. Never applied to a refusal — the
-   * refusal is the honest answer, and decorating it would bury the reason.
+   * disclaimer when the model omitted them.
    *
    * **This is the ONE place the rules run, and therefore the one place the
-   * trace records that they did (#285, ADR-0007).** All three of the stage's
-   * "rules apply" exits funnel through here — no-provider/`skipLlm`,
-   * the ADR-0042 pre-gate skip, and reviewer-passed — so a fourth exit added
-   * later records the event by construction rather than by remembering to.
-   * The pre-gate skip path is why a dedicated event exists instead of a field
-   * on `review`: it records no `review` event at all, so a rule running there
-   * was previously invisible.
+   * trace records that they did (#285, ADR-0007).** All four of the stage's
+   * "rules apply" exits funnel through here — the hybrid-refusal exit added by
+   * #439, no-provider/`skipLlm`, the ADR-0042 pre-gate skip, and
+   * reviewer-passed — so a fifth exit added later records the event by
+   * construction rather than by remembering to. The pre-gate skip path is why
+   * a dedicated event exists instead of a field on `review`: it records no
+   * `review` event at all, so a rule running there was previously invisible.
+   *
+   * A refusal with no grounded span does not reach here: it is already the
+   * honest answer and decorating it would bury the reason the user got one. A
+   * HYBRID refusal does — its text answers from the evidence and then declines
+   * (#439), so the "Always" controls are computed for the text that actually
+   * ships, while the classification still skips the paid reviewer.
    *
    * The recording is deliberately keyed on `applyProductRules !== false` (the
    * same condition that gates the call), so the event means "the rules ran",
