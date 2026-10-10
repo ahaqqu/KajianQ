@@ -42,7 +42,11 @@ describe("readRouterText", () => {
     expect(reading?.category).toBe("fikih");
     expect(reading?.needsPrinciple).toBe(true);
     expect(reading?.principleTags).toEqual(["yusr", "rahmah"]);
-    expect(reading?.filters).toEqual({ madzhab: "syafii", grade: "sahih", textLayer: "matn" });
+    expect(reading?.filters).toEqual({
+      madzhab: ["syafii"],
+      grade: ["sahih"],
+      textLayer: ["matn"],
+    });
     expect(reading?.confidence).toBe(0.82);
     expect(reading?.reasoning).toBe("the question asks why the rule is lenient");
     expect(reading?.modelSubQueries).toEqual([
@@ -53,9 +57,9 @@ describe("readRouterText", () => {
       needsPrinciple: true,
       category: "fikih",
       principleTags: ["yusr", "rahmah"],
-      madzhab: "syafii",
-      grade: "sahih",
-      textLayer: "matn",
+      madzhab: ["syafii"],
+      grade: ["sahih"],
+      textLayer: ["matn"],
     });
   });
 
@@ -117,10 +121,10 @@ describe("readRouterReply narrowing", () => {
   it("lets the caller's explicit filters win over the model's hints", () => {
     const reading = readRouterReply(
       { intent: "ruling", category: "fikih", madzhab: "hanafi", grade: "hasan" } as never,
-      { madzhab: "syafii" },
+      { madzhab: ["syafii"] },
     );
-    expect(reading?.filters).toEqual({ madzhab: "syafii", grade: "hasan" });
-    expect(reading?.attributes).toMatchObject({ madzhab: "syafii", grade: "hasan" });
+    expect(reading?.filters).toEqual({ madzhab: ["syafii"], grade: ["hasan"] });
+    expect(reading?.attributes).toMatchObject({ madzhab: ["syafii"], grade: ["hasan"] });
   });
 
   it("accepts a sub-query written as a plain string", () => {

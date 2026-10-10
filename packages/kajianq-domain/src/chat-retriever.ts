@@ -17,8 +17,10 @@ import {
   DEFAULT_SCOPE_EXPANSION_CAP,
   expandSurahScope,
   expandVerseNeighbours,
+  createFilterRelaxation,
+  filterEntries,
   hierarchyBonus,
-  metadataFilters,
+  nextRelaxation,
   rrfFuse,
   type NeighbourChildRow,
   type ScopeChildRow,
@@ -51,7 +53,7 @@ export type RetrieverStore = {
   similaritySearch(
     track: "primary" | "fallback",
     embedding: readonly number[],
-    opts: { limit: number; filters?: Record<string, string> },
+    opts: { limit: number; filters?: Record<string, string | readonly string[]> },
   ): Effect.Effect<
     readonly {
       child: {
@@ -129,14 +131,27 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
             .embed({ texts: routed.subQueries.map((q) => q.text), personalData: true })
             .pipe(Effect.mapError((cause) => ({ cause })));
           if (deps.onEmbedCost) deps.onEmbedCost(embedded.cost);
-          const filters = metadataFilters(routed.filters);
-          const hasFilters = Object.keys(filters).length > 0;
+          // The route's decision, read into the store's expressible shape. A
+          // dimension the store cannot express is a typed stage failure, never
+          // a dropped key: silently ignoring `grade` answers a different
+          // question than the router decided to answer (chat-filter-policy.ts).
+          const intended = yield* Effect.try({
+            try: () => filterEntries(routed.filters),
+            catch: (cause: unknown) => ({ cause }),
+          });
+          // The live filter set, relaxed at most once per dimension for the
+          // WHOLE run. That is sound because the WHERE clause is identical on
+          // both tracks — they differ only in the vector column, which the
+          // `IS NOT NULL` guard screens — so an unsatisfiable dimension is
+          // unsatisfiable for every search here, and probing it once per
+          // sub-query per track would pay repeatedly for the same answer.
+          const relaxation = createFilterRelaxation(intended);
           const lists: TrackHit[][] = [];
           for (let i = 0; i < routed.subQueries.length; i += 1) {
             const vector = embedded.vectors[i];
             if (!vector) continue;
             for (const track of ["primary", "fallback"] as const) {
-              const search = (withFilters: Record<string, string>) =>
+              const search = (withFilters: Record<string, string[]>) =>
                 Effect.tryPromise({
                   try: () =>
                     deps.bridge(
@@ -144,29 +159,50 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
                     ),
                   catch: (cause: unknown) => ({ cause }),
                 });
-              let hits = yield* search(filters);
-              // Filter relaxation. The router's filters are HINTS inferred by a
-              // cheap model, and the prompt already tells it to leave unconstrained
-              // attributes empty — which it does not reliably do (observed: a
-              // Quran question routed with `textLayer: "sharh"`). A hint that
-              // matches nothing empties the context, and an empty context makes
-              // the answer uncitable and ungrounded, which is far worse than a
-              // relaxed search. So an empty result means the hint was wrong, not
-              // strict: retry once without it — and record the drop, because the
-              // trace is the product's trust surface, not a place to hide a
-              // fallback.
-              if (hits.length === 0 && hasFilters) {
-                hits = yield* search({});
-                if (hits.length > 0) {
-                  const run = yield* RunContext;
-                  run.record({
-                    stage: "retriever",
-                    kind: "filter_relaxed",
-                    detail: { dropped: filters, track },
-                    at: run.now(),
-                  });
+              let hits = yield* search(relaxation.active());
+              // Filter relaxation: a hint that matches nothing is probed away one
+              // dimension at a time, and only a drop that returns hits is adopted.
+              // When no single dimension is at fault the sweep ends in ONE
+              // record-level retry with every remaining dimension dropped, so a
+              // wrong hint cannot turn into a refusal for a question the corpus
+              // can serve. The policy, its rationale and the one-diagnosis-per-run
+              // bound live in `chat-filter-relaxation.ts`; this loop only runs the
+              // searches it asks for, and records each probe so the trace carries
+              // the machinery.
+              while (hits.length === 0 && relaxation.probing()) {
+                const probe = relaxation.next();
+                if (probe === undefined) break;
+                const retry = yield* search(probe.retained);
+                const adopted = retry.length > 0;
+                if (adopted) {
+                  relaxation.adopt(probe.dropped);
+                  hits = retry;
                 }
+                const run = yield* RunContext;
+                run.record({
+                  stage: "retriever",
+                  kind: "filter_relaxed",
+                  detail: {
+                    // Recorded by the store's KEY — the same space `retained` is
+                    // written in, so `intended − dropped` reconstructs what a
+                    // search ran with. The dimension and the key are held
+                    // together by `chat-filter-policy`'s exhaustive map; an entry
+                    // naming EVERY live dimension (with `retained: {}`) is the
+                    // record-level last resort.
+                    dropped: Object.fromEntries(
+                      probe.dropped.map((entry) => [entry.key, [...entry.values]]),
+                    ) as Record<string, string | string[]>,
+                    // What the retry actually ran with, adopted or not.
+                    retained: probe.retained,
+                    track,
+                    hits: retry.length,
+                    adopted,
+                  },
+                  at: run.now(),
+                });
               }
+              // Whatever this search concluded, it is the run's one diagnosis.
+              relaxation.settle();
               for (const hit of hits) {
                 lists.push([
                   {
@@ -198,7 +234,10 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
               }
             }
           }
-          const fused = rrfFuse(lists, hierarchyBonus);
+          // The hierarchy bonuses are the spec's, including the two that were
+          // missing: Kitab +0.1, and Principle +0.2 — which applies only on an
+          // analogy question, so the fuse is told the intent the route read.
+          const fused = rrfFuse(lists, (chunk) => hierarchyBonus(chunk, routed.intent));
           // ADR-0045: a question that names a surah also gets that surah's
           // children, read deterministically and bounded by the cap. Detection
           // runs on the verbatim question, not on a sub-query, so the scope

@@ -1,13 +1,5 @@
 import * as v from "valibot";
-import {
-  GRADES,
-  MADZHABS,
-  TEXT_LAYERS,
-  type Grade,
-  type KajianQFilters,
-  type Madzhab,
-  type TextLayer,
-} from "./filters";
+import { GRADES, MADZHABS, TEXT_LAYERS, type KajianQFilters } from "./filters";
 import {
   INTENTS,
   PRINCIPLE_TAGS,
@@ -145,9 +137,13 @@ export function readRouterReply(
   const needsPrinciple = reply.needsPrinciple === true || principleTags.length > 0;
 
   const filters: KajianQFilters = {};
-  const madzhab = overrides.madzhab ?? narrowMadzhab(reply.madzhab);
-  const grade = overrides.grade ?? narrowGrade(reply.grade);
-  const textLayer = overrides.textLayer ?? narrowTextLayer(reply.textLayer);
+  // Each dimension is a SET: the reply names at most one value per dimension,
+  // so a hint is a one-element set and the store binds one shape for every
+  // dimension (`metadata->>key = ANY($n::text[])`, spec §3.3 item 3). The
+  // caller's explicit filters always win over a hint.
+  const madzhab = overrides.madzhab ?? narrow(MADZHABS, reply.madzhab);
+  const grade = overrides.grade ?? narrow(GRADES, reply.grade);
+  const textLayer = overrides.textLayer ?? narrow(TEXT_LAYERS, reply.textLayer);
   if (madzhab !== undefined) filters.madzhab = madzhab;
   if (grade !== undefined) filters.grade = grade;
   if (textLayer !== undefined) filters.textLayer = textLayer;
@@ -192,22 +188,9 @@ export function readRouterReply(
   return trimmed.length > MAX_REASONING_CHARS ? trimmed.slice(0, MAX_REASONING_CHARS) : trimmed;
 }
 
-function narrowMadzhab(value: string | undefined): Madzhab | undefined {
-  return value !== undefined && (MADZHABS as readonly string[]).includes(value)
-    ? (value as Madzhab)
-    : undefined;
-}
-
-function narrowGrade(value: string | undefined): Grade | undefined {
-  return value !== undefined && (GRADES as readonly string[]).includes(value)
-    ? (value as Grade)
-    : undefined;
-}
-
-function narrowTextLayer(value: string | undefined): TextLayer | undefined {
-  return value !== undefined && (TEXT_LAYERS as readonly string[]).includes(value)
-    ? (value as TextLayer)
-    : undefined;
+/** A free-string hint narrowed to a declared value, as a one-element set. */
+function narrow<T extends string>(values: readonly T[], raw: string | undefined): T[] | undefined {
+  return raw !== undefined && (values as readonly string[]).includes(raw) ? [raw as T] : undefined;
 }
 
 /**

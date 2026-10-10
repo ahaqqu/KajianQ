@@ -1,7 +1,11 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import type { Chunk, Query } from "@app/rag-core";
-import { MACHINE_TRANSLATION_LABEL, createKajianQAssembler } from "./chat-assembler";
+import {
+  MACHINE_TRANSLATION_LABEL,
+  PRESENTATION_ORDER,
+  createKajianQAssembler,
+} from "./chat-assembler";
 import type { KajianQFilters } from "./filters";
 import { routedQuery } from "./test-utils/routed-query";
 
@@ -127,11 +131,71 @@ describe("createKajianQAssembler", () => {
         { text: "makna ayat kursi", role: "factual", origin: "model" },
         { text: "dalil Al-Quran tentang: makna ayat kursi", role: "dalil", origin: "rule" },
       ],
-      filters: { madzhab: "syafii" },
+      filters: { madzhab: ["syafii"] },
     });
     const context = Effect.runSync(stage.assemble(routed, []) as never) as {
       query: unknown;
     };
     expect(context.query).toBe(routed);
+  });
+});
+
+/**
+ * **The presentation order, pinned** (spec §3.3 item 5): Principles → Quran →
+ * Hadith → Kitab → concept links.
+ *
+ * It is deliberately NOT the usul authority order the system prompt states
+ * (Quran → Hadith → Tafsir → Kitab), and the two must not be conflated: the
+ * Principle is the reading *lens* and belongs first, while the authority order
+ * says which evidence governs when the sources disagree. The failure mode is
+ * silent — an assembler that sorts the evidence by authority still produces a
+ * coherent, well-cited answer, just one whose lens arrives after the ruling it
+ * was supposed to frame, and no gate reads the order. Hence an explicit pin on
+ * the whole sequence rather than a pairwise comparison.
+ */
+describe("the presentation order", () => {
+  const chunkOf = (id: string, sourceType: string, score: number): Chunk => ({
+    id,
+    text: id,
+    metadata: { sourceType },
+    score,
+  });
+
+  it("lays the context out Principles → Quran → Tafsir → Hadith → Kitab", () => {
+    // Deliberately fed in the reverse of the expected output, with scores that
+    // would sort it the other way: the order must come from the slot, not from
+    // whatever retrieval happened to score highest.
+    const chunks = [
+      chunkOf("kitab", "kitab", 9),
+      chunkOf("hadith", "hadith", 8),
+      chunkOf("tafsir", "tafsir", 7),
+      chunkOf("quran", "quran", 6),
+      chunkOf("principle", "principle", 1),
+    ];
+    expect(assemble(chunks).chunks.map((c) => c.id)).toEqual([
+      "principle",
+      "quran",
+      "tafsir",
+      "hadith",
+      "kitab",
+    ]);
+    expect(PRESENTATION_ORDER).toEqual(["principle", "quran", "tafsir", "hadith", "kitab"]);
+  });
+
+  it("sorts a source type the order does not name BELOW every named source", () => {
+    // A source the corpus grows later (a concept link, or anything unlisted)
+    // lands last rather than being interleaved by score into a slot it was
+    // never given.
+    const chunks = [
+      chunkOf("concept", "concept_link", 99),
+      chunkOf("kitab", "kitab", 1),
+      chunkOf("unknown", "some_future_source", 99),
+    ];
+    expect(assemble(chunks).chunks.map((c) => c.id)).toEqual(["kitab", "concept", "unknown"]);
+  });
+
+  it("orders within a slot by fused score, not by input order", () => {
+    const chunks = [chunkOf("q-low", "quran", 1), chunkOf("q-high", "quran", 5)];
+    expect(assemble(chunks).chunks.map((c) => c.id)).toEqual(["q-high", "q-low"]);
   });
 });

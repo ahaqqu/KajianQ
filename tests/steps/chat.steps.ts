@@ -22,7 +22,11 @@ const ANSWER_FIXTURE = [
   // sseFrame escaping) — a literal blank line would terminate the frame.
   `event: delta\ndata: [QS. 2:255].\ndata: \ndata: ${DISCLAIMER}\n\n`,
   'event: citations\ndata: {"messageId":"m-live","refusal":false,"dhaifWarning":false,"citations":[{"label":"QS. 2:255","arabic":"اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ","translation":"Allah, tidak ada tuhan selain Dia.","machineTranslated":true,"source":"Al-Baqarah"}]}\n\n',
-  'event: trace\ndata: {"messageId":"m-live","sources":[{"id":"chunk-1","source":"Al-Baqarah"}],"technical":{"intent":"ruling","subQueries":["apa itu ayat kursi","QS 2:255 makna"],"chunks":[{"id":"chunk-1","source":"Al-Baqarah","score":0.03125}],"models":["router-stub","generator-stub"]}}\n\n',
+  // The routing block also carries the reviewer's N2 shape: the route selected
+  // quran + hadith AND the run gave the source dimension up, so the row above
+  // the "given up" line must name the route's SELECTION — "sources searched"
+  // would assert a restriction the search had already dropped.
+  'event: trace\ndata: {"messageId":"m-live","sources":[{"id":"chunk-1","source":"Al-Baqarah"}],"technical":{"intent":"ruling","routing":{"sources":["quran","hadith"],"filters":{"grade":["sahih"],"textLayer":["sharh"],"sourceType":["quran","hadith"]},"relaxed":[{"key":"textLayer","values":["sharh"]},{"key":"sourceType","values":["quran","hadith"]}]},"subQueries":["apa itu ayat kursi","QS 2:255 makna"],"chunks":[{"id":"chunk-1","source":"Al-Baqarah","score":0.03125}],"models":["router-stub","generator-stub"]}}\n\n',
   "event: done\ndata: {}\n\n",
 ].join("");
 
@@ -506,7 +510,7 @@ Then("I see the sources consulted with no technical detail", async ({ page }) =>
 });
 
 Then(
-  "I see the router intent, sub-queries, retrieval scores, and model identity",
+  "I see the router intent, the routing decision, sub-queries, retrieval scores, and model identity",
   async ({ page }) => {
     const tech = page.getByTestId("trace-technical");
     await expect(tech).toBeVisible();
@@ -516,6 +520,22 @@ Then(
     // "0.0313" in en) — assert the rounded digits, not the separator.
     await expect(tech.getByTestId("trace-score").first()).toContainText(/0[.,]0313/);
     await expect(tech.getByTestId("trace-models")).toContainText("router-stub");
+    // The routing decision (#15) rides the same frame: which sources the route
+    // selected and with which filters, projected from the persisted trace —
+    // the user-visible half of "the trace shows routing decisions".
+    //
+    // The row is labelled for the route's DECISION, not for a search that ran
+    // (N2): this run gave `sourceType` up (the "given up" row asserts it below),
+    // so every source was searched, and a "sources searched: quran · hadith" row
+    // would have been false — two lines of the same block contradicting.
+    await expect(tech.getByTestId("trace-routing")).toContainText("Sumber dipilih");
+    await expect(tech.getByTestId("trace-routing-sources")).toContainText("quran");
+    await expect(tech.getByTestId("trace-routing-sources")).toContainText("hadith");
+    await expect(tech.getByTestId("trace-routing-filters")).toContainText("grade: sahih");
+    // ... and the filters the run GAVE UP, so a hint the corpus cannot serve
+    // (the `textLayer` hint here, the `principleTags` hint for the missing
+    // Principle Index #16 in the live path) is not displayed as one that ran.
+    await expect(tech.getByTestId("trace-routing-relaxed")).toContainText("textLayer: sharh");
   },
 );
 

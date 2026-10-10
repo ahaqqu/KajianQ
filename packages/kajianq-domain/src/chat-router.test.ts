@@ -84,12 +84,21 @@ describe("createKajianQRouter", () => {
     expect(routed.intent).toBe("analogy");
     expect(routed.confidence).toBe(0.9);
     expect(routed.reasoning).toBe("the question asks why the rule is lenient");
-    expect(routed.filters).toEqual({ madzhab: "syafii" });
+    // Stage 3's decision, not the reply's hints: a fikih question is answered
+    // from Quran, Sunnah and Kitab, and `needsPrinciple` puts the Principle
+    // Index in play — and the reply's own madzhab/Principle hints ride along as
+    // the sets the store binds.
+    expect(routed.filters).toEqual({
+      madzhab: ["syafii"],
+      sourceType: ["quran", "hadith", "kitab", "principle"],
+      principleTags: ["yusr"],
+    });
     expect(routed.attributes).toMatchObject({
       category: "fikih",
       needsPrinciple: true,
       principleTags: ["yusr"],
-      madzhab: "syafii",
+      madzhab: ["syafii"],
+      sourceType: ["quran", "hadith", "kitab", "principle"],
     });
     // The model's two sub-queries, plus the dalil rule the fikih category
     // fired and the principle rule the tag fired — the deterministic half.
@@ -114,6 +123,21 @@ describe("createKajianQRouter", () => {
     await h.route({ text: "Apa hukum riba?" });
     expect(h.events).toEqual([
       { stage: "router", kind: "llm_call", detail: { purpose: "intent" }, cost: COST, at: 7 },
+      {
+        stage: "router",
+        kind: "source_routing",
+        detail: {
+          sources: ["quran", "hadith", "kitab", "principle"],
+          // The record retrieval is handed, keyed as the store binds it — the
+          // routing decision is on the trace, not only in the router's prose.
+          filters: {
+            sourceType: ["quran", "hadith", "kitab", "principle"],
+            madzhab: ["syafii"],
+            principleTags: ["yusr"],
+          },
+        },
+        at: 7,
+      },
     ]);
   });
 
@@ -131,8 +155,15 @@ describe("createKajianQRouter", () => {
     ]);
     // The Trace must never read the fallback as a classification the model made.
     expect(routed.attributes).toEqual({ fallback: true });
-    // The call still happened and still cost money — it is on the trace.
-    expect(h.events.map((e) => e.kind)).toEqual(["llm_call"]);
+    // The call still happened and still cost money — it is on the trace. And
+    // the route that understood nothing selected NO source and recorded that
+    // as a decision: an EMPTY `sources` list, never a missing event, so "every
+    // source was in play" cannot read the same as "nothing was recorded".
+    expect(h.events.map((e) => e.kind)).toEqual(["llm_call", "source_routing"]);
+    expect(h.events.at(-1)).toMatchObject({
+      kind: "source_routing",
+      detail: { sources: [], filters: {} },
+    });
   });
 
   it("falls back when the model invents an intent", async () => {
@@ -145,13 +176,13 @@ describe("createKajianQRouter", () => {
     const h = harness(JSON.stringify({ not: "a router reply" }));
     const routed = (await h.route({
       text: "Apa hukum riba?",
-      filters: { madzhab: "hambali" },
+      filters: { madzhab: ["hambali"] },
     })) as { filters: KajianQFilters; attributes: Record<string, unknown> };
-    expect(routed.filters).toEqual({ madzhab: "hambali" });
+    expect(routed.filters).toEqual({ madzhab: ["hambali"] });
     // The fallback applied those filters to retrieval, so the payload that says
     // what was understood carries them too — `{fallback: true}` alone would
     // leave a trace reader unable to tell what the route ran with (review A4).
-    expect(routed.attributes).toEqual({ fallback: true, madzhab: "hambali" });
+    expect(routed.attributes).toEqual({ fallback: true, madzhab: ["hambali"] });
   });
 
   it("stamps the factual rule onto a model echo of the question with no role", async () => {

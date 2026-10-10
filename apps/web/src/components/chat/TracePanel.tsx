@@ -100,6 +100,58 @@ export function TracePanel({
                   {technical.intent}
                 </p>
               )}
+              {technical.routing !== undefined && (
+                <div data-testid="trace-routing">
+                  {/* The route's SELECTION, never a claim about what ran: the run
+                      can give the source dimension up (the "given up" row below,
+                      projected from the retriever's own events), and then every
+                      source was searched. Calling this row "sources searched"
+                      made it assert a restriction the search had already
+                      dropped (N2); the label says "selected" for that reason,
+                      and the deviation is the given-up row's job. */}
+                  <MonoLabel>{t(locale, "traceRoutingLabel")}</MonoLabel>
+                  <p
+                    data-testid="trace-routing-sources"
+                    className="mt-1 text-sm text-card-foreground"
+                  >
+                    {/* An EMPTY list is the route's own statement that it did not
+                        restrict the corpus — rendered as such, never as "unknown". */}
+                    {technical.routing.sources.length === 0
+                      ? t(locale, "traceRoutingAllSources")
+                      : technical.routing.sources.join(" · ")}
+                  </p>
+                  {Object.entries(technical.routing.filters).length > 0 && (
+                    <p
+                      data-testid="trace-routing-filters"
+                      className="mt-1 text-sm text-card-foreground"
+                    >
+                      <span className="mr-2 text-muted-foreground">
+                        {t(locale, "traceRoutingFiltersLabel")}
+                      </span>
+                      {Object.entries(technical.routing.filters)
+                        .map(([key, values]) => `${key}: ${values.join(", ")}`)
+                        .join(" · ")}
+                    </p>
+                  )}
+                  {/* The filters the run GAVE UP — a hint that matched nothing is
+                      probed away and retried, and the panel says which one, so a
+                      `principleTags` filter the missing Principle Index (#16)
+                      cannot serve is not displayed as one that ran. */}
+                  {(technical.routing.relaxed?.length ?? 0) > 0 && (
+                    <p
+                      data-testid="trace-routing-relaxed"
+                      className="mt-1 text-sm text-card-foreground"
+                    >
+                      <span className="mr-2 text-muted-foreground">
+                        {t(locale, "traceRoutingRelaxedLabel")}
+                      </span>
+                      {technical.routing.relaxed
+                        ?.map(({ key, values }) => `${key}: ${values.join(", ")}`)
+                        .join(" · ")}
+                    </p>
+                  )}
+                </div>
+              )}
               {technical.subQueries.length > 0 && (
                 <div data-testid="trace-subqueries">
                   <MonoLabel>{t(locale, "traceSubqueriesLabel")}</MonoLabel>

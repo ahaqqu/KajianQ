@@ -9,15 +9,26 @@ import {
 } from "@app/rag-core";
 import { decomposeQuery } from "./chat-router-decompose";
 import { readRouterText, ROUTER_SYSTEM_PROMPT, type RouterReading } from "./chat-router-output";
+import { routeFilters, sourceRoutingDetail, type SourceRoutingInput } from "./chat-source-routing";
 
 export { extractJsonObject, ROUTER_SYSTEM_PROMPT } from "./chat-router-output";
 
 /**
- * KajianQRouter — Smart Router stages 1–2 (spec §3.3, CONTEXT.md "Smart
- * Router"): intent & Principle detection and query decomposition, one
- * cheap-tier LLM call returning JSON. Model choice comes from the wiring's
+ * KajianQRouter — Smart Router stages 1–3 (spec §3.3, CONTEXT.md "Smart
+ * Router"): intent & Principle detection, query decomposition, and source
+ * routing with metadata filters. Model choice comes from the wiring's
  * injected Provider (config, never here); the call's cost is recorded to the
  * run's trace sink (ADR-0021).
+ *
+ * Stages 1–2 ride one cheap-tier call returning JSON. Stage 3 is **rules, not
+ * a second call**: which sources may answer a question is a product decision
+ * with a published justification (the usul authority order, spec §2.2), and a
+ * model that gets it wrong narrows the corpus silently — so the model hints
+ * and `chat-source-routing.ts` decides. The decision is recorded as its own
+ * typed `source_routing` event carrying the selected sources and the exact
+ * filter record retrieval is handed, so "which sources were searched, with
+ * which filters" is derivable from the persisted trace rather than inferred
+ * from the router's prose.
  *
  * The stage returns a `Routing` — what it understood — not a `RoutedQuery`:
  * the engine's runner stamps the caller's verbatim question and prior turns
@@ -28,7 +39,9 @@ export { extractJsonObject, ROUTER_SYSTEM_PROMPT } from "./chat-router-output";
  * vocabulary) lands on the deterministic fallback: one factual sub-query made
  * of the verbatim question, marked `origin: "fallback"` and flagged on the
  * intent event's attributes, so the Trace never presents an invented
- * classification as the model's reading.
+ * classification as the model's reading. The fallback selects no source — a
+ * route that understood nothing must not narrow the corpus on a guess — and
+ * says so with an empty `sources` list.
  */
 
 export type RouterProvider = {
@@ -75,18 +88,36 @@ export function createKajianQRouter(
           });
           const overrides = query.filters ?? {};
           const reading = readRouterText(reply.text, overrides);
-          if (reading === undefined) return fallbackRouting(query.text, overrides);
-          return routingOf(reading, query.text);
+          const routing =
+            reading === undefined
+              ? fallbackRouting(query.text, overrides)
+              : routingOf(reading, query.text);
+          // Stage 3's decision, recorded by the stage that made it. Built by
+          // the same mapping retrieval uses, so the decision and the search
+          // cannot drift; a dimension the store cannot express throws here,
+          // before any search runs, instead of being silently dropped.
+          const decision = yield* Effect.try({
+            try: () => sourceRoutingDetail(routing.filters),
+            catch: (cause: unknown) => ({ cause }),
+          });
+          run.record({
+            stage: "router",
+            kind: "source_routing",
+            detail: decision,
+            at: run.now(),
+          });
+          return routing;
         }),
       ),
   };
 }
 
-/** What a usable reply routes to: the classification plus the repaired sub-queries. */
+/** What a usable reply routes to: the classification, sub-queries, and stage 3's filters. */
 function routingOf(
   reading: RouterReading,
   question: string,
 ): Routing<import("./filters").KajianQFilters> {
+  const filters = routeFilters(routingInputOf(reading));
   return {
     intent: reading.intent,
     subQueries: decomposeQuery({
@@ -96,10 +127,24 @@ function routingOf(
       ...(reading.category !== undefined ? { category: reading.category } : {}),
       modelSubQueries: reading.modelSubQueries,
     }),
-    filters: reading.filters,
+    filters,
     ...(reading.confidence !== undefined ? { confidence: reading.confidence } : {}),
     ...(reading.reasoning !== undefined ? { reasoning: reading.reasoning } : {}),
-    attributes: reading.attributes,
+    // The EFFECTIVE filters, not the model's hints: they are what retrieval
+    // runs with, and the payload that claims to say what was understood must
+    // not disagree with the search it caused.
+    attributes: { ...reading.attributes, ...filters },
+  };
+}
+
+/** The router's reading, as source routing reads it. */
+function routingInputOf(reading: RouterReading): SourceRoutingInput {
+  return {
+    intent: reading.intent,
+    ...(reading.category !== undefined ? { category: reading.category } : {}),
+    needsPrinciple: reading.needsPrinciple,
+    principleTags: reading.principleTags,
+    filters: reading.filters,
   };
 }
 

@@ -1,6 +1,7 @@
 import * as v from "valibot";
 import { ChunkRefSchema, CostRecordSchema, StageSchema } from "./trace-primitives";
 import { productRulesEventSchema } from "./trace-product-rules";
+import { sourceRoutingEventSchema } from "./trace-source-routing";
 
 /**
  * Every recordable pipeline occurrence, keyed on `kind` with `detail` typed
@@ -39,8 +40,19 @@ export const TraceEventSchema = v.variant("kind", [
       attributes: v.optional(v.record(v.string(), v.unknown())),
     }),
     cost: v.optional(CostRecordSchema),
+    /**
+     * The stage's own wall-clock duration, in milliseconds, measured by the
+     * runner around the stage call and recorded on each boundary event it emits
+     * (`intent`, `retrieval`, `assembly`) — so a stage that makes no model call
+     * and has no `cost.latencyMs` still carries its latency, and a stage that
+     * emits no boundary event carries it in `cost.latencyMs` on its `llm_call`
+     * event. Absent on traces persisted before the field existed.
+     */
+    durationMs: v.optional(v.pipe(v.number(), v.minValue(0))),
     at: v.pipe(v.number(), v.integer()),
   }),
+  /** Smart Router stage 3's decision (#15); owner `./trace-source-routing`. */
+  sourceRoutingEventSchema,
   v.object({
     stage: v.literal("router"),
     kind: v.literal("subquery"),
@@ -66,6 +78,8 @@ export const TraceEventSchema = v.variant("kind", [
       chunks: v.array(ChunkRefSchema),
     }),
     cost: v.optional(CostRecordSchema),
+    /** The stage's wall-clock duration, measured by the runner (see `intent`). */
+    durationMs: v.optional(v.pipe(v.number(), v.minValue(0))),
     at: v.pipe(v.number(), v.integer()),
   }),
   v.object({
@@ -76,6 +90,8 @@ export const TraceEventSchema = v.variant("kind", [
       chunkCount: v.pipe(v.number(), v.integer(), v.minValue(0)),
     }),
     cost: v.optional(CostRecordSchema),
+    /** The stage's wall-clock duration, measured by the runner (see `intent`). */
+    durationMs: v.optional(v.pipe(v.number(), v.minValue(0))),
     at: v.pipe(v.number(), v.integer()),
   }),
   v.object({
@@ -83,15 +99,56 @@ export const TraceEventSchema = v.variant("kind", [
     kind: v.literal("filter_relaxed"),
     detail: v.object({
       /**
-       * The inferred filters a search dropped because they matched nothing.
-       * Recorded so a relaxation is VISIBLE machinery, never a silent fallback
-       * (traceability rule): the router's filters are hints inferred by a cheap
-       * model, and an inferred hint that empties the result set makes the answer
-       * ungrounded — so the search is retried without it, and the trace says so.
+       * The inferred filter dimensions a search gave up because they matched
+       * nothing, and the values it gave up (a single string, or the list a
+       * set-valued dimension carried). One dimension per probe on purpose: the
+       * search's effective filter record is then `intended − every dropped
+       * dimension recorded before it`, so the trace says *which* hint was
+       * wrong instead of "all of them were". An event naming **every** live
+       * dimension at once is the record-level last resort: the sweep found no
+       * single dimension at fault, the record as a SET was what matched
+       * nothing, and one retry with `{}` followed — recorded as an adopted drop
+       * of the whole surviving record, so a wrong hint cannot turn into a
+       * refusal. (A lone live dimension's own probe drops it too; no separate
+       * retry follows, so that trace carries one event, not two.) Recorded so a
+       * relaxation is VISIBLE machinery, never a silent fallback (traceability
+       * rule): the router's filters are hints inferred by a cheap model, and an
+       * inferred hint that empties the result set makes the answer ungrounded —
+       * so the search is retried without it, and the trace says so. (`dropped`
+       * values were bare strings before sets existed; both parse.)
        */
-      dropped: v.record(v.string(), v.string()),
+      dropped: v.record(
+        v.string(),
+        v.union([v.string(), v.pipe(v.array(v.pipe(v.string(), v.minLength(1))), v.minLength(1))]),
+      ),
+      /**
+       * The filter record the retry actually ran with — the intended set minus
+       * this dimension. Carried directly as well as derivable, so a reader never
+       * has to replay the event order to know what was searched.
+       */
+      retained: v.optional(
+        v.record(v.string(), v.pipe(v.array(v.pipe(v.string(), v.minLength(1))), v.minLength(1))),
+      ),
+      /**
+       * Whether the drop was KEPT. A zero-hit search probes each dimension in a
+       * declared order and adopts only a drop that returns hits, so an event with
+       * `adopted: false` is a probe that changed nothing — machinery the trace
+       * still shows, but not a relaxation the run applied. The record a search
+       * ran with is therefore `intended − every ADOPTED drop before it`. When no
+       * single dimension is at fault the probe names every live dimension and
+       * `retained` is `{}` — the record-level last resort. Optional and absent on
+       * traces persisted before probing existed, where every recorded drop was
+       * applied.
+       */
+      adopted: v.optional(v.boolean()),
       /** Which embedding track the relaxation applied to. */
       track: v.pipe(v.string(), v.minLength(1)),
+      /**
+       * Hits the relaxed retry returned. `0` means the drop did not help —
+       * the search had nothing to give, and the next dimension (or none) is
+       * given up. Absent on traces persisted before the field existed.
+       */
+      hits: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
     }),
     cost: v.optional(CostRecordSchema),
     at: v.pipe(v.number(), v.integer()),

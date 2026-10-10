@@ -178,7 +178,18 @@ export {
 // The fusion arithmetic and the two deterministic expansions live in their own
 // modules (the 300-line and 5-import agentic caps); the barrel keeps one public
 // surface, so consumers import from `@app/kajianq-domain` exactly as before.
-export { hierarchyBonus, metadataFilters, rrfFuse, RRF_K, HIERARCHY_BONUS } from "./chat-fusion";
+export { hierarchyBonus, rrfFuse, RRF_K, HIERARCHY_BONUS } from "./chat-fusion";
+// The store-facing half of stage 3: the exhaustive dimension map, the loud
+// unexpressible-dimension failure, and the per-dimension relaxation order.
+export { FILTER_DIMENSIONS, ROUTABLE_SOURCES, type RoutableSource } from "./filters";
+export {
+  FilterNotExpressibleError,
+  RELAXATION_ORDER,
+  filterEntries,
+  metadataFilters,
+  nextRelaxation,
+} from "./chat-filter-policy";
+export { routeFilters, sourceRoutingDetail, sourceTypesOf } from "./chat-source-routing";
 export {
   DEFAULT_NEIGHBOUR_CAP,
   DEFAULT_NEIGHBOUR_RADIUS,
