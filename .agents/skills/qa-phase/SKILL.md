@@ -22,7 +22,7 @@ A change is classified before its PR merges, and the manager records the decisio
 | Eval scorers, fixtures, smoke selection                                  | **Gate-affecting** | **Falsification** — does the gate still fail when it should? Staging user-behaviour probing cannot judge a gate. |
 | Routes, chat pipeline, prompts, retrieval, contracts, migrations, web UI | **Runtime**        | **Full staging QA**, adversarial persona included.                                                               |
 
-The middle shape is the one that gets mistaken for the third. A gate-affecting change ships no user-visible behaviour to probe, and a healthy answer from staging says nothing about whether the gate can still go red — so its QA phase is the gate's own falsification, written as a QA ticket with a mutation observable (`the gate must fail on <defect>` — the defect classes the ticket names, e.g. an ungrounded non-refusal) instead of a user observable.
+The middle shape is the one that gets mistaken for the third. A gate-affecting change ships no user-visible behaviour to probe, and a healthy answer from staging says nothing about whether the gate can still go red — so its QA phase is the gate's own falsification, written as a QA ticket with a mutation observable (`the gate must fail on <defect>` — the mutations the ticket names, e.g. an ungrounded non-refusal) instead of a user observable.
 
 The classification is a judgement about **what the change can break**, not about its diff size: a one-line prompt edit is runtime; a large test-suite refactor is inert.
 
@@ -31,7 +31,7 @@ The classification is a judgement about **what the change can break**, not about
 The ticket is the QA brief, and it carries all of:
 
 - **The observable that proves the issue is solved in staging** — a named Golden Set question passing, a route's response, a trace field present, a frame rendered. Name it concretely enough that a probe either meets it or does not.
-- **The mutation set, for a gate-affecting change** — the defect classes that must redden the gate (an ungrounded non-refusal, an over-refusal, a fabricated citation, a question the selection must include — whatever the change touches), named by the manager here, or an explicit delegation of the choice to the QA agent here with the reason. The QA agent may extend the set; the promised set is the manager's, and a placeholder is not a mutation set.
+- **The mutation set, for a gate-affecting change** — the mutations that must redden the gate (an ungrounded non-refusal, an over-refusal, a fabricated citation, a question the selection must include — whatever the change touches), named by the manager here, or an explicit delegation of the choice to the QA agent here with the reason. The QA agent may extend the set; the promised set is the manager's, and a placeholder is not a mutation set.
 - **Reachability, confirmed before the observable is promised.** Check the smoke subset actually selects the observable (`packages/eval/src/smoke-subset.ts` is deterministic — read what it picks), and that the merge triggers a `Staging` run at all (a docs-path-only push does not). When the observable is outside the subset, widen that run with the existing `workflow_dispatch` `eval_smoke_size` input or add a targeted check to the ticket's probe list — a promise the deployed run cannot reach is not a QA ticket.
 - **The blast radius** — what else sits on the changed code path: the neighbouring stages, the other questions the same scorer judges, the other routes that share the handler, the UI that renders the changed frame.
 - **The surfaces to probe** — routes, UI flows, persisted traces, SSE frames, the refusal/answer boundary, the rehydration endpoint.
@@ -55,7 +55,7 @@ Two probes of the same class with the same mechanism are one probe. The taxonomy
 A change to an eval scorer, a fixture, or the smoke selection is verified by **mutation** — the gate must still go red when it should:
 
 1. Take the gate's live observable from the ticket (the question, the scorer dimension, the selection rule).
-2. Take the mutation set from the ticket — the defect classes the manager named, or the choice the ticket explicitly delegated to you. You may extend the set, but the promised set is the manager's; the report names the mutations you instantiated.
+2. Take the mutation set from the ticket — the mutations the manager named, or the choice the ticket explicitly delegated to you. You may extend the set, but the promised set is the manager's; the report names the mutations you instantiated.
 3. Reproduce the gate's failure path against the deployed or committed artifacts without shipping the defect: re-score the recorded evidence, or run the scorer against the known-bad shape, and show that `passed: false`.
 4. Show the unchanged good case still passes, so the gate was loosened only where the ticket says.
 
