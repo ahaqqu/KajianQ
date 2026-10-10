@@ -25,13 +25,19 @@ import {
  *      (review R2-A1). One exception, because the model's label is never
  *      overwritten: an entry that already carries a *different* declared role
  *      keeps it, and that rule's coverage is not shown;
- *   2. every entry is trimmed, and a text the reply phrased with no letter and
- *      no digit in any script — whitespace, punctuation, an emoji, a control
- *      character — is dropped rather than embedded: it cannot retrieve, and it
- *      would spend an embed slot and a pair of searches inside the ceiling's
- *      window where a real angle belongs (#450). The rules' own texts are the
- *      caller's question and templates built on it, never the reply's claim, so
- *      the drop is the reply's alone;
+ *   2. every entry is trimmed, and a text with no letter and no digit in any
+ *      script — whitespace, punctuation, an emoji, a zero-width space or
+ *      joiner, a C0 control — is dropped rather than embedded, **whatever its
+ *      origin**: the reply's phrasing and a composition rule's own text alike.
+ *      It cannot retrieve, and it would spend an embed slot and a pair of
+ *      searches inside the ceiling's window where a real angle belongs (#450).
+ *      The `factual` rule's text *is* the caller's question, so a content-free
+ *      question fans out over nothing (#462) — while the principle/dalil/sanad
+ *      templates carry words of their own and are searchable even when the
+ *      question is not. The drop is a function of the text alone, never of the
+ *      origin that offered it, which is what keeps the reply's echo of a
+ *      content-free question and the rule's own add of that same text in
+ *      agreement on the next pass (#453);
  *   3. the total stays within the stage's bound, dropping the model's extra
  *      phrasings before any rule-derived one — and never the entry a fired
  *      rule's own text lives in, which is that rule's coverage;
@@ -56,9 +62,11 @@ import {
  * prompt's "different angles" rule is written against). Padding that case to
  * two would put a synthetic near-duplicate of the question in the trace and
  * claim a decomposition that never happened — see `decomposeQuery`'s own note.
- * It is **0** when there is nothing to search at all: a blank question (whose
- * rule text is blank, and which `push` drops) and a reply whose every text
- * was dropped for carrying no letter and no digit.
+ * It is **0** when there is nothing to search at all: every text the stage was
+ * handed carried no letter and no digit — a blank question, or one made only of
+ * punctuation, `Cf` or `Cc` characters, whose rule text *is* the question and
+ * which `push` drops (#462) — beside a reply whose every text the same gate
+ * dropped.
  */
 export const MIN_SUB_QUERIES = 2;
 export const MAX_SUB_QUERIES = 4;
@@ -102,35 +110,36 @@ export function decomposeQuery(input: DecompositionInput): SubQuery[] {
     const text = sub.text.trim();
     const key = normalize(text);
     if (key === "" || seen.has(key)) return;
+    // The one content gate, applied to every origin. A text carrying no letter
+    // and no digit in any script is not a query: the sparse track tokenizes
+    // nothing out of it and the dense track returns its nearest neighbours to
+    // noise, so it would spend an embed slot and a pair of searches for nothing
+    // — and a `subquery` event would publish it as a part the route understood.
+    // The test is the *text's* own, never the origin's, and that is what keeps
+    // the reply's echo of a content-free question and the `factual` rule's own
+    // add of that same text in agreement on the next pass (#453): both are
+    // dropped here, at whichever position they arrive (#450, #462).
+    if (!hasSearchableContent(text)) return;
     seen.add(key);
     kept.push({ ...sub, text });
   };
 
   // The texts the rules below will add, keyed the way the duplicate filter keys
-  // them — one concept, derived once, so the reply's filter, the rule loop and
-  // the ceiling's stand-in protection cannot drift apart. One of them is the
-  // caller's own question — the `factual` rule's text, and the floor's — which
-  // is what the exception in the reply's filter is for.
+  // them — one concept, derived once, so the rule loop and the ceiling's
+  // stand-in protection cannot drift apart. One of them is the caller's own
+  // question — the `factual` rule's text, and the floor's — which is the text a
+  // content-free question contributes, and `push` drops it (#462).
   const ruleTexts = new Map<SubQueryRole, string>(
     firedRoles.map((role): [SubQueryRole, string] => [role, ruleText(role, input)]),
   );
-  const ruleTextKeys = new Set([...ruleTexts.values()].map((text) => normalize(text)));
 
   for (const entry of input.modelSubQueries) {
     const role = narrowRole(entry.role);
-    // The reply's text is a claim this repair may drop. Drop one carrying
-    // nothing to search with — no letter and no digit in any script: whitespace,
-    // punctuation, an emoji, a control character. It cannot retrieve (the
-    // sparse track tokenizes nothing out of it, the dense track returns its
-    // nearest neighbours to noise), and below the ceiling it would spend an
-    // embed slot and a pair of searches where a rule's or a real angle's query
-    // belongs (#450). The one text it may not drop is one a fired rule adds
-    // back anyway: the reply echoing the caller's question is that rule's own
-    // text, and dropping it here would only move it down the fan-out when the
-    // rule re-adds it — the re-ordering that made the idempotence law's verdict
-    // depend on the seed. Trimming is not a drop: padded text is the same
-    // query, so it is kept, trimmed.
-    if (!hasSearchableContent(entry.text) && !ruleTextKeys.has(normalize(entry.text))) continue;
+    // The reply's text is a claim this repair may drop — but not by a test of
+    // its own. Whether a text is a query is one question with one answer, asked
+    // in `push`, so the reply's arm and the rules' arm cannot disagree about the
+    // same text (#462). Trimming is not a drop: padded text is the same query,
+    // so it is kept, trimmed.
     push({ text: entry.text, ...(role !== undefined ? { role } : {}), origin: "model" });
   }
 
@@ -166,9 +175,10 @@ export function decomposeQuery(input: DecompositionInput): SubQuery[] {
   // query. It runs through the same dedup as everything else: when the model's
   // only entry already *is* the question there is no second distinct text to
   // add, and one entry is the honest answer (`MIN_SUB_QUERIES`). It is the
-  // caller's own text, so it is never dropped for carrying no letter or digit —
-  // only a blank question has no query in it at all, and then the floor adds
-  // nothing.
+  // caller's own text, but not exempt from the content gate: a question with no
+  // letter and no digit is not a query either, and the `factual` rule above has
+  // already declined to add that same text — the two arms of the drop agree
+  // (#462). Only a question that carries content reaches the floor at all.
   if (kept.length < MIN_SUB_QUERIES) {
     push({ text: input.question.trim(), role: "factual", origin: "rule" });
   }
@@ -273,10 +283,16 @@ function normalize(text: string): string {
  * Does this text carry anything a search can match? A letter or a digit in any
  * script — `\p{L}` and `\p{N}` are Unicode properties, so Arabic, Jawi, a bare
  * numeral and a single word all count. Anything else (whitespace, punctuation,
- * emoji, control characters) is not a query: the sparse track would tokenize
- * nothing from it and the dense track would return its nearest neighbours to
- * noise, at the price of an embed and a pair of searches (#450).
+ * emoji, `Cf` zero-width characters and joiners, `Cc` control characters) is not
+ * a query: the sparse track would tokenize nothing from it and the dense track
+ * would return its nearest neighbours to noise, at the price of an embed and a
+ * pair of searches (#450).
+ *
+ * Exported because the router's fallback is a third origin a caller's text can
+ * become a sub-query from, and this invariant is stated without an origin: a
+ * text with no letter and no digit never becomes one (#462). One owner for the
+ * test, so the decomposer's gate and the fallback's cannot drift apart.
  */
-function hasSearchableContent(text: string): boolean {
+export function hasSearchableContent(text: string): boolean {
   return /[\p{L}\p{N}]/u.test(text);
 }

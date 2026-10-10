@@ -246,6 +246,28 @@ describe("createKajianQRouter", () => {
     expect(routed.intent).toBe("factual");
   });
 
+  it("falls back to no sub-query at all when the question itself carries no content", async () => {
+    // #462: the fallback origin is the third way a caller's text becomes a
+    // sub-query, and the invariant is stated without an origin — a text with no
+    // letter and no digit never becomes one. An unusable reply plus a zero-width
+    // or control-only question used to route the verbatim question (`origin:
+    // "fallback"`) and spend an embed and a pair of searches on it. The intent
+    // and the fallback flag stay: the route still says what it understood
+    // (nothing), it simply has nothing to search.
+    for (const question of ["\u200b\u200d\u200b", "\u0001\u0007"]) {
+      const h = harness("I cannot answer that.");
+      const routed = (await h.route({ text: question })) as {
+        intent: string;
+        subQueries: readonly unknown[];
+        attributes: Record<string, unknown>;
+      };
+      expect(routed.intent).toBe("factual");
+      expect(routed.subQueries).toEqual([]);
+      expect(routed.attributes).toEqual({ fallback: true });
+      expect(h.events.map((e) => e.kind)).toEqual(["llm_call", "source_routing"]);
+    }
+  });
+
   it("keeps the caller's explicit filters through the fallback", async () => {
     const h = harness(JSON.stringify({ not: "a router reply" }));
     const routed = (await h.route({
