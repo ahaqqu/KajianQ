@@ -162,15 +162,19 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
   );
 
   // The SSE wire contract (meta → deltas → citations → trace → done,
-  // ADR-0034 + ADR-0040 for the `trace` frame — #11/#12). A refused
-  // answer never ships the vendor's text: the
-  // reviewer recorded a `refusal` event on the trace (the same signal the
-  // eval harness reads), and the frames carry the plain refusal instead.
-  // Otherwise the vendor's own delta sequence is replayed when it reproduces
-  // the delivered text; post-processing may have APPENDED deterministic rules
-  // (disclaimer, dhaif warning), which ride one trailing delta so the model's
-  // streamed text stays byte-identical on the wire. When generation did not
-  // stream at all, the text is chunked.
+  // ADR-0034 + ADR-0040 for the `trace` frame — #11/#12). On a refusal the
+  // reviewer recorded a `refusal` event on the trace (the same signal the eval
+  // harness reads) and the vendor's delta sequence is not replayed — the
+  // settled text is chunked instead, so a reviewer-REPLACED answer never ships
+  // the draft. On a HYBRID draft (a generator-emitted refusal inside a partial
+  // answer, #436) the reviewer returns the draft unchanged, so this path
+  // chunks the very text the user is shown, chips and all: the flag below
+  // decides how the text is framed on the wire, never which citations it
+  // earns. Otherwise the vendor's own delta sequence is replayed when it
+  // reproduces the delivered text; post-processing may have APPENDED
+  // deterministic rules (disclaimer, dhaif warning), which ride one trailing
+  // delta so the model's streamed text stays byte-identical on the wire. When
+  // generation did not stream at all, the text is chunked.
   const refused = answer.trace.events.some((e) => e.kind === "refusal");
   const streamed = deltas.join("");
   const frames = refused

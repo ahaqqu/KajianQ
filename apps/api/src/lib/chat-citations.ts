@@ -43,7 +43,12 @@ import * as v from "valibot";
  * The derivation is a pure intersection: emitted citations = the answer's
  * inline citation spans that some trace-retrieved chunk grounds. A
  * citation-shaped span with no matching chunk (fabricated or whose row
- * vanished) is absent from the payload — never a chip without provenance.
+ * vanished) is absent from the payload — never a chip without provenance, and
+ * never a grounded span dropped for an unrelated reason. The frame's
+ * `refusal` field is a second, independent projection of the same trace — the
+ * reviewer stage's recorded decision — and it may never empty the list: a
+ * hybrid answer (a grounded partial answer running into the canonical refusal
+ * sentence) keeps its chips and the flag (#436).
  *
  * **"Grounds" is the gate's own decision, not a second reading of it (review
  * A1 of the #274 fix round).** The intersection is decided by
@@ -90,10 +95,31 @@ function toCitation(label: string, chunk: DocChildById): ChatCitation {
 
 /**
  * Pure core: derive the citations frame from a persisted trace, the answer
- * text, and the display rows of the trace's chunks. Refusals carry no
- * citations (the refusal text is not a cited answer); a chunk without an
- * Arabic original backs no citation sheet (text_ar is the canonical evidence
- * layer, ADR-0013 — without it there is nothing honest to show).
+ * text, and the display rows of the trace's chunks. A chunk without an Arabic
+ * original backs no citation sheet (text_ar is the canonical evidence layer,
+ * ADR-0013 — without it there is nothing honest to show).
+ *
+ * **The citation list is the pure intersection, with no refusal case (#436).**
+ * A `refusal` event on the trace is a *separate* projection: it sets the
+ * `refusal` flag below and nothing else. It must never be read as "there are
+ * no citations", because a generator-emitted refusal can be the TAIL of an
+ * answer that quotes retrieved verses — the staging hybrid draft (trace
+ * `fff2a012`, merge `4ea8acb8`) shipped a 1 784-character answer quoting
+ * `[QS. 1:1] … [QS. 1:7]` and `[QS. 15:87]` from 27 retrieved chunks and then
+ * continued into the canonical insufficiency sentence plus the disclaimer,
+ * while this function's old `refusal` short-circuit returned
+ * `{citations: [], refusal: true}`. The user saw eight chip-less verses framed
+ * as a refusal, the eval harness scored `citationValidity = 0` off that empty
+ * frame, and nothing was logged: the frame stayed contract-valid, the live and
+ * rehydrated derivations agreed with each other on the same wrong answer, and
+ * only a frame-versus-text comparison could see it. The shortcut was also
+ * redundant for every genuine refusal — the canonical refusal strings
+ * (`@app/kajianq-domain` `DEFAULT_REFUSALS`, and the reviewer-refusal copy)
+ * carry no citation span, so their intersection is empty by construction.
+ *
+ * The one thing a refusal event may do here is flip the flag: the reviewer's
+ * decision stays visible on the wire exactly as it is persisted on the trace
+ * (ADR-0007 — never hide the machinery), and the chips are the reader's.
  */
 export function deriveCitationsFrame(input: {
   trace: Trace;
@@ -102,9 +128,6 @@ export function deriveCitationsFrame(input: {
   chunksById: ReadonlyMap<string, DocChildById>;
 }): ChatCitationsFrame {
   const { trace, messageId, answerText, chunksById } = input;
-  if (trace.events.some((event) => event.kind === "refusal")) {
-    return { messageId, citations: [], refusal: true, dhaifWarning: false };
-  }
   const grounded = new Map<string, DocChildById>();
   for (const id of traceChunkIds(trace)) {
     const chunk = chunksById.get(id);
@@ -135,7 +158,13 @@ export function deriveCitationsFrame(input: {
   return {
     messageId,
     citations,
-    refusal: false,
+    // The refusal flag is the trace's own decision, projected verbatim — a
+    // hybrid answer carries it AND its chips (#436). It is deliberately not a
+    // function of `citations`: the two fields answer two different questions
+    // ("did the pipeline decide to refuse?" and "which cited verses do the
+    // retrieved chunks actually ground?"), and deriving one from the other is
+    // what emptied the frame while the text quoted verses.
+    refusal: trace.events.some((event) => event.kind === "refusal"),
     // The frame's flag and the postprocess's suppression check are the SAME
     // predicate (one owner, `@app/kajianq-domain`), so "the warning is on the
     // answer" cannot mean two different things on the two sides of the wire
