@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_REFUSALS } from "./chat-reviewer";
+import { DEFAULT_REFUSALS, refusalTextFor } from "./chat-reviewer";
 import { dhaifWarning, hasWeakWarning, ulamaDisclaimer } from "./chat-postprocess";
 import { MACHINE_TRANSLATION_LABEL } from "./chat-assembler";
 import { runChatPipeline } from "./chat-pipeline";
@@ -571,5 +571,101 @@ describe("#439 — a hybrid refusal still runs the Always rules", () => {
     const answer = await answerVia(store, draft, { reviewerDecider: SKIPPING_DECIDER });
     const text = (answer as { text: string }).text;
     expect(text).toContain(dhaifWarning("id"));
+  });
+});
+
+/**
+ * INTEGRATION TEST (#443) — a citation-free draft that carries the refusal
+ * sentence but ASSERTS its own content is delivered as the product's refusal.
+ *
+ * The invariant: **whatever text is delivered, the guarantees the spec marks
+ * unconditional are computed for it, or the text is delivered as a refusal the
+ * reader can recognise as one** (SPECS §2.2, §1.5 boundary 2). A draft that
+ * neither cites nor declines may not pass as a decline because the machinery
+ * happened to see no citations — and it may not be "fixed" by appending the
+ * Always rules either: the dhaif trigger is the ASSEMBLED context, so decorating
+ * this shape would put a weak-grade warning on a text that cites nothing, which
+ * the #285 pin forbids. The signal is a new deterministic one — the decline
+ * backstop — and its delivery is the product's own refusal text in place of the
+ * model's words.
+ *
+ * Why the wired pipeline: the shape only exists once the real retriever,
+ * assembler, generator stub and reviewer stage have run in order, and the
+ * delivered text, the trace the citations frame is derived from, and the spend
+ * a classified refusal must not make are all observable here and nowhere else.
+ */
+describe("#443 — a citation-free asserting refusal draft ships the product's refusal", () => {
+  /** The shape: an ungrounded prose sentence, then the canonical sentence. */
+  const ASSERTING_DRAFT = [
+    "Hadits tentang puasa dalam perjalanan berstatus sahih dan wajib diamalkan.",
+    `Untuk pertanyaan ini kami ${DEFAULT_REFUSALS.id}.`,
+  ].join("\n\n");
+
+  it("delivers the product's refusal, records the decision, and invents no rule", async () => {
+    const store = createMemoryRagStore();
+    const dhaifId = await seedChild(store, DHAIF_METADATA, 0);
+    // A reviewer stub that would FAIL this draft: the classification must still
+    // skip it (ADR-0009). If it were called, the delivered text would be the
+    // reviewer-refusal copy — which is exactly what the assertion below rules
+    // out, measured rather than assumed.
+    const providers = createStubChatProviders({
+      answerText: ASSERTING_DRAFT,
+      reviewerVerdict: "fail",
+    });
+    const answer = await answerVia(store, ASSERTING_DRAFT, {
+      reviewerProvider: providers.reviewerProvider,
+    });
+    const text = (answer as { text: string }).text;
+    const events = eventsOf(answer);
+
+    // The reader gets a refusal they can recognise, never the draft's assertion.
+    expect(text).toBe(DEFAULT_REFUSALS.id);
+    expect(text).not.toBe(refusalTextFor("id", "reviewer"));
+    expect(text).not.toContain("wajib diamalkan");
+    // The decision is trace content, under its own machine-readable trigger.
+    expect(events.find((e) => e.kind === "refusal")?.detail["trigger"]).toBe(
+      "asserting_refusal_draft",
+    );
+    expect(events.some((e) => e.kind === "review")).toBe(false);
+    // No rule ran, so no event may claim it did (#285), and the warning the
+    // grade flag would add is not invented for a text that cites nothing.
+    expect(productRulesEvents(answer)).toHaveLength(0);
+    expect(text).not.toContain(dhaifWarning("id"));
+    expect(hasWeakWarning(text)).toBe(false);
+    expect(text).not.toContain(ulamaDisclaimer("id"));
+    // The context really did carry the weak-grade chunk: the negative above is
+    // a suppressed warning, not an absent trigger.
+    const retrieval = events.find((e) => e.kind === "retrieval");
+    const ids = ((retrieval?.detail["chunks"] ?? []) as { id: string }[]).map((c) => c.id);
+    expect(ids).toContain(dhaifId);
+  });
+
+  it("keeps the neighbouring shapes on the same wiring: a decline ships byte-identical, turn two is refused", async () => {
+    // A second turn in the same session, and both halves of the boundary: the
+    // genuine decline is still delivered as the model wrote it (#285's floor),
+    // while the follow-up that asserts is refused. The history is what makes the
+    // second turn a follow-up rather than a fresh question (ADR-0018).
+    const store = createMemoryRagStore();
+    await seedChild(store, DHAIF_METADATA, 0);
+    const decline = `Mohon maaf, kami ${DEFAULT_REFUSALS.id} untuk pertanyaan ini.`;
+    const first = await answerVia(store, decline);
+    expect((first as { text: string }).text).toBe(decline);
+    expect(productRulesEvents(first)).toHaveLength(0);
+
+    const second = await answerVia(store, ASSERTING_DRAFT, {
+      history: [
+        { role: "user", content: "Apa keutamaan ayat kursi?" },
+        { role: "assistant", content: decline },
+      ],
+    });
+    const text = (second as { text: string }).text;
+    const events = eventsOf(second);
+    expect(text).toBe(DEFAULT_REFUSALS.id);
+    expect(text).not.toContain("wajib diamalkan");
+    expect(events.find((e) => e.kind === "refusal")?.detail["trigger"]).toBe(
+      "asserting_refusal_draft",
+    );
+    expect(productRulesEvents(second)).toHaveLength(0);
+    expect(hasWeakWarning(text)).toBe(false);
   });
 });

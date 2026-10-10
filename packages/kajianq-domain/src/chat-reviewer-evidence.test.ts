@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import { RunContext, type AssembledContext, type Chunk } from "@app/rag-core";
 import type { CostRecord } from "@app/contracts";
-import { createKajianQReviewer } from "./chat-reviewer";
+import { createKajianQReviewer, DEFAULT_REFUSALS } from "./chat-reviewer";
 import { createKajianQAssembler } from "./chat-assembler";
 import type { KajianQFilters } from "./filters";
 import { routedQuery } from "./test-utils/routed-query";
@@ -244,6 +244,84 @@ describe("generator-emitted refusal short-circuit", () => {
     const { result, events } = await runRefusalReview(hybrid, { applyProductRules: false });
     expect(events.some((e) => e.kind === "product_rules")).toBe(false);
     expect(result.text).toBe(hybrid);
+  });
+
+  /**
+   * #443 — the ASSERTING refusal draft: the sentence in a text that cites
+   * nothing AND is not a decline. It used to take the earned-refusal exemption
+   * and ship verbatim, so the reader got the draft's own assertions with no
+   * refusal framing and no unconditional copy, and the trace recorded no
+   * `product_rules` event because no rule ran. The stage's answer is the
+   * product's own refusal in place of the model's words: the reader always gets
+   * a refusal they can recognise, and no rule is invented for a text that cites
+   * nothing (the #285 pin).
+   */
+  it("refuses a citation-free asserting draft with the product's own refusal (#443)", async () => {
+    const assertion = "Hadits tentang puasa dalam perjalanan berstatus sahih dan wajib diamalkan.";
+    const draft = [assertion, `Untuk pertanyaan ini kami ${DEFAULT_REFUSALS.id}.`].join("\n\n");
+    const { result, events, providerCalled } = await runRefusalReview(draft);
+    // The assertion never reaches the reader; the product's refusal does.
+    expect(result.text).toBe(DEFAULT_REFUSALS.id);
+    expect(result.text).not.toContain(assertion);
+    // The decision is on the trace, under its own machine-readable trigger.
+    const refusalEvent = events.find((e) => e.kind === "refusal");
+    expect(refusalEvent?.detail?.["trigger"]).toBe("asserting_refusal_draft");
+    // No rule ran, so nothing may claim it did (#285), and the text that ships
+    // carries no dhaif warning invented for a text that cites nothing.
+    expect(events.some((e) => e.kind === "product_rules")).toBe(false);
+    // And the classification still skips the paid reviewer (ADR-0009).
+    expect(providerCalled).toBe(false);
+    expect(events.some((e) => e.kind === "llm_call")).toBe(false);
+  });
+
+  it("reads the asserting shape on either side of the sentence (#443)", async () => {
+    // sentence-then-prose: the same exemption question, the other order.
+    const after = `Kami ${DEFAULT_REFUSALS.id}.\n\nNamun perlu diketahui bahwa hukumnya wajib bagi setiap muslim.`;
+    const { result, events } = await runRefusalReview(after);
+    expect(result.text).toBe(DEFAULT_REFUSALS.id);
+    expect(events.find((e) => e.kind === "refusal")?.detail?.["trigger"]).toBe(
+      "asserting_refusal_draft",
+    );
+    // Same paragraph, no blank line: the sentence boundary is what is read.
+    const inline = `Hukumnya wajib bagi setiap muslim. Kami ${DEFAULT_REFUSALS.id}.`;
+    expect((await runRefusalReview(inline)).result.text).toBe(DEFAULT_REFUSALS.id);
+  });
+
+  it("reads a mixed-language asserting draft the same way (#443)", async () => {
+    const draft = [
+      "This ruling applies to every Muslim without exception.",
+      `Sorry, we ${DEFAULT_REFUSALS.en} for this question.`,
+    ].join("\n\n");
+    const { result, events } = await runRefusalReview(draft);
+    expect(result.text).toBe(DEFAULT_REFUSALS.id);
+    expect(result.text).not.toContain("applies to every Muslim");
+    expect(events.find((e) => e.kind === "refusal")?.detail?.["trigger"]).toBe(
+      "asserting_refusal_draft",
+    );
+  });
+
+  it("refuses the asserting shape even with the rules disabled: the refusal is not a decoration (#443)", async () => {
+    // The trap for a "fix" that ran `withRules` on the asserting shape: with
+    // `applyProductRules: false` such a fix would ship the draft's assertions
+    // verbatim. The backstop's delivered text does not depend on the rules flag
+    // — it replaces the draft, it never appends to it.
+    const draft = `Haditsnya sahih dan wajib diamalkan.\n\nKami ${DEFAULT_REFUSALS.id}.`;
+    const { result, events } = await runRefusalReview(draft, { applyProductRules: false });
+    expect(result.text).toBe(DEFAULT_REFUSALS.id);
+    expect(result.text).not.toContain("wajib diamalkan");
+    expect(events.some((e) => e.kind === "product_rules")).toBe(false);
+  });
+
+  it("keeps a decline that quotes the evidence's own text but cites nothing (#443, the #285 floor)", async () => {
+    // The other direction, and the floor the ticket names: the sentence with its
+    // own framing and nothing else still ships byte-identical — even though this
+    // run's assembled context carries a translation label and a citable hadith.
+    const decline = `Mohon maaf, kami ${DEFAULT_REFUSALS.id} untuk pertanyaan ini.`;
+    const { result, events, providerCalled } = await runRefusalReview(decline);
+    expect(result.text).toBe(decline);
+    expect(providerCalled).toBe(false);
+    expect(events.find((e) => e.kind === "refusal")?.detail?.["trigger"]).toBe("generator_refusal");
+    expect(events.some((e) => e.kind === "product_rules")).toBe(false);
   });
 
   it("returns the EN refusal verbatim and appends no disclaimer", async () => {

@@ -6,19 +6,19 @@
  * refuse when a demanded fact is absent rather than explaining the gap.
  */
 
-import { DEFAULT_REFUSALS } from "./chat-reviewer";
+import { DEFAULT_REFUSALS } from "./chat-refusal";
 
 export type ChatLanguage = "id" | "en";
 
 /**
- * The canonical refusal sentences live in `chat-reviewer` (with `refusalTextFor`,
+ * The canonical refusal sentences live in `chat-refusal` (with `refusalTextFor`,
  * the resolver the detector and the harness use). They are imported here so the
  * generator can be told to emit them **verbatim** — the refusal detector matches
  * those exact strings, so a well-meant paraphrase ("tidak ada hadits yang
  * disebutkan dalam konteks…") is indistinguishable from an answer and scores as
  * one. One source of truth: the instruction and the detector cannot drift.
  *
- * No runtime cycle: the reviewer's only reference back to this module is a
+ * No runtime cycle: the refusal module's only reference back to this one is a
  * type-only `ChatLanguage` import, which is erased.
  */
 

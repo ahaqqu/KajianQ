@@ -13,80 +13,25 @@ export type { KajianQFilters };
  * own named seam (`chat-reviewer-prompt.test.ts` pins them — the failure modes
  * it documents are silent, so the prompt must stay test-addressable).
  *
- * `chat-prompts.ts` imports `DEFAULT_REFUSALS` from here through
- * `chat-reviewer.ts`'s re-export — the canonical refusal sentence is shared
- * with the generator's rule 1, and the detector matches these exact strings.
+ * The refusal vocabulary this module used to carry now lives in
+ * `chat-refusal.ts` (round B1 of the #443 review: this module reached 298
+ * counted lines of the agentic hard cap of 300, and the branch needed a whole
+ * commit to shave prose back under it). It is re-exported below so the stage
+ * keeps ONE import statement for its whole reviewer seam — the stage sits at the
+ * agentic 5-import cap — and every historical import surface keeps working. The
+ * refusal logic itself has one owner: the module next to this one.
  */
-
-/**
- * The default refusal language (the generator's ID/EN insufficiency text).
- * `chat-prompts.ts` imports this to instruct the generator to emit it verbatim —
- * the detector matches these exact strings, so the copy and the instruction must
- * not drift.
- */
-export const DEFAULT_REFUSALS = {
-  id: "tidak menemukan dalil yang memadai",
-  en: "could not find adequate evidence",
-} as const;
-
-/** The refusal text a language resolves to (kept next to the prompts). */
-export function refusalTextFor(
-  language: import("./chat-prompts").ChatLanguage,
-  reason: "ungrounded" | "reviewer",
-): string {
-  if (reason === "reviewer") {
-    return language === "en"
-      ? "the answer was not supported by the retrieved evidence"
-      : "jawaban tidak didukung oleh dalil yang ditemukan";
-  }
-  return language === "en" ? DEFAULT_REFUSALS.en : DEFAULT_REFUSALS.id;
-}
-
-/**
- * True when the canonical insufficiency refusal SENTENCE appears in the draft,
- * in either language (a substring match, `chat-prompts.ts` instructs the
- * generator to emit it verbatim). The model may answer in the wrong language,
- * and a refusal in either is still a refusal.
- *
- * It is deliberately NOT "this text is a refusal": the same sentence is the
- * tail of a HYBRID draft — a grounded partial answer that runs into it (#436,
- * #439). Which decision each shape earns is `isEarnedRefusal`'s, below: both
- * skip the paid reviewer, but only the shape that cites nothing is delivered
- * undecorated, because the deterministic rules the spec marks "Always" are
- * computed for whatever text actually ships. Renaming or narrowing this
- * predicate silently moves that boundary, which is why the hybrid half is
- * pinned by `chat-reviewer-evidence.test.ts` and `chat-dhaif-warning.test.ts`.
- */
-export function isRefusalDraft(text: string): boolean {
-  const t = text.toLowerCase();
-  return t.includes(DEFAULT_REFUSALS.id) || t.includes(DEFAULT_REFUSALS.en);
-}
-
-/**
- * The EARNED refusal shape (#439): the canonical sentence in a draft with no
- * citation-shaped span at all — the shape that ships verbatim and invents no
- * warning. `citations` is the deterministic validator's partition of the
- * draft's spans (`chat-citation-validator.ts`): a refused span lands in
- * `ungrounded`, an accepted one contributes at least one label to `grounded`,
- * so both lists empty is the positive reading of "this draft cites nothing".
- * Reading `grounded.length === 0` alone means the weaker "no grounded span",
- * true only while the stage's ungrounded gate returns first — a reorder would
- * ship a refused text verbatim.
- *
- * The classification may skip the PAID reviewer (ADR-0009 cost discipline); it
- * may not skip a rule the spec makes `Always` (SPECS §2.2), which is why a
- * HYBRID — the sentence riding an answer that cites something — funnels through
- * the stage's `withRules` instead. The shape vocabulary is normative in
- * `CONTEXT.md` (Refusal).
- */
-export function isEarnedRefusal(
-  text: string,
-  citations: { grounded: readonly string[]; ungrounded: readonly string[] },
-): boolean {
-  return (
-    isRefusalDraft(text) && citations.grounded.length === 0 && citations.ungrounded.length === 0
-  );
-}
+export {
+  DEFAULT_REFUSALS,
+  isEarnedRefusal,
+  isRefusalDraft,
+  isRefusalOnly,
+  REFUSAL_DRAFT_DECISIONS,
+  refusalDraftDecision,
+  refusalTextFor,
+  type RefusalDraftDecision,
+  type RefusalTrigger,
+} from "./chat-refusal";
 
 /**
  * The reviewer's system prompt: the grounding rules for the cross-vendor gate.
