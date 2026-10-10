@@ -117,6 +117,30 @@ describe("citationValidity", () => {
     expect(citationValidity(["QS. 1:2"], "the text writes QS. 1:2 plainly", { frame })).toBe(0);
   });
 
+  it("scores a hybrid refusal's frame on its citations, never on the refusal flag (#436)", () => {
+    // The gate-affecting statement of #436, as a test: a generator-emitted
+    // refusal inside a partial answer ships a frame that carries BOTH the
+    // grounded labels the text quotes and `refusal: true`. The scorer reads the
+    // list and ignores the flag, so the citations the delivered text actually
+    // carries are scored — the shape used to score 0 off the frame's old
+    // empty-on-any-refusal derivation. The refusal dimension is untouched: it
+    // reads the trace's `refusal` event, not this frame.
+    const hybridFrame = { refusal: true, citations: [{ label: "QS. 1:2" }] };
+    expect(
+      citationValidity(["QS. 1:2"], "… QS. 1:2 … lalu tidak menemukan dalil", {
+        frame: hybridFrame,
+      }),
+    ).toBe(1);
+    // The unchanged good case: a pure refusal's frame is genuinely empty, and
+    // its required citations stay absent — the same 0 it has always scored.
+    const pureRefusalFrame = { refusal: true, citations: [] as { label: string }[] };
+    expect(
+      citationValidity(["QS. 1:2"], "tidak menemukan dalil yang memadai", {
+        frame: pureRefusalFrame,
+      }),
+    ).toBe(0);
+  });
+
   it("scores a label absent from a non-empty frame as absent even when normalized", () => {
     const frame = { citations: [{ label: "QS. 2:255" }] };
     expect(citationValidity(["QS. 1:2"], "… **QS. 1:2** …", { frame, grammar })).toBe(0);

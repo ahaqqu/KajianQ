@@ -6,7 +6,7 @@ const { captureException } = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock("@sentry/bun", () => ({ captureException }));
 import { CHAT_MESSAGE_MAX_LENGTH } from "@app/contracts";
 import { parseChatRequest } from "../lib/chat-openapi";
-import { runStoreEffect } from "@app/kajianq-domain";
+import { DEFAULT_REFUSALS, runStoreEffect } from "@app/kajianq-domain";
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 import { createStubChatProviders } from "@app/kajianq-domain/test-utils/stub-chat-providers";
 
@@ -427,6 +427,56 @@ describe("POST /v1/chat", () => {
 
     const { answer } = await postChat(token, { message: "Hadits tentang niat?" });
     expect(answer).toBe("tidak menemukan dalil yang memadai");
+  }, 15000);
+
+  it("ships a hybrid refusal with its grounded chip on the wire (#436)", async () => {
+    // The shape #436 is about, end to end through the route: the store holds
+    // QS. 2:255, the draft quotes it and then runs into the canonical
+    // insufficiency sentence, so the reviewer records `generator_refusal` and
+    // returns the draft unchanged. The emitted frame must carry the chip the
+    // text earns BESIDE `refusal: true` — the user reads a cited answer whose
+    // last line is the refusal, not the empty pure-refusal sheet.
+    const { store, token } = await wiredStore();
+    currentStore = store;
+    await seed(store);
+    currentOverrides = {
+      answerText:
+        "Allah Mahahidup sebagaimana firman-Nya dalam [QS. 2:255].\n\n" +
+        `Untuk bagian lain dari pertanyaan ini saya ${DEFAULT_REFUSALS.id}.`,
+    };
+
+    const { status, answer, frames, meta } = await postChat(token, {
+      message: "Apa itu Ayat Kursi, dan kapan Kiamat?",
+    });
+    expect(status).toBe(200);
+
+    const frame = JSON.parse(frames.find((f) => f.event === "citations")?.data ?? "null") as {
+      refusal: boolean;
+      dhaifWarning: boolean;
+      citations: { label: string; arabic: string }[];
+    };
+    expect(frame.refusal).toBe(true);
+    expect(frame.citations.map((c) => c.label)).toEqual(["QS. 2:255"]);
+    // The chip is resolved, not a label without display data.
+    expect(frame.citations[0]?.arabic).toBe(AYAT_KURSI.textAr);
+    expect(frame.dhaifWarning).toBe(false);
+    // The reader's text is the draft itself: partial answer, its verse, and the
+    // refusal sentence — the reviewer replaced nothing (that is what makes this
+    // a hybrid, and why the route chunks the settled text).
+    expect(answer).toContain("Allah Mahahidup");
+    expect(answer).toContain("[QS. 2:255]");
+    expect(answer).toContain(DEFAULT_REFUSALS.id);
+    // The decision is on the persisted trace, as the generator's own trigger.
+    const trace = store.allTraces().get(meta.messageId) as
+      | { events: { kind: string; detail?: { trigger?: string } }[] }
+      | undefined;
+    expect(trace?.events.find((e) => e.kind === "refusal")?.detail?.trigger).toBe(
+      "generator_refusal",
+    );
+    // The product rules were skipped with that classification (SPECS §2.2's
+    // "Grade flag — Always" debt is #439): no disclaimer rides a hybrid, which
+    // is exactly why the frame cannot claim a warning the pipeline never wrote.
+    expect(answer).not.toContain("bukan fatwa");
   }, 15000);
 
   it("uses prior turns of the session as follow-up context", async () => {

@@ -136,11 +136,15 @@ export type ChatCitation = v.InferOutput<typeof ChatCitationSchema>;
 /**
  * The SSE `citations` frame payload (ADR-0040), emitted after the answer's
  * deltas and before `done` — and, with the same shape, the per-message
- * `citations` payload of the session-rehydration endpoint. `refusal` marks a
- * refused answer (empty citation list); the weak-grade flag tells the UI to render
- * the deterministic warning card the answer text carries (the flag keeps
- * the product's CONTEXT.md term as its wire name — see the boundary rule's
- * file-scoped exemption).
+ * `citations` payload of the session-rehydration endpoint. The two fields are
+ * independent projections of the one persisted trace: `citations` is the
+ * cited-and-grounded intersection, and `refusal` reports the refusal decision
+ * the trace records — it is not implied by the list, and it never empties it,
+ * so a hybrid answer (a grounded partial answer that runs into the canonical
+ * refusal sentence) carries both (#436). The weak-grade flag tells the UI to
+ * render the deterministic warning card the answer text carries (the flag
+ * keeps the product's CONTEXT.md term as its wire name — see the boundary
+ * rule's file-scoped exemption).
  */
 export const ChatCitationsFrameSchema = v.object({
   messageId: v.pipe(v.string(), v.minLength(1)),

@@ -25,6 +25,7 @@ import {
   chunksByIdOrEmpty,
   deriveTraceFrame,
   traceChunkIds,
+  traceRefused,
   type CitationChunkSource,
   type Warn,
 } from "./chat-trace";
@@ -43,7 +44,8 @@ import * as v from "valibot";
  * The derivation is a pure intersection: emitted citations = the answer's
  * inline citation spans that some trace-retrieved chunk grounds. A
  * citation-shaped span with no matching chunk (fabricated or whose row
- * vanished) is absent from the payload — never a chip without provenance.
+ * vanished) is absent from the payload — never a chip without provenance. And
+ * the refusal field never empties that list: see `deriveCitationsFrame` (#436).
  *
  * **"Grounds" is the gate's own decision, not a second reading of it (review
  * A1 of the #274 fix round).** The intersection is decided by
@@ -90,10 +92,17 @@ function toCitation(label: string, chunk: DocChildById): ChatCitation {
 
 /**
  * Pure core: derive the citations frame from a persisted trace, the answer
- * text, and the display rows of the trace's chunks. Refusals carry no
- * citations (the refusal text is not a cited answer); a chunk without an
- * Arabic original backs no citation sheet (text_ar is the canonical evidence
- * layer, ADR-0013 — without it there is nothing honest to show).
+ * text, and the trace chunks' display rows (text_ar is the canonical evidence
+ * layer, ADR-0013 — a chunk without it backs no citation sheet).
+ *
+ * **The list is the pure intersection, with no refusal case (#436).** A
+ * `refusal` event sets the flag below and NOTHING else — never "there are no
+ * citations": a generator-emitted refusal can be the tail of a partial answer,
+ * and the staging hybrid draft traced `fff2a012` shipped grounded verses plus
+ * that sentence while this returned `{citations: [], refusal: true}` — chip-less
+ * verses, `citationValidity = 0` in the eval, nothing logged. The shortcut was
+ * redundant (a refusal string carries no citation span); the flag keeps the
+ * reviewer's decision on the wire (ADR-0007).
  */
 export function deriveCitationsFrame(input: {
   trace: Trace;
@@ -102,9 +111,6 @@ export function deriveCitationsFrame(input: {
   chunksById: ReadonlyMap<string, DocChildById>;
 }): ChatCitationsFrame {
   const { trace, messageId, answerText, chunksById } = input;
-  if (trace.events.some((event) => event.kind === "refusal")) {
-    return { messageId, citations: [], refusal: true, dhaifWarning: false };
-  }
   const grounded = new Map<string, DocChildById>();
   for (const id of traceChunkIds(trace)) {
     const chunk = chunksById.get(id);
@@ -135,7 +141,11 @@ export function deriveCitationsFrame(input: {
   return {
     messageId,
     citations,
-    refusal: false,
+    // The refusal flag is the trace's own decision, projected verbatim: a
+    // hybrid answer carries it AND its chips (#436). Deriving one field from
+    // the other is what emptied the frame while the text quoted verses; the
+    // decision itself has one reader, `traceRefused` (chat-trace.ts).
+    refusal: traceRefused(trace),
     // The frame's flag and the postprocess's suppression check are the SAME
     // predicate (one owner, `@app/kajianq-domain`), so "the warning is on the
     // answer" cannot mean two different things on the two sides of the wire
@@ -164,8 +174,9 @@ export async function answerFramesFor(input: {
   warn: Warn;
 }): Promise<{ citations: ChatCitationsFrame; trace: ChatTraceFrame }> {
   const { trace, messageId, answerText, fetchChunks, warn } = input;
-  // A trace with no retrieval events (a pure refusal) needs no store read at
-  // all: an empty id list would only round-trip the seam.
+  // A trace with no retrieval events (a pure refusal — a hybrid refusal
+  // carries the partial answer's refs, #436) needs no store read at all: an
+  // empty id list would only round-trip the seam.
   const ids = traceChunkIds(trace);
   const chunksById =
     ids.length === 0

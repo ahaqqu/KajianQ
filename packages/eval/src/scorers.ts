@@ -89,11 +89,9 @@ function verifiedEvidenceLabels(input: {
  *      so a required label matches equivalent spellings the raw-substring
  *      check missed — `**QS. 1:2**`, `Q.S. 1:2`, `QS 1:2` — rather than only
  *      the byte-identical form. With no grammar injected the check degrades to
- *      the original `String.includes`, so unit behavior is unchanged.
- *
- * A refusal needs no special case: its frame carries `refusal: true` with an
- * empty citation list and its trace's `grounded` list is empty, so its
- * required citations are absent by construction on every path.
+ *      the original `String.includes`, so unit behavior is unchanged. A PURE
+ * refusal's frame list is empty with its `grounded` list; a HYBRID refusal (#436)
+ * carries the grounded labels its text quotes — the list is read, never the flag.
  */
 export function citationLabelsPresent(input: {
   required: readonly string[];

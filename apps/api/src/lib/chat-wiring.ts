@@ -21,7 +21,7 @@ export { authGuard } from "./auth";
 // `chunkFetcher` re-exports straight from `./chat-trace` (thermo-review B2:
 // the old re-export hop through chat-citations had zero other consumers).
 export { answerFramesFor, rehydrateTranscript } from "./chat-citations";
-export { chunkFetcher } from "./chat-trace";
+export { chunkFetcher, traceRefused } from "./chat-trace";
 // The config surface moved to `chat-config.ts` (agentic size cap); re-exported
 // here so `lib/index.ts`, `scheduled.ts`, and their tests keep one import hub.
 export {

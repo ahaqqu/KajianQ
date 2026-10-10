@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import * as v from "valibot";
 import { ChatTraceFrameSchema, type Trace } from "@app/contracts";
 import type { DocChildById } from "@app/infra";
-import { chunkFetcher, deriveTraceFrame, traceChunkIds, traceChunkRefs } from "./chat-trace";
+import {
+  chunkFetcher,
+  deriveTraceFrame,
+  traceChunkIds,
+  traceChunkRefs,
+  traceRefused,
+} from "./chat-trace";
 
 /**
  * The Trace panel frame's invariant (#12, ADR-0007): **the panel is derived
@@ -118,7 +124,11 @@ describe("deriveTraceFrame — the top layer", () => {
     expect(frame.sources).toEqual([{ id: "c1", source: "Al-Baqarah" }, { id: "ghost" }]);
   });
 
-  it("a refusal's trace has no retrieval events, so the panel is legitimately empty", () => {
+  it("a pure refusal's trace has no retrieval events, so the panel is legitimately empty", () => {
+    // A PURE refusal — the canonical sentence as the whole answer. A hybrid
+    // refusal (#436) carries the partial answer's retrieval refs, so its panel
+    // is populated; that shape is pinned with the citations frame in
+    // chat-citations.test.ts.
     const refusal: Trace = {
       id: "t2",
       createdAt: 1,
@@ -136,6 +146,25 @@ describe("deriveTraceFrame — the top layer", () => {
     expect(frame.sources).toEqual([]);
     expect(frame.technical.chunks).toEqual([]);
     expect(frame.technical.models).toEqual([]);
+  });
+});
+
+describe("traceRefused — the refusal decision's one reader (#436)", () => {
+  it("reads the trace's refusal event, and only that", () => {
+    const refusal: Trace["events"][number] = {
+      stage: "reviewer",
+      kind: "refusal",
+      detail: { trigger: "generator_refusal" },
+      reason: "generator emitted the canonical insufficiency refusal",
+      at: 3,
+    };
+    expect(traceRefused(traceOf([]))).toBe(false);
+    expect(traceRefused(traceOf([], [refusal]))).toBe(true);
+    // A hybrid refusal is the same decision over a trace that still carries
+    // the partial answer's retrieval refs — the frame's flag and the route's
+    // chunking branch both read this one predicate (chat-citations.test.ts /
+    // chat.test.ts pin the two consumers).
+    expect(traceRefused(traceOf([{ id: "c1" }], [refusal]))).toBe(true);
   });
 });
 

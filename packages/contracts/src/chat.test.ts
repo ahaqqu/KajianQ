@@ -287,6 +287,23 @@ describe("ChatCitationsFrameSchema", () => {
     expect(parsed.citations).toEqual([]);
   });
 
+  it("accepts a refusal frame that keeps its citations (a hybrid answer, #436)", () => {
+    // The two fields are independent projections of one trace (ADR-0040): the
+    // flag reports the decision and never empties the list, so this combination
+    // — a refusal over a partly-cited answer — is a valid frame, and the one the
+    // scorer must read on the label list alone. The warning flag is independent
+    // of both, so it is pinned beside them.
+    const parsed = v.parse(ChatCitationsFrameSchema, {
+      messageId: "m3",
+      citations: [CITATION],
+      refusal: true,
+      dhaifWarning: true,
+    });
+    expect(parsed.refusal).toBe(true);
+    expect(parsed.citations).toHaveLength(1);
+    expect(parsed.dhaifWarning).toBe(true);
+  });
+
   it("rejects a frame whose refusal flag is missing (the UI must not guess)", () => {
     const { refusal: _refusal, ...noFlag } = {
       messageId: "m1",

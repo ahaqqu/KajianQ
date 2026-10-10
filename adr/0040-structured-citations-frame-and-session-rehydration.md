@@ -7,8 +7,9 @@ text for citations.** The chat route emits one citations frame before the stream
 refusal flag, and the dhaif warning. The derivation is an intersection: the emitted citations are exactly the answer's
 inline citation spans, located with the citation gate's own grammar and normalization, that a chunk referenced by the
 trace's retrieval event grounds — a span matching no trace chunk cannot appear. Display data joins by the trace's
-chunk ids through one store read, and a refused answer carries the refusal flag with an empty citation list. **The
-client renders the frame, never the grammar.** Citation chips are located in the answer text by exact match of frame
+chunk ids through one store read, and the refusal flag is the trace's own refusal decision, projected independently of
+the list — it never empties it, so a hybrid answer that runs into the canonical refusal sentence keeps its chips (#436).
+**The client renders the frame, never the grammar.** Citation chips are located in the answer text by exact match of frame
 labels only: a label absent from the text renders nothing, and a bracketed span absent from the frame stays plain
 text. The warning card shows the answer's own warning line, peeled by the rule's stable marker prefix, and falls back
 to the frame's flag when a rehydrated text lacks it; the ulama disclaimer renders as a distinct footer, peeled the
@@ -44,9 +45,12 @@ engine's trace projection and duplicate corpus text into every trace row for dat
 
 New shared contracts carry the citation, the citations frame, and the session transcript — engine package, domain
 values travelling as plain strings — and new store reads serve the chunk-children join and the answer trace by id. No
-engine logic changed: the runner, the stages, and the refusal gate are untouched, and the eval harness ignores the new
-frame, so ledger keying is unchanged. A new session is an explicit control and follow-ups ride the stored id. A chunk
-row deleted after an answer was persisted simply loses its chip, the invariant by omission; a lost or unreadable trace
+engine logic changed: the runner, the stages, and the refusal gate are untouched, and ledger keying is unchanged. The
+frame has been the eval harness's first evidence source since #250 (the precedence postdates this record); this change
+is what makes it non-empty for a hybrid refusal — it scores the citations its text grounds instead of 0, while the
+refusal dimension still reads the trace's `refusal` event (#436). A new session is an explicit control and follow-ups
+ride the stored id. A chunk row deleted after an answer was persisted simply loses its chip, the invariant by
+omission; a lost or unreadable trace
 degrades to a plain-text transcript, never to invented citations. The rehydration transcript is capped: a session is
 an anonymous conversation, not an archive. The cap is visible rather than silent — a truncated flag tells the client
 it is seeing the newest tail and the UI says older messages are not shown. The translation-layer flag tracks the

@@ -56,6 +56,14 @@ Feature: Chat — ask, answer, citations, warnings, disclaimer
     When I ask something the corpus cannot answer
     Then the refusal renders as a plain card with no citation chips
 
+  # #436: a HYBRID answer — a grounded partial answer that runs into the canonical
+  # insufficiency sentence — is a refusal on the trace AND a cited answer on the
+  # page. The frame carries both, and the reader must keep the chip the verse in
+  # the text earns instead of the empty pure-refusal sheet.
+  Scenario: A hybrid answer that refuses only in part keeps its citation chips (#436)
+    When I ask a question whose answer answers in part and then refuses
+    Then the hybrid answer renders its grounded citation chip
+
   Scenario: Reloading restores the full transcript with citations
     When I open the chat and ask about ayat kursi
     And the answer renders with a citation chip

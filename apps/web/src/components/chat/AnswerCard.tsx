@@ -7,9 +7,12 @@ import { LogoTile, MonoLabel } from "../ui";
  * The assistant turn's answer card (#11) in the reference visual language:
  * an avatar + serif-italic name over a warm card holding the answer
  * (citation chips resolved from the structured frame), the dhaif warning
- * card, and the ulama disclaimer footnote. A refused answer carries an empty
- * citation list, so it renders as a plain card with no citation affordances
- * by data, not by a client-side guess about refusals. The body renders the
+ * card, and the ulama disclaimer footnote. The card renders exactly the
+ * citation list the server sent: a PURE refusal's list is empty, so it shows
+ * as a plain card with no citation affordances by data, not by a client-side
+ * guess about refusals — and a HYBRID answer (a refusal sentence inside a
+ * partial answer, #436) keeps the chips its grounded text earns beside that
+ * sentence. The body renders the
  * model's inline markdown (#150) — bold/emphasis spans and lists — as rich
  * text; citation chips stay top-level inline nodes even inside a styled span.
  * Chip taps hand the citation to the parent (`onOpenCitation`): the sheet is

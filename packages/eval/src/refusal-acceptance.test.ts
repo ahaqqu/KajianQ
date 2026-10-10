@@ -253,6 +253,75 @@ describe("trap acceptance: refuse, or ground it (#250)", () => {
     expect(saved[0]?.outcome).toMatchObject({ passed: false, refused: true });
   });
 
+  /**
+   * The wire frame a HYBRID answer ships (#436): the grounded labels its text
+   * quotes AND the refusal decision the trace records. The flag is deliberately
+   * not a member of `CitationFrameLike` — the scorer reads the label list and
+   * never the flag — so this intersection type is how the harness-level tests
+   * hand in the real wire shape without the engine's structural type gaining a
+   * member it does not read.
+   */
+  const hybridFrameOf = (labels: string[]): CitationFrameLike & { refusal: boolean } => ({
+    citations: labels.map((label) => ({ label })),
+    refusal: true,
+  });
+
+  /**
+   * The refusal decision as the harness sees it: the trace's `refusal` event
+   * (`detectRefusal` reads the kind, `scorers.ts`). The event's `trigger` is
+   * runtime detail the scorer never inspects, so the fixture omits it.
+   */
+  const HYBRID_EVENT: TraceEventLike = { kind: "refusal", stage: "reviewer" };
+
+  it("scores a hybrid refusal's grounded labels and still fails it as an over-refusal (#436)", async () => {
+    // The gate-affecting claim where the harness decides pass/fail: an `answer`
+    // question whose draft carries a `refusal` event AND a frame holding the
+    // label its text grounds. The citation dimension now reads that label (1,
+    // where the empty-on-any-refusal frame scored 0), and the behavior dimension
+    // is unchanged — `detectRefusal` reads the trace's event, never the frame —
+    // so the question is still failed as an over-refusal: the scorer change can
+    // move a citation metric, it cannot mask a refusal defect.
+    const required = DIVINE_NAME.requiredCitations[0]!;
+    const { deps, saved } = makeHarness({
+      [DIVINE_NAME.id]: {
+        text: `Konteks menyebut ${required}, dan bagian lain tidak terjawab. ${REFUSAL}`,
+        citations: hybridFrameOf(DIVINE_NAME.requiredCitations),
+        chunks: chunksFor(DIVINE_NAME),
+        events: [HYBRID_EVENT],
+      },
+    });
+    const result = await runGoldenSet(setOf([DIVINE_NAME]), deps);
+    expect(result.failed).toBe(1);
+    expect(saved[0]?.outcome).toMatchObject({
+      passed: false,
+      refused: true,
+      citationValidity: 1,
+      retrievalRecall: 1,
+    });
+  });
+
+  it("accepts a refuse question that ships the same hybrid frame (#436)", async () => {
+    // The symmetric half on a trap: the identical shape is accepted on the
+    // refusal signal alone (ADR-0046), so a non-empty frame relaxes nothing
+    // there either — and the frame, not the flag, is what the citation
+    // dimension reads.
+    const { deps, saved } = makeHarness({
+      [HOUR.id]: {
+        text: `${REFUSAL} Dalilnya: QS. 55:1`,
+        citations: hybridFrameOf(["QS. 55:1"]),
+        events: [HYBRID_EVENT],
+      },
+    });
+    const result = await runGoldenSet(setOf([HOUR]), deps);
+    expect(result.passed).toBe(1);
+    expect(saved[0]?.outcome).toMatchObject({
+      passed: true,
+      refused: true,
+      citationValidity: 1,
+      retrievalRecall: 1,
+    });
+  });
+
   it("accepts a grounded-but-dated answer — the recorded residual (ADR-0046), pinned on purpose", async () => {
     // The accepted trade, made visible rather than hidden: a real verse grounds
     // the answer, so the asserted date passes the gate. The date prohibition is

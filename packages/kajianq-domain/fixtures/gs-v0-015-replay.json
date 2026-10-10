@@ -1,6 +1,6 @@
 {
   "id": "gs-v0-015-replay",
-  "$comment": "Deterministic replay fixture for the gs-v0-015 citation-scoring change (thermo-review A1, PR #188). Snapshotted from staging `eval_results` joined to `answer_traces` and `chat_messages` (2026-09-19, all 31 historical rows), carrying exactly the fields the scorer reads: the answer text, the trace review event's `grounded` labels (null where an older trace predates the field — the fall-through signal), and whether a `refusal` event exists. The `required` field preserves the curation in force at each run time: the fixture required QS. 1:1 until the 2026-09-12 re-curation (34c4054) switched it to QS. 1:2 mid-history, so a faithful replay of the OLD scorer must use each row's own label — replaying every row against today's label would misreport the 14:37 row as a regression. Domain vocabulary here is data, which is why the fixture lives in the domain pack, not the engine.",
+  "$comment": "Deterministic replay fixture for the gs-v0-015 citation-scoring change (thermo-review A1, PR #188). Snapshotted from staging `eval_results` joined to `answer_traces` and `chat_messages` (2026-09-19, all 31 historical rows), carrying exactly the fields the scorer reads: the answer text, the trace review event's `grounded` labels (null where an older trace predates the field — the fall-through signal), whether a `refusal` event exists, and `frameEmpty` — whether the `citations` frame the run's transport carried was EMPTY, which the scorer treats as authoritative (thermo-review A3 of #437: without it the replay scored the four refusal rows off the `grounded` list and computed 1 on the two that carry the required label, where the deployed scorer reads an empty frame and computes 0). The `required` field preserves the curation in force at each run time: the fixture required QS. 1:1 until the 2026-09-12 re-curation (34c4054) switched it to QS. 1:2 mid-history, so a faithful replay of the OLD scorer must use each row's own label — replaying every row against today's label would misreport the 14:37 row as a regression. Domain vocabulary here is data, which is why the fixture lives in the domain pack, not the engine.",
   "refusalMarkers": ["tidak menemukan dalil yang memadai", "could not find adequate evidence"],
   "rows": [
     {
@@ -10,6 +10,7 @@
       "text": "could not find adequate evidence\n\nThis answer is not a fatwa; consult a scholar for legal rulings.",
       "grounded": [],
       "refusalEvent": false,
+      "frameEmpty": true,
       "recorded": {
         "passed": false,
         "citationValidity": 0,
@@ -24,6 +25,7 @@
       "text": "could not find adequate evidence",
       "grounded": null,
       "refusalEvent": true,
+      "frameEmpty": true,
       "recorded": {
         "passed": false,
         "citationValidity": 0,
@@ -45,6 +47,7 @@
         "HR. Malik no. 185"
       ],
       "refusalEvent": true,
+      "frameEmpty": true,
       "recorded": {
         "passed": false,
         "citationValidity": 0,
@@ -68,6 +71,7 @@
         "HR. Malik no. 185"
       ],
       "refusalEvent": false,
+      "frameEmpty": false,
       "recorded": {
         "passed": false,
         "citationValidity": 0,
@@ -82,6 +86,7 @@
       "text": "Based on the context provided:\n\n**Meaning.** The context contains only one ayah of Surah Al-Fatihah:\n\nاَلْحَمْدُ لِلّٰهِ رَبِّ الْعٰلَمِيْنَۙ\n(Terjemahan mesin — lihat teks Arab asli)\n\"Segala puji bagi Allah, Tuhan semesta alam\" [QS. 1:2]\n\nThe context does not provide a full translation or exposition of the meaning of the entire surah beyond this ayah.\n\n**Why it is recited in prayer.** The context contains hadiths identifying it as \"Ummul Qur'an\" and stating that a prayer without it is deficient:\n\nمَنْ صَلَّى صَلاَةً لَمْ يَقْرَأْ فِيهَا بِأُمِّ الْقُرْآنِ فَهِيَ خِدَاجٌ هِيَ خِدَاجٌ هِيَ خِدَاجٌ غَيْرُ تَمَامٍ\n(Terjemahan mesin — lihat teks Arab asli)\n\"Barangsiapa shalat namun tidak membaca Ummul qur'an (Al Fatihah) di dalamnya, maka shalatnya kurang, shalatnya kurang, shalatnya kurang dan tidak sempurna.\" [HR. Malik no. 187 (Sahih)]\n\nThe same hadith also relates:\n\nقَالَ اللَّهُ تَبَارَكَ وَتَعَالَى قَسَمْتُ الصَّلاَةَ بَيْنِي وَبَيْنَ عَبْدِي نِصْفَيْنِ فَنِصْفُهَا لِي وَنِصْفُهَا لِعَبْدِي وَلِعَبْدِي مَا سَأَلَ\n(Terjemahan mesin — lihat teks Arab asli)\n\"Allah Tabaraka Wa Ta'ala berfirman, 'Aku membagi antara diri-Ku dan hamba-Ku dengan dua paruh, separuh untukku dan separuh lainnya untuk hamba-Ku, dan bagi hamba-Ku apa yang dia yang minta.'\" [HR. Malik no. 187 (Sahih)]\n\nAnd the context names it:\n\nهِيَ هَذِهِ السُّورَةُ وَهِيَ السَّبْعُ الْمَثَانِي وَالْقُرْآنُ الْعَظِيمُ الَّذِي أُعْطِيتُ\n(Terjemahan mesin — lihat teks Arab asli)\n\"Itulah surat As Sab'u Al Matsani dan Al qur'an Agung yang diberikan kepadaku\" [HR. Malik no. 185 (Sahih)]\n\n**Disclaimer:** This is not a fatwa; consult a qualified scholar for rulings.\n\n[Warning] The cited hadith is graded weak (dhaif); it may not be used as a primary proof.",
       "grounded": ["QS. 1:2", "HR. Malik no. 187", "HR. Malik no. 18", "HR. Malik no. 185"],
       "refusalEvent": false,
+      "frameEmpty": false,
       "recorded": {
         "passed": true,
         "citationValidity": 1,
@@ -103,6 +108,7 @@
         "HR. Malik no. 18"
       ],
       "refusalEvent": false,
+      "frameEmpty": false,
       "recorded": {
         "passed": true,
         "citationValidity": 1,
@@ -123,6 +129,7 @@
         "HR. Malik no. 18"
       ],
       "refusalEvent": true,
+      "frameEmpty": true,
       "recorded": {
         "passed": false,
         "citationValidity": 0,
@@ -144,6 +151,7 @@
         "HR. Malik no. 18"
       ],
       "refusalEvent": false,
+      "frameEmpty": false,
       "recorded": {
         "passed": true,
         "citationValidity": 1,
@@ -167,6 +175,7 @@
         "HR. Malik no. 18"
       ],
       "refusalEvent": false,
+      "frameEmpty": false,
       "recorded": {
         "passed": true,
         "citationValidity": 1,
@@ -188,6 +197,7 @@
         "HR. Malik no. 185"
       ],
       "refusalEvent": false,
+      "frameEmpty": false,
       "recorded": {
         "passed": true,
         "citationValidity": 1,
@@ -211,6 +221,7 @@
         "HR. Malik no. 173"
       ],
       "refusalEvent": false,
+      "frameEmpty": false,
       "recorded": {
         "passed": true,
         "citationValidity": 1,
@@ -234,6 +245,7 @@
         "HR. Malik no. 18"
       ],
       "refusalEvent": false,
+      "frameEmpty": false,
       "recorded": {
         "passed": true,
         "citationValidity": 1,
@@ -248,6 +260,7 @@
       "text": "The context I have does not supply a translation or lexical explanation of the wording of Surah Al-Fatihah itself; it does, however, contain hadith reports describing what Al-Fatihah is and its place in the prayer, and those I can give you with their citations.\n\n**1. It is called Ummul Qur'an and its recitation is required in prayer**\n\nحَدَّثَنِي يَحْيَى، عَنْ مَالِكٍ، عَنِ الْعَلاَءِ بْنِ عَبْدِ الرَّحْمَنِ بْنِ يَعْقُوبَ ... سَمِعْتُ أَبَا هُرَيْرَةَ، يَقُولُ سَمِعْتُ رَسُولَ اللَّهِ صلى الله عليه وسلم يَقُولُ \" مَنْ صَلَّى صَلاَةً لَمْ يَقْرَأْ فِيهَا بِأُمِّ الْقُرْآنِ فَهِيَ خِدَاجٌ هِيَ خِدَاجٌ هِيَ خِدَاجٌ غَيْرُ تَمَامٍ \"\n(Terjemahan mesin — lihat teks Arab asli)\n\"Saya mendengar Rasulullah shallallahu 'alaihi wasallam bersabda: 'Barangsiapa shalat namun tidak membaca Ummul qur'an (Al Fatihah) di dalamnya, maka shalatnya kurang, shalatnya kurang, shalatnya kurang dan tidak sempurna.'\" [HR. Malik no. 187 (Sahih)]\n\n**2. The report explaining how it is divided between Allah and His servant**\n\nIn the same narration:\nقَالَ اللَّهُ تَبَارَكَ وَتَعَالَى قَسَمْتُ الصَّلاَةَ بَيْنِي وَبَيْنَ عَبْدِي نِصْفَيْنِ فَنِصْفُهَا لِي وَنِصْفُهَا لِعَبْدِي وَلِعْبَدِي مَا سَأَلَ\n(Terjemahan mesin — lihat teks Arab asli)\n\"Allah Tabaraka Wa Ta'ala berfirman, 'Aku membagi antara diri-Ku dan hamba-Ku dengan dua paruh, separuh untukku dan separuh lainnya untuk hamba-Ku, dan bagi hamba-Ku apa yang dia yang minta.'\" [HR. Malik no. 187 (Sahih)]\n\nThe same report then lists, one by one, the portions recited from Al-Fatihah and Allah's response to each — e.g., after \"الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ\" : \"Hamba-Ku telah memuji-Ku\"; after \"الرَّحْمَنِ الرَّحِيمِ\" : \"Hamba-Ku telah memuji-Ku\"; after \"مَالِكِ يَوْمِ الدِّينِ\" : \"Hamba-Ku telah mengagungkan-Ku\"; and regarding \"إِيَّاكَ نَعْبُدُ وَإِيَّاكَ نَسْتَعِينُ\" : \"Ayat ini antara Aku dengan hamba-Ku, dan untuknya apa yang dia minta\"; and regarding \"اهْدِنَا الصِّرَاطَ الْمُسْتَقِيمَ صِرَاطَ الَّذِينَ أَنْعَمْتَ عَلَيْهِمْ غَيْرِ الْمَغْضُوبِ عَلَيْهِمْ وَلاَ الضَّالِّينَ\" : \"itu semua untuk hamba-Ku dan baginya apa yang dia minta\" [HR. Malik no. 187 (Sahih)].\n\n**3. It is identified as the seven repeatedly-recited verses and the mighty Qur'an**\n\nفَقَالَ رَسُولُ اللَّهِ صلى الله عليه وسلم \" هِيَ هَذِهِ السُّورَةُ وَهِيَ السَّبْعُ الْمَثَانِي وَالْقُرْآنُ الْعَظِيمُ الَّذِي أُعْطِيتُ \"\n(Terjemahan mesin — lihat teks Arab asli)\n\"Rasulullah shallallahu 'alaihi wasallam bersabda: 'Itulah surat As Sab'u Al Matsani dan Al qur'an Agung yang diberikan kepadaku.'\" [HR. Malik no. 185 (Sahih)]\n\nThis is connected in the context to:\nوَلَقَدْ اٰتَيْنٰكَ سَبْعًا مِّنَ الْمَثَانِيْ وَالْقُرْاٰنَ الْعَظِيْمَ\n(Terjemahan mesin — lihat teks Arab asli)\n\"Sungguh, Kami benar-benar menganugerahkan kepadamu tujuh (ayat) yang (dibaca) berulang-ulang dan Al-Qur'an yang agung.\" [QS. 15:87]\n\n**Note on a weak report:** The context also includes a report in which a similar point is attributed to Abu Hurairah — \"barangsiapa terlewat membaca Ummul Qur'an maka terlewatlah kebaikan yang banyak\" — and it is labeled **Dhaif** [HR. Malik no. 18 (Dhaif)]. This warning is stated explicitly.\n\nI have not added any tafsir or meaning of the surah's wording beyond what the context itself states. This is not a fatwa; for rulings, consult a qualified scholar.",
       "grounded": ["QS. 15:87", "HR. Malik no. 187", "HR. Malik no. 185", "HR. Malik no. 18"],
       "refusalEvent": false,
+      "frameEmpty": false,
       "recorded": {
         "passed": false,
         "citationValidity": 0,
@@ -268,6 +281,7 @@
         "HR. Malik no. 186"
       ],
       "refusalEvent": false,
+      "frameEmpty": false,
       "recorded": {
         "passed": false,
         "citationValidity": 0,
@@ -288,6 +302,7 @@
         "HR. Malik no. 18"
       ],
       "refusalEvent": false,
+      "frameEmpty": false,
       "recorded": {
         "passed": true,
         "citationValidity": 1,
@@ -314,6 +329,7 @@
         "HR. Malik no. 185"
       ],
       "refusalEvent": false,
+      "frameEmpty": false,
       "recorded": {
         "passed": true,
         "citationValidity": 1,
@@ -335,6 +351,7 @@
         "HR. Malik no. 185"
       ],
       "refusalEvent": false,
+      "frameEmpty": false,
       "recorded": {
         "passed": true,
         "citationValidity": 1,
@@ -356,6 +373,7 @@
         "HR. Malik no. 18"
       ],
       "refusalEvent": false,
+      "frameEmpty": false,
       "recorded": {
         "passed": true,
         "citationValidity": 1,
@@ -376,6 +394,7 @@
         "HR. Malik no. 18"
       ],
       "refusalEvent": false,
+      "frameEmpty": false,
       "recorded": {
         "passed": true,
         "citationValidity": 1,
@@ -396,6 +415,7 @@
         "HR. Malik no. 185"
       ],
       "refusalEvent": false,
+      "frameEmpty": false,
       "recorded": {
         "passed": true,
         "citationValidity": 1,
@@ -418,6 +438,7 @@
         "HR. Malik no. 18"
       ],
       "refusalEvent": false,
+      "frameEmpty": false,
       "recorded": {
         "passed": true,
         "citationValidity": 1,
@@ -439,6 +460,7 @@
         "HR. Malik no. 18"
       ],
       "refusalEvent": false,
+      "frameEmpty": false,
       "recorded": {
         "passed": true,
         "citationValidity": 1,
@@ -460,6 +482,7 @@
         "HR. Malik no. 18"
       ],
       "refusalEvent": false,
+      "frameEmpty": false,
       "recorded": {
         "passed": true,
         "citationValidity": 1,
@@ -474,6 +497,7 @@
       "text": "Based on the context provided, here is what can be established:\n\n**Nama lain dan makna Al-Fatihah**\n\nIn the context, Al-Fatihah is referred to as \"Ummul Qur'an\" (Mother of the Qur'an) and also as \"As Sab'u Al Matsani\" and \"Al-Qur'an Al-'Azhim\". One of its ayat is quoted:\n\nاَلْحَمْدُ لِلّٰهِ رَبِّ الْعٰلَمِيْنَۙ\n(Terjemahan mesin — lihat teks Arab asli)\nSegala puji bagi Allah, Tuhan semesta alam [QS. 1:2]\n\n**Mengapa dibaca dalam setiap salat**\n\nThe context contains a hadith that states the prayer is incomplete without reciting Ummul Qur'an:\n\nHR. Malik no. 187 (Sahih) — from Abu Hurairah: Rasulullah shallallahu 'alaihi wasallam bersabda: \"Barangsiapa shalat namun tidak membaca Ummul qur'an (Al Fatihah) di dalamnya, maka shalatnya kurang, shalatnya kurang, shalatnya kurang dan tidak sempurna.\"\n\nIn the same hadith, portions of Al-Fatihah are recited and explained through Allah's response:\n\n- \"ALHAMDU LILLAHI RABBIL 'AALAMIIN\" — Allah berfirman: 'Hamba-Ku telah memuji-Ku'\n- \"AR-RAHMAANIR RAHIIM\" — Allah berfirman: 'Hamba-Ku telah memuji-Ku'\n- \"MALIKI YAUMIDDIIN\" — Allah berfirman: 'Hamba-Ku telah mengagungkan-Ku'\n- \"IYYAAKA NA'BUDU WA IYYAAKA NASTA'IIN\" — \"Ayat ini antara Aku dengan hamba-Ku, dan untuknya apa yang dia minta.\"\n- \"IHDINAS SHIRAATHAL MUSTAQIIM, SHIRAATHAL LADZIINA AN'AMTA 'ALAIHIM GHAIRIL MAGHDLUUBI 'ALAIHIM WALAD DLAALLIIN\" — \"itu semua untuk hamba-Ku dan baginya apa yang dia minta\"\n[HR. Malik no. 187 (Sahih)]\n\nThe context also contains a hadith identifying Al-Fatihah as the surah that has no equal in the Taurat, Injil, or Qur'an:\n\nHR. Malik no. 185 (Sahih) — Rasulullah shallallahu 'alaihi wasallam bersabda: \"Itulah surat As Sab'u Al Matsani dan Al qur'an Agung yang diberikan kepadaku\"\n\n---\n\nDisclaimer: This is not a fatwa. For rulings, please consult a qualified scholar.\n\n[Warning] The cited hadith is graded weak (dhaif); it may not be used as a primary proof.",
       "grounded": ["QS. 1:2", "HR. Malik no. 187", "HR. Malik no. 185", "HR. Malik no. 18"],
       "refusalEvent": false,
+      "frameEmpty": false,
       "recorded": {
         "passed": true,
         "citationValidity": 1,
@@ -495,6 +519,7 @@
         "HR. Malik no. 18"
       ],
       "refusalEvent": false,
+      "frameEmpty": false,
       "recorded": {
         "passed": true,
         "citationValidity": 1,
@@ -520,6 +545,7 @@
         "HR. Malik no. 192"
       ],
       "refusalEvent": false,
+      "frameEmpty": false,
       "recorded": {
         "passed": true,
         "citationValidity": 1,
@@ -539,6 +565,7 @@
         "HR. Malik no. 191"
       ],
       "refusalEvent": false,
+      "frameEmpty": false,
       "recorded": {
         "passed": false,
         "citationValidity": 0,
@@ -560,6 +587,7 @@
         "HR. Malik no. 191"
       ],
       "refusalEvent": false,
+      "frameEmpty": false,
       "recorded": {
         "passed": false,
         "citationValidity": 0,
@@ -584,6 +612,7 @@
         "HR. Malik no. 172"
       ],
       "refusalEvent": true,
+      "frameEmpty": true,
       "recorded": {
         "passed": false,
         "citationValidity": 0,
@@ -606,6 +635,7 @@
         "HR. Malik no. 18"
       ],
       "refusalEvent": false,
+      "frameEmpty": false,
       "recorded": {
         "passed": true,
         "citationValidity": 1,
@@ -626,6 +656,7 @@
         "HR. Malik no. 185"
       ],
       "refusalEvent": false,
+      "frameEmpty": false,
       "recorded": {
         "passed": false,
         "citationValidity": 0,
