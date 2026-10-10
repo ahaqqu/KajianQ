@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { RunContext, type AssembledContext, type Chunk } from "@app/rag-core";
 import type { CostRecord } from "@app/contracts";
 import { createKajianQReviewer, DEFAULT_REFUSALS } from "./chat-reviewer";
+import { refusalFloorText } from "./chat-refusal";
 import { createKajianQAssembler } from "./chat-assembler";
 import type { KajianQFilters } from "./filters";
 import { routedQuery } from "./test-utils/routed-query";
@@ -290,7 +291,7 @@ describe("generator-emitted refusal short-circuit", () => {
   it("reads a mixed-language asserting draft the same way (#443)", async () => {
     const draft = [
       "This ruling applies to every Muslim without exception.",
-      `Sorry, we ${DEFAULT_REFUSALS.en} for this question.`,
+      refusalFloorText("en"),
     ].join("\n\n");
     const { result, events } = await runRefusalReview(draft);
     expect(result.text).toBe(DEFAULT_REFUSALS.id);
@@ -316,7 +317,7 @@ describe("generator-emitted refusal short-circuit", () => {
     // The other direction, and the floor the ticket names: the sentence with its
     // own framing and nothing else still ships byte-identical — even though this
     // run's assembled context carries a translation label and a citable hadith.
-    const decline = `Mohon maaf, kami ${DEFAULT_REFUSALS.id} untuk pertanyaan ini.`;
+    const decline = refusalFloorText("id");
     const { result, events, providerCalled } = await runRefusalReview(decline);
     expect(result.text).toBe(decline);
     expect(providerCalled).toBe(false);

@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_REFUSALS, refusalTextFor } from "./chat-reviewer";
+import { REFUSAL_FLOORS, refusalFloorText } from "./chat-refusal";
 import { dhaifWarning, hasWeakWarning, ulamaDisclaimer } from "./chat-postprocess";
 import { MACHINE_TRANSLATION_LABEL } from "./chat-assembler";
 import { runChatPipeline } from "./chat-pipeline";
@@ -456,11 +457,9 @@ describe("#285 — the product_rules event on the wiring's delivery paths", () =
     const store = createMemoryRagStore();
     await seedChild(store, DHAIF_METADATA, 0);
 
-    const answer = await answerVia(
-      store,
-      "Mohon maaf, kami tidak menemukan dalil yang memadai untuk pertanyaan ini.",
-      { reviewerDecider: SKIPPING_DECIDER },
-    );
+    const answer = await answerVia(store, refusalFloorText("id"), {
+      reviewerDecider: SKIPPING_DECIDER,
+    });
     // The refusal short-circuits before any rule runs — and must not gain a
     // disclaimer, nor an event claiming the rules ran.
     expect(eventsOf(answer).some((e) => e.kind === "refusal")).toBe(true);
@@ -647,7 +646,7 @@ describe("#443 — a citation-free asserting refusal draft ships the product's r
     // second turn a follow-up rather than a fresh question (ADR-0018).
     const store = createMemoryRagStore();
     await seedChild(store, DHAIF_METADATA, 0);
-    const decline = `Mohon maaf, kami ${DEFAULT_REFUSALS.id} untuk pertanyaan ini.`;
+    const decline = refusalFloorText("id");
     const first = await answerVia(store, decline);
     expect((first as { text: string }).text).toBe(decline);
     expect(productRulesEvents(first)).toHaveLength(0);
@@ -679,7 +678,8 @@ describe("#443 — a citation-free asserting refusal draft ships the product's r
     // with no rule run and no warning invented for a text that cites nothing.
     const store = createMemoryRagStore();
     await seedChild(store, DHAIF_METADATA, 0);
-    const wrapped = `Mohon maaf,\nkami ${DEFAULT_REFUSALS.id}\nuntuk pertanyaan ini.`;
+    const { head, tail } = REFUSAL_FLOORS.id;
+    const wrapped = `${head.replace(", ", ",\n")}\n${DEFAULT_REFUSALS.id}\n${tail}.`;
     const floor = await answerVia(store, wrapped);
     expect((floor as { text: string }).text).toBe(wrapped);
     expect(productRulesEvents(floor)).toHaveLength(0);

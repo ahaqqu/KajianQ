@@ -6,7 +6,9 @@ import {
   isRefusalDraft,
   isRefusalOnly,
   REFUSAL_DRAFT_DECISIONS,
+  REFUSAL_FLOORS,
   refusalDraftDecision,
+  refusalFloorText,
 } from "./chat-refusal";
 
 /**
@@ -31,11 +33,24 @@ describe("the earned refusal shape (#439)", () => {
   const CHUNKS = [
     { id: "c1", text: "اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ", metadata: { citation: "QS. 2:255" } },
   ] as never;
-  const sentence = `Mohon maaf, kami ${DEFAULT_REFUSALS.id} untuk pertanyaan ini.`;
+  const sentence = refusalFloorText("id");
+
+  it("owns the floors: the pinned #285 copy is the frame the rule reads (review B1)", () => {
+    // The floor text is spelled out ONCE, here. `REFUSAL_FLOORS` is what the
+    // exemption's rule derives from and every floor draft in this suite renders
+    // through `refusalFloorText`, so a copy edit reddens on this pin instead of
+    // silently transcribing a floor that no longer exists.
+    expect(refusalFloorText("id")).toBe(
+      "Mohon maaf, kami tidak menemukan dalil yang memadai untuk pertanyaan ini.",
+    );
+    expect(refusalFloorText("en")).toBe(
+      "Sorry, we could not find adequate evidence for this question.",
+    );
+  });
 
   it("is the sentence with no citation-shaped span, in either language", () => {
     expect(isEarnedRefusal(sentence, validateCitations(sentence, CHUNKS))).toBe(true);
-    const en = `Sorry, we ${DEFAULT_REFUSALS.en} for this question.`;
+    const en = refusalFloorText("en");
     expect(isEarnedRefusal(en, validateCitations(en, CHUNKS))).toBe(true);
   });
 
@@ -88,23 +103,23 @@ describe("the asserting refusal draft (#443)", () => {
   const CHUNKS = [
     { id: "c1", text: "اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ", metadata: { citation: "QS. 2:255" } },
   ] as never;
-  const sentence = `Mohon maaf, kami ${DEFAULT_REFUSALS.id} untuk pertanyaan ini.`;
+  const sentence = refusalFloorText("id");
   /** Citation-free prose whose own sentence asserts a ruling. */
   const assertion = "Hadits tentang puasa dalam perjalanan berstatus sahih dan wajib diamalkan.";
 
   it("reads the decline: the sentence with its own framing and nothing else", () => {
     // The #285 pin's exact text — the shape that MUST keep shipping byte-for-byte.
     expect(isRefusalOnly(sentence)).toBe(true);
-    expect(isRefusalOnly(`Sorry, we ${DEFAULT_REFUSALS.en} for this question.`)).toBe(true);
+    expect(isRefusalOnly(refusalFloorText("en"))).toBe(true);
     // A mixed-language draft is read by either language's sentence.
-    expect(isRefusalOnly(`Mohon maaf, kami ${DEFAULT_REFUSALS.id}.`)).toBe(true);
+    expect(isRefusalOnly(`${REFUSAL_FLOORS.id.head} ${DEFAULT_REFUSALS.id}.`)).toBe(true);
     // The bare sentence, with and without terminal punctuation, and multi-line
     // wrapping of one sentence (intra-paragraph newlines are not boundaries).
     expect(isRefusalOnly(DEFAULT_REFUSALS.id)).toBe(true);
     expect(isRefusalOnly(`${DEFAULT_REFUSALS.id}.`)).toBe(true);
-    expect(isRefusalOnly(`Mohon maaf,\nkami ${DEFAULT_REFUSALS.id}\nuntuk pertanyaan ini.`)).toBe(
-      true,
-    );
+    const { head, tail } = REFUSAL_FLOORS.id;
+    const wrapped = `${head.replace(", ", ",\n")}\n${DEFAULT_REFUSALS.id}\n${tail}.`;
+    expect(isRefusalOnly(wrapped)).toBe(true);
     // The same sentence as a list item, and with blank lines around it: the new
     // boundaries must not manufacture an empty or extra segment.
     expect(isRefusalOnly(`- ${sentence}`)).toBe(true);
@@ -247,11 +262,11 @@ describe("the asserting refusal draft (#443)", () => {
     // recorded `product_refusal` as the safe direction. `Mohon maaf.` is the
     // floor's own apology frame standing as its own sentence — the frame the
     // product itself pins — and it carries nothing of the model's, so refusing
-    // it costs the reader the model's politeness for no safety gain. A positive
-    // framing vocabulary is exactly what can over-narrow here (an exemption
-    // granted only to the sentence plus a frame welded to it refuses this
-    // text), so the shipped text is pinned, not just the predicate.
-    const twoSentences = `Mohon maaf. Kami ${DEFAULT_REFUSALS.id}.`;
+    // it costs the reader the model's politeness for no safety gain. A frame
+    // rule that reads whole runs is exactly what can over-narrow here (an
+    // exemption granted only to the sentence plus a frame welded to it refuses
+    // this text), so the shipped text is pinned, not just the predicate.
+    const twoSentences = `${REFUSAL_FLOORS.id.head.replace(", kami", ".")} Kami ${DEFAULT_REFUSALS.id}.`;
     const citations = validateCitations(twoSentences, CHUNKS);
     expect(citations.grounded).toEqual([]);
     expect(citations.ungrounded).toEqual([]);
@@ -262,11 +277,11 @@ describe("the asserting refusal draft (#443)", () => {
   });
 
   it("keeps the EN floor shipping its own text (#452)", () => {
-    // The other over-narrowing shape: a vocabulary built from the ID floor
-    // alone would leave the EN floor outside the exemption. Its predicate pin
-    // is above; this is the decision, because "reads it" and "ships it" are
+    // The other over-narrowing shape: a frame built from the ID floor alone
+    // would leave the EN floor outside the exemption. Its predicate pin is
+    // above; this is the decision, because "reads it" and "ships it" are
     // different claims.
-    const en = `Sorry, we ${DEFAULT_REFUSALS.en} for this question.`;
+    const en = refusalFloorText("en");
     const citations = validateCitations(en, CHUNKS);
     expect(citations.grounded).toEqual([]);
     expect(citations.ungrounded).toEqual([]);
@@ -306,13 +321,60 @@ describe("the asserting refusal draft (#443)", () => {
     }
   });
 
+  it("closes the frame-as-word-bag: a claim in the frame's own words leaves the exemption (review A1)", () => {
+    // Review A1's rows, reproduced at head ca581b9 before the fix: every word is
+    // one the floor's frame pins, so a rule that read the frame as an unordered
+    // bag admitted them and shipped the model's own sentence verbatim
+    // (`generator_refusal`, no `product_rules` event). The frame is read as
+    // ORDERED runs now, so a permutation of its words is content. These rows are
+    // the gate on that closure.
+    const rows = [
+      "We question this. Kami tidak menemukan dalil yang memadai.",
+      "Ini pertanyaan kami. Kami tidak menemukan dalil yang memadai.",
+      "Question this for we. Kami tidak menemukan dalil yang memadai.",
+    ];
+    for (const draft of rows) {
+      const citations = validateCitations(draft, CHUNKS);
+      expect(citations.grounded, draft).toEqual([]);
+      expect(citations.ungrounded, draft).toEqual([]);
+      expect(isRefusalOnly(draft), draft).toBe(false);
+      const decision = refusalDraftDecision(draft, citations);
+      expect(decision?.shape, draft).toBe("asserting_refusal");
+      expect(decision?.delivery, draft).toBe("product_refusal");
+    }
+  });
+
+  it("reads a symbol-only segment as content, not framing (review A2)", () => {
+    // A residue with no word run at all used to satisfy `[].every(...)`, so any
+    // emoji, dash or punctuation-only segment shipped inside the pure refusal.
+    // Two mechanisms refuse them now: a non-word residue matches no frame run
+    // (the emoji and dash rows — review A2's own evidence), and an EMPTY residue
+    // needs the segment itself to have carried the canonical sentence (the
+    // separator row: `,` is no sentence boundary, so `,,,` survives as its own
+    // segment and normalises away to nothing — exactly the case `[].every`
+    // answered `true`). The bare sentence, whose segment does carry it, is
+    // pinned above.
+    const rows = [
+      `Mohon maaf, kami ${DEFAULT_REFUSALS.id} untuk pertanyaan ini. 🤲🤲`,
+      `🤲🤲. Kami tidak menemukan dalil yang memadai.`,
+      `—\n\nKami ${DEFAULT_REFUSALS.id}.`,
+      `,,,\n\nKami ${DEFAULT_REFUSALS.id}.`,
+    ];
+    for (const draft of rows) {
+      expect(isRefusalOnly(draft), draft).toBe(false);
+      expect(refusalDraftDecision(draft, validateCitations(draft, CHUNKS))?.delivery, draft).toBe(
+        "product_refusal",
+      );
+    }
+  });
+
   it("reads the sentence's own vocabulary as content, not framing (the negation flip)", () => {
     // The trap in the fix itself: a vocabulary that admitted the canonical
     // sentence's own words as "framing" would grant the exemption to the
     // sentence with its negation dropped — the opposite claim, written in the
     // refusal's own vocabulary. The residue is read against the PINNED FRAME
     // only, so this leaves the exemption and is refused.
-    const flipped = `Kami menemukan dalil yang memadai. Mohon maaf, kami ${DEFAULT_REFUSALS.id}.`;
+    const flipped = `Kami menemukan dalil yang memadai. ${REFUSAL_FLOORS.id.head} ${DEFAULT_REFUSALS.id}.`;
     expect(isRefusalOnly(flipped)).toBe(false);
     expect(refusalDraftDecision(flipped, validateCitations(flipped, CHUNKS))?.delivery).toBe(
       "product_refusal",
