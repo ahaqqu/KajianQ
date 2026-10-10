@@ -146,6 +146,44 @@ describe("createKajianQRouter", () => {
     });
   });
 
+  it("puts a role's source in the filter where the category row names no such source", async () => {
+    // The role union made load-bearing at this stage (review A2 of the #438 fix
+    // round): the `gs-v0-015` fixture above is carried by the widened `tafsir`
+    // row alone, so it cannot tell the union from the row. Here the category row
+    // (`quran` → `["quran"]`) contains no `hadith`, so the reply's own `dalil`
+    // part is the only thing that can select it: deleting the union loop reddens
+    // this case and no row widening can rescue it. The invariant is route-wide
+    // coverage — every part the route decomposed is searchable.
+    const h = harness(
+      JSON.stringify({
+        intent: "ruling",
+        category: "quran",
+        needsPrinciple: false,
+        subQueries: [{ text: "dalil tentang keutamaan membaca Al-Quran", role: "dalil" }],
+      }),
+    );
+    const routed = (await h.route({ text: "Apa keutamaan membaca Al-Quran?" })) as {
+      filters: KajianQFilters;
+      subQueries: readonly { text: string; role?: string; origin?: string }[];
+    };
+
+    // The part survived decomposition carrying its role — the union reads the
+    // set retrieval actually fans out over, not the reply's raw list.
+    expect(routed.subQueries.map((s) => [s.role, s.origin])).toEqual([
+      ["dalil", "model"],
+      ["factual", "rule"],
+    ]);
+    expect(routed.filters.sourceType).toEqual(["quran", "hadith"]);
+    // And the record the trace publishes is the record retrieval is handed.
+    expect(h.events.at(-1)).toMatchObject({
+      kind: "source_routing",
+      detail: {
+        sources: ["quran", "hadith"],
+        filters: { sourceType: ["quran", "hadith"] },
+      },
+    });
+  });
+
   it("sends the question as personal data through the provider seam", async () => {
     const h = harness(REPLY);
     await h.route({ text: "Apa hukum riba?" });

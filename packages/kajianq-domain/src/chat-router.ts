@@ -91,10 +91,13 @@ export function createKajianQRouter(
           const reading = readRouterText(reply.text, overrides);
           // Stage 3's decision, recorded by the stage that made it — and built
           // by the same mapping retrieval uses, over the same decomposition, so
-          // the sources the trace publishes and the sources the searches run
-          // cannot drift. A role or a dimension the route cannot express fails
-          // here, before any search runs, instead of being silently dropped or
-          // silently contributing nothing.
+          // the record this stage derived and the record the searches run cannot
+          // drift. A dimension the caller pinned is the one exception: the
+          // override rides into `routeFilters` verbatim while the event detail
+          // publishes its normalized projection (review A4 of the #438 fix
+          // round), and no wire request can set one. A role or a dimension the
+          // route cannot express fails here, before any search runs, instead of
+          // being silently dropped or silently contributing nothing.
           const { routing, decision } = yield* Effect.try({
             try: () => {
               const routing =

@@ -155,8 +155,13 @@ export class SourceRoleNotExpressibleError extends Error {
 /**
  * The sources one sub-query role implies. The vocabulary is owned by
  * `SUB_QUERY_ROLES` and the mapping above is exhaustive over it, so a role this
- * throws on is one the route wrote outside the vocabulary: a part that must be
+ * throws on is one the caller wrote outside the vocabulary: a part that must be
  * searched cannot be left unmapped without answering a different question.
+ *
+ * A boundary guard for this module's direct callers, not a serving state the
+ * router can reach: stage 2's decomposition narrows every model label through
+ * `narrowRole` before the union reads it, so an out-of-vocabulary label leaves
+ * its part role-less and covered by the category row alone (ADR-0052's residual).
  */
 export function roleSources(role: string): readonly RoutableSource[] {
   if (!Object.hasOwn(ROLE_SOURCES, role)) throw new SourceRoleNotExpressibleError(role);
@@ -194,7 +199,18 @@ export function routeFilters(input: SourceRoutingInput): KajianQFilters {
  * publish identical lists.
  */
 export function sourceTypesOf(input: SourceRoutingInput): readonly RoutableSource[] {
-  const categorySources = CATEGORY_SOURCES[input.category ?? "general"];
+  const category = input.category ?? "general";
+  // Two readings of "no rule covers this area" are one answer with one spelling:
+  // a row whose decision is empty, and a key that is not in the vocabulary at
+  // all, both keep no filter. The router can never pass the second — stage 2
+  // narrows `category` through `isSubjectArea` — but this function is exported,
+  // and the base read tolerated it (`?? []`); an unlisted key must not be the one
+  // input that turns a route into a crash. Same `Object.hasOwn` guard as
+  // `roleSources` below, so both reads of an unknown vocabulary value are guarded
+  // (they differ in verdict on purpose: a role that must become a filter has no
+  // safe default, an area no rule covers has nothing to widen).
+  if (!Object.hasOwn(CATEGORY_SOURCES, category)) return [];
+  const categorySources = CATEGORY_SOURCES[category];
   if (categorySources.length === 0) return [];
   const selected = new Set<RoutableSource>();
   for (const source of categorySources) selected.add(source);
@@ -212,9 +228,15 @@ export function sourceTypesOf(input: SourceRoutingInput): readonly RoutableSourc
 }
 
 /**
- * The routing decision projected onto the trace — **the same filter record
- * retrieval receives**, produced by the same mapping, so the decision the
- * trace publishes and the search that runs cannot disagree. Throws
+ * The routing decision projected onto the trace — **the record retrieval
+ * receives for everything stage 3 derived**, produced by the same mapping, so
+ * the decision the trace publishes and the search that runs cannot disagree
+ * over what the rules decided (the router hands this same `routeFilters` output
+ * to retrieval). The one exception is a dimension the caller pinned: `routeFilters`
+ * carries it verbatim, while this projection is normalized (trim, dedupe, drop
+ * blanks), so for that record the event publishes the normalized reading of what
+ * the store binds — reachable through the seam, never from the wire, which
+ * parses no filters. Throws
  * `FilterNotExpressibleError` for a dimension the store cannot express, from
  * the stage that decided it: the route fails before a single search runs,
  * rather than answering a question it did not choose.

@@ -77,6 +77,20 @@ describe("source routing reads the subject area into an index selection", () => 
     expect(sourceTypesOf(reading())).toEqual([]);
   });
 
+  it("keeps an area outside the vocabulary unfiltered, not a crash", () => {
+    // "Unlisted keeps no filter" must hold on every path, not only the router's:
+    // a row whose decision is empty and a key the vocabulary does not carry are
+    // the same answer with one spelling. The router cannot pass the second
+    // (`readRouterReply` narrows through `isSubjectArea`), but this function is
+    // exported and the base sha returned `[]` for it — a direct caller must not
+    // be the one input that turns a route into a `TypeError` (review A5 of the
+    // #438 fix round).
+    expect(sourceTypesOf(reading({ category: "zikr" as never }))).toEqual([]);
+    expect(
+      sourceTypesOf(reading({ category: "zikr" as never, subQueries: [part("h", "dalil")] })),
+    ).toEqual([]);
+  });
+
   it("keeps an unlisted category unfiltered — a part's role can only widen a filter, never create one", () => {
     // The trap this decision must not fall into: `general` yields no filter at
     // all (the broadest possible search), so a naive union would turn that into
@@ -216,6 +230,23 @@ describe("route-wide coverage: the category's sources union every part's own rol
     expect(
       sourceTypesOf(reading({ category: "general", subQueries: [part("h", "hadits")] })),
     ).toEqual([]);
+  });
+
+  it("covers a role-less hadith part from the tafsir row — the dropped-label route", () => {
+    // The covered half of the residual, pinned where it is the only thing that
+    // can carry the part: stage 2 drops a model label outside the vocabulary
+    // (`narrowRole`), so the part arrives here with no role at all and the union
+    // skips it (`if (sub.role === undefined) continue`), leaving the widened
+    // `tafsir` row as its sole coverage. That is the third staging run's route —
+    // "the third carries no roles" — and the reason the row ships alongside the
+    // union, so narrowing the row back must redden here (review C1 of the #438
+    // fix round). The labelled shape stays the loud-failure case above: a part
+    // whose role must become a filter cannot be silently unmapped.
+    expect(
+      routeFilters(
+        reading({ category: "tafsir", subQueries: [part("hadits tentang keutamaan ilmu")] }),
+      ),
+    ).toEqual({ sourceType: ["quran", "tafsir", "hadith"] });
   });
 });
 
