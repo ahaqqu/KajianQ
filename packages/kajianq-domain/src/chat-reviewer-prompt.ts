@@ -71,9 +71,9 @@ export function isRefusalDraft(text: string): boolean {
  * it carries the canonical sentence, so what surrounds the refusal is its own
  * framing ("Mohon maaf, … untuk pertanyaan ini.") and never a claim of its own.
  * This is the DETERMINISTIC signal the earned-refusal exemption was missing —
- * the decline backstop, the symmetric counterpart to the reviewer's
- * "declines to answer" case, and the reason a citation-free draft that asserts
- * can no longer pass as a decline because the machinery saw no citations.
+ * the decline backstop, the symmetric counterpart to the reviewer's "declines
+ * to answer" case, and the reason a citation-free draft that asserts can no
+ * longer pass as a decline because the machinery saw no citations.
  *
  * It is a SHAPE test, deliberately not a claim classifier: the product cannot
  * read assertions, so the exemption is granted only to a text that adds nothing
@@ -81,13 +81,11 @@ export function isRefusalDraft(text: string): boolean {
  * whose delivery is the product's own refusal — the safe direction, because a
  * refusal the reader recognises is never worse than an assertion nobody
  * vouches for (SPECS §1.5 boundary 2), while decorating an assertion leaves the
- * assertion standing (SPECS §2.2).
- *
- * Its limits are recorded rather than hidden, both taking that same safe
- * direction: a draft that folds its assertion into the refusal's own sentence
- * is not distinguished from framing here, and neither is a multi-sentence
- * polite decline (a second sentence without the sentence is not the refusal-only
- * shape). Both ship the product's refusal, not the model's words.
+ * assertion standing (SPECS §2.2). Its limits are recorded rather than hidden,
+ * both taking that same direction: a draft that folds its assertion into the
+ * refusal's own sentence is not distinguished from framing here, and neither is
+ * a multi-sentence polite decline (a second sentence without the sentence is
+ * not the refusal-only shape). Both ship the product's refusal.
  */
 export function isRefusalOnly(text: string): boolean {
   const sentences = text
@@ -131,12 +129,11 @@ export function isEarnedRefusal(
 
 /**
  * What the reviewer stage DOES with a draft that carries the canonical refusal
- * sentence, and what its `refusal` event says about it. The stage records
- * `trigger`/`reason` verbatim and delivers `delivery` — so the decision, its
+ * sentence, and what its `refusal` event says about it: the stage records
+ * `trigger`/`reason` verbatim and delivers `delivery`, so the decision, its
  * trace vocabulary and the delivered text have one owner, beside the predicate
- * that decides them (round B1 of the #441 review moved the decision here for
- * exactly this reason, and the stage's own file is inside the agentic line
- * cap).
+ * that decides them (round B1 of the #441 review moved it here; the stage's own
+ * file is inside the agentic line cap).
  */
 export type RefusalDraftDecision = {
   /** The shape the draft is, in `CONTEXT.md`'s Refusal vocabulary. */
@@ -148,8 +145,8 @@ export type RefusalDraftDecision = {
   /**
    * What is delivered: the draft's own text (`draft`), the draft through the
    * deterministic rules (`rules`), or the product's own refusal text
-   * (`product_refusal` — the caller supplies its copy for the `ungrounded`
-   * reason). No delivery is "record nothing": every shape records its event.
+   * (`product_refusal` — the caller supplies its copy). No delivery is "record
+   * nothing": every shape records its event.
    */
   delivery: "draft" | "rules" | "product_refusal";
 };
