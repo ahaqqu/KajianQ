@@ -9,8 +9,15 @@
 //      after that PR merged exist only on the branch;
 //   2. it has no unique commits vs origin/main (falling back to local main),
 //      AND --include-unstarted was passed;
-//   3. it has no agent/<slug> branch — a detached review checkout, or one
-//      orphaned by an earlier sweep — AND --include-detached was passed.
+//   3. its HEAD is detached — a review checkout, or one orphaned by an earlier
+//      sweep — AND --include-detached was passed.
+// The branch a worktree is judged by is the one its own HEAD has checked out
+// (`git worktree list --porcelain`'s `branch` line), never a name derived from
+// its directory. A dispatch's slug and its branch need not agree —
+// `.worktrees/agent-15` holding `agent/router-stages-3-4` is a real case — and a
+// derived name would both miss merged work and risk judging, and deleting, a
+// branch the worktree is not on. A directory with no branch line is a detached
+// HEAD, which is rule 3.
 // Rules 2 and 3 are KEPT by default with the reason printed: with no commits or
 // no branch, "abandoned" and "a dispatch or review still in flight" are
 // indistinguishable, and that worktree is the most expensive to lose and the
@@ -170,8 +177,12 @@ function parseWorktrees(porcelain) {
   let current = null;
   for (const line of porcelain.split("\n")) {
     if (line.startsWith("worktree ")) {
-      current = { locked: false, lockReason: "" };
+      current = { locked: false, lockReason: "", branch: undefined };
       entries.set(realOrSelf(line.slice("worktree ".length)), current);
+    } else if (current && line.startsWith("branch refs/heads/")) {
+      // The branch this worktree's own HEAD is on — not necessarily one named
+      // after its directory. A detached HEAD prints no `branch` line at all.
+      current.branch = line.slice("branch refs/heads/".length);
     } else if (current && (line === "locked" || line.startsWith("locked "))) {
       current.locked = true;
       current.lockReason = line.slice("locked".length).trim();
@@ -236,7 +247,6 @@ let wouldRemove = 0;
 
 for (const slug of readdirSync(wtRoot).filter((n) => !n.startsWith("."))) {
   const wt = join(wtRoot, slug);
-  const branch = `agent/${slug}`;
   const keep = (msg) => {
     console.log(`kept  ${slug}: ${msg}`);
     kept++;
@@ -263,6 +273,13 @@ for (const slug of readdirSync(wtRoot).filter((n) => !n.startsWith("."))) {
     continue;
   }
 
+  // The branch under judgement is the one this worktree has checked out, read
+  // from git's own listing rather than derived from the directory name: the two
+  // need not agree, and a derived name would miss merged work while risking a
+  // branch delete on a branch this worktree is not on. No `branch` line at all
+  // is a detached HEAD, which is rule 3 below.
+  const branch = worktree.branch;
+
   // A registered worktree can still fail every git command aimed at it — a
   // stale gitdir, a permission error. That is this entry's outcome, never the
   // run's: report it and carry on to the remaining slugs.
@@ -276,16 +293,16 @@ for (const slug of readdirSync(wtRoot).filter((n) => !n.startsWith("."))) {
       continue;
     }
 
-    branchExists = gitOk(["rev-parse", "--verify", "--quiet", branch]);
+    branchExists = branch !== undefined;
 
     if (!branchExists) {
       if (!includeDetached) {
         keep(
-          `no ${branch} branch — a detached review or in-flight worktree (use --include-detached to remove)`,
+          "HEAD is detached — a review checkout or an in-flight worktree (use --include-detached to remove)",
         );
         continue;
       }
-      reason = `no ${branch} branch`;
+      reason = "detached HEAD";
     } else {
       const tip = git(["rev-parse", branch]);
       const pr = ghPr(branch);
