@@ -118,8 +118,19 @@ describe("the asserting refusal draft (#443)", () => {
     expect(isRefusalOnly(DEFAULT_REFUSALS.id)).toBe(true);
     expect(isRefusalOnly(`${DEFAULT_REFUSALS.id}.`)).toBe(true);
     const { head, tail } = REFUSAL_FLOORS.id;
-    const wrapped = `${head.replace(", ", ",\n")}\n${DEFAULT_REFUSALS.id}\n${tail}.`;
-    expect(isRefusalOnly(wrapped)).toBe(true);
+    // BOTH wrap spellings the round-1 review certified, each with its own pin
+    // again: this round's input broke the line after `kami`, and the reviewed
+    // head's spelling — the SPACE there — was uncovered once that input moved,
+    // because only the UNWRAPPED floor renders from `refusalFloorText` (review
+    // N4). The literal below is the reviewed byte string, the pattern the B1
+    // floor pin already uses; the template above must render it.
+    const wrappedAfterKami = `${head.replace(", ", ",\n")}\n${DEFAULT_REFUSALS.id}\n${tail}.`;
+    const wrappedAfterComma = `${head.replace(", ", ",\n")} ${DEFAULT_REFUSALS.id}\n${tail}.`;
+    expect(wrappedAfterComma).toBe(
+      "Mohon maaf,\nkami tidak menemukan dalil yang memadai\nuntuk pertanyaan ini.",
+    );
+    expect(isRefusalOnly(wrappedAfterKami)).toBe(true);
+    expect(isRefusalOnly(wrappedAfterComma)).toBe(true);
     // The same sentence as a list item, and with blank lines around it: the new
     // boundaries must not manufacture an empty or extra segment.
     expect(isRefusalOnly(`- ${sentence}`)).toBe(true);
@@ -365,6 +376,24 @@ describe("the asserting refusal draft (#443)", () => {
       expect(refusalDraftDecision(draft, validateCitations(draft, CHUNKS))?.delivery, draft).toBe(
         "product_refusal",
       );
+    }
+  });
+
+  it("reads a terminal-mark run as the sentence boundary, not a residue (review N1)", () => {
+    // `SENTENCE_BOUNDARIES` consumes a RUN of terminal marks (`!!!`, `...`, `؟؟`)
+    // as the boundary, so the run is structure and ships with the draft rather
+    // than being read as a segment residue. That is a DECISION the record states
+    // (`SPECS.md` §3.3, `CONTEXT.md` Refusal) and this case is its gate: reading
+    // the run as a residue (the closure direction) reddens here, and so does a
+    // boundary narrowed away from it, because the shipped draft is pinned too.
+    const rows = ["!!!", "...", "؟؟", "۔۔"];
+    for (const run of rows) {
+      const draft = `${run} Kami ${DEFAULT_REFUSALS.id}.`;
+      expect(isRefusalOnly(draft), draft).toBe(true);
+      const decision = refusalDraftDecision(draft, validateCitations(draft, CHUNKS));
+      expect(decision?.shape, draft).toBe("pure_refusal");
+      expect(decision?.trigger, draft).toBe("generator_refusal");
+      expect(decision?.delivery, draft).toBe("draft");
     }
   });
 

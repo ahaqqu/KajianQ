@@ -72,12 +72,12 @@ export function isRefusalDraft(text: string): boolean {
 }
 
 /**
- * What ends a sentence for the refusal-only shape test: terminal punctuation in
- * either script (`[.!?؟۔]+`), a blank line and a list item's own line. An
- * intra-paragraph line WRAP is not a boundary, so the pinned wrapped floor
- * (`"Mohon maaf,\nkami …\nuntuk pertanyaan ini."`) stays one sentence. Reading
- * every newline as a boundary once let an unterminated assertion, a list body
- * and an Arabic line keep the exemption (review A1 of #443).
+ * What ends a sentence for the refusal-only test: terminal punctuation in either script
+ * (`[.!?؟۔]+`), a blank line, a list item's own line. A RUN of marks is ONE such boundary:
+ * structure that ships with the draft, a recorded decision pinned in `chat-refusal.test.ts`
+ * (review N1 of #452). An intra-paragraph WRAP is not one — the pinned wrapped floor stays
+ * ONE sentence — and reading every newline as one once let an unterminated assertion, a list
+ * body and an Arabic line keep the exemption (review A1 of #443).
  */
 const SENTENCE_BOUNDARIES = /[.!?؟۔]+|\r?\n[ \t]*\r?\n|^[ \t]*(?:[-*•]|\d+[.)])[ \t]+/mu;
 
@@ -132,9 +132,9 @@ function isRefusalSegment(sentence: string): boolean {
 }
 
 /**
- * True when the draft is the refusal and NOTHING else (#443, #452): it carries
- * the canonical sentence, and every segment beside it is the floor's own frame
- * read in the floor's order — never a claim of the model's. This is the
+ * True when the draft is the refusal and no segment carries anything else (#443,
+ * #452): it carries the canonical sentence, and every segment beside it is the floor's
+ * own frame read in the floor's order — never a claim of the model's. This is the
  * DETERMINISTIC signal the earned-refusal exemption was missing: the decline
  * backstop, symmetric to the reviewer's "declines to answer" case, and the
  * reason a citation-free draft that asserts can no longer pass as a decline.

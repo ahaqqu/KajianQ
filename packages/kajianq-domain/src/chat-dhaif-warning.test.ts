@@ -679,10 +679,17 @@ describe("#443 — a citation-free asserting refusal draft ships the product's r
     const store = createMemoryRagStore();
     await seedChild(store, DHAIF_METADATA, 0);
     const { head, tail } = REFUSAL_FLOORS.id;
-    const wrapped = `${head.replace(", ", ",\n")}\n${DEFAULT_REFUSALS.id}\n${tail}.`;
-    const floor = await answerVia(store, wrapped);
-    expect((floor as { text: string }).text).toBe(wrapped);
+    // BOTH wrap spellings the round-1 review certified byte-identical: the
+    // newline after `kami` (this round's input) and the reviewed head's space
+    // there, which no suite covered once that input moved (review N4).
+    const wrappedAfterKami = `${head.replace(", ", ",\n")}\n${DEFAULT_REFUSALS.id}\n${tail}.`;
+    const wrappedAfterComma = `${head.replace(", ", ",\n")} ${DEFAULT_REFUSALS.id}\n${tail}.`;
+    const floor = await answerVia(store, wrappedAfterKami);
+    expect((floor as { text: string }).text).toBe(wrappedAfterKami);
     expect(productRulesEvents(floor)).toHaveLength(0);
+    const spaced = await answerVia(store, wrappedAfterComma);
+    expect((spaced as { text: string }).text).toBe(wrappedAfterComma);
+    expect(productRulesEvents(spaced)).toHaveLength(0);
 
     // The fold: the same sentence, on the same wiring, with a claim of the
     // model's own inside it. `isRefusalOnly` reads it as content now, so the
@@ -697,5 +704,23 @@ describe("#443 — a citation-free asserting refusal draft ships the product's r
     );
     expect(productRulesEvents(refused)).toHaveLength(0);
     expect(hasWeakWarning(text)).toBe(false);
+  });
+
+  it("ships a terminal-mark run with the draft, as the boundary decision it is (review N1)", async () => {
+    // The run is the sentence boundary `SENTENCE_BOUNDARIES` reads, not a
+    // segment residue, so the reader receives the draft with its marks and no
+    // rule is invented for a text that cites nothing. The predicate and decision
+    // pins live in `chat-refusal.test.ts`; this is the DELIVERED-text level the
+    // review measured, now a gate on the recorded decision (`SPECS.md` §3.3,
+    // `CONTEXT.md` Refusal) rather than on an omission.
+    const store = createMemoryRagStore();
+    await seedChild(store, DHAIF_METADATA, 0);
+    const draft = `!!! Kami ${DEFAULT_REFUSALS.id}.`;
+    const answer = await answerVia(store, draft);
+    expect((answer as { text: string }).text).toBe(draft);
+    expect(eventsOf(answer).find((e) => e.kind === "refusal")?.detail["trigger"]).toBe(
+      "generator_refusal",
+    );
+    expect(productRulesEvents(answer)).toHaveLength(0);
   });
 });
