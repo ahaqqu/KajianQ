@@ -98,11 +98,28 @@ export function citationMatchText(text: string): string {
  * gate's order:
  *
  * 1. the span **is** a retrieved label (the ordinary case);
- * 2. the span names a **list** of addresses (the Quran range) and every one of
- *    them is retrieved — strict-whole, the interior included (ADR-0049);
+ * 2. the span **declares a list** of addresses (the Quran range) and every one
+ *    of them is retrieved — strict-whole, the interior included (ADR-0049);
  * 3. the span **extends** a retrieved label with a grade the chunk did not
  *    carry (`HR. Bukhari no. 573 (Sahih)`), which is the answer's provenance,
  *    not a second address.
+ *
+ * **A declared list of ONE is a list too (#444).** Rule 2 decides a declared
+ * list of any width: a range whose endpoints are equal (`QS. 1:1–1`) names
+ * exactly the address its two endpoints spell, so it grounds exactly when that
+ * address is retrieved. The rule used to be gated on `named.length > 1`, reading
+ * "one declared address" as the ordinary case rule 1 already covers — true for a
+ * plain `QS. 1:1`, false for a one-address *range*, which declares a list the
+ * length test could not see at all. Such a span skipped rule 2, reached rule 3,
+ * found no `<label>` + space (a range continues with a dash, never a space) and
+ * was refused although its own address was retrieved: on staging that refusal
+ * replaced a 31-chunk grounded answer with the canonical one (trace
+ * `b8812e2d-…`, merge `d30c40cf`). The branch is read off the **declaration**,
+ * not the span's length: a grammar that declares a list enumerates addresses and
+ * they are decided here, while a grammar that declares none names the label
+ * itself whole (`addressesNamedBy`'s contract), the one shape rule 3 was written
+ * for. A range of one the surah cannot hold (`QS. 2:0-0`, `QS. 2:999–999`) stays
+ * unenumerable and refuses above, like any other list that cannot be verified.
  *
  * The list rule runs **before** the extension rule, and a declared list that is
  * not fully retrieved returns `null` rather than falling through: a spaced
@@ -131,15 +148,19 @@ export function groundingLabelsFor(
 ): readonly string[] | null {
   if (known.has(candidate)) return [candidate];
   // A declared list the grammar could not enumerate is unverifiable: refuse
-  // outright, before the length test below can mistake it for a single address.
+  // outright, before the branch below can mistake it for a single address.
   const declared = addressesNamedBy(candidate);
   if (declared === null) return null;
-  // ADR-0049: every address the citation's own grammar declares it names must
-  // be present. One declared address is the ordinary case already covered
-  // above; the check only ever ADDS a requirement, never drops one — and an
-  // unenumerable list, which no list can carry, refuses above instead.
+  // ADR-0049: every address the citation's own grammar declares it names must be
+  // present — a declared list of ONE exactly like a list of two (#444). A range
+  // always declares a list, whatever its width, so its enumeration names an
+  // address other than the span itself and is decided here. A grammar that
+  // declares no list names the label whole (`named[0] === candidate`, the
+  // `addressesNamedBy` contract), and that is the shape the extension rule below
+  // still decides. The check only ever ADDS a requirement, never drops one — and
+  // an unenumerable list, which no list can carry, refuses above instead.
   const named = declared.map(canonicalizeCitationSpelling);
-  if (named.length > 1) {
+  if (named.length > 0 && named[0] !== candidate) {
     return named.every((address) => known.has(address)) ? named : null;
   }
   // The extension rule can match more than one known label (a shortened label

@@ -582,6 +582,86 @@ describe("validateCitations — grounded direction", () => {
     expect(addressesNamedBy("HR. Bukhari no. 5010")).toEqual(["HR. Bukhari no. 5010"]);
   });
 
+  it("grounds a range of ONE address whose address is retrieved — and refuses it when it is not (#444)", () => {
+    // The live span (staging, merge `d30c40cf`, trace `b8812e2d-…`): the draft
+    // wrote `QS. 1:1–1` — a range whose endpoints are equal, so it declares
+    // exactly ONE address — while `QS. 1:1` WAS retrieved. The declared-list
+    // rule was gated on `named.length > 1`, so the span skipped it and fell to
+    // the shortened-label rule, which needs `<label>` + a space and cannot see a
+    // range at all: the gate refused a verifiable citation, and the
+    // `ungrounded_citation` trigger replaced a 31-chunk grounded answer with the
+    // canonical refusal. ADR-0049's rule is every address the span names, and a
+    // range of one names one.
+    const retrieved = [chunk("QS. 1:1"), chunk("QS. 1:5")];
+    const rows = [
+      ["QS. 1:1-1", "QS. 1:1"],
+      ["QS. 1:1–1", "QS. 1:1"],
+      ["QS. 1:1—1", "QS. 1:1"],
+      ["QS. 1:1 - 1", "QS. 1:1"],
+      ["Q.S. 1:1-1", "QS. 1:1"],
+      ["QS 1:1-1", "QS. 1:1"],
+      ["QS. 1:5–5", "QS. 1:5"],
+    ] as const;
+    for (const [span, address] of rows) {
+      const candidate = citationCandidatesIn(`Lihat ${span} ya`)[0]!;
+      // The declaration half: a range of one names exactly the address its two
+      // endpoints spell — not the head of a written string, and not "nothing".
+      expect(addressesNamedBy(candidate), span).toEqual([address]);
+      // The comparison half, at the one owner the gate and the frame share.
+      expect(groundingLabelsFor(candidate, new Set(["QS. 1:1", "QS. 1:5"])), span).toEqual([
+        address,
+      ]);
+      const { grounded, ungrounded } = validateCitations(`Lihat ${span} ya`, retrieved);
+      expect(grounded, span).toEqual([address]);
+      expect(ungrounded, span).toEqual([]);
+    }
+    // The other direction, on the same shape: a retrieved set holding only a
+    // SIBLING verse is not the address the span names, and the refusal names the
+    // span as the draft wrote it — never the address it names — so the refusal
+    // reason, the frame and the reviewer's claim span keep pointing at the text.
+    for (const span of ["QS. 1:1–1", "QS. 1:1-1"]) {
+      expect(
+        validateCitations(`Lihat ${span} ya`, [chunk("QS. 1:2"), chunk("QS. 1:9")]),
+        span,
+      ).toEqual({ grounded: [], ungrounded: [span] });
+    }
+    // No weakening: a two-address range with an address missing still refuses —
+    // the ticket's own `QS. 1:1-9` row is this shape with the tail retrieved by
+    // nobody.
+    expect(validateCitations("Lihat QS. 1:1-9 ya", [chunk("QS. 1:1")]).ungrounded).toEqual([
+      "QS. 1:1-9",
+    ]);
+    expect(validateCitations("Lihat QS. 1:1–2 ya", [chunk("QS. 1:1")]).ungrounded).toEqual([
+      "QS. 1:1–2",
+    ]);
+    // Fail-closed where the grammar cannot ENUMERATE, degenerate or not: an
+    // address the surah cannot have, a surah outside the table, and another
+    // script's digits all declare an unverifiable list — they refuse rather than
+    // collapsing to the one address they spell (ADR-0049's third state, the range
+    // module's `null`, which is not a one-element list).
+    for (const span of ["QS. 2:0-0", "QS. 2:999–999", "QS. 115:1-1", "QS. 2:٢٥٥–٢٥٥"]) {
+      const candidate = citationCandidatesIn(`Lihat ${span} ya`)[0]!;
+      expect(addressesNamedBy(candidate), span).toBeNull();
+      expect(groundingLabelsFor(candidate, new Set(["QS. 1:1", "QS. 2:255"])), span).toBeNull();
+      expect(validateCitations(`Lihat ${span} ya`, [chunk("QS. 2:255")]), span).toEqual({
+        grounded: [],
+        ungrounded: [candidate],
+      });
+    }
+    // The other fail-closed reason, untouched by this fix: a surah written by
+    // NAME is enumerable — bounded by the longest surah — but unverifiable
+    // against the corpus's numeric labels, so a range of one in that spelling
+    // refuses in the comparison instead. It grounds no address by collapsing to
+    // the one it names, and it never reaches the unenumerable state either.
+    const named = citationCandidatesIn("Lihat QS. Al-Fatihah:1–1 ya")[0]!;
+    expect(addressesNamedBy(named)).toEqual(["QS. Al-Fatihah:1"]);
+    expect(groundingLabelsFor(named, new Set(["QS. 1:1"])), named).toBeNull();
+    expect(validateCitations("Lihat QS. Al-Fatihah:1–1 ya", [chunk("QS. 1:1")])).toEqual({
+      grounded: [],
+      ungrounded: ["QS. Al-Fatihah:1–1"],
+    });
+  });
+
   it("keeps the accepted set where it was — the fix narrows only the unenumerable spaced form", () => {
     // The differential this fix round re-ran, base `c64696f` vs this head, over
     // 21,438 answer × retrieved-set combinations: **widened 0, narrowed 696**,
