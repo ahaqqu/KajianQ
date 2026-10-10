@@ -125,7 +125,7 @@ describe("worktree-cleanup", () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("kept  review-7");
-    expect(result.stdout).toMatch(/no agent\/review-7 branch/);
+    expect(result.stdout).toMatch(/HEAD is detached/);
     expect(result.stdout).toContain("--include-detached");
     expect(result.stdout).toContain("done: 0 removed, 1 kept");
     expect(callLog(fx)).toEqual([]);
@@ -141,7 +141,7 @@ describe("worktree-cleanup", () => {
     const result = runClean(fx, ["--include-detached"]);
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("removed review-7 (no agent/review-7 branch)");
+    expect(result.stdout).toContain("removed review-7 (detached HEAD)");
     expect(result.stdout).toContain("done: 1 removed, 0 kept");
     expect(callLog(fx)).toEqual([]);
     expect(fx.exists("review-7")).toBe(false);
@@ -161,6 +161,46 @@ describe("worktree-cleanup", () => {
     expect(callLog(fx)).toEqual(["pr view agent/merged --json state,headRefOid"]);
     expect(fx.exists("merged")).toBe(false);
     expect(fx.branchExists("agent/merged")).toBe(false);
+    fx.dispose();
+  });
+
+  it("judges the worktree's own branch when its slug and branch disagree", () => {
+    const fx = makeFixture();
+    const tip = fx.addCommittedOn("agent-15", "agent/router-stages-3-4");
+    fx.fakeGh({ prs: { "agent/router-stages-3-4": { state: "MERGED", headRefOid: tip } } });
+
+    const result = runClean(fx);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("removed agent-15 (PR merged)");
+    expect(callLog(fx)).toEqual(["pr view agent/router-stages-3-4 --json state,headRefOid"]);
+    expect(fx.exists("agent-15")).toBe(false);
+    expect(fx.branchExists("agent/router-stages-3-4")).toBe(false);
+    fx.dispose();
+  });
+
+  it("never judges a branch named after the directory when HEAD is detached", () => {
+    const fx = makeFixture();
+    // The namesake branch exists, has its own commit and its PR is MERGED — but
+    // it is checked out in ANOTHER worktree, and `.worktrees/namesake` is
+    // detached. Judging the namesake would remove this worktree and then try to
+    // delete a branch that is not its own; the entry is kept for rule 3 instead.
+    const outside = fx.addOutside("namesake");
+    writeFileSync(join(outside, "wip.txt"), "wip\n");
+    git(outside, ["add", "wip.txt"]);
+    git(outside, ["commit", "-q", "-m", "wip"]);
+    const tip = git(outside, ["rev-parse", "HEAD"]);
+    fx.addDetached("namesake");
+    fx.fakeGh({ prs: { "agent/namesake": { state: "MERGED", headRefOid: tip } } });
+
+    const result = runClean(fx);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("kept  namesake: HEAD is detached");
+    expect(result.stdout).toContain("--include-detached");
+    expect(callLog(fx)).toEqual([]);
+    expect(fx.exists("namesake")).toBe(true);
+    expect(fx.branchExists("agent/namesake")).toBe(true);
     fx.dispose();
   });
 
@@ -358,7 +398,7 @@ describe("worktree-cleanup", () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("kept  README: not a git worktree — remove manually");
     expect(result.stdout).toContain("kept  stray-dir: not a git worktree — remove manually");
-    expect(result.stdout).toContain("removed review-9 (no agent/review-9 branch)");
+    expect(result.stdout).toContain("removed review-9 (detached HEAD)");
     expect(result.stdout).toMatch(/^done: 1 removed, 2 kept$/m);
     expect(existsSync(join(fx.dir, ".worktrees", "README"))).toBe(true);
     expect(existsSync(join(fx.dir, ".worktrees", "stray-dir"))).toBe(true);

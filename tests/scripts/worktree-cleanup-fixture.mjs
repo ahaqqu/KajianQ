@@ -250,6 +250,17 @@ esac
       git(dir, ["worktree", "add", "-q", path, "-b", `agent/${name}`]);
       return path;
     },
+    // A worktree whose directory name and branch intentionally disagree — the
+    // shape the manager's own dispatch briefs produce (`.worktrees/agent-15`
+    // checked out on `agent/router-stages-3-4`). The branch is the worktree's
+    // truth; the slug is only a label.
+    addCommittedOn(slug, branch) {
+      git(dir, ["worktree", "add", "-q", wtPath(slug), "-b", branch]);
+      writeFileSync(join(wtPath(slug), "wip.txt"), "work in progress\n");
+      git(wtPath(slug), ["add", "wip.txt"]);
+      git(wtPath(slug), ["commit", "-q", "-m", "wip"]);
+      return git(wtPath(slug), ["rev-parse", "HEAD"]);
+    },
     addCommitted(slug) {
       git(dir, ["worktree", "add", "-q", wtPath(slug), "-b", `agent/${slug}`]);
       writeFileSync(join(wtPath(slug), "wip.txt"), "work in progress\n");
