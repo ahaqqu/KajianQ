@@ -93,7 +93,7 @@
         "@app/infra": "workspace:*",
         "@app/kajianq-domain": "workspace:*",
         "@app/rag-core": "workspace:*",
-        "effect": "4.0.0-rc.112",
+        "effect": "4.0.0",
         "valibot": "1.4.2",
       },
       "devDependencies": {
@@ -123,7 +123,7 @@
         "@app/contracts": "workspace:*",
         "@app/rag-core": "workspace:*",
         "@aws-sdk/client-s3": "^3.1116.0",
-        "effect": "4.0.0-rc.112",
+        "effect": "4.0.0",
         "pg": "^8.23.0",
         "valibot": "1.4.2",
       },
@@ -141,7 +141,7 @@
         "@app/rag-core": "workspace:*",
         "@app/rag-ingest": "workspace:*",
         "@aws-sdk/client-s3": "^3.1127.0",
-        "effect": "4.0.0-rc.112",
+        "effect": "4.0.0",
         "valibot": "1.4.2",
       },
       "devDependencies": {
@@ -155,7 +155,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@app/contracts": "workspace:*",
-        "effect": "4.0.0-rc.112",
+        "effect": "4.0.0",
       },
       "devDependencies": {
         "typescript": "7.0.2",
@@ -168,7 +168,7 @@
         "@app/contracts": "workspace:*",
         "@app/infra": "workspace:*",
         "@app/rag-core": "workspace:*",
-        "effect": "4.0.0-rc.112",
+        "effect": "4.0.0",
       },
       "devDependencies": {
         "typescript": "7.0.2",
