@@ -413,7 +413,7 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
         const A = `QS. ${s}:${a}`, k = 1 + (a % C[s - 1]), B = `QS. ${s}:${k}`;
         for (const d of DASH) for (const span of [A, `${A}${d}${a}`, `${A} ${d} ${a}`, `${A}${d}${k}`])
           for (const f of [[A], [A, B], ["QS."], [B], [], [A, "QS."]])
-            space.push([span + "\u0000" + f.join(), `Lihat ${span} ya`, new Set(f)]);
+            space.push([span + "|" + f.join(), `Lihat ${span} ya`, new Set(f)]);
       }
       const sweep = async (p) => { const m = await import(p);
         return space.map(([, t, K]) => m.groundingLabelsFor(m.citationCandidatesIn(t)[0], K)); };
