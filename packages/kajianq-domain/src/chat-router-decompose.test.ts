@@ -395,8 +395,9 @@ const hasContent = (text: string): boolean => /[\p{L}\p{N}]/u.test(text);
  * #462, the QA round's finding on #460. The rule leg never met the content test:
  * only the reply's texts did, while the rule loop and the floor pushed through a
  * gate whose only test was `normalize(text) === ""` — and `normalize` trims
- * Unicode **White_Space**, which `Cf` (zero-width space, joiner, BOM) and `Cc`
- * (C0 controls) are not. Measured on staging at `f57fedd`, two of 50 `subquery`
+ * ECMAScript **White_Space**, which the `Cf` zero-width space and joiner and the
+ * `Cc` C0 controls are not (a BOM, U+FEFF, *is* ECMAScript White_Space, so
+ * `trim()` alone already caught that one). Measured on staging at `f57fedd`, two of 50 `subquery`
  * events over 21 routes carried no letter and no digit: a zero-width question
  * (trace `618ac5a9-452a-4a67-93e7-41a545119e81`, 32 chunks) and a control one
  * (trace `d4200338-98c8-4a5c-808e-862836893870`, 31 chunks) — both `role:
