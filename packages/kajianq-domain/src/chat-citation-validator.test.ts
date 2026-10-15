@@ -689,42 +689,20 @@ describe("validateCitations — grounded direction", () => {
     // (6,236 x 25 x 6). The verdicts: **widened 0, narrowed 6,236** pairs (49,888 of
     // the 1,197,312 combinations — the plain span is enumerated once per joiner) —
     // every narrowed pair a plain span whose retrieved set held only the marker, one
-    // per numeric address, and no pair outside that class. The divergence class itself
+    // per numeric address, and no pair outside that class, which the sweep prints
+    // beside the counts (`narrowedSpans: 6236`,
+    // `narrowedAllPlainAddressMarkerOnly: true`). This is the numeric-address space
+    // only: the superseded `1,197,348` / `935,418` are this space plus the 6 hadith
+    // shapes (plain, graded) x 6 retrieved-set families PR #455 also counted
+    // (+36 combinations, +18 pairs). The divergence class itself
     // is "plain Quran spans" generically, not those 6,236: a plain span written with a
     // surah NAME narrows the same way and this sweep does not enumerate it (the
     // `QS. Al-Fatihah:1` row below pins it).
     //
-    // Re-derive both counts by pasting this whole block (indentation included) at the
-    // repo root of this revision — `D` holds the `4003527` tree the base reading runs
-    // against, and the sweep is the recipe above written out:
-    /*
-      D=$(mktemp -d) && git archive 4003527 packages/kajianq-domain/src | tar -x -C "$D" && D="$D" bun -e '
-      const { SURAH_AYAH_COUNTS: C } = await import("./packages/kajianq-domain/src/surah-names.ts");
-      const DASH = ["-", "\u2010", "\u2011", "\u2012", "\u2013", "\u2014", "\u2015", "\u2212"];
-      const space = []; // one entry per combination: [dedup key, answer text, retrieved set]
-      for (let s = 1; s <= C.length; s++) for (let a = 1; a <= C[s - 1]; a++) {
-        const A = `QS. ${s}:${a}`, k = 1 + (a % C[s - 1]), B = `QS. ${s}:${k}`;
-        for (const d of DASH) for (const span of [A, `${A}${d}${a}`, `${A} ${d} ${a}`, `${A}${d}${k}`])
-          for (const f of [[A], [A, B], ["QS."], [B], [], [A, "QS."]])
-            space.push([span + "|" + f.join(), `Lihat ${span} ya`, new Set(f)]);
-      }
-      const sweep = async (p) => { const m = await import(p);
-        return space.map(([, t, K]) => m.groundingLabelsFor(m.citationCandidatesIn(t)[0], K)); };
-      const head = await sweep("./packages/kajianq-domain/src/chat-citation-validator.ts");
-      const base = await sweep(`${process.env.D}/packages/kajianq-domain/src/chat-citation-validator.ts`);
-      const uniq = (rows) => new Set(rows.map(([k]) => k)).size;
-      const rows = (hit) => space.filter((_, i) => hit(head[i], base[i]));
-      console.log({
-        addresses: C.reduce((x, y) => x + y, 0), combos: space.length, pairs: uniq(space),
-        widened: rows((h, b) => h !== null && b === null).length,
-        narrowed: rows((h, b) => h === null && b !== null).length,
-        widenedPairs: uniq(rows((h, b) => h !== null && b === null)),
-        narrowedPairs: uniq(rows((h, b) => h === null && b !== null)),
-      });
-      '
-      -> { addresses: 6236, combos: 1197312, pairs: 935400, widened: 0, narrowed: 49888,
-           widenedPairs: 0, narrowedPairs: 6236 }
-    */
+    // The recipe, the single re-runnable sweep and the printed class claim for both
+    // counts are in `SPECS.md` §3.7, the bullet "Re-deriving the #449 differential's
+    // counts (#459)". This file keeps no second copy of the command, so there is
+    // nothing here to hand-sync against the other sites that quote the counts.
     const marker = "QS.";
     for (const written of ["QS. 2:4", "Q.S. 2:4", "QS 2:4"] as const) {
       const candidate = citationCandidatesIn(`Lihat ${written} ya`)[0]!;
