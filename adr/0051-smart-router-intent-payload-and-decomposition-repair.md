@@ -16,8 +16,10 @@ different declared role keeps its label, and only that coincidence goes unshown.
 no letter and no digit in any script is **dropped**, never embedded, **whatever its origin** — the reply's phrasing, a
 composition rule's own text, the floor's, or the router fallback's — and the ceiling never spends the slot of the entry a
 fired rule's own text lives in — so the repair is a fixed point over its own output. The `factual` rule's text _is_ the
-caller's verbatim question, so a content-free question fans out over nothing rather than spending an embed and a pair of
-searches on itself, while the principle/dalil/sanad templates carry words of their own and stay searchable. The set is bounded to the stage's
+caller's verbatim question, so a content-free question's `factual` entry is dropped rather than spending an embed and a
+pair of searches on itself — the fan-out is **empty when no non-factual rule fires** — while the principle/dalil/sanad
+templates carry words of their own, so a shape that fires one keeps its template entry and the text-level drop is all
+that is unconditional (review C1). The set is bounded to the stage's
 ceiling, with a floor on **distinct retrieval texts**: 2–4 whenever the caller's question plus a differing model
 sub-query or a rule beyond `factual` gives two texts to search, and exactly 1 when the question is the only one — the
 floor is never padded with a near-duplicate, which would claim a decomposition that never happened. Each sub-query

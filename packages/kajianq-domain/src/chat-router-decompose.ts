@@ -1,10 +1,16 @@
 import type { SubQuery } from "@app/rag-core";
+import { admitSubQueryText } from "./chat-subquery-admission";
 import {
   SUB_QUERY_ROLES,
   type PrincipleTag,
   type SubjectArea,
   type SubQueryRole,
 } from "./taxonomy";
+
+// Re-exported where its other caller reads it: the agentic import cap holds
+// `chat-router.ts` at five imports, while the doc and the test stay at their
+// owner, `chat-subquery-admission` (review A1/B2).
+export { admitSubQueryText };
 
 /**
  * Query decomposition (CONTEXT.md) — Smart Router stage 2, made deterministic
@@ -31,10 +37,12 @@ import {
  *      origin**: the reply's phrasing and a composition rule's own text alike.
  *      It cannot retrieve, and it would spend an embed slot and a pair of
  *      searches inside the ceiling's window where a real angle belongs (#450).
- *      The `factual` rule's text *is* the caller's question, so a content-free
- *      question fans out over nothing (#462) — while the principle/dalil/sanad
- *      templates carry words of their own and are searchable even when the
- *      question is not. The drop is a function of the text alone, never of the
+ *      The `factual` rule's text *is* the caller's question, so the `factual`
+ *      rule adds nothing for a content-free question and the fan-out is empty
+ *      **only when no non-factual rule fires** (#462, review C1) — while the principle/dalil/sanad
+ *      templates carry words of their own and stay searchable even when the
+ *      question is not, so a shape that fires one keeps its template entry.
+ *      The drop is a function of the text alone, never of the
  *      origin that offered it, which is what keeps the reply's echo of a
  *      content-free question and the rule's own add of that same text in
  *      agreement on the next pass (#453);
@@ -66,7 +74,10 @@ import {
  * handed carried no letter and no digit — a blank question, or one made only of
  * punctuation, `Cf` or `Cc` characters, whose rule text *is* the question and
  * which `push` drops (#462) — beside a reply whose every text the same gate
- * dropped.
+ * dropped, **and no non-factual rule fires**. The principle/dalil/sanad templates
+ * carry words of their own, so a shape that fires one is searchable even when
+ * the question is not and the fan-out is not empty: the route-level emptiness is
+ * conditional, while the text-level drop above is unconditional (review C1).
  */
 export const MIN_SUB_QUERIES = 2;
 export const MAX_SUB_QUERIES = 4;
@@ -105,21 +116,19 @@ export function decomposeQuery(input: DecompositionInput): SubQuery[] {
   const firedRoles = requiredRoles(input);
 
   const push = (sub: SubQuery): void => {
-    // Never store an untrimmed query: a trailing space is noise in the trace
-    // and makes the repair non-idempotent over its own output.
-    const text = sub.text.trim();
-    const key = normalize(text);
-    if (key === "" || seen.has(key)) return;
-    // The one content gate, applied to every origin. A text carrying no letter
-    // and no digit in any script is not a query: the sparse track tokenizes
-    // nothing out of it and the dense track returns its nearest neighbours to
-    // noise, so it would spend an embed slot and a pair of searches for nothing
-    // — and a `subquery` event would publish it as a part the route understood.
-    // The test is the *text's* own, never the origin's, and that is what keeps
+    // Never store an untrimmed query: a trailing space is noise in the trace.
+    // And a text with no letter and no digit is not a query at all. Both halves
+    // are one admission, owned by `chat-subquery-admission` and applied here to
+    // every origin — the reply's phrasing and a rule's own text alike — so no
+    // caller can take the content test without the trim (review A1). Dropping
     // the reply's echo of a content-free question and the `factual` rule's own
-    // add of that same text in agreement on the next pass (#453): both are
-    // dropped here, at whichever position they arrive (#450, #462).
-    if (!hasSearchableContent(text)) return;
+    // add of that same text at the same gate is what keeps the two passes in
+    // agreement (#453): both are dropped here, at whichever position they
+    // arrive (#450, #462).
+    const text = admitSubQueryText(sub.text);
+    if (text === undefined) return;
+    const key = normalize(text);
+    if (seen.has(key)) return;
     seen.add(key);
     kept.push({ ...sub, text });
   };
@@ -277,22 +286,4 @@ function narrowRole(value: string | undefined): SubQueryRole | undefined {
 /** Duplicate detection ignores case and surrounding/repeated whitespace. */
 function normalize(text: string): string {
   return text.trim().replace(/\s+/g, " ").toLowerCase();
-}
-
-/**
- * Does this text carry anything a search can match? A letter or a digit in any
- * script — `\p{L}` and `\p{N}` are Unicode properties, so Arabic, Jawi, a bare
- * numeral and a single word all count. Anything else (whitespace, punctuation,
- * emoji, `Cf` zero-width characters and joiners, `Cc` control characters) is not
- * a query: the sparse track would tokenize nothing from it and the dense track
- * would return its nearest neighbours to noise, at the price of an embed and a
- * pair of searches (#450).
- *
- * Exported because the router's fallback is a third origin a caller's text can
- * become a sub-query from, and this invariant is stated without an origin: a
- * text with no letter and no digit never becomes one (#462). One owner for the
- * test, so the decomposer's gate and the fallback's cannot drift apart.
- */
-export function hasSearchableContent(text: string): boolean {
-  return /[\p{L}\p{N}]/u.test(text);
 }

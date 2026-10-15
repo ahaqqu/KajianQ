@@ -436,6 +436,11 @@ describe("decomposeQuery — a text with no letter and no digit is never a sub-q
   ] as const;
 
   it("fans out over nothing for the zero-width question, with or without the reply's echo", () => {
+    // The shape: `needsPrinciple: false` and no fikih/hadith category, so the
+    // `factual` rule is the only one that fired and its text *is* this
+    // content-free question — the route-level empty fan-out that holds "when no
+    // non-factual rule fires" (review C1). A shape that fires one keeps its
+    // template entry; that other half is pinned by the template test below.
     // The rule's own add, which is what the live trace carried: no reply at all.
     expect(decomposeQuery(input({ question: ZERO_WIDTH_QUESTION }))).toEqual([]);
     // The reply's echo of it. #453 exempted this text from the reply's filter so
@@ -458,6 +463,8 @@ describe("decomposeQuery — a text with no letter and no digit is never a sub-q
   });
 
   it("fans out over nothing for the control-character question, with or without the reply's echo", () => {
+    // Same shape as the zero-width case above: the `factual` rule alone fired
+    // (review C1).
     expect(decomposeQuery(input({ question: CONTROL_QUESTION }))).toEqual([]);
     expect(
       decomposeQuery(

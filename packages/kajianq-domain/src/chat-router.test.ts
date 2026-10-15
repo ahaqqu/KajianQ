@@ -268,6 +268,23 @@ describe("createKajianQRouter", () => {
     }
   });
 
+  it("trims the fallback's sub-query text like every other origin", async () => {
+    // A1 of the #462 review: the fallback applied half of the admission — the
+    // content test — and handed the question on untrimmed, so `"  riba  "`
+    // reached the embed and the persisted `subquery` event with its padding
+    // while the decompose arm trimmed the same text to `"riba"`. Both arms now
+    // take the whole admission from one owner, so `SPECS.md` §3.3's "padded text
+    // is kept trimmed" covers this shape too. Red at `f6fdf2c` (the fallback
+    // passed `text: question` through), green here.
+    for (const question of ["  riba  ", "\triba\n"]) {
+      const h = harness("I cannot answer that.");
+      const routed = (await h.route({ text: question })) as {
+        subQueries: readonly { text: string; role?: string; origin?: string }[];
+      };
+      expect(routed.subQueries).toEqual([{ text: "riba", role: "factual", origin: "fallback" }]);
+    }
+  });
+
   it("keeps the caller's explicit filters through the fallback", async () => {
     const h = harness(JSON.stringify({ not: "a router reply" }));
     const routed = (await h.route({
