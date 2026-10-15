@@ -17,7 +17,8 @@ There is no third depth. If a PR mixes code and docs, thermos applies to the who
 
 ## Inputs
 
-- The pull request diff.
+- The pull request diff, read through the API media type — `gh api -H "Accept: application/vnd.github.v3.diff" repos/{owner}/{repo}/pulls/<pr>`, or `git diff <base>..<head>` from a checkout. **Line anchors come from that diff**: `gh pr diff --patch` has served intermediate blobs of a live PR, and an anchor taken from it lands on code the head does not have.
+- The numbers the change commits, checked against their own recipe: a count stated as a product multiplies out to the quoted total, and a differential count names the command that produced it. A figure that follows from neither its stated factors nor a re-runnable command is a finding, not a rounding difference.
 - `docs/ARCHITECTURE.md` — verify the changes align with the principles (§1–§14 and §17–§18, including the KajianQ amendments).
 - `AGENTS.md` — universal guardrails and Definition of Done.
 - `.agents/skills/dars-pluggability/SKILL.md` and `.agents/skills/kajianq-traceability/SKILL.md` — the domain checklists and anti-pattern lists.
