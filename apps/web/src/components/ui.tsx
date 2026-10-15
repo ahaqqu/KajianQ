@@ -2,11 +2,11 @@ import type { ComponentProps, ReactNode } from "react";
 
 // Re-exported so `AppHeader` (capped at 5 imports by `agentic-limits`) can
 // reach the shared nav views without a sixth import; the implementation lives
-// in the leaf `lib/routes` beside the nav list it derives from (thermo-review C3).
+// in the leaf `lib/routes` beside the nav list it derives from.
 export { NavLinks } from "../lib/routes";
 // Same cap arrangement for the collection page's "Ask about this source"
-// affordance (#175): the link lives in the `lib/` leaf, beside the route tree
-// it targets.
+// affordance: the link lives in the `lib/` leaf, beside the route tree it
+// targets.
 export { AskAboutLink } from "../lib/collection-ask";
 
 /** Minimal shadcn-like primitives (owned source), themed by the design tokens. */
@@ -26,9 +26,9 @@ export function Card({
 }
 
 /**
- * The reference's mono-uppercase label primitive (thermo-review B1): one
- * treatment — mono, uppercase, 0.2em tracking, muted — so the label voice
- * cannot drift per call site. Callers override only size/color via className.
+ * The reference's mono-uppercase label primitive: one treatment so the label
+ * voice cannot drift per call site. Callers override only size/color via
+ * className.
  */
 export function MonoLabel({
   children,
@@ -50,9 +50,8 @@ export function CardLabel({ children }: { children: ReactNode }) {
 }
 
 /**
- * The static pages' shared heading (About, Collection): the reference's
- * serif-italic h1 over a muted intro paragraph, in the app's single-column
- * voice. Owned here so both pages cannot drift apart.
+ * The static pages' shared heading (About, Collection), owned here so both
+ * pages cannot drift apart.
  */
 export function PageIntro({ title, intro }: { title: string; intro: string }) {
   return (

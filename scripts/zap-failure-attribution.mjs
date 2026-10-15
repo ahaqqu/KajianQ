@@ -1,44 +1,15 @@
 #!/usr/bin/env bun
-// ZAP baseline failure attribution (#382). A red `ZAP baseline` step means one
-// of two completely different things, and the job's colour cannot tell them
-// apart:
+// ZAP baseline failure attribution. A red `ZAP baseline` step means either that
+// the scanner could not run (infrastructure) or that the scan ran and found new
+// alerts (the site regressed); the distinguishing line lives only inside the
+// step log. This module derives a named class from the evidence that outlives
+// the failed step.
 //
-//   * the SCANNER could not run — an infrastructure abort (run 37118454475:
-//     `Failed to access summary file /home/zap/zap_out.json`, then `docker`
-//     exit code 3, no report written); nothing to fix in the site;
-//   * the SCAN RAN and FOUND NEW ALERTS — the site regressed.
-//
-// The distinguishing line exists only inside the step log, so a reader — or a
-// future automated triage — cannot tell "the scanner broke" from "the site
-// regressed" without opening it. This module turns the evidence that outlives
-// the failed step into a named class, and writes it to the job summary.
-//
-// WHERE THE CLASS COMES FROM (the action is a black box; this is its interface)
-//
-// 1. `zaproxy/action-baseline@de8ad967…` (v0.15.0) index.js:60-76. It runs
-//    `docker run <image> zap-baseline.py …` and branches on the container's exit
-//    code:
-//      * exit 3       → `core.setFailed('failed to scan the target: …')` and
-//                       `return`: `processReport` never runs, so there is no
-//                       `FAIL-NEW:` line, no `zap_scan` artifact and no issue —
-//                       exactly run 37118454475's shape;
-//      * exit 1 or 2  → with `fail_action: true`: `setFailed('Scan action
-//                       failed as ZAP has identified alerts, starting to
-//                       analyze the results. …')`, then `processReport` runs and
-//                       prints `FAIL-NEW:`/`WARN-NEW:` and uploads the report.
-// 2. The image's own contract (`docker/zap-baseline.py` at the pinned digest's
-//    commit 2665d97, header lines 31-34, exit sites 497-516 and 695-708):
-//      0: Success · 1: At least 1 FAIL · 2: At least one WARN and no FAILs ·
-//      3: Any other failure.
-//
-// So the container's exit code IS the class, and the action never passes
-// `--rm`, so the aborted container is still on the runner when an
-// `if: failure()` step runs. Nothing here weakens the gate: the scan step keeps
-// `fail_action: true`, and this runs only after it has already failed.
-//
-// The classification is a pure function of (step outcomes, container exit code,
-// report presence) so it can be asserted directly — see
-// tests/scripts/zap-failure-attribution.test.mjs.
+// The container's exit code IS the class: on exit 3 the action fails and returns
+// before analysing results (no `FAIL-NEW:` line, no artifact, no issue); on exit
+// 1 or 2 with `fail_action: true` it analyses the results and uploads them. It
+// passes no `--rm`, so the aborted container is still on the runner for a later
+// `if: failure()` step. The scan step keeps `fail_action: true`: the gate stands.
 import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -67,26 +38,15 @@ export const ZAP_CLASSES = {
 /**
  * Pick the ZAP container from the runner's container list.
  *
- * PROVENANCE IS THE PRECONDITION OF A SITE VERDICT. The container's exit code
- * is what separates "the scanner broke" from "the site regressed", so a
- * container that is not this run's scan must never be allowed to supply one.
- * The only evidence that a container belongs to this run is that it appeared
- * after the pre-pull step's snapshot (`before`), because the pre-pull step is
- * the first thing this job does with docker. Both lookups therefore filter on
- * that set, and each reports itself by name so the output never hides which one
- * produced the id:
- *   1. `docker ps -a --filter ancestor=<image>` INTERSECTED with the containers
- *      that appeared since the snapshot — the precise filter;
- *   2. the container that appeared since the snapshot — deterministic, and
- *      independent of docker's filter semantics.
- * There is deliberately no "newest container" fallback: by the time it would
- * fire, both lookups have proven that nothing appeared during this job, so
- * anything it returned would predate the snapshot and could belong to another
- * run or a reused runner — the one wrong answer this diagnostic exists to
- * prevent (review A1, #397). `snapshotTaken: false` means the snapshot could not
- * be read at all, which is not the same as "the runner was empty": with nothing
- * to intersect against, no container can be proven to be this run's, so the
- * lookup refuses instead of guessing.
+ * The exit code separates "the scanner broke" from "the site regressed", so a
+ * container that is not this run's scan must never supply one. Provenance means
+ * it appeared after the pre-pull step's snapshot (`before`), and both lookups
+ * filter on that set: the `--filter ancestor=<image>` hit, then the container
+ * that appeared since the snapshot. There is deliberately no "newest container"
+ * fallback — both lookups have by then proven nothing appeared during this job,
+ * so a fallback's answer would predate the snapshot and could belong to another run.
+ * `snapshotTaken: false` means the snapshot could not be read, not that the
+ * runner was empty, so with nothing to intersect against the lookup refuses.
  */
 export function chooseContainer({
   ancestor = [],
@@ -118,11 +78,9 @@ export function chooseContainer({
 }
 
 /**
- * Read the ZAP JSON report the action asks for (`-J report_json.json`, written
- * into the workspace the container mounts at /zap/wrk). Presence is the
- * corroborating signal for the scan class: the abort path writes nothing.
- * The risk-code tally is corroboration only — the gate's own FAIL-NEW/WARN-NEW
- * counts come from the action's rule-file comparison, not from this tally.
+ * Read the ZAP JSON report the action writes into the mounted workspace
+ * (`-J report_json.json`). Presence corroborates the scan class — the abort path
+ * writes nothing.
  */
 export function parseZapReport(text) {
   if (text === null || text === undefined || text === "") {
@@ -184,17 +142,13 @@ export function classifyZapFailure({
     containerExitCode: container?.exitCode ?? null,
     reportPresent: Boolean(report?.present),
     reportParseable: Boolean(report?.parseable),
-    // What the capture path did or could not do. It rides the signals (and so
-    // `attribution.json`) because the artifact's own contents are what a reader
-    // has to trust: `captured <path>` names which of the three candidate log
-    // locations existed, which no other file in the directory records (B1).
+    // What the capture path did or could not do; attribution.json is the record.
     captureNotes: Array.isArray(notes) ? notes.map(String) : [],
   };
 
   if (imageOutcome === "unknown" || scanOutcome === "unknown") {
-    // Fail loudly. Without the two step outcomes this classifier cannot name a
-    // class, and the default reading of a silent block would be "no ZAP step
-    // failed" — the opposite of the truth when the workflow's env wiring drifts.
+    // Fail loudly: without the two step outcomes no class can be named, and a
+    // silent block would read as "no ZAP step failed" — the opposite of the truth.
     return {
       class: ZAP_CLASSES.wiring,
       headline:
@@ -232,11 +186,9 @@ export function classifyZapFailure({
   }
 
   if (!container?.id) {
-    // Three states, not two: absent, present-and-readable, and present-but-
+    // Three states, not two: absent, present-and-readable, present-but-
     // unparseable. Only a report that PARSES proves the scan completed, so the
-    // branch keys on `parseable` — branching on `present` alone would claim a
-    // completed scan from a truncated write or a proxy error body, contradicting
-    // the table this same block renders two lines below (trap 4, review A2).
+    // branch keys on `parseable`, not on `present`.
     const unparseable = Boolean(report?.present) && !report?.parseable;
     return {
       class: ZAP_CLASSES.noContainer,
@@ -349,9 +301,8 @@ export function renderAttribution(result) {
     );
   }
   if (s.captureNotes?.length) {
-    // The notes are the only record of WHICH log path existed and whether the
-    // docker capture succeeded; they are mirrored to `notes.txt` in the artifact
-    // directory so a reader with the artifact but not the summary still has them.
+    // The notes are the only record of which log path existed and whether the
+    // docker capture succeeded; `notes.txt` mirrors them beside the artifact.
     lines.push(
       "Capture notes — what this run's artifact actually holds (also written to `notes.txt`):",
       "",
@@ -395,20 +346,15 @@ export function withReportSummary(result, report) {
   };
 }
 
-// ---------------------------------------------------------------------------
 // CLI: gather the runner-side signals, write the artifact directory, print the
-// job-summary block. Used by .github/workflows/staging.yml on `if: failure()`.
-// It always exits 0: the job is already red, and a second failure here would
-// only bury the class it exists to report.
-// ---------------------------------------------------------------------------
+// job-summary block. It always exits 0 — the job is already red, and a second
+// failure here would bury the class it exists to report.
 /**
- * Node's `maxBuffer` default is 1 MiB, and `spawnSync` reports the overflow as
- * `error.code === "ENOBUFS"` with a TRUNCATED stdout and `status: null`.
- * `docker logs` on a baseline scan can exceed that, and collapsing the two into
- * a single `null` capture is how the primary evidence of a failed scan gets
- * silently dropped and then misreported as "docker returned nothing" (review
- * B2). The cap is explicit and generous, and callers get the failure reason
- * back so "no output" and "capture failed" stay distinguishable.
+ * `spawnSync` reports a `maxBuffer` overflow as `error.code === "ENOBUFS"` with
+ * a TRUNCATED stdout and `status: null`; `docker logs` on a baseline scan can
+ * exceed Node's 1 MiB default, and a single `null` capture would silently drop
+ * the primary evidence of a failed scan. Callers get the failure reason back so
+ * "no output" and "capture failed" stay apart.
  */
 export const MAX_CAPTURE_BYTES = 64 * 1024 * 1024;
 
@@ -446,10 +392,9 @@ function main() {
   mkdirSync(dir, { recursive: true });
 
   const ancestor = image ? listContainers(["--filter", `ancestor=${image}`]) : [];
-  // `null` means the pre-pull step's snapshot could not be read; `[]` (an empty
-  // file) means it was read and the runner held nothing. The difference decides
-  // whether any container can be proven to be this run's, so it is carried
-  // through rather than flattened into an empty list.
+  // `null` means the snapshot could not be read; `[]` (an empty file) means it
+  // was read and the runner held nothing. The difference decides whether any
+  // container can be proven to be this run's, so it is not flattened.
   const beforeText = (() => {
     try {
       return readFileSync(join(dir, "containers-before.txt"), "utf8");
@@ -476,8 +421,6 @@ function main() {
       exitCode: exitCode === "" ? null : Number(exitCode),
       status: status || null,
     };
-    // The container's own logs are the evidence the failed step's log does not
-    // keep; `docker run` carried no --rm, so it is still here.
     const logs = runCapture("docker", ["logs", chosen.id]);
     if (logs.ok) {
       writeFileSync(join(dir, "zap-container.log"), logs.stdout);
@@ -491,12 +434,9 @@ function main() {
     }
     const inspect = run("docker", ["inspect", chosen.id]);
     if (inspect) writeFileSync(join(dir, "zap-container-inspect.json"), inspect);
-    // ZAP's own log lives in its home directory. HOME=/home/zap/ in the image
-    // env; the other two are candidates from earlier image layouts, listed
-    // because the path could not be confirmed without a running daemon. Which of
-    // the three actually existed is recorded in the capture notes (the summary
-    // block and notes.txt), NOT in containers.txt — that file is the raw
-    // `docker ps -aq` id list.
+    // ZAP's log lives in its home directory (`HOME=/home/zap/` in the image);
+    // the other two candidates cover other layouts. Which one existed is
+    // recorded in the capture notes, NOT in containers.txt (the raw id list).
     for (const candidate of ["/home/zap/zap.log", "/home/zap/.ZAP/zap.log", "/zap/zap.log"]) {
       const target = join(dir, `zap-home${candidate.replaceAll("/", "_")}`);
       if (run("docker", ["cp", `${chosen.id}:${candidate}`, target]) !== null) {
@@ -519,8 +459,7 @@ function main() {
     }
   }
   // The notes are the artifact's own account of itself, so they are written next
-  // to what they describe — not only into the summary a reader may not have (B1).
-  // Written last, after every path that can add a note.
+  // to what they describe — and last, after every path that can add one.
   writeFileSync(
     join(dir, "notes.txt"),
     notes.length ? `${notes.join("\n")}\n` : "no capture notes\n",

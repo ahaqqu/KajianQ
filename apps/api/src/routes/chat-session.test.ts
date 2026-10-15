@@ -5,7 +5,7 @@ import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-
 import { createStubChatProviders } from "@app/kajianq-domain/test-utils/stub-chat-providers";
 
 /**
- * GET /v1/chat/sessions/:id/messages (#11, ADR-0040): the rehydration
+ * GET /v1/chat/sessions/:id/messages (ADR-0040): the rehydration
  * endpoint's integration tests — auth, ownership (404 for unknown AND
  * foreign sessions, indistinguishably), and the trace-derived citation
  * payloads (a rehydrated transcript obeys the same invariant as the live
@@ -131,8 +131,8 @@ describe("GET /v1/chat/sessions/:id/messages", () => {
   });
 
   /**
-   * #271: the same seam as the chat route's `sessionId`, with no body schema
-   * in front of it — `c.req.param("id")` went straight into the store, whose
+   * The same seam as the chat route's `sessionId`, with no body schema in
+   * front of it: the id comes from `c.req.param("id")`, and the store's
    * `${id}::uuid` cast throws on anything that is not a UUID. The guard makes
    * the refusal the route's documented 404 instead of a 500, and keeps the
    * unknown/foreign indistinguishability posture (a malformed id names no
@@ -140,8 +140,8 @@ describe("GET /v1/chat/sessions/:id/messages", () => {
    */
   it("answers the documented 404 — not a 500 — for a malformed :id (#271)", async () => {
     const { store, token } = await wiredStore();
-    // Measured, not inferred: the guard's whole job is that the store is
-    // never handed a value its `uuid` column cannot cast.
+    // The guard's whole job is that the store is never handed a value its
+    // `uuid` column cannot cast.
     const storeCalls = vi.spyOn(store, "getChatSessionUser");
     const malformed = await getMessages(token, "en");
     expect(malformed.status).toBe(404);

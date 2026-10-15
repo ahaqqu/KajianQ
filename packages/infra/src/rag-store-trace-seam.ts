@@ -28,7 +28,7 @@ export interface RagStoreTrace {
 
   /**
    * Fetch a persisted Trace by its ROW id — the value
-   * `chat_messages.answer_trace_id` FKs (#11). Distinct from
+   * `chat_messages.answer_trace_id` FKs. Distinct from
    * `getAnswerTraceByMessage`: that column carries the route's answer
    * message id, not the chat message row's id.
    */

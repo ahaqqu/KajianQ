@@ -10,11 +10,10 @@ import type { KajianQFilters } from "./filters";
 import { routedQuery } from "./test-utils/routed-query";
 
 /**
- * The assembler's product rules (ticket #10 acceptance criteria): Arabic
- * originals accompany every quoted passage with a labeled machine translation
- * (ADR-0006), and prior turns ride the prompt so follow-up questions have
- * context. Deterministic, so these are direct assertions on the assembled
- * turns — no provider, no run.
+ * The assembler's product rules: Arabic originals accompany every quoted
+ * passage with a labeled machine translation (ADR-0006), and prior turns ride
+ * the prompt so follow-up questions have context. Deterministic, so these are
+ * direct assertions on the assembled turns — no provider, no run.
  *
  * The assembler takes the *routed* query (ADR-0018); these tests build one from
  * the caller's query the way the runner does, so the history and verbatim-text
@@ -120,9 +119,9 @@ describe("createKajianQAssembler", () => {
   });
 
   it("carries the routed query itself, not a rebuilt lookalike", () => {
-    // ADR-0018: the context carries the router's reading. Before this, the
-    // assembler rebuilt the query and put the verbatim question in the field
-    // named `intent` — which is what the generator and reviewer prompts read.
+    // ADR-0018: the context carries the router's reading, so the field the
+    // generator and reviewer prompts read as `intent` holds the router's
+    // intent, not the verbatim question.
     const stage = createKajianQAssembler();
     const routed = routedQuery("Apa itu Ayat Kursi?", {
       intent: "aqidah",
@@ -142,7 +141,7 @@ describe("createKajianQAssembler", () => {
 
 /**
  * **The presentation order, pinned** (spec §3.3 item 5): Principles → Quran →
- * Hadith → Kitab → concept links.
+ * Tafsir → Hadith → Kitab, then any source type the order does not name.
  *
  * It is deliberately NOT the usul authority order the system prompt states
  * (Quran → Hadith → Tafsir → Kitab), and the two must not be conflated: the

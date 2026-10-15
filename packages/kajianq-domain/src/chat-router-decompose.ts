@@ -9,7 +9,7 @@ import {
 
 // Re-exported where its other caller reads it: the agentic import cap holds
 // `chat-router.ts` at five imports, while the doc and the test stay at their
-// owner, `chat-subquery-admission` (review A1/B2).
+// owner, `chat-subquery-admission`.
 export { admitSubQueryText };
 
 /**
@@ -27,25 +27,25 @@ export { admitSubQueryText };
  *      when that rule's text is already in the set under no role of its own
  *      (the model echoed the question, or labelled it outside the vocabulary)
  *      the rule's role is stamped onto that entry instead of a duplicate text
- *      being added, so the duplicate filter never costs a rule its coverage
- *      (review R2-A1). One exception, because the model's label is never
- *      overwritten: an entry that already carries a *different* declared role
- *      keeps it, and that rule's coverage is not shown;
+ *      being added, so the duplicate filter never costs a rule its coverage.
+ *      One exception, because the model's label is never overwritten: an entry
+ *      that already carries a *different* declared role keeps it, and that
+ *      rule's coverage is not shown;
  *   2. every entry is trimmed, and a text with no letter and no digit in any
  *      script — whitespace, punctuation, an emoji, a zero-width space or
  *      joiner, a C0 control — is dropped rather than embedded, **whatever its
  *      origin**: the reply's phrasing and a composition rule's own text alike.
  *      It cannot retrieve, and it would spend an embed slot and a pair of
- *      searches inside the ceiling's window where a real angle belongs (#450).
- *      The `factual` rule's text *is* the caller's question, so the `factual`
- *      rule adds nothing for a content-free question and the fan-out is empty
- *      **only when no non-factual rule fires** (#462, review C1) — while the principle/dalil/sanad
+ *      searches inside the ceiling's window where a real angle belongs. The
+ *      `factual` rule's text *is* the caller's question, so the `factual` rule
+ *      adds nothing for a content-free question and the fan-out is empty **only
+ *      when no non-factual rule fires** — while the principle/dalil/sanad
  *      templates carry words of their own and stay searchable even when the
  *      question is not, so a shape that fires one keeps its template entry.
- *      The drop is a function of the text alone, never of the
- *      origin that offered it, which is what keeps the reply's echo of a
- *      content-free question and the rule's own add of that same text in
- *      agreement on the next pass (#453);
+ *      The drop is a function of the text alone, never of the origin that
+ *      offered it, which is what keeps the reply's echo of a content-free
+ *      question and the rule's own add of that same text in agreement on the
+ *      next pass;
  *   3. the total stays within the stage's bound, dropping the model's extra
  *      phrasings before any rule-derived one — and never the entry a fired
  *      rule's own text lives in, which is that rule's coverage;
@@ -73,11 +73,11 @@ export { admitSubQueryText };
  * It is **0** when there is nothing to search at all: every text the stage was
  * handed carried no letter and no digit — a blank question, or one made only of
  * punctuation, `Cf` or `Cc` characters, whose rule text *is* the question and
- * which `push` drops (#462) — beside a reply whose every text the same gate
- * dropped, **and no non-factual rule fires**. The principle/dalil/sanad templates
- * carry words of their own, so a shape that fires one is searchable even when
- * the question is not and the fan-out is not empty: the route-level emptiness is
- * conditional, while the text-level drop above is unconditional (review C1).
+ * which `push` drops — beside a reply whose every text the same gate dropped,
+ * **and no non-factual rule fires**. The principle/dalil/sanad templates carry
+ * words of their own, so a shape that fires one is searchable even when the
+ * question is not and the fan-out is not empty: the route-level emptiness is
+ * conditional, while the text-level drop above is unconditional.
  */
 export const MIN_SUB_QUERIES = 2;
 export const MAX_SUB_QUERIES = 4;
@@ -116,15 +116,14 @@ export function decomposeQuery(input: DecompositionInput): SubQuery[] {
   const firedRoles = requiredRoles(input);
 
   const push = (sub: SubQuery): void => {
-    // Never store an untrimmed query: a trailing space is noise in the trace.
-    // And a text with no letter and no digit is not a query at all. Both halves
-    // are one admission, owned by `chat-subquery-admission` and applied here to
-    // every origin — the reply's phrasing and a rule's own text alike — so no
-    // caller can take the content test without the trim (review A1). Dropping
-    // the reply's echo of a content-free question and the `factual` rule's own
-    // add of that same text at the same gate is what keeps the two passes in
-    // agreement (#453): both are dropped here, at whichever position they
-    // arrive (#450, #462).
+    // Never store an untrimmed query: a trailing space is noise in the trace. And
+    // a text with no letter and no digit is not a query at all. Both halves are
+    // one admission, owned by `chat-subquery-admission` and applied here to every
+    // origin — the reply's phrasing and a rule's own text alike — so no caller can
+    // take the content test without the trim. Dropping the reply's echo of a
+    // content-free question and the `factual` rule's own add of that same text at
+    // the same gate is what keeps the two passes in agreement: both are dropped
+    // here, at whichever position they arrive.
     const text = admitSubQueryText(sub.text);
     if (text === undefined) return;
     const key = normalize(text);
@@ -134,38 +133,37 @@ export function decomposeQuery(input: DecompositionInput): SubQuery[] {
   };
 
   // The texts the rules below will add, keyed the way the duplicate filter keys
-  // them — one concept, derived once, so the rule loop and the ceiling's
-  // stand-in protection cannot drift apart. One of them is the caller's own
-  // question — the `factual` rule's text, and the floor's — which is the text a
-  // content-free question contributes, and `push` drops it (#462).
+  // them — one concept, derived once, so the rule loop and the ceiling's stand-in
+  // protection cannot drift apart. One of them is the caller's own question — the
+  // `factual` rule's text, and the floor's — which is the text a content-free
+  // question contributes, and `push` drops it.
   const ruleTexts = new Map<SubQueryRole, string>(
     firedRoles.map((role): [SubQueryRole, string] => [role, ruleText(role, input)]),
   );
 
   for (const entry of input.modelSubQueries) {
     const role = narrowRole(entry.role);
-    // The reply's text is a claim this repair may drop — but not by a test of
-    // its own. Whether a text is a query is one question with one answer, asked
-    // in `push`, so the reply's arm and the rules' arm cannot disagree about the
-    // same text (#462). Trimming is not a drop: padded text is the same query,
-    // so it is kept, trimmed.
+    // The reply's text is a claim this repair may drop — but not by a test of its
+    // own. Whether a text is a query is one question with one answer, asked in
+    // `push`, so the reply's arm and the rules' arm cannot disagree about the same
+    // text. Trimming is not a drop: padded text is the same query, so it is kept,
+    // trimmed.
     push({ text: entry.text, ...(role !== undefined ? { role } : {}), origin: "model" });
   }
 
   for (const [role, text] of ruleTexts) {
     if (kept.some((sub) => sub.role === role)) continue;
-    // The rule's text may already be in the set — most often `factual`, whose
-    // text *is* the caller's question, which the model may have echoed. Adding
-    // it would put one retrieval text in twice (two embed slots for one
-    // search); dropping it would leave the fired rule uncovered and the Trace
-    // unable to explain the route. So when the entry carrying that text has no
-    // role of its own — the model gave none, or gave one the vocabulary drops —
-    // the rule's role is stamped onto it: the text stays the model's phrasing
-    // and keeps its `model` origin, and the rule's coverage becomes visible
-    // (review R2-A1). An entry the model labelled with a *different* declared
-    // role keeps that label — overwriting it would pass the rule's role off as
-    // the model's own — so that coincidence stays the exception the header
-    // states.
+    // The rule's text may already be in the set — most often `factual`, whose text
+    // *is* the caller's question, which the model may have echoed. Adding it would
+    // put one retrieval text in twice (two embed slots for one search); dropping it
+    // would leave the fired rule uncovered and the Trace unable to explain the
+    // route. So when the entry carrying that text has no role of its own — the
+    // model gave none, or gave one the vocabulary drops — the rule's role is
+    // stamped onto it: the text stays the model's phrasing and keeps its `model`
+    // origin, and the rule's coverage becomes visible. An entry the model labelled
+    // with a *different* declared role keeps that label — overwriting it would pass
+    // the rule's role off as the model's own — so that coincidence stays the
+    // exception the header states.
     const holder = kept.find(
       (sub) => sub.role === undefined && normalize(sub.text) === normalize(text),
     );
@@ -186,27 +184,27 @@ export function decomposeQuery(input: DecompositionInput): SubQuery[] {
   // add, and one entry is the honest answer (`MIN_SUB_QUERIES`). It is the
   // caller's own text, but not exempt from the content gate: a question with no
   // letter and no digit is not a query either, and the `factual` rule above has
-  // already declined to add that same text — the two arms of the drop agree
-  // (#462). Only a question that carries content reaches the floor at all.
+  // already declined to add that same text — the two arms of the drop agree.
+  // Only a question that carries content reaches the floor at all.
   if (kept.length < MIN_SUB_QUERIES) {
     push({ text: input.question.trim(), role: "factual", origin: "rule" });
   }
 
   if (kept.length <= MAX_SUB_QUERIES) return kept;
 
-  // A fired rule is covered in one of two ways: an entry carries its role, or
-  // — the header's one stated exception — the model labelled the rule's own
-  // text with a different declared role, and that entry is the rule's only
-  // evidence. The first kind already has a slot the ceiling owes it (one per
-  // distinct role below); the second kind is what `standInKeys` protects. Drop
-  // it and the set loses the rule's text *and* the rule's role at once, so
-  // feeding the repair its own output would re-add the rule's entry and change
-  // the answer — the exact way the idempotence law failed (#450). One text
-  // appears at most once, so at most one entry stands in for a given rule. The
-  // bound this argument gives — `chosen` ≤ `MAX_SUB_QUERIES`, so the slice never
-  // cuts a stand-in — is a checked invariant, not prose: the law `keeps a fired
-  // rule's own text when the rule is left uncovered` runs it over both
-  // generators in `chat-router-decompose.prop.test.ts`.
+  // A fired rule is covered in one of two ways: an entry carries its role, or —
+  // the header's one stated exception — the model labelled the rule's own text
+  // with a different declared role, and that entry is the rule's only evidence.
+  // The first kind already has a slot the ceiling owes it (one per distinct role
+  // below); the second kind is what `standInKeys` protects. Drop it and the set
+  // loses the rule's text *and* the rule's role at once, so feeding the repair
+  // its own output would re-add the rule's entry and change the answer — the way
+  // the idempotence law fails. One text appears at most once, so at most one
+  // entry stands in for a given rule. The bound this argument gives — `chosen` ≤
+  // `MAX_SUB_QUERIES`, so the slice never cuts a stand-in — is a checked
+  // invariant, not prose: the law `keeps a fired rule's own text when the rule is
+  // left uncovered` runs it over both generators in
+  // `chat-router-decompose.prop.test.ts`.
   const standInKeys = new Set(
     [...ruleTexts]
       .filter(([role]) => !kept.some((sub) => sub.role === role))

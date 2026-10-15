@@ -2,9 +2,9 @@ import type { Logger } from "./logger";
 import type { SqlRunner } from "./rag-store-postgres";
 
 /**
- * Operational logging wiring for the Postgres RagStore adapter (issue #63 item 5),
- * kept out of the adapter proper so its import surface stays small and the
- * default path stays dependency-free.
+ * Operational logging wiring for the Postgres RagStore adapter, kept out of the
+ * adapter proper so its import surface stays small and the default path stays
+ * dependency-free.
  */
 
 /** Default threshold above which a query logs a `slow_query` warning. */

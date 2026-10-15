@@ -10,16 +10,9 @@ import {
   traceRefused,
 } from "./chat-trace";
 
-/**
- * The Trace panel frame's invariant (#12, ADR-0007): **the panel is derived
- * from the persisted trace's own typed events, never invented.** Sources are
- * the deduplicated retrieval refs in retrieval order; the technical layer
- * carries intent, sub-queries, scores, and model identities verbatim; a
- * chunk display row that fails to resolve loses its title, never gains a
- * fabricated one.
- */
+/** The frame is derived from the persisted trace's typed events, never invented: refs in
+ * dedup order, verbatim scores and model ids, and no fabricated title for an unresolved row. */
 
-/** A trace with the given retrieval refs plus extra events. */
 function traceOf(
   refs: {
     id: string;
@@ -103,7 +96,7 @@ describe("traceChunkIds / traceChunkRefs", () => {
       ],
     );
     expect(traceChunkIds(trace)).toEqual(["c1", "c2"]);
-    expect(traceChunkRefs(trace)[0]?.score).toBe(0.1); // the first ref wins
+    expect(traceChunkRefs(trace)[0]?.score).toBe(0.1);
   });
 });
 
@@ -125,10 +118,8 @@ describe("deriveTraceFrame — the top layer", () => {
   });
 
   it("a pure refusal's trace has no retrieval events, so the panel is legitimately empty", () => {
-    // A PURE refusal — the canonical sentence as the whole answer. A hybrid
-    // refusal (#436) carries the partial answer's retrieval refs, so its panel
-    // is populated; that shape is pinned with the citations frame in
-    // chat-citations.test.ts.
+    // A hybrid refusal is the same decision over a trace that still carries the
+    // partial answer's refs; its panel is populated (chat-citations.test.ts).
     const refusal: Trace = {
       id: "t2",
       createdAt: 1,
@@ -160,10 +151,6 @@ describe("traceRefused — the refusal decision's one reader (#436)", () => {
     };
     expect(traceRefused(traceOf([]))).toBe(false);
     expect(traceRefused(traceOf([], [refusal]))).toBe(true);
-    // A hybrid refusal is the same decision over a trace that still carries
-    // the partial answer's retrieval refs — the frame's flag and the route's
-    // chunking branch both read this one predicate (chat-citations.test.ts /
-    // chat.test.ts pin the two consumers).
     expect(traceRefused(traceOf([{ id: "c1" }], [refusal]))).toBe(true);
   });
 });
@@ -210,8 +197,7 @@ describe("deriveTraceFrame — the technical layer", () => {
   });
 
   it("projects a chunk ref's `origin` label into the technical layer (A1)", () => {
-    // An expansion chunk has no score and no channel ranks, so this label is
-    // the only thing on the frame that says why the surah's verses are here.
+    // An expansion chunk has no score or ranks, so this label is the only "why" on the frame.
     const frame = derive(
       traceOf([
         { id: "c1", score: 0.5, rankDense: 1 },
@@ -231,9 +217,8 @@ describe("deriveTraceFrame — the technical layer", () => {
   });
 
   it("derives a pre-change frame (no `origin` anywhere) that still parses against the contract", () => {
-    // The compatibility pin A1 asks for: a trace persisted before the field
-    // existed renders the same frame it always did — no origin key appears,
-    // and the frame the route parses is the contract's own shape.
+    // A trace persisted before the field existed renders no origin key and still
+    // parses against the contract.
     const frame = derive(traceOf([{ id: "c1", score: 0.5, rankDense: 1, rankSparse: 2 }]), [
       chunkRow("c1", "Al-Baqarah"),
     ]);
@@ -274,13 +259,10 @@ describe("chunkFetcher", () => {
 });
 
 /**
- * The routing decision on the panel (#15). The frame is derived, never
- * reconstructed: the technical layer's `routing` block is the persisted
- * `source_routing` event's typed detail, projected verbatim. The distinction
- * that matters to a reader is between "the route restricted the corpus to these
- * sources" (`sources` non-empty), "the route did not restrict it" (an EMPTY
- * list — a decision), and "this trace recorded no routing decision at all"
- * (the block absent, as on traces persisted before the event existed).
+ * The routing block is the persisted `source_routing` event's typed detail,
+ * projected verbatim. `sources` non-empty = the route restricted the corpus to
+ * those sources; an EMPTY list = it did not restrict; the block absent = the trace
+ * recorded no routing decision.
  */
 describe("the routing decision in the technical layer", () => {
   const routingEvent = (sources: string[], filters: Record<string, string[]>) =>
@@ -317,8 +299,8 @@ describe("the routing decision in the technical layer", () => {
   });
 
   it("omits the block entirely when the trace recorded no routing decision", () => {
-    // Absent is not the same claim as empty: an older trace must not be read as
-    // "the corpus was not restricted".
+    // Absent is not the same claim as empty: a trace with no routing event must
+    // not read as "not restricted".
     const frame = deriveTraceFrame({
       trace: traceOf([{ id: "c1" }]),
       messageId: "m1",
@@ -329,12 +311,9 @@ describe("the routing decision in the technical layer", () => {
   });
 
   it("names the filters the run GAVE UP, from the retriever's own events", () => {
-    // `filters` is the route's DECISION; a relaxed run ran without some of it, so
-    // without these the panel would show a `principleTags` hint for the Principle
-    // Index that does not exist yet (#16) as a filter that ran. A probe that
-    // changed nothing (`adopted: false`) is machinery, not a relaxation; an
-    // absent `adopted` is a trace persisted before probing, where every recorded
-    // drop was applied.
+    // `filters` is the route's DECISION; a relaxed run ran without some of it. A
+    // probe that changed nothing (`adopted: false`) is machinery, not a relaxation;
+    // an absent `adopted` is a trace from before probing, where every drop applied.
     const relaxedEvent = (adopted: boolean | undefined, dropped: Record<string, string[]>) =>
       ({
         stage: "retriever" as const,
@@ -369,8 +348,8 @@ describe("the routing decision in the technical layer", () => {
   });
 
   it("carries no `relaxed` list when the run gave nothing up", () => {
-    // Absent, not empty: a run that relaxed nothing must not read as one whose
-    // drops were recorded as an empty list.
+    // Absent, not empty: a run that relaxed nothing must not read as a record of
+    // an empty drop list.
     const frame = deriveTraceFrame({
       trace: traceOf([{ id: "c1" }], [routingEvent(["src_a"], { dim_a: ["v1"] })]),
       messageId: "m1",

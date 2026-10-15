@@ -1,25 +1,16 @@
 import { HADITH_COLLECTIONS, type HadithCollection, type HadithRecord } from "./hadith-source";
 
 /**
- * Parsers for the hadith corpus sources (#7): decode and normalize one
- * edition file at a time. The parsed `arabicnumber`/`reference.book` pair
- * is what cross-edition alignment consumes (`hadith-align.ts`, ADR-0026).
- *
- * Upstream format (fawazahmed0/hadith-api editions, Unlicense): one JSON
- * file per edition with `metadata.sections` (book number → title),
- * `metadata.section_details` (hadith-number ranges per book), and a
- * `hadiths[]` array of `{hadithnumber, arabicnumber, text, grades,
- * reference}`. Grade entries ship only on the Arabic editions; the
- * Indonesian edition's `grades` array is ignored in favor of the Arabic
- * one. Nothing here rewrites text: the raw strings are preserved verbatim
- * (`text_raw` is immutable, AGENTS.md rule 11).
+ * Parsers for the hadith corpus sources: decode and normalize one edition file at a time.
+ * The parsed `arabicnumber`/`reference.book` pair is the cross-edition alignment join key
+ * (`hadith-align.ts`). Grades ship only on the Arabic editions, so the Indonesian edition's
+ * `grades` array is ignored; raw strings are preserved verbatim — nothing here rewrites text.
  */
 
 /**
- * One hadith entry of an edition JSON file, after normalization: the source
- * ships `hadithnumber`/`arabicnumber` as JSON numbers (all collections,
- * verified against the live editions — review A1), and the parser accepts
- * both numbers and strings, normalizing to strings.
+ * One hadith entry of an edition JSON file, after normalization: the source ships
+ * `hadithnumber`/`arabicnumber` as JSON numbers, and the parser accepts both numbers
+ * and strings, normalizing to strings.
  */
 export type EditionHadith = {
   hadithnumber: string;
@@ -29,13 +20,11 @@ export type EditionHadith = {
   reference: { book: number; hadith: string | number };
 };
 
-/** One edition file: a collection's texts in one language. */
 export type HadithEdition = {
   collection: HadithCollection;
   language: "arabic" | "indonesian";
-  /** Book number → title (empty title allowed; metadata only). */
+  /** Book number → title; empty titles are allowed. */
   sections: Map<number, string>;
-  /** Book number → first/last hadith number in the book. */
   sectionDetails: Map<
     number,
     { first: string; last: string; arabicFirst: string; arabicLast: string }
@@ -82,7 +71,6 @@ export function parseHadithEdition(
     { first: string; last: string; arabicFirst: string; arabicLast: string }
   >();
   for (const [k, d] of Object.entries(root.metadata.section_details ?? {})) {
-    // The source ships these as numbers (byte-true fixtures); normalize.
     sectionDetails.set(Number(k), {
       first: d.hadithnumber_first !== undefined ? String(d.hadithnumber_first) : "",
       last: d.hadithnumber_last !== undefined ? String(d.hadithnumber_last) : "",
@@ -118,16 +106,13 @@ export function parseHadithEdition(
       );
     }
     const hadithnumber = String(h.hadithnumber);
-    // muslim's book-0 rows lack arabicnumber entirely — fall back to the
-    // edition's own hadithnumber (the alignment's fallback join key).
+    // muslim's book-0 rows lack arabicnumber — fall back to the edition's own hadithnumber.
     const arabicnumber = h.arabicnumber === undefined ? hadithnumber : String(h.arabicnumber);
     return {
       hadithnumber,
       arabicnumber,
       text: h.text,
-      // Malformed grade entries are shape drift — throw, never silently
-      // discard source data (review B4). The live editions ship
-      // well-formed {name, grade} entries on every row.
+      // Malformed grade entries are shape drift — throw, never silently discard source data.
       grades: h.grades.map((g): { name: string; grade: string } => {
         if (
           typeof g !== "object" ||
@@ -151,15 +136,11 @@ export function parseHadithEdition(
 }
 
 /**
- * Integrity check (issue #7 AC): every ingested record has a positive book
- * number and a non-empty hadith number; no duplicate (collection, hadithNo)
- * keys; and, when `expected` gives a per-collection count gate, the ingested
- * counts match exactly. Throws on the first violation — a truncated parse
- * must fail loudly, never ingest silently. The empty-Arabic gate stays as
- * defense in depth, but alignment quarantines empty-primary rows upstream
- * (review A2), so it never fires on the real corpus. Unmatched entries are
- * NOT a gate here: they are counted upstream and surfaced in the report
- * (quarantine, not force-merge).
+ * Integrity gate: non-negative integer book numbers, non-empty hadith numbers, unique
+ * (collection, hadithNo) keys, and exact per-collection counts when `expected` gives them.
+ * Throws on the first violation — a truncated parse must fail loudly, never ingest
+ * silently. Unmatched alignment entries are not gated here: they are counted upstream and
+ * surfaced in the report (quarantine, not force-merge).
  */
 export function assertHadithIntegrity(
   records: readonly HadithRecord[],

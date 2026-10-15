@@ -25,7 +25,7 @@ export { chunkFetcher };
 
 /**
  * The feedback route's OpenAPI description, body-parse helper, and anchor
- * validation (#13), split from the route file so the handler stays under the
+ * validation, split from the route file so the handler stays under the
  * agentic caps. Consumes the shared @app/contracts feedback schemas — one
  * source of truth for handler, validation, and doc.
  *
@@ -121,11 +121,11 @@ export async function parseFeedbackRequest(
 }
 
 /**
- * The citations-frame derivation a flag's label must appear in (thermo-review
- * A3): a frame, or the reason the derivation DEGRADED — the answer text was
- * reclaimed, or the chunk lookup failed. A degraded derivation is a server
- * side problem (nothing honest to validate against), never a malformed
- * anchor, and the route answers it differently.
+ * The citations-frame derivation a flag's label must appear in: a frame, or
+ * the reason the derivation DEGRADED — the answer text was reclaimed, or the
+ * chunk lookup failed. A degraded derivation is a server side problem (nothing
+ * honest to validate against), never a malformed anchor, and the route answers
+ * it differently.
  */
 export type FeedbackCitationsDerivation =
   | { degraded: false; citations: ChatCitationsFrame }

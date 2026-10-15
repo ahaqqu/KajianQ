@@ -2,15 +2,13 @@ import type { Chunk } from "@app/rag-core";
 
 /**
  * The pure half of the retriever: Reciprocal Rank Fusion (spec §3.3, k=60) and
- * the hierarchy bonuses. Split out of `chat-retriever.ts` for the 300-line
- * agentic cap — that module is the wiring (`RetrieverStore`/`RetrieverEmbedder`
- * in, `Retriever` out); this one is the arithmetic the fused path and its
- * tests read. No state, no store, no effects.
+ * the hierarchy bonuses — the arithmetic the fused path and its tests read
+ * (the wiring, `RetrieverStore`/`RetrieverEmbedder` in and `Retriever` out,
+ * lives in `chat-retriever.ts`). No state, no store, no effects.
  *
- * (The metadata-filter mapping that used to live here moved to
- * `chat-filter-policy.ts`, which owns the store-facing side of the same stage
- * — including the loud failure the mapping owes a dimension it cannot
- * express.)
+ * The metadata-filter mapping lives in `chat-filter-policy.ts`, which owns the
+ * store-facing side of the same stage — including the loud failure the mapping
+ * owes a dimension it cannot express.
  */
 /** RRF constant (spec §3.3: k=60). */
 export const RRF_K = 60;
@@ -34,14 +32,14 @@ export type TrackHit = { chunk: Chunk; rank: number };
  * Fuse per-search hit lists with RRF(k=60) plus hierarchy bonuses.
  * Exported for tests: pure, deterministic.
  *
- * **The order is total** (review A3 of the #274 fix round): equal scores are
- * broken by chunk id, so two runs over the same hit lists produce the same
- * sequence. Score ties are real — duplicate or near-identical verses are common
- * in this corpus, and two chunks can occupy mirrored ranks — and without the
- * tie-break the order fell back to `Map` insertion order, i.e. to the hit
- * lists' order, which the ANN search does not guarantee for equal distances.
- * The retriever's caller-order-is-priority-order contract (ADR-0049) and the
- * neighbour cap that truncates on it both rest on this being a total order.
+ * **The order is total**: equal scores are broken by chunk id, so two runs over
+ * the same hit lists produce the same sequence. Score ties are real — duplicate
+ * or near-identical verses are common in this corpus, and two chunks can occupy
+ * mirrored ranks — and without the tie-break the order falls back to `Map`
+ * insertion order, i.e. to the hit lists' order, which the ANN search does not
+ * guarantee for equal distances. The retriever's caller-order-is-priority-order
+ * contract (ADR-0049) and the neighbour cap that truncates on it both rest on
+ * this being a total order.
  *
  * The remaining determinism limit is upstream and is a revisit trigger in
  * ADR-0049: the similarity query is ordered by the vector distance alone,

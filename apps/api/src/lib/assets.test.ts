@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDiskAssetFetcher } from "./assets";
 
 /**
- * The disk-backed ASSETS fetcher (#181, ADR-0044). This is what makes the SPA
+ * The disk-backed ASSETS fetcher (ADR-0044). This is what makes the SPA
  * servable from the Bun host, so its two policies are pinned: a real file is
  * served with its content type, and any other path falls back to `index.html`
  * (the app is a client-side router — a deep link must reach the shell). Path
@@ -47,7 +47,7 @@ describe("createDiskAssetFetcher", () => {
   it("never serves an extensionless path as an octet-stream (that downloads the page)", async () => {
     // An extensionless path is a client-side route, so it must be served as
     // HTML. `application/octet-stream` makes the browser DOWNLOAD the document
-    // instead of rendering it — the bug this rule fixes.
+    // instead of rendering it.
     const assets = createDiskAssetFetcher(root);
     const res = await assets.fetch(new Request("https://x/chat"));
     expect(res.headers.get("content-type")).toContain("text/html");

@@ -1,33 +1,18 @@
 #!/usr/bin/env bun
 /**
- * ingest-quran.mjs — the `ingest:quran` Bun CLI (issue #6).
+ * ingest-quran.mjs — the `ingest:quran` Bun CLI.
  *
  *   bun run ingest:quran                          # full ingest (needs DATABASE_URL + API keys)
  *   bun run ingest:quran -- --check               # integrity check only (no LLM/embedding spend)
  *   bun run ingest:quran -- --limit 5             # ingest only the first N surahs
  *
- * Thin composition root (B5): source acquisition lives in
- * `source-acquisition.mjs`, R2 archival in `archive-store.mjs`; this file
- * reads the env/config once, wires the seams, and delegates. Pipeline (all
- * off the request path, per spec §3.2):
- *   1. fetch sources (or reuse the QURAN_SOURCE_DIR cache, offline re-runs);
- *   2. archive the RAW bytes to R2 via the ObjectStore seam (never committed
- *      to the repo — Kemenag redistribution is gated by human prerequisite
- *      #2, noted in NOTICES/DATASETS.md);
- *   3. run the generic ingestion pipeline (`@app/rag-ingest`) — the domain
- *      SourceParser re-parses + integrity-checks (6,236 ayah, 114 surahs,
- *      morphology coverage) from the archived bundle inside the runner, so
- *      the archived bytes are the single source of truth (A3);
- *   4. write the aligned pairs (concept-graph seed for #24) through the
- *      RagStore aligned-pair seam;
- *   5. persist the IngestionReport to `eval_runs` (the report ledger) via
- *      the RagStore batch-report seam.
- *
- * Idempotency: parents upsert by sourceKey, children by (parentId, ordinal),
- * pairs by pairKey, reports by run id — re-running the script is safe by
- * construction.
+ * The archived raw bytes are the single source of truth: the domain SourceParser re-parses and
+ * integrity-checks them inside the runner. Kemenag redistribution is gated by a human prerequisite,
+ * so the raw bytes are never committed to the repo (NOTICES/DATASETS.md). Idempotency: parents
+ * upsert by sourceKey, children by (parentId, ordinal), pairs by pairKey, reports by run id, so
+ * re-running the script is safe by construction.
  */
-// Effect bridge for the Effect-shaped store seam (ADR-0027 decision 7).
+// Effect bridge for the Effect-shaped store seam (ADR-0027).
 import * as app from "@app/infra";
 import * as ingest from "@app/rag-ingest";
 import * as domain from "@app/kajianq-domain";
@@ -40,10 +25,8 @@ import {
 
 const resolve = resolveFromCwd;
 
-// ---------------------------------------------------------------------------
-// Config: read once at the composition root. No vendor names live here —
-// provider roles and credentials are resolved through the config seam.
-// ---------------------------------------------------------------------------
+// Config: read once at the composition root; provider roles and credentials are resolved through
+// the config seam, so no vendor names live here.
 const SURAH_BASE =
   process.env.QURAN_SURAH_BASE_URL ??
   "https://raw.githubusercontent.com/hangsbreaker/quran-json/main";
@@ -58,8 +41,8 @@ const LIMIT = (() => {
   const idx = args.indexOf("--limit");
   if (idx < 0) return null;
   const n = Number(args[idx + 1]);
-  // Same strict validation as ingest:hadith (review A7) — `0` must not mean
-  // "full corpus" via falsiness, non-integers must not yield empty ingests.
+  // Strict validation, as in ingest:hadith — `0` must not mean "full corpus" via falsiness, and
+  // non-integers must not yield empty ingests.
   if (!Number.isInteger(n) || n < 1) return NaN;
   return n;
 })();
@@ -75,10 +58,7 @@ if (Number.isNaN(LIMIT)) {
   fail("--limit must be an integer >= 1");
 }
 
-// ---------------------------------------------------------------------------
 // Main.
-// ---------------------------------------------------------------------------
-
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) fail("DATABASE_URL is not set");
 
@@ -95,10 +75,8 @@ const sources = await acquireSources({
 });
 const bundle = domain.bundleQuranSources(sources);
 
-// Integrity checks run in every mode, before any spend. With --limit only
-// the first LIMIT surah files are ingested — the expected ayah total is
-// computed from those files, and `buildCorpus` trims its metadata to the
-// ingested subset; a full run gates on the exact Tanzil totals.
+// Integrity checks run in every mode, before any spend. With --limit the expected ayah total comes
+// from the ingested files; a full run gates on the exact Tanzil totals.
 const parsedSurahFiles = sources.surahFiles.map((t) => JSON.parse(t));
 const expectedAyahs = parsedSurahFiles.reduce(
   (sum, file) => sum + (Array.isArray(file) ? file.length : 0),
@@ -126,15 +104,13 @@ if (CHECK_ONLY) {
   process.exit(0);
 }
 
-// Wire seams once: the store comes from @app/infra's own composition helper
-// (ADR-0008 — this CLI names the connection URL and receives the seam; it
-// never imports a database client), and one runner feeds both the RagStore
-// and the report path (C1: a single handle per run).
+// Wire seams once: the store comes from @app/infra's composition helper — this CLI names the
+// connection URL and receives the seam, never importing a database client — and one runner feeds
+// both the RagStore and the report path.
 const store = app.resolvePostgresStore(databaseUrl, { logger });
 const config = app.loadProviderConfig();
-// Batch retry policy: an offline ingest must ride out a vendor's
-// per-minute window rather than give up after the interactive ≈1.5 s
-// (the staging ingest died on its first embedding batch without it).
+// Batch retry policy: an offline ingest must ride out a vendor's per-minute window rather than give
+// up on the interactive timeout.
 const { provider: embedder } = app.resolveRole(config, "embedder", {
   env: process.env,
   retrySchedule: app.batchRetrySchedule,
@@ -163,9 +139,8 @@ if (reportDir) {
   await fs.mkdir(reportDir, { recursive: true });
 }
 
-// The parser re-parses from the archived bundle (the single source of
-// truth); subset runs pass the exact expected totals, full runs rely on
-// the parser's full-corpus defaults. The report quotes the corpus numbers.
+// The parser re-parses from the archived bundle (the single source of truth); subset runs pass
+// expected totals, full runs rely on its full-corpus defaults.
 const result = await ingest.runIngestion(
   domain.quranSourceParser(LIMIT ? expectedAyahs : undefined, LIMIT ?? undefined),
   {
@@ -176,9 +151,8 @@ const result = await ingest.runIngestion(
     store,
     embedder,
     summarizer: domain.surahSummarizer(summarizerProvider),
-    // Persisted pairs carry the domain's stable `quran-pair:N:M` address —
-    // the key #24's concept-graph build resolves against — rather than the
-    // runner's source-derived child key.
+    // Persisted pairs carry the domain's stable `quran-pair:N:M` address rather than the runner's
+    // source-derived child key.
     pairSink: domain.quranPairSink(store, (input) =>
       domain.ayahPairId(Number(input.citation.surah), Number(input.citation.ayah)),
     ),
@@ -187,7 +161,6 @@ const result = await ingest.runIngestion(
   },
 );
 
-// Persist the report through the RagStore batch-report seam.
 const report = {
   ...result.report,
   details: {
@@ -202,9 +175,8 @@ const report = {
   },
 };
 
-// Off-Workers bridge: the store seam is Effect-shaped (ADR-0027 decision 7);
-// runStoreEffect joins it to the CLI's top-level await here, in the
-// composition root — the same bridge the ingestion runner uses.
+// Off-Workers bridge: the store seam is Effect-shaped (ADR-0027), so runStoreEffect joins it to the
+// CLI's top-level await here, in the composition root.
 await ingest.runStoreEffect(
   store.insertEvalRun({
     id: report.runId,

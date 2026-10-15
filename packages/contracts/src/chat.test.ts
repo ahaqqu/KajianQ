@@ -15,9 +15,8 @@ import {
 
 /**
  * Contracts for the structured citation payload and the session-rehydration
- * response (#11, ADR-0040). The trap cases matter more than the happy path:
- * an empty label or an empty `arabic` would render a citation affordance with
- * nothing behind it, and a non-boolean refusal flag would let the UI guess.
+ * response: the trap cases matter more than the happy path, because a malformed
+ * payload renders an affordance with nothing behind it or lets the UI guess.
  */
 
 const CITATION = {
@@ -29,19 +28,15 @@ const CITATION = {
 };
 
 /**
- * The chat request's message ceiling (#256). The boundary cases are the point:
- * a message AT the ceiling must parse (a pasted passage plus a question is a
- * legitimate question), one character over must not — the contract is the only
- * bound between a client and the router/generator/reviewer spend a question
- * triggers (ADR-0041 meters frequency, never size).
+ * The chat request's message ceiling: the contract is the only bound on the
+ * router/generator/reviewer spend a question triggers — the rate limiter meters
+ * frequency, never size (ADR-0041).
  */
 describe("ChatRequestSchema message ceiling (#256)", () => {
   const parseMessage = (length: number) =>
     v.safeParse(ChatRequestSchema, { message: "a".repeat(length) }).success;
 
   it("pins the owner-decided ceiling at 2,000 characters", () => {
-    // The value is an owner decision (issue #256): lowering or raising it is a
-    // deliberate edit here and in the schema, never a silent drift.
     expect(CHAT_MESSAGE_MAX_LENGTH).toBe(2000);
   });
 
@@ -62,12 +57,7 @@ describe("ChatRequestSchema message ceiling (#256)", () => {
     expect(parseMessage(0)).toBe(false);
   });
 
-  /**
-   * The trim/length semantics are surprising enough to be decisions, not
-   * accidents (thermo-review C1): validation never trims, so the bound applies
-   * to the raw body. Both halves are pinned here so a future "helpful" trim
-   * cannot land silently in either direction.
-   */
+  // Validation never trims, so the bound applies to the raw body.
   it("measures the raw string: a body that would only trim to the ceiling is rejected", () => {
     expect(
       v.safeParse(ChatRequestSchema, { message: "a".repeat(CHAT_MESSAGE_MAX_LENGTH) + " " })
@@ -76,14 +66,12 @@ describe("ChatRequestSchema message ceiling (#256)", () => {
   });
 
   it("accepts a whitespace-only body inside the ceiling (pre-existing minLength(1) decides)", () => {
-    // The composer trims before sending, so the UI cannot build one; a direct
-    // API client can, and it runs the pipeline — bounded by the ceiling, never
-    // by a hidden normalization the client cannot see.
+    // A direct API client can send one, and it runs the pipeline — bounded by
+    // the ceiling, never by a hidden normalization the client cannot see.
     expect(v.safeParse(ChatRequestSchema, { message: " " }).success).toBe(true);
     expect(
       v.safeParse(ChatRequestSchema, { message: " ".repeat(CHAT_MESSAGE_MAX_LENGTH) }).success,
     ).toBe(true);
-    // …and the ceiling still bounds it: one more whitespace unit is over.
     expect(
       v.safeParse(ChatRequestSchema, { message: " ".repeat(CHAT_MESSAGE_MAX_LENGTH + 1) }).success,
     ).toBe(false);
@@ -91,11 +79,10 @@ describe("ChatRequestSchema message ceiling (#256)", () => {
 });
 
 /**
- * The chat session id as a REQUEST value (#271): the store's `chat_sessions.id`
- * is a `uuid`, so a non-UUID `sessionId` used to pass validation and die in the
- * adapter's cast as a 500. The contract is the boundary — these rows pin that a
- * malformed id is refused HERE, that the ceiling (#256) is untouched, and that
- * the two server-produced `sessionId` members deliberately stay opaque.
+ * The chat session id as a REQUEST value: the store's `chat_sessions.id` is a
+ * `uuid`, so a non-UUID `sessionId` must be refused at the boundary, before the
+ * adapter's cast — the two server-produced `sessionId` members deliberately
+ * stay opaque.
  */
 describe("ChatRequestSchema sessionId (#271)", () => {
   const sessionIdOf = (sessionId: unknown) =>
@@ -106,27 +93,15 @@ describe("ChatRequestSchema sessionId (#271)", () => {
   });
 
   /**
-   * Case-insensitivity is part of the accepted contract (#312), not an accident
-   * of the current pattern. valibot 1.4.2's `uuid()` tests
-   * `UUID_REGEX = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/iu` — the `i` flag
-   * is the contract — and the `chat_sessions.id` column behind it is
-   * case-insensitive too: QA #289 probe 8 rehydrated an existing session through
-   * its UPPERCASE id (`GET 200`, probe 8's per-form table). The API mints
-   * lowercase ids (`crypto.randomUUID()`), but a client that upper-cases or
-   * re-cases what it persisted still holds a value the store can address, so a
-   * lowercase-only "tightening" would refuse a valid id at the boundary — the
-   * regression direction of #271 itself, silently.
-   *
-   * Mutation these rows pin: in `ChatSessionIdSchema`, swap `v.uuid()` for the
-   * same canonical shape with the `i` flag dropped — e.g.
-   * `v.regex(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/)` — and both rows
-   * redden while "accepts a well-formed UUID" (a lowercase
-   * `crypto.randomUUID()`) stays green.
+   * Case-insensitivity is part of the accepted contract: valibot's `uuid()`
+   * carries the `i` flag and the `chat_sessions.id` column behind it is
+   * case-insensitive too, so a client that re-cases what it persisted still
+   * holds a value the store can address — a lowercase-only tightening would
+   * refuse a valid id at the boundary.
    */
   it("admits an UPPERCASE canonical-shaped id on both request surfaces (#312)", () => {
     expect(sessionIdOf("7B1A712F-3990-46CE-9964-4EB344A867C5")).toBe(true);
-    // The rehydration route's path guard reads the same schema; the uppercase
-    // spelling is the exact form QA #289 probe 8 answered `GET 200` for.
+    // The rehydration route's path guard reads the same schema.
     expect(isChatSessionId("7B1A712F-3990-46CE-9964-4EB344A867C5")).toBe(true);
   });
 
@@ -143,31 +118,22 @@ describe("ChatRequestSchema sessionId (#271)", () => {
   });
 
   it("rejects a UUID-shaped value that is not one", () => {
-    // The near-misses matter more than an obviously wrong string: a client
-    // that truncates or over-pads an id must be refused at the boundary, not
-    // by the store's cast later.
+    // A client that truncates or over-pads an id must be refused at the
+    // boundary, not by the store's cast later.
     expect(sessionIdOf("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a1")).toBe(false);
     expect(sessionIdOf("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11x")).toBe(false);
     expect(sessionIdOf("not-a-uuid-at-all-but-long-enough")).toBe(false);
   });
 
   /**
-   * The Postgres-legal extra hyphen STAYS refused (#312). PostgreSQL accepts a
-   * hyphen after any group of four digits (QA #289 probe 8 measured
-   * `7b1a-712f-3990-46ce-9964-4eb344a867c5` as PG-legal and naming an existing
-   * row), so the `uuid` column would take this spelling — the schema is the
-   * stricter of the two and refuses it first. That refusal is the only reason
-   * the memory stand-in's own, even-tighter rule for the same spelling
+   * The Postgres-legal extra-hyphen spelling stays refused: PostgreSQL accepts a
+   * hyphen after any group of four digits, so the `uuid` column would take it —
+   * the schema is the stricter of the two and refuses it first, which is the only
+   * reason the memory stand-in's own, even-tighter rule for the same spelling
    * (`uuidShaped` in
-   * `packages/kajianq-domain/src/test-utils/memory-rag-store-chat.ts`) is inert
-   * today, so both halves are pinned: the stand-in's verdict in that package's
+   * `packages/kajianq-domain/src/test-utils/memory-rag-store-chat.ts`) is inert.
+   * Both halves are pinned: the stand-in's verdict in that package's
    * `memory-rag-store-chat.test.ts`, the boundary refusal here.
-   *
-   * Mutation this row pins: widening `ChatSessionIdSchema` to PostgreSQL's
-   * extra-hyphen form — e.g.
-   * `v.regex(/^[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i)`
-   * — and this row reddens, at which point the stand-in divergence stops being
-   * inert and route tests would start refusing a value production accepts.
    */
   it("rejects the Postgres-legal extra-hyphen spelling on both surfaces (#312)", () => {
     expect(sessionIdOf("7b1a-712f-3990-46ce-9964-4eb344a867c5")).toBe(false);
@@ -179,7 +145,7 @@ describe("ChatRequestSchema sessionId (#271)", () => {
   });
 
   it("exposes the same rule as the predicate the path-param guard uses", () => {
-    // The rehydration route validates a path param, not a body. It reads this
+    // The rehydration route validates a path param, not a body; it reads this
     // predicate, so the two request surfaces cannot drift into two rules.
     expect(isChatSessionId(crypto.randomUUID())).toBe(true);
     expect(isChatSessionId("en")).toBe(false);
@@ -203,12 +169,9 @@ describe("ChatRequestSchema sessionId (#271)", () => {
   });
 
   /**
-   * The per-field decision, pinned rather than left to prose: the response
-   * schemas keep the opaque `minLength(1)` form. Their values come FROM the
-   * store (`ChatMetaSchema` echoes a minted or already-validated id;
-   * `ChatSessionMessagesSchema` echoes the route's own param), and the
-   * `RagStore` seam types chat session ids as `string` — a UUID claim there
-   * would over-constrain every adapter while preventing no 500.
+   * The response schemas keep the opaque `minLength(1)` form: the `RagStore`
+   * seam types chat session ids as `string`, and a UUID claim on a value the
+   * store produced would over-constrain every adapter while preventing no 500.
    */
   it("leaves the server-produced sessionId members opaque", () => {
     expect(
@@ -288,11 +251,8 @@ describe("ChatCitationsFrameSchema", () => {
   });
 
   it("accepts a refusal frame that keeps its citations (a hybrid answer, #436)", () => {
-    // The two fields are independent projections of one trace (ADR-0040): the
-    // flag reports the decision and never empties the list, so this combination
-    // — a refusal over a partly-cited answer — is a valid frame, and the one the
-    // scorer must read on the label list alone. The warning flag is independent
-    // of both, so it is pinned beside them.
+    // The two fields are independent: the refusal flag reports the decision and
+    // never empties the list, so a refusal over a partly-cited answer is valid.
     const parsed = v.parse(ChatCitationsFrameSchema, {
       messageId: "m3",
       citations: [CITATION],
@@ -391,8 +351,8 @@ describe("ChatTraceFrameSchema", () => {
   });
 
   it("parses a frame persisted before `origin` existed (A1 backward compatibility)", () => {
-    // The exact pre-ADR-0045 frame shape: no chunk carries an origin label.
-    // It must still parse and render — the field is additive and optional.
+    // A frame whose chunks carry no origin label must still parse: the field is
+    // additive and optional.
     const parsed = v.parse(ChatTraceFrameSchema, FRAME);
     for (const chunk of [...parsed.sources, ...parsed.technical.chunks]) {
       expect(chunk.origin).toBeUndefined();

@@ -6,12 +6,11 @@ import { join, resolve } from "node:path";
 import { acquireFiles } from "../../packages/kajianq-domain/scripts/source-acquisition.mjs";
 
 /**
- * Regression tests for the ingest-script acquisition layer (PR #108 review
- * A5/A7): the old single-arg URL-based `resolve` silently dropped path
- * segments — `resolve(cacheDir, cacheFile)` read the cache DIR itself
- * (EISDIR, rethrown by the not-ENOENT guard), and `--limit abc/0` either
- * ingested nothing with a success report or ran the full corpus via
- * falsiness.
+ * Regression tests for the ingest-script acquisition layer: a cache path must
+ * be joined, not resolved as a directory (`resolve(cacheDir, cacheFile)` reads
+ * the cache DIR itself — EISDIR, rethrown by the not-ENOENT guard), and a
+ * non-integer or zero `--limit` must fail rather than ingest nothing with a
+ * success report or run the full corpus via falsiness.
  */
 
 const INGEST_HADITH = resolve(process.cwd(), "packages/kajianq-domain/scripts/ingest-hadith.mjs");

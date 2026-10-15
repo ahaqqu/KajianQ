@@ -16,26 +16,12 @@ import {
 } from "../../scripts/zap-failure-attribution.mjs";
 
 /**
- * ZAP baseline failure attribution (#382).
+ * ZAP baseline failure attribution.
  *
  * The invariant: a red `ZAP baseline` step is DECIDABLE — from evidence that
  * outlives the failed step — as either "the scanner broke" (infrastructure) or
- * "the scan ran and found alerts" (the site regressed). Run 37118454475 was the
- * first class (docker exit 3, no report: `Failed to access summary file
- * /home/zap/zap_out.json`), run 37118702128 the second one's absence
- * (`FAIL-NEW: 0 WARN-NEW: 0 PASS: 62`), and the job's colour alone cannot tell
- * them apart.
- *
- * Traps these cases exist to catch:
- *   1. exit 3 (abort) and exit 1 (FAIL-level alerts) collapsed into one class;
- *   2. a stale container mislabelling a pre-pull failure as "the site
- *      regressed" — the scan never ran;
- *   3. missing env wiring reading as "no ZAP step failed", the opposite of the
- *      truth;
- *   4. an unreadable report counted as a report;
- *   5. a lookup inventing a container id instead of admitting it found none;
- *   6. any edit that weakens the gate (`continue-on-error`, `|| true` on the
- *      scan, a conditional scan step, `fail_action: false`).
+ * "the scan ran and found alerts" (the site regressed), which the job's colour
+ * alone cannot tell apart. No case here may weaken the gate.
  */
 
 const container = (over = {}) => ({
@@ -67,7 +53,6 @@ describe("the class is decidable from evidence that survives the failed step", (
     expect(result.class).toBe(ZAP_CLASSES.scanAborted);
     expect(result.headline).toMatch(/SCANNER BROKE/);
     expect(result.headline).toMatch(/infrastructure abort/);
-    // The abort path must not be described in terms of findings at all.
     expect(result.headline).not.toMatch(/regress|alert/i);
     expect(result.signals.reportPresent).toBe(false);
   });
@@ -122,8 +107,7 @@ describe("the class is decidable from evidence that survives the failed step", (
 
   it("trap 2: a failed pre-pull wins over any container still lying on the runner", () => {
     // The scan never started, so whatever container the lookup finds is not a
-    // scan verdict — claiming one would send a reader hunting a site regression
-    // that cannot exist.
+    // scan verdict — claiming one sends a reader hunting a phantom regression.
     for (const exitCode of [0, 1, 2, 3, null]) {
       const result = classifyZapFailure({
         imageOutcome: "failure",
@@ -190,9 +174,7 @@ describe("the class is decidable from evidence that survives the failed step", (
 
   it("trap 4 at the consumer (A2): an unparseable report is not proof the scan completed", () => {
     // `present` alone is not evidence: a truncated write or a proxy error body
-    // leaves a report file that proves nothing about the scan, and the branch
-    // must not reassure from it — its own signal table two lines below already
-    // prints `present, UNPARSEABLE`.
+    // leaves a report file that proves nothing about the scan.
     const result = classifyZapFailure({
       imageOutcome: "success",
       scanOutcome: "failure",
@@ -234,7 +216,7 @@ describe("the class is decidable from evidence that survives the failed step", (
             if (klass === ZAP_CLASSES.imagePreflight) expect(imageOutcome).toBe("failure");
             if (klass === ZAP_CLASSES.noContainer && !rep.parseable) {
               // Absent OR unreadable is never proof that the scan completed —
-              // trap 4 has to hold at the consumer, not only at the probe (A2).
+              // the rule must hold at the consumer, not only at the probe.
               expect(headline, `completed-scan claim from ${JSON.stringify(rep)}`).not.toMatch(
                 /downstream of the scan/,
               );
@@ -266,11 +248,8 @@ describe("the container lookup cannot invent a container", () => {
   });
 
   it("trap 5 (A1): a newest-container fallback would print SITE REGRESSED from another run's container", () => {
-    // The reviewer's reproduction at c44394fb, verbatim: tiers 1–2 have proven
-    // that nothing appeared during this run, so `b` predates the snapshot and is
-    // not this run's scan. Tier 3 used to hand it to the classifier, which then
-    // claimed `scan-found-fail-alerts` — the one wrong answer this diagnostic
-    // exists to prevent.
+    // A container that predates the snapshot is not this run's scan, and there
+    // is deliberately no newest-container fallback to hand it to the classifier.
     const chosen = chooseContainer({ ancestor: [], before: ["a"], after: ["a"], latest: "b" });
     expect(chosen).toEqual({ id: null, method: "none — no container found" });
     const result = classifyZapFailure({
@@ -284,9 +263,8 @@ describe("the container lookup cannot invent a container", () => {
   });
 
   it("trap 5 (A1): an ancestor hit that predates the snapshot is not this run's scan either", () => {
-    // Tier 1 runs first, so it needs the same provenance filter: on a reused or
-    // self-hosted runner a stale container of the pinned image matches the
-    // ancestor filter without belonging to this job.
+    // Tier 1 needs the same provenance filter: on a reused or self-hosted runner
+    // a stale container of the pinned image matches the ancestor filter.
     expect(
       chooseContainer({
         ancestor: ["bbbbbbbbbbbb"],
@@ -294,8 +272,8 @@ describe("the container lookup cannot invent a container", () => {
         after: ["bbbbbbbbbbbb"],
       }),
     ).toEqual({ id: null, method: "none — no container found" });
-    // …and the filter never rejects the scan's own container, which by
-    // construction appeared after the snapshot.
+    // …and the filter never rejects the scan's own container, which appeared
+    // after the snapshot.
     expect(
       chooseContainer({
         ancestor: ["bbbbbbbbbbbb"],
@@ -473,9 +451,7 @@ describe("the job-summary block is what a reader (or triage) sees first", () => 
   });
 
   it("carries the capture notes into the signals and the summary (B1)", () => {
-    // `captured <path>` is the only record of which of the three candidate log
-    // locations existed; dropping it on the floor made the artifact's own
-    // account of itself unreadable.
+    // `captured <path>` is the only record of which candidate log location existed.
     const notes = [
       "docker logs captured 4096 bytes into zap-container.log",
       "captured /home/zap/zap.log",
@@ -492,8 +468,7 @@ describe("the job-summary block is what a reader (or triage) sees first", () => 
     expect(md).toMatch(/Capture notes/);
     expect(md).toContain("- docker logs captured 4096 bytes into zap-container.log");
     expect(md).toContain("- captured /home/zap/zap.log");
-    // The claim the :408 comment used to make: containers.txt is the raw
-    // `docker ps -aq` id list, and no note lives there.
+    // containers.txt is the raw `docker ps -aq` id list; no capture note lives there.
     expect(md).not.toMatch(/containers\.txt/);
   });
 
@@ -502,16 +477,13 @@ describe("the job-summary block is what a reader (or triage) sees first", () => 
   });
 });
 
-// ---------------------------------------------------------------------------
-// The workflow itself. `.github/workflows/staging.yml` is CI metadata, so the
-// pin and the "gate not weakened" property are asserted here rather than in a
-// staging run: a floating tag or a swallowed failure is exactly the class of
-// regression no runtime test would ever report.
-// ---------------------------------------------------------------------------
+// `.github/workflows/staging.yml` is CI metadata, so the pin and the "gate not
+// weakened" property are asserted here: a floating tag or a swallowed failure is
+// the class of regression no runtime test would report.
 const WORKFLOW = resolve(process.cwd(), ".github/workflows/staging.yml");
 const workflow = readFileSync(WORKFLOW, "utf8");
 
-/** Drop whole-line comments: the file explains WHY a floating tag is not used. */
+/** Whole-line comments are dropped; `:stable` may legitimately appear inside one. */
 const directives = (text) =>
   text
     .split("\n")
@@ -523,11 +495,8 @@ function stepBlock(name) {
   const start = workflow.indexOf(`      - name: ${name}\n`);
   expect(start, `staging.yml must carry a step named "${name}"`).toBeGreaterThan(-1);
   const rest = workflow.slice(start + 1);
-  // A six-space comment line always opens the NEXT step's preamble in this
-  // file; comments inside a step (between `with:` keys or in a `run:` block)
-  // are indented deeper. Stopping there keeps one step's prose out of another
-  // step's assertions — a slicer that ran past it read the attribution step's
-  // explanatory comment as the scan step's content.
+  // A six-space comment line opens the NEXT step's preamble; comments inside a
+  // step are indented deeper. Stopping there keeps steps' prose apart.
   const next = /\n {6}(?:- (?:name|uses|run):|# )/.exec(rest);
   return next ? workflow.slice(start, start + 1 + next.index) : workflow.slice(start);
 }
@@ -540,8 +509,8 @@ describe("staging.yml: every input to the ZAP step is pinned (#382)", () => {
   });
 
   it("leaves no floating ZAP tag in any directive", () => {
-    // `:stable` may still appear inside the comment that documents the bump
-    // command — that is the trigger, not an input.
+    // `:stable` may appear inside the comment that documents the bump command —
+    // a trigger, not an input.
     expect(directives(workflow)).not.toMatch(/zaproxy:stable/);
     expect(directives(workflow)).not.toMatch(/zaproxy\/zaproxy:(?!.*@sha256)/);
   });
@@ -549,16 +518,12 @@ describe("staging.yml: every input to the ZAP step is pinned (#382)", () => {
   it("feeds the pin to the action through `docker_name`", () => {
     const zap = stepBlock("ZAP baseline");
     expect(zap).toMatch(/docker_name: \$\{\{ env\.ZAP_IMAGE \}\}/);
-    // The env var the input reads must be the pinned ref, not a tag.
     expect(workflow).toMatch(/^\s*ZAP_IMAGE: ghcr\.io\/zaproxy\/zaproxy@sha256:[0-9a-f]{64}$/m);
   });
 
   it("holds the file's own convention: every non-local `uses:` is SHA-pinned", () => {
-    // Two regex traps this pattern keeps out, both of which made the assertion
-    // near-vacuous before they were caught here: `\s*` with the multiline flag
-    // matches newlines and swallows every earlier match, and step-level `uses:`
-    // lines are YAML list items (`- uses:`), so a bare `uses:` anchor misses
-    // all of them and leaves only the job-level local workflow.
+    // `\s*` under the multiline flag matches newlines and swallows every earlier
+    // match, and step-level `uses:` lines are YAML list items.
     const refs = [...directives(workflow).matchAll(/^[ \t]*(?:- )?uses: (\S+)/gm)].map((m) => m[1]);
     expect(refs.length).toBeGreaterThanOrEqual(4);
     for (const ref of refs) {
@@ -570,7 +535,6 @@ describe("staging.yml: every input to the ZAP step is pinned (#382)", () => {
   it("pulls the pinned image before the scan, so a registry failure is attributed first", () => {
     const prepull = stepBlock("ZAP image pre-pull");
     expect(prepull).toMatch(/docker pull "\$ZAP_IMAGE"/);
-    // Both steps must exist and sit in this order in the job.
     const order = ["ZAP image pre-pull", "ZAP baseline", "ZAP failure attribution"].map((name) =>
       workflow.indexOf(`      - name: ${name}\n`),
     );
@@ -605,8 +569,8 @@ describe("staging.yml: the attribution must not weaken the gate", () => {
   it("confines the diagnostic fallback to the attribution step, which only runs on failure", () => {
     const attribution = stepBlock("ZAP failure attribution");
     expect(attribution).toMatch(/^\s*if: failure\(\) && \(steps\.zap\.outcome == 'failure'/m);
-    // The fallback exists so the summary is never silently empty; it is on the
-    // diagnostic step, downstream of the gate's own red.
+    // The fallback exists so the summary is never silently empty, on the
+    // diagnostic step only.
     expect(attribution).toMatch(/\|\| \\\n/);
     expect(attribution).toMatch(/>> "\$GITHUB_STEP_SUMMARY"/);
   });
@@ -615,7 +579,6 @@ describe("staging.yml: the attribution must not weaken the gate", () => {
     const attribution = stepBlock("ZAP failure attribution");
     expect(attribution).toMatch(/ZAP_IMAGE_OUTCOME: \$\{\{ steps\.zap-image\.outcome \}\}/);
     expect(attribution).toMatch(/ZAP_SCAN_OUTCOME: \$\{\{ steps\.zap\.outcome \}\}/);
-    // …and the classifier reads exactly those names.
     const script = readFileSync(
       resolve(process.cwd(), "scripts/zap-failure-attribution.mjs"),
       "utf8",
@@ -633,9 +596,8 @@ describe("staging.yml: the attribution must not weaken the gate", () => {
   });
 
   it("captures the container logs the abort path would otherwise lose", () => {
-    // The action's `docker run` carries no --rm (verified from run
-    // 37118454475's log: `docker run -v … --network=host … -t …` with no --rm),
-    // which is what makes the exited container readable from a later step.
+    // The action's `docker run` carries no `--rm`, which is what makes the
+    // exited container readable from a later step.
     const script = readFileSync(
       resolve(process.cwd(), "scripts/zap-failure-attribution.mjs"),
       "utf8",
@@ -646,12 +608,9 @@ describe("staging.yml: the attribution must not weaken the gate", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// The capture half (B2, #397). Docker answers nothing here or on CI, so the
-// buffer behaviour is pinned on the capture helper itself and then end-to-end:
-// the CLI runs against a throwaway `docker` earlier on PATH, and what is
-// asserted is the evidence that survives into the artifact directory.
-// ---------------------------------------------------------------------------
+// Docker is unavailable here and on CI, so the buffer behaviour is pinned on the
+// capture helper itself and end-to-end: the CLI runs against a throwaway
+// `docker` earlier on PATH, and the artifact directory is what gets asserted.
 describe("the capture keeps the evidence it takes (B2, #397)", () => {
   it("captures output larger than node's 1 MiB default instead of returning null", () => {
     const captured = runCapture(process.execPath, [
@@ -686,9 +645,7 @@ describe("the CLI writes the evidence it gathered into the artifact (A1/B1/B2, #
 
   /**
    * Run the CLI against a stub `docker` on PATH and hand the artifact directory
-   * to `check`. `before`/`after` are the container id lists around the pre-pull
-   * snapshot; the stub answers exactly the calls the CLI makes, and exits 0 with
-   * no output for anything else (a capture that found nothing).
+   * to `check`; `before`/`after` are the id lists around the pre-pull snapshot.
    */
   function withFakeDocker(fixture, check) {
     const root = mkdtempSync(join(tmpdir(), "zap-attribution-"));
@@ -705,9 +662,8 @@ describe("the CLI writes the evidence it gathered into the artifact (A1/B1/B2, #
       const zapLog = join(root, "zap.log");
       writeFileSync(zapLog, "zap home log\n");
 
-      // The stale arms exist so a resurrected "newest container" fallback finds
-      // a readable exit 1 on the leftover container and prints SITE REGRESSED —
-      // the failure mode review A1 reproduced, reachable from this stub.
+      // The stale arms make a resurrected "newest container" fallback find a
+      // readable exit 1 on the leftover container and print SITE REGRESSED.
       const stub = `#!/bin/sh
 case "$*" in
   "ps -aq --filter ancestor=${IMAGE}") printf '%s\\n' ${fixture.ancestor.join(" ")} ;;
@@ -748,10 +704,8 @@ exit 0
   }
 
   it("never picks a container that predates the pre-pull snapshot (A1)", () => {
-    // The reviewer's reproduction, end to end: the runner holds the same image's
-    // container from an earlier run (readable, exit 1), and nothing appeared
-    // during this one. Both lookups must refuse it rather than print the site
-    // verdict its exit code would imply.
+    // The runner holds the same image's container from an earlier run (readable,
+    // exit 1) and nothing appeared during this one; both lookups must refuse it.
     withFakeDocker(
       {
         before: [STALE],
@@ -784,8 +738,7 @@ exit 0
         const notes = readFileSync(join(artifact, "notes.txt"), "utf8");
         expect(notes).toMatch(/docker logs captured 3145728 bytes into zap-container\.log/);
         expect(notes).toMatch(/captured \/home\/zap\/zap\.log/);
-        // The same notes ride the signals, so attribution.json — the artifact a
-        // future triage reads — carries them too.
+        // The same notes ride the signals, so attribution.json carries them too.
         const { signals } = JSON.parse(readFileSync(join(artifact, "attribution.json"), "utf8"));
         expect(signals.captureNotes).toEqual(notes.trimEnd().split("\n"));
       },

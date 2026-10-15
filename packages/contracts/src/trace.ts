@@ -2,11 +2,10 @@ import * as v from "valibot";
 import { TraceEventSchema } from "./trace-events";
 
 // Re-exported so the package's public trace surface is one import path however
-// the 300-line agentic cap distributes the files: `index.ts`, the adapter, the
-// web client and the eval harness all import from here exactly as before.
-// Each name has exactly ONE owner module — the cost shape included, which
-// lives in `./trace-primitives` and nowhere else (no second spelling of it is
-// a valid layout).
+// the agentic size cap distributes the files: `index.ts`, the adapter, the web
+// client and the eval harness import from here. Each name has exactly ONE owner
+// module — the cost shape included, which lives in `./trace-primitives` and
+// nowhere else (no second spelling of it is a valid layout).
 export {
   ChunkRefSchema,
   CostRecordSchema,
@@ -34,12 +33,10 @@ export { TraceEventSchema, type TraceEvent, type TraceEventKind } from "./trace-
  * `version`: a trace persisted before the kind shipped simply carries no
  * event of it, so the enumeration's growth cannot make an older trace
  * unreadable, and the version anchor covers `Trace`'s own fields rather than
- * the event union's size (every kind added since `version` was introduced —
- * `filter_relaxed`, `scope_expansion`, `decision`, and now `product_rules` —
- * shipped without a bump, and the runner does not write `version` at all).
- * What a reader MUST NOT do is read the absence of such an event as a
- * negative for a trace written before the kind existed; presence is the
- * signal, absence is ambiguous across the version boundary.
+ * the event union's size. What a reader MUST NOT do is read the absence of
+ * such an event as a negative for a trace written before the kind existed;
+ * presence is the signal, absence is ambiguous across the version boundary
+ * (the runner does not write `version` at all).
  */
 export const TraceSchema = v.object({
   id: v.pipe(v.string(), v.minLength(1)),
@@ -59,8 +56,7 @@ export function totalCostMicroUsd(trace: Trace): number {
 /**
  * Validate and return a Trace, throwing on a malformed event. The pipeline
  * runner calls this once when assembling the final trace so a mis-shaped or
- * unknown-kind event fails the run instead of persisting silently (ADR-0007;
- * #45).
+ * unknown-kind event fails the run instead of persisting silently (ADR-0007).
  */
 export function parseTrace(trace: unknown): Trace {
   return v.parse(TraceSchema, trace);

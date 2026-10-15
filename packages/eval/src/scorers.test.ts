@@ -60,13 +60,8 @@ describe("citationValidity", () => {
     expect(citationValidity([], "anything")).toBe(1);
   });
 
-  /**
-   * The text-fallback path with the gate's grammar injected (the CLI wiring).
-   * The grammar is faked here — the engine package must not depend on the
-   * domain pack — and its shape mirrors the real `normalizeCitationLabel` /
-   * `citationCandidatesIn` pair, canonicalizing the marker spellings the way
-   * the real functions do.
-   */
+  /** The engine package must not depend on the domain pack, so the grammar is
+   * faked; it canonicalizes marker spellings the way the real pair does. */
   const canon = (label: string): string =>
     label
       .replace(/[*_`]+/g, "")
@@ -77,17 +72,12 @@ describe("citationValidity", () => {
     normalizeLabel: canon,
     labelsInText: (text: string) =>
       [...text.matchAll(/Q\.?S\.?\s*[^\s:,[\]()]+\s*:\s*\d+/g)].map((m) => canon(m[0]!)),
-    // No list-valued citation form in this double, declared as such (the
-    // member is required — review R1; a grammar with ranges declares its
-    // enumeration instead, see `rangeGrammar` below).
+    // No list-valued citation form in this double: declared as identity, not omitted.
     addressesNamedBy: (label: string): readonly string[] => [label],
   };
 
   it("matches a marker-spelling variant the raw substring check misses", () => {
-    // Live-staging shape: the fixture curates `QS. 1:2`, but a model (or the
-    // store's label) may carry the dotted `Q.S.` or the dot-less `QS ` form.
-    // `"… Q.S. 1:2 …".includes("QS. 1:2")` is false — a grounded citation
-    // scored 0 on spelling alone. The grammar canonicalizes both sides.
+    // A marker variant (dotted `Q.S.` or dot-less `QS `) must match the fixture's spelling.
     expect(citationValidity(["QS. 1:2"], "… Q.S. 1:2 …")).toBe(0);
     expect(citationValidity(["QS. 1:2"], "… Q.S. 1:2 …", { grammar })).toBe(1);
     expect(citationValidity(["QS. 1:2"], "… QS 1:2 …")).toBe(0);
@@ -100,7 +90,7 @@ describe("citationValidity", () => {
   });
 
   it("normalizes the required label too, so a marker variant matches", () => {
-    // The fixture's own spelling may carry the variant; the text's standard.
+    // The fixture's own spelling may carry the variant; the grammar normalizes it.
     expect(citationValidity(["Q.S. 1:2"], "… QS. 1:2 …", { grammar })).toBe(1);
   });
 
@@ -111,28 +101,21 @@ describe("citationValidity", () => {
   });
 
   it("NEVER scores a label the frame does not contain (ADR-0040 invariant)", () => {
-    // A frame that grounds nothing cannot be talked into a pass by text that
-    // happens to contain the label — a fabricated citation is not grounded.
+    // A frame that grounds nothing cannot be talked into a pass by text that contains it.
     const frame = { citations: [{ label: "QS. 2:255" }] };
     expect(citationValidity(["QS. 1:2"], "the text writes QS. 1:2 plainly", { frame })).toBe(0);
   });
 
   it("scores a hybrid refusal's frame on its citations, never on the refusal flag (#436)", () => {
-    // The gate-affecting statement of #436, as a test: a generator-emitted
-    // refusal inside a partial answer ships a frame that carries BOTH the
-    // grounded labels the text quotes and `refusal: true`. The scorer reads the
-    // list and ignores the flag, so the citations the delivered text actually
-    // carries are scored — the shape used to score 0 off the frame's old
-    // empty-on-any-refusal derivation. The refusal dimension is untouched: it
-    // reads the trace's `refusal` event, not this frame.
+    // A hybrid frame carries BOTH the grounded labels the text quotes and
+    // `refusal: true`; the scorer reads the label list, never the flag.
     const hybridFrame = { refusal: true, citations: [{ label: "QS. 1:2" }] };
     expect(
       citationValidity(["QS. 1:2"], "… QS. 1:2 … lalu tidak menemukan dalil", {
         frame: hybridFrame,
       }),
     ).toBe(1);
-    // The unchanged good case: a pure refusal's frame is genuinely empty, and
-    // its required citations stay absent — the same 0 it has always scored.
+    // A pure refusal's frame is genuinely empty, so its required citations stay absent.
     const pureRefusalFrame = { refusal: true, citations: [] as { label: string }[] };
     expect(
       citationValidity(["QS. 1:2"], "tidak menemukan dalil yang memadai", {
@@ -158,8 +141,7 @@ describe("citationValidity", () => {
   });
 
   it("treats an EMPTY grounded list as evidence of nothing, not as absent", () => {
-    // A refusal records an empty `grounded` list; scoring must not fall through
-    // to the text (which for a refusal is a refusal marker, not a citation).
+    // A refusal records an empty `grounded` list; scoring must not fall through to the text.
     const events: TraceEventLike[] = [
       { kind: "review", stage: "reviewer", detail: { verdict: "{}", grounded: [] } },
     ];
@@ -184,20 +166,10 @@ describe("citationValidity", () => {
   });
 
   /**
-   * The three evidence paths on a **grounded range** (review A1 of the #274 fix
-   * round). The reviewer's reproduction at head: with `QS. 2:255-256` grounded
-   * by the retrieved `QS. 2:255` + `QS. 2:256`, `citationValidity(["QS. 2:255"],
-   * answer, { frame })` was **0** — the frame carries the range as written
-   * (ADR-0049 Decision 4) and the required citation is the single verse, so
-   * comparing the two as strings scored a correctly grounded answer absent
-   * while the same call through the trace's `grounded` labels scored 1. The
-   * required citation and the evidence are now compared as the **sets of
-   * addresses they name**, through the same declaration the gate grounds with.
-   *
-   * The grammar double above gains that declaration (mirroring the domain
-   * pack's `addressesNamedBy`, the function the CLI composition root injects),
-   * and `labelsInText` gains the dash tail so the text path sees the same span
-   * the real scan produces.
+   * The three evidence paths on a **grounded range**: the frame carries the
+   * range as written while the required citation is a single verse, so both
+   * sides are compared as the **sets of addresses they name**, through the same
+   * declaration the gate grounds with.
    */
   describe("a grounded range on every evidence path (#274 A1)", () => {
     const rangeGrammar = {
@@ -215,12 +187,9 @@ describe("citationValidity", () => {
       },
     };
     const answer = "Dalilnya QS. 2:255-256 tentang hal ini.";
-    // What `deriveCitationsFrame` emits for this answer: the range as written,
-    // backed by its head verse's display row (pinned end-to-end against the
-    // real frame in `apps/api/src/lib/chat-citations.test.ts`).
+    // The frame carries the range as written, backed by its head verse's row.
     const rangeFrame = { citations: [{ label: "QS. 2:255-256" }] };
-    // What the gate records on the trace: every address the grounded range
-    // cites, head and tail.
+    // The gate records every address the grounded range cites, head and tail.
     const events: TraceEventLike[] = [
       {
         kind: "review",
@@ -238,8 +207,7 @@ describe("citationValidity", () => {
     });
 
     it("scores the TAIL verse too — the range cites it, and it is never a literal substring", () => {
-      // `"… QS. 2:255-256 …".includes("QS. 2:256")` is false, which is why the
-      // provenance list has to name every address a grounded range cites.
+      // The tail is never a literal substring, so the evidence names every address it cites.
       expect(answer.includes("QS. 2:256")).toBe(false);
       expect(
         citationValidity(["QS. 2:256"], answer, { frame: rangeFrame, grammar: rangeGrammar }),
@@ -257,29 +225,22 @@ describe("citationValidity", () => {
     });
 
     it("refuses a declared-but-unenumerable list on both sides of the comparison (review T1)", () => {
-      // The declaration's third state, from the domain pack: a grammar that
-      // declares a list and cannot enumerate it returns `null`. That is a
-      // REFUSAL — not `[]` ("names nothing", which falls back to the label) and
-      // not a one-element list (a single-address declaration). The engine must
-      // not read a shorter version of such a label in either direction, or the
-      // scorer would credit an answer the gate refused.
+      // A `null` declaration (a list the grammar cannot enumerate) is a REFUSAL,
+      // not `[]` and not a one-element list: never read a shorter form of it.
       const unenumerable: CitationGrammar = {
         ...rangeGrammar,
         addressesNamedBy: (label: string): readonly string[] | null =>
           label.includes("-") ? null : [label],
       };
-      // As EVIDENCE a `null` label names nothing verifiable, so it grounds
-      // nothing — here the frame's range label cannot ground its own head.
+      // As EVIDENCE a `null` label names nothing verifiable, so it grounds nothing.
       const frame = { citations: [{ label: "QS. 2:255-256" }] };
       expect(citationValidity(["QS. 2:255"], answer, { frame, grammar: unenumerable })).toBe(0);
-      // As a REQUIRED citation it is never present, even though the answer text
-      // contains its head and the evidence carries the range.
+      // As a REQUIRED citation it is never present, even though the text contains its head.
       expect(
         citationValidity(["QS. 2:255-256"], answer, { frame: rangeFrame, grammar: unenumerable }),
       ).toBe(0);
       expect(citationValidity(["QS. 2:255-256"], answer, { grammar: unenumerable })).toBe(0);
-      // `[]` is NOT `null`: a grammar that names nothing for a label still
-      // compares that label whole — the pre-existing fallback, unchanged.
+      // `[]` is NOT `null`: a label the grammar cannot enumerate still compares whole.
       const namesNothing: CitationGrammar = { ...rangeGrammar, addressesNamedBy: () => [] };
       expect(
         citationValidity(["QS. 2:255-256"], answer, { frame: rangeFrame, grammar: namesNothing }),
@@ -287,22 +248,15 @@ describe("citationValidity", () => {
     });
 
     it("keeps the frame authoritative: an empty frame is still 0", () => {
-      // The frame is the server's grounded set; the new relation reads its
-      // labels, it does not replace the frame with the answer text.
+      // The frame stays authoritative: the relation reads its labels, it does not replace them.
       const empty = { citations: [] as { label: string }[] };
       expect(
         citationValidity(["QS. 2:255"], answer, { frame: empty, events, grammar: rangeGrammar }),
       ).toBe(0);
     });
 
-    /**
-     * R1 of the fix round: the declaration is required, and its absence is a
-     * loud typed error at the engine's grammar entry — never the silent
-     * string-only fallback that reproduced A1. Measured at head 171b858 with
-     * the real domain grammar and the real `deriveCitationsFrame` output on
-     * this fixture: declaration present 1/1/1 (frame/events/text), declaration
-     * absent 0/1/0. The fallback is deleted, not weakened.
-     */
+    /** The declaration is required: its absence is a loud typed error at the
+     * engine's grammar entry, never a silent string-only fallback. */
     const withoutDeclaration = (): CitationGrammar =>
       ({
         normalizeLabel: rangeGrammar.normalizeLabel,
@@ -333,9 +287,8 @@ describe("citationValidity", () => {
     });
 
     it("fails even on a question with no required citations (no silent short-circuit)", () => {
-      // `citationValidity` returns 1 before touching the grammar when nothing
-      // is required; the guard runs BEFORE that, so an unwired grammar cannot
-      // hide behind a trap question and surface on a later one.
+      // The grammar guard runs before the empty-required early return, so an
+      // unwired grammar cannot hide behind a trap question.
       expect(() => citationValidity([], answer, { grammar: withoutDeclaration() })).toThrow(
         CitationGrammarError,
       );
@@ -359,8 +312,7 @@ describe("citationLabelsPresent", () => {
   });
 
   it("normalizes both sides of the frame comparison", () => {
-    // The fixture keeps the curated `QS. 1:2`; a frame label in a marker
-    // variant still grounds it once the grammar canonicalizes both.
+    // The fixture keeps the curated `QS. 1:2`; the grammar canonicalizes both sides.
     expect(
       citationLabelsPresent({
         required: ["QS. 1:2"],
@@ -446,9 +398,8 @@ describe("groundedAnswer (#250: the non-refusal branch)", () => {
   });
 
   it("is false for an EMPTY frame, even when the trace's grounded list is not", () => {
-    // Frame-first precedence, exactly as `citationLabelsPresent`: an empty frame
-    // is authoritative and the trace labels are never consulted past it. This is
-    // the direction that cannot manufacture a pass from a fabricated citation.
+    // Frame-first precedence: an empty frame is authoritative and the trace
+    // labels are never consulted past it — a fabricated citation cannot pass.
     expect(groundedAnswer({ frame: frameOf([]), events: [reviewWith(["QS. 55:1"])] })).toBe(false);
   });
 
@@ -465,9 +416,7 @@ describe("groundedAnswer (#250: the non-refusal branch)", () => {
   });
 
   it("is false for an older trace with no grounded field — the text never grounds itself", () => {
-    // The one shape `groundedAnswer` takes no answer text for: a citation-shaped
-    // span in the prose is not evidence (a fabricated citation is shaped the
-    // same way), so there is deliberately no text fallback here.
+    // A citation-shaped span in the prose is not evidence, so there is no text fallback.
     expect(groundedAnswer({ frame: null, events: [reviewWith(undefined)] })).toBe(false);
   });
 });
@@ -482,9 +431,7 @@ describe("behaviorAccepted (#250: refuse, or ground it)", () => {
   });
 
   it("fails a trap on a non-refusal with no grounded citation — this keeps the gate live", () => {
-    // `gs-v0-019` has no required citations and no expected source types, so
-    // this dimension is its only live check: accepting any non-refusal would
-    // make the question a no-op that always passes.
+    // A trap with no required citations or expected sources has this as its only live check.
     expect(behaviorAccepted("refuse", false, false)).toBe(false);
   });
 
@@ -532,10 +479,8 @@ describe("scoreQuestion", () => {
   });
 
   it("records the expansion's contribution beside the unchanged metric (C1)", () => {
-    // The mask is real: `retrievalRecall` reads every ref regardless of
-    // origin, so the two expansion refs satisfy the second expected source.
-    // The outcome must still say WHICH path carried it — that is the whole
-    // point of the extra block.
+    // `retrievalRecall` reads every ref regardless of origin, so the expansion
+    // refs satisfy the expected source; the outcome must still say WHICH path.
     const scoped: TraceEventLike = {
       kind: "retrieval",
       stage: "retriever",
@@ -557,12 +502,8 @@ describe("scoreQuestion", () => {
   });
 
   it("keeps every expansion path out of the fused-only leg (A4 of the #274 fix round)", () => {
-    // `retrievalRecall` reads every ref, so the two expansions' refs satisfy
-    // the second expected source here. The fused-only leg must exclude BOTH:
-    // it used to exclude only the scope origin, so the neighbour chunk counted
-    // as fused, the metric equalled the reported recall, and the report could
-    // no longer state that an expansion carried the question — the one
-    // property #243 C1 exists for.
+    // The fused-only leg must exclude BOTH refs: excluding only the scope origin
+    // would count the neighbour chunk as fused and equal the reported recall.
     const scoped: TraceEventLike = {
       kind: "retrieval",
       stage: "retriever",
@@ -579,8 +520,7 @@ describe("scoreQuestion", () => {
       expansionOrigin: "expansion",
     });
     expect(outcome.retrievalRecall).toBe(1);
-    // `chunks` counts the SCOPE path only (ADR-0045's published meaning), and
-    // the fused-only leg is the one ref that carries no origin label.
+    // `chunks` counts the SCOPE path only; the fused-only leg is the ref with no origin label.
     expect(outcome.expansion).toEqual({ chunks: 1, fusedOnlyRetrievalRecall: 0.5 });
   });
 
@@ -601,8 +541,7 @@ describe("scoreQuestion", () => {
         expansionOrigin: "expansion",
       },
     );
-    // The scoped read ran and added nothing: the report says so, and the
-    // fused-only figure still exposes the missing second leg.
+    // The scoped read ran and added nothing: the report says so beside the fused-only figure.
     expect(outcome.expansion).toEqual({ chunks: 0, fusedOnlyRetrievalRecall: 0.5 });
   });
 
@@ -642,8 +581,7 @@ describe("scoreQuestion", () => {
   });
 
   it("scores citation validity from the frame the transport carried", () => {
-    // The answer text has no citation marker at all, but the server's frame
-    // grounds it — exactly the live shape the raw-substring check mishandled.
+    // The answer text has no citation marker at all; the server's frame grounds it.
     const outcome = scoreQuestion(
       question,
       "a grounded answer whose marker spelling differs",

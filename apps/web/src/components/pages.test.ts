@@ -31,9 +31,9 @@ describe("CollectionPage", () => {
     await renderApp("/collection");
     expect(screen.getAllByTestId("collection-entry").length).toBe(COLLECTION_ENTRIES.length);
 
-    // Counts are derived from the data module, not hard-coded (thermo-review
-    // B4): the data shape contract is owned by `collections.test.ts`; this
-    // test asserts the page renders what the module declares, per section.
+    // Counts are derived from the data module, not hard-coded: the data shape
+    // contract is owned by `collections.test.ts`, so this test asserts the page
+    // renders what the module declares, per section.
     const available = screen.getByTestId("collection-section-available");
     const planned = screen.getByTestId("collection-section-planned");
     const availableIds = byStatus(COLLECTION_ENTRIES, "available").map((entry) => entry.id);
@@ -128,11 +128,10 @@ describe("CollectionPage", () => {
   });
 
   /**
-   * The "Ask about this source" affordance (#175): available entries only, each
-   * a typed router `Link` into the chat carrying that entry's own question in
-   * the current locale as the `q` param. The link never auto-sends — the chat
-   * seeds its composer draft (see `chat-prefill.test.ts` for the consumption
-   * half).
+   * The "Ask about this source" affordance: available entries only, each a
+   * typed router `Link` into the chat carrying that entry's own question in the
+   * current locale as the `q` param. The link never auto-sends — the chat seeds
+   * its composer draft (see `chat-prefill.test.ts` for the consumption half).
    */
   it("gives every available entry an Ask link carrying its question, and none to planned entries", async () => {
     await renderApp("/collection");
@@ -196,8 +195,7 @@ describe("AboutPage", () => {
     expect(privacy.textContent).toContain("Privasi");
 
     // One card per register row, each carrying its status — netcup is the host
-    // in use today (#181 moved the serving path onto it), so the page is never
-    // false.
+    // in use today, so the page is never false.
     const processors = within(privacy).getAllByTestId("about-privacy-processor");
     expect(processors.length).toBe(SUB_PROCESSORS.length);
     expect(within(privacy).getByTestId("about-privacy-controller").textContent).toContain(
@@ -211,11 +209,10 @@ describe("AboutPage", () => {
     expect(privacy.textContent).toContain("data pribadi tidak pernah lewat tingkat gratis");
     expect(netcup.textContent).toContain("Berbayar · Boleh membawa data pribadi");
 
-    // Retention rows. Post-cutover every window stated is enforced by something
-    // live on the host (the 2026-09-21 cutover applied the logrotate stanzas and
-    // the backup timer — Art. 30 §7 "Applied on the host"), so no row renders as
-    // planned and none carries a ticket: claiming `planned` for enforced work
-    // understates the protection as much as the reverse would overstate it.
+    // Retention rows. Every window stated is enforced by something live on the
+    // host (Art. 30 §7 "Applied on the host"), so no row renders as planned and
+    // none carries a ticket: claiming `planned` for enforced work understates
+    // the protection as much as the reverse would overstate it.
     const retention = within(privacy).getAllByTestId("about-privacy-retention-row");
     expect(retention.length).toBe(RETENTION.length);
     expect(

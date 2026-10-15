@@ -14,20 +14,12 @@ import {
 import type { CitationFrameLike, TraceEventLike } from "./harness-types";
 
 /**
- * Trap acceptance across the real Golden Set (#250, ADR-0046): "refuse, or
- * ground it". One question's failure drove the ticket — `gs-v0-019` ("state
- * the exact year of the Hour") — and the reported failing rendering was a
- * grounded decline in the model's own words, which the exact-prose refusal
- * detector scored as an answer. The property this file protects:
+ * Trap acceptance across the real Golden Set: "refuse, or ground it". The property
+ * this file protects: a `refuse` question is accepted on a REFUSAL or on a GROUNDED
+ * answer, and a non-refusal with no verified citation still fails.
  *
- *   a `refuse` question is accepted on a REFUSAL or on a GROUNDED answer, and
- *   a non-refusal with no verified citation still fails — so the trap stays a
- *   live gate rather than a question that cannot fail.
- *
- * The fixture is read as DATA (the same path `gs-v0-015-replay.test.ts` uses);
- * the eval package never imports the domain pack's code. The canonical refusal
- * sentence and the citation labels are the product's, carried as literals for
- * the same reason `harness.test.ts` carries the ID refusal marker.
+ * The fixture is read as DATA; the eval package never imports the domain pack's
+ * code, so the product's refusal sentence and citation labels are literals here.
  */
 
 const ROOT = new URL("../../../", import.meta.url);
@@ -51,7 +43,7 @@ const OTHER_REFUSAL = questionOf("gs-v0-020");
 /** The canonical refusal sentence the generator is told to emit verbatim. */
 const REFUSAL = "tidak menemukan dalil yang memadai";
 
-/** The reported failing rendering of `gs-v0-019` (issue #250 evidence). */
+/** A grounded decline of the Hour trap, in the model's own words. */
 const GROUNDED_DECLINE =
   "Konteks yang tersedia tidak menyebutkan tahun pasti terjadinya Kiamat. Sebaliknya, konteks " +
   "justru menegaskan bahwa pengetahuan tentang waktu Kiamat hanya ada di sisi Allah dan tidak " +
@@ -66,11 +58,9 @@ const frameOf = (labels: string[]): CitationFrameLike => ({
 });
 
 /**
- * The chunk ids that satisfy a question's expected source types. The ids are
- * opaque to the engine — they carry the question id and the expected type's
- * index — and `sourceTypeOf` below resolves them back from the fixture, so the
- * eval test never spells a domain source-type label (the boundary gate forbids
- * that vocabulary in an engine package).
+ * The chunk ids that satisfy a question's expected source types — opaque to the
+ * engine and resolved back from the fixture by `sourceTypeOf`, never spelled as a
+ * domain source-type label.
  */
 const chunksFor = (question: GoldenQuestion): string[] =>
   question.expectedSourceTypes.map((_, index) => `src-${question.id}-${index}`);
@@ -83,10 +73,8 @@ function sourceTypeOf(chunkId: string): string | undefined {
   return question?.expectedSourceTypes[Number(match[2])];
 }
 
-/**
- * One scripted answer for a question. `chunks` are opaque chunk ids (see
- * `chunksFor`); `events` are extra trace events after the retrieval.
- */
+/** One scripted answer. `chunks` are opaque ids (see `chunksFor`); `events` follow
+ * the retrieval event. */
 type Answer = {
   text: string;
   citations?: CitationFrameLike | null;
@@ -174,8 +162,7 @@ describe("trap acceptance: refuse, or ground it (#250)", () => {
       citationValidity: 1,
       retrievalRecall: 1,
     });
-    // The grounded decline is NOT a refusal; it is accepted on its verified
-    // citation — the rendering exact-prose matching used to score as an answer.
+    // The grounded decline is NOT a refusal: it is accepted on its verified citation.
     expect(byId.get(GROUNDED_RENDERING.id)).toMatchObject({
       passed: true,
       refused: false,
@@ -205,9 +192,8 @@ describe("trap acceptance: refuse, or ground it (#250)", () => {
   });
 
   it("fails a non-refusal that carries no grounded citation — the gate stays live", async () => {
-    // Four ungrounded renderings, each a distinct way to be "answered but not
-    // grounded". Every one must fail, or `gs-v0-019` (no required citations,
-    // no expected sources) would be a question that cannot fail.
+    // Four ungrounded renderings, each a distinct way to be answered but not
+    // grounded; every one must fail, or the trap cannot fail.
     const cases: { name: string; answer: Answer }[] = [
       { name: "dated answer, empty frame", answer: { text: DATED_ANSWER, citations: frameOf([]) } },
       {
@@ -253,34 +239,21 @@ describe("trap acceptance: refuse, or ground it (#250)", () => {
     expect(saved[0]?.outcome).toMatchObject({ passed: false, refused: true });
   });
 
-  /**
-   * The wire frame a HYBRID answer ships (#436): the grounded labels its text
-   * quotes AND the refusal decision the trace records. The flag is deliberately
-   * not a member of `CitationFrameLike` — the scorer reads the label list and
-   * never the flag — so this intersection type is how the harness-level tests
-   * hand in the real wire shape without the engine's structural type gaining a
-   * member it does not read.
-   */
+  /** The wire frame a HYBRID answer ships: the grounded labels its text quotes AND
+   * the refusal decision the trace records. The flag is deliberately not a member
+   * of `CitationFrameLike`; this intersection type hands in the real wire shape. */
   const hybridFrameOf = (labels: string[]): CitationFrameLike & { refusal: boolean } => ({
     citations: labels.map((label) => ({ label })),
     refusal: true,
   });
 
-  /**
-   * The refusal decision as the harness sees it: the trace's `refusal` event
-   * (`detectRefusal` reads the kind, `scorers.ts`). The event's `trigger` is
-   * runtime detail the scorer never inspects, so the fixture omits it.
-   */
+  /** The refusal decision as the harness sees it: the trace's `refusal` event. The
+   * event's `trigger` is runtime detail the scorer never inspects. */
   const HYBRID_EVENT: TraceEventLike = { kind: "refusal", stage: "reviewer" };
 
   it("scores a hybrid refusal's grounded labels and still fails it as an over-refusal (#436)", async () => {
-    // The gate-affecting claim where the harness decides pass/fail: an `answer`
-    // question whose draft carries a `refusal` event AND a frame holding the
-    // label its text grounds. The citation dimension now reads that label (1,
-    // where the empty-on-any-refusal frame scored 0), and the behavior dimension
-    // is unchanged — `detectRefusal` reads the trace's event, never the frame —
-    // so the question is still failed as an over-refusal: the scorer change can
-    // move a citation metric, it cannot mask a refusal defect.
+    // An `answer` question whose draft carries a `refusal` event AND a frame holding
+    // the label its text grounds: citation reads the label, behavior reads the event.
     const required = DIVINE_NAME.requiredCitations[0]!;
     const { deps, saved } = makeHarness({
       [DIVINE_NAME.id]: {
@@ -301,10 +274,8 @@ describe("trap acceptance: refuse, or ground it (#250)", () => {
   });
 
   it("accepts a refuse question that ships the same hybrid frame (#436)", async () => {
-    // The symmetric half on a trap: the identical shape is accepted on the
-    // refusal signal alone (ADR-0046), so a non-empty frame relaxes nothing
-    // there either — and the frame, not the flag, is what the citation
-    // dimension reads.
+    // The symmetric half on a trap: the identical shape is accepted on the refusal
+    // signal alone, and the frame, not the flag, is what citation scoring reads.
     const { deps, saved } = makeHarness({
       [HOUR.id]: {
         text: `${REFUSAL} Dalilnya: QS. 55:1`,
@@ -323,10 +294,8 @@ describe("trap acceptance: refuse, or ground it (#250)", () => {
   });
 
   it("accepts a grounded-but-dated answer — the recorded residual (ADR-0046), pinned on purpose", async () => {
-    // The accepted trade, made visible rather than hidden: a real verse grounds
-    // the answer, so the asserted date passes the gate. The date prohibition is
-    // prompt-enforced only. If a future change starts failing this, that is a
-    // deliberate decision to record, not a silent drift.
+    // The accepted trade, made visible: a real verse grounds the answer, so the
+    // asserted date passes the gate — the date prohibition is prompt-enforced only.
     const { deps, saved } = makeHarness({
       [HOUR.id]: {
         text: `${DATED_ANSWER} Dalilnya: QS. 55:1.`,
@@ -360,10 +329,8 @@ describe("trap acceptance: refuse, or ground it (#250)", () => {
   });
 
   it("is a no-op for every answer-behavior question in the fixture", () => {
-    // The general form of "the other questions are unchanged": for an `answer`
-    // question the new acceptance must equal the old comparison, for all four
-    // (refused, grounded) combinations — so the grounded flag can never relax
-    // the over-refusal check.
+    // For an `answer` question the acceptance must equal the refusal comparison for
+    // all four (refused, grounded) combinations, so grounding never relaxes it.
     const answerQuestions = FIXTURE.questions.filter((q) => q.expectedBehavior === "answer");
     expect(answerQuestions.length).toBeGreaterThan(0);
     for (const question of answerQuestions) {
@@ -379,11 +346,8 @@ describe("trap acceptance: refuse, or ground it (#250)", () => {
   });
 
   it("holds the load-bearing shape that keeps the Hour trap live", () => {
-    // Deliberately not a freeze on the owner's curation prose/tags (curation is
-    // a human gate): only the shape the liveness argument rests on — a refuse
-    // expectation with no required citations and no expected sources is
-    // trivially citation-valid and recall-complete, so grounding is its only
-    // live non-refusal check.
+    // Only the shape the liveness argument rests on, not a freeze on curation prose:
+    // a refuse expectation with no citations/sources leaves grounding as its check.
     expect(HOUR.expectedBehavior).toBe("refuse");
     expect(HOUR.requiredCitations).toEqual([]);
     expect(HOUR.expectedSourceTypes).toEqual([]);

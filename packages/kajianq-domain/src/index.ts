@@ -5,10 +5,6 @@
  * packages. This pack supplies the domain inputs the engine treats as opaque:
  * retrieval metadata filters, prompt templates (parameterized by language),
  * and the domain vocabulary of CONTEXT.md.
- *
- * Foundation skeleton: defines the domain vocabulary types injected into the
- * engine. Source parsers, prompt templates, and the terminology-graph
- * consumption arrive with the corpus and Smart Router tickets.
  */
 
 /**
@@ -105,7 +101,7 @@ export {
   type HadithSummarizerProvider,
 } from "./hadith-llm";
 
-// -- Embedding benchmark gate (#9, ADR-0013/0014) --------------------------
+// -- Embedding benchmark gate (ADR-0013/0014) ------------------------------
 export {
   authorProbes,
   benchDocIdHadith,
@@ -121,11 +117,11 @@ export {
 export { EXPANSION_SYSTEM_PROMPT, expansionUserPrompt } from "./embed-bench-prompts";
 export { DECISION_BENCH_PROMPTS } from "./decision-bench-prompts";
 
-// -- Chat pipeline (#8): Smart Router stages over the DARS seams -----------
+// -- Chat pipeline: Smart Router stages over the DARS seams ----------------
 // (Filter vocabulary (Madzhab/Grade/TextLayer/KajianQFilters) stays exported
 // from the top of this barrel — chat stages import it via ./filters.)
 //
-// Smart Router stages 1–2 (#14) split across four modules for the agentic
+// Smart Router stages 1–2 split across four modules for the agentic
 // caps: this barrel is still the one public surface. `taxonomy` owns the
 // classification vocabularies, `chat-router-output` the reply reader,
 // `chat-subquery-admission` the one admission a text passes to become a
@@ -179,7 +175,7 @@ export {
 } from "./chat-retriever";
 // The fusion arithmetic and the two deterministic expansions live in their own
 // modules (the 300-line and 5-import agentic caps); the barrel keeps one public
-// surface, so consumers import from `@app/kajianq-domain` exactly as before.
+// surface, so consumers import from `@app/kajianq-domain`.
 export { hierarchyBonus, rrfFuse, RRF_K, HIERARCHY_BONUS } from "./chat-fusion";
 // The store-facing half of stage 3: the exhaustive dimension map, the loud
 // unexpressible-dimension failure, and the per-dimension relaxation order.
@@ -215,13 +211,13 @@ export {
   citationLabelsOf,
   citationCandidatesIn,
   normalizeCitationLabel,
-  // The per-address rule's two public halves (review A1/A2 of the #274 fix
-  // round): `groundingLabelsFor` is what the gate and the citations frame both
-  // read to decide what is grounded, and `addressesNamedBy` is the declaration
-  // the eval's injected grammar seam consumes, so the engine never re-derives
-  // what a Quran range names. Its three states are the contract — `[]`, the
-  // declared addresses, and `null` for a declared list that cannot be
-  // enumerated, which every consumer must refuse (review T1 of the fix round).
+  // The per-address rule's two public halves: `groundingLabelsFor` is what the
+  // gate and the citations frame both read to decide what is grounded, and
+  // `addressesNamedBy` is the declaration the eval's injected grammar seam
+  // consumes, so the engine never re-derives what a Quran range names. Its
+  // three states are the contract — `[]`, the declared addresses, and `null`
+  // for a declared list that cannot be enumerated, which every consumer must
+  // refuse.
   groundingLabelsFor,
   addressesNamedBy,
 } from "./chat-citation-validator";
@@ -239,7 +235,7 @@ export {
   parseReviewerVerdict,
   type ReviewerProvider,
   // The `refusal` event's trigger vocabulary, one home for the stage, the
-  // route's `traceRefused` and the eval harness (review A2/C1 of #443).
+  // route's `traceRefused` and the eval harness.
   type RefusalTrigger,
 } from "./chat-reviewer";
 export {
@@ -258,7 +254,7 @@ export {
   type ChatPipelineDeps,
 } from "./chat-pipeline";
 
-// -- Surah-reference scoped expansion (ADR-0045, #142/#241) ----------------
+// -- Surah-reference scoped expansion (ADR-0045) ---------------------------
 export {
   SURAH_AYAH_COUNTS,
   SURAH_NAMES,

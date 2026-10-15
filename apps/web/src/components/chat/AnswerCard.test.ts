@@ -42,19 +42,10 @@ function occurrences(haystack: string, needle: string): number {
 }
 
 /**
- * #292 — the dhaif warning renders twice when the MT label follows it. The
- * postprocess appends warning → MT label → disclaimer (chat-postprocess.ts),
- * so the tail is `[warning][MT label]` whenever the draft already carried its
- * disclaimer. The pre-fix peel only looked at the last two paragraphs, left
- * the warning in `split.body` (drawn as prose), and the frame-flag card drew
- * it again.
- *
- * Mutation named: restore the pre-fix two-pop peel and every row below reddens
- * on the count — the ID row reads 2. Restore the line-based repeat check
- * instead and the two `space-separated` rows redden, reading 4 (#361). The
- * `[W][W]` / `[W][MT][W]` / `[D][W][W]` rows are the reviewer's re-seen-marker
- * shapes (A1): a rule paragraph that has already been classified must not
- * terminate the walk.
+ * The postprocess appends warning → MT label → disclaimer (chat-postprocess.ts),
+ * so the tail can carry the warning repeated or interleaved with the MT label.
+ * A rule paragraph that has already been classified must not terminate the
+ * walk.
  */
 describe("AnswerCard dhaif warning renders exactly once (#292)", () => {
   const SHAPES: readonly {
@@ -74,10 +65,8 @@ describe("AnswerCard dhaif warning renders exactly once (#292)", () => {
     },
     { name: "[D][MT][W]", tail: [DISCLAIMER, MT, WARNING_ID], warning: WARNING_ID, footer: true },
     { name: "[W][MT][D]", tail: [WARNING_ID, MT, DISCLAIMER], warning: WARNING_ID, footer: true },
-    // #348 — QA #345 probe p9b: the model repeated the canonical line inside
-    // ONE trailing paragraph, so the wire carried 2 copies and the page showed
-    // 3 (both as body prose, plus the flag-driven card). These rows count the
-    // DOM: they read 3 before the collapse, 1 after.
+    // The model can repeat the canonical line inside ONE trailing paragraph, so
+    // the collapse must match every copy in it, not one copy per line.
     {
       name: "[D][W ×2 in one paragraph]",
       tail: [DISCLAIMER, `${WARNING_ID}\n${WARNING_ID}`],
@@ -90,11 +79,9 @@ describe("AnswerCard dhaif warning renders exactly once (#292)", () => {
       warning: WARNING_ID,
       footer: false,
     },
-    // #361 — QA #356 probes p4/p9: the model repeated the copy SPACE-SEPARATED
-    // on ONE line (3 × 93 chars = 281, over `RULE_LINE_MAX`), so the line-based
-    // collapse missed it, the peel stopped on the paragraph, and the page showed
-    // 4 (the paragraph as body prose, plus the flag-driven card). These rows
-    // count the DOM: they read 4 before the copy-remainder collapse, 1 after.
+    // The copy can also repeat SPACE-SEPARATED on ONE line, over
+    // `RULE_LINE_MAX`: the line-based collapse misses it, so the paragraph's
+    // copy remainder is what collapses.
     {
       name: "[D][W ×3 space-separated in one paragraph]",
       tail: [DISCLAIMER, [WARNING_ID, WARNING_ID, WARNING_ID].join(" ")],
@@ -171,8 +158,8 @@ describe("AnswerCard dhaif warning renders exactly once (#292)", () => {
   });
 
   /**
-   * A2 — a model paragraph that merely OPENS with a marker is prose, not a
-   * grade claim. The card's copy authority is the product's canonical line
+   * A model paragraph that merely OPENS with a marker is prose, not a grade
+   * claim. The card's copy authority is the product's canonical line
    * (`split.warning`), or the frame flag; never the paragraph's own wording.
    */
   it("does not turn marker-prefixed prose into a trust card when the frame says no dhaif", () => {

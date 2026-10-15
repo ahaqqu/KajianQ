@@ -58,7 +58,7 @@ export const CHAT_OPENAPI_DESCRIPTION = describeRoute({
 });
 
 /**
- * Validate the /v1/chat body against the shared contract (thermo-review C3):
+ * Validate the /v1/chat body against the shared contract:
  * JSON-parse failures and schema failures return distinct, diagnostic error
  * codes — both logged server-side with the correlation id, neither silently
  * collapsed into one generic 400.

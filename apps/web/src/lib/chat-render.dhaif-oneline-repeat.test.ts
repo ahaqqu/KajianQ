@@ -9,22 +9,14 @@ import {
 import { messages } from "./i18n-messages";
 
 /**
- * #361 — the dhaif warning renders four times when ONE trailing paragraph
- * repeats the canonical line SPACE-SEPARATED. QA #356 probes p4/p9 (staging
- * `1e4bd3b8`) delivered one line, 281 chars, three copies: `classifyRule`
- * split the paragraph on "\n", so `lines[0]` was the whole 281-char string,
- * the byte-equality test failed, and the paragraph — over `RULE_LINE_MAX`
- * (200) and not canonical — classified as `null`, which STOPS the walk. It
- * stayed in `body` as prose and the frame-flag card drew on top of it:
- * 3 written → 4 displayed.
+ * The peel must collapse a trailing paragraph that repeats a canonical line
+ * SPACE-SEPARATED, not only newline-separated: `classifyRule` splits a
+ * paragraph on "\n", so a one-line paragraph is a single over-cap line that
+ * never byte-equals the copy and would classify as `null`, stopping the walk
+ * and leaving the prose copy for the card to draw over.
  *
- * Mutation named per row. Restore the line-based repeat check (`lines[0]`
- * equality plus `lines.every`) and every row below reddens: `split.warning`
- * reads `null`, `split.body` keeps the 281-char paragraph, and the occurrence
- * count reads 3; the two `[W ×3 space-separated…]` rows in
- * `AnswerCard.test.ts` read 4. Widen the collapse to any paragraph that merely
- * CONTAINS the copy and `keeps a copy mixed with the model's own words whole`
- * reddens with the model's words eaten — the A2 guard the ticket protects.
+ * Widening the collapse to any paragraph that merely CONTAINS the copy would
+ * eat the model's own words, so a copy mixed with prose stays whole.
  */
 
 /** The product's canonical copies — read from the i18n copy the card renders. */
@@ -34,7 +26,7 @@ const DISCLAIMER = "Jawaban ini bukan fatwa; rujuk ulama untuk keputusan hukum."
 const MT = `[${MACHINE_TRANSLATION_LABEL}]`;
 const PROSE = "Surat Al-Ikhlas menegaskan keesaan Allah.";
 
-/** The delivered p4/p9 paragraph, byte for byte: three copies on one line. */
+/** Three copies of one canonical line, space-separated on a single line. */
 const delivered = (copy: string): string => [copy, copy, copy].join(" ");
 
 /** Occurrences of `needle` in a string, so "exactly once" is measurable. */
@@ -74,8 +66,8 @@ const displayed = (split: SplitAnswer, cardFlag = false): string =>
 
 describe("splitAnswerBlocks — a space-separated one-line repeat (#361)", () => {
   it("pins the delivered geometry: three ID copies on one line, 281 chars", () => {
-    // The p4/p9 paragraph, and the reason the line-based check missed it: the
-    // whole paragraph is one over-cap line, so no line ever equals the copy.
+    // The whole paragraph is one over-cap line, so no line of it ever equals
+    // the copy.
     expect(delivered(WARNING_ID)).toHaveLength(281);
     expect(delivered(WARNING_ID)).not.toContain("\n");
   });
@@ -123,9 +115,9 @@ describe("splitAnswerBlocks — a space-separated one-line repeat (#361)", () =>
   });
 
   it("drops a two-copy space-separated paragraph sitting left of a single copy", () => {
-    // Under the cap (187 chars) and marker-opening, so the pre-fix peel
-    // classified it as a rule whose text is not the canonical line and pushed
-    // it back into `body`: 2 prose copies beside the card's one.
+    // Two copies, under the cap and marker-opening: the peel must recognise the
+    // paragraph as copies, not as a rule whose text is not the canonical line
+    // (which would leave both prose copies beside the card's one).
     const two = [WARNING_ID, WARNING_ID].join(" ");
     const split = splitAnswerBlocks([PROSE, two, WARNING_ID].join("\n\n"));
     expect(split.warning).toBe(WARNING_ID);
@@ -147,10 +139,9 @@ describe("splitAnswerBlocks — the A2 guard on a space-separated line (#361)", 
   });
 
   it("keeps a long marker-prefixed paragraph whole (probe p3)", () => {
-    // p3 delivered two 333-char paragraphs that merely OPEN with the marker:
-    // they rendered whole in `body`, never as the card. A paragraph over
-    // `RULE_LINE_MAX` still classifies as prose, and the copy remainder is
-    // what keeps a short one prose when it carries the model's own words.
+    // A paragraph over `RULE_LINE_MAX` classifies as prose, and for a shorter
+    // one the copy remainder is what keeps it prose when it carries the model's
+    // own words — a paragraph that merely OPENS with the marker stays whole.
     const paragraph =
       "[Peringatan] Sebagian ulama menilai riwayat ini lemah karena sanadnya terputus, sehingga hadits ini tidak dapat dijadikan dalil utama dalam masalah akidah. [Warning] Para ulama lain menguatkan riwayat ini melalui jalur yang berbeda, dan mereka berbeda pendapat tentang kehujjahannya.";
     const split = splitAnswerBlocks([PROSE, paragraph].join("\n\n"));
@@ -168,18 +159,14 @@ describe("splitAnswerBlocks — the A2 guard on a space-separated line (#361)", 
   });
 
   it("leaves the p9d interleave as prose — the residual #361 does not claim", () => {
-    // The harder sibling from the ticket (probe p9d): one line, 509 chars,
-    // three copies interleaved with the disclaimer sentence. The paragraph is
-    // not made solely of copies of the dhaif line, and the web peel holds no
-    // canonical disclaimer literal — only its opening marker, by design (A2,
-    // and the parity spec's no-third-literal rule) — so collapsing it would
-    // need either a hand-copied disclaimer string here or a marker-based
-    // match, which is the widening the ticket forbids. Residual, unchanged,
-    // and filed as **#365** ("A trailing paragraph that interleaves the dhaif
-    // line with the disclaimer still renders the warning four times"): the
-    // warning still renders in `body` as prose, the flag-driven card draws the
-    // canonical copy on top of it, and the disclaimer sentence renders both in
-    // `body` and in the footer. This row is the falsifier for #365.
+    // A paragraph that interleaves copies with the disclaimer sentence is not
+    // made solely of copies, and the web peel holds no canonical disclaimer
+    // literal — only its opening marker, by design — so it stays prose: the
+    // warning still renders in `body`, the flag-driven card draws the canonical
+    // copy on top of it, and the disclaimer sentence renders both in `body` and
+    // in the footer. Collapsing it would need a hand-copied disclaimer string
+    // or a marker-based match that eats the model's own words; this row pins
+    // that residual.
     for (const paraphrase of [
       DISCLAIMER, // the canonical ID phrasing
       "Jawaban ini bukan fatwa; untuk keputusan hukum, rujuklah ulama yang terpercaya.",

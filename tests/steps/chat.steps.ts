@@ -3,10 +3,10 @@ import { expect } from "@playwright/test";
 import { AxeBuilder } from "@axe-core/playwright";
 
 /**
- * Chat UI BDD (#11). All /v1/* traffic is intercepted with fixture streams —
- * zero LLM spend in CI (plan decision 4); the live path stays covered by
- * eval:smoke in the Staging workflow. The fixtures mirror the wire contract
- * (ADR-0034 + ADR-0040 + #12): meta → delta(s) → citations → trace → done.
+ * Chat UI BDD. All /v1/* traffic is intercepted with fixture streams — zero LLM
+ * spend in CI; the live path stays covered by eval:smoke in the Staging
+ * workflow. The fixtures mirror the wire contract: meta → delta(s) → citations
+ * → trace → done.
  */
 
 const { When, Then } = createBdd();
@@ -22,10 +22,8 @@ const ANSWER_FIXTURE = [
   // sseFrame escaping) — a literal blank line would terminate the frame.
   `event: delta\ndata: [QS. 2:255].\ndata: \ndata: ${DISCLAIMER}\n\n`,
   'event: citations\ndata: {"messageId":"m-live","refusal":false,"dhaifWarning":false,"citations":[{"label":"QS. 2:255","arabic":"اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ","translation":"Allah, tidak ada tuhan selain Dia.","machineTranslated":true,"source":"Al-Baqarah"}]}\n\n',
-  // The routing block also carries the reviewer's N2 shape: the route selected
-  // quran + hadith AND the run gave the source dimension up, so the row above
-  // the "given up" line must name the route's SELECTION — "sources searched"
-  // would assert a restriction the search had already dropped.
+  // The route selected quran + hadith and then gave the source dimension up, so
+  // its row names the route's SELECTION, not a restriction the search dropped.
   'event: trace\ndata: {"messageId":"m-live","sources":[{"id":"chunk-1","source":"Al-Baqarah"}],"technical":{"intent":"ruling","routing":{"sources":["quran","hadith"],"filters":{"grade":["sahih"],"textLayer":["sharh"],"sourceType":["quran","hadith"]},"relaxed":[{"key":"textLayer","values":["sharh"]},{"key":"sourceType","values":["quran","hadith"]}]},"subQueries":["apa itu ayat kursi","QS 2:255 makna"],"chunks":[{"id":"chunk-1","source":"Al-Baqarah","score":0.03125}],"models":["router-stub","generator-stub"]}}\n\n',
   "event: done\ndata: {}\n\n",
 ].join("");
@@ -33,8 +31,7 @@ const ANSWER_FIXTURE = [
 const DHAIF_WARNING =
   "[Peringatan] Hadits yang dikutip berderajat lemah (dhaif); tidak dapat dijadikan dalil utama.";
 
-// #150 — the grounded model spontaneously wraps spans in markdown; the
-// fixture mirrors a live staging answer (`**QS. 2:255**` seen 2026-09-13).
+// The grounded model wraps its citation spans in markdown, so this fixture does.
 const MD_ANSWER =
   "**Ayat Kursi** adalah *ayat takhta* dalam surah Al-Baqarah.\n\n" +
   "- Allah Mahahidup [QS. 2:255]\n- Penjaga segala sesuatu\n\n";
@@ -47,11 +44,9 @@ const MD_FIXTURE = [
 ].join("");
 
 /**
- * The one DHAIF wire fixture the four dhaif scenarios share (#292, #348, #361
- * and the plain warning): meta → one delta carrying `answer` (one `data:` line
- * per raw line, the route's sseFrame escaping) → the citations frame that
- * flags the warning → done. `slug` names the conversation: its message id is
- * `m-<slug>` and its trace id `tr-<slug>`.
+ * The one DHAIF wire fixture the dhaif scenarios share: meta → one delta carrying
+ * `answer` (one `data:` line per raw line) → the citations frame that flags the
+ * warning → done. `slug` sets the message id `m-<slug>` and trace id `tr-<slug>`.
  */
 const dhaifFixture = (slug: string, answer: string): string =>
   [
@@ -65,36 +60,24 @@ const DHAIF_ANSWER = `Hadits tersebut diriwayatkan [HR. Malik no. 18].\n\n${DHAI
 
 const DHAIF_FIXTURE = dhaifFixture("dhaif", DHAIF_ANSWER);
 
-// #292 — the live p1/p9 shape: the draft already carried its disclaimer, so
-// the postprocess appended the dhaif warning and then the MT label, leaving
-// `[warning][MT label]` as the tail. The pre-fix peel only looked at the last
-// two paragraphs and left the warning in the body, so the card drew the same
-// sentence twice.
+// The draft already carries its disclaimer, so the postprocess leaves
+// `[warning][MT label]` as the tail.
 const DHAIF_MT_ANSWER =
   `Hadits tersebut diriwayatkan [HR. Malik no. 18].\n\n${DISCLAIMER}\n\n${DHAIF_WARNING}\n\n` +
   "[Terjemahan mesin — lihat teks Arab asli]";
 
 const DHAIF_MT_FIXTURE = dhaifFixture("dhaif-mt", DHAIF_MT_ANSWER);
 
-// #348 — QA #345 probe p9b: the model repeated the canonical line INSIDE one
-// trailing paragraph (one `\n`, not a paragraph break), so the wire carried two
-// copies and the page displayed three — both as body prose, plus the flag-driven
-// card. The A2 byte-equality gate rejected the paragraph (it is not byte-equal
-// to the canonical line), the peel pushed it back into `body`, and
-// `split.warning` stayed null while the citations frame still reported
-// `dhaifWarning: true`.
+// The canonical line repeated inside ONE trailing paragraph — a single `\n`, not
+// a paragraph break — so that paragraph carries two copies at once.
 const DHAIF_REPEAT_ANSWER =
   `Hadits tersebut diriwayatkan [HR. Malik no. 18].\n\n${DISCLAIMER}\n\n` +
   `${DHAIF_WARNING}\n${DHAIF_WARNING}`;
 
 const DHAIF_REPEAT_FIXTURE = dhaifFixture("dhaif-repeat", DHAIF_REPEAT_ANSWER);
 
-// #361 — QA #356 probes p4/p9: the model repeated the canonical line THREE
-// times on ONE line, SPACE-SEPARATED (3 × 93 = 281 chars, so the paragraph is
-// a single over-cap line). The #348 collapse split on `\n` and never saw a line
-// equal to the copy; the paragraph classified as null, which stops the peel, so
-// it stayed in `body` as prose while the citations frame still reported
-// `dhaifWarning: true` — the wire carried 3, the page displayed 4.
+// The same repeat on ONE line, SPACE-SEPARATED: a single over-cap line that no
+// `\n` split can see.
 const DHAIF_SPACE_REPEAT_ANSWER =
   `Hadits tersebut diriwayatkan [HR. Malik no. 18].\n\n${DISCLAIMER}\n\n` +
   [DHAIF_WARNING, DHAIF_WARNING, DHAIF_WARNING].join(" ");
@@ -109,17 +92,10 @@ const REFUSAL_FIXTURE = [
 ].join("");
 
 /**
- * #436 — the HYBRID wire shape: a grounded partial answer that quotes a
- * retrieved verse and then continues into the canonical insufficiency sentence
- * plus the disclaimer, while the citations frame carries BOTH the grounded chip
- * and `refusal: true` (the refusal decision the trace records). The server
- * derives that frame from the persisted trace — the derivation, the live and
- * rehydration entries are pinned in `apps/api/src/lib/chat-citations.test.ts`,
- * and the emitted SSE frame through `POST /v1/chat` in
- * `apps/api/src/routes/chat.test.ts` — so what this scenario owns is the
- * user-facing half: the
- * answer's chip survives, and the refusal tail is prose beside it rather than a
- * substitute for the citation sheet.
+ * The HYBRID wire shape: a grounded partial answer that quotes a retrieved verse
+ * and then continues into the canonical insufficiency sentence plus the
+ * disclaimer, while the citations frame carries BOTH the grounded chip and
+ * `refusal: true`, the refusal decision the trace records.
  */
 const HYBRID_FIXTURE = [
   'event: meta\ndata: {"sessionId":"sess-e2e","messageId":"m-hybrid","traceId":"tr-hybrid"}\n\n',
@@ -169,45 +145,38 @@ const TRANSCRIPT_FIXTURE = {
 };
 
 /**
- * The chat message ceiling (#256), in characters. The e2e layer cannot import
- * `@app/contracts` (workspace packages resolve inside the apps, not at the repo
- * root), so the value is repeated: a drift on either side — the contract's
- * `CHAT_MESSAGE_MAX_LENGTH` or the composer's mirror of it — fails this
- * scenario loudly, which is what pinning it end to end is for.
+ * The chat message ceiling, in characters. The e2e layer cannot import
+ * `@app/contracts` (workspace packages resolve inside the apps), so the value is
+ * repeated here: a drift against the contract fails the ceiling scenario loudly.
  */
 const CHAT_CEILING = 2000;
 
-/** The over-length probe the QA finding measured (#256): 20,000 characters. */
+/** The over-length probe: 20,000 characters. */
 const QA_PROBE_LENGTH = 20_000;
 
 /**
- * Chat POSTs the fixture route has served in the current scenario (#256), and
- * the raw JSON bodies they carried. Module scope because a scenario's When and
- * Then steps share it, and the suite runs scenarios sequentially
+ * Chat POSTs the fixture route has served in the current scenario, and the raw
+ * JSON bodies they carried. Module scope because a scenario's When and Then
+ * steps share it and the suite runs scenarios sequentially
  * (`fullyParallel: false`); both are reset every time a scenario opens the app
- * with fixtures.
- *
- * The bodies are here for the ceiling scenario's wire claim (thermo-review B1):
- * counting POSTs alone cannot say what was sent, and a count of zero cannot
- * fail at all when no send happens.
+ * with fixtures. The bodies let the ceiling scenario assert what actually left
+ * the page, which a POST count alone cannot say.
  */
 let chatPosts = 0;
 let chatPostBodies: string[] = [];
 
 /**
- * The draft the composer clamped the over-length paste to (#256), captured
- * before the scenario sends it — the send clears the composer, so the wire
- * body is compared against this, not against the (now empty) field.
+ * The draft the composer clamped the over-length paste to, captured before the
+ * send clears the composer — the wire body is compared against this, not against
+ * the now-empty field.
  */
 let clampedDraft = "";
 
 /** Intercept auth + chat endpoints with fixtures, then open the app.
  *
- * `rehydrateStatus` mirrors the rehydration endpoint's documented answer for
- * the scenario's stored session id: 200 with a transcript, or the 404 the API
- * answers for a session it does not have (unknown, foreign, or — #271 — an id
- * the store cannot represent). The fixtures mirror the wire contract; the API
- * side of that contract is pinned by the route tests.
+ * `rehydrateStatus` mirrors the rehydration endpoint's documented answer for the
+ * scenario's stored session id: 200 with a transcript, or the 404 the API answers
+ * for a session it does not have — unknown, foreign, or unrepresentable.
  */
 async function openChatWithFixtures(
   page: import("@playwright/test").Page,
@@ -235,11 +204,9 @@ async function openChatWithFixtures(
       body: answerFixture,
     });
   });
-  // Seed the token before the app boots: one page load per scenario (the
-  // dev worker's per-IP rate limiter counts every asset request, and the
-  // suite loads the app many times). Each scenario gets a fresh context, so
-  // the session id starts unset — a fresh chat — and stays set across the
-  // in-scenario reload the rehydration scenario performs.
+  // Seed the token before the app boots: the per-IP rate limiter counts every
+  // asset request. Each fresh context starts with no session id — a fresh chat —
+  // and keeps it across the in-scenario reload the rehydration scenario performs.
   await page.addInitScript(() => {
     localStorage.setItem("kajianq.auth.token", "tok-e2e");
   });
@@ -318,12 +285,10 @@ Then("the transcript says older messages are not shown", async ({ page }) => {
 });
 
 /**
- * #271: the user-facing half of the boundary fix. A stored session id the
- * store cannot represent — the staging probe's own `"en"`, or any older or
- * corrupted localStorage value — is answered by the rehydration endpoint with
- * its documented 404 (never a 500: that is the route test's claim). What the
- * reader experiences is the load-bearing part here: a fresh chat, no error
- * banner, and no replay of the malformed id into a 400 on the next question.
+ * A stored session id the store cannot represent — any older or corrupted
+ * localStorage value — gets the rehydration endpoint's documented 404, never a
+ * 500 (the route test's claim). The load-bearing part is what the reader sees: a
+ * fresh chat, no error banner, and no replay of the malformed id into a 400.
  */
 When("I open a chat whose stored session id is malformed", async ({ page }) => {
   await page.addInitScript(() => {
@@ -333,11 +298,9 @@ When("I open a chat whose stored session id is malformed", async ({ page }) => {
 });
 
 Then("the app starts a fresh chat without an error", async ({ page }) => {
-  // The empty state, not an error card: a session the server does not have is
-  // a fresh start (the same posture as a reclaimed session).
+  // The empty state, not an error card: a session the server does not have is a fresh start.
   await expect(page.getByTestId("chat-empty")).toBeVisible();
   await expect(page.getByTestId("chat-error")).toHaveCount(0);
-  // And the malformed id is cleared, so it cannot be sent again.
   expect(await page.evaluate(() => localStorage.getItem("kajianq.chat.sessionId"))).toBeNull();
 });
 
@@ -347,7 +310,7 @@ When("I ask a question in that fresh chat", async ({ page }) => {
 });
 
 Then("the outgoing chat POST carries no session id", async () => {
-  // A real send is the precondition of this claim, as in the ceiling scenario.
+  // A real send is the precondition: without it the assertion below has nothing to read.
   await expect.poll(() => chatPosts).toBe(1);
   const body = JSON.parse(chatPostBodies[0] ?? "{}") as { sessionId?: string };
   // Absent — a new session is minted server-side — never the malformed value.
@@ -356,9 +319,8 @@ Then("the outgoing chat POST carries no session id", async () => {
 
 When("I open the chat and paste a message longer than the ceiling", async ({ page }) => {
   await openChatWithFixtures(page, ANSWER_FIXTURE);
-  // A programmatic fill, not typing (#256): the ceiling has to hold for a
-  // pasted value too, which the textarea's maxLength attribute alone does not
-  // guarantee — and it is how a crafted page would set the field.
+  // A programmatic fill, not typing: the ceiling has to hold for a pasted value
+  // too, which the textarea's maxLength attribute alone does not guarantee.
   await page.getByTestId("composer").fill("a".repeat(QA_PROBE_LENGTH));
 });
 
@@ -368,34 +330,26 @@ Then("the composer holds the ceiling and says so", async ({ page }) => {
   // exactly what the API accepts, not a request that comes back 400.
   clampedDraft = await composer.inputValue();
   expect(clampedDraft.length).toBe(CHAT_CEILING);
-  // The hint is the reader's explanation, in the app's language (id by
-  // default); the number is Intl-formatted, so build the expectation the same
-  // way rather than hardcoding a separator.
+  // The hint is the reader's explanation in the app's language (id by default);
+  // the number is Intl-formatted, so build the expectation the same way.
   await expect(page.getByTestId("composer-limit")).toContainText(
     new Intl.NumberFormat("id").format(CHAT_CEILING),
   );
 });
 
-// B1: the scenario used to stop here and assert `chatPosts === 0`, a claim no
-// step could falsify because nothing ever attempted a send (the pre-fix
-// scenario passed with the composer's send path mutated to a no-op). The
-// property that matters now that the clamp exists is the wire body: press
-// Enter and assert what actually left the page.
 When("I press Enter to send the clamped draft", async ({ page }) => {
   await page.getByTestId("composer").press("Enter");
 });
 
 Then("the outgoing chat POST carries the clamped message, no longer than the ceiling", async () => {
-  // A real send is the precondition of this claim: without it the assertion
-  // below has nothing to read, so make the counter load-bearing first.
+  // A real send is the precondition: make the counter load-bearing first.
   await expect.poll(() => chatPosts).toBe(1);
   const body = JSON.parse(chatPostBodies[0] ?? "{}") as { message?: string };
   const sent = body.message ?? "";
-  // Exactly the clamped draft the composer held — not a truncated copy, not
-  // a different string — and at most the contract's ceiling on the wire.
+  // Exactly the clamped draft — not a truncated copy, not a different string —
+  // and at most the contract's ceiling on the wire.
   expect(sent).toBe(clampedDraft);
   expect(sent.length).toBeLessThanOrEqual(CHAT_CEILING);
-  // The over-length probe cannot be what was sent.
   expect(sent.length).toBeLessThan(QA_PROBE_LENGTH);
 });
 
@@ -440,24 +394,18 @@ Then("the dhaif warning renders exactly once beside the MT label", async ({ page
   const assistant = page.getByTestId("message-assistant").last();
   await expect(assistant.getByTestId("dhaif-warning")).toHaveCount(1);
   const text = (await assistant.textContent()) ?? "";
-  // The canonical sentence appears once — not once as prose and once as card.
+  // The canonical sentence appears once, and the MT label is provenance, not a
+  // warning: it still renders, once.
   await expect(text.split(DHAIF_WARNING).length - 1).toBe(1);
-  // The MT label is provenance, not a warning: it still renders, once.
   await expect(text.split("Terjemahan mesin").length - 1).toBe(1);
-  // The disclaimer that the draft already carried still renders as a footer.
   await expect(assistant.getByTestId("ulama-disclaimer")).toHaveCount(1);
 });
 
 Then("the dhaif warning renders exactly once despite the repeated line", async ({ page }) => {
-  // Mirrors how QA measured it on staging: a DOM count on the assistant
-  // article. Pre-fix this read 3 — both copies as one prose paragraph, plus the
-  // flag-driven card — while the wire had carried 2.
   const assistant = page.getByTestId("message-assistant").last();
   await expect(assistant.getByTestId("dhaif-warning")).toHaveCount(1);
   const text = (await assistant.textContent()) ?? "";
   await expect(text.split(DHAIF_WARNING).length - 1).toBe(1);
-  // The repeat paragraph is consumed by the card, so the answer text itself
-  // still renders and the disclaimer still reaches its footer.
   await expect(assistant).toContainText("Hadits tersebut diriwayatkan");
   await expect(assistant.getByTestId("ulama-disclaimer")).toHaveCount(1);
 });
@@ -465,16 +413,12 @@ Then("the dhaif warning renders exactly once despite the repeated line", async (
 Then(
   "the dhaif warning renders exactly once despite the space-separated repeat",
   async ({ page }) => {
-    // The same DOM count QA ran on staging (probe p4/p9). Pre-fix this read 4 —
-    // three copies in one prose paragraph, plus the flag-driven card — while
-    // the wire had carried 3.
     const assistant = page.getByTestId("message-assistant").last();
     await expect(assistant.getByTestId("dhaif-warning")).toHaveCount(1);
     const text = (await assistant.textContent()) ?? "";
     await expect(text.split(DHAIF_WARNING).length - 1).toBe(1);
-    // The paragraph is consumed by the card, so the answer text itself still
-    // renders and the disclaimer — one paragraph left of the repeat — still
-    // reaches its footer instead of being stranded in the body.
+    // The paragraph is consumed by the card: the answer text still renders and the
+    // disclaimer, one paragraph left of the repeat, still reaches its footer.
     await expect(assistant).toContainText("Hadits tersebut diriwayatkan");
     await expect(assistant.getByTestId("ulama-disclaimer")).toHaveCount(1);
   },
@@ -505,11 +449,11 @@ Then("the refusal renders as a plain card with no citation chips", async ({ page
 
 Then("the hybrid answer renders its grounded citation chip", async ({ page }) => {
   const assistant = page.getByTestId("message-assistant").last();
-  // The partial answer and the grounded verse it quotes are what the reader
-  // sees — one chip, resolved from the frame (#436).
+  // The partial answer and the verse it quotes are what the reader sees: one
+  // chip, resolved from the frame.
   await expect(assistant).toContainText("Allah Mahahidup");
   await expect(assistant.getByTestId("citation-chip")).toHaveText("[QS. 2:255]");
-  // ... and the refusal tail is still there, as prose in the same card.
+  // The refusal tail is still there, as prose in the same card.
   await expect(assistant).toContainText("tidak menemukan dalil yang memadai");
   await expect(assistant.getByTestId("ulama-disclaimer")).toHaveCount(1);
   await expect(page.getByTestId("dhaif-warning")).toHaveCount(0);
@@ -524,8 +468,8 @@ Then("reloading restores the full transcript", async ({ page }) => {
 });
 
 Then("the Trace panel is available from the rehydrated transcript", async ({ page }) => {
-  // The rehydrated assistant turn carries the same trace frame the live
-  // stream sent (#12) — the panel is a first-class part of the transcript.
+  // The rehydrated assistant turn carries the same trace frame as the live
+  // stream: the panel is a first-class part of the transcript.
   await expect(page.getByTestId("trace-toggle").last()).toBeVisible();
 });
 
@@ -540,7 +484,7 @@ When("I open the Trace's technical details", async ({ page }) => {
 
 Then("I see the sources consulted with no technical detail", async ({ page }) => {
   // The top layer is readable by a non-technical user: the source works, no
-  // scores, no machinery (ADR-0007 — plain language first).
+  // scores, no machinery.
   const panel = page.getByTestId("trace-body");
   await expect(panel.getByTestId("trace-sources")).toContainText("Al-Baqarah");
   await expect(panel.getByTestId("trace-score")).toHaveCount(0);
@@ -555,25 +499,18 @@ Then(
     await expect(tech).toBeVisible();
     await expect(tech.getByTestId("trace-intent")).toContainText("ruling");
     await expect(tech.getByTestId("trace-subqueries")).toContainText("ayat kursi");
-    // Scores format through Intl (0.03125 → "0,0313" in the id locale,
-    // "0.0313" in en) — assert the rounded digits, not the separator.
+    // Scores format through Intl, so assert the rounded digits, not the separator.
     await expect(tech.getByTestId("trace-score").first()).toContainText(/0[.,]0313/);
     await expect(tech.getByTestId("trace-models")).toContainText("router-stub");
-    // The routing decision (#15) rides the same frame: which sources the route
-    // selected and with which filters, projected from the persisted trace —
-    // the user-visible half of "the trace shows routing decisions".
-    //
-    // The row is labelled for the route's DECISION, not for a search that ran
-    // (N2): this run gave `sourceType` up (the "given up" row asserts it below),
-    // so every source was searched, and a "sources searched: quran · hadith" row
-    // would have been false — two lines of the same block contradicting.
+    // The row is labelled for the route's DECISION, not for a search that ran:
+    // this run gave `sourceType` up (asserted below), so every source was
+    // searched, and a "sources searched" row would have been false.
     await expect(tech.getByTestId("trace-routing")).toContainText("Sumber dipilih");
     await expect(tech.getByTestId("trace-routing-sources")).toContainText("quran");
     await expect(tech.getByTestId("trace-routing-sources")).toContainText("hadith");
     await expect(tech.getByTestId("trace-routing-filters")).toContainText("grade: sahih");
-    // ... and the filters the run GAVE UP, so a hint the corpus cannot serve
-    // (the `textLayer` hint here, the `principleTags` hint for the missing
-    // Principle Index #16 in the live path) is not displayed as one that ran.
+    // The filters the run GAVE UP, so a hint the corpus cannot serve is not
+    // displayed as one that ran.
     await expect(tech.getByTestId("trace-routing-relaxed")).toContainText("textLayer: sharh");
   },
 );

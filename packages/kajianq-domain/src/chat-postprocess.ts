@@ -4,9 +4,9 @@ import { MACHINE_TRANSLATION_LABEL } from "./chat-assembler";
 
 /**
  * Deterministic product rules applied after the reviewer passes a draft
- * (spec §2.2 "Grade flag — Always — deterministic"; ticket #10 acceptance
- * criteria). These are the rules the answer *cannot* be trusted to satisfy on
- * its own, because the model may simply forget them:
+ * (spec §2.2 "Grade flag — Always — deterministic"). These are the rules the
+ * answer *cannot* be trusted to satisfy on its own, because the model may
+ * simply forget them:
  *
  * - **Dhaif warning** — a retrieved hadith graded weak is always flagged
  *   visibly, whether or not the model remembered to mention it.
@@ -19,34 +19,33 @@ import { MACHINE_TRANSLATION_LABEL } from "./chat-assembler";
  * a rule whose own copy the text already carries is not duplicated (a double
  * disclaimer is a visible defect). For the **dhaif rule**, "already carries"
  * means the product's copy, never a model paraphrase of it — that control is
- * deterministic precisely so it does not depend on the model (ticket #278).
- * The disclaimer predicate is deliberately looser: `hasDisclaimer` accepts any
- * "bukan fatwa" phrasing, and whether a paraphrase satisfies the disclaimer or
- * the canonical copy is required (the dhaif rule's treatment) is an open
- * product-copy decision owned by ticket #284.
+ * deterministic precisely so it does not depend on the model. The disclaimer
+ * predicate is deliberately looser: `hasDisclaimer` accepts any "bukan fatwa"
+ * phrasing, and whether a paraphrase satisfies the disclaimer or the canonical
+ * copy is required (the dhaif rule's treatment) is an open product-copy
+ * decision.
  *
  * Which rules appended text is returned in `ProductRulesResult.applied` and
  * recorded on the trace by the only production caller (`chat-reviewer.ts`'s
  * `withRules`) as a `product_rules` event, on every path that applies the
- * rules (#285). The event's PRESENCE is what says the rules ran; absence says
- * they did not only for traces written after the kind shipped (ADR-0007) — a
- * trace written before it carries no such event although the rules ran, which
- * is the defect #285 records. `applied` names the rules that appended text. An
- * empty `applied` therefore says only "ran, appended nothing" — it does not
- * separate "no rule had a trigger" from "a trigger matched and the copy was
- * already present", and the delivered text is identical either way. The
- * delivered text stays the single source of truth for what the answer says.
+ * rules. The event's PRESENCE is what says the rules ran; absence says they did
+ * not only for traces written after the kind shipped (ADR-0007), since a trace
+ * written before it carries no such event although the rules ran. `applied`
+ * names the rules that appended text. An empty `applied` therefore says only
+ * "ran, appended nothing" — it does not separate "no rule had a trigger" from
+ * "a trigger matched and the copy was already present", and the delivered text
+ * is identical either way. The delivered text stays the single source of truth
+ * for what the answer says.
  */
 
 export type ProductRulesResult = {
   draft: Draft;
   /**
    * Which deterministic rules appended text, in application order. Recorded
-   * verbatim on the reviewer stage's `product_rules` trace event (#285).
-   * `[]` says the rules ran and appended nothing; it does not separate "no
-   * rule had a trigger" from "a trigger matched and the copy was already
-   * present", and it is not the same as the rules being skipped (that records
-   * no event at all).
+   * verbatim on the reviewer stage's `product_rules` trace event. `[]` says
+   * the rules ran and appended nothing; it does not separate "no rule had a
+   * trigger" from "a trigger matched and the copy was already present", and it
+   * is not the same as the rules being skipped (that records no event at all).
    */
   applied: readonly string[];
 };
@@ -100,20 +99,16 @@ function hasDisclaimer(text: string): boolean {
  * predicate, two readers, so the delivered answer and the frame derived from
  * it can never disagree about whether the warning is present.
  *
- * The predicate is deliberately the COPY, not the grade vocabulary (ticket
- * #278). The deterministic evidence renders a weak-grade chunk's label as
- * `(Dhaif)` — `renderEvidenceChunk` appends the store's grade — and the
- * generator is instructed to reproduce the evidence's labels verbatim, so an
- * answer whose context carries a dhaif chunk contains the bare token `dhaif`
- * for a reason that is not a warning at all. Suppressing on the token
- * therefore switched the control OFF on exactly the answers it exists for.
- * Measured on the staging store (2026-09-28, read-only): of 95 non-refused
- * answers whose assembled context carried a dhaif-graded chunk, 81 carried no
- * canonical warning line and all 81 matched the token — zero cases lacked the
- * line without a token match. Spec §2.2 makes the grade flag an "Always"
- * control so it does not depend on the model, so only the copy suppresses; an
- * informal weakness claim gains the canonical line exactly as an informal
- * "lemah" already did (round-3 B4).
+ * The predicate is deliberately the COPY, not the grade vocabulary. The
+ * deterministic evidence renders a weak-grade chunk's label as `(Dhaif)` —
+ * `renderEvidenceChunk` appends the store's grade — and the generator is
+ * instructed to reproduce the evidence's labels verbatim, so an answer whose
+ * context carries a dhaif chunk contains the bare token `dhaif` for a reason
+ * that is not a warning at all; suppressing on that token would switch the
+ * control OFF on exactly the answers it exists for. Spec §2.2 makes the grade
+ * flag an "Always" control so it does not depend on the model, so only the copy
+ * suppresses; an informal weakness claim gains the canonical line exactly as an
+ * informal "lemah" already did.
  */
 export function hasWeakWarning(text: string): boolean {
   return text.includes(dhaifWarning("id")) || text.includes(dhaifWarning("en"));
@@ -122,20 +117,20 @@ export function hasWeakWarning(text: string): boolean {
 /**
  * Apply the deterministic product rules to a draft. It is called for every
  * text the run delivers as answer content — the reviewer-passed draft, the
- * pre-gate skip, the no-provider exit, and, since #439, a HYBRID refusal (a
- * grounded partial answer that runs into the canonical sentence).
+ * pre-gate skip, the no-provider exit, and a HYBRID refusal (a grounded partial
+ * answer that runs into the canonical sentence).
  *
  * Three shapes do NOT reach here, and none is decorated. A PURE refusal — the
  * sentence citing nothing and adding nothing of its own beyond its framing
  * (`isRefusalOnly`) — is already the honest answer, and decorating it would
  * bury the reason the user got one; a warning on it would also be invented, its
- * trigger being the assembled context rather than the text (the #285 pin). An
- * ASSERTING refusal draft (#443) — the sentence riding a text that cites
- * nothing and is not a decline — takes the reviewer stage's backstop instead:
- * the product's own refusal text ships in place of the draft's words, so there
- * is no text of the model's to decorate and no rule to invent a trigger for.
- * The deterministic gate's own `ungrounded_citation` refusal (the refusal
- * decision's first row) replaces the draft for the same reason.
+ * trigger being the assembled context rather than the text. An ASSERTING
+ * refusal draft — the sentence riding a text that cites nothing and is not a
+ * decline — takes the reviewer stage's backstop instead: the product's own
+ * refusal text ships in place of the draft's words, so there is no text of the
+ * model's to decorate and no rule to invent a trigger for. The deterministic
+ * gate's own `ungrounded_citation` refusal (the refusal decision's first row)
+ * replaces the draft for the same reason.
  */
 export function applyProductRules(
   draft: Draft,

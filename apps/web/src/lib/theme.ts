@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from "react";
  */
 
 /** Exported so the /about notice's storage card (`privacy-notice-storage.ts`)
- * names the key from here instead of duplicating the literal (thermo-review B1). */
+ * names the key from here instead of duplicating the literal. */
 export const THEME_KEY = "kajianq.theme";
 
 export type Theme = "light" | "dark";

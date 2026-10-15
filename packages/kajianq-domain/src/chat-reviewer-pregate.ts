@@ -26,14 +26,14 @@ import { CITATION_CRITERIA, CITATION_INSTRUCTIONS } from "./decision-bench-promp
 export { validateCitations } from "./chat-citation-validator";
 
 /**
- * The reviewer pre-gate (ADR-0042 adoption, ticket #168): one batched
+ * The reviewer pre-gate (ADR-0042 adoption): one batched
  * decision-model call screens every citation of a draft answer before the paid
  * LLM reviewer runs. This module is the **reference implementation of the
  * decision-model serving pattern** every later adoption reuses:
  *
  *  1. the serving role's `Decider` is injected (never constructed here — the
  *     vendor is config, ADR-0009/ADR-0022), and its absence means the stage
- *     behaves exactly as it did before adoption;
+ *     runs the full reviewer with no pre-gate;
  *  2. every judgment item is one question in **one** request, keyed by
  *     position, with the state carrying what is being judged;
  *  3. the call's spend lands on the trace as an `llm_call` event and the
@@ -42,8 +42,6 @@ export { validateCitations } from "./chat-citation-validator";
  *  4. **fail-open**: anything short of an explicit all-items-cleared answer —
  *     a low or out-of-range score, a missing/unreadable answer, a vendor
  *     failure, or no items at all — returns `escalate`, i.e. the existing path.
- *
- * Adoption #2 extracts the generic half of this runner (ADR-0042 Adoption #2).
  *
  * The trust property it protects: *an answer is never cleared by the decision
  * model alone.* The pre-gate can only ever **skip** the LLM reviewer when the
@@ -62,9 +60,8 @@ export { validateCitations } from "./chat-citation-validator";
 export const CITATION_SUPPORT_PURPOSE = "citation_support";
 
 /**
- * Per-citation Noul ≥ this value = supported (ADR-0042; the threshold the gate
- * bench scored 6/6 citation cases with). Every citation clearing it is what
- * makes the draft reviewed-clean.
+ * Per-citation Noul ≥ this value = supported (ADR-0042). Every citation
+ * clearing it is what makes the draft reviewed-clean.
  */
 export const CITATION_SUPPORT_THRESHOLD = 0.5;
 

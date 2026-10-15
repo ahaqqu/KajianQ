@@ -1,57 +1,35 @@
 #!/usr/bin/env bun
 /**
- * eval-smoke.mjs — the `eval:smoke` Golden Set smoke subset (ticket #10).
+ * eval-smoke.mjs — the `eval:smoke` Golden Set smoke subset (`bun run eval:smoke`).
  *
- *   bun run eval:smoke
- *
- * Runs a small, stratified slice of the Golden Set against a target
- * `/v1/chat`, through the same harness and the same ledger as the full run
- * (`eval:run`). The subset is chosen deterministically by
- * `selectSmokeSubset` — refusal, trap, English, and Indonesian cases first,
- * then fill — so a PR-time gate cannot pass by accident on easy questions
- * alone.
+ * Runs a small, stratified slice of the Golden Set against a target `/v1/chat`,
+ * through the same harness and ledger as the full run (`eval:run`). `selectSmokeSubset`
+ * picks it deterministically — refusal, trap, English and Indonesian cases first,
+ * then fill — so a PR-time gate cannot pass by accident on easy questions alone.
  *
  * Env (the same validated config as `eval:run`, plus one knob):
  *   EVAL_API_BASE_URL      the staging /v1/chat origin (required)
- *   EVAL_API_TOKEN         an anonymous Bearer token minted by the API
- *                          (required; `POST /v1/auth/anonymous` mints one)
- *   DATABASE_URL      the VPS staging store to read answer traces from
- *                          and persist the run into (required)
+ *   EVAL_API_TOKEN         an anonymous Bearer token (required)
+ *   DATABASE_URL           the staging store for traces and run rows (required)
  *   EVAL_BUDGET_MICRO_USD  hard spend cap in micro-USD (unset/0 = uncapped)
  *   EVAL_SMOKE_SIZE        subset size (default 5, the spec's PR-time size)
- *   EVAL_GOLDEN_SET_PATH   optional fixture path override
- *   EVAL_RUN_LABEL         optional run label
  *
  * Exit code is non-zero when any smoke question fails, is skipped, or was never
- * measured — the shared `exitPolicy` in `eval-cli.mjs`, the same one
- * `eval:run` applies (#364) — so CI can gate on it. A skip fails the gate
- * because a skipped question is UNMEASURED, not passed: "we could not ask" must
- * redden exactly as loudly as "we asked and the answer was wrong", or a
- * transport outage would buy a green release. The budget abort is the same
- * unmeasured case: the harness stops the loop on the cap without recording the
- * remainder, so a truncated run reddens too instead of reporting a green on a
- * subset of the subset. The cause is not left to the exit code alone — each
- * skip is persisted as its own `eval_results` row and printed as a
- * `skipped: <message>` line (#290), so the store, the run report and the CI log
- * all name the same reason. A scored failure is attributed in the same block:
- * one `failed: <questionId> …` line per failed question, naming each dimension
- * that missed its rule and the evidence for it — from the in-memory results and
- * the fixture already loaded, never a store read (#340).
+ * measured — the shared `exitPolicy` in `eval-cli.mjs`, the same one `eval:run`
+ * applies. A skipped question is UNMEASURED, not passed: "we could not ask" must
+ * redden exactly as loudly as "we asked and the answer was wrong", or a transport
+ * outage would buy a green release; the budget abort is the same case, since the
+ * harness stops the loop on the cap without recording the remainder. Every skip and
+ * scored failure is persisted and printed with its cause.
  *
- * A live run needs staging secrets (the VPS store URL + vendor keys); when
- * they are absent the script fails fast with the missing name rather than
- * reporting a misleading pass — see the run instructions in SPECS §3.7.
+ * A live run needs staging secrets (the VPS store URL + vendor keys); absent them
+ * the script fails fast with the missing name. Run instructions: SPECS §3.7.
  *
- * Round-3 B2: the config load, budget banner, fixture load, and summary
- * printer are the shared CLI glue in `eval-cli.mjs` — one copy, no drift; the
- * exit policy is shared there too since #364. This script keeps only what is
- * genuinely its own: the subset selection.
+ * The config load, budget banner, fixture load, summary printer and exit policy are
+ * the shared CLI glue in `eval-cli.mjs`; this script keeps only the subset selection.
  */
 import * as evalpkg from "@app/eval";
-// The trap marker is the Golden Set's own label vocabulary, owned by the
-// domain pack (#14) — the same import `eval-cli.mjs` makes for `eval:run`. A
-// literal here would let a rename strand THIS gate, and this is the gate that
-// runs on every staging deploy (#359).
+// The trap marker is the domain pack's vocabulary, imported so a rename cannot strand the gate.
 import { DAIF_TRAP_LABEL } from "@app/kajianq-domain";
 import { createStagingHarness } from "./staging-harness.mjs";
 import {
@@ -94,8 +72,8 @@ console.log(
   ].join("\n"),
 );
 
-// B2: the staging bootstrap (store, sourceType scan, transport, traces,
-// ledger, refusal markers) is shared with eval:run — one copy, no drift.
+// The staging bootstrap (store, sourceType scan, transport, traces, ledger, refusal
+// markers) is shared with eval:run — one copy, no drift.
 const harness = await createStagingHarness(config, budget);
 
 const label = config.runLabel ?? `${fixture.id}-smoke`;
@@ -111,9 +89,8 @@ const result = await evalpkg.runGoldenSet(selection.set, {
   budget,
 });
 
-// The live budget is the settled figure here: a smoke run may abort on the
-// cap before the ledger row is written, and the run's own record would then
-// understate the spend.
+// The live budget is the settled figure here: a smoke run may abort on the cap before
+// the ledger row is written, and the run's own record would then understate the spend.
 printSummary("eval:smoke", {
   runId: result.runId,
   questionCount: selection.set.questions.length,
@@ -122,13 +99,9 @@ printSummary("eval:smoke", {
   questions: fixture.questions,
 });
 
-// Exit semantics (#290, #364): the shared policy — a skip fails the gate
-// exactly as a failure does (an unmeasured question is not a pass, see the
-// header), and so does a question the budget cap left unmeasured. The skip's
-// cause and every scored failure's missed rule were printed by printSummary
-// above and persisted per question by the harness, so the red line can stay a
-// count and the operator still has the reason. `questionCount` is the subset
-// actually asked — the fixture's full count would read as truncated.
+// The shared policy: a skip fails the gate exactly as a failure does, and so does a
+// question the budget cap left unmeasured. `questionCount` is the subset actually
+// asked — not the fixture's full count, which would read as truncated.
 exitWithPolicy("eval:smoke", {
   runId: result.runId,
   questionCount: selection.set.questions.length,

@@ -15,56 +15,41 @@ import { createKajianQRetriever, type RetrieverEmbedder, type StoreBridge } from
 import { createChatTailStages, type GeneratorProvider, type ReviewerProvider } from "./chat-stages";
 
 /**
- * Pipeline composition for the KajianQ chat flow (#8): builds the five
- * `PipelineStages` from injected seams (Provider roles, RagStore, embedder,
- * store bridge) and runs them through the engine's `runPipeline` runner —
- * never hand-assembled traces (ADR-0021). Language lives on the deps, not the
- * query, so the HTTP layer resolves it once per request.
+ * Pipeline composition for the KajianQ chat flow: build the five `PipelineStages` from
+ * injected seams and run them through the engine's `runPipeline` runner — never
+ * hand-assembled traces (ADR-0021). Language lives on the deps, so the HTTP layer
+ * resolves it once per request.
  */
 
 export type ChatPipelineDeps = {
   routerProvider: RouterProvider;
   generatorProvider: GeneratorProvider;
   reviewerProvider: ReviewerProvider | null;
-  /**
-   * The reviewer's decision-model pre-gate (ADR-0042 adoption, ticket #168):
-   * null when the decision vendor's key is not bound, in which case the
-   * reviewer behaves exactly as it did before adoption. Required (not
-   * optional) on purpose — a wiring that forgets the pre-gate is a silent
-   * loss of the adoption, so it must fail to compile instead.
-   */
+  /** The reviewer's decision-model pre-gate: null when the decision vendor's key is not
+   * bound, in which case the reviewer runs without it. Required, not optional — a wiring
+   * that forgets it would lose the pre-gate silently, so it must fail to compile. */
   reviewerDecider: Decider | null;
   embedder: RetrieverEmbedder;
   store: Pick<
     import("@app/infra").RagStore,
     "similaritySearch" | "listDocChildrenByParentSourceKey" | "listDocChildNeighboursByChildIds"
   >;
-  /** Runs a store Effect to a promise (composition-root bridge). */
   bridge: StoreBridge;
   language: import("./chat-prompts").ChatLanguage;
   retrieverLimit?: number;
-  /**
-   * ADR-0045 scope-expansion budget: at most this many children of a surah
-   * the question names are added to the fused hits. Absent = the domain
-   * default (`DEFAULT_SCOPE_EXPANSION_CAP`); the composition root sets it from
-   * deployment config so the cost of a scoped query is a knob, not a literal.
-   */
+  /** ADR-0045 scope-expansion budget: at most this many children of a named surah join the
+   * fused hits; absent = the domain default, set from deployment config at the composition
+   * root so the cost of a scoped query is a knob, not a literal. */
   scopeExpansionCap?: number;
   /** Skip the reviewer LLM call (eval refusal cases, budget-capped runs). */
   skipReviewer?: boolean;
   /** Collector for LLM costs that ride the retrieval stage (embed call). */
   onCost?: (cost: import("@app/contracts").CostRecord) => void;
-  /**
-   * Streamed-generation observation hook (ticket #10): each delta as the
-   * vendor produces it. The draft is still the full text — the reviewer gates
-   * the whole answer before any of it is delivered.
-   */
+  /** Streamed-generation hook: each delta as the vendor produces it. The reviewer gates
+   * the whole draft before any of it is delivered. */
   onDelta?: (delta: string) => void;
-  /**
-   * Prior conversation turns for follow-up questions (ticket #10), oldest
-   * first. Rides the engine's `Query.history` and is rendered by the
-   * assembler; absent = single-turn.
-   */
+  /** Prior conversation turns for follow-up questions, oldest first; the assembler renders
+   * them. Absent = single-turn. */
   history?: readonly { role: string; content: string }[];
 };
 
@@ -97,11 +82,9 @@ export function buildChatStages(
   };
 }
 
-/**
- * Run the chat pipeline through the engine runner. `onCost` receives every
- * LLM/embed cost recorded during the run (the embed stage's costs arrive via
- * the retriever hook) so the HTTP layer can attribute spend to the answer.
- */
+/** Run the chat pipeline through the engine runner. `onCost` receives every LLM/embed cost
+ * recorded during the run — the embed stage's costs arrive via the retriever hook — so the
+ * HTTP layer can attribute spend to the answer. */
 export function runChatPipeline(
   deps: ChatPipelineDeps,
   query: { text: string; filters?: import("./filters").KajianQFilters },
@@ -109,9 +92,8 @@ export function runChatPipeline(
   options: RunOptions = {},
 ): Effect.Effect<Answer, import("@app/rag-core").StageError> {
   const stages = buildChatStages(deps);
-  // Follow-up context rides `Query.history` (ADR-0018); it is
-  // attached here, not on the deps, so one deps object can serve a whole
-  // session while each question carries its own history window.
+  // Follow-up context rides `Query.history` (ADR-0018), attached here rather than on the
+  // deps, so one deps object serves a session while each question carries its own window.
   const withHistory = {
     ...query,
     ...(deps.history !== undefined ? { history: deps.history } : {}),
@@ -129,21 +111,9 @@ export function runChatPipeline(
 }
 
 /**
- * Promise-shaped bridge for the HTTP edge (ADR-0027 decision 3: apps keep no
- * direct effect dependency — the bridge lives in the domain, which owns the
- * engine's effect version). Rejects with the typed `StageError`; a failed
- * run's trace events still reach `onCost`/`onFailedTrace` via `withCosts`.
- */
-
-/**
- * Run one Effect-signatured store call to a promise — the single effect
- * bridge the HTTP edge may use (ADR-0027 decision 3: apps keep no direct
- * effect dependency, so the bridge lives in the domain, which owns the
- * engine's effect version). Rejects with the typed `StoreError`. Typed as the
- * domain's `StoreBridge` now that the whole workspace sits on one Effect
- * major — the former `(effect: unknown) => Promise<A>` erasure existed only
- * because apps/api pinned effect 4 while the engine packages pinned 3, and
- * cross-major Effect types cannot typecheck.
+ * Run one Effect-signatured store call to a promise — the single effect bridge the HTTP
+ * edge may use (apps keep no direct effect dependency; the bridge lives in the domain).
+ * Rejects with the typed `StoreError`.
  */
 export function runStoreEffect<A>(effect: Effect.Effect<A, StoreError>): Promise<A> {
   return Effect.runPromise(effect);

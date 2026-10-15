@@ -1,7 +1,7 @@
 import * as v from "valibot";
 
 /**
- * Feedback API contracts (#13, ADR-0007): the `POST /v1/feedback` surface.
+ * Feedback API contracts (ADR-0007): the `POST /v1/feedback` surface.
  * Anonymous thumbs up/down per answer, plus trace-anchored flags — the user
  * reports the exact failing element (wrong citation, irrelevant chunk, bad
  * machine translation, questionable grade) by referencing an identifier from
@@ -83,10 +83,9 @@ export type FeedbackAnchor = v.InferOutput<typeof FeedbackAnchorSchema>;
  * The one-shape invariant is STRUCTURAL, not a cross-field check: the schema
  * is a union of the two valid shapes, each forbidding the other key with
  * `v.optional(v.never())`. A check added to a flat object never reaches the
- * emitted OpenAPI document (hono-openapi resolves only the object), so a
- * schema-compliant `{rating, anchor}` probe was rejected 400 — the exact
- * mismatch Schemathesis reports (st case noWRVW, staging run 35544413355).
- * The union makes the doc carry the same rule the validator enforces.
+ * emitted OpenAPI document (hono-openapi resolves only the object), so the doc
+ * would show a shape the route answers 400 for. The union makes the doc carry
+ * the same rule the validator enforces.
  */
 export const FeedbackThumbShape = v.object({
   messageId: v.pipe(v.string(), v.uuid()),
@@ -108,8 +107,8 @@ export type FeedbackRequest = v.InferOutput<typeof FeedbackRequestSchema>;
 
 /**
  * The review-queue state a fresh row starts in — the one constant the stores'
- * insert default and the route's echoed response share (thermo-review B3), so
- * the "pending" vocabulary lives in the contract, not as scattered literals.
+ * insert default and the route's echoed response share, so the "pending"
+ * vocabulary lives in the contract, not as scattered literals.
  */
 export const FEEDBACK_INITIAL_STATUS = "pending";
 

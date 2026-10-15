@@ -4,9 +4,9 @@ import { validateChatSearch } from "./lib/chat-prefill";
 import { useLocale } from "./lib/i18n";
 
 /**
- * The product's home is the chat (#11); the template's health card lives on
- * /health. The two public static pages — /about and /collection — are reachable
- * from the header nav and precached by the PWA, so they open offline.
+ * The product's home is the chat; the template's health card lives on /health.
+ * The two public static pages — /about and /collection — are reachable from the
+ * header nav and precached by the PWA, so they open offline.
  *
  * `createRouteTree` builds a fresh tree per call: TanStack route objects carry
  * their own matcher state and cannot be mounted by two routers at once, so a
@@ -52,7 +52,7 @@ export function createRouteTree() {
     getParentRoute: () => rootRoute,
     path: "/",
     component: Chat,
-    // #175: the chat route accepts `?q=<question>` as a composer pre-fill.
+    // The chat route accepts `?q=<question>` as a composer pre-fill.
     // Validation caps the length and ignores anything unusable — an
     // out-of-range param is "no pre-fill", never a route-search error
     // (`lib/chat-prefill`).
@@ -76,11 +76,8 @@ export function createRouteTree() {
   return rootRoute.addChildren([indexRoute, healthRoute, aboutRoute, collectionRoute]);
 }
 
-// Production singleton (thermo-review B5): the app's one router, built at
-// module load. Tests must never reuse this export — TanStack route objects
-// carry matcher state that cannot be mounted by two routers at once, so tests
-// mount their own router via `createRouteTree()` on a memory history
-// (`app-test-utils.ts`). Do not switch this to a lazy or recomputed value.
+// Never make the singleton above lazy or recomputed: it must be built at module
+// load, for the app's lifetime.
 
 declare module "@tanstack/react-router" {
   interface Register {

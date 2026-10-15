@@ -9,8 +9,8 @@ export type AlignmentStats = {
   emptySecondary: number;
   /**
    * Arabic entries with genuinely empty Arabic text, quarantined (skipped,
-   * never ingested — review A2): the source ships them (86 in ara-nasai,
-   * 29 in ara-malik, muslim's book-0 rows).
+   * never ingested): the source ships such rows, so they are real data rather
+   * than a parse defect.
    */
   emptyPrimary: number;
   /** Book/number pairs missing from one edition (quarantine-listed). */
@@ -51,10 +51,9 @@ export function alignEditions(
       : fallbackKey !== key && byBookNo.has(fallbackKey)
         ? fallbackKey
         : null;
-    // Empty-Arabic rows are quarantined, not ingested (review A2): the
-    // source genuinely ships them (86 in ara-nasai, 29 in ara-malik,
-    // muslim's book-0 rows). Consume the Indonesian counterpart so it is
-    // not double-counted as unmatched.
+    // Empty-Arabic rows are quarantined, not ingested: the source genuinely
+    // ships them. Consume the Indonesian counterpart so it is not
+    // double-counted as unmatched.
     if (h.text.trim().length === 0) {
       stats.emptyPrimary += 1;
       if (matchedKey !== null) byBookNo.delete(matchedKey);

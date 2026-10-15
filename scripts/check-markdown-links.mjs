@@ -1,17 +1,9 @@
 #!/usr/bin/env bun
 /**
- * Doc reference-resolution gate — the driver.
- *
- * THE CONTRACT, in full, is the header of `./markdown-links/policy.mjs`: the
- * invariant, the resolution base, every scope rule and class rule with its named
- * cost, and the policy data below it. Read that header to know what this gate
- * enforces and what it deliberately does not; read this file for how it runs.
- *
- * This half is the mechanism: read the scan roots (the committed tree — never
- * the working tree), parse prose and inline code spans, judge each reference
- * through `judgeClaim` (one reading, one verdict), and adjudicate the findings
- * against the policy table. Exits non-zero and prints `file:line -> target
- * (reason)` for each dangling reference, plus any stale allowlist entry.
+ * Doc reference-resolution gate — the driver, not the contract: that is the
+ * header of `./markdown-links/policy.mjs`. Exits non-zero and prints
+ * `file:line -> target (reason)` for each dangling reference, plus any stale
+ * allowlist entry.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -26,13 +18,10 @@ import {
 } from "./markdown-links/policy.mjs";
 
 /**
- * `dirname(fileURLToPath(import.meta.url))` rather than Bun's `import.meta.dir`:
- * this module is imported by `tests/scripts/check-markdown-links.test.mjs`,
- * which runs under Vitest on Node, where `import.meta.dir` is undefined.
- *
- * The gate is self-rooting — it reads its repository from its own location, so a
- * caller's cwd cannot point it at a different tree — and this line is what
- * carries that, not the layout beside it.
+ * `dirname(fileURLToPath(import.meta.url))`, not Bun's `import.meta.dir`: this
+ * module also runs under Vitest on Node, where `import.meta.dir` is undefined,
+ * and rooting the gate in its own location keeps a caller's cwd from pointing it
+ * at a different tree.
  */
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -42,11 +31,9 @@ export const ADR_ID_RE = /^adr\/(\d{4})$/;
 const SKILL_NAME_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 
 /**
- * Strip fenced code blocks before scanning. A link or code span written inside
- * a fence is an example, not a citation — a doc that illustrates a shape must
- * be able to do so without claiming the path in it exists. Indented (4-space)
- * blocks are not stripped: this repository uses fences throughout, and treating
- * indentation as code would silently skip real links in nested list items.
+ * Strip fenced code blocks before scanning: a link or span inside a fence is an
+ * example, not a citation. Indented (4-space) blocks are deliberately not stripped
+ * as code — only fences are — since real links live in nested lists.
  */
 export function prose(text) {
   const out = [];
@@ -80,7 +67,6 @@ export function inlineCodeSpans(line) {
   return spans;
 }
 
-/** The tracked tree as three sets: files, their ancestor directories, root files. */
 export function makeTree(paths) {
   const files = new Set();
   const dirs = new Set();
@@ -106,25 +92,11 @@ export function toRepoPath(root, fromDir, target) {
 }
 
 /**
- * WHAT PART OF A SPAN IS THE CLAIM — the span normaliser.
- *
- * Prose swallows punctuation into an inline span, and a citation carries a
- * pointer into its target. Neither is part of the path, and neither may turn a
- * good reference red: `docs/X.md,`, `docs/X.md#L24` and `scripts/x.mjs:42-58`
- * are claims on `docs/X.md` and `scripts/x.mjs`. This mirrors the link half,
- * which strips its `#fragment` before resolving. Without it the two halves
- * disagree, and a line citation — the sanctioned way to point at a line — would
- * block every PR that used one.
- *
- * The order is the contract: swallowed punctuation first (it is what hides the
- * rest), then a fragment, then a line citation — so `path:42-58,`,
- * `path#L24,` and even `path:42#L7` all reduce to `path`. The ellipsis rule in
- * `isPathClaim` is tested on the *raw* text, before this runs, because trimming
- * a trailing `.` would eat the third dot of `...` and turn a display label into
- * a path (class D).
- *
- * A caller that resolves a span must normalise with this too, or it will
- * resolve the citation; `analyse` is the one that matters and it does.
+ * WHAT PART OF A SPAN IS THE CLAIM — the span normaliser. A citation points
+ * *into* its target, so the order is the contract: swallowed punctuation (it is
+ * what hides the rest), then a fragment, then a line citation — `path:42-58,`,
+ * `path#L24` and `path:42#L7` all reduce to `path`. Callers that resolve a span
+ * must normalise with this too.
  */
 export function normaliseSpanTarget(text) {
   return text
@@ -135,16 +107,14 @@ export function normaliseSpanTarget(text) {
 }
 
 /**
- * Is this code span a repo-path claim? See SCOPE RULES in the header — the
- * order of these checks is the contract, and each one names its class. The
- * text is normalised first (`normaliseSpanTarget`), so callers may pass the raw
- * span; callers that then *resolve* it must normalise as well.
+ * Is this code span a repo-path claim? See SCOPE RULES in the header — the order
+ * of these checks is the contract. The normaliser runs first, so callers may pass
+ * the raw span; callers that resolve it must normalise too.
  */
 export function isPathClaim(text, tree) {
   const raw = text ?? "";
-  // On the raw text, not the normalised one: trimming swallowed punctuation
-  // would eat the third dot of `...`, and a display label would come back as a
-  // claim on `adr/0043-`.
+  // On the raw text, not the normalised one: trimming swallowed punctuation would
+  // eat the third dot of `...` and turn a display label into a claim.
   if (/…|\.\.\./.test(raw)) return false; // elided display labels (class D)
   const target = normaliseSpanTarget(raw);
   if (!target) return false;
@@ -153,12 +123,9 @@ export function isPathClaim(text, tree) {
   if (/[<>]/.test(target)) return false; // `<slug>`, `<role>`, `<label>`
   if (/^(?:https?:|mailto:|tel:|#|\/\/)/.test(target)) return false; // URLs, anchors
   if (target.startsWith("/")) return false; // not repo-relative
-  // `./`- and `..`-rooted: a claim by its form, never by its reading's first
-  // segment. The rules above already reject every non-path shape, and re-testing
-  // the reading against CLAIM_ROOTS would veto a target the link half reddens on
-  // (from `adr/`, `../web/dist` reads as `web/dist`, and `web` is not a tracked
-  // root; `./web/dist` reads the same way from `adr/`). See SCOPE RULES — #391
-  // and #396.
+  // `./`- and `..`-rooted targets are claims by their form, never by their
+  // reading's first segment: re-testing the reading against CLAIM_ROOTS would
+  // veto a target the link half reddens on. See SCOPE RULES.
   if (isFileRelativeTarget(target)) return true;
   if (!target.includes("/")) return tree.rootFiles.has(target);
   return CLAIM_ROOTS.includes(target.split("/")[0]);
@@ -170,17 +137,14 @@ export function isSkillName(target) {
 }
 
 /**
- * Is the span at `index` on `line` adjacent to the word `skill` — either
- * `` `x` skill `` or `skill `x``? The marker is the claim; see SKILLS_RULE.
+ * Is the span at `index` adjacent to the word `skill`? The marker is the claim; see SKILLS_RULE.
  */
 export function skillMentionAt(line, name, index) {
   const before = line.slice(0, index);
   const after = line.slice(index);
   if (/\bskills?\s+$/i.test(before)) return true;
-  // A literal comparison, not a `RegExp` built from the span text: skill names
-  // are `[a-z0-9-]+` so there is nothing to escape, and a dynamic regex over
-  // file content is a ReDoS surface (Semgrep
-  // javascript.lang.security.audit.detect-non-literal-regexp blocks it).
+  // A literal comparison, not a `RegExp` built from the span text: a dynamic
+  // regex over file content is a ReDoS surface the security scan blocks.
   const span = `\`${name}\``;
   if (!after.startsWith(span)) return false;
   return /^skills?\b/i.test(after.slice(span.length).replace(/^\s+/, ""));
@@ -193,25 +157,15 @@ export function adrIdResolves(target, adrNames) {
 }
 
 /**
- * Judge a code span: the reading *and* the verdict, from one base rule. What
- * `toRepoPath` returns under that rule is the path the finding reports and the
- * key `git check-ignore` and the allowlist chain look up, so the two can never
- * come from different rules (B2) — the disagreement that let a re-entry target
- * be `ok` as a span and `missing` as a link, and let a finding carry `status ok`
- * beside a `repoPath` that does not exist (A1).
+ * Judge a code span: the reading *and* the verdict, from one base rule, so the
+ * path a finding reports and the key `git check-ignore` and the allowlist chain
+ * look up cannot come from different rules.
  *
- * The base rule, chosen once, here:
- *   - a `./`- or `..`-rooted target is read from the containing file's directory
- *     and nowhere else, exactly as the Markdown half reads the identical
- *     destination (see SCOPE RULES);
- *   - every other target is read from the repository root first, then from the
- *     containing file's directory — the second base the header blesses for the
- *     `packages/infra/README.md` control. `repoPath` names the reading that
- *     actually resolved, falling back to the root reading so a dead target still
- *     reports the form the exemptions look up.
- *
- * `null` when the reading escapes the repository (#391): a target naming a path
- * outside it, which neither exemption can reach.
+ * A `./`- or `..`-rooted target is read from the containing file's directory and
+ * nowhere else, as the Markdown half reads it; any other target is read from the
+ * repository root first, then from that directory, with `repoPath` naming the
+ * reading that resolved — the root reading when neither did. `null` when the
+ * reading escapes the repository.
  */
 export function judgeClaim(target, fromDir, ctx) {
   const readings = isFileRelativeTarget(target)
@@ -233,13 +187,8 @@ export function judgeClaim(target, fromDir, ctx) {
  */
 export function analyse(sources, ctx) {
   const findings = [];
-  /**
-   * The one place a finding is built: every shape carries the same fields, with
-   * `repoPath` explicit rather than present-or-absent by branch. A branch names
-   * the shape it saw and, for the two path-shaped kinds, hands over the
-   * `{ repoPath, status }` pair `judgeClaim` produced — it never assembles one
-   * from a status read here and a path read there.
-   */
+  // The one place a finding is built: every shape carries the same fields, with
+  // `repoPath` explicit, and the path-shaped kinds hand over `judgeClaim`'s pair.
   const record = (kind, at, { status, repoPath = null }) => {
     findings.push({ kind, ...at, repoPath, status });
   };
@@ -249,13 +198,11 @@ export function analyse(sources, ctx) {
       const at = (target) => ({ file: relPath, line: i + 1, target });
       for (const match of line.matchAll(LINK_RE)) {
         const raw = match[1];
-        // External, protocol-relative, mailto, and same-page anchors are out
-        // of scope — see the header.
+        // External, mailto and same-page anchors are out of scope — see the header.
         if (/^(?:https?:|mailto:|tel:|#|\/\/)/.test(raw)) continue;
-        // A leading `/` means "relative to the repository root" in most
-        // Markdown renderers used with a `base`, but GitHub resolves it to the
-        // domain root. Rather than guess, treat it as a violation: this repo has
-        // none, and a future one should be an explicit decision.
+        // A leading `/` resolves differently across Markdown renderers, so it is
+        // a violation rather than a guess; a future one should be an explicit
+        // decision.
         if (raw.startsWith("/")) {
           record("link", at(raw), { status: "root-absolute" });
           continue;
@@ -266,17 +213,16 @@ export function analyse(sources, ctx) {
         try {
           destination = decodeURIComponent(pathPart);
         } catch {
-          // #392: a malformed `%` escape cannot resolve, and the output
-          // contract is a violation line per reference — never an uncaught
-          // `URIError` with no `file:line -> target` to act on. Reported on the
-          // destination as the document wrote it, which is what a reader sees.
+          // A malformed `%` escape cannot resolve, and the output contract is a
+          // violation line per reference on the destination as written — never an
+          // uncaught `URIError`.
           record("link", at(raw), { status: "malformed-encoding" });
           continue;
         }
         const rel = toRepoPath(ctx.root, dir, destination);
         record("link", at(raw), {
-          // The repo-relative path whose absence is the violation — the form
-          // `git check-ignore` needs, and the key the exemption chain looks up.
+          // The repo-relative path whose absence is the violation, in the form
+          // `git check-ignore` needs.
           repoPath: rel,
           status: rel && isTracked(ctx.tree, rel) ? "ok" : "missing",
         });
@@ -284,8 +230,7 @@ export function analyse(sources, ctx) {
 
       for (const { target: rawTarget, index } of inlineCodeSpans(line)) {
         // The claim test takes the raw span (its ellipsis rule needs the raw
-        // dots); the reported target and the resolution take the normalised
-        // one — `docs/X.md:42` is a claim on `docs/X.md`.
+        // dots); the reported target and the resolution take the normalised one.
         const target = normaliseSpanTarget(rawTarget);
         if (isSkillName(target) && skillMentionAt(line, rawTarget, index)) {
           record("skill", at(target), {
@@ -295,8 +240,7 @@ export function analyse(sources, ctx) {
           continue;
         }
         if (!isPathClaim(rawTarget, ctx.tree)) continue;
-        // One reading, one verdict, one object — `judgeClaim` decides the base
-        // and returns both, so this kind cannot report them from two rules.
+        // One reading, one verdict, one object — `judgeClaim` returns both.
         record("path", at(target), judgeClaim(target, dir, ctx));
       }
     }
@@ -308,10 +252,8 @@ export function analyse(sources, ctx) {
 export const RESOLVED_STATUSES = new Set(["ok", "adr-id"]);
 
 /**
- * The table in precedence order — highest `priority` first. Precedence is a
- * field, not the array's source order, so permuting `POLICY` cannot change which
- * rule a shape gets; a test runs the adjudicator over a reversed table and
- * asserts identical verdicts.
+ * The table in precedence order, highest `priority` first: precedence is a field,
+ * not the array's source order, so permuting `POLICY` changes no verdict.
  */
 export function policyOrder(table = POLICY) {
   return [...table].sort((a, b) => b.priority - a.priority);
@@ -319,8 +261,7 @@ export function policyOrder(table = POLICY) {
 
 /**
  * The one rule that governs a finding: the highest-priority match, never the
- * first. A shape no rule covers fails loud rather than silently taking the wrong
- * chain.
+ * first. A shape no rule covers fails loud rather than taking the wrong chain.
  */
 export function policyFor(finding, table = POLICY) {
   const rule = policyOrder(table).find((candidate) => candidate.match(finding));
@@ -329,20 +270,15 @@ export function policyFor(finding, table = POLICY) {
 }
 
 /**
- * Apply the policy table to findings. Every missing reference — Markdown link
- * or code span, living doc or record — is offered the same exemption chain
+ * Apply the policy table to findings. Every missing reference — Markdown link or
+ * code span, living doc or record — is offered the same exemption chain
  * (gitignored, then allowlisted), so neither shape can be red with no escape.
  * Dead claims inside records are counted, not enforced. Every allowlist entry
  * whose file the gate scanned but whose dead reference it did not match is a
  * violation too, so the list cannot rot.
  *
- * `files` is the set of documents the gate read. An entry naming a file that is
- * not in that corpus (a fixture checkout, say) cannot be evaluated and is not
- * reported stale — but the same entry against the real corpus is, which is the
- * property that keeps the list honest.
- *
- * `table` is the rule set, defaulting to `POLICY`; it exists so a test can hand
- * this function a permuted table and prove the verdicts do not move (B5).
+ * `files` is the set of documents the gate read: an entry naming a file outside
+ * that corpus is not evaluable. `table` is the rule set, defaulting to `POLICY`.
  *
  * @param {object[]} findings from `analyse`
  * @param {{allowlist?: object[], ignored?: Set<string>, files?: Set<string>,
@@ -418,10 +354,8 @@ export function walk(path, out = []) {
     return out;
   }
   for (const name of readdirSync(path)) {
-    // Vendored READMEs are not this repository's prose: `node_modules` holds
-    // third-party packages whose own internal links are theirs to keep, and
-    // `packages/*/node_modules/@app/*` symlinks would report each upstream
-    // README once per dependent package.
+    // Vendored READMEs are not this repository's prose, and the node_modules
+    // symlinks would report one upstream README once per dependent package.
     if (name === "node_modules" || name === ".scratch") continue;
     walk(join(path, name), out);
   }
@@ -438,9 +372,8 @@ function git(root, args, input) {
 }
 
 /**
- * A missing `adr/` or `.agents/skills/` means the directory is gone, not that
- * the rule is off: with no names to match, every `adr/NNNN` and every skill
- * mention is reported as dangling. Failing loud is the point.
+ * A missing `adr/` or `.agents/skills/` means the directory is gone, not that the
+ * rule is off: every reference is then reported dangling, never skipped.
  */
 function listing(dir, options) {
   try {
@@ -450,7 +383,7 @@ function listing(dir, options) {
   }
 }
 
-/** The committed tree: one `git ls-files`, then one `git check-ignore` for the dead ends. */
+/** The committed tree, from one `git ls-files`. */
 export function buildContext(root) {
   let listed;
   try {
@@ -500,11 +433,9 @@ export function loadCorpus(root) {
 }
 
 /**
- * The whole gate, as a function of the repository root: the corpus, the
- * findings, the policy that judged them, the verdict and the counters. `main()`
- * prints this and the real-tree tests assert on it, so the suite cannot keep
- * passing against wiring the CLI no longer has — the driver used to exist twice
- * (`main()` and the tests' `realScan()`), and the tests' copy was free to drift.
+ * The whole gate, as a function of the repository root: corpus, findings, policy,
+ * verdict and counters. `main()` and the real-tree tests both go through it, so
+ * neither can drift from the other.
  */
 export function runGate(root) {
   const ctx = buildContext(root);
@@ -513,7 +444,7 @@ export function runGate(root) {
   const dead = findings.filter((f) => f.status === "missing");
   const policy = {
     files: new Set(sources.map((s) => s.relPath)),
-    // Every dead reference, whichever shape it arrived in — one chain (A1).
+    // Every dead reference, whichever shape it arrived in — one chain.
     ignored: ignoredTargets(root, dead.map((f) => f.repoPath).filter(Boolean)),
   };
   return { root, files, sources, findings, policy, ...adjudicate(findings, policy) };
@@ -521,10 +452,9 @@ export function runGate(root) {
 
 /**
  * The OK line is part of the contract, not a log message: it names what was
- * checked, what actually resolved, and every exemption the run took, so a green
- * run cannot hide a narrowing. On a green run the arithmetic closes —
- * `links + claims + skills === resolved + ignored + allowlisted` — and a test
- * asserts exactly that.
+ * checked, what resolved, and every exemption taken, so a green run cannot hide a
+ * narrowing. The arithmetic closes: `links + claims + skills === resolved +
+ * ignored + allowlisted`.
  */
 export function formatOkLine(counters, fileCount) {
   return (

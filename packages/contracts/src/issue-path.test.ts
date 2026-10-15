@@ -5,17 +5,17 @@ import { describeIssue, issuePath } from "./issue-path";
 
 /**
  * `issuePath` turns a valibot issue's PathItem OBJECTS into a dotted field
- * path for a validation diagnostic (#271, #283), and `describeIssue` composes
- * that path with the issue's message into the one `field: message` template
- * every call site renders. These are trap tests: the defect they exist to
- * prevent is a diagnostic that names no field at all, so every row asserts
- * the rendered FIELD NAME, not merely that the function returned a string.
+ * path for a validation diagnostic, and `describeIssue` composes that path
+ * with the issue's message into the one `field: message` template every call
+ * site renders. These are trap tests: the defect they exist to prevent is a
+ * diagnostic that names no field at all, so every row asserts the rendered
+ * FIELD NAME, not merely that the function returned a string.
  *
- * Mutation that reddens every field-naming row: replace the `key`-reading map
- * with `(path ?? []).join(".")`, which stringifies each PathItem object as
- * `[object Object]`. Mutation that reddens the union rows specifically: drop
+ * Mutation that reddens every field-naming row: replacing the `key`-reading
+ * map with `(path ?? []).join(".")`, which stringifies each PathItem object as
+ * `[object Object]`. Mutation that reddens the union rows: dropping
  * `mostSpecificIssue`'s nested-issue descent, which reverts a `v.union`
- * failure to the path-less `<body>: …` it reported before this fix.
+ * failure to the path-less `<body>: …`.
  */
 describe("issuePath", () => {
   it("renders an object property as its field name", () => {
@@ -41,19 +41,19 @@ describe("issuePath", () => {
     // rather than rendered as `undefined` or `[object Object]`.
     expect(issuePath([{} as { key?: unknown }, { key: "id" }])).toBe("id");
     expect(issuePath([{} as { key?: unknown }])).toBe("<body>");
-    // An empty-string key names nothing either: rendering it produced the
-    // bare prefix `": message"`, not a field (thermo A1, latent).
+    // An empty-string key names nothing either: rendering it would produce
+    // the bare prefix `": message"`, not a field.
     expect(issuePath([{ key: "" }])).toBe("<body>");
     expect(issuePath([{ key: "a" }, { key: "" }, { key: "b" }])).toBe("a.b");
   });
 });
 
 /**
- * `describeIssue` is the union case's fix (thermo-review A1): the feedback
- * body's `v.union` reports ONE path-less issue whose nested `issues` carry the
- * real paths, so the descent — not a contract change — is what makes the
- * diagnostic name a field. These rows run the REAL parser on the REAL
- * malformed bodies, so they fail if either half regresses.
+ * `describeIssue` handles the union case: the feedback body's `v.union`
+ * reports ONE path-less issue whose nested `issues` carry the real paths, so
+ * the descent — not a contract change — is what makes the diagnostic name a
+ * field. These rows run the REAL parser on the REAL malformed bodies, so they
+ * fail if either half regresses.
  */
 describe("describeIssue", () => {
   const uuid = "550e8400-e29b-41d4-a716-446655440000";

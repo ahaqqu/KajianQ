@@ -1,20 +1,6 @@
 import type { RetentionItem } from "./privacy-notice-types";
 
 /**
- * The retention values the notice states: **ADR-0043 decision 4 in data form**
- * (mirrored by the Art. 30 record §6). A row is `current` when the code behind
- * it exists today (the 30-day session TTL in the RagStore adapter, the erasure
- * cascade) and `planned` with its ticket when it does not (#180's access-log
- * and backup measures, #181's snapshot retention) — a claim never outruns the
- * code that backs it.
- *
- * There is deliberately no separate age-based deletion of chat rows: a session
- * that keeps being used keeps its transcript, so anonymous chat retention is
- * 30 days of inactivity plus on-demand erasure. That is a product decision,
- * stated rather than implied.
- */
-
-/**
  * The retention values (ADR-0043 decision 4, mirrored by the Art. 30 record
  * §6). There is deliberately **no separate age-based deletion of chat rows**: a
  * session that keeps being used keeps its transcript, so the effective

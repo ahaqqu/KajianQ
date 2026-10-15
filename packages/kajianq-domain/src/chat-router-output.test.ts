@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readRouterReply, readRouterText } from "./chat-router-output";
 
 /**
- * Reading the router LLM's reply (#14). The model's values are free strings, so
+ * Reading the router LLM's reply. The model's values are free strings, so
  * every assertion here is about what the domain does with a value it did not
  * expect: drop it, keep it, or treat the whole reply as unusable.
  */

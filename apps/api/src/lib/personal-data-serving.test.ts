@@ -1,55 +1,31 @@
 /// <reference types="node" />
-// The drift guard below reads the checked-in provider config from the repo
-// (Node can; the API bundle cannot). The directive is file-scoped because
-// apps/api types the app for the Workers/Bun runtime only.
+// Node types, file-scoped: the drift guard below reads the checked-in provider
+// config from the repo, which the API bundle cannot do.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { loadProviderConfig } from "@app/infra";
 import { CHAT_SERVING_ROLES } from "./chat-wiring";
 
 /**
- * The free-tier trust invariant (ADR-0043 Consequences — the "measured gap"
- * this test exists to close, #181's `PromptSpec.personalData` precondition).
- *
- * The invariant: **no chat question can ride a free-tier vendor.** The
- * failure mode is silent by construction — `FallbackProvider` filters
- * free-tier candidates only when a call sets `personalData`, so a serving
- * call site that simply forgets the flag keeps working, keeps passing the
- * Golden Set, and quietly leaks personal data (a fiqh question can reveal
- * religious convictions, Art. 9) to a vendor whose free-tier terms permit
- * using the input to improve its models. No error, no trace marker.
+ * The free-tier trust invariant: **no chat question can ride a free-tier vendor.**
+ * `FallbackProvider` filters free-tier candidates only when a call sets `personalData`,
+ * so a call site that forgets the flag keeps working and quietly leaks personal data
+ * (Art. 9) to a free-tier vendor that may train on the input.
  *
  * Two layers pin it, and this file asserts both:
  *
- *   1. **Type layer.** The domain's serving stage seams (`RouterProvider`,
- *      `GeneratorProvider`, `ReviewerProvider`, `RetrieverEmbedder` in
- *      `@app/kajianq-domain`) declare `personalData: true` as a REQUIRED,
- *      non-optional field on the spec. A stage call site that drops the
- *      flag is a compile error (`bun run check`), not a runtime hope. The
- *      flag is literal `true` — a serving seam cannot declare `false`.
+ *   1. **Type layer.** The serving stage seams (`RouterProvider`, `GeneratorProvider`,
+ *      `ReviewerProvider`, `RetrieverEmbedder`) declare `personalData: true` as a
+ *      REQUIRED, non-optional field, so dropping it is a compile error (never `false`).
  *
- *   2. **Config layer (below).** With the flag now set on every serving
- *      call, a role whose ONLY keyed candidates are free-tier vendors
- *      (`personalDataAllowed: false`) fails every call with a typed
- *      `ProviderError` rather than silently routing personal data to the
- *      free tier. The test walks the real `models.json` — the same file the
- *      register's `Tier` column derives from — so a `freeTier` /
- *      `personalDataAllowed` edit that would break the chat path fails HERE
- *      first, in CI, instead of in production traffic. The `decision` role is
- *      in scope: the pre-gate sends claim spans (personal data) and the
- *      `Decider` seam carries its own required label plus a pre-wire refusal
- *      and a serving-resolution filter (ADR-0042 adoption, #168) — this test
- *      is what keeps a free-tier decision candidate out of that chain.
+ *   2. **Config layer (below).** A role whose ONLY keyed candidates are free-tier vendors
+ *      (`personalDataAllowed: false`) fails every call with a typed `ProviderError`,
+ *      never a silent route to the free tier; the test walks the real `models.json`, so
+ *      such an edit fails HERE. The `decision` role is in scope (it sends personal data).
  *
- * Trap cases named before writing:
- *   - the `cheap` role's chain head IS a free-tier vendor today (Gemini) —
- *     the flag must push those calls to the paid tail, never the head;
- *   - a vendor row that says `freeTier: false` but
- *     `personalDataAllowed: false` is still disallowed — the register rule
- *     keys on the personal-data column, not the price column;
- *   - an unkeyed candidate is not a violation (it is filtered at wiring and
- *     the call would fail with the missing-key error) — only candidates the
- *     environment actually keys in count.
+ * Trap cases: the `cheap` chain head IS a free-tier vendor, so the flag must push calls to the
+ * paid tail; a `freeTier: false` row with `personalDataAllowed: false` is still disallowed (the
+ * rule keys on personal data, not price); an unkeyed candidate is not a violation.
  */
 
 type VendorRow = { freeTier: boolean; personalDataAllowed: boolean };
@@ -64,27 +40,20 @@ const MODELS = JSON.parse(
   roles: Record<string, { chain: string[] }>;
 };
 
-/** Every provider role the chat serving path resolves (chat-wiring.ts). */
 const SERVING_ROLES = CHAT_SERVING_ROLES;
 
 /**
- * The env-name set every serving role is keyed with in a fully-configured
- * deployment (the same names the deployer passes through; the #181-added
- * GEMINI_PAID_API_KEY (the paid-terms embedder head) is an owner-provisioned
- * precondition of the chat path: without it the embedder stage fails a
- * serving call with a typed error. The reviewer is DeepSeek (same-vendor
- * since the 2026-09-21 re-head) and shares DEEPSEEK_API_KEY). They are named in the cutover
- * runbook's step-0 preconditions and `provision/vps/api.env.example`; this
- * test pins the config side only — that the checked-in `models.json` shapes a
- * fully-keyed serving graph — and cannot observe the live environment.
+ * The env-name set every serving role is keyed with in a fully-configured deployment:
+ * `GEMINI_PAID_API_KEY` (the paid-terms embedder head) is an owner-provisioned
+ * precondition without which the embedder stage fails with a typed error.
  */
 const DEPLOYED_KEYS = new Set([
   "GEMINI_API_KEY",
   "GEMINI_PAID_API_KEY",
   "DEEPSEEK_API_KEY",
   "DASHSCOPE_API_KEY",
-  // The decision vendor's key (#168): the pre-gate is optional in serving, but
-  // when it IS keyed this guard must judge the candidate it would wire.
+  // The decision vendor's key: optional in serving, but when keyed this guard must judge
+  // the candidate it would wire.
   "JEV_API_KEY",
 ]);
 
@@ -92,12 +61,9 @@ const config = loadProviderConfig();
 
 describe("serving personal-data precondition (ADR-0043 gap, #181)", () => {
   it("every chat serving role has at least one keyed candidate that allows personal data", () => {
-    // The hard invariant. If a role's keyed candidates are all
-    // `personalDataAllowed: false`, then with `personalData: true` now set
-    // by every serving call site, that role cannot answer ANY chat call —
-    // it fails with a typed error instead of silently riding the free
-    // tier. That is the designed behavior, but it means the chat path is
-    // down, so it must be caught in CI, at the config edit, not at runtime.
+    // A role whose keyed candidates are all `personalDataAllowed: false` cannot answer
+    // ANY chat call with `personalData: true` set — designed behavior, but the chat path
+    // is down, so it must fail in CI at the config edit, not at runtime.
     const failures: string[] = [];
     for (const role of SERVING_ROLES) {
       const allowed = (MODELS.roles[role]?.chain ?? []).filter((key) => {
@@ -111,21 +77,16 @@ describe("serving personal-data precondition (ADR-0043 gap, #181)", () => {
   });
 
   it("the checked-in config the wiring parses agrees with the models.json file", () => {
-    // Drift guard: `createProvidersFromEnv` resolves roles through
-    // `loadProviderConfig()`; the test above reads the file directly. The
-    // two must describe the same roles or the assertion above is testing a
-    // stale copy.
+    // `createProvidersFromEnv` resolves roles through `loadProviderConfig()` while the
+    // test above reads the file directly; both must describe the same roles.
     for (const role of SERVING_ROLES) {
       expect(config.roles[role], role).toBeDefined();
     }
   });
 
   it("no free-tier vendor is wired into a serving role's chain head (defense in depth)", () => {
-    // Even though the flag now protects every serving call, a free-tier
-    // CHAIN HEAD on a serving role is a loaded gun: one dropped flag in a
-    // future call site and personal data rides the free tier again. The
-    // `cheap` role historically had exactly this shape (free-tier Gemini
-    // head) — this pins that it does not come back.
+    // Defense in depth: a free-tier CHAIN HEAD on a serving role is one dropped flag
+    // away from personal data riding the free tier.
     for (const role of SERVING_ROLES) {
       const chain = MODELS.roles[role]?.chain ?? [];
       const head = chain[0];

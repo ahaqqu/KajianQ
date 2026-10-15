@@ -17,30 +17,19 @@ import {
 } from "../lib/chat-wiring";
 
 /**
- * GET /v1/chat/sessions/:id/messages (#11, ADR-0040): rehydrate a chat
- * session's full transcript. The UI restores it on reload, keyed by the
- * locally-stored session id (ADR-0017 anonymous sessions, low stakes by
- * design). Every assistant message's citation payload is derived from its
- * persisted answer trace — the same derivation the live `citations` frame
- * uses — so a rehydrated transcript can never show a citation the trace does
- * not ground.
+ * GET /v1/chat/sessions/:id/messages: rehydrate a chat session's transcript. Each
+ * assistant message's citation payload is derived from its persisted answer trace —
+ * the same derivation the live `citations` frame uses — so a rehydrated transcript
+ * never shows a citation the trace does not ground.
  *
- * The wiring is store-only (no provider roles): a missing reviewer key must
- * not gate reading a transcript, exactly as it must not gate auth (thermo-
- * review A4). Ownership goes through the existing `getChatSessionUser` seam;
- * an unknown session, a foreign session, and a `:id` the store cannot
- * represent (non-UUID, #271) are all the same 404, so the endpoint leaks
- * nothing about other users' sessions. 429 is documented for DAST.
+ * The wiring is store-only, and an unknown, foreign, or unrepresentable session id
+ * is one and the same 404.
  */
 
 type SessionEnv = import("../env").ApiEnv["Bindings"] & Record<string, string | undefined>;
 
-/**
- * Transcript cap: a session is an anonymous conversation, not an archive.
- * The endpoint reads one row beyond the cap to DETECT truncation, so the
- * client is told it is seeing a tail instead of silently losing the oldest
- * turns (thermo-review A4).
- */
+/** Transcript cap: a session is a conversation, not an archive. One row past the cap
+ * is read to DETECT truncation, so the client learns it is seeing a tail. */
 const MESSAGES_LIMIT = 200;
 
 const SESSION_MESSAGES_OPENAPI = describeRoute({
@@ -91,28 +80,21 @@ export const chatSessionRoutes = newRouter().get(
     const { userId } = c.get("authed");
 
     const sessionId = c.req.param("id");
-    // #271: the id must be a value `chat_sessions.id` (uuid) can hold before
-    // the store sees it — the adapter's `${sessionId}::uuid` cast throws on
-    // anything else, which surfaced as a 500 `{"error":"internal"}` with no
-    // server fault behind it. A malformed id leaves through the SAME documented
-    // 404 (and the same body) as an unknown or foreign one: the route adds no
-    // status to its published contract, and an id that cannot name a session is
-    // indistinguishable from one that names nothing — the posture this route's
-    // module comment claims is what this guard preserves. Auth runs first (401
-    // for a malformed id with no token), so the guard is not an auth bypass.
+    // The id must be a value `chat_sessions.id` (uuid) can hold before the store sees
+    // it — the adapter's `${sessionId}::uuid` cast throws on anything else. A malformed
+    // id leaves through the same documented 404 as an unknown or foreign one; auth runs
+    // first, so the guard is not an auth bypass.
     if (!isChatSessionId(sessionId)) {
       return c.json({ error: "invalid_request" }, 404);
     }
     const owner = (await runStore(fullStore.getChatSessionUser(sessionId))) as string | null;
     if (owner !== userId) {
-      // Same posture as the chat route's A6 check: unknown and foreign are
-      // indistinguishable from the outside.
+      // Unknown and foreign are indistinguishable from the outside.
       return c.json({ error: "invalid_request" }, 404);
     }
 
-    // One row past the cap answers "is there more?" without a count query.
-    // The store returns the newest tail in chronological (oldest-first)
-    // order, so the extra row is the single oldest message — drop it.
+    // One row past the cap answers "is there more?" without a count query; the
+    // store returns the newest tail oldest-first, so the extra row is the oldest.
     const fetched = (await runStore(
       fullStore.getChatMessages(sessionId, { limit: MESSAGES_LIMIT + 1 }),
     )) as readonly ChatMessage[];

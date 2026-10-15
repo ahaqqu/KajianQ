@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * eval-run.mjs — the `eval:run` Golden Set CLI (issue #8).
+ * eval-run.mjs — the `eval:run` Golden Set CLI.
  *
  *   bun run eval:run
  *
@@ -16,23 +16,21 @@
  *   EVAL_RUN_LABEL         optional run label (defaults to the fixture id)
  *   EVAL_GOLDEN_SET_PATH   optional fixture path override (defaults to the
  *                          domain pack's golden-set-v0.json, resolved from
- *                          the repo root — thermo-review A2)
+ *                          the repo root)
  *
- * Thin composition root (B5): wires the SSE client + the Postgres store through
+ * Thin composition root: wires the SSE client + the Postgres store through
  * the @app/eval seams, runs the harness (`runGoldenSet` owns the run
- * lifecycle — no re-implemented loop, no ledger mutation, thermo-review
- * A3/A4/A9/B1), and prints the summary. Missing API keys are reported NOT
- * RUN (same posture as provider-smoke): the harness aborts because it needs
- * the staging API to be serving.
+ * lifecycle — no re-implemented loop, no ledger mutation), and prints the
+ * summary. Missing API keys are reported NOT RUN (same posture as
+ * provider-smoke): the harness aborts because it needs the staging API to be
+ * serving.
  *
- * Round-3 B2: the config load, budget banner, fixture load, and summary
- * printer are the shared CLI glue in `eval-cli.mjs` — one copy, no drift.
- * This script keeps only what is genuinely its own: the v0 content-bar
- * assertion, the golden-set banner line, and the ledger-backed cost figure
- * in the summary. Its exit semantics are the shared policy too (#364):
- * non-zero when any question failed, was skipped, or was never measured —
- * before this ticket the full suite exited 0 on all three, so the documented
- * release gate's green was an operator's read rather than a check.
+ * The config load, budget banner, fixture load, and summary printer are the
+ * shared CLI glue in `eval-cli.mjs` — one copy, no drift. This script keeps
+ * only what is genuinely its own: the v0 content-bar assertion, the
+ * golden-set banner line, and the ledger-backed cost figure in the summary.
+ * Its exit semantics are the shared policy too: non-zero when any question
+ * failed, was skipped, or was never measured.
  */
 import * as evalpkg from "@app/eval";
 import { createStagingHarness } from "./staging-harness.mjs";
@@ -48,15 +46,15 @@ const config = loadConfig("eval:run", process.env);
 const budget = createBudget("eval:run", config);
 
 // The Golden Set fixture — validated against the contract, then against the
-// v0 content bar (the trap-tag label is the domain's vocabulary). A2: the
-// path comes from the validated config (EVAL_GOLDEN_SET_PATH), not a
-// hard-coded cross-package URL.
+// v0 content bar (the trap-tag label is the domain's vocabulary). The path
+// comes from the validated config (EVAL_GOLDEN_SET_PATH), never a hard-coded
+// cross-package URL.
 const fixture = loadFixture("eval:run", config, { assertV0: true });
 console.log(
   `eval:run: golden set "${fixture.id}" — ${fixture.questions.length} questions, status ${fixture.status}`,
 );
 
-// B2: the staging seams (store, sourceType scan, transport, traces, ledger,
+// The staging seams (store, sourceType scan, transport, traces, ledger,
 // refusal markers) come from the shared bootstrap — one copy, no drift.
 const harness = await createStagingHarness(config, budget);
 
@@ -82,11 +80,11 @@ printSummary("eval:run", {
   questions: fixture.questions,
 });
 
-// The shared exit policy (#364): any failed, skipped, or unmeasured question
-// reddens this run, so the release gate's green is a script-readable verdict
-// and not a summary the operator has to choose to read. `questionCount` is the
-// same fixture count the summary above printed — a run the budget cap aborted
-// recorded fewer outcomes than that, which is the third clause.
+// The shared exit policy: any failed, skipped, or unmeasured question reddens
+// this run, so the release gate's green is a script-readable verdict rather
+// than a summary the operator must choose to read. `questionCount` is the
+// fixture count the third clause compares recorded outcomes against — a
+// budget-aborted run records fewer.
 exitWithPolicy("eval:run", {
   runId: r.runId,
   questionCount: fixture.questions.length,

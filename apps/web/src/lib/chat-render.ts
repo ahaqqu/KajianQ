@@ -1,24 +1,19 @@
 import type { ChatCitation } from "@app/contracts";
 
 /**
- * Rendering rules for an assistant answer (#11). The citation payload comes
+ * Rendering rules for an assistant answer. The citation payload comes
  * from the server's structured frame — this module never decides what IS a
  * citation (no grammar parsing): it only LOCATES the frame's labels in the
  * answer text so they render as chips. The rule-peel half — the dhaif warning,
  * the ulama disclaimer and the ADR-0006 MT label, matched from the product's
- * canonical copy — lives in `chat-peel.ts` (#353).
+ * canonical copy — lives in `chat-peel.ts`.
  *
- * Inline markdown (#150): the model still spontaneously wraps spans in
+ * Inline markdown: the model still spontaneously wraps spans in
  * `**bold**` / `*emphasis*` and emits lists, and the card must render them as
  * rich text, never as literal markers. Display-only: citation extraction runs
  * on the raw text upstream and is unaffected.
  */
 
-/**
- * The rule-peel half (`chat-peel.ts`), re-exported for its direct readers:
- * `AnswerCard.tsx`, `CitationSheet.tsx`, the peel specs, and the client/server
- * copy-parity spec under `tests/parity`.
- */
 export {
   DISCLAIMER_MARKERS,
   MACHINE_TRANSLATION_LABEL,

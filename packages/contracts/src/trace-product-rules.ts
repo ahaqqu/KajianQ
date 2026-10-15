@@ -2,41 +2,34 @@ import * as v from "valibot";
 import { CostRecordSchema } from "./trace-primitives";
 
 /**
- * The `product_rules` trace event variant (#285; ADR-0007 typed detail).
+ * The `product_rules` trace event variant (ADR-0007 typed detail).
  *
- * It was extracted when the union had run out of room: the inline variant took
- * `trace.ts` from 297 lines to 340, past the agentic 300-line cap, and pulling
- * it into this module brought the file back to 292. #291 has since moved the
- * union into `./trace-events.ts` — 233 lines today against the same cap, so
- * inlining this module (its whole length, less the import edge and one-line
- * pointer it would replace there, 3 lines) would still land the union at 287.
- * The cap no longer forces the split: the module is kept as the variant's home.
- * It is composed into that union verbatim, exactly like the inline variants
- * around it, so `kind` remains the union's one discriminator. The cost shape it
- * carries is `./trace-primitives.ts`'s `CostRecordSchema` — the contract's one
- * owner of that shape; a variant imports it from there and never restates it.
+ * It is composed into the union in `./trace-events.ts` verbatim, exactly like
+ * the inline variants around it, so `kind` remains the union's one
+ * discriminator. The cost shape it carries is `./trace-primitives.ts`'s
+ * `CostRecordSchema` — the contract's one owner of that shape; a variant
+ * imports it from there and never restates it.
  *
  * **What the event means.** The deterministic product rules ran: the rules a
  * domain pack applies to a passed draft after the reviewer gate. This contract
  * stays domain-agnostic, so the rule ids are opaque strings the domain pack
- * owns. Before this kind, the only observable of a rule that ran was the text
- * it appended to the delivered answer, so "the rule ran and found the copy
- * already present" was indistinguishable from "the rule never ran".
+ * owns. The delivered answer text alone cannot separate "the rule ran and found
+ * the copy already present" from "the rule never ran", which is why the event
+ * exists.
  *
  * **Why a dedicated kind rather than a field on `review`.** The rules apply on
  * three exits from the reviewer stage — no reviewer configured/`skipLlm`, the
  * ADR-0042 pre-gate skip, and reviewer-passed — and the pre-gate skip records
- * **no `review` event at all**. Folding the rules into `review` would have
- * left the very path the #278 staging failure took unobservable.
+ * **no `review` event at all**. Folding the rules into `review` would leave
+ * that path unobservable.
  *
  * **Reading it.** `applied` names the rule ids that appended text, in
  * application order. An EMPTY array is a meaningful value, not a missing one:
  * the rules ran and appended nothing. It does NOT separate "no rule had a
  * trigger" from "a trigger matched and the copy was already present" — the
  * residual exact-copy suppression case is the motivating example, not a
- * count the field carries. PRESENCE is the signal (the rules ran) — a trace
- * persisted before this kind existed carries no such event, so absence is
- * authoritative only for traces written after it shipped (ADR-0007).
+ * count the field carries. PRESENCE is the signal (the rules ran); absence is
+ * authoritative only for traces written after the event shipped (ADR-0007).
  * The delivered text remains the single source of truth for what
  * the answer says; this event records only which rules appended text, never
  * whether their text survived.

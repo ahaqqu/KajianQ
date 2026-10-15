@@ -1,7 +1,6 @@
 // The docs:links gate against the real repository and through its CLI: the
 // committed-tree rule, the allowlist's self-pruning, and what the entry point
-// prints. The CLI fixtures copy the gate's modules into a throwaway git repo, so
-// they exercise the same wiring CI runs.
+// prints. The CLI fixtures copy the gate's modules into a throwaway git repo.
 import { describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
@@ -41,15 +40,14 @@ describe("markdown-links — the real tree", () => {
   it("is green on the repository as it stands, with the narrowing visible", () => {
     const out = execFileSync("bun", [CLI], { encoding: "utf8" });
     expect(out).toContain("markdown-links: OK");
-    // The blind spots this change accepted must be printed on every green run.
+    // The gate's blind spots are printed on every green run.
     expect(out).toMatch(/\d+ known-retired allowlisted/);
     expect(out).toMatch(/\d+ dead claims inside record files unchecked/);
   });
 
   it("prints exactly what `runGate` decided — one driver, not two", () => {
-    // The gate used to be implemented twice (`main()` and a `realScan()` here),
-    // so the suite could pass against wiring the CLI no longer had. The CLI must
-    // now print the same counters the tests assert on.
+    // The CLI must print the same counters the tests assert on, so the suite
+    // cannot pass against wiring the CLI no longer has.
     const run = runGate(ROOT);
     const corpus = loadCorpus(ROOT);
     const out = execFileSync("bun", [CLI], { encoding: "utf8" }).trim();
@@ -61,9 +59,8 @@ describe("markdown-links — the real tree", () => {
   });
 
   it("closes the OK line's arithmetic: checked = resolved + allowlisted + ignored", () => {
-    // A5: "resolve" used to be the verb for the *checked* total, which counted
-    // the 4 allowlisted and the 2 gitignored as if they had been proved. The
-    // line now separates them, and this is the invariant that keeps it honest.
+    // "Resolve" counts only what was proved: the allowlisted and the gitignored
+    // are checked and *not* resolved, and this invariant keeps the line honest.
     const { counters } = runGate(ROOT);
     const checked = counters.links + counters.claims + counters.skills;
     expect(checked).toBe(counters.resolved + counters.allowlisted + counters.ignored);
@@ -77,15 +74,13 @@ describe("markdown-links — the real tree", () => {
   });
 
   it("resolves a real package-relative claim end to end", () => {
-    // packages/infra/README.md:109 — `scripts/db-migrate.mjs`.
+    // The package-relative control: `scripts/db-migrate.mjs` in packages/infra/README.md.
     const ctx = buildContext(ROOT);
     expect(judgeClaim("scripts/db-migrate.mjs", "packages/infra", ctx).status).toBe("ok");
   });
 
   it("resolves the `..` variant of that same control end to end (#391)", () => {
-    // The control above is the header's blessed file-relative base. Written the
-    // way this repository's `../` idiom writes it — from `docs/` — the identical
-    // target must resolve, be counted as a claim, and stay green.
+    // The same control written with the `../` idiom from `docs/`: it must also resolve.
     const ctx = buildContext(ROOT);
     const findings = analyse(
       [
@@ -112,13 +107,9 @@ describe("markdown-links — the real tree", () => {
   });
 
   it("keeps the two `./`-rooted literals exact and out of the claim set (#396)", () => {
-    // The #396 decision against the shipped documents, not a fixture: both live
-    // sites quote the asset handler's inline default — a *value* the operator
-    // must be able to read, never a reference to a path in this repository — and
-    // render it as a fenced literal. So the reader still sees the exact string,
-    // the span half no longer skips the class silently, and no exemption entry
-    // was added to keep either site green. Un-fencing one re-claims it, which
-    // this assertion catches.
+    // Both live sites quote the asset handler's inline default — a *value* the
+    // operator must read, never a reference to a path here — and render it as a
+    // fenced literal, so no exemption entry is needed; un-fencing one re-claims it.
     const ctx = buildContext(ROOT);
     for (const relPath of ["docs/VPS-SETUP.md", "docs/VPS-OPERATIONS.md"]) {
       const text = readFileSync(join(ROOT, relPath), "utf8");
@@ -128,30 +119,25 @@ describe("markdown-links — the real tree", () => {
       );
       expect(spanClaims, relPath).toEqual([]);
     }
-    // ...and the literal the docs quote is the code's own default, so the two
-    // cannot drift apart.
+    // ...and the literal the docs quote is the code's own default, so the two cannot drift.
     expect(readFileSync(join(ROOT, "apps/api/src/lib/server.ts"), "utf8")).toContain(
       'env.KAJIANQ_WEB_ROOT ?? "./apps/web/dist"',
     );
   });
 
   it("covers every tracked top-level directory — the scope cannot shrink silently", () => {
-    // CLAIM_ROOTS is the stated scope rule. A new top-level directory that does
-    // not join it stops being a claim root, and this is what says so.
+    // CLAIM_ROOTS is the stated scope rule: a new top-level directory must join it.
     const ctx = buildContext(ROOT);
     const topDirs = [...ctx.tree.dirs].filter((d) => !d.includes("/"));
     expect(topDirs.filter((d) => !CLAIM_ROOTS.includes(d))).toEqual([]);
-    // And the roots the ticket names are all still there.
     for (const root of ["apps", "packages", "scripts", "docs", "adr", ".agents", ".zcode"]) {
       expect(topDirs).toContain(root);
     }
   });
 
   it("keeps record membership to real, tracked records", () => {
-    // B4: the membership rule is stated in the header — a record is an executed
-    // log or a decision record, never a living how-to. This pins that every
-    // member is a real tracked path, so a typo cannot silently widen the
-    // exemption the gate takes.
+    // A record is an executed log or a decision record, never a living how-to, so
+    // every member must be a real tracked path — a typo cannot widen the exemption.
     const { tree } = buildContext(ROOT);
     for (const dir of RECORD_DIRS) expect(tree.dirs.has(dir), dir).toBe(true);
     for (const file of RECORD_FILES) expect(tree.files.has(file), file).toBe(true);
@@ -164,11 +150,8 @@ describe("markdown-links — the real tree", () => {
   });
 
   it("distinguishes the two deliberately unchecked role markers", () => {
-    // A2: "the `X` role" is not one namespace but two — live harness roles
-    // (`.zcode/agents/<role>.md`) and model-stage names — plus one role the
-    // workflow retired (its duties live with the senior implementer). The
-    // harness namespace is a second *deliberately* unchecked
-    // marker; this pins that it is neither empty nor a skill claim.
+    // The "the `X` role" marker covers two namespaces — live harness roles
+    // (`.zcode/agents/<role>.md`) and model-stage names — and is deliberately unchecked.
     const { tree } = buildContext(ROOT);
     for (const role of ["qa", "reviewer", "fixer"]) {
       expect(tree.files.has(`.zcode/agents/${role}.md`), role).toBe(true);
@@ -178,18 +161,16 @@ describe("markdown-links — the real tree", () => {
     expect(scan("The `qa` role owns the probes.", { paths: [], skills: [] }).violations).toEqual(
       [],
     );
-    // ...and only the *skill* marker makes it a claim — the role marker does
-    // not, which is exactly the unchecked namespace this test documents.
+    // ...and only the *skill* marker makes it a claim; the role marker does not.
     const roleLine = "The `qa` role owns the probes.";
     expect(skillMentionAt(roleLine, "qa", roleLine.indexOf("`qa`"))).toBe(false);
   });
 });
 
 /**
- * Copy the gate into a fixture at `<fixture>/scripts/` so it resolves its own
- * root from its own location. Both halves travel: the entry imports the policy
- * module, so a fixture that carried only `check-markdown-links.mjs` would die on
- * the import instead of on the rule under test.
+ * Copy the gate into a fixture at `<fixture>/scripts/`, so it resolves its own
+ * root. Both halves travel: a fixture carrying only `check-markdown-links.mjs`
+ * would die on the policy import instead of on the rule under test.
  */
 function copyGate(dir) {
   mkdirSync(join(dir, "scripts", "markdown-links"), { recursive: true });
@@ -202,8 +183,7 @@ function copyGate(dir) {
 
 /**
  * CLI fixtures: a throwaway git repo under mkdtemp. The index is the resolution
- * base, so the fixture must be `git add`ed — that is the rule under test, not
- * incidental setup.
+ * base, so the fixture must be `git add`ed — that is the rule under test.
  */
 function fixtureRepo(files) {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "md-links-")));
@@ -266,11 +246,9 @@ describe("markdown-links — CLI fixtures", () => {
     const run = runFixture(dir);
     expect(run.status).toBe(0);
     expect(run.stdout).toContain("markdown-links: OK");
-    // 2 path claims + 1 gitignored build path + 1 skill name.
     expect(run.stdout).toContain("3 code-span path claims + 1 skill names");
     expect(run.stdout).toContain("1 gitignored build paths skipped");
-    // A5: the line separates what was checked from what resolved — the
-    // gitignored one is checked and *not* resolved, and says so.
+    // The line separates checked from resolved: the gitignored path is not resolved.
     expect(run.stdout).toContain("3 resolve");
     expect(run.stdout).toContain("0 record-file claims counted");
     rmSync(dir, { recursive: true, force: true });
@@ -287,8 +265,7 @@ describe("markdown-links — CLI fixtures", () => {
     expect(ignoredRun.status).toBe(0);
     expect(ignoredRun.stdout).toContain("1 gitignored build paths skipped");
 
-    // Stop ignoring it, keep it untracked: now the gate must refuse it, even
-    // though the file is right there on disk.
+    // Stop ignoring it, keep it untracked: the gate refuses it though the file exists.
     writeFileSync(join(dir, ".gitignore"), "# nothing ignored\n");
     const untrackedRun = runFixture(dir);
     expect(untrackedRun.status).toBe(1);
@@ -297,8 +274,8 @@ describe("markdown-links — CLI fixtures", () => {
   });
 
   it("reddens on a record's dead Markdown link through the CLI (B5)", () => {
-    // The shipping path for the B5 property: a reshuffle of `POLICY` used to
-    // make this exit 0 and print the link as a counted record claim.
+    // A record's dead Markdown link is enforced through the CLI, not counted,
+    // whatever the policy table's order.
     const dir = fixtureRepo({
       "adr/0044-vps-serving-path-cutover.md": [
         "# ADR-0044",
@@ -329,9 +306,7 @@ describe("markdown-links — CLI fixtures", () => {
   });
 
   it("reddens on a dead `..` span and the same target in link form (#391)", () => {
-    // The QA round's failing probe, end to end: one living doc, one dead
-    // target, both shapes, `git add -A`ed so the index is the base. Before the
-    // fix only the link line reddened; the span line was not even counted.
+    // One living doc, one dead target, both shapes, `git add -A`ed so the index is the base.
     const dir = fixtureRepo({
       ".agents/skills/ship/SKILL.md": [
         "# ship",
@@ -361,9 +336,7 @@ describe("markdown-links — CLI fixtures", () => {
   });
 
   it("reddens on a dead `./` span and the same target in link form (#396)", () => {
-    // The fail-open, end to end: before the widening only the link line
-    // reddened, and the span line was not even counted. One living doc, one dead
-    // target, both shapes, `git add -A`ed so the index is the base.
+    // One living doc, one dead target, both shapes, `git add -A`ed so the index is the base.
     const dir = fixtureRepo({
       "docs/living.md": [
         "# Living doc",
@@ -377,8 +350,7 @@ describe("markdown-links — CLI fixtures", () => {
     expect(run.stderr).toContain("2 dangling reference(s)");
     expect(run.stderr).toContain("docs/living.md:3 -> ./apps/web/dist");
     expect(run.stderr).toContain("docs/living.md:4 -> ./apps/web/dist");
-    // The reading is the file's directory, and the reason says so — the root
-    // base is not consulted for this class.
+    // The reading is the file's directory, so the root base is not consulted here.
     expect(run.stderr).toContain("no such tracked path beside this file");
     rmSync(dir, { recursive: true, force: true });
   });

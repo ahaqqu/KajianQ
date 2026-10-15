@@ -1,7 +1,7 @@
 import * as v from "valibot";
 
 /**
- * The chat route's query-param pre-fill (#175). The collection page's
+ * The chat route's query-param pre-fill. The collection page's
  * "Ask about this source" affordance links to `/?q=<question>`; the chat route
  * reads that param once, seeds the composer draft with it, and strips it from
  * the URL (see `ChatPage`). The pinned semantics live here for the parsing half
@@ -21,14 +21,13 @@ import * as v from "valibot";
  */
 
 /**
- * The seed question's length cap. A question is a sentence, not a document;
- * the cap keeps the URL sane and bounds what a crafted link can paste into the
- * composer (issue #175). Anything longer is ignored, not truncated.
+ * The seed question's length cap: a question is a sentence, not a document, and
+ * the cap bounds what a crafted `?q=` link can paste into the composer. Anything
+ * longer is ignored, not truncated.
  *
- * It must stay at or below `CHAT_MESSAGE_MAX_LENGTH` (the chat request's
- * ceiling, #256): a seed the API refuses is a bug the composer cannot repair,
- * because `?q=` arrives as a draft and sending it would meet the route's 400.
- * The relationship is pinned by a test, not by this comment.
+ * It must stay at or below `CHAT_MESSAGE_MAX_LENGTH`: `?q=` arrives as a draft,
+ * so a seed the API refuses is a bug the composer cannot repair — sending it
+ * meets the route's 400.
  */
 export const MAX_PREFILL_LENGTH = 200;
 
@@ -52,7 +51,7 @@ export function parsePrefill(raw: unknown): string | undefined {
  * The chat route's `validateSearch`. Every input maps to a valid `ChatSearch`:
  * a usable question becomes `{ q }`, anything else becomes `{ q: undefined }` —
  * so a malformed or out-of-range param degrades to "no pre-fill" instead of
- * failing the route (issue #175).
+ * failing the route.
  *
  * The output ALWAYS carries the `q` key, explicitly undefined when the param is
  * unusable: TanStack merges the validated object OVER the raw, unparsed search

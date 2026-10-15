@@ -1,6 +1,6 @@
 /**
  * collection-range.mjs — the `--offset`/`--limit` slice for the corpus ingest
- * CLIs. Extracted from `ingest-hadith.mjs` so the range rules are testable
+ * CLIs, in its own module so the range rules are testable
  * (`tests/scripts/ingest-hadith-range.test.mjs`) and so a quota-bound ingest
  * can be split into resumable passes.
  *
@@ -16,8 +16,8 @@
 /**
  * Read `--offset` (default 0) and `--limit` (default null = to the end) from
  * an argv slice. A flag whose value is not an integer reads as `NaN` so the
- * caller can fail loudly instead of silently ingesting the wrong range
- * (`slice(0, NaN)` used to yield an empty run that reported success).
+ * caller can fail loudly, because `slice(0, NaN)` yields an empty run that
+ * would report success.
  */
 export function parseCollectionRange(args) {
   const readInt = (flag) => {
@@ -50,11 +50,10 @@ export function selectCollections(collections, { offset, limit }) {
 }
 
 /**
- * The `--only-missing` guard (ADR-0037's recorded revisit trigger, folded in
- * from #141 for issue #213): narrow the requested collections to those whose
- * landed child count (read from the store through the
- * `countDocChildrenByMetadata` seam, keyed on the chunk metadata field that
- * carries the collection label) is zero, so a naive range loop cannot
+ * The `--only-missing` guard (ADR-0037's recorded revisit trigger): narrow the
+ * requested collections to those whose landed child count (read from the store
+ * through the `countDocChildrenByMetadata` seam, keyed on the chunk metadata
+ * field that carries the collection label) is zero, so a naive range loop cannot
  * re-pay embeddings for collections already landed. Idempotent upserts
  * dedupe *rows*, not *spend* — a pass re-embeds every row it reads.
  *
@@ -62,8 +61,8 @@ export function selectCollections(collections, { offset, limit }) {
  * acquisition, through the store seam). `landedCounts` maps the same
  * metadata value the CLI filters on — the collection name — to its landed
  * child count; a collection absent from the map reads as zero. Returns
- * `{ collections, skipped }` — the kept selection plus, for the run log,
- * the already-landed collections that were dropped — or `{ error }` when
+ * `{ collections, landed }` — the kept selection plus, for the run log, the
+ * already-landed collections that were dropped — or `{ error }` when
  * nothing is missing (the guard refuses a no-op paid pass rather than
  * running one).
  */

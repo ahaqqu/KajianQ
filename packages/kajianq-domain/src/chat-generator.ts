@@ -15,7 +15,7 @@ import { chatSystemPrompt, chatUserPrompt, type ChatLanguage } from "./chat-prom
  * strict grounding prompt, streaming through the Provider seam. The call's
  * CostRecord is recorded to the run's trace sink (ADR-0021).
  *
- * Streaming contract (ticket #10): the generator calls `Provider.stream`, so
+ * Streaming contract: the generator calls `Provider.stream`, so
  * deltas arrive from the vendor as they are produced rather than after the
  * whole answer is buffered. The draft the stage returns is still the *full*
  * text — the reviewer must validate the complete answer before any of it
@@ -42,7 +42,7 @@ export type GeneratorProvider = {
   }): Effect.Effect<{ text: string; cost: CostRecord }, unknown>;
   /**
    * Streamed generation. Optional so a non-streaming test double (and any
-   * Provider implementation predating this ticket) still satisfies the seam:
+   * Provider implementation that omits the method) still satisfies the seam:
    * the generator falls back to `generate` when `stream` is absent.
    */
   stream?(spec: {
@@ -82,8 +82,7 @@ export function createKajianQGenerator(deps: KajianQGeneratorDeps): Generator<Ka
               content: chatUserPrompt(
                 // The verbatim question the user asked — not the router's
                 // intent: the engine stamps `sourceText` from the caller's
-                // query (ADR-0018), so the prompt is exactly what it was
-                // before the router's reading started riding this context.
+                // query (ADR-0018).
                 context.query.sourceText,
                 context.turns.map((t) => t.content).join("\n"),
               ),
@@ -144,9 +143,9 @@ function generateDraft(
  * attempts' estimated spend rides the error's `attemptCosts` and is recorded
  * by the runner (ADR-0027 C2), so a cut stream still shows in the cost trail.
  *
- * `stream` is non-optional here (thermo-review B5): the caller narrows the
- * provider's optional method once, so the "stream exists" invariant is held
- * by the parameter type rather than a `!` assertion.
+ * `stream` is non-optional here: the caller narrows the provider's optional
+ * method once, so the "stream exists" invariant is held by the parameter type
+ * rather than a `!` assertion.
  */
 function streamDraft(
   deps: KajianQGeneratorDeps,

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * kajianq-backup.mjs — encrypted, rolling backups of the personal-data-bearing
- * Postgres store (ADR-0043 decision 4, issue #180).
+ * Postgres store (ADR-0043 decision 4).
  *
  *   kajianq-backup.mjs [--env-file /etc/kajianq/backup.env] [--label <label>]
  *                      [--keep-daily 30] [--dry-run]
@@ -58,12 +58,9 @@ function run(cmd, args, opts = {}) {
  * Best-effort probe that NEVER aborts the run.
  *
  * `run()` fails through this script's `fail()`, which calls `process.exit(1)` —
- * and an exit is not an exception, so no `try/catch` around a `run()` call can
- * recover from it. That made `gitInfo()`'s guard dead code: the unit runs with
- * `WorkingDirectory=/srv/kajianq` (the deployed tree, not a repository), so
- * `git rev-parse` exited 128 and the WHOLE BACKUP aborted over a provenance
- * field `buildManifest` already defaults to "unknown" — the worst thing to
- * abort a backup over (#181). Provenance therefore uses this, not `run()`.
+ * an exit is not an exception, so no `try/catch` around a `run()` call can
+ * recover from it. Provenance is therefore probed this way, never through
+ * `run()`: a missing commit is not worth aborting a backup over.
  */
 function probe(cmd, args, opts = {}) {
   const res = spawnSync(cmd, args, { env: process.env, encoding: "utf8", ...opts });
@@ -123,9 +120,7 @@ function tableCounts() {
  * The deployed revision, for the manifest's provenance field.
  *
  * Best-effort by design: a backup's integrity does not depend on knowing which
- * commit produced it, so nothing here may abort the run. `probe` (not `run`)
- * makes that true — see its comment for why the `try/catch` this replaced could
- * never fire.
+ * commit produced it, so nothing here may abort the run.
  *
  * `cwd` is pointed at the script's own directory rather than inherited: the
  * unit's `WorkingDirectory` is the deployed tree, which is not a repository, so

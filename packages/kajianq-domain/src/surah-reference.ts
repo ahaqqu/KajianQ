@@ -10,19 +10,17 @@ import {
 /**
  * Surah/verse-reference detection (KajianQ domain pack, ADR-0045).
  *
- * The product defect this closes: a whole-surah question ("What does Surah
- * Al-Fatihah mean and why is it recited in every prayer?" — Golden Set
- * `gs-v0-015`) retrieved no part of that surah at all, because a short
- * formulaic verse (`QS. 1:1`) is a poor semantic neighbour of a meta-question
- * about the surah and sits far outside an HNSW scan. The fix retrieves the
- * named surah's children deterministically, so the question must first be
- * *recognised* as naming a surah — which is Islamic-domain logic and lives
- * here, never in the engine (dars-pluggability rule 1).
+ * A whole-surah question is answered from the named surah's children, retrieved
+ * deterministically rather than by semantic similarity: a short formulaic verse
+ * (`QS. 1:1`) is a poor semantic neighbour of a meta-question about the surah
+ * and sits far outside an HNSW scan. So the question must first be *recognised*
+ * as naming a surah — which is Islamic-domain logic and lives here, never in
+ * the engine (dars-pluggability rule 1).
  *
  * Detection is pure string work on the **verbatim question**, never on the
- * router's model-generated sub-queries: the flake this closes (#241) was a
- * paraphrase of a sub-query moving the verses across the retrieval boundary,
- * so keying on a paraphrase would reproduce the nondeterminism.
+ * router's model-generated sub-queries: a paraphrase of a sub-query can move
+ * the verses across the retrieval boundary, so keying on one would make
+ * retrieval nondeterministic.
  *
  * Recognition rules (deliberately conservative — a wrong expansion spends
  * context, so only a clear reference matches):
@@ -40,12 +38,10 @@ import {
  *
  * A bare name is **not** a reference, even in its definite-article form.
  * Almost every surah name is also an ordinary Arabic word or a divine name,
- * and the Golden Set proves it: `gs-v0-012` ("Apa makna asmaul husna
- * Ar-Rahman dan Ar-Rahim?") asks about the *name of Allah*, not Surah
- * Ar-Rahman, so an article-form match would have expanded an unrelated surah
- * into a question that named none. Article-less names (`Muhammad`, `Yunus`,
- * `Maryam`, `Nuh`, `Sad`) and article-stripped short forms (`ikhlas`, `qadr`,
- * `asr`, `nas`, `tin`) are worse still. The marker is what makes a name a
+ * so an article-form match would expand an unrelated surah into a question
+ * that named none. Article-less names (`Muhammad`, `Yunus`, `Maryam`, `Nuh`,
+ * `Sad`) and article-stripped short forms (`ikhlas`, `qadr`, `asr`, `nas`,
+ * `tin`) are worse still. The marker is what makes a name a
  * reference — and it is also what makes every spelling variant above safe:
  * `surat Thaha` is unambiguous in a way bare `Thaha` never is. Bare-name
  * recognition is a recorded trade-off with a revisit trigger (ADR-0045), not

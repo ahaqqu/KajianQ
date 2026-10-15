@@ -6,12 +6,10 @@ import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-
 import { createMemoryRateLimiter } from "@app/rate";
 
 /**
- * POST /v1/feedback (#13): integration tests over the real route with the
- * in-memory store. The traps here are the silent-failure shapes: a flag whose
- * anchor the persisted trace does not ground must be a 422 and NOT a stored
- * row; a foreign answer must be an indistinguishable 404; a payload that is
- * neither thumb nor flag (or both) must fail the contract, never reach the
- * store.
+ * POST /v1/feedback integration tests over the real route with the in-memory store.
+ * The traps are the silent-failure shapes: a flag whose anchor the trace does not
+ * ground is a 422 and NOT a stored row; a foreign answer is an indistinguishable 404;
+ * a body that is neither thumb nor flag (or both) fails the contract before the store.
  */
 
 let currentStore: ReturnType<typeof createMemoryRagStore>;
@@ -27,9 +25,8 @@ vi.mock("../lib/chat-wiring", async (importOriginal) => {
   };
 });
 
-// The database client lives behind the RagStore adapter (ADR-0008), so
-// these route tests never reach one: constructing or querying the pool is
-// the failure this mock makes loud.
+// The database client lives behind the RagStore adapter, so these tests never
+// reach one: this mock makes a pool query loud.
 vi.mock("pg", () => ({
   Pool: class {
     on(): void {}
@@ -52,7 +49,7 @@ async function wiredStore() {
 
 /**
  * Seed one answer owned by `userId`: `chunkCount` chunks (labels QS. 2:255,
- * QS. 2:256; the first carries a translation layer, optionally a grade), a
+ * QS. 2:256; the first carries a translation layer and optionally a grade), a
  * trace referencing them, and an assistant message citing both labels.
  */
 async function seedAnswer(
@@ -79,8 +76,7 @@ async function seedAnswer(
           embeddingFallback: null,
           textRaw: ARABIC,
           textAr: ARABIC,
-          // Only the first chunk carries the translation layer (ADR-0013
-          // display track) — the layer the translation flag validates against.
+          // Only the first chunk carries the translation layer.
           textId: i === 0 ? "Allah, tidak ada tuhan selain Dia." : null,
           metadata: {
             sourceType: "quran",
@@ -168,17 +164,8 @@ describe("POST /v1/feedback", () => {
   });
 
   it("names the offending field in the logged 400 diagnostic (#283)", async () => {
-    // The body the client sees is the route's one error shape; the DETAIL is
-    // what makes the refusal diagnosable in ops — and it names the field, so a
-    // malformed messageId is not confused with a malformed rating.
-    //
-    // MUTATION THAT REDDENS THIS ROW: revert the parser's `describeIssue` to
-    // the pre-fix `i.path?.join(".") ?? "<body>"`, which stringifies each
-    // valibot PathItem OBJECT as `[object Object]`
-    // (`[object Object]: Invalid UUID: Received "msg1"`). Both the returned
-    // detail and the warn field lose the field name, so both assertions below
-    // fail. The one shared rendering is pinned independently by
-    // packages/contracts/src/issue-path.test.ts.
+    // The DETAIL makes the refusal diagnosable in ops, names the field that failed, and
+    // never stringifies a valibot path item as `[object Object]`.
     const warnings: string[] = [];
     const parsed = await parseFeedbackRequest(
       new Request("http://localhost/v1/feedback", {
@@ -196,18 +183,9 @@ describe("POST /v1/feedback", () => {
   });
 
   it("names the field behind a union failure too (thermo A1)", async () => {
-    // `rating: "meh"` fails the thumb/flag union structurally: valibot reports
-    // ONE path-less `union` issue whose nested `issues` carry the real path, so
-    // without the nested-issue descent the detail read
-    // `<body>: Invalid type: Expected Object but received Object` — the exact
-    // symptom #283 exists to remove. This runs the real parser on the real
-    // body; the response body and status for the same payload are pinned by
-    // the "neither thumb nor flag" row above (400 `{"error":"invalid_request"}`)
-    // and are unchanged — only the log-only detail moves.
-    //
-    // MUTATION THAT REDDENS THIS ROW: drop the nested-issue descent in
-    // `describeIssue` (mostSpecificIssue's loop), which restores the path-less
-    // `<body>` prefix and fails both `toContain("rating")` assertions.
+    // `rating: "meh"` fails the thumb/flag union structurally: valibot reports ONE
+    // path-less `union` issue whose nested `issues` carry the real path, so the detail
+    // must descend into them. The response body and status for this payload are unchanged.
     const warnings: string[] = [];
     const parsed = await parseFeedbackRequest(
       new Request("http://localhost/v1/feedback", {
@@ -348,8 +326,7 @@ describe("POST /v1/feedback", () => {
     expect(await second.json()).toEqual({ error: "rate_limited" });
   });
 
-  // Thermo-review A1: a repeat verdict (double-tap, client retry, changed
-  // mind) must update the one row in place, never multiply review-queue rows.
+  // A repeat verdict updates the one row in place, never multiplying review rows.
   it("upserts a repeated verdict: one row per (user, answer, element), latest wins", async () => {
     const { store, userId, token } = await wiredStore();
     const messageId = await seedAnswer(store, userId);
@@ -374,9 +351,8 @@ describe("POST /v1/feedback", () => {
     expect(store.allFeedback()[0]).toMatchObject({ freeText: "second" });
   });
 
-  // Thermo-review A2: a rehydrated transcript addresses the answer by the
-  // chat ROW id, a live surface by the trace's message id — both must land on
-  // the same canonically-keyed row, and the response echoes the canonical id.
+  // A rehydrated transcript addresses the answer by the chat ROW id, a live surface by
+  // the trace's message id: both land on the same canonically-keyed row.
   it("keys the row by the canonical trace message id even when addressed by the row id", async () => {
     const { store, userId, token } = await wiredStore();
     const messageId = await seedAnswer(store, userId);
@@ -388,17 +364,13 @@ describe("POST /v1/feedback", () => {
     const rows = store.allFeedback();
     expect(rows).toHaveLength(1);
     expect(rows[0]?.messageId).toBe(messageId);
-    // The same verdict via the canonical key hits the SAME row (upsert).
     await post(token, { messageId, rating: "up" });
     expect(store.allFeedback()).toHaveLength(1);
   });
 
   it("documents the one-shape invariant in /openapi.json, not only at runtime", async () => {
-    // The staging fuzz (st case noWRVW, run 35544413355) caught the doc
-    // lying: the flat schema validated {rating, anchor} while the route
-    // rejected it 400. The emitted document must carry the same rule — a
-    // union of two shapes, each forbidding the sibling key — so a
-    // schema-compliant probe is never answered 400.
+    // The emitted document must carry the same rule the route enforces — a union of two
+    // shapes, each forbidding the sibling key — so a compliant probe is never answered 400.
     const api = createApi();
     const res = await api.request("/openapi.json", {}, env);
     expect(res.ok).toBe(true);
@@ -421,8 +393,7 @@ describe("POST /v1/feedback", () => {
     expect(shapes).toHaveLength(2);
     const thumb = shapes.find((s) => s.required.includes("rating"));
     const flag = shapes.find((s) => s.required.includes("anchor"));
-    // Each shape emits a `not` clause on the sibling key — the XOR, visible
-    // to spec consumers.
+    // Each shape emits a `not` clause on the sibling key — the XOR.
     expect(thumb?.properties.anchor).toEqual({ not: {} });
     expect(flag?.properties.rating).toEqual({ not: {} });
   });

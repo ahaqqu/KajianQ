@@ -2,11 +2,11 @@ import * as v from "valibot";
 
 /**
  * The field schemas a trace event is built from — the cost record, the stage
- * vocabulary, and a retrieval chunk ref. Split from `trace.ts` for the
- * 300-line agentic cap so the event vocabulary can import them without a cycle
- * (an event module that imported `trace.ts` back would be reading schemas
- * before they are initialized). Nothing here changed shape; the public surface
- * still arrives through `trace.ts` and the package barrel.
+ * vocabulary, and a retrieval chunk ref. Split from `trace.ts` to stay under
+ * the agentic-limits line cap and so the event vocabulary can import them
+ * without a cycle (an event module that imported `trace.ts` back would be
+ * reading schemas before they are initialized). The public surface arrives
+ * through `trace.ts` and the package barrel.
  */
 /**
  * Cost attribution for a single LLM/embedding call. Model identity arrives as
@@ -63,5 +63,5 @@ export const ChunkRefSchema = v.object({
   origin: v.optional(v.pipe(v.string(), v.minLength(1))),
 });
 
-/** The persisted trace's retrieval ref shape (thermo-review B3: the one owner). */
+/** The persisted trace's retrieval ref shape (the one owner). */
 export type ChunkRef = v.InferOutput<typeof ChunkRefSchema>;

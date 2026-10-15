@@ -13,7 +13,7 @@ import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 /**
- * `bun run dsh:preflight` — the role-pin resolution gate (#222).
+ * `bun run dsh:preflight` — the role-pin resolution gate.
  *
  * Four parts of the gate's contract are pinned here, each against fixtures
  * rather than this machine:
@@ -24,9 +24,8 @@ import { spawnSync } from "node:child_process";
  * - a pin whose id is declared but whose route is absent from
  *   `subagent-model-selection.allowedModels` FAILS, with the exact settings
  *   edit printed at the file's own indentation, so it is paste-safe — the
- *   narrowing guard. The list carries every declared catalog id today, so the
- *   guard rejects nothing now; the test is what keeps it load-bearing for a
- *   future narrowing;
+ *   narrowing guard, and the test is what keeps it load-bearing for a future
+ *   narrowing;
  * - `--fix` appends a bare, de-duplicated declaration, backing up the original
  *   first, and only ever against the settings path under test;
  * - the three seams are all-or-nothing: a run that redirects the read paths
@@ -264,8 +263,8 @@ describe("subagent route narrowing guard", () => {
     expect(res.stdout).toContain(
       `fix: add this route to subagent-model-selection.allowedModels in ${fx.settings} — never reroute the pin:`,
     );
-    // The printed entry carries the file's own indentation (4/6, as the real
-    // file does), and pasting it verbatim leaves the file parseable.
+    // The printed entry carries the file's own indentation, and pasting it
+    // verbatim leaves the file parseable.
     const printed = printedEntry(res.stdout, "ollama", "kimi-k3");
     const existing = readFileSync(fx.settings, "utf8").match(
       /^( *)- provider: ollama\n( *)model: deepseek/m,

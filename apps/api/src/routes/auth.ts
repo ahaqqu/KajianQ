@@ -10,11 +10,11 @@ import { newRouter } from "../lib/guard";
 import { authGuard, buildStoreWiring, wiringOr503 } from "../lib/chat-wiring";
 
 /**
- * Anonymous-session auth routes (ADR-0017, ticket #10): mint a session, and
+ * Anonymous-session auth routes (ADR-0017): mint a session, and
  * let its owner erase themselves. Both go through the `RagStore` seam — no
  * direct database access, no vendor identity SDK (ADR-0017's whole point).
  *
- * The wiring is store-only (thermo-review A4): these routes never touch the
+ * The wiring is store-only: these routes never touch the
  * chat pipeline, so a missing LLM role cannot gate token minting or the
  * self-deletion erasure right.
  *
@@ -78,9 +78,9 @@ export const authRoutes = newRouter()
       route: "auth",
       correlationId: c.get("correlationId"),
     });
-    // A4: auth needs the store, not the chat pipeline — a missing reviewer key
+    // Auth needs the store, not the chat pipeline — a missing reviewer key
     // must not take down session minting (or the eval harness's token mint).
-    // B1: the typed-failure→503 posture is shared with the chat route.
+    // The typed-failure→503 posture is shared with the chat route.
     const resolved = wiringOr503(() => buildStoreWiring(env), logger, "auth_not_configured");
     if ("response" in resolved) return resolved.response;
     const { fullStore, runStore } = resolved.wiring;

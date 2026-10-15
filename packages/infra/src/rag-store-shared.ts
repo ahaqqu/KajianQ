@@ -179,8 +179,8 @@ export function rowToChildEffect(row: ChildRow): Effect.Effect<DocChild, StoreEr
 
 /**
  * Token helpers use Web Crypto (`crypto.getRandomValues` / `crypto.subtle`),
- * not `node:crypto`, so the adapter runs unchanged on the Workers runtime
- * where #10 mounts it. The Bearer token is stored as its SHA-256 hash only.
+ * not `node:crypto`, so the adapter runs unchanged on the Workers runtime.
+ * The Bearer token is stored as its SHA-256 hash only.
  */
 export function randomToken(): string {
   const bytes = new Uint8Array(32);

@@ -15,32 +15,21 @@ import {
 } from "../lib/feedback";
 
 /**
- * POST /v1/feedback (#13, ADR-0007): anonymous thumbs up/down per answer, plus
- * trace-anchored flags — the user reports the exact failing element (wrong
- * citation, irrelevant chunk, bad machine translation, questionable grade)
- * from the Trace panel. Zero friction: the anonymous Bearer session the chat
- * already uses is the only credential (ADR-0017 — no account), and the row
- * carries the user id so the self-deletion cascade (ADR-0007)
- * erases the feedback with its author.
+ * POST /v1/feedback: anonymous thumbs up/down per answer, plus trace-anchored flags
+ * naming the failing element (citation, chunk, translation, grade) from the Trace
+ * panel. The anonymous Bearer session the chat already uses is the only credential,
+ * and the row carries the user id so self-deletion erases the feedback with its author.
  *
  * Invariants, enforced in order:
- *  1. The body is one feedback shape (a thumb or a flag — never both), by the
- *     shared contract (packages/contracts feedback.ts).
- *  2. The answer exists, has a persisted trace, and belongs to the caller:
- *     feedback only attaches to answers the user saw in their own transcript,
- *     so a flag can never outlive the trace it points into (unknown and
- *     foreign answers are both 404, indistinguishably — the chat-session
- *     route's posture).
- *  3. A flag's anchor is validated against the persisted trace: chunk ids
- *     against the retrieval refs, citation/translation/grade labels against
- *     the server-derived citations frame (lib/feedback.ts). A malformed
- *     anchor is a 422, never a stored row; a DEGRADED derivation (answer
- *     text reclaimed, chunk lookup failed) is a 503 `anchor_unavailable` —
- *     a server-side condition, never blamed on the user's input (thermo-
- *     review A3).
+ *  1. The body is one feedback shape (a thumb or a flag — never both).
+ *  2. The answer exists, has a persisted trace, and belongs to the caller; unknown
+ *     and foreign answers are both 404, indistinguishably.
+ *  3. A flag's anchor is validated against the persisted trace — chunk ids against
+ *     the retrieval refs, other labels against the citations frame. A malformed
+ *     anchor is a 422, never a stored row; a DEGRADED derivation is a 503
+ *     `anchor_unavailable`, a server-side condition, never blamed on the user's input.
  *
- * Rate limiting is inherited from the /v1 middleware (ADR-0041): the endpoint
- * is metered per-IP like every other /v1 route.
+ * Rate limiting is inherited from the /v1 middleware, per-IP.
  */
 
 type FeedbackEnv = import("../env").ApiEnv["Bindings"] & Record<string, string | undefined>;
@@ -55,8 +44,7 @@ export const feedbackRoutes = newRouter().post(
       route: "feedback",
       correlationId: c.get("correlationId"),
     });
-    // Store-only wiring: feedback never touches the chat pipeline, so a
-    // missing LLM role cannot gate reporting (same posture as auth, A4).
+    // Store-only wiring: a missing LLM role cannot gate reporting.
     const resolved = wiringOr503(() => buildStoreWiring(env), logger, "feedback_not_configured");
     if ("response" in resolved) return resolved.response;
     const { fullStore, runStore } = resolved.wiring;
@@ -69,17 +57,12 @@ export const feedbackRoutes = newRouter().post(
     if (unauthorized !== undefined) return unauthorized;
     const { userId } = c.get("authed");
 
-    // The typed StoreBridge carries the success type — no assertion needed
-    // (thermo-review B3).
     const target = await runStore(fullStore.getAnswerFeedbackTarget(req.messageId));
     if (target === null || target.userId !== userId) {
-      // Unknown answer and someone else's answer: indistinguishable 404.
       return c.json({ error: "not_found" }, 404);
     }
 
-    // The response echoes the trace's CANONICAL message id (thermo-review
-    // A2): the row is keyed by it even when the caller looked the answer up
-    // by a rehydrated row id, and the client learns the canonical key back.
+    // The response echoes the trace's CANONICAL message id, the row's key.
     const respond = (row: {
       id: string;
       rating: 1 | -1;
@@ -97,8 +80,6 @@ export const feedbackRoutes = newRouter().post(
       const rating = req.rating === "up" ? 1 : -1;
       const id = await runStore(
         fullStore.insertFeedback({
-          // Key the row by the canonical trace message id, never the
-          // client-held alias (thermo-review A2).
           messageId: target.messageId,
           userId,
           rating,
@@ -113,8 +94,6 @@ export const feedbackRoutes = newRouter().post(
     }
 
     // Flag: validate the anchor against the persisted trace before storing.
-    // The contract's one-shape check guarantees `anchor` here; the guard
-    // narrows instead of asserting (thermo-review B3).
     if (req.anchor === undefined) return c.json({ error: "invalid_request" }, 400);
     const anchor = req.anchor;
     const derived =
@@ -127,9 +106,7 @@ export const feedbackRoutes = newRouter().post(
             fetchChunks: chunkFetcher(fullStore, runStore),
             warn: (msg, fields) => logger.warn(msg, fields),
           });
-    // Degraded derivation is a server-side condition (thermo-review A3): the
-    // answer text was reclaimed or the chunk lookup failed, so there is
-    // nothing honest to validate against — 503, never a user-blaming 422.
+    // A degraded derivation is a server-side condition: 503, never a user-blaming 422.
     if (derived !== null && derived.degraded) {
       logger.warn("feedback.anchor_derivation_degraded", { reason: derived.reason });
       return c.json({ error: "anchor_unavailable" }, 503);
@@ -146,7 +123,6 @@ export const feedbackRoutes = newRouter().post(
     }
     const id = await runStore(
       fullStore.insertFeedback({
-        // Canonical trace message id (thermo-review A2).
         messageId: target.messageId,
         userId,
         rating: -1, // a flag is negative feedback by definition

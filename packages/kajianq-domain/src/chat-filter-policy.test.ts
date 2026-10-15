@@ -20,10 +20,9 @@ import {
  * The trace publishes a routing decision — "these sources, these filters" —
  * and retrieval runs a SQL `WHERE metadata->>key = ANY(values)` built from it.
  * The two must be the same object, and every filter dimension must reach the
- * store. The silent failure this suite exists to catch: `metadataFilters`
- * mapped only three dimensions, so `sourceType` and `principleTags` could be
- * *decided* by the router and *dropped* by the mapping with no compile error,
- * no runtime error, and nothing in the trace — the route answered a different
+ * store. The silent failure this suite exists to catch: a dimension the router
+ * *decided* can be *dropped* by the mapping with no compile error, no runtime
+ * error, and nothing in the trace — the route then answers a different
  * question than the router chose, and no gate would notice.
  *
  * Two traps are named here before they are written:
@@ -153,10 +152,9 @@ describe("a dimension the store cannot express fails loudly", () => {
 
 describe("the relaxation order is declared, not incidental", () => {
   it("gives up the expected-empty hints before the routing decision itself", () => {
-    // The Principle Index is not ingested yet (#16), and no corpus row carries a
-    // text-layer key, so those two hints are the ones most often wrong; the
-    // source selection is the stage-3 decision and goes last, because dropping
-    // it puts every source back in play — the widest possible widening.
+    // The expected-empty hints go first because they are the ones most often
+    // wrong; the source selection is the routing decision and goes last —
+    // dropping it puts every source back in play, the widest possible widening.
     expect(RELAXATION_ORDER).toEqual([
       "principleTags",
       "textLayer",

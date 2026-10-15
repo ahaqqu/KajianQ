@@ -2,13 +2,11 @@ import { t, type Locale } from "../../lib/i18n";
 import { LogoTile } from "../ui";
 
 /**
- * The empty transcript state (thermo-review B2: its own file — a
- * transcript-level concern, not message rendering): centered logo tile, the
- * serif-italic greeting at the reference's measured 22px (thermo-review C1),
- * the two-line subtitle, and three suggestion chips constrained to the
- * reference's ~512px centered inset (thermo-review C2 — the chips carry
- * their own max-width inside the wider transcript column). Each chip sends
- * its question — KajianQ's own starter questions per locale.
+ * The empty transcript state: its own file because it is a transcript-level
+ * concern, not message rendering. Centered logo tile, the serif-italic
+ * greeting, the two-line subtitle, and three suggestion chips — the chips
+ * carry their own max-width inside the wider transcript column. Each chip
+ * sends its question: KajianQ's own starter questions per locale.
  */
 export function EmptyState({
   locale,

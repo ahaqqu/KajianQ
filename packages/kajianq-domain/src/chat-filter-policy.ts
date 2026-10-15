@@ -13,11 +13,10 @@ import { FILTER_DIMENSIONS, type KajianQFilters } from "./filters";
  *
  * 1. **A dimension with no store key.** `FILTER_DIMENSIONS` is an exhaustive
  *    `Record<keyof KajianQFilters, …>`: adding a dimension to the filter type
- *    without naming the metadata key it maps to is a typecheck failure. Before
- *    this, `sourceType` and `principleTags` simply were not in the map — a
- *    route could decide "search the Quran, for the yusr lens" and the search
- *    would run over the whole corpus with no error, no trace entry, and no
- *    gate that notices. That is the failure this ticket's invariant forbids.
+ *    without naming the metadata key it maps to is a typecheck failure.
+ *    Otherwise a route can decide "search the Quran, for the yusr lens" and the
+ *    search runs over the whole corpus with no error, no trace entry, and no
+ *    gate that notices — the failure this invariant forbids.
  * 2. **A key the store cannot express.** The store seam takes
  *    `Record<string, string | readonly string[]>`
  *    (`RagStore.similaritySearch`) and compiles it to
@@ -137,11 +136,10 @@ export function metadataFilters(filters: KajianQFilters | undefined): Record<str
  * nothing (see the retriever). Cheapest-to-be-wrong hint first, the routing
  * *decision* last:
  *
- * 1. `principleTags` — the Principle Index is not ingested yet (#16), so a tag
- *    filter that matches nothing is the expected state today, not a defect in
- *    the route.
+ * 1. `principleTags` — the Principle Index is not ingested yet, so a tag filter
+ *    that matches nothing is the expected state, not a defect in the route.
  * 2. `textLayer` — no corpus row carries the key, and the router's hint for it
- *    was observed wrong on a Quran question.
+ *    is unreliable on a Quran question.
  * 3-5. `grade`, `madzhab`, then `sourceType` — each an actual routing decision;
  *    `sourceType` goes last because dropping it is the widest possible
  *    widening (every source back in play) and the trace must show the route

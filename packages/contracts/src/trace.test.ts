@@ -22,10 +22,9 @@ const stageArb = fc.constantFrom(
 );
 
 /**
- * `llm_call` is the cost-carrying event kind, so the cost-sum invariants
- * (ADR-0007) are expressed over it. `cost` is built conditionally
- * so the generated value omits the key when undefined — matching the exact
- * optionality of the typed contract.
+ * `llm_call` is the cost-carrying event kind, so the cost-sum invariants are
+ * expressed over it. `cost` is built conditionally so the generated value omits
+ * the key when undefined, matching the typed contract's optionality.
  */
 const llmCallArb = fc
   .tuple(stageArb, fc.nat(), fc.option(costArb, { nil: undefined }))
@@ -37,16 +36,9 @@ const llmCallArb = fc
   }));
 
 describe("trace contract", () => {
-  // ADR-0007 invariant: a run's recorded cost equals the sum of its
-  // recorded LLM calls — an untraced call is a defect.
-  //
-  // The properties below test *independent* invariants rather than mirroring
-  // the body of `totalCostMicroUsd` (which would make the test tautological):
-  //   1. an event with no cost leaves the total unchanged;
-  //   2. an event carrying cost `k` increases the total by exactly `k`;
-  //   3. the total equals a *separately computed* sum — filter events that
-  //      carry a cost, then reduce their `costMicroUsd` — rather than the
-  //      same optional-chain expression the implementation uses.
+  // Invariant: a run's recorded cost equals the sum of its recorded LLM calls,
+  // and an untraced call is a defect. The properties test independent invariants
+  // rather than mirroring `totalCostMicroUsd`, which would make them tautological.
   fcTest.prop([fc.array(llmCallArb), costArb])(
     "appending an event with cost k increases the total by exactly k",
     (events, cost) => {
@@ -77,8 +69,7 @@ describe("trace contract", () => {
     "total equals the sum of costMicroUsd over cost-bearing events",
     (events) => {
       const trace = { id: "t", createdAt: 0, events };
-      // Independent computation: keep only cost-bearing events first, then
-      // sum — a different shape from the implementation's optional chain.
+      // Independent computation: filter cost-bearing events first, then sum.
       const expected = events
         .filter((e) => e.cost !== undefined)
         .reduce((sum, e) => sum + (e.cost?.costMicroUsd ?? 0), 0);
@@ -105,30 +96,23 @@ describe("trace contract", () => {
       },
       {
         // Filter relaxation: an inferred filter that matched nothing was dropped
-        // and the search retried unfiltered. Recorded, never silent. The example
-        // keys stay domain-neutral — this is an engine package.
+        // and the search retried without it.
         stage: "retriever",
         kind: "filter_relaxed",
         detail: { dropped: { layer: "commentary" }, track: "primary" },
         at: 3,
       },
       {
-        // Scope expansion (ADR-0045): the retriever added a bounded set of
-        // children belonging to a scope the domain pack named, alongside the
-        // fused hits. `key`/`value` stay generic here — the domain pack owns
-        // what they mean — and the cap/truncated fields make the budget the
-        // expansion spent observable.
+        // Scope expansion: the retriever added a bounded set of children of a
+        // scope the domain pack named; `key`/`value` stay generic.
         stage: "retriever",
         kind: "scope_expansion",
         detail: { key: "reference", value: "2", returned: 12, cap: 12, truncated: true },
         at: 3,
       },
       {
-        // Neighbourhood expansion (ADR-0049): the retriever added the children
-        // neighbouring the verses already in context. `anchors` names the ids
-        // the read was keyed on — in its priority order — so a reader can
-        // resolve every added ref to the read that produced it. Engine package,
-        // so the ids stay opaque placeholders.
+        // Neighbourhood expansion: the children neighbouring the verses already in
+        // context; `anchors` names the ids the read was keyed on, in priority order.
         stage: "retriever",
         kind: "neighbour_expansion",
         detail: {
@@ -155,21 +139,16 @@ describe("trace contract", () => {
       },
       { stage: "reviewer", kind: "review", detail: { verdict: "faithful" }, at: 6 },
       {
-        // The deterministic product rules ran (#285): the rule ids that
-        // appended text are persisted trace content, recorded on every path
-        // that applies the rules — including the pre-gate skip path below,
-        // which records no `review` event. The ids are deliberately opaque
-        // placeholders here: a domain pack owns their meaning, and the engine
-        // contract must not know it (the boundary gate enforces that).
+        // The deterministic product rules ran: the rule ids that appended text are
+        // persisted trace content, kept opaque — a domain pack owns their meaning.
         stage: "reviewer",
         kind: "product_rules",
         detail: { applied: ["rule_one", "rule_two"] },
         at: 6,
       },
       {
-        // The decision-model screen (ADR-0042 serving pattern): the skip and
-        // its per-item scores are persisted trace content, and the call's own
-        // spend rides on the sibling `llm_call` event above.
+        // The decision screen's skip and per-item scores are trace content; the
+        // call's spend rides on the sibling `llm_call` above.
         stage: "reviewer",
         kind: "decision",
         detail: {
@@ -186,12 +165,8 @@ describe("trace contract", () => {
       { stage: "generator", kind: "refusal", reason: "insufficient evidence", at: 8 },
     ];
     const trace = parseTrace({ id: "t", createdAt: 0, events });
-    // 12 = the base rows plus BOTH sides' additions: main's
-    // `neighbour_expansion` (ADR-0049) and this branch's `product_rules`
-    // (#285). A count is not enough on its own — it cannot tell "both
-    // variants are in the union" from "one replaced the other" — so the
-    // kinds are named: `v.variant` throws on a kind the union does not carry,
-    // and the list is the record that both additions survived the re-layout.
+    // The kinds are named, not just counted: a count cannot tell "both variants
+    // are in the union" from "one replaced the other".
     expect(trace.events).toHaveLength(12);
     expect(trace.events.map((event) => event.kind)).toEqual([
       "intent",
@@ -209,11 +184,8 @@ describe("trace contract", () => {
     ]);
   });
 
-  // Schema invariant (ADR-0007 typed detail): the variant is lossless — any
-  // list of non-empty rule ids the domain pack reports survives the parse
-  // unchanged, and the empty list survives as the empty list rather than being
-  // dropped or defaulted. Hand-picked values would not cover the id space the
-  // domain pack owns, which is exactly the space this event persists.
+  // The variant is lossless: any list of rule ids the domain pack reports survives
+  // the parse unchanged, and the empty list stays empty rather than defaulted.
   fcTest.prop([fc.array(fc.string({ minLength: 1 }), { maxLength: 5 })])(
     "round-trips a product_rules event's `applied` list unchanged (#285)",
     (applied) => {
@@ -228,13 +200,8 @@ describe("trace contract", () => {
   );
 
   it("accepts an empty `applied` list — the rules ran and appended nothing (#285)", () => {
-    // The exact-copy suppression case is the reason this event exists: the
-    // model reproduced the canonical copy, so the rule found it already
-    // present and appended nothing. An empty list records exactly that — "the
-    // rules ran and appended nothing" — without separating it from a run where
-    // no rule had a trigger, so a `minLength(1)` on the array (or treating []
-    // as absent) would erase the record and put the trace back where it
-    // started.
+    // An empty list records "the rules ran and appended nothing": a `minLength(1)`
+    // on the array, or treating `[]` as absent, would erase that record.
     const parsed = v.safeParse(TraceSchema, {
       id: "t",
       createdAt: 1,
@@ -258,8 +225,7 @@ describe("trace contract", () => {
   });
 
   it("rejects a product_rules rule id that is not a non-empty string", () => {
-    // A blank id names no rule, so it cannot be counted per rule — the one
-    // thing an operator or the eval harness reads this event for.
+    // A blank id names no rule, so it cannot be counted per rule.
     expect(
       v.safeParse(TraceSchema, {
         id: "t",
@@ -280,14 +246,10 @@ describe("trace contract", () => {
   });
 
   it("keeps a pre-#285 persisted trace readable, with no fabricated product_rules event", () => {
-    // ADR-0007 forward compatibility, the direction that matters: traces
-    // written before the `product_rules` kind existed (e.g. the #278 staging
-    // trace dfd9d801, which carries a pre-gate `decision` skip and NO `review`
-    // event) still parse — nothing was renamed or made required, and the
-    // reader must not synthesize the event it never saw. The fixture is the
-    // shape the runner really persists: `run.ts` builds exactly `{ id,
-    // createdAt, events }` and no writer in the repo stamps `version`, so the
-    // version-less body IS the production shape, not a pre-versioning piece.
+    // Forward compatibility: a trace that carries no `product_rules` event still
+    // parses — nothing was renamed or made required, and the reader must not
+    // synthesize an event it never saw. `run.ts` builds exactly `{ id,
+    // createdAt, events }`, so the version-less body is the production shape.
     const legacy = parseTrace({
       id: "dfd9d801-c3bc-42b9-9e09-39a5df785c94",
       createdAt: 0,
@@ -319,9 +281,6 @@ describe("trace contract", () => {
         },
       ],
     });
-    // The parse result is what is asserted, not the input echoed back: the
-    // version-less shape reads, no version is fabricated, and every event kind
-    // survives the strict variant in order.
     expect(legacy.version).toBeUndefined();
     expect(legacy.events.map((event) => event.kind)).toEqual([
       "retrieval",
@@ -333,9 +292,8 @@ describe("trace contract", () => {
   });
 
   it("keeps a chunk ref without `origin` readable (pre-ADR-0045 traces)", () => {
-    // Forward compatibility is the contract's rule (ADR-0007): a trace
-    // persisted before the field existed parses, and the absent label simply
-    // means "no caller label" — never a fabricated one.
+    // Forward compatibility: a chunk ref without `origin` parses, and the absent
+    // label means "no caller label", never a fabricated one.
     const trace = parseTrace({
       id: "t",
       createdAt: 0,
@@ -364,9 +322,8 @@ describe("trace contract", () => {
   });
 
   it("rejects a decision escalation reason outside the fail-open vocabulary", () => {
-    // The reason vocabulary is closed on purpose: an operator (and the eval
-    // harness) counts escalations by reason, so a free string would make the
-    // failure modes uncountable.
+    // The reason vocabulary is closed on purpose: escalations are counted by
+    // reason, so a free string would make the failure modes uncountable.
     expect(
       v.safeParse(TraceSchema, {
         id: "t",
@@ -436,10 +393,8 @@ describe("trace contract", () => {
   });
 
   it("rejects a neighbour expansion without its anchors or budget (ADR-0049)", () => {
-    // The event's whole point is that an added chunk resolves to the read that
-    // produced it, which is `anchors` + `radius`; a record without either is
-    // the silent path the trace rule exists to prevent, so it fails the parse
-    // rather than being persisted as an untyped detail.
+    // An added chunk must resolve to the read that produced it, which is `anchors`
+    // + `radius`; a record without either is the silent path the trace prevents.
     for (const detail of [
       undefined,
       { returned: 1, radius: 1, cap: 2, truncated: false },
@@ -478,13 +433,9 @@ describe("trace contract", () => {
 });
 
 /**
- * Smart Router stage 3's decision on the trace (#15), and the relaxation events
- * that qualify it.
- *
- * The persisted-trace invariant these variants exist for: the routing decision
- * — which sources were searched and with which filters — is derivable from the
- * trace, and the relaxation that follows it says which dimension was given up.
- * A schema that let either side be recorded loosely (an untyped bag, a
+ * The source-routing decision on the trace and the relaxation events that
+ * qualify it: which sources were searched and with which filters is derivable
+ * from the trace. A schema that recorded either side loosely (an untyped bag, a
  * single-valued filter map) would let the trace and the search drift apart with
  * nothing failing.
  */
@@ -492,8 +443,8 @@ describe("the source_routing variant", () => {
   const base = { id: "6b1a1e0e-0f4e-4c4c-9b1e-2a2f5f7c9d10", createdAt: 0 };
 
   it("carries the selected sources and the filter record retrieval runs with", () => {
-    // Opaque labels only: this is the engine contract, and the sources and
-    // filter dimensions a domain pack names must not appear in it.
+    // Opaque labels only: the sources and filter dimensions a domain pack names
+    // must not appear in the engine contract.
     const trace = parseTrace({
       ...base,
       events: [
@@ -516,8 +467,7 @@ describe("the source_routing variant", () => {
   });
 
   it("accepts an EMPTY source list and an empty filter record as a decision", () => {
-    // "Every source was in play" is a decision, not a missing field: the run
-    // must be able to say so rather than omit the event.
+    // "Every source was in play" is a decision, not a missing field.
     expect(() =>
       parseTrace({
         ...base,
@@ -529,10 +479,10 @@ describe("the source_routing variant", () => {
   });
 
   it("rejects a filter value that is not a non-empty list of non-empty strings", () => {
-    // The store binds strings and string arrays; anything else cannot be
-    // searched, so it must not be persistable as if it had been. An EMPTY set is
-    // included: `key = ANY('{}')` matches nothing, so a record carrying one would
-    // read as "this dimension was constrained" while emptying the search.
+    // The store binds strings and string arrays; anything else cannot be searched
+    // and must not be persistable as if it had been. An EMPTY set is refused too:
+    // `key = ANY('{}')` matches nothing, so it would read as "constrained" while
+    // emptying the search.
     for (const filters of [{ dim_a: "v1" }, { dim_a: [] }, { dim_a: ["v1", ""] }, { dim_a: [1] }]) {
       expect(() =>
         parseTrace({
@@ -555,9 +505,8 @@ describe("the filter_relaxed event after probing replaced the whole-set drop", (
   const base = { id: "8f0f1a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b", createdAt: 0 };
 
   it("still parses a pre-probing event whose dropped values were bare strings", () => {
-    // Traces persisted before this ticket recorded one event naming the whole
-    // dropped record with single string values; a panel that read them must
-    // keep rendering (ADR-0007: the Trace only ever ADDS optional fields).
+    // A `dropped` value may be a bare string as well as a list: a reader must keep
+    // rendering both, and the Trace only ever ADDS optional fields.
     const trace = parseTrace({
       ...base,
       events: [

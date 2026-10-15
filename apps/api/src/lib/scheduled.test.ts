@@ -4,16 +4,15 @@ import { ChatConfigError } from "./chat-wiring";
 import { cleanupExpiredSessions } from "./scheduled";
 
 /**
- * The scheduled cleanup (ADR-0017, ticket #10): expired anonymous sessions
- * are reclaimed by the nightly `kajianq-cron.timer` (ADR-0044 decision 7,
- * previously a Worker cron). The handler must be inert when the database
- * binding is absent and must not throw on a store fault — a cron run has no
- * client to fail to, and a transient store error must leave the rows for the
- * next tick rather than page anyone.
+ * The scheduled cleanup (ADR-0017): expired anonymous sessions are reclaimed
+ * by the nightly `kajianq-cron.timer` (ADR-0044 decision 7). The handler must
+ * be inert when the database binding is absent and must not throw on a store
+ * fault — a cron run has no client to fail to, and a transient store error must
+ * leave the rows for the next tick rather than page anyone.
  */
 
 // The database client lives behind the RagStore adapter (ADR-0008), so
-// these route tests never reach one: constructing or querying the pool is
+// these tests never reach one: constructing or querying the pool is
 // the failure this mock makes loud.
 vi.mock("pg", () => ({
   Pool: class {

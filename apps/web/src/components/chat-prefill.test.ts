@@ -16,8 +16,8 @@ import * as v from "valibot";
 // scrollTo unconditionally — re-stubbed before every test.
 beforeEach(() => {
   Element.prototype.scrollTo = () => {};
-  // The chat never auto-sends (#175): a global fetch stub that records calls
-  // makes "no request on pre-fill" an assertion, not an assumption.
+  // The chat never auto-sends: a global fetch stub that records calls makes
+  // "no request on pre-fill" an assertion, not an assumption.
   vi.stubGlobal(
     "fetch",
     vi.fn(async () => new Response(null, { status: 204 })),
@@ -31,7 +31,7 @@ afterEach(() => {
 const composer = () => screen.getByTestId("composer") as HTMLTextAreaElement;
 
 /**
- * The chat route's `?q=` pre-fill (#175), end to end through the real route
+ * The chat route's `?q=` pre-fill, end to end through the real route
  * tree. The pinned semantics: the param seeds the composer DRAFT on first
  * render, is consumed (stripped) so a refresh cannot re-seed, never
  * auto-sends, and an absent or unusable param leaves the composer untouched.
@@ -168,7 +168,7 @@ describe("ChatView pre-fill seeding", () => {
 });
 
 /**
- * The seed cap against the message ceiling (#256). A seed the chat contract
+ * The seed cap against the message ceiling. A seed the chat contract
  * refuses would be a bug the composer cannot repair — the `?q=` param arrives
  * as a draft, and sending it would meet the route's 400 — so the cap must stay
  * at or below the ceiling, and this is what keeps an edit to either constant

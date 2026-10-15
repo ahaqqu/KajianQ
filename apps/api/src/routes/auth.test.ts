@@ -7,7 +7,7 @@ import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-
 import type { AnonymousSession } from "@app/contracts";
 
 /**
- * Anonymous-session auth routes (ADR-0017, ticket #10): mint, resolve, erase.
+ * Anonymous-session auth routes (ADR-0017): mint, resolve, erase.
  * The store is the in-memory RagStore; the database client is mocked to prove the
  * routes never reach a database directly (the seam holds).
  */
@@ -18,7 +18,7 @@ vi.mock("../lib/chat-wiring", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/chat-wiring")>();
   return {
     ...actual,
-    // A4: auth uses the store-only wiring — no provider roles are resolved on
+    // Auth uses the store-only wiring — no provider roles are resolved on
     // this path at all, so the mock supplies just the store and its bridge.
     buildStoreWiring: () => ({
       fullStore: currentStore,

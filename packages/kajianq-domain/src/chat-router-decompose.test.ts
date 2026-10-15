@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { decomposeQuery, MAX_SUB_QUERIES, MIN_SUB_QUERIES } from "./chat-router-decompose";
 
 /**
- * Query decomposition's deterministic half (#14, spec §3.3 stage 2): the model
- * phrases, the domain guarantees. Every case here is a reply a cheap model
- * actually produces — too few sub-queries, too many, a rule left uncovered, an
- * invented role — and the assertion is always the same shape: the stage's
- * bound holds and every rule that fired is covered.
+ * Query decomposition's deterministic half (spec §3.3 stage 2): the model phrases, the
+ * domain guarantees. Every case here is a reply a cheap model actually produces — too
+ * few sub-queries, too many, a rule left uncovered, an invented role — and the
+ * assertion is always the same shape: the stage's bound holds and every rule that fired
+ * is covered.
  */
 
 const QUESTION = "Kenapa shalat orang sakit boleh diringankan?";
@@ -91,12 +91,10 @@ describe("decomposeQuery", () => {
     );
     expect(hadith.find((s) => s.role === "sanad")?.origin).toBe("rule");
 
-    // A subject area with no rule of its own adds nothing beyond the factual —
-    // so the floor is what put the second entry there, and both entries are
-    // labelled `factual`. That repeat is deliberate, not a duplicate: the
-    // caller's verbatim question and the model's paraphrase are two different
-    // retrieval texts for the same role, which is exactly what the floor adds
-    // (review A2 of the fix round).
+    // A subject area with no rule of its own adds nothing beyond the factual, so the
+    // floor put the second entry there and both are labelled `factual`. That repeat is
+    // deliberate, not a duplicate: the caller's verbatim question and the model's
+    // paraphrase are two different retrieval texts for the same role.
     const adab = decomposeQuery(
       input({ category: "adab", modelSubQueries: [{ text: "adab makan", role: "factual" }] }),
     );
@@ -191,10 +189,9 @@ describe("decomposeQuery", () => {
   });
 
   it("stamps the fired rule's role onto a role-less echo of the question", () => {
-    // The class the property generator cannot reach (review R2-A1): the model's
-    // only sub-query *is* the question, so the `factual` rule's own text
-    // collides with it. Without the stamp the rule's entry is dropped by the
-    // duplicate filter and the Trace shows a route it cannot explain.
+    // The model's only sub-query *is* the question, so the `factual` rule's own text
+    // collides with it. Without the stamp the rule's entry is dropped by the duplicate
+    // filter and the Trace shows a route it cannot explain.
     const Q = "hukum riba?";
     const echo = (entry: { text: string; role?: string }) =>
       decomposeQuery(input({ question: Q, modelSubQueries: [entry] }));
@@ -212,7 +209,6 @@ describe("decomposeQuery", () => {
     // goes unshown rather than the model's claim being rewritten.
     expect(echo({ text: Q, role: "sanad" })).toEqual([{ text: Q, role: "sanad", origin: "model" }]);
 
-    // Control: the model labelled the echo `factual` itself; nothing to stamp.
     expect(echo({ text: Q, role: "factual" })).toEqual([
       { text: Q, role: "factual", origin: "model" },
     ]);
@@ -228,30 +224,28 @@ describe("decomposeQuery", () => {
 });
 
 /**
- * #450. The law `decomposeQuery is idempotent over the sub-queries it produced`
- * failed on a share of seeds, so `gate` reddened on PRs whose diff had nothing to
- * do with the router. Two defects were behind it, and only one of them is junk:
+ * The law `decomposeQuery is idempotent over the sub-queries it produced` holds only if
+ * the fan-out keeps both of these:
  *
- *   1. the reply's texts reached the fan-out untested for content, so a
- *      punctuation-only `"!"` or a lone quote was embedded and searched;
- *   2. the ceiling could spend the slot of the entry a fired rule's own text
- *      lived in, so the next pass re-added that rule's entry — at a different
- *      position — and the answer changed.
+ *   1. every reply text is tested for content, so a punctuation-only `"!"` or a lone
+ *      quote is never embedded and searched;
+ *   2. the ceiling never spends the slot of the entry a fired rule's own text lives
+ *      in, so the next pass cannot re-add that rule's entry — at a different position
+ *      — and change the answer.
  *
- * Every case below is one of those, plus the boundary in the other direction:
- * trimming and dropping must not cost a short, numeric or non-Latin sub-query
- * its place in the fan-out.
+ * Every case below is one of those, plus the boundary in the other direction: trimming
+ * and dropping must not cost a short, numeric or non-Latin sub-query its place in the
+ * fan-out.
  */
 describe("decomposeQuery — what it keeps from the reply (#450)", () => {
   const Q = "hukum riba?";
 
   it("drops the reply's texts that carry nothing to search with", () => {
-    // The CI counterexample's junk, with the neighbours that look similar and
-    // must all go too: whitespace, punctuation, a lone quote, a dash run, an
-    // emoji (a surrogate pair), a control character. Each one would be an embed
-    // and a pair of searches spent on a query that cannot retrieve. The reply
-    // phrased nothing searchable, so what is left is the caller's question under
-    // the `factual` rule.
+    // The reply's junk, with the neighbours that look similar and must all go too:
+    // whitespace, punctuation, a lone quote, a dash run, an emoji (a surrogate pair), a
+    // control character. Each one would be an embed and a pair of searches spent on a
+    // query that cannot retrieve. The reply phrased nothing searchable, so what is left
+    // is the caller's question under the `factual` rule.
     expect(
       decomposeQuery(
         input({
@@ -278,10 +272,10 @@ describe("decomposeQuery — what it keeps from the reply (#450)", () => {
   });
 
   it("keeps a short, numeric or non-Latin sub-query: content is a letter or a digit, in any script", () => {
-    // The failure this fix could introduce, and the reason the content test is a
-    // Unicode property rather than `/[a-z0-9]/i`: an ASCII reading drops every
-    // one of these, and a dropped sub-query narrows retrieval silently — the
-    // angle is gone from the fan-out and nothing on the trace says so.
+    // The failure an ASCII content test would introduce, and the reason the content test
+    // is a Unicode property rather than `/[a-z0-9]/i`: an ASCII reading drops every one
+    // of these, and a dropped sub-query narrows retrieval silently — the angle is gone
+    // from the fan-out and nothing on the trace says so.
     const kept = (text: string) =>
       decomposeQuery(input({ question: Q, modelSubQueries: [{ text, role: "sanad" }] })).map(
         (sub) => sub.text,
@@ -300,10 +294,9 @@ describe("decomposeQuery — what it keeps from the reply (#450)", () => {
   });
 
   it("keeps the whitespace-padded text from the counterexample, trimmed", () => {
-    // The third text CI printed is legitimate: padding is not content, and the
-    // query the model meant is `spaced   text`. Refusing a padded text would be
-    // over-normalisation; keeping it untrimmed is what the repair's own
-    // idempotence forbids.
+    // A padded text is legitimate: padding is not content, and the query the model meant
+    // is `spaced   text`. Refusing a padded text would be over-normalisation; keeping it
+    // untrimmed is what the repair's own idempotence forbids.
     const subs = decomposeQuery(
       input({ question: Q, modelSubQueries: [{ text: "  spaced   text  ", role: "principle" }] }),
     );
@@ -311,11 +304,11 @@ describe("decomposeQuery — what it keeps from the reply (#450)", () => {
   });
 
   it("keeps the entry a fired rule's coverage lives in when the ceiling spends its budget", () => {
-    // The junk-free half of #450, and the reason the content test alone is not
-    // the fix. The reply echoed the question under `sanad` and over-produced, so
-    // the ceiling used to spend the echo's slot on a duplicate-role extra. The
-    // rule's own text went with it, and the next pass re-added the `factual`
-    // entry at the front — the law reddening on an input with nothing to trim.
+    // The reason the content test alone is not the fix: the reply echoes the question
+    // under `sanad` and over-produces, so the ceiling must not spend the echo's slot on
+    // a duplicate-role extra. The rule's own text would go with it, and the next pass
+    // would re-add the `factual` entry at the front — the law reddening on an input with
+    // nothing to trim.
     const source = input({
       question: Q,
       modelSubQueries: [
@@ -358,13 +351,10 @@ describe("decomposeQuery — what it keeps from the reply (#450)", () => {
   });
 
   it("drops the caller's content-free question together with the reply's echo of it", () => {
-    // #462 changed this expectation, and the change is the point: the drop is a
-    // function of the TEXT alone, so the caller's own question is not exempt from
-    // it. The `factual` rule's text *is* the verbatim question, and a question
-    // carrying no letter and no digit is not a retrieval query — before the fix
-    // it was pushed as `origin: "rule"` and embedded and searched (two of the
-    // QA round's 50 `subquery` events). A reply that still phrased something
-    // searchable routes on that alone.
+    // The drop is a function of the TEXT alone, so the caller's own question is not
+    // exempt from it: the `factual` rule's text *is* the verbatim question, and a
+    // question carrying no letter and no digit is not a retrieval query. A reply that
+    // still phrased something searchable routes on that alone.
     const source = input({
       question: "!!",
       modelSubQueries: [{ text: "x", role: "sanad" }],
@@ -373,9 +363,8 @@ describe("decomposeQuery — what it keeps from the reply (#450)", () => {
     expect(subs).toEqual([{ text: "x", role: "sanad", origin: "model" }]);
     expect(again(source, subs)).toEqual(shape(subs));
 
-    // The reply's echo of the content-free question goes with it — the one thing
-    // #453's exemption used to keep — so both arms of the drop agree on the next
-    // pass and nothing is left to fan out over.
+    // The reply's echo of the content-free question goes with it, so both arms of the
+    // drop agree on the next pass and nothing is left to fan out over.
     expect(decomposeQuery(input({ question: "!!", modelSubQueries: [{ text: "!!" }] }))).toEqual(
       [],
     );
@@ -392,35 +381,26 @@ describe("decomposeQuery — what it keeps from the reply (#450)", () => {
 const hasContent = (text: string): boolean => /[\p{L}\p{N}]/u.test(text);
 
 /**
- * #462, the QA round's finding on #460. The rule leg never met the content test:
- * only the reply's texts did, while the rule loop and the floor pushed through a
- * gate whose only test was `normalize(text) === ""` — and `normalize` trims
- * ECMAScript **White_Space**, which the `Cf` zero-width space and joiner and the
- * `Cc` C0 controls are not (a BOM, U+FEFF, *is* ECMAScript White_Space, so
- * `trim()` alone already caught that one). Measured on staging at `f57fedd`, two of 50 `subquery`
- * events over 21 routes carried no letter and no digit: a zero-width question
- * (trace `618ac5a9-452a-4a67-93e7-41a545119e81`, 32 chunks) and a control one
- * (trace `d4200338-98c8-4a5c-808e-862836893870`, 31 chunks) — both `role:
- * factual`, `origin: rule`. Whitespace (`"   "`, trace `3f0f0588…`) already
- * produced no event, and that is the shape the invariant demands for both.
+ * The invariant this suite pins: **a text that carries no letter and no digit in any
+ * script never becomes a sub-query, whatever its origin** — the reply's text or a rule's
+ * own text. The rule loop and the floor take the same gate the reply's texts take, and
+ * the trim alone cannot enforce it: `normalize` trims ECMAScript **White_Space**, which
+ * the `Cf` zero-width space and joiner and the `Cc` C0 controls are not (a BOM, U+FEFF,
+ * *is* ECMAScript White_Space, so `trim()` alone already caught that one).
  *
- * The invariant, stated before the code: **a text that carries no letter and no
- * digit in any script never becomes a sub-query, whatever its origin** — the
- * reply's text or a rule's own text. It fails silently: no error, no refusal
- * difference, only an embed slot, a pair of searches and a Trace entry spent on
- * a text that cannot retrieve.
+ * It fails silently: no error, no refusal difference, only an embed slot, a pair of
+ * searches and a Trace entry spent on a text that cannot retrieve.
  */
 describe("decomposeQuery — a text with no letter and no digit is never a sub-query (#462)", () => {
-  /** The QA round's two probes, verbatim. */
+  /** The two content-free questions, verbatim. */
   const ZERO_WIDTH_QUESTION = "\u200b\u200d\u200b"; // hex e2808be2808de2808b
   const CONTROL_QUESTION = "\u0001\u0007"; // hex 0107
 
   /**
-   * The class the fix has to reach, beyond the two probes: `Cf` on its own (a
-   * zero-width space, a joiner, a word joiner, a BOM), `Cc` on its own, and the
-   * ASCII/other-script punctuation the reply leg already dropped. Blank and
-   * whitespace-only are in here too — they were correct before the fix and must
-   * stay correct after it.
+   * The class the content test has to reach, beyond the two questions above: `Cf` on
+   * its own (a zero-width space, a joiner, a word joiner, a BOM), `Cc` on its own, and
+   * the ASCII/other-script punctuation the reply leg already dropped. Blank and
+   * whitespace-only are in here too: they must keep producing no sub-query.
    */
   const CONTENT_FREE_QUESTIONS = [
     ZERO_WIDTH_QUESTION,
@@ -437,16 +417,14 @@ describe("decomposeQuery — a text with no letter and no digit is never a sub-q
   ] as const;
 
   it("fans out over nothing for the zero-width question, with or without the reply's echo", () => {
-    // The shape: `needsPrinciple: false` and no fikih/hadith category, so the
-    // `factual` rule is the only one that fired and its text *is* this
-    // content-free question — the route-level empty fan-out that holds "when no
-    // non-factual rule fires" (review C1). A shape that fires one keeps its
-    // template entry; that other half is pinned by the template test below.
-    // The rule's own add, which is what the live trace carried: no reply at all.
+    // The shape: `needsPrinciple: false` and no fikih/hadith category, so the `factual`
+    // rule is the only one that fired and its text *is* this content-free question — the
+    // route-level empty fan-out that holds "when no non-factual rule fires". A shape that
+    // fires one keeps its template entry; that other half is pinned by the template test
+    // below. The rule's own add: no reply at all.
     expect(decomposeQuery(input({ question: ZERO_WIDTH_QUESTION }))).toEqual([]);
-    // The reply's echo of it. #453 exempted this text from the reply's filter so
-    // the rule would not re-add it lower down the fan-out; the fix makes both
-    // arms drop it, so the exemption is gone and the two passes agree.
+    // The reply's echo of it: both arms drop this text, so the two passes agree and the
+    // rule cannot re-add it lower down the fan-out.
     expect(
       decomposeQuery(
         input({ question: ZERO_WIDTH_QUESTION, modelSubQueries: [{ text: ZERO_WIDTH_QUESTION }] }),
@@ -464,8 +442,7 @@ describe("decomposeQuery — a text with no letter and no digit is never a sub-q
   });
 
   it("fans out over nothing for the control-character question, with or without the reply's echo", () => {
-    // Same shape as the zero-width case above: the `factual` rule alone fired
-    // (review C1).
+    // Same shape as the zero-width case above: the `factual` rule alone fired.
     expect(decomposeQuery(input({ question: CONTROL_QUESTION }))).toEqual([]);
     expect(
       decomposeQuery(
@@ -506,9 +483,9 @@ describe("decomposeQuery — a text with no letter and no digit is never a sub-q
   });
 
   it("keeps every content-bearing text that arrives beside a content-free question", () => {
-    // The boundary in the other direction, on the class the fix touches: dropping
-    // the rule's content-free text must not cost a searchable one its place.
-    // `5`, `٥`, `５`, `الربا`, `حكم ربا` and `漢字` all carry `\p{L}`/`\p{N}`.
+    // The boundary in the other direction: dropping a content-free text must not cost a
+    // searchable one its place. `5`, `٥`, `５`, `الربا`, `حكم ربا` and `漢字` all carry
+    // `\p{L}`/`\p{N}`.
     for (const text of ["5", "٥", "５", "الربا", "حكم ربا", "漢字"]) {
       const subs = decomposeQuery(
         input({ question: ZERO_WIDTH_QUESTION, modelSubQueries: [{ text, role: "sanad" }] }),
@@ -535,9 +512,9 @@ describe("decomposeQuery — a text with no letter and no digit is never a sub-q
   });
 
   it("is idempotent over the two probes", () => {
-    // The drop is a function of the text alone, so the second pass — handed the
-    // first pass's (empty) output as the reply — agrees with it. #453's law at
-    // 2 000 runs is the property form of this.
+    // The drop is a function of the text alone, so the second pass — handed the first
+    // pass's (empty) output as the reply — agrees with it; the idempotence law is the
+    // property form of this.
     for (const question of [ZERO_WIDTH_QUESTION, CONTROL_QUESTION]) {
       const source = input({ question, modelSubQueries: [{ text: question }] });
       expect(again(source, decomposeQuery(source))).toEqual(shape(decomposeQuery(source)));

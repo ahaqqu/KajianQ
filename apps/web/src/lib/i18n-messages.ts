@@ -1,10 +1,9 @@
 /**
  * The en/id copy. A message may carry `{name}` placeholders — the app's one
  * substitution convention, applied by `formatMessage` in `i18n.ts`; UI code
- * reads strings through `formatMessage`/`t`, never out of here directly
- * (thermo-review B2). The copy lives in its own file so `i18n.ts` stays the
- * machinery module, under the agentic-limits cap a growing message list would
- * otherwise break.
+ * reads strings through `formatMessage`/`t`, never out of here directly. The
+ * copy lives in its own file so `i18n.ts` stays the machinery module, under
+ * the agentic-limits cap a growing message list would otherwise break.
  */
 export const messages = {
   en: {

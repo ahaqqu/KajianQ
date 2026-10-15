@@ -2,7 +2,7 @@ import * as v from "valibot";
 import { CostRecordSchema } from "./trace";
 
 /**
- * Evaluation contracts (#8): the Golden Set question shape, the per-question
+ * Evaluation contracts: the Golden Set question shape, the per-question
  * result outcome, and the aggregate run report. Shared by the eval harness
  * (`@app/eval`), the RagStore eval ledger (persisted JSONB), and the eval CLI.
  *
@@ -70,11 +70,11 @@ export const EvalResultOutcomeSchema = v.object({
   /**
    * True when the question never scored (transport/scoring failure) —
    * excluded from the report's scored means and never counted as a scored
-   * failure (thermo-review C1: the notes-prefix heuristic was brittle).
+   * failure.
    */
   skipped: v.optional(v.boolean()),
   /**
-   * ADR-0045 scope expansion, when the question's retrieval used it (#243 C1).
+   * ADR-0045 scope expansion, when the question's retrieval used it.
    * The reported `retrievalRecall` reads the retrieval event's chunk refs and
    * never inspects their `origin` label, so for a question that names a
    * reference the expansion satisfies the scored leg **by construction**
@@ -85,8 +85,7 @@ export const EvalResultOutcomeSchema = v.object({
    * `fusedOnlyRetrievalRecall` is the recall those same refs score with the
    * expansion's refs excluded — a number below `retrievalRecall` is the exact
    * statement "the expansion carried this question". Absent = the trace
-   * recorded no expansion for this question (no scoped read happened); older
-   * reports stay readable.
+   * recorded no expansion for this question (no scoped read happened).
    */
   expansion: v.optional(
     v.object({

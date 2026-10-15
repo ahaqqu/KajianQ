@@ -9,22 +9,16 @@ import type { Logger, LogFields } from "./logger";
 import type { Trace } from "@app/contracts";
 
 /**
- * Unit tests for the Postgres RagStore adapter using a fake `SqlRunner`. These
- * run in every environment (no database) and give the adapter's logic — SQL
- * construction, embedding validation, upsert RETURNING fallback, transaction
- * wiring, row mapping — line coverage that the secret-gated contract suite
- * (rag-store-postgres.test.ts) cannot provide in the default gate job. The fake
- * records what the adapter asked the driver to do and feeds back canned rows.
- *
- * Assertions are Effect-shaped (ADR-0027 decision 7): seam calls are run via
- * `Effect.runPromise`/`Effect.runPromiseExit`, and failure assertions check
- * the `StoreError` kind + cause — never a thrown exception class.
+ * Unit tests for the Postgres RagStore adapter using a fake `SqlRunner`: they run
+ * in every environment (no database) and give the adapter's logic — SQL
+ * construction, embedding validation, upsert fallback, transaction wiring, row
+ * mapping — coverage the secret-gated contract suite cannot provide in the
+ * default gate job. The fake records what the adapter asked the driver to do and
+ * feeds back canned rows; failures are asserted as `StoreError` kind + cause.
  */
 
-/** Run a store effect that must succeed, returning its value. */
 const runOk = <A>(effect: Effect.Effect<A, StoreError>): Promise<A> => Effect.runPromise(effect);
 
-/** Uniform shape so access sites don't need per-variant narrowing. */
 type Recorded = { kind: string; text: string; values: unknown[]; queries?: unknown[] };
 
 function makeFakeSql() {
@@ -66,7 +60,6 @@ function makeFakeSql() {
   return sql;
 }
 
-/** Fake runner whose tag/query/transaction calls reject with the given error. */
 function makeBoomSql(error: () => unknown): SqlRunner {
   const boom = Object.assign(() => Promise.reject(error()), {
     query: () => Promise.reject(error()),
@@ -77,7 +70,6 @@ function makeBoomSql(error: () => unknown): SqlRunner {
 
 const VEC1536 = Array.from({ length: 1536 }, (_, i) => Math.sin(i * 0.01));
 
-/** Recording fake Logger so tests can assert the adapter's ops logging. */
 function makeFakeLogger() {
   const calls: {
     level: string;
@@ -94,13 +86,9 @@ function makeFakeLogger() {
   return { logger, calls };
 }
 
-/**
- * The insert→read fixture. It carries one of every shape the adapter must
- * round-trip, including the ADR-0045 additions — the `scope_expansion` event
- * variant and an `origin`-bearing chunk ref — so the new variant's persistence
- * is exercised through `insertAnswerTrace` and read back, not inferred from
- * the shared contract (A5 of #243's review).
- */
+/** The insert→read fixture: one of every shape the adapter must round-trip,
+ * including the `scope_expansion` event variant and an `origin`-bearing chunk
+ * ref, exercised through `insertAnswerTrace` and read back. */
 const sampleTrace: Trace = {
   id: "t1",
   version: 1,
@@ -166,7 +154,7 @@ describe("rag-store-postgres adapter (fake runner)", () => {
     expect(text).toContain("INSERT INTO doc_children");
     expect(text).toContain("embedding_primary, embedding_fallback");
     expect(text).toContain("ON CONFLICT (parent_id, ordinal) DO UPDATE");
-    // text_raw must NOT be in the UPDATE set (rule 13: immutable).
+    // text_raw must not be in the UPDATE set: it is immutable.
     expect(text).not.toMatch(/SET[^]*text_raw\s*=/);
   });
 
@@ -203,19 +191,17 @@ describe("rag-store-postgres adapter (fake runner)", () => {
     const batchText = sql._calls[0]?.text ?? "";
     const batchValues = sql._calls[0]?.values ?? [];
     expect(batchValues).toHaveLength(20);
-    // Every placeholder in the text must be distinct, contiguous ($1..$20),
-    // and resolve to the right value — the id slot is first in each row.
+    // Every placeholder must be distinct, contiguous ($1..$20) and bound to the
+    // right value; the id slot is first in each row.
     const placeholders = [...batchText.matchAll(/\$\d+/g)].map((m) => m[0]);
     expect(placeholders).toHaveLength(20);
     expect(placeholders.map((p) => Number(p.slice(1)))).toEqual(
       Array.from({ length: 20 }, (_, i) => i + 1),
     );
-    // Row 1's bound values, in column order: id, parentId, textRaw, textAr, …
     expect(typeof batchValues[0]).toBe("string");
     expect(batchValues[1]).toBe("p");
     expect(batchValues[2]).toBe("raw-1");
     expect(batchValues[3]).toBe("ar-1");
-    // Row 2 starts at slot 11 (10 params per row): id, then parentId.
     expect(typeof batchValues[10]).toBe("string");
     expect(batchValues[11]).toBe("p");
     expect(batchValues[12]).toBe("raw-2");
@@ -224,7 +210,7 @@ describe("rag-store-postgres adapter (fake runner)", () => {
     for (const value of batchValues) {
       expect(typeof value !== "string" || !value.endsWith("::jsonb")).toBe(true);
     }
-    // text_raw must NOT be in the UPDATE set (rule 13: immutable).
+    // text_raw must not be in the UPDATE set: it is immutable.
     expect(batchText).not.toMatch(/SET[^]*text_raw\s*=/);
   });
 
@@ -260,8 +246,6 @@ describe("rag-store-postgres adapter (fake runner)", () => {
         text_ar: "ar",
         text_id: "id",
         citation: { s: 2 },
-        // The real query selects `NULL::text` for both vector columns — see
-        // the payload regression in rag-store-postgres-query.test.ts.
         embedding_primary: null,
         embedding_fallback: null,
         ordinal: 3,
@@ -286,7 +270,6 @@ describe("rag-store-postgres adapter (fake runner)", () => {
     const q = sql._calls.find((c) => c.kind === "query");
     expect(q?.text).toContain("embedding_primary <=> $1::vector");
     expect(q?.text).toContain("NULL::text AS embedding_primary");
-    // $1 embedding, $2 limit, then per filter key+array → 2 filters = params 3..6.
     expect(q?.values).toHaveLength(6);
   });
 
@@ -334,15 +317,11 @@ describe("rag-store-postgres adapter (fake runner)", () => {
     expect(text).toContain("INSERT INTO answer_traces");
     expect(text).toContain("user_id");
     expect(sql._calls[0]?.values).toContain("u1");
-    // The returned id must be the id actually inserted: callers persist
-    // dependent rows against it (`chat_messages.answer_trace_id` FKs to this
-    // column), and it need not equal `trace.id` — the column is `uuid` while
-    // the contract allows any non-empty string.
+    // The returned id must be the id actually inserted: it need not equal
+    // `trace.id`, and callers persist dependent rows against the returned one.
     expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     expect(sql._calls[0]?.values?.[0]).toBe(id);
-    // A5: the ADR-0045 shapes are what got persisted — the new event kind and
-    // the chunk ref's origin label, verbatim (the insert parses the trace
-    // through the shared contract, so this also pins that it accepts them).
+    // The scope-expansion kind and the origin label persist verbatim.
     const persisted = String(sql._calls[0]?.values?.[3] ?? "");
     expect(persisted).toContain('"scope_expansion"');
     expect(persisted).toContain('"origin":"expansion"');
@@ -372,8 +351,6 @@ describe("rag-store-postgres adapter (fake runner)", () => {
     const got = await runOk(store.getAnswerTraceByMessage("m1"));
     expect(got).toEqual(sampleTrace);
     expect(sql._calls[0]?.text).toContain("SELECT trace FROM answer_traces");
-    // A5: the scope-expansion variant survives the read explicitly — the
-    // event's typed detail and the ref's origin label, not just deep equality.
     const scope = got?.events.find((e) => e.kind === "scope_expansion");
     expect(scope?.kind === "scope_expansion" ? scope.detail : undefined).toEqual({
       key: "reference",
@@ -435,21 +412,17 @@ describe("rag-store-postgres adapter (fake runner)", () => {
   it("cleanupExpiredSessions reclaims expired sessions AND orphaned users (A5)", async () => {
     const sql = makeFakeSql();
     const store = createPostgresRagStore(sql);
-    // The batched transaction resolves one result per statement, in order: the
-    // sessions DELETE, then the users DELETE ... RETURNING id.
     sql._setTxn([
       [{ id: "a" }, { id: "b" }],
       [{ id: "u1" }, { id: "u2" }, { id: "u3" }],
     ]);
     const n = await runOk(store.cleanupExpiredSessions());
-    // The reported count is the reclaimed users — the storage-growth number.
     expect(n).toBe(3);
     const tx = sql._calls.find((c) => c.kind === "transaction");
     expect(tx?.queries).toHaveLength(2);
     const statements = sql._calls.filter((c) => c.kind === "tag").map((c) => c.text);
     expect(statements[0]).toContain("DELETE FROM sessions WHERE expires_at <=");
-    // The orphan reclamation is the second statement and must scope to
-    // anonymous users with no remaining session (never a live user).
+    // The orphan reclamation is the second statement and must never touch a live user.
     expect(statements[1]).toContain("DELETE FROM users");
     expect(statements[1]).toContain("kind = 'anonymous'");
     expect(statements[1]).toContain("NOT EXISTS (SELECT 1 FROM sessions");
@@ -488,9 +461,8 @@ describe("rag-store-postgres adapter (fake runner)", () => {
   });
 
   it("classifies a refused connection as config (wrong host/port, not a blip)", async () => {
-    // node-postgres surfaces the Node errno error here: `code` is
-    // ECONNREFUSED and there is no `severity`, so it must not reach the
-    // SQLSTATE table — a wrong address fails the same way every time.
+    // node-postgres surfaces a Node errno error here: `code` is ECONNREFUSED
+    // and there is no `severity`, so it must not reach the SQLSTATE table.
     const sql = makeBoomSql(() =>
       Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:5432"), {
         code: "ECONNREFUSED",
@@ -532,9 +504,8 @@ describe("rag-store-postgres adapter (fake runner)", () => {
   });
 
   it("does not SQLSTATE-classify non-Postgres errors that carry a string code (B1 guard)", async () => {
-    // A Node-style ErrnoException carries `code: string` but has no
-    // `severity` — it is NOT a Postgres server error, so it must fall to the
-    // closed transport default, never reach the SQLSTATE table.
+    // A Node-style ErrnoException carries `code: string` but no `severity`: it
+    // is NOT a Postgres server error, so it falls to the closed transport default.
     const sql = makeBoomSql(() =>
       Object.assign(new Error("something went wrong"), {
         code: "23505", // collides with unique_violation on purpose
@@ -548,11 +519,9 @@ describe("rag-store-postgres adapter (fake runner)", () => {
 
 describe("sqlEffect execution-semantics guard (A1)", () => {
   it("executes a lazy thenable exactly once while the guard still observes rejections", async () => {
-    // Simulates the driver's lazy query promise: every consumer of
-    // the LAZY promise fires a fresh execution. The guard must adopt it into
-    // a native promise with exactly one execution — never attach a second
-    // consumer to the lazy promise itself (PR #132 review A1 + CI regression:
-    // double execution raced a plain INSERT into a PK violation).
+    // Simulates the driver's lazy query promise, where every consumer fires a
+    // fresh execution: the guard must adopt it with exactly one execution — never
+    // attach a second consumer to the lazy promise.
     let executions = 0;
     class LazyThenable {
       then(onF: (v: unknown) => unknown, onR?: (e: unknown) => unknown) {
@@ -596,8 +565,7 @@ describe("rag-store-postgres adapter: optional ops logging", () => {
   it("propagates the original as cause, classified transport, when no logger is configured", async () => {
     const store = createPostgresRagStore(makeBoomSql(() => new Error("db down")));
     const err = await runFail(store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }));
-    // A generic Error carries no SQLSTATE/shape → transport (closed default),
-    // with the original vendor error verbatim in cause.
+    // A generic Error carries no SQLSTATE/shape → transport (closed default).
     expect(err.kind).toBe("transport");
     expect((err.cause as Error).message).toBe("db down");
   });
@@ -682,19 +650,13 @@ describe("rag-store-factory: createRagStore", () => {
     const sql = makeFakeSql();
     // Simulates a provider joined to RagStoreProvider without a case in the
     // switch: the default branch must fail loudly, not silently return.
-    // Factory selection is constructor-time wiring, not a seam call — a
-    // throw here is not an error kind crossing the store seam.
     expect(() => createRagStore("memory" as "postgres", sql)).toThrow(
       /no RagStore adapter for provider: memory/,
     );
   });
 });
 
-// ---------------------------------------------------------------------------
-// Eval ledger methods (thermo-review A3/A5/B3 fixes) — unit coverage for the
-// SQL construction and report parsing the secret-gated contract suite can't
-// provide in the default gate job.
-// ---------------------------------------------------------------------------
+// Eval ledger methods — unit coverage for SQL construction and report parsing.
 
 import { parseEvalRunReport } from "@app/contracts";
 
@@ -737,7 +699,6 @@ describe("Postgres eval-ledger methods (unit, fake SQL)", () => {
     );
     expect(sql._calls[0]?.text).toContain("INSERT INTO eval_runs");
     expect(sql._calls[0]?.text).toContain("ON CONFLICT (id) DO UPDATE");
-    // B3: the question id is bound as a loose string, no ::uuid cast.
   });
 
   it("insertEvalResult binds questionId as a loose string, runId as uuid (B3)", async () => {
@@ -752,8 +713,8 @@ describe("Postgres eval-ledger methods (unit, fake SQL)", () => {
       }),
     );
     expect(sql._calls[0]?.text).toContain("INSERT INTO eval_results");
-    // B3: runId is bound for the ::uuid cast, questionId stays the raw loose
-    // string reference — no ::uuid cast on it in the SQL text.
+    // runId is bound for the `::uuid` cast; questionId stays a loose string with
+    // no cast in the SQL text.
     expect(sql._calls[0]?.values[1]).toBe("0e1b1e58-aaaa-4a86-b1e8-1a2b3c4d5e60");
     expect(sql._calls[0]?.values[2]).toBe("gs-v0-001");
   });
@@ -789,8 +750,7 @@ describe("Postgres eval-ledger methods (unit, fake SQL)", () => {
       { id: "run-1", label: "l", report: { totally: "wrong" }, created_at: new Date(0) },
     ]);
     const exit = await Effect.runPromiseExit(store.getEvalRun("run-1"));
-    // The parse failure must be a typed StoreError on the error channel —
-    // never a thrown exception and never a silently coerced report.
+    // The parse failure must be a typed StoreError, never a thrown exception.
     expect(Exit.isFailure(exit)).toBe(true);
   });
 
@@ -820,7 +780,6 @@ describe("Postgres eval-ledger methods (unit, fake SQL)", () => {
     const trace = await runOk(store.getAnswerTraceById("row-1"));
     expect(sql._calls[0]?.text).toContain("WHERE id = ?::uuid");
     expect(trace?.id).toBe("t1");
-    // No row → null, not a failure.
     sql._setTag([]);
     expect(await runOk(store.getAnswerTraceById("missing"))).toBeNull();
   });
@@ -845,7 +804,6 @@ describe("Postgres eval-ledger methods (unit, fake SQL)", () => {
       },
     ]);
     const rows = await runOk(store.getDocChildrenByIds(["c1", "c1", "  "]));
-    // Dedupe: the driver saw one id; blank ids never reach the query.
     expect(sql._calls[0]?.values).toEqual([["c1"]]);
     expect(sql._calls[0]?.text).toContain("ANY($1::uuid[])");
     expect(sql._calls[0]?.text).toContain("LEFT JOIN doc_parents");
@@ -918,8 +876,7 @@ describe("Postgres eval-ledger methods (unit, fake SQL)", () => {
   it("listDocChildrenByParentSourceKey binds the key and limit, orders by ordinal (ADR-0045)", async () => {
     const sql = makeFakeSql();
     const store = createPostgresRagStore(sql);
-    // Domain-neutral fixtures: this is an engine package, so the example keys,
-    // values, and labels are placeholders (the boundary gate enforces it).
+    // Domain-neutral fixtures: engine package, so the example values are placeholders.
     sql._setQuery([
       {
         id: "c1",
@@ -953,14 +910,12 @@ describe("Postgres eval-ledger methods (unit, fake SQL)", () => {
     const rows = await runOk(
       store.listDocChildrenByParentSourceKey("collection/part/1", { limit: 12 }),
     );
-    // Both the opaque source key and the cap are bound parameters.
     expect(sql._calls[0]?.values).toEqual(["collection/part/1", 12]);
     expect(sql._calls[0]?.text).toContain("WHERE p.source_key = $1");
     expect(sql._calls[0]?.text).toContain("ORDER BY c.ordinal ASC");
     expect(sql._calls[0]?.text).toContain("LIMIT $2");
     expect(rows.map((r) => r.id)).toEqual(["c1", "c2"]);
     expect(rows[0]).toMatchObject({ parentTitle: "Parent One", textAr: "ar-1" });
-    // Same embedding-stripping contract as the other corpus reads.
     expect(rows[0]?.embeddingPrimary).toBeNull();
     expect(rows[0]?.embeddingFallback).toBeNull();
   });
@@ -977,7 +932,6 @@ describe("Postgres eval-ledger methods (unit, fake SQL)", () => {
   it("listDocChildNeighboursByChildIds binds the anchors, radius and limit in order (ADR-0049)", async () => {
     const sql = makeFakeSql();
     const store = createPostgresRagStore(sql);
-    // Domain-neutral fixtures: engine package, so the ids are placeholders.
     sql._setQuery([
       {
         id: "n1",
@@ -1000,22 +954,18 @@ describe("Postgres eval-ledger methods (unit, fake SQL)", () => {
         limit: 7,
       }),
     );
-    // Every knob is a bound parameter: the anchor array (whose ORDER the
-    // adapter preserves as the read's priority order), the radius, the limit.
+    // Every knob is a bound parameter: the anchor array — whose ORDER the adapter
+    // preserves as the read's priority order — the radius, and the limit.
     expect(sql._calls[0]?.values).toEqual([["c-anchor-1", "c-anchor-2"], 2, 7]);
     expect(sql._calls[0]?.text).toContain("unnest($1::uuid[]) WITH ORDINALITY");
     expect(sql._calls[0]?.text).toContain("n.ordinal BETWEEN an.ordinal - $2 AND an.ordinal + $2");
-    // The join names the CTE's PROJECTED column (`anchor_id`). This is a cheap
-    // text canary only: the pre-fix `an.id` predicate passed it while real
-    // Postgres rejected the statement (42703), so the executable contract for
-    // this read lives in the real-Postgres suite
-    // (`rag-store-postgres.test.ts`, #334).
+    // The join names the CTE's PROJECTED column (`anchor_id`): a text canary only
+    // — the executable contract for this read lives in the real-Postgres suite.
     expect(sql._calls[0]?.text).toContain("n.id <> an.anchor_id");
     expect(sql._calls[0]?.text).toContain("DISTINCT ON (n.id)");
     expect(sql._calls[0]?.text).toContain("ORDER BY w.anchor_pos, w.ordinal, w.id");
     expect(sql._calls[0]?.text).toContain("LIMIT $3");
     expect(rows.map((r) => r.id)).toEqual(["n1"]);
-    // Same embedding-stripping contract as the other corpus reads.
     expect(rows[0]?.embeddingPrimary).toBeNull();
     expect(rows[0]?.embeddingFallback).toBeNull();
     expect(rows[0]).toMatchObject({ parentTitle: "Parent One", textAr: "ar-n1" });
@@ -1031,7 +981,6 @@ describe("Postgres eval-ledger methods (unit, fake SQL)", () => {
       const sql = makeFakeSql();
       const store = createPostgresRagStore(sql);
       expect(await runOk(store.listDocChildNeighboursByChildIds(["c-anchor-1"], opts))).toEqual([]);
-      // A disabled or unbounded read is not a read: no query reaches the driver.
       expect(sql._calls, JSON.stringify(opts)).toEqual([]);
     }
     const sql = makeFakeSql();
@@ -1039,7 +988,6 @@ describe("Postgres eval-ledger methods (unit, fake SQL)", () => {
     expect(
       await runOk(store.listDocChildNeighboursByChildIds([], { radius: 1, limit: 7 })),
     ).toEqual([]);
-    // Blank ids are dropped, and an all-blank list anchors nothing.
     expect(
       await runOk(store.listDocChildNeighboursByChildIds(["  "], { radius: 1, limit: 7 })),
     ).toEqual([]);
@@ -1053,7 +1001,6 @@ describe("Postgres eval-ledger methods (unit, fake SQL)", () => {
     await runOk(
       store.listDocChildNeighboursByChildIds(["c-1", "c-1", "c-2"], { radius: 1, limit: 4 }),
     );
-    // The priority order survives the dedup: first occurrence wins.
     expect(sql._calls[0]?.values?.[0]).toEqual(["c-1", "c-2"]);
   });
 

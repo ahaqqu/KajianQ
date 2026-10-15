@@ -20,7 +20,7 @@ afterEach(cleanup);
  * breakpoints, so both the inline nav and the burger button exist in the DOM;
  * these tests pin the disclosure contract (aria-expanded / aria-controls, a
  * localized label, links that navigate, close-on-navigate) rather than the CSS
- * visibility, and they assert the active link with TanStack's `aria-current`.
+ * visibility, and they assert the active link with `aria-current`.
  */
 describe("AppHeader navigation", () => {
   it("offers the three destinations, Indonesian-first", async () => {
@@ -73,8 +73,8 @@ describe("AppHeader navigation", () => {
     const toggle = screen.getByTestId("nav-menu-toggle");
     fireEvent.click(toggle);
     expect(screen.getByTestId("nav-menu")).toBeTruthy();
-    // Focus moves from a menu link to a control outside the disclosure (the
-    // theme toggle) — the menu must close (thermo-review A3).
+    // Focus moving from a menu link to a control outside the disclosure (the
+    // theme toggle) must close the menu.
     const menuLink = within(screen.getByTestId("nav-menu")).getByRole("link", {
       name: "Koleksi",
     });

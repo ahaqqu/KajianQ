@@ -3,15 +3,15 @@ import type { Chunk } from "@app/rag-core";
 import { HIERARCHY_BONUS, hierarchyBonus, rrfFuse, type TrackHit } from "./chat-fusion";
 
 /**
- * The fusion arithmetic's **total order** (#274, review A3 of the fix round).
+ * The fusion arithmetic's **total order**.
  *
  * The retriever's contract is that the caller's array order is the priority
  * order — ADR-0049's neighbour cap truncates on it, so "which neighbour chunks
  * enter the context" is only reproducible if the fused sequence is. Score ties
  * are real (duplicate or near-identical verses are common in this corpus, and
- * two chunks can occupy mirrored ranks), and before the fix the sequence fell
- * back to `Map` insertion order, i.e. to the hit lists' order, which the ANN
- * search does not guarantee for equal distances.
+ * two chunks can occupy mirrored ranks), so the tie-break cannot fall back to
+ * the hit lists' order, which the ANN search does not guarantee for equal
+ * distances.
  */
 
 const chunk = (id: string): Chunk => ({ id, text: id });
@@ -50,9 +50,8 @@ describe("rrfFuse — the order is total", () => {
  * The hierarchy bonuses (spec §3.3 item 4): Quran +0.3, Sahih +0.25, Hasan
  * +0.15, Kitab +0.1, Principle +0.2 **on an analogy**.
  *
- * Two of these were absent before this ticket — nothing added Kitab or
- * Principle — and the Principle one is the trap: it is a property of the
- * *question*, not of the chunk. Applying it unconditionally would let a maxim
+ * The Principle bonus is the trap: it is a property of the *question*, not of
+ * the chunk. Applying it unconditionally would let a maxim
  * outrank a direct dalil on a factual ruling question, which is a retrieval
  * defect that produces a fluent, well-cited, wrongly-weighted answer and no
  * error anywhere. The behavioural half below is the one that would catch it:

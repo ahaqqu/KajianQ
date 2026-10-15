@@ -3,7 +3,7 @@ import type { Pool } from "pg";
 import { postgresSqlRunner } from "./rag-store-postgres-driver";
 
 /**
- * The Postgres driver adapter (#181, ADR-0044). Two properties are load-bearing
+ * The Postgres driver adapter (ADR-0044). Two properties are load-bearing
  * and cannot be checked against a live server in the default gate job:
  *
  *   1. The tagged-template result is LAZY — handing it to `transaction` must
@@ -41,9 +41,6 @@ describe("postgresSqlRunner", () => {
   it("does not execute a tagged-template statement until something consumes it", async () => {
     const { pool, calls } = makeFakePool();
     const sql = postgresSqlRunner(pool);
-    // Build the statement but hand it to transaction — the construction itself
-    // must not have run anything, because transaction is what runs it inside
-    // BEGIN/COMMIT on a single connection.
     const a = sql`INSERT INTO t (x) VALUES (${1})`;
     expect(calls).toHaveLength(0);
     await sql.transaction([a]);

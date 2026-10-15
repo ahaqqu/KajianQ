@@ -3,17 +3,17 @@ import type { RagStore } from "@app/infra";
 import { createRagStoreFromEnv, ChatConfigError } from "./chat-wiring";
 
 /**
- * The anonymous-session reclamation body (ADR-0017, ticket #10; re-homed by
- * ADR-0044 decision 7): expire sessions on a schedule.
+ * The anonymous-session reclamation body (ADR-0017; ADR-0044 decision 7):
+ * expire sessions on a schedule.
  *
  * Expiry is a storage-reclamation concern, not a correctness one —
  * `resolveUserId` already rejects expired rows on read — so a failed cleanup
  * must never take serving down or page anyone: it logs and returns.
  *
  * Runtime-agnostic by design: the schedule's source of truth is the systemd
- * timer `provision/vps/systemd/kajianq-cron.timer` (03:17 UTC daily — the
- * retention value the privacy notice's "30-day inactivity" row depends on),
- * whose `kajianq-cron.service` invokes the dedicated entry
+ * timer `provision/vps/systemd/kajianq-cron.timer` (the retention value the
+ * privacy notice's "30-day inactivity" row depends on), whose
+ * `kajianq-cron.service` invokes the dedicated entry
  * `apps/api/src/cleanup.ts`, which calls this function. Verification of that
  * retention value starts at the timer, not here.
  *

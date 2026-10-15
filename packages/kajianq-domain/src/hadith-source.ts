@@ -1,38 +1,24 @@
 /**
- * KajianQ hadith ingestion — domain pack source model (#7).
+ * KajianQ hadith ingestion — domain pack source model, owning the hadith-specific shapes: the
+ * (collection, hadith number) address and the `HR. Collection no. N (Grade)` citation format.
  *
- * This module owns the hadith-specific shapes: the (collection, hadith
- * number) address, the `HR. Collection no. N (Grade)` citation format
- * (CONTEXT.md), and the per-grader grade consolidation policy (ADR-0026).
- * The engine packages never name any of this vocabulary (dars-pluggability
- * rule 1); it arrives here as typed values and is handed to `@app/rag-ingest`
- * through its generic seams.
- *
- * v1 source is fawazahmed0/hadith-api (Unlicense; ADR-0026): per-grader
- * grades ship on the *Arabic* edition entries; sanad is not structured in any
- * v1 dataset — the isnad stays embedded in the verbatim `text_raw`, and
- * per-chain grades remain v2 (ADR-0012, Sanadset).
+ * Per-grader grades ship on the *Arabic* edition entries; sanad is not structured in v1, so the
+ * isnad stays embedded in the verbatim `text_raw`.
  */
 
-/** The source-type discriminator written into every hadith chunk's metadata. */
 export type HadithSourceType = "hadith";
 
 import { GRADES, type Grade } from "./filters";
 
 /**
- * Hadith authenticity classification (CONTEXT.md "Grade"). Owned by
- * `./filters` — the one list retrieval filters by and the one the router
- * narrows the model's hint against — and re-exported here for this module's
- * readers. A leaf import, never the barrel: `filters.ts` imports nothing, so
- * there is no cycle (review B1/B2).
+ * Hadith authenticity classification (CONTEXT.md "Grade"), owned by `./filters` — the one list that
+ * retrieval filters by. A leaf import, never the barrel: `filters.ts` imports nothing, so no cycle.
  */
 export { GRADES, type Grade };
 
 /**
- * The v1 collections (ADR-0026): the source provides Arabic + Indonesian
- * editions with per-grader grades for these seven. Musnad Ahmad and Sunan
- * ad-Darimi are absent from the source and are documented, not force-merged
- * from an ungraded scraper.
+ * The v1 collections: the source provides Arabic + Indonesian editions with per-grader grades for
+ * these. Musnad Ahmad and Sunan ad-Darimi are absent, not force-merged from an ungraded scraper.
  */
 export const HADITH_COLLECTIONS = [
   "bukhari",
@@ -46,12 +32,10 @@ export const HADITH_COLLECTIONS = [
 
 export type HadithCollection = (typeof HADITH_COLLECTIONS)[number];
 
-/** Narrow an unknown value to a registered v1 collection code. */
 export function isHadithCollection(value: unknown): value is HadithCollection {
   return typeof value === "string" && (HADITH_COLLECTIONS as readonly string[]).includes(value);
 }
 
-/** Display names for the collection registry (citation + parent titles). */
 export const HADITH_COLLECTION_NAMES: Record<HadithCollection, string> = {
   bukhari: "Bukhari",
   muslim: "Muslim",
@@ -63,24 +47,19 @@ export const HADITH_COLLECTION_NAMES: Record<HadithCollection, string> = {
 };
 
 /**
- * One aligned hadith record: the Arabic matn (with its isnad — the v1
- * sources do not separate them, so `text_raw` carries both verbatim) plus
- * the Indonesian translation when the edition has one, and the raw
- * per-grader grade array verbatim from the source.
+ * One aligned hadith record: `text_raw` carries the Arabic matn with its isnad verbatim (v1 does not
+ * separate them), plus the translation when the edition has one and the raw per-grader grades.
  */
 export type HadithRecord = {
   collection: HadithCollection;
   /** The collection's own hadith number (the citation number). */
   hadithNo: string;
-  /** Book/section number within the collection (the parent container). */
   bookNo: number;
-  /** Book/section title, from the edition's section metadata. */
   bookName: string | null;
-  /** Arabic text, verbatim (immutable `text_raw`). */
+  /** Arabic text, verbatim (the immutable `text_raw`). */
   textAr: string;
   /** Indonesian translation; null when the edition text is empty. */
   textId: string | null;
-  /** Per-grader grades verbatim from the source: `{name, grade}`. */
   grades: readonly { name: string; grade: string }[];
 };
 
@@ -94,30 +73,22 @@ export type HadithCitation = {
 };
 
 /**
- * The weak-class vocabulary of the source's grade strings (verified against
- * the live editions, ADR-0026): any occurrence of one
- * of these tokens makes the hadith `dhaif`. `Mauquf`/`Muquf`/`Maqtu` are
- * deliberately absent — they are attribution-scope classes that combine with
- * positive grades ("Mauquf Sahih"), not defects; `Marfoo` is an elevated
- * chain, not a defect (review A3). Single source of truth — both `mapGrades`
- * and the report stats go through it (review B2).
+ * The weak-class vocabulary of the source's grade strings: any occurrence makes the hadith `dhaif`.
+ * `Mauquf`/`Muquf`/`Maqtu` are deliberately absent (attribution-scope, not defects), as is `Marfoo` (an
+ * elevated chain). `mapGrades` and the report stats read this one list.
  */
 const WEAK_GRADE_RE = /daif|dhaif|munkar|shadh|mansukh|mawdu|batil|mursal/i;
 
-/** Whether one source grade string asserts a weak class (dhaif-wins). */
 export function isWeakGrade(grade: string): boolean {
   return WEAK_GRADE_RE.test(grade);
 }
 
 /**
- * Consolidate the source's per-grader grades into the single filterable
- * `Grade` (CONTEXT.md vocabulary), conservative dhaif-wins (ADR-0026): any
- * grader asserting a weak class (Daif/Munkar/Shadh/Mawdu/…) makes the hadith
- * `dhaif` — under-grading is the safe failure mode because dhaif material is
- * always flagged at retrieval. Otherwise the strongest agreed positive
- * rating wins (hasan beats sahih: "Hasan Sahih" and "Sahih Lighairihi" are
- * weaker than plain Sahih). Empty grades → null, never fabricated;
- * `mutawatir` is never self-asserted from this source.
+ * Consolidate the source's per-grader grades into the single filterable `Grade`, conservative
+ * dhaif-wins (ADR-0026): any grader asserting a weak class makes the hadith `dhaif` — under-grading is
+ * the safe failure mode, since dhaif material is always flagged at retrieval. Otherwise the weakest
+ * agreed positive rating wins ("Hasan Sahih" is weaker than plain Sahih); empty grades → null, never
+ * fabricated, and `mutawatir` is never self-asserted here.
  */
 export function mapGrades(grades: readonly { name: string; grade: string }[]): Grade | null {
   if (grades.length === 0) return null;
@@ -136,9 +107,8 @@ export function formatHadithCitation(c: Omit<HadithCitation, "sourceType">): str
   return c.grade ? `${base} (${capitalize(c.grade)})` : base;
 }
 
-/** Parse an `HR. Collection no. N (Grade)?` label back into its citation.
- The collection name matches the registry's display names, including
- multi-word ones ("Abu Dawud", "Ibn Majah" — review A4). */
+/** Parse an `HR. Collection no. N (Grade)?` label back into its citation; the collection name
+ matches the registry's display names, multi-word ones included. */
 export function parseHadithCitation(label: string): HadithCitation | null {
   const match = /^HR\.\s*(.+?) no\. (\S+?)(?: \((\w+)\))?$/.exec(label.trim());
   if (!match) return null;

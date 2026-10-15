@@ -7,9 +7,9 @@ import { postgresChildMethods, postgresSimilaritySearch } from "./rag-store-post
 /**
  * Corpus methods of the Postgres RagStore adapter, split from
  * `rag-store-postgres.ts` to respect the agentic size limits. Part of the Postgres
- * adapter SQL surface (ADR-0027 decision 7): parents upsert by source_key
- * (AGENTS.md rule 13), children by (parent_id, ordinal) — text_raw is
- * immutable; pairs by pair_key (rule 11). The similarity search lives in
+ * adapter SQL surface (ADR-0027 decision 7): parents upsert by source_key,
+ * children by (parent_id, ordinal) — text_raw is immutable; pairs by pair_key.
+ * The similarity search lives in
  * `rag-store-postgres-similarity.ts`: it validates the embedding BEFORE the
  * query so a bad vector fails as a `constraint` StoreError at the seam, not
  * an opaque pgvector error.
@@ -31,7 +31,7 @@ export function postgresCorpusMethods(
   return {
     insertDocParent(input) {
       const id = input.id ?? crypto.randomUUID();
-      // Idempotent upsert by provenance key (AGENTS.md rule 13): re-running
+      // Idempotent upsert by provenance key: re-running
       // ingestion with the same source_key updates metadata/title in place
       // and returns the existing id, never duplicates.
       const run = () =>
@@ -67,7 +67,7 @@ export function postgresCorpusMethods(
 
     upsertAlignedPair(input: AlignedPairInsert) {
       const id = crypto.randomUUID();
-      // Idempotent upsert by provenance key (AGENTS.md rule 11): re-running
+      // Idempotent upsert by provenance key: re-running
       // ingestion with the same pair_key refreshes the tracks, citation, and
       // morphology in place and returns the existing id, never duplicates.
       // Column names are role-based (`text_primary`/`text_secondary`); the
@@ -101,7 +101,7 @@ export function postgresCorpusMethods(
     similaritySearch(track, embedding, opts) {
       return postgresSimilaritySearch(sql, track, embedding, opts);
     },
-    // The by-id read behind the structured citation payload (#11); the
+    // The by-id read behind the structured citation payload; the
     // implementation shares the similarity module's row machinery.
     ...postgresChildMethods(sql),
   };

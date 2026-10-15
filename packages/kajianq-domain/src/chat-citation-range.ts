@@ -1,8 +1,7 @@
 import { SURAH_AYAH_COUNTS } from "./surah-names";
 
 /**
- * The addresses a Quran **range** names (ADR-0049, #274; review A2 of the fix
- * round).
+ * The addresses a Quran **range** names (ADR-0049).
  *
  * The gate's rule is strict-whole — a citation that names a list of addresses
  * grounds only when **every** address it names is in the retrieved context —
@@ -10,9 +9,7 @@ import { SURAH_AYAH_COUNTS } from "./surah-names";
  * answers it, not from the numbers the writer happened to type. `QS. 2:255-260`
  * names 255 through 260: the interior is what makes a range a range, and
  * enumerating only its endpoints grounds a citation on two retrieved verses
- * while four it names were never retrieved. That endpoint-pair reading is the
- * hole this module closes; the ADR's own sentence ("every address it names") is
- * now what the code does.
+ * while four it names were never retrieved.
  *
  * Three properties are load-bearing:
  *
@@ -30,7 +27,7 @@ import { SURAH_AYAH_COUNTS } from "./surah-names";
  *   number — and the whole span from the smallest to the largest is named. So
  *   `QS. 2:255-260` names its four interior verses, and `QS. 3:1-2-3` names
  *   3:1, 3:2 **and** 3:3 instead of letting the trailing `-3` ride in un-named
- *   on a scanned `QS. 3:1-2` (the second half of review A2).
+ *   on a scanned `QS. 3:1-2`.
  * - **Fail-closed on anything it cannot enumerate.** An ayah the surah cannot
  *   have (`QS. 2:1-999`, `QS. 2:0-5`), a surah number outside the table, a
  *   number written in another script's digits (the digit posture refuses those
@@ -39,16 +36,16 @@ import { SURAH_AYAH_COUNTS } from "./surah-names";
  *   shorter reading of it.
  *
  *   That refusal is returned as **`null`** — the third state of the naming
- *   declaration, not a list at all (review T1 of the fix round). It used to be
- *   encoded as the label itself in a **one-element list**, and that encoding
- *   was indistinguishable from "this grammar declares a single address": both
- *   reached the comparison site as `[label]`, so the per-address rule skipped
- *   the unenumerable span and the shortened-label rule grounded it on its head.
- *   The spaced form was therefore weaker than its glued twin at exactly the
- *   address ADR-0049 names as the refusal case — `QS. 2:255 - 999` grounded on
- *   `QS. 2:255` while `QS. 2:255-999` refused. `null` carries the one meaning a
- *   list cannot ("declared, and unverifiable"), and `addressesNamedBy` passes it
- *   through so the refusal is decided where the declaration is read.
+ *   declaration, not a list at all. A **one-element list** means "this grammar
+ *   declares a single address", so an unverifiable span encoded that way is
+ *   indistinguishable from it at the comparison site: the per-address rule
+ *   would skip the span and the shortened-label rule would ground it on its
+ *   head, so a spaced `QS. 2:255 - 999` would ground on `QS. 2:255` while its
+ *   glued twin refuses — the spaced form weaker than the glued one at exactly
+ *   the address ADR-0049 names as the refusal case. `null` carries the one
+ *   meaning a list cannot ("declared, and unverifiable"), and
+ *   `addressesNamedBy` passes it through so the refusal is decided where the
+ *   declaration is read.
  *
  *   Returning the written numbers instead would make the refusal depend on the
  *   impossible member being absent from a corpus that is supposed to hold only
@@ -89,14 +86,11 @@ function boundFor(surahToken: string): number | null {
  * ascending ayah order, `[head]` for a single address (no chain), or **`null`**
  * when the form declares a list it cannot enumerate.
  *
- * `null` is the fail-closed signal documented above and is deliberately not a
- * list: a one-element list means "this form names exactly this one address"
- * (the ordinary single address, and a grammar that declares no list at all),
- * so encoding an unverifiable range that way made the two meanings
- * indistinguishable at the comparison site and let a spaced, unenumerable range
- * ground on its head (review T1 of the fix round). That is also why the
- * function no longer takes the written label: the refusal is a state of the
- * declaration, not a one-element reading of the text.
+ * `null` is the fail-closed signal documented above, deliberately not a list: a
+ * one-element list means "this form names exactly this one address" (the
+ * ordinary single address, and a grammar that declares no list at all), so the
+ * refusal is a state of the declaration rather than a one-element reading of the
+ * text — which is why the function does not take the written label.
  *
  * `head` and `chain` are the grammar's two captures — the `surah:ayah` head and
  * the raw dash-joined tail (`-2`, `-2-3`, `—256`), empty when the citation is a

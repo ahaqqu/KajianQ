@@ -5,13 +5,13 @@ import { MonoLabel } from "../ui";
 import type { ChatCitation } from "@app/contracts";
 
 /**
- * The passage sheet a citation chip opens (#11), restyled in the reference
- * language: serif mono-labeled sections, the Arabic original in Amiri (RTL),
- * the translation as a gold-bordered blockquote with the ADR-0006
- * machine-translation label, the grade badge, and the mono source line —
- * every field server-derived from the trace, none inferred. The optional
- * `children` slot is the sheet's footer; MessageCard fills it with the
- * trace-anchored flags (#13) anchored to this sheet's label.
+ * The passage sheet a citation chip opens, in the reference language: serif
+ * mono-labeled sections, the Arabic original in Amiri (RTL), the translation
+ * as a gold-bordered blockquote with the ADR-0006 machine-translation label,
+ * the grade badge, and the mono source line — every field server-derived from
+ * the trace, none inferred. The optional `children` slot is the sheet's
+ * footer; MessageCard fills it with the trace-anchored flags anchored to this
+ * sheet's label.
  */
 export function CitationSheet({
   citation,

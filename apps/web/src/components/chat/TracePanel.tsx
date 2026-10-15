@@ -5,7 +5,7 @@ import { MonoLabel } from "../ui";
 import { FlagButton } from "./FeedbackControls";
 
 /**
- * The user-facing Trace panel (#12, ADR-0007): every answer expands to show
+ * The user-facing Trace panel (ADR-0007): every answer expands to show
  * how it was built, in two layers. The default view lists the sources
  * consulted in plain language — readable by a non-technical user. One tap
  * deeper, the technical layer shows the router intent, sub-queries, the
@@ -13,9 +13,9 @@ import { FlagButton } from "./FeedbackControls";
  * server-derived from the persisted answer trace and rendered as-is; the
  * client never reconstructs pipeline machinery. ADR-0007's warning stands:
  * this panel is the feedback instrument, not UI clutter — do not clean it up.
- * The instrument part is literal since #13: each source row carries a flag
- * affordance anchoring an "irrelevant chunk" report to that chunk's id — the
- * server re-validates the anchor against the persisted trace before storing.
+ * Each source row carries a flag affordance anchoring an "irrelevant chunk"
+ * report to that chunk's id — the server re-validates the anchor against the
+ * persisted trace before storing.
  *
  * Rendered only when the message carries a trace frame; a message without
  * one (user turns, degraded traces) shows no affordance, by data.
@@ -105,10 +105,9 @@ export function TracePanel({
                   {/* The route's SELECTION, never a claim about what ran: the run
                       can give the source dimension up (the "given up" row below,
                       projected from the retriever's own events), and then every
-                      source was searched. Calling this row "sources searched"
-                      made it assert a restriction the search had already
-                      dropped (N2); the label says "selected" for that reason,
-                      and the deviation is the given-up row's job. */}
+                      source was searched. The label says "selected" so the row
+                      never asserts a restriction the search has already dropped;
+                      the deviation is the given-up row's job. */}
                   <MonoLabel>{t(locale, "traceRoutingLabel")}</MonoLabel>
                   <p
                     data-testid="trace-routing-sources"
@@ -134,9 +133,8 @@ export function TracePanel({
                     </p>
                   )}
                   {/* The filters the run GAVE UP — a hint that matched nothing is
-                      probed away and retried, and the panel says which one, so a
-                      `principleTags` filter the missing Principle Index (#16)
-                      cannot serve is not displayed as one that ran. */}
+                      probed away and retried, and the panel names which one, so a
+                      relaxed filter is never displayed as one that ran. */}
                   {(technical.routing.relaxed?.length ?? 0) > 0 && (
                     <p
                       data-testid="trace-routing-relaxed"
@@ -157,8 +155,8 @@ export function TracePanel({
                   <MonoLabel>{t(locale, "traceSubqueriesLabel")}</MonoLabel>
                   <ul className="mt-1 list-disc space-y-0.5 pl-5">
                     {technical.subQueries.map((text, index) => (
-                      // Index-stabilized key (thermo-review B4): duplicate
-                      // sub-query texts must not collide as React keys.
+                      // Index-stabilized key: duplicate sub-query texts must not
+                      // collide as React keys.
                       <li key={`${text}-${index}`} className="text-sm text-card-foreground">
                         {text}
                       </li>

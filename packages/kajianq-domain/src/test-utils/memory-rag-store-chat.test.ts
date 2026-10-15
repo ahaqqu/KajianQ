@@ -4,14 +4,13 @@ import { StoreError } from "@app/infra";
 import { memoryChatMethods } from "./memory-rag-store-chat";
 
 /**
- * The memory stand-in's uuid gate (#312). `getChatSessionUser` models the
+ * The memory stand-in's uuid gate. `getChatSessionUser` models the
  * `chat_sessions.id` column's cast: an id the column cannot hold fails with
  * `StoreError` kind "constraint", exactly as the real adapter's `${id}::uuid`
  * cast raises (SQLSTATE 22P02). These rows pin the ONE form where the stand-in
  * is deliberately tighter than the column — the extra hyphen PostgreSQL accepts
- * after any group of four digits (QA #289 probe 8: `7b1a-712f-3990-46ce-9964-4eb344a867c5`
- * is PG-legal and names an existing row) while `uuidShaped`'s leading fixed
- * 8-hex group admits no inner hyphen.
+ * after any group of four digits, while `uuidShaped`'s leading fixed 8-hex
+ * group admits no inner hyphen.
  *
  * That divergence is inert today only because `ChatSessionIdSchema` refuses the
  * spelling before any store call (pinned in `packages/contracts/src/chat.test.ts`).
@@ -20,7 +19,7 @@ import { memoryChatMethods } from "./memory-rag-store-chat";
  * than silent, and so the neighbouring canonical spelling stays a live control.
  * The extra hyphen is the INERT divergence; the same `Map` has a REACHABLE one —
  * it keys on the exact spelling it was given, so an uppercase lookup misses a
- * lowercase-seeded row where the real `uuid` column answers it — tracked in #315.
+ * lowercase-seeded row where the real `uuid` column answers it.
  *
  * Mutation this row pins: in `memory-rag-store-chat.ts`, relax `uuidShaped` to
  * the column's own rule — e.g.

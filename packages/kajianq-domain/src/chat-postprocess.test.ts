@@ -13,10 +13,9 @@ import type { KajianQFilters } from "./filters";
 import { routedQuery } from "./test-utils/routed-query";
 
 /**
- * The deterministic product rules (spec §2.2, ticket #10 ACs): dhaif warning,
- * machine-translation label, and the ulama disclaimer are appended when the
- * model omitted them, never duplicated when it did not, and never applied to
- * a refusal. These are the rules the answer cannot be trusted to remember.
+ * The deterministic product rules: the dhaif warning, the machine-translation
+ * label, and the ulama disclaimer are appended when the model omitted them, never
+ * duplicated when it did not, and never applied to a refusal.
  */
 
 const context = (
@@ -70,14 +69,6 @@ describe("applyProductRules", () => {
   });
 
   it("appends the canonical warning over the model's own informal weakness note (#278)", () => {
-    // #278 reversed this expectation. It used to assert that a bare
-    // "Hadits ini dhaif" suppressed the canonical line — but the model's
-    // paraphrase is not the deterministic warning spec §2.2 makes an "Always"
-    // control, and the live path proved the cost: the answers that mention
-    // `dhaif` are exactly the ones whose context carries a dhaif chunk (the
-    // evidence label itself reads "(Dhaif)"), so the token check switched the
-    // control off on its whole target set. The user saw a dhaif citation with
-    // no warning and read it as sound proof.
     const { applied, draft } = applyProductRules(
       { text: "Hadits ini dhaif, jadi tidak dapat dijadikan dalil utama." },
       context([chunk({ grade: "dhaif" })]),
@@ -88,10 +79,7 @@ describe("applyProductRules", () => {
   });
 
   it("still appends the warning when the answer merely contains the substring 'lemah'", () => {
-    // Thermo-review A6: the old `/dhaif|lemah/i` suppressed the warning on any
-    // occurrence — including an unrelated sentence — so a genuinely weak
-    // hadith shipped with the grade hidden. Suppression must require the
-    // product's warning copy, not a shared substring.
+    // Suppression requires the product's warning copy, not a shared substring.
     const { applied, draft } = applyProductRules(
       { text: "Angin malam ini terasa lemah, tetapi jawabannya tetap ini." },
       context([chunk({ sourceType: "hadith", grade: "dhaif" })]),
@@ -102,7 +90,6 @@ describe("applyProductRules", () => {
   });
 
   it("still appends the warning when the answer contains a word embedding 'lemah'", () => {
-    // "memalemahkan" contains the substring but is not a weakness claim.
     const { applied } = applyProductRules(
       { text: "Kondisi itu dapat memalemahkan semangat." },
       context([chunk({ sourceType: "hadith", grade: "dhaif" })]),
@@ -112,11 +99,8 @@ describe("applyProductRules", () => {
   });
 
   it("appends the canonical warning over an informal 'lemah' weakness claim", () => {
-    // Round-3 B4: suppression anchors to the product-owned warning copy, not
-    // to a ±40-char proximity window around the ordinary word "lemah" — the
-    // window was brittle in both directions. An informal claim gains the
-    // canonical line: the deterministic rule doing its job, not a duplicate
-    // of the model's phrasing.
+    // Suppression anchors to the product-owned warning copy, not to a proximity
+    // window around the ordinary word "lemah".
     const { applied, draft } = applyProductRules(
       { text: "Riwayat ini lemah, sehingga tidak bisa dijadikan dalil." },
       context([chunk({ sourceType: "hadith", grade: "dhaif" })]),
@@ -127,10 +111,8 @@ describe("applyProductRules", () => {
   });
 
   it("appends the canonical warning over a restatement of the copy's grade phrase (#278)", () => {
-    // The copy's grade phrases ("berderajat lemah" / "graded weak") are part of
-    // the COPY, not independent triggers: a sentence that uses the phrase
-    // without the warning statement is still a paraphrase, so it gains the
-    // canonical line rather than suppressing it.
+    // The copy's grade phrases are part of the COPY, not independent triggers: a
+    // sentence using them without the warning statement still gains the line.
     const { applied, draft } = applyProductRules(
       { text: "Hadits ini berderajat lemah, sehingga tidak dapat dijadikan dalil utama." },
       context([chunk({ sourceType: "hadith", grade: "dhaif" })]),
@@ -141,9 +123,7 @@ describe("applyProductRules", () => {
   });
 
   it("does not duplicate the canonical warning the answer already carries", () => {
-    // The anti-duplication property that remains: the rule's own copy present
-    // in the text is not appended a second time (a double warning is the
-    // visible defect the module exists to avoid).
+    // The rule's own copy present in the text is not appended a second time.
     const { applied, draft } = applyProductRules(
       { text: `Jawaban.\n\n${dhaifWarning("id")}` },
       context([chunk({ sourceType: "hadith", grade: "dhaif" })]),
@@ -165,13 +145,6 @@ describe("applyProductRules", () => {
   });
 
   it("appends the warning for the live failing trace's shape (#278)", () => {
-    // The shape of the readable failing case (staging trace
-    // dfd9d801-c3bc-42b9-9e09-39a5df785c94, message
-    // 92853ab6-5626-40cc-a098-a7d7463832b0, 2026-09-27): 28 assembled chunks,
-    // 3 of them dhaif-graded, and a draft that reproduces the evidence labels
-    // verbatim — including the "(Dhaif)" the assembler renders from the store
-    // grade — plus the model's own note. The delivered answer carried no
-    // canonical line.
     const { applied, draft } = applyProductRules(
       {
         text: [
@@ -273,8 +246,7 @@ describe("hasWeakWarning — the one predicate the frame and the postprocess sha
   });
 
   it("is false for every grade mention that is not the copy (#278)", () => {
-    // These are the shapes the live path actually produced. Every one of them
-    // is a reason an answer CONTAINS the token without carrying the warning.
+    // Every shape contains the grade token without carrying the warning copy.
     for (const text of [
       "[HR. Tirmidhi no. 2878 (Dhaif)]",
       "Catatan: hadits ini berlabel Dhaif.",
@@ -288,10 +260,8 @@ describe("hasWeakWarning — the one predicate the frame and the postprocess sha
   });
 
   it("never matches a sound hadith's context (the rule cannot warn on sahih)", () => {
-    // The other half of the invariant: the predicate only gates whether the
-    // copy is duplicated. Warning on a sound answer still requires
-    // `hasWeakGradeChunk` — pinned here so a future edit to either side cannot
-    // make "sound" emit the warning.
+    // The other half of the invariant: warning on a sound answer still requires
+    // `hasWeakGradeChunk`, so an edit to either side cannot make "sound" warn.
     const { applied } = applyProductRules(
       { text: "Jawaban dengan [HR. Bukhari no. 5010 (Sahih)]." },
       context([chunk({ sourceType: "hadith", grade: "sahih" })]),
@@ -329,8 +299,7 @@ describe("chatSystemPrompt — the grounding rules the model receives", () => {
     expect(chatSystemPrompt("en")).toMatch(
       /Never name a citation that is not printed in the context/,
     );
-    // The memory-citation case that refused gs-v0-015: a well-known verse the
-    // model knows but the retrieval did not return is still a fabricated cite.
+    // A verse the model knows but the retrieval did not return is a fabricated cite.
     expect(chatSystemPrompt("id")).toMatch(/hafal dari luar konteks/);
     expect(chatSystemPrompt("en")).toMatch(/know from memory/);
   });

@@ -1,9 +1,8 @@
 import type { GoldenQuestion, GoldenSet } from "@app/contracts";
 
 /**
- * Smoke-subset selection (ticket #10 AC: "Golden Set smoke subset passes
- * against staging"). The full Golden Set costs real money and minutes; a PR
- * needs a small, *representative* slice that can run on the free tier.
+ * Smoke-subset selection. The full Golden Set costs real money and minutes; a
+ * PR needs a small, *representative* slice that can run on the free tier.
  *
  * Selection is deterministic and stratified, not "the first N": a subset that
  * happened to contain only easy factual questions would pass while the
@@ -73,7 +72,7 @@ export function selectSmokeSubset(set: GoldenSet, opts: SmokeSelectOptions = {})
     // the caller and the fixture disagree about the vocabulary — a rename that
     // reached one side only. Skipping it would drop the adversarial case from
     // the subset while the run still printed a clean plan, and `eval:smoke` is
-    // the gate that runs on every staging deploy (#359): a gate that silently
+    // the gate that runs on every staging deploy: a gate that silently
     // stops testing what it exists to test is worse than a red one.
     if (trap === undefined) {
       throw new SmokeSubsetError(

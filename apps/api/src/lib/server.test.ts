@@ -3,14 +3,10 @@ import { createLogger, type ProviderConfig } from "@app/infra";
 import { CHAT_SERVING_ROLES, createProvidersFromEnv } from "./chat-wiring";
 import { bindingsFromEnv, reportProviderPosture, serveApi } from "./server";
 
-/**
- * The Bun serving entry's env→bindings mapping (#181, ADR-0044). This is the
- * composition root, so it is the one place a process environment is read; the
- * assertions pin the two behaviors that matter for a self-hosted host:
- * present keys are copied, and an ABSENT key stays absent (the "feature
- * disabled" posture — a role with no keyed candidate fails with a clear error,
- * rather than being handed an empty string that looks configured).
- */
+/** The serving entry's env→bindings mapping: present keys are copied, an ABSENT key
+ * stays absent — the "feature disabled" posture, where a role with no keyed candidate
+ * fails with a clear error rather than being handed an empty string that looks
+ * configured. */
 
 describe("bindingsFromEnv", () => {
   it("copies every present key onto the bindings", () => {
@@ -48,17 +44,10 @@ describe("bindingsFromEnv", () => {
   });
 
   it("passes through every key the chat path's provider roles resolve (#168)", async () => {
-    // The silent-failure guard this test exists for: a key that is bound in
-    // the serving environment but dropped by the composition root leaves its
-    // role unwired while every other surface (models.json, the runbook, the
-    // deploy env) says it is configured. The reviewer pre-gate is the sharpest
-    // case — it is fail-open by design, so a dropped key degrades to "no
-    // pre-gate" with no error anywhere. What is automatic here: the env names
-    // are read from the config data (ADR-0022), so a vendor's key name is
-    // never hard-coded in the test. What is not: which roles serve the chat
-    // path — that list is the wiring's own `CHAT_SERVING_ROLES`, so a new
-    // serving role is declared once, where it is wired (bench-only roles are
-    // deliberately absent from it).
+    // The silent-failure guard: a key bound in the serving environment but dropped
+    // here leaves its role unwired while every other surface says it is configured
+    // (the fail-open reviewer pre-gate silently degrades to "no pre-gate"). Env names
+    // come from the config data and roles from the wiring's own `CHAT_SERVING_ROLES`.
     const { loadProviderConfig } = await import("@app/infra");
     const config = loadProviderConfig();
     const envNames = new Set<string>();
@@ -78,17 +67,11 @@ describe("bindingsFromEnv", () => {
   });
 });
 
-/**
- * The startup provider-posture report (#226). The field existed and was
- * documented as "ops visibility" since #168, but nothing consumed it — so an
- * unbound `JEV_API_KEY` left the reviewer pre-gate silently dead in serving.
- * These tests pin the two serving postures the acceptance criteria name and
- * the personal-data ineligible case, and prove the one hard invariant: the
- * report names env vars, never their values.
- */
+/** The startup provider-posture report: which env vars the chat path found absent and
+ * which decision candidates the personal-data posture dropped, pinning both serving
+ * postures, the ineligible case, and that the report names env vars, never values. */
 describe("reportProviderPosture — the boot ops report (#226)", () => {
-  // A value no log line may ever contain. Deliberately distinctive so a
-  // substring match cannot pass by accident.
+  // A value no log line may ever contain; distinctive so a match cannot pass by chance.
   const SECRET = "sk-live-DO-NOT-LEAK-226";
 
   /** Run the boot report through the real logger and capture its JSON lines. */
@@ -116,9 +99,8 @@ describe("reportProviderPosture — the boot ops report (#226)", () => {
 
   it("names an absent decision key and states the pre-gate is not wired", async () => {
     const key = await decisionKeyEnv();
-    // Every other key is bound (and secret); only the optional decision key
-    // is absent. The report must say which env var to bind AND that the
-    // pre-gate is therefore not wired — the exact signal staging never got.
+    // Every other key is bound (and secret); only the optional decision key is absent.
+    // The report must name the var to bind and state the pre-gate is not wired.
     const { lines, fields } = emit(
       createProvidersFromEnv({ GEMINI_PAID_API_KEY: SECRET, DEEPSEEK_API_KEY: SECRET }),
     );
@@ -143,12 +125,9 @@ describe("reportProviderPosture — the boot ops report (#226)", () => {
   });
 
   it("names a keyed candidate the personal-data posture dropped", () => {
-    // The shipped config has no ineligible decision candidate (the serving
-    // vendor allows personal data), so the drop is driven through a synthetic
-    // config — the same `createProvidersFromEnv` path production uses, not a
-    // hand-built ChatProviders. A free-tier decision vendor is keyed but must
-    // never carry the pre-gate's claim spans (ADR-0043), so it is reported in
-    // `ineligibleKeys`, never as a missing key.
+    // No ineligible decision candidate ships, so the drop is driven through a synthetic
+    // config on the real `createProvidersFromEnv` path. A keyed free-tier decision vendor
+    // must never carry the pre-gate's claim spans: report it in `ineligibleKeys`.
     const synthetic: ProviderConfig = {
       vendors: {
         chatpaid: {
@@ -204,8 +183,7 @@ describe("reportProviderPosture — the boot ops report (#226)", () => {
 
   it("prints env names only — never a key's value, on any posture", async () => {
     const key = await decisionKeyEnv();
-    // Fully bound: every keyed value is a secret and both surfaces (missing
-    // and ineligible) are empty — the report must still not echo a value.
+    // Fully bound: both surfaces are empty, and the report must still not echo a value.
     const { lines, fields } = emit(
       createProvidersFromEnv({
         GEMINI_API_KEY: SECRET,
@@ -215,9 +193,8 @@ describe("reportProviderPosture — the boot ops report (#226)", () => {
         [key]: SECRET,
       }),
     );
-    // The comment's premise, made load-bearing: if the checked-in config ever
-    // gained an unkeyed chat-role candidate, this test would otherwise keep
-    // passing while no longer testing the fully-keyed posture it claims.
+    // Load-bearing: an unkeyed chat-role candidate in the checked-in config must fail
+    // this test rather than silently weaken the posture it claims.
     expect(fields["missingKeys"]).toBe("none");
     expect(fields["ineligibleKeys"]).toBe("none");
     expect(lines).not.toContain(SECRET);
@@ -225,11 +202,8 @@ describe("reportProviderPosture — the boot ops report (#226)", () => {
   });
 
   it("is emitted exactly once by serveApi at boot, before the listening line", async () => {
-    // The composition-root call site is what the acceptance criterion names
-    // ("a serving boot ... emits"). This drives the real `serveApi` with a
-    // stubbed `Bun.serve` (the test runtime is Node) and captures the boot
-    // logger's stdout, so deleting the call is a red test, not a silent
-    // regression of the exact class #226 exists to close.
+    // Drives the real `serveApi` with a stubbed `Bun.serve` (the test runtime is Node)
+    // and captures the boot logger's stdout, so deleting the call is a red test.
     const key = await decisionKeyEnv();
     const logged: string[] = [];
     const spy = vi.spyOn(console, "log").mockImplementation((line: unknown) => {

@@ -9,12 +9,9 @@ import { GRADES, MADZHABS, TEXT_LAYERS } from "./filters";
 import { INTENTS, PRINCIPLE_TAGS, SUBJECT_AREAS, SUB_QUERY_ROLES } from "./taxonomy";
 
 /**
- * The router stage (#14) — Smart Router stages 1–2 at the seam. It had no test
- * of its own before this ticket, which is how the assembled context ended up
- * carrying the question in the field named `intent` for as long as it did.
- *
- * Every case here is about what the stage *does* with a reply: what it routes
- * to, what it records, and what it refuses to pretend.
+ * The router stage — Smart Router stages 1–2 at the seam. Every case here is about
+ * what the stage *does* with a reply: what it routes to, what it records, and what
+ * it refuses to pretend.
  */
 
 const COST: CostRecord = {
@@ -84,10 +81,9 @@ describe("createKajianQRouter", () => {
     expect(routed.intent).toBe("analogy");
     expect(routed.confidence).toBe(0.9);
     expect(routed.reasoning).toBe("the question asks why the rule is lenient");
-    // Stage 3's decision, not the reply's hints: a fikih question is answered
-    // from Quran, Sunnah and Kitab, and `needsPrinciple` puts the Principle
-    // Index in play — and the reply's own madzhab/Principle hints ride along as
-    // the sets the store binds.
+    // Stage 3's decision, not the reply's hints: a fikih question is answered from
+    // Quran, Sunnah and Kitab, `needsPrinciple` puts the Principle Index in play, and
+    // the reply's own madzhab/Principle hints ride along as the sets the store binds.
     expect(routed.filters).toEqual({
       madzhab: ["syafii"],
       sourceType: ["quran", "hadith", "kitab", "principle"],
@@ -100,8 +96,6 @@ describe("createKajianQRouter", () => {
       madzhab: ["syafii"],
       sourceType: ["quran", "hadith", "kitab", "principle"],
     });
-    // The model's two sub-queries, plus the dalil rule the fikih category
-    // fired and the principle rule the tag fired — the deterministic half.
     expect(routed.subQueries.map((s) => [s.role, s.origin])).toEqual([
       ["factual", "model"],
       ["sanad", "model"],
@@ -111,11 +105,6 @@ describe("createKajianQRouter", () => {
   });
 
   it("searches every source the route's own parts imply — the gs-v0-015 shape", async () => {
-    // The base-sha failure, as a router reply shapes it: the category reads
-    // `tafsir` and the reply's own third part asks for the hadith on reciting
-    // Al-Fatihah, labelled `dalil` — the role the staging traces carry. The old
-    // rule searched Quran + tafsir only, every hadith row was excluded by
-    // construction, and the run over-refused (issue #435).
     const h = harness(
       JSON.stringify({
         intent: "comparison",
@@ -147,13 +136,11 @@ describe("createKajianQRouter", () => {
   });
 
   it("puts a role's source in the filter where the category row names no such source", async () => {
-    // The role union made load-bearing at this stage (review A2 of the #438 fix
-    // round): the `gs-v0-015` fixture above is carried by the widened `tafsir`
-    // row alone, so it cannot tell the union from the row. Here the category row
-    // (`quran` → `["quran"]`) contains no `hadith`, so the reply's own `dalil`
-    // part is the only thing that can select it: deleting the union loop reddens
-    // this case and no row widening can rescue it. The invariant is route-wide
-    // coverage — every part the route decomposed is searchable.
+    // The role union made load-bearing: the category row (`quran` → `["quran"]`)
+    // contains no `hadith`, so the reply's own `dalil` part is the only thing that can
+    // select it — deleting the union loop reddens this case, and no row widening can
+    // rescue it. The invariant is route-wide coverage: every part the route decomposed
+    // is searchable.
     const h = harness(
       JSON.stringify({
         intent: "ruling",
@@ -167,14 +154,12 @@ describe("createKajianQRouter", () => {
       subQueries: readonly { text: string; role?: string; origin?: string }[];
     };
 
-    // The part survived decomposition carrying its role — the union reads the
-    // set retrieval actually fans out over, not the reply's raw list.
+    // The union reads the set retrieval fans out over, not the reply's raw list.
     expect(routed.subQueries.map((s) => [s.role, s.origin])).toEqual([
       ["dalil", "model"],
       ["factual", "rule"],
     ]);
     expect(routed.filters.sourceType).toEqual(["quran", "hadith"]);
-    // And the record the trace publishes is the record retrieval is handed.
     expect(h.events.at(-1)).toMatchObject({
       kind: "source_routing",
       detail: {
@@ -247,13 +232,10 @@ describe("createKajianQRouter", () => {
   });
 
   it("falls back to no sub-query at all when the question itself carries no content", async () => {
-    // #462: the fallback origin is the third way a caller's text becomes a
-    // sub-query, and the invariant is stated without an origin — a text with no
-    // letter and no digit never becomes one. An unusable reply plus a zero-width
-    // or control-only question used to route the verbatim question (`origin:
-    // "fallback"`) and spend an embed and a pair of searches on it. The intent
-    // and the fallback flag stay: the route still says what it understood
-    // (nothing), it simply has nothing to search.
+    // The fallback origin is the third way a caller's text becomes a sub-query, and
+    // the invariant is stated without an origin — a text with no letter and no digit
+    // never becomes one. The intent and the fallback flag stay: the route still says
+    // what it understood (nothing), it simply has nothing to search.
     for (const question of ["\u200b\u200d\u200b", "\u0001\u0007"]) {
       const h = harness("I cannot answer that.");
       const routed = (await h.route({ text: question })) as {
@@ -269,13 +251,10 @@ describe("createKajianQRouter", () => {
   });
 
   it("trims the fallback's sub-query text like every other origin", async () => {
-    // A1 of the #462 review: the fallback applied half of the admission — the
-    // content test — and handed the question on untrimmed, so `"  riba  "`
-    // reached the embed and the persisted `subquery` event with its padding
-    // while the decompose arm trimmed the same text to `"riba"`. Both arms now
-    // take the whole admission from one owner, so `SPECS.md` §3.3's "padded text
-    // is kept trimmed" covers this shape too. Red at `f6fdf2c` (the fallback
-    // passed `text: question` through), green here.
+    // The fallback takes the whole admission, not half of it: the content test and the
+    // trim come from one owner, so a padded question cannot reach the embed and the
+    // persisted `subquery` event untrimmed while the decompose arm trims the same text
+    // (`SPECS.md` §3.3, "padded text is kept trimmed").
     for (const question of ["  riba  ", "\triba\n"]) {
       const h = harness("I cannot answer that.");
       const routed = (await h.route({ text: question })) as {
@@ -292,17 +271,17 @@ describe("createKajianQRouter", () => {
       filters: { madzhab: ["hambali"] },
     })) as { filters: KajianQFilters; attributes: Record<string, unknown> };
     expect(routed.filters).toEqual({ madzhab: ["hambali"] });
-    // The fallback applied those filters to retrieval, so the payload that says
-    // what was understood carries them too — `{fallback: true}` alone would
-    // leave a trace reader unable to tell what the route ran with (review A4).
+    // The fallback applied those filters to retrieval, so the payload that says what
+    // was understood carries them too — `{fallback: true}` alone would leave a trace
+    // reader unable to tell what the route ran with.
     expect(routed.attributes).toEqual({ fallback: true, madzhab: ["hambali"] });
   });
 
   it("stamps the factual rule onto a model echo of the question with no role", async () => {
-    // Reachable from the wire: `SubQueryReplySchema` accepts a bare string, so a
-    // cheap reply can hand over exactly the question with no role — the class
-    // R2-A1 measured. The stage must still label the rule it fired, without
-    // duplicating the retrieval text (see chat-router-decompose.test.ts).
+    // Reachable from the wire: `SubQueryReplySchema` accepts a bare string, so a cheap
+    // reply can hand over exactly the question with no role. The stage must still label
+    // the rule it fired, without duplicating the retrieval text (see
+    // chat-router-decompose.test.ts).
     const h = harness(JSON.stringify({ intent: "factual", subQueries: ["Apa hukum riba?"] }));
     const routed = (await h.route({ text: "Apa hukum riba?" })) as {
       subQueries: readonly { text: string; role?: string; origin?: string }[];
@@ -313,20 +292,17 @@ describe("createKajianQRouter", () => {
   });
 
   it("offers exactly the declared vocabularies in the prompt", () => {
-    // The prompt *composes* its vocabulary lists from their owners (taxonomy,
-    // filters) rather than re-spelling them, so a value cannot reach the reader
-    // unrequested (review A1). This asserts the forward direction over all
-    // seven of those lists — the guard the prompt's own comment used to promise
-    // for three of them (review B1).
+    // The prompt *composes* its vocabulary lists from their owners (taxonomy, filters)
+    // rather than re-spelling them, so a value cannot reach the reader unrequested.
+    // This asserts the forward direction over every one of those lists.
     //
-    // The reverse direction — a vocabulary value in the prompt that no list
-    // declares — is not asserted here, and this loop cannot assert it: the
-    // prompt's one hand-written line (the `subQueries` rules) names `factual`,
-    // `principle`, `dalil`, `sanad` and the two subject areas it keys on as
-    // prose. What ties those names to their lists is the compiler, not this
-    // test: `chat-router-output.ts` names each through the owner's own type, so
-    // renaming one there fails the build (review R1-B1). A vocabulary literal
-    // hand-written anywhere else would be this test's blind spot.
+    // The reverse direction — a vocabulary value in the prompt that no list declares —
+    // is not asserted here, and this loop cannot assert it: the prompt's one
+    // hand-written line (the `subQueries` rules) names `factual`, `principle`, `dalil`,
+    // `sanad` and the two subject areas it keys on as prose. What ties those names to
+    // their lists is the compiler, not this test: `chat-router-output.ts` names each
+    // through the owner's own type, so renaming one there fails the build. A vocabulary
+    // literal hand-written anywhere else would be this test's blind spot.
     for (const value of [
       ...INTENTS,
       ...SUBJECT_AREAS,

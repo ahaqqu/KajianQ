@@ -3,8 +3,8 @@ import type { RagStore } from "@app/infra";
 import type { Provider } from "@app/rag-core";
 
 /**
- * Type contracts for the ingestion pipeline (#6). Kept in a dedicated module
- * so `pipeline.ts` holds the orchestration and this file stays the seam map
+ * Type contracts for the ingestion pipeline. Kept in a dedicated module so
+ * `pipeline.ts` holds the orchestration and this file stays the seam map
  * implementers program against.
  */
 
@@ -46,11 +46,11 @@ export type SourceInput = {
 /**
  * The domain-supplied summarizer for parent documents: parents carry LLM
  * summaries and parent embeddings are computed *from the summary*, not the
- * full text (issue #6 AC). Receives an opaque domain title + child texts; the
- * engine treats the prompt as the domain's business. Returns the call's
- * CostRecord alongside the summary so the pipeline's collector records it —
- * the report's cost is the sum of every recorded call, and an LLM call whose
- * cost is dropped is a traceability defect (review A6).
+ * full text. Receives an opaque domain title + child texts; the engine treats
+ * the prompt as the domain's business. Returns the call's CostRecord alongside
+ * the summary so the pipeline's collector records it — the report's cost is
+ * the sum of every recorded call, and an LLM call whose cost is dropped is a
+ * traceability defect.
  */
 export type ParentSummarizer = (input: {
   sourceKey: string;
@@ -85,13 +85,12 @@ export type IngestionDeps = {
   embedBatchSize?: number;
   /**
    * Max embedding batches in flight (ADR-0027: bounded, rate-limit-aware
-   * concurrency via `Effect.forEach`). Defaults to 1 — fully serial, the
-   * historical behavior; raise to parallelize batches against vendors whose
-   * rate limits allow it. Rate limiting itself is the Provider seam's job
-   * (per-kind backoff schedules in the fallback chain). Must be a positive
-   * integer; `<= 1` runs serial. `runIngestion` validates this at the
-   * boundary and fails loudly on non-positive or non-integer values instead
-   * of silently degrading to serial.
+   * concurrency via `Effect.forEach`). Defaults to 1 — fully serial; raise to
+   * parallelize batches against vendors whose rate limits allow it. Rate
+   * limiting itself is the Provider seam's job (per-kind backoff schedules in
+   * the fallback chain). Must be a positive integer; `<= 1` runs serial.
+   * `runIngestion` validates this at the boundary and fails loudly on
+   * non-positive or non-integer values instead of silently degrading to serial.
    */
   embedConcurrency?: number;
   /** Batch size for child/pair store writes. */

@@ -1,4 +1,4 @@
-// Shared fixtures for the docs:links gate suite (#368, #391, #392).
+// Shared fixtures for the docs:links gate suite.
 //
 // The unit cases build a synthetic tree and never touch the filesystem; the
 // real-tree and CLI cases live in `check-markdown-links-tree.test.mjs`, which
@@ -13,10 +13,8 @@ export { SCRIPT };
 export const FAKE_ROOT = "/repo";
 
 /**
- * Every unit case builds a synthetic tree and never touches the filesystem —
- * the classifier, the resolver and the adjudicator are the contract, and the
- * real-tree and CLI cases in `check-markdown-links-tree.test.mjs` prove the
- * wiring end to end.
+ * The unit cases' contract surface: the classifier, the resolver and the
+ * adjudicator.
  */
 export function ctxOf({ paths = [], adr = [], skills = [], root = FAKE_ROOT } = {}) {
   return { root, tree: makeTree(paths), adrNames: adr, skillDirs: new Set(skills) };

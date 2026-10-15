@@ -16,16 +16,16 @@ import {
 import { Card, MonoLabel } from "./ui";
 
 /**
- * The `/about` privacy notice (#179, GDPR-C): the Art. 13(1)(e) disclosure —
- * who processes a visitor's data, how long it is kept, and how to erase it —
- * rendered from the typed register in `lib/privacy-notice.ts`, which mirrors
- * ADR-0043 decisions 3 and 4 and the Art. 30 record. The prose is never
- * hardcoded here: a register edit is what changes the notice.
+ * The `/about` privacy notice (ADR-0043 decisions 3 and 4): the Art. 13(1)(e)
+ * disclosure — who processes a visitor's data, how long it is kept, and how to
+ * erase it — rendered from the typed register in `lib/privacy-notice.ts`, which
+ * mirrors the Art. 30 record. The prose is never hardcoded here: a register
+ * edit is what changes the notice.
  *
- * Two honesty rules the markup carries: a row's status is always visible (the
- * netcup destination reads "Planned" until #181 makes it true, so the notice
- * is never false today), and a retention row not yet enforced by code shows
- * its registered ticket instead of claiming to be live.
+ * Two honesty rules the markup carries: a row's status is always visible (a
+ * destination not yet serving reads "Planned", so the notice is never false),
+ * and a retention row not yet enforced by code shows its registered ticket
+ * instead of claiming to be live.
  *
  * Lives in `components/` rather than inline in `AboutPage` so the page stays
  * inside the agentic-limits import cap.

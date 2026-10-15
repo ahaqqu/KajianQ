@@ -8,7 +8,7 @@ import { MessageCard } from "./MessageCard";
 export type TranscriptError = "rate_limited" | "unavailable" | "generic" | "load" | null;
 
 /**
- * The transcript body (#11): the mono CONVERSATION rule row, the offline and
+ * The transcript body: the mono CONVERSATION rule row, the offline and
  * error banners, then the turns — empty state when there is nothing yet, one
  * card per message — plus the honest staged waiting label while a turn is in
  * flight, the rehydration line, and the capped-transcript note. The caller

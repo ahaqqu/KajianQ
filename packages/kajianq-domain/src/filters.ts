@@ -30,8 +30,8 @@ export type TextLayer = (typeof TEXT_LAYERS)[number];
  * `sourceType` filter binds. Distinct from the per-ingester `SourceType`
  * (`quran-source.ts`), which is the single label one ingester writes onto its
  * rows: this is the closed set a route chooses from, and it names two sources
- * the corpus does not carry yet (`principle` is the Principle Index, #16;
- * `kitab` is the classical-works corpus) so routing, the filter map and the
+ * the corpus does not carry yet (`principle` is the Principle Index; `kitab`
+ * is the classical-works corpus) so routing, the filter map and the
  * presentation order read one list rather than three.
  */
 export const ROUTABLE_SOURCES = ["quran", "hadith", "tafsir", "kitab", "principle"] as const;
@@ -52,7 +52,7 @@ export type KajianQFilters = {
   /** Spec §3.3 item 3's `grade IN …` — the grades a hadith may carry. */
   grade?: readonly Grade[];
   textLayer?: readonly TextLayer[];
-  /** Spec §3.3 item 3's `principle_tags ANY …` (Principle Index, #16). */
+  /** Spec §3.3 item 3's `principle_tags ANY …` (the Principle Index). */
   principleTags?: readonly PrincipleTag[];
 };
 

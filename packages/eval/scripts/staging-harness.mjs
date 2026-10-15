@@ -1,23 +1,20 @@
 #!/usr/bin/env bun
 /**
- * staging-harness.mjs — the shared staging bootstrap for the eval CLIs
- * (thermo-review B2).
+ * staging-harness.mjs — the shared staging bootstrap for the eval CLIs.
  *
- * `eval:run` and `eval:smoke` used to carry near-identical copies of this
- * setup — the Postgres store, the `doc_children` sourceType join, the ledger
- * and trace bridges, and the refusal markers. Two copies of the same staging
- * wiring drift: one entry point's fix silently misses the other. Both scripts
- * now build their seams from this one module.
+ * `eval:run` and `eval:smoke` build the same staging seams — the Postgres
+ * store, the `doc_children` sourceType join, the ledger and trace bridges, and
+ * the refusal markers — so they share one module: a copy per entry point
+ * drifts, and one entry point's fix then silently misses the other.
  *
  * Why a script module and not `@app/eval/src`: the eval package is an engine
  * package, and the boundary gate (ADR-0005/0008) forbids a direct database
  * client there. The database client belongs behind @app/infra — these
- * scripts, where `eval:run`'s store wiring has always lived.
+ * scripts supply the store wiring.
  *
  * The refusal markers are imported from the domain pack's own
  * `DEFAULT_REFUSALS`, so the scripts, the pipeline, and the scorer cannot
- * disagree about what counts as a refusal — the previous two literal copies
- * could.
+ * disagree about what counts as a refusal.
  */
 import { Effect } from "effect";
 import { createLogger, resolvePostgresStore } from "@app/infra";
@@ -36,24 +33,24 @@ export const REFUSAL_MARKERS = [DEFAULT_REFUSALS.id, DEFAULT_REFUSALS.en];
 /**
  * The opaque `origin` label the domain pack writes on scope-expansion chunks
  * (ADR-0045), injected into the harness so each scored outcome records what
- * the expansion contributed (C1). Domain vocabulary, so it is named HERE, at
+ * the expansion contributed. Domain vocabulary, so it is named HERE, at
  * the composition root — the engine package only compares opaque labels.
  */
 export const EXPANSION_ORIGIN = SCOPE_EXPANSION_ORIGIN;
 
 /**
- * The citation grammar the scorer normalizes labels with (C2 fix). It is the
+ * The citation grammar the scorer normalizes labels with. It is the
  * DOMAIN's own functions — the same ones the deterministic citation gate
  * (`validateCitations`) and the citations-frame derivation use — injected here
  * by the composition root, so the engine package stays domain-agnostic while
  * the scorer and the gate cannot disagree about what a citation is.
  *
  * `addressesNamedBy` is the naming declaration the scorer compares a required
- * citation against the answer's evidence with (A1 of the #274 fix round): the
- * question requires `QS. 2:255`, the answer cites the grounded range
- * `QS. 2:255-256`, and the two are the same evidence once the range's addresses
- * are read from the grammar that declares them. The engine learns no domain
- * vocabulary — it asks the injected grammar what a label names.
+ * citation against the answer's evidence with: the question requires
+ * `QS. 2:255`, the answer cites the grounded range `QS. 2:255-256`, and the
+ * two are the same evidence once the range's addresses are read from the
+ * grammar that declares them. The engine learns no domain vocabulary — it
+ * asks the injected grammar what a label names.
  */
 export const CITATION_GRAMMAR = {
   normalizeLabel: normalizeCitationLabel,
@@ -88,9 +85,7 @@ export async function createStagingHarness(config, budget) {
     const missing = [...new Set(chunkIds)].filter((id) => !sourceTypeByChunkId.has(id));
     if (missing.length === 0) return;
     // The store seam is effect-shaped: without the await this iterates the
-    // PROMISE — "{} is not iterable" — and the question skips. Lost in the
-    // GDPR-E rewire; the CI gate could not catch it because the self-skip
-    // reads as a transport failure.
+    // PROMISE — "{} is not iterable" — and the question skips.
     const rows = await runStore(store.getDocChildrenByIds(missing));
     for (const row of rows) {
       const meta = row.metadata ?? {};
@@ -127,8 +122,8 @@ export async function createStagingHarness(config, budget) {
     async eventsByMessage(messageId) {
       const trace = await runStore(store.getAnswerTraceByMessage(messageId));
       if (!trace) return null;
-      // Budget coverage (plan decision 4): the answer trace's event costs are
-      // the pipeline spend the harness triggered — count them into the cap.
+      // Budget coverage: the answer trace's event costs are the pipeline spend
+      // the harness triggered — count them into the cap.
       budget.add(trace.events.reduce((s, e) => s + (e.cost?.costMicroUsd ?? 0), 0));
       budget.check();
       // Warm the sourceType cache from the retrieval events this trace carries,
@@ -142,7 +137,7 @@ export async function createStagingHarness(config, budget) {
     },
   };
 
-  // A9: the ledger adapter is a thin passthrough — the harness owns the run
+  // The ledger adapter is a thin passthrough — the harness owns the run
   // lifecycle (createRun first, refreshRun for the final report), so no
   // report mutation and no double write here.
   const ledger = {

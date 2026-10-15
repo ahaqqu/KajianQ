@@ -13,67 +13,42 @@
 //      sweep — AND --include-detached was passed.
 // The branch a worktree is judged by is the one its own HEAD has checked out
 // (`git worktree list --porcelain`'s `branch` line), never a name derived from
-// its directory. A dispatch's slug and its branch need not agree —
-// `.worktrees/agent-15` holding `agent/router-stages-3-4` is a real case — and a
-// derived name would both miss merged work and risk judging, and deleting, a
-// branch the worktree is not on. A directory with no branch line is a detached
-// HEAD, which is rule 3.
-// Rules 2 and 3 are KEPT by default with the reason printed: with no commits or
-// no branch, "abandoned" and "a dispatch or review still in flight" are
-// indistinguishable, and that worktree is the most expensive to lose and the
-// cheapest to sweep later. Rule 2 also covers a branch already contained in
-// main — merged there without a PR, or fast-forward-merged with one: zero unique
-// commits either way, so it is kept by default and swept only with
-// --include-unstarted. Rule 2 outranks rule 1, so a default run never removes a
-// zero-unique-commit worktree whatever PR history says about its name. Branches
-// with unmerged commits are always KEPT. Dirty worktrees are skipped unless
-// --force. A .worktrees/ entry that is not a registered git worktree (a stray
-// file or directory) is reported and skipped, never removed, so one stray entry
-// cannot abort the run. So is a registered worktree whose git commands fail —
-// a stale gitdir: the failure is that entry's keep, not the run's. An entry
-// whose worktree removal succeeds but whose branch delete then fails is still
-// printed and counted as removed, with the branch failure and the manual remedy
-// (`git branch -D`) named in the same line: the removal happened, and a `kept`
-// prefix would contradict it. This is the one failure state no later sweep
-// revisits — the slug is gone from .worktrees/ — so the line must carry the next
-// step itself.
+// its directory: a derived name would miss merged work and risk deleting a branch
+// the worktree is not on. No branch line is a detached HEAD, which is rule 3.
+// Rules 2 and 3 are KEPT by default: with no commits or no branch, "abandoned"
+// and "a dispatch or review still in flight" are indistinguishable, and that
+// worktree is the most expensive to lose and the cheapest to sweep later. Rule 2
+// also covers a branch already contained in main — merged there without a PR, or
+// fast-forward-merged with one. Rule 2 outranks rule 1, so a default run never
+// removes a zero-unique-commit worktree whatever PR history says about its name.
+// Branches with unmerged commits are always KEPT; dirty ones need --force.
 //
-// #239 closed the liveness gap by DECLARATION, not inference. A dispatch locks
-// its worktree when it creates it, with a reason naming its role and ticket
-// (`git worktree lock .worktrees/<slug> --reason "<role> #<issue>"`), and
-// unlocks it before reporting done. Rule 0 keeps any entry git reports as
-// `locked`, with the reason printed, BEFORE every other rule and every flag: no
-// combination of --force, --include-unstarted, --include-detached or PR history
-// reaches a declared-live worktree — and `git worktree remove` refuses a locked
-// tree, so the keep states the tool boundary, not a guess about branch state. A
+// Rule 0 keeps any entry git reports as `locked`, with its reason printed, BEFORE
+// every other rule and every flag: a dispatch declares itself live by locking its
+// worktree when it creates it, and `git worktree remove` refuses a locked tree. A
 // lock left behind by a crashed dispatch is cleared deliberately, by slug, with
-// `--unlock <slug>` (repeatable): the slug must be one bare name under
-// .worktrees/ — a value that resolves anywhere else is refused before any git
-// call — unlocking never happens automatically, and an --unlock run never
-// sweeps. The sweep itself is gated: a destructive run requires
-// --no-active-dispatches. Without it every removal a sweep would make is
-// withheld: the run prints those verdict lines (`would remove <slug>
-// (<reason>)`), prints no `done:` line, and exits non-zero having removed
-// nothing, so forgetting the flag destroys nothing; a gated run with nothing to
-// remove withholds nothing, so it is not a refusal — it prints `nothing to
-// remove: --no-active-dispatches is only needed when there is something to
-// remove`, then the ordinary `done: 0 removed, N kept`, and exits 0. --dry-run
-// needs no acknowledgement and still exits 0. The liveness heuristics #239
-// rejected
-// (worktree admin-dir age, file mtimes, HEAD reflog) cannot separate a dispatch
-// reattached to a surviving squash-merged branch from deferred cleanup; the
-// declaration is the discriminator, and the gate covers the window before a
-// dispatch has locked.
+// `--unlock <slug>` (repeatable) — a bare name under .worktrees/, refused before
+// any git call; unlocking is never automatic, and an --unlock run never sweeps.
+//
+// A `.worktrees/` entry that is not a registered git worktree is reported and
+// skipped, never removed, so one stray entry cannot abort the run. An entry whose
+// worktree removal succeeds but whose branch delete then fails is still counted as
+// removed, with the failure and the manual remedy (`git branch -D`) named in the
+// same line.
+//
+// The sweep is gated: a destructive run requires --no-active-dispatches, which
+// covers the window before a dispatch has locked. Without it every removal a sweep
+// would make is withheld, the verdict lines are printed, no summary line, and the
+// run exits non-zero having removed nothing; a gated run with nothing to remove
+// withholds nothing, so it says so and exits 0. --dry-run needs no acknowledgement.
 //
 // Removing merged worktrees by default (rule 1) therefore presumes squash/rebase
-// merges, this repo's practice: under a merge-commit or fast-forward merge a
-// genuinely merged branch has zero unique commits, so rule 2 keeps it by default
-// and it needs --include-unstarted.
+// merges, this repo's practice: under a merge-commit or fast-forward merge a merged
+// branch has zero unique commits, so rule 2 keeps it by default.
 //
 // Usage: bun scripts/worktree-cleanup.mjs --no-active-dispatches [--dry-run]
 //          [--force] [--include-unstarted] [--include-detached]
-//        bun scripts/worktree-cleanup.mjs --unlock <slug> [--unlock <slug> ...]
-//          [--dry-run]
+//        bun scripts/worktree-cleanup.mjs --unlock <slug> [--unlock <slug> ...] [--dry-run]
 // Run from the MAIN checkout — a linked worktree has no .worktrees of its own.
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, realpathSync } from "node:fs";
@@ -86,19 +61,13 @@ const includeUnstarted = argv.includes("--include-unstarted");
 const includeDetached = argv.includes("--include-detached");
 const noActiveDispatches = argv.includes("--no-active-dispatches");
 
-// A run that may destroy requires the operator's acknowledgement; a run that
-// only reports (--dry-run) never does. Decided once, here, so no per-entry path
-// can forget it.
+// Decided once, so no per-entry path can forget the gate.
 const refuseSweep = !dryRun && !noActiveDispatches;
 
-// --unlock takes a value and is repeatable, so it is read positionally instead
-// of with a presence check.
-//
-// The value must be one bare directory name. The tool's scope is
-// `.worktrees/<slug>`, and a slug carrying a separator or a `.`/`..` segment
-// makes `join(wtRoot, slug)` resolve to a registered worktree outside
-// .worktrees/, which this remedy has no business reaching: the escape is
-// refused here, in the parse loop, before any git call (#257 A1).
+// --unlock takes a value and is repeatable, so it is read positionally rather than
+// by presence check. The value must be one bare directory name: a slug with a
+// separator or a `.`/`..` segment would reach a registered worktree outside
+// .worktrees/, so it is refused here, before any git call.
 function isBareSlug(slug) {
   return !slug.includes("/") && slug !== "." && slug !== "..";
 }
@@ -134,9 +103,8 @@ function gitOk(args) {
   }
 }
 
-// The PR for a branch, or null when there is none. Both the state and the PR's
-// head commit are needed: only a MERGED PR whose head is the branch tip proves
-// this exact branch's work reached main.
+// The PR for a branch, or null when there is none. Only a MERGED PR whose head is
+// the branch tip proves this exact branch's work reached main.
 function ghPr(branch) {
   try {
     const json = execFileSync("gh", ["pr", "view", branch, "--json", "state,headRefOid"], {
@@ -150,8 +118,7 @@ function ghPr(branch) {
   }
 }
 
-// The first line of a failed git command's stderr, for a terse per-item reason.
-// execFileSync attaches the child's stderr to the thrown error.
+// The failed command's stderr first line; execFileSync attaches it to the error.
 function gitError(err) {
   const raw = err?.stderr ? String(err.stderr) : String(err?.message ?? err);
   return raw.trim().split("\n")[0] || "git command failed";
@@ -165,13 +132,10 @@ function realOrSelf(path) {
   }
 }
 
-// `git worktree list --porcelain` prints one block per registered worktree, the
-// blocks separated by blank lines: a `worktree <path>` header followed by that
-// entry's attributes — one of which may be `locked`, or `locked <reason>`. The
-// block structure is what makes the lock readable: a bare `locked` seen while
-// walking lines belongs to the entry the last `worktree ` line opened, never to
-// the next one. Keyed by realpath, so this map and the `registered` set below
-// answer for the same path a `.worktrees/` entry resolves to, symlinks included.
+// `git worktree list --porcelain` prints one blank-line-separated block per
+// registered worktree: a `worktree <path>` header, then that entry's attributes —
+// one of which may be `locked <reason>`, belonging to the last `worktree ` line.
+// Keyed by realpath, so this map and the `registered` set answer for the same path.
 function parseWorktrees(porcelain) {
   const entries = new Map();
   let current = null;
@@ -180,8 +144,7 @@ function parseWorktrees(porcelain) {
       current = { locked: false, lockReason: "", branch: undefined };
       entries.set(realOrSelf(line.slice("worktree ".length)), current);
     } else if (current && line.startsWith("branch refs/heads/")) {
-      // The branch this worktree's own HEAD is on — not necessarily one named
-      // after its directory. A detached HEAD prints no `branch` line at all.
+      // A detached HEAD prints no `branch` line at all.
       current.branch = line.slice("branch refs/heads/".length);
     } else if (current && (line === "locked" || line.startsWith("locked "))) {
       current.locked = true;
@@ -198,13 +161,8 @@ const worktrees = parseWorktrees(git(["worktree", "list", "--porcelain"]));
 const registered = new Set(worktrees.keys());
 
 // --unlock <slug> is the deliberate remedy for a declaration left behind by a
-// crashed dispatch. It never sweeps and never runs automatically: clearing a
-// declaration and destroying the worktree stay two separate, named acts, so an
-// unlock can never be the first half of an accidental removal — the closing
-// line says so, so an operator who also passed --no-active-dispatches cannot
-// read the exit as "the worktree was removed". A dry run stays non-mutating
-// here too: it reports intent and validates against git's own listing instead
-// of clearing the lock.
+// crashed dispatch: clearing a declaration and destroying the worktree stay two
+// separate, named acts, and a dry run only reports intent.
 function runUnlocks(slugs) {
   let failed = 0;
   for (const slug of slugs) {
@@ -252,19 +210,16 @@ for (const slug of readdirSync(wtRoot).filter((n) => !n.startsWith("."))) {
     kept++;
   };
 
-  // A stray file or directory under .worktrees/ is not ours to delete, and
-  // probing it with a git command (cwd=file → ENOTDIR; `worktree remove` →
-  // fatal) would abort the whole run. Report it and carry on.
+  // A stray file or directory under .worktrees/ is not ours to delete, and probing
+  // it with a git command would abort the run (cwd=file → ENOTDIR), so it is skipped.
   const realWt = realOrSelf(wt);
   if (!registered.has(realWt)) {
     keep("not a git worktree — remove manually");
     continue;
   }
 
-  // Rule 0, before every rule below and every flag: a lock is a dispatch's own
-  // liveness declaration, so it is kept with its reason, and the reason is the
-  // operator's evidence of who declared it. `git worktree remove` refuses a
-  // locked tree, so consulting branch state first would only invite a doomed
+  // Rule 0, before every rule below and every flag: `git worktree remove` refuses
+  // a locked tree, so consulting branch state first would only invite a doomed
   // removal attempt — and a doomed attempt is a branch-delete risk.
   const worktree = worktrees.get(realWt);
   if (worktree.locked) {
@@ -273,16 +228,11 @@ for (const slug of readdirSync(wtRoot).filter((n) => !n.startsWith("."))) {
     continue;
   }
 
-  // The branch under judgement is the one this worktree has checked out, read
-  // from git's own listing rather than derived from the directory name: the two
-  // need not agree, and a derived name would miss merged work while risking a
-  // branch delete on a branch this worktree is not on. No `branch` line at all
-  // is a detached HEAD, which is rule 3 below.
+  // Never a name derived from the directory; no `branch` line means detached HEAD.
   const branch = worktree.branch;
 
-  // A registered worktree can still fail every git command aimed at it — a
-  // stale gitdir, a permission error. That is this entry's outcome, never the
-  // run's: report it and carry on to the remaining slugs.
+  // A registered worktree can still fail every git command aimed at it (a stale
+  // gitdir, a permission error): that is this entry's outcome, never the run's.
   let branchExists;
   let dirty;
   let reason;
@@ -308,11 +258,10 @@ for (const slug of readdirSync(wtRoot).filter((n) => !n.startsWith("."))) {
       const pr = ghPr(branch);
       const unique = Number(git(["rev-list", "--count", `${base}..${branch}`]));
 
-      // A MERGED PR also needs the branch tip to be that PR's head commit: a
-      // re-dispatched slug reuses a merged PR's name. Both conditions plus real
-      // commits keep rule 2's guarantee intact — a fresh dispatch at origin/main
-      // has zero unique commits even when a fast-forward merge left the old PR's
-      // head at the current origin/main tip.
+      // A MERGED PR also needs the branch tip to be that PR's head commit, and
+      // real commits: a fresh dispatch at origin/main has zero unique commits even
+      // when a fast-forward merge left the old PR's head at the current origin/main
+      // tip.
       if (pr?.state === "MERGED" && pr.headRefOid === tip && unique > 0) {
         reason = "PR merged";
       } else if (unique === 0) {
@@ -338,9 +287,8 @@ for (const slug of readdirSync(wtRoot).filter((n) => !n.startsWith("."))) {
     continue;
   }
 
-  // A withheld sweep and a dry run both stop here and print the same verdict
-  // line: the report is what the operator gets either way, so the refused run
-  // is a truthful preview that happens to exit non-zero.
+  // A dry run and a withheld sweep print the same verdict line; the latter exits
+  // non-zero.
   if (dryRun || refuseSweep) {
     console.log(`would remove ${slug} (${reason})${dirty ? ", forcing over dirty state" : ""}`);
     if (refuseSweep) wouldRemove++;
@@ -349,19 +297,15 @@ for (const slug of readdirSync(wtRoot).filter((n) => !n.startsWith("."))) {
 
   // The worktree is removed BEFORE its branch, never the reverse: if the removal
   // fails the worktree still holds `branch`, and deleting it next would destroy
-  // the only ref to its commits. Both failures are this entry's outcome, not the
-  // run's.
+  // the only ref to its commits. A failure here is this entry's, not the run's.
   try {
     git(["worktree", "remove", wt, ...(dirty ? ["--force"] : [])]);
   } catch (err) {
     keep(`failed to remove (${gitError(err)})`);
     continue;
   }
-  // Removal succeeded, so this entry IS an entry this tool removed — the
-  // worktree, the thing the tool is named for, is gone. A failed branch delete
-  // is named in the same line but never demotes it to `kept`: that would
-  // contradict what happened and under-count the `done:` line. The surviving
-  // branch holds only merged or already-contained work by this point.
+  // Removal succeeded, so this entry IS removed: a failed branch delete is named in
+  // the same line but never demotes it to `kept`, which would contradict the run.
   let branchFailure = "";
   if (branchExists) {
     try {
@@ -370,21 +314,15 @@ for (const slug of readdirSync(wtRoot).filter((n) => !n.startsWith("."))) {
       branchFailure = `; branch delete failed: ${gitError(err)}`;
     }
   }
-  // A failed branch delete is the one failure state no later sweep revisits: the
-  // worktree is already gone from .worktrees/, so readdirSync never lists this
-  // slug again and the surviving branch waits on a human. The remedy therefore
-  // rides this line, the only place it is still named.
+  // No later sweep revisits a failed branch delete — the worktree is already gone
+  // from .worktrees/ — so the remedy rides this line, the only place it is named.
   const branchRemedy = branchFailure ? `; delete it with: git branch -D ${branch}` : "";
   console.log(`removed ${slug} (${reason}${branchFailure}${branchRemedy})`);
   removed++;
 }
 
-// Fail closed, but only where something was actually withheld: the operator has
-// not confirmed that no dispatch is active, so an entry a sweep would have
-// removed is withheld and the run exits non-zero. The verdict lines above
-// already name what a gated run would have done; this line names the flag that
-// turns the preview into the sweep, and the non-zero exit is what a script — or
-// a manager's checklist — reads.
+// Fail closed, but only where something was actually withheld: an entry a sweep
+// would have removed is withheld and the run exits non-zero.
 if (refuseSweep && wouldRemove > 0) {
   console.error(
     `refusing to remove ${wouldRemove} worktree${wouldRemove === 1 ? "" : "s"}: pass --no-active-dispatches once you have confirmed no dispatch is active`,
@@ -393,10 +331,7 @@ if (refuseSweep && wouldRemove > 0) {
 }
 
 // Zero candidates is the one gated shape that withheld nothing, so it is not a
-// refusal and must not read as one: it says there is nothing to remove, and
-// that the flag is only needed when there is, then exits 0 like any other
-// no-op. Its own case pins this wording and the refusal above together, so the
-// two cannot silently converge again (#257 A2).
+// refusal: it says so and exits 0 like any other no-op.
 if (refuseSweep) {
   console.log(
     "nothing to remove: --no-active-dispatches is only needed when there is something to remove",

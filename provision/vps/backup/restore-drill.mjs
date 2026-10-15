@@ -1,14 +1,12 @@
 #!/usr/bin/env bun
 /**
- * restore-drill.mjs — the executable restore test (#180, ADR-0043 decision 4).
+ * restore-drill.mjs — the executable restore test (ADR-0043 decision 4).
  *
  * The ADR's backup clause has two halves: encrypted-at-rest rolling backups,
  * and "a restore re-applies erasure — otherwise a restored row would silently
  * resurrect data the live store had deleted". This drill proves the second half
- * end to end. It is the mechanism the ticket's "tested by restoring once into a
- * scratch location" criterion points at, and it runs in CI
- * (.github/workflows/vps-restore-drill.yml) against a scratch Postgres with
- * pgvector.
+ * end to end, against a scratch Postgres with pgvector, and runs in CI
+ * (.github/workflows/vps-restore-drill.yml).
  *
  *   bun provision/vps/backup/restore-drill.mjs --admin-url postgres://user:pass@host:5432/postgres
  *

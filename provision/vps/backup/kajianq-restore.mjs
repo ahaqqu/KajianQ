@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * kajianq-restore.mjs — restore an encrypted backup into a SCRATCH database
- * and re-apply erasure (ADR-0043 decision 4, issue #180).
+ * and re-apply erasure (ADR-0043 decision 4).
  *
  *   kajianq-restore.mjs --label <label> --target-url <scratch-postgres-url>
  *                       [--env-file /etc/kajianq/backup.env] [--keep]

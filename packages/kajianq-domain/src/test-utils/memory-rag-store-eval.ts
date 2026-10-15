@@ -43,7 +43,7 @@ export function memoryEvalMethods(
         return id;
       });
     },
-    // Thermo-review A3/A4: the harness upserts the final report by run id.
+    // The harness upserts the final report by run id.
     refreshEvalRun(runId, label, report) {
       return Effect.sync(() => {
         const run = state.evalRuns.get(runId);

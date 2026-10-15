@@ -3,11 +3,10 @@ import type { CollectionEntry } from "./collections-types";
 /**
  * Planned registrations outside the priority-kitab and author-corpora lists:
  * tafsir (`SPECS.md` §4.1, not yet ticketed), and the license-vetted seed
- * sources for the terminology concept graph (issue #24, ADR-0014). The
- * hadith side has no planned entry: all seven collections are ingested and
- * citable (issue #213), so they live in `collections-available.ts` — a
- * planned entry for them would claim as future work what the store already
- * serves.
+ * sources for the terminology concept graph (ADR-0014). The hadith side has no
+ * planned entry: those collections are ingested and citable, so they live in
+ * `collections-available.ts` — a planned entry for them would claim as future
+ * work what the store already serves.
  */
 export const COLLECTION_PLANNED_SOURCES: readonly CollectionEntry[] = [
   {

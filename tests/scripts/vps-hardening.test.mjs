@@ -24,14 +24,12 @@ import {
 } from "../../provision/vps/backup/lib.mjs";
 
 /**
- * VPS privacy-hardening policy (#180, ADR-0043 decision 4).
+ * VPS privacy-hardening policy (ADR-0043 decision 4).
  *
- * The backup/restore tooling is only as trustworthy as the decisions inside it:
- * the rolling window, the integrity check, and the erasure that a restore must
- * re-apply. Those decisions are pure functions here so they can be asserted
- * directly — the end-to-end path against a real Postgres is
- * `provision/vps/backup/restore-drill.mjs`, run by the vps-restore-drill
- * workflow and by the owner on the host.
+ * The backup/restore tooling is only as trustworthy as the decisions inside it: the
+ * rolling window, the integrity check, and the erasure a restore must re-apply. Those
+ * decisions are pure functions here so they can be asserted directly — the end-to-end
+ * path against a real Postgres is `provision/vps/backup/restore-drill.mjs`.
  */
 
 const MANIFEST = buildManifest({
@@ -50,9 +48,7 @@ describe("retention policy matches ADR-0043 decision 4", () => {
   });
 
   it("prunes, so the window is enforced rather than merely reported", () => {
-    // Without --prune restic keeps the snapshots it "forgot" in the repository
-    // and the storage grows unbounded — the exact failure this ticket exists to
-    // prevent.
+    // Without --prune restic keeps the snapshots it "forgot" and the storage grows unbounded.
     expect(retentionArgs()).toContain("--prune");
   });
 
@@ -94,8 +90,8 @@ describe("manifest round-trip and validation", () => {
     expect(MANIFEST.dump.sha256).toBe("a".repeat(64));
     expect(MANIFEST.dump.bytes).toBe(4096);
     expect(MANIFEST.source).toEqual({ host: "db.internal", database: "kajianq" });
-    // The manifest is uploaded next to the dump; a password in it would be a
-    // credential in the backup target.
+    // The manifest is uploaded next to the dump, so a password in it would be a credential
+    // in the backup target.
     expect(JSON.stringify(MANIFEST)).not.toMatch(/password|PGPASSWORD/i);
   });
 
@@ -151,9 +147,8 @@ describe("restore verification", () => {
   });
 
   it("fails on ANY row-count drift, including append-only tables the corpus CLI treats loosely", () => {
-    // pg-conn.mjs's CORPUS_TABLES partition exists because it compares a
-    // manifest to a LIVE database. A fresh restore has nothing else writing to
-    // it, so every table is strict here.
+    // pg-conn.mjs's CORPUS_TABLES partition compares a manifest to a LIVE database; a fresh
+    // restore has nothing else writing to it, so every table is strict here.
     const verdict = verifyRestore(
       MANIFEST,
       actual({ counts: { ...MANIFEST.tableCounts, answer_traces: 4 } }),
@@ -165,13 +160,9 @@ describe("restore verification", () => {
 
 describe("erasure a restore must re-apply", () => {
   it("reclaims exactly what the nightly cron reclaims, statement for statement", () => {
-    // The invariant this pins: the restore's reclamation and
-    // cleanupExpiredSessions must not drift. If the adapter's SQL changes, this
-    // test fails and points at the restore path — otherwise a restore would
-    // silently stop reclaiming expired sessions while the cron still did.
-    //
-    // The adapter binds its cutoff as a parameter (`${before.toISOString()}`)
-    // while RECLAIM_SQL uses `now()`; both are the same predicate, so the
+    // The restore's reclamation and cleanupExpiredSessions must not drift: if the adapter's
+    // SQL changes, this test fails and points at the restore path. The adapter binds its
+    // cutoff as a parameter while RECLAIM_SQL uses `now()` — the same predicate — so the
     // comparison normalizes the bound value and whitespace before matching.
     const normalize = (text) =>
       text
@@ -198,16 +189,10 @@ describe("erasure a restore must re-apply", () => {
   });
 
   it("the Art. 17 statement matches production deleteUserCascade — the restore path cannot drift", () => {
-    // Production erasure (DELETE /v1/auth/me → deleteUserCascade in
-    // packages/infra/src/rag-store-postgres-session.ts) executes a parameterized
-    // `DELETE FROM users WHERE id = ${userId}`. The restore re-applies the
-    // same statement with the id bound as a psql variable (thermo-review A3):
-    // if the adapter's erasure ever changes shape, this test fails and points
-    // at the restore path — otherwise a restore would silently stop erasing
-    // what production erases. The comparison normalizes the adapter's tagged
-    // template (its `${userId}` parameter and whitespace) against the restore
-    // statement's `:'uid'` psql-variable binding — the same placeholder role,
-    // so the normalized texts must be identical.
+    // Production erasure (DELETE /v1/auth/me → deleteUserCascade) executes a parameterized
+    // `DELETE FROM users WHERE id = ${userId}`; the restore re-applies the same statement with
+    // the id bound as a psql variable. The comparison normalizes the adapter's tagged template
+    // against the restore statement's `:'uid'` binding — the same placeholder role.
     const normalize = (text) =>
       text
         .replace(/\s+/g, " ")
@@ -224,8 +209,7 @@ describe("erasure a restore must re-apply", () => {
 
   it("binds the erasure user id as a psql variable, never into the statement text", () => {
     expect(erasureSql()).toBe("DELETE FROM users WHERE id = :'uid'");
-    // Fixed text: no string-interpolation seam for an id to flow through —
-    // the id travels in erasurePsqlArgs, quoted by psql itself.
+    // Fixed text: the id travels in erasurePsqlArgs, quoted by psql itself.
     expect(erasureSql()).not.toMatch(/\$\{/);
     expect(erasurePsqlArgs("33333333-3333-4333-8333-333333333333")).toEqual([
       "-v",
@@ -238,10 +222,8 @@ describe("erasure a restore must re-apply", () => {
   });
 
   it("sends psql statements on stdin — :var substitution only works for script input", () => {
-    // psql substitutes `:'var'` in script input (-f/-stdin), never in `-c`
-    // command text — the drill's first CI run failed exactly there (follow-up
-    // to A3). Statements travel on stdin, which also keeps SQL text off the
-    // process table's argv.
+    // psql substitutes `:'var'` in script input (-f/stdin), never in `-c` command text, so
+    // statements travel on stdin — which also keeps SQL off the process table's argv.
     const restore = readFileSync(
       resolve(process.cwd(), "provision/vps/backup/kajianq-restore.mjs"),
       "utf8",
@@ -257,10 +239,9 @@ describe("erasure a restore must re-apply", () => {
   });
 
   it("compares connection URLs by database location, not by string (the live-URL guard)", () => {
-    // The `--target-url` guard must refuse a URL that NAMES the live database
-    // even when written differently (default port omitted, postgresql://
-    // scheme, different credentials or query order), and must not compare
-    // secrets. A raw-string comparison fails both ways (thermo-review A1).
+    // The `--target-url` guard must refuse a URL that NAMES the live database even when
+    // written differently (default port omitted, another scheme or credentials), and must not
+    // compare secrets: a raw-string comparison fails both ways.
     expect(
       isSameDatabase(
         "postgres://u:p@127.0.0.1:5432/kajianq",
@@ -279,8 +260,7 @@ describe("erasure a restore must re-apply", () => {
         "postgres://u:p@127.0.0.1:5432/kajianq_restored",
       ),
     ).toBe(false);
-    // Parsing fails closed: an unparseable or non-postgres target can never
-    // pass the guard.
+    // Parsing fails closed: an unparseable or non-postgres target can never pass the guard.
     expect(() => dbLocation("not a url")).toThrow(/parseable/);
     expect(() => dbLocation(null)).toThrow(/parseable/);
     expect(() => dbLocation("mysql://u:p@127.0.0.1/kajianq")).toThrow(/postgres/);
@@ -290,8 +270,7 @@ describe("erasure a restore must re-apply", () => {
       port: "5432",
       database: "kajianq",
     });
-    // The restore script requires PGDATABASE_URL and uses isSameDatabase —
-    // pinned here so the guard cannot silently regress to string equality.
+    // The restore script requires PGDATABASE_URL and uses isSameDatabase, pinned here.
     const restore = readFileSync(
       resolve(process.cwd(), "provision/vps/backup/kajianq-restore.mjs"),
       "utf8",
@@ -301,11 +280,9 @@ describe("erasure a restore must re-apply", () => {
   });
 
   it("names the rows the drill proves gone and the rows it proves survive", () => {
-    // The drill's assertions are the acceptance criterion's "tested by restoring
-    // once into a scratch location" made executable. This pins that the drill
-    // still asserts both directions: the negative control (resurrected rows
-    // present) and the erase-then-match direction (erased rows gone, live rows
-    // intact). A drill that only asserted one side would pass vacuously.
+    // This pins that the drill asserts both directions: the negative control (resurrected rows
+    // present) and the erase-then-match direction (erased rows gone, live rows intact). A drill
+    // that only asserted one side would pass vacuously.
     const drill = readFileSync(
       resolve(process.cwd(), "provision/vps/backup/restore-drill.mjs"),
       "utf8",
@@ -355,12 +332,9 @@ describe("provisioning config as code stays true to the ADR", () => {
       const path = join(dir, name);
       return statSync(path).isDirectory() ? walkFiles(path) : [path];
     });
-  /**
-   * Drop comment lines before asserting directives. Several files explain why a
-   * directive is NOT used (e.g. nginx's logrotate stanza says "no copytruncate
-   * is used"), and a substring assertion against the raw text would read that
-   * explanation as the directive itself.
-   */
+  /** Drop comment lines before asserting directives, since a file may explain why a
+   * directive is NOT used and a substring assertion would read that explanation as the
+   * directive itself. */
   const directives = (rel) =>
     read(rel)
       .split("\n")
@@ -369,23 +343,20 @@ describe("provisioning config as code stays true to the ADR", () => {
 
   it("the proxy access log records the client IP and nothing about the visitor beyond it", () => {
     const conf = directives("provision/vps/nginx/kajianq.conf");
-    // The log format must carry $remote_addr (the IP is the declared data
-    // category in the Art. 30 record)…
+    // The log format must carry $remote_addr (the IP is the declared data category in the
+    // Art. 30 record)…
     expect(conf).toMatch(/log_format kajianq_access[^;]*\$remote_addr/);
     // …and must NOT widen it with device, navigation, or identity identifiers.
     expect(conf).not.toMatch(/\$http_user_agent/);
     expect(conf).not.toMatch(/\$http_referer/);
-    // $remote_user is only ever populated by HTTP basic auth, which this
-    // server block never enables — a username is not a declared data
-    // category, so the format must not carry it (thermo-review B4).
+    // $remote_user is only ever populated by HTTP basic auth, which this server block never
+    // enables — a username is not a declared data category, so the format must not carry it.
     expect(conf).not.toMatch(/\$remote_user/);
   });
 
   it("restic never receives the repository on argv — credentials stay out of the process table", () => {
-    // restic reads RESTIC_REPOSITORY from the environment; an `-r` flag would
-    // put a repository URL that may embed credentials (s3://key:secret@…,
-    // sftp://user:pass@…) on the command line where `ps` exposes it
-    // (thermo-review B3).
+    // restic reads RESTIC_REPOSITORY from the environment; an `-r` flag would put a repository
+    // URL that may embed credentials on the command line where `ps` exposes it.
     for (const file of [
       "provision/vps/backup/kajianq-backup.mjs",
       "provision/vps/backup/kajianq-restore.mjs",
@@ -396,9 +367,8 @@ describe("provisioning config as code stays true to the ADR", () => {
   });
 
   it("libpq invocations never take a connection URL on argv", () => {
-    // pg_restore/psql get the database name (or nothing) and read the rest of
-    // the connection from the PG* environment (thermo-review A2). A URL on
-    // argv would carry the password in the process table.
+    // pg_restore/psql get the database name (or nothing) and read the rest of the connection
+    // from the PG* environment: a URL on argv would carry the password in the process table.
     const restore = readFileSync(
       resolve(process.cwd(), "provision/vps/backup/kajianq-restore.mjs"),
       "utf8",
@@ -408,18 +378,12 @@ describe("provisioning config as code stays true to the ADR", () => {
   });
 
   it("the backup schedule is config-as-code, installed and enabled by apply.sh", () => {
-    // The retention policy is only real if the timer runs (thermo-review B2):
-    // the units must be shipped files, and apply.sh must install, render and
-    // enable them — not runbook snippets to copy by hand.
+    // The retention policy is only real if the timer runs: the units must be shipped files.
     const service = directives("provision/vps/systemd/kajianq-backup.service");
     expect(service).toContain("EnvironmentFile=/etc/kajianq/backup.env");
-    // ExecStart names a DEPLOYED artifact, not a path in the repository
-    // checkout: this unit was the only production unit running code the deploy
-    // never updated (#181), which produced two failures in a row — an
-    // unsubstituted placeholder, then the provenance step aborting every run
-    // because the unit's WorkingDirectory is not a git repository. A static
-    // deployed path removes both classes, so assert the static path and that
-    // NO placeholder token remains.
+    // ExecStart names a DEPLOYED artifact, not a path in the repository checkout: a unit
+    // running code the deploy never updated can be wired to stale code, so assert the static
+    // path and that NO placeholder token remains.
     expect(service).toMatch(/ExecStart=\/usr\/bin\/bun run \/srv\/kajianq\/api\/backup\.js/);
     expect(service).not.toMatch(/__KAJIANQ_/);
     expect(service).toMatch(/Type=oneshot/);
@@ -436,20 +400,9 @@ describe("provisioning config as code stays true to the ADR", () => {
   });
 
   it("render() substitutes every placeholder a shipped config may carry", () => {
-    // The defect this pins (#181): a placeholder in the backup unit's ExecStart
-    // was asserted PRESENT (by an earlier test) but nothing asserted it was ever
-    // SUBSTITUTED. The unit installed with the literal token, systemd does not
-    // expand variables, and every scheduled run died on
-    // `Script not found "__KAJIANQ_BACKUP_SCRIPT__"` — the nightly encrypted
-    // backup never once succeeded, while the timer's `is-active` stayed green.
-    //
-    // That unit now ships a static deployed path and carries no token at all,
-    // which is the better fix; this invariant stays as the guard for anything
-    // that reintroduces one. Derived, not enumerated: every `__KAJIANQ_*__`
-    // token appearing in a shipped config (anything under provision/vps/ except
-    // apply.sh itself) must have a matching sed entry in apply.sh's render(). A
-    // new placeholder therefore fails this test until it is wired — which is the
-    // moment to wire it, not after a scheduled run.
+    // Derived, not enumerated: every `__KAJIANQ_*__` token appearing in a shipped config
+    // (anything under provision/vps/ except apply.sh itself) must have a matching sed entry in
+    // apply.sh's render(), so a new placeholder fails this test until it is wired.
     const SRC = "provision/vps";
     const apply = readFileSync(resolve(process.cwd(), `${SRC}/apply.sh`), "utf8");
     const renderBody = /render\(\) \{[\s\S]*?\n\}/.exec(apply)?.[0];
@@ -464,9 +417,8 @@ describe("provisioning config as code stays true to the ADR", () => {
       .filter((path) => !path.endsWith("apply.sh"))
       .map((path) => readFileSync(path, "utf8"))
       .join("\n");
-    // matchAll, not a single exec: a line may carry MORE than one token, and
-    // taking only the first per line would let a second one through
-    // unsubstituted — the same class of gap this test exists to close.
+    // matchAll, not a single exec: a line may carry MORE than one token, and taking only the
+    // first per line would let a second one through unsubstituted.
     const declared = new Set([...shipped.matchAll(/__KAJIANQ_([A-Z_]+)__/g)].map((m) => m[1]));
     expect(declared.size).toBeGreaterThanOrEqual(4);
 
@@ -479,24 +431,20 @@ describe("provisioning config as code stays true to the ADR", () => {
   });
 
   it("render() refuses to install a config that still carries a placeholder token", () => {
-    // The substitution list is one mechanism; this is the backstop that makes a
-    // future omission loud at apply time rather than silent until a scheduled
-    // run. It must abort the whole apply — the script's header forbids a
-    // half-applied config that reports success.
+    // The substitution list is one mechanism; this is the backstop that makes a future omission
+    // loud at apply time, and it must abort the whole apply rather than half-apply a config.
     const apply = readFileSync(resolve(process.cwd(), "provision/vps/apply.sh"), "utf8");
     const renderBody = /render\(\) \{[\s\S]*?\n\}/.exec(apply)?.[0];
     expect(renderBody).toMatch(/grep -qE '__KAJIANQ_\[A-Z_\]\+__'/);
     expect(renderBody).toMatch(/exit 1/);
-    // It must run BEFORE the install, or the broken file is already in place
-    // when it fires.
+    // It must run BEFORE the install, or the broken file is already in place when it fires.
     expect(renderBody.search(/grep -qE '__KAJIANQ_\[A-Z_\]\+__'/)).toBeLessThan(
       renderBody.indexOf("install -o root"),
     );
   });
 
   it("apply.sh refuses to source an env file that is not root-owned 0600-or-tighter", () => {
-    // The env file is executed with root privileges; a writable one is local
-    // privilege escalation on the next apply (thermo-review B1).
+    // The env file is executed with root privileges; a writable one is local privilege escalation.
     const apply = readFileSync(resolve(process.cwd(), "provision/vps/apply.sh"), "utf8");
     expect(apply).toMatch(/stat -c '%U:%G' "\$\{ENV_FILE\}"/);
     expect(apply).toMatch(/!= "root:root"/);
@@ -506,9 +454,8 @@ describe("provisioning config as code stays true to the ADR", () => {
   });
 
   it("the proxy establishes CF-Connecting-IP from $remote_addr, so the rate limiter cannot be spoofed", () => {
-    // apps/api/src/lib/middleware.ts reads CF-Connecting-IP. If nginx ever passed
-    // the client's own header through, a caller could mint a fresh limiter key
-    // per request. Pinning the write here makes that a test failure.
+    // apps/api/src/lib/middleware.ts reads CF-Connecting-IP: if nginx passed the client's own
+    // header through, a caller could mint a fresh limiter key per request.
     const conf = directives("provision/vps/nginx/kajianq.conf");
     expect(conf).toMatch(/proxy_set_header CF-Connecting-IP\s+\$remote_addr/);
   });
@@ -536,15 +483,13 @@ describe("provisioning config as code stays true to the ADR", () => {
 
   it("the proxy logrotate policy enforces the ADR's 14-day window with a size cap", () => {
     const conf = directives("provision/vps/logrotate/kajianq-proxy");
-    // rotate 13 + daily: current day + 13 rotated = 14 calendar days in
-    // total — the value the ADR and the Art. 30 record declare (a `rotate 14`
-    // would keep a 15th day; thermo-review C1).
+    // rotate 13 + daily: current day + 13 rotated = 14 calendar days, the value the ADR and
+    // the Art. 30 record declare (a `rotate 14` would keep a 15th day).
     expect(conf).toMatch(/rotate 13\b/);
     expect(conf).not.toMatch(/rotate 14\b/);
     expect(conf).toMatch(/daily/);
     expect(conf).toMatch(/maxsize/);
-    // nginx reopens its logs on SIGUSR1; copytruncate would be the wrong tool
-    // (and would risk splitting a line).
+    // nginx reopens its logs on SIGUSR1; copytruncate would be the wrong tool.
     expect(conf).toContain("kill -USR1");
     expect(conf).not.toContain("copytruncate");
     // The error log is IP-bearing too, so it must be in the same stanza.
@@ -553,7 +498,7 @@ describe("provisioning config as code stays true to the ADR", () => {
 
   it("the Postgres logrotate policy rotates and truncates in place, since Postgres never reopens", () => {
     const conf = directives("provision/vps/logrotate/kajianq-postgres");
-    // Same arithmetic as the proxy stanza: 14 calendar days in total (C1).
+    // Same arithmetic as the proxy stanza: 14 calendar days in total.
     expect(conf).toMatch(/rotate 13\b/);
     expect(conf).not.toMatch(/rotate 14\b/);
     expect(conf).toContain("copytruncate");
@@ -576,30 +521,25 @@ describe("provisioning config as code stays true to the ADR", () => {
   it("the API systemd unit reads its credentials from a file, never from the unit text", () => {
     const unit = directives("provision/vps/systemd/kajianq-api.service");
     expect(unit).toContain("EnvironmentFile=/etc/kajianq/api.env");
-    // A DATABASE_URL inline in the unit would be readable in the process table
-    // and in the journal.
+    // A DATABASE_URL inline in the unit would be readable in the process table and the journal.
     expect(unit).not.toMatch(/DATABASE_URL=/);
     expect(unit).toContain("NoNewPrivileges=yes");
   });
 
   it("the served entry the unit runs is the Bun one, with no Cloudflare runtime left", () => {
-    // The unit's ExecStart must name the Bun entry point built from
-    // apps/api/src/boot.ts (ADR-0044 decision 1), not a Worker artifact.
+    // ExecStart must name the Bun entry point built from apps/api/src/boot.ts, not a Worker
+    // artifact (ADR-0044 decision 1).
     const unit = directives("provision/vps/systemd/kajianq-api.service");
     expect(unit).toMatch(/ExecStart=\/usr\/bin\/bun run \/srv\/kajianq\/api\/index\.js/);
     expect(unit).toContain("User=kajianq");
-    // A workerd / alchemy deployment path is gone, so nothing in the unit may
-    // reference it.
+    // A workerd / alchemy deployment path is gone, so nothing in the unit may reference it.
     expect(unit).not.toMatch(/workerd|alchemy|wrangler/i);
   });
 
   it("the SIGTERM drain ceiling matches the code's drain deadline, not systemd's 90 s default", () => {
-    // Thermo-review A3: the drain (boot.ts waits for in-flight SSE answers up
-    // to DRAIN_TIMEOUT_MS) is only real if the unit lets it run. The unit's
-    // TimeoutStopSec must equal the code's deadline — a smaller value SIGKILLs
-    // a healthy drain mid-stream; a larger one waits past a stream nginx has
-    // already cut at proxy_read_timeout 300s. The three numbers agreeing is
-    // the checkable form of the drain design.
+    // The drain (boot.ts waits for in-flight SSE answers up to DRAIN_TIMEOUT_MS) is only real if
+    // the unit lets it run: TimeoutStopSec must equal the code's deadline — smaller SIGKILLs a
+    // healthy drain, larger waits past the stream nginx has already cut.
     const unit = directives("provision/vps/systemd/kajianq-api.service");
     expect(unit).toContain("TimeoutStopSec=300s");
     expect(unit).toContain("KillMode=mixed");
@@ -610,8 +550,7 @@ describe("provisioning config as code stays true to the ADR", () => {
   });
 
   it("the session reclaim runs as its own timer at ADR-0017's 03:17 slot", () => {
-    // ADR-0044 decision 7: the reclamation must be independently observable,
-    // not an in-process interval, so the units are shipped and enabled.
+    // The reclamation must be independently observable, not an in-process interval.
     const service = directives("provision/vps/systemd/kajianq-cron.service");
     expect(service).toMatch(/Type=oneshot/);
     expect(service).toContain("EnvironmentFile=/etc/kajianq/api.env");
@@ -638,8 +577,7 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(script).toMatch(/KAJIANQ_DEPLOY_USER/);
     // The env file must be owner-only before it is sourced.
     expect(script).toMatch(/8#\$\{env_mode\} & 077/);
-    // It must smoke the public URL (through the proxy), and it must run the
-    // built entries — not rebuild them on the box.
+    // It must smoke the public URL through the proxy and run the built entries, not rebuild them.
     expect(script).toMatch(/KAJIANQ_PUBLIC_URL/);
     expect(script).toMatch(/\/v1\/health/);
     expect(script).toMatch(/boot\.ts/);
@@ -647,11 +585,8 @@ describe("provisioning config as code stays true to the ADR", () => {
   });
 
   it("the deploy script builds with documented forms and smokes the SPA, not only the API", () => {
-    // Thermo-review A6/C3: `bun run --cwd` relies on undocumented flag
-    // forwarding; the web build must run via an explicit subshell cd. And the
-    // smoke must fetch an extensionless client route — the e2e suite caught
-    // the octet-stream bug class on exactly this path, and the deploy smoke
-    // is the last gate that proves the shipped SPA on the box.
+    // `bun run --cwd` relies on undocumented flag forwarding, so the web build must run via an
+    // explicit subshell cd, and the smoke must fetch an extensionless client route.
     const script = read("provision/vps/deploy/deploy.sh");
     expect(script).not.toMatch(/bun run --cwd/);
     expect(script).toMatch(/cd '\$REPO_DIR' && bun run build:web/);
@@ -660,18 +595,14 @@ describe("provisioning config as code stays true to the ADR", () => {
   });
 
   it("the deploy fails on a broken backup unit rather than trusting an active timer", () => {
-    // The gate whose absence let the backup defect hide (#181). The timer's
-    // `is-active` was green through every failed run — active means the SCHEDULE
-    // is armed, never that the job works — so the deploy reads the service's own
-    // run record instead.
+    // `is-active` means the SCHEDULE is armed, never that the job works, so the deploy reads
+    // the service's own run record instead.
     const script = read("provision/vps/deploy/deploy.sh");
     // The exit status is the assertion...
     expect(script).toMatch(/systemctl show kajianq-backup\.service -p ExecMainStatus/);
     expect(script).toMatch(/if \[ "\$status" != "0" \][^]*?exit 1/);
-    // ...and so is the timestamp-vs-install comparison, because `Result` cannot
+    // ...and the timestamp-vs-install comparison is the other half, because `Result` cannot
     // distinguish "the last run passed" from "no run since the unit changed".
-    // That distinction is the whole defect: the backup was installed-but-never-
-    // executed, and no single field reports it.
     expect(script).toMatch(/ExecMainExitTimestamp --timestamp=unix/);
     expect(script).toMatch(/stat -c %Y \/etc\/systemd\/system\/kajianq-backup\.service/);
     expect(script).toMatch(/if \[ "\$exited" -lt "\$installed" \][^]*?exit 1/);
@@ -679,22 +610,16 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(script).toMatch(/if \[ -z "\$exited" \][^]*?exit 1/);
     // Failures name the follow-up, or the operator reads a bare code.
     expect(script).toMatch(/journalctl -u kajianq-backup\.service/);
-    // `Result` must NOT be the assertion: on systemd 257 (the box)
-    // `reset-failed` clears it to `success` while leaving ExecMainStatus=1, so
-    // gating on it reports a failed run as healthy — the exact masking this
-    // check exists to prevent. (Verified on both 257 and 261.)
+    // `Result` must NOT be the assertion: `reset-failed` clears it to `success` while leaving
+    // ExecMainStatus=1, so gating on it reports a failed run as healthy.
     expect(script).not.toMatch(/-p Result/);
-    // And it must not merely re-check the timer: the reassuring-looking field
-    // this test exists to keep out of the gate.
+    // And it must not merely re-check the timer, the reassuring-looking field.
     expect(script).not.toMatch(/is-active --quiet kajianq-backup\.timer/);
   });
 
   it("apply.sh clears the backup unit's stale failure state after installing it", () => {
-    // The old unit definition failed on every run; that failure is attached to
-    // the unit NAME, so without reset-failed `systemctl status` reports a defect
-    // that no longer exists. The deploy's gate does not depend on the reset (it
-    // compares the exit timestamp to the install time), so this is purely so the
-    // box's own status is not misleading.
+    // The failure is attached to the unit NAME, so without reset-failed `systemctl status`
+    // reports a failure the unit does not have; the deploy's gate does not depend on the reset.
     const apply = read("provision/vps/apply.sh");
     expect(apply).toMatch(/systemctl reset-failed kajianq-backup\.service/);
     // Order matters: the reset is meaningless before the new unit is in place.
@@ -704,14 +629,9 @@ describe("provisioning config as code stays true to the ADR", () => {
   });
 
   it("the backup job ships as a deployed artifact, not from the repository checkout", () => {
-    // Why this is the structural fix (#181): while the unit executed
-    // `/srv/kajianq-src/…/kajianq-backup.mjs`, production ran whatever revision
-    // happened to sit in that checkout — which the deploy never updated — and a
-    // re-render could wire it to stale code. Two failures followed from that
-    // coupling (an unsubstituted placeholder; then the git-provenance step
-    // aborting every run because the checkout is not the unit's cwd). Building a
-    // third bundle beside index.js/cleanup.js puts it under the deploy's control
-    // and removes the coupling.
+    // The unit must run a DEPLOYED artifact, not a path in the repository checkout: production
+    // otherwise ran whatever revision sat in that checkout, which the deploy never updated.
+    // Building a third bundle beside index.js/cleanup.js puts it under the deploy's control.
     const script = read("provision/vps/deploy/deploy.sh");
     expect(script).toMatch(
       /bun build "\$\{REPO_DIR\}\/provision\/vps\/backup\/kajianq-backup\.mjs" --target=bun/,
@@ -722,22 +642,18 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(service).toMatch(/ExecStart=\/usr\/bin\/bun run \/srv\/kajianq\/api\/backup\.js/);
     // No checkout path may remain anywhere in the unit.
     expect(service).not.toMatch(/kajianq-src/);
-    // apply.sh installs it verbatim — no render() call, since there is nothing
-    // to substitute.
+    // apply.sh installs it verbatim — no render() call, since there is nothing to substitute.
     const apply = read("provision/vps/apply.sh");
     expect(apply).not.toMatch(/render "\$\{SRC\}\/systemd\/kajianq-backup\.service"/);
   });
 
   it("the backup script's provenance probe cannot abort a run", () => {
-    // The second failure (#181): `gitInfo()` guarded a `run()` call with
-    // try/catch, but this script's `fail()` calls process.exit(1) — an exit is
-    // not an exception, so the catch was dead code and EVERY backup aborted over
-    // a manifest field that already defaults to "unknown". Provenance must go
-    // through a probe that returns rather than exits.
+    // Provenance must go through a probe that returns rather than exits: this script's `fail()`
+    // calls process.exit(1), and an exit is not an exception a try/catch can contain.
     const script = read("provision/vps/backup/kajianq-backup.mjs");
     expect(script).toMatch(/function probe\(cmd, args, opts = \{\}\)/);
     expect(script).toMatch(/sha: probe\("git", \["rev-parse", "HEAD"\]/);
-    // `gitInfo` must not use `run()` any more — that is the fatal path.
+    // `gitInfo` must not use `run()` — that is the fatal path.
     const gitInfo = /function gitInfo\(\) \{[\s\S]*?\n\}/.exec(script)?.[0];
     expect(gitInfo, "kajianq-backup.mjs must define gitInfo()").toBeTruthy();
     expect(gitInfo).not.toMatch(/\brun\(/);
@@ -755,25 +671,17 @@ describe("provisioning config as code stays true to the ADR", () => {
   });
 
   it("the deploy grant authorizes exactly the sudo the deploy script runs", () => {
-    // The load-bearing parity (#181). The deploy's privileged half is sudo over
-    // ssh, where a missing grant fails as "a password is required" — an error
-    // that names neither the missing rule nor the command that needed it, and
-    // that no test would otherwise catch (it surfaced only when the cutover's
-    // blanket passwordless rule was removed). So both directions are pinned:
-    // every sudo'd command is granted, and every granted command is used.
-    // Without the second direction an unused grant would accumulate silently,
-    // widening the account's privilege while looking harmless.
+    // The deploy's privileged half is sudo over ssh, where a missing grant fails as "a password
+    // is required" — naming neither the rule nor the command. Both directions are pinned: every
+    // sudo'd command is granted, and every granted command is used, so an unused grant cannot
+    // accumulate silently.
     const script = read("provision/vps/deploy/deploy.sh");
     const grant = read("provision/vps/sudoers/kajianq-deploy");
 
-    // Extract the sudo'd argv from the script's remote commands. The `sudo `
-    // may follow a shell quote, so quotes and whitespace are normalized first;
-    // `${SYSTEMCTL}` is the script's own variable for the absolute binary —
-    // resolve it to the literal the grant carries, since sudoers matches the
-    // expanded command string. The capture runs to the end of the remote
-    // command (the next shell separator), so a call carrying EXTRA arguments is
-    // compared in full rather than truncated — a truncating pattern would let
-    // an argument-bearing deploy call pass against a narrower grant.
+    // Extract the sudo'd argv from the script's remote commands. The `sudo ` may follow a shell
+    // quote, so quotes and whitespace are normalized first, and `${SYSTEMCTL}` is resolved to
+    // the literal the grant carries, since sudoers matches the expanded command string. The
+    // capture runs to the next shell separator, so an argument-bearing call is compared in full.
     const resolved = script
       .replace(/\$\{SYSTEMCTL\}/g, "/usr/bin/systemctl")
       .replace(/["']/g, "\n");
@@ -782,10 +690,9 @@ describe("provisioning config as code stays true to the ADR", () => {
     );
     expect(used.length).toBeGreaterThanOrEqual(2);
 
-    // The grant's command list. Collapse whitespace first: the second entry
-    // follows a `\` line continuation, so its spacing is cosmetic. Commas
-    // separate entries and are not part of the command; the capture runs to
-    // the entry boundary so an extra-argument grant is compared in full.
+    // The grant's command list: whitespace is collapsed first (the second entry follows a `\`
+    // line continuation), and the capture runs to the entry boundary so an extra-argument grant
+    // is compared in full.
     const grantBody = grant
       .slice(grant.indexOf("NOPASSWD:"))
       .replace(/\\\s*\n/g, " ")
@@ -806,9 +713,8 @@ describe("provisioning config as code stays true to the ADR", () => {
   });
 
   it("the deploy grant is scoped: no wildcards, no shell, one identity, absolute paths", () => {
-    // visudo -cf proves the file PARSES; it does not prove it is narrow — a
-    // wildcard command parses perfectly and is the classic privilege-escalation
-    // footgun in sudoers. The scope therefore has to be asserted here.
+    // visudo -cf proves the file PARSES, not that it is narrow — a wildcard command parses
+    // perfectly — so the scope has to be asserted here.
     const grant = read("provision/vps/sudoers/kajianq-deploy");
     const rules = grant
       .split("\n")
@@ -817,14 +723,12 @@ describe("provisioning config as code stays true to the ADR", () => {
 
     expect(rules).not.toMatch(/\*/);
     expect(rules).not.toMatch(/\?|\[[^\]]/);
-    // No shell, and no ALL-command form: ALL would make the exact-command
-    // scoping decorative.
+    // No shell, and no ALL-command form: ALL would make the exact-command scoping decorative.
     expect(rules).not.toMatch(/NOPASSWD:\s*ALL/);
     for (const shell of ["bash", "sh ", "sudo", "env "]) {
       expect(rules).not.toMatch(new RegExp(`/usr/bin/${shell.trim()}`));
     }
-    // Absolute binary paths only — sudoers matches the command string exactly,
-    // so a PATH-resolved name would not match the grant.
+    // Absolute binary paths only: sudoers matches the command string exactly.
     expect(rules).toMatch(/\/usr\/bin\/systemctl restart kajianq-api\.service/);
     expect(rules).toMatch(/\/usr\/bin\/systemctl start kajianq-cron\.service/);
     // The read-only check must not be granted: unit state is world-readable.
@@ -832,28 +736,22 @@ describe("provisioning config as code stays true to the ADR", () => {
   });
 
   it("apply.sh installs the deploy grant only behind visudo, and the account name cannot drift", () => {
-    // Three places must agree on the deploy identity: the account apply.sh
-    // creates, the sudoers grant, and CI's VPS_USER. A drift there produces the
-    // same unnamed "password is required" failure the parity test above exists
-    // to prevent — so the name is fixed in one place, asserted against the
-    // grant, and pinned here.
+    // Three places must agree on the deploy identity: the account apply.sh creates, the sudoers
+    // grant, and CI's VPS_USER — a drift produces the same unnamed "password is required" failure.
     const apply = read("provision/vps/apply.sh");
     const grant = read("provision/vps/sudoers/kajianq-deploy");
 
     expect(apply).toMatch(/DEPLOY_USER="kajianq-deploy"/);
     expect(grant).toMatch(/^kajianq-deploy ALL=\(root\)/m);
-    // The install is gated on the parse: a malformed sudoers.d file can lock
-    // sudo out of the box entirely, so visudo must run BEFORE the mv into place.
-    // Anchor on the real invocation (a line whose command is visudo), not a
-    // comment that merely mentions it — the prologue prose names `visudo -cf`
-    // too, and a bare /visudo -cf/ match would pass on documentation alone.
+    // The install is gated on the parse: a malformed sudoers.d file can lock sudo out of the
+    // box, so visudo must run BEFORE the mv into place. Anchor on the real invocation, not a
+    // comment that merely mentions visudo.
     const visudoCall = /^\s*if ! visudo -cf\b/m.exec(apply);
     expect(visudoCall, "apply.sh must gate the sudoers install on visudo -cf").not.toBeNull();
     expect(apply.indexOf(visudoCall[0])).toBeLessThan(apply.indexOf('mv -f "${dst}.new"'));
     // A failed parse must abort the apply, not fall through to the install.
     expect(apply).toMatch(/if ! visudo -cf[^]*?exit 1/);
-    // Staged beside the target with a dot in the name: sudoers(5) ignores
-    // dot-named files, so no sudo invocation can read a half-written grant.
+    // Staged with a dot in the name: sudoers(5) ignores dot-named files.
     expect(apply).toMatch(/\$\{dst\}\.new/);
     // The grant must not be left world- or group-readable.
     expect(apply).toMatch(/install -o root -g root -m 0440/);
@@ -862,29 +760,23 @@ describe("provisioning config as code stays true to the ADR", () => {
   });
 
   it("the deploy identity owns the deployed tree, so rsync needs no group-write grant", () => {
-    // rsync -az implies -t (preserve times) and --delete removes stale
-    // content-hashed assets; both need write access to the tree. Ownership by
-    // the deploy identity is what provides it, without widening the service
-    // account or the unit. The recursive chown is the migration half: install
-    // -d fixes the directories but leaves existing files owned by a previous
-    // owner, and rsync then fails with "failed to set times" on the first
-    // unchanged file (the failure docs/VPS-OPERATIONS.md §1.5 records).
+    // rsync -az implies -t and --delete removes stale assets; both need write access to the
+    // tree, which ownership by the deploy identity provides without widening the service
+    // account. The recursive chown is the migration half: install -d leaves existing files
+    // owned by the previous owner.
     const apply = read("provision/vps/apply.sh");
     expect(apply).toMatch(/install -d -o "\$\{DEPLOY_USER\}" -g "\$\{DEPLOY_USER\}" -m 0755/);
     expect(apply).toMatch(
       /chown -R "\$\{DEPLOY_USER\}:\$\{DEPLOY_USER\}" \/srv\/kajianq\/api \/srv\/kajianq\/web/,
     );
-    // The service account must NOT gain write access as the cheaper fix: the
-    // API process never writes to this tree, so granting it there would widen
-    // the serving identity for no requirement.
+    // The service account must NOT gain write access as the cheaper fix: the API process never
+    // writes to this tree, so that would widen the serving identity for no requirement.
     expect(apply).not.toMatch(/install -d -o kajianq -g kajianq -m 2755/);
   });
 
   it("the deploy key installation never comes from the repository and never overwrites", () => {
-    // The repository is public, so a key can only arrive through
-    // --deploy-pubkey at provisioning time. Appending (not overwriting) keeps
-    // the prod environment's separate key pair from evicting staging's, which
-    // is exactly the failure a re-run would otherwise introduce silently.
+    // The repository is public, so a key can only arrive through --deploy-pubkey at provisioning
+    // time; appending (not overwriting) keeps the prod key pair from evicting staging's.
     const apply = read("provision/vps/apply.sh");
     expect(apply).toMatch(/--deploy-pubkey/);
     expect(apply).not.toMatch(/authorized_keys.*<<<.*id_(ed25519|rsa)/);
@@ -893,27 +785,21 @@ describe("provisioning config as code stays true to the ADR", () => {
   });
 
   it("apply.sh never installs the deploy grant for a name the grant does not name", () => {
-    // Negative control for the parity assert: the check must be a real
-    // comparison against the shipped file, not a constant that always passes.
+    // Negative control for the parity assert: a real comparison, not a constant that passes.
     const grant = read("provision/vps/sudoers/kajianq-deploy");
     const apply = read("provision/vps/apply.sh");
     const deployUser = /DEPLOY_USER="([^"]+)"/.exec(apply)?.[1];
     expect(deployUser).toBe("kajianq-deploy");
     expect(grant).toMatch(new RegExp(`^${deployUser} ALL=\\(root\\)`, "m"));
-    // A different name must NOT satisfy the same assertion — otherwise the
-    // test above would pass on any grant file.
+    // A different name must NOT satisfy the same assertion, or the test above would pass on any grant.
     expect(grant).not.toMatch(/^some-other-user ALL=\(root\)/m);
   });
 
   it("the api.env example carries every key the serving composition root reads, as placeholders", () => {
-    // Thermo-review B2/A5: /etc/kajianq/api.env is the serving process's whole
-    // configuration, but no document described its contents. The example must
-    // list exactly the PASSTHROUGH_KEYS set in apps/api/src/lib/server.ts (the
-    // two sets drift only together), set KAJIANQ_WEB_ROOT to the deployed path
-    // (the default resolves under the unit's WorkingDirectory and 503s every
-    // SPA route while health stays green), and hold placeholders only. The
-    // loopback 127.0.0.1 is exempt: it is the Postgres listener's own address,
-    // already printed in backup.env.example, not an origin secret.
+    // The example must list exactly the PASSTHROUGH_KEYS set in apps/api/src/lib/server.ts (the
+    // two sets drift only together), set KAJIANQ_WEB_ROOT to the deployed path (the default 503s
+    // every SPA route while health stays green), and hold placeholders only — the loopback
+    // 127.0.0.1 is exempt as the Postgres listener's own address.
     const example = read("provision/vps/api.env.example");
     const server = readFileSync(resolve(process.cwd(), "apps/api/src/lib/server.ts"), "utf8");
     const keys = [...server.matchAll(/^\s*"([A-Z_0-9]+)",?$/gm)].map((m) => m[1]);
@@ -921,11 +807,9 @@ describe("provisioning config as code stays true to the ADR", () => {
     for (const key of keys) {
       expect(example, key).toMatch(new RegExp(`^${key}=`, "m"));
     }
-    // The template must ship the recorded `staging` label, and a re-arm has to
-    // redden here rather than on a rebuilt box (ADR-0044 decision 2;
-    // deferred 2026-10-03; #355). Asserted on the parsed value — systemd strips whitespace and
-    // quotes, and takes the last assignment — and on there being one assignment:
-    // one exact spelling is what a re-arm slips past, not the invariant.
+    // The template must ship the recorded `staging` label so a re-arm reddens here rather than
+    // on a rebuilt box (ADR-0044 decision 2). Asserted on the parsed value — systemd strips
+    // whitespace and takes the last assignment — and on there being one assignment.
     const assignments = example.match(/^\s*APP_ENV\s*=/gm) ?? [];
     expect(assignments).toHaveLength(1);
     expect(parseEnvFile(example).APP_ENV).toBe("staging");
@@ -933,55 +817,46 @@ describe("provisioning config as code stays true to the ADR", () => {
     const noLoopback = example.replace(/127\.0\.0\.1/g, "<loopback>");
     expect(noLoopback).not.toMatch(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/);
     expect(example).not.toMatch(/postgres:\/\/(?!kajianq:CHANGE_ME)/);
-    // Real secrets never enter the repo: every provider key line is a
-    // placeholder.
+    // Real secrets never enter the repo: every provider key line is a placeholder.
     for (const key of ["GEMINI_PAID_API_KEY", "DEEPSEEK_API_KEY"]) {
       expect(example).toMatch(new RegExp(`^${key}=CHANGE_ME$`, "m"));
     }
   });
 
   it("the setup doc exists and carries the steps a fresh box cannot infer", () => {
-    // The repository is open source, so the provisioning path has to be
-    // followable by someone who is not the owner. Four things a reader cannot
-    // derive from the configs, each of which has already broken a real deploy
-    // (#181) — pin them so a doc edit cannot quietly drop them.
+    // The repository is open source, so the provisioning path has to be followable by someone
+    // who is not the owner: pin the steps a reader cannot derive from the configs.
     const setup = read("docs/VPS-SETUP.md");
 
-    // 1. Bun must be installed at /usr/bin/bun. The units run with
-    //    ProtectHome=yes, so a home-directory Bun is invisible to them and
-    //    ExecStart fails for a binary that exists.
+    // 1. Bun must be installed at /usr/bin/bun: the units run with ProtectHome=yes, so a
+    //    home-directory Bun is invisible and ExecStart fails for a binary that exists.
     expect(setup).toMatch(/\/usr\/bin\/bun/);
     // The doc must name the constraint, not just the path.
     expect(setup).toMatch(/ProtectHome/);
     // It must NOT recommend the home-directory installer that causes it.
     expect(setup).not.toMatch(/curl -fsSL https:\/\/bun\.sh\/install/);
 
-    // 2. apply.sh installs the Postgres POSTURE but creates no role/database,
-    //    so a fresh box has to create them or the API fails to connect.
+    // 2. apply.sh installs the Postgres POSTURE but creates no role or database.
     const apply = read("provision/vps/apply.sh");
     expect(apply).not.toMatch(/CREATE ROLE|createuser/);
     expect(setup).toMatch(/CREATE ROLE kajianq LOGIN/);
 
-    // 3. The two chat-path precondition keys (without them health stays green
-    //    while every question fails its embedder or reviewer stage).
+    // 3. The two chat-path precondition keys, without which health stays green while every
+    //    question fails its embedder or reviewer stage.
     expect(setup).toMatch(/GEMINI_PAID_API_KEY/);
     expect(setup).toMatch(/DEEPSEEK_API_KEY/);
 
-    // 4. The rate-bypass public key is committed, so an unmodified fork
-    //    verifies tokens minted by anyone holding the project's private key.
-    //    A public setup doc has to say so.
+    // 4. The rate-bypass public key is committed, so an unmodified fork verifies tokens minted
+    //    by anyone holding the project's private key: a public setup doc has to say so.
     const bypass = read("apps/api/src/lib/rate-bypass.ts");
     expect(bypass).toMatch(/RATE_BYPASS_PUBLIC_KEY_B64 = "/);
     expect(setup).toMatch(/rotate/i);
   });
 
   it("the setup doc proves the backup with the SERVICE, not a direct script run", () => {
-    // The trap this pins: the doc used to prove the backup by running
-    // `kajianq-backup.mjs` directly. That writes a snapshot but leaves the
-    // unit's own ExecMainStatus/ExecMainExitTimestamp untouched, and the
-    // deploy's gate reads exactly those — so a box "proven" that way failed its
-    // first deploy with "has never run". Proving the script is not proving the
-    // unit.
+    // The doc must prove the backup with the service, not `kajianq-backup.mjs` directly: a
+    // direct run writes a snapshot but leaves the unit's ExecMainStatus/ExecMainExitTimestamp
+    // untouched, and the deploy's gate reads exactly those.
     const setup = read("docs/VPS-SETUP.md");
     expect(setup).toMatch(/sudo systemctl start kajianq-backup\.service/);
     // The distinction must be stated, or the next reader reintroduces it.
@@ -989,48 +864,37 @@ describe("provisioning config as code stays true to the ADR", () => {
   });
 
   it("the restore-drill workflow does not claim its image matches the box's major", () => {
-    // The comment said pg18 "matches the Postgres major the box is provisioned
-    // with"; the box is Postgres 17 (docs/VPS-OPERATIONS.md §2.1). The image is
-    // the schema under test, not a claim about the box — a wrong version claim
-    // in a comment is how a reader concludes the drill tests something it does
-    // not.
+    // The image is the schema under test, not a claim about the box's Postgres major — a wrong
+    // version claim in a comment is how a reader concludes the drill tests something it does not.
     const workflow = read(".github/workflows/vps-restore-drill.yml");
     expect(workflow).toMatch(/pgvector\/pgvector:pg18/);
     expect(workflow).not.toMatch(/the Postgres major the box is provisioned with/);
   });
 
   it("the setup doc is reachable from the README and the operator's manual", () => {
-    // An unlinked doc is an unfound doc — the whole point is a self-hoster
-    // finding it from the front page.
+    // An unlinked doc is an unfound doc: a self-hoster has to find it from the front page.
     expect(read("README.md")).toMatch(/docs\/VPS-SETUP\.md/);
     expect(read("docs/VPS-OPERATIONS.md")).toMatch(/VPS-SETUP\.md/);
   });
 
   it("the retired VPS docs are gone and their load-bearing content moved, not lost", () => {
-    // The consolidation: the VPS set was six documents plus a stub, all written
-    // as a record of one box being built. Four were spent procedures or a
-    // duplicate — a baseline bootstrap, a one-shot migration off Cloudflare +
-    // Neon, a pointer stub, and a hardening runbook whose steps the setup doc
-    // already walked through. This test is what keeps the retirement honest: it
-    // fails if a retired file reappears (two sources of truth), and it fails if
-    // the content that had to survive is dropped by a later edit.
+    // This test keeps the retirement honest: it fails if a retired file reappears (two sources
+    // of truth), and if the content that had to survive is dropped by a later edit.
     const setup = read("docs/VPS-SETUP.md");
     for (const retired of [
       "docs/VPS-BASELINE-SETUP.md",
       "docs/VPS-CUTOVER-RUNBOOK.md",
       "docs/VPS-HARDENING-RUNBOOK.md",
       "docs/neon-sizing-issue-4.md",
-      // The pre-rename path: a stale link or a re-created file here means the
-      // rename was half-applied.
+      // A stale link or a re-created file here means the rename was half-applied.
       "docs/SELF-HOSTING-GUIDE.md",
     ]) {
       expect(existsSync(resolve(process.cwd(), retired)), retired).toBe(false);
     }
 
-    // The hardening runbook's substance had to land in the setup doc, or the
-    // merge silently dropped the privacy posture. Four things only it carried:
-    //  the config-as-code inventory, the nginx rationale, the CI-side VPS_USER
-    //  flip, and the retention verification that needs traffic to be meaningful.
+    // The hardening runbook's substance had to land in the setup doc, or the merge silently
+    // dropped the privacy posture: the config-as-code inventory, the nginx rationale, the
+    // CI-side VPS_USER flip, and the retention verification.
     expect(setup).toMatch(/Everything `apply\.sh` places/);
     expect(setup).toMatch(/Reverse proxy: nginx, not Caddy/);
     expect(setup).toMatch(/Retention, not IP masking/);
@@ -1040,49 +904,40 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(setup).toMatch(/restic `--keep-daily`/);
     expect(setup).toMatch(/journald\/kajianq\.conf/);
 
-    // 1. Issue #181 is still open, so the acceptance-criteria walk-through had
-    //    to survive somewhere — it is what the issue is closed against.
+    // 1. The acceptance-criteria walk-through had to survive: it is what the issue closes against.
     const record = read("docs/VPS-CUTOVER-RECORD.md");
     expect(record).toMatch(/AC-1\b/);
     expect(record).toMatch(/AC-16\b/);
     expect(record).toMatch(/## Acceptance criteria/);
-    // The baseline session's record is the chain-of-custody start for the box
-    // the cutover record describes; its evidence table had to come along.
+    // The baseline session's record is the chain-of-custody start; its evidence table came along.
     expect(record).toMatch(/baseline session/i);
     expect(record).toMatch(/Debian 13 \(trixie\)/);
 
-    // 2. The one procedure in the cutover runbook that outlived its vendor:
-    //    moving an existing database onto a box. Cloudflare and Neon are
-    //    specifics a self-hoster does not have; snapshot-verify-ship-compare is
-    //    not.
+    // 2. The one procedure in the cutover runbook that outlived its vendor: moving an existing
+    //    database onto a box — snapshot-verify-ship-compare, not Cloudflare or Neon specifics.
     expect(setup).toMatch(/## 12\. Moving an existing database/);
     expect(setup).toMatch(/db:snapshot create/);
     expect(setup).toMatch(/pg_restore/);
     expect(setup).toMatch(/db:snapshot verify/);
 
-    // 3. The disk figure. ADR-0020's arithmetic is the only corpus-size estimate
-    //    in the repo, and a self-hoster sizing a VPS needs it — it was reachable
-    //    from nowhere practical before this.
+    // 3. The disk figure: ADR-0020's arithmetic is the only corpus-size estimate in the repo, and
+    //    a self-hoster sizing a VPS needs it.
     expect(setup).toMatch(/17–18 GiB/);
     expect(setup).toMatch(/adr\/0020-neon-dual-vector-sizing\.md/);
-    // And the ADR must say its Neon recommendation is spent while the math
-    // still holds, or a reader acts on pricing for a service that is deleted.
+    // The ADR must say its Neon recommendation is spent while the math still holds.
     const adr = read("adr/0020-neon-dual-vector-sizing.md");
     expect(adr).toMatch(/Supersession note/);
     expect(adr).toMatch(/still holds/);
   });
 
   it("a markdown link gate exists and is wired into CI", () => {
-    // Nothing else in CI notices a dangling doc link, and GitHub renders one as
-    // ordinary text — so a reader cannot tell they are looking at a broken
-    // citation. Retiring three files meant repointing every reference to them;
-    // this gate is what proves that was done, now and on every future edit.
+    // Nothing else in CI notices a dangling doc link, and GitHub renders one as ordinary text,
+    // so a reader cannot tell they are looking at a broken citation.
     const script = read("scripts/check-markdown-links.mjs");
     expect(script).toMatch(/markdown-links/);
     // It must resolve relative targets, not merely look for the string.
     expect(script).toMatch(/existsSync/);
-    // Fenced code blocks carry link syntax as examples; scanning them would
-    // make the gate fail on documentation about links.
+    // Fenced code blocks carry link syntax as examples, so scanning them would false-positive.
     expect(script).toMatch(/inFence/);
     // Vendored READMEs are not this repo's prose.
     expect(script).toMatch(/node_modules/);

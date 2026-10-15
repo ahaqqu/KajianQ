@@ -23,9 +23,6 @@ import {
  *     upstream wording live there; an available entry carries only a one-line
  *     attribution note here, never a duplicated license paragraph.
  *   - `SPECS.md` §2.1 (capabilities), §4.1 (sources) and §4.2 (priority kitab).
- *   - Issues #21 and #22 (priority kitab), #24 (terminology concept graph),
- *     #33 and #35 (complete verified author corpora), #141 (staging hadith
- *     headroom within the free-plan cap), #27–#31 (Sanadset isnad v2).
  *   - ADR-0014 (license-safe concept-graph seed sources) and ADR-0026
  *     (fawazahmed0 source, dhaif-wins grade consolidation).
  *

@@ -43,9 +43,9 @@ describe("i18n", () => {
   });
 
   /**
-   * The `{name}` substitution convention (thermo-review B2, #256): the syntax
-   * is the i18n layer's, so the next templated message substitutes through
-   * `formatMessage` instead of inventing its own at the call site.
+   * The `{name}` substitution convention: the syntax is the i18n layer's, so
+   * the next templated message substitutes through `formatMessage` instead of
+   * inventing its own at the call site.
    */
   describe("formatMessage", () => {
     it("substitutes {name} placeholders in both locales", () => {

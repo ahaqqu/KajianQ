@@ -7,25 +7,24 @@ import { REVIEWER_SYSTEM_PROMPT } from "./chat-reviewer";
  *
  * Both failure directions are SILENT, which is why the pins matter:
  *
- * 1. Missing backstop (the gs-v0-019 Staging flake, c7e20a7, 2026-09-13): the
- *    generator disobeyed its rule 1 and produced a grounded, answer-form
- *    "no date is stated; only Allah knows" essay for a question demanding a
- *    specific fact. The draft asserted nothing unsupported, so the reviewer
- *    passed it, no `refusal` event was recorded, and `detectRefusal` scored the
- *    refusal-coverage trap as an answer. Removing or rewording away the
- *    "declines to answer" fail case re-opens the flake with no test failing.
+ * 1. Missing backstop: a grounded, answer-form decline ("no date is stated;
+ *    only Allah knows") for a question demanding a specific fact asserts
+ *    nothing unsupported, so the reviewer passes it, no `refusal` event is
+ *    recorded, and `detectRefusal` scores the refusal-coverage trap as an
+ *    answer. Removing or rewording away the "declines to answer" fail case
+ *    re-opens that silent pass with no test failing.
  *
  * 2. Inflated refusals (SPECS §3.4 cost posture): the anti-over-fail
  *    guarantees — translating/quoting/citation labels are required behavior,
  *    and a term the QUESTION itself uses is not an unsupported claim — are what
- *    keep the gate from failing legitimate grounded answers (the gs-v0-015
- *    family of failures). Deleting or weakening them while editing the prompt
- *    would flip whole Golden Set runs to refusals, again with no test failing.
+ *    keep the gate from failing legitimate grounded answers. Deleting or
+ *    weakening them while editing the prompt would flip whole Golden Set runs
+ *    to refusals, again with no test failing.
  *
- * So this file pins the new fail case, its narrowness, and the unchanged
- * protections — on the prompt itself, not a copy of it. The refusal vocabulary
- * those criteria feed (the sentence, the decision table, the decline backstop)
- * lives in `chat-refusal.ts` and is pinned by `chat-refusal.test.ts`.
+ * So this file pins the fail case, its narrowness, and the protections — on the
+ * prompt itself, not a copy of it. The refusal vocabulary those criteria feed
+ * (the sentence, the decision table, the decline backstop) lives in
+ * `chat-refusal.ts` and is pinned by `chat-refusal.test.ts`.
  */
 
 /** The prompt is line-joined; phrase pins must survive the line wrapping. */
@@ -33,7 +32,6 @@ const prompt = REVIEWER_SYSTEM_PROMPT.replace(/\n/g, " ");
 
 describe("the reviewer's decline-to-answer fail case", () => {
   it("adds 'declines to answer' to the Fail ONLY clause", () => {
-    // The existing sentence must survive verbatim — this PR may not loosen it.
     expect(prompt).toContain(
       "Fail ONLY when the answer asserts something the evidence does not support, contradicts the evidence, cites a source absent from the evidence, or declines to answer.",
     );
@@ -49,7 +47,7 @@ describe("the reviewer's decline-to-answer fail case", () => {
     expect(prompt).toContain(
       "the draft instead describes, explains, or contextualizes what the evidence does or does not say about that fact",
     );
-    // The exact shape that slipped through the c7e20a7 run, as an example.
+    // The decline pattern the fail case must catch, as the prompt's own example.
     expect(prompt).toContain("no date is stated; only Allah knows");
   });
 
