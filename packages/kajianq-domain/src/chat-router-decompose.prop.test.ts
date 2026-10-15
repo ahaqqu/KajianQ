@@ -54,6 +54,56 @@ const CONTENT_FREE_TEXTS = [
   "؟",
   "\u061c",
   "٭",
+  // The `Cf`/`Cc`-only class the rule leg leaked (#462): a zero-width run, a C0
+  // control run, a lone joiner, a word joiner and a BOM. `trim()` strips
+  // White_Space only, so every one of these survives it — which is why the
+  // content test, not the trim, is what has to catch them. The first two are the
+  // QA round's measured probes verbatim (a zero-width question and U+0001 U+0007).
+  "\u200b\u200d\u200b",
+  "\u0001\u0007",
+  "\u200d",
+  "\u2060",
+  "\ufeff",
+] as const;
+
+/**
+ * The content-free texts a *question* can be (#462): the class the generator
+ * could not draw before, and the one the defect lived in. The `factual` rule's
+ * own text *is* the caller's question verbatim, so a question carrying no letter
+ * and no digit reached the fan-out as `origin: "rule"` and was embedded and
+ * searched — one embed slot, a pair of searches and a `subquery` event spent on
+ * a text that cannot retrieve. The first two entries are the QA round's probes.
+ * Empty is left out: the HTTP boundary refuses a zero-length body, so it is not
+ * a question the laws have to reason about (the blank-`"   "` case is drawn
+ * beside these, and a blank question has no content either).
+ */
+const CONTENT_FREE_QUESTION_TEXTS = [
+  "\u200b\u200d\u200b",
+  "\u0001\u0007",
+  "\u200b",
+  "\u200d",
+  "\u2060",
+  "\ufeff",
+  "؟",
+] as const;
+
+/**
+ * The `Cf`/`Cc` code points the content drop exists for, as generator *units*
+ * (#462, review B3). The list above can only ever hold the spellings someone
+ * thought to write down — and it is hand-listed, so on its own it makes law 8's
+ * power over the class exactly seven constants rather than a property of the
+ * class. Every concatenation of these units carries no letter and no digit, and
+ * `trim()` strips White_Space only, so each one is content-free and survives the
+ * trim: drawing the units as well as listing the probes is what lets a member of
+ * the class nobody listed redden the law.
+ */
+const CONTENT_FREE_QUESTION_UNITS = [
+  "\u200b",
+  "\u200d",
+  "\u2060",
+  "\ufeff",
+  "\u0001",
+  "\u0007",
 ] as const;
 
 /**
@@ -71,10 +121,14 @@ const CONTENT_FREE_TEXTS = [
  *      stamped its role onto the role-less entry already carrying its text.
  *      The one coincidence it cannot cover is the model having labelled that
  *      entry with a different declared role: that label is never overwritten,
- *      so the law accepts exactly that case as the exception the header states;
+ *      so the law accepts exactly that case as the exception the header states.
+ *      Coverage is asserted for a question that is itself a query — a rule whose
+ *      own text carries no letter and no digit has no query to contribute, so
+ *      there is nothing to cover (#462);
  *   3. the floor holds on distinct texts: the stage returns a single sub-query
  *      only when that sub-query *is* the question — never a padded
- *      near-duplicate of it (`MIN_SUB_QUERIES`);
+ *      near-duplicate of it (`MIN_SUB_QUERIES`), and never a question that is
+ *      not a query at all (#462);
  *   4. no two sub-queries carry the same text (duplicates waste an embed slot
  *      and make the Trace claim angles the model never offered);
  *   5. every kept sub-query has non-empty text and, if labelled, a role from
@@ -82,25 +136,30 @@ const CONTENT_FREE_TEXTS = [
  *      it — the repair may stamp a fired rule's role onto a role-less entry
  *      carrying that rule's text, but never overwrites a label — and only the
  *      *rules* are deduplicated by role);
- *   6. nothing is returned only when there was nothing to search;
+ *   6. nothing is returned only when no text the stage was handed — the question
+ *      or any reply text — carried a letter or a digit: a blank or content-free
+ *      question with a reply that phrased nothing searchable has no retrieval to
+ *      run at all (#462);
  *   7. re-running the repair over its own output changes nothing but the
  *      provenance labels (idempotence over text and role) — the law #450 was
  *      filed about — over both the plain and the collision generator below, at a
  *      budget (2 000 runs, ~1 000 per generator) whose verdict is a property of
  *      the repair and not of the seed draw: reverting only the ceiling's
  *      stand-in protection reddens it in 20 of 20 runs (review A1);
- *   8. no text the reply phrased with nothing to search with survives — blank,
- *      whitespace-only, punctuation-only, emoji-only, control-only, in ASCII or
- *      in any other script — unless it is the caller's own question, which the
- *      `factual` rule adds back anyway and which is therefore never dropped
- *      (#450);
+ *   8. no text the stage was handed with nothing to search with becomes a
+ *      sub-query — blank, whitespace-only, punctuation-only, emoji-only,
+ *      `Cf`/`Cc`-only, in ASCII or in any other script — whatever its origin:
+ *      not the reply's phrasing, and not a composition rule's own text, which
+ *      for `factual` is the caller's question verbatim (#450, #462);
  *   9. and the other direction: a reply text that carries content is kept,
  *      trimmed and as the reply labelled it — the half an ASCII reading of
  *      "content" would narrow away (#450 A2);
  *  10. the ceiling never spends the slot of the entry a fired-but-uncovered
  *      rule's own text lives in — the invariant the module's prose used to
  *      argue rather than check — over both generators at the same budget as
- *      law 7 (#450 B1);
+ *      law 7, for every fired rule whose own text is itself a query (the
+ *      `factual` rule's bare content-free question has no entry to protect)
+ *      (#450 B1, #462, #463 B1);
  *  11. every entry is marked as the model's or a rule's.
  */
 
@@ -148,6 +207,20 @@ const inputArb: fc.Arbitrary<DecompositionInput> = fc
         fc.string({ minLength: 1, maxLength: 60 }),
         fc.constant("hukum riba?"),
         fc.constant("   "),
+        // The class the defect lived in (#462): a question carrying no letter
+        // and no digit, which the `factual` rule's own text reproduces verbatim.
+        // `fc.string` draws printable ASCII and never a zero-width or control
+        // body, so without this branch the laws' claim to cover the rule leg's
+        // content drop cannot be falsified — the drop is simply never exercised.
+        // The constants are the verbatim QA probes and their near neighbours;
+        // the generated branch beside them (`CONTENT_FREE_QUESTION_UNITS`) is
+        // what makes the class a class rather than seven spellings (review B3).
+        fc.constantFrom(...CONTENT_FREE_QUESTION_TEXTS),
+        fc.string({
+          unit: fc.constantFrom(...CONTENT_FREE_QUESTION_UNITS),
+          minLength: 1,
+          maxLength: 8,
+        }),
       ),
       needsPrinciple: fc.boolean(),
       principleTags: fc.array(fc.constantFrom(...PRINCIPLE_TAGS), { maxLength: 4 }),
@@ -209,6 +282,10 @@ const collisionArb: fc.Arbitrary<DecompositionInput> = fc
           "e",
           "٥",
           "الربا",
+          // A content-free reply text in the collision class too (#462): it must
+          // leave the fan-out without disturbing the rule coverage the ceiling
+          // is reasoning about, which is what law 10 keeps checking.
+          "\u200b\u200d\u200b",
           "prinsip yusr dalam menjawab: hukum riba?",
           "dalil Al-Quran tentang: hukum riba?",
           "sanad dan derajat hadis tentang: hukum riba?",
@@ -309,12 +386,18 @@ describe("decomposeQuery laws", () => {
     expect(decomposeQuery(input).length).toBeLessThanOrEqual(MAX_SUB_QUERIES);
   });
 
-  // The caller's question is validated at the HTTP boundary (1..N characters)
-  // but a whitespace-only body is accepted there, so coverage is asserted for
-  // a question that actually carries text — the blank case is its own law below.
-  const answerableArb = inputArb.filter((input) => input.question.trim() !== "");
+  // Law 2's coverage and law 3's floor are asserted for a question that is itself
+  // a query — one carrying a letter or a digit in some script. A rule whose own
+  // text carries none has no query to contribute, and the stage deliberately does
+  // not add it (#462), so those two laws have nothing to assert there; law 8 pins
+  // that class, and the blank question is out for the same reason it always was
+  // (a blank body has no content in it either). Law 10 is deliberately *not* built
+  // on this filter (review B1): its subject is a rule's *own text* under another
+  // declared role, and for a content-free question the non-factual templates still
+  // carry words of their own, so that class stays in its scope.
+  const searchableQuestionArb = inputArb.filter((input) => hasContent(input.question));
 
-  fcTest.prop([answerableArb])(
+  fcTest.prop([searchableQuestionArb])(
     "covers every rule that fired, or names its one exception",
     (input) => {
       const subs = decomposeQuery(input);
@@ -392,7 +475,7 @@ describe("decomposeQuery laws", () => {
     }
   });
 
-  fcTest.prop([answerableArb])(
+  fcTest.prop([searchableQuestionArb])(
     "returns one sub-query only when that sub-query is the question",
     (input) => {
       const subs = decomposeQuery(input);
@@ -422,11 +505,22 @@ describe("decomposeQuery laws", () => {
     expect(roles.every((role) => (SUB_QUERY_ROLES as readonly string[]).includes(role))).toBe(true);
   });
 
-  fcTest.prop([inputArb])("returns nothing only when there was nothing to search", (input) => {
-    // A blank question with a reply that carried no usable sub-query has no
-    // retrieval to run; anything else yields at least the factual sub-query.
-    if (decomposeQuery(input).length === 0) expect(input.question.trim()).toBe("");
-  });
+  fcTest.prop([inputArb])(
+    "returns nothing only when no text it was handed had anything to search with",
+    (input) => {
+      // A question that is not a query — blank, punctuation-only, `Cf`/`Cc`-only
+      // — with a reply that phrased nothing searchable and **no non-factual rule
+      // firing** has no retrieval to run: the empty fan-out is the whole point in
+      // that shape (#462, review C1). A principle/dalil/sanad template carries
+      // words of its own, so one of those firing keeps the fan-out non-empty —
+      // which is why the law is stated as the contrapositive over every text the
+      // stage was handed: an empty result means the question carried no letter and
+      // no digit AND so did every reply text.
+      if (decomposeQuery(input).length > 0) return;
+      expect(hasContent(input.question)).toBe(false);
+      for (const entry of input.modelSubQueries) expect(hasContent(entry.text)).toBe(false);
+    },
+  );
 
   // The headline law, budgeted so that its verdict is a property of the repair
   // and not of the seed draw (#450 A1). At fast-check's default `numRuns: 100`
@@ -454,21 +548,28 @@ describe("decomposeQuery laws", () => {
     },
   );
 
-  fcTest.prop([inputArb])("keeps no reply text with nothing to search with", (input) => {
-    // The reply's claim is dropped unless it carries a letter or a digit in any
-    // script — `\p{L}`/`\p{N}`, so Arabic, Jawi, Arabic-Indic digits and an ASCII
-    // word all count. This law is the *removal* direction (delete the content
-    // test and it reddens); the narrowing direction — an ASCII `/[a-z0-9]/i`
-    // reading, which this law can only make greener — is the next law's, whose
-    // generator draws the non-ASCII texts that tell the two readings apart. The
-    // one text allowed to survive without content is the caller's own question,
-    // which the `factual` rule adds back whether or not the reply phrased it, so
-    // dropping it could only move it (#450).
-    const question = norm(input.question);
-    for (const sub of decomposeQuery(input)) {
-      expect(hasContent(sub.text) || norm(sub.text) === question).toBe(true);
-    }
-  });
+  fcTest.prop([inputArb])(
+    "keeps no text with nothing to search with, whatever its origin",
+    (input) => {
+      // The invariant #462 pins, unqualified by origin: a sub-query carries a
+      // letter or a digit in any script — `\p{L}`/`\p{N}`, so Arabic, Jawi,
+      // Arabic-Indic digits and an ASCII word all count. This law is the
+      // *removal* direction (delete the content test and it reddens); the
+      // narrowing direction — an ASCII `/[a-z0-9]/i` reading, which this law can
+      // only make greener — is the next law's, whose generator draws the
+      // non-ASCII texts that tell the two readings apart.
+      //
+      // The class the exception used to cover is the rule leg's, and it is why
+      // the law is stated this way: the `factual` rule's own text *is* the
+      // caller's question, and `trim()` strips White_Space only, so a question
+      // made of `Cf` (zero-width spaces, joiners, a BOM) or `Cc` (C0 controls)
+      // reached the fan-out as `origin: "rule"` and was embedded and searched
+      // (#462). The generator draws that class as a *question* — the branch
+      // `CONTENT_FREE_QUESTION_TEXTS` adds — so this law is red against the
+      // pre-fix source rather than vacuously green.
+      for (const sub of decomposeQuery(input)) expect(hasContent(sub.text)).toBe(true);
+    },
+  );
 
   // The other half of the content law, and the one an ASCII reading has to
   // redden (#450 A2): a reply text that carries content in any script reaches the
@@ -503,13 +604,23 @@ describe("decomposeQuery laws", () => {
   // Budgeted like the idempotence law above, and for the same reason: at the
   // default 100 runs this law reddened in only 14 of 20 runs against the pre-fix
   // source; at 2 000 it is red in 20 of 20 (measured).
-  fcTest.prop([fc.oneof(answerableArb, collisionArb)], { numRuns: 2000 })(
+  //
+  // It draws the *unfiltered* `inputArb` (review B1): the law is about a
+  // rule's own text, and a content-free question's non-factual template carries
+  // words of its own, so filtering the class out would drop the shapes the
+  // protection exists for. The one role with nothing to protect is the one whose
+  // own rule text is not a query at all — the `factual` rule's bare content-free
+  // question, which admission drops by design (#462) — so that vacuous case is
+  // excluded per rule, the way laws 2 and 3 exclude it per question, rather than
+  // by narrowing the generator.
+  fcTest.prop([fc.oneof(inputArb, collisionArb)], { numRuns: 2000 })(
     "keeps a fired rule's own text when the rule is left uncovered",
     (input) => {
       const subs = decomposeQuery(input);
       const roles = subs.flatMap((sub) => (sub.role === undefined ? [] : [sub.role]));
       for (const role of firedRoles(input.needsPrinciple, input.category)) {
         if (roles.includes(role)) continue;
+        if (!hasContent(ruleTextOf(role, input))) continue;
         expect(subs.some((sub) => norm(sub.text) === norm(ruleTextOf(role, input)))).toBe(true);
       }
     },

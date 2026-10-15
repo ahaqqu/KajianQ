@@ -8,7 +8,7 @@ import {
   type Routing,
   type SubQuery,
 } from "@app/rag-core";
-import { decomposeQuery } from "./chat-router-decompose";
+import { admitSubQueryText, decomposeQuery } from "./chat-router-decompose";
 import { readRouterText, ROUTER_SYSTEM_PROMPT, type RouterReading } from "./chat-router-output";
 import { routeFilters, sourceRoutingDetail, type SourceRoutingInput } from "./chat-source-routing";
 
@@ -42,7 +42,11 @@ export { extractJsonObject, ROUTER_SYSTEM_PROMPT } from "./chat-router-output";
  * intent event's attributes, so the Trace never presents an invented
  * classification as the model's reading. The fallback selects no source — a
  * route that understood nothing must not narrow the corpus on a guess — and
- * says so with an empty `sources` list.
+ * says so with an empty `sources` list. A question carrying no letter and no
+ * digit is not a query, so this arm adds no sub-query either: the invariant is
+ * one text-level admission — trim, then the content test — owned by
+ * `chat-subquery-admission` and shared with the decomposer, because the
+ * fallback is a third origin a caller's text reaches the fan-out from (#462).
  */
 
 export type RouterProvider = {
@@ -170,9 +174,23 @@ function fallbackRouting(
   question: string,
   overrides: import("./filters").KajianQFilters,
 ): Routing<import("./filters").KajianQFilters> {
+  // The verbatim question — unless it is not a query at all. The fallback is a
+  // third origin the caller's text can reach the fan-out from (beside the
+  // reply's phrasing and a rule's own text), and the content invariant is
+  // stated without an origin: a text with no letter and no digit never becomes
+  // a sub-query (#462). A zero-width, control-only or blank question has
+  // nothing to search, so this arm selects no sub-query and retrieval fans out
+  // over nothing — the shape a blank question already produced.
+  //
+  // The whole admission, not half of it: this arm takes the same trim +
+  // content test the decomposer's `push` takes, from the one owner of both, so
+  // it cannot hand the embed and the `subquery` event a padded text the stage
+  // would have trimmed (review A1). `SPECS.md` §3.3's "padded text is kept
+  // trimmed" covers this shape because of that.
+  const text = admitSubQueryText(question);
   return {
     intent: "factual",
-    subQueries: [{ text: question, role: "factual", origin: "fallback" }],
+    subQueries: text === undefined ? [] : [{ text, role: "factual", origin: "fallback" }],
     filters: overrides,
     // The effective filters reach retrieval, so they belong in the payload that
     // claims to say what was understood: a trace reader must be able to tell

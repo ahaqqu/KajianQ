@@ -246,6 +246,45 @@ describe("createKajianQRouter", () => {
     expect(routed.intent).toBe("factual");
   });
 
+  it("falls back to no sub-query at all when the question itself carries no content", async () => {
+    // #462: the fallback origin is the third way a caller's text becomes a
+    // sub-query, and the invariant is stated without an origin — a text with no
+    // letter and no digit never becomes one. An unusable reply plus a zero-width
+    // or control-only question used to route the verbatim question (`origin:
+    // "fallback"`) and spend an embed and a pair of searches on it. The intent
+    // and the fallback flag stay: the route still says what it understood
+    // (nothing), it simply has nothing to search.
+    for (const question of ["\u200b\u200d\u200b", "\u0001\u0007"]) {
+      const h = harness("I cannot answer that.");
+      const routed = (await h.route({ text: question })) as {
+        intent: string;
+        subQueries: readonly unknown[];
+        attributes: Record<string, unknown>;
+      };
+      expect(routed.intent).toBe("factual");
+      expect(routed.subQueries).toEqual([]);
+      expect(routed.attributes).toEqual({ fallback: true });
+      expect(h.events.map((e) => e.kind)).toEqual(["llm_call", "source_routing"]);
+    }
+  });
+
+  it("trims the fallback's sub-query text like every other origin", async () => {
+    // A1 of the #462 review: the fallback applied half of the admission — the
+    // content test — and handed the question on untrimmed, so `"  riba  "`
+    // reached the embed and the persisted `subquery` event with its padding
+    // while the decompose arm trimmed the same text to `"riba"`. Both arms now
+    // take the whole admission from one owner, so `SPECS.md` §3.3's "padded text
+    // is kept trimmed" covers this shape too. Red at `f6fdf2c` (the fallback
+    // passed `text: question` through), green here.
+    for (const question of ["  riba  ", "\triba\n"]) {
+      const h = harness("I cannot answer that.");
+      const routed = (await h.route({ text: question })) as {
+        subQueries: readonly { text: string; role?: string; origin?: string }[];
+      };
+      expect(routed.subQueries).toEqual([{ text: "riba", role: "factual", origin: "fallback" }]);
+    }
+  });
+
   it("keeps the caller's explicit filters through the fallback", async () => {
     const h = harness(JSON.stringify({ not: "a router reply" }));
     const routed = (await h.route({

@@ -125,10 +125,12 @@ export { DECISION_BENCH_PROMPTS } from "./decision-bench-prompts";
 // (Filter vocabulary (Madzhab/Grade/TextLayer/KajianQFilters) stays exported
 // from the top of this barrel — chat stages import it via ./filters.)
 //
-// Smart Router stages 1–2 (#14) split across three modules for the agentic
+// Smart Router stages 1–2 (#14) split across four modules for the agentic
 // caps: this barrel is still the one public surface. `taxonomy` owns the
-// classification vocabularies, `chat-router-output` the reply reader, and
-// `chat-router-decompose` the deterministic sub-query repair.
+// classification vocabularies, `chat-router-output` the reply reader,
+// `chat-subquery-admission` the one admission a text passes to become a
+// sub-query (shared with the router's fallback), and `chat-router-decompose`
+// the deterministic sub-query repair.
 export {
   createKajianQRouter,
   extractJsonObject,
