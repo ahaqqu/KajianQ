@@ -732,11 +732,18 @@ for the Staging workflow's Golden Set smoke, and for any ad-hoc query:
 
 ```bash
 # keep this shell open for as long as the tunnel is needed
-ssh -N -L 15433:127.0.0.1:5432 <user>@<host>
+ssh -N -L 15433:127.0.0.1:5432 <your-own-login>@<host>
 # elsewhere: DATABASE_URL=postgres://kajianq:<pw>@127.0.0.1:15433/kajianq
 ```
 
-The Staging workflow does exactly this (`-L 15433:127.0.0.1:5432`), which is why
+**The tunnel carries an operator login.** Open it as the account you ssh in as
+interactively — `ssh <host> whoami` names it. `kajianq-deploy` is CI's account
+instead: `vars.VPS_USER` names it because the workflows log in as it, its
+authorized keys are the deploy keys those workflows hold, and its sudo grant is
+scoped to what a deploy does. The database side does not depend on which ssh
+account carries the tunnel — the role stays `kajianq`.
+
+The **store tunnel** is what the Staging workflow opens (`-L 15433:127.0.0.1:5432`), which is why
 `STAGING_DATABASE_URL` must name port **15433** and not 5432. The cutover runbook
 uses the same shape on another local port. Nothing wider should ever be opened —
 a second host needing direct database access is a new decision (TLS + `pg_hba`),

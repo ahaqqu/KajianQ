@@ -96,22 +96,24 @@ A non-`verified` verdict is never withheld for the card's sake — post it with 
   land on the same box. The rails below are what bound the blast radius.
 - **Anonymous sessions only**, no real user data, and every session the run creates is erased with its own token (`DELETE /v1/auth/me`) before the report is posted. Keep each token in a **durable scratch path** until the run ends — a per-invocation `/tmp` loses it between tool calls, and erasure needs that token: a session whose token is gone cannot be deleted through the API. Disclose any session you could not erase in the report, with its `sessionId`, what it contains (e.g. no messages), and its expiry under the 30-day inactivity reclamation.
 - **Read-only on the repo**: comments and finding tickets yes, commits/branches/merges/closures no.
-- **The store read is SELECT-only, subject-scoped, with two purposes.** Through the documented staging tunnel (`docs/VPS-OPERATIONS.md` §2.8, port 15433, password at `~/.config/kajianq/db-password`) you may run `SELECT` queries with `default_transaction_read_only=on` set on the connection, over (a) cost aggregates on `answer_traces` scoped to the anonymous `user_id`s the run created and (b) the persisted traces of those same sessions — nothing else, and no other subject's rows. **Never `SELECT` `chat_messages` content, `feedback` free text, or another subject's `trace` JSONB**; a query that is not one of the two purposes is out of posture whatever it returns. Writes, migrations and snapshots are outside the grant. The connection option is a discipline and an accident-guard, **not** a privilege boundary — the credential is the application's own role, it can write, and the GUC is `PGC_USERSET` — so keeping the read a read is yours, not the database's. Read the spend and the probe's trace events **before** erasing the sessions: erasure cascades both away.
+- **The store read is SELECT-only, subject-scoped, with two purposes.** Through the documented store tunnel (`docs/VPS-OPERATIONS.md` §2.8, port 15433, password at `~/.config/kajianq/db-password`, opened as **your own login**) you may run `SELECT` queries with `default_transaction_read_only=on` set on the connection, over (a) cost aggregates on `answer_traces` scoped to the anonymous `user_id`s the run created and (b) the persisted traces of those same sessions — nothing else, and no other subject's rows. **Never `SELECT` `chat_messages` content, `feedback` free text, or another subject's `trace` JSONB**; a query that is not one of the two purposes is out of posture whatever it returns. Writes, migrations and snapshots are outside the grant. The connection option is a discipline and an accident-guard, **not** a privilege boundary — the credential is the application's own role, it can write, and the GUC is `PGC_USERSET` — so keeping the read a read is yours, not the database's. Read the spend and the probe's trace events **before** erasing the sessions: erasure cascades both away.
 - **Nothing destructive** against the corpus or the store; no paid ingest; no money-spending operation past the ticket's cap.
 - **Report the spend actually consumed** under the cap, measured per _The two authorized store reads_ — **recorded** cost, labelled as such (#296).
 
 ## The two authorized store reads
 
-The public API carries neither the spend nor the reviewer/pre-gate events, so both are read from the store under the grant in the safety rails — scoped to the sessions the run created, and to nothing else. Reach it through the documented ssh tunnel:
+The public API carries neither the spend nor the reviewer/pre-gate events, so both are read from the store under the grant in the safety rails — scoped to the sessions the run created, and to nothing else. Reach it through the documented store tunnel:
 
 ```bash
 # docs/VPS-OPERATIONS.md §2.8 — keep this shell open for the run
-ssh -N -L 15433:127.0.0.1:5432 <user>@<host>
+ssh -N -L 15433:127.0.0.1:5432 <your-own-login>@<host>
 # then, for every query — the password stays out of argv and shell history:
 export PGPASSWORD="$(cat ~/.config/kajianq/db-password)"
 PGOPTIONS='-c default_transaction_read_only=on' psql \
   -h 127.0.0.1 -p 15433 -U kajianq -d kajianq -c '<SELECT>'
 ```
+
+**The tunnel opens as your own login on the box** — the account a plain `ssh <host>` reaches you at, which `ssh <host> whoami` names. `kajianq-deploy` is the other kind of account: the CI deploy identity `vars.VPS_USER` names, whose authorized keys are the workflows' deploy keys and whose sudo grant is scoped to a deploy. A `Permission denied (publickey)` from the snippet is the login name to fix; the ssh account is unrelated to the database role, which stays `kajianq`.
 
 (The operator runbook's own §2.8 snippet still shows the URL form; that operator-side shape is #297, and it is not the pattern to copy here.)
 

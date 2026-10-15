@@ -1046,7 +1046,7 @@ DATABASE_URL="postgres://kajianq:<pw>@127.0.0.1:5432/kajianq" bun run db:up:all
 ```bash
 # 3. Snapshot the TARGET and compare. Runs on a machine with storage creds,
 #    reaching the box's loopback Postgres through an ssh tunnel.
-ssh -N -L 5433:127.0.0.1:5432 kajianq-deploy@<your-host> &
+ssh -N -L 5433:127.0.0.1:5432 <your-own-login>@<your-host> &   # your own login, per §2.8
 export DATABASE_URL="postgres://kajianq:<pw>@127.0.0.1:5433/kajianq"
 
 # The data is now covered by your provider's terms, so this archive uses the

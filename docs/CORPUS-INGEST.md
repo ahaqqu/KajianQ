@@ -47,7 +47,7 @@ DATABASE_URL="$DATABASE_URL" bun run db:status:all
 Tunnel (the DB is loopback-only; §2.8 of the ops manual is the source):
 
 ```bash
-ssh -N -L 15433:127.0.0.1:5432 <user>@<host>        # keep open for every pass
+ssh -N -L 15433:127.0.0.1:5432 <your-own-login>@<host>   # your own login, per §2.8; keep open for every pass
 export DATABASE_URL="postgres://kajianq:<pw>@127.0.0.1:15433/kajianq"
 ```
 
