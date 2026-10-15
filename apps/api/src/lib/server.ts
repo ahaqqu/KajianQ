@@ -5,24 +5,14 @@ import { createDiskAssetFetcher } from "./assets";
 import { createProvidersFromEnv, type ChatProviders } from "./chat-wiring";
 
 /**
- * The Bun serving entry (#181, ADR-0044): bind the Hono app to a TCP socket
- * and start a plain Bun server behind the VPS reverse proxy. This replaced
- * Cloudflare's `export default { fetch, scheduled }` handler entirely — the
- * app itself (`createApi`) and the middleware stack are unchanged, so the
- * serving path stays one composition of the same Hono routes.
- *
- * Configuration comes from the environment, read ONCE here at the composition
- * root — the app's business logic never touches `env.*` (AGENTS.md). The
- * systemd unit supplies the values through `EnvironmentFile=/etc/kajianq/api.env`.
+ * The Bun serving entry: bind the Hono app to a TCP socket behind the reverse
+ * proxy. Configuration is read ONCE here at the composition root; business logic
+ * never touches `env.*`.
  */
 
-/**
- * Copy every present (non-empty) key from the environment onto the bindings.
- * Keys are copied rather than listed so adding a provider key to `models.json`
- * does not silently require an edit here; an absent key stays absent, which is
- * the "feature disabled" posture the wiring already implements (a role with no
- * keyed candidate resolves to a provider that fails with a clear error).
- */
+/** Copy every present (non-empty) key onto the bindings. Keys are copied rather
+ * than listed so a new provider key needs no edit here; an absent key stays
+ * absent — the wiring's "feature disabled" posture. */
 function present(env: Record<string, string | undefined>, keys: readonly string[]) {
   const out: Record<string, string> = {};
   for (const key of keys) {
@@ -41,38 +31,26 @@ const PASSTHROUGH_KEYS = [
   "GEMINI_PAID_API_KEY",
   "DASHSCOPE_API_KEY",
   "DEEPSEEK_API_KEY",
-  // The decision vendor's key (#168). Absent = the reviewer pre-gate is not
-  // wired and the reviewer behaves exactly as before adoption, so this key is
-  // optional (never a boot precondition) — but it MUST be passed through, or a
-  // bound key would leave the pre-gate silently dead in serving.
+  // Optional (never a boot precondition), but it MUST be passed through: a key
+  // dropped here leaves the reviewer pre-gate silently dead in serving.
   "JEV_API_KEY",
-  // ADR-0045 scope-expansion budget (optional; absent = the domain default).
-  // Config, not a secret — but it must ride the same filtered view the request
-  // bindings get, or the knob would be dead in serving.
+  // Optional config (absent = the domain default) that must ride this filtered
+  // view or the knob is dead in serving.
   "SCOPE_EXPANSION_CAP",
-  // ADR-0049 retrieved-verse neighbourhood window (optional; absent = the
-  // domain defaults). Same reason as the scope cap: config, not a secret, but
-  // it must ride this filtered view or the knob is dead in serving.
+  // Same contract as the scope cap, for the two neighbourhood knobs.
   "NEIGHBOUR_EXPANSION_RADIUS",
   "NEIGHBOUR_EXPANSION_CAP",
 ] as const;
 
-/**
- * The filtered env view requests receive: every present (non-empty)
- * `PASSTHROUGH_KEYS` entry, and nothing else. Built ONCE per boot and handed to
- * both consumers — the bindings a request gets and the posture report — so the
- * report's "cannot drift from what serving actually wires" property is
- * structural, not two maps that merely happen to be built the same way.
- */
+/** The filtered env view requests receive: every present (non-empty) `PASSTHROUGH_KEYS`
+ * entry, nothing else. Built ONCE per boot and shared by the request bindings and the
+ * posture report, so the report cannot drift from what serving wires. */
 function chatEnvFrom(env: Record<string, string | undefined>): Record<string, string> {
   return present(env, PASSTHROUGH_KEYS);
 }
 
-/**
- * Build the bindings requests receive from that one filtered view.
- * `KAJIANQ_WEB_ROOT` is read from the raw env: it configures the asset handler
- * and is not a chat key.
- */
+/** Build the bindings from that one filtered view; `KAJIANQ_WEB_ROOT` is read
+ * from the raw env, since it configures the asset handler and is not a chat key. */
 function bindingsFrom(
   env: Record<string, string | undefined>,
   chatEnv: Record<string, string>,
@@ -83,57 +61,33 @@ function bindingsFrom(
   };
 }
 
-/** Read the process environment into the app's binding shape. */
 export function bindingsFromEnv(env: Record<string, string | undefined>): AppBindings {
   return bindingsFrom(env, chatEnvFrom(env));
 }
 
 export type ServeOptions = {
-  /** The app to serve; defaults to a fresh `createApi()`. */
   api: Hono<ApiEnv>;
-  /** Host to bind; defaults to a loopback address (the proxy is the only ingress). */
   hostname?: string;
-  /** Port to bind; defaults to `PORT` or 8787. */
   port?: number;
-  /** The environment record; defaults to `process.env`. */
   env?: Record<string, string | undefined>;
 };
 
 /**
- * The SIGTERM drain window, in milliseconds — the bound a restart waits for
- * in-flight answers before closing anyway. Chosen against the two numbers it
- * must sit between:
- *   - the proxy's `proxy_read_timeout 300s` (provision/vps/nginx/kajianq.conf):
- *     a stream is never allowed to outlive its own read timeout, so 300 s is
- *     the ceiling worth honoring;
- *   - systemd's `TimeoutStopSec=300s` in `kajianq-api.service`, which is set
- *     to this same value: the two numbers agreeing is what makes the drain
- *     deterministic. With the default 90 s, systemd would SIGKILL a healthy
- *     drain mid-stream (the bound this explicitness exists to prevent).
- *
- * A drain that hits the deadline closes in-flight streams — an answered-cut-
- * off is better than a wedged restart — and the deadline being explicit means
- * the behavior is a recorded choice, not Bun's internal default.
+ * The SIGTERM drain window, in milliseconds: the bound a restart waits for
+ * in-flight answers before closing them anyway. It must match the proxy's read
+ * timeout and systemd's `TimeoutStopSec` (both 300 s), since agreeing numbers are
+ * what make the drain deterministic. Hitting the deadline closes in-flight
+ * streams deliberately: a cut-off answer beats a wedged restart.
  */
 export const DRAIN_TIMEOUT_MS = 300_000;
 
 /**
- * Emit the provider posture ONCE at startup (#226): which env vars the chat
- * path found absent — including the optional decision role's, whose absence
- * leaves the reviewer pre-gate unwired — and which decision candidate the
- * personal-data posture dropped (keyed or not: the filter precedes the key
- * check). Both are computed per request by the wiring; before this line
- * existed they were consumed only as the detail string of a reviewer-less
- * config error, so an unbound `JEV_API_KEY` left the pre-gate silently dead in
- * serving with no `decision` trace event to show for it.
- *
- * It resolves the roles through the same `createProvidersFromEnv` the request
- * path uses, so the report cannot drift from what serving actually wires.
- * **Names only, never values**: the names are what an operator binds; a key's
- * value must never reach the log. The caller must resolve `providers` from the
- * boot's one filtered chat env view (`chatEnvFrom`) that `bindingsFrom` also
- * spreads into the requests' bindings, not the raw process environment — a key
- * the passthrough drops is not bound as far as serving is concerned.
+ * Emit the provider posture ONCE at startup: which env vars the chat path found
+ * absent — including the optional decision role's — and which decision candidate
+ * the personal-data posture dropped. **Names only, never values**: resolve
+ * `providers` through the same `createProvidersFromEnv` the request path uses,
+ * from the boot's one filtered chat env view (`chatEnvFrom`), so the report
+ * cannot drift from what serving wires.
  */
 export function reportProviderPosture(providers: ChatProviders, logger: Logger): void {
   logger.info("providers.posture", {
@@ -145,21 +99,16 @@ export function reportProviderPosture(providers: ChatProviders, logger: Logger):
 }
 
 /**
- * Start the Bun server. The bind address defaults to loopback: the design is
- * a reverse proxy (nginx) as the only public ingress, so the API must not be
- * reachable directly. Binding elsewhere is possible for a container, but is
- * never the default.
+ * Start the Bun server. The bind address defaults to loopback: a reverse proxy is
+ * the only public ingress, so the API must not be reachable directly.
  *
- * The anonymous-session reclamation (ADR-0017) is NOT run in-process: it is a
- * systemd timer running a second, dedicated entry (`src/cleanup.ts`), so it
- * stays independently observable with `systemctl status kajianq-cron` and does
- * not depend on the serving process being healthy to reclaim. One job, one
- * schedule, one mechanism.
+ * Anonymous-session reclamation is NOT run in-process: a systemd timer runs a
+ * dedicated entry (`src/cleanup.ts`), so reclaiming stays observable
+ * independently of the serving process's health.
  */
 export function serveApi(opts: ServeOptions): { stop: () => Promise<void> } {
   const env = opts.env ?? process.env;
-  // The one filtered view this boot builds: the requests' bindings and the
-  // posture report both derive from it, so the two can never disagree.
+  // The one filtered view this boot builds, shared by the bindings and the report.
   const chatEnv = chatEnvFrom(env);
   const bindings = bindingsFrom(env, chatEnv);
   const hostname = opts.hostname ?? env.KAJIANQ_API_HOST ?? "127.0.0.1";
@@ -172,22 +121,16 @@ export function serveApi(opts: ServeOptions): { stop: () => Promise<void> } {
   });
 
   const logger = createLogger({ service: "api", route: "bootstrap" });
-  // Provider resolution runs here, outside the request path's `wiringOr503`:
-  // a config fault that is not a `ChatConfigError` fails the boot just after
-  // `Bun.serve` binds (systemd restarts the unit) instead of surfacing as
-  // per-request 500s. Intended — a wrong config fails at wiring time, never
-  // degrades to a silent default (`parseProviderConfig`) — and unreachable
-  // with the shipped `models.json`.
+  // Runs outside the request path's `wiringOr503`: a config fault fails the boot
+  // just after `Bun.serve` binds (systemd restarts the unit), never a silent
+  // per-request default.
   reportProviderPosture(createProvidersFromEnv(chatEnv), logger);
   logger.info("server.listening", { hostname, port });
 
   const stop = async (): Promise<void> => {
-    // `server.stop()` waits for in-flight requests (verified on Bun 1.4.0:
-    // a 1.5 s handler holds `stop()` for 1502 ms) but has no ceiling of its
-    // own — this deadline is the bound. A stream that runs past the deadline
-    // is closed mid-answer deliberately: the alternative is `systemctl
-    // restart` hanging until the unit's TimeoutStopSec SIGKILLs us, which is
-    // the same cut-off minus the grace and the log line.
+    // `server.stop()` waits for in-flight requests but has no ceiling of its own
+    // — this deadline is the bound. A stream past it is closed deliberately: the
+    // alternative is a restart hanging until the unit's TimeoutStopSec SIGKILLs us.
     let fire: (() => void) | undefined;
     const deadline = new Promise<void>((resolve) => {
       fire = resolve;

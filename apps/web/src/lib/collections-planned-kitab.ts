@@ -4,7 +4,7 @@ import type { CollectionEntry } from "./collections-types";
  * Planned entries — registered work, listed so the direction is visible.
  * Never presented as available: each carries a `planRef` (the issue/ADR that
  * registered it), rendered as muted mono text. Mirrors `SPECS.md` §4.2
- * (priority kitab, complete verified corpora) and issues #21, #22, #33, #35.
+ * (priority kitab, complete verified corpora).
  */
 export const COLLECTION_PLANNED_KITAB: readonly CollectionEntry[] = [
   {

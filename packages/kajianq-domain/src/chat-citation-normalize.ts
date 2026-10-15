@@ -11,7 +11,7 @@ import {
  * The comparison form of a citation label, and the grammar scan that finds the
  * citation-shaped spans inside a draft — the half of the gate that turns text
  * into normalized addresses, split from `chat-citation-validator` (which
- * decides what a grounded citation IS) for the 300-line agentic cap.
+ * decides what a grounded citation IS) for the file-size cap.
  *
  * Everything here is pure and effect-free; the normalization ORDER is
  * load-bearing and is documented at {@link normalizeCitationLabel}, because the
@@ -38,26 +38,17 @@ const TRAILING_CITATION_NOISE = /[^\p{L}\p{N}]+$/u;
  * full Kitab chunk label (`Al-Umm, … , Jilid 1, Hal. 102 (Sahih)`) is the shape
  * it exists for — **or for a grammar-initial label that is kept whole**: a
  * dash-joined compound reduces to itself, so this pass is what removes the
- * grade from `HR. Bukhari no. 5010—5011 (Dhaif)` (executed). Every other
- * grammar-initial label is reduced to its grammar's address before this pass is
- * reached, and that reduction already removes the grade: on the chunk side
- * `formatHadithCitation` writes `HR. X no. N (Grade)`, whose address is the
- * number word after `no.`, so `reduceCitationLabel("HR. Ibnu Majah no. 224
- * (Dhaif)")` returns `{address: "HR. Ibnu Majah no. 224", keepWhole: false}` and
- * this anchored pass never sees it. The earlier rewording stopped at "does not
- * begin with a citation grammar", which the kept-whole compound falsifies
- * (review B2); both paths are executed in the unit test.
+ * grade from `HR. Bukhari no. 5010—5011 (Dhaif)`. Every other grammar-initial
+ * label is reduced to its grammar's address before this pass is reached, and
+ * that reduction already removes the grade: `formatHadithCitation` writes
+ * `HR. X no. N (Grade)`, whose address is the number word after `no.`.
  *
  * On the draft side only the **spaced** form is out of reach: the grammar's
  * number token stops at whitespace, so `HR. X no. 573 (Sahih)` and
  * `HR. X no. 573: (Sahih)` never enter a span. The **glued** form does:
  * `citationSpansIn("HR. Bukhari no. 573(Sahih) …")` yields the span
- * `HR. Bukhari no. 573(Sahih` (the token absorbs `(`, stops at `)`), which is a
- * real draft span carrying grade text. That shape is reduced by the
- * grammar-address rule in {@link normalizeCitationLabel}. (An earlier docstring
- * claimed no draft span could carry a grade at all — false, and the glued shape
- * it missed false-refused a grounded citation; review B2/A2. Review #264 then
- * found the chunk-side clause of the same docstring stale in the same way.)
+ * `HR. Bukhari no. 573(Sahih` (the token absorbs `(`, stops at `)`), which
+ * {@link normalizeCitationLabel}'s grammar-address rule reduces.
  */
 function stripGradeSuffix(label: string): string {
   return label.replace(/\s*\([^()]*\)\s*$/, "");
@@ -82,24 +73,21 @@ function trimCitationTail(label: string): string {
  * canonicalize the address's separator spelling.
  *
  * The reduction is grammar-driven rather than a punctuation rule, because a
- * tail cannot be recognized by its characters alone (review A2): the footnote
+ * tail cannot be recognized by its characters alone: the footnote
  * `HR. Bukhari no. 5010:1` must reduce to `HR. Bukhari no. 5010`, while
  * `QS. 2:255` must keep its colon and both numbers. No trailing-character rule
  * can separate those two — the hadith grammar already knows its address ends
  * at the number word after `no.`, and the Quran grammar knows its address IS
  * the `surah:ayah` pair. So each grammar names its address (`addressOf` in
  * `chat-citation-grammar`) and {@link reduceCitationLabel} trims the match to
- * it. That single rule also closes the rest of the tail family at once:
- * `… no. 5010:` (#253), `… no. 5010—ia` / `-ia` / `‒ia` / `―ia` (A1),
- * `… no. 5010:1`, `… no. 5010¹`, `… no. 5010(Sahih` (A2), and the rest of the
- * Unicode classes the property sweeps (B1).
+ * it.
  *
  * Two things survive the reduction on purpose, both fail-closed (the reasons
  * are on their declarations in `chat-citation-grammar`):
  *
- * - a dash joined to a number, kept whole — the A3 precision-for-safety
- *   trade-off, with its cost and its follow-up, now covering the Quran
- *   compound (`QS. 2:255—256`) as well as the hadith one (#264);
+ * - a dash joined to a number, kept whole — the precision-for-safety trade-off,
+ *   which covers the Quran compound (`QS. 2:255—256`) as well as the hadith
+ *   one;
  * - letters and digits glued straight onto the number, which are part of the
  *   address token itself, so `… no. 5010a` and `… no. 50102` stay distinct
  *   from `… no. 5010` instead of grounding on it.
@@ -138,8 +126,8 @@ export function citationCandidatesIn(text: string): string[] {
  *
  * The offset+position form is what a consumer that must locate a groundable
  * citation *inside* the draft needs — the reviewer pre-gate keys its judgment
- * by citation position (ADR-0042 adoption) and must not split a claim span in
- * the middle of a citation. Both exports read the one scan, so the grammar,
+ * by citation position (ADR-0042) and must not split a claim span in the
+ * middle of a citation. Both exports read the one scan, so the grammar,
  * the normalization, and the de-duplication rule cannot drift between them.
  */
 export function citationSpansIn(text: string): { start: number; end: number; label: string }[] {
@@ -150,21 +138,20 @@ export function citationSpansIn(text: string): { start: number; end: number; lab
 /**
  * The one grammar scan behind both citation-list exports (first-seen wins).
  *
- * The scan reads the **stripped** text, not the raw draft (review A3): the
- * ungrounded direction used to match raw characters while the comparison form
- * dropped `\p{Cf}`, so a fabricated `HR. Bukhari no\u200c. 99999` was invisible
- * to the gate and passed unseen. Both sides now read the same characters, and
- * {@link stripInvisibleFormattingWithOffsets} carries the offset policy that
- * keeps each span pointing at where the draft wrote it.
+ * The scan reads the **stripped** text, not the raw draft: the ungrounded
+ * direction must read the same characters the comparison form does, or a
+ * fabricated `HR. Bukhari no\u200c. 99999` is invisible to the gate and passes
+ * unseen. {@link stripInvisibleFormattingWithOffsets} carries the offset policy
+ * that keeps each span pointing at where the draft wrote it.
  *
- * **Recorded residual (#264 review A3).** Two spellings stay outside every
- * grammar and so still pass unseen — the fail-open direction the digit posture
- * on {@link CITATION_GRAMMARS} promises not to take. They are recorded, not
- * closed, because closing either is a grammar widening:
+ * **Recorded residual.** Two spellings stay outside every grammar and so still
+ * pass unseen — the fail-open direction the digit posture on {@link
+ * CITATION_GRAMMARS} promises not to take. They are recorded, not closed,
+ * because closing either is a grammar widening:
  *
- * - `QS9:99` (no separator between marker and address) — round-3 A1 required
- *   one, and {@link canonicalizeCitationSpelling} now mirrors that exclusion
- *   instead of folding a spelling the scan cannot see (review A2);
+ * - `QS9:99` (no separator between marker and address) — the grammar requires
+ *   one, and {@link canonicalizeCitationSpelling} mirrors that exclusion instead
+ *   of folding a spelling the scan cannot see;
  * - `HR. Bukhari no 99999` (dot-less address marker) — the hadith pattern
  *   requires `no.`.
  *

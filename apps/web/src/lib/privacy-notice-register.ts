@@ -2,31 +2,18 @@ import type { Localized } from "./localized";
 import type { SubProcessor } from "./privacy-notice-types";
 
 /**
- * The sub-processor register the `/about` notice renders: **ADR-0043 decision
- * 3 in data format**, and nothing else. Each row carries a status so the
- * notice is never false — netcup is `current` as the chosen production host
- * (#181 moved the serving path onto it, ADR-0044), the vendors the move
- * narrows are `transition`, and a bench-only vendor says so. A further cutover
- * is a status edit, not a copy rewrite.
+ * The sub-processor register the `/about` notice renders: ADR-0043 decision 3 in data format,
+ * and nothing else. Each row carries a status so the notice is never false: netcup is
+ * `current` as the production host, the vendors the move narrows are `transition`, and a row
+ * with no serving role says so. A further cutover is a status edit, not a copy rewrite.
  *
- * The Tier and Verdict columns are compliance fields, not cost notes: a tier
- * change re-opens the row's verdict (ADR-0043 decision 3), and
- * `models.json`'s `freeTier`/`personalDataAllowed` is this table's
+ * The Tier and Verdict columns are compliance fields, not cost notes: a tier change re-opens
+ * the row's verdict, and `models.json`'s `freeTier`/`personalDataAllowed` is this table's
  * machine-checkable shadow.
- *
- * **Status here states the target end state this PR lands, and the notice's
- * own wording carries the sequencing.** The serving path runs on the VPS
- * because that is what this PR builds and what the deploy path ships; the
- * owner's on-host application step is what made the box actually serve, and it
- * is **executed** — `docs/VPS-CUTOVER-RECORD.md` records it, and that record's
- * acceptance-criteria checklist is what closes #181's remaining criteria.
- * Flipping a status was not the migration: the migration is the code plus that
- * owner-executed step.
  */
 
 /**
- * The sub-processor register (ADR-0043 decision 3), in register order. netcup
- * GmbH is the production host the serving path moved onto (#181, ADR-0044).
+ * The sub-processor register in register order: netcup GmbH heads it as the production host.
  */
 export const SUB_PROCESSORS: readonly SubProcessor[] = [
   {
@@ -91,11 +78,9 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
     name: "Google (Gemini API)",
     status: "current",
     role: {
-      // Not the reviewer: ADR-0044 decision 7 re-headed the reviewer (2026-09-21)
-      // to DeepSeek, and this free-tier row's verdict is not-for-personal-data —
-      // so it cannot serve a reviewer call (every serving call site sets
-      // PromptSpec.personalData). It is a fallback candidate on the cheap role
-      // and serves embeddings for non-personal calls only.
+      // Not the reviewer: this free-tier row's verdict is not-for-personal-data, and every
+      // serving call site sets PromptSpec.personalData — so it can only be a fallback candidate
+      // on the cheap role and serve embeddings for non-personal calls.
       id: "LLM: kandidat cadangan pada peran murah (kepala rantai dilayani DeepSeek) dan embedding untuk panggilan non-pribadi saja.",
       en: "LLM: fallback candidate on the cheap role (DeepSeek heads the chain) and embeddings for non-personal calls only.",
     },
@@ -115,11 +100,10 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
     name: "Google (Gemini API, paid)",
     status: "current",
     role: {
-      // Keyed separately from the free-tier row above because the register rule
-      // keys on TERMS, not on the model: the same API and the same model id on
-      // standard/paid terms may carry personal data, the free tier may not. The
-      // serving retriever embeds the user's sub-queries, so the embedder role
-      // rides this row (#181, ADR-0043's recorded gap closure).
+      // Keyed separately from the free-tier row above because the register rule keys on TERMS,
+      // not on the model: the same API and model id on standard/paid terms may carry personal
+      // data, the free tier may not. The serving retriever embeds the user's sub-queries, so the
+      // embedder role rides this row.
       id: "LLM: peran embedder — meng-embed sub-kueri pengguna saat pencarian.",
       en: "LLM: the embedder role — embeds the user's sub-queries at retrieval time.",
     },
@@ -191,7 +175,7 @@ export const REGISTER_RULE: Localized = {
   en: "The register's rule: personal data never rides a vendor's free tier — a free tier's terms may permit using the input beyond providing the service. A vendor may carry personal data only on paid terms under a processing agreement. The tier and verdict columns below are compliance fields, not cost notes.",
 };
 
-/** Where the register stands, stated rather than implied (#181). */
+/** Where the register stands, stated rather than implied. */
 export const REGISTER_TRANSITION_NOTE: Localized = {
   id: "Layanan ini berjalan pada hosting Uni Eropa (netcup, Jerman) — baris yang ditandai Dipakai Hari Ini. Baris bertanda Transisi adalah vendor yang sedang disempitkan atau dipensiunkan oleh pemindahan ini dan akan hilang setelah pemilik menyetujui decommissioning.",
   en: "The service runs on EU hosting (netcup, Germany) — the row marked In use today. Rows marked Transition are the vendors this move narrows or retires, and disappear once the owner approves decommissioning.",

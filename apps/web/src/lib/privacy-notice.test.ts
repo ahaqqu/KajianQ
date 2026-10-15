@@ -1,8 +1,6 @@
 /// <reference types="node" />
-// The drift guards below read the register and the enforcing code from the repo
-// (Node can; the app bundle cannot, which is why the module mirrors them). The
-// directive is file-scoped because `apps/web/tsconfig.json` types the app for
-// the browser only.
+// The drift guards below read repo files, which the app bundle cannot, hence the module mirrors
+// them. The Node reference is file-scoped because the web tsconfig types the app for the browser.
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
@@ -21,31 +19,22 @@ import {
 import { messages } from "./i18n";
 
 /**
- * The privacy notice (#179, GDPR-C) is a compliance disclosure, so its two
- * honesty rules are pinned here rather than trusted to review:
+ * The privacy notice is a compliance disclosure, so its two honesty rules are pinned here
+ * rather than trusted to review:
  *
- *   1. **The register is ADR-0043's, not prose this module owns.** The tests
- *      read the ADR's register table and `models.json` and assert the module
- *      renders exactly those rows with exactly those tiers and personal-data
- *      verdicts — the drift the ticket forbids.
- *   2. **No claim without code.** A `current` retention row points at behavior
- *      that exists today (the adapter's TTL constant, the erasure route); a
- *      `planned` row carries its ticket. A row may never claim to be live
- *      without the code behind it, and may never carry a ticket while live.
- *
- * The markdown registers are read here in the test (Node can read repo files);
- * the app bundle cannot, which is why the module mirrors them.
+ *   1. **The register is ADR-0043's, not prose this module owns.** The tests read the ADR's
+ *      register table and `models.json` and assert the module renders exactly those rows,
+ *      tiers and personal-data verdicts.
+ *   2. **No claim without code.** A `current` retention row points at behavior that exists
+ *      (the adapter's TTL constant, the erasure route); a `planned` row carries its ticket,
+ *      and never the reverse.
  */
 
 const ROOT = new URL("../../../../", import.meta.url);
 const read = (path: string): string => readFileSync(new URL(path, ROOT), "utf8");
 
-/**
- * Every `.ts`/`.tsx` source file under the given repo-root-relative dirs
- * (Node can walk the repo; the app bundle cannot, which is why the drift
- * guards read from disk). Deterministic: sorted paths, `node_modules` and
- * build output excluded.
- */
+/** Every `.ts`/`.tsx` source file under the given dirs, read from disk because the app bundle
+ * cannot walk the repo; deterministic, sorted, with `node_modules` and build output excluded. */
 function walkSources(dirs: string[]): string[] {
   const files: string[] = [];
   const walk = (relative: string): void => {
@@ -77,8 +66,8 @@ type RegisterRow = { vendor: string; cells: string[] };
 function adrRegisterRows(): RegisterRow[] {
   const rows: RegisterRow[] = [];
   for (const raw of ADR_0043.split("\n")) {
-    // The ADR indents its tables inside the decision list, so the row's own
-    // line starts with whitespace before the pipe.
+    // The ADR indents its tables inside the decision list, so the row's own line starts
+    // with whitespace before the pipe.
     const line = raw.trim();
     if (!line.startsWith("|")) continue;
     const cells = line
@@ -116,10 +105,8 @@ const retentionById = (id: string): RetentionItem => {
   return row;
 };
 
-/** The vendor catalog ids behind the notice rows that name an LLM vendor.
- * The paid Gemini row is a separate catalog vendor (`gemini-paid`), because the
- * register rule keys on terms rather than on the model: the free-tier row may
- * not carry personal data, the paid one may (ADR-0043 decision 3, #181). */
+/** The vendor catalog ids behind the notice rows that name an LLM vendor; the paid Gemini row
+ * is a separate catalog vendor (`gemini-paid`) because the register rule keys on terms. */
 const CATALOG_IDS: Record<string, string> = {
   gemini: "gemini",
   "gemini-paid": "gemini-paid",
@@ -180,11 +167,8 @@ describe("privacy notice: the register mirrors ADR-0043", () => {
   it("keeps the register's rule: a free tier never carries personal data", () => {
     for (const processor of SUB_PROCESSORS) {
       if (processor.tier !== "free") continue;
-      // Permitted on a free tier only when the row carries no serving-path
-      // personal data: a `transition` row whose footprint the migration
-      // removes (ADR-0043 decision 3), or a decommissioned row whose runtime
-      // processing ended (2026-09-21 — Cloudflare is at-rest archives only,
-      // Neon is gone; both remain registered because their tier is free).
+      // Permitted on a free tier only when the row carries no serving-path personal data: a
+      // transition row the migration strips, or a decommissioned row whose processing ended.
       expect(processor.verdict === "permitted", `${processor.name} is free-tier`).toBe(
         processor.status === "transition" || processor.status === "no-serving-role",
       );
@@ -213,25 +197,17 @@ describe("privacy notice: the register mirrors ADR-0043", () => {
   });
 
   it("states the hosting move honestly: netcup live, Cloudflare archives-only, Neon gone", () => {
-    // #181 moved the serving path onto the VPS (ADR-0044), so netcup is the
-    // live host. The decommissioning is executed (2026-09-21, owner-approved,
-    // docs/VPS-CUTOVER-RECORD.md): Cloudflare has no serving role left — only
-    // the at-rest R2 provenance archive — and Neon is decommissioned entirely.
-    // Both stay registered (free-tier history, and the archive is a
-    // personal-data-bearing location per ADR-0043).
+    // Netcup is the live host; Cloudflare keeps only the at-rest R2 archive and Neon is
+    // decommissioned. Both stay registered: the archive bears personal data.
     expect(byId("netcup").status).toBe("current");
     expect(byId("cloudflare").status).toBe("no-serving-role");
     expect(byId("neon").status).toBe("no-serving-role");
-    // ADR-0043's "nothing here claims the VPS is live" described the state
-    // BEFORE #181. ADR-0044 is the ADR that records the serving path, so the
-    // notice's source of truth for hosting is ADR-0044 now.
     expect(ADR_0043).toContain("GDPR-E (#181)");
   });
 
   it("does not claim a transition row is gone before decommissioning is approved", () => {
-    // The decommissioning criterion is owner-gated (issue #181), so a row may
-    // not silently disappear from the register — the move narrows it, it does
-    // not erase it, and the notice has to keep saying so.
+    // Decommissioning is owner-gated, so a row may not silently disappear from the register —
+    // the move narrows it, it does not erase it.
     for (const processor of SUB_PROCESSORS) {
       if (processor.status !== "transition") continue;
       expect(processor.note, `${processor.id} has no narrowing note`).toBeDefined();
@@ -269,8 +245,8 @@ describe("privacy notice: retention is the ADR's values, enforced by real code",
     const session = retentionById("sessions");
     expect(session.window.en).toContain(`${days} days`);
     expect(session.window.id).toContain(`${days} hari`);
-    // The ADR and the Art. 30 record fix the same value, so a change in either
-    // fails here before the copy can drift.
+    // The ADR and the Art. 30 record fix the same value, so a change in either fails here
+    // before the copy can drift.
     expect(ADR_0043).toContain("Anonymous sessions: 30 days");
     expect(ROPA).toContain("30 days of inactivity");
   });
@@ -304,14 +280,9 @@ describe("privacy notice: retention is the ADR's values, enforced by real code",
     const current = RETENTION.filter((item) => item.status === "current").map((item) => item.id);
     expect(current).toContain("sessions");
     expect(current).toContain("erasure");
-    // Post-cutover every retention window the notice states is enforced by
-    // something live on the host: the 2026-09-21 cutover applied the logrotate
-    // stanzas, the journald cap, and the backup timer (Art. 30 §7 "Applied on
-    // the host"; docs/VPS-CUTOVER-RECORD.md). No row may remain `planned` —
-    // claiming `planned` for an enforced window understates the protection the
-    // controller actually provides, which is the same honesty failure as the
-    // reverse. A future window lands as `planned` + its ticket, restoring the
-    // mixed state this asserts against.
+    // Every stated retention window is enforced by something live on the host, so no row may
+    // remain `planned`: that understates the protection the controller provides — the same
+    // honesty failure as the reverse. A future window lands as `planned` plus its ticket.
     expect(RETENTION.filter((item) => item.status === "planned")).toEqual([]);
     expect(current.sort()).toEqual(RETENTION.map((item) => item.id).sort());
   });
@@ -342,8 +313,6 @@ describe("privacy notice: erasure points at the route that exists", () => {
   });
 
   it("lists the four subtrees the cascade removes, all of which the route documents", () => {
-    // ADR-0043 decision 4 + the route's own OpenAPI description: sessions,
-    // chat sessions/messages, traces, feedback.
     expect(/sessions, chat sessions and messages, feedback, answer traces/.test(AUTH_ROUTE)).toBe(
       true,
     );
@@ -357,8 +326,8 @@ describe("privacy notice: erasure points at the route that exists", () => {
     expect(ERASURE.uiAffordance).toBe("absent");
     expect(ERASURE.noUiNote.en).toContain("no button for this yet");
     expect(ERASURE.noUiNote.id).toContain("belum punya tombol");
-    // The "clearing local storage is not erasure" distinction is stated,
-    // because the local-first posture invites exactly that misreading.
+    // The local-first posture invites reading "clearing local storage" as erasure, so the
+    // distinction is stated.
     expect(ERASURE.localNote.en).toContain("only drops the session id on your device");
     expect(ERASURE.localNote.id).toContain("hanya membuang id sesi");
   });
@@ -416,12 +385,8 @@ describe("privacy notice: labels are externalized", () => {
 
 describe("privacy notice: browser storage is stated from the code that stores it", () => {
   it("names the localStorage keys the app actually writes", () => {
-    // The claim is pinned to the source of each key, not to prose: the keys
-    // are the owning modules' own exported constants (`chat-store.ts`
-    // `SESSION_KEY`/`TOKEN_KEY`, `theme.ts` `THEME_KEY`) re-exported through
-    // `privacy-notice.ts` — a key rename fails the typecheck before the
-    // notice can drift (thermo-review B1). This test pins the value ↔
-    // constant identity so a literal edit inside an owning module fails here.
+    // The claim is pinned to each key's source, not to prose: the keys are the owning modules'
+    // exported constants re-exported through `privacy-notice.ts`, so a rename breaks the typecheck.
     const chatStore = read("apps/web/src/lib/chat-store.ts");
     const theme = read("apps/web/src/lib/theme.ts");
     const declared = [
@@ -433,10 +398,8 @@ describe("privacy notice: browser storage is stated from the code that stores it
 
   it("claims no cookies only because the code sets none", () => {
     expect(STORAGE.setsCookies).toBe(false);
-    // The whole web app and the whole API are scanned, not three files
-    // (thermo-review B2): a cookie added in any other component, route, or
-    // helper makes the /about notice stale — this assertion is the tripwire,
-    // and it fails the suite the moment the notice line stops being true.
+    // The whole web app and the whole API are scanned: a cookie added in any other component,
+    // route, or helper makes the /about notice stale, and this assertion is the tripwire.
     const sources = walkSources(["apps/web/src", "apps/api/src"]);
     // The notice module's doc comment names `document.cookie` to explain the
     // claim, and this test asserts about it — neither is a cookie use.
@@ -444,7 +407,7 @@ describe("privacy notice: browser storage is stated from the code that stores it
       "apps/web/src/lib/privacy-notice-storage.ts",
       "apps/web/src/lib/privacy-notice.test.ts",
     ]);
-    expect(sources.length).toBeGreaterThan(100); // the scan is real, not vacuous
+    expect(sources.length).toBeGreaterThan(100);
     for (const file of sources) {
       if (prose.has(file)) continue;
       const source = read(file);
@@ -460,16 +423,14 @@ describe("privacy notice: browser storage is stated from the code that stores it
     expect(STORAGE.body.en).toContain("no tracking");
     expect(STORAGE.body.id).toContain("tidak memasang cookie");
     expect(STORAGE.body.id).toContain("tanpa pelacakan");
-    // Erasable by the visitor, from the browser — the local half of erasure.
     expect(STORAGE.body.en.toLowerCase()).toContain("erase them yourself");
     expect(STORAGE.body.id.toLowerCase()).toContain("menghapusnya sendiri");
     expect(STORAGE.body.en).not.toBe(STORAGE.body.id);
   });
 
   it("names no processor, vendor, or retention window", () => {
-    // UI-posture copy, not register data: it therefore carries no ADR-0043 row.
-    // A named vendor or a day count here would make it register data and it
-    // would need one.
+    // UI-posture copy, not register data: a named vendor or a day count here would make it
+    // register data and it would need an ADR-0043 row.
     for (const copy of [STORAGE.body.en, STORAGE.body.id]) {
       expect(copy, "storage copy names a day count").not.toMatch(/\b\d+[- ](day|hari)\b/i);
       for (const vendor of SUB_PROCESSORS) {

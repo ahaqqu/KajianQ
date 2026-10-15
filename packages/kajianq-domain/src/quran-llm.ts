@@ -6,7 +6,7 @@ import { Effect } from "effect";
 
 /**
  * Surah summaries, the aligned-pair sink, and archive fingerprinting — the
- * LLM-facing half of the Quran ingestion wiring (#6). Kept apart from the
+ * LLM-facing half of the Quran ingestion wiring. Kept apart from the
  * pure parsing/model module so the LLM seams stay individually testable and
  * the import surface of each file stays small.
  */
@@ -16,11 +16,10 @@ export type SummarizerProvider = Provider;
 
 /**
  * The LLM-backed parent summarizer: summarizes the surah's ayahs (Arabic
- * primary + Indonesian secondary shown to the model) into the summary that
- * the parent's embedding is computed from (issue #6 AC: parent embeddings
- * from summaries, not full text). Returns the call's CostRecord alongside
- * the summary so the pipeline's collector records it (kajianq-traceability
- * rule 2: every LLM call leaves model/tokens/cost; review A6).
+ * primary + Indonesian secondary shown to the model) into the summary the
+ * parent's embedding is computed from — never the full text. Returns the call's
+ * CostRecord alongside the summary, because every LLM call leaves
+ * model/tokens/cost on the run's trace.
  */
 export function surahSummarizer(
   provider: SummarizerProvider,
@@ -65,14 +64,15 @@ export function surahSummaryPrompt(input: {
 /**
  * The pair sink for `runIngestion`: writes each aligned (Arabic, Indonesian)
  * ayah pair with its morphology through the RagStore's aligned-pair seam
- * (ADR-0014: #24's concept-graph build consumes these rows). The pipeline
+ * (ADR-0014 — the concept-graph build consumes these rows). The pipeline
  * supplies the pair key (the child's provenance `sourceKey`,
  * `quran/tanzil-uthmani/surah/N:M`); passing it through verbatim keeps this
  * sink decoupled from any one key format. The default CLI wiring passes
  * `pairKeyFor` = `ayahPairId(citation.surah, citation.ayah)` so persisted
- * rows use the domain's stable `quran-pair:N:M` address (the format #24's
- * build and the citation validator resolve against) — a source-driven
- * `sourceKey` would change if the source collection is ever renamed.
+ * rows use the domain's stable `quran-pair:N:M` address (the format the
+ * concept-graph build and the citation validator resolve against) — a
+ * source-driven `sourceKey` would change if the source collection is ever
+ * renamed.
  */
 export function quranPairSink(
   store: Pick<RagStore, "upsertAlignedPair">,

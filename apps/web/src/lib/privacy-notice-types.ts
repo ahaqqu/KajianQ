@@ -1,11 +1,11 @@
 import type { Localized } from "./localized";
 
 /**
- * The privacy notice's content model (#179, GDPR-C): the shapes the register,
- * the retention table, and the erasure card are declared with, plus the closed
- * vocabularies the notice renders as labels. Split from the data
- * (`privacy-notice-register.ts`, `privacy-notice-retention.ts`) so each module
- * stays inside the agentic-limits size cap, mirroring `collections-types.ts`.
+ * The privacy notice's content model: the shapes the register, the retention
+ * table, and the erasure card are declared with, plus the closed vocabularies
+ * the notice renders as labels. Split from the data (`privacy-notice-register.ts`,
+ * `privacy-notice-retention.ts`) so each module stays inside the agentic-limits
+ * size cap, mirroring `collections-types.ts`.
  *
  * The values themselves are ADR-0043's (decisions 3 and 4) and are checked
  * against it by the notice's drift guards in `privacy-notice.test.ts`.
@@ -17,8 +17,7 @@ import type { Localized } from "./localized";
  * serving traffic (personal data never reaches it in the live path), and
  * `transition` (in use today but narrowed or retired at a cutover) and
  * `planned` (a destination not yet in use) are retained for the next posture
- * change — after the 2026-09-21 cutover no row carries either, and the notice's
- * drift guards pin that.
+ * change — no row carries either today, and the notice's drift guards pin that.
  */
 export type ProcessorStatus = "current" | "transition" | "planned" | "no-serving-role";
 

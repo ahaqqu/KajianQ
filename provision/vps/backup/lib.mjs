@@ -1,6 +1,6 @@
 /**
  * lib.mjs — the parts of the VPS backup/restore tooling that are worth testing
- * without a database (#180, ADR-0043 decision 4).
+ * without a database (ADR-0043 decision 4).
  *
  * Everything here is pure: retention policy, manifest shape and validation,
  * the erasure SQL a restore must re-apply, and small parsing helpers. The
@@ -142,8 +142,8 @@ export function verifyRestore(manifest, actual) {
  * `packages/infra/src/rag-store-postgres-session.ts` verbatim: expired tokens, plus
  * the anonymous `users` left with no session (the FK cascade runs user →
  * session, never the reverse, so the second DELETE is what removes the chat /
- * trace / feedback subtree). The third is the Art. 17 path
- * (`deleteUserCascade`), used for a subject request that arrived after the
+ * trace / feedback subtree). The third step is the Art. 17 path
+ * (`erasureSql` below), used for a subject request that arrived after the
  * backup was taken.
  */
 export const RECLAIM_SQL = [

@@ -17,15 +17,15 @@ import {
 } from "./memory-rag-store-parts";
 
 /**
- * In-memory RagStore with real cosine search — the test seam. Same upsert
- * semantics as the Postgres adapter, Effect-signatured like the seam (ADR-0027).
+ * In-memory RagStore with real cosine search — the test seam. Upsert semantics
+ * match the Postgres adapter; signatures match the seam.
  */
 
 export function createMemoryRagStore(): RagStore & {
   allChildren: () => DocChildInsert[];
   allParents: () => DocParentInsert[];
   allPairs: () => AlignedPairInsert[];
-  /** All persisted answer traces keyed by message id (test introspection). */
+  /** Answer traces keyed by message id (test introspection). */
   allTraces: () => Map<string, unknown>;
   allChatMessages: () => readonly {
     id: string;
@@ -34,7 +34,6 @@ export function createMemoryRagStore(): RagStore & {
     content: string;
     answerTraceId: string | null;
   }[];
-  /** All chat sessions by owning user (test introspection, #271). */
   allChatSessions: () => readonly { id: string; userId: string }[];
   allEvalResults: () => readonly {
     id: string;
@@ -42,9 +41,7 @@ export function createMemoryRagStore(): RagStore & {
     answerTraceId: string | null;
     outcome: unknown;
   }[];
-  /** All persisted feedback rows (test introspection, #13). */
   allFeedback: () => readonly (FeedbackInsert & { id: string })[];
-  /** Direct cosine search helper for assertions. */
   cosineSearch: (
     track: "primary" | "fallback",
     query: readonly number[],
@@ -58,11 +55,11 @@ export function createMemoryRagStore(): RagStore & {
   const pairs = new Map<string, AlignedPairInsert & { id: string }>();
   const traces = new Map<string, unknown>();
   const traceRows = new Map<string, unknown>();
-  const traceOwners = new Map<string, string | null>(); // messageId → user (ADR-0007)
-  const traceRowOwners = new Map<string, string | null>(); // trace row id → user
+  const traceOwners = new Map<string, string | null>(); // messageId → user
+  const traceRowOwners = new Map<string, string | null>();
   const traceRowMessageIds = new Map<string, string>(); // trace row id → canonical messageId
   const feedback = new Map<string, FeedbackInsert & { id: string }>();
-  // Chat/auth sessions are distinct maps, like the real tables (A5).
+  // Chat and auth sessions are distinct maps, like the real tables.
   const chatSessions = new Map<string, string>();
   const authSessions = new Map<string, { userId: string; expiresAt: number }>();
   const users = new Map<string, { kind: string }>();
@@ -78,7 +75,6 @@ export function createMemoryRagStore(): RagStore & {
   >();
   let seq = 0;
 
-  // The eval-ledger half lives in its own module, sharing this state.
   const evalState = {
     evalRuns,
     evalResults,
@@ -105,7 +101,6 @@ export function createMemoryRagStore(): RagStore & {
     feedback,
     nextId: () => (seq += 1),
   });
-  // The chat half lives in its own module too, sharing the same two maps.
   const chatMethods = memoryChatMethods({ chatSessions, chatMessages });
 
   const cosine = (a: readonly number[], b: readonly number[]): number => {
@@ -183,8 +178,7 @@ export function createMemoryRagStore(): RagStore & {
         }),
       );
     },
-    // The bounded scope read (ADR-0045) — helper module, like the auth/eval
-    // halves; the projection helper it shares with the reads above lives there.
+    // The bounded scope read: its helper module shares the read projection above.
     ...memoryScopeMethods({ parents, parentByKey, children }),
     countDocChildrenByMetadata(key) {
       return Effect.sync(() => {
@@ -205,7 +199,7 @@ export function createMemoryRagStore(): RagStore & {
         traceRows.set(input.trace.id as string, input.trace); // row id = FK key
         traceOwners.set(input.messageId, input.userId);
         traceRowOwners.set(input.trace.id as string, input.userId);
-        traceRowMessageIds.set(input.trace.id as string, input.messageId); // canonical key (A2)
+        traceRowMessageIds.set(input.trace.id as string, input.messageId); // canonical key
         return input.trace.id;
       });
     },
@@ -240,7 +234,6 @@ export function createMemoryRagStore(): RagStore & {
     allPairs: () => [...pairs.values()],
     allTraces: () => traces,
     allChatMessages: () => [...chatMessages.entries()].map(([id, m]) => ({ id, ...m })),
-    /** Chat sessions by owning user, for "nothing was created" assertions (#271). */
     allChatSessions: () => [...chatSessions.entries()].map(([id, userId]) => ({ id, userId })),
     allEvalResults: () => [...evalResults.values()],
     allFeedback: () => [...feedback.values()],

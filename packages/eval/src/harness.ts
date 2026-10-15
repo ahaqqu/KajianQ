@@ -15,31 +15,20 @@ import type {
   TraceEventLike,
 } from "./harness-types";
 
-/**
- * EvalHarness (#8): run a Golden Set against a chat target, score each
- * question deterministically, persist per-run results, and cap cost.
- *
- * The harness is transport-agnostic: the caller supplies a `ChatTransport`
- (the SSE client implements it) and a `RunLedger` (the RagStore adapter
- * implements it). Scoring reads the answer trace the API persisted —
- * retrieval recall comes from the trace's `retrieval` events (plan decision
- * 3), never from client-side guesses.
- */
+/** EvalHarness: run a Golden Set against a chat target, score each question
+ * deterministically, persist per-run results, and cap cost. Transport-agnostic:
+ * the caller supplies a `ChatTransport` and a `RunLedger`, and scoring reads the
+ * answer trace the API persisted rather than client-side guesses. */
 
 export type ChatTransportResult = {
   text: string;
   messageId: string | null;
   traceId: string | null;
-  /**
-   * The server's structured citations frame (ADR-0040), when the transport
-   * consumed one. Absent for a transport that does not carry it (a fake, an
-   * older client); citation scoring then falls back to the trace's `grounded`
-   * labels and finally the answer text.
-   */
+  /** The server's structured citations frame (ADR-0040), when the transport consumed
+   * one; otherwise citation scoring falls back to `grounded` labels, then the text. */
   citations?: CitationFrameLike | null;
 };
 
-/** One question's round-trip against the target. */
 export interface ChatTransport {
   ask(question: GoldenQuestion): Promise<ChatTransportResult>;
 }
@@ -49,24 +38,16 @@ export interface AnswerTraceSource {
   eventsByMessage(messageId: string): Promise<readonly TraceEventLike[] | null>;
 }
 
-/**
- * The eval-ledger persistence role (the RagStore adapter bridges). The
- * harness owns the run lifecycle: `createRun` first (thermo-review A3/A4 —
- * the pre-fix loop saved per-question rows with a blank run id the store's
- * `::uuid` cast rejects, and persisted the report with an id no caller ever
- * stamped back), `saveResult` per question, `refreshRun` to store the final
- * report against the run id in a single idempotent write (no CLI
- * double-write, A9).
- */
+/** The eval-ledger persistence role (the RagStore adapter bridges): `createRun`
+ * first so every `saveResult` and the report carry the real run id, then
+ * `saveResult` per question, then `refreshRun` for the final report in a single
+ * idempotent write. */
 export interface RunLedger {
   createRun(label: string, report: unknown): Promise<string>;
   /** Idempotent upsert of the final report row (by run id). */
   refreshRun(runId: string, label: string, report: unknown): Promise<void>;
-  /**
-   * Persist one question's outcome — a scored one, or a transport skip (#290).
-   * Not every reported outcome has a row: a write that fails leaves the report
-   * with `ledgerFailureNote` and the store with nothing (see that helper).
-   */
+  /** Persist one question's outcome — a scored one or a transport skip; a failed
+   * write leaves the report with `ledgerFailureNote` and the store with nothing. */
   saveResult(
     runId: string,
     questionId: string,
@@ -84,25 +65,15 @@ export type HarnessDeps = {
   budget: Budget;
   /** Refusal markers in the answer text (domain vocabulary, caller-supplied). */
   refusalMarkers?: readonly string[];
-  /**
-   * The citation grammar the scorer uses on the text fallback (domain
-   * vocabulary, caller-supplied — the engine stays agnostic). Supplied by the
-   * CLI composition root from `@app/kajianq-domain`, so the scorer and the
-   * deterministic gate normalize labels identically. Omitted in a unit
-   * context: scoring then falls back to the byte-exact substring check.
-   */
+  /** The citation grammar for the text fallback, supplied by the composition
+   * root (the engine stays agnostic) so scorer and gate normalize identically;
+   * omitted, scoring uses the byte-exact substring check. */
   citationGrammar?: CitationGrammar;
-  /**
-   * The opaque `origin` label the domain pack puts on chunks its scope
-   * expansion added (ADR-0045), supplied by the composition root exactly like
-   * `refusalMarkers`/`citationGrammar` — the engine package must not hard-code
-   * a caller's label. When set, each scored outcome records the expansion's
-   * contribution to that question (C1: a scoped pass is visible in the report,
-   * never folded silently into `retrievalRecall`). Omitted = no accounting and
-   * no `expansion` block on the outcome.
-   */
+  /** The opaque `origin` label the domain pack puts on chunks its scope expansion
+   * added (ADR-0045), supplied by the composition root — the engine must not
+   * hard-code a caller's label. When set, each outcome records the expansion's
+   * contribution; omitted, no block is written. */
   expansionOrigin?: string;
-  /** Run label persisted with the report. */
   label?: string;
   now?: () => number;
 };
@@ -118,14 +89,10 @@ export type HarnessRunResult = {
   results: HarnessQuestionResult[];
 };
 
-/**
- * Run the whole set. The run is created FIRST so every `saveResult` and the
- * persisted report carry the real run id (A3/A4) and the caller needs no
- * post-hoc stamping (A9). Per question: ask → read trace → score → persist
- * → check budget. A transport failure marks the question skipped, persists
- * that skip with its error (#290), and keeps the run going; a budget hit
- * aborts the remaining questions (plan decision 4).
- */
+/** Run the whole set, creating the run FIRST so every `saveResult` and the report
+ * carry the real run id. Per question: ask → read trace → score → persist → check
+ * budget; a transport failure skips the question and keeps the run going, and a
+ * budget hit aborts the remaining questions. */
 export async function runGoldenSet(set: GoldenSet, deps: HarnessDeps): Promise<HarnessRunResult> {
   const now = deps.now ?? Date.now;
   const startedAt = now();
@@ -140,7 +107,7 @@ export async function runGoldenSet(set: GoldenSet, deps: HarnessDeps): Promise<H
   for (const question of set.questions) {
     if (deps.budget.wouldExceed()) {
       budgetExceeded = true;
-      // The remainder is deliberately uncounted; the CLI's exit policy reddens on it (#364).
+      // The remainder is deliberately uncounted; the CLI's exit policy reddens on it.
       break;
     }
     try {
@@ -148,9 +115,7 @@ export async function runGoldenSet(set: GoldenSet, deps: HarnessDeps): Promise<H
       const events = reply.messageId
         ? ((await deps.traces.eventsByMessage(reply.messageId)) ?? [])
         : [];
-      // Thermo-review B1: the trace's cost records feed the report directly —
-      // the budget accumulator already counted them (single accumulator,
-      // ADR-0034 decision 2); the report must not discard them.
+      // The trace's cost records feed the report directly; the accumulator counted them.
       for (const event of events) {
         if (event.cost) costs.push(event.cost);
       }
@@ -159,11 +124,8 @@ export async function runGoldenSet(set: GoldenSet, deps: HarnessDeps): Promise<H
       try {
         await deps.ledger.saveResult(runId, question.id, outcome, reply.traceId);
       } catch (err) {
-        // A write failure fails THIS question — its evidence was not persisted
-        // — but must not fabricate a "skipped" entry for a question that was
-        // asked and scored: the previous shape pushed both, which failed the
-        // smoke for an infrastructure reason while the report contradicted its
-        // own question count. Only a transport/trace failure is a skip.
+        // A write failure fails THIS question — its evidence was not persisted —
+        // and never fabricates a skip. Only a transport/trace failure is a skip.
         result.passed = false;
         result.notes = [ledgerFailureNote(err)];
       }
@@ -176,12 +138,8 @@ export async function runGoldenSet(set: GoldenSet, deps: HarnessDeps): Promise<H
         break;
       }
       skipped += 1;
-      // #290: a transport skip is an outcome like every other one — it gets a
-      // ledger row naming the question and the error, so the gate's red is
-      // actionable from `eval_results` alone. The store keeps the object handed
-      // to it, so a failed write is noted on the report's OWN copy below, never
-      // on that row's object; and it is never thrown, so one bad row cannot
-      // take the report — or the questions after it — down with it.
+      // A transport skip gets a ledger row like every other outcome, and its own
+      // failed write is noted on the report's copy, never thrown.
       const skip = skippedOutcome(question, err);
       let reported = skip;
       try {
@@ -193,8 +151,7 @@ export async function runGoldenSet(set: GoldenSet, deps: HarnessDeps): Promise<H
     }
   }
 
-  // Thermo-review C1: skipped questions are flagged explicitly and excluded
-  // from the scored means — never via the brittle notes-prefix heuristic.
+  // Skipped questions are excluded from the scored means by their explicit flag.
   const scored = results.filter((r) => r.skipped !== true);
   const report = buildReport(set, {
     runId,
@@ -213,11 +170,8 @@ export async function runGoldenSet(set: GoldenSet, deps: HarnessDeps): Promise<H
   return { runId, passed, failed, skipped, budgetExceeded, results };
 }
 
-/**
- * Score one question from its answer text, trace events, and — when the
- * transport carried one — the server's citations frame (see `citationValidity`).
- * Trap rule + residual: `behaviorAccepted` (scorers.ts) + ADR-0046.
- */
+/** Score one question from its answer text, trace events, and the citations frame
+ * when the transport carried one. Trap rule + residual: `behaviorAccepted`. */
 export function scoreQuestion(
   question: GoldenQuestion,
   answerText: string,
@@ -274,7 +228,6 @@ export type BuildReportRun = {
   costs: readonly CostRecordLike[];
 };
 
-/** Build the aggregate report (the persisted `eval_runs.report` payload). */
 export function buildReport(set: GoldenSet, run: BuildReportRun): EvalRunReport {
   const mean = (xs: readonly number[]): number | null =>
     xs.length === 0 ? null : xs.reduce((a, b) => a + b, 0) / xs.length;

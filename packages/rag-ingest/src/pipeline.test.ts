@@ -227,10 +227,10 @@ describe("runIngestion", () => {
   });
 
   it("never sends an empty text to the embedder (the empty-Part 400)", async () => {
-    // Regression pin: the corpus legitimately contains rows with no
-    // secondary-language text, and the pipeline used to map `null` to `""` —
-    // which the vendor rejects with `400 … contains an empty Part`, failing the
-    // whole run after hours of embedding. The row keeps a null fallback vector.
+    // The corpus legitimately contains rows with no secondary-language text;
+    // sending `null` as `""` makes the vendor reject the request
+    // (`400 … contains an empty Part`), so the row is skipped and keeps a null
+    // fallback vector.
     const f = fakeStore();
     const seen: string[][] = [];
     const written: Record<string, unknown>[] = [];
@@ -401,9 +401,8 @@ describe("runIngestion", () => {
                 }),
               ),
               // Track fail-fast sibling interruption: an in-flight batch's
-              // exit is interruption-only (no typed failure of its own).
-              // Effect v4 renamed `Cause.isInterruptedOnly` to
-              // `hasInterruptsOnly`.
+              // exit is interruption-only (no typed failure of its own), which
+              // Effect v4 reports through `Cause.hasInterruptsOnly`.
               Effect.onExit((exit) =>
                 Effect.sync(() => {
                   if (exit._tag === "Failure" && Cause.hasInterruptsOnly(exit.cause))
@@ -429,9 +428,9 @@ describe("runIngestion", () => {
         })),
       },
     ];
-    // The run rejects with the typed EmbedMisalignment itself: under Effect
-    // v4, `runPromise` rejects a typed failure with the error instance (the
-    // v3 FiberFailure wrapper and its cause symbol are gone).
+    // The run rejects with the typed EmbedMisalignment itself — Effect v4's
+    // `runPromise` rejects a typed failure with the error instance, not a
+    // FiberFailure wrapper.
     let rejection: unknown;
     try {
       await runIngestion(
@@ -535,8 +534,6 @@ describe("runIngestion", () => {
     );
     const summarizerCalls = result.report.llmCalls.filter((c) => c.modelId === "test-summarizer");
     expect(summarizerCalls).toHaveLength(2); // one per parent
-    // Embedding cost (5: 3 primary + 2 secondary texts, see the first test)
-    // plus the two 7-micro summaries = 19.
     expect(result.report.costMicroUsd).toBe(5 + 2 * 7);
   });
 

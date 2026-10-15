@@ -9,10 +9,8 @@ import { registerDocRoutes } from "./docs";
 import { healthRoutes } from "./health";
 
 /**
- * Mounts every route module, then the doc routes that introspect them.
- * Guarded product routes arrive with their backing ticket: chat (#8), the
- * anonymous-session auth routes (ADR-0017, #10), and feedback (#13) are
- * mounted; admin lands later.
+ * Mounts every route module, then the doc routes that introspect them. Admin
+ * routes are not mounted yet.
  */
 export function registerRoutes(api: Hono<ApiEnv>): void {
   api.route("/", healthRoutes);

@@ -26,7 +26,7 @@ export const runStoreEffect = <A>(effect: Effect.Effect<A, StoreError>): Promise
   Effect.runPromise(effect);
 
 /**
- * rag-ingest — the domain-agnostic ingestion pipeline orchestration (#6).
+ * rag-ingest — the domain-agnostic ingestion pipeline orchestration.
  *
  * Source parsing is domain work and arrives through the `SourceParser` seam
  * (see `types.ts`): the engine never names a corpus, a language, or a
@@ -79,15 +79,14 @@ async function summarizeParents(
     const { summary, cost } = await summarizer({
       sourceKey: parent.sourceKey,
       title: parent.title,
-      // Summary input is the child texts; the summary becomes the embedded
-      // parent text (issue #6: parent embeddings from summaries).
+      // The summary, not the parent text, becomes the embedded parent text.
       childTexts: parent.children.map((c) => c.textPrimary),
     });
     if (summary.trim().length === 0) {
       throw new Error(`ingestion: summarizer returned empty summary for "${parent.sourceKey}"`);
     }
     // The summarizer's LLM call is costed like every other call — the
-    // report's cost equals the sum of recorded calls (review A6).
+    // report's cost equals the sum of recorded calls.
     costs.record(cost);
     summaries.set(parent.sourceKey, summary);
   }
@@ -131,8 +130,8 @@ export async function runIngestion(
 ): Promise<{ report: import("@app/contracts").IngestionReport; parentIds: readonly string[] }> {
   const concurrency = deps.embedConcurrency ?? 1;
   if (!Number.isInteger(concurrency) || concurrency < 1) {
-    // Fail loudly (C2): a misconfiguration (0 = "unlimited"?) must never
-    // silently degrade to serial — effect@3.22.1 would run it sequential.
+    // Fail loudly: a misconfiguration (0 = "unlimited"?) must never silently
+    // degrade to serial — effect@3.22.1 would run it sequential.
     throw new RangeError(
       `ingestion: embedConcurrency must be a positive integer, got ${concurrency}`,
     );

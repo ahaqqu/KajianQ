@@ -23,29 +23,25 @@ import type { KajianQFilters } from "./filters";
 import { routedQuery } from "./test-utils/routed-query";
 
 /**
- * Reviewer pre-gate at the Reviewer-stage seam (ticket #168, ADR-0042
- * adoption). External behavior only: a draft plus an injected `Decider` in,
- * verdict + trace events out. The vendor wire is never touched — the fake
- * decider is a scripted `Effect`, and the reviewer LLM is a counting stub, so
- * "was the paid reviewer called?" is a number, not an inference.
+ * Reviewer pre-gate at the Reviewer-stage seam (ADR-0042). External behavior only: a draft plus an
+ * injected `Decider` in, verdict + trace events out. The vendor wire is never touched — the fake
+ * decider is a scripted `Effect` and the reviewer LLM is a counting stub, so "was the paid reviewer
+ * called?" is a number.
  *
  * The invariants these tests hold (named so a failure says which one broke):
  *
- *  - **fail-open**: the pre-gate can only ever *skip* the paid reviewer on an
- *    explicit all-citations-cleared answer. A low score, a missing answer, a
- *    wrong answer type, a non-finite or out-of-range score, a vendor failure,
- *    and a draft with nothing to judge all escalate. A malformed response read
- *    as a pass is the silent failure this suite exists to prevent.
- *  - **no spend before the free gate**: the deterministic validator decides
- *    first; a draft that fails it or is a generator refusal makes no decision
- *    call and no reviewer call.
- *  - **batched**: exactly one decision call per answer, one question per
- *    citation position, each question carrying its own claim + passage.
- *  - **cost-sum**: the trace total equals the sum of recorded call costs,
- *    including a *failed* vendor attempt that still spent.
- *  - **contract**: every recorded event parses against the shared trace
- *    contract — the skip and the escalation reason are persisted trace
- *    content, never server logs.
+ *  - **fail-open**: the pre-gate can only ever *skip* the paid reviewer on an explicit
+ *    all-citations-cleared answer; a low score, a missing answer, a wrong answer type, a non-finite
+ *    or out-of-range score, a vendor failure, and a draft with nothing to judge all escalate. A
+ *    malformed response read as a pass is the silent failure this suite exists to prevent.
+ *  - **no spend before the free gate**: the deterministic validator decides first; a draft that
+ *    fails it or is a generator refusal makes no decision call and no reviewer call.
+ *  - **batched**: exactly one decision call per answer, one question per citation position, each
+ *    question carrying its own claim + passage.
+ *  - **cost-sum**: the trace total equals the sum of recorded call costs, including a *failed*
+ *    vendor attempt that still spent.
+ *  - **contract**: every recorded event parses against the shared trace contract — the skip and the
+ *    escalation reason are persisted trace content, never logs.
  */
 
 const cost = (modelId: string, microUsd: number): CostRecord => ({
@@ -71,7 +67,6 @@ const context = (
   turns: [{ role: "user", content: chunks.map((c) => c.text).join("\n") }],
 });
 
-/** A `Decider` whose wire is a script the test owns; records every spec. */
 function fakeDecider(
   respond: (spec: DecisionSpec) => Effect.Effect<DecisionResult, ProviderError>,
 ): { decider: Decider; calls: DecisionSpec[] } {
@@ -98,7 +93,6 @@ function noulResult(scores: Record<string, number | null>, microUsd = 4): Decisi
   return { answers, cost: cost("stub-decider", microUsd) };
 }
 
-/** A reviewer LLM stub that answers `pass` and counts its calls. */
 function countingReviewer(): {
   provider: { generate: () => Effect.Effect<never> };
   calls: () => number;
@@ -118,7 +112,6 @@ function countingReviewer(): {
   };
 }
 
-/** Run the reviewer stage, capturing every recorded event as a real trace. */
 async function review(
   deps: KajianQReviewerDeps,
   text: string,
@@ -163,7 +156,6 @@ describe("#168 reviewer pre-gate — skip path", () => {
     expect(reviewer.calls()).toBe(0);
     expect(pregate.calls).toHaveLength(1);
     expect(decisionEvent(out.events).detail.outcome).toBe("skip");
-    // The answer is delivered as the draft produced it (rules disabled here).
     expect(out.text).toContain("QS. 2:255");
   });
 
@@ -213,9 +205,8 @@ describe("#168 reviewer pre-gate — skip path", () => {
   });
 
   it("records a product_rules event on the skip path when the rules are on (#285)", async () => {
-    // The skip path reaches the rules through `withRules` and records no
-    // `review` event — so this event is the only trace evidence that the
-    // deterministic controls ran on an answer the cheap screen cleared.
+    // The skip path records no `review` event, so this product_rules event is the
+    // only trace evidence that the deterministic controls ran.
     const out = await review(
       {
         applyProductRules: true,
@@ -234,9 +225,8 @@ describe("#168 reviewer pre-gate — skip path", () => {
 
   it("records no product_rules event when the deterministic rules are disabled (#285)", async () => {
     // The same skip path with `applyProductRules: false` (this suite's default
-    // wiring): the event means "the rules ran", so a run that skips them must
-    // not look like one that ran them — even though every rule would
-    // otherwise have appended something here.
+    // wiring): the event means "the rules ran", so a run that skips them must not
+    // look like one that ran them.
     const out = await review(
       {
         provider: countingReviewer().provider as never,
@@ -297,8 +287,7 @@ describe("#168 reviewer pre-gate — escalation path (fail-open)", () => {
     expect(llmCallEvents(out.events)).toHaveLength(1);
     expect(llmCallEvents(out.events)[0]?.cost?.costMicroUsd).toBe(3);
     expect(out.totalMicroUsd).toBe(3 + 7);
-    // The planned items are listed unscored: the request was built, no
-    // judgment came back — never an implicit pass.
+    // The planned items are listed unscored: no judgment came back, never a pass.
     expect(decision.detail.items).toEqual([{ index: 0, key: "QS. 2:255" }]);
   });
 
@@ -356,9 +345,9 @@ describe("#168 reviewer pre-gate — escalation path (fail-open)", () => {
   });
 
   it("fails open on an out-of-range Noul instead of reading it as support (A2)", async () => {
-    // The seam documents Noul 0..1. `5` is finite, so a finiteness-only read
-    // scores it above the threshold and SKIPS the paid reviewer — shipping the
-    // draft unreviewed. Out of range is an unusable item, never a pass.
+    // The seam documents Noul 0..1. An out-of-range score is an unusable item, never a
+    // pass — a finiteness-only read would score it above the threshold and skip the
+    // paid reviewer, shipping the draft unreviewed.
     for (const outOfRange of [5, -0.01]) {
       const reviewer = countingReviewer();
       const out = await review(
@@ -438,9 +427,9 @@ describe("#168 reviewer pre-gate — request shape", () => {
       instructions: CITATION_INSTRUCTIONS,
       criteria: { ...CITATION_CRITERIA },
     });
-    // The claim spans and cited passages are the user's answer text, so the
-    // spec declares personal data (ADR-0043): the seam can then refuse a
-    // vendor whose config forbids it (A1).
+    // The claim spans and cited passages are the user's answer text, so the spec
+    // declares personal data: the seam can then refuse a vendor whose config forbids
+    // it.
     expect(pregate.calls[0]?.personalData).toBe(true);
   });
 
@@ -506,7 +495,6 @@ describe("#168 reviewer pre-gate — order, absence and cost discipline", () => 
   it("never spends on the pre-gate for a generator-emitted refusal", async () => {
     const pregate = fakeDecider(() => Effect.succeed(noulResult({})));
     const reviewer = countingReviewer();
-    // The canonical insufficiency refusal carries no citation at all.
     const out = await review(
       { provider: reviewer.provider as never, decider: pregate.decider },
       "Maaf, saya tidak menemukan dalil yang memadai untuk menjawab pertanyaan ini.",
@@ -575,10 +563,8 @@ describe("#168 reviewer pre-gate — claim spans (domain grammar)", () => {
   });
 
   it("carries the passage for a citation written with an introducing colon (#253)", () => {
-    // The tail is normalized on both sides, so a draft citation the gate
-    // grounds also finds its chunk's passage here. Before #253's fix the colon
-    // survived into the item's key, the map lookup missed, and the paid
-    // decision call judged this citation against an EMPTY passage.
+    // The tail is normalized on both sides, so a draft citation the gate grounds also
+    // finds its chunk's passage rather than being judged against an empty one.
     const plan = planCitationPregate({
       draft: "Rasulullah bersabda dalam HR. Bukhari no. 5010: matn hadith.",
       chunks: [chunk("HR. Bukhari no. 5010", "bukhari passage")],
@@ -589,10 +575,8 @@ describe("#168 reviewer pre-gate — claim spans (domain grammar)", () => {
   });
 
   it("carries the passage for a citation written with a footnote tail (A2)", () => {
-    // Same seam, one class further: a footnote digit is not address, so the
-    // item is keyed by the reduced label and the passage lookup hits. Before
-    // the grammar-address fix (review A2) the key kept `:1`, the map lookup
-    // missed, and the paid call judged the citation against an EMPTY passage.
+    // Same seam, one class further: a footnote digit is not address, so the item is
+    // keyed by the reduced label and the passage lookup hits.
     const plan = planCitationPregate({
       draft: "Rasulullah bersabda dalam HR. Bukhari no. 5010:1 matn hadith.",
       chunks: [chunk("HR. Bukhari no. 5010", "bukhari passage")],

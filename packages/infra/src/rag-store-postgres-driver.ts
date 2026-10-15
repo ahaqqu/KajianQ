@@ -5,32 +5,29 @@ import type { PostgresRagStoreOptions } from "./rag-store-postgres-logging";
 import type { RagStore } from "./rag-store";
 
 /**
- * The Postgres wire driver for the `RagStore` adapter (#181, ADR-0044): a
- * `pg` `Pool` adapted to the adapter's structural `SqlRunner` seam. This module
- * is the ONE place the repository imports a database client (ADR-0008: engine
- * code never holds a driver; only the adapter and the migrations do), and it
- * is therefore exempt from the boundary gate's DB-client rule alongside the
- * adapter's own integration test.
+ * The Postgres wire driver for the `RagStore` adapter (ADR-0044): a `pg` `Pool`
+ * adapted to the adapter's structural `SqlRunner` seam. This module is the ONE
+ * place the repository imports a database client (ADR-0008: engine code never
+ * holds a driver; only the adapter and the migrations do), and it is therefore
+ * exempt from the boundary gate's DB-client rule alongside the adapter's own
+ * integration test.
  *
- * Why `pg` (node-postgres) and not the provider's serverless HTTP transport:
- * the self-hosted Postgres on the netcup VPS speaks plain TCP, not a hosted
- * query endpoint, and the migration's point is to stop depending on a hosting
- * vendor's transport (ADR-0043/ADR-0044). node-postgres is the driver the
- * previous serverless transport was a drop-in replacement for, so the seam
- * shape — tagged template, `query(text, params)`, a batched `transaction` — is
- * unchanged and the adapter's SQL composes exactly as before.
+ * Why `pg` (node-postgres) and not a provider's serverless HTTP transport: the
+ * self-hosted Postgres on the netcup VPS speaks plain TCP, not a hosted query
+ * endpoint, and the deployment must not depend on a hosting vendor's transport
+ * (ADR-0043/ADR-0044). The seam shape — tagged template, `query(text, params)`,
+ * a batched `transaction` — is what the adapter's SQL composes against.
  *
- * Lazy queries. The adapter was written against a driver whose tagged-template
- * result is a LAZY thenable: `.then`/`.catch`/`.finally` each fire the query,
- * so `sqlEffect` can adopt it with exactly one `Promise.resolve(...)` and
- * `transaction([...])` can collect un-executed statements into one round trip
- * (see `sqlEffect`'s doc comment for the double-execution hazard it guards).
- * node-postgres executes immediately, which would break that atomicity: the
- * two INSERTs of `createSession` would run on two pooled connections, outside
- * any transaction. {@link DeferredQuery} reproduces the lazy contract on top of
- * the pool, so `transaction` can acquire one client, `BEGIN`, run each
- * statement in order and `COMMIT` — the same atomicity the hosted transport
- * gave for free.
+ * Lazy queries. The adapter's `SqlRunner` contract is a LAZY tagged-template
+ * result: `.then`/`.catch`/`.finally` each fire the query, so `sqlEffect` can
+ * adopt it with exactly one `Promise.resolve(...)` and `transaction([...])` can
+ * collect un-executed statements into one round trip (see `sqlEffect`'s doc
+ * comment for the double-execution hazard it guards). node-postgres executes
+ * immediately, which would break that atomicity: the two INSERTs of
+ * `createSession` would run on two pooled connections, outside any transaction.
+ * {@link DeferredQuery} reproduces the lazy contract on top of the pool, so
+ * `transaction` can acquire one client, `BEGIN`, run each statement in order
+ * and `COMMIT`.
  */
 
 /** One not-yet-executed statement: its text and its bound values. */
@@ -143,9 +140,8 @@ export function postgresSqlRunner(pool: Pool): SqlRunner {
  * One pool per connection string, created on first use.
  *
  * A pool per request would open a connection per request and exhaust the
- * server's connection slots (the reason the hosted transport could be
- * connectionless and this one cannot). The API process builds its store once
- * per request through the wiring, so memoizing here is what makes that safe;
+ * server's connection slots. The API process builds its store once per request
+ * through the wiring, so memoizing here is what makes that safe;
  * {@link disposePostgresPools} releases them for a test or a shutdown.
  */
 const pools = new Map<string, Pool>();

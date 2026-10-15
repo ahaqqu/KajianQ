@@ -2,9 +2,8 @@ import { Effect } from "effect";
 import {
   RunContext,
   toStageError,
-  // `@app/rag-core` re-exports the engine's `CostRecord` (rag-core/src/index.ts),
-  // so sourcing it here keeps this module inside the repo's 5-import agentic
-  // limit while `withTextLayers` is imported from its single owner (R1).
+  // `@app/rag-core` re-exports the engine's `CostRecord`, so sourcing it here keeps
+  // this module inside the repo's import cap.
   type CostRecord,
   type RoutedQuery,
   type Retriever,
@@ -28,22 +27,17 @@ import {
 } from "./chat-retriever-parts";
 import { withTextLayers } from "./chunk-text-layers";
 /**
- * KajianQRetriever — Smart Router stage 4 (spec §3.3): embed each routed
- * sub-query, run `similaritySearch` over both embedding tracks (ADR-0013
- * dual-track), and fuse the hit lists with Reciprocal Rank Fusion (k=60) plus
- * the spec's hierarchy bonuses. Chunks carry their fused `score` and per-rank
- * provenance so the Trace shows retrieval provenance (ADR-0007).
+ * KajianQRetriever — Smart Router stage 4: embed each routed sub-query, search both
+ * embedding tracks (ADR-0013 dual-track), and fuse the hits with Reciprocal Rank
+ * Fusion (k=60) plus the spec's hierarchy bonuses.
  */
 
 export type RetrieverEmbedder = {
   embed(spec: {
     texts: readonly string[];
-    /**
-     * Required on the serving seam: the embedded texts are the user's
-     * sub-queries — personal data (ADR-0043 Consequences). Non-optional so
-     * a call site that drops it is a compile error; the provider seam skips
-     * free-tier candidates when it is set.
-     */
+    /** Required on the serving seam: the embedded texts are the user's sub-queries, i.e.
+     * personal data. Non-optional so a call site that drops it is a compile error; the
+     * provider seam then skips free-tier candidates. */
     personalData: true;
   }): Effect.Effect<{ vectors: readonly (readonly number[])[]; cost: CostRecord }, unknown>;
 };
@@ -67,21 +61,14 @@ export type RetrieverStore = {
     }[],
     StoreError
   >;
-  /**
-   * The bounded parent-scoped child read behind ADR-0045's scope expansion:
-   * a named surah's children, in the corpus's stable order, capped.
-   */
+  /** The bounded, capped read of a named surah's children, in the corpus's order. */
   listDocChildrenByParentSourceKey(
     parentSourceKey: string,
     opts: { limit: number },
   ): Effect.Effect<readonly ScopeChildRow[], StoreError>;
-  /**
-   * The bounded anchored read behind ADR-0049's neighbour expansion: the
-   * children within `radius` ordinals of each anchor child, in the caller's
-   * priority order, capped. Anchors are opaque child ids — the store derives
-   * their parent and position from the row, so the window cannot be
-   * mis-anchored.
-   */
+  /** The bounded read of the children within `radius` ordinals of each anchor child, in
+   * the caller's priority order; anchors are opaque child ids, so the window cannot be
+   * mis-anchored. */
   listDocChildNeighboursByChildIds(
     anchorChildIds: readonly string[],
     opts: { radius: number; limit: number },
@@ -94,25 +81,14 @@ export type StoreBridge = <A>(effect: Effect.Effect<A, StoreError>) => Promise<A
 export type KajianQRetrieverDeps = {
   store: RetrieverStore;
   embedder: RetrieverEmbedder;
-  /** Runs a store Effect to a promise (the composition-root bridge). */
   bridge: StoreBridge;
   /** Per-track hits per sub-query (spec §3.7 smoke keeps this small). */
   limit?: number;
-  /**
-   * Budget cap for ADR-0045's surah-reference scope expansion: at most this
-   * many of the named surah's children are added to the fused hits. Defaults
-   * to `DEFAULT_SCOPE_EXPANSION_CAP`; `0` disables the expansion.
-   */
+  /** Budget cap for ADR-0045's scope expansion over a named surah's children; `0` disables it. */
   scopeExpansionCap?: number;
-  /**
-   * ADR-0049's retrieved-verse neighbourhood expansion: how many ordinals on
-   * each side of a retrieved verse join the context, and the total number of
-   * chunks it may add. Default to `DEFAULT_NEIGHBOUR_RADIUS` /
-   * `DEFAULT_NEIGHBOUR_CAP`; `0` on **either** disables the expansion — the
-   * composition root's parser accepts non-negative integers only, and the
-   * expansion guards `<= 0` defensively for any other caller (review B3 of the
-   * #274 fix round).
-   */
+  /** ADR-0049's neighbourhood expansion: ordinals per side and total chunks added,
+   * defaulting to `DEFAULT_NEIGHBOUR_RADIUS` / `DEFAULT_NEIGHBOUR_CAP`; `0` on
+   * **either** disables it. */
   neighbourRadius?: number;
   neighbourCap?: number;
   /** Trace/cost sink for the embed call (the run's collection point). */
@@ -131,20 +107,17 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
             .embed({ texts: routed.subQueries.map((q) => q.text), personalData: true })
             .pipe(Effect.mapError((cause) => ({ cause })));
           if (deps.onEmbedCost) deps.onEmbedCost(embedded.cost);
-          // The route's decision, read into the store's expressible shape. A
-          // dimension the store cannot express is a typed stage failure, never
-          // a dropped key: silently ignoring `grade` answers a different
-          // question than the router decided to answer (chat-filter-policy.ts).
+          // The route's decision, read into the store's expressible shape. A dimension
+          // the store cannot express is a typed stage failure, never a dropped key:
+          // silently ignoring `grade` answers a different question than the router chose.
           const intended = yield* Effect.try({
             try: () => filterEntries(routed.filters),
             catch: (cause: unknown) => ({ cause }),
           });
-          // The live filter set, relaxed at most once per dimension for the
-          // WHOLE run. That is sound because the WHERE clause is identical on
-          // both tracks — they differ only in the vector column, which the
-          // `IS NOT NULL` guard screens — so an unsatisfiable dimension is
-          // unsatisfiable for every search here, and probing it once per
-          // sub-query per track would pay repeatedly for the same answer.
+          // The live filter set, relaxed at most once per dimension for the WHOLE run.
+          // The WHERE clause is identical on both tracks and they differ only in the
+          // vector column, so an unsatisfiable dimension is unsatisfiable for every
+          // search here, and probing it per sub-query per track would pay twice.
           const relaxation = createFilterRelaxation(intended);
           const lists: TrackHit[][] = [];
           for (let i = 0; i < routed.subQueries.length; i += 1) {
@@ -160,15 +133,10 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
                   catch: (cause: unknown) => ({ cause }),
                 });
               let hits = yield* search(relaxation.active());
-              // Filter relaxation: a hint that matches nothing is probed away one
-              // dimension at a time, and only a drop that returns hits is adopted.
-              // When no single dimension is at fault the sweep ends in ONE
-              // record-level retry with every remaining dimension dropped, so a
-              // wrong hint cannot turn into a refusal for a question the corpus
-              // can serve. The policy, its rationale and the one-diagnosis-per-run
-              // bound live in `chat-filter-relaxation.ts`; this loop only runs the
-              // searches it asks for, and records each probe so the trace carries
-              // the machinery.
+              // Filter relaxation: a hint that matches nothing is probed away one dimension
+              // at a time, and only a drop that returns hits is adopted; when no single
+              // dimension is at fault the sweep ends in one record-level retry with every
+              // remaining dimension dropped (policy: `chat-filter-relaxation.ts`).
               while (hits.length === 0 && relaxation.probing()) {
                 const probe = relaxation.next();
                 if (probe === undefined) break;
@@ -183,16 +151,12 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
                   stage: "retriever",
                   kind: "filter_relaxed",
                   detail: {
-                    // Recorded by the store's KEY — the same space `retained` is
-                    // written in, so `intended − dropped` reconstructs what a
-                    // search ran with. The dimension and the key are held
-                    // together by `chat-filter-policy`'s exhaustive map; an entry
-                    // naming EVERY live dimension (with `retained: {}`) is the
-                    // record-level last resort.
+                    // Recorded by the store's KEY — the same space `retained` is written
+                    // in, so `intended − dropped` reconstructs what a search ran with; an
+                    // entry naming EVERY live dimension is the record-level last resort.
                     dropped: Object.fromEntries(
                       probe.dropped.map((entry) => [entry.key, [...entry.values]]),
                     ) as Record<string, string | string[]>,
-                    // What the retry actually ran with, adopted or not.
                     retained: probe.retained,
                     track,
                     hits: retry.length,
@@ -212,15 +176,9 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
                         track === "primary"
                           ? hit.child.textAr
                           : (hit.child.textId ?? hit.child.textAr),
-                      // The two text layers ride the chunk metadata (thermo-review
-                      // A1): the assembler renders the Arabic original with the
-                      // labeled translation, and the store's text columns are the
-                      // only place those layers exist — without this merge the
-                      // ADR-0006 rule is dead on the real answer path and the
-                      // prompt silently claims an original it does not carry.
-                      // `withTextLayers` (B1) is the one owner of that merge,
-                      // shared with the surah-scope expansion below, so the two
-                      // paths cannot drift.
+                      // The two text layers ride the chunk metadata — the store's text
+                      // columns are their only source — and `withTextLayers` owns the
+                      // merge for both retrieval paths, so they cannot drift.
                       metadata: withTextLayers(
                         hit.child.metadata,
                         hit.child.textAr,
@@ -234,14 +192,11 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
               }
             }
           }
-          // The hierarchy bonuses are the spec's, including the two that were
-          // missing: Kitab +0.1, and Principle +0.2 — which applies only on an
+          // The hierarchy bonuses are the spec's; the Principle bonus applies only on an
           // analogy question, so the fuse is told the intent the route read.
           const fused = rrfFuse(lists, (chunk) => hierarchyBonus(chunk, routed.intent));
-          // ADR-0045: a question that names a surah also gets that surah's
-          // children, read deterministically and bounded by the cap. Detection
-          // runs on the verbatim question, not on a sub-query, so the scope
-          // cannot be flipped by the router's paraphrase (#241).
+          // Detection runs on the verbatim question, not on a sub-query, so the
+          // router's paraphrase cannot flip the scope (ADR-0045).
           const expansion = yield* expandSurahScope({
             sourceText: routed.sourceText,
             existingIds: new Set(fused.map((c) => c.id)),
@@ -259,15 +214,9 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
             });
           }
           const inContext = [...fused, ...expansion.chunks];
-          // ADR-0049: the neighbourhood of the verses now in context, read
-          // deterministically through the same bounded-read discipline. The
-          // gate requires every address a citation names to be present, and
-          // the observed defect is the generator extending a retrieved verse
-          // into a range whose head it was never given (#274) — so the fix is
-          // to have the address, not to weaken the gate. `inContext` is both
-          // the anchor source (in retrieval order, which is the read's
-          // priority order) and the dedup set, so nothing already present is
-          // added twice.
+          // ADR-0049: the neighbourhood of the verses now in context — the gate requires
+          // every address a citation names, so the fix is to have the address, not to weaken
+          // the gate. `inContext` is both the anchor source (in retrieval order) and the dedup set.
           const neighbours = yield* expandVerseNeighbours({
             retrieved: inContext,
             radius: deps.neighbourRadius ?? DEFAULT_NEIGHBOUR_RADIUS,

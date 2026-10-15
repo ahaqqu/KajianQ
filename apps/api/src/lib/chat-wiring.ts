@@ -16,14 +16,9 @@ import {
   parseScopeExpansionCap,
 } from "./chat-config";
 export { authGuard } from "./auth";
-// Re-exported so the chat route keeps its 5-import agentic cap (same pattern
-// as the authGuard re-export): the route imports one name from its lib hub.
-// `chunkFetcher` re-exports straight from `./chat-trace` (thermo-review B2:
-// the old re-export hop through chat-citations had zero other consumers).
+// Re-exported so the chat route keeps its import count within the agentic cap.
 export { answerFramesFor, rehydrateTranscript } from "./chat-citations";
 export { chunkFetcher, traceRefused } from "./chat-trace";
-// The config surface moved to `chat-config.ts` (agentic size cap); re-exported
-// here so `lib/index.ts`, `scheduled.ts`, and their tests keep one import hub.
 export {
   ChatConfigError,
   createRagStoreFromEnv,
@@ -33,21 +28,13 @@ export {
 } from "./chat-config";
 
 /**
- * Env-bound wiring for the chat route (#10): the one place the Worker's
- * bindings become seams. Route handlers read `RagStore`/`Provider` — never
- * `env.*` (dars-pluggability: business logic accesses adapters through the
- * interface). This module is also the ONLY place in the API that imports the
- * effect runtime directly (it owns the store-seam bridge, mirroring the
- * composition-root exception ADR-0027 grants the wiring layer).
+ * Env-bound wiring for the chat route: the one place the Worker's bindings become
+ * seams. Route handlers read `RagStore`/`Provider`, never `env.*`.
  */
 
 /**
- * The provider roles the chat composition root resolves, in one place. The
- * env names behind them come from the config data (ADR-0022) — this list names
- * *which* roles serve the chat path, so a new serving role is declared here
- * (bench-only roles like `decision-candidates`/`embedder-candidates` are
- * deliberately absent). `apps/api/src/lib/server.test.ts` iterates this list to
- * prove the composition root passes through each resolved vendor's key.
+ * The provider roles the chat composition root resolves: a new serving role is
+ * declared here, and bench-only roles are deliberately absent.
  */
 export const CHAT_SERVING_ROLES = [
   "cheap",
@@ -57,32 +44,21 @@ export const CHAT_SERVING_ROLES = [
   "decision",
 ] as const;
 
-/** The provider roles the chat pipeline needs, resolved once per request. */
 export type ChatProviders = {
   router: Provider;
   generator: Provider;
   reviewer: Provider | null;
-  /**
-   * The reviewer's decision-model pre-gate (ADR-0042 serving role). Null when
-   * no decision candidate is keyed — the reviewer then behaves exactly as it
-   * did before adoption (there is no enable flag: bound key = active).
-   */
+  /** The reviewer's decision-model pre-gate; null when no decision candidate is
+   * keyed — bound key = active, with no enable flag. */
   decider: Decider | null;
   embedder: Provider;
-  /** Env names whose keys were absent — named once at boot (`providers.posture`), never client-facing. */
   missingKeys: readonly string[];
-  /**
-   * Decision candidates the personal-data posture excluded from serving
-   * (ADR-0043): a vendor whose config forbids personal data may never carry
-   * the pre-gate's claim spans, so it is dropped rather than wired. The filter
-   * runs before the key check, so an unkeyed ineligible candidate is listed
-   * here too — it is not a missing key. Reported once at boot
-   * (`providers.posture`) — the key being bound is not the problem.
-   */
+  /** Decision candidates the personal-data posture excluded: a vendor that forbids
+   * personal data may never carry the pre-gate's claim spans, and the filter runs
+   * before the key check, so an unkeyed candidate lands here too. */
   ineligibleKeys: readonly string[];
 };
 
-/** True when the role has at least one keyed candidate. */
 function roleHasKey(
   config: ReturnType<typeof loadProviderConfig>,
   env: Record<string, string | undefined>,
@@ -98,32 +74,22 @@ function roleHasKey(
   );
 }
 
-/**
- * The checked-in provider config is import-bounded and immutable at runtime
- * (thermo-review B7): parse and validate it once at module load; the
- * per-request path only resolves roles against the cached config.
- */
+/** The checked-in provider config is immutable at runtime: parse once at module load. */
 const CACHED_PROVIDER_CONFIG: ProviderConfig = loadProviderConfig();
 
 /**
- * Resolve the chat pipeline's provider roles from the checked-in config and
- * the Worker bindings. Roles without any keyed candidate resolve to a
- * Provider whose calls fail with a clear error — wiring never branches on
- * key presence.
+ * Resolve the chat pipeline's provider roles from the checked-in config and the
+ * Worker bindings. Roles without a keyed candidate resolve to a Provider whose
+ * calls fail with a clear error — wiring never branches on key presence.
  *
- * The reviewer is the one role whose absence is a *configuration* failure,
- * not a degradation: it carries the cross-vendor faithfulness check, and the
- * chat path must not silently serve unreviewed answers (ticket #10 — the
- * reviewer is non-optional for the chat path). `buildChatWiring` raises a
- * typed `ChatConfigError` when no reviewer candidate is keyed, so the route
- * answers 503 instead of quietly dropping the check.
+ * The reviewer's absence is a *configuration* failure, not a degradation: it
+ * carries the cross-vendor faithfulness check, so `buildChatWiring` raises a typed
+ * `ChatConfigError` and the route answers 503.
  */
 export function createProvidersFromEnv(
   env: Record<string, string | undefined>,
   // The config is a parameter (defaulting to the cached parse) so resolution
-  // stays a pure function of (config, env) like `resolveRole`/`resolveDecider`:
-  // a test can drive the ineligible-key posture with a synthetic vendor set.
-  // Production always takes the checked-in file.
+  // stays a pure function of (config, env), drivable by a synthetic vendor set.
   config: ProviderConfig = CACHED_PROVIDER_CONFIG,
 ): ChatProviders {
   const missing = new Set<string>();
@@ -133,28 +99,20 @@ export function createProvidersFromEnv(
     return provider;
   };
   // The reviewer's missing keys are collected even when the role resolves to
-  // null (no keyed candidate): the ops report must name every env var the
-  // chat path can consume, so an unbound reviewer key says exactly which key
-  // to bind — without this, the key that unblocks the reviewer would vanish
-  // from the report precisely when it is the only thing missing.
+  // null, so the ops report names the key that would unblock the reviewer.
   const reviewerMissing = resolveRole(config, "reviewer", { env }).missingKeys;
   for (const key of reviewerMissing) missing.add(key);
-  // The decision-model serving role (#168): the pre-gate is active exactly
-  // when its key is bound — an absent key is reported for ops visibility but
-  // is NOT a configuration failure, because the reviewer's existing path is
-  // the fail-open fallback (the pre-gate only ever removes spend). Resolved
-  // with `personalData: true` (ADR-0043): the pre-gate sends the drafted
-  // answer's claim spans, so a candidate whose vendor forbids personal data is
-  // dropped from the serving chain rather than wired (bench unaffected).
+  // The pre-gate is active exactly when its key is bound: an absent key is reported for
+  // ops, not treated as a config failure — the reviewer's own path is the fail-open
+  // fallback. `personalData: true` because its claim spans are personal data.
   const decisionRole = resolveDecider(config, "decision", { env, personalData: true });
   for (const key of decisionRole.missingKeys) missing.add(key);
   return {
     router: resolve("cheap"),
     generator: resolve("generator"),
     reviewer: roleHasKey(config, env, "reviewer") ? resolve("reviewer") : null,
-    // Head-first: the eligible chain's first candidate serves. A failure does
-    // not walk the rest — the caller's fail-open path (the full reviewer) is
-    // the fallback, so the pre-gate never gates quality on a second vendor.
+    // Head-first: the eligible chain's first candidate serves, and a failure
+    // does not walk the rest — the caller's fail-open path is the fallback.
     decider: decisionRole.deciders[0]?.decider ?? null,
     embedder: resolve("embedder"),
     missingKeys: [...missing],
@@ -163,18 +121,13 @@ export function createProvidersFromEnv(
 }
 
 /**
- * The store-seam bridge: run one Effect-signatured store call to a promise.
- * Lives in the wiring (not route handlers) so the handlers hold plain
- * promise-shaped helpers only. Typed as the domain's `StoreBridge`
- * (thermo-review B2): the seam's generic survives to the call sites, so a
- * wrong store call fails to compile instead of erasing into
- * `Promise<unknown>` casts.
+ * The store-seam bridge: run one Effect-signatured store call to a promise, kept in
+ * the wiring so handlers hold plain promise-shaped helpers only.
  */
 export function storeBridge(_store: RagStore): StoreBridge {
   return (effect) => runStoreEffect(effect);
 }
 
-/** The wiring bundle a chat request needs (built per request from bindings). */
 export type ChatWiring = {
   pipeline: Omit<
     import("@app/kajianq-domain").ChatPipelineDeps,
@@ -185,14 +138,10 @@ export type ChatWiring = {
 };
 
 /**
- * The store-only wiring the auth routes need (thermo-review A4): a store plus
- * its bridge, with no provider roles resolved at all.
- *
- * Auth is not the chat pipeline. Session minting and anonymous self-deletion
- * (ADR-0017's erasure right) must not be gated on an unrelated LLM role: a
- * rotated reviewer key would otherwise take down token minting and erasure —
- * and with it the eval harness's token mint. The reviewer-mandatory check
- * stays on `buildChatWiring`, where the chat pipeline's config contract lives.
+ * The store-only wiring the auth and feedback routes need: a store plus its bridge,
+ * with no provider roles resolved. Session minting and self-deletion must not be
+ * gated on an unrelated LLM role — a rotated reviewer key would take down minting
+ * and erasure — so the reviewer-mandatory check stays on `buildChatWiring`.
  */
 export type StoreWiring = {
   fullStore: RagStore;
@@ -205,17 +154,15 @@ export function buildStoreWiring(env: { DATABASE_URL?: string }): StoreWiring {
 }
 
 /**
- * Build the chat wiring from the Worker bindings (providers + store + the
- * store bridge). Throws (config-class) when the store is not configured or
- * when the reviewer role has no keyed candidate — the route maps both to 503.
+ * Build the chat wiring from the Worker bindings. Throws (config-class) when the
+ * store is not configured or the reviewer role has no keyed candidate.
  */
 export function buildChatWiring(env: Record<string, string | undefined>): ChatWiring {
   const providers = createProvidersFromEnv(env);
   if (providers.reviewer === null) {
-    // Non-optional for the chat path: an unreviewed answer is not a lesser
-    // answer, it is an unverified one. Fail closed. Checked before the store
-    // is constructed so the config error is reported as a config error rather
-    // than a store-construction failure.
+    // An unreviewed answer is not a lesser answer, it is an unverified one: fail
+    // closed. Checked before the store is constructed so the config error is
+    // reported as a config error.
     throw new ChatConfigError(
       "chat route: reviewer role has no keyed candidate — the cross-vendor faithfulness check is mandatory",
       providers.missingKeys.join(", ") || "reviewer",
@@ -233,18 +180,13 @@ export function buildChatWiring(env: Record<string, string | undefined>): ChatWi
       reviewerDecider: providers.decider,
       embedder: providers.embedder,
       store,
-      // Typed as the domain's StoreBridge — no erasure cast needed anymore
-      // (thermo-review B2).
       bridge: storeBridge(store),
-      // ADR-0045: absent = the domain default; the knob is config, so the
-      // per-query expansion budget is a deployment choice, not a code literal.
+      // Absent = the domain default: the per-query expansion budget is a
+      // deployment choice, not a code literal.
       ...(scopeExpansionCap !== undefined ? { scopeExpansionCap } : {}),
-      // ADR-0049: the same posture for the retrieved-verse neighbourhood
-      // window — how wide it is and how much of the prompt it may spend are
-      // deployment choices; `0` on either turns it off, and a negative value
-      // never reaches this object because the parsers above reject it as a
-      // typed config failure (review R3: the old "`<= 0` on either turns it
-      // off" sat three lines above that rejection).
+      // The same posture for the retrieved-verse neighbourhood window: `0` on
+      // either knob turns it off, and a negative value never reaches this object
+      // because the parsers above reject it as a typed config failure.
       ...(neighbourRadius !== undefined ? { neighbourRadius } : {}),
       ...(neighbourCap !== undefined ? { neighbourCap } : {}),
     },
@@ -254,12 +196,9 @@ export function buildChatWiring(env: Record<string, string | undefined>): ChatWi
 }
 
 /**
- * The one place the wiring-to-503 posture lives (thermo-review B1): a typed
- * `ChatConfigError` means "this route is not configured in this environment"
- * and becomes a 503 with the route's own error code; anything else is a real
- * fault and rethrows to the app's typed error handler with its cause logged.
- * Three routes previously carried near-identical copies of this block, so a
- * policy change had to be applied in three places.
+ * The one place the wiring-to-503 posture lives: a typed `ChatConfigError` means
+ * "not configured in this environment" and becomes a 503 with the route's own error
+ * code; anything else rethrows to the app's typed error handler with its cause logged.
  */
 export function wiringOr503<W>(
   build: () => W,
@@ -280,12 +219,9 @@ export function wiringOr503<W>(
 /**
  * The SSE frame wire format the eval harness consumes (meta/delta/done).
  *
- * Multi-line data MUST be emitted as one `data:` line per line (the SSE spec):
- * a raw newline inside a single `data:` payload produces a blank line, which
- * terminates the frame — the remainder then arrives as a frame with no
- * `data:` field and is dropped by a spec-following client. An answer that
- * appends a rule after a blank line (the disclaimer, the dhaif warning) hits
- * exactly that path, so the escaping is load-bearing, not cosmetic.
+ * Multi-line data MUST be emitted as one `data:` line per line: a raw newline inside
+ * a `data:` payload produces a blank line, which terminates the frame and drops the
+ * remainder — the path an appended rule hits, so this is load-bearing.
  */
 export function sseFrame(event: string, data: string): string {
   const lines = data.split("\n").map((line) => `data: ${line}`);

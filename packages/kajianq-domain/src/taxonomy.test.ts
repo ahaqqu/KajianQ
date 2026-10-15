@@ -15,7 +15,7 @@ import {
 } from "./taxonomy";
 
 /**
- * The classification vocabularies (#14) — one source of truth for the router's
+ * The classification vocabularies — one source of truth for the router's
  * prompt, the router's narrowing, and the Golden Set fixture's labels.
  *
  * The law that makes "one source of truth" real rather than aspirational: a
@@ -58,7 +58,7 @@ describe("classification vocabularies", () => {
 
   it("narrows only the values it declares", () => {
     expect(isSubjectArea("fikih")).toBe(true);
-    expect(isSubjectArea("fiqh")).toBe(false); // the spelling the fixture used to carry
+    expect(isSubjectArea("fiqh")).toBe(false);
     expect(isIntent("ruling")).toBe(true);
     expect(isIntent("dalil_umum")).toBe(false);
     expect(isPrincipleTag("yusr")).toBe(true);

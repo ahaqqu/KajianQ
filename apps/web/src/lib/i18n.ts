@@ -30,12 +30,11 @@ export function t(locale: Locale, key: MessageKey): string {
 }
 
 /**
- * A message with its `{name}` placeholders substituted (thermo-review B2,
- * #256). This is the app's one substitution convention: the placeholder
- * syntax belongs to the copy in `messages`, and the call site passes values —
- * it never reaches into the string itself. An unknown placeholder is left
- * verbatim rather than emptied or guessed, so a missing value is visibly
- * wrong instead of silently absent.
+ * A message with its `{name}` placeholders substituted. This is the app's one
+ * substitution convention: the placeholder syntax belongs to the copy in
+ * `messages`, and the call site passes values — it never reaches into the
+ * string itself. An unknown placeholder is left verbatim rather than emptied
+ * or guessed, so a missing value is visibly wrong instead of silently absent.
  */
 export function formatMessage(
   locale: Locale,

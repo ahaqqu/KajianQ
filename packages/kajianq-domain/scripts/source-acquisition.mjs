@@ -1,10 +1,10 @@
 /**
- * source-acquisition.mjs — source fetching for the ingest CLIs (issues #6, #7).
+ * source-acquisition.mjs — source fetching for the ingest CLIs.
  *
  * Fetch (or reuse a local cache when the run's SOURCE_DIR env is set) remote
- * source files: retry with exponential backoff, bounded concurrency (B4),
- * and a hard per-fetch timeout — a transient 429/5xx or a network blip must
- * not fail a multi-minute ingestion run.
+ * source files: retry with exponential backoff, bounded concurrency, and a
+ * hard per-fetch timeout — a transient 429/5xx or a network blip must not fail
+ * a multi-minute ingestion run.
  */
 
 const FETCH_BACKOFF_MS = [500, 1_000, 2_000, 4_000];
@@ -12,10 +12,9 @@ const FETCH_CONCURRENCY = 8;
 const FETCH_TIMEOUT_MS = 30_000;
 
 /**
- * Default source roots and their env overrides (thermo A2 — the mirror URLs
- * and env var names are domain vocabulary, so they live here beside the
- * acquisition helper, not in engine-side scripts; mirrors recorded in
- * NOTICES/DATASETS.md).
+ * Default source roots and their env overrides: the mirror URLs and env var
+ * names are domain vocabulary, so they live here beside the acquisition
+ * helper, not in engine-side scripts; mirrors recorded in NOTICES/DATASETS.md.
  */
 export const QURAN_SURAH_BASE_URL =
   process.env.QURAN_SURAH_BASE_URL ??
@@ -30,11 +29,10 @@ export const HADITH_EDITIONS_BASE_URL =
 import { resolve as resolvePath } from "node:path";
 
 /**
- * Variadic path join against the process cwd, for cache/report paths
- * (review A5: the old single-arg URL-based helper silently dropped extra
- * segments — `resolve(dir, file)` returned the bare dir, and both the
- * cache reads and report writes crashed with EISDIR). Exported so the CLIs
- * share one implementation without growing their import count.
+ * Variadic path join against the process cwd, for cache/report paths. Every
+ * segment must be appended: a result reduced to the bare directory makes the
+ * cache reads and report writes crash with EISDIR. Exported so the CLIs share
+ * one implementation without growing their import count.
  */
 export function resolveFromCwd(...ps) {
   return resolvePath(process.cwd(), ...ps);
@@ -74,9 +72,8 @@ async function fetchOrCache(url, cacheFile, log, cacheDir) {
       return await readFile(resolve(cacheDir, cacheFile), "utf8");
     } catch (err) {
       // A misconfigured cache dir must fail loudly, not silently fall back
-      // to the network (C2); only "file absent" proceeds to fetch.
+      // to the network; only "file absent" proceeds to fetch.
       if (err.code !== "ENOENT") throw err;
-      // fall through to fetch
     }
   }
   return fetchWithRetry(url, 0, log);

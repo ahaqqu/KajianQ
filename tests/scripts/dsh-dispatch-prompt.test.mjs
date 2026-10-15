@@ -4,16 +4,14 @@ import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 /**
- * The generated-section contract of `bun run dsh:prompt` (issue #224).
+ * The generated-section contract of `bun run dsh:prompt`.
  *
  * The script's header comment is the canonical statement of what it emits, and
  * it claims exactly two sections: `## Task` (the manager-authored task text,
  * trimmed) then `## Role definition` (the role file's body, frontmatter
- * stripped and trimmed), with nothing appended. That claim has drifted before —
- * the header comment once said the script appended a per-run authorization
- * section that never existed, and the DSH adapter copied the false claim — so
- * it is pinned here for every role. A third appended section fails this test,
- * and so does a rewritten or truncated role body.
+ * stripped and trimmed), with nothing appended. The claim is pinned here for
+ * every role: a third appended section fails this test, and so does a
+ * rewritten or truncated role body.
  *
  * Neither list is left hand-synced without a check: the roles come from the
  * script's own allowlist, so a future fifth role is pinned automatically, and

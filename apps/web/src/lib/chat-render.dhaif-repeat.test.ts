@@ -9,22 +9,17 @@ import {
 import { messages } from "./i18n-messages";
 
 /**
- * #348 — the dhaif warning renders three times when ONE trailing paragraph
- * repeats the canonical line. QA #345 probe p9b (staging `3764ce0b`) delivered
- * `[prose][disclaimer][canonical\ncanonical]`: one paragraph, 175 chars —
- * inside `RULE_LINE_MAX` — opening with `[Peringatan]`, so `classifyRule`
- * accepts it; the warning branch then rejects it because `CANONICAL_WARNINGS`
- * does not contain a two-copy paragraph, pushes it back into `body`, and
- * `warning` stays `null` while the frame flag (`dhaifWarning: true`, correct —
- * the text does carry the copy) renders the card on top: 2 written → 3 shown.
+ * The dhaif warning must render exactly once even when ONE trailing paragraph
+ * repeats the canonical line: the paragraph opens with a warning marker and is
+ * short enough for `RULE_LINE_MAX`, so `classifyRule` accepts it; the warning
+ * branch then rejects it because `CANONICAL_WARNINGS` does not contain a
+ * two-copy paragraph, so it stays in `body` and `warning` stays `null` while the
+ * frame flag (`dhaifWarning: true` — the text does carry the copy) renders the
+ * card on top, drawing the sentence twice over.
  *
- * Mutation named per row. Restore the byte-equality rejection of a repeat
- * paragraph (no collapse) and `peels the delivered tail…` reddens on
- * `split.warning` (`null`) and on the occurrence count (2); the `[D][W ×2]`
- * row in `AnswerCard.test.ts` reddens on the DOM count (3). Widen the collapse
- * to "any paragraph opening with a warning marker" instead and
- * `keeps a repeated marker paragraph…` reddens with the paragraph eaten — the
- * A2 guard the ticket protects.
+ * The collapse must stay narrow: widening it to "any paragraph opening with a
+ * warning marker" eats prose that merely opens with one, so a repeated
+ * marker-prefixed paragraph stays whole.
  */
 
 /** The product's canonical copies — read from the i18n copy the card renders. */
@@ -65,8 +60,8 @@ const displayed = (split: SplitAnswer): string =>
   [split.body, split.warning ?? "", split.disclaimer ?? ""].join("\n\n");
 
 describe("splitAnswerBlocks — a trailing paragraph that repeats the canonical line (#348)", () => {
-  // The exact delivered tail QA measured, byte for byte: one paragraph, two
-  // copies of the canonical line, 175 chars, inside `RULE_LINE_MAX`.
+  // One paragraph carrying two copies of the canonical line, short enough for
+  // `RULE_LINE_MAX`.
   const delivered = (copy: string) => [PROSE, DISCLAIMER, `${copy}\n${copy}`].join("\n\n");
 
   it.each([
@@ -136,9 +131,9 @@ describe("splitAnswerBlocks — a trailing paragraph that repeats the canonical 
 
 describe("splitAnswerBlocks — the A2 guard on a repeated paragraph (#348)", () => {
   it("keeps a repeated marker-prefixed prose paragraph as prose, whole", () => {
-    // The trap the ticket protects: the paragraph opens with `[Peringatan]`
-    // twice and is short enough to classify, but no line of it is the
-    // product's copy — so it is prose, and it must stay byte-for-byte.
+    // The paragraph opens with `[Peringatan]` twice and is short enough to
+    // classify, but no line of it is the product's copy — so it is prose, and it
+    // must stay byte-for-byte.
     const prose = "[Peringatan] Sebagian ulama menilai riwayat ini lemah.";
     const paragraph = `${prose}\n${prose}`;
     const split = splitAnswerBlocks([PROSE, paragraph, MT].join("\n\n"));

@@ -19,9 +19,8 @@ afterAll(() => {
 afterEach(cleanup);
 
 /**
- * The composer's submit ordering (thermo-review A1, #147): the busy and
- * transcript-rehydration guards must run *before* the draft is cleared, as
- * before the submit/sendText split — otherwise Enter during an in-flight
+ * The composer's submit ordering: the busy and transcript-rehydration guards
+ * must run *before* the draft is cleared — otherwise Enter during an in-flight
  * turn silently discards the draft (the send button is disabled, but Enter
  * bypasses it), a message the user cannot recover.
  */
@@ -85,12 +84,12 @@ describe("ChatView submit ordering (thermo-review A1)", () => {
 const hint = () => screen.getByTestId("composer-limit");
 
 /**
- * The composer's message ceiling (#256). The chat contract refuses a message
- * over `CHAT_MESSAGE_MAX_LENGTH` with 400, so the composer must never build
- * one: the native `maxLength` bounds typed/pasted input, and the change
- * handler clamps the value itself (the attribute does not constrain a
- * programmatically set value — which is also how this test drives it). Hitting
- * the ceiling says so, in the reader's language.
+ * The composer's message ceiling: the chat contract refuses a message over
+ * `CHAT_MESSAGE_MAX_LENGTH` with 400, so the composer must never build one: the
+ * native `maxLength` bounds typed/pasted input, and the change handler clamps
+ * the value itself (the attribute does not constrain a programmatically set
+ * value — which is also how this test drives it). Hitting the ceiling says so,
+ * in the reader's language.
  */
 describe("ChatView message ceiling (#256)", () => {
   it("carries the native maxLength attribute from the contract's ceiling", () => {
@@ -117,10 +116,10 @@ describe("ChatView message ceiling (#256)", () => {
 
   it("drops an unpaired trailing high surrogate when the clamp cuts a pair (A1)", () => {
     renderView({});
-    // 1,999 units then an emoji: unit 2,000 is the emoji's HIGH surrogate, so a
-    // raw slice would persist half a character — a lone surrogate the API
-    // accepts, the store keeps, and the prompt carries. The pair is dropped
-    // whole: the draft is one unit under the ceiling instead of corrupted.
+    // An emoji straddling the ceiling: a raw slice would persist half a
+    // character — a lone surrogate the API accepts, the store keeps, and the
+    // prompt carries. The pair is dropped whole: the draft is one unit under the
+    // ceiling instead of corrupted.
     const composer = typeDraft("a".repeat(CHAT_MESSAGE_MAX_LENGTH - 1) + "😀" + "b".repeat(500));
     expect(composer.value).toBe("a".repeat(CHAT_MESSAGE_MAX_LENGTH - 1));
     expect(composer.value.isWellFormed()).toBe(true);
@@ -129,7 +128,7 @@ describe("ChatView message ceiling (#256)", () => {
 
   it("keeps a surrogate pair that fits inside the ceiling (A1)", () => {
     renderView({});
-    // The pair ends exactly at unit 2,000, so nothing is half-cut and nothing
+    // The pair ends exactly at the ceiling, so nothing is half-cut and nothing
     // may be dropped: the guard targets lone surrogates, not emoji.
     const composer = typeDraft("a".repeat(CHAT_MESSAGE_MAX_LENGTH - 2) + "😀" + "b".repeat(500));
     expect(composer.value).toBe("a".repeat(CHAT_MESSAGE_MAX_LENGTH - 2) + "😀");
@@ -139,10 +138,10 @@ describe("ChatView message ceiling (#256)", () => {
 
   /**
    * Both paths that can reach the ceiling, pinned on the pure function rather
-   * than through the DOM (A1). The browser's `maxLength` enforcement hands the
-   * change handler an already-truncated value — the component test above runs
-   * that path — so the surrogate check must run on the result, not only on the
-   * slice this function performs for a value the attribute did not constrain.
+   * than through the DOM. The browser's `maxLength` enforcement hands the change
+   * handler an already-truncated value — the component test above runs that path
+   * — so the surrogate check must run on the result, not only on the slice this
+   * function performs for a value the attribute did not constrain.
    */
   describe("clampDraft", () => {
     it("drops a trailing high surrogate from a value already at the ceiling", () => {
@@ -171,7 +170,6 @@ describe("ChatView message ceiling (#256)", () => {
     expect(hint().textContent).toContain("2.000");
     expect(hint().textContent).toContain("karakter");
 
-    // Back under the ceiling the hint clears with the draft.
     fireEvent.change(composer, { target: { value: "a".repeat(CHAT_MESSAGE_MAX_LENGTH - 1) } });
     expect(hint().textContent).toBe("");
   });

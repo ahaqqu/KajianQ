@@ -1,4 +1,4 @@
-// Pure logic for the agent-usage-metadata hook (issue #95).
+// Pure logic for the agent-usage-metadata hook.
 //
 // Contract (external boundaries this module guards):
 // 1. Hook stdin payload (ZCode workspace-hook runtime). Two capture points
@@ -9,9 +9,9 @@
 //    b. `PostToolUse` on the `Agent` tool: a foreground dispatch completed;
 //       `tool_use_id` matches the agent record's `parentToolUseId`.
 //    (`Stop` is deliberately NOT a capture point: the runtime only fires it
-//    for interactive/parent sessions, never for subagent child sessions —
-//    verified live — so a Stop capture is dead code that only adds a
-//    per-session-stop scan of the agents dir.)
+//    for interactive/parent sessions, never for subagent child sessions, so a
+//    Stop capture is dead code that only adds a per-session-stop scan of the
+//    agents dir.)
 // 2. Telemetry rows: objects shaped like rows of the `model_usage` table in
 //    ~/.zcode/cli/db/db.sqlite (snake_case token columns + status/timestamps).
 // 3. Agent metadata.json: a JSON object; usage keys are ADDED/REPLACED, every
@@ -137,7 +137,7 @@ export function computeUsageTotals(sessionId, rows, capturedAt) {
   return totals;
 }
 
-// Stable fingerprint of one capture: used to keep usageCaptures append-only
+// Stable fingerprint of one capture: it keeps the usageCaptures append-only
 // history idempotent across repeated captures of the same session state.
 export function captureFingerprint(totals) {
   return [
@@ -157,9 +157,8 @@ export function captureFingerprint(totals) {
 // full replacement document (all pre-existing keys preserved) or throws on a
 // guard violation — the caller must treat a throw as "do not write".
 // - metadataText: the current file content (string) — MUST parse.
-// - expectedChildSessionId: the child session the usage belongs to — MUST
-//   match the record's childSessionId so a scan collision can never write
-//   foreign usage.
+// - totals.sessionId: MUST match the record's childSessionId, so a scan
+//   collision can never write foreign usage.
 export function mergeUsageIntoMetadata(metadataText, totals) {
   let metadata;
   try {

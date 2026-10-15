@@ -9,12 +9,12 @@ import { SwUpdatePrompt } from "./sw-update";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 /**
- * The PWA update-prompt flow (thermo-review C2, #143): a new service worker
- * that reaches "installed" while an OLD one still controls the page is the
- * one state where the user must be offered an update — a stale bundle ships
- * silently otherwise. The prompt must stay hidden in every other state:
- * first install (no controller — nothing to upgrade from), mid-install,
- * redundant workers, and platforms without service-worker support at all.
+ * The PWA update-prompt flow: a new service worker that reaches "installed"
+ * while an OLD one still controls the page is the one state where the user must
+ * be offered an update — a stale bundle ships silently otherwise. The prompt
+ * must stay hidden in every other state: first install (no controller — nothing
+ * to upgrade from), mid-install, redundant workers, and platforms without
+ * service-worker support at all.
  * Apply posts SKIP_WAITING to the waiting worker (the generated sw.js
  * answers it with skipWaiting()) and reloads only on controllerchange, once
  * the new worker controls the page — a bare reload would leave the old
@@ -235,7 +235,7 @@ describe("SwUpdatePrompt", () => {
     expect(waiting.postMessage).toHaveBeenCalledWith({ type: "SKIP_WAITING" });
     expect(reload).not.toHaveBeenCalled();
 
-    // The new worker activates and takes control of the page — now reload.
+    // controllerchange: the new worker has taken control of the page — now reload.
     act(() => {
       sw.fire("controllerchange");
     });

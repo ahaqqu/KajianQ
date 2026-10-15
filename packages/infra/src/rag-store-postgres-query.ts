@@ -33,13 +33,9 @@ const SIMILARITY_COLUMNS: Record<RetrievalTrack, string> = {
  */
 export function buildSimilarityQuery(track: RetrievalTrack, filterCount: number): string {
   const column = SIMILARITY_COLUMNS[track];
-  // The embedding columns are deliberately NOT selected. A hit's vectors are
-  // pure overhead: the search already used them to order the rows, and the
-  // retriever reads only id/text/metadata. Shipping them cost ~390 KB of
-  // float text per 10-hit search (measured 2026-09-12) — a chat request runs
-  // one search per sub-query per track (8 on a 4-sub-query question, ~3 MB)
-  // and then parsed ~245k floats in the Worker, which Cloudflare killed as
-  // `exceededResources` on the live smoke (gs-v0-002). The hit's
+  // The embedding columns are deliberately NOT selected: the search already
+  // used the vectors to order the rows, and the retriever reads only
+  // id/text/metadata, so shipping them is pure overhead. The hit's
   // `embeddingPrimary`/`embeddingFallback` are therefore `null` by contract.
   const select = `
   SELECT id, parent_id, text_raw, text_ar, text_id, citation,

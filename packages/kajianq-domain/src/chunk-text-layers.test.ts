@@ -2,12 +2,11 @@ import { describe, expect, it } from "vitest";
 import { withTextLayers } from "./chunk-text-layers";
 
 /**
- * The one owner of the ADR-0006 text-layer metadata rule (B1 of #243's
- * review). The fused path and the surah-scope expansion both call this, so
- * the assertions here are the rule for both paths: both layers attach, an
- * absent translation is omitted (never rendered as an empty labeled layer),
- * and the store row's own metadata is preserved but cannot overwrite the
- * layers.
+ * The one owner of the ADR-0006 text-layer metadata rule. The fused path and
+ * the surah-scope expansion both call this, so the assertions here are the rule
+ * for both paths: both layers attach, an absent translation is omitted (never
+ * rendered as an empty labeled layer), and the store row's own metadata is
+ * preserved but cannot overwrite the layers.
  */
 describe("withTextLayers", () => {
   it("attaches both text layers over the row metadata", () => {

@@ -14,14 +14,13 @@ import { CITATION_GRAMMARS, declaresAddressList } from "./chat-citation-grammar"
 import { reduceCitationLabel } from "./chat-citation-reduce";
 
 /**
- * The deterministic citation validator (the #10 trust invariant). These tests
+ * The deterministic citation validator (the trust invariant). These tests
  * are the adversarial half of the suite: they name the fabrication shapes a
  * model actually produces and prove each one is caught. A weakening of any
  * assertion here is a silent trust regression — the failure mode is a
  * fabricated religious citation delivered as an answer.
  */
 
-/** A retrieved chunk carrying one citation label. */
 function chunk(label: string, extra: Record<string, unknown> = {}): Chunk {
   return { id: `c-${label}`, text: "evidence", metadata: { citation: label, ...extra } };
 }
@@ -56,10 +55,9 @@ describe("validateCitations — grounded direction", () => {
   });
 
   it("ignores markdown emphasis wrapped around a citation", () => {
-    // Regression, found on the first live size-5 smoke: the hadith grammar stops
-    // at sentence punctuation but not at `*`, so `**HR. Malik no. 18**` reached
-    // the comparison with its markers attached, was reported ungrounded, and the
-    // deterministic gate refused a correctly grounded answer (gs-v0-015).
+    // The hadith grammar stops at sentence punctuation but not at `*`, so
+    // `**HR. Malik no. 18**` reaches the comparison with its markers attached;
+    // markdown emphasis is stripped so a grounded answer is not refused.
     const { grounded, ungrounded } = validateCitations(
       "Menurut **HR. Malik no. 18**, puasa dalam perjalanan …",
       [chunk("HR. Malik no. 18")],
@@ -69,13 +67,9 @@ describe("validateCitations — grounded direction", () => {
   });
 
   it("grounds a hadith citation written with an introducing colon (#253)", () => {
-    // The false refusal that opened #253: a staging smoke destroyed a
-    // correctly retrieved, correctly cited answer because the draft wrote
-    // `… HR. Bukhari no. 5010: <matn> …`. The hadith grammar's number token
-    // stops at `;`, `.`, `)` and `]` but absorbs `:`, so the label reached the
-    // membership test colon-suffixed, no chunk grounded it, and the reviewer
-    // rendered the canonical "no evidence" refusal (trace f417d603-…, chunk
-    // 94d2a731-… carried the plain label).
+    // The hadith number token stops at `;`, `.`, `)` and `]` but absorbs `:`,
+    // so `… no. 5010: <matn>` reaches the comparison colon-suffixed unless the
+    // grammar-driven reduction trims that tail — no chunk would ground it.
     const { grounded, ungrounded } = validateCitations(
       "Rasulullah bersabda dalam HR. Bukhari no. 5010: <matn>",
       [chunk("HR. Bukhari no. 5010")],
@@ -84,10 +78,9 @@ describe("validateCitations — grounded direction", () => {
     expect(ungrounded).toEqual([]);
   });
 
-  // The #253 CLASS, not the one character: every punctuation a generator
-  // plausibly attaches to a citation's tail. Both labels below are retrieved,
-  // so any `ungrounded` entry in this table is the same false refusal that
-  // destroyed the gs-v0-001 answer — a grounded citation reported fabricated.
+  // The class, not the one character: every punctuation a generator plausibly
+  // attaches to a citation's tail. Both labels below are retrieved, so any
+  // `ungrounded` entry in this table is a grounded citation reported fabricated.
   it.each([
     ["introducing colon", "Rasulullah bersabda dalam HR. Bukhari no. 5010: matn"],
     ["semicolon", "Rasulullah bersabda dalam HR. Bukhari no. 5010; lalu ia bersabda"],
@@ -102,13 +95,12 @@ describe("validateCitations — grounded direction", () => {
     ["bold markers", "Rasulullah bersabda dalam **HR. Bukhari no. 5010** lalu ia bersabda"],
     ["bold markers then a colon", "Rasulullah bersabda dalam **HR. Bukhari no. 5010**: matn"],
     ["colon after the Quran address", "Ayat Kursi ada di QS. 2:255: ayat yang agung"],
-    // Review A1: the rest of the dash family the number token absorbs. These
-    // hyphens join prose exactly like the em/en dash above, and all three were
-    // still false-refusing a grounded citation at the reviewed head.
+    // The rest of the dash family the number token absorbs: these hyphens join
+    // prose exactly like the em/en dash above, and none of them is address.
     ["closed-up ASCII hyphen", "Rasulullah bersabda dalam HR. Bukhari no. 5010-ia bersabda"],
     ["figure dash glued prose", "Rasulullah bersabda dalam HR. Bukhari no. 5010‒ia bersabda"],
     ["horizontal bar glued prose", "Rasulullah bersabda dalam HR. Bukhari no. 5010―ia bersabda"],
-    // Review A2: tails that end in a letter/digit-class character — a footnote
+    // Tails that end in a letter/digit-class character — a footnote
     // digit, a superscript marker (`¹` is `\p{N}`, not an ASCII digit) and the
     // glued grade the draft grammar can really produce. None of them is part
     // of the address, so all three must ground.
@@ -118,19 +110,19 @@ describe("validateCitations — grounded direction", () => {
       "glued grade parenthetical",
       "Rasulullah bersabda dalam HR. Bukhari no. 5010(Sahih) tentang hal ini",
     ],
-    // #264 item 3: the same false-refusal class, one spelling further out. The
+    // An omitted space is the same class one spelling further out: the
     // grammars write their separators with `\s*`, so a model that omits the
     // space after `no.` or after the `QS.` marker is citing the retrieved
     // address and must ground.
     ["no space after `no.`", "Rasulullah bersabda dalam HR. Bukhari no.5010: matn"],
     ["no space after the QS. marker", "Ayat Kursi ada di QS.2:255: ayat yang agung"],
-    // #264 item 1: an invisible format character inside the number is glue,
-    // not an address boundary.
+    // An invisible format character inside the number is glue, not an address
+    // boundary.
     [
       "zero-width non-joiner inside the number",
       "Rasulullah bersabda dalam HR. Bukhari no. 50\u200c10 tentang hal ini",
     ],
-    // #264 item 5: fullwidth digits are the same number in another rendering.
+    // Fullwidth digits are the same number in another rendering.
     [
       "fullwidth hadith number",
       "Rasulullah bersabda dalam HR. Bukhari no. ５０１０ tentang hal ini",
@@ -167,7 +159,7 @@ describe("validateCitations — grounded direction", () => {
     // false refusal — paid even when BOTH addresses were retrieved — and it
     // STANDS for this grammar: the hadith grammar declares no address list, so
     // ADR-0049's per-address check does not touch it (extending `addressesOf`
-    // to it is that ADR's recorded revisit trigger, not this change).
+    // to it is that ADR's recorded revisit trigger).
     const bothRetrieved = [chunk("HR. Bukhari no. 5010"), chunk("HR. Bukhari no. 5011")];
     expect(
       validateCitations("HR. Bukhari no. 5010—5011 menjelaskan …", bothRetrieved).ungrounded,
@@ -233,10 +225,9 @@ describe("validateCitations — grounded direction", () => {
   });
 
   it("grounds on the full number, not the prefix sibling the glue used to truncate to (#264 item 1)", () => {
-    // The contrived fail-open the reviewer found: with the invisible character
-    // truncating the address to `no. 50`, a retrieved prefix sibling grounded
-    // the citation — a DIFFERENT passage than the draft meant. The digits are
-    // one number, so the retrieved `no. 5010` is what it must ground on.
+    // A retrieved prefix sibling (`no. 50`) must not ground a citation whose
+    // digits one invisible character would split: the digits are one number, so
+    // the retrieved `no. 5010` is what it must ground on.
     const meant = validateCitations("Rasulullah bersabda dalam HR. Bukhari no. 50\u200c10: matn", [
       chunk("HR. Bukhari no. 5010"),
     ]);
@@ -254,11 +245,10 @@ describe("validateCitations — grounded direction", () => {
   });
 
   it("scans the stripped text, so glue cannot hide a fabricated citation (A3)", () => {
-    // The strip used to run only inside normalizeCitationLabel, AFTER the scan
-    // had matched the raw draft: a `\p{Cf}` at a grammar-structural position
-    // made the whole citation invisible, so a FABRICATED label passed the gate
-    // unseen — the fail-open direction, on the product's #1 risk. The scan now
-    // reads the same characters the comparison side does.
+    // The scan must read the same characters the comparison side does: a
+    // `\p{Cf}` at a grammar-structural position would otherwise make the whole
+    // citation invisible and a FABRICATED label pass the gate unseen — the
+    // fail-open direction, on the product's top risk.
     expect(
       validateCitations("HR. Bukhari no\u200c. 99999 menjelaskan", [chunk("HR. Bukhari no. 5010")]),
     ).toEqual({ grounded: [], ungrounded: ["HR. Bukhari no. 99999"] });
@@ -280,13 +270,11 @@ describe("validateCitations — grounded direction", () => {
 
   it("records the grammar-invisible spellings that stay outside every grammar (A3 residual)", () => {
     // Recorded, not closed, and pinned here so the next hunt does not re-find
-    // them (the reviewer's "at minimum"). These two spellings match no grammar,
-    // so the scan cannot see them at all and a FABRICATED one passes the gate
-    // unseen — the fail-open direction the digit posture on CITATION_GRAMMARS
-    // promises not to take. Closing either is a grammar widening (a third
-    // hand-synced spelling rule, and for `QS9:99` a reversal of the separator
-    // round-3 A1 deliberately required), so it is stated in the PR body
-    // instead of smuggled in here:
+    // them: these two spellings match no grammar, so the scan cannot see them at
+    // all and a FABRICATED one passes the gate unseen — the fail-open direction
+    // the digit posture on CITATION_GRAMMARS promises not to take. Closing
+    // either is a grammar widening (a third hand-synced spelling rule, and for
+    // `QS9:99` a reversal of the separator the grammar requires):
     expect(citationCandidatesIn("QS9:99")).toEqual([]);
     expect(citationCandidatesIn("HR. Bukhari no 99999")).toEqual([]);
     expect(validateCitations("QS9:99 menjelaskan", [chunk("QS. 2:255")])).toEqual({
@@ -335,15 +323,9 @@ describe("validateCitations — grounded direction", () => {
   });
 
   it("keeps a dash-joined Quran range whole for DISPLAY, and grounds it per address (#274)", () => {
-    // The Quran grammar used to end at the first verse's digits, so the second
-    // address never reached the comparison and `QS. 2:255—256` grounded on
-    // `QS. 2:255` alone. #264 absorbed the dash-joined tail and the SHARED
-    // `DASH_JOINED_NUMBER_TAIL` rule kept the compound whole — which closed
-    // that hole but, as #264's own A3 note recorded, refused the range even
-    // when BOTH addresses were retrieved. ADR-0049 completes the follow-up that
-    // note assigned to this comparison site: the label still normalizes to the
-    // range as written (the display form, the refusal reason and the pre-gate
-    // span), while grounding is decided **per address the grammar declares**.
+    // ADR-0049: the label still normalizes to the range as written — the
+    // display form, the refusal reason and the pre-gate span — while grounding
+    // is decided **per address the grammar declares**.
     expect(normalizeCitationLabel("QS. 2:255—256")).toBe("QS. 2:255—256");
     expect(normalizeCitationLabel("QS. 2:255–256")).toBe("QS. 2:255–256");
     expect(citationSpansIn("Lihat QS. 2:255—256 ya")).toEqual([
@@ -354,7 +336,7 @@ describe("validateCitations — grounded direction", () => {
     const headOnly = [chunk("QS. 2:255"), chunk("QS. 2:18")];
     const tailOnly = [chunk("QS. 2:256"), chunk("QS. 2:18")];
     const draft = "Lihat QS. 2:255—256 tentang hal ini";
-    // The whole range is present: the answer stands (the #276 B2 stonewall).
+    // The whole range is present: the answer stands.
     expect(validateCitations(draft, both).ungrounded).toEqual([]);
     // One address missing is still a refusal, whichever one — fail-closed, and
     // strictly tighter than both rejected options (head-first, any-member).
@@ -364,18 +346,13 @@ describe("validateCitations — grounded direction", () => {
   });
 
   it("keeps the glued Quran compound whole too — the item-4 hole, closed for glue (A1)", () => {
-    // #264 review A1: the plain form refuses, but one invisible format
-    // character between the verse and the dash used to stop the pattern's dash
-    // tail at the first number — so `QS. 2:255\u200c—256` grounded on the first
-    // verse, with only `2:255` retrieved AND with both, while the plain form
-    // refuses in both cases. The tail tolerates `\p{Cf}` on either side of the
-    // dash, so every glued spelling now behaves exactly like the plain one —
-    // which under ADR-0049 means: refused with the head alone, grounded with
-    // every declared address present.
+    // The tail tolerates `\p{Cf}` on either side of the dash, so every glued
+    // spelling behaves exactly like the plain one — which under ADR-0049 means:
+    // refused with the head alone, grounded with every declared address present.
     const onlyFirst = [chunk("QS. 2:255")];
     const both = [chunk("QS. 2:255"), chunk("QS. 2:256")];
     for (const glued of [
-      "QS. 2:255\u200c—256", // before the dash: the fail-open the review found
+      "QS. 2:255\u200c—256", // before the dash
       "QS. 2:255—\u200c256", // after the dash
       "QS. 2:255\u200c—\u200c256",
       "QS. 2:255—2\u200c56", // inside the second number
@@ -388,7 +365,7 @@ describe("validateCitations — grounded direction", () => {
       ]);
       expect(validateCitations(`Lihat ${glued} lanjut`, both).ungrounded, glued).toEqual([]);
     }
-    // The plain spelling is the reference every glued one now matches.
+    // The plain spelling is the reference every glued one matches.
     expect(validateCitations("Lihat QS. 2:255—256 lanjut", onlyFirst).ungrounded).toEqual([
       "QS. 2:255—256",
     ]);
@@ -401,12 +378,10 @@ describe("validateCitations — grounded direction", () => {
   });
 
   it("grounds a range on every address the grammar declares, and only then (#274)", () => {
-    // The real failing label from the incident (eval run 4bfc315f…, trace
-    // 3c87fc7a…, question gs-v0-001): the draft cited `QS. 3:1-2` while the
-    // retrieved set held `QS. 3:2` and not `QS. 3:1`. The gate correctly
-    // withheld it; ADR-0049 puts the head in context at retrieval, and this is
-    // the comparison half — the range grounds exactly when the context holds
-    // every address it names.
+    // The shape the rule exists for: the draft cites `QS. 3:1-2` while the
+    // retrieved set holds `QS. 3:2` and not `QS. 3:1`. ADR-0049 puts the head in
+    // context at retrieval, and this is the comparison half — the range grounds
+    // exactly when the context holds every address it names.
     const real = "Dalilnya QS. 3:1-2 tentang hal ini";
     expect(
       validateCitations(real, [chunk("QS. 3:2"), chunk("QS. 3:18"), chunk("QS. 3:189")]).ungrounded,
@@ -420,7 +395,7 @@ describe("validateCitations — grounded direction", () => {
     expect(
       validateCitations("Dalilnya QS. 3:1-3", [chunk("QS. 3:1"), chunk("QS. 3:2")]).ungrounded,
     ).toEqual(["QS. 3:1-3"]);
-    // A single fabricated verse is unchanged (#264's matrix, negative side).
+    // A single fabricated verse refuses on the same rule.
     expect(validateCitations("Dalilnya QS. 9:99", [chunk("QS. 2:255")]).ungrounded).toEqual([
       "QS. 9:99",
     ]);
@@ -442,9 +417,8 @@ describe("validateCitations — grounded direction", () => {
 
   it("names a range's INTERIOR, and every number a multi-dash chain writes (#274 A2 fix)", () => {
     // Strict-whole, owner-decided: `QS. 2:255-260` **names** 255 through 260,
-    // so two retrieved endpoints are not the range — four of its addresses were
-    // never retrieved and the citation must refuse. The endpoint-pair
-    // implementation this replaces grounded it (review A2 of the fix round).
+    // so two retrieved endpoints are not the range — its interior addresses were
+    // never retrieved and the citation must refuse.
     const interior = "Dalilnya QS. 2:255-260 tentang hal ini";
     expect(
       validateCitations(interior, [chunk("QS. 2:255"), chunk("QS. 2:260")]).ungrounded,
@@ -455,9 +429,9 @@ describe("validateCitations — grounded direction", () => {
     // the whole point of enumerating the interior.
     const holed = six.filter((c) => c.id !== "c-QS. 2:257");
     expect(validateCitations(interior, holed).ungrounded).toEqual(["QS. 2:255-260"]);
-    // The chain form names every number it writes. `QS. 3:1-2-3` used to be
-    // scanned as `QS. 3:1-2`, so the trailing `-3` was neither named nor
-    // refused and 3:1 + 3:2 grounded the citation.
+    // The chain form names every number it writes: a repeated capture group
+    // would hand the declaration only its last iteration, so the earlier numbers
+    // would be neither named nor refused.
     const chain = "Dalilnya QS. 3:1-2-3 tentang hal ini";
     expect(citationCandidatesIn(chain)).toEqual(["QS. 3:1-2-3"]);
     expect(validateCitations(chain, [chunk("QS. 3:1"), chunk("QS. 3:2")]).ungrounded).toEqual([
@@ -510,12 +484,10 @@ describe("validateCitations — grounded direction", () => {
   });
 
   it("names a spaced range's addresses too — the spaced twin of the A2 hole (review R5)", () => {
-    // `QS. 2:255 - 256` writes the same range with air around the joiner.
-    // While the chain group required the dash glued, the scan stopped at the
-    // head: the second verse the prose named was neither enumerated nor
-    // refused, and the gate grounded the citation on `QS. 2:255` alone (A2's
-    // class, spaced — pre-existing, and now closed rather than recorded,
-    // because the owner's strict-whole decision covers what the prose names).
+    // `QS. 2:255 - 256` writes the same range with air around the joiner: the
+    // chain group tolerates it, because a glued-only dash would stop the scan at
+    // the head and leave the second verse the prose names neither enumerated nor
+    // refused — grounded on `QS. 2:255` alone.
     const spaced = "Dalilnya QS. 2:255 - 256 tentang hal ini.";
     expect(citationCandidatesIn(spaced)).toEqual(["QS. 2:255 - 256"]);
     expect(addressesNamedBy("QS. 2:255 - 256")).toEqual(["QS. 2:255", "QS. 2:256"]);
@@ -543,14 +515,12 @@ describe("validateCitations — grounded direction", () => {
   });
 
   it("refuses a spaced range it cannot enumerate — the fail-closed state is its own (review T1)", () => {
-    // R5 closed the spaced joiner for a range the grammar can ENUMERATE. The
-    // unenumerable path came back as `[label]` — the same shape as "this
-    // grammar declares a single address" — so `named.length > 1` was false and
-    // the shortened-label rule three lines below grounded the span on its head.
-    // The spaced spelling was therefore weaker than its glued twin at exactly
-    // the address ADR-0049 names as the refusal case. `addressesNamedBy` now
-    // returns `null` for it (declared, and unenumerable), and the comparison
-    // site refuses before either rule runs.
+    // For a range the grammar cannot ENUMERATE, `addressesNamedBy` returns
+    // `null` (declared, and unenumerable) — never `[label]`, the shape a
+    // single-address declaration has — and the comparison site refuses before
+    // either rule below can run. Without that distinct state the shortened-label
+    // rule would ground the spaced spelling on its head, weaker than its glued
+    // twin at exactly the address ADR-0049 names as the refusal case.
     const rows = [
       ["Dalilnya QS. 2:1 - 999 tentang hal ini.", "QS. 2:1"],
       ["Dalilnya QS. 2:255 - 0 tentang hal ini.", "QS. 2:255"],
@@ -584,30 +554,25 @@ describe("validateCitations — grounded direction", () => {
   });
 
   it("grounds a range of ONE address whose address is retrieved — and refuses it when it is not (#444)", () => {
-    // The live span (staging, merge `d30c40cf`, trace `b8812e2d-…`): the draft
-    // wrote `QS. 1:1–1` — a range whose endpoints are equal, so it declares
-    // exactly ONE address — while `QS. 1:1` WAS retrieved. The declared-list
-    // rule was gated on `named.length > 1`, so the span skipped it and fell to
-    // the shortened-label rule, which needs `<label>` + a space and cannot see a
-    // range at all: the gate refused a verifiable citation, and the
-    // `ungrounded_citation` trigger replaced a 31-chunk grounded answer with the
-    // canonical refusal. ADR-0049's rule is every address the span names, and a
-    // range of one names one.
+    // A range whose endpoints are equal (`QS. 1:1–1`) declares exactly ONE
+    // address, so the declared-list rule decides it and grounds it when that
+    // address is retrieved. ADR-0049's rule is every address the span names, and
+    // a range of one names one — a length test cannot see such a list, and the
+    // shortened-label rule needs `<label>` + a space and cannot see a range at
+    // all.
     const retrieved = [chunk("QS. 1:1"), chunk("QS. 1:5")];
     const rows = [
-      // The fix's class: every glued rendering was refused at base (`null`),
-      // because a range continues with a dash while the shortened-label rule
-      // needs `<label>` + a space.
+      // Every glued rendering: a range continues with a dash, while the
+      // shortened-label rule needs `<label>` + a space.
       ["QS. 1:1-1", "QS. 1:1"],
       ["QS. 1:1–1", "QS. 1:1"],
       ["QS. 1:1—1", "QS. 1:1"],
-      // NOT the fix's class — a no-regression pin. The head address here is
-      // followed by a space, so the extension rule already grounded this
-      // spelling at base; what the row proves is that the spaced verdict did
-      // not move (the whole spaced family, 8 joiners x 2 addresses, is 0 moved).
+      // A no-regression pin for the spaced twin: the head address is followed
+      // by a space, so the shortened-label rule accepts this spelling as well —
+      // the verdict must not move.
       ["QS. 1:1 - 1", "QS. 1:1"],
       // Spelling coverage, not new shapes: `citationCandidatesIn` folds both
-      // marker spellings to the candidate the first row already asserts.
+      // marker spellings to the candidate the first row asserts.
       ["Q.S. 1:1-1", "QS. 1:1"],
       ["QS 1:1-1", "QS. 1:1"],
       ["QS. 1:5–5", "QS. 1:5"],
@@ -636,8 +601,7 @@ describe("validateCitations — grounded direction", () => {
       ).toEqual({ grounded: [], ungrounded: [span] });
     }
     // No weakening: a two-address range with an address missing still refuses —
-    // the ticket's own `QS. 1:1-9` row is this shape with the tail retrieved by
-    // nobody.
+    // `QS. 1:1-9` is this shape with the tail retrieved by nobody.
     expect(validateCitations("Lihat QS. 1:1-9 ya", [chunk("QS. 1:1")]).ungrounded).toEqual([
       "QS. 1:1-9",
     ]);
@@ -658,7 +622,7 @@ describe("validateCitations — grounded direction", () => {
         ungrounded: [candidate],
       });
     }
-    // The other fail-closed reason, untouched by this fix: a surah written by
+    // The other fail-closed reason: a surah written by
     // NAME is enumerable — bounded by the longest surah — but unverifiable
     // against the corpus's numeric labels, so a range of one in that spelling
     // refuses in the comparison instead. It grounds no address by collapsing to
@@ -673,21 +637,14 @@ describe("validateCitations — grounded direction", () => {
   });
 
   it("reads the declared-list branch off the grammar's declaration, never off its shape (#449)", () => {
-    // The proxy this replaces, `named.length > 0 && named[0] !== candidate`, answers
-    // "the declaration names an address other than the span itself". For a plain,
-    // marker-prefixed span the answer is FALSE — `addressesNamedBy` names the span
-    // itself — so the span reached the EXTENSION rule, and a retrieved set holding a
-    // bare `QS.` marker grounded it on the marker. That verdict is silent: a marker
-    // is a legal chunk label, the answer cites a real-looking address, no refusal is
-    // raised, and no chip is missing. Measured at base `4003527` over **the measured
-    // numeric-address space** — 6,236 addresses x 8 joiners x 4 renderings x
-    // 6 retrieved-set families = 1,197,348 combinations (935,418 distinct span x
-    // family pairs): **widened 0, narrowed 6,236** — every narrowed pair a plain span
-    // whose retrieved set held only the marker, one per numeric address, and no pair
-    // outside that class. The divergence class itself is "plain Quran spans"
-    // generically, not those 6,236: a plain span written with a surah NAME narrows
-    // the same way and this sweep does not enumerate it (the `QS. Al-Fatihah:1` row
-    // below pins it).
+    // The shape test "the declaration names an address other than the span
+    // itself" is FALSE for a plain, marker-prefixed span — `addressesNamedBy`
+    // names that span itself — so such a span would take the EXTENSION rule and,
+    // with a retrieved set holding a bare `QS.` marker, ground on the marker the
+    // draft never named. That verdict is silent: a marker is a legal chunk label,
+    // the answer cites a real-looking address, no refusal is raised, and no chip
+    // is missing. The class is "plain Quran spans" generically, a span written
+    // with a surah NAME included (the `QS. Al-Fatihah:1` row below pins it).
     const marker = "QS.";
     for (const written of ["QS. 2:4", "Q.S. 2:4", "QS 2:4"] as const) {
       const candidate = citationCandidatesIn(`Lihat ${written} ya`)[0]!;
@@ -696,8 +653,9 @@ describe("validateCitations — grounded direction", () => {
       // so the per-address branch is taken for a span of ANY width, plain included.
       expect(declaresAddressList(candidate), written).toBe(true);
       expect(addressesNamedBy(candidate), written).toEqual(["QS. 2:4"]);
-      // The class: the span names `QS. 2:4` and the marker is not that address, so
-      // nothing grounds it. At base this was `["QS."]` — the fail-open direction.
+      // The class: the span names `QS. 2:4` and the marker is not that address,
+      // so nothing grounds it — grounding on the marker is the fail-open
+      // direction.
       expect(groundingLabelsFor(candidate, new Set([marker])), written).toBeNull();
       // The other direction, same span: its own address grounds it, on itself — the
       // branch is not a refusal for a plain citation the corpus does carry.
@@ -714,12 +672,11 @@ describe("validateCitations — grounded direction", () => {
         ungrounded: ["QS. 2:4"],
       });
     }
-    // The class is "a plain Quran span", not the 6,236 numeric addresses: the
-    // named-surah rendering narrows identically — at base `4003527` it grounded on
-    // the marker, at this head it refuses — because the named address is unverifiable
-    // against the corpus's numeric labels, so the marker was a citation the draft
-    // never named. The exhaustive sweeps enumerate the numeric rendering only; this
-    // row is where the wider, unbounded class is pinned (review A2).
+    // The class is "a plain Quran span", not the numeric addresses a sweep can
+    // enumerate: the named-surah rendering behaves identically — the named
+    // address is unverifiable against the corpus's numeric labels, so the marker
+    // was a citation the draft never named. This row pins the wider, unbounded
+    // class.
     const namedSurah = citationCandidatesIn("Lihat QS. Al-Fatihah:1 ya")[0]!;
     expect(namedSurah).toBe("QS. Al-Fatihah:1");
     expect(declaresAddressList(namedSurah)).toBe(true);
@@ -732,19 +689,19 @@ describe("validateCitations — grounded direction", () => {
       grounded: [],
       ungrounded: ["QS. Al-Fatihah:1"],
     });
-    // Why the class was latent, recorded so nobody reads this fix as a live
-    // incident: the gate builds `known` through `normalizeCitationLabel`, which reads
-    // a bare marker as `QS` — no chunk label can put the raw `QS.` in `known`. The
-    // branch must not rest on that, which is the point of reading the grammar.
+    // The gate builds `known` through `normalizeCitationLabel`, which reads a
+    // bare marker as `QS`, so no chunk label puts the raw `QS.` in `known` — but
+    // the branch must not rest on that, which is the point of reading the
+    // grammar's declaration.
     expect(normalizeCitationLabel(marker)).toBe("QS");
     // A grammar that declares NO list keeps the extension rule as its only reading
-    // (ADR-0049, #264's A3 boundary): the branch must not swallow it. Its behaviour
+    // (ADR-0049): the branch must not swallow it. Its behaviour
     // row is the spaced compound pinned below in this suite.
     expect(declaresAddressList("HR. Bukhari no. 5010"), "hadith").toBe(false);
     expect(declaresAddressList(normalizeCitationLabel("Jilid 1, Hal. 102")), "kitab").toBe(false);
     expect(declaresAddressList("bukan kutipan sama sekali"), "no grammar").toBe(false);
-    // The #447 QA set still refuses — with the marker family in `known` too, so the
-    // new branch cannot open a shape the fail-closed boundary already closed.
+    // The refusal set still refuses — with the marker family in `known` too, so the
+    // branch cannot ground a shape the fail-closed boundary refuses.
     const refusals: ReadonlyArray<readonly [string, string]> = [
       ["QS. 2:0-0", "QS. 2:255"],
       ["QS. 2:999–999", "QS. 2:255"],
@@ -759,7 +716,7 @@ describe("validateCitations — grounded direction", () => {
       expect(groundingLabelsFor(candidate, new Set([retrieved])), span).toBeNull();
       expect(groundingLabelsFor(candidate, new Set([retrieved, marker])), span).toBeNull();
     }
-    // The class this branch exists for, at the width of one (#444), is untouched by
+    // The class this branch exists for, at the width of one, is untouched by
     // it: a degenerate range whose address is retrieved still grounds, marker or no
     // marker in the retrieved set.
     expect(declaresAddressList("QS. 1:1–1")).toBe(true);
@@ -768,12 +725,9 @@ describe("validateCitations — grounded direction", () => {
   });
 
   it("keeps the accepted set where it was — the fix narrows only the unenumerable spaced form", () => {
-    // The differential this fix round re-ran, base `c64696f` vs this head, over
-    // 21,438 answer × retrieved-set combinations: **widened 0, narrowed 696**,
-    // and every narrowed combination is one of the three unenumerable spaced
-    // spans above (232 retrieved-sets each). Nothing else moved — which is the
-    // property this row guards: the accepted spellings, the enumerable ranges
-    // and the grammars that declare no list must behave exactly as before.
+    // The property this row guards: the accepted spellings, the enumerable
+    // ranges and the grammars that declare no list keep their verdicts — only
+    // the unenumerable spaced form is narrowed, and it refuses.
     const accepted: Array<[string, string[], string[]]> = [
       // [answer, retrieved, grounded]
       [
@@ -849,11 +803,9 @@ describe("validateCitations — grounded direction", () => {
       expect([...result.grounded].sort(), answer).toEqual([...grounded].sort());
       expect(result.ungrounded, answer).toEqual([]);
     }
-    // Still refused, exactly as before (all four are in the differential's
-    // unchanged bucket): a surah written by name has no enumerable address, a
-    // fabricated verse grounds nothing, the #264 A3 hadith compound stays whole
-    // even when both addresses were retrieved, and the kitab form's tail is
-    // lexical.
+    // Still refused: a surah written by name has no enumerable address, a
+    // fabricated verse grounds nothing, the hadith compound stays whole even when
+    // both addresses were retrieved, and the kitab form's tail is lexical.
     expect(
       validateCitations("Dalilnya QS. Al-Baqarah:255-256 tentang hal ini.", [
         chunk("QS. 2:255"),
@@ -876,9 +828,8 @@ describe("validateCitations — grounded direction", () => {
     // is scanned as its head and grounds on it. That is a deliberate exclusion
     // (the token rule), not a second reading of the chain rule: extending the
     // hadith grammar to a spaced joiner is the "Hadith ranges" revisit trigger
-    // in ADR-0049, kept out of #274. Pinned here so a reader of the range rule
-    // cannot believe the spaced form is named (review R5's "silence is the one
-    // option that leaves a reader believing the range is named").
+    // in ADR-0049. Pinned here so a reader of the range rule cannot believe the
+    // spaced form is named.
     const draft = "HR. Bukhari no. 5010 - 5011 menjelaskan …";
     expect(citationCandidatesIn(draft)).toEqual(["HR. Bukhari no. 5010"]);
     expect(validateCitations(draft, [chunk("HR. Bukhari no. 5010")]).ungrounded).toEqual([]);
@@ -889,17 +840,14 @@ describe("validateCitations — grounded direction", () => {
       "HR. Bukhari no. 5010 - 5011",
     ]);
     // The comparison half, and the reason it is pinned rather than inferred:
-    // this label is the one input the #444 branch deliberately routes AROUND
-    // the declared-list rule. The hadith grammar declares no address list
-    // (`declaresAddressList` is false; `addressesNamedBy` names the label whole),
-    // so the extension rule decides it and grounds the compound on its head. No
-    // draft path can produce this span — the hadith number token stops at the
-    // space before the dash — which is exactly why it needs an assertion here or
-    // nowhere: weaken the predicate to a constant `true` (executed, #449) or to
-    // an unconditional `named.length >= 1` (review A1's mutation 2, which left the
-    // whole suite green before this row existed) and this expectation reddens, so
-    // the next simplification of the predicate cannot retire the exclusion
-    // silently.
+    // the hadith grammar declares no address list (`declaresAddressList` is
+    // false; `addressesNamedBy` names the label whole), so the extension rule
+    // decides it and grounds the compound on its head. No draft path can produce
+    // this span — the hadith number token stops at the space before the dash —
+    // which is exactly why it needs an assertion here or nowhere: weakening the
+    // predicate to a constant `true` or to an unconditional `named.length >= 1`
+    // reddens this expectation, so a later simplification cannot retire the
+    // exclusion silently.
     expect(
       groundingLabelsFor("HR. Bukhari no. 5010 - 5011", new Set(["HR. Bukhari no. 5010"])),
     ).toEqual(["HR. Bukhari no. 5010"]);
@@ -909,8 +857,8 @@ describe("validateCitations — grounded direction", () => {
     // ADR-0049's split is declared per grammar, so a dash-joined hadith number
     // is NOT re-interpreted by a comparison-site pattern: the hadith grammar
     // names one address, `DASH_JOINED_NUMBER_TAIL` keeps the compound whole,
-    // and the #264 A3 cost stands there unchanged (both retrieved, still
-    // refused). Extending `addressesOf` to it is a recorded revisit trigger.
+    // and the cost stands — refused even when both addresses were retrieved.
+    // Extending `addressesOf` to it is a recorded revisit trigger.
     const both = [chunk("HR. Bukhari no. 5010"), chunk("HR. Bukhari no. 5011")];
     expect(validateCitations("HR. Bukhari no. 5010—5011 menjelaskan …", both).ungrounded).toEqual([
       "HR. Bukhari no. 5010—5011",
@@ -923,13 +871,11 @@ describe("validateCitations — grounded direction", () => {
   });
 
   it("keeps the glued compound whole in the grammar itself, not only via the strip (A1)", () => {
-    // The scan and the flatten step both read stripped text today, so the rows
-    // above would pass even without the tail's `\p{Cf}` tolerance — which is
-    // exactly why this row pins the GRAMMAR's own contract instead: run on RAW
-    // text it still takes the whole compound. That is the difference between
-    // "A1 is closed because two callers happen to strip first" and "the pattern
-    // cannot reopen the hole for a caller that forgets to". Dropping either
-    // `\p{Cf}*` from the tail reddens this row (executed by mutation).
+    // The scan and the flatten step both read stripped text, so the rows above
+    // would pass without the tail's `\p{Cf}` tolerance — this row pins the
+    // GRAMMAR's own contract instead: run on RAW text it still takes the whole
+    // compound, so the pattern cannot reopen the hole for a caller that forgets
+    // to strip. Dropping either `\p{Cf}*` from the tail reddens this row.
     const quranMatch = (text: string) => CITATION_GRAMMARS[0]!.pattern().exec(text);
     for (const glued of [
       "QS. 2:255\u200c—256",
@@ -963,10 +909,8 @@ describe("validateCitations — grounded direction", () => {
   });
 
   it("reduces the glued grade span the draft grammar really produces (B2)", () => {
-    // The `stripGradeSuffix` docstring used to claim no draft span can carry a
-    // grade at all, because "the number token stops at whitespace". Execution
-    // falsified it: the token stops at whitespace but absorbs `(`, so
-    // `HR. Bukhari no. 573(Sahih) …` yields a span carrying grade text. The
+    // The token stops at whitespace but absorbs `(`, so
+    // `HR. Bukhari no. 573(Sahih) …` yields a span carrying grade text; the
     // spaced forms are the ones that cannot occur.
     expect(citationSpansIn("HR. Bukhari no. 573(Sahih) menjelaskan")).toEqual([
       { start: 0, end: 25, label: "HR. Bukhari no. 573" },
@@ -980,10 +924,9 @@ describe("validateCitations — grounded direction", () => {
   });
 
   it("grounds a bracketed hadith citation (#11 regression)", () => {
-    // The hadith number token used to eat the closing bracket: `[HR. Malik
-    // no. 18]` produced a phantom `HR. Malik no. 18]` candidate that no chunk
-    // grounds, so the gate refused a correctly grounded answer. Found by the
-    // citation-payload derivation (#11), which resolves these same spans.
+    // The hadith number token skips the closing bracket, so `[HR. Malik no. 18]`
+    // does not produce a phantom `HR. Malik no. 18]` candidate that no chunk
+    // grounds — a false refusal of a correctly grounded answer.
     const { grounded, ungrounded } = validateCitations("Hadits [HR. Malik no. 18] berbunyi …", [
       chunk("HR. Malik no. 18"),
     ]);
@@ -992,10 +935,9 @@ describe("validateCitations — grounded direction", () => {
   });
 
   it("grounds a dot-less Quran citation against its dotted label", () => {
-    // Round-3 A1: `QS 2:255` is a common model spelling. The grammar must see
-    // it (the old dotted-only grammar missed it entirely) and normalization
-    // must match it to the chunk's dotted label — a grounded answer must not
-    // be refused for the spelling of its marker.
+    // `QS 2:255` is a common model spelling, so the grammar sees it and
+    // normalization matches it to the chunk's dotted label — a grounded answer
+    // must not be refused for the spelling of its marker.
     const { grounded, ungrounded } = validateCitations("Menurut QS 2:255 …", [chunk("QS. 2:255")]);
     expect(grounded).toEqual(["QS. 2:255"]);
     expect(ungrounded).toEqual([]);
@@ -1043,8 +985,8 @@ describe("validateCitations — ungrounded direction (the trap cases)", () => {
   });
 
   it("catches a fabricated Quran citation written without the trailing dot", () => {
-    // Round-3 A1: `QS 9:99` (dot-less) previously matched no grammar at all,
-    // so a common spelling of a fabricated citation bypassed the gate.
+    // `QS 9:99` (dot-less) is a common spelling, so the grammar must match it
+    // or a fabricated citation bypasses the gate.
     const { ungrounded } = validateCitations("Allah berfirman dalam QS 9:99 tentang hal ini.", [
       chunk("QS. 2:255"),
     ]);
@@ -1066,9 +1008,9 @@ describe("validateCitations — ungrounded direction (the trap cases)", () => {
   });
 
   it("catches a fabricated hadith written with a long collection name", () => {
-    // Thermo-review A2: models write the full collection form ("Sunan Abu
-    // Dawud"), which the original two-token grammar missed entirely — the
-    // fabricated citation sailed through the gate.
+    // Models write the full collection form ("Sunan Abu Dawud"), so the grammar
+    // tolerates the collection-type prefix — otherwise a fabricated citation
+    // sails through the gate.
     const { ungrounded } = validateCitations("HR. Sunan Abu Dawud no. 99999 menyebutkan …", [
       chunk("HR. Abu Dawud no. 573"),
     ]);
@@ -1076,8 +1018,8 @@ describe("validateCitations — ungrounded direction (the trap cases)", () => {
   });
 
   it("catches a fabricated hadith whose collection name is written with spaces", () => {
-    // The hyphenated `an-Nasai` matched the old grammar by luck; the spaced
-    // form did not.
+    // A spaced collection name (`an Nasai`) is tolerated like the hyphenated
+    // one.
     const { ungrounded } = validateCitations("HR. Sunan an Nasai no. 99999 …", [
       chunk("HR. Bukhari no. 573"),
     ]);
@@ -1085,8 +1027,8 @@ describe("validateCitations — ungrounded direction (the trap cases)", () => {
   });
 
   it("catches a fabricated Quran citation written with the dotted Q.S. marker", () => {
-    // Thermo-review A2: `Q.S. n:n` is a common spelling in Indonesian
-    // religious prose and was not part of the grammar at all.
+    // `Q.S. n:n` is a common spelling in Indonesian religious prose, so the
+    // grammar accepts the dotted marker.
     const { ungrounded } = validateCitations("Allah berfirman dalam Q.S. 9:99 tentang hal ini.", [
       chunk("QS. 2:255"),
     ]);
@@ -1271,8 +1213,8 @@ describe("citationCandidatesIn", () => {
 
   it("leaves clean labels exactly as they are (#253 tail-normalization check)", () => {
     // The other reader must not drift: the citations frame and the reviewer
-    // pre-gate key on these labels, and the addresses inside them are
-    // untouched by the tail fix.
+    // pre-gate key on these labels, and the reduction must leave the address
+    // inside them untouched.
     expect(citationCandidatesIn("QS. 2:255 dan HR. Bukhari no. 4697 lalu")).toEqual([
       "QS. 2:255",
       "HR. Bukhari no. 4697",
@@ -1326,32 +1268,29 @@ describe("normalizeCitationLabel", () => {
   });
 
   it("does not fold the marker-address spelling the grammar excludes (A2)", () => {
-    // #264 review A2: the QS marker rule used to fold `QS2:255` to `QS. 2:255`
-    // even though no grammar matches that spelling — so the comparison form
-    // grounded a citation the scan could not see, asymmetric with the hadith
-    // `no 5010` case. The rule now mirrors the separator the grammar makes
-    // mandatory (a dot or a space), so both sides of the comparison agree and
-    // the fold never rewrites a spelling the scan cannot read.
+    // The marker fold mirrors the separator the grammar makes mandatory (a dot
+    // or a space): folding `QS2:255` to `QS. 2:255` would ground a citation the
+    // scan cannot see, asymmetric with the hadith `no 5010` case. Both sides of
+    // the comparison agree, and the fold never rewrites a spelling the scan
+    // cannot read.
     expect(normalizeCitationLabel("QS2:255")).toBe("QS2:255");
     expect(citationMatchText("di QS2:255 ya")).toBe("di QS2:255 ya");
     expect(citationCandidatesIn("QS2:255")).toEqual([]);
     expect(validateCitations("Ayat Kursi ada di QS2:255", [chunk("QS. 2:255")]).grounded).toEqual(
       [],
     );
-    // The spellings the grammar DOES accept keep folding, so the false refusal
-    // #264 item 3 closed stays closed.
+    // The spellings the grammar DOES accept keep folding, so a grounded citation
+    // is not refused for its spacing.
     expect(normalizeCitationLabel("QS 2:255")).toBe("QS. 2:255");
     expect(normalizeCitationLabel("Q.S. 2:255")).toBe("QS. 2:255");
     expect(normalizeCitationLabel("Q.S.2:255")).toBe("QS. 2:255");
   });
 
   it("strips the grade parenthetical on both reachable paths, executed (B2)", () => {
-    // This anchored pass is reachable for a label that does NOT begin with a
-    // citation grammar — a full Kitab label is the shape it exists for — OR for
-    // a grammar-initial label that is kept WHOLE, where it is the grade remover.
-    // The earlier wording stopped at the first half and the kept-whole compound
-    // falsified it (review B2); the source docstring now names both paths, and
-    // both are executed here.
+    // This anchored pass is reachable on two paths: a label that does NOT begin
+    // with a citation grammar (a full Kitab label is the shape it exists for),
+    // and a grammar-initial label that is kept WHOLE, where it is the grade
+    // remover.
     expect(normalizeCitationLabel("HR. Ibnu Majah no. 224 (Dhaif)")).toBe("HR. Ibnu Majah no. 224");
     expect(normalizeCitationLabel("HR. Ibnu Majah no. 224 (Dhaif) ")).toBe(
       "HR. Ibnu Majah no. 224",
@@ -1361,7 +1300,7 @@ describe("normalizeCitationLabel", () => {
       "Al-Umm, Imam Syafi'i, Jilid 1, Hal. 102",
     );
     // Path 2 — grammar-initial but kept whole: the reduction keeps the whole
-    // label, so it does NOT remove the grade and this pass does (B2).
+    // label, so it does NOT remove the grade and this pass does.
     expect(reduceCitationLabel("HR. Bukhari no. 5010—5011 (Dhaif)")).toEqual({
       address: "HR. Bukhari no. 5010",
       keepWhole: true,

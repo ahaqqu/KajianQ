@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { MAX_PREFILL_LENGTH, parsePrefill, validateChatSearch } from "./chat-prefill";
 
 /**
- * The chat route's `?q=` pre-fill parsing (#175). The load-bearing pin: an
+ * The chat route's `?q=` pre-fill parsing. The load-bearing pin: an
  * unusable param — absent, empty, whitespace-only, not a string, or over the
  * length cap — is IGNORED (never seeds, never errors), and a usable one is
  * trimmed. A future change that lets an over-long value through, or turns an
@@ -70,7 +70,7 @@ describe("validateChatSearch", () => {
       const output = validateChatSearch(input);
       // The key must be present with an explicit undefined — JSON.stringify
       // drops undefined values, so a string comparison would mask a regression
-      // of the always-emit invariant (thermo-review B2).
+      // of the always-emit invariant.
       expect("q" in output, JSON.stringify(input)).toBe(true);
       expect(output.q, JSON.stringify(input)).toBeUndefined();
     }

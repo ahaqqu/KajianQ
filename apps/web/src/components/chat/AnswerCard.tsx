@@ -4,20 +4,19 @@ import { t, useLocale, type Locale } from "../../lib/i18n";
 import { LogoTile, MonoLabel } from "../ui";
 
 /**
- * The assistant turn's answer card (#11) in the reference visual language:
- * an avatar + serif-italic name over a warm card holding the answer
- * (citation chips resolved from the structured frame), the dhaif warning
- * card, and the ulama disclaimer footnote. The card renders exactly the
- * citation list the server sent: a PURE refusal's list is empty, so it shows
- * as a plain card with no citation affordances by data, not by a client-side
- * guess about refusals — and a HYBRID answer (a refusal sentence inside a
- * partial answer, #436) keeps the chips its grounded text earns beside that
- * sentence. The body renders the
- * model's inline markdown (#150) — bold/emphasis spans and lists — as rich
- * text; citation chips stay top-level inline nodes even inside a styled span.
- * Chip taps hand the citation to the parent (`onOpenCitation`): the sheet is
- * owned by MessageCard so its footer can carry the trace-anchored flags (#13)
- * without blowing this module's import cap.
+ * The assistant turn's answer card in the reference visual language: an avatar
+ * + serif-italic name over a warm card holding the answer (citation chips
+ * resolved from the structured frame), the dhaif warning card, and the ulama
+ * disclaimer footnote. The card renders exactly the citation list the server
+ * sent: a PURE refusal's list is empty, so it shows as a plain card with no
+ * citation affordances by data, not by a client-side guess about refusals —
+ * while a HYBRID answer (a refusal sentence inside a partial answer) keeps the
+ * chips its grounded text earns beside that sentence. The body renders the
+ * model's inline markdown — bold/emphasis spans and lists — as rich text;
+ * citation chips stay top-level inline nodes even inside a styled span. Chip
+ * taps hand the citation to the parent (`onOpenCitation`): the sheet is owned
+ * by MessageCard so its footer can carry the trace-anchored flags without
+ * blowing this module's import cap.
  */
 export function AnswerCard({
   message,
@@ -32,8 +31,8 @@ export function AnswerCard({
   const citations = message.citations?.citations ?? [];
   const blocks = renderBodyBlocks(split.body, citations);
   // The card shows the answer's own warning line when the deterministic
-  // rule appended it. `split.warning` is the product's canonical copy only
-  // (A2), so a model paragraph that merely opens with a marker stays prose in
+  // rule appended it. `split.warning` is the product's canonical copy only,
+  // so a model paragraph that merely opens with a marker stays prose in
   // `body`; the frame's dhaifWarning flag drives the card even when the line
   // is missing from the (rehydrated) text.
   const warning =
@@ -41,8 +40,8 @@ export function AnswerCard({
     (message.citations?.dhaifWarning === true ? t(locale, "dhaifWarningCard") : null);
 
   // A function declaration, not an arrow const: the recursion is otherwise
-  // circular for return-type inference and would need a ReactNode import
-  // (the agentic-limits cap holds AnswerCard at five imports).
+  // circular for return-type inference and would need a ReactNode import,
+  // which would exceed the agentic-limits import cap.
   function renderInline(node: AnswerInline, key: number) {
     switch (node.kind) {
       case "text":
@@ -119,9 +118,9 @@ export function AnswerCard({
 
 /**
  * The citation chip: small mono uppercase chip inside the answer card; dark
- * mode takes the gold itself for the label (thermo-review A2 — the dark
- * theme's --accent-foreground is near-black, tuned for solid-gold surfaces,
- * and is unreadable on the chip's faint tint).
+ * mode takes the gold itself for the label — the dark theme's
+ * --accent-foreground is near-black, tuned for solid-gold surfaces, and is
+ * unreadable on the chip's faint tint.
  */
 function CitationChip({
   label,

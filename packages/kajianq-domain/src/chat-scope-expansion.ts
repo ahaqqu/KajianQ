@@ -8,12 +8,12 @@ import { detectSurahReference } from "./surah-reference";
  * Surah-reference scoped expansion (ADR-0045) — the retrieval half.
  *
  * When a question names a surah (or a verse inside one), the fused dense
- * retrieval may carry no part of that surah at all: `QS. 1:1` measures at
- * dense rank 929 / 8,305 for a whole-surah meta-question (#142), far outside
- * an HNSW scan, and the router's sub-query paraphrase flips even the reachable
- * verses in and out (#241). So the named surah's children are retrieved
- * **deterministically** — a direct bounded read of the surah parent's
- * children, no embedding, no LLM — and added alongside the fused hits.
+ * retrieval may carry no part of that surah at all — a whole-surah
+ * meta-question can sit far outside an HNSW scan — and the router's sub-query
+ * paraphrase flips even the reachable verses in and out. So the named surah's
+ * children are retrieved **deterministically** — a direct bounded read of the
+ * surah parent's children, no embedding, no LLM — and added alongside the
+ * fused hits.
  *
  * Two properties are load-bearing:
  *
@@ -81,10 +81,10 @@ export type ScopeExpansion = {
 
 /**
  * Build one deterministic-expansion chunk. The text-layer metadata comes from
- * the shared `withTextLayers` owner (B1) — the same function the fused path
- * calls — so the assembler's Arabic + labeled-translation rule (ADR-0006)
- * cannot go dead on exactly the chunks these features add, and the rule has
- * one implementation.
+ * the shared `withTextLayers` owner — the same function the fused path calls —
+ * so the assembler's Arabic + labeled-translation rule (ADR-0006) cannot go
+ * dead on exactly the chunks these features add, and the rule has one
+ * implementation.
  *
  * Shared with ADR-0049's neighbour expansion, which adds chunks from the same
  * kind of structural read and must carry the same layer rule; the `origin`

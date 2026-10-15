@@ -1,6 +1,5 @@
 /**
- * The single owner of the chunk-metadata text-layer rule (ADR-0006; B1 of
- * #243's review).
+ * The single owner of the chunk-metadata text-layer rule (ADR-0006).
  *
  * The store's text columns are the only place the Arabic original and the
  * Indonesian translation exist, and the assembler's Arabic +

@@ -11,23 +11,17 @@ import { routedQuery } from "./test-utils/routed-query";
 /**
  * What the reviewer is actually shown.
  *
- * The reviewer's evidence lines used to be `- ${chunk.text}` — the raw text with
- * NO citation label. That made the cross-vendor gate structurally unable to
- * verify a citation: it never saw that a chunk was labelled "HR. Malik no. 185",
- * so every answer citing its sources was failed with "cites specific hadith
- * numbers … which are not present in the provided evidence". Three of five
- * questions were refused on the first live size-5 smoke for this reason.
+ * The reviewer's evidence must carry each chunk's citation label: without it
+ * the cross-vendor gate is structurally unable to verify a citation, and every
+ * answer naming its sources is failed as citing sources absent from the
+ * evidence. The deterministic validator compares labels directly, so the bug
+ * would hide behind the gate's LLM half.
  *
- * The deterministic validator never had this problem — it compares labels
- * directly — which is why the bug hid behind the gate's LLM half.
- *
- * The second live failure (gs-v0-015) was the same family one layer down: the
- * reviewer's `chunk.text` for a fallback-track hit is the translation only,
- * while the Generator's context carries the Arabic original too, so the
- * reviewer failed an answer for quoting Arabic it had never been shown. The
- * reviewer now reads the assembler's own context turn — the exact text the
- * Generator answered from — so the parity is structural, not a re-render that
- * can drift.
+ * The evidence must also be the assembler's own context turn — the exact text
+ * the Generator answered from — because `chunk.text` for a fallback-track hit
+ * is the translation only, and a reviewer shown that alone fails an answer for
+ * quoting the Arabic layer it never saw. Reading the assembled turn makes the
+ * parity structural, not a re-render that can drift.
  */
 
 const cost = (): CostRecord => ({
@@ -133,8 +127,8 @@ describe("reviewer evidence rendering", () => {
   });
 
   it("does not repeat a grade the citation label already carries", async () => {
-    // `[HR. Malik no. 187 (Sahih) (sahih)]` made the generator copy a
-    // duplicated label, which the reviewer then failed as a modified citation.
+    // Repeating a grade the citation label already carries makes the generator
+    // copy a duplicated label, which the reviewer fails as a modified citation.
     const captured: { user?: string } = {};
     await runReviewer(captured);
     expect(captured.user).not.toContain("(Sahih) (sahih)");
@@ -142,19 +136,17 @@ describe("reviewer evidence rendering", () => {
 });
 
 /**
- * Round-3 A2 + #439: a generator-emitted refusal must short-circuit. The old
- * flow ran the canonical refusal draft through the reviewer LLM (a paid call),
- * appended the ulama disclaimer to it, and recorded no `refusal` event —
- * contradicting the invariant that product rules are "never applied to a
- * refusal" and hiding the refusal from the trace signal the eval harness reads.
+ * A generator-emitted refusal must short-circuit: the paid reviewer call is
+ * skipped, the draft is delivered undecorated, and the refusal is recorded as a
+ * `refusal` event — the trace signal the eval harness reads. Product rules are
+ * never applied to a refusal.
  *
- * #439 adds the other side of the same boundary: the short-circuit is a
- * SUBSTRING match, so a HYBRID draft (a grounded partial answer that runs into
- * the sentence) used to be returned before `applyProductRules` too, shipping a
- * quoted dhaif-graded hadith with no warning line — a control SPECS §2.2 marks
- * "Always". The classification may still skip the PAID reviewer (ADR-0009
- * cost discipline); it may not skip a deterministic rule. The exemption is now
- * keyed to the earned refusal shape: the sentence with no grounded span.
+ * The short-circuit is a SUBSTRING match, so a HYBRID draft (a grounded partial
+ * answer that runs into the sentence) is not exempt: the classification may
+ * skip the PAID reviewer (ADR-0009 cost discipline), it may not skip a
+ * deterministic rule — SPECS §2.2 marks the dhaif warning "Always". The
+ * exemption is keyed to the earned refusal shape: the sentence with no grounded
+ * span.
  */
 describe("generator-emitted refusal short-circuit", () => {
   async function runRefusalReview(
@@ -203,15 +195,14 @@ describe("generator-emitted refusal short-circuit", () => {
     expect(refusalEvent?.detail?.["trigger"]).toBe("generator_refusal");
     expect(events.some((e) => e.kind === "llm_call")).toBe(false);
     // The earned refusal shape takes the whole exemption: no rule runs and the
-    // trace records no `product_rules` event (#439's negative half).
+    // trace records no `product_rules` event.
     expect(events.some((e) => e.kind === "product_rules")).toBe(false);
   });
 
   it("runs the Always rules on a hybrid but still spends no reviewer call (#439)", async () => {
     // A grounded span (QS. 2:255 is in this context) makes the draft a hybrid:
-    // its text answers from the evidence and then declines. The rules must run
-    // — the provider above would have been called under the un-fixed
-    // classification and this draft is where the grade flag went missing.
+    // its text answers from the evidence and then declines, so the
+    // deterministic rules must run on the delivered text.
     const hybrid = [
       "Allah Mahahidup dalam [QS. 2:255].",
       "Untuk bagian lain dari pertanyaan ini saya tidak menemukan dalil yang memadai.",
@@ -248,14 +239,10 @@ describe("generator-emitted refusal short-circuit", () => {
   });
 
   /**
-   * #443 — the ASSERTING refusal draft: the sentence in a text that cites
-   * nothing AND is not a decline. It used to take the earned-refusal exemption
-   * and ship verbatim, so the reader got the draft's own assertions with no
-   * refusal framing and no unconditional copy, and the trace recorded no
-   * `product_rules` event because no rule ran. The stage's answer is the
-   * product's own refusal in place of the model's words: the reader always gets
-   * a refusal they can recognise, and no rule is invented for a text that cites
-   * nothing (the #285 pin).
+   * The ASSERTING refusal draft: the sentence in a text that cites nothing AND
+   * is not a decline. The stage ships the product's own refusal in place of the
+   * model's words, so the reader always gets a refusal they can recognise, and
+   * no rule is invented for a text that cites nothing.
    */
   it("refuses a citation-free asserting draft with the product's own refusal (#443)", async () => {
     const assertion = "Hadits tentang puasa dalam perjalanan berstatus sahih dan wajib diamalkan.";
@@ -267,8 +254,8 @@ describe("generator-emitted refusal short-circuit", () => {
     // The decision is on the trace, under its own machine-readable trigger.
     const refusalEvent = events.find((e) => e.kind === "refusal");
     expect(refusalEvent?.detail?.["trigger"]).toBe("asserting_refusal_draft");
-    // No rule ran, so nothing may claim it did (#285), and the text that ships
-    // carries no dhaif warning invented for a text that cites nothing.
+    // No rule ran, so nothing may claim it did, and the text that ships carries
+    // no dhaif warning invented for a text that cites nothing.
     expect(events.some((e) => e.kind === "product_rules")).toBe(false);
     // And the classification still skips the paid reviewer (ADR-0009).
     expect(providerCalled).toBe(false);
@@ -314,9 +301,9 @@ describe("generator-emitted refusal short-circuit", () => {
   });
 
   it("keeps a decline that quotes the evidence's own text but cites nothing (#443, the #285 floor)", async () => {
-    // The other direction, and the floor the ticket names: the sentence with its
-    // own framing and nothing else still ships byte-identical — even though this
-    // run's assembled context carries a translation label and a citable hadith.
+    // The other direction, and the floor: the sentence with its own framing and
+    // nothing else still ships byte-identical — even though this run's assembled
+    // context carries a translation label and a citable hadith.
     const decline = refusalFloorText("id");
     const { result, events, providerCalled } = await runRefusalReview(decline);
     expect(result.text).toBe(decline);
@@ -346,11 +333,11 @@ describe("generator-emitted refusal short-circuit", () => {
 });
 
 /**
- * Thermo-review B1: the reviewer-fail `refusal` event must carry a
- * machine-readable `trigger` like its sibling paths (`ungrounded_citation`,
- * `generator_refusal`) — a refusal-event filter (what `detectRefusal` reads)
- * must be able to tell a decline-to-answer backstop fail from every other
- * reviewer fail without parsing prose.
+ * The reviewer-fail `refusal` event must carry a machine-readable `trigger`
+ * like its sibling paths (`ungrounded_citation`, `generator_refusal`) — a
+ * refusal-event filter (what `detectRefusal` reads) must be able to tell a
+ * decline-to-answer backstop fail from every other reviewer fail without
+ * parsing prose.
  */
 describe("reviewer-fail refusal event", () => {
   async function runFailReview(): Promise<{
@@ -384,8 +371,8 @@ describe("reviewer-fail refusal event", () => {
 
   it("records the refusal with a machine-readable trigger and the reviewer copy", async () => {
     const { result, events } = await runFailReview();
-    // The reviewer-refusal copy, NOT the canonical insufficiency string
-    // (thermo-review A1): the prompt must not promise copy the path skips.
+    // The reviewer-refusal copy, NOT the canonical insufficiency string: the
+    // prompt must not promise copy the path skips.
     expect(result.text).toBe("jawaban tidak didukung oleh dalil yang ditemukan");
     const refusalEvent = events.find((e) => e.kind === "refusal");
     expect(refusalEvent).toBeDefined();

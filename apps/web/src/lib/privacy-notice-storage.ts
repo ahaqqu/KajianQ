@@ -3,9 +3,9 @@ import type { Localized } from "./localized";
 import { THEME_KEY } from "./theme";
 
 /**
- * The browser-storage line (#179 follow-up): what the app keeps ON the
- * visitor's device, stated plainly, so the notice's "anonymous and
- * local-first" claim is concrete rather than implied.
+ * The browser-storage line: what the app keeps ON the visitor's device, stated
+ * plainly, so the notice's "anonymous and local-first" claim is concrete rather
+ * than implied.
  *
  * Two facts the code backs, both pinned by `privacy-notice.test.ts` reading
  * the modules that implement them:

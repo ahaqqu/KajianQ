@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 
 /**
- * The collection page's "Ask about this source" affordance (#175): a typed
+ * The collection page's "Ask about this source" affordance: a typed
  * TanStack `Link` into the chat route with the entry's per-locale question as
  * the `q` search param. Pre-fill only — the chat seeds its composer draft from
  * the param and never auto-sends; the param never touches the chat

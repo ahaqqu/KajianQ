@@ -5,43 +5,29 @@ import { AppHeader } from "../AppHeader";
 import { Transcript, TranscriptMeta, type TranscriptError } from "./Transcript";
 
 /**
- * The chat view (#11) in the reference visual language: the app header with
- * the new-conversation pill, the scrollable transcript (see Transcript), and
- * the bottom-pinned composer band with the circular submit button. Staged
- * honest loading state ("Mengambil konteks…" → "Memeriksa sitasi…" →
- * "Menyusun jawaban…" — the machinery the pipeline actually runs).
- * Presentational: the page owns data and transport.
+ * The chat view in the reference visual language: the app header with the new-conversation
+ * pill, the scrollable transcript (see Transcript), and the bottom-pinned composer band. The
+ * staged loading state names the pipeline's real stages; the page owns data and transport.
  *
- * Pre-fill (#175): `prefill` is the seed question the chat route read from the
- * URL's `q` param. It seeds the composer DRAFT ONLY — never auto-sent — and
- * only while the draft is still at its initial, untouched state, so a draft
- * the reader already edited is never clobbered. The page consumes (strips) the
- * param after reading it; the seed arrives here as a plain prop and the
- * composer stays local-only: nothing about the pre-fill touches the chat
- * session/server contract (ADR-0040).
+ * `prefill` seeds the composer DRAFT ONLY — never auto-sent — and only while the draft is
+ * still untouched, so an edited draft is never clobbered; the page strips the param after
+ * reading it and the composer stays local-only.
  *
- * Message ceiling (#256): the composer mirrors the chat contract's
- * `CHAT_MESSAGE_MAX_LENGTH` so a reader cannot build a message the API will
- * refuse. Both halves are needed — the textarea's `maxLength` attribute bounds
- * what the browser lets through, and the change handler clamps the value
- * itself (pair-aware, see `clampDraft`), because the attribute does not
- * constrain a programmatically set value. Hitting the ceiling says so in the
- * reader's language instead of leaving them to meet an unexplained 400.
+ * The composer mirrors the chat contract's `CHAT_MESSAGE_MAX_LENGTH` so a reader cannot
+ * build a message the API will refuse: the `maxLength` attribute bounds what the browser
+ * lets through, and the change handler clamps the value itself (pair-aware, see
+ * `clampDraft`), because the attribute does not constrain a programmatically set value.
  */
 
 const STAGE_KEYS = ["stagedContext", "stagedReview", "stagedCompose"] as const;
 const STAGE_INTERVAL_MS = 1400;
 
 /**
- * Clamp a draft to the ceiling without splitting a surrogate pair (#256
- * thermo-review A1). Two paths reach the ceiling: the browser's own
- * `maxLength` enforcement truncates a typed or pasted value to 2,000 UTF-16
- * code units, and this function slices a value the attribute did not
- * constrain. Either one can stop between the halves of an emoji, so the check
- * runs on the RESULT, not only on the slice: a trailing high surrogate
- * (0xD800–0xDBFF) with no low half after it is dropped whole, turning a
- * 2,000-unit draft into 1,999 complete units instead of half a character the
- * API accepts, the store keeps, and the prompt carries.
+ * Clamp a draft to the ceiling without splitting a surrogate pair. Both the browser's
+ * `maxLength` truncation and this function's slice can stop between the halves of an emoji,
+ * so the check runs on the RESULT: a trailing high surrogate (0xD800–0xDBFF) with no low half
+ * after it is dropped whole rather than leaving half a character the API accepts and the store
+ * keeps.
  */
 export function clampDraft(text: string): string {
   const clamped =
@@ -71,7 +57,7 @@ export function ChatView({
   transcriptTruncated: boolean;
   error: ChatViewError;
   online: boolean;
-  /** The seed question from the route's `?q=` param, if any (see above). */
+  /** The seed question from the route's `?q=` param, if any. */
   prefill?: string | undefined;
   onSend: (text: string) => void;
   onNewSession: () => void;
@@ -79,18 +65,12 @@ export function ChatView({
   const [draft, setDraft] = useState(prefill ?? "");
   const [stage, setStage] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
-  // The last seed this composer has taken. A seed is applied only once, and
-  // only while it equals the draft's initial state — i.e. while the reader has
-  // not touched the composer (see the seeding effect).
+  // The last seed this composer has taken: a seed applies once, and only while the draft
+  // is still untouched.
   const seededRef = useRef<string | undefined>(prefill);
 
-  // Seed the composer from the route's pre-fill (#175): the draft becomes the
-  // question, never a sent turn. The clobber guard is the `seededRef`
-  // comparison: the effect re-runs when the seed arrives (client-side
-  // navigation) but applies it only while the draft is still the untouched
-  // initial value, so a draft the reader has already edited is never
-  // overwritten. A seed already taken is not re-applied; an absent seed leaves
-  // the composer alone.
+  // Seed the composer from the route's pre-fill: the draft becomes the question, never a sent
+  // turn, and the `seededRef` guard applies it only while the draft is still untouched.
   useEffect(() => {
     if (prefill === undefined || seededRef.current === prefill) return;
     setDraft((current) => (current === (seededRef.current ?? "") ? prefill : current));
@@ -116,27 +96,22 @@ export function ChatView({
   }, [messages.length]);
 
   const sendText = (text: string): boolean => {
-    // `loadingTranscript` is part of the guard (thermo-review A1): a send
-    // inside the rehydration window would append optimistic turns that the
-    // resolving transcript cannot contain.
+    // `loadingTranscript` is part of the guard: a send inside the rehydration window would
+    // append optimistic turns the resolving transcript cannot contain.
     if (text === "" || busy || loadingTranscript) return false;
     onSend(text);
     return true;
   };
 
-  // The ceiling hint, derived from the draft rather than tracked in state: the
-  // clamped draft is the single source of truth, so the hint cannot go stale
-  // (a cleared draft clears it). The number is the contract's, formatted per
-  // locale through the i18n layer's own Intl helper (id: "2.000", en: "2,000")
-  // and substituted by its `{max}` convention (thermo-review B2).
+  // The ceiling hint is derived from the draft, not tracked in state, so it cannot go stale:
+  // the number is the contract's, formatted per locale and substituted by `{max}`.
   const atMessageLimit = draft.length >= CHAT_MESSAGE_MAX_LENGTH;
   const limitHint = formatMessage(locale, "composerLimit", {
     max: formatNumber(locale, CHAT_MESSAGE_MAX_LENGTH),
   });
 
-  // Guard before clearing (thermo-review A1): a send rejected by the busy or
-  // rehydration guard must preserve the draft, exactly as before the
-  // submit/sendText split — never clear a message the user cannot recover.
+  // Guard before clearing: a send rejected by the busy or rehydration guard must preserve
+  // the draft — never clear a message the user cannot recover.
   const submit = (): void => {
     const text = draft.trim();
     if (text === "" || !sendText(text)) return;
@@ -214,9 +189,8 @@ export function ChatView({
               <EnterIcon />
             </button>
           </form>
-          {/* Always in the DOM so the live region announces the transition
-              (a conditionally mounted role="status" often goes unannounced);
-              empty at rest, so it costs no visual space beyond one text line. */}
+          {/* Always in the DOM so the live region announces the transition — a
+              conditionally mounted role="status" often goes unannounced. */}
           <p
             id="composer-limit"
             data-testid="composer-limit"

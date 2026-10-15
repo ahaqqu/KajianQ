@@ -16,10 +16,8 @@ import {
 import { buildHadithCorpus, corpusGradeStats } from "./hadith-ingest";
 
 /**
- * Unit tests for the hadith domain model + parsers (#7). Fixtures are REAL
- * source slices (fawazahmed0/hadith-api, Sunan Abu Dawud book 1 "Purification"
- * — the slice deliberately spans every grade-mapping branch: all-Hasan,
- * Sahih-vs-Daif disagreement, all-Daif, all-Sahih, and Shadh-vs-Sahih).
+ * Unit tests for the hadith domain model + parsers, on real source slices
+ * (fawazahmed0/hadith-api, Sunan Abu Dawud book 1 "Purification").
  */
 
 const FIXTURES = resolve(import.meta.dirname, "fixtures/hadith");
@@ -37,18 +35,11 @@ describe("hadith grade consolidation (ADR-0026 dhaif-wins)", () => {
     const { arabicText } = await loadSlices();
     const edition = parseHadithEdition("abudawud", "arabic", JSON.parse(arabicText));
     const gradesOf = (n: string) => edition.hadiths.find((h) => h.hadithnumber === n)?.grades ?? [];
-    // n=1: Hasan Sahih ×2 + Sahih Lighairihi + Isnaad Hasan → hasan (the
-    // weaker class wins over plain Sahih).
     expect(mapGrades(gradesOf("1"))).toBe("hasan");
-    // n=2: Sahih, Sahih, Sahih Lighairihi, Daif → dhaif wins (Albani vs Zai).
     expect(mapGrades(gradesOf("2"))).toBe("dhaif");
-    // n=3: all Daif → dhaif.
     expect(mapGrades(gradesOf("3"))).toBe("dhaif");
-    // n=4: all Sahih (incl. "Sahih Bukhari (142) Sahih Muslim (375)") → sahih.
     expect(mapGrades(gradesOf("4"))).toBe("sahih");
-    // n=5: Shadh ×2 vs Isnaad Sahih → dhaif (Shadh is a defect class).
     expect(mapGrades(gradesOf("5"))).toBe("dhaif");
-    // n=14, n=17: mixed Sahih/Daif → dhaif.
     expect(mapGrades(gradesOf("14"))).toBe("dhaif");
     expect(mapGrades(gradesOf("17"))).toBe("dhaif");
   });
@@ -57,11 +48,9 @@ describe("hadith grade consolidation (ADR-0026 dhaif-wins)", () => {
     expect(mapGrades([{ name: "X", grade: "Munkar" }])).toBe("dhaif");
     expect(mapGrades([{ name: "X", grade: "Very Daif" }])).toBe("dhaif");
     expect(mapGrades([{ name: "X", grade: "Sanad Daif" }])).toBe("dhaif");
-    // Real weak classes that previously fell through (review A3).
     expect(mapGrades([{ name: "X", grade: "Mawdu" }])).toBe("dhaif");
     expect(mapGrades([{ name: "X", grade: "Batil" }])).toBe("dhaif");
     expect(mapGrades([{ name: "X", grade: "Sahih Isnaad Mursal" }])).toBe("dhaif");
-    // Mawdu beats a grader's Hasan (review A3: ibnmajah:2736).
     expect(
       mapGrades([
         { name: "X", grade: "Mawdu" },
@@ -70,13 +59,13 @@ describe("hadith grade consolidation (ADR-0026 dhaif-wins)", () => {
     ).toBe("dhaif");
     expect(mapGrades([{ name: "X", grade: "Sahih Muslim" }])).toBe("sahih");
     expect(mapGrades([{ name: "X", grade: "Isnaad Hasan" }])).toBe("hasan");
-    // Attribution-scope classes combine with positive grades and are NOT
-    // defects ("Mauquf Sahih" is graded sahih-as-mauquf in the source).
+    // Attribution-scope classes combine with positive grades and are not
+    // defects ("Mauquf Sahih" grades sahih).
     expect(mapGrades([{ name: "X", grade: "Mauquf Sahih" }])).toBe("sahih");
     expect(mapGrades([{ name: "X", grade: "Maqtu Daif" }])).toBe("dhaif");
     // Bare Maqtu/Mauquf carry no class at all — null, never fabricated.
     expect(mapGrades([{ name: "X", grade: "Maqtu" }])).toBeNull();
-    // Marfoo is an elevated chain, not a defect (review A3) — no longer weak.
+    // Marfoo is an elevated chain, not a defect.
     expect(mapGrades([{ name: "X", grade: "Marfoo" }])).toBeNull();
     expect(mapGrades([])).toBeNull();
     expect(mapGrades([{ name: "X", grade: "Mash-hoor" }])).toBeNull();
@@ -152,11 +141,10 @@ describe("hadith citation format (CONTEXT.md: HR. Bukhari no. 573 (Sahih))", () 
       expect(parsed).not.toBeNull();
       expect(parsed?.collection).toBe(collection);
       expect(parsed?.hadithNo).toBe("12");
-      // Round-trip with the grade suffix too.
       const graded = formatHadithCitation({ collection, hadithNo: "12", grade: "sahih" });
       expect(parseHadithCitation(graded)?.grade).toBe("sahih");
     }
-    // The two multi-word display names explicitly (previously returned null).
+    // Multi-word display names parse explicitly.
     expect(parseHadithCitation("HR. Abu Dawud no. 4 (Sahih)")).toEqual({
       sourceType: "hadith",
       collection: "abudawud",
@@ -205,7 +193,6 @@ describe("hadith edition parsing + alignment (real fixture slices)", () => {
   });
 
   it("throws on shape drift", async () => {
-    // parseHadithEdition is sync-throwing; wrap to assert the message.
     expect(() => parseHadithEdition("abudawud", "arabic", { metadata: null, hadiths: [] })).toThrow(
       /no metadata/,
     );
@@ -225,9 +212,8 @@ describe("hadith edition parsing + alignment (real fixture slices)", () => {
     const arabic = parseHadithEdition("abudawud", "arabic", JSON.parse(arabicText));
     const indonesian = parseHadithEdition("abudawud", "indonesian", JSON.parse(indonesianText));
     const { records, stats } = alignEditions(arabic, indonesian);
-    // The slice's hadith 5 is GENUINELY empty in the source (a real Shadh
-    // narration quirk) — tolerated as textId: null, surfaced in stats,
-    // never fabricated.
+    // The slice's hadith 5 is genuinely empty in the source — tolerated as
+    // textId: null, surfaced in stats, never fabricated.
     expect(records).toHaveLength(7);
     expect(stats.aligned).toBe(6);
     expect(stats.emptySecondary).toBe(1);
@@ -248,8 +234,7 @@ describe("hadith edition parsing + alignment (real fixture slices)", () => {
     const edition = parseHadithEdition("abudawud", "arabic", raw);
     expect(edition.hadiths[0]!.hadithnumber).toBe("1");
     expect(edition.hadiths[0]!.arabicnumber).toBe("1");
-    // muslim's book-0 rows lack arabicnumber entirely — falls back to the
-    // edition's own hadithnumber (the alignment's fallback join key).
+    // muslim's book-0 rows lack arabicnumber — the parser falls back to the edition's own hadithnumber.
     const edition2 = parseHadithEdition("muslim", "arabic", {
       metadata: {},
       hadiths: [{ hadithnumber: 3, text: "matn", grades: [], reference: { book: 0, hadith: 3 } }],
@@ -299,8 +284,7 @@ describe("hadith edition parsing + alignment (real fixture slices)", () => {
         grades: [],
       })),
     });
-    // Zero out the Arabic text of hadith 5 (as the source genuinely ships
-    // for many rows: 86 in ara-nasai, 29 in ara-malik).
+    // Zero out the Arabic text of hadith 5, as the source genuinely ships for many rows.
     arabic.hadiths = arabic.hadiths.map((h) => (h.hadithnumber === "5" ? { ...h, text: "" } : h));
     const { records, stats } = alignEditions(arabic, indonesian);
     expect(records.map((r) => r.hadithNo)).not.toContain("5");
@@ -312,7 +296,6 @@ describe("hadith edition parsing + alignment (real fixture slices)", () => {
   it("quarantines unmatched entries instead of force-merging", async () => {
     const { arabicText } = await loadSlices();
     const arabic = parseHadithEdition("abudawud", "arabic", JSON.parse(arabicText));
-    // An Indonesian edition missing hadith 17 leaves an unmatched ara entry.
     const indonesian = parseHadithEdition("abudawud", "indonesian", {
       metadata: { sections: { "1": "Purification" }, section_details: {} },
       hadiths: arabic.hadiths
@@ -355,8 +338,6 @@ describe("hadith corpus build", () => {
     );
     expect(corpus.records).toHaveLength(7);
     const stats = corpusGradeStats(corpus);
-    // Every record in the slice is graded; the dhaif-wins demotions are the
-    // real disagreement entries (2, 3, 5, 14, 17).
     expect(stats.graded).toBe(7);
     expect(stats.dhaifWins).toBe(5);
     expect(stats.ungraded).toBe(0);
@@ -371,7 +352,6 @@ describe("hadith corpus build", () => {
 
   it("validates edition-map keys up front (review B5)", async () => {
     const { arabicText, indonesianText } = await loadSlices();
-    // An unregistered collection code is rejected before parsing.
     expect(() =>
       buildHadithCorpus({
         arabic: { "not-a-collection": JSON.parse(arabicText) },

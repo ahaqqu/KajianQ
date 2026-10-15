@@ -18,9 +18,9 @@ import {
 import { parseSseStream } from "./sse";
 
 /**
- * The chat stream consumer (#11): POST /v1/chat and walk the SSE wire
- * (`meta → delta(s) → citations → trace → done`, ADR-0034 + ADR-0040 +
- * #12). Streaming-native: deltas append as they arrive (single or multiple),
+ * The chat stream consumer: POST /v1/chat and walk the SSE wire
+ * (`meta → delta(s) → citations → trace → done`, ADR-0034 + ADR-0040).
+ * Streaming-native: deltas append as they arrive (single or multiple),
  * the citations and trace frames are validated against the shared contracts
  * and handed over whole — the client never parses answer text for citations
  * and never reconstructs pipeline machinery for the Trace panel. Token
@@ -54,7 +54,7 @@ export async function askChat(
   let bearer = token ?? (await bootstrapAnonymousToken(input.signal));
   let res = await postChat(input, bearer);
   if (res.status === 401) {
-    // Silent token re-bootstrap, retried once (plan decision: 401 edge).
+    // Silent token re-bootstrap, retried once.
     bearer = await bootstrapAnonymousToken(input.signal);
     res = await postChat(input, bearer);
   }
@@ -77,8 +77,8 @@ export async function askChat(
       const parsed = v.safeParse(ChatCitationsFrameSchema, value);
       if (parsed.success) handlers.onCitations?.(parsed.output);
     } else if (frame.event === "trace") {
-      // Same optional-decoration posture as citations (#12): an invalid trace
-      // frame is skipped — the answer stands without a panel, never broken.
+      // Same optional-decoration posture as citations: an invalid trace frame
+      // is skipped — the answer stands without a panel, never broken.
       const value = parseJsonSafe(frame.data);
       if (value === undefined) continue;
       const parsed = v.safeParse(ChatTraceFrameSchema, value);

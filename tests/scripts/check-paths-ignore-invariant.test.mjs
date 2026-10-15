@@ -27,23 +27,23 @@ import {
 } from "../../scripts/check-paths-ignore-invariant.mjs";
 
 /**
- * #399 — the gate for staging.yml's paths-ignore invariant.
+ * The gate for staging.yml's paths-ignore invariant.
  *
  * The traps this suite is built around, named before the assertions:
- *   T1 (falsification)  a matched path that IS imported by a deploy entry must
- *                       exit non-zero — a suite that only ever passes the clean
- *                       tree tests nothing;
- *   T2 (rename)         the production module is moved into the class by a NAME
- *                       change (`prod-test-utils.ts`), so any check built from a
- *                       name list would pass it — the closure must catch it;
- *   T3 (comment)        a file containing the text of an import of a matched
- *                       module, inside a comment, must stay green — that is the
- *                       difference between "imports" and "mentions";
- *   T4 (importer class) a matched helper imported only by `*.test.ts` files must
- *                       stay green: the class exists to be imported by tests;
- *   T5 (glob)           `*` must never cross `/`, `**` must, and `**` before a
- *                       slash must match zero directories;
- *   T6 (fail-closed)    unreadable input refuses non-zero, never passes.
+ *   falsification   a matched path that IS imported by a deploy entry must
+ *                   exit non-zero — a suite that only ever passes the clean
+ *                   tree tests nothing;
+ *   rename          the production module is moved into the class by a NAME
+ *                   change (`prod-test-utils.ts`), so any check built from a
+ *                   name list would pass it — the closure must catch it;
+ *   comment         a file containing the text of an import of a matched
+ *                   module, inside a comment, must stay green — that is the
+ *                   difference between "imports" and "mentions";
+ *   importer class  a matched helper imported only by `*.test.ts` files must
+ *                   stay green: the class exists to be imported by tests;
+ *   glob            `*` must never cross `/`, `**` must, and `**` before a
+ *                   slash must match zero directories;
+ *   fail-closed     unreadable input refuses non-zero, never passes.
  */
 const CLI = resolve(REPO_ROOT, "scripts/check-paths-ignore-invariant.mjs");
 const CLI_URL = pathToFileURL(CLI).href;
@@ -98,8 +98,8 @@ const DEPLOY_SH = [
 
 /**
  * The green tree: every class member exists, and none of them is imported by a
- * deploy entry. `app.test.ts` imports the domain pack's test-utils (T4), and
- * `app.tsx` carries an import statement inside a comment (T3).
+ * deploy entry. `app.test.ts` imports the domain pack's test-utils, and
+ * `app.tsx` carries an import statement inside a comment.
  */
 const BASE = {
   ".github/workflows/staging.yml": WORKFLOW,
@@ -153,7 +153,7 @@ const jsonParser = (text) => JSON.parse(text);
 
 describe("#399 GitHub glob semantics, not the shell's", () => {
   const cases = [
-    // T5 — the two wildcards, and the zero-directory `**` case.
+    // The two wildcards, and the zero-directory `**` case.
     ["docs/**", "docs/a.md", true],
     ["docs/**", "docs/nested/a.md", true],
     ["*.md", "docs/a.md", false],
@@ -196,7 +196,7 @@ describe("#399 GitHub glob semantics, not the shell's", () => {
 
 describe("#399 the match set is the class's real members", () => {
   it("matches every test-support member the repo actually has", () => {
-    // The class members #380/#398 rely on, matched by the real patterns.
+    // The class members this check relies on, matched by the real patterns.
     const compiled = compilePatterns([
       "**/test-utils/**",
       "**/*test-utils*",

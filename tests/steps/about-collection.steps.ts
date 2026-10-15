@@ -6,13 +6,11 @@ const { Before, When, Then } = createBdd();
 /**
  * The About and Collection pages, and the header nav that reaches them. The
  * burger disclosure is asserted at a mobile viewport (the `< sm` breakpoint
- * collapses the inline nav), so the browser's real CSS decides which layout the
- * page uses — the jsdom component tests pin the disclosure contract.
+ * collapses the inline nav), so the browser's real CSS decides the layout.
  */
 
-// Every scenario gets its own `page` (fresh browser context), so this reset is
-// belt-and-braces (thermo-review C2): it guarantees a desktop viewport even if
-// the config ever moves to shared contexts or reordered scenarios.
+// Belt-and-braces: it guarantees a desktop viewport even if the config moves to
+// shared contexts or reordered scenarios.
 Before(async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
 });
@@ -142,23 +140,15 @@ Then("I see the about page in English", async ({ page }) => {
   await expect(page.getByTestId("about-principles")).toContainText("Name the source");
 });
 
-// --- The privacy notice (#179, GDPR-C) -----------------------------------
-// The notice renders the ADR-0043 register and the retention values, with the
-// netcup host marked in use today (#181 moved the serving path onto it, and the
-// 2026-09-21 decommissioning left Cloudflare/Neon registered as no-serving-role),
-// so the notice is never false. The
-// erasure path is named as the endpoint that exists. The steps assert the copy
-// and the status attributes a reader actually sees.
+// --- The privacy notice ---------------------------------------------------
+// The notice renders the register and the retention values, with the serving host
+// marked in use today and the retired vendors kept as no-serving-role rows.
 
 When("I see the privacy notice rendered from the register", async ({ page }) => {
   const notice = page.getByTestId("about-privacy");
   await expect(notice).toContainText("Siapa yang memproses data Anda");
   await expect(notice.getByTestId("about-privacy-controller")).toContainText("Angga (@ahaqqu)");
-  // Every register row is its own card (netcup, Cloudflare, Neon, and the LLM
-  // vendors), and the rule that governs them is stated. Seven rows since the
-  // the 2026-09-21 owner decision removed Moonshot (ADR-0044 decision 7); the
-  // decommissioning (2026-09-21) keeps Cloudflare and Neon registered as
-  // no-serving-role rows.
+  // Every register row is its own card; the count is a floor, not the register size.
   const processors = notice.getByTestId("about-privacy-processor");
   expect(await processors.count()).toBeGreaterThanOrEqual(7);
   await expect(notice).toContainText("netcup GmbH");
@@ -175,9 +165,8 @@ Then(
     await expect(netcup.getByTestId("about-privacy-processor-status")).toHaveText(
       "Dipakai hari ini",
     );
-    // The decommissioning is executed (2026-09-21, owner-approved): both
-    // retired vendors remain registered — the free-tier history and the R2
-    // provenance archive keep their rows — but each says "no serving role".
+    // Retired vendors stay registered — their history keeps its row — but each
+    // says "no serving role".
     for (const vendor of ["Cloudflare, Inc.", "Neon, Inc."]) {
       const row = page.getByTestId("about-privacy-processor").filter({ hasText: vendor });
       await expect(row).toHaveAttribute("data-status", "no-serving-role");
@@ -192,9 +181,8 @@ Then(
     const row = page
       .getByTestId("about-privacy-retention-row")
       .filter({ hasText: "Log akses reverse proxy" });
-    // Live since the 2026-09-21 cutover applied the logrotate stanza on the
-    // host (Art. 30 §7 "Applied on the host") — the row no longer renders as
-    // planned, and it must not claim a ticket for work that is done.
+    // The row renders as current — the logrotate stanza is applied on the host —
+    // and it must not claim a ticket for work that is done.
     await expect(row).toHaveAttribute("data-status", "current");
     await expect(row).toContainText(mark);
     await expect(row).not.toContainText("#180");
@@ -205,7 +193,6 @@ Then(
 Then("the erasure card names the endpoint that erases the data", async ({ page }) => {
   const erasure = page.getByTestId("about-privacy-erasure");
   await expect(erasure).toContainText("DELETE /v1/auth/me");
-  // The cascade names all four subtrees the endpoint removes.
   await expect(erasure).toContainText(
     "sesi, sesi obrolan dan pesannya, trace setiap jawaban, dan masukan",
   );
@@ -220,11 +207,9 @@ Then("I see the privacy notice in English", async ({ page }) => {
   await expect(notice.getByTestId("about-privacy-erasure")).toContainText("no button for this yet");
 });
 
-// --- The browser-storage line (#179 follow-up) ---------------------------
-// The notice states what stays on the visitor's device: no cookies, the
-// session token and theme preference in localStorage, erasable by the user.
-// The steps assert the RENDERED copy and key list, so a data change that never
-// reaches the page fails here.
+// --- The browser-storage line --------------------------------------------
+// The notice states what stays on the visitor's device: no cookies, the session
+// token and theme preference in localStorage, erasable by the user.
 
 Then(
   "I see the browser-storage line: no cookies, localStorage keys, erasable",
@@ -234,7 +219,6 @@ Then(
     await expect(storage).toContainText("tidak memasang cookie");
     await expect(storage).toContainText("tanpa pelacakan");
     await expect(storage).toContainText("menghapusnya sendiri");
-    // The keys named are the ones the app writes.
     await expect(storage).toContainText("kajianq.auth.token");
     await expect(storage).toContainText("kajianq.chat.sessionId");
     await expect(storage).toContainText("kajianq.theme");
@@ -248,11 +232,9 @@ Then("I see the browser-storage line in English", async ({ page }) => {
   await expect(storage).toContainText("erase them yourself");
 });
 
-// --- "Ask about this source" affordance (#175) ---------------------------
-// The first available entry is the Uthmani Quran text; its Indonesian question
-// (the page's default locale) is pinned here explicitly, so the scenario
-// asserts the data module's real copy reaching the composer — not a value the
-// test read back from the same link it is checking.
+// --- "Ask about this source" affordance ----------------------------------
+// The first available entry is the Uthmani Quran text, and its Indonesian question
+// (the default locale) is pinned so the step asserts the data module's real copy.
 
 const FIRST_ASK_ID = "Apa yang Al-Qur'an katakan tentang kesabaran?";
 const FIRST_ASK_EN = "What does the Quran say about patience?";
@@ -287,9 +269,8 @@ Then("the first available source's ask link is in English", async ({ page }) => 
     .getByTestId("collection-ask")
     .first();
   await expect(link).toHaveText("Ask about this source");
-  // The question follows the locale too, not only the label. The origin is
-  // irrelevant: only the `q` param is asserted, so the base URL never couples
-  // the step to a specific serving origin (thermo-review C1).
+  // The question follows the locale too, not only the label: only the `q` param
+  // is asserted, so the step never couples to a serving origin.
   const q = new URL((await link.getAttribute("href"))!, "http://example.com").searchParams.get("q");
   expect(q).toBe(FIRST_ASK_EN);
 });

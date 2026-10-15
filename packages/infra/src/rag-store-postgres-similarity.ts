@@ -66,7 +66,7 @@ export function postgresSimilaritySearch(
 }
 
 /**
- * The by-id child read behind the structured citation payload (#11). Same
+ * The by-id child read behind the structured citation payload. Same
  * embedding-stripping contract as the similarity search above: the caller
  * reads text/citation/metadata, so the vector columns are selected as NULL
  * and stay null on the mapped rows. The parent join carries the display

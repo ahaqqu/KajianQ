@@ -2,7 +2,7 @@ import { readFileSync, statSync } from "node:fs";
 import type { AssetFetcher } from "@app/hardening";
 
 /**
- * A disk-backed `ASSETS` fetcher for the Bun serving entry (#181, ADR-0044).
+ * A disk-backed `ASSETS` fetcher for the Bun serving entry (ADR-0044).
  *
  * The Hono app's catch-all calls `serveAssets(request, c.env.ASSETS)`, which
  * applies the API-prefix 404 and the immutable-cache policy (ADR-0041's

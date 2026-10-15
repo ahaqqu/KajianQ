@@ -12,28 +12,23 @@ import { SURAH_AYAH_COUNTS } from "./surah-names";
 import { declaresAddressList } from "./chat-citation-grammar";
 
 /**
- * The #253 invariant, machine-checked: **a citation's tail is punctuation, not
+ * The invariant, machine-checked: **a citation's tail is punctuation, not
  * identity.** `normalizeCitationLabel` is the one boundary both the retrieved
  * chunk's label and the draft's extracted span pass through, so the property
  * is stated against it directly and against the gate that consumes it.
  *
- * Review B1 widened the alphabet from an enumerated 13-character list to a
- * **systematic sweep over the Unicode classes** a generator can glue to a
- * citation's tail — punctuation, symbols, superscripts/subscripts, combining
- * marks, whitespace, and the address-bearing digit and letter classes — so the
- * property states the class, not the shapes somebody happened to find. The
- * enumerated list omitted every shape the class-closure hunt turned up (ASCII
- * hyphen, U+2012, U+2015, `¹`, `:1`, full-width `：`, glued `(`), which is
- * exactly why the suite stayed green on a head that still false-refused
- * grounded citations (A1/A2).
+ * The alphabet is a **systematic sweep over the Unicode classes** a generator
+ * can glue to a citation's tail — punctuation, symbols, superscripts/subscripts,
+ * combining marks, whitespace, and the address-bearing digit and letter classes
+ * — so the property states the class, not the shapes somebody happened to find.
  *
- * #264 moved two more classes, and the sweep moved with them — but a tail-only
- * sweep cannot fail for either, which review B1 executed and showed:
+ * A tail-only sweep cannot fail for two of the classes, so the sweep covers
+ * their positions too:
  *
  *  - invisible formatting (`\p{Cf}`) is stripped in the flatten step, so it is
  *    noise at **every position**, not only the tail: `HR. Bukhari no. 5\u200c010`
- *    used to truncate to a retrieved prefix sibling, so the sweep below inserts
- *    it before the marker, inside a number and after it;
+ *    must reduce to `no. 5010`, not to the retrieved prefix sibling `no. 5`, so
+ *    the sweep below inserts it before the marker, inside a number and after it;
  *  - a fullwidth digit (`５`, U+FF15) folds to its ASCII value. Glued to a
  *    number it still continues that number (pinned below), but that row is true
  *    with or without the fold — the row that can fail is the fullwidth
@@ -53,14 +48,12 @@ import { declaresAddressList } from "./chat-citation-grammar";
  *    addresses than `no. 5010`), so they must never reduce to the bare number;
  *  - a dash (`\p{Pd}`) joined to a number is the closed-up range form, kept
  *    whole so an unretrieved second address is never dropped from validation
- *    (A3's precision-for-safety trade-off, `DASH_JOINED_NUMBER_TAIL`, which
- *    #264 extended to the Quran compound `QS. 2:255—256`).
+ *    (the precision-for-safety trade-off on `DASH_JOINED_NUMBER_TAIL`, extended
+ *    to the Quran compound `QS. 2:255—256`).
  */
 
-/** Addresses in the product's grammars. */
 const ADDRESSES = ["QS. 2:255", "QS. 114:6", "HR. Bukhari no. 5010", "HR. Abu Dawud no. 1"];
 
-/** A retrieved chunk carrying one citation label. */
 function chunk(label: string): Chunk {
   return { id: `c-${label}`, text: "evidence", metadata: { citation: label } };
 }
@@ -73,7 +66,7 @@ const DASH_CHARS = ["-", "‐", "‑", "‒", "–", "—", "―", "−"] as con
 
 /**
  * The `\p{Cf}` characters the flatten step drops. Named because they are noise
- * at **every** position, not only the tail (review B1), so they sweep
+ * at **every** position, not only the tail, so they sweep
  * differently from the tail-only classes below.
  */
 const INVISIBLE_FORMATTING_CHARS = [
@@ -87,10 +80,9 @@ const INVISIBLE_FORMATTING_CHARS = [
 
 /**
  * One representative per Unicode class that can appear in a citation's tail.
- * `noise: true` means "carries no address information": a label that differs
- * from an address only by such characters must reduce to that address and
- * ground. Dashes are listed here as noise *on their own* — a dash followed by
- * a number is the compound case, pinned separately below.
+ * A label that differs from an address only by such characters must reduce to
+ * that address and ground. Dashes are listed here as noise *on their own* — a
+ * dash followed by a number is the compound case, pinned separately below.
  */
 const NOISE_CLASSES = [
   {
@@ -109,7 +101,7 @@ const NOISE_CLASSES = [
  * The address-bearing classes: characters that continue the number token
  * itself. They are NOT noise, and the tests below pin the fail-closed
  * direction — a label carrying one must never reduce to the bare address.
- * `５` is here because #264 folds the fullwidth block to ASCII first: it is
+ * `５` is here because the fullwidth block is folded to ASCII first: it is
  * still a digit, so it still continues the number.
  */
 const ADDRESS_BEARING_CLASSES = [
@@ -117,7 +109,6 @@ const ADDRESS_BEARING_CLASSES = [
   { name: "letters (\\p{L})", chars: ["a", "Z", "é", "ا", "中"] },
 ] as const;
 
-/** Every noise character, for the randomized combination properties. */
 const NOISE_POOL: readonly string[] = NOISE_CLASSES.flatMap(({ chars }) => [...chars]);
 
 describe("normalizeCitationLabel — property (#253 tail class, review B1)", () => {
@@ -136,12 +127,10 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
   });
 
   it("drops an invisible format character at EVERY position, not only the tail (B1)", () => {
-    // Review B1 executed the mutation: with the sweep above appending class
-    // characters at the tail only, reverting the `\p{Cf}` strip left this
-    // suite 9/9 green while four unit tests reddened — the row could not fail.
     // The flatten step drops the class from the whole label before a grammar
-    // reads it, so it is noise at every position; sweeping the positions is
-    // what gives the row teeth (reverting the strip now reddens THIS test).
+    // reads it, so it is noise at every position — a tail-only sweep cannot
+    // fail for it. Sweeping the positions is what gives the row teeth:
+    // reverting the strip reddens THIS test.
     for (const address of ADDRESSES) {
       for (const char of INVISIBLE_FORMATTING_CHARS) {
         for (let at = 0; at <= address.length; at += 1) {
@@ -161,10 +150,9 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
 
   it("folds a fullwidth rendering of every address digit (B1)", () => {
     // The ADDRESS_BEARING row below proves `５` continues a number — true with
-    // or without the fold, because `５` is `\p{Nd}` either way. What only the
-    // fold can satisfy is the fullwidth RENDERING of an address: without the
-    // fold the digits stay fullwidth, the label does not equal its ASCII
-    // address, and this test reddens (executed — that is its mutation proof).
+    // or without the fold, because `５` is `\p{Nd}` either way. Only the fold can
+    // satisfy the fullwidth RENDERING of an address: without it the digits stay
+    // fullwidth and the label does not equal its ASCII address.
     const fullwidth = (text: string) =>
       text.replace(/[0-9]/g, (digit) => String.fromCharCode((digit.charCodeAt(0) ?? 0) + 0xfee0));
     for (const address of ADDRESSES) {
@@ -186,13 +174,12 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
   });
 
   it("drops a pair of noise classes, including a footnote pair and a bracketed pair", () => {
-    // Pairs are where the enumerated list was thinnest: `:1` (the footnote),
-    // `¹:`, `)：`, `：:`, `…¹`. A pair of noise characters carries no address
-    // either, so the label still reduces to the address. The dash+superscript
-    // pairs pin the compound guard's boundary: `\p{No}` superscripts are
-    // footnote markers, not the decimal digits an address is made of, so a
-    // dash before one does NOT keep the compound (a dash before `1` does —
-    // see the A3 property below).
+    // A pair of noise characters carries no address either, so the label still
+    // reduces to the address — `:1` (the footnote), `¹:`, `)：`, `：:`, `…¹`. The
+    // dash+superscript pairs pin the compound guard's boundary: `\p{No}`
+    // superscripts are footnote markers, not the decimal digits an address is
+    // made of, so a dash before one does NOT keep the compound (a dash before
+    // `1` does — see the dash property below).
     for (const pair of [
       ":1",
       ":12",
@@ -237,12 +224,11 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
   });
 
   it("keeps a dash joined to a number whole — per grammar, whole-label vs per-address", () => {
-    // #264 gave both grammars the same absorption and the same whole-label
-    // rule. ADR-0049 keeps that rule for a grammar that declares no address
-    // list (the hadith number) and completes #264's own A3 follow-up for the
-    // one that does (the Quran range), so the two grammars no longer share the
-    // verdict — they share the constant. This property is what pins the split:
-    // every dash spelling, both directions of the range.
+    // Both grammars absorb the dash-joined tail and share the whole-label rule
+    // (the constant), but not the verdict: ADR-0049 keeps the whole-label rule
+    // for a grammar that declares no address list (the hadith number) and
+    // decides the one that does (the Quran range) per address. This property
+    // pins the split: every dash spelling, both directions of the range.
     const hadith: string[] = [];
     const quranGrounds: string[] = [];
     const quranRefuses: string[] = [];
@@ -251,7 +237,7 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
         hadith.push(`HR. Bukhari no. 5010${dash}${number}`);
       }
       // A tail that resolves to the retrieved second address (256) and tails
-      // that do not: 257 was never retrieved, and ٢٥٦ is another script's
+      // that do not: 257 is not retrieved, and ٢٥٦ is another script's
       // digits, which no ASCII corpus label grounds (the digit posture).
       for (const number of ["256"]) {
         quranGrounds.push(`QS. 2:255${dash}${number}`);
@@ -296,15 +282,12 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
     // The invariant, swept over the shapes the grammar admits: a range whose
     // endpoints are equal names exactly the address its two endpoints spell, so
     // it grounds iff that address is in the retrieved set — for every joiner
-    // spelling, in the glued form (the fix's class: refused at base) and in the
-    // spaced form (a **no-regression** pin, not a widening of this fix: the head
-    // address there is followed by a space, so the extension rule already
-    // accepted all 16 of those shapes at base — 0 moved) — and in the refused
-    // direction when only a NEIGHBOURING verse was retrieved. The rule used to be gated on
-    // the declared list's length, so every one of these spans was refused with
-    // the address in hand: on staging that replaced a 31-chunk grounded answer
-    // with the canonical refusal (trace `b8812e2d-…`), silently — the refusal is
-    // a legal answer, an empty frame is a legal frame, and nothing reddened.
+    // spelling, in the glued form and in the spaced form (the head address there
+    // is followed by a space, so the shortened-label rule accepts that spelling
+    // too) — and in the refused direction when only a NEIGHBOURING verse was
+    // retrieved. Refusing such a span with the address in hand is silent: the
+    // refusal is a legal answer, an empty frame is a legal frame, and nothing
+    // reddens.
     const property = fc.property(
       fc.integer({ min: 1, max: 114 }),
       fc.integer({ min: 1, max: 286 }),
@@ -314,9 +297,8 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
         const ayah = 1 + (rawAyah % count);
         const address = `QS. ${surah}:${ayah}`;
         const neighbour = `QS. ${surah}:${1 + (ayah % count)}`;
-        // The glued form is the fix's class; the spaced twin was already
-        // accepted at base through the extension rule, so it pins no
-        // regression rather than a widening this change caused.
+        // The spaced twin is accepted through the shortened-label rule, so it
+        // pins no regression the declared-list rule could introduce.
         const forms = [`${address}${dash}${ayah}`, `${address} ${dash} ${ayah}`];
         for (const form of forms) {
           // The declaration half: the range names ONE address — the one its
@@ -341,21 +323,22 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
   });
 
   it("never grounds a plain span on a marker it did not name — the whole address space (#449)", () => {
-    // The class the declared-list branch's shape proxy left open, exhausted rather
-    // than sampled: with a retrieved set holding the bare marker `QS.`, EVERY numeric
-    // `surah:ayah` address this sweep enumerates (6,236 — the Tanzil table's own
-    // total) was grounded on the marker by the extension rule, in all three marker
-    // spellings the scan folds to one candidate. The class is plain Quran spans, wider
-    // than this rendering: a named-surah plain span narrows the same way and is pinned
-    // in `chat-citation-validator.test.ts` (review A2). The branch is keyed to the
-    // grammar's declaration now, so the span's own declared list of one decides it, and
-    // the marker grounds nothing.
+    // The class the declared-list branch's shape proxy leaves open, exhausted
+    // rather than sampled: with a retrieved set holding the bare marker `QS.`, a
+    // shape proxy would let the extension rule ground every numeric `surah:ayah`
+    // address this sweep enumerates on the marker, in all three marker spellings
+    // the scan folds to one candidate. The class is plain Quran spans, wider than
+    // this rendering: a named-surah plain span behaves the same way and is pinned
+    // in `chat-citation-validator.test.ts`. The branch is keyed to the grammar's
+    // declaration, so the span's own declared list of one decides it, and the
+    // marker grounds nothing.
     //
     // Stated per address and per spelling: the marker-only family refuses, and the
     // family holding the address the span names grounds on that address and no other
     // label. A reinstated shape proxy reddens this test at its FIRST address
-    // (`QS. 1:1`: expected null, received [ 'QS.' ]). The exhaustive sweep needs more
-    // than the default 5s when the whole suite runs in parallel (hence the timeout).
+    // (`QS. 1:1`: expected null, received [ 'QS.' ]). The exhaustive sweep is slower
+    // than the default timeout when the whole suite runs in parallel — hence the
+    // timeout below.
     const marker = "QS.";
     let addresses = 0;
     for (let surah = 1; surah <= SURAH_AYAH_COUNTS.length; surah += 1) {
@@ -365,7 +348,7 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
         const address = `QS. ${surah}:${ayah}`;
         // One scan for all three marker spellings, and the de-duplication is itself
         // the assertion: the scan folds `QS.`/`Q.S.`/`QS ` to ONE candidate — the
-        // address. Scanning them apart would only repeat that fold 6,236 times.
+        // address. Scanning them apart would only repeat that fold.
         const candidates = citationCandidatesIn(
           `Lihat ${address} dan Q.S. ${surah}:${ayah} dan QS ${surah}:${ayah} ya`,
         );
@@ -382,20 +365,16 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
         ]);
       }
     }
-    // The ticket's own figure, reproduced: all 6,236 valid addresses are this class,
-    // and the marker reaches none of them after the fix.
     expect(addresses).toBe(6236);
   }, 15000);
 
   it("holds the declared-list laws over addresses x joiners x renderings x retrieved sets (#449)", () => {
-    // The differential-free statement of the same change, over the numeric-address
-    // shape space the sweep measured (6,236 addresses x 8 joiners x 4 renderings x
-    // 6 retrieved-set families = 1,197,348 combinations; 0 widened / 6,236 narrowed at
-    // base `4003527`): however a retrieved set is composed, the verdict obeys the laws
-    // the gate promises — never a label outside the retrieved set, never a grounding
-    // that skips an address the span declares, never a marker grounding a span that
-    // does not name the marker, and adding retrieved labels never refuses a citation
-    // the gate already accepted.
+    // The statement of the laws, independent of any differential: however a
+    // retrieved set is composed, the verdict obeys the laws the gate promises —
+    // never a label outside the retrieved set, never a grounding that skips an
+    // address the span declares, never a marker grounding a span that does not
+    // name the marker, and adding retrieved labels never refuses a citation the
+    // gate already accepted.
     const marker = "QS.";
     const property = fc.property(
       fc.integer({ min: 1, max: 114 }),
@@ -531,11 +510,10 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
   });
 
   it("still refuses a fabricated citation glued at a STRUCTURAL position (review A3)", () => {
-    // The scan side used to read the raw draft, so a format character between
-    // `no` and `.` (or between the marker and its address) made the whole
-    // citation invisible and a FABRICATED one passed the gate unseen. With the
-    // scan reading the stripped text these all refuse; reverting that strip
-    // reddens this test deterministically.
+    // The scan reads the stripped text: a format character between `no` and `.`
+    // (or between the marker and its address) would otherwise make the whole
+    // citation invisible and let a FABRICATED one pass the gate unseen.
+    // Reverting that strip reddens this test deterministically.
     const cases: readonly (readonly [string, string])[] = [
       ["HR. Bukhari no\u200c. 99999", "HR. Bukhari no. 5010"],
       ["HR. Bukhari no\u200d. 99999", "HR. Bukhari no. 5010"],

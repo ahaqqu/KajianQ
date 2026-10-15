@@ -17,13 +17,12 @@ import { citationValidity } from "../../packages/eval/src/scorers";
 import { requireCitationGrammar } from "../../packages/eval/src/citation-grammar";
 
 /**
- * The shared staging bootstrap (thermo-review B2): `eval:run` and `eval:smoke`
- * both build their seams from this one module, so the two entry points cannot
- * drift. The Neon connection itself needs staging secrets, so what is pinned
- * here is the part that drifted before — the refusal markers, which must stay
- * in step with the domain pack's own refusal text. A script-side copy that
- * disagreed with the pipeline would make the harness score a real refusal as a
- * failure (or a failure as a refusal).
+ * The shared staging bootstrap: `eval:run` and `eval:smoke` both build their
+ * seams from this one module, so the two entry points cannot drift. The Neon
+ * connection itself needs staging secrets, so what is pinned here is the refusal
+ * markers, which must stay in step with the domain pack's own refusal text. A
+ * script-side copy that disagreed with the pipeline would make the harness score
+ * a real refusal as a failure (or a failure as a refusal).
  */
 describe("REFUSAL_MARKERS (shared staging harness)", () => {
   it("matches the domain pack's refusal text for both languages", () => {
@@ -50,15 +49,13 @@ describe("REFUSAL_MARKERS (shared staging harness)", () => {
 });
 
 /**
- * The composition root's citation grammar (review R1 of the #274 fix round).
- * `staging-harness.mjs` is JavaScript, so the engine's now-required
- * `CitationGrammar.addressesNamedBy` cannot be enforced by the type system
- * there: deleting the one property line that injects it would compile, pass
- * every package test, and silently return the scorer to the string-only
- * comparison that scored a grounded range 0 on the frame path (A1's defect).
- * The declaration is therefore pinned here — **identity with the domain pack's
- * own function**, not a stub — and the engine's grammar entry is exercised
- * through the real composition root.
+ * The composition root's citation grammar. `staging-harness.mjs` is JavaScript,
+ * so the engine's required `CitationGrammar.addressesNamedBy` cannot be enforced
+ * by the type system there: deleting the one property line that injects it would
+ * compile and pass every package test while the scorer silently scores a
+ * grounded range 0 on the frame path. The declaration is therefore pinned here —
+ * **identity with the domain pack's own function**, not a stub — and the engine's
+ * grammar entry is exercised through the real composition root.
  */
 describe("CITATION_GRAMMAR (shared staging harness)", () => {
   it("injects the domain pack's own functions, the naming declaration included", () => {
@@ -94,16 +91,14 @@ describe("CITATION_GRAMMAR (shared staging harness)", () => {
   });
 
   it("delivers the grammar from the real composition root, not only declares it (review T2)", async () => {
-    // R1 pinned the grammar OBJECT; this pins its DELIVERY. Deleting the one
-    // `citationGrammar: CITATION_GRAMMAR,` line from `createStagingHarness`
-    // still compiles and left every test in this suite green, so the scorer
-    // silently lost the normalization/range semantics (a marker-spelling
-    // variant scored 0 again). The assertion is behavioural and reads the
-    // harness the CLIs actually receive: what it returns must be the grammar,
-    // by identity, and it must still answer a naming question through the
-    // scorer. The URL is never dialled — `resolvePostgresStore` builds a lazy
-    // pool, so no staging secret is needed here — and the memoized pool is
-    // released below so the run does not leak a handle.
+    // This pins the grammar's DELIVERY, not only its declaration: deleting the
+    // one `citationGrammar: CITATION_GRAMMAR,` line from `createStagingHarness`
+    // still compiles, so the assertion is behavioural and reads the harness the
+    // CLIs actually receive — what it returns must be the grammar, by identity,
+    // and it must still answer a naming question through the scorer. The URL is
+    // never dialled — `resolvePostgresStore` builds a lazy pool, so no staging
+    // secret is needed here — and the memoized pool is released below so the run
+    // does not leak a handle.
     const harness = await createStagingHarness(
       { databaseUrl: "postgres://unused:unused@127.0.0.1:1/unused" },
       {},

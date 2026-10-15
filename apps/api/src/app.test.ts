@@ -147,9 +147,9 @@ describe("generated OpenAPI doc", () => {
 
   it("covers every registered /v1 route exactly (no doc drift)", async () => {
     const { api, doc } = await getDoc();
-    // Hono's route table uses `:param`; hono-openapi documents `{param}`.
-    // Both sides normalize through the shared owner (thermo-review B3) that
-    // scripts/openapi-check.mjs also imports, so the two checks agree.
+    // Hono's route table uses `:param`; hono-openapi documents `{param}`, so
+    // both sides normalize through the shared owner that
+    // scripts/openapi-check.mjs also imports — the two checks agree.
     const registered = [
       ...new Set(
         api.routes
@@ -182,8 +182,8 @@ describe("generated OpenAPI doc", () => {
     expect(message?.maxLength).toBe(CHAT_MESSAGE_MAX_LENGTH);
     expect(message?.description).toContain(`${CHAT_MESSAGE_MAX_LENGTH} characters`);
     expect(message?.description).toContain("invalid_request");
-    // The trim/length rule is part of the documented surface too (#256 C1):
-    // a client must not assume a body that trims to the ceiling is accepted.
+    // The trim/length rule is part of the documented surface too: a client must
+    // not assume a body that trims to the ceiling is accepted.
     expect(message?.description).toContain("no trim");
   });
 
@@ -191,8 +191,7 @@ describe("generated OpenAPI doc", () => {
     const { doc } = await getDoc();
     // The format lives on the API's documented surface, not only in the code:
     // a client reading /openapi.json can see that a non-UUID sessionId is a
-    // client error, not a server fault — the 500 this ticket removes was
-    // reachable by a body the published contract accepted.
+    // client error, not a server fault.
     const body = doc.paths["/v1/chat"]?.["post"]?.["requestBody"] as
       | {
           content: {

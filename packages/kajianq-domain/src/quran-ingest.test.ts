@@ -16,7 +16,7 @@ import { formatQuranCitation } from "./quran-source";
 import { Effect } from "effect";
 
 /**
- * INTEGRATION TEST — issue #6's design-for-verification core.
+ * INTEGRATION TEST — the design-for-verification core.
  *
  * The invariant under test (fails silently in production if broken): a
  * query phrased in INDONESIAN about a well-known ayah's meaning, searched
@@ -32,7 +32,7 @@ import { Effect } from "effect";
  * cross-lingual test double (see test-utils): it models the property the
  * real model is claimed to have — same concept, either language, nearby
  * vector — so the retrieval mechanics are genuinely exercised. The real
- * model's cross-lingual quality is the #9 embedding benchmark gate.
+ * model's cross-lingual quality belongs to the embedding-benchmark gate.
  *
  * The summarizer is a deterministic stub returning a real summary shape:
  * the LLM path itself is costed and asserted separately (rag-ingest
@@ -110,12 +110,11 @@ describe("Quran ingestion (fixture = real source data)", () => {
     }
     const alFalaq = corpus.morphology.get("113:1");
     expect(alFalaq).toBeDefined();
-    // (113:1) — أَعُوذُ بِرَبِّ الْفَلَقِ — 3 corpus words, first is 'aEu*u' V
     const first = alFalaq?.[0];
     expect(first?.pos).toBe("V");
     expect(first?.lemma).toBeDefined();
     expect(first?.root).toBeDefined();
-    // Word/segment positions are 1-based; (113:1) has 4 corpus words.
+    // Word/segment positions are 1-based.
     const words = new Set((alFalaq ?? []).map((t) => t.word));
     expect(words.size).toBe(4);
   });
@@ -177,12 +176,11 @@ describe("Quran ingestion (fixture = real source data)", () => {
 
     expect(result.parentIds).toHaveLength(4);
     expect(store.allChildren()).toHaveLength(22);
-    // Both embedding tracks written for every child.
     for (const child of store.allChildren()) {
       expect(child.embeddingPrimary).not.toBeNull();
       expect(child.embeddingFallback).not.toBeNull();
     }
-    // Aligned pairs — the seed rows for #24's concept-graph build.
+    // Aligned pairs — the seed rows for the concept-graph build.
     expect(store.allPairs()).toHaveLength(22);
     const pair = store.allPairs().find((p) => p.pairKey === "quran/tanzil-uthmani/surah/112:1");
     expect(pair?.textPrimary).toContain("قُلْ هُوَ");
@@ -213,7 +211,6 @@ describe("Quran ingestion (fixture = real source data)", () => {
         summarizer: surahSummarizer(deterministicSummarizer()),
       },
     );
-    // The parent metadata carries the summary and the embedding source marker.
     const parent = store.allParents().find((p) => p.sourceKey === "quran/tanzil-uthmani/surah/112");
     expect((parent?.metadata as Record<string, unknown> | undefined)?.summary).toContain(
       "Al-Ikhlas",

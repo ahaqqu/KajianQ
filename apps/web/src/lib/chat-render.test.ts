@@ -60,8 +60,8 @@ describe("parseInline", () => {
     ]);
   });
 
-  // #150 — the grounded model still wraps spans in markdown; the card must
-  // render them rich, never as literal asterisks.
+  // The grounded model still wraps spans in markdown; the card must render
+  // them rich, never as literal asterisks.
 
   it("renders **QS. 2:255** as bold with the citation chip nested inside", () => {
     const segments = parseInline("**QS. 2:255**", [citation("QS. 2:255")]);
@@ -190,7 +190,7 @@ describe("renderBodyBlocks", () => {
 
 // The trailing rule run — the shapes, orders, and repeats of `[warning]`,
 // `[disclaimer]`, and the ADR-0006 MT label — has its own spec:
-// `chat-render.dhaif-tail.test.ts` (#292).
+// `chat-render.dhaif-tail.test.ts`.
 describe("splitAnswerBlocks", () => {
   it("peels the disclaimer into its own block (ID copy)", () => {
     const disclaimer = "Jawaban ini bukan fatwa; rujuk ulama untuk keputusan hukum.";

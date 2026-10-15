@@ -12,9 +12,6 @@
  *     wording live there; an available entry carries only a one-line note here,
  *     never a duplicated license paragraph.
  *   - `SPECS.md` §2.1 (capabilities), §4.1 (sources) and §4.2 (priority kitab).
- *   - Issues #21 and #22 (priority kitab), #24 (terminology concept graph),
- *     #33 and #35 (complete verified author corpora), #141 (staging hadith
- *     headroom within the free-plan cap), #27–#31 (Sanadset isnad v2).
  *   - ADR-0014 (license-safe concept-graph seed sources) and ADR-0026
  *     (fawazahmed0 source, dhaif-wins grade consolidation).
  *
@@ -58,9 +55,9 @@ export type CollectionEntry = {
   attribution?: Localized;
   /**
    * The per-locale question the entry's "Ask about this source" affordance
-   * links into the chat with (#175) — the entry's own copy, in both locales,
-   * never a generic one. Available only, like `attribution`: a planned entry
-   * is registered work, and linking it into an answer would imply a source the
+   * links into the chat with: the entry's own copy, in both locales, never a
+   * generic one. Available only, like `attribution`: a planned entry is
+   * registered work, and linking it into an answer would imply a source the
    * corpus does not have.
    */
   ask?: Localized;

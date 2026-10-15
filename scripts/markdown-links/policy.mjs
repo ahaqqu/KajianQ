@@ -8,7 +8,7 @@
  * and the shape → rule matrix. The driver that applies them is
  * `../check-markdown-links.mjs`; this header is what a reviewer checks that
  * driver against, which is why the contract and the data it governs live
- * together (B1).
+ * together.
  *
  * THE INVARIANT. A living document that routes a reader to a path that does
  * not exist must redden `bun run docs:links`. Why this is a gate and not a
@@ -18,12 +18,8 @@
  * implements. A dangling one of those is not a typo; it is a compliance claim
  * whose proof has gone missing, and nothing else in CI would notice. GitHub
  * renders a dead relative link as ordinary text, so a reader cannot tell they
- * are looking at a broken citation either.
- *
- * This exists because the docs were consolidated (the VPS set was reduced to a
- * setup guide, an operations manual, and the evidence record) and every
- * deletion had to repoint its citations. Without this gate that repointing is
- * done by hand and verified by eye — the exact shape of check that rots.
+ * are looking at a broken citation either. Repointing citations by hand and
+ * verifying them by eye is the exact shape of check that rots.
  *
  * TWO SHAPES OF THE SAME CLAIM
  *
@@ -31,43 +27,37 @@
  *   2. `` `relative/path` `` — an inline code span naming a repo path, and
  *      `` `skill-name` skill `` — an inline code span naming a skill.
  *
- * Shape 2 was invisible until #368: agent-facing prose cites files as code
- * spans far more often than as links, and `AGENTS.md` routed every role to two
- * skills deleted in #133 while this gate stayed green. #367 repointed those
- * three references by hand; this gate is what would have caught them.
+ * Agent-facing prose cites files as code spans far more often than as links,
+ * which is why shape 2 is judged at all.
  *
  * RESOLUTION BASE — the committed tree, never the working tree.
  *
  *   A reference resolves when its target is in the git index: a tracked file,
- *   or a tracked directory (`apps/`, `.agents/skills/manager/`,
- *   `provision/vps/`). A root-relative code span is read against two bases —
- *   the repository root and the containing file's directory — and resolves if
+ *   or a tracked directory. A root-relative code span is read against two bases
+ *   — the repository root and the containing file's directory — and resolves if
  *   either finds it. `packages/infra/README.md` writes `scripts/db-migrate.mjs`
  *   meaning the package-relative `packages/infra/scripts/db-migrate.mjs`;
  *   a root-only rule would redden that honest reference.
  *
  *   A `./`- or `..`-rooted span is read against one base and one only: the
  *   containing file's directory. That is the reading the Markdown half gives the
- *   identical destination, and one base is what removes the disagreement that
- *   failed **open** in both prefix classes (#391 for `..`, #396 for `./`): with
- *   the root base also in play, a target that overshoots the file's directory
- *   and lands back inside the repository through the root directory's own name
- *   was `ok` as a span and `missing` as a link. One judge produces the reading
- *   and the verdict together (`judgeClaim`), so a finding cannot report the
- *   verdict of one rule beside the path of another. Markdown links keep their
- *   single, correct base for the same reason: a renderer resolves `(path)`
- *   against the containing file and nothing else, so accepting a root-relative
- *   fallback there would hide a link that is broken on GitHub.
+ *   identical destination, and one base is what removes the disagreement a
+ *   second, root base creates: a target that overshoots the file's directory and
+ *   lands back inside the repository through the root directory's own name would
+ *   be `ok` as a span and `missing` as a link. One judge produces the reading and
+ *   the verdict together (`judgeClaim`), so a finding cannot report the verdict
+ *   of one rule beside the path of another. Markdown links keep their single base
+ *   for the same reason: a renderer resolves `(path)` against the containing file
+ *   and nothing else, so accepting a root-relative fallback there would hide a
+ *   link that is broken on GitHub.
  *
  *   Why the index and not `existsSync`: `apps/web/dist/index.html` is cited by
  *   `docs/VPS-SETUP.md` and `docs/VPS-OPERATIONS.md` and is a *build output* —
- *   present after `bun run build:web`, absent in a fresh clone. A
- *   filesystem-resolving gate would be green for whoever just ran
- *   `bun run size-limit` and red in CI, so its verdict would measure the
- *   caller's build state rather than the commit. A gate that is not the same
- *   for every caller is not evidence. Targets git ignores are counted and
- *   skipped (`gitignored build paths` in the OK line), derived from
- *   `.gitignore` rather than a hand-kept list.
+ *   present after a build, absent in a fresh clone — so a filesystem-resolving
+ *   gate would measure the caller's build state rather than the commit. A gate
+ *   that is not the same for every caller is not evidence. Targets git ignores
+ *   are counted and skipped (`gitignored build paths` in the OK line), derived
+ *   from `.gitignore` rather than a hand-kept list.
  *
  *   COST, named: a new file must be `git add`ed before the gate can see it,
  *   and a tracked file deleted from the working tree without being staged
@@ -83,79 +73,67 @@
  *   top-level directory of the tree, listed in CLAIM_ROOTS — or is exactly a
  *   tracked root-level file name. A target written against the containing file
  *   instead (`./`, `../`) is a claim by that form, and the two paragraphs below
- *   say what it claims (#391, #396).
+ *   say what it claims.
  *
  *   The span is normalised before any of that: a trailing line citation
  *   (`path:42`, `path:42-58`), an in-file fragment (`path#L24`) and punctuation
  *   the prose swallowed into the span (`docs/X.md,`) are not part of the path,
  *   so `docs/X.md:42` is a claim on `docs/X.md` and is checked as one
  *   (`normaliseSpanTarget`). This is the rule the link half already applied to
- *   its `#fragment`; without it the two halves disagreed, and a line citation —
- *   the sanctioned way to point at a line — would redden a correct document.
+ *   its `#fragment`; a line citation is the sanctioned way to point at a line,
+ *   so it must not redden a correct document.
  *
  *   A target that climbs out of its own directory — `..` alone, or anything
- *   under `../` — is a claim by its form (#391). Its *reading* is the containing
- *   file's directory, the second base above, and that reading decides where it
- *   resolves — the root base is not consulted for this class, so the verdict and
- *   the reported `repoPath` come from one rule and cannot disagree (A1). The
- *   reading is deliberately not re-tested against CLAIM_ROOTS either, because
- *   the tracked-root rule is a substitute for the "is this a path?" signal that
- *   a `..`-rooted token already carries — retesting it would veto `../web/dist`
+ *   under `../` — is a claim by its form. Its *reading* is the containing file's
+ *   directory, the second base above, and that reading decides where it resolves
+ *   — the root base is not consulted for this class, so the verdict and the
+ *   reported `repoPath` come from one rule and cannot disagree. The reading is
+ *   deliberately not re-tested against CLAIM_ROOTS either, because the
+ *   tracked-root rule is a substitute for the "is this a path?" signal that a
+ *   `..`-rooted token already carries — retesting it would veto `../web/dist`
  *   (which reads as `web/dist`) while the link half reddens on the identical
- *   target. Before this rule the raw first segment `..` vetoed the whole class,
- *   so a dead `../../../docs/x.md` in a living doc stayed green while the
- *   identical target in link form was red: one target, two verdicts, and the
- *   disagreement failed **open**.
+ *   target.
  *
- *   A target under `./` is a claim by its form too, read from that same one base
- *   (#396). `./` is the explicit "beside this file" prefix, so the span half
- *   judges it exactly as the Markdown half judges the identical destination, and
- *   neither the root base nor CLAIM_ROOTS is consulted — either would give one
- *   target two verdicts, which is how this class failed **open**. Before this
- *   rule the raw first segment `.` vetoed the class, so a dead
- *   `./apps/web/dist` in a living doc was not a claim at all: no finding, no
- *   counter, nothing in the OK line's totals, while `[x](./apps/web/dist)`
- *   reddened. Two live sites were in the corpus, and both quote a *value* rather
- *   than a reference — the asset handler's inline default in
- *   `apps/api/src/lib/server.ts` (`env.KAJIANQ_WEB_ROOT ?? "./apps/web/dist"`),
- *   narrated by `docs/VPS-SETUP.md` and `docs/VPS-OPERATIONS.md`. Both now show
- *   that string as a fenced literal, the one rendering this gate already reads
- *   as "a value, not a citation" in **both** shapes, so a reader still sees the
- *   exact literal and the gate takes no exemption for it. DECIDED, not
- *   inherited: the alternative was a "known literal" allowlist of its own, and
- *   that is a mechanism whose only job is to let a dead reference pass green —
- *   in the change that closes the class which failed open. A literal is not a
- *   claim, and the fence is how both halves are told so at once.
+ *   A target under `./` is a claim by its form too, read from that same one base.
+ *   `./` is the explicit "beside this file" prefix, so the span half judges it
+ *   exactly as the Markdown half judges the identical destination, and neither
+ *   the root base nor CLAIM_ROOTS is consulted — either would give one target
+ *   two verdicts. A *value* that looks like such a target — the asset handler's
+ *   inline default in `apps/api/src/lib/server.ts`
+ *   (`env.KAJIANQ_WEB_ROOT ?? "./apps/web/dist"`), narrated by
+ *   `docs/VPS-SETUP.md` and `docs/VPS-OPERATIONS.md` — is written as a fenced
+ *   literal, the one rendering this gate already reads as "a value, not a
+ *   citation" in **both** shapes, so a reader still sees the exact literal and
+ *   the gate takes no exemption for it. DECIDED: the alternative was a "known
+ *   literal" allowlist of its own, a mechanism whose only job is to let a dead
+ *   reference pass green. A literal is not a claim, and the fence is how both
+ *   halves are told so at once.
  *
- *   COST, named: a `./`-rooted span that *is* a citation is now judged from the
+ *   COST, named: a `./`-rooted span that *is* a citation is judged from the
  *   containing file, so a dead one reddens — that is the point — and a live one
  *   resolves only where the reader's renderer would. `./` names the containing
  *   directory, never the repository root, in both halves; the root spelling of
  *   the same target is the CLAIM_ROOTS form with no prefix, which keeps its
  *   second, file-relative base.
  *
- *   ESCAPING TARGETS — decided, not inherited: a `..`-rooted target whose
- *   reading leaves the repository (`../../etc/passwd`) is a claim, and a missing
- *   one is a violation. That is what the Markdown-link half already does with
- *   the identical destination — `toRepoPath` returns `null`, `repoPath` stays
- *   empty, and neither exemption is reachable — so the span half agrees with it
- *   rather than leaving a class that is neither judged nor declared. COST,
- *   named: an inline span naming a path outside this repository must be written
- *   inside a fence (an example, not a citation) or as prose, or it reddens.
- *   `~/.dsh/settings.yaml` is a different class and is unaffected: it is not
- *   `..`-rooted, and its first segment is not a tracked root.
+ *   ESCAPING TARGETS: a `..`-rooted target whose reading leaves the repository
+ *   (`../../etc/passwd`) is a claim, and a missing one is a violation. That is
+ *   what the Markdown-link half does with the identical destination —
+ *   `toRepoPath` returns `null`, `repoPath` stays empty, and neither exemption
+ *   is reachable — so the span half agrees with it rather than leaving a class
+ *   that is neither judged nor declared. COST, named: an inline span naming a
+ *   path outside this repository must be written inside a fence (an example, not
+ *   a citation) or as prose, or it reddens. `~/.dsh/settings.yaml` is a
+ *   different class and is unaffected: it is not `..`-rooted, and its first
+ *   segment is not a tracked root.
  *
  *   Two `..` cases are named rather than silently dropped. A *bare* `..` — a
  *   span that is nothing but the two dots — is stripped by the span normaliser
- *   as swallowed punctuation, so the span half never claims it. `../` and
+ *   as swallowed punctuation, so the span half never claims it, while `../` and
  *   everything under it do claim. The halves part company on that one token:
  *   `[x](..)` reddens in the link half, whose `toRepoPath` folds the repository
- *   root to `""` and reads it as missing — a reading that same half contradicts
- *   from a deeper directory, where `..` resolves to a tracked parent
- *   (`.agents/skills/ship/` → `.agents/skills`). Copying it would import the
- *   defect rather than the judgement, so it is declared here and pinned by a
- *   test instead; the link half's root reading is a neighbouring defect this
- *   change does not touch.
+ *   root to `""` and reads it as missing. The span half does not copy that
+ *   reading; the exception is declared here and pinned by a test.
  *
  *   A *bare* `../` — the token with its slash, which `isFileRelativeTarget`
  *   claims by form like everything under `../` — is judged `missing` from a
@@ -163,44 +141,40 @@
  *   form is the empty string, and an empty reading is not a tracked path. From a
  *   deeper directory the same token reads as the tracked parent and is `ok`.
  *   The Markdown half reaches the identical verdicts on the identical
- *   destinations (`""` is falsy there too, so the root reading is missing in
- *   both halves), which is why this half copies that reading rather than
- *   "fixing" it into a disagreement. Named because it is the one reading that
- *   looks as if it should resolve and does not.
+ *   destinations (`""` is falsy there too). Named because it is the one reading
+ *   that looks as if it should resolve and does not.
  *
  *   The *bare* `.` is the same declared exception one token shorter: the span
  *   normaliser strips a lone dot as swallowed punctuation, so the span half never
  *   claims it, while `[x](.)` reads as the containing directory and resolves
- *   there. #396 left that reading untouched — the class it widened is `./` and
- *   below — so the halves part company on the token exactly as they do on `..`,
- *   and a test pins both directions rather than leaving either to be discovered.
+ *   there. The halves part company on the token exactly as they do on `..`, and
+ *   a test pins both directions rather than leaving either to be discovered.
  *
  *   Each of those exclusions carries its class out of scope, deliberately:
  *     - whitespace → `bun run lint`, `git stash`, and every command line;
  *     - globs → `**\/*.ts`;  placeholders → `<slug>`;  URLs → `https://…`;
  *     - `~/.dsh/settings.yaml` is out by the tracked-root rule (its first
  *       segment is neither a tracked root nor a root-level file);
- *     - ellipsis → a truncated *display label*, never a path: class D of the
- *       #368 corpus (`adr/0037-…`, 5 spans). Where such a label is the text of
- *       a Markdown link, the link's own target is still resolved below.
+ *     - ellipsis → a truncated *display label*, never a path (`adr/0037-…`).
+ *       Where such a label is the text of a Markdown link, the link's own target
+ *       is still resolved below.
  *     - a span inside a fenced code block is an example, not a citation (the
- *       `prose()` filter this gate has always applied).
+ *       `prose()` filter this gate applies).
  *     - root-absolute or `~`-rooted targets, and prose that merely mentions a
  *       path outside backticks, are not repo-relative claims.
- *     - a `./`-rooted target is no longer an exclusion at all: it is a claim
- *       read against the containing file, and a *value* that looks like one is
- *       written inside a fence (#396, above).
+ *     - a `./`-rooted target is a claim read against the containing file, and a
+ *       *value* that looks like one is written inside a fence (above).
  *
  *   COST, named: a bare file name that is *not* a tracked root-level file is
  *   not a claim, so `` `models.json` `` and `` `apply.sh` `` (both real files
  *   under subdirectories) stay prose, and a *deleted* root-level file named
- *   bare — `VPS-CUTOVER-RUNBOOK.md` — would not be caught. Measured, a wider
- *   "any bare dotted token" rule is a false-positive factory: 300+ such tokens
- *   are version strings (`4.0.0-rc.113`), TS member expressions
- *   (`Effect.runPromise`) or model ids (`glm-5.3`). A bare name only becomes a
+ *   bare — `VPS-CUTOVER-RUNBOOK.md` — would not be caught. A wider "any bare
+ *   dotted token" rule is a false-positive factory: such tokens are mostly
+ *   version strings (`4.0.0-rc.113`), TS member expressions
+ *   (`Effect.runPromise`) or model ids. A bare name only becomes a
  *   checked claim when it is a *path* (has a `/`) or is a tracked root file.
  *
- * CLASS RULES (the #368 corpus map, re-derived at 07cb2914 — see the PR body)
+ * CLASS RULES
  *
  *   A — ADR cited by number: `` `adr/0045` `` in the spec's §8 Record of
  *       Decisions. `adr/NNNN` with exactly four digits resolves when a file in
@@ -215,10 +189,9 @@
  *       covers the class; the dead-claim count it leaves behind is printed on
  *       every green run.
  *
- *   C — a living doc naming an artifact that is gone: three spans total, in
- *       `SPECS.md` and `docs/ARCHITECTURE.md`, each narrating its target's
- *       removal (`Dropped from template: packages/local-first`, `Before the
- *       move, apps/api/alchemy.run.ts …`). Covered by KNOWN_RETIRED, below.
+ *   C — a living doc naming an artifact that is gone, each span narrating its
+ *       target's removal (`Dropped from template: packages/local-first`, `Before
+ *       the move, apps/api/alchemy.run.ts …`). Covered by KNOWN_RETIRED, below.
  *
  *   D — elided display labels, handled by the ellipsis scope rule above.
  *
@@ -238,10 +211,8 @@
  *   carries the rule it named. A target that still exists at another path
  *   moved, and the span is repointed at the artifact that carries the rule now;
  *   a malformed span is a defect and is repaired like any other. The count is
- *   therefore not a backlog to drive to zero — it is a baseline. The
- *   corpus-wide rewrite is filed as #408/#409, and #410 is the audit that
- *   derived one verdict per span and closed the initial sets; a growing
- *   allowlist of every one of them is not the "tiny, reasoned" kind this gate
+ *   therefore not a backlog to drive to zero: it is a baseline, and a growing
+ *   allowlist of every dead span is not the "tiny, reasoned" kind this gate
  *   tolerates. This is the rule instead, stated with its cost:
  *
  *     WHICH FILE IS A RECORD (the membership rule): `RECORD_DIRS` /
@@ -258,7 +229,7 @@
  *     reviewable diff, not a silent hole. The Markdown-link half still applies
  *     inside records — a record whose `[link](path)` rots is still red, and is
  *     still fixable — and `INITIAL_IDEA.md`, frozen history that nobody may
- *     edit, needs no exemption: it carries no dead claim today.
+ *     edit, needs no exemption.
  *
  *   THE CLAUSE GAP, named: the class-A rule (`adrIdResolves`) resolves an ADR
  *   *identifier* against the tree — does a file `adr/NNNN-*.md` exist — and
@@ -269,14 +240,13 @@
  *   citation is therefore never vouched for by this gate; opening it is a
  *   reviewer's obligation, not this gate's.
  *
- * KNOWN_RETIRED — an allowlist of three (file, target) pairs, one reason each,
- *   for the class-C living-doc spans that survive the records rule. It is
- *   deliberately tiny and self-pruning: every entry must still match a dead
- *   reference or the gate fails with `stale allowlist entry`, so an entry
- *   cannot outlive the mention it silences. An entry matches the target **as
- *   the document writes it** — the normalised code span, or a link's
- *   destination — and either shape can be silenced by it. The count is printed
- *   in the OK line. Residual risk, named: an entry silences that (file, target)
+ * KNOWN_RETIRED — an allowlist of (file, target) pairs, one reason each, for the
+ *   living-doc spans that survive the records rule. It is deliberately tiny and
+ *   self-pruning: every entry must still match a dead reference or the gate fails
+ *   with `stale allowlist entry`, so an entry cannot outlive the mention it
+ *   silences. An entry matches the target **as the document writes it** — the
+ *   normalised code span, or a link's destination — and either shape can be
+ *   silenced by it. The count is printed in the OK line. Residual risk, named: an entry silences that (file, target)
  *   pair wherever it appears in that file, so if `SPECS.md` later routes a
  *   reader to `packages/local-first` as though it existed, the entry would hide
  *   it.
@@ -284,52 +254,41 @@
  * THE POLICY TABLE — one shape → rule matrix, in `POLICY`
  *
  *   Which shape gets which rule is data in this module, not the order of the
- *   `if`s that used to encode it. That order was a defect generator: the
- *   Markdown-link half was handled first and `continue`d, so the gitignore and
- *   allowlist exemptions were unreachable for links — a link to a build output
- *   was red with no escape, while the identical target in a code span was
- *   skipped and counted. Now every rule names its counter and its verdict, and
+ *   `if`s that encode it. Every rule names its counter and its verdict, and
  *   every *missing* reference — link or span, living doc or record — is offered
  *   the same chain: gitignored (derived from `.gitignore`, not from a list) →
  *   allowlisted (with a reason) → violation. A destination that cannot be
  *   decoded at all never reaches that chain: it is a violation of its own, with
- *   its own reason (#392).
+ *   its own reason.
  *
  *   PRECEDENCE IS A FIELD, not the table's order: `policyFor` takes the matching
  *   rule with the highest `priority`, so permuting `POLICY` cannot change which
  *   rule a shape gets. That is why every rule carries a `priority` and why the
  *   `record` rule's predicate is disjoint from the link rules instead of merely
- *   sitting after them: the array's first match used to decide, and moving
- *   `record` to the head — a pure reorder, no logic touched — stopped the 19
- *   Markdown links inside `adr/**` and the cutover log from being checked while
- *   the gate still printed OK and exited 0 (finding B5). Priorities are unique,
- *   so a tie cannot hand the decision back to source order; both properties are
- *   pinned by tests.
+ *   sitting after them. Priorities are unique, so a tie cannot hand the decision
+ *   back to source order; both properties are pinned by tests.
  *
  *   COST, named: a Markdown link to a gitignored build output is skipped and
  *   counted like a span, so a link a reader cannot follow in a fresh clone is
  *   not enforced. That is the price of the exemption being reachable for both
- *   halves at all; it is printed on every run, and a test pins both verdicts.
+ *   halves at all; it is printed on every run.
  *
  * SKILLS_RULE — a backticked kebab-case token adjacent to the word `skill`
  *   (`the `code-review` skill`, `skill `manager``) must name a directory under
- *   `.agents/skills/` that contains a `SKILL.md`. This is the half that would
- *   have caught #367 mechanically: both of its dead references were
- *   `` `agentic-workflow` skill ``-shaped. The gate reports its own population — the
- *   OK line's `N skill names checked` — so this comment states the marker and the
- *   resolution rule, and no hand-kept census drifts here on the next doc edit.
+ *   `.agents/skills/` that contains a `SKILL.md`. The gate reports its own
+ *   population — the OK line's `N skill names checked` — so this comment states
+ *   the marker and the resolution rule, and no hand-kept census drifts here on
+ *   the next doc edit.
  *
- *   Deliberately NOT extended to "the `X` role". That marker names four
+ *   Deliberately NOT extended to "the `X` role". That marker names several
  *   different things: live harness roles (`.zcode/agents/<role>.md` — `qa`,
- *   `reviewer`, `fixer`), a role the workflow retired (its duties live with the
- *   senior implementer), a price pair in prose (`$0.14/$0.28`, caught only
- *   because the marker is lexical), and model-stage names (`embedder`, `cheap`,
- *   `decision-candidates`, `generator`, `kajianq`, …). The last two classes are a
+ *   `reviewer`, `fixer`), a price pair in prose (caught only because the marker
+ *   is lexical), and model-stage names (`embedder`, `cheap`,
+ *   `decision-candidates`, `generator`, `kajianq`, …). The last classes are a
  *   false-positive factory with no resolution target, which is why the marker is
  *   rejected as a whole — but the harness-role namespace
  *   (`.zcode/agents/<role>.md`) is a **second deliberately unchecked marker**,
- *   not an empty one, and this header says so rather than implying otherwise. A
- *   test pins that distinction.
+ *   not an empty one. A test pins that distinction.
  *
  *   COST, named: the marker *is* the claim, so a doc naming a skill that lives
  *   outside this repository (a harness-level skill such as `omarchy`) must not
@@ -339,28 +298,26 @@
  * reference, plus any stale allowlist entry. A Markdown destination whose
  * percent-encoding is malformed (`[pct](./100%.md)`) is one of those references:
  * it cannot resolve, so it is reported as a violation with its own reason
- * instead of escaping as an uncaught `URIError` that prints a stack trace and
- * no line for the contributor to act on (#392).
+ * instead of escaping as an uncaught `URIError` with no line for the contributor
+ * to act on.
  *
  * A GREEN RUN PRINTS WHAT IT DID NOT CHECK. The OK line names how many
  * references were *checked* and how many actually *resolved*, then every
  * exemption the run took (`N known-retired allowlisted`, `N gitignored build
  * paths skipped`) and the record narrowing (`N record-file claims counted, N
- * dead claims inside record files unchecked`). "resolve" used to be the verb for
- * the checked total, which counted the exempted references as if they had been
- * proved.
+ * dead claims inside record files unchecked`). The checked total never counts an
+ * exempted reference as if it had been proved.
  *
  * The driver exports the classifier, resolver and gate functions — `loadCorpus`,
  * `runGate`, `formatOkLine` — for `tests/scripts/check-markdown-links.test.mjs`,
- * which drives the same functions the CLI does instead of a second copy of them;
- * the tables above are imported from this module by the tests that pin them.
+ * which drives the same functions the CLI does; the tables above are imported
+ * from this module by the tests that pin them.
  */
 
 /**
- * Files scanned. `.agents/` and `.zcode/` are included deliberately: a skill
- * that points at a retired runbook sends the next agent somewhere that no
- * longer exists, which is how a repo teaches a stale procedure to an
- * autonomous worker.
+ * Files scanned. `.agents/` and `.zcode/` are included deliberately: a skill that
+ * points at a retired runbook sends the next agent somewhere that no longer
+ * exists.
  */
 export const ROOTS = [
   "README.md",
@@ -377,20 +334,16 @@ export const ROOTS = [
 ];
 
 /**
- * First path segments that make an inline code span a repo-path claim. This is
- * every tracked top-level directory of the repository — the ticket's list plus
- * `.github/` and `.githooks/`, which the list omitted. Both belong here because
- * living documents cite into them: the deploy, staging and restore-drill
- * workflows and `.github/zap-rules.tsv` are named by `SPECS.md`,
- * `docs/ARCHITECTURE.md`, the Art. 30 record and the `ship` skill, and
- * `AGENTS.md` routes every role to `.githooks/`. That citation is the reason,
- * and it is the whole comment: a hand-kept census of the namespace is a snapshot
- * of a corpus that keeps moving, so it has been wrong twice (#389, #401) — the
- * gate's own OK line prints what a run actually checked, and this comment states
- * the decision instead of restating those numbers. A new top-level directory is
- * a new claim root: add it here, or paths into it are unchecked.
- * `tests/scripts/check-markdown-links-tree.test.mjs` fails if this list stops
- * covering the tracked tree, so that gap cannot open silently.
+ * First path segments that make an inline code span a repo-path claim: every
+ * tracked top-level directory of the repository. Living documents cite into
+ * them — the deploy, staging and restore-drill workflows and
+ * `.github/zap-rules.tsv` are named by `SPECS.md`, `docs/ARCHITECTURE.md`, the
+ * Art. 30 record and the `ship` skill, and `AGENTS.md` routes every role to
+ * `.githooks/` — so a new top-level directory is a new claim root: add it here,
+ * or paths into it are unchecked. A hand-kept census of this namespace is a
+ * snapshot of a corpus that keeps moving, so the gate's own OK line prints what
+ * a run actually checked, and `check-markdown-links-tree.test.mjs` fails if this
+ * list stops covering the tracked tree.
  */
 export const CLAIM_ROOTS = [
   "apps",
@@ -420,12 +373,12 @@ export const RECORD_FILES = ["docs/VPS-CUTOVER-RECORD.md"];
  *
  * `.` and `..` are in the predicate for completeness only: the span normaliser
  * strips a lone dot as swallowed punctuation before the claim test, so neither
- * reaches here from a span (see SCOPE RULES).
+ * reaches here from a span.
  *
  * It lives in this module, not in the driver, because it is a scope rule the
  * policy also states: the `path` rule's reason names the base this predicate
  * implies, and that reason and the resolver's reading must come from one
- * predicate — a second copy is the disagreement this gate exists to stop (B2).
+ * predicate, since a second copy is the disagreement this gate exists to stop.
  */
 export function isFileRelativeTarget(target) {
   return target === "." || target.startsWith("./") || target === ".." || target.startsWith("../");
@@ -465,16 +418,12 @@ export const KNOWN_RETIRED = [
 /**
  * THE POLICY TABLE — the shape → rule matrix, as data.
  *
- * This is deliberately a table rather than the order of `continue`s in
- * `adjudicate`: a rule set encoded as control flow is how the two halves of one
- * claim drifted apart in review (the code-span half consulted the gitignore and
- * allowlist exemptions; the Markdown-link half — handled by an earlier `if` —
- * could not reach them, so a link to a build output was red with no escape).
+ * A table rather than the order of `continue`s in `adjudicate`: a rule set
+ * encoded as control flow is how the two halves of one claim drift apart.
  *
  * Each rule: `match` picks the finding, `counter` names the count it advances,
  * `priority` is its precedence — the highest matching rule wins, never the
- * first one in the array (see PRECEDENCE above; the values must stay unique),
- * `verdict` is one of
+ * first one in the array (the values must stay unique) — `verdict` is one of
  *   - `counted`    — never a violation (a record's dead claim, a resolving target);
  *   - `violation`  — always a violation, exemption chain not consulted;
  *   - `exemptible` — a *missing* target goes through the one chain below:
@@ -493,21 +442,15 @@ export const POLICY = [
     reason: () => "root-absolute path (resolve it relative to the file instead)",
   },
   {
-    // #392: the destination as written could not be decoded, so the reference
-    // cannot resolve. A violation with its own reason, not the "target does not
-    // exist" of a decoded miss and never an uncaught `URIError`.
+    // A destination that cannot be decoded cannot resolve: a violation with its
+    // own reason, never an uncaught `URIError`.
     //
     // The priority is the SOLE guard, not a second one beside a status test:
-    // `link`'s matcher is `f.kind === "link"`, which matches this finding too,
-    // and `link` is exemptible — so if this rule's priority were lost, the
-    // malformed finding would fall to it, `adjudicate` would drop it before the
-    // exemption chain (a status other than `missing` is never exempted, and
-    // `malformed-encoding` is not in the driver's RESOLVED_STATUSES either), and
-    // a document with a malformed link would pass at exit 0 with the reference
-    // neither reported nor counted resolved. Narrowing `link`'s matcher to
-    // `status === "missing"` cannot create the disjointness instead: `link` owns
-    // the `links` counter and the resolved total for *every* link finding, so an
-    // `ok` link would then match no rule and `policyFor` would throw.
+    // `link`'s matcher also matches this finding and is exemptible, so without
+    // this rule's priority a malformed link would pass at exit 0, neither
+    // reported nor counted resolved. Narrowing `link`'s matcher instead cannot
+    // work: `link` owns the counter and the resolved total for every link
+    // finding, so an `ok` link would match no rule and `policyFor` would throw.
     id: "link-malformed-encoding",
     priority: 35,
     match: (f) => f.kind === "link" && f.status === "malformed-encoding",
@@ -525,10 +468,9 @@ export const POLICY = [
     reason: () => "target does not exist",
   },
   {
-    // Disjoint from the link rules above, because a record's Markdown links stay
-    // enforced (see RECORDS_RULE): only its code-span claims are counted. Above
-    // `skill`/`path` by priority, so a record claim is never resolved — its
-    // count is reported separately.
+    // Disjoint from the link rules above: a record's Markdown links stay enforced
+    // (see RECORDS_RULE) and only its code-span claims are counted, so `record`
+    // sits above `skill`/`path` by priority and is never resolved.
     id: "record",
     priority: 20,
     match: (f) => f.kind !== "link" && isRecord(f.file),
@@ -556,10 +498,9 @@ export const POLICY = [
     counter: "claims",
     verdict: "exemptible",
     countsResolved: true,
-    // The reason names the base(s) the resolver actually consulted, from the
-    // same predicate it uses: a `./`- or `..`-rooted target has one reading, so
-    // naming the root reading here would be the verdict/reason split of B2 in
-    // prose.
+    // The reason names the base(s) the resolver actually consulted, from the same
+    // predicate it uses: naming the root reading for a `./`- or `..`-rooted target
+    // would split the verdict from the reason.
     reason: (f) =>
       isFileRelativeTarget(f.target)
         ? "code-span path: no such tracked path beside this file"

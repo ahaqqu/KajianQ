@@ -14,7 +14,7 @@ import { LogoTile, MonoLabel, NavLinks } from "./ui";
  * menu (aria-expanded + aria-controls, aria-label from i18n, keyboard
  * reachable, closed automatically when the route changes); the wordmark block
  * compresses (min-w-0, truncated tagline) so the controls keep the reference's
- * single line (thermo-review C3).
+ * single line.
  */
 export function AppHeader({ actions }: { actions?: ReactNode }) {
   const locale = useLocale();
@@ -32,7 +32,7 @@ export function AppHeader({ actions }: { actions?: ReactNode }) {
     setMenuOpen(false);
   }, [pathname]);
 
-  // Keyboard contract for the disclosure (thermo-review A3): Escape closes and
+  // Keyboard contract for the disclosure: Escape closes and
   // returns focus to the toggle, and focus leaving the toggle+menu subtree
   // closes it, so Tab from the last menu link cannot strand the open menu
   // (absolutely positioned over the page) without the user noticing. The

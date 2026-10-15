@@ -4,23 +4,13 @@ import type { AnswerFeedbackTarget, FeedbackInsert, RagStore } from "./rag-store
 import { constraintError, parseTrace } from "./rag-store-shared";
 import { sqlEffect, type SqlRunner } from "./rag-store-postgres-errors";
 
-/**
- * Answer-trace and feedback methods of the Postgres RagStore adapter, split from
- * `rag-store-postgres.ts` to respect the agentic size limits. Part of the Postgres
- * adapter SQL surface (ADR-0027 decision 7): the store writes/parses the
- * @app/contracts `Trace` shape verbatim (ADR-0007) — never a parallel schema
- * — and contract violations are `constraint`-class StoreErrors. The feedback
- * methods (#13) share this module because the trace anchors them
- * (`answer_traces` is the feedback target): the anchor vocabulary arrives as
- * opaque values (the seam's domain-agnostic pass-through rule) — the shared
- * contract owns it, the route enforces it, the store only persists it.
- */
-/**
- * True when the string is the canonical hyphenated uuid form — the only shape
- * `chat_messages.id` is ever generated in (`gen_random_uuid()`), and the only
- * shape safe to hand to the `::uuid` cast. Anything else is a message-id key
- * lookup, never a row-id lookup.
- */
+/** Answer-trace and feedback methods of the Postgres RagStore adapter. The store
+ * writes and parses the `@app/contracts` `Trace` shape verbatim — never a
+ * parallel schema — and contract violations are `constraint`-class StoreErrors;
+ * feedback shares the module because the trace anchors it. */
+
+/** True for the canonical hyphenated uuid form — the only shape
+ * `chat_messages.id` is generated in, and the only one safe for the `::uuid` cast. */
 function isUuid(s: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 }
@@ -37,18 +27,15 @@ export function postgresTraceMethods(
 > {
   return {
     insertAnswerTrace(input) {
-      // Trace contract violations are constraint-class: the input, not the
-      // store, is bad — deterministic, never retried into place.
+      // Trace contract violations are constraint-class: the input, not the store,
+      // is bad — deterministic, never retried into place.
       const parsed = Effect.try({
         try: () => parseTrace(input.trace),
         catch: constraintError,
       });
       // The row id is the STORE's, not the contract's: this column is `uuid`
-      // while `Trace.id` is any non-empty string, so the two cannot always
-      // agree. Callers must persist dependent rows (notably a chat message's
-      // `answer_trace_id`, which FKs to this column) using the id returned
-      // here — assuming `trace.id` instead silently broke every assistant
-      // message write, which the live staging smoke caught as a 500.
+      // while `Trace.id` is any non-empty string. Callers must persist dependent
+      // rows (notably an `answer_trace_id` FK) using the id returned here.
       const id = crypto.randomUUID();
       return Effect.flatMap(parsed, (trace) =>
         Effect.as(
@@ -68,8 +55,8 @@ export function postgresTraceMethods(
       );
     },
 
-    // The FK read (#11): `chat_messages.answer_trace_id` holds THIS column's
-    // id, so a transcript rehydrates its traces by row id, not message id.
+    // `chat_messages.answer_trace_id` holds THIS column's id, so a transcript
+    // rehydrates its traces by row id, not by message id.
     getAnswerTraceById(id) {
       return Effect.flatMap(
         sqlEffect(
@@ -102,12 +89,9 @@ export function postgresTraceMethods(
         (rows) => {
           const [row] = rows;
           if (!row) return Effect.succeed<Trace | null>(null);
-          // Tolerant reader (ADR-0007): the Trace contract only ever
-          // ADDS optional fields (versioned), so parseTrace accepts older
-          // traces and strips unknown future keys rather than failing. Never
-          // add a required field to TraceSchema without a migration of
-          // persisted traces. A corrupt persisted trace is constraint-class
-          // (schema drift), surfaced — never silently coerced.
+          // Tolerant reader: the Trace contract only ever ADDS optional fields,
+          // so parseTrace accepts older traces and strips unknown future keys.
+          // A corrupt persisted trace is constraint-class, never coerced.
           return Effect.try({
             try: () => parseTrace(row.trace) as Trace | null,
             catch: constraintError,
@@ -118,12 +102,10 @@ export function postgresTraceMethods(
 
     insertFeedback(input: FeedbackInsert) {
       const id = crypto.randomUUID();
-      // Upsert (thermo-review A1): the 0003 functional unique index keys one
-      // verdict per (user, answer, element) on the same COALESCE'd expression
-      // list, so a repeat thumb or a re-submitted flag updates the row in
-      // place — rating, free text, and queue state refresh, the id (and the
-      // row count the review queue shows) stay stable. `user_id` NULL never
-      // conflicts (Postgres NULLs are distinct); the route always attributes.
+      // Upsert: the functional unique index keys one verdict per
+      // (user, answer, element) on the same COALESCE'd expression list, so a
+      // repeat thumb updates the row in place — the id and row count stay stable.
+      // `user_id` NULL never conflicts (Postgres NULLs are distinct).
       return Effect.as(
         sqlEffect(
           sql,
@@ -153,18 +135,13 @@ export function postgresTraceMethods(
     },
 
     getAnswerFeedbackTarget(messageId) {
-      // One read for the whole feedback target (#13): the trace, its owner,
-      // and the answer text joined through `chat_messages.answer_trace_id`.
-      // The caller's id may be EITHER identifier the user's client holds:
-      // the live stream's `meta.messageId` (the trace's `message_id`) or a
-      // rehydrated transcript row id (`chat_messages.id` — the store
-      // generates that one, so it is never equal to the trace key). The row
-      // id is uuid-typed, so the OR arm casts; a non-uuid caller id (the
-      // seam is stricter than the route's contract, thermo-review A4) must
-      // not 500 at the cast — it can only ever match `t.message_id`, so the
-      // cast arm is simply omitted. Either way the target carries the
-      // trace's CANONICAL message id (thermo-review A2): the caller keys the
-      // feedback row by it, so the same answer is never stored two ways.
+      // One read for the whole feedback target: the trace, its owner, and the
+      // answer text joined through `chat_messages.answer_trace_id`. The caller's
+      // id may be EITHER identifier the client holds — the stream's
+      // `meta.messageId` (the trace's `message_id`) or a rehydrated transcript
+      // row id (`chat_messages.id`). That row id is uuid-typed, so the OR arm
+      // casts; a non-uuid id can only match `t.message_id` and omits the cast
+      // arm rather than failing. The target carries the trace's CANONICAL id.
       const byEither = isUuid(messageId);
       return Effect.flatMap(
         sqlEffect(sql, () =>
@@ -202,9 +179,6 @@ export function postgresTraceMethods(
         (rows) => {
           const row = rows[0];
           if (!row) return Effect.succeed<AnswerFeedbackTarget | null>(null);
-          // Tolerant reader (ADR-0007), same as every trace read:
-          // older persisted traces stay parseable; a corrupt one is
-          // constraint-class, never silently coerced.
           return Effect.map(
             Effect.try({
               try: () => parseTrace(row.trace) as Trace,

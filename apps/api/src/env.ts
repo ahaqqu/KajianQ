@@ -11,72 +11,47 @@ export type RequestContext = {
 };
 
 /**
- * The environment the Hono app is handed once per request (#181, ADR-0044).
- *
- * On Cloudflare this was the Worker's binding object, injected by the runtime.
- * Self-hosted, the Bun serving entry builds it from `process.env` at the
- * composition root (`lib/server.ts`) and the reverse proxy is the only
- * ingress — so the shape is now plain configuration: the database URL, the
- * allowed origins, Sentry, and the provider keys. Nothing host-specific
- * remains (no Durable Object, no R2 binding): the rate limiter is the
- * package's process-global in-memory backend, and raw-corpus archival is a
- * CLI concern, never a serving path.
+ * The environment the Hono app is handed once per request: plain configuration built
+ * at the composition root (`lib/server.ts`). Nothing host-specific remains — the rate
+ * limiter is the package's process-global in-memory backend, and raw-corpus archival
+ * is a CLI concern, never a serving path.
  */
 export type AppBindings = {
   ASSETS: AssetFetcher;
   APP_ENV?: string;
-  /** Postgres connection string — the RagStore adapter's backing store (#4). */
+  /** Postgres connection string — the RagStore adapter's backing store. */
   DATABASE_URL?: string;
   ALLOWED_ORIGINS?: string;
   SENTRY_DSN?: string;
-  /**
-   * Provider API keys, bound by name from `models.json`'s `apiKeyEnv`
-   * entries (ADR-0009/ADR-0022). The wiring reads keys only through
-   * `resolveRole`'s env record — never vendor names here.
-   */
+  /** Provider API keys, bound by name from `models.json`'s `apiKeyEnv` entries. The
+   * wiring reads keys only through `resolveRole`'s env record — never vendor names. */
   GEMINI_API_KEY?: string;
-  /** Paid-terms Gemini row (same API, billing-enabled project — #181). */
+  /** Paid-terms Gemini row (same API, billing-enabled project). */
   GEMINI_PAID_API_KEY?: string;
   DASHSCOPE_API_KEY?: string;
   DEEPSEEK_API_KEY?: string;
-  /**
-   * The decision vendor's key (#168): binds the reviewer pre-gate. Optional —
-   * an absent key leaves the reviewer exactly as it was before adoption,
-   * because the pre-gate only ever removes spend (fail-open).
-   */
+  /** The decision vendor's key: binds the reviewer pre-gate. Optional — an absent key
+   * leaves the reviewer unchanged, because the pre-gate only ever removes spend
+   * (fail-open). */
   JEV_API_KEY?: string;
-  /**
-   * ADR-0045's surah-reference scope-expansion budget, as a non-negative
-   * integer string. Absent = the domain default (`DEFAULT_SCOPE_EXPANSION_CAP`);
-   * `0` disables the expansion. Config, never a secret, but it rides the same
-   * filtered env view so the knob reaches the pipeline's wiring.
-   */
+  /** The surah-reference scope-expansion budget, as a non-negative integer string.
+   * Absent = the domain default; `0` disables the expansion. Config, never a secret,
+   * but it rides the same filtered env view so the knob reaches the pipeline's wiring. */
   SCOPE_EXPANSION_CAP?: string;
-  /**
-   * ADR-0049's retrieved-verse neighbourhood expansion, as non-negative
-   * integer strings: how many ordinals on each side of a retrieved verse join
-   * the context, and how many chunks the expansion may add to one query.
-   * Absent = the domain defaults (`DEFAULT_NEIGHBOUR_RADIUS` /
-   * `DEFAULT_NEIGHBOUR_CAP`); `0` disables the expansion and a negative value
-   * is a typed config failure when the chat wiring builds — the route answers
-   * 503 for every `/v1/chat` request, while the process itself still boots —
-   * not a second spelling of "off" (review B3 of the #274 fix round; R2
-   * corrected the timing: the knobs are parsed per request, not at boot).
-   * Config, never secrets, and they ride the same filtered env view as the
-   * scope cap.
-   */
+  /** The retrieved-verse neighbourhood expansion, as non-negative integer strings: how
+   * many ordinals on each side of a retrieved verse join the context, and how many chunks
+   * the expansion may add to one query. Absent = the domain defaults; `0` disables the
+   * expansion and a negative value is a typed config failure when the chat wiring builds
+   * — every `/v1/chat` request answers 503 while the process itself still boots — not a
+   * second spelling of "off". They ride the same filtered env view as the scope cap. */
   NEIGHBOUR_EXPANSION_RADIUS?: string;
   NEIGHBOUR_EXPANSION_CAP?: string;
 };
 
-/**
- * Resolved per-request identity, set by `authGuard` before guarded routes run.
- * Session persistence lives behind the RagStore seam (ADR-0008); the store is
- * a concrete `RagStore` rather than a placeholder.
- */
+/** Resolved per-request identity, set by `authGuard` before guarded routes run; session
+ * persistence lives behind the RagStore seam. */
 export type Authed = { store: RagStore; userId: string };
 
-/** Hono generics for the whole API: bindings + request-scoped variables. */
 export type ApiEnv = {
   Bindings: AppBindings;
   Variables: { correlationId: string; ctx: RequestContext; authed: Authed };

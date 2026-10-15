@@ -83,9 +83,9 @@ export function CollectionPage({ locale }: { locale: Locale }) {
 }
 
 /**
- * One filter tab. Typed over a `MessageKey` (thermo-review B1), not a plain
- * string: the compiler now forces every label through the i18n dictionary, so
- * a future caller cannot pass a bare literal that silently bypasses externalization.
+ * One filter tab. Typed over a `MessageKey`, not a plain string: the compiler
+ * forces every label through the i18n dictionary, so a future caller cannot
+ * pass a bare literal that silently bypasses externalization.
  */
 function FilterTab({
   locale,
@@ -174,7 +174,7 @@ function EntryCard({ locale, entry }: { locale: Locale; entry: CollectionEntry }
           {t(locale, "collectionAttributionLabel")}: {entry.attribution[locale]}
         </MonoLabel>
       )}
-      {/* #175: available entries get the "Ask about this source" affordance —
+      {/* Available entries get the "Ask about this source" affordance —
           a typed Link into the chat with this entry's own question as the `q`
           param (pre-fill only; ADR-0040 keeps the chat contract untouched).
           Planned entries never carry it: they are registered work, not a

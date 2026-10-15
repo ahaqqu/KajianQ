@@ -1,8 +1,8 @@
 /**
- * Eval CLI config (#8, thermo-review B2/A2): the one place `process.env` is
- * read, validated, and typed before the run proceeds — required vars, URL /
- * integer shapes, and the fixture path are all checked up front so a
- * misconfiguration fails before any spend.
+ * Eval CLI config: the one place `process.env` is read, validated, and typed
+ * before the run proceeds — required vars, URL / integer shapes, and the
+ * fixture path are all checked up front so a misconfiguration fails before any
+ * spend.
  */
 
 /** Validated, typed configuration for one `eval:run` invocation. */
@@ -55,9 +55,8 @@ function requireToken(name: string, raw: string | undefined): string {
 }
 
 /**
- * Default fixture path: the domain pack resolves its own fixture (A2 — the
- * CLI no longer hard-codes a cross-package relative URL); callers may point
- * `EVAL_GOLDEN_SET_PATH` anywhere.
+ * Default fixture path: the domain pack resolves its own fixture, and callers
+ * may point `EVAL_GOLDEN_SET_PATH` anywhere.
  */
 function resolveGoldenSetPath(raw: string | undefined): string {
   const configured = raw?.trim();
@@ -67,8 +66,8 @@ function resolveGoldenSetPath(raw: string | undefined): string {
 
 /**
  * The default fixtures the benchmark CLI reads (overridable so a re-run can
- * point at a new versioned set): the #9 probe/expansion pairs the domain
- * pack authored against the real corpus.
+ * point at a new versioned set): the embedding-benchmark probe/expansion pairs
+ * the domain pack authored against the real corpus.
  */
 export const EMBED_BENCH_DEFAULT_PROBE_PATH =
   "packages/kajianq-domain/fixtures/embed-bench-probes-v0.json";
@@ -78,9 +77,9 @@ export const EMBED_BENCH_DEFAULT_EXPANSION_PATH =
 /** Validated, typed configuration for one `eval:embed-bench` invocation. */
 export type EmbedBenchConfig = {
   /**
-   * The store connection string — optional (thermo B5): the
-   * gate run is source-based and DB-free, so the URL is only validated for
-   * URL-shape when actually provided; undefined otherwise.
+   * The store connection string — optional: the gate run is source-based and
+   * DB-free, so the URL is only validated for URL-shape when actually provided;
+   * undefined otherwise.
    */
   databaseUrl: string | undefined;
   /** Hard spend cap in micro-USD (unset/0 = explicit opt-out). */
@@ -112,8 +111,8 @@ export type EmbedBenchConfig = {
  * fails before any spend.
  */
 export function loadEmbedBenchConfig(env: Record<string, string | undefined>): EmbedBenchConfig {
-  // Thermo B5: the benchmark never touches the store, so the URL is optional
-  // here (validated for shape only when supplied) — unlike `loadEvalRunConfig`,
+  // The benchmark never touches the store, so the URL is optional here
+  // (validated for shape only when supplied) — unlike `loadEvalRunConfig`,
   // whose eval-run path reads persisted runs.
   const databaseUrl =
     env.DATABASE_URL !== undefined && env.DATABASE_URL.trim() !== ""

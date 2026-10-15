@@ -9,73 +9,39 @@ import type {
   SimilarChild,
 } from "./rag-store";
 
-// The corpus seam is where the taxonomy type is re-exported to the barrel:
-// `rag-store.ts` re-exports `StoreError` from here rather than importing
-// @app/rag-core directly, keeping its own import count inside the agentic cap.
+// Re-exported here so `rag-store.ts` need not import @app/rag-core directly.
 export type { StoreError };
 
-/**
- * Corpus read/write half of the `RagStore` seam, split from `rag-store.ts`
- * to respect the agentic 300-line file cap — the same split the eval
- * (`rag-store-eval-seam.ts`) and feedback (`rag-store-feedback-seam.ts`)
- * halves already take. The `RagStore` interface extends this one, so
- * consumers see one unchanged seam.
- */
+/** Corpus read/write half of the `RagStore` seam; `RagStore` extends it, so
+ * consumers see one unchanged seam. */
 export interface RagStoreCorpus {
-  /** Insert a parent document, returning the effect of its persisted id. */
   insertDocParent(input: DocParentInsert): Effect.Effect<string, StoreError>;
 
-  /** Insert a child chunk tied to a parent, returning the effect of its persisted id. */
   insertDocChild(input: DocChildInsert): Effect.Effect<string, StoreError>;
 
-  /**
-   * Insert a batch of child chunks in one call. Adapters may perform a
-   * multi-row upsert; callers must still use `insertDocChild` for single-row
-   * paths. The default implementation (for adapters that do not implement this
-   * method) is to fall back to serial `insertDocChild` calls — consumers of the
-   * seam never need to know whether batching is native.
-   */
+  /** Insert a batch of child chunks in one call. Adapters may perform a
+   * multi-row upsert; the default implementation falls back to serial
+   * `insertDocChild` calls, so consumers never need to know which. */
   insertDocChildren(batch: readonly DocChildInsert[]): Effect.Effect<readonly string[], StoreError>;
 
-  /**
-   * Upsert an aligned text pair (provenance-keyed, idempotent). Returns the
-   * effect of the persisted pair id — the reference downstream
-   * `lemma_evidence` rows hold (ADR-0014: the aligned pairs are the
-   * concept-graph build's seed source).
-   */
+  /** Upsert an aligned text pair (provenance-keyed, idempotent), returning the
+   * persisted pair id that downstream evidence rows reference. */
   upsertAlignedPair(input: AlignedPairInsert): Effect.Effect<string, StoreError>;
 
-  /**
-   * Count child chunks grouped by one `metadata` JSONB key's string value.
-   * The key is bound as a parameter (never interpolated), the values are
-   * opaque strings, and rows where the key is absent or non-string collapse
-   * under `null` — the store does not interpret the key's meaning.
-   *
-   * The read behind the ingest CLIs' `--only-missing` guard (ADR-0037's
-   * recorded revisit trigger, fired by #213): resumption by measured store
-   * state needs the per-value landed counts BEFORE a pass acquires sources
-   * or spends, so a naive range loop cannot re-pay for collections already
-   * landed. The caller owns the domain vocabulary (which key to read); the
-   * seam stays engine-generic.
-   */
+  /** Count child chunks grouped by one `metadata` JSONB key's string value. The
+   * key is bound as a parameter (never interpolated) and never interpreted; rows
+   * where it is absent or non-string collapse under `null`. This is the read
+   * behind the ingest CLIs' `--only-missing` guard. */
   countDocChildrenByMetadata(
     key: string,
   ): Effect.Effect<readonly { value: string | null; count: number }[], StoreError>;
 
-  /**
-   * Nearest-neighbour similarity search over one embedding track. `filters`
-   * are exact-match against `metadata` JSONB keys, passed through untouched —
-   * the store does not interpret their names.
+  /** Nearest-neighbour similarity search over one embedding track. `filters` are
+   * exact-match against `metadata` JSONB keys, passed through untouched.
    *
-   * **A hit's embeddings are `null`.** The search used the vectors to order
-   * the rows and the caller reads ids/text/metadata, so returning them again
-   * is dead weight — and expensive dead weight: 1536 floats per hit is ~39 KB
-   * of text, which on an 8-search chat request meant ~3 MB over the wire and
-   * ~245k floats parsed inside the Worker (measured 2026-09-12; Cloudflare
-   * killed the request as `exceededResources`). The `DocChild` shape is kept
-   * so ids/text/citation/metadata stay one type; only the two vector fields
-   * are unpopulated by this method.
-   */
+   * A hit's embeddings are `null` — the search used the vectors to order the
+   * rows, so re-shipping them is dead weight; only those two fields are
+   * unpopulated, keeping ids/text/citation/metadata one shape. */
   similaritySearch(
     track: RetrievalTrack,
     embedding: readonly number[],
@@ -85,25 +51,16 @@ export interface RagStoreCorpus {
     },
   ): Effect.Effect<readonly SimilarChild[], StoreError>;
 
-  /**
-   * Fetch child chunks by id (deduplicated; absent ids simply missing).
-   * Like `similaritySearch`, the rows carry NO embeddings, plus the parent
-   * display title. The read behind the citation payload (#11): a trace's
-   * retrieval chunk refs resolve here, so display data comes from the rows
-   * retrieval served.
-   */
+  /** Fetch child chunks by id (deduplicated; absent ids simply missing), with the
+   * parent display title and NO embeddings. A trace's retrieval chunk refs
+   * resolve here, so display data comes from the rows retrieval served. */
   getDocChildrenByIds(ids: readonly string[]): Effect.Effect<readonly DocChildById[], StoreError>;
 
-  /**
-   * List a parent's child chunks in the corpus's stable within-parent order
-   * (`ordinal` ascending), at most `limit` rows. The parent is addressed by
-   * its opaque `source_key` provenance string — the caller owns its meaning
-   * (ADR-0045: a domain pack asks for the children of the document a question
-   * named, without the store learning what that document is). Like the other
-   * corpus reads, the rows carry NO embeddings; the parent display title
-   * rides along. `limit` is required so a caller cannot read an unbounded
-   * child set by accident; `limit <= 0` returns no rows.
-   */
+  /** List a parent's child chunks in stable within-parent order (`ordinal`
+   * ascending), at most `limit` rows, with no embeddings and the parent title.
+   * The parent is addressed by its opaque `source_key` — the store never learns
+   * what that document is. `limit` is required so a caller cannot read an
+   * unbounded child set by accident; `limit <= 0` returns no rows. */
   listDocChildrenByParentSourceKey(
     parentSourceKey: string,
     opts: { limit: number },
@@ -111,21 +68,17 @@ export interface RagStoreCorpus {
 
   /**
    * The children **neighbouring** the given anchor children inside their own
-   * parent: at most `radius` positions before and after each anchor, in the
-   * corpus's stable within-parent order (`ordinal`). The anchors are addressed
-   * by **child id** — ids the caller already holds from a read — and the store
-   * derives each anchor's parent and ordinal from the stored row itself, so a
-   * window is anchored on what was retrieved and cannot be mis-derived from
-   * the caller's copy of it (ADR-0049). Anchors are never returned; only their
-   * neighbours are.
+   * parent: at most `radius` positions before and after each anchor, in stable
+   * within-parent `ordinal` order. Anchors are addressed by **child id**, and the
+   * store derives each anchor's parent and ordinal from the stored row, so a
+   * window cannot be mis-derived from the caller's copy. Anchors are never
+   * returned; only their neighbours are.
    *
    * `anchorChildIds` is the caller's **priority order**: a neighbour reachable
-   * from two anchors belongs to the first one, and rows come back ordered by
-   * that anchor's position and then by `ordinal` — so a truncated read drops
-   * the least important windows rather than an arbitrary subset, and the
-   * caller spends a bounded budget on the best evidence first. `radius <= 0`,
-   * `limit <= 0` and an empty anchor list all return no rows without issuing a
-   * query; an id that does not exist simply anchors nothing.
+   * from two anchors belongs to the first, and rows order by anchor position
+   * then `ordinal`, so a truncating `limit` drops the least important windows.
+   * `radius <= 0`, `limit <= 0` and an empty anchor list return no rows without
+   * issuing a query; an id no stored row backs anchors nothing.
    */
   listDocChildNeighboursByChildIds(
     anchorChildIds: readonly string[],

@@ -5,7 +5,7 @@ import type { GeneratorProvider } from "../chat-generator";
 import type { ReviewerProvider } from "../chat-reviewer";
 
 /**
- * Stub chat pipeline providers for integration tests (#8, extended #10).
+ * Stub chat pipeline providers for integration tests.
  * Built inside the domain so the stubs use the engine's effect runtime — a
  * test importing `effect` from an app resolves a different version, and an
  * Effect value built there is "not a valid effect" for this package's runner.
@@ -44,10 +44,9 @@ export function createStubChatProviders(overrides: StubChatProviderOverrides = {
   reviewerProvider: ReviewerProvider;
   embedder: RetrieverEmbedder;
   /**
-   * The reviewer pre-gate is unwired by default (#168): the stub models an
-   * environment where the decision vendor's key is absent, which is also the
-   * pre-adoption behavior — so pipeline tests that do not opt in keep
-   * asserting today's reviewer path.
+   * The reviewer pre-gate is unwired by default: the stub models an
+   * environment where the decision vendor's key is absent, so pipeline tests
+   * that do not opt in exercise the reviewer path without it.
    */
   reviewerDecider: null;
 } {

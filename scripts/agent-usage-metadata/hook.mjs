@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-// ZCode workspace hook (issue #95): append a subagent's real token usage to
-// its agent metadata.json automatically.
+// ZCode workspace hook: append a subagent's real token usage to its agent
+// metadata.json automatically.
 //
 // Wiring (enabled in .zcode/config.json, trusted via `zcode hooks trust
 // grant` or the desktop review flow). Capture points, in the order they fire
@@ -12,8 +12,8 @@
 //   the reliable capture point for background dispatches, because the child
 //   usage rows in the telemetry DB are final once its result is collected.
 // There is deliberately no `Stop` capture: the runtime fires Stop only for
-// interactive/parent sessions (verified live), where there is nothing to
-// record and every event would trigger a full agents-dir scan.
+// interactive/parent sessions, where there is nothing to record and every
+// event would trigger a full agents-dir scan.
 //
 // For each capture we sum the child session's `model_usage` rows in the
 // local telemetry DB and merge the totals into the agent record's

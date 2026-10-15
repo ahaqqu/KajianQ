@@ -13,20 +13,19 @@ import {
 } from "./worktree-cleanup-fixture.mjs";
 
 /**
- * The real-checkout isolation canary for `bun run worktree:clean` (#246),
- * split out of `worktree-cleanup.test.mjs` because it is the one case whose
- * subject is a surface other agents mutate: the real `.worktrees/` listing.
+ * The real-checkout isolation canary for `bun run worktree:clean`, split out
+ * of `worktree-cleanup.test.mjs` because it is the one case whose subject is a
+ * surface other agents mutate: the real `.worktrees/` listing.
  *
  * The leak signal is the run's own output: a run rooted at the fixture never
  * sees the real checkout, so the entries it names are the fixture's own two and
  * nothing else. That signal cannot race — no other process can change what this
  * run printed — unlike a snapshot comparison of the shared listing.
  *
- * It deliberately does NOT compare the real listing before and after. The
- * superset check that used to live here (A1) flaked on a concurrent REMOVAL of
- * a real entry — a finishing dispatch's or a reviewer's own cleanup, which this
- * repo's parallel workflow produces routinely: 7/30 runs failed under a 0.12 s
- * create/remove churn. Destructive coverage moved to
+ * It deliberately does NOT compare the real listing before and after: a
+ * concurrent removal of a real entry — a finishing dispatch's or a reviewer's
+ * own cleanup, which this repo's parallel workflow produces routinely — makes
+ * that comparison flaky. Destructive coverage lives in
  * `worktree-cleanup-destruction.test.mjs`, which audits the commands the run
  * issues at git's own boundary: no shared state, and it also catches deletions
  * the listing never shows (a branch ref, an unprinted removal).
@@ -62,12 +61,12 @@ describe("worktree-cleanup isolation", () => {
     // fixture root, not the real checkout.
     expect(result.stdout).toContain(`removed ${SLUG} (no unique commits vs origin/main)`);
     expect(fx.exists(SLUG)).toBe(false);
-    // The parse is accountable before it is trusted (A2): the number of
-    // per-entry lines parsed equals the run's own totals, so a future line
-    // shape this closed prefix set does not know reddens the case here — as a
-    // parser gap — instead of silently shrinking what the leak assertion below
-    // pins. (A leak still passes this one: a leaked run's own totals match its
-    // own lines; the assertion below is what names it.)
+    // The parse is accountable before it is trusted: the number of per-entry
+    // lines parsed equals the run's own totals, so a future line shape this
+    // closed prefix set does not know reddens the case here — as a parser gap —
+    // instead of silently shrinking what the leak assertion below pins. (A leak
+    // still passes this one: a leaked run's own totals match its own lines; the
+    // assertion below is what names it.)
     const done = summaryCounts(result.stdout);
     expect(namedSlugs(result.stdout)).toHaveLength(done.removed + done.kept);
     // The leak tested directly: a run that resolved the real checkout

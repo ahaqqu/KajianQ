@@ -1,17 +1,17 @@
 import type { Localized } from "./localized";
 
 /**
- * The erasure path the notice points at (#179's recorded gap): the endpoint
- * that exists — `DELETE /v1/auth/me`, cascading sessions, chat, traces, and
- * feedback — and the honest statement that no in-product control reaches it
- * yet. `uiAffordance` fixes the gap as data, so a future erase-control ticket
- * flips it rather than rewording the copy.
+ * The erasure path the notice points at: the endpoint that exists —
+ * `DELETE /v1/auth/me`, cascading sessions, chat, traces, and feedback — and
+ * the honest statement that no in-product control reaches it yet.
+ * `uiAffordance` fixes the gap as data, so a future erase control flips it
+ * rather than rewording the copy.
  */
 
 export const ERASURE = {
   method: "DELETE",
   path: "/v1/auth/me",
-  /** `present` once an in-app control reaches the endpoint (#179's follow-up). */
+  /** `present` once an in-app control reaches the endpoint. */
   uiAffordance: "absent",
   what: {
     id: "Satu panggilan menghapus sesi anonim Anda beserta seluruh pohonnya: sesi, sesi obrolan dan pesannya, trace setiap jawaban, dan masukan — hak penghapusan Art. 17 sebagai satu kaskade.",

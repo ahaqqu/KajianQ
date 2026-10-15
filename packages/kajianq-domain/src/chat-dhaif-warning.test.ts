@@ -9,30 +9,19 @@ import { createMemoryRagStore } from "./test-utils/memory-rag-store";
 import { createStubChatProviders } from "./test-utils/stub-chat-providers";
 
 /**
- * INTEGRATION TEST (#278) — the dhaif warning on the path the WIRING runs.
+ * INTEGRATION TEST — the dhaif warning on the path the WIRING runs.
  *
  * The trust invariant: **an answer whose assembled context carries a
  * dhaif-graded chunk carries the deterministic dhaif warning — every time,
  * without depending on the model** (spec §2.2 "Grade flag — Always"; the
  * control exists so a weak-grade citation cannot read as primary proof).
  *
- * Why this file exists rather than another unit test: every earlier test of
- * the rule handed `applyProductRules` a hand-built chunk list that already
- * carried `grade: "dhaif"`. That is the one input the live path can lose, so
- * the suite stayed green while the deployed answers shipped without the
- * warning. This test walks the real composition instead — store rows →
- * `createKajianQRetriever` → `createKajianQAssembler` → generator → reviewer,
- * driven by `runChatPipeline` (the same `buildChatStages` wiring production
- * uses, ADR-0021) — so a future narrowing of the reviewer's context, a lost
- * metadata key, or a suppression predicate that accepts a grade mention
- * instead of the product's copy all redden here.
- *
- * The failing shape is the readable one from staging (trace
- * dfd9d801-c3bc-42b9-9e09-39a5df785c94, message
- * 92853ab6-5626-40cc-a098-a7d7463832b0, 2026-09-27): 28 assembled chunks, 3 of
- * them dhaif-graded, and a draft that reproduces the evidence's own labels —
- * including the "(Dhaif)" the assembler renders from the store grade — plus
- * the model's own informal note.
+ * Asserted through the real composition — store rows → `createKajianQRetriever`
+ * → `createKajianQAssembler` → generator → reviewer, driven by
+ * `runChatPipeline` (the same `buildChatStages` wiring production uses,
+ * ADR-0021) — so a narrowing of the reviewer's context, a lost metadata key, or
+ * a suppression predicate that accepts a grade mention instead of the product's
+ * copy reddens here.
  */
 
 const ARABIC = "إِنَّ اللَّهَ لَا يَخْفَىٰ عَلَيْهِ شَيْءٌ";
@@ -41,9 +30,9 @@ const DHAIF_CITATION = "HR. Tirmidhi no. 2878 (Dhaif)";
 const SAHIH_CITATION = "HR. Bukhari no. 5010 (Sahih)";
 
 /**
- * The metadata the ingestion writes for a weak-grade hadith — the shape is
- * copied from the live store row (`grade` is the key the rule reads, `grades`
- * is the per-scholar detail, `citation` is the rendered label).
+ * The metadata the ingestion writes for a weak-grade hadith: `grade` is the key
+ * the rule reads, `grades` is the per-scholar detail, `citation` is the rendered
+ * label.
  */
 const DHAIF_METADATA = {
   book: 45,
@@ -70,9 +59,8 @@ const SAHIH_METADATA = {
 const PRIMARY_VEC = [1, 0, 0];
 
 /**
- * The live failing answer's shape: it quotes the evidence's own "(Dhaif)"
- * label verbatim (the generator is instructed to) and then makes its own
- * informal weakness note — which is what used to suppress the canonical line.
+ * A draft quoting the evidence's own "(Dhaif)" label verbatim (the generator is
+ * instructed to) plus its own informal weakness note.
  */
 const DHAIF_LABEL_DRAFT = [
   `Hadits dari Abu Hurairah: "Setiap sesuatu memiliki puncak…" — **Catatan: hadits ini berlabel Dhaif** [${DHAIF_CITATION}].`,
@@ -136,8 +124,7 @@ const SKIPPING_DECIDER = {
 /**
  * The pipeline deps as the composition root builds them: the shared chat
  * provider stubs plus the real store. `decider: null` models an environment
- * without the decision vendor's key; `SKIPPING_DECIDER` is the "skip the paid
- * reviewer" path the failing trace took.
+ * without the decision vendor's key.
  */
 function depsFor(
   store: ReturnType<typeof createMemoryRagStore>,
@@ -152,7 +139,6 @@ function depsFor(
   };
 }
 
-/** Run the wired pipeline over a store and return the settled answer. */
 async function answerFor(
   store: ReturnType<typeof createMemoryRagStore>,
   answerText: string,
@@ -175,11 +161,8 @@ describe("#278 — the dhaif warning as the wiring runs it", () => {
     const answer = await answerFor(store, DHAIF_LABEL_DRAFT);
     const text = (answer as { text: string }).text;
 
-    // The warning the user must see, appended after the model's own text.
     expect(text).toContain(dhaifWarning("id"));
     expect(text.startsWith(DHAIF_LABEL_DRAFT)).toBe(true);
-    // And the citations frame's own predicate agrees with the delivered text —
-    // the flag cannot report "no warning" for an answer that carries one.
     expect(hasWeakWarning(text)).toBe(true);
 
     // The trace proves the context really carried the weak-grade chunk: this is
@@ -208,8 +191,8 @@ describe("#278 — the dhaif warning as the wiring runs it", () => {
       detail: Record<string, unknown>;
     }[];
 
-    // The stub cleared every citation, so the paid reviewer was skipped and the
-    // deterministic rules were the only thing between the draft and the user.
+    // The cheap screen cleared every citation, so the paid reviewer was skipped
+    // and no `review` event exists to hang the rule record on.
     expect(events.find((e) => e.kind === "decision")?.detail["outcome"]).toBe("skip");
     expect(events.some((e) => e.kind === "review")).toBe(false);
     expect(text).toContain(dhaifWarning("id"));
@@ -231,11 +214,10 @@ describe("#278 — the dhaif warning as the wiring runs it", () => {
   });
 
   it("carries the warning when the dhaif chunk is assembled but never cited (the narrowing guard)", async () => {
-    // The ticket's own shape: several dhaif-graded chunks among the assembled
-    // evidence, and a draft that quotes none of them. The invariant reads the
-    // ASSEMBLED context, so this is the case that reddens if a future change
-    // narrows what the reviewer sees — to the cited chunks, to chunks with a
-    // text layer, or to any capped slice that drops the grade.
+    // Several dhaif-graded chunks in the assembled evidence and a draft that
+    // quotes none of them: this reddens if a change narrows what the reviewer
+    // sees — to the cited chunks, to chunks with a text layer, or to any capped
+    // slice that drops the grade.
     const store = createMemoryRagStore();
     await seedChild(store, DHAIF_METADATA, 0);
     await seedChild(
@@ -262,12 +244,9 @@ describe("#278 — the dhaif warning as the wiring runs it", () => {
   });
 
   it("carries no warning when the retrieved set holds no dhaif chunk (the narrowing regression)", async () => {
-    // The same draft, the same informal note, the same "(Dhaif)"-shaped text —
-    // but with the weak-grade chunk absent from the retrieved set. Nothing may
-    // warn: the control reads the assembled context, not the answer's words.
-    // This is the half that reddens if a future change warns on sound hadith,
-    // and it is the test that a future narrowing of the reviewer's context
-    // (dropping the dhaif chunk) breaks in the other direction.
+    // The same draft with the weak-grade chunk absent from the retrieved set:
+    // nothing may warn, because the control reads the assembled context, not the
+    // answer's words — this half reddens if a change warns on sound hadith.
     const store = createMemoryRagStore();
     await seedChild(store, SAHIH_METADATA, 0);
 
@@ -289,27 +268,22 @@ describe("#278 — the dhaif warning as the wiring runs it", () => {
 });
 
 /**
- * INTEGRATION TEST (#285) — where the deterministic rules run on the delivery
- * paths the WIRING takes.
+ * INTEGRATION TEST — where the deterministic rules run on the delivery paths
+ * the WIRING takes.
  *
  * The invariant: **a delivered answer whose deterministic rules ran carries
  * exactly one `product_rules` event naming the rules that appended text — on
  * every path that applies them — and no such event where they did not run.**
  *
- * Why the wiring and not the reviewer seam alone: the three rules-applying
- * exits are `provider === null || skipLlm`, the ADR-0042 pre-gate skip, and
- * reviewer-passed, and the pre-gate skip records **no `review` event at all**
- * (the #278 staging trace dfd9d801 carried only a `decision` skip). A rule
- * running on that path was invisible to the trace; this suite is what reddens
- * if the event stops being recorded there, if it is recorded where the rules
- * were disabled, or if `applied` stops naming the rules that appended text. An
- * empty `applied` is only "ran, appended nothing": it does not separate "no
- * rule had a trigger" from "a trigger matched and the copy was already
- * present" (the exact-copy case that motivated the event), and this suite pins
- * both of those empty-list paths.
+ * The three rules-applying exits are `provider === null || skipLlm`, the
+ * ADR-0042 pre-gate skip, and reviewer-passed, and the pre-gate skip records
+ * **no `review` event at all** — so this event is the only trace evidence the
+ * rules ran there. An empty `applied` is only "ran, appended nothing": it does
+ * not separate "no rule had a trigger" from "a trigger matched and the copy was
+ * already present" (the exact-copy case that motivated the event), and both
+ * empty-list paths are pinned below.
  */
 
-/** The typed trace events of a settled pipeline answer. */
 const eventsOf = (answer: unknown) =>
   (answer as { trace: { events: readonly unknown[] } }).trace.events as {
     stage: string;
@@ -320,7 +294,6 @@ const eventsOf = (answer: unknown) =>
 const productRulesEvents = (answer: unknown) =>
   eventsOf(answer).filter((event) => event.kind === "product_rules");
 
-/** The same wired pipeline as `answerFor`, with per-test deps overrides. */
 async function answerVia(
   store: ReturnType<typeof createMemoryRagStore>,
   answerText: string,
@@ -343,8 +316,8 @@ describe("#285 — the product_rules event on the wiring's delivery paths", () =
       reviewerDecider: SKIPPING_DECIDER,
     });
     const events = eventsOf(answer);
-    // The path: the cheap screen cleared every citation, so the paid reviewer
-    // was skipped and no `review` event exists to hang the rule record on.
+    // The cheap screen cleared every citation, so the paid reviewer was skipped
+    // and no `review` event exists to hang the rule record on.
     expect(events.find((e) => e.kind === "decision")?.detail["outcome"]).toBe("skip");
     expect(events.some((e) => e.kind === "review")).toBe(false);
 
@@ -356,7 +329,6 @@ describe("#285 — the product_rules event on the wiring's delivery paths", () =
       "machine_translation_label",
       "ulama_disclaimer",
     ]);
-    // The event and the delivered text agree rule-for-rule.
     const text = (answer as { text: string }).text;
     expect(text).toContain(dhaifWarning("id"));
     expect(text).toContain(MACHINE_TRANSLATION_LABEL);
@@ -367,7 +339,6 @@ describe("#285 — the product_rules event on the wiring's delivery paths", () =
     const store = createMemoryRagStore();
     await seedChild(store, DHAIF_METADATA, 0);
 
-    // No decider wired → the stub reviewer runs and passes.
     const answer = await answerVia(store, `Jawaban memakai [${DHAIF_CITATION}] saja.`);
     expect(eventsOf(answer).some((e) => e.kind === "review")).toBe(true);
     expect(productRulesEvents(answer)).toHaveLength(1);
@@ -389,19 +360,15 @@ describe("#285 — the product_rules event on the wiring's delivery paths", () =
   );
 
   it("records `applied: []` when the draft already carries every rule's copy (the exact-copy path)", async () => {
-    // The case this event exists for: the model reproduced the canonical copy
-    // character-for-character, so every rule found its own text present and
-    // appended nothing. `applied: []` records "the rules ran and appended
-    // nothing" — the same value the next test records for a run where no rule
-    // had a trigger, because the event does not separate the two. What
-    // separates either from "the rules never ran" is the event's PRESENCE, not
-    // its `applied` value (the refusal test below is that negative).
+    // The model reproduced the canonical copy character-for-character, so every
+    // rule found its own text present and appended nothing: `applied: []` records
+    // "ran, appended nothing" — the same value a run with no trigger records,
+    // since only the event's PRESENCE separates either from "the rules never
+    // ran".
     //
-    // The draft cites the retrieved dhaif chunk so the cheap screen clears it
-    // and the rules really run on the pre-gate SKIP path (the #278 path, which
-    // records no `review` event); the `decision` assertion below keeps this
-    // test honest about the path it pins, so a citation-free draft that
-    // silently escalates instead can never make it pass for the wrong reason.
+    // The draft cites the retrieved dhaif chunk so the rules run on the pre-gate
+    // SKIP path; the `decision` assertion below keeps this test honest about the
+    // path it pins.
     const store = createMemoryRagStore();
     await seedChild(store, DHAIF_METADATA, 0);
     const draft = [
@@ -418,24 +385,23 @@ describe("#285 — the product_rules event on the wiring's delivery paths", () =
     const rules = productRulesEvents(answer);
     expect(rules).toHaveLength(1);
     expect(rules[0]?.detail["applied"]).toEqual([]);
-    // Nothing was appended: the rules are not a second source of truth for
-    // what the answer says.
+    // Nothing was appended: the rules are not a second source of truth for the
+    // answer.
     expect((answer as { text: string }).text).toBe(draft);
   });
 
   it("records `applied: []` when no rule has a trigger (the no-trigger path)", async () => {
-    // The other way `applied` can be empty, and the reason the event must not
-    // be read as a suppression count: nothing is suppressed here. The only
+    // The other way `applied` can be empty, and the reason the event must not be
+    // read as a suppression count: nothing is suppressed here — the only
     // retrieved chunk is sound (no dhaif trigger) and carries no translation
-    // layer (no label trigger), and the draft already ends with the
-    // disclaimer (no disclaimer trigger) — yet the recorded value is the same
-    // `[]` the exact-copy test above records. The two runs are separable only
-    // by reading the context and the draft, never from the event.
+    // layer (no label trigger), and the draft already ends with the disclaimer
+    // (no disclaimer trigger) — yet the recorded value is the same `[]` the
+    // exact-copy test records. The two runs are separable only by reading the
+    // context and the draft, never from the event.
     //
-    // The draft cites the sound chunk, so the deterministic citation gate
-    // clears it and the decider skips the paid reviewer: this pins the
-    // pre-gate SKIP path (the #278 path, which records no `review` event), and
-    // the `decision` assertion below keeps the test honest about that path.
+    // The draft cites the sound chunk, so the decider skips the paid reviewer:
+    // this pins the pre-gate SKIP path, and the `decision` assertion below keeps
+    // the test honest about that path.
     const store = createMemoryRagStore();
     await seedChild(store, SAHIH_METADATA, 0, null);
     const draft = [`Jawaban memakai [${SAHIH_CITATION}].`, ulamaDisclaimer("id")].join("\n\n");
@@ -448,8 +414,6 @@ describe("#285 — the product_rules event on the wiring's delivery paths", () =
     expect(rules).toHaveLength(1);
     expect(rules[0]?.stage).toBe("reviewer");
     expect(rules[0]?.detail["applied"]).toEqual([]);
-    // Nothing had a trigger, so nothing was appended: the delivered text is
-    // the draft, byte for byte — the same shape the exact-copy run delivers.
     expect((answer as { text: string }).text).toBe(draft);
   });
 
@@ -460,43 +424,35 @@ describe("#285 — the product_rules event on the wiring's delivery paths", () =
     const answer = await answerVia(store, refusalFloorText("id"), {
       reviewerDecider: SKIPPING_DECIDER,
     });
-    // The refusal short-circuits before any rule runs — and must not gain a
-    // disclaimer, nor an event claiming the rules ran.
     expect(eventsOf(answer).some((e) => e.kind === "refusal")).toBe(true);
     expect(productRulesEvents(answer)).toHaveLength(0);
     expect((answer as { text: string }).text).not.toContain(ulamaDisclaimer("id"));
-    // And no warning is invented for a text that cites nothing, even though
-    // this run's ASSEMBLED context carries a dhaif chunk (#439): the rule's
-    // trigger reads the context, so this is the case that reddens if the
-    // exemption stops being keyed to the earned refusal shape.
+    // No warning is invented for a text that cites nothing, even though this
+    // run's ASSEMBLED context carries a dhaif chunk: the rule's trigger reads
+    // the context, so this reddens if the exemption stops being keyed to the
+    // earned refusal shape.
     expect((answer as { text: string }).text).not.toContain(dhaifWarning("id"));
     expect(hasWeakWarning((answer as { text: string }).text)).toBe(false);
   });
 });
 
 /**
- * INTEGRATION TEST (#439) — a HYBRID refusal runs the rules the spec marks
- * "Always".
+ * INTEGRATION TEST — a HYBRID refusal runs the rules the spec marks "Always".
  *
  * The invariant: **whatever text the run delivers, the grade flag and the
- * disclaimer are computed for it.** The refusal classification may skip the
- * paid reviewer (ADR-0009 cost discipline) — it must not skip a deterministic
- * rule SPECS §2.2 makes unconditional.
+ * disclaimer are computed for it.** The refusal classification may skip the paid
+ * reviewer (ADR-0009 cost discipline); it must not skip a deterministic rule
+ * SPECS §2.2 makes unconditional.
  *
- * The failure it closes was silent and shipped: `isRefusalDraft` is a
- * substring match on the canonical sentence, so a draft that quoted retrieved,
- * graded evidence and THEN ran into that sentence (QA #432 probe P7, trace
- * `fff2a012`) took the reviewer's refusal branch, which returned before
- * `applyProductRules`. A dhaif-graded hadith quoted in such a draft reached the
- * user with no warning line — and, because the citations frame's
- * `dhaifWarning` flag is `hasWeakWarning(deliveredText)` (one predicate,
- * `@app/kajianq-domain`), with no warning card either. No gate read it: the
- * eval harness scores refusal, citations and recall, never the warning line.
+ * `isRefusalDraft` is a substring match on the canonical sentence, so a draft
+ * that quotes retrieved, graded evidence and THEN runs into that sentence is
+ * classified as a refusal; the rules must still run on the text that ships, or a
+ * quoted dhaif-graded hadith reaches the user with no warning line (and the
+ * citations frame's `dhaifWarning` flag is `hasWeakWarning(deliveredText)` — one
+ * predicate, `@app/kajianq-domain` — so no warning card either).
  *
- * Why the wired pipeline and not the stage seam alone: the defect lived in the
- * ORDER of two decisions (classification, then rules), and only the wiring
- * shows the delivered text, the trace the frame is derived from, and whether a
- * paid call was spent.
+ * Why the wired pipeline: the behaviour lives in the ORDER of two decisions
+ * (classification, then rules), and only the wiring shows the delivered text.
  */
 describe("#439 — a hybrid refusal still runs the Always rules", () => {
   /** The hybrid shape: a grounded partial answer that runs into the sentence. */
@@ -509,11 +465,8 @@ describe("#439 — a hybrid refusal still runs the Always rules", () => {
     const store = createMemoryRagStore();
     await seedChild(store, DHAIF_METADATA, 0);
 
-    // A reviewer stub that FAILS the draft: it is wired but must never be
-    // called — if the classification stopped short-circuiting, the answer
-    // would become the reviewer-refusal copy and every assertion below would
-    // fail. That is the "no paid reviewer call spent on a classified refusal"
-    // half, pinned in the same run as the rules-ran half.
+    // A reviewer stub that FAILS the draft: it is wired but must never be called,
+    // so this run pins "no paid reviewer call spent on a classified refusal".
     const providers = createStubChatProviders({
       answerText: HYBRID_DRAFT,
       reviewerVerdict: "fail",
@@ -524,17 +477,15 @@ describe("#439 — a hybrid refusal still runs the Always rules", () => {
     const events = eventsOf(answer);
     const text = (answer as { text: string }).text;
 
-    // The classification is still taken, and the trace still records it.
     expect(events.find((e) => e.kind === "refusal")?.detail["trigger"]).toBe("generator_refusal");
-    // The paid reviewer was not spent (no `review` verdict, no reviewer call —
-    // the generator's own call is not a review).
+    // The paid reviewer was not spent: no `review` verdict, no reviewer call
+    // (the generator's own call is not a review).
     expect(events.some((e) => e.kind === "review")).toBe(false);
     expect(events.some((e) => e.kind === "llm_call" && e.detail["purpose"] === "review")).toBe(
       false,
     );
-    // The Always rules ran for the text that ships, and the trace says which
-    // appended — the event's PRESENCE beside the `refusal` event is what makes
-    // "the rules ran for a hybrid" observable (#285's contract).
+    // The Always rules ran for the text that ships: the event's PRESENCE beside
+    // the `refusal` event is what makes that observable.
     const rules = productRulesEvents(answer);
     expect(rules).toHaveLength(1);
     expect(rules[0]?.stage).toBe("reviewer");
@@ -543,22 +494,17 @@ describe("#439 — a hybrid refusal still runs the Always rules", () => {
       "machine_translation_label",
       "ulama_disclaimer",
     ]);
-    // And the delivered text carries them, appended after the model's own words.
     expect(text.startsWith(HYBRID_DRAFT)).toBe(true);
     expect(text).toContain(dhaifWarning("id"));
     expect(text).toContain(MACHINE_TRANSLATION_LABEL);
     expect(text).toContain(ulamaDisclaimer("id"));
-    // The citations frame's own predicate — the warning card's flag — agrees
-    // with the delivered text (one predicate, two readers).
     expect(hasWeakWarning(text)).toBe(true);
   });
 
   it("keeps the rule's context trigger on the hybrid path (an assembled but uncited dhaif chunk still warns)", async () => {
-    // The adversarial half: the hybrid cites only a SOUND hadith while the
-    // assembled context also holds a dhaif chunk. The rule reads the assembled
-    // context, so the warning must appear — a "fix" that quietly narrowed the
-    // trigger to the hybrid's own citations would pass the test above and fail
-    // this one.
+    // The hybrid cites only a SOUND hadith while the assembled context also holds
+    // a dhaif chunk: the rule reads the assembled context, not the draft's
+    // citations.
     const store = createMemoryRagStore();
     await seedChild(store, SAHIH_METADATA, 0);
     await seedChild(store, DHAIF_METADATA, 1);
@@ -574,8 +520,8 @@ describe("#439 — a hybrid refusal still runs the Always rules", () => {
 });
 
 /**
- * INTEGRATION TEST (#443) — a citation-free draft that carries the refusal
- * sentence but ASSERTS its own content is delivered as the product's refusal.
+ * INTEGRATION TEST — a citation-free draft that carries the refusal sentence
+ * but ASSERTS its own content is delivered as the product's refusal.
  *
  * The invariant: **whatever text is delivered, the guarantees the spec marks
  * unconditional are computed for it, or the text is delivered as a refusal the
@@ -583,15 +529,14 @@ describe("#439 — a hybrid refusal still runs the Always rules", () => {
  * neither cites nor declines may not pass as a decline because the machinery
  * happened to see no citations — and it may not be "fixed" by appending the
  * Always rules either: the dhaif trigger is the ASSEMBLED context, so decorating
- * this shape would put a weak-grade warning on a text that cites nothing, which
- * the #285 pin forbids. The signal is a new deterministic one — the decline
- * backstop — and its delivery is the product's own refusal text in place of the
- * model's words.
+ * this shape would put a weak-grade warning on a text that cites nothing. The
+ * signal is a deterministic decline backstop, and its delivery is the product's
+ * own refusal text in place of the model's words.
  *
  * Why the wired pipeline: the shape only exists once the real retriever,
  * assembler, generator stub and reviewer stage have run in order, and the
  * delivered text, the trace the citations frame is derived from, and the spend
- * a classified refusal must not make are all observable here and nowhere else.
+ * a classified refusal must not make are all observable here.
  */
 describe("#443 — a citation-free asserting refusal draft ships the product's refusal", () => {
   /** The shape: an ungrounded prose sentence, then the canonical sentence. */
@@ -617,17 +562,15 @@ describe("#443 — a citation-free asserting refusal draft ships the product's r
     const text = (answer as { text: string }).text;
     const events = eventsOf(answer);
 
-    // The reader gets a refusal they can recognise, never the draft's assertion.
     expect(text).toBe(DEFAULT_REFUSALS.id);
     expect(text).not.toBe(refusalTextFor("id", "reviewer"));
     expect(text).not.toContain("wajib diamalkan");
-    // The decision is trace content, under its own machine-readable trigger.
     expect(events.find((e) => e.kind === "refusal")?.detail["trigger"]).toBe(
       "asserting_refusal_draft",
     );
     expect(events.some((e) => e.kind === "review")).toBe(false);
-    // No rule ran, so no event may claim it did (#285), and the warning the
-    // grade flag would add is not invented for a text that cites nothing.
+    // No rule ran, so no event may claim it did, and the warning the grade flag
+    // would add is not invented for a text that cites nothing.
     expect(productRulesEvents(answer)).toHaveLength(0);
     expect(text).not.toContain(dhaifWarning("id"));
     expect(hasWeakWarning(text)).toBe(false);
@@ -641,9 +584,9 @@ describe("#443 — a citation-free asserting refusal draft ships the product's r
 
   it("keeps the neighbouring shapes on the same wiring: a decline ships byte-identical, turn two is refused", async () => {
     // A second turn in the same session, and both halves of the boundary: the
-    // genuine decline is still delivered as the model wrote it (#285's floor),
-    // while the follow-up that asserts is refused. The history is what makes the
-    // second turn a follow-up rather than a fresh question (ADR-0018).
+    // genuine decline is still delivered as the model wrote it, while the
+    // follow-up that asserts is refused. The history is what makes the second
+    // turn a follow-up rather than a fresh question (ADR-0018).
     const store = createMemoryRagStore();
     await seedChild(store, DHAIF_METADATA, 0);
     const decline = refusalFloorText("id");
@@ -669,19 +612,15 @@ describe("#443 — a citation-free asserting refusal draft ships the product's r
   });
 
   it("ships the wrapped floor byte-identical and refuses the folded sentence, on the same wiring (#452)", async () => {
-    // The floors' predicate/decision pins live in `chat-refusal.test.ts`; the
-    // unwrapped floor's DELIVERED text is pinned in the test above. The wrapped
-    // variant carries its own predicate pin there and had no delivered-text pin
-    // anywhere — a narrowing of the exemption could have moved it without this
-    // suite noticing (#452, observation 3 of the #451 re-review), so the gap is
-    // closed here: what the reader receives is the model's text, byte for byte,
-    // with no rule run and no warning invented for a text that cites nothing.
+    // The wrapped floor's DELIVERED text (the unwrapped floor's is pinned in the
+    // test above; the predicate and decision pins live in `chat-refusal.test.ts`):
+    // the reader receives the model's text, byte for byte, with no rule run and
+    // no warning invented for a text that cites nothing.
     const store = createMemoryRagStore();
     await seedChild(store, DHAIF_METADATA, 0);
     const { head, tail } = REFUSAL_FLOORS.id;
-    // BOTH wrap spellings the round-1 review certified byte-identical: the
-    // newline after `kami` (this round's input) and the reviewed head's space
-    // there, which no suite covered once that input moved (review N4).
+    // BOTH wrap spellings must ship byte-identical: the newline after `kami` and
+    // the space there.
     const wrappedAfterKami = `${head.replace(", ", ",\n")}\n${DEFAULT_REFUSALS.id}\n${tail}.`;
     const wrappedAfterComma = `${head.replace(", ", ",\n")} ${DEFAULT_REFUSALS.id}\n${tail}.`;
     const floor = await answerVia(store, wrappedAfterKami);
@@ -691,9 +630,9 @@ describe("#443 — a citation-free asserting refusal draft ships the product's r
     expect((spaced as { text: string }).text).toBe(wrappedAfterComma);
     expect(productRulesEvents(spaced)).toHaveLength(0);
 
-    // The fold: the same sentence, on the same wiring, with a claim of the
-    // model's own inside it. `isRefusalOnly` reads it as content now, so the
-    // reader gets the product's refusal rather than the draft's assertion.
+    // The fold: the same sentence with a claim of the model's own inside it, so
+    // `isRefusalOnly` reads it as content and the reader gets the product's
+    // refusal rather than the draft's assertion.
     const fold = `Haditsnya sahih dan wajib diamalkan, namun kami ${DEFAULT_REFUSALS.id}.`;
     const refused = await answerVia(store, fold);
     const text = (refused as { text: string }).text;
@@ -707,12 +646,11 @@ describe("#443 — a citation-free asserting refusal draft ships the product's r
   });
 
   it("ships a terminal-mark run with the draft, as the boundary decision it is (review N1)", async () => {
-    // The run is the sentence boundary `SENTENCE_BOUNDARIES` reads, not a
-    // segment residue, so the reader receives the draft with its marks and no
-    // rule is invented for a text that cites nothing. The predicate and decision
-    // pins live in `chat-refusal.test.ts`; this is the DELIVERED-text level the
-    // review measured, now a gate on the recorded decision (`SPECS.md` §3.3,
-    // `CONTEXT.md` Refusal) rather than on an omission.
+    // The run is the sentence boundary `SENTENCE_BOUNDARIES` reads, not a segment
+    // residue, so the reader receives the draft with its marks and no rule is
+    // invented for a text that cites nothing. The predicate and decision pins live
+    // in `chat-refusal.test.ts`; this is the DELIVERED-text level, gated on the
+    // recorded decision (`SPECS.md` §3.3, `CONTEXT.md` Refusal).
     const store = createMemoryRagStore();
     await seedChild(store, DHAIF_METADATA, 0);
     const draft = `!!! Kami ${DEFAULT_REFUSALS.id}.`;

@@ -14,15 +14,14 @@ import {
 // Re-exported so the gate's public surface (the domain barrel, the reviewer
 // pre-gate's claim spans, the eval scorer's injected grammar) is unchanged by
 // the split: the scan and the comparison form are one subject and one import
-// path, however many files the 300-line cap distributes them across.
-// `addressesNamedBy` joins them because it IS the comparison form's other half:
-// the addresses a citation names are what the per-address rule compares, and
-// the eval's injected grammar reads the same declaration rather than a second
-// implementation of the range's semantics.
+// path. `addressesNamedBy` joins them because it IS the comparison form's other
+// half: the addresses a citation names are what the per-address rule compares,
+// and the eval's injected grammar reads the same declaration rather than a
+// second implementation of the range's semantics.
 export { addressesNamedBy, citationCandidatesIn, citationSpansIn, normalizeCitationLabel };
 
 /**
- * Deterministic citation validator (spec §3.3 step 7, ticket #10): every
+ * Deterministic citation validator (spec §3.3 step 7): every
  * citation in the answer must correspond to a chunk actually retrieved in the
  * same request. Pure string work — no LLM, no engine-domain leakage; the
  * label formats are data on the chunks.
@@ -40,9 +39,7 @@ export { addressesNamedBy, citationCandidatesIn, citationSpansIn, normalizeCitat
  * matching the product's citation grammar count as citation attempts. A
  * generic bracketed word (`[Peringatan]`, `[not found]`) is not a citation —
  * treating it as one would convert every dhaif-warning answer into a refusal,
- * a false positive that would train reviewers to distrust the gate. The
- * earlier bracket-only scan had exactly this hole in reverse: it saw
- * `[QS. 9:99]` but missed the same fabricated citation written in prose.
+ * a false positive that would train reviewers to distrust the gate.
  *
  * Unverifiable forms are refused, never waved through: a Quran citation
  * written with a surah *name* (`QS. Al-Baqarah:255`) cannot be checked against
@@ -52,7 +49,6 @@ export { addressesNamedBy, citationCandidatesIn, citationSpansIn, normalizeCitat
  * model has everything it needs to stay verifiable.
  */
 
-/** Citation labels carried by each retrieved chunk's metadata. */
 export function citationLabelsOf(chunk: Chunk): string[] {
   const meta = (chunk.metadata ?? {}) as Record<string, unknown>;
   const citation = meta["citation"];
@@ -64,14 +60,12 @@ export function citationLabelsOf(chunk: Chunk): string[] {
 }
 
 /**
- * The comparison form of a text for grounded-label matching: invisible
- * formatting dropped, fullwidth digits folded, whitespace collapsed and the
- * address separators canonicalized, exactly as {@link validateCitations}
- * matches a chunk's label against the answer. Exported so a consumer that must
- * find a grounded citation inside the draft (the reviewer pre-gate's claim
- * spans) compares the same way the gate that declared it grounded did — a
- * second implementation here would let the two disagree about what "the
- * passage states" means.
+ * The comparison form of a text for grounded-label matching — the same
+ * normalisation order {@link validateCitations} applies to a chunk's label.
+ * Exported so a consumer that must find a grounded citation inside the draft
+ * (the reviewer pre-gate's claim spans) compares the same way the gate that
+ * declared it grounded did — a second implementation here would let the two
+ * disagree about what "the passage states" means.
  */
 export function citationMatchText(text: string): string {
   return canonicalizeCitationSpelling(
@@ -82,16 +76,13 @@ export function citationMatchText(text: string): string {
 /**
  * **Which retrieved labels ground one citation-shaped span** — the single
  * implementation of the gate's rule, returned rather than decided so every
- * consumer of "grounded" reads the same answer (review A1 of the fix round).
+ * consumer of "grounded" reads the same answer.
  *
  * The gate's ungrounded direction and the user-visible citations frame
- * (`deriveCitationsFrame`) both call this. Before it existed they each carried
- * their own reading, so a range the gate had just accepted still produced no
- * chip for the user and scored `citationValidity` 0 on the eval's authoritative
- * frame path. A third consumer cannot be written by accident now: the rule has
- * one owner, and its result is the accepted label(s) rather than a boolean —
- * the frame needs the label to find the display row, and the eval's frame path
- * matches on exactly those labels.
+ * (`deriveCitationsFrame`) both call this. A third consumer cannot be written by
+ * accident: the rule has one owner, and its result is the accepted label(s)
+ * rather than a boolean — the frame needs the label to find the display row, and
+ * the eval's frame path matches on exactly those labels.
  *
  * `candidate` is a normalized span (the grammar scan's output); `known` is the
  * retrieved chunks' normalized citation labels. All three rules run in the
@@ -99,56 +90,45 @@ export function citationMatchText(text: string): string {
  *
  * 1. the span **is** a retrieved label (the ordinary case);
  * 2. the span **names addresses of its own** — a grammar that declares a list,
- *    the Quran range, of any width (#444) — and every one of them is
- *    retrieved — strict-whole, the interior included (ADR-0049);
+ *    the Quran range, of any width — and every one of them is retrieved —
+ *    strict-whole, the interior included (ADR-0049);
  * 3. the span **extends** a retrieved label with a grade the chunk did not
  *    carry (`HR. Bukhari no. 573 (Sahih)`), which is the answer's provenance,
  *    not a second address.
  *
- * **A declared list of ONE is a list too (#444), and the branch reads the
- * declaration itself (#449).** Rule 2 decides a declared list of any width: a
- * range whose endpoints are equal (`QS. 1:1–1`) names exactly the address its
- * two endpoints spell, so it grounds exactly when that address is retrieved.
- * The rule used to be gated on `named.length > 1`, reading "one declared address"
- * as the ordinary case rule 1 already covers — true for a plain `QS. 1:1`, false
- * for a one-address *range*, which declares a list the length test could not see
- * at all. Such a span skipped rule 2, reached rule 3, found no `<label>` + space
- * (a range continues with a dash, never a space) and was refused although its own
- * address was retrieved: on staging that refusal replaced a 31-chunk grounded
- * answer with the canonical one (trace `b8812e2d-…`, merge `d30c40cf`).
+ * **A declared list of ONE is a list too, and the branch reads the declaration
+ * itself.** Rule 2 decides a declared list of any width: a range whose endpoints
+ * are equal (`QS. 1:1–1`) names exactly the address its two endpoints spell, so
+ * it grounds exactly when that address is retrieved. A length test cannot see
+ * such a list at all — it reads as the ordinary case rule 1 already covers.
  *
  * That branch is taken **exactly when the grammar declares an address list**
  * (`declaresAddressList`), read from the grammar's own structure rather than
- * inferred from the shape of what the declaration named. The proxy it replaced and
- * the class that proxy let past rule 2 into rule 3 are stated once, on
- * `declaresAddressList` — the one owner of that mechanism — so this site points
- * there rather than keeping a copy that can drift from it (#449). A plain span's own
- * address is the list of one its grammar declares, so it grounds on that address and
- * on nothing else; a grammar that declares no list has no per-address reading to take
- * and keeps the extension rule whole. A range of one the surah cannot hold
- * (`QS. 2:0-0`, `QS. 2:999–999`) stays unenumerable and refuses above, like any other
- * list that cannot be verified.
+ * inferred from the shape of what the declaration named; the reason lives once on
+ * that declaration, the one owner of the mechanism, so this site points there
+ * rather than keeping a copy that can drift. A plain span's own address is the
+ * list of one its grammar declares, so it grounds on that address and on nothing
+ * else; a grammar that declares no list has no per-address reading to take and
+ * keeps the extension rule whole. A range of one the surah cannot hold
+ * (`QS. 2:0-0`, `QS. 2:999–999`) stays unenumerable and refuses above, like any
+ * other list that cannot be verified.
  *
  * The list rule runs **before** the extension rule, and a declared list that is
- * not fully retrieved returns `null` rather than falling through: a spaced
- * range (`QS. 2:255 - 256`, review R5 of the fix round) *does* extend the
- * retrieved head with a space, so the old order grounded it on the head alone
- * — the very hole A2 closed for the glued spelling. A grammar that declares no
+ * not fully retrieved returns `null` rather than falling through: a spaced range
+ * (`QS. 2:255 - 256`) *does* extend the retrieved head with a space, so the
+ * extension rule alone would ground it on the head. A grammar that declares no
  * list (the hadith number) keeps the extension rule as its only reading.
  *
- * A declared list the grammar **cannot enumerate** refuses too, and that
- * refusal is read from a distinct state rather than guessed from the list's
- * length (review T1 of the fix round): `addressesNamedBy` returns `null` for
- * it, never a one-element list. Encoded as `[label]` it was indistinguishable
- * from a single-address declaration, so the rule below was skipped and the
- * extension rule grounded `QS. 2:255 - 999` on `QS. 2:255` while its glued
- * twin refused — the spaced spelling weaker than the glued one at exactly the
- * address ADR-0049 names as the refusal case.
+ * A declared list the grammar **cannot enumerate** refuses too, and that refusal
+ * is read from a distinct state rather than guessed from the list's length:
+ * `addressesNamedBy` returns `null` for it, never a one-element list — the shape
+ * a single-address declaration has. Without that state the spaced spelling is
+ * weaker than its glued twin at exactly the address ADR-0049 names as the
+ * refusal case.
  *
- * Like the whole-label rule it replaces, no rule here can ground a citation
- * that rule refused. `null` means nothing retrieved grounds the span; every
- * returned label is in `known` by construction, so a caller can look each one
- * up directly.
+ * No rule here can ground a citation a whole-label rule refused. `null` means
+ * nothing retrieved grounds the span; every returned label is in `known` by
+ * construction, so a caller can look each one up directly.
  */
 export function groundingLabelsFor(
   candidate: string,
@@ -160,16 +140,12 @@ export function groundingLabelsFor(
   const declared = addressesNamedBy(candidate);
   if (declared === null) return null;
   // ADR-0049: every address the citation's own grammar declares it names must be
-  // present — a declared list of ONE exactly like a list of two (#444). The branch
-  // is keyed to the grammar's DECLARATION (`declaresAddressList`), read from the
-  // grammar's own structure — never to the shape of the addresses it named (#449);
-  // the proxy it replaces, and the marker class that proxy let through, are stated
-  // once on `declaresAddressList` — the one owner of the fact. No caller can build a
-  // set holding the bare marker from a chunk label today (`normalizeCitationLabel`
-  // reads `QS.` as `QS`), which is why the hole was latent; the branch no longer
-  // rests on that. A grammar that declares no list has no address list to decide
-  // address by address: it names the label itself whole and keeps the extension rule
-  // below.
+  // present — a declared list of ONE exactly like a list of two. The branch is
+  // keyed to the grammar's DECLARATION (`declaresAddressList`), read from the
+  // grammar's own structure, never to the shape of the addresses it named — the
+  // declaration is the one owner of that fact. A grammar that declares no list
+  // has no address list to decide address by address: it names the label itself
+  // whole and keeps the extension rule below.
   const named = declared.map(canonicalizeCitationSpelling);
   if (declaresAddressList(candidate)) {
     // A declared list that enumerated nothing is unverifiable too: refuse it
@@ -204,7 +180,7 @@ export function groundingLabelsFor(
  * through 260, interior included. The list comes from the grammar that declared
  * it (`addressesNamedBy`), never from splitting a dash at this site: a grammar
  * with no list-valued form names one address and its dash-joined compound
- * stays the opaque whole it was (#264's A3 boundary, unchanged for hadith).
+ * stays the opaque whole it was, unchanged for hadith.
  * The candidate label itself is untouched, so the refusal reason, the reviewer
  * pre-gate's claim spans and the citation the user reads keep naming what the
  * draft named.
@@ -241,9 +217,9 @@ export function validateCitations(
     // pass found literally in the text. `QS. 3:1-2` written over retrieved
     // `QS. 3:1` and `QS. 3:2` says `grounded: ["QS. 3:1", "QS. 3:2"]`, which
     // is what makes the trace's evidence agree with the frame and with the
-    // scorer on a range (review A1 of the #274 fix round: the tail address is
-    // never a literal substring of `QS. 3:1-2`, so the events path used to
-    // score a required tail verse 0 while the frame path scored it 1).
+    // scorer on a range: the tail address is never a literal substring of
+    // `QS. 3:1-2`, so a substring-only pass would score a required tail verse 0
+    // while the frame path scores it 1.
     for (const label of accepted) grounded.add(label);
   }
   return { grounded: [...grounded], ungrounded };

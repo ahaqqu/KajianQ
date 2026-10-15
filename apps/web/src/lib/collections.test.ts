@@ -99,10 +99,10 @@ describe("collection data", () => {
     const planned = byStatus(COLLECTION_ENTRIES, "planned");
     const refs = planned.map((entry) => entry.planRef);
     // Priority kitab (tracer + scale-out), the three complete corpora, the
-    // tafsir set in SPECS §4.1, and the terminology seeds (issue #24 /
-    // ADR-0014). The hadith category carries NO planned entry since #213:
-    // all seven collections are ingested and citable, and a planned entry
-    // for them would claim as future work what the store already serves.
+    // tafsir set in SPECS §4.1, and the terminology seeds (ADR-0014). The
+    // hadith category carries no planned entry: all seven collections are
+    // ingested and citable, so a planned entry would claim as future work what
+    // the store already serves.
     expect(refs).toContain("#21");
     expect(refs).toContain("#22");
     expect(refs).toContain("#33");
@@ -110,14 +110,12 @@ describe("collection data", () => {
     expect(refs).toContain("#27–#31");
     expect(refs).toContain("ADR-0014 · #24");
     expect(refs).toContain("SPECS §4.1");
-    // The superseded #141 staging entry must not come back as "planned".
     expect(refs).not.toContain("#141");
   });
 
   it("keeps no planned v1-collection entry (all seven collections are available, #213)", () => {
     // Musnad Ahmad and Sunan ad-Darimi stay planned (ADR-0026: absent from
-    // the v1 source) — what must NOT reappear as planned is any of the seven
-    // fawazahmed0 collections (#141's staging entry did exactly that).
+    // the v1 source); no fawazahmed0 collection may reappear as planned.
     const hadithPlanned = COLLECTION_ENTRIES.filter(
       (entry) => entry.category === "hadith" && entry.status === "planned",
     );
@@ -171,10 +169,9 @@ describe("filterByCategory", () => {
   });
 
   it("returns an empty list for a category with no entries", () => {
-    // The "no entries" branch itself: an empty input stays empty.
     expect(filterByCategory([], "kitab")).toEqual([]);
-    // And a real category with no entries in the register today filters to
-    // nothing (derived from the data, not a hard-coded count).
+    // A category with no entries in the register filters to nothing (derived
+    // from the data, not a hard-coded count).
     const counts = new Map(
       COLLECTION_CATEGORIES.map((category) => [
         category,

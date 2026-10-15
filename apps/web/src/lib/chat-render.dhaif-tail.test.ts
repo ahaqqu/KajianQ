@@ -3,24 +3,18 @@ import { MACHINE_TRANSLATION_LABEL, splitAnswerBlocks } from "./chat-render";
 import { messages } from "./i18n-messages";
 
 /**
- * #292 — the dhaif warning renders twice when the MT label follows it. The
- * postprocess appends warning → MT label → disclaimer
- * (`packages/kajianq-domain/src/chat-postprocess.ts`), so on the common
- * Indonesian path the tail is `[warning][MT label]`; the pre-fix peel only
- * looked at the last two paragraphs, left the warning in `split.body` (drawn
- * as prose), and the frame-flag card drew it again.
+ * The postprocess appends warning → MT label → disclaimer
+ * (`packages/kajianq-domain/src/chat-postprocess.ts`), so the tail of an
+ * Indonesian answer is `[warning][MT label]`. The peel must walk the whole
+ * trailing rule run rather than only the last two paragraphs: otherwise the
+ * warning stays in `split.body` (drawn as prose) and the frame-flag card draws
+ * it again.
  *
  * This spec owns the trailing rule run as a whole: every order and repeat of
  * the three rule kinds, the product's canonical copy as the only value the
- * card may render (A2), and the marker tolerance a copy tweak gets (A3). The
+ * card may render, and the marker tolerance a copy tweak gets. The
  * client↔server copy pair itself is pinned by
  * `tests/parity/chat-rule-copy.test.mjs`.
- *
- * Mutation named: restore the pre-fix two-pop peel (disclaimer last, then
- * warning last) and the `[W][MT]` row reddens on `expect(split.warning)`
- * (`expected null to be '[Peringatan] …'`) — the row that catches the live
- * duplicate through `AnswerCard` is `renders the ID warning once when the MT
- * label follows it` in `AnswerCard.test.ts`.
  */
 
 /** The product's canonical copies — read from the i18n copy the card renders. */
@@ -46,7 +40,7 @@ const SHAPES: readonly {
   disclaimer: string | null;
   bodyTail: readonly string[];
 }[] = [
-  // The reviewer's shapes: a re-seen marker must not break the walk (A1).
+  // The reviewer's shapes: a re-seen marker must not break the walk.
   {
     name: "[W][W]",
     tail: [WARNING_ID, WARNING_ID],
@@ -68,7 +62,7 @@ const SHAPES: readonly {
     disclaimer: DISCLAIMER,
     bodyTail: [],
   },
-  // The live postprocess orders and the shapes this PR already passed.
+  // The live postprocess orders.
   {
     name: "[W][MT]",
     tail: [WARNING_ID, MT],
@@ -199,7 +193,7 @@ describe("splitAnswerBlocks — marker tolerance (A3)", () => {
     (variant) => {
       // The variant sits BETWEEN the canonical line and the tail. Without the
       // tolerant opening match it counts as prose, breaks the walk, and the
-      // canonical line stays in `body` — the #292 duplicate is back.
+      // canonical line stays in `body` — the duplicate is back.
       const split = splitAnswerBlocks([PROSE, WARNING_ID, variant, MT].join("\n\n"));
       expect(split.warning).toBe(WARNING_ID);
       expect(split.body).toBe([PROSE, variant, MT].join("\n\n"));
@@ -209,8 +203,8 @@ describe("splitAnswerBlocks — marker tolerance (A3)", () => {
   // The label peels bracket-optional (`RULE_KINDS` → `opensWith(…, false)`), so
   // both forms are pinned: a rehydrated or hand-edited answer carries it bare,
   // which is the branch `opensWith`'s ternary takes for the label. Making the
-  // label bracket-required must redden here rather than resurrect the #292
-  // duplicate silently (D1).
+  // label bracket-required must redden here rather than resurrect the
+  // duplicate silently.
   it.each([
     ["bracketed + reworded head (B1 shape)", "[Terjemahan mesin — rujuk teks Arab asli]"],
     ["bare + reworded head", "Terjemahan mesin — rujuk teks Arab asli"],

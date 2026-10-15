@@ -10,7 +10,7 @@ import { formatHadithCitation, hadithSourceKey } from "./hadith-source";
 import { Effect } from "effect";
 
 /**
- * INTEGRATION TEST — issue #7's design-for-verification core.
+ * INTEGRATION TEST.
  *
  * The invariants under test (fail silently in production if broken):
  *   1. Grade is structured, filterable metadata — a hadith graded Daif by
@@ -22,9 +22,9 @@ import { Effect } from "effect";
  *      ADR-0013, on the hadith corpus this time.
  *
  * Fixture: REAL source slice (fawazahmed0/hadith-api, Sunan Abu Dawud book 1
- * "Purification", 7 hadith spanning every grade-mapping branch). The
- * embedder is the deterministic cross-lingual test double; the summarizer a
- * deterministic stub whose cost is asserted through the report.
+ * "Purification") spanning every grade-mapping branch. The embedder is the
+ * deterministic cross-lingual test double; the summarizer a deterministic stub
+ * whose cost is asserted through the report.
  */
 
 const FIXTURES = resolve(import.meta.dirname, "fixtures/hadith");
@@ -103,7 +103,7 @@ describe("hadith ingestion (fixture = real source data)", () => {
     const store = createMemoryRagStore();
     const result = await ingestFixture(store);
 
-    // One parent: Abu Dawud book 1 (all 7 slice hadith live there).
+    // One parent: Abu Dawud book 1 (every slice hadith lives there).
     expect(result.parentIds).toHaveLength(1);
     const parent = store.allParents().find((p) => p.sourceKey === hadithSourceKey("abudawud", 1));
     expect(parent?.title).toBe("Abu Dawud — Purification (Kitab Al-Taharah)");
@@ -123,8 +123,8 @@ describe("hadith ingestion (fixture = real source data)", () => {
       }
     }
 
-    // Aligned pairs — seed rows for #24 (pairs only where both tracks exist
-    // (6 of 7: hadith 5 has empty ID text in the source)).
+    // Aligned pairs — the pair-table seed rows (pairs only where both tracks
+    // exist: a hadith with empty ID text in the source gets none).
     expect(store.allPairs()).toHaveLength(6);
     const pair = store.allPairs().find((p) => p.pairKey === "hadith-pair:abudawud:1");
     // Substring taken verbatim from the fixture (Arabic diacritics must be
@@ -137,9 +137,9 @@ describe("hadith ingestion (fixture = real source data)", () => {
     expect(pair?.textSecondary).toContain("Telah menceritakan kepada kami");
     expect(pair?.morphology).toEqual([]);
 
-    // Every costed call recorded — including the summarizer's (review A6:
-    // the parent-summary LLM call is part of the report's cost, never
-    // dropped) — so the report's cost equals the sum of calls.
+    // Every costed call recorded — including the summarizer's, since the
+    // parent-summary LLM call is part of the report's cost, never dropped — so
+    // the report's cost equals the sum of calls.
     expect(result.report.llmCalls.length).toBeGreaterThan(0);
     const summarizerCalls = result.report.llmCalls.filter((c) => c.modelId === "test-summarizer");
     expect(summarizerCalls).toHaveLength(1); // one parent, one summary call
@@ -164,7 +164,6 @@ describe("hadith ingestion (fixture = real source data)", () => {
     expect(gradeOf("1").grade).toBe("hasan");
     // The raw per-grader array rides along for trace transparency.
     expect((gradeOf("2").grades as unknown[]).length).toBe(4);
-    // Citation is formatted from stored fields, grade included.
     expect(gradeOf("4").citation).toBe("HR. Abu Dawud no. 4 (Sahih)");
   });
 

@@ -10,14 +10,14 @@ import {
 } from "./chat-store";
 
 /**
- * The chat page's state machine (#11): full-transcript rehydration on reload
+ * The chat page's state machine: full-transcript rehydration on reload
  * (TanStack Query over the rehydration endpoint), a streaming-native live
  * turn, session id + token persistence, and the typed error surface. The
  * session id state feeds ONLY the mount-time rehydration; a live turn's
  * session id rides a ref so the query never clobbers a streaming answer —
  * and neither does its `messages` result: a transcript (re)load that resolves
  * while a turn is in flight is discarded, never applied over the optimistic
- * turns (thermo-review A1).
+ * turns.
  */
 
 export type ChatError = "rate_limited" | "unavailable" | "generic" | "load" | null;
@@ -46,12 +46,12 @@ export function useChat(locale: "id" | "en") {
   useEffect(() => {
     if (transcript.isError) setError("load");
     if (transcript.data === undefined) return;
-    // (thermo-review A1) A transcript (re)load must never clobber an
-    // in-flight streaming turn: the optimistic turns it would overwrite are
-    // the live answer's only body, and the stream's patches key on their
-    // ids. A result that resolves mid-turn is DISCARDED — not deferred —
-    // because it was fetched before the turn's write, so applying it after
-    // the turn would hide the completed turn instead.
+    // A transcript (re)load must never clobber an in-flight streaming turn:
+    // the optimistic turns it would overwrite are the live answer's only
+    // body, and the stream's patches key on their ids. A result that resolves
+    // mid-turn is DISCARDED — not deferred — because it was fetched before the
+    // turn's write, so applying it after the turn would hide the completed
+    // turn instead.
     if (busy) {
       appliedTranscriptAtRef.current = transcript.dataUpdatedAt;
       return;

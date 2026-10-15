@@ -19,29 +19,18 @@ import { chunkFetcher, traceChunkIds } from "./chat-trace";
 import { answerFramesFor, deriveCitationsFrame, rehydrateTranscript } from "./chat-citations";
 
 /**
- * The invariant under test (#11, ADR-0040): **a citation may never reach the
- * UI without a matching chunk in the persisted answer trace.** Proven in both
- * directions — emitted ⊆ cited-and-grounded (no fabricated chip, the silent
- * trust failure) and grounded-and-cited ⊆ emitted (no lost citation) — by
- * table tests on the adversarial shapes and a fast-check property over
- * randomized cite/fabricate compositions.
+ * The invariant under test: **a citation may never reach the UI without a matching
+ * chunk in the persisted answer trace.** Proven in both directions — emitted ⊆
+ * cited-and-grounded (no fabricated chip, the silent trust failure) and
+ * grounded-and-cited ⊆ emitted (no lost citation) — by table tests on the adversarial
+ * shapes and a fast-check property over randomized cite/fabricate compositions.
  *
- * **The two frame fields are independent projections of ONE persisted trace
- * (#436).** `refusal` reports the refusal decision the reviewer stage recorded
- * — the `refusal` event with its trigger stays on the trace whatever the
- * answer looked like (ADR-0007) — while the citation list is ONLY EVER the
- * cited-and-grounded intersection. A `refusal` event alone must never be read
- * as "there are no citations": the staging shape (trace `fff2a012`, merge
- * `4ea8acb8`) was a HYBRID draft, a partial answer quoting eight grounded
- * verses and then continuing into the canonical insufficiency sentence and
- * the disclaimer, and the old shortcut emptied the frame of a text whose
- * verses the user could read. It was silent because the frame stayed
- * contract-valid, no warning fired, and the live SSE and rehydration
- * derivations agreed with each other on the same wrong answer; only the
- * frame-versus-text comparison exposed it.
+ * **The two frame fields are independent projections of ONE persisted trace.**
+ * `refusal` reports the decision the reviewer stage recorded, while the citation list
+ * is ONLY EVER the cited-and-grounded intersection: a `refusal` event alone must never
+ * be read as "there are no citations".
  */
 
-/** A persisted-trace-shaped Trace with the given retrieval chunk refs. */
 function traceWithChunks(ids: string[], extra: Trace["events"] = []): Trace {
   return {
     id: "t1",
@@ -58,7 +47,6 @@ function traceWithChunks(ids: string[], extra: Trace["events"] = []): Trace {
   };
 }
 
-/** A DocChildById display row with the given citation label in metadata. */
 function chunk(id: string, label: string, overrides: Partial<DocChildById> = {}): DocChildById {
   return {
     id,
@@ -93,14 +81,11 @@ const asChunk = (row: DocChildById): Chunk => ({
 });
 
 /**
- * The staging shape of #436 (trace `fff2a012`, merge `4ea8acb8`): a HYBRID
- * draft. It answers from the retrieved verses and, where the evidence ran
- * out, continues into the canonical insufficiency sentence plus the
- * disclaimer — one text that is both a grounded partial answer and a
- * generator-emitted refusal. The trace records `refusal` with
- * `trigger: "generator_refusal"` and the reviewer returns the draft unchanged,
- * so this is the text that ships and this is the text the frame is derived
- * from.
+ * The hybrid shape: one text that answers from the retrieved verses and, where the
+ * evidence ran out, continues into the canonical insufficiency sentence plus the
+ * disclaimer — both a grounded partial answer and a generator-emitted refusal. The
+ * trace records `refusal` with `trigger: "generator_refusal"` and the reviewer returns
+ * the draft unchanged, so this is the text that ships.
  */
 const HYBRID_SPANS = [
   "QS. 1:1",
@@ -120,11 +105,10 @@ const HYBRID_ANSWER =
   `. Keutamaan membacanya disebut dalam [${HYBRID_SPANS[7]}].\n\n` +
   `Untuk bagian lain dari pertanyaan ini saya ${DEFAULT_REFUSALS.id}.\n\n` +
   "Jawaban ini bukan fatwa; rujuk ulama untuk keputusan hukum.";
-/** The QA trace's 27 retrieved Quran chunks; the first eight ground the cites. */
+/** Retrieved Quran chunks; the first eight ground the cites. */
 const HYBRID_TRACE_IDS = Array.from({ length: 27 }, (_, i) => `c${i}`);
 const hybridChunks = (): DocChildById[] => HYBRID_SPANS.map((label, i) => chunk(`c${i}`, label));
 
-/** The reviewer's `generator_refusal` decision, as the stage records it. */
 const GENERATOR_REFUSAL: Trace["events"][number] = {
   stage: "reviewer",
   kind: "refusal",
@@ -133,7 +117,7 @@ const GENERATOR_REFUSAL: Trace["events"][number] = {
   at: 3,
 };
 
-/** The frame a pure refusal has always produced (the unchanged good case). */
+/** The frame a pure refusal produces: the unchanged good case. */
 const PURE_REFUSAL_FRAME = {
   messageId: "m1",
   citations: [],
@@ -143,12 +127,9 @@ const PURE_REFUSAL_FRAME = {
 
 describe("deriveCitationsFrame — a grounded range gets its chip (#274 A1)", () => {
   it("emits the range the gate accepts, with the range as written as its label", () => {
-    // The reviewer's reproduction, at head before this fix: with `QS. 3:1` and
-    // `QS. 3:2` retrieved the gate returned `{grounded: ["QS. 3:1"],
-    // ungrounded: []}` for the real failing label `QS. 3:1-2`, while the frame
-    // — matching each span against the chunk's EXACT label — emitted
-    // `citations: []`. The user saw the range in prose with no source chip for
-    // an answer the server's own gate had just grounded.
+    // With `QS. 3:1` and `QS. 3:2` retrieved the gate grounds the range, so the frame
+    // must emit a chip for it: matching each span against the chunk's EXACT label
+    // alone would drop it.
     const answer = "Dalilnya QS. 3:1-2 tentang hal ini.";
     const chunks = [chunk("c1", "QS. 3:1"), chunk("c2", "QS. 3:2")];
     expect(validateCitations(answer, chunks.map(asChunk))).toEqual({
@@ -156,12 +137,10 @@ describe("deriveCitationsFrame — a grounded range gets its chip (#274 A1)", ()
       ungrounded: [],
     });
     const frame = frameOf(traceWithChunks(["c1", "c2"]), answer, chunks);
-    // The display form is the range as written (ADR-0049 Decision 4), backed by
-    // the head address's display row.
+    // The display form is the range as written, backed by the head address's display row.
     expect(frame.citations.map((c) => c.label)).toEqual(["QS. 3:1-2"]);
     expect(frame.citations[0]).toMatchObject({ arabic: "النص العربي", source: "Sumber Tampilan" });
-    // Control: the same two chunks with a plain citation emit the plain label,
-    // so the new row is the range, not a changed ordinary path.
+    // Control: the same two chunks with a plain citation emit the plain label.
     expect(
       frameOf(
         traceWithChunks(["c1", "c2"]),
@@ -172,13 +151,9 @@ describe("deriveCitationsFrame — a grounded range gets its chip (#274 A1)", ()
   });
 
   it("emits the chip for a range of ONE address the gate grounds (#444)", () => {
-    // The live staging span (trace `b8812e2d-…`, merge `d30c40cf`): the draft
-    // wrote `QS. 1:1–1` over a retrieved `QS. 1:1`. The gate used to refuse it,
-    // its `ungrounded_citation` trigger replaced the whole draft with the
-    // canonical refusal, and the frame was `[]` on both sides of the failure —
-    // which is why only a test asserting BOTH halves can see it. The label is
-    // the span as written (ADR-0049 Decision 4: the display form is the range),
-    // backed by the address's display row.
+    // A range of one address written over that retrieved address: the label is the span
+    // as written, backed by the address's display row, and only a test asserting BOTH
+    // halves sees the pair of outcomes.
     const answer = "Dalilnya QS. 1:1–1 tentang hal ini.";
     const chunks = [chunk("c1", "QS. 1:1")];
     expect(validateCitations(answer, chunks.map(asChunk))).toEqual({
@@ -188,8 +163,8 @@ describe("deriveCitationsFrame — a grounded range gets its chip (#274 A1)", ()
     const frame = frameOf(traceWithChunks(["c1"]), answer, chunks);
     expect(frame.citations.map((c) => c.label)).toEqual(["QS. 1:1–1"]);
     expect(frame.citations[0]).toMatchObject({ arabic: "النص العربي", source: "Sumber Tampilan" });
-    // The other direction, unchanged: only a sibling verse retrieved — the gate
-    // refuses the span (naming it as written) and the frame invents no chip.
+    // The other direction: with only a sibling verse retrieved the gate refuses the
+    // span, naming it as written, and the frame invents no chip.
     const sibling = [chunk("c2", "QS. 1:2")];
     expect(validateCitations(answer, sibling.map(asChunk))).toEqual({
       grounded: [],
@@ -199,12 +174,7 @@ describe("deriveCitationsFrame — a grounded range gets its chip (#274 A1)", ()
   });
 
   it("still emits nothing for a range the gate refuses — the other direction", () => {
-    // Only `QS. 3:2` retrieved: the gate refuses the range, so the frame must
-    // not invent a chip for it (ADR-0040's invariant, unchanged). Note the
-    // provenance list is empty too: `QS. 3:2` is not a literal substring of
-    // the written `QS. 3:1-2`, and a refused citation contributes none of the
-    // addresses it names — the provenance the answer earns is what it can
-    // actually back.
+    // Only `QS. 3:2` retrieved: the gate refuses the range, so the frame invents no chip.
     const answer = "Dalilnya QS. 3:1-2 tentang hal ini.";
     const chunks = [chunk("c2", "QS. 3:2")];
     expect(validateCitations(answer, chunks.map(asChunk))).toEqual({
@@ -311,11 +281,8 @@ describe("deriveCitationsFrame — the invariant, adversarial shapes", () => {
   });
 
   it("a hybrid draft keeps its citations and is not framed as the pure refusal (#436)", () => {
-    // The QA reproduction, in one assertion: the text quotes eight grounded
-    // verses AND carries the canonical refusal sentence (the reviewer's
-    // `generator_refusal` decision is on the trace, and it stays there). The
-    // frame must show the intersection the reader can verify, never the empty
-    // refusal frame the old `refusal`-event shortcut produced.
+    // The text quotes grounded verses AND carries the canonical refusal sentence: the
+    // frame shows the intersection the reader can verify.
     const frame = frameOf(
       traceWithChunks(HYBRID_TRACE_IDS, [GENERATOR_REFUSAL]),
       HYBRID_ANSWER,
@@ -323,22 +290,14 @@ describe("deriveCitationsFrame — the invariant, adversarial shapes", () => {
     );
     expect(frame.citations.map((c) => c.label)).toEqual(HYBRID_SPANS);
     expect(frame).not.toEqual(PURE_REFUSAL_FRAME);
-    // The refusal stays a separate projection: the decision the reviewer
-    // recorded is on the wire exactly as the trace persists it. No surface
-    // renders that flag today — the card draws its chips from `citations` and
-    // its warning from `dhaifWarning` — so it is auditability on the trace and
-    // the wire, not machinery the reader can see, and a hybrid is presented as
-    // the cited answer it is.
+    // The refusal stays a separate projection: the decision the reviewer recorded is on
+    // the wire exactly as the trace persists it — auditability, not reader-visible machinery.
     expect(frame.refusal).toBe(true);
   });
 
   it("the refusal decision never touches the citation list (#436)", () => {
-    // The invariant at its true scope: the same text over the same chunks,
-    // derived from a trace with and without the refusal decision, yields the
-    // SAME citation list. That is what "a `refusal` event alone must never be
-    // read as 'there are no citations'" means, and it holds for every refusal
-    // trigger, not only `generator_refusal` (the property below randomizes the
-    // hybrid composition; this is the named QA shape).
+    // The invariant at its true scope: the same text over the same chunks, derived from
+    // a trace with and without the refusal decision, yields the SAME citation list.
     const refused = frameOf(
       traceWithChunks(HYBRID_TRACE_IDS, [GENERATOR_REFUSAL]),
       HYBRID_ANSWER,
@@ -347,19 +306,13 @@ describe("deriveCitationsFrame — the invariant, adversarial shapes", () => {
     const plain = frameOf(traceWithChunks(HYBRID_TRACE_IDS), HYBRID_ANSWER, hybridChunks());
     expect(refused.citations).toEqual(plain.citations);
     expect(refused.citations.map((c) => c.label)).toEqual(HYBRID_SPANS);
-    // ... and the decision itself is still projected, separately from the list.
     expect(refused.refusal).toBe(true);
     expect(plain.refusal).toBe(false);
   });
 
   it("the base→head delta is `citations` + `dhaifWarning`, with `refusal` constant (#436)", () => {
-    // The whole delta, asserted against an EXECUTABLE model of the retired
-    // `4ea8acb8` shortcut rather than described in prose. That branch froze TWO
-    // fields on any refusal-bearing trace — `citations: []` and
-    // `dhaifWarning: false` — and did NOT move `refusal` (which was `true`
-    // before the change and after it). This is the assertion an identity that
-    // holds the answer text fixed structurally cannot make, so the hybrid text
-    // is driven through both semantics here.
+    // The refusal decision must move exactly `citations` and `dhaifWarning`, with
+    // `refusal` constant — asserted field by field against a baseline.
     type FrameInput = Parameters<typeof deriveCitationsFrame>[0];
     const baseFrameOf = (input: FrameInput) =>
       input.trace.events.some((event) => event.kind === "refusal")
@@ -382,11 +335,11 @@ describe("deriveCitationsFrame — the invariant, adversarial shapes", () => {
     };
     const head = deriveCitationsFrame(input);
     const base = baseFrameOf(input);
-    // The base revision, byte for byte: both frozen fields, flag already true.
+    // The baseline, byte for byte: both frozen fields, flag already true.
     expect(base).toEqual({ messageId: "m1", citations: [], refusal: true, dhaifWarning: false });
     expect(head.citations.map((c) => c.label)).toEqual(["HR. Malik no. 18"]);
     expect(head.refusal).toBe(true);
-    // The delta, enumerated: exactly the two un-frozen fields.
+    // The delta, enumerated: exactly the two fields.
     const changed = Object.keys(head).filter(
       (key) => head[key as keyof typeof head] !== base[key as keyof typeof base],
     );
@@ -395,11 +348,8 @@ describe("deriveCitationsFrame — the invariant, adversarial shapes", () => {
   });
 
   it("a pure refusal still yields the empty-citations refusal frame it always did (#436 control)", () => {
-    // The unchanged good case: the canonical refusal sentence carries no
-    // citation span, so the intersection is empty BY CONSTRUCTION — the frame
-    // is byte-for-byte what the shortcut used to return, in both languages,
-    // even with 27 chunks retrieved. Nothing here needed the shortcut; only
-    // the hybrid shape did, and there it was the defect.
+    // The pure refusal: the canonical refusal sentence carries no citation span, so the
+    // intersection is empty BY CONSTRUCTION, in both languages.
     for (const refusalText of [DEFAULT_REFUSALS.id, DEFAULT_REFUSALS.en]) {
       expect(
         frameOf(
@@ -412,10 +362,8 @@ describe("deriveCitationsFrame — the invariant, adversarial shapes", () => {
   });
 
   it("a hybrid draft that carries the warning line reports it (the shortcut froze this flag too)", () => {
-    // Removing the shortcut widens one more field: `dhaifWarning` is now the
-    // postprocess's own predicate on the delivered text for a refusal-bearing
-    // trace as well (it was hard-coded false). A text that carries the warning
-    // says so; the frame and the answer cannot disagree.
+    // `dhaifWarning` is the postprocess's own predicate on the delivered text,
+    // refusal-bearing trace or not: the frame cannot disagree with the answer.
     const text =
       "Hadits tersebut diriwayatkan [HR. Malik no. 18].\n\n" +
       "[Peringatan] Hadits yang dikutip berderajat lemah (dhaif); tidak dapat dijadikan dalil utama.";
@@ -481,9 +429,7 @@ describe("deriveCitationsFrame — the invariant, adversarial shapes", () => {
   });
 
   it("does not read a grade mention as the warning (#278)", () => {
-    // The frame's flag is an observable, not the control: an answer that only
-    // names the grade — the "(Dhaif)" chip text or the model's own note — has
-    // no warning to report, and reporting one would hide a missing rule.
+    // The frame's flag is an observable, not the control: a grade mention is no warning.
     for (const text of [
       "Hadits ini [HR. Tirmidhi no. 2878 (Dhaif)].",
       "Catatan: hadits ini berlabel Dhaif.",
@@ -496,11 +442,8 @@ describe("deriveCitationsFrame — the invariant, adversarial shapes", () => {
   });
 
   it("reads the postprocess's own predicate, so the flag cannot contradict the answer (#278)", () => {
-    // One owner for "the warning is present": the rule that appends it and the
-    // frame that reports it run the SAME predicate. The failing shape that
-    // motivated #278 — a dhaif-graded chunk in the assembled context and a
-    // draft that mentions the grade — now gains the canonical line, and the
-    // frame says so.
+    // One owner for "the warning is present": the rule that appends it and the frame
+    // that reports it run the SAME predicate.
     const { draft, applied } = applyProductRules(
       { text: "Hadits ini [HR. Tirmidhi no. 2878 (Dhaif)]." },
       {
@@ -556,8 +499,7 @@ describe("answerFramesFor — the live route's entry (one shared store read, the
     });
     expect(citations.citations).toEqual([]);
     expect(citations.refusal).toBe(false);
-    // The panel keeps the chunk row as an id — a lost title, not a made-up
-    // one. The ref's own score (trace data, not store data) still rides along.
+    // The panel keeps the chunk row as an id — a lost title, not a made-up one.
     expect(trace.sources).toEqual([{ id: "c1" }]);
     expect(trace.technical.chunks).toEqual([{ id: "c1", score: 0.1 }]);
     expect(warn).toHaveBeenCalledWith("chat.answer.chunk_lookup_failed", expect.anything());
@@ -574,8 +516,7 @@ describe("answerFramesFor — the live route's entry (one shared store read, the
     });
     expect(citations.refusal).toBe(true);
     expect(citations.citations.map((c) => c.label)).toEqual(HYBRID_SPANS);
-    // The panel is independent of the refusal (thermo-review A2): the sources
-    // consulted before the refusal stay visible, so the shared read happens.
+    // The panel is independent of the refusal: the sources consulted stay visible.
     expect(fetchChunks).toHaveBeenCalledTimes(1);
     expect(traceFrame.sources.map((s) => s.id)).toEqual(HYBRID_TRACE_IDS);
   });
@@ -607,9 +548,7 @@ describe("answerFramesFor — the live route's entry (one shared store read, the
   });
 
   it("chunkFetcher bridges the store seam through the typed StoreBridge", async () => {
-    // The real memory store and the real domain bridge run the seam
-    // end-to-end: the typed bridge (thermo-review B2) needs no casts, and
-    // wiring a wrong store call here would not compile.
+    // The real memory store and the real domain bridge run the seam end-to-end.
     const store = createMemoryRagStore();
     const parentId = await runStoreEffect<string>(
       store.insertDocParent({ sourceKey: "quran/test", title: "Sumber Tampilan", metadata: {} }),
@@ -633,9 +572,7 @@ describe("answerFramesFor — the live route's entry (one shared store read, the
   });
 
   it("the wire flag agrees with the assembler's machine-translation label (thermo-review A3)", () => {
-    // The chunk's layer values as the assembler's evidence renderer sees
-    // them (both layers ride the metadata) and as the citation derive sees
-    // them (textId column) — the same logical chunk.
+    // The same logical chunk as the assembler's renderer and the citation derive see it.
     const bothLayers = chunk("c1", "QS. 2:255");
     const evidence: Chunk = {
       id: "c1",
@@ -661,11 +598,8 @@ describe("answerFramesFor — the live route's entry (one shared store read, the
 });
 
 /**
- * The rehydration half of #436: the issue reports the SAME empty frame coming
- * back from `GET /v1/chat/sessions/:id/messages`. The two entries share one
- * derivation, so a reload of a hybrid answer must show exactly the citations
- * the live stream showed — derived from the message's own persisted trace,
- * never from the text and never re-emptied by the refusal it also records.
+ * The rehydration entry shares one derivation with the live route, so a reload of a
+ * hybrid answer must show exactly the citations the live stream showed.
  */
 describe("rehydrateTranscript — a hybrid answer rehydrates with its chips (#436)", () => {
   const hybridRow: ChatMessage = {
@@ -705,9 +639,9 @@ describe("rehydrateTranscript — a hybrid answer rehydrates with its chips (#43
 });
 
 /**
- * Property proof of both invariant directions over randomized compositions:
- * emitted labels are EXACTLY the cited spans that trace-retrieved chunks
- * ground — nothing fabricated sneaks in, nothing grounded is lost.
+ * Property proof of both invariant directions over randomized compositions: emitted
+ * labels are EXACTLY the cited spans that trace-retrieved chunks ground — nothing
+ * fabricated sneaks in, nothing grounded is lost.
  */
 describe("deriveCitationsFrame — property (fast-check)", () => {
   // Canonical Quran-label chunks; spans may cite or fabricate.
@@ -729,7 +663,6 @@ describe("deriveCitationsFrame — property (fast-check)", () => {
         const uniqueLabels = [...new Set(labels)];
         const chunks = uniqueLabels.map((label, i) => chunk(`c${i}`, label));
         const trace = traceWithChunks(uniqueLabels.map((_, i) => `c${i}`));
-        // The answer cites a random mix of chunk labels and fabricated spans.
         const spans = spanShapes.map((s) => `QS. ${s.surah}:${s.ayah}`);
         const answerText = `${spans.join(" dan ")}.`;
         const frame = frameOf(trace, answerText, chunks);
@@ -749,17 +682,10 @@ describe("deriveCitationsFrame — property (fast-check)", () => {
   });
 
   /**
-   * #436, as a property over randomized HYBRID drafts: a grounded partial
-   * answer that runs into a refusal tail. For every composition of grounded
-   * spans, fabricated spans, and a refusal/disclaimer tail, the frame derived
-   * from a trace that records the refusal has an **identical citation list**
-   * and an identical warning flag — the decision moves the `refusal` flag and
-   * nothing else — so no refusal decision, from any trigger, can ever drop a
-   * grounded citation. (The same removal also un-froze `dhaifWarning`; because
-   * this property holds the text fixed, that field is the same predicate on the
-   * same text in both frames, and the base-delta test above is where the second
-   * un-frozen field is asserted.) Before the fix this property failed on every
-   * case where the tail was present: the frame came back with an empty list.
+   * A property over randomized HYBRID drafts: a grounded partial answer that runs into
+   * a refusal tail. For every composition, the frame derived from a trace that records
+   * the refusal has an **identical citation list** and warning flag — the decision moves
+   * only the `refusal` flag — so no refusal can drop a grounded citation.
    */
   it("a refusal tail never drops the grounded citations of a hybrid draft (#436)", () => {
     const tailArb = fc.constantFrom(

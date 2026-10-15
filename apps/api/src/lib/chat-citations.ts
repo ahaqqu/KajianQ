@@ -17,10 +17,7 @@ import {
   hasWeakWarning,
   normalizeCitationLabel,
 } from "@app/kajianq-domain";
-// The trace-frame module owns the shared chunk-ref + display-fetch plumbing;
-// this module consumes it (thermo-review B2: the old re-export shim had zero
-// consumers for the seam names — `chunkFetcher` is re-exported to importers
-// by the wiring hub, straight from `./chat-trace`).
+// The trace-frame module owns the shared chunk-ref + display-fetch plumbing.
 import {
   chunksByIdOrEmpty,
   deriveTraceFrame,
@@ -32,29 +29,16 @@ import {
 import * as v from "valibot";
 
 /**
- * The structured citation payload (#11, ADR-0040) — the invariant this module
- * owns: **a citation may never reach the UI without a matching chunk in the
- * persisted answer trace.** The frame is derived server-side from the trace's
- * `retrieval` chunk refs (joined to the store's chunk rows for display data)
- * and the answer's inline citation spans, using the exact label grammar and
- * normalization the deterministic citation gate (`@app/kajianq-domain`
- * chat-citation-validator) enforces on the answer itself. The client never
- * re-implements the grammar: it renders the frame or plain text.
+ * The structured citation payload — the invariant this module owns: **a citation may
+ * never reach the UI without a matching chunk in the persisted answer trace.** The
+ * frame is derived server-side from the trace's `retrieval` chunk refs (joined to the
+ * store's chunk rows for display data) and the answer's inline citation spans, using
+ * the exact label grammar and normalization the deterministic citation gate
+ * (`@app/kajianq-domain`) enforces on the answer itself.
  *
- * The derivation is a pure intersection: emitted citations = the answer's
- * inline citation spans that some trace-retrieved chunk grounds. A
- * citation-shaped span with no matching chunk (fabricated or whose row
- * vanished) is absent from the payload — never a chip without provenance. And
- * the refusal field never empties that list: see `deriveCitationsFrame` (#436).
- *
- * **"Grounds" is the gate's own decision, not a second reading of it (review
- * A1 of the #274 fix round).** The intersection is decided by
- * `groundingLabelsFor`, the domain pack's single implementation of the rule the
- * gate applies — so a span the gate accepted (a Quran range whose every named
- * address is retrieved, interior included) is emitted here too, and one it
- * refused cannot be. Matching by the span's exact label alone, which this
- * derivation used to do, silently dropped every range: the gate grounded
- * `QS. 3:1-2` and the user saw the range in prose with no chip for it.
+ * The derivation is a pure intersection: emitted citations = the answer's inline citation
+ * spans that some trace-retrieved chunk grounds. **"Grounds" is the gate's own decision**,
+ * decided by `groundingLabelsFor`: matching an exact label alone would drop every range.
  */
 
 /** The chunk's citation labels, normalized exactly as the gate normalizes. */
@@ -64,7 +48,6 @@ function labelsOf(chunk: DocChildById): string[] {
   );
 }
 
-/** Map one grounded chunk to its display citation (ADR-0006 label semantics). */
 function toCitation(label: string, chunk: DocChildById): ChatCitation {
   const meta = (chunk.metadata ?? {}) as Record<string, unknown>;
   const grade = meta["grade"];
@@ -74,15 +57,10 @@ function toCitation(label: string, chunk: DocChildById): ChatCitation {
     arabic: chunk.textAr,
     ...(translation !== undefined ? { translation } : {}),
     ...(typeof grade === "string" && grade !== "" ? { grade } : {}),
-    // Provenance honesty (thermo-review A3): this flag must agree with the
-    // prompt's label. The assembler renders every chunk that carries both
-    // layers with `MACHINE_TRANSLATION_LABEL` (ADR-0006), so the translation
-    // the answer quoted from is machine-made exactly when a translation
-    // layer exists — a coupling ENFORCED BY TEST (chat-citations.test.ts
-    // pins the flag to the assembler's label for the same layer values).
-    // A human-checked translation layer must not land by mutating corpus
-    // data alone: it needs a per-chunk provenance field consumed here (and
-    // an ADR) before this flag may say anything different.
+    // Provenance honesty: this flag must agree with the prompt's label — the assembler
+    // renders every chunk carrying both layers with `MACHINE_TRANSLATION_LABEL`, so a
+    // translation exists exactly when a translation layer does. A human-checked layer
+    // needs a per-chunk provenance field consumed here before this flag may change.
     machineTranslated: translation !== undefined,
     ...(chunk.parentTitle !== null && chunk.parentTitle !== ""
       ? { source: chunk.parentTitle }
@@ -91,18 +69,10 @@ function toCitation(label: string, chunk: DocChildById): ChatCitation {
 }
 
 /**
- * Pure core: derive the citations frame from a persisted trace, the answer
- * text, and the trace chunks' display rows (text_ar is the canonical evidence
- * layer, ADR-0013 — a chunk without it backs no citation sheet).
- *
- * **The list is the pure intersection, with no refusal case (#436).** A
- * `refusal` event sets the flag below and NOTHING else — never "there are no
- * citations": a generator-emitted refusal can be the tail of a partial answer,
- * and the staging hybrid draft traced `fff2a012` shipped grounded verses plus
- * that sentence while this returned `{citations: [], refusal: true}` — chip-less
- * verses, `citationValidity = 0` in the eval, nothing logged. The shortcut was
- * redundant (a refusal string carries no citation span); the flag keeps the
- * reviewer's decision on the wire (ADR-0007).
+ * Pure core: derive the citations frame from a persisted trace, the answer text, and
+ * the trace chunks' display rows (text_ar is the canonical evidence layer — a chunk
+ * without it backs no citation sheet). **The list is the pure intersection, with no
+ * refusal case**: a `refusal` event sets the flag below and NOTHING else.
  */
 export function deriveCitationsFrame(input: {
   trace: Trace;
@@ -114,24 +84,20 @@ export function deriveCitationsFrame(input: {
   const grounded = new Map<string, DocChildById>();
   for (const id of traceChunkIds(trace)) {
     const chunk = chunksById.get(id);
-    // A trace ref whose chunk row is gone resolves to nothing: the invariant
-    // is enforced by omission, and the passage simply does not get a chip.
+    // A gone chunk row resolves to nothing: the invariant is enforced by omission.
     if (!chunk || chunk.textAr.trim() === "") continue;
     for (const label of labelsOf(chunk)) {
       if (label !== "" && !grounded.has(label)) grounded.set(label, chunk);
     }
   }
   const citations: ChatCitation[] = [];
-  // The grounding decision is the gate's, so the frame and the gate cannot
-  // disagree about a range (or about any future list-valued citation form).
+  // The grounding decision is the gate's, so frame and gate cannot disagree.
   const known = new Set(grounded.keys());
   for (const span of citationCandidatesIn(answerText)) {
     const labels = groundingLabelsFor(span, known);
     if (labels === null) continue;
-    // The citation keeps the span as the draft wrote it (ADR-0049 Decision 4:
-    // the display form is the range, not its parts) and is backed by the first
-    // address that grounds it — for a range, its head verse, which is the
-    // verse the prose names first and the one its Arabic layer should show.
+    // The citation keeps the span as the draft wrote it — the display form is the
+    // range — backed by the first address that grounds it: for a range, its head verse.
     const chunk = labels
       .map((label) => grounded.get(label))
       .find((candidate): candidate is DocChildById => candidate !== undefined);
@@ -141,30 +107,20 @@ export function deriveCitationsFrame(input: {
   return {
     messageId,
     citations,
-    // The refusal flag is the trace's own decision, projected verbatim: a
-    // hybrid answer carries it AND its chips (#436). Deriving one field from
-    // the other is what emptied the frame while the text quoted verses; the
-    // decision itself has one reader, `traceRefused` (chat-trace.ts).
+    // The refusal flag is the trace's own decision, projected verbatim: a hybrid
+    // answer carries it AND its chips. `traceRefused` (chat-trace.ts) is its reader.
     refusal: traceRefused(trace),
-    // The frame's flag and the postprocess's suppression check are the SAME
-    // predicate (one owner, `@app/kajianq-domain`), so "the warning is on the
-    // answer" cannot mean two different things on the two sides of the wire
-    // (ticket #278).
+    // The frame's flag and the postprocess's check are the SAME predicate, so "the
+    // warning is on the answer" cannot mean two things on the two sides of the wire.
     dhaifWarning: hasWeakWarning(answerText),
   };
 }
 
 /**
- * The live route's entry for a just-answered question (thermo-review B1 of
- * the #12 review): derives BOTH wire frames — citations (#11) and the
- * two-layer Trace panel (#12, ADR-0007) — from the one persisted trace with
- * ONE shared store read, instead of the two identical sequential
- * `getDocChildrenByIds` reads the per-frame entries made before first byte.
- * A store-read failure degrades both frames honestly (empty citations,
- * id-only panel rows — never fabricated ones) with a single structured
- * warning; each frame is parsed against its contract before it touches the
- * wire. The rehydration path (`rehydrateTranscript`) keeps its own
- * transcript-wide single read.
+ * The live route's entry for a just-answered question: derives BOTH wire frames from
+ * the one persisted trace with ONE shared store read. A store-read failure degrades
+ * both frames honestly (empty citations, id-only panel rows) with one warning, and each
+ * frame is parsed against its contract before it touches the wire.
  */
 export async function answerFramesFor(input: {
   trace: Trace;
@@ -174,9 +130,7 @@ export async function answerFramesFor(input: {
   warn: Warn;
 }): Promise<{ citations: ChatCitationsFrame; trace: ChatTraceFrame }> {
   const { trace, messageId, answerText, fetchChunks, warn } = input;
-  // A trace with no retrieval events (a pure refusal — a hybrid refusal
-  // carries the partial answer's refs, #436) needs no store read at all: an
-  // empty id list would only round-trip the seam.
+  // A pure refusal needs no store read: an empty id list would only round-trip the seam.
   const ids = traceChunkIds(trace);
   const chunksById =
     ids.length === 0
@@ -198,17 +152,11 @@ export async function answerFramesFor(input: {
 }
 
 /**
- * Rehydrate a full transcript (#11, ADR-0040): map persisted chat rows onto
- * the rehydration contract, deriving each assistant message's citation frame
- * from ITS persisted trace — the same derivation the live `citations` frame
- * uses, so a rehydrated answer can show exactly the citations it may show
- * live, and never one its trace does not ground. The same trace derives the
- * message's two-layer Trace panel frame (#12, ADR-0007). Display data is
- * fetched in ONE store read for the whole transcript (the union of every
- * trace's chunk refs). A trace that is missing or fails to load degrades to a
- * plain-text message; a frame that fails its contract parse degrades
- * independently — the other frame still renders (thermo-review A2) — never
- * to invented citations or an invented panel.
+ * Rehydrate a full transcript: map persisted chat rows onto the rehydration contract,
+ * deriving each assistant message's citation frame from ITS persisted trace — the same
+ * derivation the live `citations` frame uses. The same trace derives the Trace panel
+ * frame, and display data is fetched in ONE store read; a missing trace degrades to a
+ * plain-text message, and a contract-invalid frame degrades independently.
  */
 export async function rehydrateTranscript(input: {
   sessionId: string;
@@ -241,8 +189,7 @@ export async function rehydrateTranscript(input: {
   for (const trace of traces.values()) {
     for (const id of traceChunkIds(trace)) ids.add(id);
   }
-  // One store read for the whole transcript, degrading through the same
-  // shared helper the live frame uses (thermo-review B1).
+  // One store read for the whole transcript, via the same helper the live frame uses.
   const chunksById = await chunksByIdOrEmpty({
     ids: [...ids],
     fetchChunks,
@@ -260,11 +207,8 @@ export async function rehydrateTranscript(input: {
     };
     const trace = traces.get(row.id);
     if (trace === undefined) return base;
-    // Both frames are independent derivations of the SAME trace and the SAME
-    // display rows — so each degrades independently (thermo-review A2): a
-    // contract-invalid citations frame must not take the Trace panel down
-    // with it, and vice versa. A degraded frame just stays absent; nothing is
-    // ever invented to replace it.
+    // Both frames derive independently from the SAME trace and display rows, so a
+    // degraded frame stays absent, never invented.
     const parsed = v.safeParse(
       ChatCitationsFrameSchema,
       deriveCitationsFrame({

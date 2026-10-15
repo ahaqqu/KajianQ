@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * ingest-hadith.mjs — the `ingest:hadith` Bun CLI (issue #7).
+ * ingest-hadith.mjs — the `ingest:hadith` Bun CLI.
  *
  *   bun run ingest:hadith                          # full ingest (needs DATABASE_URL + API keys)
  *   bun run ingest:hadith -- --check               # integrity check only (no LLM/embedding spend)
@@ -8,30 +8,13 @@
  *   bun run ingest:hadith -- --offset 3 --limit 1  # one collection per pass (resumable)
  *   bun run ingest:hadith -- --only-missing        # ingest only collections with zero landed children
  *
- * Thin composition root (B5): source acquisition lives in
- * `source-acquisition.mjs`, R2 archival in `archive-store.mjs`; this file
- * reads the env/config once, wires the seams, and delegates. Pipeline (all
- * off the request path, per spec §3.2):
- *   1. fetch the (Arabic, Indonesian) edition files per collection (or
- *      reuse the HADITH_SOURCE_DIR cache, offline re-runs);
- *   2. archive the RAW bytes to R2 via the ObjectStore seam (never committed
- *      to the repo; noted in NOTICES/DATASETS.md);
- *   3. run the generic ingestion pipeline (`@app/rag-ingest`) — the domain
- *      SourceParser re-parses + integrity-checks (edition shape, ara/id
- *      alignment, duplicate keys) from the archived bundle inside the
- *      runner, so the archived bytes are the single source of truth (A3);
- *   4. write the aligned pairs (concept-graph seed for #24) through the
- *      RagStore aligned-pair seam;
- *   5. persist the IngestionReport to `eval_runs` (the report ledger) via
- *      the RagStore batch-report seam.
- *
- * Source: fawazahmed0/hadith-api editions (Unlicense; ADR-0026). Idempotency:
- * parents upsert by sourceKey, children by (parentId, ordinal), pairs by
- * pairKey, reports by run id — re-running the script is safe by construction
- * (rows), but NOT by cost (a pass re-embeds every row it reads, ADR-0037):
- * `--only-missing` reads the landed per-collection counts through the store
- * seam before any acquisition and drops already-landed collections, so a
- * range loop cannot re-pay for them (issue #213).
+ * Source: fawazahmed0/hadith-api editions (Unlicense). The archived raw bytes are the single source
+ * of truth: the domain SourceParser re-parses and integrity-checks them inside the runner.
+ * Idempotency: parents upsert by sourceKey, children by (parentId, ordinal), pairs by pairKey,
+ * reports by run id — re-running is safe by construction (rows), but NOT by cost (a pass re-embeds
+ * every row it reads, ADR-0037). `--only-missing` reads the landed per-collection counts through the
+ * store seam before any acquisition and drops already-landed collections, so a range loop cannot
+ * re-pay for them.
  */
 import * as app from "@app/infra";
 import * as ingest from "@app/rag-ingest";
@@ -48,10 +31,8 @@ import {
 
 const resolve = resolveFromCwd;
 
-// ---------------------------------------------------------------------------
-// Config: read once at the composition root. No vendor names live here —
-// provider roles and credentials are resolved through the config seam.
-// ---------------------------------------------------------------------------
+// Config: read once at the composition root; provider roles and credentials are resolved through
+// the config seam, so no vendor names live here.
 const EDITIONS_BASE =
   process.env.HADITH_EDITIONS_BASE_URL ??
   "https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions";
@@ -59,15 +40,13 @@ const R2_PREFIX = "hadith/fawazahmed0-hadith-api";
 
 const args = process.argv.slice(2);
 const CHECK_ONLY = args.includes("--check");
-// The guard against re-paying for landed collections (issue #213): read the
-// store's per-collection child counts first and ingest only the missing ones.
-// The chunk metadata field carrying the collection label is written by this
-// domain pack's parser, so the key lives here — the seam stays engine-generic.
+// Read the store's per-collection child counts first and ingest only the missing ones. The chunk
+// metadata field carrying the collection label is written by this domain pack's parser, so the key
+// lives here — the seam stays engine-generic.
 const ONLY_MISSING = args.includes("--only-missing");
 const COLLECTION_METADATA_KEY = "collection";
-// Range parsing rules (and their validation) live in collection-range.mjs so
-// they are unit-tested: a bad flag must fail loudly, never silently ingest
-// nothing (`slice(0, NaN)`) or the wrong slice via falsiness.
+// Range parsing and its validation live in collection-range.mjs so they are unit-tested: a bad flag
+// must fail loudly, never silently ingest nothing (`slice(0, NaN)`) or the wrong slice.
 const RANGE = parseCollectionRange(args);
 
 const logger = app.createLogger({ script: "ingest:hadith" });
@@ -77,17 +56,13 @@ function fail(msg) {
   process.exit(1);
 }
 
-// Argument validation comes before environment validation: a bad flag must
-// report itself even when the environment is also incomplete (the CLI's
-// `--limit`/`--offset` contract is unit-tested that way).
+// Argument validation comes before environment validation: a bad flag must report itself even when
+// the environment is also incomplete.
 const selection = selectCollections(domain.HADITH_COLLECTIONS, RANGE);
 if (selection.error !== undefined) fail(selection.error);
 const collections = selection.collections;
 
-// ---------------------------------------------------------------------------
 // Main.
-// ---------------------------------------------------------------------------
-
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl && !CHECK_ONLY) fail("DATABASE_URL is not set");
 
@@ -97,10 +72,8 @@ logger.info("starting", {
   onlyMissing: ONLY_MISSING,
 });
 
-// --only-missing narrows the selection by measured store state BEFORE any
-// acquisition: the store seam is resolved, the landed counts read through
-// `countDocChildrenByMetadata`, and already-landed collections dropped. A
-// store read before the spend, never inside the embedding loop (ADR-0037).
+// --only-missing narrows the selection by measured store state BEFORE any acquisition: a store read
+// before the spend, never inside the embedding loop.
 let selected = collections;
 if (ONLY_MISSING && !CHECK_ONLY) {
   const store = app.resolvePostgresStore(databaseUrl, { logger });
@@ -124,8 +97,6 @@ if (ONLY_MISSING && !CHECK_ONLY) {
   selected = collections;
 }
 
-// Editions carry the collection name inside their JSON (parsed by the domain
-// layer); acquisition stays name-agnostic.
 const cacheDir = process.env.HADITH_SOURCE_DIR;
 const entries = selected.flatMap((c) => [
   { url: `${EDITIONS_BASE}/ara-${c}.json`, cacheFile: `ara-${c}.json` },
@@ -139,9 +110,8 @@ const editions = selected.map((c, i) => ({
   indonesianText: texts[i * 2 + 1],
 }));
 
-// Integrity checks run in every mode, before any spend. --limit subsets by
-// collection; the parsed corpus gates on what is actually ingested, while
-// unmatched ara/id pairs are surfaced as quarantine stats (never merged).
+// Integrity checks run in every mode, before any spend; unmatched ara/id pairs are surfaced as
+// quarantine stats, never merged.
 const bundle = domain.bundleHadithSources(editions);
 const parsed = editions.map((e) => ({
   collection: e.collection,
@@ -159,10 +129,9 @@ const gradeStats = domain.corpusGradeStats(corpus);
 const unmatched = [...corpus.alignment.values()].reduce((n, s) => n + s.unmatched.length, 0);
 const emptySecondary = [...corpus.alignment.values()].reduce((n, s) => n + s.emptySecondary, 0);
 const emptyPrimary = [...corpus.alignment.values()].reduce((n, s) => n + s.emptyPrimary, 0);
-// Quarantined = everything rejected rather than ingested (contracts field:
-// "chunks rejected by validation — quarantined, never force-merged"):
-// unmatched pairs and empty-Arabic rows. Empty-secondary rows are ingested
-// with text_id: null, so they are surfaced separately, not here (review C1).
+// Quarantined = everything rejected rather than ingested (the report's "chunks rejected by
+// validation" field): unmatched pairs and empty-Arabic rows. Empty-secondary rows are ingested with
+// text_id: null, so they are surfaced separately, not here.
 const quarantined = unmatched + emptyPrimary;
 logger.info("integrity OK", {
   collections: selected.length,
@@ -180,15 +149,13 @@ if (CHECK_ONLY) {
   process.exit(0);
 }
 
-// Wire seams once: the store comes from @app/infra's own composition helper
-// (ADR-0008 — this CLI names the connection URL and receives the seam; it
-// never imports a database client), and one runner feeds both the RagStore
-// and the report path (C1: a single handle per run).
+// Wire seams once: the store comes from @app/infra's composition helper — this CLI names the
+// connection URL and receives the seam, never importing a database client — and one runner feeds
+// both the RagStore and the report path.
 const store = app.resolvePostgresStore(databaseUrl, { logger });
 const config = app.loadProviderConfig();
-// Batch retry policy: an offline ingest must ride out a vendor's
-// per-minute window rather than give up after the interactive ≈1.5 s
-// (the staging ingest died on its first embedding batch without it).
+// Batch retry policy: an offline ingest must ride out a vendor's per-minute window rather than give
+// up on the interactive timeout.
 const { provider: embedder } = app.resolveRole(config, "embedder", {
   env: process.env,
   retrySchedule: app.batchRetrySchedule,
@@ -225,8 +192,6 @@ if (reportDir) {
   await fs.mkdir(reportDir, { recursive: true });
 }
 
-// The parser re-parses from the archived bundle (the single source of
-// truth); the report quotes the corpus numbers.
 const result = await ingest.runIngestion(
   domain.hadithSourceParser(),
   {
@@ -237,16 +202,14 @@ const result = await ingest.runIngestion(
     store,
     embedder,
     summarizer: domain.hadithSectionSummarizer(summarizerProvider),
-    // Persisted pairs carry the domain's stable `hadith-pair:{collection}:{no}`
-    // address — the key #24's concept-graph build resolves against — rather
-    // than the runner's source-derived child key.
+    // Persisted pairs carry the domain's stable `hadith-pair:{collection}:{no}` address rather than
+    // the runner's source-derived child key.
     pairSink: domain.hadithPairSink(store, domain.hadithPairKeyFor),
     embedBatchSize: 96,
     writeBatchSize: 96,
   },
 );
 
-// Persist the report through the RagStore batch-report seam.
 const report = {
   ...result.report,
   quarantined,
@@ -267,9 +230,8 @@ const report = {
   },
 };
 
-// Off-Workers bridge: the store seam is Effect-shaped (ADR-0027 decision 7);
-// runStoreEffect joins it to the CLI's top-level await here, in the
-// composition root — the same bridge the ingestion runner uses.
+// Off-Workers bridge: the store seam is Effect-shaped (ADR-0027), so runStoreEffect joins it to the
+// CLI's top-level await here, in the composition root.
 await ingest.runStoreEffect(
   store.insertEvalRun({
     id: report.runId,

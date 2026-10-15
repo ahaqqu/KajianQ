@@ -15,18 +15,9 @@ import {
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 import { createStubChatProviders } from "@app/kajianq-domain/test-utils/stub-chat-providers";
 
-/**
- * Every call into a pipeline seam, in order (#256). The no-spend test reads
- * this: "the router, generator and reviewer did not run" is measured on the
- * seams the pipeline actually calls, not inferred from a 400 status.
- */
+/** Every pipeline-seam call, in order; the no-spend tests assert this stays empty. */
 const spendCalls: string[] = [];
 
-/**
- * Wrap one seam so each method call is recorded. The pipeline calls these
- * objects' methods and nothing else, so an empty `spendCalls` after a request
- * is the assertion that no stage executed.
- */
 function counting<T extends object>(name: string, seam: T, calls: string[]): T {
   const wrapped: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(seam)) {
@@ -42,18 +33,14 @@ function counting<T extends object>(name: string, seam: T, calls: string[]): T {
 }
 
 /**
- * /v1/chat integration tests (#8, #10): the in-memory store + the domain's
- * stub providers (built inside the domain so the Effects belong to the
- * engine's runtime). Verifies the SSE path, auth, validation, trace
- * persistence, follow-up history, and the citation refusal invariant against
- * the real route module — no Worker runtime, no vendor calls.
+ * /v1/chat integration tests against the real route module — in-memory store and
+ * the domain's stub providers: no Worker runtime, no vendor calls.
  */
 
 /**
- * One retrievable Quran chunk whose citation label is `QS. 2:255`. A test that
- * wants a *grounded* answer must put it in the store, because the reviewer
- * refuses any citation the retrieved context does not carry (the #10
- * invariant) — that is the point, not an inconvenience.
+ * One retrievable Quran chunk whose citation label is `QS. 2:255`: a test that
+ * wants a *grounded* answer must seed it, because the reviewer refuses any
+ * citation the retrieved context does not carry.
  */
 const AYAT_KURSI = {
   textRaw: "اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ",
@@ -65,10 +52,7 @@ const AYAT_KURSI = {
   ordinal: 0,
 };
 
-/**
- * The weak-grade hadith the #439 route test quotes: the citation label the
- * ingestion renders, and the `grade` key the deterministic rule reads.
- */
+/** The weak-grade hadith the deterministic grade rule reads. */
 const DHAIF_HADITH_CITATION = "HR. Tirmidhi no. 2878 (Dhaif)";
 
 /** Seed a store with one retrievable parent + child chunk. */
@@ -101,10 +85,7 @@ vi.mock("../lib/chat-wiring", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/chat-wiring")>();
   return {
     ...actual,
-    // B1: the route resolves its wiring through the shared `wiringOr503` seam
-    // over `buildChatWiring`; the mock overrides `buildChatWiring` itself
-    // (`wiringOr503` stays actual — its own posture is covered in
-    // chat-wiring.test.ts), so these tests exercise the route, not config.
+    // The mock overrides `buildChatWiring` itself.
     buildChatWiring: () => {
       const store = currentStore;
       const providers = createStubChatProviders(currentOverrides);
@@ -112,8 +93,7 @@ vi.mock("../lib/chat-wiring", async (importOriginal) => {
         pipeline: {
           routerProvider: counting("router", providers.routerProvider, spendCalls),
           generatorProvider: counting("generator", providers.generatorProvider, spendCalls),
-          // The reviewer is non-optional on the chat path (#10); the stub
-          // passes, so the deterministic validator is what these tests probe.
+          // The reviewer is non-optional; the stub passes, so the validator is what is probed.
           reviewerProvider: counting("reviewer", providers.reviewerProvider, spendCalls),
           reviewerDecider: providers.reviewerDecider,
           embedder: counting("embedder", providers.embedder, spendCalls),
@@ -127,9 +107,8 @@ vi.mock("../lib/chat-wiring", async (importOriginal) => {
   };
 });
 
-// The database client lives behind the RagStore adapter (ADR-0008), so
-// these route tests never reach one: constructing or querying the pool is
-// the failure this mock makes loud.
+// The database client lives behind the RagStore adapter, so these tests never
+// reach one: this mock makes a pool query loud.
 vi.mock("pg", () => ({
   Pool: class {
     on(): void {}
@@ -143,11 +122,8 @@ const env = { ASSETS: { fetch } };
 
 /**
  * Parse SSE frames the way the eval client does (`packages/eval/src/api-client.ts`):
- * `event:` names are trimmed, a `data:` payload keeps its trailing whitespace
- * (SSE strips only the single optional space after the colon), and a frame's
- * multiple `data:` lines join with `\n` — which is how a multi-line answer
- * survives the wire. A `trim()` here would hide a lost space; skipping the
- * join would hide a truncated answer.
+ * `event:` names are trimmed, a `data:` payload keeps its trailing whitespace, and a
+ * frame's multiple `data:` lines join with `\n` — a `trim()` would hide a lost space.
  */
 function parseSse(text: string): { event: string; data: string }[] {
   return text
@@ -265,19 +241,13 @@ describe("POST /v1/chat", () => {
       env,
     );
 
-    // The EXISTING error shape, not a new one: the route already surfaces a
-    // valibot failure as `400 invalid_request` (chat-openapi.ts), and the
-    // ceiling rides that path.
+    // The existing error shape: the ceiling rides the route's `400 invalid_request` path.
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "invalid_request" });
 
-    // The point of the ticket — no spend. The counters sit on the seams the
-    // pipeline actually calls (router, generator, reviewer, embedder), so
-    // this is measured, not inferred from the status code.
+    // No spend: the counters sit on the seams, so this is measured, not inferred.
     expect(spendCalls).toEqual([]);
 
-    // And the question never reached the store: no persisted user message and
-    // no answer trace for a request that was refused before the pipeline.
     expect(store.allChatMessages()).toEqual([]);
     expect(store.allTraces().size).toBe(0);
   });
@@ -293,8 +263,7 @@ describe("POST /v1/chat", () => {
       message: "a".repeat(CHAT_MESSAGE_MAX_LENGTH),
     });
 
-    // The route adds no bound of its own: the contract's ceiling is the
-    // boundary, and one character under it is a legitimate question.
+    // The route adds no bound of its own: the contract's ceiling is the boundary.
     expect(status).toBe(200);
     expect(frames.at(-1)?.event).toBe("done");
     expect(spendCalls).toContain("router.generate");
@@ -313,13 +282,12 @@ describe("POST /v1/chat", () => {
     expect(frames.at(-1)?.event).toBe("done");
     expect(answer).toContain("QS. 2:255");
 
-    // The answer trace was persisted under the streamed message id.
     const trace = store.allTraces().get(meta.messageId) as
       | { id: string; events: { kind: string; cost?: { modelId: string; tokensIn: number } }[] }
       | undefined;
     expect(trace).toBeTruthy();
     expect(trace?.id).toBe(meta.traceId);
-    // Traceability (#10 AC): chunks + scores, model identity, tokens, cost.
+    // Traceability: chunks + scores, model identity, tokens, cost.
     const retrieval = trace?.events.find((e) => e.kind === "retrieval") as
       | { detail: { chunks: { id: string; score?: number }[] } }
       | undefined;
@@ -332,7 +300,6 @@ describe("POST /v1/chat", () => {
       expect(typeof call.cost?.tokensIn).toBe("number");
     }
 
-    // The assistant message links to the trace.
     const assistant = store.allChatMessages().find((m) => m.role === "assistant");
     expect(assistant?.answerTraceId).toBe(meta.traceId);
   }, 15000);
@@ -341,12 +308,11 @@ describe("POST /v1/chat", () => {
     const { store, token } = await wiredStore();
     currentStore = store;
     await seed(store);
-    // Three deltas, as a streaming vendor would produce them.
     currentOverrides = { streamDeltas: ["Menurut ", "QS. 2:255 ", "Allah Mahahidup."] };
 
     const { answer, frames } = await postChat(token, { message: "Apa itu Ayat Kursi?" });
     const deltas = frames.filter((f) => f.event === "delta");
-    // The vendor's three deltas, byte-identical, then the appended disclaimer.
+    // The vendor's deltas byte-identical first, then the appended rules.
     expect(deltas.slice(0, 3).map((d) => d.data)).toEqual([
       "Menurut ",
       "QS. 2:255 ",
@@ -378,7 +344,6 @@ describe("POST /v1/chat", () => {
       technical: { chunks: { id: string; score?: number }[]; models: string[] };
     };
     expect(traceFrame.messageId).toBe(meta.messageId);
-    // The panel's provenance matches the persisted trace's own refs.
     const persisted = store.allTraces().get(meta.messageId) as
       | { events: { kind: string; detail?: { chunks?: { id: string; score?: number }[] } }[] }
       | undefined;
@@ -387,7 +352,6 @@ describe("POST /v1/chat", () => {
       ?.detail?.chunks?.at(0);
     expect(traceFrame.technical.chunks[0]?.id).toBe(persistedRef?.id);
     expect(traceFrame.technical.chunks[0]?.score).toBe(persistedRef?.score);
-    // Display title joined server-side; model identities carried verbatim.
     expect(traceFrame.sources[0]?.source).toBe("Al-Baqarah");
     expect(traceFrame.technical.models.length).toBeGreaterThan(0);
   }, 15000);
@@ -402,7 +366,6 @@ describe("POST /v1/chat", () => {
 
     const { status, answer } = await postChat(token, { message: "Apa itu Ayat Kursi?" });
     expect(status).toBe(200);
-    // The fabricated citation never reaches the user as an answer.
     expect(answer).not.toContain("QS. 2:255");
     expect(answer).not.toContain("QS. 9:99");
     expect(answer).toBe("tidak menemukan dalil yang memadai");
@@ -433,7 +396,7 @@ describe("POST /v1/chat", () => {
     const { store, token } = await wiredStore();
     currentStore = store;
     await seed(store);
-    // Prose form: the bracket-only scan this replaced would have passed it.
+    // Prose form: the citation carries no brackets.
     currentOverrides = { answerText: "Rasulullah bersabda dalam HR. Bukhari no. 99999 hal ini." };
 
     const { answer } = await postChat(token, { message: "Hadits tentang niat?" });
@@ -441,13 +404,9 @@ describe("POST /v1/chat", () => {
   }, 15000);
 
   it("ships a hybrid refusal with its grounded chip on the wire (#436)", async () => {
-    // The shape #436 is about, end to end through the route: the store holds
-    // QS. 2:255, the draft quotes it and then runs into the canonical
-    // insufficiency sentence, so the reviewer records `generator_refusal`,
-    // skips the paid call, and returns the draft WITH the `Always` rules
-    // applied (#439). The emitted frame must carry the chip the text earns
-    // BESIDE `refusal: true` — the user reads a cited answer whose last line is
-    // the refusal, not the empty pure-refusal sheet.
+    // A hybrid draft end to end: the draft quotes the retrieved QS. 2:255 and then runs
+    // into the canonical insufficiency sentence, so the reviewer records
+    // `generator_refusal`, skips the paid call, and applies the `Always` rules.
     const { store, token } = await wiredStore();
     currentStore = store;
     await seed(store);
@@ -472,37 +431,28 @@ describe("POST /v1/chat", () => {
     // The chip is resolved, not a label without display data.
     expect(frame.citations[0]?.arabic).toBe(AYAT_KURSI.textAr);
     expect(frame.dhaifWarning).toBe(false);
-    // The reader's text still carries the draft: partial answer, its verse, and
-    // the refusal sentence — the reviewer replaced nothing (that is what makes
-    // this a hybrid, and why the route chunks the settled text); the
-    // deterministic rules only APPENDED to it.
+    // The reader's text still carries the draft: partial answer, its verse and the
+    // refusal sentence — the reviewer replaced nothing; only the deterministic rules
+    // were APPENDED.
     expect(answer).toContain("Allah Mahahidup");
     expect(answer).toContain("[QS. 2:255]");
     expect(answer).toContain(DEFAULT_REFUSALS.id);
-    // The decision is on the persisted trace, as the generator's own trigger.
     const trace = store.allTraces().get(meta.messageId) as
       | { events: { kind: string; detail?: Record<string, unknown> }[] }
       | undefined;
     expect(trace?.events.find((e) => e.kind === "refusal")?.detail?.["trigger"]).toBe(
       "generator_refusal",
     );
-    // #439 closed the debt this assertion was written to record: the refusal
-    // classification skips the PAID reviewer, never the deterministic rules
-    // SPECS §2.2 marks "Always", so the hybrid ships decorated like any other
-    // delivered answer (no dhaif chunk in this store, so only the disclaimer).
+    // The refusal classification skips the PAID reviewer, never the deterministic
+    // "Always" rules, so the hybrid ships decorated like any other delivered answer.
     expect(answer).toContain(ulamaDisclaimer("id"));
     const applied = trace?.events.find((e) => e.kind === "product_rules")?.detail?.["applied"];
     expect(Array.isArray(applied) && applied.includes("ulama_disclaimer")).toBe(true);
   }, 15000);
 
   it("computes the grade flag for a hybrid refusal: warning line in the text, warning card in the frame (#439)", async () => {
-    // The defect's user-visible shape, end to end: a draft that quotes a
-    // dhaif-graded hadith and then runs into the canonical refusal sentence.
-    // Before #439 the refusal branch returned before the rules, so the frame's
-    // `dhaifWarning` (the citations frame's own predicate over the delivered
-    // text) read false and `AnswerCard` rendered no warning card — for an
-    // answer that quotes the weak hadith. SPECS §2.2 marks the grade flag
-    // "Always".
+    // A draft that quotes a dhaif-graded hadith and then runs into the canonical
+    // refusal sentence: the grade flag is computed from the delivered text.
     const { store, token } = await wiredStore();
     currentStore = store;
     await seed(store, {
@@ -532,10 +482,8 @@ describe("POST /v1/chat", () => {
       dhaifWarning: boolean;
       citations: { label: string }[];
     };
-    // The hybrid keeps its chip AND its refusal flag (#436) — and now the grade
-    // flag the spec makes unconditional is computed for the same text (#439).
-    // (The chip's label is the citation grammar's span, `HR. Tirmidhi no. 2878`;
-    // the grade rides the sheet's badge and the warning card, not the label.)
+    // The hybrid keeps its chip AND its refusal flag, and the grade flag is computed
+    // for the same text; the grade rides the sheet's badge, not the label.
     expect(frame.refusal).toBe(true);
     expect(
       frame.citations
@@ -543,9 +491,7 @@ describe("POST /v1/chat", () => {
         .some((label) => label.startsWith("HR. Tirmidhi no. 2878")),
     ).toBe(true);
     expect(frame.dhaifWarning).toBe(true);
-    // The surfaces of the invariant agree: the delivered text carries the
-    // warning line, the frame reports the flag the card renders from, and the
-    // trace names the rule that appended it.
+    // The surfaces agree: the text carries the warning line and the trace names the rule.
     expect(answer).toContain(dhaifWarning("id"));
     expect(answer).toContain(DEFAULT_REFUSALS.id);
     const trace = store.allTraces().get(meta.messageId) as
@@ -556,7 +502,6 @@ describe("POST /v1/chat", () => {
     expect(trace?.events.find((e) => e.kind === "refusal")?.detail?.["trigger"]).toBe(
       "generator_refusal",
     );
-    // No paid reviewer call was spent on the classified refusal.
     expect(trace?.events.some((e) => e.kind === "review")).toBe(false);
   }, 15000);
 
@@ -574,7 +519,6 @@ describe("POST /v1/chat", () => {
     });
     expect(second.status).toBe(200);
 
-    // Both exchanges persisted in the one session.
     const messages = await runStoreEffect<readonly { role: string; content: string }[]>(
       store.getChatMessages(first.meta.sessionId, { limit: 10 }),
     );
@@ -583,12 +527,9 @@ describe("POST /v1/chat", () => {
   }, 15000);
 
   /**
-   * #271: the store's `chat_sessions.id` is a `uuid`, so a non-UUID
-   * `sessionId` used to pass validation and die in the adapter's `::uuid`
-   * cast — a 500 `{"error":"internal"}` with no server fault behind it,
-   * reproduced on staging with the body below (`sessionId: "en"`). The
-   * contract is the boundary: the refusal is the route's existing 400, before
-   * auth, the store, or any pipeline stage.
+   * A non-UUID `sessionId` cannot name a session (`chat_sessions.id` is a uuid), so
+   * the contract refuses it with the existing 400 — before auth, the store, or any
+   * pipeline stage.
    */
   it("rejects a non-UUID sessionId with the documented 400 and creates nothing (#271)", async () => {
     const { store, token } = await wiredStore();
@@ -602,9 +543,7 @@ describe("POST /v1/chat", () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "invalid_request" });
 
-    // Nothing happened behind the refusal, measured rather than inferred:
-    // no stage on the pipeline seams, no persisted question, no trace, and no
-    // chat session row (a refused request must not leave one behind).
+    // Nothing happens behind the refusal, measured rather than inferred.
     expect(spendCalls).toEqual([]);
     expect(store.allChatMessages()).toEqual([]);
     expect(store.allTraces().size).toBe(0);
@@ -612,9 +551,7 @@ describe("POST /v1/chat", () => {
   });
 
   it("names the offending field in the 400's diagnostic detail (#271)", async () => {
-    // The body the client sees is the route's one error shape; the DETAIL is
-    // what makes the refusal diagnosable in ops — and it names the field, so
-    // a malformed sessionId is not confused with a malformed question.
+    // The DETAIL makes the refusal diagnosable in ops, naming the field that failed.
     const warnings: string[] = [];
     const parsed = await parseChatRequest(
       new Request("http://localhost/v1/chat", {

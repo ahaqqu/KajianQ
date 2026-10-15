@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
 /**
- * boot.ts — the Bun serving entry point (#181, ADR-0044).
+ * boot.ts — the Bun serving entry point (ADR-0044).
  *
  *   bun run apps/api/src/boot.ts
  *
  * This is what `provision/vps/systemd/kajianq-api.service` executes on the
- * VPS: a plain Bun server behind nginx, replacing the Cloudflare Worker entry.
+ * VPS: a plain Bun server behind nginx.
  * Configuration comes from the environment, which systemd supplies through
  * `EnvironmentFile=/etc/kajianq/api.env` — no secret is ever an argv value.
  *

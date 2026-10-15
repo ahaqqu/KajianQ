@@ -10,7 +10,7 @@ import { useChat } from "./use-chat";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 /**
- * The rehydration/streaming boundary (thermo-review A1, #11): a transcript
+ * The rehydration/streaming boundary: a transcript
  * result that resolves while a turn is in flight must never clobber the
  * optimistic turns — they are the live answer's only body, and the stream's
  * patches key on their ids. The guard lives in the hook's effect: a mid-turn

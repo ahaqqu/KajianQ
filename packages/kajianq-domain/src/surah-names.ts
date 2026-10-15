@@ -7,8 +7,8 @@
  * matches against. This is a fixed list of 114 proper nouns in their standard
  * Latin transliteration, hand-maintained here; it is *not* corpus data
  * (nothing in `NOTICES/DATASETS.md` describes it) and deliberately excludes the
- * Kemenag Indonesian translated names, whose redistribution is still gated by
- * human prerequisite #2.
+ * Kemenag Indonesian translated names, whose redistribution is gated by a human
+ * prerequisite.
  *
  * The table is the authoritative name source for reference detection. It is
  * keyed by Tanzil number, the same key the ingestion writes onto every surah
@@ -165,7 +165,7 @@ export const SURAH_NAMES: readonly SurahName[] = [
  * `count_ayat` arrives with the ingest source, and this table exists so
  * detection needs no store read. Pinned in `surah-reference.test.ts` against
  * the committed Tanzil surah-list fixture (surahs 1/112/113/114) and against
- * `TOTAL_AYAHS` (Σ = 6,236 — a typo anywhere breaks the sum).
+ * `TOTAL_AYAHS` (a typo anywhere breaks the sum).
  */
 export const SURAH_AYAH_COUNTS: readonly number[] = [
   7, 286, 200, 176, 120, 165, 206, 75, 129, 109, 123, 111, 43, 52, 99, 128, 111, 110, 98, 135, 112,

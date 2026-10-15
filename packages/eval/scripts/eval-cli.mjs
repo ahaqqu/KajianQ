@@ -1,21 +1,13 @@
 /**
- * eval-cli.mjs — the CLI glue shared by `eval-run.mjs` and `eval-smoke.mjs`
- * (round-3 B2): the validated config load, the budget banner, the fixture
- * load, and the run summary. The harness itself (`createStagingHarness`,
- * `runGoldenSet`) already lives in shared seams; this removes the residual
- * per-script copies of the same lines, which had started to drift (eval:run
- * reads the ledger's cost record for its summary, eval:smoke used the live
- * budget). The exit policy is shared here too (#364): the two commands had
- * drifted into opposite failure semantics — the smoke reddened on a failed or
- * skipped question while the full suite exited 0 on either — and one copy is
- * what stops that recurring. What stays per-script: eval:smoke's subset
- * selection, and eval:run's v0 content-bar assertion and ledger-backed cost.
+ * eval-cli.mjs — the CLI glue shared by `eval-run.mjs` and `eval-smoke.mjs`: the
+ * validated config load, the budget banner, the fixture load, the run summary, and
+ * the exit policy. One copy, so the two commands cannot drift into opposite failure
+ * semantics.
  */
 import { readFileSync } from "node:fs";
 import * as evalpkg from "@app/eval";
-// The Golden Set's label vocabulary and the router's classification vocabulary
-// are one list in the domain pack (#14): the trap marker this CLI asserts on
-// comes from there, so a rename cannot leave the gate looking for a stale tag.
+// The trap marker is the domain pack's label vocabulary, imported rather than
+// written as a literal so a rename cannot leave the gate looking for a stale tag.
 import { DAIF_TRAP_LABEL } from "@app/kajianq-domain";
 
 /** Print a prefixed failure and exit non-zero. */
@@ -43,9 +35,8 @@ export function createBudget(prefix, config) {
 }
 
 /**
- * The Golden Set fixture from the validated config's path, validated against
- * the contract. `assertV0` adds the v0 content bar check (eval:run gates on
- * it; eval:smoke runs the same fixture already gated by eval:run).
+ * The Golden Set fixture from the validated config's path, validated against the
+ * contract; `assertV0` adds the v0 content bar check, which only `eval:run` gates on.
  */
 export function loadFixture(prefix, config, { assertV0 = false } = {}) {
   const fixturePath = `${process.cwd()}/${config.goldenSetPath}`;
@@ -64,14 +55,9 @@ export function loadFixture(prefix, config, { assertV0 = false } = {}) {
 export const mean = (xs) => (xs.length === 0 ? null : xs.reduce((a, b) => a + b, 0) / xs.length);
 
 /**
- * The per-question expansion provenance lines (C1). ADR-0045's scope expansion
- * satisfies the scored leg of `retrievalRecall` by construction for a question
- * that names a reference — the scorer reads chunk refs and never inspects
- * their `origin` — so a mean of 1.000 on those questions can hide a broken
- * fused track. Each scoped question prints its fused-only recall beside the
- * reported one, making the loosening observable in the run's own output; a
- * fused-only figure below the reported one is exactly "the expansion carried
- * this question". Reports older than the field print nothing extra.
+ * Scope-expanded questions print their fused-only recall beside the reported one:
+ * the scorer reads chunk refs and never their `origin`, so full reported recall
+ * there can hide a broken fused track. No `expansion` field, no line.
  */
 export function expansionLines(scored) {
   return scored
@@ -83,18 +69,11 @@ export function expansionLines(scored) {
 }
 
 /**
- * The per-question lines for transport-skipped questions (#290). A skip is
- * excluded from the means above, so without its own line the count is the only
- * visible trace of it — and an operator reading the CI log could not tell a
- * client timeout from a 5xx without querying the store. The cause is printed
- * once: the persisted note already carries its own `skipped:` prefix
- * (`skippedOutcome`), and this line labels the row, so re-printing the prefix
- * would read `skipped: q3 — skipped: transport down`. Whitespace is collapsed
- * so one skip stays one log line whatever the transport error's own formatting
- * is, and an empty `notes` array takes the same fallback as an absent one.
- * Contract as `expansionLines`: `printSummary` hands it the run's skipped
- * results, while the predicate filter below keeps it correct if it is ever
- * handed the raw results too.
+ * The per-question lines for transport-skipped questions: a skip is excluded from
+ * the score means, so without its own line the count is the only visible trace of
+ * it. The persisted note already carries its own `skipped:` prefix, so the prefix is
+ * stripped once, and whitespace is collapsed so one skip stays one line; an empty
+ * `notes` array takes the same fallback as an absent one.
  */
 export function skipLines(skipped) {
   return skipped
@@ -106,14 +85,11 @@ export function skipLines(skipped) {
 }
 
 /**
- * The fixture is a REQUIRED argument, never a defaulted one (round-2 B4).
- * Every label a `failed:` line carries — the expected source types and the
- * required citations — comes from it, so a call site that merely forgot it
- * would print the bare, unattributable value #340 exists to remove, and no
- * test would catch that: degrading to the bare value is the *correct*
- * rendering for a question the fixture genuinely does not hold. A caller with
- * no fixture must pass `[]` and say why in a line; an omission fails here
- * instead of silently costing the attribution.
+ * The fixture is a REQUIRED argument, never a defaulted one: every label a
+ * `failed:` line carries comes from it, so a call site that forgot it would print
+ * the bare, unattributable value — and the bare value is the correct rendering for a
+ * question the fixture genuinely does not hold, so no test would catch it. A caller
+ * with no fixture passes `[]`.
  */
 function requireFixture(questions, caller) {
   if (!Array.isArray(questions)) {
@@ -124,36 +100,20 @@ function requireFixture(questions, caller) {
 }
 
 /**
- * The per-question lines for scored questions that failed (#340). The counts
- * and the three means above never named one: a red run's only pointer was a
- * store read of `eval_results` on a run whose reader may hold no grant at all,
- * while the per-question outcomes were in memory at print time all along.
+ * The per-question lines for scored questions that failed. Each names the question,
+ * then every dimension that missed its rule with the evidence: the numeric ones
+ * below 1 (`retrievalRecall`, `citationValidity`) plus the behavior rule — an
+ * `answer` question misses it by refusing (over-refusal is a defect), a `refuse`
+ * question by answering ungrounded. `questions` is the fixture in hand, never a
+ * store read, and supplies the rule's own labels; a question it does not hold
+ * degrades to the bare value, which `requireFixture` makes the only degradation.
  *
- * Each line names the question, then every dimension that missed its rule with
- * the evidence behind it. The failing dimensions are the numeric ones below 1
- * — `retrievalRecall` and `citationValidity` — plus the behavior rule, which a
- * question expecting an `answer` misses by refusing (over-refusal is a defect)
- * and a question expecting a `refuse` misses by answering ungrounded
- * (ADR-0046). `questions` (the fixture in hand, never a store read) supplies
- * the rule's own labels: the expected source types and the required citations.
- * A question the fixture does not hold degrades to the bare value; the fixture
- * itself is required (`requireFixture`) so that degradation is only ever the
- * deliberate one.
- *
- * The behavior verdict is printed only where the outcome decides it. For an
- * `answer` question `refused` decides it; for a `refuse` question it is decided
- * when the other two dimensions are full (the question could not have failed
- * otherwise) and left unsaid when they are not — the line then attributes the
- * failure to the dimension the outcome does evidence rather than claim a miss
- * it does not. Spelled `behavior` to match the contract's `expectedBehavior`.
- *
- * Distinguished from `skipLines` twice over: this reads outcomes with
- * `skipped !== true`, that one the `skipped === true` rows, and the two labels
- * differ — a scored failure can never be misread as an unmeasured question.
- * A scored outcome with no failed dimension is one the ledger-write path
- * reddened alone (`harness.ts` records its cause in `notes`); it prints that
- * cause rather than an empty line, so the one run whose evidence is missing
- * from the store is not also silent in the log.
+ * The behavior verdict is printed only where the outcome decides it: for an
+ * `answer` question `refused` decides it, for a `refuse` question only when the
+ * other two dimensions are full, so the line attributes the failure to the
+ * dimension the outcome does evidence rather than claim a miss it does not.
+ * Spelled `behavior` to match `expectedBehavior`; an outcome with no failed
+ * dimension prints its ledger-write cause rather than an empty line.
  */
 export function failureLines(failed, questions) {
   requireFixture(questions, "failureLines");
@@ -201,12 +161,8 @@ export function failureLines(failed, questions) {
 }
 
 /**
- * The run summary block both scripts print: per-direction score means, the
- * question counts, the failed questions' missed rules, the skipped questions'
- * causes, and the settled cost (the ledger's record when it exists, else the
- * live budget — the ledger is authoritative once the row is written).
- * `questions` is the caller's loaded fixture and is required — see
- * `requireFixture`.
+ * `costMicroUsd` is the settled figure: the ledger's record when it exists, else the live
+ * budget — the ledger is authoritative once the row is written. `questions` is required.
  */
 export function printSummary(prefix, { runId, questionCount, result, costMicroUsd, questions }) {
   requireFixture(questions, "printSummary");
@@ -229,31 +185,25 @@ export function printSummary(prefix, { runId, questionCount, result, costMicroUs
 }
 
 /**
- * The exit policy both CLIs apply (#364) — the one place the gate's verdict is
- * decided, so `eval:run` and `eval:smoke` cannot drift back into the opposite
- * semantics they held before this ticket. It reddens on any question that
- * failed, any question that was skipped, and any question the run never
- * measured: `questionCount` is the set the caller handed `runGoldenSet`, and
+ * The exit policy both CLIs apply — the one place the gate's verdict is decided.
+ * It reddens on any question that failed, any that was skipped, and any the run
+ * never measured: `questionCount` is the set the caller handed `runGoldenSet`, and
  * fewer outcomes than that means the loop stopped early. The budget abort is
- * exactly that case — `harness.ts` breaks on the cap without counting the
- * remainder, so `failed` and `skipped` both read 0 on a truncated run and a
- * two-clause policy would call a half-measured release run green. An unmeasured
- * question is not a pass, whichever way it went unmeasured.
+ * exactly that case — the harness breaks on the cap without counting the
+ * remainder, so a half-measured release run would otherwise read green: an
+ * unmeasured question is not a pass, whichever way it went unmeasured.
  *
- * Its counts come from `result.results` — the rows behind the per-question
- * `failed:`/`skipped:` lines, not the counter-derived `questions:` headline —
- * so it cannot contradict those lines (#370 A2). A negative shortfall, which
- * no harness path produces, still reddens and names it, not a negative count;
- * `runGoldenSet` is the only producer, so the headline agrees today (#370 C1).
+ * Its counts come from `result.results`, the rows behind the per-question
+ * `failed:`/`skipped:` lines rather than the counter-derived `questions:` headline,
+ * so it cannot contradict those lines; a negative shortfall still reddens and names
+ * itself rather than printing a negative count.
  *
  * Pure: it returns the verdict and the exact line to print, never exits, so
- * `tests/scripts/eval-cli.test.mjs` pins every row (this glue is `.mjs`,
- * outside the typechecked corpus — a `.ts` test importing it fails TS7016).
- * `runId` only appears in the red line, and it is the run whose per-question
- * rows carry the attribution printed above it.
+ * `tests/scripts/eval-cli.test.mjs` can pin every row (the glue is `.mjs`, outside
+ * the typechecked corpus, where a `.ts` test importing it fails TS7016). `runId`
+ * appears only in the red line.
  */
 export function exitPolicy(prefix, { runId, questionCount, result }) {
-  // From the rows, as `printSummary`'s per-question lines do (#370 A2), not the counters.
   const scored = result.results.filter((x) => x.skipped !== true);
   const skipped = result.results.filter((x) => x.skipped === true).length;
   const failed = scored.filter((x) => x.passed !== true).length;
@@ -262,16 +212,13 @@ export function exitPolicy(prefix, { runId, questionCount, result }) {
     return { ok: true, message: `${prefix}: PASSED` };
   }
   const counts = [`${failed} failed`, `${skipped} skipped`];
-  // The failed/skipped rendering is byte-identical to the smoke's pre-#364
-  // line, so only the truncation case gains words. The cap is named only when
-  // the run's own record says the cap was hit — the counts stay the ones
-  // `printSummary` printed, and no cause is invented for a shortfall the data
-  // does not explain.
+  // The cap is named only when the run's own record says the cap was hit: no
+  // cause is invented for a shortfall the data does not explain.
   if (unmeasured > 0) {
     counts.push(`${unmeasured} unmeasured${result.budgetExceeded ? " (budget exceeded)" : ""}`);
   } else if (unmeasured < 0) {
-    // The other direction of the same disagreement: more rows than asked for.
-    // Unreachable through the harness, but the red must still name a reason.
+    // More rows than asked for: unreachable through the harness, but every red
+    // line names a reason.
     counts.push(`${-unmeasured} recorded beyond the set asked`);
   }
   return {
@@ -282,10 +229,8 @@ export function exitPolicy(prefix, { runId, questionCount, result }) {
 
 /**
  * Print `exitPolicy`'s verdict and exit non-zero when it reddens — the only
- * effectful half, so both call sites stay one line and the decision itself
- * stays testable. A red verdict goes to stderr (the smoke has always written
- * there, and a gate's failure belongs in the error stream); a green one to
- * stdout.
+ * effectful half, so the decision stays testable. A red verdict goes to stderr
+ * (a gate's failure belongs in the error stream), a green one to stdout.
  */
 export function exitWithPolicy(prefix, input) {
   const { ok, message } = exitPolicy(prefix, input);

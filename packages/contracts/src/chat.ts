@@ -2,56 +2,32 @@ import * as v from "valibot";
 import { sourceRoutingDetailSchema } from "./trace-source-routing";
 
 /**
- * Chat API contracts (#8): the `/v1/chat` request/response surface. The
- * answer itself streams as SSE (`text/event-stream`); these schemas cover the
- * request body validation and the JSON error/meta payloads, shared by the
- * route (hono-openapi) and the eval harness client.
+ * Chat API contracts: the `/v1/chat` request/response surface — request body
+ * validation plus the JSON error/meta payloads, shared by the route and the eval
+ * harness client. The answer itself streams as SSE (`text/event-stream`).
  */
 
 /**
- * The chat message ceiling (#256): how long one question may be, in
- * characters. It is a hard COST bound, not a UX nicety — ADR-0041's rate
- * limiter caps request frequency, not request size, so without a ceiling a
- * client can stay inside the rate limit while multiplying what each accepted
- * question spends on the router, generator, and reviewer.
+ * The chat message ceiling, in characters — a hard COST bound, not a UX nicety:
+ * the rate limiter caps request frequency, not request size (ADR-0041), so
+ * without a ceiling a client can multiply what each accepted question spends.
  *
- * 2,000 is ~21× the longest curated Golden Set question (93 characters; the
- * median is 55), so it is generous for a pasted passage plus a question, while
- * cutting the observed 20,000-character probe by an order of magnitude. The
- * exact value is an owner decision recorded in the issue: adjusting it is a
- * one-line edit here plus the boundary test that pins it.
- *
- * Length is measured in UTF-16 code units on the RAW string, before any trim
- * (nothing in the request path trims): the bound is on what the client
- * actually sends, so it cannot be met by whitespace a later stage would strip.
- * `ChatRequestSchema.message`'s description states the same rule on the API's
- * published surface, and the boundary tests pin both halves of it.
+ * Length is in UTF-16 code units on the RAW string, before any trim: the bound
+ * is on what the client sends, not on what a later stage would strip.
  */
 export const CHAT_MESSAGE_MAX_LENGTH = 2000;
 
 /**
- * A chat session id as a REQUEST value (#271): the format the store can
- * represent, and therefore the only format the API may accept.
+ * A chat session id as a REQUEST value: `chat_sessions.id` is a Postgres `uuid`
+ * column, and the adapter's `${sessionId}::uuid` cast raises before the
+ * ownership check can answer — so a malformed id is refused here (`400` on the
+ * request body, the route's existing `404` on the rehydration path param)
+ * rather than surfacing as a server fault. A format check only: a well-formed
+ * but unknown or foreign UUID is no existence oracle.
  *
- * `chat_sessions.id` is a Postgres `uuid` column, and every id the API hands
- * out is minted by `crypto.randomUUID()` (`createChatSession`). A client-supplied
- * id that is not a UUID cannot name a session — the adapter's `${sessionId}::uuid`
- * cast raises before the ownership check can answer — so before this schema
- * existed the request passed validation and surfaced as a 500 `{"error":"internal"}`,
- * indistinguishable from a server fault. Validating here makes the refusal the
- * documented one, before any store call or pipeline stage: `400 invalid_request`
- * for the request body, the route's existing `404` for the rehydration path
- * param. It is a format check ONLY: a well-formed but unknown or foreign UUID
- * still answers exactly what it answered before, so it is no existence oracle
- * (`apps/api/src/routes/chat-session.ts` states the same posture).
- *
- * Deliberately NOT applied to the server-produced `sessionId` members
- * (`ChatMetaSchema`, `ChatSessionMessagesSchema`): those describe a value the
- * store minted or returned, and the `RagStore` seam types chat session ids as
- * opaque strings (`createChatSession(): Effect<string, StoreError>`) — a
- * response schema claiming a UUID shape would over-constrain the seam (the same
- * mismatch the trace-id note in `apps/api/src/routes/chat.ts` records) while
- * preventing no 500, because a response assertion is not a boundary.
+ * Deliberately NOT applied to the server-produced `sessionId` members: the
+ * `RagStore` seam types chat session ids as opaque strings, and a response
+ * assertion is not a boundary.
  */
 export const ChatSessionIdSchema = v.pipe(
   v.string(),
@@ -62,9 +38,8 @@ export const ChatSessionIdSchema = v.pipe(
 );
 
 /**
- * The predicate form of `ChatSessionIdSchema`, for the rehydration route's
- * `:id` guard: that route validates a path param (there is no body to parse)
- * and must read the SAME rule the body contract uses, never a second regex.
+ * The predicate form of `ChatSessionIdSchema`: the rehydration route's `:id`
+ * guard reads the SAME rule as the request body, never a second regex.
  */
 export const isChatSessionId = (value: string): boolean => v.is(ChatSessionIdSchema, value);
 
@@ -77,12 +52,9 @@ export const ChatRequestSchema = v.object({
       `The user's question (1 to ${CHAT_MESSAGE_MAX_LENGTH} characters), measured in UTF-16 code units on the raw string with no trim — so a body that would only trim to the ceiling is still rejected, and a whitespace-only body inside the ceiling is accepted. An over-length message is rejected with 400 invalid_request before any pipeline stage runs.`,
     ),
   ),
-  /**
-   * Existing chat session to append to; absent = create a new session. The
-   * format is the session-id contract (#271) — see `ChatSessionIdSchema`.
-   */
+  /** Existing chat session to append to; absent = create a new session. */
   sessionId: v.optional(ChatSessionIdSchema),
-  /** UI language hint; the answer language (ID default, per product scope). */
+  /** UI language hint; the answer language (ID default). */
   language: v.optional(v.picklist(["id", "en"])),
 });
 
@@ -105,46 +77,32 @@ export const ChatErrorSchema = v.object({
 export type ChatError = v.InferOutput<typeof ChatErrorSchema>;
 
 /**
- * One resolved citation (#11, ADR-0040). The payload is derived SERVER-SIDE
- * from the answer's persisted trace (its `retrieval` chunk refs joined to the
- * store's chunk rows) — the client never parses the answer text to decide
- * what is a citation, so a citation label that no retrieved chunk grounds can
- * never reach the UI (the same invariant the deterministic citation gate
- * enforces on the answer itself).
- *
- * `label` is the normalized inline citation span as the answer wrote it
- * (canonical `QS.`/`HR.` markers, grade suffix stripped); the rest is the
- * cited chunk's display data. Grade values travel as plain strings — the
- * corpus's grade vocabulary is domain data, not part of the engine contract.
+ * One resolved citation, derived SERVER-SIDE from the answer's persisted trace
+ * (its `retrieval` chunk refs joined to the store's chunk rows): the client
+ * never parses the answer text, so a label no retrieved chunk grounds cannot
+ * reach the UI. `label` is the normalized inline citation span as the answer
+ * wrote it (canonical `QS.`/`HR.` markers, grade suffix stripped). Grade values
+ * travel as plain strings — the grade vocabulary is domain data.
  */
 export const ChatCitationSchema = v.object({
   label: v.pipe(v.string(), v.minLength(1)),
-  /** The Arabic original (canonical evidence layer, ADR-0013); render RTL. */
+  /** The Arabic original (canonical evidence layer); render RTL. */
   arabic: v.pipe(v.string(), v.minLength(1)),
-  /** The translation layer the answer quoted from, when the chunk has one. */
   translation: v.optional(v.string()),
-  /** The source's grade badge value, when the source carries one. */
   grade: v.optional(v.pipe(v.string(), v.minLength(1))),
-  /** True when the displayed translation is machine-made (ADR-0006 label). */
   machineTranslated: v.boolean(),
-  /** Collection/work reference string for display (the parent doc's title). */
   source: v.optional(v.pipe(v.string(), v.minLength(1))),
 });
 
 export type ChatCitation = v.InferOutput<typeof ChatCitationSchema>;
 
 /**
- * The SSE `citations` frame payload (ADR-0040), emitted after the answer's
- * deltas and before `done` — and, with the same shape, the per-message
- * `citations` payload of the session-rehydration endpoint. The two fields are
- * independent projections of the one persisted trace: `citations` is the
- * cited-and-grounded intersection, and `refusal` reports the refusal decision
- * the trace records — it is not implied by the list, and it never empties it,
- * so a hybrid answer (a grounded partial answer that runs into the canonical
- * refusal sentence) carries both (#436). The weak-grade flag tells the UI to
- * render the deterministic warning card the answer text carries (the flag
- * keeps the product's CONTEXT.md term as its wire name — see the boundary
- * rule's file-scoped exemption).
+ * The SSE `citations` frame payload, emitted after the answer's deltas and
+ * before `done`, and with the same shape per assistant message on the
+ * rehydration transcript. `citations` is the cited-and-grounded intersection;
+ * `refusal` independently reports the refusal decision and never empties the
+ * list, so a hybrid answer carries both. `dhaifWarning` tells the UI to render
+ * the deterministic warning card the answer text carries.
  */
 export const ChatCitationsFrameSchema = v.object({
   messageId: v.pipe(v.string(), v.minLength(1)),
@@ -156,26 +114,15 @@ export const ChatCitationsFrameSchema = v.object({
 export type ChatCitationsFrame = v.InferOutput<typeof ChatCitationsFrameSchema>;
 
 /**
- * One chunk reference in the user-facing Trace frame (#12, ADR-0007). The
- * `technical` layer carries the retrieval provenance verbatim from the
- * persisted trace's `retrieval` events (fused score + both channel ranks +
- * the chunk's `origin` label); the top "sources consulted" layer reuses the
- * same shape with those provenance fields simply absent, so the panel's two
- * layers read one contract.
+ * One chunk reference in the user-facing Trace frame. The `technical` layer
+ * carries the retrieval provenance verbatim from the persisted trace's
+ * `retrieval` events (fused score, both channel ranks, the chunk's `origin`
+ * label); the top "sources consulted" layer reuses the same shape with those
+ * fields absent, so the panel's two layers read one contract.
  *
- * `source` is the cited work's display title, joined server-side from the
- * store by the chunk id — the client never resolves display data itself. A
- * chunk whose row (or title) is missing renders by id instead: honest
- * provenance, never a fabricated title.
- *
- * `origin` is the same opaque caller label the persisted trace carries
- * (`ChunkRef.origin`, ADR-0045), projected verbatim: it answers "why is this
- * chunk here" for a chunk no fused track produced. The surah-scope
- * expansion's verses carry no score and no channel rank, so without the
- * label the panel shows them as scoreless sources with no stated reason.
- * Optional and absent by default: fused hits have no label, and traces
- * persisted before the field existed must keep rendering — the panel omits
- * what the trace does not carry, never invents it.
+ * `source` is the cited work's display title, joined server-side by chunk id; a
+ * missing row renders by id, never a fabricated title. `origin` is the trace's
+ * opaque caller label — why a chunk no fused track produced is present.
  */
 export const ChatTraceChunkSchema = v.object({
   id: v.pipe(v.string(), v.minLength(1)),
@@ -189,45 +136,32 @@ export const ChatTraceChunkSchema = v.object({
 export type ChatTraceChunk = v.InferOutput<typeof ChatTraceChunkSchema>;
 
 /**
- * The user-facing Trace payload (#12, ADR-0007): how an answer was built, in
- * two layers, both derived SERVER-SIDE from the answer's persisted trace
- * (`answer_traces`) — the client renders the frame, it never reconstructs
- * pipeline machinery from event soup. The top layer (`sources`) lists the
- * sources consulted in plain language (retrieval order, deduplicated); the
- * `technical` layer, one tap deeper, carries the router intent, the
- * sub-queries, the retrieved chunks with their scores, and the model
- * identities (opaque `modelId` strings resolved from `model_configs` at
- * wiring time — ADR-0009: no vendor or model names in code).
- *
- * Emitted live as the SSE `trace` frame (after `citations`, before `done`)
- * and attached per-message to the rehydration transcript, the same dual path
- * the citations frame uses (ADR-0040).
+ * The user-facing Trace payload: how an answer was built, in two layers, both
+ * derived SERVER-SIDE from the answer's persisted trace (`answer_traces`) — the
+ * client renders the frame, never reconstructing pipeline machinery. The top
+ * `sources` layer lists the sources consulted in plain language (retrieval
+ * order, deduplicated); `technical` carries the router intent, the sub-queries,
+ * the scored chunks, and the model identities (opaque `modelId` strings from
+ * `model_configs`). Emitted live as the SSE `trace` frame (after `citations`,
+ * before `done`) and per assistant message on the rehydration transcript.
  */
 export const ChatTraceFrameSchema = v.object({
   messageId: v.pipe(v.string(), v.minLength(1)),
-  /** Top layer: the sources consulted, plain language, retrieval order. */
   sources: v.array(ChatTraceChunkSchema),
   technical: v.object({
-    /** The router's classified intent, when the trace recorded one. */
     intent: v.optional(v.pipe(v.string(), v.minLength(1))),
     confidence: v.optional(v.number()),
     /**
-     * The routing decision (#15): which source types the route selected and the
-     * metadata filter record it decided retrieval should run with, projected
-     * verbatim from the persisted trace's `source_routing` event. Opaque
-     * strings — the domain pack owns what a source type or a filter dimension
-     * means; the frame neither names nor interprets one. An empty `sources`
-     * list is a decision ("every source was in play") and is rendered as such,
-     * never as "unknown". `relaxed` names the dimensions the run actually gave
-     * up on the trace's `filter_relaxed` events, so `filters` reads as the
-     * route's decision and the effective record is `filters − relaxed` — for a
-     * relaxed run the panel would otherwise show a filter the search had
-     * already given up. Optional and absent by default: traces persisted before
-     * the field existed must keep rendering.
-     *
-     * The shared half is the trace variant's own schema (one owner, one shape
-     * for the routing decision); only the drop list, which exists on the
-     * retriever's events rather than on the routing event, is declared here.
+     * The routing decision: which source types the route selected and the
+     * metadata filter record retrieval should run with, projected verbatim from
+     * the persisted trace's `source_routing` event. Opaque strings — the domain
+     * pack owns what a source type or a filter dimension means. An empty
+     * `sources` list is a decision ("every source was in play"), never
+     * "unknown". `relaxed` names the dimensions the run gave up on the trace's
+     * `filter_relaxed` events, so the effective record is `filters − relaxed`;
+     * a relaxed run would otherwise show a filter the search had already given
+     * up. Shared with the trace variant's schema — only the drop list, which
+     * lives on the retriever's events, is declared here.
      */
     routing: v.optional(
       v.object({
@@ -244,7 +178,7 @@ export const ChatTraceFrameSchema = v.object({
     ),
     subQueries: v.array(v.pipe(v.string(), v.minLength(1))),
     chunks: v.array(ChatTraceChunkSchema),
-    /** Distinct model identities, in first-call order (ADR-0009 opaque ids). */
+    /** Distinct model identities, in first-call order (opaque ids). */
     models: v.array(v.pipe(v.string(), v.minLength(1))),
   }),
 });
@@ -252,13 +186,11 @@ export const ChatTraceFrameSchema = v.object({
 export type ChatTraceFrame = v.InferOutput<typeof ChatTraceFrameSchema>;
 
 /**
- * One rehydrated transcript message (#11): the rehydration endpoint maps the
- * persisted chat rows onto this shape. An assistant message carries
- * `citations` when its persisted trace resolves to a frame; a user message
- * (or an assistant message whose trace is missing) carries none — the UI
- * renders it as plain text with no citation affordances. The same assistant
- * messages carry the two-layer `trace` frame (#12) when their trace derives
- * to one.
+ * One rehydrated transcript message, mapped from the persisted chat rows. An
+ * assistant message carries `citations` when its persisted trace resolves to a
+ * frame, and the two-layer `trace` frame when its trace derives to one; a user
+ * message (or an assistant message whose trace is missing) carries neither and
+ * renders as plain text.
  */
 export const ChatSessionMessageSchema = v.object({
   id: v.pipe(v.string(), v.minLength(1)),
@@ -272,14 +204,13 @@ export const ChatSessionMessageSchema = v.object({
 
 export type ChatSessionMessage = v.InferOutput<typeof ChatSessionMessageSchema>;
 
-/** The `GET /v1/chat/sessions/:id/messages` response (#11, ADR-0040). */
+/** The `GET /v1/chat/sessions/:id/messages` response. */
 export const ChatSessionMessagesSchema = v.object({
   sessionId: v.pipe(v.string(), v.minLength(1)),
   messages: v.array(ChatSessionMessageSchema),
   /**
-   * True when the transcript was capped: the endpoint returns the newest
-   * tail and older messages are not included (thermo-review A4 — the client
-   * must be able to tell it is looking at a tail, never silently).
+   * True when the transcript was capped: the endpoint returns the newest tail
+   * and omits older messages, so a client can tell it holds a tail.
    */
   truncated: v.boolean(),
 });

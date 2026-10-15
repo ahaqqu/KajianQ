@@ -36,8 +36,8 @@ export type Intent = (typeof INTENTS)[number];
 
 /**
  * Principle tag (CONTEXT.md) — the interpretive lens a why-question or an
- * analogy needs. The Principle Index (#16) seeds its rows with these exact
- * slugs, so the router's tags and the index's rows line up by construction.
+ * analogy needs. The Principle Index seeds its rows with these exact slugs, so
+ * the router's tags and the index's rows line up by construction.
  */
 export const PRINCIPLE_TAGS = [
   "yusr",

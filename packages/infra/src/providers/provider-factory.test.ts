@@ -33,7 +33,7 @@ describe("fallback chain", () => {
     });
     const result = await runOk(provider.generate({ turns: [{ role: "user", content: "hi" }] }));
     expect(result.text).toBe("hello there");
-    expect(result.cost.modelId).toBe("alt-chat"); // the fallback, not the first
+    expect(result.cost.modelId).toBe("alt-chat");
   });
 
   it("falls forward on 5xx", async () => {
@@ -81,13 +81,11 @@ describe("fallback chain", () => {
       retrySchedule: fastSchedule,
     });
     const result = await runOk(provider.generate({ turns: [{ role: "user", content: "hi" }] }));
-    // 1 initial + 3 scheduled retries on m-chat, then the fallback answered.
     expect(calls).toBe(5);
     expect(result.cost.modelId).toBe("alt-chat");
   });
 
   it("per-kind retry budgets do not bleed across error kinds", async () => {
-    // Review A2 regression pin: rate_limited allows 2 retries, transport 3.
     // A mixed sequence must leave each kind its full own budget — errors of
     // one kind may not consume the other kind's retries.
     const script: ReadonlyArray<"transport" | "rate_limited"> = [
@@ -104,37 +102,27 @@ describe("fallback chain", () => {
       if (step === "transport") throw new TypeError("network down");
       return jsonResponse({ error: { message: "slow down" } }, 429);
     };
-    const config = configWith(["test:m-chat"]); // single candidate: no fallback
+    const config = configWith(["test:m-chat"]);
     const { provider } = resolveRole(config, "cheap", {
       env: { TEST_KEY: "a" },
       fetchImpl,
       retrySchedule: fastSchedule,
     });
     const err = await runFail(provider.generate({ turns: [{ role: "user", content: "hi" }] }));
-    // 1 initial + 2 transport retries + 2 rate_limited retries = 5 calls;
-    // the third 429 finds its rate_limited budget exhausted. With the old
-    // whileInput/union schedule this was 4 (the two transport faults had
-    // already stepped the rate_limited arm, leaving the first 429 with zero
-    // retries).
     expect(calls).toBe(5);
     expect(err.kind).toBe("exhausted");
   });
 
   it("a batch call site's retry budget rides out a rate-limit wall (ingest regression)", async () => {
-    // The staging corpus ingest died on its **first** embedding batch: the
-    // interactive default gives a 429 ≈1.5 s of backoff, which cannot outlast
-    // a vendor's per-minute window, so the whole run was thrown away. The
-    // batch policy is the same per-kind schedule with a longer budget; this
-    // pins the mechanism on a fast clock (1 ms bases instead of 5 s) — 1
-    // initial call + 5 rate-limited retries = 6 before the chain gives up,
-    // versus 3 with the interactive default pinned above.
+    // The batch policy is the same per-kind schedule with a longer budget;
+    // this pins the mechanism on a fast clock (1 ms bases, not the real 5 s).
     const batchLike = perKindRetrySchedule("1 millis", "1 millis", BATCH_RETRY_BUDGETS);
     let calls = 0;
     const fetchImpl: FetchLike = async () => {
       calls += 1;
       return jsonResponse({ error: { message: "quota exceeded" } }, 429);
     };
-    const config = configWith(["test:m-chat"]); // single candidate: no fallback
+    const config = configWith(["test:m-chat"]);
     const { provider } = resolveRole(config, "cheap", {
       env: { TEST_KEY: "a" },
       fetchImpl,
@@ -167,9 +155,8 @@ describe("fallback chain", () => {
   });
 
   it("a vendor-reaching failed attempt carries its estimated cost (C2)", async () => {
-    // The vendor answered 401 — the attempt reached it, so its input spend
-    // must ride on the error for the caller's trace sink (traceability
-    // rule 4: a failed attempt may never vanish from the cost trail).
+    // A vendor-reaching attempt's input spend must ride on the error for the
+    // caller's trace sink: a failed attempt may never vanish from the cost trail.
     const config = configWith(["test:m-chat"]);
     const { provider } = resolveRole(config, "cheap", {
       env: { TEST_KEY: "a" },
@@ -181,13 +168,11 @@ describe("fallback chain", () => {
     const cost = err.attemptCosts![0]!;
     expect(cost.modelId).toBe("m-chat");
     expect(cost.tokensIn).toBeGreaterThan(0);
-    expect(cost.estimated).toBe(true); // an estimate, never metered (ADR-0022)
+    expect(cost.estimated).toBe(true); // an estimate, never metered
     expect(cost.costMicroUsd).toBeGreaterThan(0);
   });
 
   it("retries accumulate every vendor-reaching attempt's cost into the final error", async () => {
-    // 429s on the first candidate (vendor reached, asked us to slow down),
-    // then the fallback answers. The failed attempts' spend must survive.
     let calls = 0;
     const fetchImpl: FetchLike = async (_url, init) => {
       calls += 1;
@@ -203,7 +188,7 @@ describe("fallback chain", () => {
     });
     const result = await runOk(provider.generate({ turns: [{ role: "user", content: "hi" }] }));
     expect(result.cost.modelId).toBe("alt-chat");
-    expect(calls).toBe(4); // 1 initial + 2 rate_limited retries + 1 fallback
+    expect(calls).toBe(4);
   });
 
   it("an exhausted chain's error lists every vendor-reaching attempt's cost", async () => {
@@ -219,9 +204,6 @@ describe("fallback chain", () => {
       retrySchedule: fastSchedule,
     });
     const err = await runFail(provider.generate({ turns: [{ role: "user", content: "hi" }] }));
-    // (1 initial + 3 server retries) per candidate × 2 candidates = 8
-    // attempts, all vendor-reaching; the exhausted error carries one cost
-    // record per attempt.
     expect(err.kind).toBe("exhausted");
     expect(calls).toBe(8);
     expect(err.attemptCosts).toHaveLength(8);
@@ -265,7 +247,7 @@ describe("fallback chain", () => {
   it("candidates without an API key are skipped and reported", async () => {
     const config = configWith(["test:m-chat", "alt:alt-chat"]);
     const { provider, missingKeys } = resolveRole(config, "cheap", {
-      env: { TEST_KEY: "a" }, // ALT_KEY missing
+      env: { TEST_KEY: "a" },
       fetchImpl: makeFetch({}),
       retrySchedule: fastSchedule,
     });
@@ -310,7 +292,7 @@ describe("fallback chain", () => {
   });
 
   it("a personal-data call with no allowed candidate fails with a typed error", async () => {
-    const config = configWith(["test:m-chat"]); // single free-tier candidate
+    const config = configWith(["test:m-chat"]); // free-tier candidate
     const fetchImpl: FetchLike = async () => {
       throw new Error("must not be called");
     };

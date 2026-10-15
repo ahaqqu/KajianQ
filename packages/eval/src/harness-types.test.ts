@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { CostRecordLike, TraceEventLike } from "./harness-types";
 
 /**
- * Structural-typing guards (thermo-review B1): the harness's narrowed
- * trace-event views must stay assignable from the @app/contracts shapes —
- * a contract field rename must surface here, at compile time, as a test
- * failure rather than a silent zero-cost report.
+ * Structural-typing guards: the harness's narrowed trace-event views must stay
+ * assignable from the @app/contracts shapes — a contract field rename must
+ * surface here, at compile time, as a test failure rather than a silent
+ * zero-cost report.
  */
 describe("harness-types structural compatibility", () => {
   it("accepts a contracts CostRecord verbatim as CostRecordLike", () => {

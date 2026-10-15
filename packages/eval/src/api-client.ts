@@ -1,10 +1,9 @@
 /**
- * SSE-consuming HTTP client for `/v1/chat` (#8): the harness POSTs a question
- * and consumes the server's `text/event-stream` response, buffering text
- * deltas into the full answer and capturing the event-stream metadata the
- * server emits (trace/message ids). Non-streamed *consume* of a streamed
- * response — the wire stays SSE from the start (the product contract); the
- * harness just collapses it.
+ * SSE-consuming HTTP client for `/v1/chat`: the harness POSTs a question and
+ * consumes the server's `text/event-stream` response, buffering text deltas
+ * into the full answer and capturing the event-stream metadata the server emits
+ * (trace/message ids). Non-streamed *consume* of a streamed response — the wire
+ * stays SSE from the start (the product contract); the harness just collapses it.
  */
 
 import type { CitationFrameLike } from "./harness-types";
@@ -67,8 +66,8 @@ export async function consumeSseToText(body: ReadableStream<Uint8Array>): Promis
       } else if (parsed.event === "meta") {
         const meta = parseChatMeta(parsed.data);
         if (meta.malformed !== undefined) {
-          // B6: a malformed meta frame is diagnosable, never swallowed —
-          // one bounded stderr warning per malformed frame.
+          // A malformed meta frame is diagnosable, never swallowed — one
+          // bounded stderr warning per malformed frame.
           console.warn(`eval: malformed SSE meta payload: ${meta.malformed}`);
         }
         if (meta.messageId) messageId = meta.messageId;
@@ -110,9 +109,9 @@ export type ChatMetaParse =
   | { messageId: null; traceId: null; malformed: string };
 
 /**
- * Parse one `meta` frame payload. Thermo-review B6: a malformed payload is
- * surfaced (with the raw data) instead of silently swallowed, so an operator
- * can see why a run scored answers without trace ids.
+ * Parse one `meta` frame payload. A malformed payload is surfaced (with the raw
+ * data) instead of silently swallowed, so an operator can see why a run scored
+ * answers without trace ids.
  */
 export function parseChatMeta(data: string): ChatMetaParse {
   try {
@@ -130,11 +129,8 @@ export function parseChatMeta(data: string): ChatMetaParse {
  * A `data:` field drops **exactly one** leading space (the optional space
  * after the colon, per the SSE spec) — never `trimStart()`. The route replays
  * the vendor's own delta sequence, so a delta routinely begins with a space;
- * trimming all leading whitespace silently rewrote the answer on the wire.
- * The corruption is not cosmetic: a citation split as `"QS."` + `" 2:43"`
- * reassembled to `"QS.2:43"`, so the eval harness scored a correctly cited
- * answer as citing nothing (`citationValidity: 0`) while the persisted answer
- * and the reviewer both held the true text.
+ * trimming all leading whitespace silently rewrites the answer on the wire and
+ * can make the scorer miss a citation the persisted answer holds.
  */
 function parseFrame(frame: string): { event: string; data: string } | null {
   let event = "message";

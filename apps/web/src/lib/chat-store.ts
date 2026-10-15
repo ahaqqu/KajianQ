@@ -7,7 +7,7 @@ import {
 import { apiFetch } from "./api";
 
 /**
- * Client chat-session state (#11): the anonymous Bearer token and the active
+ * Client chat-session state: the anonymous Bearer token and the active
  * session id, persisted in localStorage (ADR-0017 anonymous sessions — low
  * stakes by design). The transcript rehydrates from the server on reload;
  * there is no offline store (SPECS §3.1 — chat needs network anyway).
@@ -18,7 +18,7 @@ import { apiFetch } from "./api";
 
 /** The `localStorage` keys this module owns, exported so the /about notice's
  * storage card (`privacy-notice-storage.ts`) names them from here instead of
- * duplicating the literals (thermo-review B1). */
+ * duplicating the literals. */
 export const SESSION_KEY = "kajianq.chat.sessionId";
 export const TOKEN_KEY = "kajianq.auth.token";
 
@@ -87,7 +87,6 @@ export async function bootstrapAnonymousToken(signal?: AbortSignal): Promise<str
   return session.token;
 }
 
-/** Rehydrate the full transcript of a session from the server (#11). */
 export async function fetchSessionMessages(
   sessionId: string,
   token: string,

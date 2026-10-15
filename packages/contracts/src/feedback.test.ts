@@ -9,7 +9,7 @@ import {
 } from "./feedback";
 
 /**
- * Feedback contracts (#13). These are trap tests: the anchor taxonomy only
+ * Feedback contracts. These are trap tests: the anchor taxonomy only
  * protects trust if malformed shapes fail LOUDLY here — a category anchored
  * to the wrong element class, a payload that is neither thumb nor flag (or
  * both), an oversized free-text — every one must be a parse failure, never a

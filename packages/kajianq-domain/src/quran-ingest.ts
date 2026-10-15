@@ -18,8 +18,8 @@ import {
 
 /**
  * The domain wiring that turns parsed Quran sources into the engine's
- * ingestion inputs (#6): one parent per surah, one child per ayah, one
- * aligned pair per (Arabic, Indonesian) ayah for #24's concept-graph build
+ * ingestion inputs: one parent per surah, one child per ayah, one aligned
+ * pair per (Arabic, Indonesian) ayah for the concept-graph build
  * (ADR-0014), plus the LLM parent summarizer (surah summaries; parent
  * embeddings computed from summaries, not full text).
  *
@@ -37,12 +37,11 @@ export type QuranCorpus = {
 
 /**
  * Parse + integrity-check the combined sources (throws on any violation).
- * `expected` defaults to the full Tanzil corpus (114 surahs / 6,236 ayahs);
- * subset runs (tests, `--limit`) pass their own totals — `surahs`/`ayahs`
- * count what is actually being ingested. The surah list itself is always
- * validated as complete metadata (all 114 entries), so a truncated list
- * still fails loudly; only the ayah files are subset-able, and the
- * `ayahs` count gate is what catches real truncation.
+ * `expected` defaults to the full Tanzil corpus; subset runs (tests,
+ * `--limit`) pass their own totals — `surahs`/`ayahs` count what is actually
+ * being ingested. The surah list itself is always validated as complete
+ * metadata, so a truncated list still fails loudly; only the ayah files are
+ * subset-able, and the `ayahs` count gate is what catches real truncation.
  */
 export function buildCorpus(
   input: {

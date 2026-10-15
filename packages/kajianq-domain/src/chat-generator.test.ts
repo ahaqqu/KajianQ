@@ -10,12 +10,9 @@ import { createStubChatProviders } from "./test-utils/stub-chat-providers";
 import { routedQuery } from "./test-utils/routed-query";
 
 /**
- * Generator + reviewer behavior (ticket #10): the generator streams from the
- * provider seam and settles the call's cost into the trace; the reviewer's
- * deterministic citation gate refuses ungrounded answers regardless of the
- * LLM reviewer's availability or verdict. The last block runs the real
- * five-stage pipeline through `runPipeline` so the trace assertions cover the
- * runner's own wiring, not a hand-built context.
+ * Generator + reviewer behavior: the generator settles the streamed call's cost into the
+ * trace, and the reviewer's deterministic citation gate refuses ungrounded answers
+ * regardless of the LLM reviewer. The last block runs the real five-stage pipeline.
  */
 
 const cost = (modelId: string, microUsd: number): CostRecord => ({
@@ -41,11 +38,8 @@ const chunk = (label: string): Chunk => ({
   metadata: { citation: label },
 });
 
-/**
- * Run one stage effect with a minimal `RunContext` (the stage's required
- * service). The trace sink is a no-op here — tests that assert on recorded
- * events provide their own context.
- */
+/** Run one stage effect with a minimal `RunContext`; the trace sink is a no-op here —
+ * tests that assert on recorded events provide their own context. */
 function runStage<A>(effect: unknown): Promise<A> {
   return Effect.runPromise(
     Effect.provideService(effect as never, RunContext, {
@@ -77,17 +71,13 @@ describe("createKajianQGenerator — streaming", () => {
   });
 
   it("calls the provider's stream with its receiver attached", async () => {
-    // Regression: the real fallback chain implements `stream` as a class method
-    // whose first act is `this.eligibleEffectFor(spec)`. Extracting it into a
-    // local (`const stream = deps.provider.stream`) detached `this`, so every
-    // streamed answer died with "Cannot read properties of undefined (reading
-    // 'eligibleEffectFor')". Object-literal stubs with arrow functions cannot
-    // catch this — the first live staging smoke did.
+    // The real provider implements `stream` as a method that reads `this`, so the stub must
+    // be bound exactly like it: an object-literal stub with arrow functions cannot catch a
+    // detached receiver.
     const provider = {
       modelId: "bound-provider",
       generate: () => Effect.die("generate must not be used when stream exists"),
       stream: function (this: { modelId: string }) {
-        // Throws on a detached receiver, exactly like the real chain.
         return Effect.succeed({
           deltas: Stream.fromIterable([`ok:${this.modelId}`]),
           cost: () => Effect.succeed(cost("bound-provider", 1)),
@@ -100,9 +90,7 @@ describe("createKajianQGenerator — streaming", () => {
   });
 
   it("sends the verbatim question — never the router's intent — in the user turn", async () => {
-    // Regression (#14): the assembled context used to carry the question in the
-    // field named `intent`, so the prompt got the question only by accident of
-    // that hijack. It now reads `sourceText`, the text the engine stamped.
+    // The prompt reads `sourceText`, the text the engine stamped — never the router's intent.
     let turns: readonly { role: string; content: string }[] = [];
     const gen = createKajianQGenerator({
       provider: {
@@ -135,8 +123,7 @@ describe("createKajianQGenerator — streaming", () => {
   });
 
   it("records the streamed call's cost to the run's trace sink", async () => {
-    // The cost must land on the trace even though it settles only after the
-    // stream completes (traceability rule 4).
+    // The cost must land on the trace even though it settles only after the stream ends.
     const events: { kind: string; cost?: CostRecord }[] = [];
     const gen = createKajianQGenerator({
       provider: {
@@ -307,7 +294,6 @@ describe("createKajianQReviewer — the deterministic gate", () => {
       provider: {
         generate: () =>
           Effect.succeed({
-            // Vendor rate-limit text: no verdict anywhere in the reply.
             text: "Rate limit exceeded. Please retry later.",
             cost: cost("reviewer", 3),
           }),
@@ -321,8 +307,8 @@ describe("createKajianQReviewer — the deterministic gate", () => {
         { config: {}, now: () => 1, record: (e: never) => events.push(e) } as never,
       ) as never,
     )) as { text: string };
-    // The answer is still delivered (the deterministic gate passed), but the
-    // trace distinguishes "unreadable" from "reviewer passed".
+    // The answer is still delivered (the deterministic gate passed), but the trace must
+    // distinguish "unreadable" from "reviewer passed".
     expect(out.text).toContain("QS. 2:255");
     const review = events.find((e) => e.kind === "review");
     expect(review?.detail?.verdictParseFailed).toBe(true);
@@ -398,9 +384,8 @@ describe("runChatPipeline — end-to-end trace", () => {
             rankDense: 1,
           },
         ]),
-      // ADR-0049: the one fused hit is a verse, so the neighbourhood read is
-      // asked for — it contributes nothing here (this test pins the trace's
-      // scores and costs), but the fake must implement the seam.
+      // ADR-0049: the fused hit is a verse, so the neighbourhood read is asked for — the
+      // fake must implement the seam even though it contributes nothing here.
       listDocChildNeighboursByChildIds: () => Effect.succeed([]),
     };
     const answer = await Effect.runPromise(
@@ -425,7 +410,6 @@ describe("runChatPipeline — end-to-end trace", () => {
     const calls = trace.events.filter(
       (e: never) => (e as { kind: string }).kind === "llm_call",
     ) as unknown as { cost?: { modelId: string; tokensIn: number; tokensOut: number } }[];
-    // router + generator (+ reviewer stub) — each with model identity + tokens.
     expect(calls.length).toBeGreaterThanOrEqual(2);
     for (const call of calls) {
       expect(call.cost?.modelId).toBeTruthy();

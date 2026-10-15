@@ -34,12 +34,11 @@ vi.mock("pg", () => ({
 
 describe("sseFrame — the wire format", () => {
   it("emits one data line per line of a multi-line payload", () => {
-    // Regression: a raw newline inside a single `data:` payload creates a
-    // blank line, which terminates the frame — a spec-following client (the
-    // eval harness) then drops the rest of the answer.
+    // A raw newline inside a single `data:` payload creates a blank line,
+    // which terminates the frame — a spec-following client (the eval harness)
+    // then drops the rest of the answer.
     const frame = sseFrame("delta", "line one\n\nline two");
     expect(frame).toBe("event: delta\ndata: line one\ndata: \ndata: line two\n\n");
-    // The frame contains exactly one blank-line terminator, at the very end.
     expect(frame.split("\n\n").length).toBe(2);
     expect(frame.endsWith("\n\n")).toBe(true);
   });
@@ -144,12 +143,9 @@ describe("parseScopeExpansionCap — ADR-0045's budget knob", () => {
 
 describe("buildStoreWiring — auth's store-only entry (A4)", () => {
   it("does not resolve or require any provider role", () => {
-    // The regression this pins: the auth routes used to build the full chat
-    // wiring, so a reviewer key that was absent or rotated out made session
-    // minting and anonymous self-deletion fail with a 503. With an env that
-    // has no keys at all, the store-only entry's ONLY possible complaint is
-    // the missing database binding — the reviewer check that fails
-    // `buildChatWiring` on the same env must not exist on this path.
+    // With an env that has no keys at all, the store-only entry's ONLY
+    // possible complaint is the missing database binding — the reviewer check
+    // that fails `buildChatWiring` on the same env must not exist on this path.
     expect(() => buildStoreWiring({})).toThrow(/DATABASE_URL is not bound/);
     expect(() => buildStoreWiring({})).not.toThrow(/reviewer/);
     expect(() => buildChatWiring({})).toThrow(/reviewer role has no keyed candidate/);
@@ -214,9 +210,8 @@ describe("createProvidersFromEnv", () => {
 
   it("reports the missing env names for ops visibility", async () => {
     const providers = createProvidersFromEnv({});
-    // The chat roles (cheap/generator/reviewer/embedder) span the gemini,
-    // qwen, and deepseek vendors' env names — asserted via the config data
-    // (ADR-0022), never hard-coded here.
+    // The chat roles (cheap/generator/reviewer/embedder) resolve their env
+    // names from the config data (ADR-0022), never hard-coded here.
     const { loadProviderConfig } = await awaitImportConfig();
     const vendors: Record<string, { apiKeyEnv: string }> = loadProviderConfig().vendors;
     for (const envName of new Set(Object.values(vendors).map((v) => v.apiKeyEnv))) {
@@ -234,9 +229,9 @@ describe("createProvidersFromEnv", () => {
   });
 
   it("wires the reviewer pre-gate only when the decision role's key is bound (#168)", async () => {
-    // The always-on-where-the-key-is-bound posture (ADR-0042 adoption, owner
-    // decision 2026-09-19) has no enable flag to assert: the key IS the flag.
-    // The env name is read from the config data (ADR-0022), never hard-coded.
+    // The always-on-where-the-key-is-bound posture (ADR-0042) has no enable
+    // flag to assert: the key IS the flag. The env name is read from the
+    // config data (ADR-0022), never hard-coded.
     const { loadProviderConfig } = await awaitImportConfig();
     const config = loadProviderConfig();
     const [vendorName = ""] = (config.roles.decision?.chain[0] ?? "").split(":");
@@ -294,8 +289,7 @@ describe("authGuard", () => {
 
   it("stashes the Authed variable for a known token", async () => {
     const store = createMemoryRagStore();
-    // The typed bridge infers A from the store call — no explicit type arg
-    // (the unknown-typed bridge forced `runStoreEffect<{ token: string }>`).
+    // The typed bridge infers A from the store call — no explicit type arg.
     const session = await runStoreEffect(store.createSession());
     const c = fakeContext(`Bearer ${session.token}`);
     const res = await authGuard(c as never, store);

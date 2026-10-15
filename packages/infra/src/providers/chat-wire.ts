@@ -6,15 +6,10 @@ import {
   type PromptSpec,
 } from "@app/rag-core";
 
-/**
- * Wire-level shapes, cost settlement helpers, and the embeddings wire for
- * the chat-completions protocol (ADR-0022) — one module holding what the
- * adapter halves share, so each stays under the agentic size limit
- * (generate lives in the adapter, streaming in chat-stream.ts). No vendor
- * or model names here: everything arrives as config data. Cost settlement
- * follows the metered/estimated rules (ADR-0022) and vendor-reaching
- * failures keep their spend on the cost trail (review C2).
- */
+/** Wire-level shapes, cost settlement helpers, and the embeddings wire for the
+ * chat-completions protocol — what the adapter halves share. No vendor or model
+ * names here: everything arrives as config data, and vendor-reaching failures
+ * keep their spend on the cost trail. */
 
 /** Chat-completions wire request body (one shape for generate/stream). */
 export interface ChatRequest {
@@ -42,7 +37,6 @@ export interface EmbedResponse {
   error?: { message?: string; code?: string };
 }
 
-/** Assemble the chat-completions request body shared by generate/stream. */
 export function buildChatRequest(modelId: string, spec: PromptSpec, stream: boolean): ChatRequest {
   return {
     model: modelId,
@@ -52,9 +46,8 @@ export function buildChatRequest(modelId: string, spec: PromptSpec, stream: bool
   };
 }
 
-/** Read a non-OK response's error detail, capped — the vendor's own words
- * ("quota exceeded", a safety refusal) are the difference between a retry
- * and a config fix. */
+/** Read a non-OK response's error detail, capped: the vendor's own words
+ * ("quota exceeded", a safety refusal) decide between a retry and a config fix. */
 export async function readError(res: Response): Promise<string> {
   let detail = "";
   try {
@@ -65,25 +58,17 @@ export async function readError(res: Response): Promise<string> {
   return `HTTP ${res.status}${detail ? `: ${detail.slice(0, 300)}` : ""}`;
 }
 
-/* ---------------------------------------------------------------------------
- * Cost settlement helpers (formerly chat-cost.ts).
- * --------------------------------------------------------------------------- */
-
 /** Token estimate heuristic where the vendor reports no usage (~4 chars/token). */
 export function estimateTokens(chars: number): number {
   return Math.ceil(chars / 4);
 }
 
-/** Micro-USD per MTok → micro-USD per token, keeping integer math exact. */
+/** Micro-USD per MTok → micro-USD per token, keeping integer math exact. Prices
+ * are integers in micro-USD per MTok; a per-token cost may be fractional. */
 function microUsdPerToken(perMTok: number): number {
-  // 1 MTok = 1e6 tokens, 1 USD = 1e6 micro-USD → perMTok micro-USD per MTok
-  // equals perMTok/1e6 micro-USD per token. Prices are integers in micro-USD
-  // per MTok; per-token cost may be fractional, so we keep a rational and
-  // round at the end via Math.ceil on the total (never under-report cost).
   return perMTok / 1_000_000;
 }
 
-/** Compute a call's CostRecord from metered (or estimated) token counts. */
 export function computeCost(
   modelId: string,
   price: { in: number; out: number },
@@ -105,12 +90,10 @@ export function computeCost(
   };
 }
 
-/** True when a wire-reported token count is a usable metered value. */
 function isMetered(tokens: number | undefined): boolean {
   return typeof tokens === "number" && Number.isFinite(tokens) && tokens >= 0;
 }
 
-/** True when the vendor reported a complete generation usage block. */
 export function isGenerationMetered(usage: {
   prompt_tokens?: number;
   completion_tokens?: number;
@@ -118,29 +101,20 @@ export function isGenerationMetered(usage: {
   return isMetered(usage.prompt_tokens) && isMetered(usage.completion_tokens);
 }
 
-/** True when the vendor reported metered prompt tokens (embeddings meter prompt only). */
+/** True when the vendor reported metered prompt tokens; embeddings meter prompt only. */
 export function isPromptMetered(usage: { prompt_tokens?: number }): boolean {
   return isMetered(usage.prompt_tokens);
 }
 
-/**
- * Stamp a failure from an attempt that *reached the vendor* (traceability
- * rule 4, review C2): the vendor processed the request — an HTTP response
- * came back, or the streamed body cut mid-flight after partial output — so
- * that attempt's spend must stay on the cost trail even though the attempt
- * failed. The record is an estimate unless the vendor reported metered
- * tokens, and is marked `estimated` accordingly — never presented as metered
- * (ADR-0022). An error that already carries `attemptCosts` passes through
- * unchanged, so aggregation sites can call this unconditionally.
+/** Stamp a failure from an attempt that *reached the vendor* — an HTTP response
+ * came back, or the streamed body cut mid-flight after partial output — so that
+ * attempt's spend stays on the cost trail even though the attempt failed. The
+ * record is an estimate unless the vendor reported metered tokens.
  *
- * The stamped error is a fresh instance of the same class (spread-copying a
- * `Data.TaggedError` drops prototype state — `instanceof`, `_tag`, and the
- * Error `message` — which callers rely on).
- */
+ * The stamped error is a fresh instance of the same class: spread-copying a
+ * `Data.TaggedError` drops prototype state (`instanceof`, `_tag`, `message`). */
 export function withAttemptCost(err: ProviderError, cost: CostRecord): ProviderError {
   if (err.attemptCosts !== undefined) return err;
-  // `Data.TaggedError` fields are non-enumerable, so a spread ({...err})
-  // would silently drop `message`/`candidates` — copy them explicitly.
   return new (err.constructor as new (props: ProviderErrorProps) => ProviderError)({
     kind: err.kind,
     message: err.message,
@@ -149,7 +123,6 @@ export function withAttemptCost(err: ProviderError, cost: CostRecord): ProviderE
   });
 }
 
-/** The field shape `ProviderError`'s constructor takes (rag-core seam). */
 type ProviderErrorProps = {
   kind: ProviderError["kind"];
   message: string;
@@ -157,19 +130,6 @@ type ProviderErrorProps = {
   attemptCosts?: readonly CostRecord[];
 };
 
-/* ---------------------------------------------------------------------------
- * The embeddings wire (formerly embed-wire.ts).
- * --------------------------------------------------------------------------- */
-
-/**
- * The embeddings half of the chat-completions adapter (ADR-0022), split from
- * the generate/stream halves to keep each module under the agentic size
- * limit. Same wire discipline: no vendor or model names — everything arrives
- * as config data; cost settlement follows the same metered/estimated rules
- * (ADR-0022) and vendor-reaching failures keep their cost on the trail (C2).
- */
-
-/** What an HTTP error on the embeddings wire looks like (from assertOk). */
 export type EmbedWireDeps = {
   modelId: string;
   /** Prompt-token price (micro-USD per MTok); output price is unused for embeddings. */
@@ -178,31 +138,26 @@ export type EmbedWireDeps = {
   dimensions?: number;
   /** POST the request body; failures surface as `ProviderError`. */
   post(body: unknown): Promise<Response>;
-  /** Fail on an HTTP error status with the attempt's cost attached (C2). */
+  /** Fail on an HTTP error status with the attempt's cost attached. */
   assertOk(
     res: Response,
     path: string,
     attempt: { startedAt: number; promptChars: number },
   ): Promise<void>;
-  /** Estimated prompt-token cost of a vendor-reaching failed attempt (C2). */
+  /** Estimated prompt-token cost of a vendor-reaching failed attempt. */
   attemptCost(startedAt: number, promptChars: number): CostRecord;
 };
 
-/** Build the wire-level embeddings call shared by every vendor protocol user. */
 export function embedWire(deps: EmbedWireDeps) {
   return async function embed(spec: EmbedSpec): Promise<EmbeddingResult> {
     const body = {
       model: deps.modelId,
       input: spec.texts,
       // Output dimensionality: the model's *configured* `dimensions` is the
-      // default, not a hint. The corpus schema is built around it (ADR-0013
-      // dual-track `VECTOR(1536)`, ADR-0036) and the RagStore adapter rejects
-      // any vector of another length — while a live embedding endpoint answers
-      // with the model's native size unless asked otherwise (a 3072-dimension
-      // vector against a 1536-dimension schema), which failed the first real
-      // corpus ingest with `embedding dimension mismatch: expected 1536, got
-      // 3072`. A caller may still override per call where it deliberately
-      // compares candidates (the #9 benchmark passes its own value).
+      // default, not a hint — the corpus schema is built around it and the
+      // RagStore adapter rejects any vector of another length, while a live
+      // endpoint answers with the model's native size unless asked otherwise.
+      // A caller may still override per call to compare candidates deliberately.
       ...(deps.dimensions != null ? { dimensions: spec.dimensions ?? deps.dimensions } : {}),
     };
     const started = Date.now();
@@ -215,10 +170,9 @@ export function embedWire(deps: EmbedWireDeps) {
     const json = (await res.json()) as EmbedResponse;
     const vectors = (json.data ?? []).map((d) => d.embedding ?? []);
     if (vectors.length !== spec.texts.length) {
-      // The vendor embedded (and billed) the input before answering wrong:
-      // a vendor-reaching failed attempt keeps its cost on the trail (C2).
-      // Metered prompt tokens are preferred where the vendor reported them;
-      // the fallback estimate is marked `estimated`.
+      // The vendor embedded (and billed) the input before answering wrong, so
+      // the attempt keeps its cost on the trail: metered prompt tokens where
+      // reported, otherwise an estimate marked `estimated`.
       const isMetered = isPromptMetered(json.usage ?? {});
       throw withAttemptCost(
         new ProviderError({
@@ -238,9 +192,8 @@ export function embedWire(deps: EmbedWireDeps) {
       );
     }
     // Embeddings meter prompt tokens only. Where the vendor reports none,
-    // estimate from input chars (~4 chars/token) — never the text count,
-    // which would understate cost by orders of magnitude — and mark the
-    // record estimated (ADR-0022).
+    // estimate from input chars (~4 chars/token) — never the text count, which
+    // would understate cost by orders of magnitude — and mark it estimated.
     const isMetered = isPromptMetered(json.usage ?? {});
     const tokensIn = isMetered
       ? json.usage!.prompt_tokens!

@@ -12,15 +12,9 @@ import {
 } from "./hadith-source";
 
 /**
- * The domain wiring that turns parsed hadith sources into the engine's
- * ingestion inputs (#7): one parent per (collection, book/section) with the
- * section title as title, one child per hadith with the consolidated grade
- * in metadata, and one aligned (Arabic, Indonesian) pair per fully-aligned
- * hadith for #24's concept-graph build (ADR-0014; morphology arrives later —
- * ADR-0026 defers CAMeL Tools lemmatization to the pre-#24 enrichment step).
- *
- * Everything here is KajianQ domain logic — the engine seams
- * (`@app/rag-ingest`, `RagStore`, `Provider`) receive it as typed values.
+ * The domain wiring that turns parsed hadith sources into the engine's ingestion inputs: one parent
+ * per (collection, book/section), one child per hadith, and one aligned pair per aligned hadith.
+ * It is KajianQ domain logic; the engine seams receive it as typed values.
  */
 
 /** Everything the hadith ingestion needs, already parsed and validated. */
@@ -30,13 +24,10 @@ export type HadithCorpus = {
 };
 
 /**
- * Parse + integrity-check the combined editions (throws on any violation).
- * Every edition key is validated against the collection registry up front
- * (review B5), and the Indonesian map must mirror the Arabic one exactly —
- * extra or missing editions are a composition error, not a silent subset.
- * `expected` lets subset runs (tests, `--limit`) gate the per-collection
- * counts they actually ingest; full runs pass the full expected counts from
- * the CLI. Unmatched pairs are surfaced in the stats, never force-merged.
+ * Parse + integrity-check the combined editions (throws on any violation). Edition keys are
+ * validated against the registry up front, and the Indonesian map must mirror the Arabic one
+ * exactly — extra or missing editions are a composition error, not a silent subset. `expected`
+ * gates per-collection counts for subset runs; unmatched pairs are surfaced, never force-merged.
  */
 export function buildHadithCorpus(
   input: { arabic: Record<string, unknown>; indonesian: Record<string, unknown> },
@@ -75,9 +66,8 @@ export function buildHadithCorpus(
 }
 
 /**
- * Group records by (collection, book), preserving the edition's order — the
- * ordinal a child gets must be stable across re-runs (the store upserts
- * children by (parentId, ordinal)).
+ * Group records by (collection, book), preserving the edition's order: the ordinal a
+ * child gets must be stable across re-runs (the store upserts by (parentId, ordinal)).
  */
 function groupByBook(records: readonly HadithRecord[]): Map<string, HadithRecord[]> {
   const byBook = new Map<string, HadithRecord[]>();
@@ -91,12 +81,9 @@ function groupByBook(records: readonly HadithRecord[]): Map<string, HadithRecord
 }
 
 /**
- * Decode the archived raw bytes into the edition pieces the corpus needs.
- * The archive is a length-prefixed JSON-lines bundle (same layout pattern as
- * the Quran archive): "collectionCount\n" + per collection one line —
- * `{"collection": name, "arabic": <edition>, "indonesian": <edition>}`.
- * The collection name rides inside the bundle line, so the decoder never
- * infers identity from line order alone.
+ * Decode the archived raw bytes into the edition pieces the corpus needs: a length-prefixed
+ * JSON-lines bundle — "collectionCount\n" plus one `{"collection", "arabic", "indonesian"}` line per
+ * collection. The collection name rides in the line, so line order never determines identity.
  */
 export function decodeHadithArchive(input: SourceInput): {
   arabic: Record<string, unknown>;
@@ -163,10 +150,9 @@ export function decodeHadithArchive(input: SourceInput): {
 }
 
 /**
- * Build the length-prefixed JSON-lines archive bundle the SourceParser
- * consumes. Each line is `{"collection", "arabic", "indonesian"}` with the
- * two editions as embedded JSON values (stringified once, so newlines
- * inside the editions stay encoded and each line stays a single JSON value).
+ * Build the length-prefixed JSON-lines archive bundle the SourceParser consumes: one
+ * `{"collection", "arabic", "indonesian"}` line per edition, editions embedded as JSON values so
+ * newlines stay encoded and each line stays one JSON value.
  */
 export function bundleHadithSources(
   editions: readonly { collection: HadithCollection; arabicText: string; indonesianText: string }[],
@@ -185,12 +171,10 @@ export function bundleHadithSources(
 }
 
 /**
- * The domain `SourceParser` for `runIngestion`: parses from raw archive
- * bytes (the single source of truth, archived upstream) into one parent per
- * (collection, book/section) and one child per hadith. `expected` lets
- * subset runs (tests, `--limit`) gate exact per-collection counts; full runs
- * gate only on shape + duplicates — edition sizes drift upstream, and the
- * unmatched/quarantine stats in the report are what surface drift.
+ * The domain `SourceParser` for `runIngestion`: parses from the raw archive bytes (the single source
+ * of truth) into one parent per (collection, book/section) and one child per hadith. `expected` gates
+ * exact per-collection counts for subset runs; full runs gate only on shape and duplicates, and the
+ * report's quarantine stats surface upstream drift.
  */
 export function hadithSourceParser(
   expected?: Partial<Record<HadithCollection, number>>,
@@ -240,12 +224,8 @@ export function hadithSourceParser(
 }
 
 /**
- * Grade-consolidation summary for the ingestion report: how many records are
- * graded at all, how many the dhaif-wins policy demoted to `dhaif`, and how
- * many carry no grades (grade = null, never fabricated). Lives here (the
- * report layer) rather than the parser module, but consolidates through the
- * same `mapGrades` the stored metadata gets (review B2: one policy, one
- * implementation — stats can never disagree with the chunks).
+ * Grade-consolidation summary for the ingestion report: graded records, dhaif-wins demotions, and
+ * ungraded records (never fabricated), consolidated through the same `mapGrades` as the metadata.
  */
 export function gradeConsolidationStats(records: readonly HadithRecord[]): {
   graded: number;
@@ -268,11 +248,6 @@ export function gradeConsolidationStats(records: readonly HadithRecord[]): {
   return { graded, dhaifWins, ungraded };
 }
 
-/**
- * Consolidation summary over the whole corpus for the report — how many
- * hadith are graded, how many the dhaif-wins policy demoted, how many are
- * ungraded (grade = null, never fabricated).
- */
 export function corpusGradeStats(corpus: HadithCorpus): ReturnType<typeof gradeConsolidationStats> {
   return gradeConsolidationStats(corpus.records);
 }

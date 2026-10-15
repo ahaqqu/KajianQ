@@ -46,7 +46,7 @@ export { extractJsonObject, ROUTER_SYSTEM_PROMPT } from "./chat-router-output";
  * digit is not a query, so this arm adds no sub-query either: the invariant is
  * one text-level admission — trim, then the content test — owned by
  * `chat-subquery-admission` and shared with the decomposer, because the
- * fallback is a third origin a caller's text reaches the fan-out from (#462).
+ * fallback is a third origin a caller's text reaches the fan-out from.
  */
 
 export type RouterProvider = {
@@ -54,11 +54,10 @@ export type RouterProvider = {
     turns: readonly { role: string; content: string }[];
     /**
      * Required, never optional, on the serving seam: the router prompt
-     * carries the user's chat question, which is personal data
-     * (ADR-0043 Consequences — the measured gap this type now closes). A
-     * non-optional field makes dropping the flag a compile error at the
-     * call site, and the flag makes `FallbackProvider` skip free-tier
-     * candidates for the call (`personalDataAllowed`, ADR-0009).
+     * carries the user's chat question, which is personal data (ADR-0043
+     * Consequences). A non-optional field makes dropping the flag a compile
+     * error at the call site, and the flag makes `FallbackProvider` skip
+     * free-tier candidates for the call (`personalDataAllowed`, ADR-0009).
      */
     personalData: true;
   }): Effect.Effect<{ text: string; cost: CostRecord }, unknown>;
@@ -98,10 +97,10 @@ export function createKajianQRouter(
           // the record this stage derived and the record the searches run cannot
           // drift. A dimension the caller pinned is the one exception: the
           // override rides into `routeFilters` verbatim while the event detail
-          // publishes its normalized projection (review A4 of the #438 fix
-          // round), and no wire request can set one. A role or a dimension the
-          // route cannot express fails here, before any search runs, instead of
-          // being silently dropped or silently contributing nothing.
+          // publishes its normalized projection, and no wire request can set
+          // one. A role or a dimension the route cannot express fails here,
+          // before any search runs, instead of being silently dropped or
+          // silently contributing nothing.
           const { routing, decision } = yield* Effect.try({
             try: () => {
               const routing =
@@ -178,15 +177,15 @@ function fallbackRouting(
   // third origin the caller's text can reach the fan-out from (beside the
   // reply's phrasing and a rule's own text), and the content invariant is
   // stated without an origin: a text with no letter and no digit never becomes
-  // a sub-query (#462). A zero-width, control-only or blank question has
-  // nothing to search, so this arm selects no sub-query and retrieval fans out
-  // over nothing — the shape a blank question already produced.
+  // a sub-query. A zero-width, control-only or blank question has nothing to
+  // search, so this arm selects no sub-query and retrieval fans out over
+  // nothing.
   //
-  // The whole admission, not half of it: this arm takes the same trim +
-  // content test the decomposer's `push` takes, from the one owner of both, so
-  // it cannot hand the embed and the `subquery` event a padded text the stage
-  // would have trimmed (review A1). `SPECS.md` §3.3's "padded text is kept
-  // trimmed" covers this shape because of that.
+  // The whole admission, not half of it: this arm takes the same trim + content
+  // test the decomposer's `push` takes, from the one owner of both, so it
+  // cannot hand the embed and the `subquery` event a padded text the stage
+  // would have trimmed. `SPECS.md` §3.3's "padded text is kept trimmed" covers
+  // this shape because of that.
   const text = admitSubQueryText(question);
   return {
     intent: "factual",

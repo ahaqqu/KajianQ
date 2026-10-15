@@ -17,29 +17,15 @@ import { createMemoryRagStore } from "./test-utils/memory-rag-store";
 import { routedQuery } from "./test-utils/routed-query";
 
 /**
- * Retrieved-verse neighbourhood expansion (ADR-0049) — the retrieval half of
- * #274.
+ * Retrieved-verse neighbourhood expansion (ADR-0049) — the retrieval half.
  *
- * The invariant under test: a verse **retrieval returned** brings its own
- * ordinal neighbourhood into the context — bounded by a radius and a cap,
- * anchored on the retrieved row (never on a derived position), deduplicated
- * against everything already in context, and readable back off the trace.
+ * The invariant under test: a verse **retrieval returned** brings its own ordinal
+ * neighbourhood into the context — bounded by a radius and a cap, anchored on the
+ * retrieved row (never on a derived position), deduplicated against everything
+ * already in context, and readable back off the trace.
  *
- * Adversarial cases named before writing:
- * - a verse at an ARBITRARY ordinal (255 of 286) must receive *its* neighbours,
- *   not the surah's opening window — the read ADR-0045 already had cannot serve
- *   this anchor, so this row is what proves the new one is used;
- * - an anchor-ordering / cap interaction: the budget must be spent on the
- *   best-ranked evidence's neighbourhood, not on an arbitrary subset;
- * - a neighbour that is already a fused hit AND one that is already a
- *   surah-scope chunk must not be added twice, and `returned` must count only
- *   what was actually added;
- * - the cap must truncate and SAY SO (`truncated`), probing `cap + 1`;
- * - `radius <= 0` and `cap <= 0` must disable the expansion *and* the store
- *   read (no silent per-request query), and a context with no verse must not
- *   read at all;
- * - every added chunk must resolve to a read that produced it: same parent,
- *   within `radius` ordinals of an anchor the event names.
+ * Truncation probes `cap + 1` and says so; a disabled expansion (radius <= 0 or
+ * cap <= 0) does not read the store at all.
  */
 
 const COST = { modelId: "stub-embedder", tokensIn: 1, tokensOut: 1, latencyMs: 1, costMicroUsd: 0 };
@@ -85,7 +71,6 @@ async function seedSurah(
   );
 }
 
-/** Al-Baqarah (286) with 2:255 retrievable — the Ayat-Kursi shape of #274. */
 async function baqarah(): Promise<Store> {
   const store = createMemoryRagStore();
   await seedSurah(store, 2, 286, [255]);
@@ -102,7 +87,6 @@ async function rowOf(store: Store, surah: number, ayah: number) {
   return row;
 }
 
-/** The stored row as the retriever would hand it on: a `Chunk`. */
 function chunkOf(
   row: { id: string; textAr: string; metadata: Record<string, unknown> },
   origin?: string,
@@ -124,7 +108,6 @@ function routed(sourceText: string, subQueries: string[]): RoutedQuery<KajianQFi
   };
 }
 
-/** The retriever harness: the real store, a spy on the anchored read. */
 function harness(
   store: Store,
   opts: { radius?: number; cap?: number; limit?: number } = {},
@@ -202,12 +185,10 @@ describe("retrieved-verse neighbourhood expansion", () => {
       routed("Apa yang dimaksud dengan ayat yang agung?", ["ayat agung"]),
     );
 
-    // The fused hit is 2:255 (ordinal 254 of 286); no scope expansion runs,
-    // because the question names no surah.
+    // The fused hit is 2:255; no scope expansion runs, because the question names no surah.
     expect(labelsOf(chunks.filter((c) => c.origin === undefined))).toEqual(["QS. 2:255"]);
-    // Its OWN neighbours arrive: 2:254 and 2:256. A parent-scoped opening read
-    // would have produced 2:1..2:3 instead — this is the row that pins the
-    // anchor.
+    // Its OWN neighbours arrive: a parent-scoped opening read would have produced
+    // 2:1..2:3 instead, which is what pins the anchor.
     expect(neighbourLabels(chunks).sort()).toEqual(["QS. 2:254", "QS. 2:256"]);
     expect(neighbourLabels(chunks)).not.toContain("QS. 2:1");
     expect(reads.lastRadius).toBe(DEFAULT_NEIGHBOUR_RADIUS);
@@ -222,8 +203,7 @@ describe("retrieved-verse neighbourhood expansion", () => {
           };
         }
       | undefined;
-    // The event names the one anchor the read was keyed on, so the two added
-    // chunks resolve to it (same parent, one ordinal away).
+    // The event names the anchor the read was keyed on.
     expect([...reads.lastAnchors]).toEqual(event?.detail.anchors);
     expect(event?.detail).toEqual({
       anchors: [...reads.lastAnchors],
@@ -240,11 +220,10 @@ describe("retrieved-verse neighbourhood expansion", () => {
     await seedSurah(store, 3, 10, [5]);
     const best = chunkOf(await rowOf(store, 2, 3));
     const worse = chunkOf(await rowOf(store, 3, 5));
-    // The caller's order IS the priority order: the read is keyed on it, and
-    // the cap truncates the tail windows first.
+    // The caller's order IS the priority order: the read is keyed on it, and the cap
+    // truncates the tail windows first.
     const result = await expand(store, [best, worse], { cap: 2 });
     expect(result.detail?.anchors).toEqual([best.id, worse.id]);
-    // 2:3's window (2:2, 2:4) fills the budget; 3:5's does not get in.
     expect(labelsOf(result.chunks).sort()).toEqual(["QS. 2:2", "QS. 2:4"]);
     expect(result.detail?.truncated).toBe(true);
   });
@@ -254,8 +233,6 @@ describe("retrieved-verse neighbourhood expansion", () => {
     await seedSurah(store, 2, 10, [4, 5]);
     const { retrieve, events, reads } = harness(store, { radius: 1, cap: 2, limit: 2 });
     const chunks = await retrieve(routed("Pertanyaan tanpa nama surah", ["generic question"]));
-    // Anchors 2:4 and 2:5; their union window minus the anchors is {3, 6} —
-    // exactly the cap, so nothing was truncated and the probe saw no more.
     expect(reads.lastLimit).toBe(3);
     expect(neighbourLabels(chunks).sort()).toEqual(["QS. 2:3", "QS. 2:6"]);
     const event = events.find((e) => e.kind === "neighbour_expansion") as
@@ -268,20 +245,16 @@ describe("retrieved-verse neighbourhood expansion", () => {
 
   it("does not add a neighbour that is already a fused hit or a scope chunk", async () => {
     const store = await baqarah();
-    // 2:255 arrives as a fused hit and 2:256 as ADR-0045's scope chunk; both
-    // are already in context, so 2:256 may not be added twice and `returned`
-    // counts only the addition (2:254).
+    // 2:255 arrives as a fused hit and 2:256 as a scope chunk: both are already in
+    // context, so neither is added twice and `returned` counts only the addition.
     const already: Chunk[] = [
       chunkOf(await rowOf(store, 2, 255)),
       chunkOf(await rowOf(store, 2, 256), SCOPE_EXPANSION_ORIGIN),
     ];
     const result = await expand(store, already, { radius: 1, cap: 12 });
-    // 2:256 is a neighbour of 2:255 but already in context (as the scope chunk)
-    // and is skipped; its own far neighbour 2:257 is a genuine addition.
     expect(labelsOf(result.chunks).sort()).toEqual(["QS. 2:254", "QS. 2:257"]);
     expect(result.chunks.every((c) => c.origin === NEIGHBOUR_EXPANSION_ORIGIN)).toBe(true);
     expect(result.detail?.returned).toBe(2);
-    // Exactly one copy of each label in the union the retriever returns.
     const union = [...already, ...result.chunks];
     for (const label of ["QS. 2:254", "QS. 2:255", "QS. 2:256", "QS. 2:257"]) {
       expect(union.filter((c) => labelsOf([c])[0] === label)).toHaveLength(1);
@@ -326,8 +299,7 @@ describe("retrieved-verse neighbourhood expansion", () => {
     );
     const { retrieve, events, reads } = harness(store);
     const chunks = await retrieve(routed("Pertanyaan tanpa nama surah", ["generic question"]));
-    // The hadith is retrieved and nothing else — no verse to anchor on, so the
-    // expansion costs no round trip and records nothing.
+    // With no verse to anchor on, the expansion costs no round trip and records nothing.
     expect(chunks.map((c) => c.id)).toContain(hadithId);
     expect(events.filter((e) => e.kind === "neighbour_expansion")).toHaveLength(0);
     expect(reads.count).toBe(0);
@@ -379,10 +351,8 @@ describe("retrieved-verse neighbourhood expansion", () => {
 });
 
 /**
- * The acceptance boundary #274 asks for: the **assembled context** the gate
- * actually reads. The retrieved set is the failing trace's own shape (`QS. 3:2`
- * as the fused hit), the draft is the real failing label (`QS. 3:1-2`), and
- * the assertion is on `AssembledContext.chunks` — not on a hand-built list.
+ * The acceptance boundary: the **assembled context** the gate actually reads, not
+ * a hand-built list.
  */
 describe("the assembled context grounds the real failing label (#274)", () => {
   async function alImran(opts: { radius?: number } = {}): Promise<{
@@ -390,17 +360,12 @@ describe("the assembled context grounds the real failing label (#274)", () => {
     context: string;
   }> {
     const store = createMemoryRagStore();
-    // The failing trace's own Al-Imran labels were 3:2, 3:18 and 3:189, with
-    // 3:2 the top-ranked primary hit; the corpus here carries surah 3 so the
-    // neighbourhood of 3:2 is reachable.
     await seedSurah(store, 3, 200, [2]);
     const { retrieve } = harness(store, { limit: 1, ...opts });
     const chunks = await retrieve(
       routed("Apa maksud Ayat Kursi?", ["makna ayat kursi", "tafsir ayat kursi"]),
     );
-    // The real assembler, run exactly as `chat-retriever-assembler.test.ts`
-    // runs it (its `RunContext` requirement is the runner's in production, and
-    // the assembler itself reads nothing from it).
+    // The real assembler, whose `RunContext` requirement the runner supplies in production.
     const assembled = Effect.runSync(
       createKajianQAssembler().assemble(routedQuery("Apa maksud Ayat Kursi?"), chunks) as never,
     ) as {
@@ -415,13 +380,10 @@ describe("the assembled context grounds the real failing label (#274)", () => {
 
   it("puts QS. 3:1 in the assembled context, so the range grounds", async () => {
     const { chunks, context } = await alImran();
-    // The retrieved verse and its head are BOTH in what the gate reads.
     expect(labelsOf(chunks)).toContain("QS. 3:2");
     expect(labelsOf(chunks)).toContain("QS. 3:1");
-    // …and the prompt renders both labels, so the model can cite them.
     expect(context).toContain("[QS. 3:1]");
     expect(context).toContain("[QS. 3:2]");
-    // The gate's own call, on the real failing label, at this boundary.
     expect(validateCitations("Dalilnya QS. 3:1-2 tentang hal ini", chunks).ungrounded).toEqual([]);
   });
 
@@ -429,17 +391,14 @@ describe("the assembled context grounds the real failing label (#274)", () => {
     const { chunks } = await alImran();
     // No member of this range is in the context (surah 9 is not in the corpus).
     expect(validateCitations("Dalilnya QS. 9:99-100", chunks).ungrounded).toEqual(["QS. 9:99-100"]);
-    // A single fabricated verse, unchanged from #264's matrix.
     expect(validateCitations("Dalilnya QS. 9:99", chunks).ungrounded).toEqual(["QS. 9:99"]);
-    // A range reaching past the neighbourhood window: 3:4 and 3:5 were never
-    // retrieved, so the range asserts grounding it does not have.
+    // A range reaching past the neighbourhood window asserts grounding it lacks.
     expect(validateCitations("Dalilnya QS. 3:1-5", chunks).ungrounded).toEqual(["QS. 3:1-5"]);
   });
 
   it("is falsifiable: the same pipeline with the expansion disabled reddens the row", async () => {
-    // The named mutation for the acceptance row: NEIGHBOUR_EXPANSION_RADIUS=0
-    // (the documented disable). Everything else is identical, so the row that
-    // moves is the expansion's own.
+    // The named mutation: NEIGHBOUR_EXPANSION_RADIUS=0 (the documented disable).
+    // Everything else is identical, so the row that moves is the expansion's own.
     const { chunks } = await alImran({ radius: 0 });
     expect(labelsOf(chunks)).not.toContain("QS. 3:1");
     expect(validateCitations("Dalilnya QS. 3:1-2 tentang hal ini", chunks).ungrounded).toEqual([

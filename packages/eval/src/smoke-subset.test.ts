@@ -3,10 +3,10 @@ import type { GoldenSet } from "@app/contracts";
 import { selectSmokeSubset, SmokeSubsetError } from "./smoke-subset";
 
 /**
- * Smoke-subset selection (ticket #10 AC). The selector's job is coverage, not
- * sampling: a subset that missed the refusal and trap cases would let a PR
- * pass while exactly the behaviour this ticket protects regressed. These
- * tests pin that guarantee, plus determinism (same input ⇒ same subset).
+ * Smoke-subset selection. The selector's job is coverage, not sampling: a
+ * subset that missed the refusal and trap cases would let a PR pass while
+ * exactly the behaviour these tests protect regressed. These tests pin that
+ * guarantee, plus determinism (same input ⇒ same subset).
  */
 
 const set: GoldenSet = {
@@ -125,17 +125,17 @@ describe("selectSmokeSubset", () => {
   it("refuses a trap tag the set does not carry instead of skipping the case", () => {
     // A tag that reached one side of a rename only: the selector must redden
     // the gate, never return a smaller subset that silently dropped the
-    // adversarial question (review A3 of the #14 fix round). The tag here is
-    // deliberately NOT a product vocabulary word — the engine package names no
-    // domain value (dars-pluggability), and the defect under test is the miss.
+    // adversarial question. The tag here is deliberately NOT a product
+    // vocabulary word — the engine package names no domain value
+    // (dars-pluggability), and the defect under test is the miss.
     expect(() => selectSmokeSubset(set, { size: 5, trapTag: "stale-tag" })).toThrow(
       SmokeSubsetError,
     );
     expect(() => selectSmokeSubset(set, { size: 5, trapTag: "stale-tag" })).toThrow(
       /no question in "golden-set-v0" carries the trap tag "stale-tag"/,
     );
-    // A tag that does match still selects as before, and an empty tag is not
-    // a trap request at all.
+    // A tag that does match still selects, and an empty tag is not a trap
+    // request at all.
     expect(selectSmokeSubset(set, { size: 5, trapTag: "" }).set.questions).toHaveLength(5);
   });
 

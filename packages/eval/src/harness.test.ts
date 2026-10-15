@@ -52,10 +52,8 @@ function makeDeps(
     traceEvents?: () => TraceEventLike[];
     /** Make every `saveResult` reject, to exercise the ledger-failure path. */
     failLedger?: boolean;
-    /**
-     * What `saveResult` rejects with (default `new Error("An error has
-     * occurred")`). A real ledger rejects with the seam's `StoreError` (A2).
-     */
+    /** What `saveResult` rejects with (default `new Error("An error has occurred")`);
+     * a real ledger rejects with the seam's `StoreError`. */
     ledgerError?: unknown;
     /** The opaque origin label injected as the harness's expansion marker. */
     expansionOrigin?: string;
@@ -132,9 +130,8 @@ describe("runGoldenSet", () => {
     expect(result.runId).toBe("run-1");
     expect(getLabel()).toBe("test-label");
     expect(savedResults).toHaveLength(3);
-    // A3: every row is keyed by the real run id, not a blank.
+    // Every row is keyed by the real run id, not a blank.
     for (const saved of savedResults) expect(saved.runId).toBe("run-1");
-    // q1 passed: expected source retrieved + citation present.
     expect(savedResults[0]?.outcome).toMatchObject({
       passed: true,
       retrievalRecall: 1,
@@ -145,11 +142,8 @@ describe("runGoldenSet", () => {
   it("records one result per question when the ledger write fails — no phantom skip", async () => {
     const { deps, savedResults } = makeDeps({ failLedger: true });
     const result = await runGoldenSet(set, deps);
-    // A ledger failure must fail the question, not duplicate it: the previous
-    // shape pushed the scored result AND a "skipped" entry, so two questions
-    // produced four rows and two phantom skips — enough to fail the smoke for an
-    // infrastructure reason while the report disagreed with its own question
-    // count. Only a transport/trace failure is a genuine skip.
+    // A ledger failure must fail the question, not duplicate it — the scored result is
+    // the only row for it; only a transport/trace failure is a genuine skip.
     expect(result.results).toHaveLength(set.questions.length);
     expect(result.skipped).toBe(0);
     expect(result.failed).toBe(set.questions.length);
@@ -161,11 +155,8 @@ describe("runGoldenSet", () => {
   });
 
   it("keeps the run and its report alive when the skip row's own write fails (A1)", async () => {
-    // The skip path's ledger guard (harness.ts, the `catch (ledgerErr)` around
-    // the skip's `saveResult`) is what keeps a failed row from taking the run
-    // down. Falsification: rethrowing there rejects `runGoldenSet` on the first
-    // skip — `refreshRun` never runs (no `eval_runs` report row) and every
-    // remaining question goes unmeasured. Both flags together are what pins it.
+    // The skip path's ledger guard keeps a failed row from taking the run down: a
+    // rethrow rejects the run, so `refreshRun` never runs and the rest go unmeasured.
     const { deps, getReport } = makeDeps({ failThird: true, failLedger: true });
     const result = await runGoldenSet(set, deps);
     expect(result.skipped).toBe(1);
@@ -175,8 +166,7 @@ describe("runGoldenSet", () => {
       "skipped: transport down",
       "ledger_write_failed: An error has occurred",
     ]);
-    // The report survived the failed write: refreshRun still ran, carrying the
-    // skip and BOTH notes (the store could not record either one).
+    // The report survived the failed write: `refreshRun` ran with the skip and both notes.
     const report = getReport() as {
       skipped: number;
       results: { questionId: string; skipped?: boolean; notes?: string[] }[];
@@ -190,11 +180,9 @@ describe("runGoldenSet", () => {
   });
 
   it("keeps the store's copy of a skip free of the report's ledger-failure note (B3)", async () => {
-    // An ambiguous write: the store kept the object it was handed AND the
-    // caller saw a rejection (the INSERT committed, the response was lost).
-    // The report's extra note must not reach back into that stored object —
-    // the Postgres adapter stringifies at call time, but a store that holds
-    // the reference would otherwise observe an annotation it never received.
+    // An ambiguous write: the store kept the object it was handed AND the caller saw
+    // a rejection (the INSERT committed, the response was lost). The report's extra
+    // note must not reach back into that stored object.
     const observed: EvalResultOutcome[] = [];
     const { deps } = makeDeps({ failThird: true });
     const ambiguous = {
@@ -217,11 +205,8 @@ describe("runGoldenSet", () => {
   });
 
   it("names a real StoreError's kind and cause, not its empty message (A2)", () => {
-    // `StoreError` — what the ledger seam's `saveResult` actually rejects with
-    // — is an `Error` whose `message` is `""` (store-error.ts:43), so the shape
-    // this note used to read printed `ledger_write_failed: ` and nothing else.
-    // Each of the five kinds carries its meaning in `kind` + the wrapped
-    // `cause`; these pins go red the moment the note loses either one.
+    // `StoreError` is an `Error` whose `message` is `""`, so the note reads `kind`
+    // and the wrapped `cause`; these pins go red the moment it loses either one.
     expect(
       ledgerFailureNote(
         new StoreError({ kind: "transport", cause: new Error("connection reset") }),
@@ -260,10 +245,8 @@ describe("runGoldenSet", () => {
   });
 
   it("names a real StoreError on both ledger-write failure paths (A2)", async () => {
-    // The two call sites share `ledgerFailureNote`: the scored write
-    // (harness.ts:167) and the skip's own row (harness.ts:189). Before this,
-    // both printed a bare `ledger_write_failed:` for the one error the real
-    // ledger raises.
+    // The two call sites share `ledgerFailureNote`, so a real `StoreError` is named
+    // on both the scored write and the skip's own row.
     const scored = makeDeps({
       failLedger: true,
       ledgerError: new StoreError({ kind: "transport", cause: new Error("connection reset") }),
@@ -293,8 +276,7 @@ describe("runGoldenSet", () => {
     const report = getReport() as { runId: string; costMicroUsd: number; costs: unknown[] };
     expect(report.runId).toBe(result.runId);
     expect(report.runId).toBe("run-1");
-    // B1: the report carries the budget accumulator's total and the
-    // per-question cost records, not hard-coded zeros.
+    // The report carries the budget total and cost records, not hard-coded zeros.
     expect(report.costMicroUsd).toBe(0);
     expect(report.costs).toHaveLength(0);
   });
@@ -315,8 +297,7 @@ describe("runGoldenSet", () => {
     });
     const result = await runGoldenSet(set, deps);
     const report = getReport() as { costMicroUsd: number; costs: { costMicroUsd: number }[] };
-    // B1: the report's costs come from the traces — all three questions
-    // scored (the skip path only fires on transport failure); the budget
+    // The report's costs come from the traces — all three questions scored; the budget
     // total is the caller's accumulator, still 0 here.
     expect(report.costs).toHaveLength(3);
     expect(report.costs[0]?.costMicroUsd).toBe(7);
@@ -327,12 +308,12 @@ describe("runGoldenSet", () => {
     const { deps, savedResults } = makeDeps({ failThird: true });
     const result = await runGoldenSet(set, deps);
     expect(result.skipped).toBe(1);
-    // One row per question, the skipped one included (#290 persists it).
+    // One row per question, the skipped one included.
     expect(savedResults).toHaveLength(3);
     const skipped = result.results.find((r) => r.questionId === "q3");
     expect(skipped?.skipped).toBe(true);
     expect(skipped?.notes?.[0]).toMatch(/^skipped: transport down/);
-    // C1: a skipped result never counts as a scored failure.
+    // A skipped result never counts as a scored failure.
     const scored = result.results.filter((r) => r.skipped !== true);
     expect(scored).toHaveLength(2);
   });
@@ -341,8 +322,7 @@ describe("runGoldenSet", () => {
     const { deps, savedResults, getReport } = makeDeps({ failThird: true });
     const result = await runGoldenSet(set, deps);
     expect(result.skipped).toBe(1);
-    // The skip is an outcome like every other one: its own `eval_results` row,
-    // keyed by the real run id, naming the question and the error message.
+    // The skip is an outcome like every other one: its own `eval_results` row.
     expect(savedResults).toHaveLength(set.questions.length);
     const row = savedResults.find((entry) => entry.questionId === "q3");
     expect(row?.runId).toBe("run-1");
@@ -355,8 +335,7 @@ describe("runGoldenSet", () => {
       citationValidity: 0,
       notes: ["skipped: transport down"],
     });
-    // The run report carries the same note, so the store and the report cannot
-    // disagree about why the gate reddened.
+    // The report carries the same note, so store and report cannot disagree on the cause.
     const report = getReport() as {
       results: { questionId: string; skipped?: boolean; notes?: string[] }[];
     };
@@ -368,11 +347,8 @@ describe("runGoldenSet", () => {
 
   it("keeps a transport skip distinct from a refusal and a scorer failure in the persisted evidence (#290)", async () => {
     // Three ways to land on `passed: false` with citation validity 0. The
-    // distinguishing field is `skipped` (never a notes-prefix heuristic):
-    // #274's ungrounded-citation refusal is a SCORED outcome with
-    // `refused: true`, an ordinary scorer failure is a SCORED outcome with
-    // neither flag, and only a transport failure is a skip. The test pins all
-    // three so the modes cannot silently collapse into one shape.
+    // distinguishing field is `skipped`, never a notes-prefix heuristic: a refusal
+    // and a scorer failure are scored outcomes, and only a transport failure skips.
     const refusal = "tidak menemukan dalil yang memadai";
     const trio: GoldenSet = {
       id: "set-trio",
@@ -427,14 +403,13 @@ describe("runGoldenSet", () => {
       skipped: true,
       notes: ["skipped: fetch failed: ECONNRESET"],
     });
-    // #274: a scored refusal of an `answer` question — no `skipped` field.
+    // A scored refusal of an `answer` question — no `skipped` field.
     expect(byId.get("refused")).toMatchObject({
       passed: false,
       refused: true,
       citationValidity: 0,
     });
     expect(byId.get("refused")).not.toHaveProperty("skipped");
-    // An ordinary scorer failure: scored, unrefused, nothing skipped.
     expect(byId.get("unscored")).toMatchObject({
       passed: false,
       refused: false,
@@ -466,10 +441,8 @@ describe("runGoldenSet", () => {
       ],
     });
     await runGoldenSet(set, deps);
-    // q1 expects source-a, which ONLY the expansion ref supplies (the fused
-    // ref f0 resolves to no source type): the reported recall is 1 while the
-    // fused track alone scores 0 — the persisted statement "the expansion
-    // carried this question", visible in the report beside the metric.
+    // q1 expects source-a, which ONLY the expansion ref supplies: the reported recall is
+    // 1 while the fused track alone scores 0 — the report's statement that it carried it.
     expect(savedResults[0]?.outcome).toMatchObject({
       retrievalRecall: 1,
       expansion: { chunks: 1, fusedOnlyRetrievalRecall: 0 },
@@ -477,9 +450,8 @@ describe("runGoldenSet", () => {
   });
 
   it("omits the expansion block when the caller injected no origin label (C1)", async () => {
-    // The engine never names a caller's label: with none supplied it cannot
-    // say which refs the expansion added, so it says nothing rather than
-    // guessing from a score-less ref.
+    // The engine never names a caller's label: with none supplied it cannot say which
+    // refs the expansion added, so it says nothing rather than guessing.
     const { deps, savedResults } = makeDeps({
       traceEvents: () => [
         {

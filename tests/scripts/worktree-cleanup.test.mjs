@@ -11,22 +11,13 @@ import {
 } from "./worktree-cleanup-fixture.mjs";
 
 /**
- * `bun run worktree:clean` — the disposable-worktree rule (#229).
+ * `bun run worktree:clean` — the disposable-worktree rule.
  *
- * Cases and assertions only: the throwaway-repo plumbing — fixture creation,
- * the fake `gh`, `runClean` — lives in `worktree-cleanup-fixture.mjs`. Each
- * case builds its own fixture, so cases share no state.
- *
- * The liveness declaration and the operator gate (#239) also live here: the
- * lock rule that keeps a declared-live worktree, the fail-closed sweep, and the
- * `--unlock` remedy. `runClean` passes the gate acknowledgement unless a case
- * asks it not to, so an existing case's subject stays its own removal rule.
- *
- * The two cases whose subject is a shared-state surface or the tool's
- * destructive boundary live apart: the real-checkout isolation canary in
- * `worktree-cleanup-isolation.test.mjs`, and the deletion boundary — every
- * deletion printed, every git command inside the run's own root — in
- * `worktree-cleanup-destruction.test.mjs`.
+ * Cases and assertions only: the throwaway-repo plumbing — fixture creation, the fake
+ * `gh`, `runClean` — lives in `worktree-cleanup-fixture.mjs`; each case builds its own
+ * fixture, so cases share no state. `runClean` passes the gate acknowledgement unless a
+ * case asks it not to. The shared-state canary and the deletion-boundary cases live in
+ * `worktree-cleanup-isolation.test.mjs` and `worktree-cleanup-destruction.test.mjs`.
  */
 
 describe("worktree-cleanup", () => {
@@ -35,9 +26,7 @@ describe("worktree-cleanup", () => {
     fx.addUnstarted("unstarted");
     fx.fakeGh({ noPr: ["agent/unstarted"] });
 
-    // The exact pre-fix shape: the branch is an ancestor of origin/main, which
-    // the old rule 2 matched and reported as "already in origin/main" before
-    // removing it. A dispatch that has not committed yet looks like this.
+    // An ancestor of origin/main: a dispatch that has not committed yet looks like this.
     expect(gitOk(fx.dir, ["merge-base", "--is-ancestor", "agent/unstarted", "origin/main"])).toBe(
       true,
     );
@@ -76,7 +65,6 @@ describe("worktree-cleanup", () => {
     fx.advanceOrigin();
     fx.fakeGh({ noPr: ["agent/behind"] });
 
-    // The shape that fired in #229: an ancestor of origin/main, not equal to it.
     expect(gitOk(fx.dir, ["merge-base", "--is-ancestor", "agent/behind", "origin/main"])).toBe(
       true,
     );
@@ -181,10 +169,8 @@ describe("worktree-cleanup", () => {
 
   it("never judges a branch named after the directory when HEAD is detached", () => {
     const fx = makeFixture();
-    // The namesake branch exists, has its own commit and its PR is MERGED — but
-    // it is checked out in ANOTHER worktree, and `.worktrees/namesake` is
-    // detached. Judging the namesake would remove this worktree and then try to
-    // delete a branch that is not its own; the entry is kept for rule 3 instead.
+    // The namesake branch is MERGED but checked out in ANOTHER worktree: judging it
+    // would delete a branch this worktree does not hold.
     const outside = fx.addOutside("namesake");
     writeFileSync(join(outside, "wip.txt"), "wip\n");
     git(outside, ["add", "wip.txt"]);
@@ -208,8 +194,7 @@ describe("worktree-cleanup", () => {
     const fx = makeFixture();
     const mergedPrHead = git(fx.dir, ["rev-parse", "HEAD"]);
     fx.advanceOrigin();
-    // Re-dispatch: the branch is re-created at the current origin/main, clean
-    // and with zero commits — criterion 1's protected state.
+    // Re-dispatch: the branch is re-created at the current origin/main with zero commits.
     fx.addUnstarted("reused");
     fx.fakeGh({ prs: { "agent/reused": { state: "MERGED", headRefOid: mergedPrHead } } });
 
@@ -220,8 +205,7 @@ describe("worktree-cleanup", () => {
       "kept  reused: agent/reused has no unique commits vs origin/main",
     );
     expect(result.stdout).toContain("done: 0 removed, 1 kept");
-    // The MERGED verdict was consulted and rejected: the PR head is not this
-    // branch's tip, so the merged PR is history from an earlier dispatch.
+    // The merged PR is history from an earlier dispatch: its head is not this branch's tip.
     expect(callLog(fx)).toEqual(["pr view agent/reused --json state,headRefOid"]);
     expect(fx.exists("reused")).toBe(true);
     expect(fx.branchExists("agent/reused")).toBe(true);
@@ -236,10 +220,8 @@ describe("worktree-cleanup", () => {
 
   it("keeps a zero-commit slug even when the merged PR's head is the branch tip", () => {
     const fx = makeFixture();
-    // A fast-forward merge leaves the merged PR's head at the current
-    // origin/main tip, so a re-dispatched slug at origin/main has a tip equal to
-    // headRefOid — the one shape the tip check alone cannot separate from a
-    // genuinely merged branch. Zero unique commits must still win.
+    // A fast-forward merge leaves the PR's head at the origin/main tip, so the tip
+    // check alone cannot separate this shape: zero unique commits must win.
     fx.addUnstarted("ff");
     const tip = git(fx.dir, ["rev-parse", "agent/ff"]);
     fx.fakeGh({ prs: { "agent/ff": { state: "MERGED", headRefOid: tip } } });
@@ -291,8 +273,7 @@ describe("worktree-cleanup", () => {
   it("keeps a CLOSED-without-merge PR's unique commits", () => {
     const fx = makeFixture();
     const tip = fx.addCommitted("closed");
-    // headRefOid equals the branch tip here: only the state distinguishes this
-    // from the removable merged case.
+    // Only the state distinguishes this from the removable merged case.
     fx.fakeGh({ prs: { "agent/closed": { state: "CLOSED", headRefOid: tip } } });
 
     const result = runClean(fx);
@@ -358,8 +339,7 @@ describe("worktree-cleanup", () => {
 
     expect(forced.status).toBe(0);
     expect(forced.stdout).toContain("removed dm (PR merged)");
-    // The forced run is the first to consult gh: with --force the dirty skip is
-    // lifted, the MERGED verdict is fetched, and the tip match disposes it.
+    // With --force the dirty skip is lifted, so the merged verdict is fetched.
     expect(callLog(fx)).toEqual(["pr view agent/dm --json state,headRefOid"]);
     expect(fx.exists("dm")).toBe(false);
     expect(fx.branchExists("agent/dm")).toBe(false);
@@ -370,8 +350,6 @@ describe("worktree-cleanup", () => {
     const fx = makeFixture();
     fx.addUnstarted("real");
     fx.fakeGh({ noPr: ["agent/real"] });
-    // Both stray shapes: a file crashed `git status` with ENOTDIR, a directory
-    // crashed `git worktree remove` when --include-detached reached it.
     writeFileSync(join(fx.dir, ".worktrees", "README"), "stray\n");
     mkdirSync(join(fx.dir, ".worktrees", "stray-dir"));
 
@@ -410,28 +388,23 @@ describe("worktree-cleanup", () => {
     const fx = makeFixture();
     const healthyTip = fx.addCommitted("z-healthy");
     fx.addCommitted("a-locked");
-    // `agent/a-locked` is deliberately NOT declared to the fixture gh: the lock
-    // is checked before rule 1, so consulting its PR history would be an
-    // undeclared lookup and `runClean` would fail loudly on it.
+    // `agent/a-locked` is deliberately undeclared: the lock is checked before rule 1.
     fx.fakeGh({ prs: { "agent/z-healthy": { state: "MERGED", headRefOid: healthyTip } } });
     git(fx.dir, ["worktree", "lock", fx.wtPath("a-locked")]);
 
     const result = runClean(fx);
 
     expect(result.status).toBe(0);
-    // A lock is the dispatch's own liveness declaration: the entry is kept as a
-    // declaration (rule 0), never as a failed removal, and a lock with no reason
-    // still names the remedy.
+    // A lock is the dispatch's own liveness declaration: kept as a declaration
+    // (rule 0), never as a failed removal, even with no reason.
     expect(result.stdout).toMatch(
       /kept {2}a-locked: locked — a live declaration; clear it with --unlock a-locked/,
     );
-    // Kept ⇒ the branch ref is untouched. `git branch -D` here would destroy the
-    // only ref the still-present worktree holds.
+    // Kept ⇒ the branch ref is untouched: `git branch -D` would destroy the only ref.
     expect(fx.exists("a-locked")).toBe(true);
     expect(fx.branchExists("agent/a-locked")).toBe(true);
-    // The sweep reached the remaining entry: `done:` prints only after every
-    // entry was examined, and the healthy slug was disposed of in the same run.
-    // Either assertion fails on a mid-loop abort whatever the readdir order.
+    // `done:` prints only after every entry was examined, so a mid-loop abort fails
+    // either assertion whatever the readdir order.
     expect(result.stdout).toContain("removed z-healthy (PR merged)");
     expect(result.stdout).toMatch(/^done: 1 removed, 1 kept$/m);
     expect(callLog(fx)).toEqual(["pr view agent/z-healthy --json state,headRefOid"]);
@@ -442,26 +415,19 @@ describe("worktree-cleanup", () => {
     const fx = makeFixture();
     const tip = fx.addCommitted("half-done");
     fx.fakeGh({ prs: { "agent/half-done": { state: "MERGED", headRefOid: tip } } });
-    // The disposal's first step succeeds and its second fails. A stale ref lock
-    // is the deterministic trigger: only the delete can fail, and the branch
-    // still resolves afterwards.
+    // A stale ref lock: only the branch delete can fail, and the branch still resolves.
     fx.refLock("refs/heads/agent/half-done");
 
     const result = runClean(fx);
 
     expect(result.status).toBe(0);
-    // The line claims only what happened: the removal is reported and the
-    // branch failure is named — never a `kept` prefix that contradicts the run.
-    // The assertion pins the script-owned prefix only: git's stderr prose past
-    // it is a third-party string this repo does not stabilize, so the state
-    // assertions below — worktree gone, branch still resolving at its old tip —
-    // are what prove this exact path fired.
+    // The assertion pins the script-owned prefix only: git's stderr prose past it is a
+    // third-party string this repo does not stabilize, so the state assertions below
+    // are what prove the path fired.
     expect(result.stdout).toMatch(/^removed half-done \(PR merged; branch delete failed: /m);
-    // The remedy is the load-bearing part of the line: no later sweep lists this
-    // slug again, so the operator only learns the branch is left from here.
+    // The remedy is load-bearing: no later sweep lists this slug again.
     expect(result.stdout).toContain("delete it with: git branch -D agent/half-done");
     expect(result.stdout).not.toContain("kept  half-done");
-    // Summary and per-entry lines agree: this entry was removed, not kept.
     expect(result.stdout).toMatch(/^done: 1 removed, 0 kept$/m);
     expect(fx.exists("half-done")).toBe(false);
     expect(fx.branchExists("agent/half-done")).toBe(true);
@@ -474,8 +440,7 @@ describe("worktree-cleanup", () => {
     const healthyTip = fx.addCommitted("z-healthy");
     fx.addCommitted("a-stale");
     fx.fakeGh({ prs: { "agent/z-healthy": { state: "MERGED", headRefOid: healthyTip } } });
-    // Still a registered worktree (its admin dir is intact), but its .git file
-    // points at a gitdir that no longer exists: `git status` there exits 128.
+    // Still registered, but its .git file points at a gitdir that no longer exists.
     writeFileSync(
       join(fx.wtPath("a-stale"), ".git"),
       `gitdir: ${join(fx.dir, ".git", "worktrees", "gone-gitdir")}\n`,
@@ -486,8 +451,7 @@ describe("worktree-cleanup", () => {
     const result = runClean(fx);
 
     expect(result.status).toBe(0);
-    // The failed inspection is reported per item; the run does not die with an
-    // empty stdout and no `done:` line as it did before the guard.
+    // The failed inspection is reported per item; the run keeps going to the other slugs.
     expect(result.stdout).toMatch(
       /kept {2}a-stale: failed to inspect \(fatal: not a git repository/,
     );
@@ -496,8 +460,7 @@ describe("worktree-cleanup", () => {
     expect(fx.branchExists("agent/a-stale")).toBe(true);
     expect(result.stdout).toContain("removed z-healthy (PR merged)");
     expect(result.stdout).toMatch(/^done: 1 removed, 1 kept$/m);
-    // The broken entry never reaches the gh consultation: exactly one lookup,
-    // for the slug the run went on to dispose of.
+    // The broken entry never reaches the gh consultation: exactly one lookup.
     expect(callLog(fx)).toEqual(["pr view agent/z-healthy --json state,headRefOid"]);
     fx.dispose();
   });
@@ -507,11 +470,9 @@ describe("worktree-cleanup", () => {
     const liveTip = fx.addCommitted("live");
     fx.addUnstarted("live-zero");
     fx.addDetached("live-detached");
-    // One entry per removal rule, every one of them declared live: rule 1 with
-    // dirty state and --force, rule 2 with --include-unstarted, rule 3 with
-    // --include-detached. Nothing is declared to the fixture gh at all, so a
-    // single PR lookup would fail the run as an undeclared call — the lock is
-    // evaluated before rule 1 consults PR history, not after it.
+    // One entry per removal rule, every one declared live: rule 1 with dirty state and
+    // --force, rule 2 with --include-unstarted, rule 3 with --include-detached. Nothing
+    // is declared to the fixture gh, so a single PR lookup would fail as undeclared.
     writeFileSync(join(fx.wtPath("live"), "scratch.txt"), "uncommitted\n");
     fx.lock("live", "implementer #239");
     fx.lock("live-zero", "senior-implementer #239");
@@ -548,8 +509,7 @@ describe("worktree-cleanup", () => {
 
     expect(held.status).toBe(0);
     expect(held.stdout).toMatch(/kept {2}live: locked \("implementer #239"\)/);
-    // The lock short-circuits before rule 1: the MERGED verdict declared to the
-    // fixture was never fetched, so nothing about PR history could dispose it.
+    // The lock short-circuits before rule 1: the declared MERGED verdict was never fetched.
     expect(callLog(fx)).toEqual([]);
     expect(held.stdout).not.toContain("removed live");
     expect(fx.exists("live")).toBe(true);
@@ -574,11 +534,9 @@ describe("worktree-cleanup", () => {
         "agent/raced": {
           state: "MERGED",
           headRefOid: tip,
-          // The lock appears after the run's `git worktree list` parse — the one
-          // race rule 0 cannot see, and the reason the removal failure below
-          // must still be a keep. `git worktree remove` refuses the now-locked
-          // tree, and the branch must survive: it is the only ref the surviving
-          // worktree holds.
+          // The lock appears after the run's `git worktree list` parse — the one race
+          // rule 0 cannot see, so this removal failure must stay a keep and the branch
+          // must survive as the surviving worktree's only ref.
           before: `git -C ${fx.dir} worktree lock ${fx.wtPath("raced")} --reason 'dispatch raced'`,
         },
       },
@@ -617,8 +575,7 @@ describe("worktree-cleanup", () => {
     expect(withheld.status).not.toBe(0);
     expect(withheld.stderr).toContain("--no-active-dispatches");
     expect(withheld.stderr).toMatch(/no dispatch is active/);
-    // Same verdicts a sweep would act on, so the refusal is a preview rather
-    // than a silence — and no `done:` line, because no sweep completed.
+    // Same verdicts a sweep would act on: the refusal is a preview, with no `done:` line.
     expect(verdicts(withheld.stdout)).toEqual([
       "would remove merged (PR merged)",
       "would remove unstarted (no unique commits vs origin/main)",
@@ -630,8 +587,6 @@ describe("worktree-cleanup", () => {
     expect(fx.branchExists("agent/merged")).toBe(true);
     expect(fx.branchExists("agent/unstarted")).toBe(true);
 
-    // --dry-run is not a destructive run: no acknowledgement needed, exit 0, and
-    // the identical verdict lines.
     const preview = runClean(fx, ["--include-unstarted", "--dry-run"], {}, { withholdGate: true });
 
     expect(preview.status).toBe(0);
@@ -639,8 +594,6 @@ describe("worktree-cleanup", () => {
     expect(preview.stdout).toContain("done: 0 removed, 0 kept (dry run)");
     expect(fx.exists("merged")).toBe(true);
 
-    // With the flag, the very same invocation disposes of exactly what the
-    // refusal named.
     const swept = runClean(fx, ["--include-unstarted"]);
 
     expect(swept.status).toBe(0);
@@ -657,9 +610,8 @@ describe("worktree-cleanup", () => {
     fx.fakeGh({ noPr: ["agent/unstarted"] });
     fx.lock("live", "implementer #257");
 
-    // Two entries, both kept by default — a locked one (rule 0) and an unstarted
-    // one (rule 2) — so the gated run has zero candidates: nothing was withheld,
-    // and a run with nothing to do must not read as a refusal.
+    // Both entries are kept by default — locked (rule 0) and unstarted (rule 2): zero
+    // candidates, nothing withheld.
     const nothing = runClean(fx, [], {}, { withholdGate: true });
 
     expect(nothing.status).toBe(0);
@@ -667,8 +619,6 @@ describe("worktree-cleanup", () => {
     expect(nothing.stdout).toContain(
       "nothing to remove: --no-active-dispatches is only needed when there is something to remove",
     );
-    // None of the refusal's shape can appear here: no verdict line, no refusal
-    // line, and the run's own summary reports an ordinary no-op.
     expect(nothing.stdout).not.toContain("refusing to remove");
     expect(nothing.stdout).not.toContain("would remove");
     expect(nothing.stdout).toContain("done: 0 removed, 2 kept");
@@ -677,10 +627,8 @@ describe("worktree-cleanup", () => {
     expect(fx.exists("unstarted")).toBe(true);
     expect(fx.branchExists("agent/unstarted")).toBe(true);
 
-    // The same fixture with one candidate (`--include-unstarted`) is a real
-    // withheld removal and keeps the original refusal: non-zero, the count, the
-    // flag. Both wordings meet on one fixture, so they cannot silently converge
-    // into the same exit or the same message again.
+    // The same fixture with one candidate is a real withheld removal and keeps the
+    // refusal.
     const withheld = runClean(fx, ["--include-unstarted"], {}, { withholdGate: true });
 
     expect(withheld.status).not.toBe(0);
@@ -701,15 +649,14 @@ describe("worktree-cleanup", () => {
     const mergedTip = fx.addCommitted("one");
     fx.addCommitted("two");
     fx.addCommitted("three");
-    // `one` is the shape a sweep would remove, so "nothing was removed" below is
-    // evidence about the unlock mode and not about the entry's own state.
+    // `one` is the shape a sweep would remove, so "nothing was removed" is evidence
+    // about the mode rather than the entry's state.
     fx.fakeGh({ prs: { "agent/one": { state: "MERGED", headRefOid: mergedTip } } });
     fx.lock("one", "implementer #239");
     fx.lock("two", "fixer #239");
     fx.lock("three", "reviewer #239");
 
-    // An --unlock run needs no gate: it destroys nothing and exits before the
-    // sweep could run.
+    // An --unlock run needs no gate: it destroys nothing and exits before the sweep.
     const partial = runClean(fx, ["--unlock", "one"], {}, { withholdGate: true });
 
     expect(partial.status).toBe(0);
@@ -718,15 +665,14 @@ describe("worktree-cleanup", () => {
     expect(partial.stdout).toContain("--unlock never sweeps");
     expect(fx.lockState("one")).toEqual({ locked: false, reason: "" });
     expect(fx.lockState("two")).toEqual({ locked: true, reason: "fixer #239" });
-    // No sweep ran: removing `one` would have required its gh verdict, and no
-    // lookup was made; the worktree and its branch are untouched.
+    // No sweep ran: removing `one` would have required its gh verdict, and no lookup
+    // was made.
     expect(callLog(fx)).toEqual([]);
     expect(removedSlugs(partial.stdout)).toEqual([]);
     expect(fx.exists("one")).toBe(true);
     expect(fx.branchExists("agent/one")).toBe(true);
 
-    // Repeatable, and only the named entries: the second run clears the other
-    // two and leaves the already-unlocked worktree alone.
+    // Repeatable, and only the named entries.
     const rest = runClean(fx, ["--unlock", "two", "--unlock", "three"], {}, { withholdGate: true });
 
     expect(rest.status).toBe(0);
@@ -756,8 +702,7 @@ describe("worktree-cleanup", () => {
 
     expect(notLocked.status).not.toBe(0);
     expect(notLocked.stderr).toMatch(/unlock failed for plain: /);
-    // The failure is the run's, not a partial mutation: the entry and its branch
-    // are untouched.
+    // The failure is the run's, not a partial mutation: entry and branch untouched.
     expect(fx.exists("plain")).toBe(true);
     expect(fx.branchExists("agent/plain")).toBe(true);
 
@@ -774,9 +719,8 @@ describe("worktree-cleanup", () => {
     const fx = makeFixture();
     fx.addCommitted("in-tree");
     fx.lock("in-tree", "fixer #257");
-    // A registered, locked worktree outside .worktrees/ — a sibling of the
-    // tool's own root. Git knows it; the tool's scope does not, so before this
-    // guard `--unlock ../elsewhere` cleared this declaration and exited 0.
+    // A registered, locked worktree outside .worktrees/ — a sibling of the tool's own
+    // root: git knows it, the tool's scope does not.
     const outside = fx.addOutside("elsewhere");
     fx.lockAt(outside, "implementer #999");
 
@@ -789,9 +733,8 @@ describe("worktree-cleanup", () => {
         { withholdGate: true },
       );
 
-      // Refused in the argument-parse loop, in the same loud shape a missing
-      // value gets: non-zero, nothing on stdout, and — the claim the position
-      // makes — no git call at all, so git never wrote its trace.
+      // Refused in the argument-parse loop, in the same loud shape a missing value
+      // gets, with no git call at all — so git never wrote its trace.
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain(
         `--unlock requires a slug within .worktrees/: "${escape}" is not a bare directory name`,
@@ -799,17 +742,14 @@ describe("worktree-cleanup", () => {
       expect(result.stdout).toBe("");
       expect(existsSync(trace)).toBe(false);
 
-      // The declaration the escape aimed at survives, read from git's own
-      // listing: the out-of-tree worktree is still registered and still locked,
-      // and the in-tree declaration is untouched too.
+      // The declaration the escape aimed at survives, read from git's own listing.
       expect(fx.lockStateAt(outside)).toEqual({ locked: true, reason: "implementer #999" });
       expect(existsSync(outside)).toBe(true);
       expect(fx.lockState("in-tree")).toEqual({ locked: true, reason: "fixer #257" });
     }
 
-    // Every legitimate slug shape the manager uses still unlocks: a kebab slug,
-    // the reviewer's detached `review-<pr>`, and an interior dot, which the rule
-    // allows — the value only has to be one component under .worktrees/.
+    // Every legitimate slug shape still unlocks: a kebab slug, a detached `review-<pr>`,
+    // and an interior dot — one component under .worktrees/ is all the rule requires.
     fx.addDetached("review-257");
     fx.lock("review-257", "reviewer #257");
     fx.addCommitted("v1.2-fix");
@@ -841,8 +781,7 @@ describe("worktree-cleanup", () => {
 
     expect(preview.status).toBe(0);
     expect(preview.stdout).toContain("would unlock live");
-    // A dry run changes nothing, and clearing a declaration is a change: the
-    // lock is still git's afterwards.
+    // Clearing a declaration is a change, so a dry run leaves the lock in place.
     expect(fx.lockState("live")).toEqual({ locked: true, reason: "implementer #239" });
     expect(fx.exists("live")).toBe(true);
     expect(callLog(fx)).toEqual([]);

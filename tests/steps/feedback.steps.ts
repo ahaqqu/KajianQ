@@ -2,7 +2,7 @@ import { createBdd } from "playwright-bdd";
 import { expect } from "@playwright/test";
 
 /**
- * Feedback BDD (#13). All /v1/* traffic is intercepted with fixtures — zero
+ * Feedback BDD. All /v1/* traffic is intercepted with fixtures — zero
  * LLM spend in CI. The POST /v1/feedback interception captures the request
  * body so each scenario asserts the ANCHOR the client sent: a thumb carries
  * the answer rating with no anchor; a Trace-panel flag carries the chunk id;

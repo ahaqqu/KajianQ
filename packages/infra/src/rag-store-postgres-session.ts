@@ -4,10 +4,9 @@ import { hashToken, randomToken } from "./rag-store-shared";
 import { postgresErrorToStoreError, sqlEffect, type SqlRunner } from "./rag-store-postgres-errors";
 
 /**
- * Session/auth/chat methods of the Postgres RagStore adapter, split from
- * `rag-store-postgres.ts` to respect the agentic size limits (ADR-0027 decision
- * 7 migration kept all executable SQL inside the Postgres adapter surface: this
- * file, `rag-store-postgres.ts`, `rag-store-postgres-query.ts`, and the migrations).
+ * Session/auth/chat methods of the Postgres RagStore adapter (ADR-0027 decision
+ * 7: all executable SQL stays inside the Postgres adapter surface — this file,
+ * `rag-store-postgres.ts`, `rag-store-postgres-query.ts`, and the migrations).
  */
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days, per ADR-0017.
@@ -43,7 +42,7 @@ export function postgresSessionMethods(
       );
     },
 
-    // A6: ownership validation for client-supplied session ids.
+    // Ownership validation for client-supplied session ids.
     getChatSessionUser(sessionId) {
       return Effect.map(
         sqlEffect(
@@ -78,7 +77,7 @@ export function postgresSessionMethods(
       );
     },
 
-    // Follow-up context (#10): the most recent `limit` messages of a session,
+    // Follow-up context: the most recent `limit` messages of a session,
     // returned in chronological order. The inner DESC + outer ASC takes a
     // tail off the `(session_id, created_at)` index without sorting the whole
     // session.
@@ -174,7 +173,7 @@ export function postgresSessionMethods(
     },
 
     cleanupExpiredSessions(before = new Date()) {
-      // Two statements, one call (thermo-review A5): the expired token rows,
+      // Two statements, one call: the expired token rows,
       // and the anonymous users left with no session at all. The FK cascade
       // runs user → session, never the reverse, so without the second DELETE
       // every abandoned browser leaves a permanent `users` row plus its

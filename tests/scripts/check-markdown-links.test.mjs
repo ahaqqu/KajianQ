@@ -43,10 +43,9 @@ describe("markdown-links — scope rules (#368)", () => {
   it("claims a bare token only when it is a tracked root-level file", () => {
     expect(isPathClaim("AGENTS.md", tree)).toBe(true);
     expect(isPathClaim("package.json", tree)).toBe(true);
-    // COST, stated in the header: a bare prose filename that lives in a
-    // subdirectory is not a claim — 300+ such tokens are version strings,
-    // member expressions and model ids, so a wider rule is a false-positive
-    // factory.
+    // COST, stated in the header: a bare prose filename in a subdirectory is not
+    // a claim — such tokens are mostly version strings, member expressions and
+    // model ids, so a wider rule is a false-positive factory.
     expect(isPathClaim("notes.md", tree)).toBe(false);
     expect(isPathClaim("models.json", tree)).toBe(false);
     expect(isPathClaim("4.0.0-rc.113", tree)).toBe(false);
@@ -79,10 +78,8 @@ describe("markdown-links — scope rules (#368)", () => {
   });
 
   it("reads a line citation, a fragment or swallowed punctuation as the path (A6)", () => {
-    // A6: a citation points *into* a path. `path:42`, `path:42-58`, `path#L24`
-    // and `path,` are all claims on `path` — the link half already stripped its
-    // `#fragment`, and without the same rule here a doc that cites a line (the
-    // sanctioned form) reddens on a target that exists.
+    // A citation points *into* a path: `path:42`, `path:42-58`, `path#L24` and
+    // `path,` are claims on `path`, matching the link half's `#fragment` strip.
     const aTree = makeTree(["docs/a.md", "README.md"]);
     for (const raw of [
       "docs/a.md:42",
@@ -94,8 +91,7 @@ describe("markdown-links — scope rules (#368)", () => {
       expect(normaliseSpanTarget(raw), raw).toBe("docs/a.md");
       expect(isPathClaim(raw, aTree), raw).toBe(true);
     }
-    // A directory keeps its trailing slash; a line citation on a dead path is
-    // still dead, reported on the stripped claim.
+    // A directory keeps its trailing slash; a dead path stays dead, reported on the stripped claim.
     expect(normaliseSpanTarget("provision/vps/")).toBe("provision/vps/");
     expect(targets(scan("See `docs/gone.md:42-58,`.", { paths: ["docs/a.md"] }))).toEqual([
       "docs/gone.md",
@@ -120,31 +116,24 @@ describe("markdown-links — scope rules (#368)", () => {
   });
 
   it("claims a `..`-rooted target by its form, never by its reading (#391)", () => {
-    // #391: the class used to be vetoed on the raw first segment, so it never
-    // reached `resolveClaim`'s file-relative base — the base the header blesses
-    // for the `packages/infra/README.md` control. A `..`-rooted token that
-    // survived the lexical rules is a path by its form; its *reading* decides
-    // where it resolves, not whether it is a claim.
+    // A `..`-rooted token that survives the lexical rules is a path by its form;
+    // its *reading* decides where it resolves, not whether it is a claim.
     const tree = makeTree(["README.md", "docs/a.md", "packages/infra/README.md"]);
     expect(isPathClaim("../docs/a.md", tree)).toBe(true);
     expect(isPathClaim("../../../docs/a.md", tree)).toBe(true);
     expect(isPathClaim("../", tree)).toBe(true);
     // A *bare* `..` is the declared exception: the span normaliser strips it as
-    // swallowed punctuation, so the span half never claims it while the link
-    // half reddens on it. Pinned in the invariant table below and named in the
-    // header's SCOPE RULES.
+    // swallowed punctuation, so the span half never claims it while the link half
+    // reddens on it. See the header's SCOPE RULES.
     expect(normaliseSpanTarget("..")).toBe("");
     expect(isPathClaim("..", tree)).toBe(false);
-    // The reading's first segment (`web`) is not a tracked root, and the class
-    // is still a claim: re-testing the reading would veto a target the link
-    // half reddens on (`../web/dist` from `adr/`).
+    // Not a tracked root (`web`), still a claim: re-testing the reading would veto it.
     expect(isPathClaim("../web/dist", tree)).toBe(true);
     // The lexical scope rules run first, so a `..`-rooted non-path stays out.
     for (const target of ["../a b.md", "../*.ts", "../<slug>", "../adr/0037-…"]) {
       expect(isPathClaim(target, tree), target).toBe(false);
     }
-    // ...and the normaliser runs before the claim test, so a line citation or an
-    // in-file fragment into a `..`-relative path is still a claim on the path.
+    // ...and the normaliser runs first, so a citation into a `..`-relative path is a claim.
     expect(isPathClaim("../../../docs/a.md:42-58", tree)).toBe(true);
     expect(isPathClaim("../../../docs/a.md#L24", tree)).toBe(true);
     // ...and a `~`-rooted host path is still a different class.
@@ -152,18 +141,13 @@ describe("markdown-links — scope rules (#368)", () => {
   });
 
   it("claims a `./`-rooted target by its form, read beside the file (#396)", () => {
-    // #396: the raw first segment `.` used to veto the whole class, so the span
-    // half never judged it while the link half reddened on the identical
-    // destination — the #391 shape one prefix over, and it failed **open**. A
-    // `./`-rooted token that survives the lexical rules is a path by its form,
+    // A `./`-rooted token that survives the lexical rules is a path by its form,
     // exactly as a `..`-rooted one is; its reading is the containing file's
     // directory, and neither the root reading nor CLAIM_ROOTS is consulted.
     const tree = makeTree(["README.md", "docs/a.md", "apps/web/dist/index.html"]);
     expect(isFileRelativeTarget("./docs/a.md")).toBe(true);
     expect(isPathClaim("./docs/a.md", tree)).toBe(true);
-    // The reading's first segment (`web`) is not a tracked root, and the class is
-    // still a claim: re-testing the reading would veto a target the link half
-    // reddens on (`./web/dist` from `adr/`).
+    // Not a tracked root (`web`), still a claim: re-testing the reading would veto it.
     expect(isPathClaim("./web/dist", tree)).toBe(true);
     // The prefix alone is the containing directory, claimed like bare `../`.
     expect(isPathClaim("./", tree)).toBe(true);
@@ -171,19 +155,15 @@ describe("markdown-links — scope rules (#368)", () => {
     for (const target of ["./a b.md", "./*.ts", "./<slug>", "./adr/0037-…"]) {
       expect(isPathClaim(target, tree), target).toBe(false);
     }
-    // ...and the normaliser runs before the claim test, so a line citation or an
-    // in-file fragment into a `./`-relative path is still a claim on the path.
+    // ...and the normaliser runs first, so a citation into a `./`-relative path is a claim.
     expect(isPathClaim("./docs/a.md:42-58", tree)).toBe(true);
     expect(isPathClaim("./docs/a.md#L24", tree)).toBe(true);
     // A *bare* `.` is the declared exception one token shorter than `..`: the
-    // normaliser strips it as swallowed punctuation, so the span half never
-    // claims it (the link half reads it as the containing directory). #396 left
-    // that reading untouched and the header names it.
+    // normaliser strips it, so the span half never claims it.
     expect(normaliseSpanTarget(".")).toBe("");
     expect(isPathClaim(".", tree)).toBe(false);
-    // The link half's side of that declared exception, so the header's sentence
-    // has code: `[x](.)` is the containing directory, and from a nested file
-    // that directory is tracked.
+    // The link half's side of that exception: `[x](.)` is the containing
+    // directory, and from a nested file that directory is tracked.
     expect(
       scan("See [x](.).", { relPath: "docs/living.md", paths: ["docs/a.md"] }).violations,
     ).toEqual([]);
@@ -192,11 +172,8 @@ describe("markdown-links — scope rules (#368)", () => {
   });
 
   it("flags a dead `./` span and its link form alike — the fail-open #396 closed", () => {
-    // The proof the ticket is about, as a unit case: the two references below
-    // name the same target, in the same file, and used to disagree — the span
-    // emitted no finding at all (not counted, so absent from the OK line's
-    // totals) while the link was a violation. Both are `missing` now, and both
-    // report the reading the file-relative base produced.
+    // The two references below name the same target in the same file and must
+    // agree: both are `missing`, on the file-relative reading.
     const opts = { relPath: "docs/VPS-OPERATIONS.md", paths: ["docs/a.md"] };
     const span = scan("The default is `./apps/web/dist`.", opts);
     expect(targets(span)).toEqual(["./apps/web/dist"]);
@@ -214,19 +191,17 @@ describe("markdown-links — scope rules (#368)", () => {
 
   it("keeps a `./`-rooted *value* inert in both shapes inside a fence (#396)", () => {
     // DECIDED, not exempted: `./apps/web/dist` is the asset handler's inline
-    // default — a value, not a reference to a path on disk — and the two live
-    // sites that quote it (docs/VPS-SETUP.md, docs/VPS-OPERATIONS.md) render it
-    // as a fenced literal. A fence is the one rendering this gate already reads
-    // as "a value, not a citation" in **both** halves, so no allowlist entry is
-    // taken for it and nothing can later slip through under one.
+    // default — a value, not a path — and a fence is the one rendering this gate
+    // reads as "a value, not a citation" in both halves, so no allowlist entry is
+    // taken for it.
     const text = ["# Doc", "```text", "./apps/web/dist", "```"].join("\n");
     expect(scan(text, { relPath: "docs/VPS-OPERATIONS.md", paths: [] }).violations).toEqual([]);
     const asSpan = ["# Doc", "```md", "`./apps/web/dist`", "```"].join("\n");
     expect(scan(asSpan, { relPath: "docs/VPS-OPERATIONS.md", paths: [] }).violations).toEqual([]);
     const asLink = ["# Doc", "```md", "[x](./apps/web/dist)", "```"].join("\n");
     expect(scan(asLink, { relPath: "docs/VPS-OPERATIONS.md", paths: [] }).violations).toEqual([]);
-    // ...and the identical literal outside a fence is judged, so the fence is
-    // the only thing keeping it inert.
+    // ...and the identical literal outside a fence is judged, so the fence is the
+    // only thing keeping it inert.
     expect(targets(scan("The default is `./apps/web/dist`.", { paths: [] }))).toEqual([
       "./apps/web/dist",
     ]);
@@ -252,17 +227,13 @@ describe("markdown-links — the two shapes agree (#391)", () => {
     expect(targets(result)).toEqual(["../../../docs/VPS-ABSENT.md"]);
     expect(result.violations[0].kind).toBe("path");
     expect(result.violations[0].reason).toContain("no such tracked path");
-    // The reading the resolver judged, not the root reading — the form the
-    // gitignore/allowlist chain looks up.
+    // The reading the resolver judged — the form the ignore/allowlist chain looks up.
     expect(result.violations[0].repoPath).toBe("docs/VPS-ABSENT.md");
   });
 
   it("judges one target the same way in both shapes — the #391/#396 invariant", () => {
-    // The invariant this ticket exists for, as a table: for each target the
-    // Markdown link and the inline code span must reach the *same* status. The
-    // shapes may word their reasons differently; they may not disagree on
-    // whether the target is there. The `..` rows are #391, the `./` rows #396 —
-    // one prefix over, and only widening the span half's class made them agree.
+    // For each target the Markdown link and the inline code span must reach the
+    // *same* status: the shapes may word their reasons differently, never disagree.
     const ctx = ctxOf({ paths: ["docs/a.md", "README.md"] });
     const relPath = "docs/living.md";
     for (const [target, expected] of [
@@ -271,14 +242,13 @@ describe("markdown-links — the two shapes agree (#391)", () => {
       ["../docs/gone.md", "missing"],
       ["../web/dist", "missing"],
       ["../..", "missing"],
-      // The re-entry shape (A1): the file-relative reading overshoots into
+      // The re-entry shape: the file-relative reading overshoots into
       // `repo/docs/`, while a root-first reading would land back on the real
       // `docs/a.md`. One base, so the span agrees with the link.
       ["../repo/docs/a.md", "missing"],
-      ["../../etc/hosts", "missing"], // escaping: the decision, pinned below
-      // #396: the same table for the `./` prefix. `./a.md` reads as the tracked
-      // `docs/a.md`; the other two are the fail-open the class used to hide —
-      // the span emitted no finding at all while the link was a violation.
+      ["../../etc/hosts", "missing"], // escaping: judged missing, never exempted
+      // The same table for the `./` prefix: `./a.md` reads as the tracked
+      // `docs/a.md`, and the other two are missing.
       ["./a.md", "ok"],
       ["./gone.md", "missing"],
       ["./web/dist", "missing"], // first segment is not a tracked root, still claimed
@@ -295,14 +265,11 @@ describe("markdown-links — the two shapes agree (#391)", () => {
       ).toEqual([expected]);
     }
 
-    // The one declared exception, pinned rather than hidden: a bare `..` is
-    // nothing but punctuation, so the span normaliser strips it and the span
-    // half never claims it — while `[x](..)` reddens in the link half, whose
-    // `toRepoPath` folds the repository root to `""` and reads it as missing.
-    // That reading is not copied into the span half: the link half contradicts
-    // it from a deeper directory, where `..` resolves to a tracked parent
-    // (`.agents/skills/ship/` → `.agents/skills`). Named in the header's SCOPE
-    // RULES and reported for the re-verification round.
+    // The one declared exception: a bare `..` is nothing but punctuation, so the
+    // span half never claims it — while `[x](..)` reddens in the link half, whose
+    // `toRepoPath` folds the repository root to `""`. That reading is not copied
+    // into the span half, because from a deeper directory `..` resolves to a
+    // tracked parent. See the header's SCOPE RULES.
     expect(analyse([{ relPath, text: "See `..`." }], ctx)).toEqual([]);
     expect(analyse([{ relPath, text: "See [x](..)." }], ctx).map((f) => f.status)).toEqual([
       "missing",
@@ -310,11 +277,8 @@ describe("markdown-links — the two shapes agree (#391)", () => {
   });
 
   it("reddens on an escaping target in both shapes — decided, not inherited (#391)", () => {
-    // The decision recorded in the header's SCOPE RULES: a `..`-rooted target
-    // whose reading leaves the repository is a claim, and a missing one is a
-    // violation. Evidence, not assumption: the Markdown half already judges the
-    // identical destination missing (`toRepoPath` → null, so no exemption is
-    // reachable) and prints it.
+    // The header's decision: a `..`-rooted target whose reading leaves the
+    // repository is a claim, and a missing one is a violation.
     const result = scan(["`../../../../etc/passwd`", "[t](../../../../etc/passwd)"].join("\n"), {
       relPath: ".agents/skills/ship/SKILL.md",
       paths: [],
@@ -329,9 +293,8 @@ describe("markdown-links — the two shapes agree (#391)", () => {
   });
 
   it("counts a dead `..` span inside a record instead of enforcing it (#391)", () => {
-    // A record's `..` span is a claim like any other: claim-ness changes,
-    // enforcement does not — the record rule counts it, and the OK line prints
-    // the count on every green run.
+    // A record's `..` span is a claim like any other: the record rule still
+    // counts it rather than enforcing it.
     const result = scan("Output lives in `../web/dist`.", {
       relPath: "adr/0044-vps-serving-path-cutover.md",
       paths: [],
@@ -352,9 +315,8 @@ describe("markdown-links — the two shapes agree (#391)", () => {
   });
 
   it("offers a `..` span the same gitignore exemption as its link form (A1)", () => {
-    // TRAP: this pins the reading `repoPath` carries. With a root reading the
-    // span's repoPath is null, `git check-ignore` is never asked, and the span
-    // reddens while the identical link is skipped and counted — the A1 class.
+    // TRAP: this pins the reading `repoPath` carries — with a root reading the
+    // span's repoPath is null, `git check-ignore` is never asked, and it reddens.
     const ignored = new Set(["apps/web/dist/index.html"]);
     const opts = { relPath: "docs/living.md", paths: [], ignored };
     const span = scan("The deploy needs `../apps/web/dist/index.html`.", opts);
@@ -366,11 +328,8 @@ describe("markdown-links — the two shapes agree (#391)", () => {
   });
 
   it("gives an escaping-and-re-entering target one reading, reported with its verdict (A1)", () => {
-    // The disagreement B2 collapsed: with the root base also in play, this target
-    // was `ok` as a span — the root reading landed back on the real `docs/a.md` —
-    // while its `repoPath` named `.agents/skills/repo/docs/a.md`, which does not
-    // exist, and the identical link was `missing`. One reading now decides both
-    // the verdict and the path, so the two halves agree.
+    // One reading decides both the verdict and the path: with the root base also
+    // in play this target would be `ok` as a span while the link was `missing`.
     const opts = { relPath: ".agents/skills/ship/SKILL.md", paths: ["docs/a.md"] };
     const span = scan("See `../repo/docs/a.md`.", opts);
     expect(targets(span)).toEqual(["../repo/docs/a.md"]);
@@ -385,13 +344,10 @@ describe("markdown-links — the two shapes agree (#391)", () => {
   });
 
   it("names bare `../` as claimed and judged `missing` from a depth-1 directory (A3)", () => {
-    // A3, named rather than left to be discovered: `isFileRelativeTarget` claims
-    // bare `../` by its form, and from a depth-1 directory its reading is the
-    // repository root — whose repo-relative form is the empty string, which is not
-    // a tracked path. The link half reaches the same verdict on the same
-    // destination, so the span copies it instead of "fixing" it into a
-    // disagreement. From a deeper directory the same token reads as the tracked
-    // parent and resolves.
+    // `isFileRelativeTarget` claims bare `../` by its form, and from a depth-1
+    // directory its reading is the repository root — the empty string, not a
+    // tracked path — so the span copies the link half's verdict. From a deeper
+    // directory the same token reads as the tracked parent and resolves.
     const depth1 = { relPath: "docs/living.md", paths: ["docs/a.md"] };
     const span = scan("A relative path starts with `../` here.", depth1);
     expect(targets(span)).toEqual(["../"]);
@@ -411,9 +367,8 @@ describe("markdown-links — the two shapes agree (#391)", () => {
 
 describe("markdown-links — malformed destinations (#392)", () => {
   it("reports a malformed percent-encoded destination instead of dying (#392)", () => {
-    // #392: `decodeURIComponent` threw, so the run printed a Bun stack trace and
-    // no `file:line -> target` line — the output contract broken even though the
-    // exit code was already non-zero.
+    // A malformed destination must still print a `file:line -> target` line, so
+    // the decode cannot throw out of the scan.
     const result = scan("See [pct](./100%.md).", { paths: [] });
     expect(targets(result)).toEqual(["./100%.md"]);
     expect(result.violations[0].kind).toBe("link");
@@ -441,9 +396,8 @@ describe("markdown-links — resolution base", () => {
   });
 
   it("resolves a package-relative claim against the containing file", () => {
-    // packages/infra/README.md writes `scripts/db-migrate.mjs` meaning
-    // packages/infra/scripts/db-migrate.mjs. A root-only rule invents a
-    // false positive here.
+    // packages/infra/README.md writes `scripts/db-migrate.mjs` meaning the copy
+    // beside it; a root-only rule would invent a false positive here.
     const result = scan("Run `scripts/db-migrate.mjs` to migrate.", {
       relPath: "packages/infra/README.md",
       paths: ["packages/infra/scripts/db-migrate.mjs"],
@@ -496,9 +450,8 @@ describe("markdown-links — resolution base", () => {
 
 describe("markdown-links — the committed tree, not the working tree", () => {
   it("flags a path that exists only as an untracked build output", () => {
-    // The gate resolves the commit, so the verdict cannot depend on whether
-    // the caller just ran `bun run build:web`. apps/web/dist/index.html is
-    // absent from the index and is caught.
+    // The gate resolves the commit, so the verdict cannot depend on whether the
+    // caller just ran a build: an untracked output is caught.
     const result = scan("The deploy needs `apps/web/dist/index.html`.", { paths: ["docs/a.md"] });
     expect(targets(result)).toEqual(["apps/web/dist/index.html"]);
   });
@@ -514,10 +467,8 @@ describe("markdown-links — the committed tree, not the working tree", () => {
   });
 
   it("offers a Markdown link the same exemption chain as a code span (A1)", () => {
-    // A1: the link half used to be handled first and `continue`d, so the
-    // gitignore and allowlist exemptions were structurally unreachable for it —
-    // a link to a build output was red with no escape, while the identical
-    // target in a code span was skipped and counted.
+    // Every missing reference takes the same exemption chain, link or span, so
+    // neither shape can be red with no escape.
     const relPath = "docs/living.md";
     const text = "The deploy needs [the bundle](../apps/web/dist/index.html).";
     const opts = { relPath, paths: ["docs/a.md"] };
@@ -548,9 +499,8 @@ describe("markdown-links — the committed tree, not the working tree", () => {
   });
 
   it("routes every missing reference through one chain (B1)", () => {
-    // B1: which shape gets which rule is data in `POLICY`, not the order of
-    // `continue`s. Every shape `analyse` emits must have a rule, and a shape
-    // that has none fails loud instead of silently getting the wrong chain.
+    // Which shape gets which rule is data in `POLICY`, not the order of
+    // `continue`s: every shape `analyse` emits must have a rule or fail loud.
     const ctx = ctxOf({ paths: ["docs/a.md"], skills: [] });
     const findings = [
       ...analyse(
@@ -574,14 +524,12 @@ describe("markdown-links — the committed tree, not the working tree", () => {
     const fired = new Set();
     for (const finding of findings) {
       // The shipped selector, not the array-order one: `policyFor` takes the
-      // highest matching `priority`, so this completeness case fires the rule
-      // production fires and stays green under any permutation of `POLICY`.
+      // highest matching `priority`, exactly as production does.
       const rule = policyFor(finding);
       expect(rule, `${finding.kind}/${finding.status}`).toBeDefined();
       expect(rule.verdict).toBeOneOf(POLICY.map((r) => r.verdict));
-      // The status vocabulary is closed: a resolved status, a missing one, or
-      // one of the two shapes that are violations in themselves. Anything else
-      // is a classifier bug.
+      // The status vocabulary is closed: a resolved, a missing, or one of the two
+      // violation shapes; anything else is a classifier bug.
       expect(
         finding.status === "missing" ||
           finding.status === "root-absolute" ||
@@ -615,11 +563,8 @@ describe("markdown-links — the committed tree, not the working tree", () => {
   });
 
   it("selects a rule by its declared precedence, not by array position (B5)", () => {
-    // B5: the branch below (`link` before `record`) made the *first* match win,
-    // so moving `record` to the head of the table — a pure reorder, no logic
-    // touched — stopped the 19 Markdown links inside `adr/**` and the cutover
-    // log from being checked while the gate still printed OK and exited 0.
-    // Precedence is now a field, so no permutation can do that.
+    // Precedence is a field, not the array's source order: no permutation can
+    // change which rule a shape gets, and `record` must not swallow a record's link.
     const ctx = ctxOf({ paths: ["docs/a.md"], skills: [] });
     const findings = analyse(
       [
@@ -641,13 +586,12 @@ describe("markdown-links — the committed tree, not the working tree", () => {
     );
 
     // The array's order is not part of the table's meaning: a reversed copy
-    // decides every shape exactly as the shipped one does.
+    // decides every shape alike.
     const shipped = adjudicate(findings, { allowlist: [] });
     const permuted = adjudicate(findings, { allowlist: [], table: [...POLICY].reverse() });
     expect(permuted.counters).toEqual(shipped.counters);
     expect(permuted.violations).toEqual(shipped.violations);
 
-    // The precedences the corpus depends on, read off the resolved rule itself.
     const inRecord = (kind) =>
       findings.find((finding) => finding.kind === kind && finding.file.startsWith("adr/"));
     expect(policyFor(inRecord("link")).id).toBe("link");
@@ -719,12 +663,8 @@ describe("markdown-links — class B: records of a moment", () => {
   });
 
   it("keeps the link rule ahead of the record rule, as a priority not a position (B5)", () => {
-    // B5's mutation, asserted on the counters: the table before this round let
-    // the record rule swallow a link, so putting it first counted this record's
-    // dead link as a record claim instead of enforcing it — `links` 1 → 0,
-    // `recordsClaims` 1 → 2, no violation, gate still OK. The split this pins is
-    // the one the corpus depends on in both directions: the span is counted, the
-    // link is enforced.
+    // The split the corpus depends on in both directions: inside a record the
+    // span is counted and the link is enforced, whatever the table's order.
     const result = scan(
       ["Retires `scripts/template-sync/`.", "See [the runbook](./VPS-CUTOVER-RUNBOOK.md)."].join(
         "\n",
@@ -860,21 +800,15 @@ describe("markdown-links — the skill-name half", () => {
   });
 
   it('does NOT extend to "the `X` role" — that marker has no resolution target', () => {
-    // A2: this marker is not a false-positive factory across one namespace but
-    // three — live harness roles (`.zcode/agents/<role>.md`: qa, reviewer,
-    // fixer), model-stage names (cheap, embedder, generator,
-    // decision-candidates, kajianq) and `test-implementer`, a role the workflow
-    // retired (its duties live with the senior implementer). The harness-role
-    // namespace is a *second deliberately unchecked*
-    // marker; the real-tree suite pins that it is neither empty nor checked.
+    // The "the `X` role" marker has no resolution target: it spans live harness
+    // roles (`.zcode/agents/<role>.md`) and model-stage names, deliberately unchecked.
     const result = scan("The `cheap` role does the work.", { paths: [], skills: [] });
     expect(result.violations).toEqual([]);
   });
 
   it("matches by the span's own position, never by a line-wide search", () => {
-    // The comparison is literal and index-anchored — no regex is built from
-    // the span text (Semgrep blocks that as a ReDoS surface). So a name that
-    // merely appears elsewhere on the line cannot borrow the marker.
+    // The comparison is literal and index-anchored, with no regex built from the
+    // span text, so a name elsewhere on the line cannot borrow the marker.
     const line = "the `not-a-skill` prose and the `manager` skill";
     const spans = inlineCodeSpans(line);
     expect(spans).toHaveLength(2);

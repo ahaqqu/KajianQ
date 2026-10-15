@@ -4,29 +4,13 @@ import { productRulesEventSchema } from "./trace-product-rules";
 import { sourceRoutingEventSchema } from "./trace-source-routing";
 
 /**
- * Every recordable pipeline occurrence, keyed on `kind` with `detail` typed
- * per variant (#45; ADR-0007 "typed, checked every change"). An
- * unknown `kind` or a malformed `detail` now fails `v.parse` instead of
- * persisting an untyped record.
- *
- * Split of responsibility: the pipeline runner emits the deterministic
- * stage-boundary events (`intent`, `subquery`, `retrieval`, `assembly`) from
- * each stage's structured result; stages that call an LLM or suppress an
- * answer append `llm_call`, `refusal`, `review`, and `product_rules` through
- * the run's trace sink — the single collection point (ADR-0021).
- *
- * A variant whose rationale would push this file past the agentic 300-line cap
- * gets its own module and is composed in verbatim here (that is why the field
- * schemas live in `./trace-primitives`); every variant is still one member of
- * this one union, so `kind` stays the only discriminator and no reader branches
- * on a module. `./trace-product-rules` holds the `product_rules` variant: that
- * split was forced when the union lived in `trace.ts` and had run out of room,
- * but with this file at 233 lines against the cap the module now stands as the
- * variant's home rather than a cap escape.
- *
- * `intent.attributes` is the one deliberately-opaque slot: it carries
- * domain-specific structured data (routing filters, tags) that the engine
- * passes through without naming it. Everything else is typed.
+ * Every recordable pipeline occurrence, keyed on `kind` with `detail` typed per
+ * variant: an unknown `kind` or a malformed `detail` fails `v.parse` instead of
+ * persisting an untyped record. The runner emits the deterministic stage-boundary
+ * events; stages that call an LLM or suppress an answer append their own through
+ * the run's trace sink — the single collection point. `intent.attributes` is the
+ * one deliberately-opaque slot; everything else is typed. One union owns every
+ * kind: `kind` is the only discriminator, so no reader branches on a module.
  */
 export const TraceEventSchema = v.variant("kind", [
   v.object({
@@ -36,35 +20,23 @@ export const TraceEventSchema = v.variant("kind", [
       intent: v.pipe(v.string(), v.minLength(1)),
       confidence: v.optional(v.number()),
       reasoning: v.optional(v.string()),
-      /** Domain-specific structured data (routing filters, tags). */
       attributes: v.optional(v.record(v.string(), v.unknown())),
     }),
     cost: v.optional(CostRecordSchema),
-    /**
-     * The stage's own wall-clock duration, in milliseconds, measured by the
-     * runner around the stage call and recorded on each boundary event it emits
-     * (`intent`, `retrieval`, `assembly`) — so a stage that makes no model call
-     * and has no `cost.latencyMs` still carries its latency, and a stage that
-     * emits no boundary event carries it in `cost.latencyMs` on its `llm_call`
-     * event. Absent on traces persisted before the field existed.
-     */
+    /** The stage's wall-clock duration in milliseconds, measured by the runner;
+     * a stage with no boundary event carries it in `cost.latencyMs`. */
     durationMs: v.optional(v.pipe(v.number(), v.minValue(0))),
     at: v.pipe(v.number(), v.integer()),
   }),
-  /** Smart Router stage 3's decision (#15); owner `./trace-source-routing`. */
+  /** Smart Router stage 3's decision; owner `./trace-source-routing`. */
   sourceRoutingEventSchema,
   v.object({
     stage: v.literal("router"),
     kind: v.literal("subquery"),
     detail: v.object({
       text: v.pipe(v.string(), v.minLength(1)),
-      /**
-       * Caller-chosen opaque labels for why this sub-query exists and what
-       * produced it (e.g. a composition role and whether the model or a
-       * deterministic rule supplied it). The engine carries them into the
-       * Trace and interprets neither — a repaired or fallback sub-query is
-       * visible as such instead of passing for the model's own judgment.
-       */
+      /** Caller-chosen opaque labels for why this sub-query exists and what
+       * produced it; the engine interprets neither. */
       role: v.optional(v.pipe(v.string(), v.minLength(1))),
       origin: v.optional(v.pipe(v.string(), v.minLength(1))),
     }),
@@ -100,63 +72,36 @@ export const TraceEventSchema = v.variant("kind", [
     detail: v.object({
       /**
        * The inferred filter dimensions a search gave up because they matched
-       * nothing, and the values it gave up (a single string, or the list a
-       * set-valued dimension carried). One dimension per probe on purpose: the
-       * search's effective filter record is then `intended − every dropped
-       * dimension recorded before it`, so the trace says *which* hint was
-       * wrong instead of "all of them were". An event naming **every** live
-       * dimension at once is the record-level last resort: the sweep found no
-       * single dimension at fault, the record as a SET was what matched
-       * nothing, and one retry with `{}` followed — recorded as an adopted drop
-       * of the whole surviving record, so a wrong hint cannot turn into a
-       * refusal. (A lone live dimension's own probe drops it too; no separate
-       * retry follows, so that trace carries one event, not two.) Recorded so a
-       * relaxation is VISIBLE machinery, never a silent fallback (traceability
-       * rule): the router's filters are hints inferred by a cheap model, and an
-       * inferred hint that empties the result set makes the answer ungrounded —
-       * so the search is retried without it, and the trace says so. (`dropped`
-       * values were bare strings before sets existed; both parse.)
+       * nothing, and the values it gave up (a bare string or a list — both
+       * parse). One dimension per probe, so the effective record is `intended −
+       * every ADOPTED drop before it`; the retry is traced, never silent.
        */
       dropped: v.record(
         v.string(),
         v.union([v.string(), v.pipe(v.array(v.pipe(v.string(), v.minLength(1))), v.minLength(1))]),
       ),
-      /**
-       * The filter record the retry actually ran with — the intended set minus
-       * this dimension. Carried directly as well as derivable, so a reader never
-       * has to replay the event order to know what was searched.
-       */
+      /** The filter record the retry ran with, carried so a reader need not
+       * replay the event order. */
       retained: v.optional(
         v.record(v.string(), v.pipe(v.array(v.pipe(v.string(), v.minLength(1))), v.minLength(1))),
       ),
       /**
-       * Whether the drop was KEPT. A zero-hit search probes each dimension in a
-       * declared order and adopts only a drop that returns hits, so an event with
-       * `adopted: false` is a probe that changed nothing — machinery the trace
-       * still shows, but not a relaxation the run applied. The record a search
-       * ran with is therefore `intended − every ADOPTED drop before it`. When no
-       * single dimension is at fault the probe names every live dimension and
-       * `retained` is `{}` — the record-level last resort. Optional and absent on
-       * traces persisted before probing existed, where every recorded drop was
-       * applied.
+       * Whether the drop was KEPT: only a drop that returns hits is adopted, so
+       * `false` is a probe that changed nothing. Naming every live dimension is
+       * the record-level last resort.
        */
       adopted: v.optional(v.boolean()),
       /** Which embedding track the relaxation applied to. */
       track: v.pipe(v.string(), v.minLength(1)),
-      /**
-       * Hits the relaxed retry returned. `0` means the drop did not help —
-       * the search had nothing to give, and the next dimension (or none) is
-       * given up. Absent on traces persisted before the field existed.
-       */
+      /** Hits the relaxed retry returned; `0` means the drop did not help. */
       hits: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
     }),
     cost: v.optional(CostRecordSchema),
     at: v.pipe(v.number(), v.integer()),
   }),
   v.object({
-    /** A deterministic scope expansion (ADR-0045): the retriever added a
-     * bounded set of children of a domain-named scope, alongside the fused
-     * hits. `key`/`value` are opaque; `cap`/`truncated` show the budget. */
+    /** A deterministic scope expansion: the retriever added a bounded set of
+     * children of a domain-named scope. `key`/`value` are opaque. */
     stage: v.literal("retriever"),
     kind: v.literal("scope_expansion"),
     detail: v.object({
@@ -171,11 +116,9 @@ export const TraceEventSchema = v.variant("kind", [
     at: v.pipe(v.number(), v.integer()),
   }),
   v.object({
-    /** A deterministic neighbourhood expansion (ADR-0049): the retriever added
-     * the children neighbouring the verses already in context. `anchors` are
-     * the ids the read was keyed on, in its priority order, so every added
-     * chunk resolves to a read that produced it (same parent, within `radius`
-     * ordinals of a named anchor) instead of to "the expansion, somehow". */
+    /** A deterministic neighbourhood expansion: the retriever added the children
+     * neighbouring the verses already in context; `anchors` are the ids the read
+     * was keyed on, in its priority order. */
     stage: v.literal("retriever"),
     kind: v.literal("neighbour_expansion"),
     detail: v.object({
@@ -206,35 +149,23 @@ export const TraceEventSchema = v.variant("kind", [
     kind: v.literal("review"),
     detail: v.object({
       verdict: v.pipe(v.string(), v.minLength(1)),
-      /**
-       * The retrieved citation labels the answer actually cited (thermo-review
-       * B4): the deterministic gate's *pass* case, recorded so citation
-       * provenance is observable rather than discarded. Optional — older
-       * persisted traces predate it (ADR-0007: Trace only ever ADDS optional
-       * fields).
-       */
+      /** The retrieved citation labels the answer actually cited — the
+       * deterministic gate's *pass* case. */
       grounded: v.optional(v.array(v.string())),
-      /**
-       * True when the reviewer LLM's reply carried no readable verdict
-       * (thermo-review A3): distinguishes "reviewer passed" from "reviewer
-       * output was unusable" so the eval harness can count indeterminate
-       * reviews instead of reading both as a pass.
-       */
+      /** True when the reviewer's reply carried no readable verdict:
+       * distinguishes "passed" from "output unusable". */
       verdictParseFailed: v.optional(v.boolean()),
     }),
     cost: v.optional(CostRecordSchema),
     at: v.pipe(v.number(), v.integer()),
   }),
-  /** The deterministic product rules ran (#285); owner `./trace-product-rules`. */
+  /** The deterministic product rules ran; owner `./trace-product-rules`. */
   productRulesEventSchema,
   v.object({
     /**
-     * A decision-model call's verdict (ADR-0042 serving pattern): the shape
-     * every stage that asks a `Decider` to screen its fast path records, so a
-     * later adoption (retrieval screening, rerank) reuses it verbatim instead
-     * of inventing a per-stage variant. The call's own spend rides on a
-     * sibling `llm_call` event like every other model call, so the trace total
-     * stays the sum of recorded calls.
+     * A decision-model call's verdict: the shape every stage that asks a
+     * `Decider` to screen its fast path records. The call's spend rides on a
+     * sibling `llm_call` event.
      */
     stage: StageSchema,
     kind: v.literal("decision"),
@@ -242,32 +173,25 @@ export const TraceEventSchema = v.variant("kind", [
       /** Caller-supplied label for the screen (e.g. "citation_support"). */
       purpose: v.optional(v.string()),
       /**
-       * What the call concluded about the stage's fast path: `skip` clears it
-       * (the stage may take the cheap path and skip the expensive one),
-       * `escalate` defers to the stage's existing path. Fail-open is a
-       * caller-side classification rule, not a wire option: an unusable
-       * answer and a vendor failure both land on `escalate`.
+       * What the call concluded about the stage's fast path: `skip` clears it,
+       * `escalate` defers to the stage's existing path. Fail-open is caller-side:
+       * an unusable answer and a vendor failure both land on `escalate`.
        */
       outcome: v.picklist(["skip", "escalate"]),
       /**
-       * Why the call escalated — absent on a `skip`. The vocabulary is
-       * generic (the decision seam is domain-agnostic): `below_threshold` (a
-       * scored item missed the threshold), `no_items` (there was nothing to
-       * judge, so nothing could be cleared), `malformed_answer` (the vendor
-       * returned no usable answer for at least one item), `vendor_failure`
-       * (the call itself failed).
+       * Why the call escalated — absent on a `skip`. Closed vocabulary, generic
+       * by design: `below_threshold` (a scored item missed the threshold),
+       * `no_items` (nothing to judge), `malformed_answer` (no usable vendor
+       * answer for an item), `vendor_failure` (the call itself failed).
        */
       reason: v.optional(
         v.picklist(["below_threshold", "no_items", "malformed_answer", "vendor_failure"]),
       ),
       /** The per-item score threshold the outcome was computed against. */
       threshold: v.optional(v.number()),
-      /**
-       * Per-item verdicts in request order. `index` is the caller's item
-       * position, `key` its identity in the decision request, `score` the
-       * vendor's Noul answer (absent = no usable answer for that item, e.g.
-       * on a vendor failure or a malformed response).
-       */
+      /** Per-item verdicts in request order: `index` the caller's position, `key`
+       * its identity in the request, `score` the vendor's answer (absent = no
+       * usable answer for that item). */
       items: v.array(
         v.object({
           index: v.pipe(v.number(), v.integer(), v.minValue(0)),

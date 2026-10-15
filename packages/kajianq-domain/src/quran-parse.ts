@@ -2,7 +2,7 @@ import type { MorphToken } from "@app/contracts";
 import { TOTAL_SURAHS, TOTAL_AYAHS, type QuranAyah, type QuranSurahMeta } from "./quran-source";
 
 /**
- * Parsers for the Quran corpus sources (#6).
+ * Parsers for the Quran corpus sources.
  *
  * Two upstream formats, both keyed to Tanzil numbering (the alignment key):
  *
@@ -10,14 +10,14 @@ import { TOTAL_SURAHS, TOTAL_AYAHS, type QuranAyah, type QuranSurahMeta } from "
  *    the verified Indonesian translation `teks_terjemah`, with surah-level
  *    metadata in a `surah_list.json` companion. HTML tags/footnote markers in
  *    the translation are stripped into a *new* cleaned field — the raw text
- *    is preserved verbatim upstream as `text_raw` (AGENTS.md rule 11).
+ *    is preserved verbatim upstream as `text_raw` (the raw source is immutable).
  *  - **Quranic Arabic Corpus morphology** (tab-separated, Buckwalter-ish
  *    transliteration): per-token lemma+root keyed `(surah:ayah:word:segment)`
  *    (ADR-0014 — GPL, build dependency, stored alongside the Arabic text).
  *
- * Kemenag licensing (human prerequisite #2) gates *redistribution* of the raw
- * translation, not ingestion: the raw archive lives in R2 at runtime, never
- * committed to the repo.
+ * Kemenag licensing gates *redistribution* of the raw translation, not
+ * ingestion: the raw archive lives in R2 at runtime, never committed to the
+ * repo.
  */
 
 /** One ayah row of a per-surah JSON file. */
@@ -94,14 +94,14 @@ export function parseSurahList(json: unknown): QuranSurahMeta[] {
 }
 
 /**
- * Integrity check 1 (issue #6 AC): all expected ayah present with Arabic
- * text, translation, and surah/ayah metadata. Throws on the first violation
- * — a truncated or shifted parse must fail loudly, never ingest silently.
+ * Integrity check 1: all expected ayah present with Arabic text, translation,
+ * and surah/ayah metadata. Throws on the first violation — a truncated or
+ * shifted parse must fail loudly, never ingest silently.
  *
- * `expected` defaults to the full Tanzil corpus (114 surahs / 6,236 ayahs);
- * callers that intentionally ingest a subset (tests, `--limit` runs) pass
- * their own totals so the check stays exact for what is being ingested —
- * a genuinely truncated corpus still fails the `ayahs` count.
+ * `expected` defaults to the full Tanzil corpus totals (`TOTAL_SURAHS` /
+ * `TOTAL_AYAHS`); callers that intentionally ingest a subset (tests, `--limit`
+ * runs) pass their own totals so the check stays exact for what is being
+ * ingested — a genuinely truncated corpus still fails the `ayahs` count.
  */
 export function assertAyahIntegrity(
   ayahs: readonly QuranAyah[],
@@ -191,10 +191,10 @@ export function parseMorphology(text: string): Map<string, MorphToken[]> {
 }
 
 /**
- * Integrity check 2 (issue #6 AC): the morphology covers every ayah — the
- * corpus is keyed to the same diacritized Uthmani text, so a missing ayah in
- * the morphology means the join would silently drop lemma/root evidence.
- * Returns the list of missing ayah keys (empty when coverage is complete).
+ * Integrity check 2: the morphology covers every ayah — the corpus is keyed to
+ * the same diacritized Uthmani text, so a missing ayah in the morphology means
+ * the join would silently drop lemma/root evidence. Returns the list of missing
+ * ayah keys (empty when coverage is complete).
  */
 export function missingMorphologyCoverage(
   ayahs: readonly QuranAyah[],
@@ -213,11 +213,11 @@ export function missingMorphologyCoverage(
 /**
  * Word-count consistency between the Uthmani text's whitespace tokens (minus
  * standalone waqf/annotation marks) and the morphology's word count. The two
- * sources use different segmentation conventions in ~1% of ayahs (e.g.
- * Tanzil splits a clitic the corpus joins), so this returns *diffs* for the
- * report rather than throwing — the (surah, ayah) number key remains the
- * authoritative join, and diffs are surfaced, never force-merged (AGENTS.md
- * rule: disputed alignment is labeled, never merged).
+ * sources use different segmentation conventions on some ayahs (e.g. Tanzil
+ * splits a clitic the corpus joins), so this returns *diffs* for the report
+ * rather than throwing — the (surah, ayah) number key remains the authoritative
+ * join, and diffs are surfaced, never force-merged (AGENTS.md: disputed
+ * alignment is labeled, never merged).
  */
 export function morphologyWordCountDiffs(
   ayahs: readonly QuranAyah[],

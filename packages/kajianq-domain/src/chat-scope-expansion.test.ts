@@ -12,22 +12,11 @@ import { createStubChatProviders } from "./test-utils/stub-chat-providers";
 /**
  * Surah-reference scoped expansion (ADR-0045) — the retrieval behaviour.
  *
- * The invariant under test: a question that names a surah retrieves that
- * surah's children **deterministically and bounded**, alongside (never
- * instead of) the fused hits; a question that names no surah retrieves
- * nothing extra; and the result does not depend on the router's paraphrase.
- *
- * Adversarial cases named before writing:
- * - the exact #241 sub-query pair (failing vs passing wording) must produce
- *   the same expansion, including `QS. 1:1`, which both previously missed;
- * - a paraphrase that drops the surah name entirely must still expand (the
- *   scope is detected on the verbatim question, not the sub-queries);
- * - a long surah (Al-Baqarah, 286 verses) must be capped, and the cap must be
- *   reported as truncation;
- * - a child already produced by the fused tracks must not be duplicated or
- *   counted as expansion output;
- * - a question naming no surah must not read the store at all (no silent
- *   extra query per request).
+ * The invariant under test: a question that names a surah retrieves that surah's
+ * children **deterministically and bounded**, alongside (never instead of) the
+ * fused hits; a question that names no surah retrieves nothing extra and does not
+ * read the store; and the result does not depend on the router's paraphrase,
+ * because the scope is detected on the verbatim question.
  */
 
 const COST = { modelId: "stub-embedder", tokensIn: 1, tokensOut: 1, latencyMs: 1, costMicroUsd: 0 };
@@ -38,12 +27,10 @@ const HADITH_VEC = [1, 0];
 const QURAN_VEC = [0, 1];
 
 const GS_V0_015 = "What does Surah Al-Fatihah mean and why is it recited in every prayer?";
-/** The failing sub-query from #241's trace (`eval_run 127a6bc5…`). */
 const FAILING_SUB_QUERIES = [
   "tafsir of Surah Al-Fatihah meaning and virtues",
   "تفسير سورة الفاتحة معانيها وفضلها",
 ];
-/** The passing sub-query from #241's trace (`trace e1321d3e…`). */
 const PASSING_SUB_QUERIES = [
   "meaning and tafsir of Surah Al-Fatihah",
   "تفسير سورة الفاتحة ومعانيها",
@@ -69,8 +56,8 @@ async function seedSurah(
         textAr: `ar-${surah}:${i + 1}`,
         textId: `id-${surah}:${i + 1}`,
         citation: { sourceType: "quran", surah, ayah: i + 1 },
-        // Far from the query vector and unembedded on the fallback track, so
-        // the fused retrieval returns none of them — the #142/#241 shape.
+        // Far from the query vector and unembedded on the fallback track, so the
+        // fused retrieval returns none of them.
         embeddingPrimary: QURAN_VEC,
         embeddingFallback: null,
         ordinal: i,
@@ -109,7 +96,6 @@ async function seedHadith(store: ReturnType<typeof createMemoryRagStore>): Promi
   );
 }
 
-/** A seeded corpus: Al-Fatihah (7), Al-Baqarah (286), and one retrievable hadith. */
 async function corpus() {
   const store = createMemoryRagStore();
   await seedSurah(store, 1, 7);
@@ -178,9 +164,7 @@ describe("surah-reference scoped expansion", () => {
     const { retrieve } = harness(store);
     const chunks = await retrieve(routed(GS_V0_015, FAILING_SUB_QUERIES));
 
-    // The fused track still contributes its hadith — expansion never replaces.
     expect(chunks.some((c) => c.id === hadithId)).toBe(true);
-    // …and all seven Al-Fatihah verses arrive from the expansion.
     const expansion = chunks.filter((c) => c.origin === SCOPE_EXPANSION_ORIGIN);
     expect(labels(expansion)).toEqual([
       "QS. 1:1",
@@ -221,12 +205,11 @@ describe("surah-reference scoped expansion", () => {
 
     const expansion = chunks.filter((c) => c.origin === SCOPE_EXPANSION_ORIGIN);
     expect(expansion).toHaveLength(cap);
-    // Deterministic window: the surah's opening, in the corpus's ordinal order
-    // (asserted on retrieval order, not on a lexicographic label sort).
+    // Deterministic window: the surah's opening, in the corpus's ordinal order.
     expect(expansion.map((c) => (c.metadata ?? {})["citation"])).toEqual(
       Array.from({ length: cap }, (_, i) => `QS. 2:${i + 1}`),
     );
-    // The read probes one past the cap — that is the exact truncation signal.
+    // The read probes one past the cap — the exact truncation signal.
     expect(reads.lastLimit).toBe(cap + 1);
     const event = events.find((e) => e.kind === "scope_expansion") as
       | {
@@ -274,8 +257,6 @@ describe("surah-reference scoped expansion", () => {
   it("records a recognised but empty scope (machinery is never hidden)", async () => {
     const { store } = await corpus();
     const { retrieve, events } = harness(store);
-    // Surah 58 is not in the test corpus: the reference is recognised, the
-    // read returns nothing, and the trace still says so.
     const chunks = await retrieve(routed("Jelaskan Surah Al-Mujadilah!", ["isi al-mujadilah"]));
     expect(chunks.filter((c) => c.origin === SCOPE_EXPANSION_ORIGIN)).toHaveLength(0);
     const event = events.find((e) => e.kind === "scope_expansion") as
@@ -288,9 +269,7 @@ describe("surah-reference scoped expansion", () => {
   it("does not duplicate a child the fused tracks already retrieved", async () => {
     const store = createMemoryRagStore();
     await seedSurah(store, 1, 7);
-    // Seed a retrievable hadith so the fused set is non-empty.
     await seedHadith(store);
-    // Make one Al-Fatihah verse retrievable too: identical to the query vector.
     const parentId = await Effect.runPromise(
       store.insertDocParent({
         sourceKey: surahSourceKey(1),
@@ -314,10 +293,8 @@ describe("surah-reference scoped expansion", () => {
     const { retrieve, events } = harness(store);
     const chunks = await retrieve(routed(GS_V0_015, ["meaning and tafsir of Surah Al-Fatihah"]));
     const qs11 = chunks.filter((c) => (c.metadata ?? {})["citation"] === "QS. 1:1");
-    // Exactly once: the fused copy, not a duplicated expansion copy.
     expect(qs11).toHaveLength(1);
     expect(qs11[0]?.origin).toBeUndefined();
-    // The expansion therefore added the surah's other six children (7 − 1).
     const event = events.find((e) => e.kind === "scope_expansion") as
       | { detail: { returned: number } }
       | undefined;
@@ -327,10 +304,8 @@ describe("surah-reference scoped expansion", () => {
 });
 
 /**
- * The evidence for #241 specifically. The flake was caused by sub-query
- * wording, not by the question, so the expansion must be word-for-word
- * identical across the trace's failing and passing sub-query sets — and it
- * must survive a paraphrase that does not name the surah at all, because the
+ * Expansion must be word-for-word identical across the failing and passing
+ * sub-query sets, and must survive a paraphrase that does not name the surah: the
  * scope is read off the verbatim question.
  */
 describe("evidence for #241 — expansion is independent of router paraphrase", () => {
@@ -341,7 +316,6 @@ describe("evidence for #241 — expansion is independent of router paraphrase", 
     const passing = await retrieve(routed(GS_V0_015, PASSING_SUB_QUERIES));
     const failingLabels = labels(failing.filter((c) => c.origin === SCOPE_EXPANSION_ORIGIN));
     const passingLabels = labels(passing.filter((c) => c.origin === SCOPE_EXPANSION_ORIGIN));
-    // QS. 1:1 (the Basmalah, #142's unreachable short verse) is present in both.
     expect(failingLabels).toContain("QS. 1:1");
     expect(passingLabels).toEqual(failingLabels);
   });
@@ -356,11 +330,8 @@ describe("evidence for #241 — expansion is independent of router paraphrase", 
   });
 
   it("does not expand when only the sub-queries name a surah (C2's asymmetric negative)", async () => {
-    // The inverse of the pair above, and the one that actually pins the
-    // mechanism: the question names no surah, so no scope may be read even
-    // though a sub-query names one loudly. Both #241 wordings above carry the
-    // `surah` marker, so a sub-query-keyed implementation would pass them by
-    // coincidence — it cannot pass this.
+    // The question names no surah, so no scope may be read even though a sub-query
+    // names one loudly — a sub-query-keyed implementation cannot pass this.
     const { store } = await corpus();
     const { retrieve, events, reads } = harness(store);
     const chunks = await retrieve(
@@ -370,17 +341,16 @@ describe("evidence for #241 — expansion is independent of router paraphrase", 
     );
     expect(chunks.every((c) => c.origin !== SCOPE_EXPANSION_ORIGIN)).toBe(true);
     expect(events.filter((e) => e.kind === "scope_expansion")).toHaveLength(0);
-    // The read must not happen at all — detection is the gate, not a filter
-    // applied after the store round trip.
+    // The read must not happen at all — detection is the gate, not a filter applied
+    // after the store round trip.
     expect(reads.count).toBe(0);
   });
 });
 
 /**
- * The whole point of the trace rule: an expansion that left no record would be
- * a silent retrieval path. This runs the real `runChatPipeline` runner — which
- * parses the collected events into the shared `Trace` contract, so a malformed
- * event fails the run — and reads the trace a scorer/operator would read.
+ * An expansion that left no record would be a silent retrieval path. This runs the
+ * real `runChatPipeline` runner, which parses collected events into the shared
+ * `Trace` contract, so a malformed event fails the run.
  */
 describe("the expansion on the persisted answer trace", () => {
   it("records a scope_expansion event and marks the chunks it added", async () => {
@@ -392,8 +362,7 @@ describe("the expansion on the persisted answer trace", () => {
           store: store as never,
           bridge: (e) => Effect.runPromise(e as never),
           language: "en",
-          // Mirror the retriever tests: a fused set that misses Al-Fatihah
-          // entirely, so the expansion is visibly the thing that adds it.
+          // A fused set that misses Al-Fatihah entirely, so the expansion is visibly what adds it.
           retrieverLimit: 1,
         },
         { text: GS_V0_015 },

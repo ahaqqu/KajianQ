@@ -20,7 +20,7 @@ type ChatEnv = import("../env").ApiEnv["Bindings"] & Record<string, string | und
 const HISTORY_LIMIT = 10;
 
 /**
- * POST /v1/chat (#10): the guarded, SSE-streamed chat surface. Validates the
+ * POST /v1/chat: the guarded, SSE-streamed chat surface. Validates the
  * body, resolves auth, creates the session, persists the user message, loads
  * the session's prior turns for follow-up context, runs the KajianQ pipeline
  * through the engine runner, persists the answer trace + assistant message,
@@ -37,16 +37,15 @@ const HISTORY_LIMIT = 10;
  * *complete* answer before any of it is delivered — the citation invariant is
  * checked on the whole text — and a refused answer discards the vendor deltas
  * entirely: the wire carries the plain refusal as ordinary `delta` frames
- * (round-3 A4: there is no separate `refusal` event type — the refusal signal
- * lives on the trace's `refusal` event, which the eval harness reads). A
- * fabricated citation therefore never reaches the user as an answer, only as
- * a refusal.
+ * (there is no separate `refusal` event type — the refusal signal lives on the
+ * trace's `refusal` event, which the eval harness reads). A fabricated citation
+ * therefore never reaches the user as an answer, only as a refusal.
  *
  * The trade-off, stated plainly: this gives up time-to-first-token (deltas
  * are replayed after validation rather than as they arrive) in exchange for
- * never putting an unvalidated citation on the wire. For a product whose #1
- * stated risk is hallucinated religious content, that is the correct side of
- * the trade. It is recorded in SPECS §3.3 and flagged in the PR.
+ * never putting an unvalidated citation on the wire — the correct side of the
+ * trade for a product whose primary stated risk is hallucinated religious
+ * content. It is recorded in SPECS §3.3.
  */
 export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION, async (c) => {
   const env = c.env as ChatEnv;
@@ -57,9 +56,8 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
   });
   let wiring: ChatWiring;
   {
-    // B1: one shared wiring→503 posture (chat-wiring.ts), not a per-route copy.
-    // Round-3 B1: the direct `wiringOr503` form, same as the auth route — the
-    // one-argument `chatWiringOr503` wrapper had a single caller.
+    // The shared wiring→503 posture (chat-wiring.ts), not a per-route copy: the
+    // direct `wiringOr503` form, same as the auth route.
     const resolved = wiringOr503(() => buildChatWiring(env), logger, "chat_not_configured");
     if ("response" in resolved) return resolved.response;
     wiring = resolved.wiring;
@@ -67,7 +65,7 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
 
   const bodyParse = await parseChatRequest(c.req.raw, logger);
   if (!bodyParse.success) {
-    // C3: distinct, diagnostic codes for JSON-parse vs schema failures.
+    // Distinct, diagnostic codes for JSON-parse vs schema failures.
     return c.json({ error: bodyParse.error }, 400);
   }
   const req = bodyParse.output;
@@ -78,11 +76,11 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
   const { userId } = c.get("authed");
 
   // Session + user message, via the store seam (promise-shaped bridge).
-  // A6: an explicitly supplied sessionId appends to that session (validated
-  // to belong to the authenticated user); absent = a new session. The body
-  // contract has already refused a non-UUID id (#271 — 400 invalid_request
-  // above, before auth or the store), so the seam is never handed a value its
-  // `uuid` column cannot cast; a well-formed unknown or foreign UUID stays the
+  // An explicitly supplied sessionId appends to that session (validated to
+  // belong to the authenticated user); absent = a new session. The body
+  // contract has already refused a non-UUID id (400 invalid_request above,
+  // before auth or the store), so the seam is never handed a value its `uuid`
+  // column cannot cast; a well-formed unknown or foreign UUID stays the
   // documented 404, indistinguishable from one that does not exist.
   const runStore = wiring.runStore;
   let sessionId = req.sessionId ?? null;
@@ -111,8 +109,8 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
   const deltas: string[] = [];
 
   const answer = await runChatPipelinePromise(
-    // B6: typed as the domain's own deps shape so the literal is
-    // compile-checked — no `as Parameters<…>` cast to hide a rename.
+    // Typed as the domain's own deps shape so the literal is compile-checked —
+    // no `as Parameters<…>` cast to hide a rename.
     {
       ...wiring.pipeline,
       language: req.language ?? "id",
@@ -125,9 +123,9 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
       traceId,
       onFailedTrace: (trace) => {
         // A failed run's trace still persists (traceability guardrail);
-        // persistence failure here must not mask the pipeline error — but
-        // C4: it is logged (structured, with the correlation id) so a lost
-        // trace is never silent.
+        // persistence failure here must not mask the pipeline error — it is
+        // logged (structured, with the correlation id) so a lost trace is never
+        // silent.
         void runStore(store.insertAnswerTrace({ messageId: answerMessageId, userId, trace })).catch(
           (err: unknown) => {
             logger.warn("answer_trace.persist_failed", {
@@ -144,12 +142,9 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
   // Persist the settled answer trace + assistant message, then stream.
   //
   // The stored row id comes from the store, never from `answer.trace.id`: the
-  // column is `uuid` while the contract's id is any non-empty string, so the
-  // two cannot always agree. Three things depend on the STORED id —
-  // `chat_messages.answer_trace_id` and the eval ledger's
-  // `eval_results.answer_trace_id` (both FK this column), and the SSE `meta`
-  // frame the eval harness reads its ledger id from. Assuming `trace.id` broke
-  // the write path and surfaced as a 500 on every answer.
+  // column is `uuid` while the contract's id is any non-empty string, and the
+  // STORED id is what `chat_messages.answer_trace_id`, the eval ledger's
+  // `eval_results.answer_trace_id` and the SSE `meta` frame all read.
   const storedTraceId = (await runStore(
     store.insertAnswerTrace({ messageId: answerMessageId, userId, trace: answer.trace }),
   )) as string;
@@ -163,14 +158,12 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
   );
 
   // The SSE wire contract (meta → deltas → citations → trace → done,
-  // ADR-0034 + ADR-0040 for the `trace` frame — #11/#12). This branch's real
-  // question is "was the settled text replaced?", asked through the trace's
-  // own refusal decision, which has ONE owner (`traceRefused`, chat-trace.ts)
-  // so the flag below and this branch cannot drift apart (#436). The map is
-  // stated there, and not re-enumerated here (a list that omitted the #443
-  // `asserting_refusal_draft` trigger is what made the two spellings drift,
-  // review C1 of #443): a `generator_refusal` — the HYBRID shape (a refusal
-  // sentence inside a partial answer) or the pure refusal alone (#439) —
+  // ADR-0034 + ADR-0040 for the `trace` frame). This branch's real question is
+  // "was the settled text replaced?", asked through the trace's own refusal
+  // decision, which has ONE owner (`traceRefused`, chat-trace.ts) so the flag
+  // below and this branch cannot drift apart; the trigger→delivery map is stated
+  // there, not re-enumerated here. A `generator_refusal` — the HYBRID shape (a
+  // refusal sentence inside a partial answer) or the pure refusal alone —
   // returns the draft, with the `Always` rules applied for the hybrid, so this
   // path chunks the very text the user is shown, chips and all; every other
   // trigger replaces the text, so the vendor's delta sequence is not replayed
@@ -189,13 +182,11 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
       ? [...deltas, ...chunkText(answer.text.slice(streamed.length))]
       : chunkText(answer.text);
 
-  // Both structured wire frames — the citation frame (#11, ADR-0040) and the
-  // user-facing Trace panel frame (#12, ADR-0007) — derive from the trace
-  // that was JUST persisted above, with ONE shared store read for the display
-  // rows (thermo-review B1: the per-frame entries used to repeat the same
-  // sequential `getDocChildrenByIds` before first byte). The trace is the
-  // source of truth for which citations may exist, and the client renders the
-  // frames as-is — it never re-implements the citation grammar nor
+  // Both structured wire frames — the citation frame (ADR-0040) and the
+  // user-facing Trace panel frame (ADR-0007) — derive from the trace that was
+  // JUST persisted above, with ONE shared store read for the display rows. The
+  // trace is the source of truth for which citations may exist, and the client
+  // renders the frames as-is — it never re-implements the citation grammar nor
   // reconstructs pipeline machinery from raw events.
   const { citations, trace: traceFrame } = await answerFramesFor({
     trace: answer.trace,
@@ -255,11 +246,10 @@ function chunkText(text: string): string[] {
  * store failure (the question remains answerable) with a structured warning —
  * a missing history must be visible in ops, never a silent quality drop.
  *
- * Round-3 B3: the bridge's result is cast to the store contract's declared
- * return type (`getChatMessages` → `readonly ChatMessage[]`), not to an
- * anonymous shape re-checked with `Array.isArray` — the contract is the
- * boundary, and guessing past it hides a contract violation instead of
- * surfacing one.
+ * The bridge's result is cast to the store contract's declared return type
+ * (`getChatMessages` → `readonly ChatMessage[]`), not to an anonymous shape
+ * re-checked with `Array.isArray` — the contract is the boundary, and guessing
+ * past it hides a contract violation instead of surfacing one.
  */
 async function loadHistory(
   store: ChatWiring["fullStore"],

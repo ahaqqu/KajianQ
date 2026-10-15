@@ -2,11 +2,8 @@ import type { Effect } from "effect";
 import type { EvalRunReport, IngestionReport } from "@app/contracts";
 import type { StoreError } from "@app/rag-core";
 
-/**
- * Eval-ledger read/write half of the `RagStore` seam (issue #8), split from
- * `rag-store.ts` to respect the agentic 300-line file cap — the `RagStore`
- * interface extends this one, so consumers see one unchanged seam.
- */
+/** Eval-ledger read/write half of the `RagStore` seam; the `RagStore` interface
+ * extends this one, so consumers see one unchanged seam. */
 
 // -- Batch reports (kajianq-traceability rule 4) ----------------------------
 
@@ -15,8 +12,8 @@ import type { StoreError } from "@app/rag-core";
  * ledger (`eval_runs`). Idempotent by id: re-running with the same run id
  * refreshes label and report in place. The report is stored verbatim as
  * JSONB so the persisted trace remains the single source of truth. The
- * eval harness (thermo-review A5) reads the eval-run rows back through
- * `getEvalRun`, typed as the `EvalRunReport` it writes.
+ * eval harness reads the eval-run rows back through `getEvalRun`, typed as
+ * the `EvalRunReport` it writes.
  */
 export interface RagStoreEvalRunWrite {
   insertEvalRun(input: {
@@ -27,10 +24,9 @@ export interface RagStoreEvalRunWrite {
   }): Effect.Effect<string, StoreError>;
 
   /**
-   * Idempotent upsert of the final eval report onto its run row
-   * (thermo-review A3/A4: the harness creates the run first, then refreshes
-   * the row with the completed `EvalRunReport` — no blank-runId writes, no
-   * caller-side stamping).
+   * Idempotent upsert of the final eval report onto its run row: the harness
+   * creates the run first, then refreshes the row with the completed
+   * `EvalRunReport` — no blank-runId writes, no caller-side stamping.
    */
   refreshEvalRun(
     runId: string,
@@ -39,7 +35,7 @@ export interface RagStoreEvalRunWrite {
   ): Effect.Effect<void, StoreError>;
 }
 
-// -- Eval ledger reads/writes (issue #8) ------------------------------------
+// -- Eval ledger reads/writes -----------------------------------------------
 
 export interface RagStoreEvalLedger {
   /**

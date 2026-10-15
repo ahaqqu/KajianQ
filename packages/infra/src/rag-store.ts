@@ -5,32 +5,21 @@ import type { RagStoreFeedback } from "./rag-store-feedback-seam";
 import type { RagStoreTrace } from "./rag-store-trace-seam";
 
 /**
- * RagStore — the single persistence seam (ADR-0008), Effect-signatured
- * (ADR-0027 decision 7): every method returns `Effect<A, StoreError>` and no
- * error kind travels via `throw` across the seam. Every structured-data
- * access in the system goes through this interface; engine packages and apps
- * never hold a database client or SQL. The self-hosted Postgres + pgvector
- * implementation is one adapter — the interface keeps it swappable (a second
- * Postgres, SQLite, an in-memory fake for tests) without touching consumers.
+ * RagStore — the single persistence seam: every method returns
+ * `Effect<A, StoreError>` and no error kind travels via `throw` across it;
+ * engine packages and apps never hold a database client or SQL, so the adapter
+ * behind the seam stays swappable without touching consumers.
  *
- * The interface is domain-agnostic by design (AGENTS.md §1.1): filters and
- * metadata are opaque pass-throughs. Domain vocabulary lives in the domain
- * pack and arrives only as *values* inside `metadata`/`filters`. The method
- * groups live in split seam modules (`rag-store-corpus-seam.ts`,
- * `rag-store-eval-seam.ts`, `rag-store-feedback-seam.ts`) so this file stays
- * inside the agentic 300-line cap; `RagStore` extends them, so consumers see
- * one unchanged seam.
+ * `filters` and `metadata` are opaque pass-throughs: domain vocabulary arrives
+ * only as *values* inside them. The method groups live in split seam modules
+ * that `RagStore` extends, so consumers see one unchanged seam.
  */
 export type { StoreError };
 
 /** The failure type of every RagStore method — see `@app/rag-core`'s closed taxonomy. */
 export type StoreFailure = StoreError;
 
-/**
- * Make the given keys of `T` optional, leaving every other property exactly
- * as declared. Used for the `*Insert` shapes below so "same as the row type
- * minus server-owned fields" cannot drift from the source type.
- */
+/** The row type with the given keys optional; the `*Insert` shapes below must not drift from it. */
 type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
 
 /** A persisted conversational turn, as the history reader returns it. */
@@ -43,44 +32,32 @@ export type ChatMessage = {
   createdAt: number;
 };
 
-/**
- * A parent document — a coarse retrieval unit (a container of child chunks).
- */
+/** A parent document — a coarse retrieval unit containing child chunks. */
 export type DocParent = {
   id: string;
-  /** Caller-supplied provenance key, e.g. a source-collection identifier. */
+  /** Caller-supplied provenance key; the store upserts on it and never interprets it. */
   sourceKey: string;
   title: string | null;
-  /** Opaque payload; the caller decides what goes here. */
   metadata: Record<string, unknown>;
   createdAt: number;
 };
 
 export type DocParentInsert = PartialBy<DocParent, "id" | "createdAt">;
 
-/**
- * A child chunk — the fine-grained retrieved unit. Carries the dual embedding
- * tracks mandated by ADR-0013 (a canonical primary track plus a
- * fallback/fusion track) plus the immutable raw source text (AGENTS.md §2:
- * `text_raw` is never overwritten). Embedding columns are nullable until the
- * retrieval posture is fixed by a downstream gate; both columns exist from
- * the start so that choice stays switchable without re-ingestion.
- */
+/** A child chunk — the fine-grained retrieved unit. Carries the dual embedding
+ * tracks (canonical primary plus fallback/fusion) and the immutable raw source
+ * text; the embedding columns are nullable until the retrieval posture is
+ * fixed, and both exist from the start so that choice needs no re-ingestion. */
 export type DocChild = {
   id: string;
   parentId: string;
   /** Original text exactly as ingested; never rewritten in place. */
   textRaw: string;
-  /** Primary-track text (the canonical evidence layer per ADR-0013). */
+  /** Primary-track text (the canonical evidence layer). */
   textAr: string;
-  /** Secondary-track text (the fallback/fusion layer per ADR-0013), if any. */
+  /** Secondary-track text (the fallback/fusion layer), if any. */
   textId: string | null;
-  /**
-   * Structured identity of the chunk for the deterministic citation
-   * validator ("every citation must exist in retrieved chunks"). Opaque
-   * JSONB — the caller decides the shape; the engine stores and returns it
-   * verbatim.
-   */
+  /** Opaque JSONB citation identity, stored and returned verbatim. */
   citation: Record<string, unknown>;
   /** 1536-dim embedding of the primary-track text; null until embedded. */
   embeddingPrimary: readonly number[] | null;
@@ -92,43 +69,28 @@ export type DocChild = {
   createdAt: number;
 };
 
-/**
- * Row-shaped insert: `id`/`createdAt` are store-generated and `citation`
- * defaults to `{}` (see {@link DocChild.citation}).
- */
+/** Insert shape: `id`/`createdAt` are store-generated, `citation` defaults to `{}`. */
 export type DocChildInsert = PartialBy<DocChild, "id" | "createdAt" | "citation">;
 
-/** A child chunk read by id, plus its parent document's display title. */
 export type DocChildById = DocChild & { parentTitle: string | null };
 
-/**
- * An aligned source/target text pair with its per-token morphology — the
- * seed unit a downstream terminology build consumes (ADR-0014). The shape is
- * domain-agnostic: `citation` is the pair's opaque address, `textPrimary` is
- * the canonical-evidence track and `textSecondary` the display track
- * (ADR-0013 roles), and `morphology` is the verbatim per-token annotation.
- */
+/** An aligned source/target text pair with its per-token morphology — the seed
+ * unit a downstream terminology build consumes. `citation` is the pair's opaque
+ * address and `morphology` the verbatim per-token annotation. */
 export type AlignedPairInsert = {
-  /** Caller-supplied provenance key — the store upserts on it (rule 11). */
+  /** Caller-supplied provenance key — the store upserts on it. */
   pairKey: string;
   citation: Record<string, unknown>;
   textPrimary: string;
   textSecondary: string;
-  /** Verbatim `MorphToken`-shaped annotation from the morphology source. */
   morphology: readonly Record<string, unknown>[];
 };
 
-/**
- * Which embedding track a similarity search runs against. Named by role, not
- * by language: `primary` is the canonical evidence layer and `fallback` the
- * fusion layer (ADR-0013). KajianQ maps these roles onto its AR/ID language
- * tracks at the domain-pack boundary — the engine itself stays
- * language-agnostic (AGENTS.md §1.1). The DB columns carry the same names
- * (`embedding_primary` / `embedding_fallback`).
- */
+/** Which embedding track a similarity search runs against, named by role, not
+ * by language: a domain pack maps `primary`/`fallback` onto its own language
+ * tracks, so the engine stays language-agnostic. */
 export type RetrievalTrack = "primary" | "fallback";
 
-/** A scored retrieval hit with its dense rank, for later fusion. */
 export type SimilarChild = {
   child: DocChild;
   /** Cosine distance from pgvector (lower is closer); fusion is the caller's job. */
@@ -151,11 +113,8 @@ export interface RagStore
     metadata?: Record<string, unknown>;
   }): Effect.Effect<string, StoreError>;
 
-  /**
-   * Resolve a chat session's owning user id; null when the session does not
-   * exist (thermo-review A6: the chat route validates that a client-supplied
-   * `sessionId` belongs to the authenticated user before appending).
-   */
+  /** Resolve a chat session's owning user id; null when the session does not
+   * exist — the chat route checks a client-supplied `sessionId` against it. */
   getChatSessionUser(sessionId: string): Effect.Effect<string | null, StoreError>;
 
   insertChatMessage(input: {
@@ -167,13 +126,8 @@ export interface RagStore
     metadata?: Record<string, unknown>;
   }): Effect.Effect<string, StoreError>;
 
-  /**
-   * Read a chat session's prior messages, oldest first, for follow-up
-   * context (ticket #10: "follow-up questions within a session use
-   * conversation context"). `limit` caps the returned tail — the caller
-   * chooses how much history rides the prompt; the store returns the most
-   * recent `limit` messages in chronological order.
-   */
+  /** Read a chat session's prior messages, oldest first. `limit` caps the
+   * returned tail: the most recent `limit` messages, in chronological order. */
   getChatMessages(
     sessionId: string,
     opts?: { limit?: number },
@@ -181,11 +135,9 @@ export interface RagStore
 
   // -- Anonymous sessions (ADR-0017) ----------------------------------------
 
-  /**
-   * Mint an anonymous session: creates the user row and a 30-day Bearer
-   * session in one step, returning the raw token to hand to the client.
-   * The token is stored hashed; plaintext leaves the store exactly once.
-   */
+  /** Mint an anonymous session: creates the user row and a 30-day Bearer
+   * session in one step, returning the raw token for the client. The token is
+   * stored hashed; plaintext leaves the store exactly once. */
   createSession(): Effect.Effect<
     {
       userId: string;
@@ -196,30 +148,21 @@ export interface RagStore
     StoreError
   >;
 
-  /**
-   * Resolve a Bearer token to its owning user id. Returns null for unknown
-   * or expired sessions so the caller can map it to a 401.
-   */
+  /** Resolve a Bearer token to its owning user id; null for unknown or expired
+   * sessions, which the caller maps to a 401. */
   resolveUserId(token: string): Effect.Effect<string | null, StoreError>;
 
-  /**
-   * Delete a user and everything they own (sessions, chat sessions and their
-   * messages, feedback, and the user's answer traces) via cascade. Anonymous
-   * self-deletion endpoint in #10. The trace cascade is decided by ADR-0007.
-   */
+  /** Delete a user and everything they own (sessions, chat sessions and their
+   * messages, feedback, and the user's answer traces) via cascade. */
   deleteUserCascade(userId: string): Effect.Effect<void, StoreError>;
 
-  /**
-   * Reclaim expired anonymous sessions: delete session rows whose TTL has
-   * passed AND the anonymous users left with no session (thermo-review A5 —
-   * the FK cascades user → session, never the reverse, so users and their
-   * chat/trace subtrees would otherwise accumulate forever). Returns the
-   * count of reclaimed users, the storage-growth number the cron reports.
-   *
-   * Wire this to a periodic job (Worker cron); `resolveUserId` already
-   * rejects expired rows on read, so this is a storage-reclamation concern,
-   * not a correctness one.
-   */
+  /** Reclaim expired anonymous sessions: delete session rows whose TTL has
+   * passed AND the anonymous users left with no session — the FK cascades
+   * user → session, never the reverse, so those users and their chat/trace
+   * subtrees would otherwise accumulate forever. Returns the count of
+   * reclaimed users. Wire this to a periodic job: `resolveUserId` already
+   * rejects expired rows on read, so this is storage reclamation, not a
+   * correctness concern. */
   cleanupExpiredSessions(before?: Date): Effect.Effect<number, StoreError>;
 }
 export type { RagStoreEvalLedger, RagStoreEvalRunWrite } from "./rag-store-eval-seam";

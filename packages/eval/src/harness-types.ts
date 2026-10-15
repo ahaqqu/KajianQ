@@ -1,9 +1,4 @@
-/**
- * Structural shapes the harness consumes. Narrow, structural views of the
- * @app/contracts Trace/ChunkRef types — the harness reads persisted traces
- * through these so it never depends on contract internals beyond the types
- * it re-exports.
- */
+/** Narrow structural views of the @app/contracts Trace/ChunkRef types the harness reads. */
 
 /** The subset of a trace's retrieval-event chunk ref the harness reads. */
 export type ChunkRefLike = {
@@ -11,11 +6,7 @@ export type ChunkRefLike = {
   score?: number;
   rankDense?: number;
   rankSparse?: number;
-  /**
-   * The ref's opaque origin label (ADR-0045), when the trace carries one.
-   * Opaque on purpose: the harness compares it against the caller-supplied
-   * `expansionOrigin` and never interprets what the label means.
-   */
+  /** The ref's opaque origin label (ADR-0045); compared, never interpreted. */
   origin?: string;
 };
 
@@ -46,82 +37,46 @@ export type TraceEventLike = {
     purpose?: string;
     /** The reviewer's raw verdict payload (contracts `review` event detail). */
     verdict?: string;
-    /**
-     * The retrieved citation labels the reviewer's deterministic gate found in
-     * the answer (contracts `review` event, thermo-review B4). Optional: older
-     * persisted traces predate it, which is the signal to fall back to the text.
-     */
+    /** The reviewer gate's grounded citation labels; absent falls back to the text. */
     grounded?: string[];
-    /**
-     * The `scope_expansion` event's typed detail (ADR-0045), structurally
-     * mirroring the contract. The harness reads the event's KIND to know the
-     * scoped path ran (C1) and never interprets these opaque fields; they are
-     * listed so a trace fixture stays the real shape.
-     */
+    /** The `scope_expansion` event's typed detail, mirroring the contract; only the
+     * event's KIND is read, and the fields are listed so a fixture stays real. */
     key?: string;
     value?: string;
     returned?: number;
     cap?: number;
     truncated?: boolean;
   };
-  /** The event's cost record (thermo-review B1: feeds the report's costs). */
+  /** The event's cost record (feeds the report's costs). */
   cost?: CostRecordLike;
   at?: number;
 };
 
-/**
- * The subset of the `citations` frame (ADR-0040) the harness reads for
- * citation scoring: the labels the SERVER grounded against the persisted
- * trace. Structural on purpose — the harness never depends on the rest of the
- * frame (Arabic, translation, badges), only on the label list.
- */
+/** The subset of the `citations` frame (ADR-0040) the harness scores with: the
+ * labels the SERVER grounded against the persisted trace, never the rest of the
+ * frame (Arabic, translation, badges). */
 export type CitationFrameLike = {
   citations: readonly { label: string }[];
 };
 
-/**
- * The chat-citation grammar the harness scores citation validity with,
- * injected by the composition root (the domain pack owns it; the engine
- * package must not). Every member is one of the SAME functions the
- * deterministic gate (`validateCitations`) and the citations-frame derivation
- * use, so the scorer and the gate cannot disagree about what a citation is.
- *
- * Absent on purpose in a unit context: with no grammar injected the scorer
- * keeps its original raw-substring behavior, so local tests are unchanged.
- */
+/** The chat-citation grammar the harness scores citation validity with, injected by
+ * the composition root (the domain pack owns it; the engine must not). Every member
+ * is one of the SAME functions the gate and the frame derivation use, so scorer and
+ * gate cannot disagree; with no grammar the scorer keeps its raw-substring behavior. */
 export type CitationGrammar = {
   /** Normalize a label: collapse whitespace, strip a grade suffix, canonicalize markers. */
   normalizeLabel: (label: string) => string;
   /** Every citation-shaped span in the text, ALREADY normalized. */
   labelsInText: (text: string) => string[];
   /**
-   * Every address one label **names**, in the grammar's own spelling: a list
-   * for a form whose citation names several (a range citation, whose interior
-   * is included — `QS. 2:255-260` names all six), and the label itself for an
-   * ordinary citation. **Required**: a grammar with no list-valued form says so
-   * as `(label) => [label]`, so an injector is always obliged to answer what a
-   * label names (review R1 of the #274 fix round — while this member was
-   * optional, deleting one property in the JavaScript composition root was a
-   * silent return to the pre-range comparison).
-   *
-   * **`null` is the third state** (review T1 of the #274 fix round): the
-   * grammar declares a list and **cannot enumerate it**, so the citation is
-   * unverifiable and must be treated as refused. It is neither `[]` ("names
-   * nothing") nor a one-element list ("names exactly this one address") — the
-   * domain pack encodes it distinctly because conflating it with a
-   * single-address declaration let an unverifiable spaced range ground on its
-   * head. The scorer therefore refuses such a label rather than comparing a
-   * shorter reading of it.
-   *
-   * The scorer needs it because a required citation and the answer's evidence
-   * are not the same SHAPE: a question requires `QS. 2:255`, the answer cites
-   * `QS. 2:255-256`, and the gate grounds it — comparing the two as strings
-   * alone scored a correctly grounded answer 0 (review A1 of the #274 fix
-   * round). Injected from the domain pack (`addressesNamedBy`), so the range's
-   * semantics has one owner and the engine learns no domain vocabulary. The
-   * runtime half of this contract is `citation-grammar.ts`, called from the
-   * engine's grammar-consuming entry: the composition root is JavaScript, so
-   * the type alone cannot keep it honest.
+   * Every address one label **names**, in the grammar's own spelling: a list for a
+   * form whose citation names several (a range names its whole interior) and the
+   * label itself otherwise. **Required**, so an injector always answers what a label
+   * names. **`null` is the third state** — a declared list the grammar cannot
+   * enumerate, so the citation is unverifiable and is treated as refused (neither
+   * `[]` nor one address). Needed because a required citation and the answer's
+   * evidence are not the same SHAPE (`QS. 2:255` required, `QS. 2:255-256` cited);
+   * injected from the domain pack so the engine learns no domain vocabulary.
    */
   addressesNamedBy: (label: string) => readonly string[] | null;
 };

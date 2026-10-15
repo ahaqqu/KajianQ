@@ -5,7 +5,7 @@ import { sendFeedback } from "../../lib/feedback";
 import { t, useLocale, type Locale } from "../../lib/i18n";
 
 /**
- * The feedback affordances (#13, ADR-0007): anonymous thumbs on the answer
+ * The feedback affordances (ADR-0007): anonymous thumbs on the answer
  * (FeedbackBar) and one-tap trace-anchored flags (FlagButton). Zero friction —
  * the anonymous session the chat already holds is the only credential, the
  * tap posts immediately, and the sent state is shown inline (the report is
@@ -85,10 +85,10 @@ export function FeedbackBar({ messageId }: { messageId: string }) {
 
 /**
  * One trace-anchored flag button: `anchor` is the CONTRACT's `FeedbackAnchor`
- * variant (thermo-review B1) carrying the element reference the frames
- * actually showed (a chunk id from the Trace panel, a citation label from the
- * passage sheet); the server re-validates it against the persisted trace
- * (#13) — the client never invents an anchor.
+ * variant carrying the element reference the frames actually showed (a chunk id
+ * from the Trace panel, a citation label from the passage sheet); the server
+ * re-validates it against the persisted trace — the client never invents an
+ * anchor.
  */
 export function FlagButton({
   messageId,

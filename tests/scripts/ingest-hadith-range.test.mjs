@@ -9,13 +9,13 @@ import {
  * Range parsing for the corpus ingest CLI (`ingest-hadith.mjs`).
  *
  * The rules exist because a quota-bound ingest has to be splittable into
- * resumable passes (one collection per invocation), and because the earlier
- * parser's failure modes were silent: `--limit 0` meant "full corpus" via
- * falsiness, and `--limit abc` produced `slice(0, NaN)` — an empty run that
- * reported success. The `onlyMissingCollections` guard (issue #213) narrows a
- * range to collections with zero landed children, so a range loop cannot
- * re-pay embeddings for collections already landed — upserts dedupe rows,
- * not spend (ADR-0037).
+ * resumable passes (one collection per invocation), and because the silent
+ * failure modes are the dangerous ones: `--limit 0` must not mean "full corpus"
+ * through falsiness, and a non-integer `--limit` must be reported rather than
+ * becoming `slice(0, NaN)` — an empty run that looks like success. The
+ * `onlyMissingCollections` guard narrows a range to collections with zero
+ * landed children, so a range loop cannot re-pay embeddings for collections
+ * already landed — upserts dedupe rows, not spend (ADR-0037).
  */
 
 const COLLECTIONS = ["bukhari", "muslim", "abudawud", "tirmidhi", "nasai", "ibnmajah", "malik"];

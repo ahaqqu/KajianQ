@@ -1,13 +1,13 @@
 /**
- * Minimal SSE frame parser for the chat stream (#11). Server frames are
+ * Minimal SSE frame parser for the chat stream. Server frames are
  * `event: <name>\ndata: <line>\n\n` with multi-line payloads emitted as one
  * `data:` line per raw line (the SSE spec) — a frame's data joins with `\n`.
  * All spec-legal line endings are handled (`\n`, `\r\n`, `\r`, in any mix):
  * each decoded chunk is normalized to `\n` before scanning, with a trailing
  * `\r` carried into the next chunk so a `\r\n` split across reads cannot
- * masquerade as the blank-line frame delimiter (thermo-review A2). Unknown
- * event names are yielded too: the consumer decides what to ignore, so the
- * wire can gain frames without breaking this client.
+ * masquerade as the blank-line frame delimiter. Unknown event names are
+ * yielded too: the consumer decides what to ignore, so the wire can gain
+ * frames without breaking this client.
  */
 
 export type SseFrame = { event: string; data: string };

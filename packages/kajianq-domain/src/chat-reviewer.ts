@@ -28,26 +28,25 @@ import {
  * citation validator. The reviewer's verdict and cost are recorded to the
  * run's trace sink.
  *
- * **The trust invariant (ticket #10):** an answer carrying a citation that no
- * retrieved chunk grounds is *refused*, never delivered with a note. The
- * deterministic validator runs on 100% of answers and its verdict is final —
- * it does not depend on the reviewer LLM being configured, reachable, or
- * well-behaved. A fabricated citation is the product's #1 stated risk
- * (SPECS §2.2), and a warning appended to a fabricated answer still ships the
- * fabrication to the user.
+ * **The trust invariant:** an answer carrying a citation that no retrieved
+ * chunk grounds is *refused*, never delivered with a note. The deterministic
+ * validator runs on 100% of answers and its verdict is final — it does not
+ * depend on the reviewer LLM being configured, reachable, or well-behaved. A
+ * fabricated citation is the product's #1 stated risk (SPECS §2.2), and a
+ * warning appended to a fabricated answer still ships the fabrication to the
+ * user.
  *
- * **The pre-gate (ADR-0042 adoption, ticket #168):** when a decision-model
- * `Decider` is bound, one batched decision call screens every citation before
- * the paid LLM reviewer. All citations cleared → the draft is reviewed-clean
- * and the paid reviewer is skipped; anything else (a low score, an unusable
- * answer, a vendor failure, or a draft with no citation to judge at all)
- * escalates to the full LLM reviewer exactly as before. The pre-gate can only
- * ever *remove* spend on an answer the cheap judge affirmatively cleared; it
- * never gates quality alone. With no `Decider` wired (no key bound) the stage
- * behaves exactly as it did before adoption.
+ * **The pre-gate (ADR-0042):** when a decision-model `Decider` is bound, one
+ * batched decision call screens every citation before the paid LLM reviewer.
+ * All citations cleared → the draft is reviewed-clean and the paid reviewer is
+ * skipped; anything else (a low score, an unusable answer, a vendor failure,
+ * or a draft with no citation to judge at all) escalates to the full LLM
+ * reviewer. The pre-gate can only ever *remove* spend on an answer the cheap
+ * judge affirmatively cleared; it never gates quality alone. With no `Decider`
+ * wired (no key bound) the paid reviewer runs unconditionally.
  */
 
-/** The serving seam type, aliased to its canonical home (ADR-0043 flag). */
+/** The serving name for the reviewer LLM seam (ADR-0043 `personalData` flag). */
 export type ReviewerProvider = ReviewerLlmSeam;
 
 export type KajianQReviewerDeps = {
@@ -55,9 +54,8 @@ export type KajianQReviewerDeps = {
   provider: ReviewerProvider | null;
   /**
    * The decision-model pre-gate (ADR-0042). Null/absent = the decision
-   * vendor's key is not bound, so the stage behaves exactly as it did before
-   * adoption. There is deliberately no separate enable flag: the pre-gate is
-   * active wherever the key is bound (owner decision 2026-09-19).
+   * vendor's key is not bound. There is deliberately no separate enable flag:
+   * the pre-gate is active wherever the key is bound.
    */
   decider?: Decider | null;
   /** Per-citation support threshold; product policy default (ADR-0042). */
@@ -73,8 +71,8 @@ export type KajianQReviewerDeps = {
    * label, ulama disclaimer) to a passed draft. Default on; a test or an eval
    * refusal case can disable it. Disabling it also suppresses the
    * `product_rules` trace event — the event is recorded only where the rules
-   * actually run (#285), so a reader never sees "rules ran" for a run that
-   * skipped them.
+   * actually run, so a reader never sees "rules ran" for a run that skipped
+   * them.
    */
   applyProductRules?: boolean;
 };
@@ -82,10 +80,10 @@ export type KajianQReviewerDeps = {
 /**
  * The stage's two seams live beside it, each with its own named test: the
  * prompt half in `chat-reviewer-prompt.ts`, the refusal vocabulary — sentence,
- * predicates, decision table, trigger union — in `chat-refusal.ts` (round B1 of
- * the #443 review). Every name keeps its historical import surface through these
- * re-exports; the prompt module re-exports the vocabulary so this file keeps ONE
- * import statement for its whole seam, being at the agentic 5-import cap.
+ * predicates, decision table, trigger union — in `chat-refusal.ts`. The
+ * vocabulary is re-exported so every existing import surface keeps working and
+ * this file holds ONE import statement for its whole seam, being at the
+ * agentic 5-import cap.
  */
 export {
   DEFAULT_REFUSALS,
@@ -106,15 +104,15 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
           const { grounded, ungrounded } = validateCitations(draft.text, context.chunks);
 
           // The refusal decision: one owner for every shape that reaches this
-          // path, and its FIRST row is the deterministic gate's own — a
+          // path, and its FIRST row is the deterministic gate's own, so a
           // fabricated citation is refused whether or not the reviewer LLM is
-          // wired and whether or not the draft carries the sentence, so the
-          // order is structural, not a convention across two call sites (review
-          // A2 of #443). Every row is recorded as a `refusal` event, the trace's
-          // record of why the user got a refusal; WHICH shape a sentence-carrying
-          // draft is and what each ships is the table's (skip the paid reviewer,
-          // ADR-0009, never an `Always` rule (#439) or the reader's ability to
-          // tell a refusal from prose (#443)).
+          // wired and whether or not the draft carries the sentence — the order
+          // is structural, not a convention across two call sites. Every row is
+          // recorded as a `refusal` event, the trace's record of why the user
+          // got a refusal; which shape a sentence-carrying draft has and what
+          // each ships is the table's (skip the paid reviewer, ADR-0009, never
+          // an `Always` rule or the reader's ability to tell a refusal from
+          // prose).
           const decision = refusalDraftDecision(draft.text, { grounded, ungrounded });
           if (decision !== null) {
             run.record({
@@ -124,7 +122,7 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
               reason: decision.reason,
               at: run.now(),
             });
-            // Exhaustive on purpose (B2 of #443): a new delivery must fail the typecheck here.
+            // Exhaustive on purpose: a new delivery must fail the typecheck here.
             switch (decision.delivery) {
               case "rules":
                 return withRules(draft, context, run);
@@ -141,10 +139,10 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
             return withRules(draft, context, run);
           }
 
-          // The pre-gate (ticket #168) sits between the free deterministic
-          // validator and the paid reviewer: exactly one batched decision
-          // call, and only a full clear skips the reviewer. A vendor failure
-          // is classified inside (fail-open) — it never throws out of here.
+          // The pre-gate sits between the free deterministic validator and the
+          // paid reviewer: exactly one batched decision call, and only a full
+          // clear skips the reviewer. A vendor failure is classified inside
+          // (fail-open) — it never throws out of here.
           if (deps.decider != null) {
             const pregate = yield* runCitationPregate({
               decider: deps.decider,
@@ -175,24 +173,21 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
             stage: "reviewer",
             kind: "review",
             detail: {
-              // The reviewer's full reply, not a prefix: truncating it at 200
-              // chars cut every rejection reason mid-sentence, which is exactly
-              // the text an operator needs to judge whether a refusal was
-              // correct (the first live size-5 smoke could only be diagnosed
-              // from partial sentences).
+              // The reviewer's COMPLETE reply, never a truncated prefix: an
+              // operator needs the whole rejection reason to judge whether a
+              // refusal was correct.
               verdict: reply.text,
-              // B4: the deterministic gate's pass case is provenance too.
+              // The deterministic gate's pass case is provenance too.
               grounded,
-              // A3: an unreadable verdict is recorded as such — an operator
-              // (or the eval harness) can tell "reviewer passed" from
-              // "reviewer output was unusable" without reading the raw text.
+              // An unreadable verdict is recorded as such — an operator (or
+              // the eval harness) can tell "reviewer passed" from "reviewer
+              // output was unusable" without reading the raw text.
               ...(parsedVerdict.parseFailed ? { verdictParseFailed: true } : {}),
             },
             at: run.now(),
           });
-          // Thermo-review B5: the paid cross-vendor verdict actually gates —
-          // a `fail` converts the answer to the grounding insufficiency
-          // refusal instead of being recorded and then discarded.
+          // The paid cross-vendor verdict gates: a `fail` ships the reviewer
+          // refusal copy, not the canonical insufficiency string.
           if (verdict === "fail") {
             run.record({
               stage: "reviewer",
@@ -209,24 +204,24 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
   };
 
   /**
-   * The deterministic product rules (spec §2.2, ticket #10): a passed draft
-   * gains the dhaif warning, the machine-translation label, and the ulama
-   * disclaimer when the model omitted them.
+   * The deterministic product rules (spec §2.2): a passed draft gains the dhaif
+   * warning, the machine-translation label, and the ulama disclaimer when the
+   * model omitted them.
    *
    * **This is the ONE place the rules run, and therefore the one place the
-   * trace records that they did (#285, ADR-0007).** All four of the stage's
-   * "rules apply" exits funnel through here — the hybrid-refusal exit added by
-   * #439, no-provider/`skipLlm`, the ADR-0042 pre-gate skip, and
-   * reviewer-passed — so a fifth exit added later records the event by
-   * construction rather than by remembering to. The pre-gate skip path is why
-   * a dedicated event exists instead of a field on `review`: it records no
-   * `review` event at all, so a rule running there was previously invisible.
+   * trace records that they did (ADR-0007).** Every "rules apply" exit funnels
+   * through here — the hybrid-refusal exit, no-provider/`skipLlm`, the ADR-0042
+   * pre-gate skip, and reviewer-passed — so an exit added later records the
+   * event by construction rather than by remembering to. The pre-gate skip is
+   * why a dedicated event exists instead of a field on `review`: it records no
+   * `review` event at all, so a rule running there would otherwise be
+   * invisible.
    *
    * Three shapes do NOT reach here, and none is decorated: a pure refusal (a
-   * warning on it would be invented from the assembled context — the #285 pin),
-   * an asserting refusal draft, and the gate's own ungrounded-citation refusal
-   * (#443) — the product's own refusal ships for those. A HYBRID does: it
-   * answers from the evidence and then declines (#439).
+   * warning on it would be invented from the assembled context rather than the
+   * text), an asserting refusal draft, and the gate's own ungrounded-citation
+   * refusal — the product's own refusal ships for those. A HYBRID does: it
+   * answers from the evidence and then declines.
    *
    * The recording is deliberately keyed on `applyProductRules !== false` (the
    * same condition that gates the call), so the event means "the rules ran",
@@ -234,8 +229,7 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
    * truth for the delivered text; `applied` names only which rules appended
    * text, and an empty list is the honest record of "ran, appended nothing" —
    * it does not separate "no rule had a trigger" from "a trigger matched and
-   * the copy was already present" (the exact-copy case that motivated the
-   * event).
+   * the copy was already present".
    */
   function withRules(
     draft: Draft,
@@ -254,14 +248,13 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
   }
 }
 
-/** A delivery with no branch here is a compile error, never a fall-through (B2 of #443). */
+/** A delivery with no branch here is a compile error, never a fall-through. */
 function assertNeverDelivery(delivery: never): never {
   throw new Error(`unhandled refusal delivery: ${String(delivery)}`);
 }
 
 /**
- * The reviewer LLM's parsed verdict, with the distinction the trace needs
- * (thermo-review A3).
+ * The reviewer LLM's parsed verdict, with the distinction the trace needs.
  *
  * `verdict` stays `pass` when the reply carried no readable verdict — the
  * deterministic citation validator already ran and its verdict was final, and

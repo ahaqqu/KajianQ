@@ -7,20 +7,14 @@ import { createMemoryRagStore } from "./test-utils/memory-rag-store";
 import { routedQuery } from "./test-utils/routed-query";
 
 /**
- * INTEGRATION TEST (thermo-review C1) — the retriever ↔ assembler contract.
- *
- * The gap this closes: every other test in the suite builds its own fixture
- * shape, so a stage could read metadata the previous stage never wrote and
- * still pass (that is exactly how A1 shipped — the assembler's Arabic +
- * labeled-translation rule read `metadata["textAr"]`/`["textId"]`, which the
- * retriever never populated, so the ADR-0006 rule was dead on the real path
- * while its unit tests passed on hand-built chunks).
- *
- * This test spans the real store → retriever → assembler path with no fixture
- * shortcuts: a child is inserted through `createMemoryRagStore`, retrieved
- * through `createKajianQRetriever` (the same chunk construction production
- * uses), and assembled by `createKajianQAssembler`. It fails if the retriever
- * stops carrying the text layers, or the assembler stops rendering them.
+ * INTEGRATION TEST — the retriever ↔ assembler contract. Every other test in
+ * the suite builds its own fixture shape, so a stage could read metadata the
+ * previous stage never wrote and still pass; this one spans the real store →
+ * retriever → assembler path with no fixture shortcuts: a child is inserted
+ * through `createMemoryRagStore`, retrieved through `createKajianQRetriever`
+ * (the same chunk construction production uses), and assembled by
+ * `createKajianQAssembler`. It fails if the retriever stops carrying the text
+ * layers, or the assembler stops rendering them.
  */
 
 const ARABIC = "اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ";
@@ -97,7 +91,7 @@ describe("retriever → assembler (the cross-layer metadata contract)", () => {
     const chunks = await retrieve(store);
     const chunk = chunks.find((c) => c.id === childId);
     expect(chunk).toBeTruthy();
-    // The retriever, not the fixture, must supply these (A1).
+    // The retriever, not the fixture, must supply these.
     expect(chunk?.metadata?.["textAr"]).toBe(ARABIC);
     expect(chunk?.metadata?.["textId"]).toBe(TRANSLATION);
   });

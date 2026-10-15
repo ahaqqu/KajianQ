@@ -1,7 +1,7 @@
 import type { AlignedPair, MorphToken } from "@app/contracts";
 
 /**
- * KajianQ Quran ingestion — domain pack source model (#6).
+ * KajianQ Quran ingestion — domain pack source model.
  *
  * This module owns the Quran-specific shapes: the Tanzil-numbered Surah/Ayah
  * address, the `QS. Surah:Ayah` citation format (CONTEXT.md), and the
@@ -11,7 +11,7 @@ import type { AlignedPair, MorphToken } from "@app/contracts";
  * values and is handed to `@app/rag-ingest` through its generic seams.
  */
 
-/** Tanzil numbering: 114 surahs, 6,236 ayahs total. */
+/** Tanzil numbering. */
 export const TOTAL_SURAHS = 114;
 export const TOTAL_AYAHS = 6_236;
 
@@ -66,7 +66,7 @@ export function parseQuranCitation(label: string): QuranCitation | null {
   return { sourceType: "quran", surah, ayah };
 }
 
-/** A per-ayah aligned pair with morphology, ready for #24's concept graph. */
+/** A per-ayah aligned pair with morphology, ready for the concept graph. */
 export type QuranAlignedPair = AlignedPair & {
   /** Verbatim `MorphToken` list from the Quranic Arabic Corpus. */
   morphology: readonly MorphToken[];

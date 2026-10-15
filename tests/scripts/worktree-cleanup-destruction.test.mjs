@@ -26,7 +26,7 @@ import {
 // cost, taken by decision, is that a receiver-qualified `exec` spawn is not read
 // either.
 //
-// The pin stops here, by decision (#249 A5). Deliberately out of reach: computed
+// The pin stops here, by decision. Deliberately out of reach: computed
 // method access (`obj["spawnSync"](…)`), an aliased import (`const run =
 // spawnSync`), `promisify` wrapping, and the `$` shell tag reached through an
 // identifier — each needs an import rewritten to dodge the pin and none is
@@ -36,22 +36,18 @@ const SPAWN =
   /(?<![\w$.])(?:(?<receiver>[\w$)\]]+)\.)?(?<method>execFileSync|execFile|execSync|exec|fork|spawnSync|spawn)\s*\(\s*(?<command>[^\s,)]+)/g;
 
 /**
- * The deletion boundary of `bun run worktree:clean` (#246, A1): this run may
- * only delete what it names, and only inside its own root.
+ * The deletion boundary of `bun run worktree:clean`: this run may only delete
+ * what it names, and only inside its own root.
  *
- * This is where the destruction tripwire lives now. It used to be the last
- * assertion of the isolation case — a superset comparison of the real
- * `.worktrees/` listing — which flaked on a concurrent REMOVAL of a real entry
- * (a finishing dispatch's or a reviewer's own cleanup) and sent an operator
- * triaging red toward a leak. The invariant is observed here at git's own
- * boundary instead: every git command this run issues is in its trace
+ * This is where the destruction tripwire lives. The invariant is observed at
+ * git's own boundary: every git command this run issues is in its trace
  * (`GIT_TRACE2_EVENT`), and nothing in that trace can be moved by another
- * process. It is also strictly wider than the listing check was: a branch ref
- * deleted in the real checkout never shrinks the listing.
+ * process — strictly wider than sampling the real `.worktrees/` listing, which
+ * a concurrent removal shrinks.
  *
  * Kept in its own case and its own file so a failure names the right
- * suspicion (A1/B2): not "the root resolution leaked", but "the run deleted
- * something it did not print, or reached outside its root".
+ * suspicion: not "the root resolution leaked", but "the run deleted something
+ * it did not print, or reached outside its root".
  */
 
 describe("worktree-cleanup destruction boundary", () => {
@@ -99,8 +95,7 @@ describe("worktree-cleanup destruction boundary", () => {
 
     // The print invariant: every deletion is named by exactly one `removed
     // <slug>` line and counted by the run's own summary. A path that deletes
-    // without printing — the one shape the real-listing superset check uniquely
-    // owned — fails here deterministically.
+    // without printing fails here deterministically.
     expect(removedSlugs(result.stdout).sort()).toEqual(["merged", "review-7", "unstarted"]);
     expect(removedSlugs(result.stdout)).toHaveLength(done.removed);
     expect(removals).toHaveLength(done.removed);

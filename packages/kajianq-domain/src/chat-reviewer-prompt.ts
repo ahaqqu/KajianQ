@@ -13,13 +13,10 @@ export type { KajianQFilters };
  * own named seam (`chat-reviewer-prompt.test.ts` pins them — the failure modes
  * it documents are silent, so the prompt must stay test-addressable).
  *
- * The refusal vocabulary this module used to carry now lives in
- * `chat-refusal.ts` (round B1 of the #443 review: this module reached 298
- * counted lines of the agentic hard cap of 300, and the branch needed a whole
- * commit to shave prose back under it). It is re-exported below so the stage
- * keeps ONE import statement for its whole reviewer seam — the stage sits at the
- * agentic 5-import cap — and every historical import surface keeps working. The
- * refusal logic itself has one owner: the module next to this one.
+ * The refusal vocabulary lives in `chat-refusal.ts`, its one owner, and is
+ * re-exported below so the stage keeps ONE import statement for its whole
+ * reviewer seam (the agentic 5-import cap) and every existing import surface
+ * keeps working.
  */
 export {
   DEFAULT_REFUSALS,
@@ -38,10 +35,11 @@ export {
  * Exported with `buildReviewMessages` so a test or an offline probe exercises
  * the exact prompt production sends.
  *
- * "Declines to answer" is the symmetric backstop to the generator's rule 1:
- * on gs-v0-019 (Staging, 2026-09-13) the generator disobeyed rule 1 and its
- * grounded "only Allah knows" draft passed the gate, failing the trap. The
- * case stays narrow and the guarantees above are unchanged (SPECS §3.3).
+ * "Declines to answer" is the symmetric backstop to the generator's rule 1: a
+ * grounded, answer-form draft that declines to answer a question demanding one
+ * specific fact must FAIL, so the user receives a refusal instead of an essay.
+ * The case stays narrow — a draft that answers from the evidence passes
+ * (SPECS §3.3).
  */
 export const REVIEWER_SYSTEM_PROMPT = [
   "You are a faithfulness reviewer for a grounded Islamic knowledge answer.",
@@ -72,10 +70,9 @@ export const REVIEWER_SYSTEM_PROMPT = [
 /**
  * The reviewer's evidence + draft turns. The evidence is the assembler's own
  * context turn — the exact text the Generator was asked to answer from — so the
- * gate cannot fail an answer for quoting what the prompt actually
- * provided. It used to re-render `- ${chunk.text}`, which for a fallback-track
- * hit is the translation only: the Generator saw the Arabic layer and the
- * Reviewer rejected answers that quoted it as "absent from the evidence".
+ * gate cannot fail an answer for quoting what the prompt actually provided.
+ * Re-rendering `chunk.text` instead would show the translation only for a
+ * fallback-track hit, hiding the Arabic layer the Generator saw.
  *
  * The question rides along so the gate can tell the user's own term (a name
  * the answer is entitled to reuse) from a claim the evidence does not carry.
@@ -84,9 +81,8 @@ export const REVIEWER_SYSTEM_PROMPT = [
  * question and draft are the user's personal data, and the flag belongs at
  * the serving call site, not inside prompt construction (ADR-0043).
  *
- * Using the assembled turn (rather than re-rendering the chunks) makes the
- * parity structural: one source of truth, and history rides its own turn, so
- * the last user turn is the evidence.
+ * Using the assembled turn makes the parity structural: one source of truth,
+ * and history rides its own turn, so the last user turn is the evidence.
  */
 export function buildReviewMessages(
   context: AssembledContext<KajianQFilters>,

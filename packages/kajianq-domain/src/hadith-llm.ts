@@ -5,24 +5,16 @@ import { isHadithCollection } from "./hadith-source";
 import { Effect } from "effect";
 
 /**
- * Section summaries and the aligned-pair sink — the LLM-facing half of the
- * hadith ingestion wiring (#7). Kept apart from the pure parsing/model
- * module so the LLM seams stay individually testable and the import surface
- * of each file stays small. Archive fingerprinting is reused from the Quran
- * module (`archiveFingerprint`) — the fingerprint algorithm is domain-agnostic.
+ * Section summaries and the aligned-pair sink — the LLM-facing half of the hadith ingestion
+ * wiring, kept apart from the pure parsing/model module so the LLM seams stay testable.
  */
 
 /** Cheap-tier provider role used for section summaries (config-resolved). */
 export type HadithSummarizerProvider = Provider;
 
 /**
- * The LLM-backed parent summarizer: summarizes a (collection, book/section)
- * parent's hadiths (Arabic primary + Indonesian secondary shown to the
- * model) into the summary the parent's embedding is computed from (issue #7
- * AC: parent embeddings from summaries, not full text). Returns the call's
- * CostRecord alongside the summary so the pipeline's collector records it
- * (kajianq-traceability rule 2; review A6 — the cost is part of the report's
- * sum of calls, never dropped).
+ * The LLM-backed parent summarizer: summarizes a (collection, book/section) parent's hadiths
+ * into the summary its embedding is computed from, and returns the call's CostRecord.
  */
 export function hadithSectionSummarizer(
   provider: HadithSummarizerProvider,
@@ -65,15 +57,10 @@ export function hadithSectionSummaryPrompt(input: {
 }
 
 /**
- * The pair sink for `runIngestion`: writes each aligned (Arabic, Indonesian)
- * hadith pair through the RagStore's aligned-pair seam (ADR-0014: #24's
- * concept-graph build consumes these rows alongside the Quran pairs).
- * Morphology is empty for hadith in v1 — CAMeL Tools lemmatization is the
- * pre-#24 enrichment step (ADR-0026). The default CLI wiring passes
- * `pairKeyFor` = `hadithPairId(citation.collection, citation.hadithNo)` so
- * persisted rows use the domain's stable `hadith-pair:{collection}:{no}`
- * address (the format #24's build and the citation validator resolve
- * against) rather than the runner's source-derived child key.
+ * The pair sink for `runIngestion`, writing each aligned (Arabic, Indonesian) hadith pair
+ * through the RagStore's aligned-pair seam (ADR-0014); morphology is empty for hadith in v1.
+ * `pairKeyFor` defaults the persisted key to the domain's stable `hadith-pair:{collection}:{no}`
+ * address rather than the runner's source-derived key.
  */
 export function hadithPairSink(
   store: Pick<RagStore, "upsertAlignedPair">,
@@ -86,10 +73,8 @@ export function hadithPairSink(
   morphology: readonly Record<string, unknown>[];
 }) => Promise<void> {
   return async (input) => {
-    // Off-Workers CLI bridge: the sink's contract is promise-shaped (the
-    // ingestion runner's pairSink), the store seam is Effect-shaped
-    // (ADR-0027 decision 7) — runPromise joins them here, inside the
-    // adapter-side sink, not in engine code.
+    // Off-Workers bridge: the sink is promise-shaped (the runner's pairSink) while the
+    // store seam is Effect-shaped (ADR-0027); runPromise joins them in the sink adapter.
     await Effect.runPromise(
       store.upsertAlignedPair({
         pairKey: pairKeyFor?.(input) ?? input.pairKey,
@@ -105,8 +90,8 @@ export function hadithPairSink(
 /** Default pair-key resolver over a hadith citation (stable domain address). */
 export function hadithPairKeyFor(input: { citation: Record<string, unknown> }): string {
   const c = input.citation as { collection?: unknown; hadithNo?: unknown };
-  // Validate against the collection registry itself, not the display-name
-  // map (review B3): an unregistered code degrades explicitly to "unknown".
+  // Validate against the collection registry itself, not the display-name map: an
+  // unregistered code degrades explicitly to "unknown".
   const collection = isHadithCollection(c.collection) ? c.collection : "unknown";
   return `hadith-pair:${collection}:${c.hadithNo ?? "?"}`;
 }

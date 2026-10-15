@@ -7,31 +7,23 @@ import {
   skipLines,
 } from "../../packages/eval/scripts/eval-cli.mjs";
 // The producer side of the ledger-failure note, imported by path so the note
-// these lines render is the one the harness really writes (round-2 A2). A
-// hand-written note string is exactly the false pin that round found: it can
-// spell a cause the producer cannot emit, and passes forever.
+// these lines render is the one the harness really writes: a hand-written string
+// can spell a cause the producer cannot emit and pass forever.
 import { ledgerFailureNote } from "../../packages/eval/src/harness-outcomes.ts";
 import { StoreError } from "../../packages/rag-core/src/store-error.ts";
 
 /**
- * The run summary's two per-question lines are the gate's whole attribution.
+ * The run summary's two per-question lines and the exit policy are the gate's
+ * whole attribution: a skip must show its question and cause in the CI log without
+ * a store read, a scored failure must name the question and the dimension that
+ * missed its rule, and the policy is what turns those lines into a gate rather
+ * than a block an operator has to read. The summary rows and the policy rows are
+ * the same subject from two sides: the policy says red, these lines say why.
  *
- * #290 (skip): the CI log for a run holding a transport skip must show the
- * question and its cause without querying the store, because the gate reddens
- * on the skip and the operator reads the log, not `eval_results`, to find out
- * why. #340 (failure): a scored failure must name the question AND the
- * dimension that missed its rule — a red `Staging` run printed only counts and
- * three means, so "which question, which dimension" cost a QA round and a
- * store read. #364 (exit policy): what turns those lines into a gate — before
- * it, `eval:run` printed them and exited 0, so the release gate's green was an
- * operator's read. The summary rows and the policy rows are the same subject
- * from two sides: the policy says red, these lines say why.
- *
- * This is the only automated pin on those lines. The CLI glue is `.mjs`,
- * outside the typechecked and coverage corpus (`vitest.config.ts` includes
- * `tests/scripts/**\/*.test.mjs`; a `.ts` test importing `eval-cli.mjs` fails
- * `tsc` with TS7016), so the mechanism here is the one already used by
- * `eval-staging-harness.test.mjs` for `.mjs` CLI glue — no new seam.
+ * These `.mjs` tests are the only automated pin on those lines, outside typecheck
+ * and coverage: the CLI glue is `.mjs`, so a `.ts` test importing `eval-cli.mjs`
+ * fails `tsc` with TS7016 — the mechanism `eval-staging-harness.test.mjs` already
+ * uses for `.mjs` CLI glue.
  */
 describe("skipLines (#290)", () => {
   it("labels the skipped row and prints the persisted note once, verbatim", () => {
@@ -65,9 +57,8 @@ describe("skipLines (#290)", () => {
 });
 
 /**
- * The fixture rows the lines below read their rule labels from — the shape
- * `@app/contracts` validates (`GoldenQuestionSchema`), and the shape both
- * call sites hand `printSummary` (`fixture.questions`).
+ * The fixture rows the lines below read their rule labels from: the shape
+ * `@app/contracts` validates and the shape both call sites hand `printSummary`.
  */
 const FIXTURE = [
   {
@@ -109,8 +100,6 @@ const scoredOutcome = (questionId, overrides = {}) => ({
 
 describe("failureLines (#340)", () => {
   it("names the question and the citation it missed, with the evidence", () => {
-    // The staging signature this ticket was filed on: recall perfect, one
-    // question's citation validity at 0, and no question named.
     expect(failureLines([scoredOutcome("gs-v0-015", { citationValidity: 0 })], FIXTURE)).toEqual([
       "  failed: gs-v0-015 citationValidity=0.000 (required QS. 1:2, present 0/1)",
     ]);
@@ -151,9 +140,8 @@ describe("failureLines (#340)", () => {
   });
 
   it("prints the ledger write's real cause — a StoreError's kind and cause (A2)", () => {
-    // The note comes from the producer itself, not a hand-written string. A
-    // `StoreError` carries no `message` at all, so the round-2 shape rendered
-    // `ledger_write_failed: ` here and this line lost its cause.
+    // The note comes from the producer, not a literal: a `StoreError` carries no
+    // `message`, so the cause must come from its `kind` and `cause`.
     const note = ledgerFailureNote(
       new StoreError({ kind: "transport", cause: new Error("connection reset") }),
     );
@@ -163,9 +151,8 @@ describe("failureLines (#340)", () => {
   });
 
   it("degrades to the bare value only for a fixture that genuinely lacks the question (B4)", () => {
-    // The `[]` is deliberate and says so: no fixture is in hand, so no rule
-    // label exists to print. An *omitted* fixture is a different thing and
-    // fails loudly (see the guard case below) instead of degrading every line.
+    // The `[]` is deliberate: no fixture is in hand, so no rule label exists to
+    // print. An *omitted* fixture fails loudly instead of degrading every line.
     expect(failureLines([scoredOutcome("q9", { retrievalRecall: 0.5 })], [])).toEqual([
       "  failed: q9 retrievalRecall=0.500",
     ]);
@@ -175,8 +162,7 @@ describe("failureLines (#340)", () => {
     expect(() => failureLines([scoredOutcome("gs-v0-015", { citationValidity: 0 })])).toThrow(
       /requires the fixture's questions/,
     );
-    // Not a fixture either: `fixture.questions` is the argument, never the
-    // fixture itself.
+    // Not a fixture either: `fixture.questions` is the argument, never the fixture itself.
     expect(() =>
       failureLines([scoredOutcome("gs-v0-015", { citationValidity: 0 })], FIXTURE[0]),
     ).toThrow(/requires the fixture's questions/);
@@ -220,8 +206,7 @@ describe("printSummary (#290, #340)", () => {
     refused: false,
   };
 
-  // `questions` has no default (B4): every caller hands the fixture it holds,
-  // exactly as `eval-smoke.mjs` and `eval-run.mjs` do with `fixture.questions`.
+  // `questions` has no default: every caller hands the fixture it holds, as both CLIs do.
   function printedSummary(result, questions) {
     const spy = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
@@ -252,9 +237,7 @@ describe("printSummary (#290, #340)", () => {
     );
     expect(printed).toContain("  questions: 2  passed: 1  failed: 0  skipped: 1");
     expect(printed).toContain("  skipped: q2 — transport down");
-    // The duplicated-prefix shape the operator used to read.
     expect(printed).not.toContain("— skipped:");
-    // A scored row contributes no skip line.
     expect(printed).not.toContain("skipped: q1");
   });
 
@@ -351,27 +334,20 @@ describe("printSummary (#290, #340)", () => {
 });
 
 /**
- * The exit policy the two commands share (#364).
+ * The exit policy the two commands share.
  *
- * Before this ticket `eval:run` ended at `printSummary`: a run whose questions
- * failed, were skipped, or were never asked at all exited 0, so the documented
- * release gate was green until an operator chose to read the block above. Each
- * row below names the mutation that must redden it, because the risk this file
- * guards is a one-clause deletion: the function is a handful of lines, and
+ * Each row below names the mutation that must redden it, because the risk this
+ * file guards is a one-clause deletion: the function is a handful of lines, and
  * losing any clause reopens the silent green.
  *
- * The expected strings are hand-written on purpose, against the file's usual
- * preference for the producer. `eval-smoke.mjs` cannot supply them — importing
- * it runs the CLI — and after this ticket the only producer is `exitPolicy`
- * itself, so importing the string would make the assertion circular. These
- * literals are the CI-observable contract (`gh run view`, the `Staging` log);
- * changing one is a deliberate contract change, which is exactly what a pin is
- * for.
+ * The expected strings are hand-written on purpose: `eval-smoke.mjs` cannot
+ * supply them (importing it runs the CLI) and `exitPolicy` is its own only
+ * producer, so importing the string would make the assertion circular. These
+ * literals are the CI-observable contract.
  *
- * The last two rows drive `exitWithPolicy`, the effectful half: the verdict
- * rows above pin `ok: false`, and only these pin that `ok: false` ends the
- * process (#370 A1). A pin that stops at the return value leaves the gate's
- * blocking half free to be deleted with the suite green.
+ * The rows that drive `exitWithPolicy` pin the blocking half: the verdict rows
+ * above pin `ok: false`, and only these pin that a red verdict ends the process —
+ * without them the gate's blocking half could be deleted with the suite green.
  */
 describe("exitPolicy (#364)", () => {
   const passed = scoredOutcome("gs-v0-015", { passed: true });
@@ -383,8 +359,7 @@ describe("exitPolicy (#364)", () => {
   };
 
   it("reddens on a failed question, for both command prefixes", () => {
-    // Mutation: dropping the `failed` clause — the pre-#364 `eval:run`, which
-    // ended at printSummary and exited 0 on exactly this run.
+    // Mutation: dropping the `failed` clause.
     const input = {
       runId: "run-7",
       questionCount: 1,
@@ -400,16 +375,15 @@ describe("exitPolicy (#364)", () => {
       ok: false,
       message: "eval:run: FAILED — 1 failed, 0 skipped. See eval_results for run run-7.",
     });
-    // The smoke's own pre-#364 line, byte for byte: the shared policy must not
-    // have reworded the string `Staging` operators and logs already read.
+    // The smoke's own line, byte for byte: the shared policy must not have reworded
+    // the string `Staging` operators and logs already read.
     expect(exitPolicy("eval:smoke", input).message).toBe(
       "eval:smoke: FAILED — 1 failed, 0 skipped. See eval_results for run run-7.",
     );
   });
 
   it("reddens on a skipped question — an unmeasured question is not a pass (#290)", () => {
-    // Mutation: dropping the `skipped` clause. The smoke has reddened on a
-    // skip since #290; this clause is what makes `eval:run` agree with it.
+    // Mutation: dropping the `skipped` clause — what makes `eval:run` agree with the smoke.
     const input = {
       runId: "run-7",
       questionCount: 1,
@@ -431,11 +405,8 @@ describe("exitPolicy (#364)", () => {
   });
 
   it("reddens on a run that recorded fewer outcomes than it asked for (the budget abort)", () => {
-    // Mutation: dropping the `unmeasured` clause. `harness.ts` breaks the
-    // question loop on the cap without counting the remainder, so this run's
-    // own record reads passed: 2, failed: 0, skipped: 0 — the literal
-    // failed/skipped policy returns ok: true here, and a release run truncated
-    // after 2 of 4 questions goes green with real money already spent.
+    // Mutation: dropping the `unmeasured` clause — the harness breaks the loop on the
+    // cap without counting the remainder, so a truncated run would otherwise go green.
     const input = {
       runId: "run-8",
       questionCount: 4,
@@ -458,9 +429,8 @@ describe("exitPolicy (#364)", () => {
   });
 
   it("passes a complete, all-passed run — the only green there is", () => {
-    // Mutation: any clause widened past the three counts, e.g. reddening on
-    // `result.passed === 0`, or deleting the ok early-return so every healthy
-    // run — including the smoke on a good deploy — reddens.
+    // Mutation: any clause widened past the three reddening cases, or deleting the
+    // ok early-return, which would redden every healthy run.
     const input = {
       runId: "run-9",
       questionCount: 1,
@@ -477,11 +447,8 @@ describe("exitPolicy (#364)", () => {
   });
 
   it("measures the shortfall against the set that was asked, not the whole fixture", () => {
-    // Mutation: the one copy-paste this ticket exists to prevent — handing the
-    // policy `fixture.questions.length` (30) instead of the smoke's subset (5),
-    // which would read every healthy smoke run as truncated and redden the
-    // `Staging` gate on a good deploy. The second assertion is that mutation,
-    // made visible.
+    // Mutation: handing the policy the whole fixture's count instead of the smoke's
+    // subset, which would read every healthy smoke run as truncated.
     const input = {
       runId: "run-10",
       questionCount: 5,
@@ -500,9 +467,8 @@ describe("exitPolicy (#364)", () => {
   });
 
   it("names a shortfall without claiming a cause the run's record does not carry", () => {
-    // Mutation: hard-coding "(budget exceeded)" into the truncation clause.
-    // `budgetExceeded` is the run's own record of why the loop stopped; a
-    // shortfall it does not explain must not be attributed to the cap.
+    // Mutation: hard-coding "(budget exceeded)" into the truncation clause — the cap
+    // is named only from the run's own record, never invented for a shortfall.
     const input = {
       runId: "run-11",
       questionCount: 3,
@@ -522,12 +488,9 @@ describe("exitPolicy (#364)", () => {
   });
 
   it("takes its counts from the recorded rows, not from the run's counters (#370 A2)", () => {
-    // Mutation: reading `result.failed`/`result.skipped` — the two
-    // representations of one fact that `printSummary` already resolves in
-    // favour of the rows. Here the counters claim a clean pass while the one
-    // recorded row did not pass, and a verdict that trusted the counters would
-    // return ok: true: the silent green this policy exists to close, reached
-    // through the disagreement the counters make possible.
+    // Mutation: reading `result.failed`/`result.skipped` — here the counters claim a
+    // clean pass while the one recorded row did not, so a verdict that trusted the
+    // counters would return ok: true.
     const input = {
       runId: "run-12",
       questionCount: 1,
@@ -546,12 +509,9 @@ describe("exitPolicy (#364)", () => {
   });
 
   it("names the disagreement when more rows were recorded than the set asked for (#370 A2)", () => {
-    // Mutation: guarding the truncation segment with `unmeasured > 0` alone.
-    // A negative shortfall — unreachable through the harness, reachable through
-    // this function's input — then reddens with no clause naming why, or (if
-    // the shortfall were clamped) does not redden at all. Every red line must
-    // name its reason, so the excess direction gets its own clause rather than
-    // a negative count.
+    // Mutation: guarding the truncation segment with `unmeasured > 0` alone — a
+    // negative shortfall would then redden with no clause naming why. Every red line
+    // must name its reason, so the excess gets its own clause.
     const input = {
       runId: "run-13",
       questionCount: 1,
@@ -571,11 +531,8 @@ describe("exitPolicy (#364)", () => {
   });
 
   it("exits 1 on a red verdict, to stderr — the half that makes the gate blocking (#370 A1)", () => {
-    // Mutation: deleting the `process.exit(1)` from `exitWithPolicy`. The
-    // verdict rows above pin `ok: false`; not one of them pins that the red
-    // verdict ends the process, so that deletion kept every row green while
-    // both CLIs printed the red line and exited 0 — the exact silent green
-    // #364 exists to close, on the release gate.
+    // Mutation: deleting the `process.exit(1)` — the verdict rows above pin
+    // `ok: false`, but only this pins that a red verdict ends the process.
     const exit = vi.spyOn(process, "exit").mockImplementation(() => {
       throw new Error("__exit__");
     });
@@ -593,13 +550,11 @@ describe("exitPolicy (#364)", () => {
           results: [failedQuestion],
         },
       };
-      // The throwing stub is how a real exit is observed without ending the
-      // test process: control must not continue past `process.exit`.
+      // The throwing stub observes a real exit without ending the test process.
       expect(() => exitWithPolicy("eval:run", input)).toThrow("__exit__");
       expect(exit).toHaveBeenCalledTimes(1);
       expect(exit).toHaveBeenCalledWith(1);
-      // The red line goes to stderr and nowhere else — the same stream the
-      // smoke has always written to.
+      // The red line goes to stderr and nowhere else.
       expect(err).toHaveBeenCalledTimes(1);
       expect(err).toHaveBeenCalledWith(
         "eval:run: FAILED — 1 failed, 0 skipped. See eval_results for run run-14.",
@@ -613,10 +568,8 @@ describe("exitPolicy (#364)", () => {
   });
 
   it("does not exit on a green verdict, to stdout (#370 A1)", () => {
-    // The other half of the A1 pin: a mutation that exits unconditionally — or
-    // moves the exit above the ok early-return — would redden every healthy
-    // run, the smoke on a good deploy included. A gate that cannot be green is
-    // not a gate.
+    // A mutation that exits unconditionally, or moves the exit above the ok
+    // early-return, would redden every healthy run — including a good deploy.
     const exit = vi.spyOn(process, "exit").mockImplementation(() => {});
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     const log = vi.spyOn(console, "log").mockImplementation(() => {});

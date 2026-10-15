@@ -11,7 +11,7 @@ import { toOpenApiPath } from "../apps/api/src/lib/openapi-path";
  * command and a non-zero exit code when the doc is broken or drifting.
  *
  * Bun runs this script, so it imports the TS owner of the path normalization
- * directly (thermo-review B3) — the same `toOpenApiPath` the coverage test
+ * directly — the same `toOpenApiPath` the coverage test
  * uses, so the two checks cannot drift apart.
  */
 
@@ -32,7 +32,7 @@ async function main() {
   }
 
   // Hono's route table uses `:param`; hono-openapi documents `{param}` —
-  // normalized through the shared owner (thermo-review B3).
+  // normalized through the shared owner.
   const registered = [
     ...new Set(
       api.routes
