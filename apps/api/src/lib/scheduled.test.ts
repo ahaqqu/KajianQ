@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import type { RagStore } from "@app/infra";
 import { ChatConfigError } from "./chat-wiring";
 import { cleanupExpiredSessions } from "./scheduled";

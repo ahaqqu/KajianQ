@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import type { Chunk } from "@app/rag-core";
 import { HIERARCHY_BONUS, hierarchyBonus, rrfFuse, type TrackHit } from "./chat-fusion";
 

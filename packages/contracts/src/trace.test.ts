@@ -1,5 +1,5 @@
 import { fc, test as fcTest } from "@fast-check/vitest";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import * as v from "valibot";
 import { TraceSchema, parseTrace, totalCostMicroUsd, type TraceEvent } from "./trace";
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { chatSystemPrompt } from "./chat-prompts";
 import { DEFAULT_REFUSALS } from "./chat-reviewer";
 

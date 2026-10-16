@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { MACHINE_TRANSLATION_LABEL, splitAnswerBlocks } from "./chat-render";
 import { messages } from "./i18n-messages";
 

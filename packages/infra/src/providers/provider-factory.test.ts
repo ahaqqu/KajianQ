@@ -5,7 +5,7 @@ import {
   defaultRetrySchedule,
   perKindRetrySchedule,
 } from "./retry-schedule";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { ProviderError } from "@app/rag-core";
 import type { FetchLike } from "./chat-completions-adapter";
 import { chatBody, configWith, jsonResponse, runOk } from "./test-fixtures";

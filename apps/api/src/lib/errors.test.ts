@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { PipelineAbortedError, ProviderError, StageError } from "@app/rag-core/interop";
 import { Hono } from "hono";
 import type { ApiEnv } from "../env";

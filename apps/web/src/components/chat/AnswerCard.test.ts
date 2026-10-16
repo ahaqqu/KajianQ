@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import { createElement } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 import type { ChatSessionMessage } from "@app/contracts";
 import { LocaleCtx, messages, type Locale } from "../../lib/i18n";
 import { MACHINE_TRANSLATION_LABEL } from "../../lib/chat-render";

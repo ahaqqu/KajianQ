@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createElement } from "react";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { CHAT_MESSAGE_MAX_LENGTH } from "@app/contracts";
 import { wrapInRouter } from "../app-test-utils";
 import { ChatView, clampDraft } from "./ChatView";

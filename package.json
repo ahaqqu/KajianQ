@@ -61,12 +61,13 @@
     "playwright-bdd": "9.2.0",
     "size-limit": "13.0.3",
     "typescript": "7.0.2",
-    "vite-plus": "0.3.0",
-    "vitest": "4.1.11"
+    "vite-plus": "0.3.0"
   },
   "overrides": {
     "effect": "4.0.2",
-    "tinypool": "2.1.2"
+    "tinypool": "2.1.2",
+    "vite": "npm:@voidzero-dev/vite-plus-core@0.3.0",
+    "vitest": "4.1.11"
   },
   "size-limit": [
     {

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import type { RagStore } from "@app/infra";
 import type { Provider } from "@app/rag-core";
 import { EmbedMisalignment, runIngestion } from "./pipeline";

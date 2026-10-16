@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { TOTAL_AYAHS, TOTAL_SURAHS } from "./quran-source";
 import { SURAH_AYAH_COUNTS, SURAH_NAMES, normalizeSurahText, withoutArticle } from "./surah-names";
 import { detectSurahReference } from "./surah-reference";

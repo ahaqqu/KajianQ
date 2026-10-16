@@ -1,5 +1,5 @@
 import { fc, test as fcTest } from "@fast-check/vitest";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import {
   decomposeQuery,
   MAX_SUB_QUERIES,

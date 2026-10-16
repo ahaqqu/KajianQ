@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { createApi } from "./app";
 import { CHAT_MESSAGE_MAX_LENGTH } from "@app/contracts";
 import type { AssetFetcher } from "@app/hardening";

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { parseSseStream } from "./sse";
 
 /** Build a ReadableStream from string chunks, as fetch's body delivers. */

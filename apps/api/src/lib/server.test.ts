@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { createLogger, type ProviderConfig } from "@app/infra";
 import { CHAT_SERVING_ROLES, createProvidersFromEnv } from "./chat-wiring";
 import { bindingsFromEnv, reportProviderPosture, serveApi } from "./server";

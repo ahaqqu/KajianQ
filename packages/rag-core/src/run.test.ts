@@ -1,5 +1,5 @@
 import { Effect, Option } from "effect";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { totalCostMicroUsd, type CostRecord } from "@app/contracts";
 import { RunContext } from "./context";
 import type { RunConfig } from "./context";

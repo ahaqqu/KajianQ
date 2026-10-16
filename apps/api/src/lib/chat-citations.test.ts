@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import fc from "fast-check";
 import type { Trace } from "@app/contracts";
 import type { ChatMessage, DocChildById } from "@app/infra";

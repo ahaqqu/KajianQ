@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { validateCitations } from "./chat-citation-validator";
 import {
   DEFAULT_REFUSALS,

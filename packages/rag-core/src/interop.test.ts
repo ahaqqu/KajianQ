@@ -1,5 +1,5 @@
 import { Effect, Option, Stream } from "effect";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import type { CostRecord } from "@app/contracts";
 import { RunContext } from "./context";
 import { StageError } from "./errors";

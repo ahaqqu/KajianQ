@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import * as v from "valibot";
 import { ChatTraceFrameSchema, type Trace } from "@app/contracts";
 import type { DocChildById } from "@app/infra";

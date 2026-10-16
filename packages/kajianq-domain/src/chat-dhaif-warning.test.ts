@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { DEFAULT_REFUSALS, refusalTextFor } from "./chat-reviewer";
 import { REFUSAL_FLOORS, refusalFloorText } from "./chat-refusal";
 import { dhaifWarning, hasWeakWarning, ulamaDisclaimer } from "./chat-postprocess";
