@@ -25,7 +25,7 @@ There is no third depth. If a PR mixes code and docs, thermos applies to the who
 
 ## Coverage claims
 
-**A coverage claim is carried by construction, or it names the enumeration it rests on.** It is any universal the change carries — _every_ X, _never_ Y, "the set is empty", "no Z exists" — and it is swept on each of the four surfaces the truthfulness sweep covers (`.agents/skills/manager/SKILL.md` § Reliability & supervision): the diff (a code comment or a contract description is a claim like any other), the docs the change edits (`AGENTS.md`, an ADR, `SPECS.md`), the PR body, and the source ticket body.
+**A coverage claim is carried by construction, or it names the enumeration it rests on.** It is any universal the change carries — _every_ X, _never_ Y, "the set is empty", "no Z exists" — and it is swept on each of the four surfaces the truthfulness sweep covers (`.agents/skills/manager/SKILL.md` § Reliability & supervision): the diff (a code comment or a contract description is a claim like any other), its file mirrors (an edited `AGENTS.md`, ADR or `SPECS.md` first among them), the PR body, and the source ticket body.
 
 Read the mechanism that is supposed to make the universal true. Where that mechanism is a hand-written list — the rules that fire, the producers of a value, the failure classes a response distinguishes, the cases a validator enumerates — the claim **is** the list, not the universal: a member outside it stays invisible, and the claim ships green because every gate reads the members the list names and never the ones it omits.
 
@@ -69,6 +69,7 @@ Report:
 - Philosophy violations: which principle (cite the `docs/ARCHITECTURE.md` section), which file, and why.
 - Guardrail violations: which rule, which file and line.
 - Thermo findings (when code was touched): the itemized report posted via thermos-with-comments (A/B/C IDs), merged and prioritized.
+- Coverage-claim gaps: the claim, the enumeration it rests on, and the member the list is missing.
 - Approval or rejection with justification.
 
 Block the PR on any MUST or MUST NOT violation. Flag SHOULD violations for author response.
