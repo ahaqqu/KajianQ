@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import type { CostRecord } from "@app/contracts";
 import { runChatPipeline } from "./chat-pipeline";
 import type { RouterProvider } from "./chat-router";
-import type { GeneratorProvider, ReviewerProvider } from "./chat-generator";
+import type { GeneratorProvider } from "./chat-generator";
+import type { ReviewerProvider } from "./chat-reviewer";
 import type { RetrieverEmbedder } from "./chat-retriever";
 import { createMemoryRagStore } from "./test-utils/memory-rag-store";
 import type { KajianQFilters } from "./filters";
@@ -104,6 +105,16 @@ function harness() {
       }),
   };
 
+  // The store with a spy on the one read retrieval makes per (sub-query, track):
+  // the assertion that carries "nothing was searched".
+  const spyStore: ReturnType<typeof createMemoryRagStore> = {
+    ...store,
+    similaritySearch: (track, embedding, opts) => {
+      searches.push(track);
+      return store.similaritySearch(track, embedding, opts);
+    },
+  };
+
   return {
     routerCalls,
     embedded,
@@ -120,13 +131,7 @@ function harness() {
             reviewerProvider,
             reviewerDecider: null,
             embedder,
-            store: {
-              ...store,
-              similaritySearch: (track, embedding, opts) => {
-                searches.push(track);
-                return store.similaritySearch(track, embedding, opts);
-              },
-            } as never,
+            store: spyStore as never,
             bridge: (effect: never) => Effect.runPromise(effect),
             language: "id",
           } as never,
@@ -242,6 +247,7 @@ describe("a content-free question is not routed", () => {
     expect(h.embedded).toEqual([subQueries.map((sub) => sub.text)]);
     expect(h.searches).toEqual(subQueries.flatMap(() => ["primary", "fallback"]));
     const retrieval = eventsOf(answer).find((event) => event.kind === "retrieval");
-    expect((retrieval?.detail?.["chunks"] as unknown[]).length).toBeGreaterThan(0);
+    const chunks = (retrieval?.detail?.["chunks"] ?? []) as unknown[];
+    expect(chunks.length).toBeGreaterThan(0);
   });
 });

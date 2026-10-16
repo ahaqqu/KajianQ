@@ -15,11 +15,11 @@ for that same text, so the duplicate filter never costs a rule its coverage; an 
 different declared role keeps its label, and only that coincidence goes unshown. A text that carries
 no letter and no digit in any script is **dropped**, never embedded, **whatever its origin** — the reply's phrasing, a
 composition rule's own text, the floor's, or the router fallback's — and the ceiling never spends the slot of the entry a
-fired rule's own text lives in — so the repair is a fixed point over its own output. The `factual` rule's text _is_ the
-caller's verbatim question, so a content-free question's `factual` entry is dropped rather than spending an embed and a
-pair of searches on itself — the fan-out is **empty when no non-factual rule fires** — while the principle/dalil/sanad
-templates carry words of their own, so a shape that fires one keeps its template entry and the text-level drop is all
-that is unconditional (review C1). The set is bounded to the stage's
+fired rule's own text lives in, so the repair is a fixed point over its own output. The route is **gated on the caller's
+question, before the model call**: a question carrying no letter and no digit is not a query, so no classification is
+asked for, no composition rule fires — every rule's text embeds the question, and there is no question to embed — and the
+fan-out is **empty**, nothing embedded and nothing searched. What comes back is the deterministic route, marked
+`fallback` beside `contentFree` on the intent event. The set is bounded to the stage's
 ceiling, with a floor on **distinct retrieval texts**: 2–4 whenever the caller's question plus a differing model
 sub-query or a rule beyond `factual` gives two texts to search, and exactly 1 when the question is the only one — the
 floor is never padded with a near-duplicate, which would claim a decomposition that never happened. Each sub-query
