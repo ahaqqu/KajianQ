@@ -2,7 +2,7 @@
 // whether the two shapes of one target agree, and what the policy does with each
 // finding. Every case here is hermetic — a synthetic tree, no filesystem, no git;
 // `check-markdown-links-tree.test.mjs` holds the real-tree and CLI cases.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import {
   KNOWN_RETIRED,
   POLICY,

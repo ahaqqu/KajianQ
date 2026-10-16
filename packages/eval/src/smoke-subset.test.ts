@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import type { GoldenSet } from "@app/contracts";
 import { selectSmokeSubset, SmokeSubsetError } from "./smoke-subset";
 

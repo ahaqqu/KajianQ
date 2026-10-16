@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { createMemoryRateLimiter, fnv1aHex, tickFixedWindow } from "./rate-limiter";
 
 describe("tickFixedWindow", () => {

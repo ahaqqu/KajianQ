@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { citationValidity } from "./scorers";
 import type { TraceEventLike } from "./harness-types";
 

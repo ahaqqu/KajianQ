@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, screen, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { renderApp } from "./app-test-utils";
 import { COLLECTION_ENTRIES, byStatus } from "../lib/collections";
 import { COLLECTION_AVAILABLE } from "../lib/collections-available";

@@ -1,7 +1,7 @@
 // The docs:links gate against the real repository and through its CLI: the
 // committed-tree rule, the allowlist's self-pruning, and what the entry point
 // prints. The CLI fixtures copy the gate's modules into a throwaway git repo.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
   copyFileSync,

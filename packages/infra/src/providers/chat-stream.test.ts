@@ -1,5 +1,5 @@
 import { Effect, Exit, Fiber, Option, Stream } from "effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { streamHandle } from "./chat-stream";
 import { failureOf, runFail } from "@app/rag-core/testing";
 import type { ProviderError, StreamHandle } from "@app/rag-core";

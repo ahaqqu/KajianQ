@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import type { TraceEvent } from "@app/contracts";
 import { RunContext, StageError, type CostRecord } from "@app/rag-core";
 import { createKajianQRouter, type RouterProvider } from "./chat-router";

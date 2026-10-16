@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { serveAssets, type AssetFetcher } from "./serve-assets";
 
 function assetFetcher(body: string, contentType = "text/html"): AssetFetcher {

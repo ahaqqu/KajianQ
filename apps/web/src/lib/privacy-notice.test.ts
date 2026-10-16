@@ -2,7 +2,7 @@
 // The drift guards below read repo files, which the app bundle cannot, hence the module mirrors
 // them. The Node reference is file-scoped because the web tsconfig types the app for the browser.
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import {
   CONTROLLER,
   ERASURE,

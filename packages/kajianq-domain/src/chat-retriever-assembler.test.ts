@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { RunContext, type Chunk } from "@app/rag-core";
 import { MACHINE_TRANSLATION_LABEL, createKajianQAssembler } from "./chat-assembler";
 import { createKajianQRetriever } from "./chat-retriever";

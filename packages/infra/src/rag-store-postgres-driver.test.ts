@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import type { Pool } from "pg";
 import { postgresSqlRunner } from "./rag-store-postgres-driver";
 

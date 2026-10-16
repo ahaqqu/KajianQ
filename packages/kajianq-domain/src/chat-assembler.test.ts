@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import type { Chunk, Query } from "@app/rag-core";
 import {
   MACHINE_TRANSLATION_LABEL,

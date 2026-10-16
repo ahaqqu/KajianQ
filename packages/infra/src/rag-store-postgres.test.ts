@@ -1,5 +1,5 @@
 /// <reference types="node" />
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { Effect } from "effect";
 import { createPostgresRagStore } from "./rag-store-postgres";
 import { disposePostgresPools, postgresPool, postgresSqlRunner } from "./rag-store-postgres-driver";

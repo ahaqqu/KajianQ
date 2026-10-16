@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { Effect } from "effect";
 import { S3ServiceException } from "@aws-sdk/client-s3";
 import { createMemoryConfigStore } from "./config-store";

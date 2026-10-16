@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { createMemoryRateLimiter, mintBypassToken, RATE_BYPASS_HEADER } from "@app/rate";
 import { generateEd25519KeypairB64 } from "@app/rate/test-utils/ed25519-keypair";
 import { createApi } from "./app";

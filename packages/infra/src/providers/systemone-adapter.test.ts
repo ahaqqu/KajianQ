@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { createSystemOneDecider, resolveDecider } from "./systemone-adapter";
 import type { FetchLike } from "./chat-completions-adapter";
 import { jsonResponse, testVendor } from "./test-fixtures";

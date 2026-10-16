@@ -12,7 +12,7 @@
     "build": "bun run build:web",
     "check": "tsc -p tsconfig.json && bun run --filter '@app/*' check",
     "test": "vp test run --coverage",
-    "lint": "vp check && bun scripts/check-vp-vite-pin.mjs && bun scripts/check-paths-ignore-invariant.mjs",
+    "lint": "vp check && bun scripts/check-paths-ignore-invariant.mjs",
     "fmt": "vp fmt",
     "boundary": "bun scripts/check-boundary.mjs",
     "size-limit": "bun run build:web && size-limit",
@@ -61,8 +61,7 @@
     "playwright-bdd": "9.2.0",
     "size-limit": "13.0.3",
     "typescript": "7.0.2",
-    "vite-plus": "0.3.0",
-    "vitest": "4.1.11"
+    "vite-plus": "0.3.0"
   },
   "overrides": {
     "effect": "4.0.2",

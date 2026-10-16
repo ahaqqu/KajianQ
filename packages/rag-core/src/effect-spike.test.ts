@@ -1,6 +1,6 @@
 import { Cause, Context, Effect, Exit, Fiber, Layer, Option, Scope, Stream } from "effect";
 import { TestClock } from "effect/testing";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { failureOf } from "./testing";
 import {
   EffectSpikeError,

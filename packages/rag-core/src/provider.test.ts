@@ -1,5 +1,5 @@
 import { Effect, Stream } from "effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { parseTrace, type CostRecord, type Stage, type TraceEvent } from "@app/contracts";
 import type { RunContextService } from "./context";
 import type {

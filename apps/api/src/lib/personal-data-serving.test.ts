@@ -2,7 +2,7 @@
 // Node types, file-scoped: the drift guard below reads the checked-in provider
 // config from the repo, which the API bundle cannot do.
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { loadProviderConfig } from "@app/infra";
 import { CHAT_SERVING_ROLES } from "./chat-wiring";
 

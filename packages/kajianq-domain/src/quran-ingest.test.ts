@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { runIngestion } from "@app/rag-ingest";
 import { createCrossLingualEmbedder } from "./test-utils/cross-lingual-embedder";
 import { createMemoryRagStore } from "./test-utils/memory-rag-store";

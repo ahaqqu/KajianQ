@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import type { GoldenQuestion, GoldenSet } from "@app/contracts";
 import { Budget } from "./budget";
 import { behaviorAccepted, refusalCorrectness } from "./scorers";

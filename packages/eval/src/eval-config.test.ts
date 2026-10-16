@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { EvalConfigError, loadEvalRunConfig } from "./eval-config";
 
 /** A minimal valid binder; tests spread overrides over it. */

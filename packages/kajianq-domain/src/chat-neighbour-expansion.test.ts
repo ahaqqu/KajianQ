@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { RunContext, type Chunk, type RoutedQuery } from "@app/rag-core";
 import { createKajianQAssembler } from "./chat-assembler";
 import { validateCitations } from "./chat-citation-validator";

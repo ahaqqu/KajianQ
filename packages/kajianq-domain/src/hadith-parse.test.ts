@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { alignEditions } from "./hadith-align";

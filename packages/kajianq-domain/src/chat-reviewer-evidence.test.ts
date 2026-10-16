@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { RunContext, type AssembledContext, type Chunk } from "@app/rag-core";
 import type { CostRecord } from "@app/contracts";
 import { createKajianQReviewer, DEFAULT_REFUSALS } from "./chat-reviewer";
