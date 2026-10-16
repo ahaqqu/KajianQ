@@ -25,7 +25,7 @@ There is no third depth. If a PR mixes code and docs, thermos applies to the who
 
 ## Coverage claims
 
-**A coverage claim is carried by construction, or it names the enumeration it rests on**: any universal the change carries — _every_ X, _never_ Y, "the set is empty", "no Z exists" — is swept on the four surfaces the truthfulness sweep covers (`.agents/skills/manager/SKILL.md` § Reliability & supervision).
+**A coverage claim is carried by construction, or it names the enumeration it rests on** — any universal the change carries (_every_ X, _never_ Y, "the set is empty", "no Z exists").
 
 Read the mechanism that makes the universal true: where it is a hand-written list — the rules that fire, the producers of a value, the failure classes a response distinguishes, the cases a validator enumerates — the claim **is** the list, so report the member it is missing, or the enumeration the claim should be scoped to.
 
