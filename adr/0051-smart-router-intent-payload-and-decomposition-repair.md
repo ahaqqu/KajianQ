@@ -2,65 +2,24 @@
 
 ## Decision
 
-Stages 1–2 are **one** cheap-tier call returning **one payload**: the intent, the subject category, the
-madzhab/grade/text-layer hints, the Principle decision with its tags, a confidence and rationale, and role-tagged
-sub-queries. The domain reads it into **closed vocabularies** — a value outside them is dropped, never force-matched —
-and a reply whose intent is unusable lands on a deterministic fallback the Trace marks as one, never on an invented
-classification.
+The first two stages are **one** cheap-tier call returning **one payload**: the intent, the subject category, the madzhab, grade and text-layer hints, the principle decision with its tags, a confidence and rationale, and role-tagged sub-queries. The domain reads it into **closed vocabularies** — a value outside them is dropped, never force-matched — and a reply whose intent is unusable lands on a deterministic fallback the trace marks as one, never on an invented classification.
 
-The route is **gated on the caller's question, before the model call**: a text carrying no letter and no digit in any
-script is not a query, so no classification is asked for, no composition rule fires — every rule's text embeds the
-question, and there is no question to embed — and the fan-out is **empty**: nothing embedded, nothing searched. The
-deterministic fallback comes back instead, marked `contentFree` beside `fallback` on the intent event.
+The route is **gated on the caller's question, before the model call**: a text carrying no letter and no digit in any script is not a query, so no classification is asked for, no composition rule fires, and the fan-out is **empty** — nothing embedded, nothing searched — with the deterministic fallback returned and marked content-free beside the fallback on the intent event.
 
-Decomposition is **repaired deterministically after the model replies**: every rule that fired has a sub-query carrying
-its role (factual always; principle when the question needs a lens; Quranic dalil for fikih; sanad for hadith); a missing
-one is added from a template — or stamped onto the set's role-less entry for that same text, so the duplicate filter
-never costs a rule its coverage, while an entry the model labelled with a different declared role keeps its label. A
-text carrying no letter and no digit is **dropped**, never embedded, **whatever its origin** — the reply's phrasing, a
-rule's own text, the floor's, or the fallback's — and the ceiling never spends the slot of the entry a fired
-rule's own text lives in, so the repair is a fixed point over its own output. The set is bounded to the ceiling, with a
-floor on **distinct retrieval texts**: 2–4 whenever the question plus a differing model sub-query or a rule beyond
-`factual` gives two texts to search, and exactly 1 when the question is the only one — never padded with a
-near-duplicate that would claim a decomposition which never happened. Each sub-query records what it is for and what
-produced it — the model, a rule, or the fallback — so a repaired route reads as repaired on the persisted trace.
+Decomposition is **repaired deterministically after the model replies**: every rule that fired has a sub-query carrying its role, and a missing one is added from a template — or stamped onto the set's role-less entry for that same text, so the duplicate filter never costs a rule its coverage, while an entry the model labelled with a different declared role keeps its label. A text carrying no letter and no digit is **dropped**, never embedded, whatever its origin, and the ceiling never spends the slot of the entry a fired rule's own text lives in, so the repair is a fixed point over its own output. The set is bounded to a ceiling with a floor on **distinct retrieval texts**: two to four whenever the question plus a differing model sub-query or a rule beyond the factual one gives two texts to search, and exactly one when the question is the only one — never padded with a near-duplicate that would claim a decomposition which never happened.
 
-The payload is **Trace content**: the classification rides the `intent` event's typed confidence and reasoning slots
-plus its opaque attributes, each sub-query its own `subquery` event with role and origin, and **one module in the domain
-pack owns the vocabularies** the prompt, the narrowing, the Golden Set fixture's labels and the eval's trap marker all
-read. The **answer prompt is unchanged**: the Generator and the Reviewer read the verbatim question the engine stamps
-onto the run's query, never the router's reading of it.
+Each sub-query records **what it is for and what produced it** — the model, a rule, or the fallback — so a repaired route reads as repaired on the persisted trace. The payload is trace content: the classification rides the intent event's typed confidence and reasoning slots plus its opaque attributes, and each sub-query its own event with role and origin. **One module in the domain pack owns the vocabularies** that the prompt, the narrowing, the Golden Set fixture's labels and the eval's trap marker all read. The **answer prompt is unchanged**: the generator and the reviewer read the verbatim question the engine stamps onto the run's query, never the router's reading of it.
 
 ## Why
 
-The classification is the Trace's account of what the system understood, so it must be typed and vocabulary-checked
-rather than free text: a value the model invents is not an understanding, and recording it as one makes the trust
-surface — the product's whole transparency promise — lie. The decomposition cannot be left to the model alone: a cheap
-model asked for a bounded number of sub-queries returns one or nine, and the count is load-bearing twice over — every
-sub-query is an embedding and a pair of searches, so an unbounded reply is unbounded cost, and a missing one is a
-retrieval angle the stage promised. Splitting the work — the model phrases, the domain guarantees coverage and the
-bound — keeps the paraphrase quality that makes retrieval work while making the published contract true by
-construction, and the role and origin labels exist because a rule-added or fallback sub-query that passes for the
-model's own judgment hides exactly the machinery the Trace exists to show. The gate sits on the question rather than on
-each text because the prompt's own count rule is what a compliant model obeys by inventing retrieval queries for a text
-that is not a question — and those queries carry letters, so no content test can tell them from a real angle, while a
-rule beyond `factual` cannot fire on the text either: its template is that rule's own words _plus the question_.
+The classification is the trace's account of what the system understood, so it must be typed and vocabulary-checked rather than free text: a value the model invents is not an understanding, and recording it as one makes the trust surface — the product's whole transparency promise — lie. The decomposition cannot be left to the model alone: a cheap model asked for a bounded number of sub-queries returns one or nine, and the count is load-bearing twice over — every sub-query is an embedding and a pair of searches, so an unbounded reply is unbounded cost, and a missing one is a retrieval angle the stage promised. Splitting the work — the model phrases, the domain guarantees coverage and the bound — keeps the paraphrase quality that makes retrieval work while making the published contract true by construction. The role and origin labels exist because a rule-added or fallback sub-query that passes for the model's own judgment hides exactly the machinery the trace exists to show. The gate sits on the question rather than on each text because a compliant model obeys the prompt's own count rule by inventing retrieval queries for a text that is not a question, and those queries carry letters, so no content test can tell them from a real angle.
 
-Rejected: a second cheap-tier call for decomposition — it doubles router latency and cost while its input would be the
-first call's output, which one JSON object already carries. Rejected: a configuration switch that turns decomposition off
-so a single-query baseline could be measured — that path was never shipped (the router shipped with the chat route
-itself), the switch is a second serving mode to maintain that degrades retrieval silently, and its regression question is
-answered by a before/after Golden Set run on one deployment.
+Rejected: a second cheap-tier call for decomposition, which doubles router latency and cost while its input would be the first call's output; a configuration switch that turns decomposition off so a single-query baseline could be measured — a second serving mode to maintain that degrades retrieval silently, when a before/after Golden Set run on one deployment answers the same question.
 
 ## Consequences
 
-- The engine carries the payload opaquely — intent, labels, attributes — so no Islamic-domain vocabulary enters an
-  engine package, and a second consumer inherits no religious taxonomy.
-- The stage returns its reading, not the run's query: the runner stamps the caller's verbatim text and prior turns, so
-  a router cannot omit or forge the fields later stages read (ADR-0018).
+- The engine carries the payload opaquely — intent, labels, attributes — so no domain vocabulary enters an engine package and a second consumer inherits no religious taxonomy.
+- The stage returns its reading, not the run's query: the runner stamps the caller's verbatim text and prior turns, so a router cannot omit or forge the fields later stages read (ADR-0018).
 - A route the model did not decide is recorded with its fallback, and the unusable reply's cost with it, never dropped.
-- Answer behaviour is untouched, so router quality is measurable against a recorded Golden Set baseline without a
-  prompt confound; retrieval recall, citation validity and refusal counts are the instruments.
-- Principle retrieval proper — an index the router's tags select, and Arabic expansion candidates from the terminology
-  graph — lands behind the same payload; until then a rule-derived principle or evidence sub-query is an ordinary
-  retrieval query over the corpus.
+- Answer behaviour is untouched, so router quality is measurable against a recorded Golden Set baseline without a prompt confound.
+- Principle retrieval proper — an index the router's tags select, and Arabic expansion candidates from the terminology graph — lands behind the same payload; until then a rule-derived principle or evidence sub-query is an ordinary retrieval query over the corpus.
