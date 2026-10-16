@@ -25,11 +25,9 @@ There is no third depth. If a PR mixes code and docs, thermos applies to the who
 
 ## Coverage claims
 
-**A coverage claim is carried by construction, or it names the enumeration it rests on.** It is any universal the change carries — _every_ X, _never_ Y, "the set is empty", "no Z exists" — and it is swept on each of the four surfaces the truthfulness sweep covers (`.agents/skills/manager/SKILL.md` § Reliability & supervision): the diff (a code comment or a contract description is a claim like any other), its file mirrors (an edited `AGENTS.md`, ADR or `SPECS.md` first among them), the PR body, and the source ticket body.
+**A coverage claim is carried by construction, or it names the enumeration it rests on**: any universal the change carries — _every_ X, _never_ Y, "the set is empty", "no Z exists" — is swept on the four surfaces the truthfulness sweep covers (`.agents/skills/manager/SKILL.md` § Reliability & supervision).
 
-Read the mechanism that is supposed to make the universal true. Where that mechanism is a hand-written list — the rules that fire, the producers of a value, the failure classes a response distinguishes, the cases a validator enumerates — the claim **is** the list, not the universal: a member outside it stays invisible, and the claim ships green because every gate reads the members the list names and never the ones it omits.
-
-Report the gap: **name the member the list is missing**, or **name the enumeration the claim should be scoped to instead**. A universal phrased over a hand-written set is indistinguishable from a guess.
+Read the mechanism that makes the universal true: where it is a hand-written list — the rules that fire, the producers of a value, the failure classes a response distinguishes, the cases a validator enumerates — the claim **is** the list, so report the member it is missing, or the enumeration the claim should be scoped to.
 
 ## Philosophy alignment
 
