@@ -215,14 +215,14 @@ Repo-level values the workflows read (nothing here is in the repository):
 | var    | `VPS_HOST`                | `deploy-vps.yml` → `KAJIANQ_DEPLOY_HOST`       | the server (or an ssh-config alias)                                        |
 | var    | `VPS_USER`                | `deploy-vps.yml` → `KAJIANQ_DEPLOY_USER`       | the deploy identity — `kajianq-deploy` (§1.5)                              |
 | var    | `VPS_PUBLIC_URL`          | deploy smoke, Staging smoke, ZAP, Schemathesis | the public base URL                                                        |
-| var    | `VPS_ROOT`                | `deploy-vps.yml` → `KAJIANQ_DEPLOY_ROOT`       | the deployed tree (default `/srv/kajianq`)                                 |
 | secret | `VPS_DEPLOY_SSH_KEY`      | deploy + staging tunnel                        | a dedicated ed25519 deploy key, public half in the box's `authorized_keys` |
 | secret | `STAGING_DATABASE_URL`    | Staging Golden Set smoke                       | the VPS Postgres loopback URL, **through the tunnel port** (§2.8)          |
 | secret | `RATE_BYPASS_PRIVATE_KEY` | Staging Schemathesis fuzz                      | the purpose-locked bypass token (ADR-0041)                                 |
 
-`deploy-vps.yml` fails at a named "Require the deploy access" step when a var or
-the key is missing — an actionable failure rather than a silent no-op. The
-private key is written to a runner-local file the job removes when it ends.
+`deploy-vps.yml` fails at a named "Require the deploy access" step when
+`VPS_HOST`, `VPS_USER`, `VPS_PUBLIC_URL` or the key is missing — an actionable
+failure rather than a silent no-op. `VPS_ROOT` is not checked there. The private
+key is written to a runner-local file the job removes when it ends.
 
 **Legacy variables removed (step 7 executed).** `STAGING_URL` is deleted;
 `PROD_URL` is re-pointed at the VPS's public origin
@@ -232,21 +232,30 @@ no workflow reads either, the occurrences of the name `STAGING_URL` in
 `vars.VPS_PUBLIC_URL`. The Worker-era secrets (`CLOUDFLARE_API_TOKEN`,
 `CLOUDFLARE_ACCOUNT_ID`, `NEON_API_KEY`, `NEON_DATABASE_URL`) are deleted
 from the GitHub secret store. What the workflows actually consume is the
-`vars.VPS_*` set above (repo-level) plus the `prod` environment's
-environment-scoped copy of the same four (`VPS_HOST`, `VPS_USER`, `VPS_ROOT`,
-`VPS_PUBLIC_URL`) and its `VPS_DEPLOY_SSH_KEY` secret.
+repo-level set above — `VPS_HOST`, `VPS_USER`, `VPS_PUBLIC_URL` and
+`VPS_DEPLOY_SSH_KEY` — plus, for a `prod` dispatch, the `prod` environment's
+environment-scoped `VPS_HOST`, `VPS_USER`, `VPS_PUBLIC_URL` and `VPS_ROOT`
+variables and its own `VPS_DEPLOY_SSH_KEY` secret. `VPS_ROOT`
+(`deploy-vps.yml` → `KAJIANQ_DEPLOY_ROOT`, the deployed tree) exists only at
+`prod` scope: `deploy-vps.yml` reads `vars.VPS_ROOT` on every dispatch, so a
+`staging` one resolves it empty and `provision/vps/deploy/deploy.sh` falls back
+to its `/srv/kajianq` default.
 
 **The `prod` environment (owner sign-off gate).** A prod dispatch of
 `Deploy to VPS` targets the `prod` environment, which carries a
 required-reviewer protection rule (the owner) and a protected-branch policy —
 the approval is the owner's sign-off for a production-targeted deploy
-(ADR-0044 decision 2). Only `prod` is environment-scoped: its `VPS_*`
-variables and `VPS_DEPLOY_SSH_KEY` shadow the repository-level copies for a
-prod dispatch. The `staging` environment carries no credentials of its own, so
-it resolves to the repository-level variables and key — editing one of those
-moves a staging deploy immediately, with no environment boundary in between.
-Both `VPS_HOST`s point at the **one box** (§1.2), because no production
-deployment is provisioned (ADR-0044 decision 2; deferred 2026-10-03).
+(ADR-0044 decision 2). Only `prod` is environment-scoped: its `VPS_HOST`,
+`VPS_USER`, `VPS_PUBLIC_URL` and `VPS_ROOT` variables and its
+`VPS_DEPLOY_SSH_KEY` secret shadow the repository-level copies for a prod
+dispatch. The `staging` environment carries no credentials of its own, so a
+staging dispatch resolves to the repository-level `VPS_HOST`, `VPS_USER`,
+`VPS_PUBLIC_URL` and `VPS_DEPLOY_SSH_KEY` — editing one of those moves a
+staging deploy immediately, with no environment boundary in between — and to no
+`VPS_ROOT` at all, leaving `provision/vps/deploy/deploy.sh` on its
+`/srv/kajianq` default. Both `VPS_HOST`s point at the **one box** (§1.2),
+because no production deployment is provisioned (ADR-0044 decision 2;
+deferred 2026-10-03).
 
 ### 1.5 The permission model (deploy identity ↔ `kajianq`)
 
