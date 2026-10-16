@@ -25,9 +25,7 @@ jobs:
         with:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
-      # Installs the vp CLI pinned via the `vite-plus` devDependency; the
-      # revisions it carries that the project still names separately have to
-      # travel with it.
+      # Installs the vp CLI pinned via the `vite-plus` devDependency.
       - uses: voidzero-dev/setup-vp@3754dd7dbdb32bd8f6d28b6043de13ad3a75f21f # v1.21.1
       - run: bun run check
       - run: bun run lint

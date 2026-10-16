@@ -65,8 +65,7 @@
   },
   "overrides": {
     "effect": "4.0.2",
-    "tinypool": "2.1.2",
-    "vite": "npm:@voidzero-dev/vite-plus-core@0.3.0"
+    "tinypool": "2.1.2"
   },
   "size-limit": [
     {
