@@ -65,8 +65,7 @@
     "vitest": "4.1.11"
   },
   "overrides": {
-    "@effect/platform-node-shared": "4.0.0-rc.112",
-    "effect": "4.0.0-rc.112",
+    "effect": "4.0.2",
     "tinypool": "2.1.2"
   },
   "size-limit": [
