@@ -36,17 +36,26 @@ export { extractJsonObject, ROUTER_SYSTEM_PROMPT } from "./chat-router-output";
  * onto it, so the fields downstream stages read are guaranteed rather than
  * echoed back by this stage (ADR-0018).
  *
+ * The route is **gated on the question, before the call**: the router's input
+ * is the caller's question, and a text carrying no letter and no digit is not a
+ * question. The stage declines it there — no classification is asked for, so no
+ * sub-query can be invented for it, no composition rule fires (every rule's text
+ * embeds the question, and there is no question to embed), and retrieval fans
+ * out over nothing: no embed, no search. The route it returns is the
+ * deterministic one below, carrying no sub-query and marked on the Trace.
+ *
  * An unusable reply (unparseable JSON, or a classification outside the
- * vocabulary) lands on the deterministic fallback: one factual sub-query made
+ * vocabulary) lands on that same deterministic route: one factual sub-query made
  * of the verbatim question, marked `origin: "fallback"` and flagged on the
  * intent event's attributes, so the Trace never presents an invented
- * classification as the model's reading. The fallback selects no source — a
- * route that understood nothing must not narrow the corpus on a guess — and
- * says so with an empty `sources` list. A question carrying no letter and no
- * digit is not a query, so this arm adds no sub-query either: the invariant is
- * one text-level admission — trim, then the content test — owned by
- * `chat-subquery-admission` and shared with the decomposer, because the
- * fallback is a third origin a caller's text reaches the fan-out from.
+ * classification as the model's reading. The deterministic route selects no
+ * source — a route that understood nothing must not narrow the corpus on a guess
+ * — and says so with an empty `sources` list. The invariant behind both arms is
+ * one admission — trim, then the content test — owned by
+ * `chat-subquery-admission`, asked of the caller's question at the gate and of
+ * every text that reaches the fan-out (`decomposeQuery`'s `push`), because the
+ * reply's phrasing, a rule's own text and the deterministic route are each an
+ * origin a text can reach the fan-out from.
  */
 
 export type RouterProvider = {
@@ -72,6 +81,26 @@ export function createKajianQRouter(
         "router",
         Effect.gen(function* () {
           const run = yield* RunContext;
+          const overrides = query.filters ?? {};
+          // The route gate: ask whether the caller's text is a query at all, once,
+          // before anything is spent. A text with no letter and no digit is not one,
+          // so the stage asks the model nothing — a model asked to decompose a
+          // non-question invents retrieval queries for it, and those are the embeds
+          // and searches this gate exists to avoid — and returns the deterministic
+          // route over an empty fan-out. `admitSubQueryText` is the one owner of the
+          // content test; the gate asks it of the question, `push` asks it of every
+          // text that reaches the fan-out, so the two cannot disagree.
+          const question = admitSubQueryText(query.text);
+          if (question === undefined) {
+            const routing = deterministicRouting(overrides, question);
+            run.record({
+              stage: "router",
+              kind: "source_routing",
+              detail: sourceRoutingDetail(routing.filters),
+              at: run.now(),
+            });
+            return routing;
+          }
           const reply = yield* provider
             .generate({
               turns: [
@@ -90,7 +119,6 @@ export function createKajianQRouter(
             cost: reply.cost,
             at: run.now(),
           });
-          const overrides = query.filters ?? {};
           const reading = readRouterText(reply.text, overrides);
           // Stage 3's decision, recorded by the stage that made it — and built
           // by the same mapping retrieval uses, over the same decomposition, so
@@ -105,7 +133,7 @@ export function createKajianQRouter(
             try: () => {
               const routing =
                 reading === undefined
-                  ? fallbackRouting(query.text, overrides)
+                  ? deterministicRouting(overrides, question)
                   : routingOf(reading, query.text);
               return { routing, decision: sourceRoutingDetail(routing.filters) };
             },
@@ -168,34 +196,40 @@ function routingInputOf(
   };
 }
 
-/** The reply was unusable: one factual sub-query, visibly marked as the fallback. */
-function fallbackRouting(
-  question: string,
+/**
+ * The stage's deterministic route: what the router routes to when no model
+ * reading routes the query. Two shapes reach it — the caller's text is not a
+ * query, so none was asked for (`question === undefined`), or the model's reply
+ * could not be read (`question` is the admitted question then) — and both are
+ * marked `fallback` on the intent event, so the Trace never presents a
+ * deterministic route as the model's judgment. `contentFree` tells the two
+ * apart on the trace: a reader can see that the router had nothing to ask about,
+ * not that the model answered badly.
+ *
+ * `question` is the caller's text *after* the one admission — trimmed, and
+ * `undefined` when it carries no letter and no digit. A text that cannot
+ * retrieve contributes no sub-query, so this arm fans out over nothing and
+ * retrieval short-circuits before any embed or search: the same treatment the
+ * decomposer gives that text under any origin, taken one stage earlier.
+ */
+function deterministicRouting(
   overrides: import("./filters").KajianQFilters,
+  question: string | undefined,
 ): Routing<import("./filters").KajianQFilters> {
-  // The verbatim question — unless it is not a query at all. The fallback is a
-  // third origin the caller's text can reach the fan-out from (beside the
-  // reply's phrasing and a rule's own text), and the content invariant is
-  // stated without an origin: a text with no letter and no digit never becomes
-  // a sub-query. A zero-width, control-only or blank question has nothing to
-  // search, so this arm selects no sub-query and retrieval fans out over
-  // nothing.
-  //
-  // The whole admission, not half of it: this arm takes the same trim + content
-  // test the decomposer's `push` takes, from the one owner of both, so it
-  // cannot hand the embed and the `subquery` event a padded text the stage
-  // would have trimmed. `SPECS.md` §3.3's "padded text is kept trimmed" covers
-  // this shape because of that.
-  const text = admitSubQueryText(question);
   return {
     intent: "factual",
-    subQueries: text === undefined ? [] : [{ text, role: "factual", origin: "fallback" }],
+    subQueries:
+      question === undefined ? [] : [{ text: question, role: "factual", origin: "fallback" }],
     filters: overrides,
     // The effective filters reach retrieval, so they belong in the payload that
     // claims to say what was understood: a trace reader must be able to tell
     // which filters this route actually ran with (chat-router-output.ts's
     // `attributes` contract). `fallback: true` is what marks the route as the
     // deterministic one; it is never the whole payload.
-    attributes: { fallback: true, ...overrides },
+    attributes: {
+      fallback: true,
+      ...(question === undefined ? { contentFree: true } : {}),
+      ...overrides,
+    },
   };
 }
