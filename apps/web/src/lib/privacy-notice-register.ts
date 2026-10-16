@@ -2,8 +2,9 @@ import type { Localized } from "./localized";
 import type { SubProcessor } from "./privacy-notice-types";
 
 /**
- * The sub-processor register the `/about` notice renders: ADR-0043 decision 3 in data format,
- * and nothing else. Each row carries a status so the notice is never false: netcup is
+ * The sub-processor register the `/about` notice renders: the Art. 30 record's register (§8) in
+ * data format, and nothing else. ADR-0043 decision 3 records the rule those rows enforce. Each
+ * row carries a status so the notice is never false: netcup is
  * `current` as the production host, the vendors the move narrows are `transition`, and a row
  * with no serving role says so. A further cutover is a status edit, not a copy rewrite.
  *
@@ -183,6 +184,6 @@ export const REGISTER_TRANSITION_NOTE: Localized = {
 
 /** The notice's own provenance, so a reader can check it against the register. */
 export const REGISTER_SOURCE: Localized = {
-  id: "Dirender dari register sub-prosesor di ADR-0043 — register yang sama yang menjadi dasar catatan Art. 30 (docs/GDPR-ARTICLE-30-RECORD.md).",
-  en: "Rendered from the sub-processor register in ADR-0043 — the same register the Art. 30 record derives from (docs/GDPR-ARTICLE-30-RECORD.md).",
+  id: "Dirender dari register sub-prosesor pada catatan Art. 30 (docs/GDPR-ARTICLE-30-RECORD.md) — aturan yang ditegakkannya tercatat di ADR-0043 keputusan 3.",
+  en: "Rendered from the sub-processor register in the Art. 30 record (docs/GDPR-ARTICLE-30-RECORD.md) — the rule it enforces is recorded in ADR-0043 decision 3.",
 };

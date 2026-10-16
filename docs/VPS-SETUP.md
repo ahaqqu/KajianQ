@@ -106,9 +106,10 @@ You need:
   Postgres + the API + a build-free runtime; 1 GB will swap.
 - **Disk.** Size for the corpus, not for the code. The full v1 corpus is
   estimated at ~700,000 chunk rows, and with both 1536-dim vector columns and
-  their HNSW indexes that is **~17–18 GiB** of Postgres data
-  ([`adr/0020-neon-dual-vector-sizing.md`](../adr/0020-neon-dual-vector-sizing.md)
-  holds the arithmetic). Add your restic backups on top if you keep them on the
+  their HNSW indexes that is **~17–18 GiB** of Postgres data — the arithmetic
+  is derived from the schema whose storage decision is
+  [`adr/0020-neon-dual-vector-sizing.md`](../adr/0020-neon-dual-vector-sizing.md).
+  Add your restic backups on top if you keep them on the
   same disk, plus a little headroom for WAL and log segments — a 40 GB disk is
   comfortable, 20 GB is tight once backups accumulate, and a small box will fill
   during ingestion rather than during serving. If you ingest only the Quran to
@@ -953,7 +954,8 @@ request line, status, bytes, correlation id, request time — no user-agent, no
 referrer, no `$remote_user`. Statement text is never logged by Postgres, because
 a chat question is personal data and does not belong in an ops log.
 
-One retention value per class, all fixed by ADR-0043 decision 4. The API log is
+One retention value per class, all fixed by the Art. 30 record's §6 (ADR-0043
+decision 4 states the decisions behind them). The API log is
 capped at 14 days for disk hygiene as well as consistency — it carries a
 correlation id and no IP address (`packages/infra/src/logger.ts`), so it is not
 a personal-data store, but one number is easier to keep true in a processing

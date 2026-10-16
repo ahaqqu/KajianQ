@@ -24,7 +24,8 @@ import {
 } from "../../provision/vps/backup/lib.mjs";
 
 /**
- * VPS privacy-hardening policy (ADR-0043 decision 4).
+ * VPS privacy-hardening policy (the Art. 30 record §6; ADR-0043 decision 4
+ * records the retention decisions behind those values).
  *
  * The backup/restore tooling is only as trustworthy as the decisions inside it: the
  * rolling window, the integrity check, and the erasure a restore must re-apply. Those
@@ -41,7 +42,7 @@ const MANIFEST = buildManifest({
   tool: { pgDump: "pg_dump (PostgreSQL) 18.6", generator: "test" },
 });
 
-describe("retention policy matches ADR-0043 decision 4", () => {
+describe("retention policy matches the Art. 30 record's §6 values", () => {
   it("keeps one backup per day for 30 days — the session TTL, so a backup cannot outlive its data", () => {
     expect(BACKUP_KEEP_DAILY).toBe(30);
     expect(retentionArgs()).toEqual(["forget", "--keep-daily", "30", "--prune"]);
@@ -920,14 +921,13 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(setup).toMatch(/pg_restore/);
     expect(setup).toMatch(/db:snapshot verify/);
 
-    // 3. The disk figure: ADR-0020's arithmetic is the only corpus-size estimate in the repo, and
-    //    a self-hoster sizing a VPS needs it.
+    // 3. The disk figure: the setup runbook is what a self-hoster sizes against, and the
+    //    schema's sizing record must name the host decision in force rather than the retired one.
     expect(setup).toMatch(/17–18 GiB/);
     expect(setup).toMatch(/adr\/0020-neon-dual-vector-sizing\.md/);
-    // The ADR must say its Neon recommendation is spent while the math still holds.
     const adr = read("adr/0020-neon-dual-vector-sizing.md");
-    expect(adr).toMatch(/Supersession note/);
-    expect(adr).toMatch(/still holds/);
+    expect(adr).toMatch(/ADR-0043|ADR-0044/);
+    expect(adr).toMatch(/docs\/VPS-SETUP\.md/);
   });
 
   it("a markdown link gate exists and is wired into CI", () => {

@@ -112,10 +112,11 @@ DATABASE_URL=postgres://… bun run db:status:all
   manifest honest about its operational commands.
 - Engine `migrations/0001_init.sql` is the domain-agnostic v1 schema (corpus,
   traces, chat, anonymous sessions, feedback, eval ledger, model configs).
-- Domain `packages/kajianq-domain/migrations/0001_concept_graph.sql` follows
-  ADR-0014's DDL verbatim, with one noted adaptation: `lemma_evidence.ayah_pair_id`
-  is a plain `uuid` until #6 lands the aligned-ayah table, at which point it
-  can be promoted to a real FK.
+- Domain `packages/kajianq-domain/migrations/0001_concept_graph.sql` owns the
+  four terminology tables and their column sets — ADR-0014 places them in the
+  domain pack, outside the engine schema. `lemma_evidence.ayah_pair_id` is a
+  plain `uuid` until the aligned-ayah-pair table lands, at which point it can be
+  promoted to a real FK.
 - Product `apps/api/migrations/0001_product.sql` creates `principle_index` and
   `golden_questions`.
 - Corpus sizing / storage cost of the dual-vector schema is decided in

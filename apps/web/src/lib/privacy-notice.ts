@@ -7,13 +7,12 @@
  * bundle cannot read repo files), so the sibling data modules mirror them and
  * must be kept true to:
  *
- *   - `adr/0043-netcup-vps-hosting-gdpr-posture.md` — decision 3 (the
- *     sub-processor register) and decision 4 (the retention values). ADR-0043
- *     is the **source of truth**: the rows, tiers, and verdicts come from
- *     there, never from prose written here. The Tier column is a compliance
- *     field, not a cost note.
- *   - `docs/GDPR-ARTICLE-30-RECORD.md` — the Art. 30 rendering of the same
- *     values (§2 controller, §6 retention, §8 recipients).
+ *   - `docs/GDPR-ARTICLE-30-RECORD.md` — the **source of truth** for the
+ *     sub-processor register (§8) and the retention values (§6): the rows,
+ *     tiers, verdicts and windows come from there, never from prose written
+ *     here. The Tier column is a compliance field, not a cost note.
+ *   - `adr/0043-netcup-vps-hosting-gdpr-posture.md` — the decisions behind
+ *     those values: decision 3 the register rule, decision 4 retention.
  *   - `packages/infra/src/providers/models.json` — the register's
  *     machine-checkable shadow (`freeTier`, `personalDataAllowed`).
  *   - `apps/api/src/routes/auth.ts` — the erasure endpoint the notice points at.

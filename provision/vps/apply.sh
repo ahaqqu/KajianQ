@@ -326,7 +326,7 @@ fi
 # --- API service ------------------------------------------------------------
 run install -o root -g root -m 0644 "${SRC}/systemd/kajianq-api.service" /etc/systemd/system/kajianq-api.service
 
-# --- session-reclamation cron (ADR-0017, ADR-0044 decision 7) ---------------
+# --- session-reclamation cron (ADR-0017, ADR-0044 decision 6) ---------------
 # The nightly reclamation used to be a Cloudflare Worker cron trigger; on the
 # VPS it is a systemd timer invoking the dedicated entry. Both units are
 # config-as-code, so the schedule is installed and enabled here rather than as a

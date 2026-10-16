@@ -2,7 +2,7 @@ import { parseTrace } from "@app/contracts";
 import { Cause, Context, Data, Duration, Effect, Layer, Ref, Schedule, Stream } from "effect";
 
 /**
- * ADR-0027 §2 go/no-go spike (Workers gate). One program exercising the four
+ * The spike behind ADR-0027's adoption. One program exercising the four
  * needs the ADR adopts Effect for, under the repo's strict tsconfig and the
  * Cloudflare Workers bundler:
  *
@@ -42,7 +42,8 @@ export class SpikeClock extends Context.Service<
 /**
  * A lifecycle-managed resource: acquired when the layer builds, released when
  * the scope closes. The release signal is observable so tests can assert the
- * release actually ran (ADR-0027 decision 1, "Scope lifecycle").
+ * release actually ran (ADR-0027 decision 1 — the runner owns each run's
+ * `Scope`).
  */
 export class SpikeResource extends Context.Service<
   SpikeResource,

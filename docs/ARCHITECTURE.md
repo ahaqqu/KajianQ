@@ -8,7 +8,7 @@ This document explains **why** the system is built this way, and which of the
 template's engineering principles still hold. For normative rules agents must
 follow, see [`AGENTS.md`](../AGENTS.md). For the **living** architecture and
 plan — the current package tree, data layer, cost model, and phased plan — see
-[`SPECS.md`](../SPECS.md) (AGENTS.md §2 rule 16). Decisions live in
+[`SPECS.md`](../SPECS.md) (AGENTS.md, Living documents). Decisions live in
 `adr/` (0005 onward, numbered to continue the sequence); vocabulary in [`CONTEXT.md`](../CONTEXT.md).
 
 This project was originally forked from `agentic-project-template`, but
@@ -18,7 +18,8 @@ foundational pillars are superseded here by decision, and it predates DARS
 entirely. This file keeps the template's pillar structure, marks each pillar
 **Inherited** or **Deviated**, and cites the ADR behind every deviation.
 It is stable rationale, not a changelog — when a change makes this document
-wrong, update it in the same PR (rule 16 applies to this file too).
+wrong, update it in the same PR (the living-documents rule applies to this file
+too).
 
 ---
 
@@ -280,7 +281,7 @@ so swapping the RagStore adapter swaps the backend.
 ├── .github/workflows/          # CI gates + the deploy trigger (deploy-vps.yml)
 ├── docs/ARCHITECTURE.md        # ← this file (stable "why")
 ├── docs/VPS-OPERATIONS.md      # how to run the box (deploy, Postgres, hardening, monitoring)
-├── SPECS.md                    # living architecture & plan (rule 16)
+├── SPECS.md                    # living architecture & plan
 ├── AGENTS.md                   # normative rules for agents
 ├── CONTEXT.md                  # domain vocabulary
 ├── INITIAL_IDEA.md             # frozen v1.2 history — never updated
@@ -506,7 +507,7 @@ as an open gap, deliberately not built.
 | Question                                           | Document                                                 |
 | -------------------------------------------------- | -------------------------------------------------------- |
 | Why is it built this way? (stable rationale)       | `docs/ARCHITECTURE.md` — this file                       |
-| What is the architecture and plan _now_?           | `SPECS.md` (living, rule 16)                             |
+| What is the architecture and plan _now_?           | `SPECS.md` (living)                                      |
 | What rules must agents follow?                     | `AGENTS.md`                                              |
 | What do the domain words mean?                     | `CONTEXT.md`                                             |
 | What was decided, when, and why?                   | `adr/` (0005 onward)                                     |

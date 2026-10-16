@@ -3,18 +3,15 @@
 -- This is the KajianQ *domain* schema, owned by the domain pack. It is
 -- deliberately outside the engine boundary gate (AGENTS.md rule 1): the
 -- terminology concept graph is product domain logic — Arabic↔Indonesian
--- religious vocabulary anchored to aligned Quran/hadith pairs — so it lives
--- here, not in packages/infra. ADR-0014 originally placed these four tables
--- in the engine migration (#4); that was domain leakage into an engine
--- package and is amended here (ADR-0014) by relocating them.
+-- religious vocabulary anchored to aligned Quran/hadith pairs — so ADR-0014
+-- places the four tables here, not in packages/infra.
 --
--- Column sets follow ADR-0014's DDL verbatim. The graph is self-contained:
--- no FK to the engine schema, so it applies and rolls back independently.
+-- This migration owns the column sets. The graph is self-contained: no FK to
+-- the engine schema, so it applies and rolls back independently.
 --
--- NOTE on lemma_evidence.ayah_pair_id: ADR-0014 leaves the aligned-ayah-pair
--- table as "TBD by #4/#6". #6 owns that table; until it exists the column is
--- `uuid NOT NULL` (no FK), constrained by shape only. #6 will add the
--- aligned-pair table and can promote this to a true FK then.
+-- NOTE on lemma_evidence.ayah_pair_id: the aligned-ayah-pair table does not
+-- exist yet, so the column is `uuid NOT NULL` (no FK), constrained by shape
+-- only; it can be promoted to a true FK once that table lands.
 
 BEGIN;
 

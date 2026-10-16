@@ -23,8 +23,8 @@ import { THEME_KEY } from "./theme";
  *     the cascade.
  *
  * This is UI-posture copy, not register data: it names no processor, no
- * retention window, and no vendor, so it deliberately carries no row in
- * ADR-0043's register and needs none.
+ * retention window, and no vendor, so it deliberately carries no row in the
+ * Art. 30 record's register and needs none.
  */
 
 export const STORAGE = {
