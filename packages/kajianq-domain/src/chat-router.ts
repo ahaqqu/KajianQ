@@ -197,7 +197,7 @@ function routingInputOf(
 }
 
 /**
- * The stage's deterministic route: what the router routes to when no model
+ * The stage's deterministic fallback: what the router routes to when no model
  * reading routes the query. Two shapes reach it — the caller's text is not a
  * query, so none was asked for (`question === undefined`), or the model's reply
  * could not be read (`question` is the admitted question then) — and both are
