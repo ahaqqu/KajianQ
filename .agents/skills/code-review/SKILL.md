@@ -23,6 +23,14 @@ There is no third depth. If a PR mixes code and docs, thermos applies to the who
 - `AGENTS.md` — universal guardrails and Definition of Done.
 - `.agents/skills/dars-pluggability/SKILL.md` and `.agents/skills/kajianq-traceability/SKILL.md` — the domain checklists and anti-pattern lists.
 
+## Coverage claims
+
+**A coverage claim is carried by construction, or it names the enumeration it rests on.** It is any universal the change carries — _every_ X, _never_ Y, "the set is empty", "no Z exists" — and it is swept on each of the four surfaces the truthfulness sweep covers (`.agents/skills/manager/SKILL.md` § Reliability & supervision): the diff (a code comment or a contract description is a claim like any other), the docs the change edits (`AGENTS.md`, an ADR, `SPECS.md`), the PR body, and the source ticket body.
+
+Read the mechanism that is supposed to make the universal true. Where that mechanism is a hand-written list — the rules that fire, the producers of a value, the failure classes a response distinguishes, the cases a validator enumerates — the claim **is** the list, not the universal: a member outside it stays invisible, and the claim ships green because every gate reads the members the list names and never the ones it omits.
+
+Report the gap: **name the member the list is missing**, or **name the enumeration the claim should be scoped to instead**. A universal phrased over a hand-written set is indistinguishable from a guess.
+
 ## Philosophy alignment
 
 Check the PR against the principles in `docs/ARCHITECTURE.md`. The KajianQ-specific ones that fail silently and deserve explicit verification:
