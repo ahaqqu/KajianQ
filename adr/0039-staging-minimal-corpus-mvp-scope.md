@@ -1,117 +1,20 @@
-# ADR-0039: Staging carries a minimal corpus; the full corpus is a production milestone
-
-> **Update 2026-09-26 (issue #213): the production half of decision 2 has
-> executed.** ADR-0044 moved the store to the self-hosted VPS (removing the
-> 0.5 GB cap that motivated this ADR), and the full corpus — the six remaining
-> hadith collections — loaded there per ADR-0037's pass discipline and
-> ADR-0038's snapshot gate (run record: `docs/CORPUS-INGEST.md` §4). The
-> minimal-corpus scope is **retired for the production store**; the historical
-> decision below stands as the record of why staging was scoped, and of the
-> cap-era trade-offs (HNSW/precision levers, the dhaif-trap residual risk).
-
-## Status
-
-Accepted (2026-09-12). Scopes the staging corpus for the MVP. Amends the corpus
-expectation in `SPECS.md` §2/§3.7; does not change ADR-0037 (who runs ingestion)
-or ADR-0038 (how the result is protected).
-
-## Context
-
-- The staging corpus exists for one reason: the Golden Set smoke scores
-  **retrieval recall from the persisted traces**, so the store must hold enough
-  material for the questions it scores (SPECS §3.7).
-- The full corpus — Quran (6,236 children) plus seven hadith collections
-  (~35,573 children) — projects to **≈1.35 GB**. Measured on 2026-09-12: the
-  store was already 235 MB after Quran alone, and `doc_children` spent 215 MB of
-  that, of which **96 MB was the two HNSW indexes**.
-- Neon's free plan caps storage at **0.5 GB per project**, and its documented
-  behaviour on overage is that writes **fail**. So the full corpus cannot be
-  loaded on staging at all without moving to a paid plan or a VPS.
-- The MVP does not need corpus _completeness_. Of the five questions the PR-time
-  smoke scores, two require **hadith** chunks and three require **Quran** chunks
-  (by `expectedSourceTypes`); **none requires a specific collection**.
-- Measured while deciding this: the Golden Set's fabricated-attribution trap
-  (`gs-v0-020`, "seek knowledge unto China") targets a hadith that is **absent
-  from all seven fawazahmed0 collections** — the Arabic "الصين" returns zero hits
-  in every edition, and the one Indonesian "cina" match (Bukhari #6001) is a
-  substring false positive in an unrelated hadith. No collection choice therefore
-  makes that trap more or less meaningful.
+# ADR-0039: The smoke is a behavioural gate on a partial corpus; the full corpus is a milestone of the store sized for it
 
 ## Decision
 
-1. **Staging carries the smallest corpus that satisfies the gate**: Quran plus
-   **one** hadith collection — Malik (Muwatta), ~1,829 records / ~56 MB, landing
-   the store at ~291 MB (58% of the free cap).
-2. **The full corpus is a production milestone**, loaded on the production store
-   (the self-hosted Postgres hosting workstream), not on staging.
-3. The smoke's evidence is a **behavioural gate on a partial corpus**, and the PR
-   body says so plainly rather than implying corpus coverage.
+1. **A store carries the smallest corpus that satisfies the gate** unless it is sized for the full one; the full corpus is a milestone of the store that can hold it, not a prerequisite of the smoke.
+2. **The smoke's evidence is a behavioural gate on a partial corpus** — refusal correctness, citation validity, and recall by source type — and the change's own description says so plainly rather than implying corpus coverage.
+3. **Widening the scope is deliberate and reversible:** one more bounded ingestion pass (ADR-0037) adds a collection, and the store's headroom is checked first, because a store over its capacity fails writes rather than warning.
 
-## Rationale
+## Why
 
-- The gate scores _behaviour_ — refusal correctness, citation validity, recall by
-  source type — not corpus coverage. Spending ~$1–4 and roughly two hours to
-  satisfy a coverage invariant the gate never reads is exactly the waste ADR-0037
-  exists to prevent.
-- Scoping is cheap and reversible: adding a collection is one more
-  `--offset N --limit 1` pass (ADR-0037 defines the pass), and the store keeps
-  ~209 MB of headroom — enough for one more collection before the cap gets tight.
-- It requires no plan change and no new infrastructure, so the MVP stays free and
-  the hosting decision stays where it belongs: with production.
+The gate scores behaviour, never corpus coverage, so spending money and hours to satisfy a coverage invariant the gate does not read is exactly the waste ADR-0037 exists to prevent. Scoping is cheap to reverse, needs no plan change, and keeps a capacity concern with the store that has it. A partial corpus still exercises the whole path: the questions a store can answer are answered from the collections it holds.
 
-## Alternatives considered
-
-- **Load all seven collections on staging.** Rejected: it needs a paid Neon plan
-  or a VPS purely to hold data the gate does not read, and it front-loads a
-  production concern into the MVP.
-- **Drop the two HNSW indexes as the MVP retrieval path.** Real lever — it frees
-  ~96 MB immediately and roughly halves the per-child cost, and the queries
-  (`ORDER BY embedding <=> $1::vector LIMIT n`) remain correct without an index,
-  just slower. Deferred rather than adopted: it trades a genuine latency property
-  for capacity that scoping already provides, and the index rebuild belongs with
-  the production migration.
-- **Commit the corpus at lower embedding precision (`halfvec`, or MRL-truncated
-  dimensions).** Potentially the largest lever at kitab scale — 2–4× the storage —
-  but it changes the retrieval posture ADR-0036 decided and needs its own
-  measurement gate before it can be adopted.
-- **Split the corpus across several free Neon projects.** Rejected outright: one
-  RagStore is one database; splitting it to dodge a storage cap would break the
-  seam's whole premise.
+Rejected: loading every collection into a store that cannot hold them, purely to carry data the gate never reads; dropping the approximate-nearest-neighbour indexes as the bring-up retrieval path — a real capacity lever, but it trades a latency property for capacity the scoping already provides, and the index rebuild belongs with the store's sizing work; committing the corpus at a lower embedding precision, which changes the posture the benchmark decided (ADR-0036) and needs its own measurement gate; splitting the corpus across stores, which breaks the one-store premise of the seam.
 
 ## Consequences
 
-- Staging retrieval is exercised against **one of seven** collections, so a bug
-  specific to another collection's structure would not surface there.
-- The two hadith-scored questions carry a residual **recall risk**: hadith chunks
-  must enter each track's per-track top-10 against 6,236 Quran chunks. Measured
-  mitigations: `HIERARCHY_BONUS` makes a sahih hadith (0.25) nearly competitive
-  with Quran (0.3), `rrfFuse` returns every fused hit rather than truncating, and
-  Malik is fiqh- and prayer-heavy — the subject matter of `gs-v0-015`. If recall
-  nonetheless fails, the fallback is one more collection pass (~$0.15) while
-  headroom remains.
-- The Golden Set's dhaif trap deserves review at the `model:plus-human` curation
-  gate: its target hadith is absent from the corpus entirely, so it currently
-  tests "does not fabricate without evidence" rather than "refuses a
-  present-but-weak hadith".
-- Storage headroom on staging is a **live constraint**, not a settled one: the
-  next corpus addition must be checked against the cap before it runs, because
-  overage fails writes rather than warning.
-
-## Implementation map
-
-- `SPECS.md` §2 (staging corpus) and §8 (record of decisions).
-- No code change: this is a scope decision, exercised through the existing
-  `--offset`/`--limit` pass (ADR-0037) and protected by ADR-0038's snapshots.
-
-## Revisit triggers
-
-- The production store exists, or kitab ingestion begins → load the full corpus
-  there and retire the minimal-corpus scope. **Fired 2026-09-26 (issue #213)**:
-  the cap came off with ADR-0044, and the six remaining collections landed on
-  the VPS store — the trigger's condition and its action are both closed. What
-  remains of this ADR is the staging-scoping _reasoning_ above and the
-  production-milestone framing of the full corpus.
-- A collection-specific retrieval bug appears → widen the staging corpus
-  deliberately, checking headroom first.
-- The HNSW or embedding-precision levers become necessary → each needs its own
-  ADR and measurement gate (ADR-0036 territory).
+- Retrieval is exercised against the collections a store holds, so a defect specific to another collection's structure does not surface there.
+- Residual recall risk, accepted: a question whose evidence sits in a collection the store does not hold must still be answered or refused correctly, and the smoke's scored set is chosen with that in mind.
+- The Golden Set's fabricated-attribution trap targets material absent from every collection the source carries, so it tests "does not fabricate without evidence" rather than a present-but-weak hadith — a curation-gate question, recorded rather than hidden.
+- **Revisit when** a store is sized for the full corpus (load it there and retire the scoping), a collection-specific retrieval bug appears (widen the corpus deliberately, checking headroom first), or the index and precision levers become necessary (each needs its own record and measurement gate).

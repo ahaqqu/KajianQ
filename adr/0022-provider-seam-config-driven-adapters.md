@@ -1,38 +1,23 @@
-# ADR-0022: Provider seam in rag-core, config-driven vendor adapters in infra
-
-## Status
-
-Accepted (2026-08-29). Records the composition decision for issue #5. Builds on ADR-0009 (vendor allowlist) and ADR-0021 (runner owns the trace/cost seam).
-
-## Context
-
-Issue #5 requires one typed `Provider` interface (`generate` / `stream` / `embed`) covering the ADR-0009 allowlist (Gemini, Kimi, DeepSeek, Qwen), with per-stage model selection driven entirely by config so operators swap vendors without code changes, per-call cost recorded for the Trace, a CLI smoke script, and a cheap-tier fallback chain (Gemini 3 Flash free tier → DeepSeek V4-Flash).
-
-Three constraints shaped the decision:
-
-1. **Where the seam lives.** `rag-core` stages (Router, Generator), `rag-ingest` (translation), and `eval` (judges) all consume LLM calls; implementations are vendor adapters that belong in `packages/infra` (ADR-0009, boundary gate). The seam must sit above infra so the engine never depends on the adapter home.
-2. **The boundary gate scans `packages/infra/src` `.ts` files for vendor names** (`qwen|gemini|deepseek|kimi…`) with no exemption path we wanted to open. A conventional adapter (one file per vendor, vendor constants inside) would require per-file exemptions — an auditable-but-growing hole in the gate.
-3. **Dual runtime.** The same code runs as Bun CLI (ingestion/eval, off-Workers) and inside the Cloudflare Workers api (ADR-0008). Official vendor SDKs have Node-centric dependency graphs; the allowlisted vendors all expose OpenAI-compatible REST endpoints.
+# ADR-0022: The `Provider` seam lives in the engine; adapters are config-driven and vendor-free
 
 ## Decision
 
-1. **Seam in `rag-core`.** The `Provider` interface (typed `generate` / `stream` / `embed`, returning output plus a `CostRecord` from `@app/contracts`) is defined in `packages/rag-core` next to the stage interfaces; vendor adapters in `packages/infra` implement it.
-2. **Generic, config-driven adapters.** Adapters in `packages/infra` are protocol implementations (an OpenAI-compatible REST adapter, plus capability-specific adapters where a vendor lacks a compatible endpoint) containing **zero vendor names**. Vendor identity — endpoints, model ids, api-key env names, prices per MTok — is data in a checked-in **JSON config file** validated at load by a vendor-name-free Valibot schema. The boundary gate scans `.ts`, not `.json`, so the gate needs **no new exemptions**: vendor names cannot appear in any engine `.ts` file, period.
-3. **One typed config file is the single source of truth** for role→provider/model/pricing/fallback-candidates, shipped with the spec §3.4 defaults. The `model_configs` DB table stays a mirror; syncing it is deferred to the admin ticket that first displays it (#18).
-4. **Fallback chain in an infra wrapper.** A `FallbackProvider` (the object a role resolves to) holds the ordered candidate list from config and retries the next candidate on transport errors, 429, and 5xx. The `CostRecord` carries whichever candidate actually answered, so the Trace shows the fallback. An exhausted chain throws a typed `ProviderError`. **Personal-data enforcement (review amendment):** calls label themselves via `personalData` on the prompt/embed spec; the wrapper _skips_ candidates whose vendor disallows personal data (free tiers — ADR-0009's "never route personal data through free tiers" is enforced here, not just documented), falling forward to the next allowed candidate; a chain with no allowed candidate fails with a typed `bad_request` error rather than routing the data anyway.
-5. **Streaming with deferred cost.** `stream()` returns an async iterator of text deltas plus a `cost(): Promise<CostRecord>` resolving when the stream completes (from usage in the final chunk when the vendor sends it). The caller records it through `run.record` — the single trace sink (ADR-0021). `cost()` never deadlocks: when `deltas` was not consumed it drains the remainder internally. Stream latency is wall clock from request start to the end of iteration, so consumer backpressure inflates it — a documented, deliberate trade-off (eager buffering rejected as complexity for a Trace-only metric).
-6. **Prices live in the same config file**, PR-reviewed like any model decision (AGENTS.md: price weighed in every decision). Cost is computed at call time as usage × price; a model id without a price entry is a wiring error that throws at load, not a silent $0. **Estimates are marked (review amendment):** `CostRecord.estimated` (optional, forward-compatible) is set whenever tokens were estimated rather than metered — a vendor that reports no streamed/embedding usage gets a heuristic count plus `estimated: true`, never a metered-looking record.
+1. **The seam is in the engine.** One typed `Provider` interface — generate, stream, embed — returning its output with a cost record, sits beside the stage interfaces in `packages/rag-core`; vendor adapters implement it in `packages/infra`.
+2. **Adapters are protocol implementations, not vendor files, and carry zero vendor names.** Vendor identity — endpoints, model ids, key variables, prices, personal-data eligibility — is data in a checked-in config validated at load by a vendor-name-free schema. Vendor names cannot appear in engine source, and the boundary gate needs no exemption for them.
+3. **The config is the single source of truth** for role → provider, model, price and fallback candidates; the `model_configs` table is a mirror of it, not the source.
+4. **Fallback is a wrapper over the resolved chain.** It retries the next candidate on transport errors, rate limits and server faults, the cost record names the candidate that answered, and an exhausted chain fails with a typed provider error.
+5. **The register rule binds at the wrapper.** A call declares whether it carries personal data; the wrapper skips a candidate whose vendor does not permit it and fails rather than routing the data anyway.
+6. **Streaming carries deferred cost.** A stream yields deltas and resolves its cost record when it completes, and a vendor that reports no usage yields a record marked as an estimate, never one that reads as metered.
+
+## Why
+
+The engine runs in more than one runtime — batch ingestion and eval CLIs beside the serving API — while official vendor SDKs carry Node-centric dependency graphs; every allowlisted vendor exposes a compatible REST endpoint, so a protocol adapter covers them all. One file per vendor with vendor constants inside would need per-file exemptions from the boundary gate: an auditable hole that grows with each vendor. Config-driven adapters close it structurally, because the gate scans TypeScript and the vendor data lives in JSON.
+
+Rejected: per-vendor adapter files with gate exemptions; a fallback wrapper that ignores personal-data eligibility; a model id without a price entry silently costing zero — it is a load-time error instead.
 
 ## Consequences
 
-- Swapping a vendor, model, or price is a JSON edit + PR — engine code, adapters, and the boundary gate stay untouched. Forks override the JSON per project.
-- The gate's vendor rule now has _no_ exempted source files; the exemption mechanism remains for genuine future needs, and the proof is structural (`.json` is unscanned) rather than a list of exceptions.
-- Adapter code must stay honest: a vendor quirk that cannot be expressed as config data forces a protocol-level abstraction, not a vendor-named file. If a quirk is truly vendor-specific and unconfigurable, that is the signal to revisit this ADR.
-- The smoke script (`packages/infra/scripts/`) runs each keyed vendor through the seam and prints per-call cost; vendors without an env key are reported `NOT RUN` with exit 0 so CI stays green before #2 (vendor API keys) delivers keys. The script lives outside `infra/src`, so the gate does not scan it.
-- `stream()` cost is only as accurate as the vendor's streamed usage reporting; where a vendor does not report usage on stream, the adapter estimates (token heuristics) and marks the record `estimated: true` — the Trace must never silently present an estimate as metered (now enforced in the typed contract).
-
-## Revisit triggers
-
-- A second DARS consumer (ADR-0005) wanting a different vendor set: the JSON moves with the fork; nothing else changes.
-- A vendor capability the OpenAI-compatible protocol cannot express and config cannot parameterize: add a capability-specific adapter or amend this ADR.
-- The `model_configs` mirror becomes stale-prone once #18 syncs it: consider a load-time consistency check (config vs. mirror) then.
+- Swapping a vendor, model or price is a config edit; engine code, adapters and the gate stay untouched, and a fork overrides the config.
+- A vendor quirk config cannot express forces a protocol-level abstraction, never a vendor-named file.
+- Every call's cost lands on the trace of the answer or run that triggered it (ADR-0007).
+- **Revisit when** a vendor capability the compatible protocol cannot express appears, or a second consumer needs a different vendor set.

@@ -1,40 +1,19 @@
-# ADR-0016: GraphRAG adoption rule — bounded curated concept structures, corpus-wide entity-graph RAG rejected by default
-
-## Status
-
-Accepted (2026-08-23). Records the standing rule so the question is not re-litigated per ticket. Does not re-open ADR-0012 (isnad = recursive SQL, no graph DB). Amends the design baseline for every "add a knowledge layer" proposal: the burden of proof is now stated in advance.
-
-## Context
-
-Community GraphRAG (Microsoft GraphRAG, LightRAG, and successors up to 2026) builds an entity graph over the _document corpus_ — LLM extraction of entities/relations from chunks, community clustering, then graph over retrieval. It is designed for corpus-scale sensemaking over messy, previously unread document sets: investigative corpora, support-ticket triage, "what does this pile of documents say" questions.
-
-KajianQ's corpus and task differ on each axis that motivates that architecture:
-
-1. **The corpus is read, not unread.** Its important structure — kitab, author, volume, page, bab, matn/sharh, isnad, grade, madzhab — is _bibliographic and scholarly_, authored over a millennium, and already machine-actionable as metadata.
-2. **The trust model is citation-first.** Every answer must resolve back to `QS` / `HR N (Grade)` / `Kitab, Author, Vol:Page:Bab`. Implicit LLM-extracted corpus graphs are optimized for aggregation, not anchoring; they add a layer that is hard to cite and expensive to validate against 2M+ classical Arabic chunks with current tooling.
-3. **The knowledge layers the product actually needs are small, bounded, and authoritative**: the terminology concept graph (#24, term-level, human-reviewed), the Narrator Graph (#29, isnad relational rows, recursive SQL over Postgres per ADR-0012), the Principle Index (10–20 verified maxims), and `concept_links` for _curated or verified_ passage relations (#22 already states this). None require entity-graph-community detection at corpus scale.
-
-Choosing knowledge-graph-by-document-extraction anyway would trade verifiable structure for inferred structure and pay in validation cost — the opposite direction of the trust objective.
+# ADR-0016: No corpus-wide extracted entity-graph RAG; graph-shaped knowledge ships as bounded curated structures
 
 ## Decision
 
-**No corpus-wide, LLM-extracted entity-graph RAG.** Graph-shaped knowledge ships only as **bounded curated concept structures**, each: (a) built from license-safe or authoritative sources, (b) human-reviewed or verifiable, (c) injected as a visible slice in prompt and Trace, (d) degraded to no-expansion (graceful) on misses. New structures follow that same pattern, plain Postgres over a graph database, recursive SQL over graph traversal engines.
+**Corpus-wide, model-extracted entity-graph RAG is rejected.** Graph-shaped knowledge ships only as **bounded curated concept structures**, each built from licence-safe or authoritative sources, human-reviewed or verifiable, injected as a visible slice in the prompt and the trace, and degrading gracefully to no expansion on a miss. They live as plain tables in the same store, with recursive SQL serving traversal; no graph database enters.
 
-**Gate for any future proposal** (post-v1 revisit only if all four hold):
+A future proposal clears a four-part gate: a documented question class the current layers provably cannot serve, from eval evidence rather than anecdote; a **new** typed relation class not expressible as an extension of the existing structures; a build, validation and review cost that fits the stated curation capacity; and a landing as a new bounded table set behind the store seam — never a migration to a graph database and never retrieval over an implicit corpus graph.
 
-1. A documented user-question class that current layers provably cannot serve (eval evidence, not anecdote).
-2. It adds a _new_ typed relation class not expressible as extension of the existing four structures.
-3. Its build + validation + review cost fits the stated curation capacity (Label Studio-reviewed, sampled cross-vendor).
-4. It lands as a _new bounded table set_ behind RagStore — never as a migration to a graph DB and never as retrieval-over-implicit-corpus-graph.
+## Why
 
-## Alternatives considered
+The community architecture builds an entity graph over a corpus the system has not read, for corpus-scale sensemaking. This corpus is read: its important structure — kitab, author, volume, page, chapter, matn and commentary, isnad, grade, madzhab — is bibliographic and scholarly and already machine-actionable as metadata. The trust model is citation-first, and an inferred layer is hard to cite and expensive to validate; and the knowledge layers the product needs are small, bounded and authoritative. Choosing inferred structure anyway trades verifiable structure for inferred structure and pays in validation cost, the opposite direction of the trust objective.
 
-- **Adopt community GraphRAG for the full corpus** — rejected above.
-- **Defer with no rule** — rejected: the question recurs per ticket and drifts by default.
-- **Pure hybrid retrieval + Smart Router + curated layers** (current baseline) — accepted as the v1/v2 architecture; this ADR freezes it as a decided position with revisit criteria rather than an unsettled default.
+Rejected: adopting it for the full corpus; deferring the question with no rule, because it recurs per ticket and drifts by default.
 
 ## Consequences
 
-- Roadmap is unchanged: #24 concept graph, #29 isnad, #22 `concept_links`, #25 Deep Think all sit inside the rule.
-- The "wisdom over text search" objective is served by the curated layers above plus the Generator's classical-reasoning-surfacing discipline (ADR-0015); corpus-wide inferred graphs are not a required ingredient.
-- A future proposal that clears the four-part gate is an ADR amending this one — not an exception smuggled into a ticket.
+- The knowledge-layer roadmap sits inside the rule, and the "wisdom over text search" objective is served by the curated layers plus the generator's classical-reasoning discipline (ADR-0015).
+- A proposal that clears the gate is a new record, not an exception smuggled into a ticket.
+- **Revisit when** a documented question class defeats the current layers on eval evidence, or a new typed relation class appears that the existing structures cannot express.

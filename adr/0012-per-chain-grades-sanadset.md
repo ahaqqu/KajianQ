@@ -1,3 +1,20 @@
-# Per-chain hadith grades via Sanadset isnad data (v2)
+# ADR-0012: Per-chain hadith grades over one flattened grade per matn (v2)
 
-v1 stores one flattened grade per hadith matn, but hadith science grades chains, not texts: the same matn can be sahih via one isnad and dhaif via another, and weak chains can strengthen each other through corroboration (hasan li-ghayrihi). A trust-first product cannot keep the flattened model. In v2 KajianQ ingests Sanadset (650K hadith with tagged sanad/matn) as structured relational data — `narrators` and `hadith_chains` tables, reconciled against the existing hadith corpus by conservative matn matching — and grades become per-chain with grader attribution, surfaced in citations, answers, and the Trace. Chosen over (a) keeping the flattened per-matn grade (occasionally, confidently wrong — an integrity risk), (b) replacing the v1 hadith corpus wholesale (migration churn; additive reconciliation is cheaper and preserves v1 data), and (c) a graph database or GraphRAG pipeline (isnads are structured relational data — recursive SQL over Postgres suffices; no entity-graph sensemaking is needed). Existing v1 rows and embeddings are untouched: this is an additive migration plus a semantic upgrade of the Grade vocabulary (CONTEXT.md).
+## Decision
+
+Grades become **per-chain, with grader attribution**, surfaced in citations, answers and the trace. v2 ingests the Sanadset isnad data as structured relational rows — narrators and chains — reconciled against the v1 hadith corpus by conservative matn matching, and the Grade vocabulary gains its per-chain meaning.
+
+The migration is additive: v1 rows and their embeddings are untouched, and reconciliation never overwrites an existing row.
+
+## Why
+
+Hadith science grades chains, not texts: the same matn can be sahih through one isnad and weak through another, and weak chains can strengthen one another through corroboration. A trust-first product cannot keep a flattened model that is occasionally and confidently wrong — that is an integrity risk rather than a simplification.
+
+Rejected: keeping the flattened per-matn grade; replacing the v1 hadith corpus wholesale, where additive reconciliation is cheaper and preserves v1 data; a graph database or a GraphRAG pipeline, because isnads are structured relational data and recursive SQL over the same store suffices — no entity-graph sensemaking is needed.
+
+## Consequences
+
+- The change is an additive migration plus a semantic upgrade of the grade vocabulary, not a re-ingest.
+- Citations, answers, the trace and the grade filter carry per-chain grades with their grader.
+- Until v2 lands, the grade filter reads the consolidated per-matn field, so grader-level disagreement is visible in trace metadata but not filterable (ADR-0026).
+- **Revisit when** the corpus's chains are reconciled and every downstream consumer reads the per-chain grade — the flattened field then retires.
