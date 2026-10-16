@@ -41,20 +41,20 @@ export { extractJsonObject, ROUTER_SYSTEM_PROMPT } from "./chat-router-output";
  * question. The stage declines it there — no classification is asked for, so no
  * sub-query can be invented for it, no composition rule fires (every rule's text
  * embeds the question, and there is no question to embed), and retrieval fans
- * out over nothing: no embed, no search. The route it returns is the
- * deterministic one below, carrying no sub-query and marked on the Trace.
+ * out over nothing: no embed, no search. The route it returns is the deterministic
+ * fallback below, carrying no sub-query and marked on the Trace.
  *
  * An unusable reply (unparseable JSON, or a classification outside the
- * vocabulary) lands on that same deterministic route: one factual sub-query made
+ * vocabulary) lands on that same fallback: one factual sub-query made
  * of the verbatim question, marked `origin: "fallback"` and flagged on the
  * intent event's attributes, so the Trace never presents an invented
- * classification as the model's reading. The deterministic route selects no
+ * classification as the model's reading. The fallback selects no
  * source — a route that understood nothing must not narrow the corpus on a guess
  * — and says so with an empty `sources` list. The invariant behind both arms is
  * one admission — trim, then the content test — owned by
  * `chat-subquery-admission`, asked of the caller's question at the gate and of
  * every text that reaches the fan-out (`decomposeQuery`'s `push`), because the
- * reply's phrasing, a rule's own text and the deterministic route are each an
+ * reply's phrasing, a rule's own text and the fallback are each an
  * origin a text can reach the fan-out from.
  */
 
@@ -86,13 +86,13 @@ export function createKajianQRouter(
           // before anything is spent. A text with no letter and no digit is not one,
           // so the stage asks the model nothing — a model asked to decompose a
           // non-question invents retrieval queries for it, and those are the embeds
-          // and searches this gate exists to avoid — and returns the deterministic
-          // route over an empty fan-out. `admitSubQueryText` is the one owner of the
+          // and searches this gate exists to avoid — and returns the fallback over an
+          // empty fan-out. `admitSubQueryText` is the one owner of the
           // content test; the gate asks it of the question, `push` asks it of every
           // text that reaches the fan-out, so the two cannot disagree.
           const question = admitSubQueryText(query.text);
           if (question === undefined) {
-            const routing = deterministicRouting(overrides, question);
+            const routing = fallbackRouting(overrides, question);
             run.record({
               stage: "router",
               kind: "source_routing",
@@ -133,7 +133,7 @@ export function createKajianQRouter(
             try: () => {
               const routing =
                 reading === undefined
-                  ? deterministicRouting(overrides, question)
+                  ? fallbackRouting(overrides, question)
                   : routingOf(reading, query.text);
               return { routing, decision: sourceRoutingDetail(routing.filters) };
             },
@@ -212,7 +212,7 @@ function routingInputOf(
  * retrieval short-circuits before any embed or search: the same treatment the
  * decomposer gives that text under any origin, taken one stage earlier.
  */
-function deterministicRouting(
+function fallbackRouting(
   overrides: import("./filters").KajianQFilters,
   question: string | undefined,
 ): Routing<import("./filters").KajianQFilters> {
