@@ -920,14 +920,13 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(setup).toMatch(/pg_restore/);
     expect(setup).toMatch(/db:snapshot verify/);
 
-    // 3. The disk figure: ADR-0020's arithmetic is the only corpus-size estimate in the repo, and
-    //    a self-hoster sizing a VPS needs it.
+    // 3. The disk figure: the setup runbook is what a self-hoster sizes against, and the
+    //    schema's sizing record must name the host decision in force rather than the retired one.
     expect(setup).toMatch(/17–18 GiB/);
     expect(setup).toMatch(/adr\/0020-neon-dual-vector-sizing\.md/);
-    // The ADR must say its Neon recommendation is spent while the math still holds.
     const adr = read("adr/0020-neon-dual-vector-sizing.md");
-    expect(adr).toMatch(/Supersession note/);
-    expect(adr).toMatch(/still holds/);
+    expect(adr).toMatch(/ADR-0043|ADR-0044/);
+    expect(adr).toMatch(/docs\/VPS-SETUP\.md/);
   });
 
   it("a markdown link gate exists and is wired into CI", () => {
