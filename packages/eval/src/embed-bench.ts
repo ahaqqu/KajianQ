@@ -17,7 +17,7 @@ export {
  * module never names a vendor, a model, or an Islamic source (AGENTS.md
  * rule 1).
  *
- * Design (ADR-0013 §Affected tickets, #9 row): the gate metric is explicit
+ * Design (ADR-0013's go/no-go gate): the gate metric is explicit
  * recall over the real corpus, not a hosted leaderboard — the caller embeds
  * a corpus and a query set per candidate model through the Provider seam and
  * hands the (query, expected-relevant-ids) pairs in. The same vectors are

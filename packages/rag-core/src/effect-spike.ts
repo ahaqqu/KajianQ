@@ -2,7 +2,7 @@ import { parseTrace } from "@app/contracts";
 import { Cause, Context, Data, Duration, Effect, Layer, Ref, Schedule, Stream } from "effect";
 
 /**
- * ADR-0027 §2 go/no-go spike (Workers gate). One program exercising the four
+ * ADR-0027 decision 1's go/no-go spike. One program exercising the four
  * needs the ADR adopts Effect for, under the repo's strict tsconfig and the
  * Cloudflare Workers bundler:
  *
