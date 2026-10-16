@@ -3,11 +3,12 @@
  * trim it, then ask whether it carries anything a search can match.
  *
  * It lives apart from `chat-router-decompose` because it has more than one
- * caller — the repair's `push`, and the router's fallback, a third origin a
- * caller's text reaches the fan-out from — and the invariant it owns is stated
- * without an origin: **whatever** offered the text, one carrying no letter and
- * no digit never becomes a sub-query. One owner for the test, so the fallback
- * cannot drift from the stage again (review A1 of #462).
+ * caller — the repair's `push`, which asks it of every text that reaches the
+ * fan-out, and the route, which asks it of the caller's question before the model
+ * call — and the invariant it owns is stated without an origin: **whatever**
+ * offered the text, one carrying no letter and no digit never becomes a
+ * sub-query. One owner for the test, so the two callers cannot drift apart on the
+ * same text.
  *
  * Trimming is not a drop: padded text is the same query, kept trimmed. The two
  * halves travel together, because a caller that applies the content test

@@ -125,8 +125,8 @@ export { DECISION_BENCH_PROMPTS } from "./decision-bench-prompts";
 // caps: this barrel is still the one public surface. `taxonomy` owns the
 // classification vocabularies, `chat-router-output` the reply reader,
 // `chat-subquery-admission` the one admission a text passes to become a
-// sub-query (shared with the router's fallback), and `chat-router-decompose`
-// the deterministic sub-query repair.
+// sub-query (asked of the caller's question and of every text that reaches the
+// fan-out), and `chat-router-decompose` the deterministic sub-query repair.
 export {
   createKajianQRouter,
   extractJsonObject,

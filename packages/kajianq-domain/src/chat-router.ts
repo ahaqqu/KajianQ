@@ -6,6 +6,7 @@ import {
   type Query,
   type Router,
   type Routing,
+  type RunContextService,
   type SubQuery,
 } from "@app/rag-core";
 import { admitSubQueryText, decomposeQuery } from "./chat-router-decompose";
@@ -82,24 +83,9 @@ export function createKajianQRouter(
         Effect.gen(function* () {
           const run = yield* RunContext;
           const overrides = query.filters ?? {};
-          // The route gate: ask whether the caller's text is a query at all, once,
-          // before anything is spent. A text with no letter and no digit is not one,
-          // so the stage asks the model nothing — a model asked to decompose a
-          // non-question invents retrieval queries for it, and those are the embeds
-          // and searches this gate exists to avoid — and returns the fallback over an
-          // empty fan-out. `admitSubQueryText` is the one owner of the
-          // content test; the gate asks it of the question, `push` asks it of every
-          // text that reaches the fan-out, so the two cannot disagree.
           const question = admitSubQueryText(query.text);
           if (question === undefined) {
-            const routing = fallbackRouting(overrides, question);
-            run.record({
-              stage: "router",
-              kind: "source_routing",
-              detail: sourceRoutingDetail(routing.filters),
-              at: run.now(),
-            });
-            return routing;
+            return yield* recordRouting(run, () => fallbackRouting(overrides, question));
           }
           const reply = yield* provider
             .generate({
@@ -126,29 +112,47 @@ export function createKajianQRouter(
           // drift. A dimension the caller pinned is the one exception: the
           // override rides into `routeFilters` verbatim while the event detail
           // publishes its normalized projection, and no wire request can set
-          // one. A role or a dimension the route cannot express fails here,
-          // before any search runs, instead of being silently dropped or
-          // silently contributing nothing.
-          const { routing, decision } = yield* Effect.try({
-            try: () => {
-              const routing =
-                reading === undefined
-                  ? fallbackRouting(overrides, question)
-                  : routingOf(reading, query.text);
-              return { routing, decision: sourceRoutingDetail(routing.filters) };
-            },
-            catch: (cause: unknown) => ({ cause }),
-          });
-          run.record({
-            stage: "router",
-            kind: "source_routing",
-            detail: decision,
-            at: run.now(),
-          });
-          return routing;
+          // one.
+          return yield* recordRouting(run, () =>
+            reading === undefined
+              ? fallbackRouting(overrides, question)
+              : routingOf(reading, query.text),
+          );
         }),
       ),
   };
+}
+
+/**
+ * Record the route's `source_routing` decision and hand the route back — the one
+ * boundary both arms cross, so the gate's deterministic route and the model's
+ * reading fail the same way. Building the route is inside the boundary too:
+ * `routeFilters` reads every Sub-query's role through `roleSources`, and
+ * `sourceRoutingDetail` reads the filter record through `filterEntries`; either
+ * throws on something the store cannot express, and that throw is a stage failure
+ * — the declared `Effect<Routing, StageError>` — never a defect escaping a channel
+ * the stage does not declare.
+ */
+function recordRouting(
+  run: RunContextService,
+  build: () => Routing<import("./filters").KajianQFilters>,
+): Effect.Effect<Routing<import("./filters").KajianQFilters>, { cause: unknown }> {
+  return Effect.gen(function* () {
+    const { routing, decision } = yield* Effect.try({
+      try: () => {
+        const routing = build();
+        return { routing, decision: sourceRoutingDetail(routing.filters) };
+      },
+      catch: (cause: unknown) => ({ cause }),
+    });
+    run.record({
+      stage: "router",
+      kind: "source_routing",
+      detail: decision,
+      at: run.now(),
+    });
+    return routing;
+  });
 }
 
 /** What a usable reply routes to: the classification, sub-queries, and stage 3's filters. */

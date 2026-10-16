@@ -72,15 +72,14 @@ export { admitSubQueryText };
  * prompt's "different angles" rule is written against). Padding that case to
  * two would put a synthetic near-duplicate of the question in the trace and
  * claim a decomposition that never happened — see `decomposeQuery`'s own note.
- * It is **0** when there is nothing to search at all: every text the stage was
- * handed carried no letter and no digit — a blank question, or one made only of
+ * It is **0** only for a direct caller that hands this function a question
+ * carrying no letter and no digit — a blank question, or one made only of
  * punctuation, `Cf` or `Cc` characters, whose rule text *is* the question and
- * which `push` drops — beside a reply whose every text the same gate dropped,
- * **and no non-factual rule fires**. The principle/dalil/sanad templates carry
- * words of their own, so a shape that fires one is searchable even when the
- * question is not: the text-level drop above is unconditional, and the route's
- * own emptiness is the gate's, not this function's — a caller that hands this
- * function a question without content is off the serving path.
+ * which `push` drops — together with a reply whose every text that same drop
+ * takes. A rule beyond `factual` fires a template carrying words of its own, so a
+ * shape that fires one is searchable even when the question is not; on the serving
+ * path `chat-router.ts` declines a content-free question before this stage, so the
+ * route's emptiness is the gate's, never this function's.
  */
 export const MIN_SUB_QUERIES = 2;
 export const MAX_SUB_QUERIES = 4;

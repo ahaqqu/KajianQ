@@ -74,7 +74,7 @@ _Avoid_: fan-out query, expansion (that is Query Expansion), variant (that is a 
 
 **Content-free question**:
 A caller's text carrying no letter and no digit in any script — whitespace, punctuation, an emoji, a zero-width space or joiner, a control character. It is not a query, so the Smart Router's stages 1–2 **decline it before the model call**: no classification is asked for, no composition rule fires (every rule's text embeds the question, and there is no question to embed), the fan-out is **empty**, nothing is embedded and nothing is searched, and the **Router fallback** — no sub-query, no source selected — is what the Trace records, marked `contentFree` beside `fallback` on the intent event. The run still answers, and its `retrieval` event is recorded carrying an empty chunk list. Gating on the question, rather than on the texts of a reply, is what makes the class cost nothing: a model asked to decompose a non-question obeys its own count rule by inventing retrieval queries for it, and those carry letters, so no content test can tell them from a real angle.
-_Avoid_: blank message (the wire's field, not the class), refusal (that is the answer's — the gate declines the route, it does not deliver a refusal)
+_Avoid_: blank message (the wire's field is `message`; the class is Content-free question), refusal (that is the answer's — the gate declines the route, it does not deliver a refusal)
 
 **Query decomposition**:
 The Smart Router's stage 2: turning one question into the Sub-queries retrieval fans out over. The router LLM phrases them; the domain guarantees the rules' coverage — a factual sub-query whenever the question itself carries a letter or a digit, a principle/dalil/sanad one when its rule fires — and the count.

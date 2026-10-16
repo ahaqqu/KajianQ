@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import type { TraceEvent } from "@app/contracts";
-import { RunContext, type CostRecord } from "@app/rag-core";
+import { RunContext, StageError, type CostRecord } from "@app/rag-core";
 import { createKajianQRouter, type RouterProvider } from "./chat-router";
 import { ROUTER_SYSTEM_PROMPT } from "./chat-router-output";
 import type { KajianQFilters } from "./filters";
@@ -298,6 +298,28 @@ describe("createKajianQRouter", () => {
     // was understood carries them too — `{fallback: true}` alone would leave a trace
     // reader unable to tell what the route ran with.
     expect(routed.attributes).toEqual({ fallback: true, madzhab: ["hambali"] });
+  });
+
+  it("fails the stage typed on a caller filter the store cannot express — on either arm", async () => {
+    // A caller can pin a dimension retrieval cannot bind (`Query.filters`), and
+    // `sourceRoutingDetail` throws on it. Both arms record their decision through the
+    // same boundary, so both land on the stage's declared `StageError`: a throw that
+    // escaped as a defect would make `Effect<Routing, StageError>` untrue, and the
+    // reply arm must not be the only one that holds.
+    const filters = { not_a_dimension: ["x"] } as unknown as KajianQFilters;
+    const cases: readonly { why: string; text: string; reply: string }[] = [
+      { why: "the gate's arm", text: "\u200b\u200d", reply: JSON.stringify({ not: "a reply" }) },
+      { why: "the reply arm", text: "Apa hukum riba?", reply: JSON.stringify({ not: "a reply" }) },
+    ];
+    for (const { why, text, reply } of cases) {
+      const h = harness(reply);
+      const error = await h.route({ text, filters }).then(
+        () => undefined,
+        (cause: unknown) => cause,
+      );
+      expect(error, why).toBeInstanceOf(StageError);
+      expect((error as StageError).stage, why).toBe("router");
+    }
   });
 
   it("stamps the factual rule onto a model echo of the question with no role", async () => {
