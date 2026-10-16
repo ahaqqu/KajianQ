@@ -398,12 +398,6 @@ export function isRecord(relPath) {
  */
 export const KNOWN_RETIRED = [
   {
-    file: "SPECS.md",
-    target: "packages/local-first",
-    reason:
-      "§3.1 'Dropped from template' — the sentence's own subject is the pillar this repo dropped",
-  },
-  {
     file: "docs/ARCHITECTURE.md",
     target: "packages/local-first",
     reason: "'Deviated from the template' — names the local-first pillar as deliberately dropped",
