@@ -31,8 +31,10 @@ These apply to every role and every task. Each bullet names the skill that carri
   A decision that only changes how the repo is maintained — agent roles, skills, CI gates that judge repo
   hygiene, test conventions, worktrees, board process — is **not** an ADR: it lives in the skill, role file or
   script header that implements it. An ADR states its **decision** first and its **why** second, in at most 60
-  lines (`adr/TEMPLATE.md`); a value is named only where the decision is meaningless without it, and the config
-  holds the truth. A changed decision is rewritten in place, never amended; a superseded record is deleted,
+  lines (`adr/TEMPLATE.md`), and it stops at the architecture: no implementation maps, API mechanics,
+  measurements, counts, file paths, test enumerations or amendment chains — the code, the skill or the PR that
+  took the measurement holds those. A value is named only where the decision is meaningless without it, and the
+  config holds the truth. A changed decision is rewritten in place, never amended; a superseded record is deleted,
   leaving one tombstone line in `SPECS.md` §8. Never relitigate an accepted ADR in code comments. Respect the
   go/no-go gates recorded in ADRs.
 - **Living documents** — a PR that changes what `SPECS.md` describes (architecture §3, data layer §3.5/§4, cost §5, plan §7, product scope §2) updates those sections in the same PR, and any new ADR gets its row in the spec's §8 Record of Decisions. `INITIAL_IDEA.md` is frozen history — never update it.

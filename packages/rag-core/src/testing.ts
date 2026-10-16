@@ -6,8 +6,8 @@ import { Cause, Effect, Exit, Option, Result } from "effect";
  * The failure-extraction idiom lives in exactly one place because it is
  * version-sensitive: Effect v4 replaced v3's `Cause.failureOption` with
  * `Cause.findFail` — a `Result` whose success carries the first typed `Fail`
- * reason (ADR-0027 Appendix C). The next Effect rename that touches this
- * idiom is a one-site change, not a sweep across every suite.
+ * reason. The next Effect rename that touches this idiom is a one-site change,
+ * not a sweep across every suite.
  */
 
 /**
