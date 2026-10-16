@@ -4,9 +4,9 @@ import { defineConfig } from "vite-plus";
 // Oxfmt) and the web dev/build/test surface. `vite.config.ts`,
 // `vitest.config.ts`, `apps/web/vite.config.ts` and every test import vp, so
 // the `vite-plus` devDependency is the only version lever; the revisions it
-// carries that the project still names separately are guarded by
-// `scripts/check-vp-vite-pin.mjs`. apps/api stays bun on the VPS (ADR-0027,
-// ADR-0044); bun stays package manager and script router.
+// carries that the project still names separately live in `package.json`'s
+// `overrides` and have to be moved with it. apps/api stays bun on the VPS
+// (ADR-0027, ADR-0044); bun stays package manager and script router.
 //
 // only ones in the lint/format corpus. Byte-exact fixture dirs are excluded
 // below.
