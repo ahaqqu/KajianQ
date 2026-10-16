@@ -23,6 +23,12 @@ There is no third depth. If a PR mixes code and docs, thermos applies to the who
 - `AGENTS.md` — universal guardrails and Definition of Done.
 - `.agents/skills/dars-pluggability/SKILL.md` and `.agents/skills/kajianq-traceability/SKILL.md` — the domain checklists and anti-pattern lists.
 
+## Coverage claims
+
+**A coverage claim is carried by construction, or it names the enumeration it rests on** — any universal the change carries (_every_ X, _never_ Y, "the set is empty", "no Z exists").
+
+Read the mechanism that makes the universal true: where it is a hand-written list — the rules that fire, the producers of a value, the failure classes a response distinguishes, the cases a validator enumerates — the claim **is** the list, so report the member it is missing, or the enumeration the claim should be scoped to.
+
 ## Philosophy alignment
 
 Check the PR against the principles in `docs/ARCHITECTURE.md`. The KajianQ-specific ones that fail silently and deserve explicit verification:
@@ -61,6 +67,7 @@ Report:
 - Philosophy violations: which principle (cite the `docs/ARCHITECTURE.md` section), which file, and why.
 - Guardrail violations: which rule, which file and line.
 - Thermo findings (when code was touched): the itemized report posted via thermos-with-comments (A/B/C IDs), merged and prioritized.
+- Coverage-claim gaps: the claim, the enumeration it rests on, and the member the list is missing.
 - Approval or rejection with justification.
 
 Block the PR on any MUST or MUST NOT violation. Flag SHOULD violations for author response.
