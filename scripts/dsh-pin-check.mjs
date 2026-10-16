@@ -582,23 +582,30 @@ for (const { label, id } of checks) {
 
 if (servedNote) console.log(`⚠ ${servedNote}`);
 
-/** The entry block of a layer file's patch list, as a line range. */
+/** The entry block of a layer file's patch list, as a line range. The entry is
+ * an `- id:` row at any depth — a top-level patch entry or a row inside an
+ * `- insert:` list — and its block runs to the next line no deeper than the row
+ * itself. */
 function entryBlock(lines, entryId) {
-  const idx = lines.findIndex((line) => {
-    const m = line.match(/^-\s+id:\s*(.+?)\s*$/);
-    return m !== null && unquote(m[1]) === entryId;
-  });
-  if (idx === -1) return null;
-  let end = idx + 1;
-  for (let i = idx + 1; i < lines.length; i++) {
+  let found = null;
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^(\s*)-\s+id:\s*(.+?)\s*$/);
+    if (m && unquote(m[2]) === entryId) {
+      found = { idx: i, indent: m[1].length };
+      break;
+    }
+  }
+  if (!found) return null;
+  let end = found.idx + 1;
+  for (let i = found.idx + 1; i < lines.length; i++) {
     if (!lines[i].trim()) {
       end = i + 1;
       continue;
     }
-    if (/^-\s/.test(lines[i])) break;
+    if (lines[i].length - lines[i].trimStart().length <= found.indent) break;
     end = i + 1;
   }
-  return { idx, end };
+  return { idx: found.idx, indent: found.indent, end };
 }
 
 /** A `key:` block nested deeper than `minIndent` inside [start, end). */
@@ -693,7 +700,10 @@ if (failures > 0) {
     console.log(
       `  fix: no dispatch can name these route(s) while route selection is off — enable the policy in ${file} with every declared catalog id (it is a narrowing guard, not a filter), never reroute the pin (the pin truth is the role file's):`,
     );
-    for (const line of policyPatchLines(catalogIds.map((id) => `${PROVIDER}/${id}`)))
+    // Every declared catalog id, deduplicated: the harness rejects a policy
+    // that repeats a route, so a duplicate would make the printed block
+    // unpasteable.
+    for (const line of policyPatchLines([...new Set(catalogIds)].map((id) => `${PROVIDER}/${id}`)))
       console.log(line);
     console.log(
       `    (the default route stays ${defaultRoute ? `${defaultRoute.provider}/${defaultRoute.model}` : "unset"}; enabling also lets a dispatch name the pin's thoughtLevel again)`,

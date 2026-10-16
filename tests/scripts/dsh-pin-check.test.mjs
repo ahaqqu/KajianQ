@@ -288,7 +288,19 @@ function pasteAndParse(file, block) {
   return parseEntries(`${readFileSync(file, "utf8")}${block}\n`);
 }
 
-const findEntry = (entries, id) => entries.find((entry) => entry?.id === id);
+/** The entry with this id anywhere in a parsed patch list: a top-level patch
+ * entry, a row an `- insert:` list carried, or a group's `config` array. */
+function findEntry(entries, id) {
+  for (const entry of entries) {
+    if (entry?.id === id) return entry;
+    for (const nested of [entry?.insert, entry?.group ? entry?.config : undefined]) {
+      if (!Array.isArray(nested)) continue;
+      const found = findEntry(nested, id);
+      if (found !== undefined) return found;
+    }
+  }
+  return undefined;
+}
 
 describe("test seams", () => {
   it("refuses a partial seam redirection instead of falling through to the real config", () => {
@@ -510,6 +522,38 @@ describe("catalog verdicts", () => {
     // A green re-run writes nothing: no second backup, no duplicate.
     expect(readFileSync(patchFile, "utf8")).toBe(fixed);
     expect(backupsOf(patchFile)).toHaveLength(1);
+  });
+
+  it("declares into a catalog the profile layer inserts itself", () => {
+    const fx = fixture();
+    // The profile layer carries the catalog as an inserted row rather than a
+    // top-level patch entry; the append has to land inside that row, at the
+    // row's own indentation.
+    writeBundle(fx, "fixture-bundle-base", [
+      insertEntries(defaultRouteEntry("ollama", "beta-model"), policySettingsInsert()),
+    ]);
+    writeProfile(fx, ["fixture-bundle-base"], insertEntries(catalogEntry(["alpha-model"])));
+    writeRole(fx, "reviewer", `model: "${pinFor("beta-model")}"`);
+    writeCatalog(fx, ["alpha-model", "beta-model"]);
+    const patchFile = join(fx.profile, "cordis.patch.yml");
+
+    const first = runPreflight(fx, ["--fix"]);
+
+    expect(first.status).toBe(1);
+    expect(first.stdout).toContain(`+ declared beta-model in ${patchFile}`);
+    const fixed = readFileSync(patchFile, "utf8");
+    expect(fixed).toContain("              - id: beta-model\n                reasoningEfforts:");
+    const parsed = parseEntries(fixed);
+    expect(findEntry(parsed, "llm-pi-ai").config.providers.ollama.models.map((m) => m.id)).toEqual([
+      "alpha-model",
+      "beta-model",
+    ]);
+
+    const second = runPreflight(fx);
+    expect(second.status).toBe(0);
+    expect(second.stdout).toContain(
+      "✓ reviewer: beta-model — declared, inherited route (no policy in force), served",
+    );
   });
 
   it("refuses to declare into an installed bundle layer", () => {
