@@ -13,7 +13,7 @@ import {
   spikeResourceLayer,
 } from "./effect-spike";
 
-/** ADR-0027 §2 spike: the program runs under `Effect.runPromise` (vitest + bun). */
+/** ADR-0027 decision 1 spike: the program runs under `Effect.runPromise` (vitest + bun). */
 
 describe("effect spike", () => {
   it("retries a rate_limited failure with backoff until success", async () => {
