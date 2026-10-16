@@ -1,8 +1,9 @@
 import type { RetentionItem } from "./privacy-notice-types";
 
 /**
- * The retention values (ADR-0043 decision 4, mirrored by the Art. 30 record
- * §6). There is deliberately **no separate age-based deletion of chat rows**: a
+ * The retention values, which the Art. 30 record §6 owns; ADR-0043 decision 4
+ * states the decisions they implement. There is deliberately **no separate
+ * age-based deletion of chat rows**: a
  * session that keeps being used keeps its transcript, so the effective
  * retention for anonymous chat is 30 days of inactivity plus on-demand
  * erasure. That is a product decision, stated here rather than implied.

@@ -3,7 +3,7 @@ import type { RagStore } from "@app/infra";
 import { createRagStoreFromEnv, ChatConfigError } from "./chat-wiring";
 
 /**
- * The anonymous-session reclamation body (ADR-0017; ADR-0044 decision 7):
+ * The anonymous-session reclamation body (ADR-0017; ADR-0044 decision 6):
  * expire sessions on a schedule.
  *
  * Expiry is a storage-reclamation concern, not a correctness one —

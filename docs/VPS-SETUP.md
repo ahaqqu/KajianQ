@@ -954,7 +954,8 @@ request line, status, bytes, correlation id, request time — no user-agent, no
 referrer, no `$remote_user`. Statement text is never logged by Postgres, because
 a chat question is personal data and does not belong in an ops log.
 
-One retention value per class, all fixed by ADR-0043 decision 4. The API log is
+One retention value per class, all fixed by the Art. 30 record's §6 (ADR-0043
+decision 4 states the decisions behind them). The API log is
 capped at 14 days for disk hygiene as well as consistency — it carries a
 correlation id and no IP address (`packages/infra/src/logger.ts`), so it is not
 a personal-data store, but one number is easier to keep true in a processing

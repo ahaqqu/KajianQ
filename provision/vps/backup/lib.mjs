@@ -9,15 +9,16 @@
  * scratch cluster. Keeping the decisions in one module is what lets the tests
  * assert them directly instead of only through a running server.
  *
- * The retention numbers are ADR-0043 decision 4 verbatim, and the ADR is the
- * source of truth: 30-day rolling encrypted backups, a restore re-applies
- * erasure. A change there changes these constants in the same PR.
+ * The retention numbers implement the Art. 30 record's §6 values, which are
+ * their own source of truth; ADR-0043 decision 4 states the decisions behind
+ * them: 30-day rolling encrypted backups, and a restore re-applies
+ * erasure. A change to either changes these constants in the same PR.
  */
 
-/** Rolling backup window in days — the anonymous-session TTL (ADR-0043). */
+/** Rolling backup window in days — the anonymous-session TTL (Art. 30 §6). */
 export const BACKUP_KEEP_DAILY = 30;
 
-/** Access-log / Postgres-log / journald window in days (ADR-0043 decision 4). */
+/** Access-log / Postgres-log / journald window in days (Art. 30 §6). */
 export const LOG_RETENTION_DAYS = 14;
 
 /** A backup label: lowercase, digits and dashes, like the snapshot labels. */

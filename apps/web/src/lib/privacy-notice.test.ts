@@ -22,8 +22,8 @@ import { messages } from "./i18n";
  * The privacy notice is a compliance disclosure, so its two honesty rules are pinned here
  * rather than trusted to review:
  *
- *   1. **The register is ADR-0043's, not prose this module owns.** The tests read the ADR's
- *      register table and `models.json` and assert the module renders exactly those rows,
+ *   1. **The register is the Art. 30 record's, not prose this module owns.** The tests read the
+ *      record's register table and `models.json` and assert the module renders exactly those rows,
  *      tiers and personal-data verdicts.
  *   2. **No claim without code.** A `current` retention row points at behavior that exists
  *      (the adapter's TTL constant, the erasure route); a `planned` row carries its ticket,
@@ -52,7 +52,6 @@ function walkSources(dirs: string[]): string[] {
   return files;
 }
 
-const ADR_0043 = read("adr/0043-netcup-vps-hosting-gdpr-posture.md");
 const ROPA = read("docs/GDPR-ARTICLE-30-RECORD.md");
 const MODELS_JSON = JSON.parse(read("packages/infra/src/providers/models.json")) as {
   vendors: Record<string, { freeTier: boolean; personalDataAllowed: boolean }>;
@@ -62,34 +61,33 @@ const AUTH_ROUTE = read("apps/api/src/routes/auth.ts");
 
 type RegisterRow = { vendor: string; cells: string[] };
 
-/** ADR-0043 decision 3's register table, parsed from the markdown. */
-function adrRegisterRows(): RegisterRow[] {
+/** The Art. 30 record's register table, parsed from the markdown. */
+function ropaRegisterRows(): RegisterRow[] {
   const rows: RegisterRow[] = [];
-  for (const raw of ADR_0043.split("\n")) {
-    // The ADR indents its tables inside the decision list, so the row's own line starts
-    // with whitespace before the pipe.
+  for (const raw of ROPA.split("\n")) {
     const line = raw.trim();
     if (!line.startsWith("|")) continue;
     const cells = line
       .split("|")
       .slice(1, -1)
       .map((cell) => cell.trim());
-    // The register is the ADR's only five-column table; this drops the header
+    // The register is the record's only five-column table; this drops the header
     // and the `|---|` separator without depending on their exact wording.
     if (cells.length !== 5) continue;
-    const vendor = cells[0]!.replace(/\*\*/g, "").trim();
+    // A retired processor's row is struck through, so the emphasis goes too.
+    const vendor = cells[0]!.replace(/\*\*|~~/g, "").trim();
     if (vendor.length === 0 || vendor === "Processor" || /^[-\s]+$/.test(vendor)) continue;
     rows.push({ vendor, cells });
   }
   return rows;
 }
 
-const REGISTER_ROWS = adrRegisterRows();
+const REGISTER_ROWS = ropaRegisterRows();
 
-/** The ADR row whose vendor name starts with the notice row's name. */
-function adrRowFor(vendor: string): RegisterRow {
+/** The register row whose vendor name starts with the notice row's name. */
+function ropaRowFor(vendor: string): RegisterRow {
   const row = REGISTER_ROWS.find((candidate) => candidate.vendor.startsWith(vendor));
-  if (!row) throw new Error(`no ADR-0043 register row for ${vendor}`);
+  if (!row) throw new Error(`no register row for ${vendor} in the Art. 30 record`);
   return row;
 }
 
@@ -122,29 +120,29 @@ const STATUS_KEY = {
   "no-serving-role": "aboutPrivacyStatusNoServingRole",
 } as const;
 
-describe("privacy notice: the register mirrors ADR-0043", () => {
-  it("parsed the ADR register (so the drift guards below are not vacuous)", () => {
+describe("privacy notice: the register mirrors the Art. 30 record", () => {
+  it("parsed the record's register (so the drift guards below are not vacuous)", () => {
     expect(REGISTER_ROWS.length).toBeGreaterThanOrEqual(7);
     expect(REGISTER_ROWS[0]!.vendor).toContain("netcup");
   });
 
-  it("carries every register row, and no row the ADR does not", () => {
+  it("carries every register row, and no row the record does not", () => {
     for (const processor of SUB_PROCESSORS) {
       expect(
         REGISTER_ROWS.some((row) => row.vendor.startsWith(processor.name)),
-        `${processor.name} is not in ADR-0043's register`,
+        `${processor.name} is not in the Art. 30 record's register`,
       ).toBe(true);
     }
     for (const row of REGISTER_ROWS) {
       expect(
         SUB_PROCESSORS.some((processor) => row.vendor.startsWith(processor.name)),
-        `ADR row "${row.vendor}" has no notice row`,
+        `register row "${row.vendor}" has no notice row`,
       ).toBe(true);
     }
     expect(SUB_PROCESSORS.length).toBe(REGISTER_ROWS.length);
   });
 
-  it("takes each row's tier from the ADR's Tier column, not from prose", () => {
+  it("takes each row's tier from the register's Tier column, not from prose", () => {
     const tierOf = (row: RegisterRow): ProcessorTier => {
       const cell = row.cells[3]!.toLowerCase();
       if (cell.includes("paid")) return "paid";
@@ -152,13 +150,13 @@ describe("privacy notice: the register mirrors ADR-0043", () => {
       throw new Error(`unrecognized tier cell for ${row.vendor}: ${row.cells[3]}`);
     };
     for (const processor of SUB_PROCESSORS) {
-      expect(tierOf(adrRowFor(processor.name)), `${processor.name} tier`).toBe(processor.tier);
+      expect(tierOf(ropaRowFor(processor.name)), `${processor.name} tier`).toBe(processor.tier);
     }
   });
 
-  it("marks a vendor not-for-personal-data exactly when the ADR's verdict says so", () => {
+  it("marks a vendor not-for-personal-data exactly when the register's verdict says so", () => {
     for (const processor of SUB_PROCESSORS) {
-      const row = adrRowFor(processor.name);
+      const row = ropaRowFor(processor.name);
       const expected = /not permitted/i.test(row.cells[4]!) ? "not-for-personal-data" : "permitted";
       expect(processor.verdict, `${processor.name} verdict`).toBe(expected);
     }
@@ -202,7 +200,12 @@ describe("privacy notice: the register mirrors ADR-0043", () => {
     expect(byId("netcup").status).toBe("current");
     expect(byId("cloudflare").status).toBe("no-serving-role");
     expect(byId("neon").status).toBe("no-serving-role");
-    expect(ADR_0043).toContain("GDPR-E (#181)");
+    // The register says the same in its own rows, so a reader is never sent to a
+    // processor that no longer serves.
+    expect(ropaRowFor("Neon").cells[1], "the Neon row").toMatch(/decommissioned/i);
+    expect(ropaRowFor("Cloudflare").cells[4], "the Cloudflare verdict").toMatch(
+      /at-rest archives only/i,
+    );
   });
 
   it("does not claim a transition row is gone before decommissioning is approved", () => {
@@ -245,15 +248,14 @@ describe("privacy notice: retention is the ADR's values, enforced by real code",
     const session = retentionById("sessions");
     expect(session.window.en).toContain(`${days} days`);
     expect(session.window.id).toContain(`${days} hari`);
-    // The ADR and the Art. 30 record fix the same value, so a change in either fails here
-    // before the copy can drift.
-    expect(ADR_0043).toContain("Anonymous sessions: 30 days");
+    // The record fixes the same value, so a change in either fails here before the copy
+    // can drift.
     expect(ROPA).toContain("30 days of inactivity");
   });
 
-  it("states the 14-day access-log and 30-day backup windows the ADR fixes", () => {
-    expect(ADR_0043).toContain("Server access logs: 14 days");
-    expect(ADR_0043).toContain("30-day rolling retention");
+  it("states the 14-day access-log and 30-day backup windows the record fixes", () => {
+    expect(ROPA).toContain("**14 days**");
+    expect(ROPA).toContain("**30 days rolling**");
     const accessLogs = RETENTION.find((item) => item.id === "access-logs")!;
     expect(accessLogs.window.en).toContain("14 days");
     expect(accessLogs.window.id).toContain("14 hari");
@@ -288,7 +290,7 @@ describe("privacy notice: retention is the ADR's values, enforced by real code",
   });
 
   it("says there is no separate age-based deletion of chat rows", () => {
-    expect(ADR_0043).toContain("There is no separate age-based deletion");
+    expect(ROPA).toContain("no separate age-based deletion of chat rows");
     const session = retentionById("sessions");
     expect(session.window.en).toContain("no separate age-based deletion");
     expect(session.window.id).toContain("Tidak ada penghapusan berbasis usia terpisah");
@@ -430,7 +432,7 @@ describe("privacy notice: browser storage is stated from the code that stores it
 
   it("names no processor, vendor, or retention window", () => {
     // UI-posture copy, not register data: a named vendor or a day count here would make it
-    // register data and it would need an ADR-0043 row.
+    // register data and it would need a row in the Art. 30 record's register.
     for (const copy of [STORAGE.body.en, STORAGE.body.id]) {
       expect(copy, "storage copy names a day count").not.toMatch(/\b\d+[- ](day|hari)\b/i);
       for (const vendor of SUB_PROCESSORS) {
