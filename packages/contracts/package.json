@@ -10,10 +10,10 @@
     "check": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "valibot": "1.4.2"
+    "valibot": "1.5.0"
   },
   "devDependencies": {
-    "fast-check": "4.9.0",
+    "fast-check": "4.10.2",
     "typescript": "7.0.2"
   }
 }
