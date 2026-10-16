@@ -69,7 +69,11 @@ When a term is resolved, update `docs/GLOSSARY.md` right there. Don't batch thes
 
 Whether a decision earns a record is stated once, in `AGENTS.md`'s Decisions
 bullet — read the bar there before offering one. `adr/TEMPLATE.md` is the shape to
-copy. Most sessions have no ADR to write.
+copy, and its keep-out list is part of the shape: a record holds the architecture
+decision and its why, never the mechanism that implements it — no implementation
+maps, API mechanics, measurements, counts, file paths or amendment chains. Trimming
+a record you are already editing is part of editing it. Most sessions have no ADR
+to write.
 
 ## Completion criterion
 

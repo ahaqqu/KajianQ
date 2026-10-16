@@ -42,7 +42,7 @@ export class SpikeClock extends Context.Service<
 /**
  * A lifecycle-managed resource: acquired when the layer builds, released when
  * the scope closes. The release signal is observable so tests can assert the
- * release actually ran (ADR-0027 decision 3, "Scope lifecycle").
+ * release actually ran (ADR-0027 decision 1, "Scope lifecycle").
  */
 export class SpikeResource extends Context.Service<
   SpikeResource,

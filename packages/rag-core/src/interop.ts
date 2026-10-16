@@ -8,7 +8,7 @@ export { StageError, ProviderError, type ProviderErrorKind };
 
 /**
  * Promise-level interop for the HTTP edge (ADR-0027 decision 3: handlers
- * bridge via `Effect.runPromise`; Appendix A amendment: `apps/api` keeps no
+ * bridge via `Effect.runPromise`, and decision 1 keeps `apps/api` free of a
  * direct `effect` dependency, so the bridge lives here and the API imports
  * these functions instead).
  */
