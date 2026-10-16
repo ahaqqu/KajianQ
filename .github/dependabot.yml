@@ -8,6 +8,12 @@ updates:
       default-days: 7
     open-pull-requests-limit: 5
     versioning-strategy: "increase"
+    # Derived from the versions `vite-plus` bundles (`scripts/check-vp-vite-pin.mjs`):
+    # these three move only in the change that moves `vite-plus`.
+    ignore:
+      - dependency-name: "vite"
+      - dependency-name: "vitest"
+      - dependency-name: "@vitest/coverage-v8"
     labels:
       - "dependencies"
       - "bun"
