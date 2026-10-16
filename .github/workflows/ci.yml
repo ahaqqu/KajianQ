@@ -26,8 +26,8 @@ jobs:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
       # Installs the vp CLI pinned via the `vite-plus` devDependency; the
-      # revisions vp carries that the project still names separately live in
-      # `package.json`'s `overrides` and travel with it.
+      # revisions it carries that the project still names separately have to
+      # travel with it.
       - uses: voidzero-dev/setup-vp@3754dd7dbdb32bd8f6d28b6043de13ad3a75f21f # v1.21.1
       - run: bun run check
       - run: bun run lint
@@ -138,8 +138,8 @@ jobs:
         run: bun run db:up:all
         env:
           DATABASE_URL: postgres://contract:contract@127.0.0.1:5432/postgres
-      # vp is the single test runner (version-coupled to the vitest overrides
-      # in `package.json`): vp resolves from node_modules/.bin, no setup-vp
+      # vp is the single test runner (the `@vitest/coverage-v8` pin tracks the
+      # Vitest it bundles): vp resolves from node_modules/.bin, no setup-vp
       # step needed here.
       - name: Run the Effect-shaped Postgres contract suite
         if: steps.infra.outputs.touched == 'true'
