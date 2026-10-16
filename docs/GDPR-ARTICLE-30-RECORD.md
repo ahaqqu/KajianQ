@@ -210,7 +210,7 @@ the categories in §3/§4 were derived to fill.
 | Special categories    | Content **can reveal religious convictions** (Art. 9) — declare this honestly; see §5 and the DPIA-lite note                                                                                                                                                                   |
 | Retention             | 30 days of inactivity for anonymous sessions and their subtree; 14 days for access logs; 30-day rolling encrypted backups; superseded snapshot archives deleted 30 days after a successor verifies                                                                             |
 | Location              | netcup VPS, Germany/EU                                                                                                                                                                                                                                                         |
-| Sub-processors        | Per ADR-0043's register (netcup GmbH does not receive LLM-vendor traffic; the LLM vendors are the controller's own processors)                                                                                                                                                 |
+| Sub-processors        | Per this record's §8 register (netcup GmbH does not receive LLM-vendor traffic; the LLM vendors are the controller's own processors)                                                                                                                                           |
 
 Ordering: conclude the DPA **before** any personal data lands on the box.
 "Ask again at the next login" is not used as the decision.

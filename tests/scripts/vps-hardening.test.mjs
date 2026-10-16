@@ -24,7 +24,8 @@ import {
 } from "../../provision/vps/backup/lib.mjs";
 
 /**
- * VPS privacy-hardening policy (ADR-0043 decision 4).
+ * VPS privacy-hardening policy (the Art. 30 record §6; ADR-0043 decision 4
+ * records the retention decisions behind those values).
  *
  * The backup/restore tooling is only as trustworthy as the decisions inside it: the
  * rolling window, the integrity check, and the erasure a restore must re-apply. Those
@@ -41,7 +42,7 @@ const MANIFEST = buildManifest({
   tool: { pgDump: "pg_dump (PostgreSQL) 18.6", generator: "test" },
 });
 
-describe("retention policy matches ADR-0043 decision 4", () => {
+describe("retention policy matches the Art. 30 record's §6 values", () => {
   it("keeps one backup per day for 30 days — the session TTL, so a backup cannot outlive its data", () => {
     expect(BACKUP_KEEP_DAILY).toBe(30);
     expect(retentionArgs()).toEqual(["forget", "--keep-daily", "30", "--prune"]);

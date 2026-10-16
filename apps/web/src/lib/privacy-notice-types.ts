@@ -7,8 +7,9 @@ import type { Localized } from "./localized";
  * `privacy-notice-retention.ts`) so each module stays inside the agentic-limits
  * size cap, mirroring `collections-types.ts`.
  *
- * The values themselves are ADR-0043's (decisions 3 and 4) and are checked
- * against it by the notice's drift guards in `privacy-notice.test.ts`.
+ * The values themselves are the Art. 30 record's (§6 retention, §8 register),
+ * with ADR-0043 decisions 3 and 4 recording the decisions behind them, and the
+ * notice's drift guards in `privacy-notice.test.ts` check them against it.
  */
 
 /**

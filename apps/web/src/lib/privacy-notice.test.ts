@@ -7,6 +7,7 @@ import {
   CONTROLLER,
   ERASURE,
   REGISTER_RULE,
+  REGISTER_SOURCE,
   RETENTION,
   STORAGE,
   SUB_PROCESSORS,
@@ -61,10 +62,38 @@ const AUTH_ROUTE = read("apps/api/src/routes/auth.ts");
 
 type RegisterRow = { vendor: string; cells: string[] };
 
-/** The Art. 30 record's register table, parsed from the markdown. */
+/** The record's text between one `## ` heading and the next, so a parse cannot
+ * wander into another section's tables. */
+function recordSection(heading: string): string {
+  const start = ROPA.indexOf(heading);
+  if (start < 0) throw new Error(`the Art. 30 record has no "${heading}" section`);
+  const rest = ROPA.slice(start + heading.length);
+  const end = rest.indexOf("\n## ");
+  return end < 0 ? rest : rest.slice(0, end);
+}
+
+/** The §6 retention table's row for a category, so a value is read beside the
+ * category it belongs to rather than anywhere in the document. */
+function retentionRow(category: string): { category: string; retention: string } {
+  for (const raw of recordSection("## 6. Retention").split("\n")) {
+    const line = raw.trim();
+    if (!line.startsWith("|")) continue;
+    const cells = line
+      .split("|")
+      .slice(1, -1)
+      .map((cell) => cell.trim());
+    if (cells.length !== 3 || cells[0] === "Category") continue;
+    if (cells[0]!.toLowerCase().includes(category.toLowerCase())) {
+      return { category: cells[0]!, retention: cells[1]! };
+    }
+  }
+  throw new Error(`no §6 retention row for ${category} in the Art. 30 record`);
+}
+
+/** The Art. 30 record's register table, parsed from its §8. */
 function ropaRegisterRows(): RegisterRow[] {
   const rows: RegisterRow[] = [];
-  for (const raw of ROPA.split("\n")) {
+  for (const raw of recordSection("## 8. Recipients and sub-processor chain").split("\n")) {
     const line = raw.trim();
     if (!line.startsWith("|")) continue;
     const cells = line
@@ -239,7 +268,7 @@ describe("privacy notice: the register mirrors the Art. 30 record", () => {
   });
 });
 
-describe("privacy notice: retention is the ADR's values, enforced by real code", () => {
+describe("privacy notice: retention is the record's values, enforced by real code", () => {
   it("states the 30-day session TTL the adapter actually implements", () => {
     const ttl = /const SESSION_TTL_MS = (\d+) \* 24 \* 60 \* 60 \* 1000/.exec(SESSION_ADAPTER);
     expect(ttl, "the adapter's SESSION_TTL_MS is not in the expected shape").not.toBeNull();
@@ -248,14 +277,18 @@ describe("privacy notice: retention is the ADR's values, enforced by real code",
     const session = retentionById("sessions");
     expect(session.window.en).toContain(`${days} days`);
     expect(session.window.id).toContain(`${days} hari`);
-    // The record fixes the same value, so a change in either fails here before the copy
-    // can drift.
-    expect(ROPA).toContain("30 days of inactivity");
+    // The record's own §6 row for this category fixes the same value, so mutating the
+    // window — here or in the row — fails before the copy can drift. The cell opens with
+    // the value, and the assertion is anchored there: the row's later summary sentence
+    // repeats the figure, so a substring match would survive a change to the real one.
+    const row = retentionRow("Anonymous sessions");
+    expect(row.retention).toMatch(new RegExp(`^\\*\\*${days} days of inactivity\\*\\*`));
+    expect(row.retention).toContain("no separate age-based deletion of chat rows");
   });
 
   it("states the 14-day access-log and 30-day backup windows the record fixes", () => {
-    expect(ROPA).toContain("**14 days**");
-    expect(ROPA).toContain("**30 days rolling**");
+    expect(retentionRow("Server access logs").retention).toMatch(/^\*\*14 days\*\*/);
+    expect(retentionRow("Backups").retention).toMatch(/^\*\*30 days rolling\*\*/);
     const accessLogs = RETENTION.find((item) => item.id === "access-logs")!;
     expect(accessLogs.window.en).toContain("14 days");
     expect(accessLogs.window.id).toContain("14 hari");
@@ -264,7 +297,7 @@ describe("privacy notice: retention is the ADR's values, enforced by real code",
     expect(backups.window.id).toContain("30 hari");
   });
 
-  it("states no retention window the ADR does not fix", () => {
+  it("states no retention window the record does not fix", () => {
     const allowedDays = new Set(["14", "30"]);
     for (const item of RETENTION) {
       const stated = [...item.window.en.matchAll(/(\d+)[- ]day/g)].map((match) => match[1]!);
@@ -290,10 +323,23 @@ describe("privacy notice: retention is the ADR's values, enforced by real code",
   });
 
   it("says there is no separate age-based deletion of chat rows", () => {
-    expect(ROPA).toContain("no separate age-based deletion of chat rows");
+    expect(retentionRow("Anonymous sessions").retention).toContain(
+      "no separate age-based deletion of chat rows",
+    );
     const session = retentionById("sessions");
     expect(session.window.en).toContain("no separate age-based deletion");
     expect(session.window.id).toContain("Tidak ada penghapusan berbasis usia terpisah");
+  });
+
+  it("names the record as the register's source in both locales", () => {
+    // The provenance line is user-visible, so a reader sent to the wrong artifact is the
+    // failure this pins; the rule that the rows enforce is ADR-0043 decision 3.
+    for (const [locale, copy] of Object.entries(REGISTER_SOURCE)) {
+      expect(copy, `${locale} provenance names the Art. 30 record`).toContain(
+        "GDPR-ARTICLE-30-RECORD.md",
+      );
+      expect(copy, `${locale} provenance names the rule`).toContain("ADR-0043");
+    }
   });
 
   it("gives every row what / window / enforcedBy in both locales", () => {

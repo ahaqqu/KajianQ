@@ -135,9 +135,10 @@ export function verifyRestore(manifest, actual) {
 }
 
 /**
- * The erasure a restore must re-apply (ADR-0043 decision 4: "after a restore
- * the reclamation/erasure path is re-run for the affected window — otherwise a
- * restored row would silently resurrect data the live store had deleted").
+ * The erasure a restore must re-apply (the Art. 30 record §6 states the value;
+ * ADR-0043 decision 4 records the decision: a restore re-applies erasure for the
+ * affected window, so a restored row cannot resurrect data the live store had
+ * deleted).
  *
  * The first two statements are `cleanupExpiredSessions` from
  * `packages/infra/src/rag-store-postgres-session.ts` verbatim: expired tokens, plus
