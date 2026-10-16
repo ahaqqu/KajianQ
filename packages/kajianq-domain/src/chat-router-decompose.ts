@@ -38,10 +38,12 @@ export { admitSubQueryText };
  *      It cannot retrieve, and it would spend an embed slot and a pair of
  *      searches inside the ceiling's window where a real angle belongs. The
  *      `factual` rule's text *is* the caller's question, so the `factual` rule
- *      adds nothing for a content-free question and the fan-out is empty **only
- *      when no non-factual rule fires** — while the principle/dalil/sanad
- *      templates carry words of their own and stay searchable even when the
- *      question is not, so a shape that fires one keeps its template entry.
+ *      adds nothing for a content-free question, while the principle/dalil/sanad
+ *      templates carry words of their own and would keep their entry. That is
+ *      why the route declines such a question before this stage (`chat-router.ts`
+ *      gates on the caller's question ahead of the model call): what reaches this
+ *      function on the serving path is a question that carries content, and this
+ *      drop is the arm that holds for every text that reaches it.
  *      The drop is a function of the text alone, never of the origin that
  *      offered it, which is what keeps the reply's echo of a content-free
  *      question and the rule's own add of that same text in agreement on the
@@ -70,14 +72,14 @@ export { admitSubQueryText };
  * prompt's "different angles" rule is written against). Padding that case to
  * two would put a synthetic near-duplicate of the question in the trace and
  * claim a decomposition that never happened — see `decomposeQuery`'s own note.
- * It is **0** when there is nothing to search at all: every text the stage was
- * handed carried no letter and no digit — a blank question, or one made only of
+ * It is **0** only for a direct caller that hands this function a question
+ * carrying no letter and no digit — a blank question, or one made only of
  * punctuation, `Cf` or `Cc` characters, whose rule text *is* the question and
- * which `push` drops — beside a reply whose every text the same gate dropped,
- * **and no non-factual rule fires**. The principle/dalil/sanad templates carry
- * words of their own, so a shape that fires one is searchable even when the
- * question is not and the fan-out is not empty: the route-level emptiness is
- * conditional, while the text-level drop above is unconditional.
+ * which `push` drops — together with a reply whose every text that same drop
+ * takes. A rule beyond `factual` fires a template carrying words of its own, so a
+ * shape that fires one is searchable even when the question is not; on the serving
+ * path `chat-router.ts` declines a content-free question before this stage, so the
+ * route's emptiness is the gate's, never this function's.
  */
 export const MIN_SUB_QUERIES = 2;
 export const MAX_SUB_QUERIES = 4;

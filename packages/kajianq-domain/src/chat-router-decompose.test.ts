@@ -418,10 +418,12 @@ describe("decomposeQuery — a text with no letter and no digit is never a sub-q
 
   it("fans out over nothing for the zero-width question, with or without the reply's echo", () => {
     // The shape: `needsPrinciple: false` and no fikih/hadith category, so the `factual`
-    // rule is the only one that fired and its text *is* this content-free question — the
-    // route-level empty fan-out that holds "when no non-factual rule fires". A shape that
-    // fires one keeps its template entry; that other half is pinned by the template test
-    // below. The rule's own add: no reply at all.
+    // rule is the only one that fired and its text *is* this content-free question. This
+    // pins the pure decomposer's range for such a question; on the serving path the route
+    // declines it before this stage (`chat-router.ts`), so a route's empty fan-out is the
+    // gate's, never this function's. A shape that fires a rule beyond `factual` keeps that
+    // rule's template entry; that other half is pinned by the template test below. The
+    // rule's own add: no reply at all.
     expect(decomposeQuery(input({ question: ZERO_WIDTH_QUESTION }))).toEqual([]);
     // The reply's echo of it: both arms drop this text, so the two passes agree and the
     // rule cannot re-add it lower down the fan-out.

@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import type { TraceEvent } from "@app/contracts";
-import { RunContext, type CostRecord } from "@app/rag-core";
+import { RunContext, StageError, type CostRecord } from "@app/rag-core";
 import { createKajianQRouter, type RouterProvider } from "./chat-router";
 import { ROUTER_SYSTEM_PROMPT } from "./chat-router-output";
 import type { KajianQFilters } from "./filters";
@@ -231,12 +231,15 @@ describe("createKajianQRouter", () => {
     expect(routed.intent).toBe("factual");
   });
 
-  it("falls back to no sub-query at all when the question itself carries no content", async () => {
-    // The fallback origin is the third way a caller's text becomes a sub-query, and
-    // the invariant is stated without an origin — a text with no letter and no digit
-    // never becomes one. The intent and the fallback flag stay: the route still says
-    // what it understood (nothing), it simply has nothing to search.
-    for (const question of ["\u200b\u200d\u200b", "\u0001\u0007"]) {
+  it("declines to route a question that carries no content, without asking the model", async () => {
+    // The route gate: a text with no letter and no digit is not a question, so
+    // there is nothing to classify and nothing to decompose. The stage asks the
+    // model nothing — a model asked for sub-queries of a non-question invents
+    // them — and returns the deterministic route over an empty fan-out, which is
+    // what leaves retrieval nothing to embed and nothing to search. The
+    // `contentFree` flag is what tells this route apart from the unusable-reply
+    // fallback on the trace; both are nobody's model reading.
+    for (const question of ["\u200b\u200d\u200b", "\u0001\u0007", "😀🔥", "!!", "   "]) {
       const h = harness("I cannot answer that.");
       const routed = (await h.route({ text: question })) as {
         intent: string;
@@ -245,8 +248,28 @@ describe("createKajianQRouter", () => {
       };
       expect(routed.intent).toBe("factual");
       expect(routed.subQueries).toEqual([]);
-      expect(routed.attributes).toEqual({ fallback: true });
-      expect(h.events.map((e) => e.kind)).toEqual(["llm_call", "source_routing"]);
+      expect(routed.attributes).toEqual({ fallback: true, contentFree: true });
+      // No call, so no `llm_call` event either: the trace carries the decision the
+      // stage made, and the decision was to spend nothing.
+      expect(h.captured).toEqual([]);
+      expect(h.events.map((e) => e.kind)).toEqual(["source_routing"]);
+      expect(h.events.at(-1)).toMatchObject({
+        kind: "source_routing",
+        detail: { sources: [], filters: {} },
+      });
+    }
+  });
+
+  it("routes a question that carries content past the gate and into the model call", async () => {
+    // The gate is on the text, not on the route: one letter or one digit — any
+    // script, a bare numeral included — and the stage routes as it always did.
+    for (const question of ["riba", "5", "٥", "漢字", "الربا", "\u200briba"]) {
+      const h = harness(REPLY);
+      const routed = (await h.route({ text: question })) as {
+        subQueries: readonly { text: string; role?: string; origin?: string }[];
+      };
+      expect(h.captured).toHaveLength(1);
+      expect(routed.subQueries.length).toBeGreaterThanOrEqual(2);
     }
   });
 
@@ -275,6 +298,28 @@ describe("createKajianQRouter", () => {
     // was understood carries them too — `{fallback: true}` alone would leave a trace
     // reader unable to tell what the route ran with.
     expect(routed.attributes).toEqual({ fallback: true, madzhab: ["hambali"] });
+  });
+
+  it("fails the stage typed on a caller filter the store cannot express — on either arm", async () => {
+    // A caller can pin a dimension retrieval cannot bind (`Query.filters`), and
+    // `sourceRoutingDetail` throws on it. Both arms record their decision through the
+    // same boundary, so both land on the stage's declared `StageError`: a throw that
+    // escaped as a defect would make `Effect<Routing, StageError>` untrue, and the
+    // reply arm must not be the only one that holds.
+    const filters = { not_a_dimension: ["x"] } as unknown as KajianQFilters;
+    const cases: readonly { why: string; text: string; reply: string }[] = [
+      { why: "the gate's arm", text: "\u200b\u200d", reply: JSON.stringify({ not: "a reply" }) },
+      { why: "the reply arm", text: "Apa hukum riba?", reply: JSON.stringify({ not: "a reply" }) },
+    ];
+    for (const { why, text, reply } of cases) {
+      const h = harness(reply);
+      const error = await h.route({ text, filters }).then(
+        () => undefined,
+        (cause: unknown) => cause,
+      );
+      expect(error, why).toBeInstanceOf(StageError);
+      expect((error as StageError).stage, why).toBe("router");
+    }
   });
 
   it("stamps the factual rule onto a model echo of the question with no role", async () => {

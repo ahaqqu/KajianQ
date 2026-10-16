@@ -133,10 +133,15 @@ const CONTENT_FREE_QUESTION_UNITS = [
  *      it — the repair may stamp a fired rule's role onto a role-less entry
  *      carrying that rule's text, but never overwrites a label — and only the
  *      *rules* are deduplicated by role);
- *   6. nothing is returned only when no text the stage was handed — the question
- *      or any reply text — carried a letter or a digit: a blank or content-free
- *      question with a reply that phrased nothing searchable has no retrieval to
- *      run at all;
+ *   6. nothing is returned *exactly* when no text the stage was handed or derived
+ *      — the question, any reply text, and the own text of each rule that fired,
+ *      which carries words of its own — carried a letter or a digit: a blank or
+ *      content-free question with a reply that phrased nothing searchable and no
+ *      rule beyond `factual` firing has no retrieval to run at all. Both directions
+ *      are asserted as one biconditional: the one-sided form — an empty result
+ *      means nothing it was handed was searchable — passes vacuously the day this
+ *      function's range stops containing 0, which is the one state a direct caller
+ *      can hand it and the serving route cannot;
  *   7. re-running the repair over its own output changes nothing but the
  *      provenance labels (idempotence over text and role), over both the plain
  *      and the collision generator below, at a budget whose verdict is a property
@@ -491,19 +496,25 @@ describe("decomposeQuery laws", () => {
   });
 
   fcTest.prop([inputArb])(
-    "returns nothing only when no text it was handed had anything to search with",
+    "returns nothing exactly when no text it was handed or derived had anything to search with",
     (input) => {
-      // A question that is not a query — blank, punctuation-only, `Cf`/`Cc`-only
-      // — with a reply that phrased nothing searchable and **no non-factual rule
-      // firing** has no retrieval to run: the empty fan-out is the whole point in
-      // that shape. A principle/dalil/sanad template carries
-      // words of its own, so one of those firing keeps the fan-out non-empty —
-      // which is why the law is stated as the contrapositive over every text the
-      // stage was handed: an empty result means the question carried no letter and
-      // no digit AND so did every reply text.
-      if (decomposeQuery(input).length > 0) return;
-      expect(hasContent(input.question)).toBe(false);
-      for (const entry of input.modelSubQueries) expect(hasContent(entry.text)).toBe(false);
+      // The texts named: the question, every text the reply offered, and — for each
+      // composition rule that fired — that rule's own text, which for `factual` *is*
+      // the question and for the principle/dalil/sanad templates carries words of its
+      // own whatever the question holds. The biconditional is deliberate: the
+      // one-sided form — an empty result means nothing it was handed was searchable
+      // — passes vacuously the moment the range stops containing 0, because a
+      // function that emitted for a content-free question returns early on every
+      // such draw and stays green; so the direction that pins 0 as a state of this
+      // function is asserted too. An empty result therefore means no text was
+      // searchable *and* no rule beyond `factual` fired: one of those firing keeps
+      // the fan-out non-empty even when the question is not a query at all.
+      const searchable = [
+        input.question,
+        ...input.modelSubQueries.map((entry) => entry.text),
+        ...firedRoles(input.needsPrinciple, input.category).map((role) => ruleTextOf(role, input)),
+      ].some((text) => hasContent(text));
+      expect(decomposeQuery(input).length === 0).toBe(!searchable);
     },
   );
 
