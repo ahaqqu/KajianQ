@@ -240,9 +240,12 @@ environment-scoped copy of the same four (`VPS_HOST`, `VPS_USER`, `VPS_ROOT`,
 `Deploy to VPS` targets the `prod` environment, which carries a
 required-reviewer protection rule (the owner) and a protected-branch policy —
 the approval is the owner's sign-off for a production-targeted deploy
-(ADR-0044 decision 2). Its `VPS_*` variables and `VPS_DEPLOY_SSH_KEY` are
-environment-scoped, so staging and prod carry their own credentials under one
-repository — and both point at the **one box** (§1.2), because no production
+(ADR-0044 decision 2). Only `prod` is environment-scoped: its `VPS_*`
+variables and `VPS_DEPLOY_SSH_KEY` shadow the repository-level copies for a
+prod dispatch. The `staging` environment carries no credentials of its own, so
+it resolves to the repository-level variables and key — editing one of those
+moves a staging deploy immediately, with no environment boundary in between.
+Both `VPS_HOST`s point at the **one box** (§1.2), because no production
 deployment is provisioned (ADR-0044 decision 2; deferred 2026-10-03).
 
 ### 1.5 The permission model (deploy identity ↔ `kajianq`)
