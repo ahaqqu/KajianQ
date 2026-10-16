@@ -106,6 +106,7 @@ Before opening the PR, run the Quick review scans from `.agents/skills/dars-plug
 
 - Writing or changing a skill, an adapter, or any other agent-facing document is done under the `writing-for-agents` rule: instruction only, no provenance.
 - Write comments under `AGENTS.md`'s "Comments state the current code": the current rule, the non-obvious why, or a caller's contract. Never ticket/PR/QA-probe/review-round numbers, commit or trace ids, dates, "used to"/"before this", what a superseded version did, or a count that describes data — those go in the PR body, the ADR or the trace. The finding that motivated a change is evidence for the PR, not a comment: when a test, type, ADR, `SPECS.md` or skill already pins the fact, write nothing. Never delete a machine directive (`@vitest-environment`, `@ts-*`) — that is configuration.
+- Match the change to its surface: a repo-hygiene config (`.github/dependabot.yml`, CI metadata, labels, board process) ships as the value plus the rule stated beside it — the tool that owns the config does the enforcing. A gate, and the tests under it, earn their place on an invariant that fails _silently_. Say in the PR body what the tool does with the key added, read from the tool's own semantics.
 - Write contracts (Valibot schemas, types) before implementation.
 - Test intent ships with the contracts: name the cases before code exists, per
   `docs/ARCHITECTURE.md` §10 ("contracts, types, and tests exist before
