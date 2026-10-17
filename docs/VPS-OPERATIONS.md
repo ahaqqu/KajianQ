@@ -214,14 +214,20 @@ would 503 while health stayed green.
 
 ### 1.4 GitHub variables and secrets
 
-Nothing here is in the repository. **The ownership invariant:** a value is read
-at the scope of the job that reads it. A job that declares a GitHub environment
-resolves that environment's copy of a name first, and falls back to the
-repository-level copy only where the scope carries none — so the dispatching
-environment decides where a deploy lands and what it authenticates with. Every
-value the deploy path needs is carried by both scopes, and **no job reads a
-repository-level `VPS_*` value.** Measured from this repository's configuration
-(`gh variable list` / `gh secret list`, with and without `--env`):
+Nothing here is in the repository. **The ownership invariant:** a value resolves
+at the scope of the job that reads it — a job that declares a GitHub environment
+resolves that environment's copy of a name, and a repository-level value is read
+only by a job whose own scope carries no copy of that name. So the dispatching
+environment decides where a deploy lands and what it authenticates with. Both
+scopes carry the five `VPS_*` names — the deploy's four variables and its deploy
+key; the repository level carries only what no scope shadows: `STAGING_DATABASE_URL`
+and `RATE_BYPASS_PRIVATE_KEY`, whose readers are in the first table below, and the
+reader-less legacy and provider entries in the second. **No `VPS_*` name keeps a
+repository-level copy:** a copy shadowed at every scope that reads the name is a
+**silent fallback** for any scope that loses its own — the day one loses its
+value, its jobs read the other environment's box instead of failing by name — so
+**a superseded copy is removed rather than left.** Re-measure the split with
+`gh variable list` / `gh secret list`, with and without `--env`.
 
 | Kind   | Name                      | Scope             | Read by                                                                                         |
 | ------ | ------------------------- | ----------------- | ----------------------------------------------------------------------------------------------- |
@@ -236,14 +242,12 @@ repository-level `VPS_*` value.** Measured from this repository's configuration
 Both `VPS_HOST`s point at the **one box** (§1.2), because no production
 deployment is provisioned (ADR-0044 decision 2; deferred 2026-10-03).
 
-**Repository level — the rest, read by no job:**
+**Repository level — the reader-less entries:**
 
-| Kind   | Name                                     | Note                                                                     |
-| ------ | ---------------------------------------- | ------------------------------------------------------------------------ |
-| var    | `VPS_HOST`, `VPS_USER`, `VPS_PUBLIC_URL` | dead values: shadowed at both scopes                                     |
-| var    | `PROD_URL`                               | legacy, the same origin; no workflow reads it                            |
-| secret | `VPS_DEPLOY_SSH_KEY`                     | dead value: shadowed at both scopes — only its **name** is in use, below |
-| secret | `DEEPSEEK_API_KEY`, `GEMINI_API_KEY`     | no workflow job reads them                                               |
+| Kind   | Name                                 | Note                                          |
+| ------ | ------------------------------------ | --------------------------------------------- |
+| var    | `PROD_URL`                           | legacy, the same origin; no workflow reads it |
+| secret | `DEEPSEEK_API_KEY`, `GEMINI_API_KEY` | no workflow job reads them                    |
 
 **The deploy key's name is load-bearing; its value is not.** The deploy job
 receives `VPS_DEPLOY_SSH_KEY` through `staging.yml`'s caller job, and a job that
@@ -252,13 +256,7 @@ GitHub's supported-keyword set for a `uses:` job. So the caller maps the secret
 **by name**, and the job that sets `environment` in the reusable workflow
 receives that environment's value: a by-name mapping resolves a secret that
 exists only in the environment, while omitting the mapping resolves the name to
-an empty string there. The mapping therefore stays. It is also why the
-repository-level `VPS_*` copies (the three variables and the key) are deleted as
-a settings step **after this change lands**: on `main` before it,
-`post-deploy-checks` declares no environment, so it reads the repository-level
-`VPS_*` values, and deleting them first would break the merge path.
-`STAGING_DATABASE_URL` and `RATE_BYPASS_PRIVATE_KEY` are live repository-level
-readers and stay.
+an empty string there. The mapping therefore stays.
 
 `deploy-vps.yml` fails at a named "Require the deploy access" step when
 `VPS_HOST`, `VPS_USER`, `VPS_ROOT`, `VPS_PUBLIC_URL` or the key is missing — an
@@ -471,9 +469,8 @@ sudo certbot delete --cert-name <old-host>
 # The scopes whose jobs read the origin: the `staging` and `prod` environments
 # hold their own copy (§1.4), and a scope left on the retired name fails its own
 # deploy smoke while the other scopes stay green. No repository-level
-# `VPS_PUBLIC_URL` is written: §1.4 records it as a value no job reads, deleted
-# with the other repository-level `VPS_*` copies, and re-creating it here would
-# restore the fallback scope the scoping decision drops.
+# `VPS_PUBLIC_URL` is created: a copy shadowed by both scopes is a silent
+# fallback the day a scope loses its own.
 gh api --method PATCH repos/{owner}/{repo}/environments/staging/variables/VPS_PUBLIC_URL \
     -f name=VPS_PUBLIC_URL -f value="https://<new-host>"
 gh api --method PATCH repos/{owner}/{repo}/environments/prod/variables/VPS_PUBLIC_URL \

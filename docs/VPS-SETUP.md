@@ -706,10 +706,11 @@ each scope owning the deploy's host, identity, tree, URL and key; which scope
 holds what, and the hostname step that updates each, are
 [`docs/VPS-OPERATIONS.md`](VPS-OPERATIONS.md) §1.4 and §1.6.
 
-**Both scopes must agree on `VPS_USER`, and that is easy to get half-right.**
-Changing only the repo-level variable leaves a prod dispatch authenticating as
-the old account, and the failure looks like an ssh problem rather than a
-variable one. Set it in both, then confirm no scope still says something else:
+**Every scope whose jobs read `VPS_USER` must agree on it, and that is easy to
+get half-right.** Changing one scope's copy leaves a dispatch that resolves
+another scope authenticating as the old account, and the failure looks like an
+ssh problem rather than a variable one. Set it in each scope that carries the
+name, then confirm none is left on a different value:
 
 ```bash
 # Repository level: what a job resolves when its environment carries no copy —

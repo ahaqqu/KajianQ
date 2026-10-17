@@ -996,9 +996,10 @@ describe("provisioning config as code stays true to the ADR", () => {
 
   it("the deploy requires KAJIANQ_DEPLOY_ROOT and has no tree to fall back to", () => {
     // The tree decides what a deploy replaces, so both halves are pinned: the name is in the
-    // required-name gate, and the assignment carries no `:-` default. Reverting either one alone
+    // required-name gate, and the assignment carries no `:-` default. Reverting both halves
     // would let an operator env file that omits the tree ship to /srv/kajianq while reporting
-    // success — the failure this contract closes (the script's header states it).
+    // success; each half alone still fails — the loop by name, the expansion as an unbound
+    // variable under `set -u`.
     const script = read("provision/vps/deploy/deploy.sh");
     const required = /for var in ([^;]+); do/.exec(script)?.[1];
     expect(required, "deploy.sh must keep its required-name loop").toBeTruthy();

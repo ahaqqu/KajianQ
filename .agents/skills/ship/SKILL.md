@@ -82,9 +82,11 @@ running:
   `tests/scripts/vps-hardening.test.mjs`, which fails the build if the deploy's
   `sudo` calls and the grant stop agreeing. The read-only `is-active` check needs
   no grant.
-- **`vars.VPS_USER` naming that account**, at repo level _and_ on the `prod`
-  environment (which carries its own copy). Still set to the admin login, it
-  fails as `Permission denied (publickey)`.
+- **`vars.VPS_USER` naming that account**, on the `staging` and `prod`
+  environments — each carries its own copy, and no repository-level copy is kept:
+  a shadowed copy is a silent fallback for a scope that loses its own
+  ([`docs/VPS-OPERATIONS.md`](../../../docs/VPS-OPERATIONS.md) §1.4). Still set to
+  the admin login, it fails as `Permission denied (publickey)`.
 - **`/etc/kajianq/api.env`**, including `KAJIANQ_WEB_ROOT=/srv/kajianq/web` (its
   default resolves under the unit's `WorkingDirectory` and would 503 every SPA
   route while health stayed green) and the provider keys `DEEPSEEK_API_KEY`
