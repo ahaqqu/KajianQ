@@ -815,6 +815,12 @@ describe("route policy", () => {
       "`subagent-model-selection-settings` carries no config in the composed tree",
     );
     expect(res.stdout).toContain("its thoughtLevel is not named either");
+    // The inheritance claim is about a fresh session, not a switched one — the
+    // one case the check cannot see, so the note names it.
+    expect(res.stdout).toContain("for a session that has not been switched in the UI");
+    expect(res.stdout).toContain(
+      "a switched session's dispatcher carries that session's own route",
+    );
     expect(res.stdout).toContain(
       "✓ fixer: alpha-model — declared, inherited route (no policy in force), served",
     );
