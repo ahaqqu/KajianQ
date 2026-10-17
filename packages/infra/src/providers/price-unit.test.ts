@@ -1,45 +1,37 @@
 import { describe, expect, it } from "vite-plus/test";
 import { computeCost } from "./chat-wire";
-import { loadProviderConfig, resolveChain } from "./provider-config";
+import { loadProviderConfig } from "./provider-config";
+import expectedPrices from "./price-unit.expected.json";
 
-/** Lowest per-MTok price in micro-USD any allowlist entry can plausibly carry:
- * every candidate is a paid model whose published rate is at least $0.042/MTok
- * (the decision model). A non-zero price below this floor is a price written on
- * the USD-per-MTok scale — ×1000 low — instead of the declared micro-USD one. */
-const CHEAPEST_PLAUSIBLE_MICRO_USD_PER_MTOK = 42_000;
+/** Every catalog entry's price in micro-USD per MTok — the unit `models.json`'s
+ * header declares (1 USD = 1e6 micro-USD, so a $0.50/MTok input price is
+ * 500000). Holding the whole catalog as one expectation keeps a re-price to a
+ * single edit, and a price re-entered on the USD scale fails here by key at any
+ * magnitude instead of slipping under a floor.
+ *
+ * The expectation lives in JSON because the boundary gate bars vendor names
+ * from engine `.ts` sources and a "vendor:model" key is one. */
 
 describe("price unit", () => {
-  it("charges a whole MTok of tokens at the price the config declares", () => {
-    // The unit `models.json`'s header declares: 1 USD = 1e6 micro-USD, so a
-    // $0.50/MTok input price is 500000 and one MTok of input costs $0.50.
+  it("pins every catalog price in micro-USD per MTok", () => {
+    const actual: Record<string, { in: number; out: number }> = {};
+    for (const [vendor, vendorConfig] of Object.entries(loadProviderConfig().vendors)) {
+      for (const [modelId, model] of Object.entries(vendorConfig.models)) {
+        actual[`${vendor}:${modelId}`] = model.priceMicroUsdPerMTok;
+      }
+    }
+    expect(actual).toEqual(expectedPrices);
+  });
+
+  it("applies a known price to a known token count", () => {
+    // The header's own example: $0.50/MTok over a full MTok of input.
     expect(computeCost("m-model", { in: 500_000, out: 0 }, 1_000_000, 0, 1).costMicroUsd).toBe(
       500_000,
     );
-  });
-
-  it("records the generator's 8K-token call from the checked-in price", () => {
-    const [generator] = resolveChain(loadProviderConfig(), "generator");
-    if (!generator) throw new Error("the generator role resolves to no candidate");
-    const price = generator.modelConfig.priceMicroUsdPerMTok;
-    // $0.14/$0.28 per MTok, read back through the declared unit.
-    expect(price.in / 1_000_000).toBe(0.14);
-    expect(price.out / 1_000_000).toBe(0.28);
-    // 8,000 input tokens at $0.14/MTok is 0.00112 USD = 1,120 micro-USD.
-    expect(computeCost(generator.modelId, price, 8_000, 0, 1).costMicroUsd).toBe(1_120);
-  });
-
-  it("keeps every non-zero price on the micro-USD scale", () => {
-    for (const [vendor, vendorConfig] of Object.entries(loadProviderConfig().vendors)) {
-      for (const [modelId, model] of Object.entries(vendorConfig.models)) {
-        const { in: priceIn, out: priceOut } = model.priceMicroUsdPerMTok;
-        for (const price of [priceIn, priceOut]) {
-          if (price === 0) continue;
-          expect(
-            price,
-            `${vendor}:${modelId} is priced below ${CHEAPEST_PLAUSIBLE_MICRO_USD_PER_MTOK} micro-USD per MTok`,
-          ).toBeGreaterThanOrEqual(CHEAPEST_PLAUSIBLE_MICRO_USD_PER_MTOK);
-        }
-      }
-    }
+    // Both sides priced: 8,000 input at $0.025/MTok and 400 output at
+    // $0.05/MTok is 200 + 20 = 220 micro-USD.
+    expect(computeCost("m-model", { in: 25_000, out: 50_000 }, 8_000, 400, 1).costMicroUsd).toBe(
+      220,
+    );
   });
 });

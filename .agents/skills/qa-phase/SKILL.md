@@ -134,7 +134,7 @@ WHERE t.user_id = ANY ('{<the run''s anonymous user ids>}'::uuid[])
   AND e->'cost'->>'costMicroUsd' IS NOT NULL;
 ```
 
-A `user_id`-less sum over `created_at >= '<run start>'` was measured at **537 micro-USD** in #295's review, against a store whose busiest single subject held 248 and whose lifetime total was 3,108 — it aggregates every other subject's rows. It is **not** the run's spend, it is not one of the two purposes, and no such figure goes in the report.
+A `user_id`-less sum over `created_at >= '<run start>'` aggregates every other subject's rows. It is **not** the run's spend, it is not one of the two purposes, and no such figure goes in the report.
 
 Report the sum with the cap. A run whose spend cannot be read — tunnel down, ids lost — says exactly that in the report and gives no figure; the cap is then enforced by probe discipline alone, and the report must not imply a measurement it did not take.
 
