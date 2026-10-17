@@ -549,8 +549,11 @@ statement rolls the whole migration back. The CLI runs over a plain `pg` `Pool`
 From the box (loopback, so no tunnel):
 
 ```bash
-DATABASE_URL="postgres://kajianq:<pw>@127.0.0.1:5432/kajianq" bun run db:status:all
-DATABASE_URL="postgres://kajianq:<pw>@127.0.0.1:5432/kajianq" bun run db:up:all
+# The URL travels in the environment (§3: never argv); its value is read from
+# the root-owned file, never typed — the command line keeps only the substitution.
+export DATABASE_URL="postgres://kajianq:$(sudo cat /etc/kajianq/db-password)@127.0.0.1:5432/kajianq"
+bun run db:status:all
+bun run db:up:all
 ```
 
 `db:status:all` must show every migration applied after a restore (the archive's
@@ -749,7 +752,34 @@ for the Staging workflow's Golden Set smoke, and for any ad-hoc query:
 ```bash
 # keep this shell open for as long as the tunnel is needed
 ssh -N -L 15433:127.0.0.1:5432 <your-own-login>@<host>
-# elsewhere: DATABASE_URL=postgres://kajianq:<pw>@127.0.0.1:15433/kajianq
+# Elsewhere, the credential stays out of argv and out of shell history: read it
+# from the 0600 copy you keep in your password manager into psql's environment,
+# and give the connection as flags.
+PGPASSWORD="$(cat ~/.config/kajianq/db-password)" \
+  psql -h 127.0.0.1 -p 15433 -U kajianq -d kajianq -Atc 'SELECT current_user, current_database()'
+```
+
+A URL that carries the password must never be a **command argument**: `psql
+"$DATABASE_URL"`, `pg_restore -d "$URL"`, and typing
+`DATABASE_URL=postgres://kajianq:<pw>@…` as a literal all put the value in
+`argv`, where `ps` shows it to every local user for the life of the process, and
+in shell history. `psql` and `pg_restore` take `-h`/`-p`/`-U`/`-d` and read
+`PGPASSWORD`; `~/.pgpass` is the same thing without the environment variable —
+one 0600 line, `127.0.0.1:15433:kajianq:kajianq:<password>`, and the invocation
+above needs no `PGPASSWORD` at all.
+
+**A `DATABASE_URL` in the environment is legitimate.** Env is not `argv`, it is
+how the repo's own CLIs are built (§3), and the same applies to `PGDATABASE_URL`
+for the backup script and `STAGING_DATABASE_URL` in the Staging workflow. What
+must not happen is the _value_ reaching a command line: build the URL from the
+file, so history keeps only the substitution.
+
+```bash
+# for the CLIs that take the connection as a URL (db:status:all, db:snapshot,
+# ingest, eval) — env, not argv, and nothing secret in the history
+export DATABASE_URL="postgres://kajianq:$(cat ~/.config/kajianq/db-password)@127.0.0.1:15433/kajianq"
+bun run db:status:all
+bun run db:snapshot create <lowercase-label>   # plus the posture flag (§2.4)
 ```
 
 **The tunnel carries an operator login.** Open it as the account you ssh in as
@@ -843,8 +873,8 @@ monitoring must not create an unbounded personal-data-adjacent log surface. Issu
 | Apply/refresh hardening               | `sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env` (idempotent)                                                                                                                                                                                                                                 |
 | Change the public hostname            | §1.6 — certbot, `proxy.env`, `ALLOWED_ORIGINS`, `apply.sh`, then `VPS_PUBLIC_URL` in both scopes                                                                                                                                                                                                        |
 | Change the environment label          | §1.7 — a fresh rebuild already reads `"env":"staging"`; for a box still reading `production`, `sed` `APP_ENV` in `/etc/kajianq/api.env` as root, restart the unit, then check `/v1/health` (cosmetic: log labels + health JSON only)                                                                    |
-| Check migrations                      | `DATABASE_URL=… bun run db:status:all` (§2.3)                                                                                                                                                                                                                                                           |
-| Take a snapshot                       | `DATABASE_URL=… bun run db:snapshot create <lowercase-label>` with the posture flag (§2.4)                                                                                                                                                                                                              |
+| Check migrations                      | `DATABASE_URL` in env (§2.3, read from the file — never typed) → `bun run db:status:all`                                                                                                                                                                                                                |
+| Take a snapshot                       | `DATABASE_URL` in env (§2.4, read from the file — never typed) → `bun run db:snapshot create <lowercase-label>` with the posture flag                                                                                                                                                                   |
 | Verify a snapshot                     | `bun run db:snapshot verify <label>`                                                                                                                                                                                                                                                                    |
 | Take a backup now                     | `sudo sh -c '. /etc/kajianq/backup.env && bun provision/vps/backup/kajianq-backup.mjs --label <label>'`                                                                                                                                                                                                 |
 | List backups                          | `sudo sh -c '. /etc/kajianq/backup.env && restic snapshots'`                                                                                                                                                                                                                                            |
