@@ -858,8 +858,8 @@ a backup:
 #
 # Strip the production restic env first. The drill sets its own restic password,
 # but RESTIC_PASSWORD_FILE takes precedence over it in restic — run the drill
-# from a shell that has sourced backup.env and it encrypts with your production
-# key and then fails. This is a known sharp edge.
+# with the production RESTIC_PASSWORD_FILE exported in its environment and it
+# encrypts with your production key and then fails. This is a known sharp edge.
 env -u RESTIC_REPOSITORY -u RESTIC_PASSWORD_FILE -u PGDATABASE_URL \
   bun provision/vps/backup/restore-drill.mjs \
     --admin-url "postgres://postgres@127.0.0.1:5432/postgres"
@@ -1132,8 +1132,9 @@ path that does not exist on the deployed tree.
 repository checkout rather than the deployed bundle. The unit runs
 `/srv/kajianq/api/backup.js`, which the deploy ships.
 
-**The restore drill fails with a restic exit 12.** You sourced `backup.env`
-first. Strip the variables as shown in §10.
+**The restore drill fails with a restic exit 12.** You ran it with the
+production `RESTIC_PASSWORD_FILE` exported in its environment. Strip the
+variables as shown in §10.
 
 **`Script not found` from the backup unit.** The unit's `ExecStart` should name
 `/srv/kajianq/api/backup.js`. If it names a `__KAJIANQ_` token or a path under

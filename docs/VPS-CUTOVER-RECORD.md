@@ -123,12 +123,12 @@ the on-host run surfaced; fixes live in the `gdpr-e-cutover-record` branch):
    never caught it because the drill passes `--label drill` explicitly.
 2. **Restore drill vs. inherited production restic env.** The drill sets its
    own `RESTIC_PASSWORD` but restic gives `RESTIC_PASSWORD_FILE` precedence —
-   when the drill is run from a shell holding the production `backup.env`
-   (the runbook's own example), `restic init` encrypts with the production
-   key and the drill's backup child then fails with exit 12. The drill is
-   self-contained by design, so the fix on-host was to run it with the
-   production `RESTIC_*`/`PG*` env stripped (`env -u …`). A code-level guard
-   (drill refuses inherited `RESTIC_PASSWORD_FILE`) is worth a follow-up.
+   when the drill is run from a shell holding the production `backup.env`,
+   `restic init` encrypts with the production key and the drill's backup child
+   then fails with exit 12. The drill is self-contained by design, so the fix
+   on-host was to run it with the production `RESTIC_*`/`PG*` env stripped
+   (`env -u …`). A code-level guard (drill refuses inherited
+   `RESTIC_PASSWORD_FILE`) is worth a follow-up.
 
 GitHub wiring (set via `gh`, per the owner's request — values live only in
 GitHub's store, never the repo):

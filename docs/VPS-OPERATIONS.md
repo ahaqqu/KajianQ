@@ -703,10 +703,12 @@ sudo bun provision/vps/backup/restore-drill.mjs \
 ```
 
 **The gotcha.** The drill is self-contained by design and sets its own
-`RESTIC_PASSWORD` — but restic gives `RESTIC_PASSWORD_FILE` **precedence**. Run
-the drill from a shell that has a production `RESTIC_PASSWORD_FILE` exported and
-the drill's `restic init` encrypts with the _production_ key; its backup child
-then fails with restic exit 12. Run it with the inherited variables stripped:
+`RESTIC_PASSWORD` — but restic gives `RESTIC_PASSWORD_FILE` **precedence**. The
+`sudo` form above is safe only by sudo's `env_reset`, which strips an exported
+`RESTIC_PASSWORD_FILE` before the drill starts; run the drill without `sudo`
+with that variable genuinely in its environment and the drill's `restic init`
+encrypts with the _production_ key, its backup child then failing with restic
+exit 12. Run it with the inherited variables stripped:
 
 ```bash
 env -u RESTIC_REPOSITORY -u RESTIC_PASSWORD_FILE -u PGDATABASE_URL \
@@ -725,7 +727,8 @@ removed.
 # command line carries no URL and nothing credential-shaped reaches `ps` or the
 # shell history. The compatibility flag `--target-url` still works, and an
 # explicitly passed flag wins when both are given. Run it without
-# RESTORE_TARGET_URL exported: a real value in the shell wins over the file.
+# RESTORE_TARGET_URL exported: `--env-file` lets a real value in the environment
+# win over the file, unlike the `set -a; . file` form, where the file wins.
 sudo bun provision/vps/backup/kajianq-restore.mjs \
   --env-file /etc/kajianq/backup.env --label <label>
 ```
