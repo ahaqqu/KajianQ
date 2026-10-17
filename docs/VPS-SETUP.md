@@ -548,7 +548,10 @@ sudo chmod 0600 /etc/kajianq/restic.pass
 echo "Copy /etc/kajianq/restic.pass into your password manager NOW."
 sudo cat /etc/kajianq/restic.pass
 
-sudo sh -c '. /etc/kajianq/backup.env && restic -r "$RESTIC_REPOSITORY" init'
+# `set -a` is what exports the file's keys: a bare `. file` sets shell
+# variables that no child process inherits, and restic reads
+# RESTIC_REPOSITORY and RESTIC_PASSWORD_FILE from its environment.
+sudo sh -c 'set -a; . /etc/kajianq/backup.env; set +a; restic -r "$RESTIC_REPOSITORY" init'
 ```
 
 Now apply the configuration. This is idempotent — re-running it is safe and is
