@@ -11,15 +11,15 @@
         "gemini-3.1-pro-preview": {
           "capabilities": ["generate", "stream"],
           "priceMicroUsdPerMTok": {
-            "in": 2000,
-            "out": 12000
+            "in": 2000000,
+            "out": 12000000
           }
         },
         "gemini-3-flash-preview": {
           "capabilities": ["generate", "stream"],
           "priceMicroUsdPerMTok": {
-            "in": 500,
-            "out": 3000
+            "in": 500000,
+            "out": 3000000
           }
         },
         "gemini-embedding-001": {
@@ -53,7 +53,7 @@
           "capabilities": ["embed"],
           "dimensions": 1536,
           "priceMicroUsdPerMTok": {
-            "in": 200,
+            "in": 200000,
             "out": 0
           }
         },
@@ -61,7 +61,7 @@
           "capabilities": ["embed"],
           "dimensions": 1536,
           "priceMicroUsdPerMTok": {
-            "in": 200,
+            "in": 200000,
             "out": 0
           }
         }
@@ -78,15 +78,15 @@
         "qwen3.7-max": {
           "capabilities": ["generate", "stream"],
           "priceMicroUsdPerMTok": {
-            "in": 2500,
-            "out": 7500
+            "in": 2500000,
+            "out": 7500000
           }
         },
         "qwen3-max": {
           "capabilities": ["generate", "stream"],
           "priceMicroUsdPerMTok": {
-            "in": 780,
-            "out": 3900
+            "in": 780000,
+            "out": 3900000
           }
         }
       }
@@ -101,14 +101,14 @@
         "deepseek-v4-flash": {
           "capabilities": ["generate", "stream"],
           "priceMicroUsdPerMTok": {
-            "in": 140,
-            "out": 280
+            "in": 140000,
+            "out": 280000
           }
         }
       }
     },
     "typesafe": {
-      "$comment": "ADR-0042: TypeSafe AI 'System One' decision endpoint \u2014 typed structured questions (Choice/Score/Noul) over a state, priced on input tokens only (output free). Not a chat or embedding vendor: it backs the `decision` serving role (the reviewer pre-gate, ADR-0042 adoption ticket #168) and the bench-only `decision-candidates` role. The multilingual gate passed 21/21 ar/id/en (relevance 12/12, rerank 3/3, citation 6/6, 21 micro-USD total) \u2014 report committed at packages/kajianq-domain/fixtures/decision-bench-results.json.",
+      "$comment": "ADR-0042: TypeSafe AI 'System One' decision endpoint \u2014 typed structured questions (Choice/Score/Noul) over a state, priced on input tokens only (output free). Not a chat or embedding vendor: it backs the `decision` serving role (the reviewer pre-gate, ADR-0042 adoption ticket #168) and the bench-only `decision-candidates` role. The multilingual gate passed 21/21 ar/id/en (relevance 12/12, rerank 3/3, citation 6/6) \u2014 report committed at packages/kajianq-domain/fixtures/decision-bench-results.json.",
       "baseUrl": "https://api.typesafe.ai/v1",
       "apiKeyEnv": "JEV_API_KEY",
       "protocol": "systemone",
@@ -116,10 +116,10 @@
       "personalDataAllowed": true,
       "models": {
         "jev-1.13.0": {
-          "$comment": "Pinned version \u2014 64k request / 32k state budget, 1,200 req/min. 42 micro-USD per input MTok (ADR-0042).",
+          "$comment": "Pinned version \u2014 64k request / 32k state budget, 1,200 req/min. $0.042 per input MTok (ADR-0042).",
           "capabilities": ["decide"],
           "priceMicroUsdPerMTok": {
-            "in": 42,
+            "in": 42000,
             "out": 0
           }
         }
@@ -159,7 +159,7 @@
       "chain": ["typesafe:jev-1.13.0"]
     },
     "decision": {
-      "$comment": "The decision-model SERVING role (ADR-0042 adoption, ticket #168): the reviewer pre-gate's pinned decision model, adopted on the committed multilingual gate report (packages/kajianq-domain/fixtures/decision-bench-results.json: jev-1.13.0 scored 21/21 overall and per-language ar/id/en \u2014 relevance 12/12, rerank 3/3, citation 6/6, 21 micro-USD total). Separate from the bench-only `decision-candidates` role so a re-bench can add challengers without changing what serves. Always active wherever JEV_API_KEY is bound (owner decision 2026-09-19, recorded as the ADR-0042 consequence); absent key = the pre-gate is not wired and the reviewer behaves as it did before adoption \u2014 no enable/disable flag exists. Batched: one call per answer, input-priced, ~$0.0001 per screen at the pinned 42 micro-USD/MTok.",
+      "$comment": "The decision-model SERVING role (ADR-0042 adoption, ticket #168): the reviewer pre-gate's pinned decision model, adopted on the committed multilingual gate report (packages/kajianq-domain/fixtures/decision-bench-results.json: jev-1.13.0 scored 21/21 overall and per-language ar/id/en \u2014 relevance 12/12, rerank 3/3, citation 6/6). Separate from the bench-only `decision-candidates` role so a re-bench can add challengers without changing what serves. Always active wherever JEV_API_KEY is bound (owner decision 2026-09-19, recorded as the ADR-0042 consequence); absent key = the pre-gate is not wired and the reviewer behaves as it did before adoption \u2014 no enable/disable flag exists. Batched: one call per answer, input-priced, ~$0.0001 per screen at the pinned $0.042/MTok.",
       "chain": ["typesafe:jev-1.13.0"]
     }
   }

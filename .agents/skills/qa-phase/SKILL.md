@@ -37,7 +37,7 @@ The ticket is the QA brief, and it carries all of:
 - **The surfaces to probe** — routes, UI flows, persisted traces, SSE frames, the refusal/answer boundary, the rehydration endpoint.
 - **The abuse angles relevant to this change**, named from the taxonomy below rather than left to the QA agent's imagination.
 - **The environment and the run being verified** — staging, the merge SHA, the `Staging` run id whose deploy carries it.
-- **The spend cap** for the run, in micro-USD. The smoke job's cap is $1 per run (ADR-0034); a QA ticket defaults to that and may set it lower, never higher without the owner. **That number is a _recorded_ cap, not a money bound.** It accumulates the same `costMicroUsd` records the store holds — the ~1000x-low ones (#296; see _Spend_ below) — so a "$1" cap aborts at roughly $1,000 of real spend. Until #296 lands, what bounds real spend is **probe discipline**: the smallest probe set that proves the observable and its blast radius.
+- **The spend cap** for the run, in micro-USD. The smoke job's cap is $1 per run (ADR-0034); a QA ticket defaults to that and may set it lower, never higher without the owner. The cap accumulates the trace's own `costMicroUsd` records, priced from the model config, so it is a money bound — and it is the backstop: **probe discipline** (the smallest probe set that proves the observable and its blast radius) is what keeps a run from reaching it.
 
 ## Probe taxonomy (required, not optional)
 
@@ -69,7 +69,7 @@ Post the report as a comment on the QA ticket, and link it from the release or P
 - **The environment and run identifiers**: staging base URL, merge SHA, `Staging` run id, and the ids of what the probes produced (trace ids, message ids, response bodies).
 - **Every probe, one entry each**: what was probed, the request, the observed result, and what it proves about the observable or the blast radius. A probe that passed and a probe that failed are reported the same way.
 - **The findings**: each real defect as its own ticket, linked. The QA agent does not fix code.
-- **The spend consumed**, against the cap — the sum measured per _The two authorized store reads_ (recorded cost; its calibration is under review, #296), not an estimate. A run that could not read it says so and reports no figure rather than a derived one.
+- **The spend consumed**, against the cap — the sum measured per _The two authorized store reads_, not an estimate. A run that could not read it says so and reports no figure rather than a derived one.
 
 The verdict is the only thing that closes a QA-needed change: `verified` when the observable holds and no blast-radius defect survived, `not verified` when a probe contradicted the acceptance criterion, `blocked` when the environment, the run, or the cap stopped the probes. "The workflow is green" is not a verdict, and a partially-run probe set never rounds up to `verified` — name the probes that did not run and why.
 
@@ -98,7 +98,7 @@ A non-`verified` verdict is never withheld for the card's sake — post it with 
 - **Read-only on the repo**: comments and finding tickets yes, commits/branches/merges/closures no.
 - **The store read is SELECT-only, subject-scoped, with two purposes.** Through the documented store tunnel (`docs/VPS-OPERATIONS.md` §2.8, port 15433, password at `~/.config/kajianq/db-password`, opened as **your own login**) you may run `SELECT` queries with `default_transaction_read_only=on` set on the connection, over (a) cost aggregates on `answer_traces` scoped to the anonymous `user_id`s the run created and (b) the persisted traces of those same sessions — nothing else, and no other subject's rows. **Never `SELECT` `chat_messages` content, `feedback` free text, or another subject's `trace` JSONB**; a query that is not one of the two purposes is out of posture whatever it returns. Writes, migrations and snapshots are outside the grant. The connection option is a discipline and an accident-guard, **not** a privilege boundary — the credential is the application's own role, it can write, and the GUC is `PGC_USERSET` — so keeping the read a read is yours, not the database's. Read the spend and the probe's trace events **before** erasing the sessions: erasure cascades both away.
 - **Nothing destructive** against the corpus or the store; no paid ingest; no money-spending operation past the ticket's cap.
-- **Report the spend actually consumed** under the cap, measured per _The two authorized store reads_ — **recorded** cost, labelled as such (#296).
+- **Report the spend actually consumed** under the cap, measured per _The two authorized store reads_.
 
 ## The two authorized store reads
 
@@ -138,9 +138,9 @@ A `user_id`-less sum over `created_at >= '<run start>'` was measured at **537 mi
 
 Report the sum with the cap. A run whose spend cannot be read — tunnel down, ids lost — says exactly that in the report and gives no figure; the cap is then enforced by probe discipline alone, and the report must not imply a measurement it did not take.
 
-**The figure is _recorded_ cost, and its calibration is under review.** The sum is what the pipeline wrote from the `models.json` prices, and those values are ~1000x below the unit that file declares (its own `cheap` comment names $0.14/$0.28 per MTok, while `in: 140` computes an 8K-token call at 1.12 micro-USD against the ~1,300 that declared price implies), so the store's ~2-micro-USD-per-event records understate real spend by the same order. Reconciliation is #296. Until it lands, report the sum as **recorded** cost: a lower bound whose trend is meaningful, whose absolute value cannot enforce the cap, and never a working budget control.
+**The sum is the run's spend.** Each event's `costMicroUsd` is the call's tokens × its price, and the prices are the allowlist's own micro-USD-per-MTok values in the model config (`packages/infra/src/providers/models.json`), so the sum is a money figure: read it against the cap directly.
 
-**The cap's own number shares that understatement**, so the reframing does not stop at the report: the cap accumulates the same records — ADR-0034 decision 2's single `Budget` over the per-event `costMicroUsd` (`packages/eval/src/budget.ts`, `harness.ts`) — and a "$1" cap therefore aborts at roughly $1,000 of real spend. The $1 *recorded* cap is not a $1 _money_ bound until #296 lands, and no text may read it as one. Until then, **probe discipline is what bounds real spend**: probe the smallest set that proves the observable and its blast radius, and say in the report that the cap did not bind it.
+The cap accumulates those same records — ADR-0034 decision 2's single `Budget` over the per-event `costMicroUsd` (`packages/eval/src/budget.ts`, `harness.ts`) — so a "$1" cap aborts at $1 of spend. Probe discipline stays the first bound: it keeps the run small enough that the cap never fires, and a cap that fires mid-run leaves every probe after it unmeasured.
 
 ### Reviewer/pre-gate span events
 
