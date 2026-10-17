@@ -46,8 +46,8 @@ export function moduleSurface(source, file = "module.ts") {
   if (hidden.length > 0) {
     throw new ContractsBarrelError(
       `${file}:${lineOf(scanned.code, hidden[0].at)}: this \`export\` starts a statement while it ` +
-        "sits inside a block that is not a `namespace` or `declare module` body — the only " +
-        "constructs that may hold an export keyword off the statement position — so a brace " +
+        "sits inside a block that is not a `namespace`, `module` or `declare global` body — the " +
+        "only constructs that may hold an export keyword off the statement position — so a brace " +
         "opened in error sits above it and the members below it cannot be seen: close it, or " +
         "write the construct so it reads as code",
     );
