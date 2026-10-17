@@ -323,7 +323,6 @@ export function assertBarrelCoverage(root = process.cwd()) {
     entries: inventory.entries.length,
     published: counts.published,
     withheld: counts.withheld,
-    nested: [...inventory.modules.values()].reduce((total, module) => total + module.nested, 0),
     internal: [...inventory.modules.values()]
       .filter((module) => module.declaration !== null)
       .map((module) => ({

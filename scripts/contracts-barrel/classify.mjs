@@ -13,11 +13,14 @@ import { lineOf } from "./source.mjs";
  * string or template literal (a module publishes no member by quoting one).
  */
 
-/** Whether the `{` at `at` opens a `namespace`/`module` body, the one block that may hold an export. */
-const opensDeclarationBody = (code, at) =>
-  /\b(?:namespace|module)\s+(?:[\w$]+|"[^"]*"|'[^']*')\s*$/.test(
-    code.slice(Math.max(0, at - 80), at),
-  );
+/**
+ * Whether the statement text that ends at a `{` opens a `namespace`/`module` body
+ * or a `declare global` block — the constructs that may hold an export keyword off
+ * the statement position. Read forward from the statement's start, so a dotted name
+ * (`namespace A.B`), a string name (`module "a.b"`) and a body that opens the line
+ * below its name are all the same shape here.
+ */
+const DECLARATION_BODY_RE = /(?:\b(?:namespace|module)\b[\s\w$."']*|\bdeclare\s+global)\s*$/;
 
 /**
  * Every `export` keyword in the file, split by what it can be: a `statement` to
@@ -38,6 +41,7 @@ export function classifyExports({ code, literals }) {
   const quoted = [];
   const stack = [];
   let stray = null;
+  let head = 0;
   let i = 0;
   while (i < code.length) {
     const literal = literals.get(i);
@@ -52,13 +56,18 @@ export function classifyExports({ code, literals }) {
     }
     const char = code[i];
     if (char === "{" || char === "(" || char === "[") {
-      stack.push({ at: i, declaration: char === "{" && opensDeclarationBody(code, i) });
+      const declaration = char === "{" && DECLARATION_BODY_RE.test(code.slice(head, i));
+      stack.push({ at: i, declaration });
+      if (char === "{") head = i + 1;
     } else if (char === "}" || char === ")" || char === "]") {
       if (stack.length === 0) {
         if (stray === null) stray = i;
       } else {
         stack.pop();
       }
+      if (char === "}") head = i + 1;
+    } else if (char === ";") {
+      head = i + 1;
     } else if (
       code.startsWith("export", i) &&
       !/[\w$.]/.test(code[i - 1] ?? "") &&
