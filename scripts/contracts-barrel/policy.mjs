@@ -27,6 +27,10 @@ import { dirname, join, relative, sep } from "node:path";
  *     itself with `// @contracts-internal: <reason>` when the package does not
  *     publish it. Declaring is the cheap remedy, so a declaration that turns out
  *     to gate nothing is a note rather than a failure;
+ *   - a statement shape the scan cannot read, an `export` keyword it read as
+ *     quoted text, a barrel `export *`, and a barrel name with no `from` clause
+ *     are refused with the file and line: a rule that silently reads past a
+ *     statement is the defect this gate exists to remove, one level down;
  *   - `MIN_MODULES` / `MIN_MEMBERS` / `MIN_BARREL_ENTRIES`: an extraction that
  *     comes back short satisfies every rule above while checking nothing, which
  *     is the failure this whole module is about.
@@ -37,14 +41,15 @@ import { dirname, join, relative, sep } from "node:path";
  * is `tsc`'s to catch, not this gate's. A member whose name the barrel provides
  * from ANOTHER module (a collision) passes: the import resolves, so the silent
  * gap is closed, and which of the two the author meant is a reader's question.
- * The barrel is read as explicit-name re-exports only, so `export *` there is
- * refused rather than skimmed. Inside a module, the scan knows string and
- * template literals by their own delimiters: a literal that never closes, or a
- * multi-line template, ends at its own line, and prose past that point could be
- * read as a member — in a package of schema modules that is a residual, not a
- * shape in use. Consumers that deep-import `@app/contracts/src/<module>` bypass
- * this gate entirely: it checks that the barrel can serve every member, not that
- * every consumer goes through it.
+ * The scan knows string and template literals by their own delimiters and knows
+ * no regex literal: a `/` opens one only where the language needs a value, and
+ * without that rule a regex holding a quote or a `//` reads as a literal or a
+ * comment. Both mis-readings are bounded by a line — a literal that never closes
+ * ends at its own line, so no statement below it is lost — and the quoted-`export`
+ * refusal above catches the one that would still hide a statement on its own
+ * line. No module in the package carries a regex literal. Consumers that
+ * deep-import `@app/contracts/src/<module>` bypass this gate entirely: it checks
+ * that the barrel can serve every member, not that every consumer goes through it.
  */
 
 /** The error the gate throws: a message a caller can act on, never a bare parse slip. */
@@ -145,9 +150,17 @@ function scanSource(source) {
   return { code: code.join(""), literals };
 }
 
-/** Where each `export` keyword sits in code position — never one inside a literal. */
+/**
+ * Where each `export` keyword sits: the statements to read, and the ones that
+ * fall inside a string or a template. The second list is not skipped silently —
+ * a module publishes no member by quoting a keyword, so every entry there is
+ * either a documented example or a scan that mistook code for a literal and is
+ * now looking past a statement, and the caller refuses both because nothing here
+ * can tell them apart.
+ */
 function exportKeywords({ code, literals }) {
-  const found = [];
+  const keywords = [];
+  const quoted = [];
   for (const match of code.matchAll(EXPORT_RE)) {
     const before = code[match.index - 1];
     if (before === "." || before === "$") continue;
@@ -155,9 +168,21 @@ function exportKeywords({ code, literals }) {
     for (const literal of literals.values()) {
       if (match.index >= literal.start && match.index < literal.end) inLiteral = true;
     }
-    if (!inLiteral) found.push(match.index);
+    if (inLiteral) quoted.push(lineOf(code, match.index));
+    else keywords.push(match.index);
   }
-  return found;
+  return { keywords, quoted };
+}
+
+/** Refuses a `export` keyword the scan read as quoted text, naming the line it sits on. */
+function requireNoQuotedExports({ quoted }, file) {
+  if (quoted.length === 0) return;
+  throw new ContractsBarrelError(
+    `${file}: the word \`export\` sits inside a string or template literal at line ` +
+      `${quoted.join(", ")}: a module publishes no member that way, so this is either quoted ` +
+      "prose this gate will not read or a statement the scan mistook for a literal — reword the " +
+      "literal, since a statement the scan reads past is the silence this gate exists to remove",
+  );
 }
 
 /** The `from "./module"` clause that opens at `from`, read as the literal it is. */
@@ -365,9 +390,11 @@ function readExport(source, at, file) {
 /** What a module's own source declares as its export surface. */
 export function moduleSurface(source, file = "module.ts") {
   const scanned = scanSource(source);
+  const { keywords, quoted } = exportKeywords(scanned);
+  requireNoQuotedExports({ quoted }, file);
   const members = [];
   const edges = [];
-  for (const at of exportKeywords(scanned)) {
+  for (const at of keywords) {
     const statement = readExport(scanned, at, file);
     members.push(...statement.members);
     edges.push(...statement.edges);
@@ -389,8 +416,10 @@ export function internalDeclaration(source) {
  */
 export function barrelEntries(source, file = BARREL_FILE) {
   const scanned = scanSource(source);
+  const { keywords, quoted } = exportKeywords(scanned);
+  requireNoQuotedExports({ quoted }, file);
   const entries = [];
-  for (const at of exportKeywords(scanned)) {
+  for (const at of keywords) {
     const line = lineOf(scanned.code, at);
     const statement = readExport(scanned, at, file);
     if (statement.members.length > 0) {
