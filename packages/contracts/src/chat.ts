@@ -100,9 +100,11 @@ export type ChatCitation = v.InferOutput<typeof ChatCitationSchema>;
  * The SSE `citations` frame payload, emitted after the answer's deltas and
  * before `done`, and with the same shape per assistant message on the
  * rehydration transcript. `citations` is the cited-and-grounded intersection;
- * `refusal` independently reports the refusal decision and never empties the
- * list, so a hybrid answer carries both. `dhaifWarning` tells the UI to render
- * the deterministic warning card the answer text carries.
+ * `refusal` independently reports whether the delivered text is the product's
+ * own rather than a model draft — true of a Refusal and of a Content-free
+ * decline alike — and never empties the list, so a hybrid answer carries both.
+ * `dhaifWarning` tells the UI to render the deterministic warning card the
+ * answer text carries.
  */
 export const ChatCitationsFrameSchema = v.object({
   messageId: v.pipe(v.string(), v.minLength(1)),
