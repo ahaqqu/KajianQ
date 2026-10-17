@@ -107,7 +107,9 @@ export const TraceEventSchema = v.variant("kind", [
     detail: v.object({
       key: v.pipe(v.string(), v.minLength(1)),
       value: v.pipe(v.string(), v.minLength(1)),
-      /** Children added; the configured cap; whether it truncated them. */
+      /** Children added; the configured cap; whether the scope held more children
+       * than the cap read from its opening ordinal. A child the caller already
+       * held is read but not added, and does not raise the flag. */
       returned: v.pipe(v.number(), v.integer(), v.minValue(0)),
       cap: v.pipe(v.number(), v.integer(), v.minValue(0)),
       truncated: v.boolean(),
@@ -123,7 +125,10 @@ export const TraceEventSchema = v.variant("kind", [
     kind: v.literal("neighbour_expansion"),
     detail: v.object({
       anchors: v.array(v.pipe(v.string(), v.minLength(1))),
-      /** Children added; the configured radius, cap, and truncation flag. */
+      /** Children added; the configured radius, cap, and truncation flag. This cap
+       * bounds the chunks that reach the context, so the flag says the read offered
+       * more neighbours outside it than the cap could add — not that the read was
+       * cut short by rows the caller already held. */
       returned: v.pipe(v.number(), v.integer(), v.minValue(0)),
       radius: v.pipe(v.number(), v.integer(), v.minValue(0)),
       cap: v.pipe(v.number(), v.integer(), v.minValue(0)),

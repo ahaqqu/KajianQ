@@ -105,6 +105,49 @@ function chunkOf(
   };
 }
 
+/**
+ * A parent whose children are NOT all verses: `MIXED_NON_VERSE` commentary rows lead at
+ * ordinals 0–7, then `MIXED_VERSES` verses at 8–47. The verse anchor at ordinal 12 has
+ * the six commentary rows at ordinals 2–7 inside its radius-10 window, so a context that
+ * holds them spends read slots on rows no anchor count covers.
+ */
+const MIXED_NON_VERSE = 8;
+const MIXED_VERSES = 40;
+const MIXED_ANCHOR_ORDINAL = 12;
+const MIXED_RADIUS = 10;
+const MIXED_CAP = 2;
+/** The commentary rows the anchor's window reaches — in context, never anchors. */
+const MIXED_IN_CONTEXT_ORDINALS = [2, 3, 4, 5, 6, 7];
+
+function mixedChildren(parentId: string, tag: string) {
+  return Array.from({ length: MIXED_NON_VERSE + MIXED_VERSES }, (_, ordinal) => {
+    const ayah = ordinal - MIXED_NON_VERSE + 1;
+    return ordinal < MIXED_NON_VERSE
+      ? {
+          parentId,
+          textRaw: `${tag}-comm-${ordinal}`,
+          textAr: `${tag}-comm-${ordinal}`,
+          textId: `${tag}-comm-id-${ordinal}`,
+          citation: { sourceType: "tafsir", ordinal },
+          embeddingPrimary: null,
+          embeddingFallback: null,
+          ordinal,
+          metadata: { sourceType: "tafsir", citation: `Tafsir 3:${ordinal + 1}` },
+        }
+      : {
+          parentId,
+          textRaw: `${tag}-ar-${ordinal}`,
+          textAr: `${tag}-ar-${ordinal}`,
+          textId: `${tag}-id-${ordinal}`,
+          citation: { sourceType: "quran", surah: 3, ayah },
+          embeddingPrimary: null,
+          embeddingFallback: null,
+          ordinal,
+          metadata: { sourceType: "quran", surah: 3, ayah, citation: `QS. 3:${ayah}` },
+        };
+  });
+}
+
 function routed(sourceText: string, subQueries: string[]): RoutedQuery<KajianQFilters> {
   return {
     intent: "factual",
@@ -288,8 +331,47 @@ describe("retrieved-verse neighbourhood expansion", () => {
     expect(labelsOf(result.chunks)).toEqual([`QS. 3:${DEFAULT_NEIGHBOUR_CAP + 1}`]);
     expect(result.detail?.returned).toBeGreaterThan(0);
     expect(result.detail?.truncated).toBe(false);
-    // One slot per anchor the dedup can drop, plus the one-past probe.
+    // One slot per row the dedup can drop — here, one per anchor — plus the probe.
     expect(limits).toEqual([DEFAULT_NEIGHBOUR_CAP + DEFAULT_NEIGHBOUR_CAP + 1]);
+  });
+
+  it("keeps the cap when the window holds rows that are not verses", async () => {
+    const store = createMemoryRagStore();
+    // A parent is not all anchors: a commentary row inside a verse anchor's window is in
+    // context without being a verse, so it spends a read slot the anchor count misses.
+    // The bound is the whole in-context set, not the anchors among it.
+    const parentId = await Effect.runPromise(
+      store.insertDocParent({
+        sourceKey: "mixed/3",
+        title: "QS. 3 (mixed)",
+        metadata: { sourceType: "quran", surah: 3 },
+      }),
+    );
+    await Effect.runPromise(store.insertDocChildren(mixedChildren(parentId, "mem")));
+    const rows = await Effect.runPromise(
+      store.listDocChildrenByParentSourceKey("mixed/3", {
+        limit: MIXED_NON_VERSE + MIXED_VERSES,
+      }),
+    );
+    const at = (ordinal: number) => {
+      const row = rows.find((r) => r.ordinal === ordinal);
+      if (row === undefined) throw new Error(`no mixed row at ordinal ${ordinal}`);
+      return row;
+    };
+    const result = await expand(
+      store,
+      [
+        chunkOf(at(MIXED_ANCHOR_ORDINAL)),
+        ...MIXED_IN_CONTEXT_ORDINALS.map((ordinal) => chunkOf(at(ordinal))),
+      ],
+      { radius: MIXED_RADIUS, cap: MIXED_CAP },
+    );
+
+    // Ordinals 8 and 9 are the first two neighbours the context does not hold; the six
+    // commentary rows read before them are dropped, and no longer pass for the budget.
+    expect(labelsOf(result.chunks)).toEqual(["QS. 3:1", "QS. 3:2"]);
+    expect(result.detail?.returned).toBe(MIXED_CAP);
+    expect(result.detail?.truncated).toBe(true);
   });
 
   it("does not add a neighbour that is already a fused hit or a scope chunk", async () => {
@@ -515,15 +597,23 @@ pgRun("the anchored neighbour read on real Postgres (ADR-0049)", () => {
       .slice(0, CAP)
       .map((row) => ({ id: row.id, text: row.textAr, metadata: row.metadata }));
     boundaryLabel = ordered[CAP]?.metadata["citation"] as string;
+    const mixedParentId = await Effect.runPromise(
+      store.insertDocParent({
+        sourceKey: `${prefix}-mixed`,
+        title: `${prefix}-mixed`,
+        metadata: { sourceType: "quran", surah: 3 },
+      }),
+    );
+    await Effect.runPromise(store.insertDocChildren(mixedChildren(mixedParentId, prefix)));
   });
 
   afterAll(async () => {
     if (!PG_URL || sql === null) return;
     // Exact keys, so the shared database keeps only the rows this block owns.
     await sql`DELETE FROM doc_children WHERE parent_id IN (
-      SELECT id FROM doc_parents WHERE source_key = ${prefix}
+      SELECT id FROM doc_parents WHERE source_key IN (${prefix}, ${`${prefix}-mixed`})
     )`;
-    await sql`DELETE FROM doc_parents WHERE source_key = ${prefix}`;
+    await sql`DELETE FROM doc_parents WHERE source_key IN (${prefix}, ${`${prefix}-mixed`})`;
     await disposePostgresPools();
   });
 
@@ -558,5 +648,37 @@ pgRun("the anchored neighbour read on real Postgres (ADR-0049)", () => {
     expect(labelsOf(result.chunks)).toEqual([boundaryLabel]);
     expect(result.detail?.returned).toBe(1);
     expect(result.detail?.truncated).toBe(false);
+  });
+
+  it("counts the non-verse rows in context, so the window's verses still arrive", async () => {
+    if (store === null) return;
+    const rows = await Effect.runPromise(
+      store.listDocChildrenByParentSourceKey(`${prefix}-mixed`, {
+        limit: MIXED_NON_VERSE + MIXED_VERSES,
+      }),
+    );
+    const at = (ordinal: number) => {
+      const row = rows.find((r) => r.ordinal === ordinal);
+      if (row === undefined) throw new Error(`no mixed row at ordinal ${ordinal}`);
+      return row;
+    };
+    const chunkAt = (ordinal: number) => {
+      const row = at(ordinal);
+      return { id: row.id, text: row.textAr, metadata: row.metadata };
+    };
+    const result = await Effect.runPromise(
+      expandVerseNeighbours({
+        retrieved: [chunkAt(MIXED_ANCHOR_ORDINAL), ...MIXED_IN_CONTEXT_ORDINALS.map(chunkAt)],
+        radius: MIXED_RADIUS,
+        cap: MIXED_CAP,
+        store,
+        bridge: (effect) => Effect.runPromise(effect),
+      }),
+    );
+    // The read's per-anchor answer is unchanged; the caller's bound now covers the
+    // commentary rows the context holds, which are the rows the anchor count missed.
+    expect(labelsOf(result.chunks)).toEqual(["QS. 3:1", "QS. 3:2"]);
+    expect(result.detail?.returned).toBe(MIXED_CAP);
+    expect(result.detail?.truncated).toBe(true);
   });
 });

@@ -99,19 +99,20 @@ export function expandVerseNeighbours(input: {
     const inContext = new Set(input.retrieved.map((chunk) => chunk.id));
     const unique = [...new Set(input.retrieved.filter(isVerse).map((chunk) => chunk.id))];
     if (unique.length === 0) return { chunks: [], detail: null };
-    // The read answers per anchor, so a row already in context — an anchor inside the
-    // window of another anchor — comes back and the dedup drops it. Two counts follow
-    // from that: `cap` budgets the rows that reach the context, and the read is asked
-    // for `cap` plus one slot per row such a drop can spend, plus one more to prove
-    // more neighbours exist. One slot per anchor bounds the drop: a dropped row is a
-    // neighbour of a verse anchor, and the in-context rows a verse anchor's window can
-    // reach are the retrieved verses — the anchors, one result row each.
+    // The read answers per anchor and dedups by row, so a row already in context —
+    // an anchor inside the window of another anchor, or any other row the caller
+    // holds — comes back and the dedup drops it. Two counts follow from that: `cap`
+    // bounds the rows that reach the context, and the read is asked for `cap` plus
+    // one slot per row the dedup can drop, plus one more to prove more neighbours
+    // exist. The in-context set is that bound and not the anchor list: a parent
+    // holding rows that are not verses (a commentary beside its verses) puts
+    // non-anchor rows inside a verse anchor's window, one result row each.
     const rows = yield* Effect.tryPromise({
       try: () =>
         input.bridge(
           input.store.listDocChildNeighboursByChildIds(unique, {
             radius: input.radius,
-            limit: input.cap + unique.length + 1,
+            limit: input.cap + inContext.size + 1,
           }),
         ),
       catch: (cause: unknown) => ({ cause }),
