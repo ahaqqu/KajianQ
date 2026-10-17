@@ -1,5 +1,5 @@
 import type { Chunk } from "@app/rag-core";
-import { addressesNamedBy, declaresAddressList } from "./chat-citation-grammar";
+import { addressesNamedBy, declaresAddressList } from "./chat-citation-addresses";
 import {
   citationCandidatesIn,
   citationSpansIn,
@@ -18,7 +18,13 @@ import {
 // half: the addresses a citation names are what the per-address rule compares,
 // and the eval's injected grammar reads the same declaration rather than a
 // second implementation of the range's semantics.
-export { addressesNamedBy, citationCandidatesIn, citationSpansIn, normalizeCitationLabel };
+export {
+  addressesNamedBy,
+  citationCandidatesIn,
+  citationSpansIn,
+  declaresAddressList,
+  normalizeCitationLabel,
+};
 
 /**
  * Deterministic citation validator (spec §3.3 step 7): every

@@ -4,12 +4,12 @@ import type { Chunk } from "@app/rag-core";
 import {
   addressesNamedBy,
   citationCandidatesIn,
+  declaresAddressList,
   groundingLabelsFor,
   normalizeCitationLabel,
   validateCitations,
 } from "./chat-citation-validator";
 import { SURAH_AYAH_COUNTS } from "./surah-names";
-import { declaresAddressList } from "./chat-citation-grammar";
 
 /**
  * The invariant, machine-checked: **a citation's tail is punctuation, not

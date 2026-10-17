@@ -1,4 +1,4 @@
-import { addressAtStart } from "./chat-citation-grammar";
+import { addressAtStart } from "./chat-citation-addresses";
 
 /**
  * How a label that **begins** with a citation grammar reduces for comparison:

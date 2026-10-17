@@ -8,12 +8,7 @@ import {
   type RunContextService,
 } from "@app/rag-core";
 import type { Stage } from "@app/contracts";
-import {
-  citationLabelsOf,
-  citationMatchText,
-  citationSpansIn,
-  normalizeCitationLabel,
-} from "./chat-citation-validator";
+import { citationClaimsIn, passagesByCitation } from "./chat-citation-claims";
 import { CITATION_CRITERIA, CITATION_INSTRUCTIONS } from "./decision-bench-prompts";
 
 /**
@@ -105,15 +100,14 @@ export function planCitationPregate(input: {
   draft: string;
   chunks: readonly Chunk[];
 }): { items: readonly CitationPregateItem[]; spec: DecisionSpec } | null {
-  const citations = citationSpansIn(input.draft);
-  if (citations.length === 0) return null;
+  const claims = citationClaimsIn(input.draft);
+  if (claims.length === 0) return null;
 
-  const claims = claimSpansIn(input.draft);
   const passages = passagesByCitation(input.chunks);
-  const items: CitationPregateItem[] = citations.map((citation) => ({
-    label: citation.label,
-    claim: claimForCitation(claims, citation.label) ?? input.draft.trim(),
-    passage: (passages.get(citation.label) ?? []).join("\n\n"),
+  const items: CitationPregateItem[] = claims.map((claim) => ({
+    label: claim.label,
+    claim: claim.claim,
+    passage: (passages.get(claim.label) ?? []).join("\n\n"),
   }));
 
   const questions: Record<string, NoulQuestion> = {};
@@ -245,51 +239,4 @@ export function runCitationPregate(input: {
       return { kind: "escalate" as const };
     },
   });
-}
-
-/**
- * The draft's claim spans: sentences and lines, with every citation span
- * masked out before the split so a citation's own punctuation (`QS. 2:255`)
- * can never cut its claim in half. The spans partition the draft (their union
- * is the text), so a citation the deterministic validator grounded is always
- * inside exactly one of them.
- */
-function claimSpansIn(text: string): string[] {
-  const masked = text.split("");
-  for (const citation of citationSpansIn(text)) {
-    for (let i = citation.start; i < citation.end; i += 1) masked[i] = "x";
-  }
-  const boundaries = /[.!?…]+\s+|\n+/g;
-  const spans: string[] = [];
-  let start = 0;
-  for (const match of masked.join("").matchAll(boundaries)) {
-    const end = (match.index ?? 0) + match[0].length;
-    spans.push(text.slice(start, end));
-    start = end;
-  }
-  spans.push(text.slice(start));
-  return spans.map((span) => span.trim()).filter((span) => span !== "");
-}
-
-/** The claim span a citation sits in (matched the way the gate grounds it). */
-export function claimForCitation(
-  spans: readonly string[],
-  normalizedLabel: string,
-): string | undefined {
-  return spans.find((span) => citationMatchText(span).includes(normalizedLabel));
-}
-
-/** Citation label → the retrieved passages that carry it (in chunk order). */
-export function passagesByCitation(chunks: readonly Chunk[]): Map<string, string[]> {
-  const byLabel = new Map<string, string[]>();
-  for (const chunk of chunks) {
-    for (const raw of citationLabelsOf(chunk)) {
-      const label = normalizeCitationLabel(raw);
-      if (label === "") continue;
-      const passages = byLabel.get(label) ?? [];
-      if (!passages.includes(chunk.text)) passages.push(chunk.text);
-      byLabel.set(label, passages);
-    }
-  }
-  return byLabel;
 }
