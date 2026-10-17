@@ -37,10 +37,14 @@ jobs:
       #
       # The JSON report is what makes that skip observable instead of silent: it
       # records, per collected file, whether its tests executed or were skipped.
-      # `--require-marked` reads it and fails on any suite skipped in full that no
-      # job selects — a gated suite added in a new file cannot land green and
-      # unrun. It is written outside the checkout, so no generated file sits in
-      # the tree the other gates scan.
+      # `--require-marked` reads it and fails on any undeclared file that skipped
+      # a test — whole or partial — and on any undeclared test file that reads
+      # DATABASE_URL, since a gate written as an early return leaves the report
+      # nothing to see. A gated suite added in a new file therefore cannot land
+      # green and unrun unless it reaches the variable through a helper *and*
+      # returns early, which the policy records as its residual blind spot. The
+      # report is written outside the checkout, so no generated file sits in the
+      # tree the other gates scan.
       - name: Unit + coverage gate (no database)
         run: bun run test --reporter=default --reporter=json --outputFile.json="${RUNNER_TEMP}/vitest-report.json"
       - name: Every suite this run skipped must be one the contract job runs
@@ -124,8 +128,11 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            # Three-dot diff: changes on the PR side since the merge base.
-            git diff --name-only "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" > "${RUNNER_TEMP}/changed.txt"
+            # Three-dot diff: changes on the PR side since the merge base. `-z`
+            # is the one form git never quotes a path in (a quoted non-ASCII path
+            # would match no declared suite), and the driver reads both
+            # delimiters.
+            git diff --name-only -z "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" > "${RUNNER_TEMP}/changed.txt"
             bun scripts/pg-contract.mjs --touched "${RUNNER_TEMP}/changed.txt" >> "$GITHUB_OUTPUT"
           else
             # Push builds (main) always exercise the contract suites.
@@ -152,11 +159,17 @@ jobs:
       #
       # The file list comes from the derivation, never from this workflow: a
       # suite that declares the marker is selected with nobody editing this file.
+      # It is captured under `set -e` first, so an empty derivation — which the
+      # driver exits 1 on — aborts the step instead of running the whole suite
+      # against the contract database.
       - name: Run every real-Postgres contract suite
         if: steps.contract.outputs.touched == 'true'
-        run: bunx vp test run --no-file-parallelism --reporter=default --reporter=json --outputFile.json="${RUNNER_TEMP}/pg-contract-report.json" $(bun scripts/pg-contract.mjs --list)
         env:
           DATABASE_URL: postgres://contract:contract@127.0.0.1:5432/postgres
+        run: |
+          set -euo pipefail
+          FILES="$(bun scripts/pg-contract.mjs --list)"
+          bunx vp test run --no-file-parallelism --reporter=default --reporter=json --outputFile.json="${RUNNER_TEMP}/pg-contract-report.json" $FILES
       # Derived selection is half the gate; this is the other half. The run's own
       # report says whether each selected suite executed, so a selection that
       # skipped anyway — DATABASE_URL not reaching the run, a suite gating on

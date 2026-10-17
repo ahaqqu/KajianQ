@@ -17,8 +17,9 @@ import type { RagStore } from "./rag-store";
  *
  * The `@requires-postgres` directive above is what the `postgres:contract` job
  * derives its selection from, so a suite gated on DATABASE_URL runs there without
- * anyone editing the workflow; `tests/scripts/pg-contract.test.mjs` reddens when
- * such a file forgets the directive.
+ * anyone editing the workflow; a suite that gates on the variable and skips
+ * without the directive, or reads it without the directive at all, reddens
+ * `tests/scripts/pg-contract.test.mjs` and the DB-less job's report check.
  */
 
 const URL = process.env.DATABASE_URL;

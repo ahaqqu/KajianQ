@@ -154,8 +154,11 @@ Postgres database. It declares `// @requires-postgres` and is **skipped unless
 database. A second gated suite declares the same directive and nothing else: the
 `postgres:contract` job runs whatever `bun scripts/pg-contract.mjs --list`
 derives from the tree, fails when a selected suite executed nothing, and the
-DB-less run fails when a suite it skipped in full is one no job selects (the
-policy, its blind spots, and each mode are in `scripts/pg-contract/policy.mjs`).
+DB-less run fails when a suite it skipped is one no job selects, or when a test
+file reads `DATABASE_URL` without declaring the directive — express the gate as
+a skip, since a test that returns early reports a pass and skips nothing (the
+policy, its residual blind spots, and each mode are in
+`scripts/pg-contract/policy.mjs`).
 The job engages when a PR can change what those suites execute — the seam's own
 home, a gated suite, or the gate's machinery — and runs them against a
 `pgvector/pgvector:pg18` service container (the same image the restore drill

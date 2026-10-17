@@ -48,8 +48,11 @@ function required(mode, arg) {
 
 function readChanged(path) {
   try {
+    // The workflow writes this list NUL-separated (`git diff -z`, the one form
+    // that never quotes a path — a quoted one would match no declared suite); a
+    // hand-written probe file is newline-separated. Both delimiters separate.
     return readFileSync(path, "utf8")
-      .split("\n")
+      .split(/[\n\0]/)
       .map((line) => line.trim())
       .filter(Boolean);
   } catch {
