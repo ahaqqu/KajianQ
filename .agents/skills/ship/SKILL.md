@@ -82,9 +82,11 @@ running:
   `tests/scripts/vps-hardening.test.mjs`, which fails the build if the deploy's
   `sudo` calls and the grant stop agreeing. The read-only `is-active` check needs
   no grant.
-- **`vars.VPS_USER` naming that account**, at repo level _and_ on the `prod`
-  environment (which carries its own copy). Still set to the admin login, it
-  fails as `Permission denied (publickey)`.
+- **`vars.VPS_USER` naming that account**, on the `staging` and `prod`
+  environments — each carries its own copy, and no repository-level copy is kept:
+  a shadowed copy is a silent fallback for a scope that loses its own
+  ([`docs/VPS-OPERATIONS.md`](../../../docs/VPS-OPERATIONS.md) §1.4). Still set to
+  the admin login, it fails as `Permission denied (publickey)`.
 - **`/etc/kajianq/api.env`**, including `KAJIANQ_WEB_ROOT=/srv/kajianq/web` (its
   default resolves under the unit's `WorkingDirectory` and would 503 every SPA
   route while health stayed green) and the provider keys `DEEPSEEK_API_KEY`
@@ -131,8 +133,10 @@ gh workflow run "Deploy to VPS" -f environment=prod   # waits at the approval ga
 ```
 
 What distinguishes it from a staging deploy is the GitHub environment: `prod`
-carries the required-reviewer rule and its own environment-scoped `VPS_*` vars
-and `VPS_DEPLOY_SSH_KEY`, and both point at the one box. The label itself is
+carries the required-reviewer rule, and a dispatch resolves the `VPS_*` vars and
+the deploy key from the scope it names — `staging` carries its own vars under the
+same decision, and both point at the one box. The measured split of which scope
+holds which value is §1.4 of [`docs/VPS-OPERATIONS.md`](../../../docs/VPS-OPERATIONS.md). The label itself is
 cosmetic (the `env` field on log lines plus the health JSON; no behavioral gate
 differs) and already reads `staging` — the flip ran on the box on 2026-10-03,
 and [`docs/VPS-OPERATIONS.md`](../../../docs/VPS-OPERATIONS.md) §1.7 now holds the

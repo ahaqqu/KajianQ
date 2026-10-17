@@ -994,6 +994,19 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(script).toMatch(/cleanup\.ts/);
   });
 
+  it("the deploy requires KAJIANQ_DEPLOY_ROOT and has no tree to fall back to", () => {
+    // The tree decides what a deploy replaces, so both halves are pinned: the name is in the
+    // required-name gate, and the assignment carries no `:-` default. Reverting both halves
+    // would let an operator env file that omits the tree ship to /srv/kajianq while reporting
+    // success; each half alone still fails — the loop by name, the expansion as an unbound
+    // variable under `set -u`.
+    const script = read("provision/vps/deploy/deploy.sh");
+    const required = /for var in ([^;]+); do/.exec(script)?.[1];
+    expect(required, "deploy.sh must keep its required-name loop").toBeTruthy();
+    expect(required.split(/\s+/)).toContain("KAJIANQ_DEPLOY_ROOT");
+    expect(script).toMatch(/^DEPLOY_ROOT="\$\{KAJIANQ_DEPLOY_ROOT\}"$/m);
+  });
+
   it("the deploy script builds with documented forms and smokes the SPA, not only the API", () => {
     // `bun run --cwd` relies on undocumented flag forwarding, so the web build must run via an
     // explicit subshell cd, and the smoke must fetch an extensionless client route.

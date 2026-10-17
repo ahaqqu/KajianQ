@@ -139,6 +139,12 @@ jobs:
     name: post deploy checks
     needs: deploy
     runs-on: ubuntu-latest
+    # The checks read the same environment's values the deploy did: the public
+    # URL the smoke, ZAP and Schemathesis steps target, and the host/user/key the
+    # database tunnel logs in with. Declaring the scope is what keeps the checks
+    # and the deploy resolving the same values; which scope owns each value is
+    # docs/VPS-OPERATIONS.md §1.4.
+    environment: staging
     # The ZAP container image, pinned BY DIGEST — the single bump site for the
     # scan's image, referenced by the pre-pull step, the `docker_name` input and
     # the failure classifier. Never `:stable`: a floating tag is the one input
@@ -214,8 +220,13 @@ jobs:
       # by hardening posture (ADR-0044 decision 5). A GitHub runner reaches it
       # only through an ssh tunnel — the same shape the cutover runbook's
       # post-cutover snapshot uses. The tunnel lives for the smoke step's shell;
-      # the strict host-key check is accepted because the key is environment-
-      # scoped to this repo.
+      # `StrictHostKeyChecking=accept-new` trusts the host key the first
+      # connection meets at the address this job's scope names (trust on first
+      # use), and a changed key still fails the connection — accepted because the
+      # target is this repository's own deploy box, reached for this step alone.
+      # This job carries `environment: staging`, so the host, the user and the key
+      # resolve at that scope; which scope owns each value is
+      # docs/VPS-OPERATIONS.md §1.4.
       - name: Open ssh tunnel to the VPS database
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
