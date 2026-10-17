@@ -52,6 +52,27 @@ export interface CitationGrammar {
    * one address"). A consumer must refuse it.
    */
   readonly addressesOf?: (match: RegExpExecArray) => readonly string[] | null;
+  /**
+   * Where the **collection name** sits inside this grammar's match, or
+   * `undefined` when the form has no such slot. Declared here because the
+   * grammar that owns an address owns the text inside it: a consumer that
+   * rewrites the name — the comparison form's spelling fold — reads the
+   * boundary from this declaration instead of re-finding it with a pattern of
+   * its own at the comparison site.
+   */
+  readonly collectionOf?: (match: RegExpExecArray) => CitationCollectionSlot | null;
+}
+
+/**
+ * A collection-name slot inside one citation match: the name as the label
+ * spells it, and the bounds {@link CitationGrammar.collectionOf} found it at —
+ * the offsets let a consumer rewrite the name and leave the rest of the label
+ * byte-for-byte.
+ */
+export interface CitationCollectionSlot {
+  readonly collection: string;
+  readonly start: number;
+  readonly end: number;
 }
 
 /**
@@ -85,6 +106,66 @@ const HADITH_ADDRESS = /^(.*?no\.\s*\d[\p{L}\p{Nd}]*)/u;
  * address is ASCII-digit-led, and a number in another script has no address
  * core at all, so the lexical tail rule owns it and it likewise refuses.
  */
+/**
+ * The collection-name slot inside one hadith match: the two anchors the pattern
+ * already makes mandatory bound it — the marker at the head, the address word
+ * before the number — so the name is the text between them and the number and
+ * its tail stay outside the slot.
+ */
+const HADITH_COLLECTION_SLOT = /^(HR(?:\.|\s)\s*)(.*?)(\s+no\.\s)/;
+
+// Hadith: `HR. Bukhari no. 573` / `HR. Ibn Majah no. 224 (Dhaif)`, and the
+// dot-less `HR Bukhari no. 573` (same rationale as the Quran marker).
+// Collection names may be multi-word ("Abu Dawud", "Ibn Majah") and
+// the long forms a model actually writes carry a collection-type prefix
+// ("Sunan Abu Dawud", "Sunan an Nasai"), so up to four tokens are tolerated.
+// Token classes exclude `.` and `,` so the match cannot run across a sentence
+// boundary or swallow a list, and both the token length and the repetition
+// count are bounded — no nested unbounded quantifier, so the pattern stays
+// linear (ReDoS-safe) as required. The trailing number token also skips
+// brackets: `[HR. Malik no. 18]` must not capture a phantom `…no. 18]` span
+// that normalized to nothing a chunk grounds — a false UNGROUNDED, i.e. a
+// refused grounded answer; the Quran address already skipped them. The match
+// therefore spans address + absorbed tail; `HADITH_ADDRESS` names the address
+// inside it. A **spaced** joiner stays outside this token — `HR. Bukhari no.
+// 5010 - 5011` scans as its head — a recorded exclusion (ADR-0049's "Hadith
+// ranges" revisit trigger), pinned as deliberate in the validator test. The
+// collection slot is declared here too, so a consumer rewriting the name reads
+// its boundary from the owner of the address rather than a pattern of its own.
+const HADITH_GRAMMAR: CitationGrammar = {
+  pattern: () => /\bHR(?:\.|\s)\s*[^\s,.]{1,24}(?:\s+[^\s,.]{1,24}){0,3}\s+no\.\s*[^\s,;.)[\]]+/gi,
+  addressOf: (match) => HADITH_ADDRESS.exec(match[0])?.[1] ?? null,
+  collectionOf: (match) => hadithCollectionSlot(match[0]),
+};
+
+/** {@link CitationGrammar.collectionOf} for the hadith grammar. */
+function hadithCollectionSlot(label: string): CitationCollectionSlot | null {
+  const slot = HADITH_COLLECTION_SLOT.exec(label);
+  const collection = slot?.[2];
+  if (collection === undefined) return null;
+  const start = slot?.[1]?.length ?? 0;
+  return { collection, start, end: start + collection.length };
+}
+
+/**
+ * Rewrite the collection name of **every** hadith address a text carries,
+ * through `fold`. Every occurrence, never only the first: a comparison form
+ * that folded one position would stop preserving containment — a label inside
+ * a longer text would no longer be findable in that text's comparison form —
+ * and the grounded-label passes read a whole answer that way.
+ */
+export function rewriteHadithCollections(
+  text: string,
+  fold: (collection: string) => string,
+): string {
+  return text.replace(HADITH_GRAMMAR.pattern(), (match: string) => {
+    const slot = hadithCollectionSlot(match);
+    return slot === null
+      ? match
+      : `${match.slice(0, slot.start)}${fold(slot.collection)}${match.slice(slot.end)}`;
+  });
+}
+
 export const CITATION_GRAMMARS: readonly CitationGrammar[] = [
   // Quran: `QS. 2:255` / `Q.S. 2:255` (both dotted spellings Indonesian prose
   // uses) or `QS. Al-Baqarah:255` (surah numeric or named). The marker closes
@@ -130,27 +211,9 @@ export const CITATION_GRAMMARS: readonly CitationGrammar[] = [
     // `QS. Al-Baqarah:255—256`, which is unverifiable and refuses anyway).
     addressesOf: (match) => quranRangeAddresses(match[1], match[2]),
   },
-  // Hadith: `HR. Bukhari no. 573` / `HR. Ibn Majah no. 224 (Dhaif)`, and the
-  // dot-less `HR Bukhari no. 573` (same rationale as the Quran marker).
-  // Collection names may be multi-word ("Abu Dawud", "Ibn Majah") and
-  // the long forms a model actually writes carry a collection-type prefix
-  // ("Sunan Abu Dawud", "Sunan an Nasai"), so up to four tokens are tolerated.
-  // Token classes exclude `.` and `,` so the match cannot run across a sentence
-  // boundary or swallow a list, and both the token length and the repetition
-  // count are bounded — no nested unbounded quantifier, so the pattern stays
-  // linear (ReDoS-safe) as required. The trailing number token also skips
-  // brackets: `[HR. Malik no. 18]` must not capture a phantom `…no. 18]` span
-  // that normalized to nothing a chunk grounds — a false UNGROUNDED, i.e. a
-  // refused grounded answer; the Quran address already skipped them. The match
-  // therefore spans address + absorbed tail; `HADITH_ADDRESS` names the address
-  // inside it. A **spaced** joiner stays outside this token — `HR. Bukhari no.
-  // 5010 - 5011` scans as its head — a recorded exclusion (ADR-0049's "Hadith
-  // ranges" revisit trigger), pinned as deliberate in the validator test.
-  {
-    pattern: () =>
-      /\bHR(?:\.|\s)\s*[^\s,.]{1,24}(?:\s+[^\s,.]{1,24}){0,3}\s+no\.\s*[^\s,;.)[\]]+/gi,
-    addressOf: (match) => HADITH_ADDRESS.exec(match[0])?.[1] ?? null,
-  },
+  // Hadith — declared above with its collection slot, which {@link
+  // rewriteHadithCollections} reads.
+  HADITH_GRAMMAR,
   // Kitab (SPECS §2.1): `Al-Umm, Imam Syafi'i, Jilid 1, Hal. 102, Bab …`.
   // Kitab ingestion has not landed, so any such citation is ungrounded by
   // definition — detecting it is the point, not an accident. The match IS

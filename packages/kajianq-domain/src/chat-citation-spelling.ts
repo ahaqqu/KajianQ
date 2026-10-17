@@ -5,6 +5,7 @@
  * is grounded is `chat-citation-validator`'s.
  */
 import { canonicalCollectionName } from "./chat-citation-collection";
+import { rewriteHadithCollections } from "./chat-citation-grammar";
 
 /**
  * Invisible formatting (`\p{Cf}`) carries no address information but splits the
@@ -61,15 +62,6 @@ export function foldAddressDigits(text: string): string {
 }
 
 /**
- * The hadith address split at its two fixed slots: the marker, the collection
- * name, and everything from the address word to the end (the number and any tail
- * the grammar absorbed with it). Anchored, so a label that does not begin with a
- * hadith address — ordinary prose, or a kitab label whose work and author precede
- * `Jilid …` — is untouched.
- */
-const HADITH_ADDRESS_SLOTS = /^(HR\.\s+)(.*?)(\s+no\.\s+[\s\S]*)$/;
-
-/**
  * Canonicalize a citation's **spelling** to the product's forms, so two spellings
  * of one address compare equal: the dotted `Q.S.` variant folds to `QS.`, the bare
  * `QS` / `HR` forms keep their mandatory separator (so the grammar-excluded
@@ -77,7 +69,9 @@ const HADITH_ADDRESS_SLOTS = /^(HR\.\s+)(.*?)(\s+no\.\s+[\s\S]*)$/;
  * `Jilid 1,Hal. 102`), and the hadith collection name folds to the corpus's own
  * spelling of it (`Nasa'i` / `Tirmidzi` / `Ibnu Majah` → `Nasai` / `Tirmidhi` /
  * `Ibn Majah`). Each rule mirrors a form its own grammar makes mandatory, so the
- * fold never rewrites a spelling the scan cannot see. Folding spelling never
+ * fold never rewrites a spelling the scan cannot see: the collection fold runs
+ * over the grammar's own matches (`rewriteHadithCollections`), so it rewrites
+ * exactly what the scan reads and leaves the rest of the text alone. Folding spelling never
  * changes which digits an address carries, so fabricated addresses stay distinct
  * from retrieved ones — and the collection fold's own boundary is stated on
  * `canonicalCollectionName`, which owns the vocabulary it folds into.
@@ -91,8 +85,5 @@ export function canonicalizeCitationSpelling(text: string): string {
     .replace(/\bHal\.\s*/g, "Hal. ")
     .replace(/\s*,\s*/g, ", ")
     .replace(/\s*:\s*/g, ":");
-  const slots = HADITH_ADDRESS_SLOTS.exec(separated);
-  if (slots === null) return separated;
-  const [, marker, collection, address] = slots;
-  return `${marker}${canonicalCollectionName(collection ?? "")}${address ?? ""}`;
+  return rewriteHadithCollections(separated, canonicalCollectionName);
 }
