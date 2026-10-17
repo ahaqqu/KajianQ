@@ -48,13 +48,20 @@ Tunnel (the DB is loopback-only; §2.8 of the ops manual is the source):
 
 ```bash
 ssh -N -L 15433:127.0.0.1:5432 <your-own-login>@<host>   # your own login, per §2.8; keep open for every pass
-export DATABASE_URL="postgres://kajianq:<pw>@127.0.0.1:15433/kajianq"
+export DATABASE_URL="postgres://kajianq:$(cat ~/.config/kajianq/db-password)@127.0.0.1:15433/kajianq"
 ```
 
 The connection role is `kajianq` (not the superuser) — it has the corpus
 tables' read/write through the adapter, which is all a pass needs. The
-password lives in `/etc/kajianq/db-password` on the box (root 0600) and in the
-owner's password manager; never in shell history, never in argv.
+password lives in `/etc/kajianq/db-password` on the box (root 0600); off the box
+it is your own 0600 copy at `~/.config/kajianq/db-password`, created in
+[`docs/VPS-SETUP.md`](./VPS-SETUP.md) §3 and kept in your password manager too.
+Never in shell history, never in argv. The export
+above is an **environment** assignment — the CLIs read `DATABASE_URL` from the
+environment, which `ps` does not show — and the value is read from the file
+rather than typed, so the history holds only the substitution. A `psql` call
+takes the password from `PGPASSWORD` with `-h`/`-p`/`-U`/`-d` flags (§2.8),
+never `psql "$DATABASE_URL"`.
 
 ## 1. The snapshot gate (ADR-0038 — no paid pass without it)
 
@@ -107,7 +114,8 @@ bun run ingest:hadith -- --check --offset <N> --limit 1
 bun run ingest:hadith -- --offset <N> --limit 1
 
 # 3. Verify the landed count equals the declared count.
-DATABASE_URL="$DATABASE_URL" psql "$DATABASE_URL" -t -c \
+PGPASSWORD="$(cat ~/.config/kajianq/db-password)" psql \
+  -h 127.0.0.1 -p 15433 -U kajianq -d kajianq -t -c \
   "SELECT metadata->>'collection', count(*) FROM doc_children
    WHERE metadata->>'collection' = '<name>' GROUP BY 1;"
 ```

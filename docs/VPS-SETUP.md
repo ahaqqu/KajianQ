@@ -326,6 +326,12 @@ sudo install -o root -g root -m 0600 /dev/null /etc/kajianq/db-password
 sudo sh -c 'openssl rand -base64 32 | tr -d "/+=" > /etc/kajianq/db-password'
 DB_PW="$(sudo cat /etc/kajianq/db-password)"
 
+# Keep your own 0600 copy for the operator-side commands that read it (the
+# tunnel sections: §2.8 of the ops manual, docs/CORPUS-INGEST.md).
+install -d -m 0700 ~/.config/kajianq
+install -o "$USER" -g "$USER" -m 0600 /dev/null ~/.config/kajianq/db-password
+sudo cat /etc/kajianq/db-password > ~/.config/kajianq/db-password
+
 # Create the role and the database.
 sudo -u postgres psql -v pw="$DB_PW" <<'SQL'
 CREATE ROLE kajianq LOGIN PASSWORD :'pw';
@@ -343,6 +349,14 @@ PGPASSWORD="$DB_PW" psql -h 127.0.0.1 -U kajianq -d kajianq -Atc 'SELECT current
 If the last command fails, stop here. The API will not start without it, and a
 failure now names the actual problem while a failure at deploy time looks like an
 application bug.
+
+`~/.config/kajianq/db-password` is **your own** 0600 copy of the box credential —
+not a second source of truth: the box file stays the one that feeds `api.env` and
+`backup.env`, and the operator-side tunnel commands in
+[`docs/VPS-OPERATIONS.md`](./VPS-OPERATIONS.md) §2.8 and
+[`docs/CORPUS-INGEST.md`](./CORPUS-INGEST.md) read this copy. Keep it in your
+password manager as well, and rotate both when the password rotates
+([`docs/VPS-OPERATIONS.md`](./VPS-OPERATIONS.md) §2.2).
 
 ---
 
@@ -1013,8 +1027,11 @@ arrived are not the bytes you hashed, and a mismatch has no diagnosis.
 ```bash
 # 1. Snapshot the SOURCE, from a machine that can reach it.
 #    db:snapshot operates on whatever DATABASE_URL names, so the source is just
-#    a URL — no vendor in its configuration.
-export DATABASE_URL="postgres://…/olddb"
+#    a URL — no vendor in its configuration. Take it from your provider or your
+#    password manager without echoing it: a URL typed on a command line lands in
+#    shell history, and `ps` shows it to every local user as an argument.
+read -rsp 'source DATABASE_URL: ' DATABASE_URL
+export DATABASE_URL
 export R2_ACCOUNT_ID=… R2_ACCESS_KEY_ID=… R2_SECRET_ACCESS_KEY=…
 
 # If the archive is going to a storage target whose encryption you cannot
@@ -1034,22 +1051,27 @@ to reduce exposure.
 #    The listener is loopback-only, so this runs ON the box.
 sudo install -d -o postgres -g postgres -m 0700 /srv/kajianq/restore
 # Download the archive on a machine that has your object-storage credentials,
-# then copy it over (the box holds none by design).
-pg_restore --clean --if-exists --no-owner --no-privileges \
-  -d "postgres://kajianq:<pw>@127.0.0.1:5432/kajianq" \
-  /srv/kajianq/restore/olddb-pre-move-<label>.dump
+# then copy it over (the box holds none by design). The password is read inside
+# the root shell into libpq's environment — never typed, never on a command line:
+sudo sh -c 'PGPASSWORD="$(cat /etc/kajianq/db-password)" \
+  pg_restore --clean --if-exists --no-owner --no-privileges \
+    -h 127.0.0.1 -p 5432 -U kajianq -d kajianq \
+    /srv/kajianq/restore/olddb-pre-move-<label>.dump'
 
 # Apply any migration the archive lacks — its schema_migrations ledger says what
-# it already has.
-DATABASE_URL="postgres://kajianq:<pw>@127.0.0.1:5432/kajianq" bun run db:status:all
-DATABASE_URL="postgres://kajianq:<pw>@127.0.0.1:5432/kajianq" bun run db:up:all
+# it already has. The URL is an environment variable (never argv); its value is
+# read from the file, so the command line carries only the substitution, and the
+# subshell bounds the value to the two commands that need it.
+( export DATABASE_URL="postgres://kajianq:$(sudo cat /etc/kajianq/db-password)@127.0.0.1:5432/kajianq"
+  bun run db:status:all
+  bun run db:up:all )
 ```
 
 ```bash
 # 3. Snapshot the TARGET and compare. Runs on a machine with storage creds,
 #    reaching the box's loopback Postgres through an ssh tunnel.
 ssh -N -L 5433:127.0.0.1:5432 <your-own-login>@<your-host> &   # your own login, per §2.8
-export DATABASE_URL="postgres://kajianq:<pw>@127.0.0.1:5433/kajianq"
+export DATABASE_URL="postgres://kajianq:$(cat ~/.config/kajianq/db-password)@127.0.0.1:5433/kajianq"
 
 # The data is now covered by your provider's terms, so this archive uses the
 # ENCRYPTED path — not the plaintext acknowledgement of step 1.
