@@ -1,3 +1,4 @@
+// @requires-postgres
 import { Effect } from "effect";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import {
