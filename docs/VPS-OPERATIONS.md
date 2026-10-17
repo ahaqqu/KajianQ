@@ -251,7 +251,8 @@ the approval is the owner's sign-off for a production-targeted deploy
 (ADR-0044 decision 2). Only `prod` is environment-scoped: its `VPS_HOST`,
 `VPS_USER` and `VPS_PUBLIC_URL` variables and its `VPS_DEPLOY_SSH_KEY` secret
 shadow the repository-level copies for a prod dispatch, and its own `VPS_ROOT`
-(the deployed tree) exists at that scope alone. The `staging` environment
+(the deployed tree) exists at that scope alone in this repository's
+configuration. The `staging` environment
 carries no credentials of its own, so a staging dispatch resolves to the
 repository-level `VPS_HOST`, `VPS_USER`, `VPS_PUBLIC_URL` and
 `VPS_DEPLOY_SSH_KEY` — editing one of those moves a staging deploy immediately,
