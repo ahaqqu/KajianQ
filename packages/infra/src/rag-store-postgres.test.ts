@@ -1,3 +1,4 @@
+// @requires-postgres
 /// <reference types="node" />
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { Effect } from "effect";
@@ -13,6 +14,11 @@ import type { RagStore } from "./rag-store";
  * present they must be run in SERIES (`vitest --no-file-parallelism` or a
  * single-file run) because they share one fixture namespace keyed off a per-run
  * prefix; parallel runs against the same database would race.
+ *
+ * The `@requires-postgres` directive above is what the `postgres:contract` job
+ * derives its selection from, so a suite gated on DATABASE_URL runs there without
+ * anyone editing the workflow; `tests/scripts/pg-contract.test.mjs` reddens when
+ * such a file forgets the directive.
  */
 
 const URL = process.env.DATABASE_URL;
@@ -28,7 +34,7 @@ let cleanup: () => Promise<void>;
 // Every key this suite creates is `${PREFIX}${suffix}`, and cleanup deletes those
 // exact keys rather than a `LIKE ${PREFIX}-%` pattern, whose reach would exceed
 // the rows this suite owns in the shared database.
-const SOURCE_KEY_SUFFIXES = ["", "-upsert", "-neigh-a", "-neigh-b"] as const;
+const SOURCE_KEY_SUFFIXES = ["", "-upsert", "-neigh-a", "-neigh-b", "-census"] as const;
 const TRACE_MESSAGE_SUFFIX = "-msg-1";
 const EVAL_RUN_LABEL_SUFFIX = "-run";
 
@@ -514,6 +520,113 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
         at[0],
         at[2],
       ]);
+    }, 60_000);
+  });
+
+  /**
+   * The corpus reads, executed rather than described.
+   *
+   * `getDocChildrenByIds`, `countDocChildrenByMetadata` and
+   * `listDocChildrenByParentSourceKey` are the reads whose other coverage is a
+   * fake runner asserting the statement TEXT — and a statement PostgreSQL cannot
+   * parse passes a text assertion. Each row below runs the read against the real
+   * schema and pins the set it returns, empty results included, so a read that
+   * stops executing shows up here as a red suite instead of a green one.
+   */
+  describe("the corpus reads execute against real Postgres", () => {
+    const ORDINALS = [0, 1, 2];
+    let parentTitle = "";
+    let childAt: string[] = []; // parent A: index is the ordinal
+
+    beforeAll(async () => {
+      if (!URL) return;
+      parentTitle = `${PREFIX}-census-fixture`;
+      const program = Effect.gen(function* () {
+        const parentId = yield* store.insertDocParent({
+          sourceKey: corpusKey("-census"),
+          title: parentTitle,
+          metadata: { pfx: PREFIX },
+        });
+        childAt = yield* Effect.forEach(ORDINALS, (ordinal) =>
+          store.insertDocChild({
+            parentId,
+            textRaw: `raw-census-${ordinal}`,
+            textAr: `ar-census-${ordinal}`,
+            textId: `id-census-${ordinal}`,
+            citation: { fixture: "census", ordinal },
+            embeddingPrimary: vec(1536, 900 + ordinal),
+            embeddingFallback: null,
+            ordinal,
+            // The count read groups over the whole table by the key's VALUE, so
+            // the value is this run's unique prefix: the group it returns is this
+            // fixture's rows alone, whatever else the shared database holds.
+            metadata: { pfx: PREFIX, census: PREFIX },
+          }),
+        );
+      });
+      await Effect.runPromise(program);
+    });
+
+    it("getDocChildrenByIds returns the stored rows by id, deduplicated and without vectors", async () => {
+      if (!URL) return;
+      const rows = await Effect.runPromise(
+        store.getDocChildrenByIds([childAt[2]!, childAt[0]!, childAt[2]!]),
+      );
+      expect(rows.map((r) => r.id).sort()).toEqual([childAt[0]!, childAt[2]!].sort());
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      expect(byId.get(childAt[0]!)).toMatchObject({
+        textRaw: "raw-census-0",
+        textAr: "ar-census-0",
+        textId: "id-census-0",
+        citation: { fixture: "census", ordinal: 0 },
+        ordinal: 0,
+        metadata: { pfx: PREFIX, census: PREFIX },
+        parentTitle,
+      });
+      // The read strips vectors the same way the similarity search does: it was
+      // asked for display data, so re-shipping the embeddings is dead weight.
+      expect(byId.get(childAt[0]!)?.embeddingPrimary).toBeNull();
+      expect(byId.get(childAt[0]!)?.embeddingFallback).toBeNull();
+      // An id no row backs is simply absent, and the read still executes.
+      expect(await Effect.runPromise(store.getDocChildrenByIds([crypto.randomUUID()]))).toEqual([]);
+    }, 60_000);
+
+    it("countDocChildrenByMetadata groups the stored rows by one metadata key's value", async () => {
+      if (!URL) return;
+      const rows = await Effect.runPromise(store.countDocChildrenByMetadata("census"));
+      expect(rows.find((r) => r.value === PREFIX)?.count).toBe(ORDINALS.length);
+      // A key no row carries is the ingest CLIs' `--only-missing` zero case: no
+      // group at all, rather than a row with a null value.
+      expect(await Effect.runPromise(store.countDocChildrenByMetadata(`${PREFIX}-absent`))).toEqual(
+        [],
+      );
+    }, 60_000);
+
+    it("listDocChildrenByParentSourceKey reads one parent's children in ordinal order, capped by limit", async () => {
+      if (!URL) return;
+      const all = await Effect.runPromise(
+        store.listDocChildrenByParentSourceKey(corpusKey("-census"), { limit: 10 }),
+      );
+      expect(all.map((r) => r.id)).toEqual(childAt);
+      expect(all.map((r) => r.ordinal)).toEqual(ORDINALS);
+      expect(all[0]).toMatchObject({
+        textRaw: "raw-census-0",
+        citation: { fixture: "census", ordinal: 0 },
+        parentTitle,
+      });
+      expect(all[0]?.embeddingPrimary).toBeNull();
+      // The cap truncates the tail, so the window a caller gets is the parent's
+      // first ordinals rather than an arbitrary subset.
+      const capped = await Effect.runPromise(
+        store.listDocChildrenByParentSourceKey(corpusKey("-census"), { limit: 2 }),
+      );
+      expect(capped.map((r) => r.id)).toEqual(childAt.slice(0, 2));
+      // A source key no parent carries is an empty read, not a failure.
+      expect(
+        await Effect.runPromise(
+          store.listDocChildrenByParentSourceKey(`${PREFIX}-absent-parent`, { limit: 5 }),
+        ),
+      ).toEqual([]);
     }, 60_000);
   });
 });

@@ -29,13 +29,22 @@ jobs:
       - uses: voidzero-dev/setup-vp@3754dd7dbdb32bd8f6d28b6043de13ad3a75f21f # v1.21.1
       - run: bun run check
       - run: bun run lint
-      # The default unit/coverage gate runs WITHOUT a database: the RagStore
-      # contract tests (rag-store-postgres.test.ts) self-skip when DATABASE_URL
-      # is unset, so this job stays green everywhere (including forks without
-      # secrets) and the I/O adapter is excluded from coverage (see
-      # vitest.config.ts) since it needs a server. The contract suite runs in
-      # the separate postgres-contract job below.
-      - run: bun run test
+      # The default unit/coverage gate runs WITHOUT a database: a gated suite
+      # self-skips when DATABASE_URL is unset, so this job stays green
+      # everywhere (including forks without secrets) and the I/O adapter is
+      # excluded from coverage (see vitest.config.ts) since it needs a server.
+      # The gated suites run in the separate postgres-contract job below.
+      #
+      # The JSON report is what makes that skip observable instead of silent: it
+      # records, per collected file, whether its tests executed or were skipped.
+      # `--require-marked` reads it and fails on any suite skipped in full that no
+      # job selects — a gated suite added in a new file cannot land green and
+      # unrun. It is written outside the checkout, so no generated file sits in
+      # the tree the other gates scan.
+      - name: Unit + coverage gate (no database)
+        run: bun run test --reporter=default --reporter=json --outputFile.json="${RUNNER_TEMP}/vitest-report.json"
+      - name: Every suite this run skipped must be one the contract job runs
+        run: bun scripts/pg-contract.mjs --require-marked "${RUNNER_TEMP}/vitest-report.json"
       # size-limit builds apps/web itself (bun run build:web inside the
       # script), so the measurement always matches the working tree — and a
       # fresh checkout (CI, new git worktree) never measures stale or missing
@@ -77,8 +86,10 @@ jobs:
   # schema in every environment, forks without secrets included, with no shared
   # external state to race.
   #
-  # It engages on every PR touching packages/infra (the seam lives there) and on
-  # every push to main.
+  # It engages when a PR can change what those suites execute — the seam's own
+  # home, a gated suite itself, or the gate's machinery — as derived by
+  # `scripts/pg-contract.mjs --touched`, and on every push to main. A newly
+  # added gated suite therefore re-engages the job on the PR that adds it.
   postgres-contract:
     name: postgres:contract
     runs-on: ubuntu-latest
@@ -100,29 +111,28 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - name: Check whether this run touches packages/infra
-        id: infra
+      # bun comes up before the decision because the decision is derived, not
+      # grepped: `--touched` asks the same policy module which suites are gated,
+      # so a suite added in a new file re-engages this job instead of needing a
+      # path edited into the workflow. The script needs no dependencies, so it
+      # runs before the install.
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.0
+      - name: Check whether this run can change what the contract suites execute
+        id: contract
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE="${{ github.event.pull_request.base.sha }}"
-            HEAD="${{ github.event.pull_request.head.sha }}"
             # Three-dot diff: changes on the PR side since the merge base.
-            if git diff --name-only "${BASE}...${HEAD}" | grep -q '^packages/infra/'; then
-              echo "touched=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "touched=false" >> "$GITHUB_OUTPUT"
-            fi
+            git diff --name-only "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" > "${RUNNER_TEMP}/changed.txt"
+            bun scripts/pg-contract.mjs --touched "${RUNNER_TEMP}/changed.txt" >> "$GITHUB_OUTPUT"
           else
-            # Push builds (main) always exercise the contract suite.
+            # Push builds (main) always exercise the contract suites.
             echo "touched=true" >> "$GITHUB_OUTPUT"
           fi
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        if: steps.infra.outputs.touched == 'true'
-        with:
-          bun-version: 1.4.0
       - name: Install dependencies
-        if: steps.infra.outputs.touched == 'true'
+        if: steps.contract.outputs.touched == 'true'
         run: bun install --frozen-lockfile
       # The suite exercises the seam against the CURRENT schema: apply the
       # migration sets first (idempotent via the schema_migrations ledger), so
@@ -132,15 +142,26 @@ jobs:
       # that reference the domain and product tables. Serialized by the
       # job-level concurrency group above.
       - name: Apply the migration sets
-        if: steps.infra.outputs.touched == 'true'
+        if: steps.contract.outputs.touched == 'true'
         run: bun run db:up:all
         env:
           DATABASE_URL: postgres://contract:contract@127.0.0.1:5432/postgres
       # vp is the single test runner (the `@vitest/coverage-v8` pin tracks the
       # Vitest it bundles): vp resolves from node_modules/.bin, no setup-vp
       # step needed here.
-      - name: Run the Effect-shaped Postgres contract suite
-        if: steps.infra.outputs.touched == 'true'
-        run: bunx vp test run --no-file-parallelism packages/infra/src/rag-store-postgres.test.ts
+      #
+      # The file list comes from the derivation, never from this workflow: a
+      # suite that declares the marker is selected with nobody editing this file.
+      - name: Run every real-Postgres contract suite
+        if: steps.contract.outputs.touched == 'true'
+        run: bunx vp test run --no-file-parallelism --reporter=default --reporter=json --outputFile.json="${RUNNER_TEMP}/pg-contract-report.json" $(bun scripts/pg-contract.mjs --list)
         env:
           DATABASE_URL: postgres://contract:contract@127.0.0.1:5432/postgres
+      # Derived selection is half the gate; this is the other half. The run's own
+      # report says whether each selected suite executed, so a selection that
+      # skipped anyway — DATABASE_URL not reaching the run, a suite gating on
+      # something else — reddens here rather than reporting a green step that
+      # executed nothing.
+      - name: Assert every selected suite executed
+        if: steps.contract.outputs.touched == 'true'
+        run: bun scripts/pg-contract.mjs --require-executed "${RUNNER_TEMP}/pg-contract-report.json"
