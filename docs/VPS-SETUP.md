@@ -714,42 +714,40 @@ get half-right.** Changing one scope's copy leaves a dispatch that resolves
 another scope authenticating as the old account, and the failure looks like an
 ssh problem rather than a variable one. Set it in every scope that carries the
 name: each environment whose jobs read it, and — only while no environment
-carries it — the repository level. The table above builds the **mixed** box, a
-repository-level copy beside a `prod` copy beside a `staging` that exists and
-carries nothing, and that box is unfinished rather than settled: `staging` reads
-the repository-level copy only for want of one of its own, so create the copy in
-`staging` too, then delete the repository-level one, which no scope reads once
-both environments carry their own
+carries it — the repository level. An environment has to exist before it can
+carry the name, and only `prod` is created above: `staging` comes into being with
+the first job that declares it, so on a repository where that job has not run
+yet, either add the environment itself under **Settings → Environments**, or run
+a staging deploy first — its jobs fall back to the repository-level copy, which
+is still there. With both environments in place, the table above builds the
+**mixed** box, a repository-level copy beside a `prod` copy beside a `staging`
+that exists and carries nothing, and that box is unfinished rather than settled:
+`staging` reads the repository-level copy only for want of one of its own, so
+create the copy in `staging` too, then delete the repository-level one, which no
+scope reads once both environments carry their own
 ([`docs/VPS-OPERATIONS.md`](VPS-OPERATIONS.md) §1.4). Then confirm none is left
 on a different value:
 
 ```bash
 # On this repository `VPS_USER` is environment-scoped: `staging` and `prod` each
-# carry their own copy and resolve none of it from the repository level. A box
-# where no environment carries the name resolves it there instead — the branch
-# below. Which scope owns what is docs/VPS-OPERATIONS.md §1.4.
-# `gh variable set` creates an absent environment copy as readily as it
-# overwrites a present one, so it also finishes the mixed box, where `staging`
-# exists and carries nothing yet.
+# carry their own copy and resolve none of it from the repository level. The note
+# above names the mixed box and the environment that has to exist first;
+# `gh variable set` creates an absent copy as readily as it overwrites a present
+# one.
 gh variable set VPS_USER --env staging --repo {owner}/{repo} --body kajianq-deploy
 gh variable set VPS_USER --env prod --repo {owner}/{repo} --body kajianq-deploy
 
 # Confirm both environment copies landed, then remove the repository-level copy
-# the mixed box started with: shadowed at every scope that reads the name, it is
-# what a scope that loses its own would silently read (docs/VPS-OPERATIONS.md
-# §1.4).
+# the mixed box started with — the note above says why and when.
 GH_REPO={owner}/{repo} gh api repos/{owner}/{repo}/environments/staging/variables \
     --jq '.variables[] | "\(.name)=\(.value)"' | grep VPS_USER
 GH_REPO={owner}/{repo} gh api repos/{owner}/{repo}/environments/prod/variables \
     --jq '.variables[] | "\(.name)=\(.value)"' | grep VPS_USER
-gh variable delete VPS_USER --repo {owner}/{repo}
+gh variable delete VPS_USER --repo {owner}/{repo}    # 404: there was no copy to remove
 gh variable list --repo {owner}/{repo} | grep VPS_USER    # nothing (grep exits 1)
 
-# A box where no environment carries the name yet has one scope instead — the
-# repository level, which is what a job whose environment carries no copy
-# resolves. That copy is legitimate only while no environment carries the name:
-# once one does, the branch above is the box, and its `gh variable delete` is
-# what removes this copy.
+# The other box: no environment carries the name yet, so the repository level is
+# the one scope — the note above says when that stops being true.
 gh variable set VPS_USER --repo {owner}/{repo} --body kajianq-deploy
 gh variable list --repo {owner}/{repo} | grep VPS_USER
 ```
