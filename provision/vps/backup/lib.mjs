@@ -253,6 +253,9 @@ export function resolveScratchTarget({ flagTarget, env } = {}) {
  * Parse `key=value` lines (an env file) into an object, skipping blanks and
  * `#` comments. Used for `--env-file` so a CLI never has to export credentials
  * into a shell, and so the tests can exercise parsing without a filesystem.
+ * A shell-style `export KEY=value` line is what an operator writes, so the
+ * prefix is stripped: the file is parsed here, never sourced, and `export FOO`
+ * would otherwise be read as a key literally named "export FOO".
  */
 export function parseEnvFile(text) {
   const out = {};
@@ -261,7 +264,11 @@ export function parseEnvFile(text) {
     if (!line || line.startsWith("#")) continue;
     const eq = line.indexOf("=");
     if (eq < 1) continue;
-    const key = line.slice(0, eq).trim();
+    const key = line
+      .slice(0, eq)
+      .replace(/^export\s+/, "")
+      .trim();
+    if (!key) continue;
     let value = line.slice(eq + 1).trim();
     if (
       (value.startsWith('"') && value.endsWith('"')) ||
@@ -272,6 +279,21 @@ export function parseEnvFile(text) {
     out[key] = value;
   }
   return out;
+}
+
+/**
+ * Fill `env` from a parsed env file without overriding a value it already
+ * carries — but an absent, empty or whitespace-only entry is not a value, so it
+ * does not shadow the file's. The file is the root-owned one `--env-file`
+ * names, and it is authoritative for the keys in it: an operator's bare
+ * `export RESTORE_TARGET_URL=` must not turn into "a scratch target is
+ * required" while the value sits in the file the command just read.
+ */
+export function applyEnvFile(env, parsed) {
+  for (const [key, value] of Object.entries(parsed)) {
+    if (!String(env[key] ?? "").trim()) env[key] = value;
+  }
+  return env;
 }
 
 /** Required credential keys, named (not read) so a missing one is actionable. */

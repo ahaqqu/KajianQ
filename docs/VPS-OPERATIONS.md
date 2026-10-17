@@ -716,7 +716,8 @@ removed.
 # The scratch target is RESTORE_TARGET_URL in the root-owned env file, so the
 # command line carries no URL and nothing credential-shaped reaches `ps` or the
 # shell history. The compatibility flag `--target-url` still works, and an
-# explicitly passed flag wins when both are given.
+# explicitly passed flag wins when both are given. Run it without
+# RESTORE_TARGET_URL exported: a real value in the shell wins over the file.
 sudo bun provision/vps/backup/kajianq-restore.mjs \
   --env-file /etc/kajianq/backup.env --label <label>
 ```

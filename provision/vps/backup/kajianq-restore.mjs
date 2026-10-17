@@ -36,16 +36,19 @@
  *
  * The real-VPS run is the operator's (see docs/VPS-SETUP.md), and the
  * same code path is exercised in CI by provision/vps/backup/restore-drill.mjs
- * against a scratch cluster. The drill is the one caller that passes
- * `--target-url`, and its own `--admin-url` carries a throwaway
- * service-container credential created and dropped per run — not an operator
- * credential, and deliberately not moved into the environment.
+ * against a scratch cluster: its first pass uses the compatibility
+ * `--target-url` and its second the documented `--env-file`, so the
+ * env-provided target is covered end to end. The drill's own `--admin-url`
+ * carries a throwaway service-container credential created and dropped per run
+ * — not an operator credential, and deliberately not moved into the
+ * environment.
  */
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import {
   RECLAIM_SQL,
+  applyEnvFile,
   assertManifest,
   dbLocation,
   erasurePsqlArgs,
@@ -123,10 +126,7 @@ const ERASE_SQL = erasureSql();
 async function main() {
   const argv = process.argv.slice(2);
   const envFile = argAfter(argv, "--env-file");
-  if (envFile) {
-    const parsed = parseEnvFile(readFileSync(envFile, "utf8"));
-    for (const [k, v] of Object.entries(parsed)) if (!process.env[k]) process.env[k] = v;
-  }
+  if (envFile) applyEnvFile(process.env, parseEnvFile(readFileSync(envFile, "utf8")));
   const missing = missingEnv(process.env).filter((k) => k !== "PGDATABASE_URL");
   if (missing.length > 0) fail(`missing configuration: ${missing.join(", ")} (set in --env-file)`);
 
