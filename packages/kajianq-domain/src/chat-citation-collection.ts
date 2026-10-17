@@ -28,9 +28,10 @@ import { HADITH_COLLECTION_NAMES, type HadithCollection } from "./hadith-source"
  *   corpus does not hold still has nothing to ground on.
  *
  * A second spelling is added by adding a row, never by loosening the comparison:
- * the fold is a closed vocabulary, not a fuzzy match.
+ * the fold is a closed vocabulary, not a fuzzy match. The table is exported so a
+ * row cannot be added without the property test that reads it covering the row.
  */
-const COLLECTION_SPELLINGS: readonly (readonly [string, HadithCollection])[] = [
+export const HADITH_COLLECTION_SPELLINGS: readonly (readonly [string, HadithCollection])[] = [
   ["bukhari", "bukhari"],
   ["shahih bukhari", "bukhari"],
   ["sahih bukhari", "bukhari"],
@@ -76,7 +77,7 @@ function spellingKey(collection: string): string {
 }
 
 const COLLECTION_BY_SPELLING = new Map<string, HadithCollection>(
-  COLLECTION_SPELLINGS.map(([spelling, collection]) => [spellingKey(spelling), collection]),
+  HADITH_COLLECTION_SPELLINGS.map(([spelling, collection]) => [spellingKey(spelling), collection]),
 );
 
 /**
