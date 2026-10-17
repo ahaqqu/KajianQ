@@ -1,5 +1,5 @@
 import { ContractsBarrelError } from "./errors.mjs";
-import { classifyExports, lineOf, scanSource, skipSpace } from "./source.mjs";
+import { lineOf, skipSpace } from "./source.mjs";
 
 /**
  * Reading one export statement — the statement grammar, and only that.
