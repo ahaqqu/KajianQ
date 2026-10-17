@@ -7,10 +7,12 @@ export {
 export {
   CHAT_MESSAGE_MAX_LENGTH,
   ChatErrorSchema,
+  ChatMessageTextSchema,
   ChatMetaSchema,
   ChatRequestSchema,
   ChatSessionIdSchema,
   isChatSessionId,
+  isStorableText,
   ChatCitationSchema,
   ChatCitationsFrameSchema,
   ChatTraceChunkSchema,

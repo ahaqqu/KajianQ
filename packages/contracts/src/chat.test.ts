@@ -1,3 +1,4 @@
+import { fc, test as fcTest } from "@fast-check/vitest";
 import { describe, expect, it } from "vite-plus/test";
 import * as v from "valibot";
 import {
@@ -11,6 +12,7 @@ import {
   ChatTraceChunkSchema,
   ChatTraceFrameSchema,
   isChatSessionId,
+  isStorableText,
 } from "./chat";
 
 /**
@@ -75,6 +77,126 @@ describe("ChatRequestSchema message ceiling (#256)", () => {
     expect(
       v.safeParse(ChatRequestSchema, { message: " ".repeat(CHAT_MESSAGE_MAX_LENGTH + 1) }).success,
     ).toBe(false);
+  });
+});
+
+/**
+ * The message field's storability rule: the message is written to a Postgres
+ * `text` column, and `text` is stored in the database encoding — so the
+ * contract, never the store and never the route, refuses the payloads no
+ * `text` value can hold. Both are legal JSON and pass every other check:
+ * U+0000, which no `text` value may carry, and an unpaired surrogate, which
+ * UTF-8 cannot encode (a write stores U+FFFD — a different message than the
+ * client sent).
+ *
+ * The same rule splits the `Cc` class on storability, not on "is a control": a
+ * control the store CAN hold stays a body the contract admits and the
+ * content-free admission declines, so no control character becomes a rejected
+ * request by accident.
+ */
+describe("ChatRequestSchema message storability (#478)", () => {
+  const accepts = (message: unknown) => v.safeParse(ChatRequestSchema, { message }).success;
+
+  it("rejects the staging probes: a bare U+0000 and a U+0000-prefixed message", () => {
+    expect(accepts("\u0000")).toBe(false);
+    expect(accepts("\u0000riba")).toBe(false);
+  });
+
+  it("rejects U+0000 anywhere in the message, not only at its head", () => {
+    expect(accepts("riba\u0000")).toBe(false);
+    expect(accepts("a\u0000b")).toBe(false);
+  });
+
+  it("rejects a lone high surrogate alone, mid-string, and at the end", () => {
+    expect(accepts("\ud800")).toBe(false);
+    expect(accepts("ri\ud800ba")).toBe(false);
+    expect(accepts("riba\ud800")).toBe(false);
+  });
+
+  it("rejects a lone low surrogate (the half a mis-sliced client body sends)", () => {
+    expect(accepts("\udc00")).toBe(false);
+    expect(accepts("riba\udc00")).toBe(false);
+  });
+
+  it("still accepts a well-formed surrogate pair (an emoji is a message)", () => {
+    expect(accepts("😀")).toBe(true);
+    expect(accepts("\ud83d\ude00")).toBe(true);
+    expect(accepts("riba 😀")).toBe(true);
+  });
+
+  it("still accepts the control characters the store can hold", () => {
+    // `Cc` outside U+0000, `Cf` zero-width characters, whitespace, punctuation:
+    // storability is the line, and none of these crosses it.
+    for (const text of [
+      "\u0001\u0007",
+      "\u0007",
+      "\u001b",
+      "\u007f",
+      "\u0085",
+      "\u200b",
+      "\ufeff",
+      "\u00ad",
+      "   ",
+      "؟!؟",
+    ]) {
+      expect(accepts(text)).toBe(true);
+    }
+  });
+
+  it("keeps the floor and the ceiling on the same field", () => {
+    expect(accepts("")).toBe(false);
+    expect(accepts("a".repeat(CHAT_MESSAGE_MAX_LENGTH))).toBe(true);
+    expect(accepts("a".repeat(CHAT_MESSAGE_MAX_LENGTH + 1))).toBe(false);
+  });
+
+  it("answers the same verdict through the predicate the schema checks", () => {
+    // One rule, two readers: the schema is the boundary and the predicate is
+    // what a caller outside the parse can ask (`isStorableText`).
+    for (const text of ["\u0000", "\ud800", "riba", "😀", "\u0001\u0007"]) {
+      expect(isStorableText(text)).toBe(accepts(text));
+    }
+  });
+
+  /**
+   * Raw UTF-16 code units, so unpaired surrogates and U+0000 are in the input
+   * space rather than a hand-picked list.
+   */
+  const codeUnitsArb = fc
+    .array(fc.integer({ min: 0, max: 0xffff }), { maxLength: 24 })
+    .map((units) => String.fromCharCode(...units));
+
+  /** Texts straddling the ceiling from both sides. */
+  const lengthArb = fc
+    .integer({ min: CHAT_MESSAGE_MAX_LENGTH - 5, max: CHAT_MESSAGE_MAX_LENGTH + 5 })
+    .map((length) => "a".repeat(length));
+
+  /**
+   * The law, against an oracle that shares no code with the implementation: a
+   * message is admissible exactly when it is within the ceiling and survives a
+   * UTF-8 encode/decode round trip unchanged with no U+0000 in it — which is
+   * what "the store can hold it" means. A check that misses an unrepresentable
+   * class disagrees with the round trip and reddens here.
+   */
+  fcTest.prop([fc.oneof(codeUnitsArb, lengthArb)])(
+    "admits exactly the NUL-free texts that round-trip through UTF-8 inside the ceiling",
+    (text) => {
+      const storable =
+        text.length >= 1 &&
+        text.length <= CHAT_MESSAGE_MAX_LENGTH &&
+        !text.includes("\u0000") &&
+        new TextDecoder().decode(new TextEncoder().encode(text)) === text;
+      expect(v.safeParse(ChatRequestSchema, { message: text }).success).toBe(storable);
+    },
+  );
+
+  it("draws both verdicts, so the law above is not vacuous", () => {
+    // A fixed seed: the assertion is about the generator's reach, and a random
+    // sample would make it a flake instead.
+    const sample = fc.sample(codeUnitsArb, { numRuns: 500, seed: 0x478 });
+    expect(sample.some((text) => accepts(text))).toBe(true);
+    expect(sample.some((text) => !accepts(text))).toBe(true);
+    expect(sample.some((text) => text.includes("\u0000"))).toBe(true);
+    expect(sample.some((text) => !isStorableText(text))).toBe(true);
   });
 });
 

@@ -43,15 +43,60 @@ export const ChatSessionIdSchema = v.pipe(
  */
 export const isChatSessionId = (value: string): boolean => v.is(ChatSessionIdSchema, value);
 
-export const ChatRequestSchema = v.object({
-  message: v.pipe(
-    v.string(),
-    v.minLength(1),
-    v.maxLength(CHAT_MESSAGE_MAX_LENGTH),
-    v.description(
-      `The user's question (1 to ${CHAT_MESSAGE_MAX_LENGTH} characters), measured in UTF-16 code units on the raw string with no trim — so a body that would only trim to the ceiling is still rejected, and a whitespace-only body inside the ceiling is accepted. An over-length message is rejected with 400 invalid_request before any pipeline stage runs.`,
-    ),
+/**
+ * Can the store hold this text unchanged? A message is written to a Postgres
+ * `text` column, which is stored in the database encoding, so the value must
+ * be UTF-8 encodable and NUL-free: U+0000 is legal JSON and legal UTF-8 but no
+ * `text` value may carry it, and an unpaired surrogate cannot be encoded at
+ * all — a write of one stores U+FFFD, a silently different message than the
+ * client sent. Both are therefore refused at the contract, before auth, the
+ * store or any pipeline stage, with the same `400 invalid_request` an
+ * over-length body gets.
+ *
+ * Every other control character the admission treats as content-free (a `Cc`
+ * like U+0001, a `Cf` zero-width space or joiner, whitespace, punctuation, an
+ * emoji) IS storable, and stays exactly that: a message that is not a
+ * question, declined deterministically rather than refused as a body.
+ */
+export function isStorableText(text: string): boolean {
+  if (text.includes("\u0000")) return false;
+  for (let i = 0; i < text.length; i += 1) {
+    const unit = text.charCodeAt(i);
+    if (unit >= 0xd800 && unit <= 0xdbff) {
+      // A high surrogate is a scalar value only as the lead of a pair; an
+      // unpaired one (including one at the end of the string) cannot be
+      // encoded, so it is refused rather than rewritten.
+      const low = text.charCodeAt(i + 1);
+      if (!(low >= 0xdc00 && low <= 0xdfff)) return false;
+      i += 1;
+    } else if (unit >= 0xdc00 && unit <= 0xdfff) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * The `message` field: the user's question, and storable text (see
+ * `isStorableText`). The length bounds run before the scan because they are
+ * O(1) on the raw string, so a body far past the ceiling is refused without a
+ * pass over it.
+ */
+export const ChatMessageTextSchema = v.pipe(
+  v.string(),
+  v.minLength(1),
+  v.maxLength(CHAT_MESSAGE_MAX_LENGTH),
+  v.check(
+    isStorableText,
+    `A message must be storable as text: no U+0000 and no unpaired surrogate (1 to ${CHAT_MESSAGE_MAX_LENGTH} characters).`,
   ),
+  v.description(
+    `The user's question (1 to ${CHAT_MESSAGE_MAX_LENGTH} characters), measured in UTF-16 code units on the raw string with no trim — so a body that would only trim to the ceiling is still rejected, and a whitespace-only body inside the ceiling is accepted. An over-length message, and a message the store cannot hold as text (U+0000, an unpaired surrogate), are rejected with 400 invalid_request before auth, the store or any pipeline stage runs; the other control characters are storable and reach the content-free admission, which declines them deterministically instead of refusing the body.`,
+  ),
+);
+
+export const ChatRequestSchema = v.object({
+  message: ChatMessageTextSchema,
   /** Existing chat session to append to; absent = create a new session. */
   sessionId: v.optional(ChatSessionIdSchema),
   /** UI language hint; the answer language (ID default). */
