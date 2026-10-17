@@ -69,15 +69,36 @@
 //
 // This is a dispatch-time preflight for the manager's DSH adapter, not a CI
 // gate: it depends on this machine's DSH install and ollama.com reachability.
-import { existsSync, realpathSync } from "node:fs";
-import { readFile, readdir, rename, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
+import { readFile, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
+import {
+  addBundleLayers,
+  addLayer,
+  CATALOG_ENTRY,
+  composeLayers,
+  DEFAULT_ROUTE_ENTRY,
+  failConfig,
+  findEntry,
+  layers,
+  patchTouches,
+  POLICY_ENTRY,
+  probe,
+  resolveInstallAnchor,
+  SEAM_INSTALL,
+  unquote,
+} from "./lib/dsh-compose.mjs";
+import {
+  blockUnder,
+  entryBlock,
+  entryLines,
+  policyPatchLines,
+  readLayerLines,
+  replaceLayerFile,
+} from "./lib/dsh-patch-edit.mjs";
 
 const SEAM_HOME = "DSH_PIN_CHECK_HOME";
 const SEAM_PROFILE_DIR = "DSH_PIN_CHECK_PROFILE_DIR";
-const SEAM_INSTALL = "DSH_PIN_CHECK_INSTALL";
 const SEAM_ROLES_DIR = "DSH_PIN_CHECK_ROLES_DIR";
 const SEAM_CATALOG = "DSH_PIN_CHECK_CATALOG";
 const CONFIG_ROOTS = [SEAM_HOME, SEAM_PROFILE_DIR, SEAM_INSTALL];
@@ -96,9 +117,6 @@ const ROLES_DIR = process.env[SEAM_ROLES_DIR] ?? join(import.meta.dir, "..", ".z
 const CATALOG_FILE = process.env[SEAM_CATALOG] ?? null;
 const CATALOG = "https://ollama.com/v1/models";
 const PROVIDER = "ollama";
-const CATALOG_ENTRY = "llm-pi-ai";
-const POLICY_ENTRY = "subagent-model-selection-settings";
-const DEFAULT_ROUTE_ENTRY = "agent-default-model";
 /** A model id the script is willing to match or declare: a bare id, never a
  * quoted value, a route, or a path. Anything else is a caller error — and
  * --fix must never write it into the global config. */
@@ -106,30 +124,6 @@ const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 
 function fail(message) {
   console.error(`✗ ${message}`);
-  process.exit(1);
-}
-
-/** Every path this run consulted, with its outcome, in first-seen order. A
- * "cannot read the config" failure prints the whole list: a moved file is not
- * "DSH is not installed", and the reader needs the paths, not a diagnosis. */
-const probes = [];
-function probe(path, note) {
-  const entry = `${path} (${note})`;
-  const existing = probes.findIndex((p) => p.startsWith(`${path} (`));
-  if (existing === -1) probes.push(entry);
-  else probes[existing] = entry;
-}
-
-/** The fatal for a config this check cannot read or resolve. It names every
- * path it looked in, then stops: a verdict built on an unknown layer is a
- * wrong verdict. */
-function failConfig(reason) {
-  console.error(`✗ ${reason}`);
-  console.error("  looked in:");
-  for (const entry of probes) console.error(`    ${entry}`);
-  console.error(
-    "  a moved install is not a broken one: set DSH_HOME / DSH_PROFILE_DIR (or the DSH_PIN_CHECK_* seams) to the paths in use.",
-  );
   process.exit(1);
 }
 
@@ -177,191 +171,16 @@ for (let i = 0; i < argv.length; i++) {
   }
 }
 
-/** The dsh installation anchor — the profile's first bundle-resolution anchor.
- * Resolved from a seam, else from the npm global root the dsh launcher itself
- * uses: a standard npm prefix layout holds global packages under
- * `<node prefix>/lib/node_modules`. */
-function resolveInstallAnchor() {
-  const seam = process.env[SEAM_INSTALL];
-  if (seam) {
-    const anchor = seam.endsWith("package.json") ? seam : join(seam, "package.json");
-    probe(anchor, "dsh install anchor (seam)");
-    return anchor;
-  }
-  const roots = [];
-  const node = Bun.which("node");
-  if (node) {
-    try {
-      roots.push(join(dirname(realpathSync(node)), "..", "lib", "node_modules"));
-    } catch {
-      /* an unresolvable node binary contributes no root */
-    }
-  }
-  if (process.env.npm_config_prefix)
-    roots.push(join(process.env.npm_config_prefix, "lib", "node_modules"));
-  for (const root of roots) {
-    const candidate = join(root, "@deepseek-ai", "dsh", "package.json");
-    if (existsSync(candidate)) {
-      probe(candidate, "dsh install anchor");
-      return candidate;
-    }
-    probe(candidate, "no dsh package here");
-  }
-  return null;
-}
-
-/** Resolve one package directory from an anchor, as the harness does: Node's
- * own `resolve.paths` walk from the anchor file, then the first `node_modules`
- * search path carrying the package. */
-function packageDirFromAnchor(anchor, packageName) {
-  if (!anchor) return null;
-  for (const searchPath of createRequire(anchor).resolve.paths(packageName) ?? []) {
-    const candidate = join(searchPath, packageName);
-    if (existsSync(join(candidate, "package.json"))) return candidate;
-  }
-  return null;
-}
-
 const INSTALL_ANCHOR = resolveInstallAnchor();
 probe(PROFILE_MANIFEST, "unread");
 probe(PROFILE_PATCH, "unread");
 probe(HOME_PATCH, "unread");
 
-/** A patch-list file parsed into its entries, or a fatal naming the file. */
-async function loadPatchFile(file) {
-  let text;
-  try {
-    text = await readFile(file, "utf8");
-  } catch (error) {
-    failConfig(`cannot read the patch layer ${file} (${error.code ?? error.message})`);
-  }
-  let parsed;
-  try {
-    parsed = Bun.YAML.parse(text);
-  } catch (error) {
-    failConfig(`the patch layer ${file} does not parse as YAML: ${String(error).split("\n")[0]}`);
-  }
-  if (!Array.isArray(parsed)) failConfig(`the patch layer ${file} is not a list of patch entries`);
-  return parsed;
-}
-
-/** Apply patch lists to an entry list — the harness's own semantics, ported
- * from @deepseek-ai/dsh-app-boot's `applyEntryPatches`: an id-targeted patch
- * replaces each named key wholesale (never a deep merge); an `insert` without
- * an id appends to the entry list, and with an id appends to that group's
- * `config` array; a patch that matches nothing, or whose `name` disagrees with
- * the target, is skipped. `applied` records the patches that took effect, in
- * order, so an entry's owning layer is the layer of the last applied patch
- * naming it. */
-function applyEntryPatches(data, patches) {
-  const entries = structuredClone(data);
-  const applied = [];
-  if (!patches?.length) return { entries, applied };
-  const entryMap = new Map();
-  const buildMap = (list) => {
-    for (const entry of list) {
-      if (entry.id) entryMap.set(entry.id, entry);
-      if (entry.group && Array.isArray(entry.config)) buildMap(entry.config);
-    }
-  };
-  buildMap(entries);
-  for (const patch of patches) {
-    const { id, insert, name, ...overrides } = patch;
-    if (insert) {
-      if (id) {
-        const target = entryMap.get(id);
-        if (!target?.group) continue;
-        if (!Array.isArray(target.config)) target.config = [];
-        target.config.push(...insert);
-      } else entries.push(...insert);
-      buildMap(insert);
-      applied.push(patch);
-      continue;
-    }
-    if (!id) continue;
-    const target = entryMap.get(id);
-    if (!target) continue;
-    if (name && name !== target.name) continue;
-    for (const [key, value] of Object.entries(overrides)) {
-      if (key === "id") continue;
-      target[key] = value;
-    }
-    applied.push(patch);
-  }
-  return { entries, applied };
-}
-
-/** The entry with this id anywhere in the composed list, groups included. */
-function findEntry(entries, entryId) {
-  const map = new Map();
-  const walk = (list) => {
-    for (const entry of list) {
-      if (entry?.id) map.set(entry.id, entry);
-      if (entry?.group && Array.isArray(entry.config)) walk(entry.config);
-    }
-  };
-  walk(entries);
-  return map.get(entryId) ?? null;
-}
-
-/** An entry id a patch names, whether as its target or as an inserted row. */
-function patchTouches(patch, entryId) {
-  if (patch.id === entryId) return true;
-  return Array.isArray(patch.insert) && patch.insert.some((row) => row?.id === entryId);
-}
-
-const layers = [];
-
-async function addLayer(kind, label, file) {
-  if (!existsSync(file)) {
-    probe(file, "absent");
-    return;
-  }
-  const patches = await loadPatchFile(file);
-  layers.push({ kind, label, file, patches });
-  probe(file, `${kind} layer${label === kind ? "" : ` ${label}`}`);
-}
-
-let manifest;
-try {
-  manifest = JSON.parse(await readFile(PROFILE_MANIFEST, "utf8"));
-  probe(PROFILE_MANIFEST, "profile manifest");
-} catch (error) {
-  probe(PROFILE_MANIFEST, error.code ?? error.message);
-  failConfig(
-    `cannot read the composed profile ${PROFILE_DIR} — ${PROFILE_MANIFEST} is unreadable (${error.code ?? error.message})`,
-  );
-}
-
-const bundles = manifest?.dsh?.profile?.bundles ?? [];
-if (!Array.isArray(bundles) || bundles.some((name) => typeof name !== "string"))
-  failConfig(`${PROFILE_MANIFEST} does not carry a list of bundle names under dsh.profile.bundles`);
-
-for (const packageName of bundles) {
-  const dir =
-    packageDirFromAnchor(INSTALL_ANCHOR, packageName) ??
-    packageDirFromAnchor(PROFILE_MANIFEST, packageName);
-  if (!dir)
-    failConfig(
-      `cannot resolve the profile bundle ${JSON.stringify(packageName)} from the dsh installation (${INSTALL_ANCHOR ?? "not found"}) or ${PROFILE_DIR} — its patch layers are unknown, so no pin verdict is trustworthy`,
-    );
-  const bundleManifestPath = join(dir, "package.json");
-  let bundleManifest;
-  try {
-    bundleManifest = JSON.parse(await readFile(bundleManifestPath, "utf8"));
-  } catch (error) {
-    failConfig(
-      `cannot read the bundle manifest ${bundleManifestPath} (${error.code ?? error.message})`,
-    );
-  }
-  const declared = bundleManifest?.dsh?.bundle?.patch;
-  const files = typeof declared === "string" ? [declared] : declared;
-  if (!Array.isArray(files) || files.length === 0 || files.some((f) => typeof f !== "string"))
-    failConfig(
-      `the profile bundle ${JSON.stringify(packageName)} declares no dsh.bundle.patch file list in ${bundleManifestPath}`,
-    );
-  for (const file of files) await addLayer("bundle", packageName, resolve(dir, file));
-}
+await addBundleLayers({
+  anchor: INSTALL_ANCHOR,
+  profileDir: PROFILE_DIR,
+  profileManifestPath: PROFILE_MANIFEST,
+});
 await addLayer("profile", "profile", PROFILE_PATCH);
 await addLayer("home", "home", HOME_PATCH);
 
@@ -370,27 +189,7 @@ if (layers.length === 0)
     `no patch layer to compose for profile ${JSON.stringify(basename(PROFILE_DIR))} — nothing declares a catalog or a route policy`,
   );
 
-// Each patch is cloned before composition so an `insert` cannot hand a later
-// patch the parsed layer's own objects; the clone keeps its layer as its
-// identity key, which is how an entry's owning layer is recovered.
-const layerOfPatch = new Map();
-const patchList = [];
-for (const layer of layers)
-  for (const patch of layer.patches) {
-    const clone = structuredClone(patch);
-    layerOfPatch.set(clone, layer);
-    patchList.push(clone);
-  }
-const { entries, applied } = applyEntryPatches([], patchList);
-
-/** The layer that owns an entry: the last applied patch naming it. */
-function ownerOf(entryId) {
-  for (let i = applied.length - 1; i >= 0; i--) {
-    const patch = applied[i];
-    if (patchTouches(patch, entryId)) return layerOfPatch.get(patch) ?? null;
-  }
-  return null;
-}
+const { entries, applied, layerOfPatch, ownerOf } = composeLayers(layers);
 const source = (layer) => (layer ? layer.file : "no layer in the composed tree");
 
 const catalogEntry = findEntry(entries, CATALOG_ENTRY);
@@ -441,12 +240,6 @@ if (!policyEnabled && defaultRoute === null)
   console.log(
     `⚠ no composed ${DEFAULT_ROUTE_ENTRY} route in the ${layers.length} layer(s) searched: ${layers.map((layer) => layer.file).join(", ")} — with route selection off, no pin can resolve by inheritance either.`,
   );
-
-/** A YAML scalar with any surrounding quotes removed. */
-function unquote(value) {
-  const quoted = value.match(/^(["'])([\s\S]*)\1$/);
-  return quoted ? quoted[2] : value;
-}
 
 /** Read a frontmatter `model:` value (quotes stripped), or null when the file
  * carries none. */
@@ -582,53 +375,6 @@ for (const { label, id } of checks) {
 
 if (servedNote) console.log(`⚠ ${servedNote}`);
 
-/** The entry block of a layer file's patch list, as a line range. The entry is
- * an `- id:` row at any depth — a top-level patch entry or a row inside an
- * `- insert:` list — and its block runs to the next line no deeper than the row
- * itself. */
-function entryBlock(lines, entryId) {
-  let found = null;
-  for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(/^(\s*)-\s+id:\s*(.+?)\s*$/);
-    if (m && unquote(m[2]) === entryId) {
-      found = { idx: i, indent: m[1].length };
-      break;
-    }
-  }
-  if (!found) return null;
-  let end = found.idx + 1;
-  for (let i = found.idx + 1; i < lines.length; i++) {
-    if (!lines[i].trim()) {
-      end = i + 1;
-      continue;
-    }
-    if (lines[i].length - lines[i].trimStart().length <= found.indent) break;
-    end = i + 1;
-  }
-  return { idx: found.idx, indent: found.indent, end };
-}
-
-/** A `key:` block nested deeper than `minIndent` inside [start, end). */
-function blockUnder(lines, start, end, key, minIndent) {
-  for (let i = start; i < end; i++) {
-    const m = lines[i].match(/^(\s*)([^\s#][^:]*):\s*$/);
-    if (!m || m[2].trim() !== key) continue;
-    const indent = m[1].length;
-    if (indent < minIndent) continue;
-    let blockEnd = i + 1;
-    for (let j = i + 1; j < end; j++) {
-      if (!lines[j].trim()) {
-        blockEnd = j + 1;
-        continue;
-      }
-      if (lines[j].length - lines[j].trimStart().length <= indent) break;
-      blockEnd = j + 1;
-    }
-    return { idx: i, indent, end: blockEnd };
-  }
-  return null;
-}
-
 /** The user layer that owns the composed catalog, when one does. A bundle
  * layer is never edited — its file belongs to the installation, and an upgrade
  * would drop the edit. */
@@ -647,39 +393,6 @@ function policyEditFile() {
     if (layer?.kind === "home") file = layer.file;
   }
   return file;
-}
-
-/** A declaration entry for one model id, at the dash indentation its siblings
- * carry. Capability metadata (contextWindow, maxTokens) is deliberately absent:
- * the script cannot know the real values per id, and a false capability is
- * worse than the harness's own default. */
-function entryLines(id, dashIndent) {
-  const pad = " ".repeat(dashIndent);
-  return [
-    `${pad}- id: ${id}`,
-    `${pad}  reasoningEfforts:`,
-    `${pad}    off: none`,
-    `${pad}    low: low`,
-    `${pad}    medium: medium`,
-    `${pad}    high: high`,
-    `${pad}    max: max`,
-  ];
-}
-
-/** The complete patch entry that turns the policy on with every route given —
- * the owner pastes it into the layer that owns the policy. A patch replaces
- * the entry's config wholesale, so the block carries the whole list. */
-function policyPatchLines(routes) {
-  return [
-    `- id: ${POLICY_ENTRY}`,
-    "  config:",
-    "    enabled: true",
-    "    allowedModels:",
-    ...routes.flatMap((route) => {
-      const [provider, model] = route.split("/");
-      return [`      - provider: ${provider}`, `        model: ${model}`];
-    }),
-  ];
 }
 
 if (failures > 0) {
@@ -714,7 +427,7 @@ if (failures > 0) {
   // in that file's own shape so it can be pasted verbatim.
   if (notAllowed.size > 0) {
     const file = policyEditFile();
-    const lines = existsSync(file) ? (await readFile(file, "utf8")).split("\n") : [];
+    const lines = await readLayerLines(file);
     const policyBlock = entryBlock(lines, POLICY_ENTRY);
     const allowed = policyBlock
       ? blockUnder(lines, policyBlock.idx + 1, policyBlock.end, "allowedModels", 0)
@@ -793,12 +506,12 @@ if (failures > 0) {
         declared.add(id);
         console.log(`+ declared ${id} in ${layer.file} (DSH hot-reloads the file)`);
       }
-      const stamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
-      await writeFile(`${layer.file}.bak-${stamp}`, original);
-      await writeFile(`${layer.file}.tmp`, lines.join("\n"));
-      await rename(`${layer.file}.tmp`, layer.file);
+      const backup = await replaceLayerFile(layer.file, {
+        updated: lines.join("\n"),
+        original,
+      });
       console.log(
-        `ℹ backup at ${layer.file}.bak-${stamp}; re-run without --fix to confirm all pins resolve (hot-reload is async).`,
+        `ℹ backup at ${backup}; re-run without --fix to confirm all pins resolve (hot-reload is async).`,
       );
     } else {
       const mode = dryRun ? "would declare" : "run with --fix to declare";

@@ -11,6 +11,7 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { composeLayers, findEntry } from "../../scripts/lib/dsh-compose.mjs";
 
 /**
  * `bun run dsh:preflight` — the role-pin expressibility gate.
@@ -280,22 +281,17 @@ function parseEntries(text) {
   return JSON.parse(res.stdout);
 }
 
-/** Paste a printed block verbatim at the end of a layer file — the operator's
- * paste — and parse the result. The gate's contract is that the printed entry
- * is paste-safe as printed: at the wrong depth the file stops parsing, which
- * would take the whole harness config down with it. */
-function pasteAndParse(file, block) {
-  return parseEntries(`${readFileSync(file, "utf8")}${block}\n`);
-}
-
-/** The entry with this id anywhere in a parsed patch list: a top-level patch
- * entry, a row an `- insert:` list carried, or a group's `config` array. */
-function findEntry(entries, id) {
+/** The entry with this id in a parsed patch list: a top-level patch entry, a
+ * row an `- insert:` list carried, or a group's `config` array. This reads a
+ * layer file as it is written — the question a paste-safety assertion asks
+ * ("where did the pasted block land?") — not the composed tree, which applies
+ * patch lists over the layers below (`scripts/lib/dsh-compose.mjs`). */
+function layerEntry(entries, id) {
   for (const entry of entries) {
     if (entry?.id === id) return entry;
     for (const nested of [entry?.insert, entry?.group ? entry?.config : undefined]) {
       if (!Array.isArray(nested)) continue;
-      const found = findEntry(nested, id);
+      const found = layerEntry(nested, id);
       if (found !== undefined) return found;
     }
   }
@@ -472,6 +468,45 @@ describe("composed layer stack", () => {
   });
 });
 
+describe("composed patch semantics", () => {
+  // The ported semantics themselves, asserted in process against
+  // `scripts/lib/dsh-compose.mjs` — the helper the gate composes with — rather
+  // than re-derived through a spawned run the way the verdict cases below do.
+  const layerOf = (label, patches) => ({ kind: "bundle", label, file: `${label}.yml`, patches });
+  const catalog = (ids, name = "@deepseek-ai/dsh-llm-pi-ai") => ({
+    id: "llm-pi-ai",
+    name,
+    config: { providers: { ollama: { models: ids.map((id) => ({ id })) } } },
+  });
+  const catalogIdsOf = (entries) =>
+    findEntry(entries, "llm-pi-ai").config.providers.ollama.models.map((model) => model.id);
+
+  it("replaces an entry's keys wholesale — never a deep merge — and the last layer owns it", () => {
+    const profile = layerOf("profile", [catalog(["gamma-model"])]);
+    const { entries, ownerOf } = composeLayers([
+      layerOf("base", [{ insert: [catalog(["alpha-model", "beta-model"])] }]),
+      profile,
+    ]);
+
+    // A deep merge would still declare alpha-model and beta-model.
+    expect(catalogIdsOf(entries)).toEqual(["gamma-model"]);
+    expect(ownerOf("llm-pi-ai")).toBe(profile);
+    expect(ownerOf("no-such-entry")).toBe(null);
+  });
+
+  it("skips a patch whose name disagrees with its target, and lands an id-targeted insert in the group", () => {
+    const delegation = { id: "delegation", group: true, config: [] };
+    const { entries } = composeLayers([
+      layerOf("base", [{ insert: [catalog(["alpha-model"]), delegation] }]),
+      layerOf("profile", [catalog(["beta-model"], "@deepseek-ai/dsh-not-the-catalog")]),
+      layerOf("home", [{ id: "delegation", insert: [{ id: "tool-subagent" }] }]),
+    ]);
+
+    expect(catalogIdsOf(entries)).toEqual(["alpha-model"]);
+    expect(findEntry(entries, "delegation").config.map((row) => row.id)).toEqual(["tool-subagent"]);
+  });
+});
+
 describe("catalog verdicts", () => {
   it("fails an undeclared pin and --fix declares it in the owning layer, behind a backup", () => {
     const fx = fixture();
@@ -504,11 +539,9 @@ describe("catalog verdicts", () => {
     // The append lands at the models list's own dash indentation and keeps the
     // provider catalog shape.
     expect(fixed).toContain("          - id: beta-model\n            reasoningEfforts:");
-    const parsed = parseEntries(fixed);
-    expect(findEntry(parsed, "llm-pi-ai").config.providers.ollama.models.map((m) => m.id)).toEqual([
-      "alpha-model",
-      "beta-model",
-    ]);
+    expect(
+      layerEntry(parseEntries(fixed), "llm-pi-ai").config.providers.ollama.models.map((m) => m.id),
+    ).toEqual(["alpha-model", "beta-model"]);
     const backups = backupsOf(patchFile);
     expect(backups).toHaveLength(1);
     expect(resolve(backups[0]).startsWith(resolve(fx.root))).toBe(true);
@@ -543,11 +576,9 @@ describe("catalog verdicts", () => {
     expect(first.stdout).toContain(`+ declared beta-model in ${patchFile}`);
     const fixed = readFileSync(patchFile, "utf8");
     expect(fixed).toContain("              - id: beta-model\n                reasoningEfforts:");
-    const parsed = parseEntries(fixed);
-    expect(findEntry(parsed, "llm-pi-ai").config.providers.ollama.models.map((m) => m.id)).toEqual([
-      "alpha-model",
-      "beta-model",
-    ]);
+    expect(
+      layerEntry(parseEntries(fixed), "llm-pi-ai").config.providers.ollama.models.map((m) => m.id),
+    ).toEqual(["alpha-model", "beta-model"]);
 
     const second = runPreflight(fx);
     expect(second.status).toBe(0);
@@ -630,9 +661,9 @@ describe("route policy", () => {
     // verbatim leaves the file parseable with the route allowed.
     const printed = printedEntry(res.stdout, "ollama", "beta-model");
     expect([printed.dash, printed.model]).toEqual([6, 8]);
-    const pasted = pasteAndParse(patchFile, printed.block);
+    const pasted = parseEntries(`${readFileSync(patchFile, "utf8")}${printed.block}\n`);
     expect(
-      findEntry(pasted, "subagent-model-selection-settings").config.allowedModels,
+      layerEntry(pasted, "subagent-model-selection-settings").config.allowedModels,
     ).toContainEqual({ provider: "ollama", model: "beta-model" });
     expect(readFileSync(patchFile, "utf8")).not.toContain("model: beta-model");
     expect(backupsOf(patchFile)).toHaveLength(0);
