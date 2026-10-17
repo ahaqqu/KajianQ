@@ -29,9 +29,10 @@ export interface RagStoreCorpus {
   upsertAlignedPair(input: AlignedPairInsert): Effect.Effect<string, StoreError>;
 
   /** Count child chunks grouped by one `metadata` JSONB key's string value. The
-   * key is bound as a parameter (never interpolated) and never interpreted; rows
-   * where it is absent or non-string collapse under `null`. This is the read
-   * behind the ingest CLIs' `--only-missing` guard. */
+   * key is bound as a parameter (never interpolated) and never interpreted; a row
+   * whose key is absent, or whose value is not a string, is not counted at all —
+   * the result carries one entry per distinct string value, never a `null` group.
+   * This is the read behind the ingest CLIs' `--only-missing` guard. */
   countDocChildrenByMetadata(
     key: string,
   ): Effect.Effect<readonly { value: string | null; count: number }[], StoreError>;

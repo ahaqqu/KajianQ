@@ -207,8 +207,9 @@ export function postgresChildMethods(
 
     countDocChildrenByMetadata(key) {
       // The metadata key is a bound parameter ($1), never interpolated — the
-      // same invariant the similarity query builder holds. Rows without a
-      // string value for the key group under SQL NULL.
+      // same invariant the similarity query builder holds. The WHERE clause keeps
+      // only rows whose key exists and holds a string, so a row without one is
+      // absent from the result rather than grouped under SQL NULL.
       return sqlEffect(
         sql,
         () =>
