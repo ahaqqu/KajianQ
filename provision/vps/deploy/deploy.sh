@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# provision/vps/deploy/deploy.sh — the VPS deploy path: build → ship → restart
-# → smoke (#181, ADR-0044).
+# provision/vps/deploy/deploy.sh — the VPS deploy path: preflight → build →
+# ship → restart → smoke (#181, ADR-0044).
 #
 # This is the deployer's own home, deliberately OUTSIDE apps/ (issue #181's
 # deployer-separation criterion): app code holds no hosting or deploy logic,
@@ -130,6 +130,23 @@ SSH_OPTS=(-o BatchMode=yes -o StrictHostKeyChecking=accept-new)
 STAGE="$(mktemp -d "${TMPDIR:-/tmp}/kajianq-deploy-XXXXXX")"
 trap 'rm -rf "${STAGE}"' EXIT
 
+# --- 0. preflight: the backup unit's provenance -----------------------------
+# The assertion is "kajianq-backup.service has been exercised as installed":
+# exit status 0 AND a last run after the unit's current definition was installed.
+# Its logic, and why `Result` and the timer are not the signal, live in
+# provision/vps/deploy/backup-provenance.sh — piped over ssh, so the file the
+# tests execute against fixtures is the file that runs on the box.
+#
+# It runs BEFORE the build and before the first mutation because it reads only
+# state that already exists on the box. Failing it here costs an ssh round trip
+# and leaves the box on its previous revision; failing it after the ship — where
+# it used to sit — leaves the new tree live and the API restarted with the smoke
+# and the doctor skipped, a failure whose cost is an unverified deployment
+# already serving.
+log "preflight: the backup unit's provenance"
+run ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" bash -s \
+    <"${REPO_DIR}/provision/vps/deploy/backup-provenance.sh"
+
 # --- 1. build ---------------------------------------------------------------
 # Three artifacts, all bundled for Bun so the box needs no node_modules:
 #   api/index.js   the serving entry  (apps/api/src/boot.ts)
@@ -213,46 +230,8 @@ log "running the reclamation once (proves the cron entry executes)"
 run ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" "sudo ${SYSTEMCTL} start kajianq-cron.service"
 
 # The backup unit is deliberately NOT run here (it is root-only and would
-# double the daily dump), so its health is read from its own run record.
-#
-# What NOT to assert, learned the hard way (#181): `Result` alone is not the
-# signal, and neither is the timer. The timer's `is-active` only says the
-# schedule is armed — it stayed green through every failed run. `Result` alone
-# is also unreliable because `systemctl reset-failed` clears it to `success`
-# while, on systemd 257 (the box), LEAVING `ExecMainStatus=1` behind — so a
-# reset unit reports `Result=success` about a failed run, which is precisely the
-# masking this check exists to prevent. Verified on both versions: systemd 261
-# clears both fields, 257 clears only `Result`.
-#
-# So the assertion is the pair: the last exit status must be 0 AND the last run
-# must have happened AFTER this unit's current definition was installed. A unit
-# whose last run predates its own file has, by definition, never been exercised
-# in its current form — that is the "installed but never executed" state the
-# backup spent its whole life in, and no field reports it directly.
-log "checking the backup unit's last run"
-run ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" '
-  status="$(systemctl show kajianq-backup.service -p ExecMainStatus --value)"
-  exited="$(systemctl show kajianq-backup.service -p ExecMainExitTimestamp --timestamp=unix --value)"
-  installed="$(stat -c %Y /etc/systemd/system/kajianq-backup.service)"
-  exited="${exited#@}"
-
-  if [ -z "$exited" ]; then
-    echo "deploy: kajianq-backup.service has never run — the encrypted backup is unproven" >&2
-    echo "deploy: prove it now: sudo systemctl start kajianq-backup.service" >&2
-    exit 1
-  fi
-  if [ "$status" != "0" ]; then
-    echo "deploy: kajianq-backup.service last run exited $status — the encrypted backup is failing" >&2
-    echo "deploy: check: journalctl -u kajianq-backup.service -n 40" >&2
-    exit 1
-  fi
-  if [ "$exited" -lt "$installed" ]; then
-    echo "deploy: kajianq-backup.service last ran BEFORE its current definition was installed" >&2
-    echo "deploy: this unit has never been exercised as installed — prove it: sudo systemctl start kajianq-backup.service" >&2
-    exit 1
-  fi
-  echo "deploy: backup unit healthy (last run exited 0, after the current unit was installed)"
-'
+# double the daily dump), so its health is read from its own run record — in the
+# preflight above, not here: nothing below changes what that record says.
 
 # --- 4. smoke ---------------------------------------------------------------
 # The `ship` skill's pre-prod validation: a health check and an anonymous
