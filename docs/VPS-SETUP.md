@@ -882,17 +882,25 @@ available, run the drill against a container instead:
 **Restoring for real** — after a disaster, never to answer a subject request:
 
 ```bash
-sudo sh -c '. /etc/kajianq/backup.env && \
-  bun provision/vps/backup/kajianq-restore.mjs \
-    --label <label> --target-url postgres://…/kajianq_restored'
+# The scratch target is RESTORE_TARGET_URL in backup.env (§3), read by the
+# script itself: no URL — and so no password — reaches the command line, `ps`
+# or the shell history.
+sudo bun provision/vps/backup/kajianq-restore.mjs \
+  --env-file /etc/kajianq/backup.env --label <label>
 ```
 
-`--target-url` is required and the script refuses a value naming the live
-database (compared by normalized location, not raw string). That refusal is the
-point: restoring over the live store would resurrect data the live store had
-already erased. After a real restore, re-run the reclamation for the affected
-window, and repoint `DATABASE_URL` at the restored database only once it has
-been verified.
+`RESTORE_TARGET_URL` is required (or pass `--target-url`, which still works and
+wins when both are given), and the script refuses a target naming the live
+database (compared by normalized location, not raw string) — with either form.
+That refusal is the point: restoring over the live store would resurrect data
+the live store had already erased. After a real restore, re-run the reclamation
+for the affected window, and repoint `DATABASE_URL` at the restored database
+only once it has been verified.
+
+The restore **drill** is the deliberate exception: its
+`--admin-url "postgres://drill:drill@127.0.0.1:5432/postgres"` is a throwaway
+service-container credential created and dropped by the CI run, not an operator
+credential.
 
 ### Confirm the backup timer actually works
 

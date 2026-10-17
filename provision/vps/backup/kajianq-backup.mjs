@@ -31,6 +31,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import {
   BACKUP_KEEP_DAILY,
+  applyEnvFile,
   buildManifest,
   formatCounts,
   labelTag,
@@ -137,10 +138,7 @@ function gitInfo() {
 async function main() {
   const argv = process.argv.slice(2);
   const envFile = argAfter(argv, "--env-file");
-  if (envFile) {
-    const parsed = parseEnvFile(readFileSync(envFile, "utf8"));
-    for (const [k, v] of Object.entries(parsed)) if (!process.env[k]) process.env[k] = v;
-  }
+  if (envFile) applyEnvFile(process.env, parseEnvFile(readFileSync(envFile, "utf8")));
 
   const missing = missingEnv(process.env);
   if (missing.length > 0) {
@@ -244,7 +242,7 @@ async function main() {
         `  source    ${manifest.source.host}/${manifest.source.database} (pg ${manifest.source.serverVersion})`,
         `  rows      ${formatCounts(manifest.tableCounts)}`,
         `  retention one snapshot per day, ${keepDaily} days rolling (restic forget --prune)`,
-        `  restore   provision/vps/backup/kajianq-restore.mjs --label ${label} --target-url <scratch>`,
+        `  restore   provision/vps/backup/kajianq-restore.mjs --label ${label} --env-file /etc/kajianq/backup.env`,
       ].join("\n"),
     );
   } finally {

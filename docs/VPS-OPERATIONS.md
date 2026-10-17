@@ -718,19 +718,25 @@ removed.
 ### 2.7 Restoring for real
 
 ```bash
-sudo sh -c '. /etc/kajianq/backup.env && \
-  bun provision/vps/backup/kajianq-restore.mjs \
-    --label <label> --target-url postgres://…/kajianq_restored'
+# The scratch target is RESTORE_TARGET_URL in the root-owned env file, so the
+# command line carries no URL and nothing credential-shaped reaches `ps` or the
+# shell history. The compatibility flag `--target-url` still works, and an
+# explicitly passed flag wins when both are given. Run it without
+# RESTORE_TARGET_URL exported: a real value in the shell wins over the file.
+sudo bun provision/vps/backup/kajianq-restore.mjs \
+  --env-file /etc/kajianq/backup.env --label <label>
 ```
 
 [`kajianq-restore.mjs`](../provision/vps/backup/kajianq-restore.mjs) cannot
 write to the live database, by construction:
 
-- `--target-url` is **required** and `PGDATABASE_URL` is required with it; the
-  target must not name the same database (compared by normalized location —
-  host, port, database name — not raw string). That refusal is the whole point:
+- The scratch target (`RESTORE_TARGET_URL` in `/etc/kajianq/backup.env`, read
+  through `--env-file`) and `PGDATABASE_URL` are both **required**; the target
+  must not name the same database (compared by normalized location — host, port,
+  database name — not raw string), and a missing `PGDATABASE_URL` fails closed
+  rather than skipping that comparison. That refusal is the whole point:
   restoring over the live store would resurrect data the live store had already
-  erased.
+  erased. It applies to `--target-url` and to the env form alike.
 - The archive is decrypted by restic, **re-hashed**, and compared to the
   manifest **before** anything is restored — a corrupted archive stops there
   instead of producing a half-restored scratch database.
@@ -740,6 +746,11 @@ write to the live database, by construction:
   (ADR-0043 decision 4). The cascade statement is bound as a psql variable and
   pinned by test against production `deleteUserCascade`, so the restore path
   cannot drift from the live erasure.
+
+The restore **drill** is the deliberate exception to the no-URL-on-argv rule:
+its `--admin-url "postgres://drill:drill@127.0.0.1:5432/postgres"`
+(`.github/workflows/vps-restore-drill.yml`) is a throwaway service-container
+credential the CI run creates and drops, not an operator credential.
 
 **After a real restore:** re-run the reclamation for the affected window,
 verify the scratch database, and only then repoint `DATABASE_URL` at it.

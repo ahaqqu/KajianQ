@@ -194,9 +194,9 @@ export function dbLocation(url) {
 /**
  * True when two connection URLs name the same database, even when written
  * differently (default port omitted, postgresql:// scheme, other credentials
- * or query order). This is the `--target-url`-must-not-be-the-live-URL guard:
+ * or query order). This is the scratch-target-must-not-be-the-live-URL guard:
  * string equality would both miss an equal database written differently and
- * compare secrets. Used by kajianq-restore.mjs to refuse restoring over the
+ * compare secrets. Used by `resolveScratchTarget` to refuse restoring over the
  * live store (ADR-0043 decision 4).
  */
 export function isSameDatabase(a, b) {
@@ -214,9 +214,48 @@ export function formatCounts(counts, limit = 8) {
 }
 
 /**
+ * The scratch target a restore writes into: an explicitly passed `--target-url`
+ * wins, otherwise `RESTORE_TARGET_URL` from the environment (which `--env-file`
+ * fills). Both forms go through the same refusal, so an env-provided target
+ * cannot skip the guard, and a missing PGDATABASE_URL fails closed — the guard
+ * cannot know what not to touch, so the restore stops rather than proceeding.
+ * Comparing normalized locations (host, port with its 5432 default, database
+ * name — never credentials or query order) refuses a target that names the live
+ * database in another spelling, and accepts a scratch URL whose password or
+ * sslmode differs. Restoring over the live store would resurrect erased data
+ * (ADR-0043 decision 4).
+ */
+export function resolveScratchTarget({ flagTarget, env } = {}) {
+  const target = flagTarget ?? env?.RESTORE_TARGET_URL;
+  if (!target) {
+    fail(
+      "a scratch target is required — set RESTORE_TARGET_URL, or pass --target-url. " +
+        "A restore never targets the live URL implicitly",
+    );
+  }
+  if (!env?.PGDATABASE_URL) {
+    fail(
+      "PGDATABASE_URL is required — the live URL must be configured so the " +
+        "scratch-target guard can refuse a restore over the store that is serving",
+    );
+  }
+  if (isSameDatabase(target, env.PGDATABASE_URL)) {
+    fail(
+      "the scratch target names the live database (PGDATABASE_URL) — refusing. " +
+        "Restore into a scratch location; restoring over the live store would " +
+        "resurrect erased data (ADR-0043 decision 4).",
+    );
+  }
+  return target;
+}
+
+/**
  * Parse `key=value` lines (an env file) into an object, skipping blanks and
  * `#` comments. Used for `--env-file` so a CLI never has to export credentials
  * into a shell, and so the tests can exercise parsing without a filesystem.
+ * A shell-style `export KEY=value` line is what an operator writes, so the
+ * prefix is stripped: the file is parsed here, never sourced, and `export FOO`
+ * would otherwise be read as a key literally named "export FOO".
  */
 export function parseEnvFile(text) {
   const out = {};
@@ -225,7 +264,11 @@ export function parseEnvFile(text) {
     if (!line || line.startsWith("#")) continue;
     const eq = line.indexOf("=");
     if (eq < 1) continue;
-    const key = line.slice(0, eq).trim();
+    const key = line
+      .slice(0, eq)
+      .replace(/^export\s+/, "")
+      .trim();
+    if (!key) continue;
     let value = line.slice(eq + 1).trim();
     if (
       (value.startsWith('"') && value.endsWith('"')) ||
@@ -236,6 +279,21 @@ export function parseEnvFile(text) {
     out[key] = value;
   }
   return out;
+}
+
+/**
+ * Fill `env` from a parsed env file without overriding a value it already
+ * carries — but an absent, empty or whitespace-only entry is not a value, so it
+ * does not shadow the file's. The file is the root-owned one `--env-file`
+ * names, and it is authoritative for the keys in it: an operator's bare
+ * `export RESTORE_TARGET_URL=` must not turn into "a scratch target is
+ * required" while the value sits in the file the command just read.
+ */
+export function applyEnvFile(env, parsed) {
+  for (const [key, value] of Object.entries(parsed)) {
+    if (!String(env[key] ?? "").trim()) env[key] = value;
+  }
+  return env;
 }
 
 /** Required credential keys, named (not read) so a missing one is actionable. */

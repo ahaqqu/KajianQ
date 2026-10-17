@@ -74,6 +74,7 @@ This repo ships no payments or sync layer (see `CONTEXT.md` / spec §3.1), so th
 ## Guards
 
 - Tests MUST test external behavior, not implementation details. Test what the module does, not how it does it.
+- **Test the behaviour, not the prose.** A test's subject is executable code or an artifact's structure, never a document's sentences, headings, links, or reachability, and never a printed message's wording — that class of test fails when the copy changes and passes when the behaviour breaks. Assert a property the artifact cannot reword (an invariant or regex over executable lines, comments stripped: e.g. no credentialed URL reaches `argv`), or exercise the code path itself. Documentation currency belongs to the PR author and the `docs:links` gate.
 - Property tests MUST exhaust the generator space. Don't write a property test that only tests three hand-picked values — that's a unit test with `fc` syntax.
 - BDD scenarios MUST describe the user's observable behavior. No "when I set localStorage" — describe what the user does and sees.
 - Mock at adapter boundaries, not at function boundaries. The adapter interface is the test seam.

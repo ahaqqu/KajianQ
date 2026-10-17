@@ -3,19 +3,28 @@
  * kajianq-restore.mjs — restore an encrypted backup into a SCRATCH database
  * and re-apply erasure (ADR-0043 decision 4).
  *
- *   kajianq-restore.mjs --label <label> --target-url <scratch-postgres-url>
- *                       [--env-file /etc/kajianq/backup.env] [--keep]
+ *   kajianq-restore.mjs --label <label> --env-file /etc/kajianq/backup.env
+ *                       [--target-url <scratch-postgres-url>] [--keep]
+ *
+ * The scratch target is `RESTORE_TARGET_URL` in the environment; the documented
+ * invocation reads it from the root-owned env file (`--env-file`), so the
+ * operator's command line carries a label and a path, and no credential ever
+ * reaches `ps` or the shell history. An explicitly passed `--target-url` still
+ * works for compatibility, and wins when both are given.
  *
  * This is the documented restore procedure, as a script rather than folklore.
  * It is deliberately NOT able to write to the live database:
  *
- *   - `--target-url` is required, PGDATABASE_URL is required with it, and the
- *     target must not name the same database as PGDATABASE_URL (compared by
- *     normalized location — host, port, database name — not raw string); the
- *     archive is restored into a scratch cluster (a separate Postgres, or a
- *     fresh database on the same server), never over the store that is
- *     serving. Credentials never reach argv: pg_restore gets the database
- *     name only and reads the rest from the PG* environment.
+ *   - The scratch target (`RESTORE_TARGET_URL`, or `--target-url` when passed)
+ *     and PGDATABASE_URL are both required, and the target must not name the
+ *     same database as PGDATABASE_URL (compared by normalized location — host,
+ *     port, database name — not raw string; a missing PGDATABASE_URL fails
+ *     closed rather than skipping the comparison); the archive is restored into
+ *     a scratch cluster (a separate Postgres, or a fresh database on the same
+ *     server), never over the store that is serving. Credentials stay off argv
+ *     on every hop: the operator's invocation passes no URL, pg_restore gets
+ *     the database name only, and it and psql read the rest from the PG*
+ *     environment.
  *   - The dump is decrypted by restic (the key is the repo key, outside the
  *     repo), re-hashed, and compared to the manifest before anything is
  *     restored — a corrupted archive stops here instead of producing a
@@ -27,22 +36,28 @@
  *
  * The real-VPS run is the operator's (see docs/VPS-SETUP.md), and the
  * same code path is exercised in CI by provision/vps/backup/restore-drill.mjs
- * against a scratch cluster.
+ * against a scratch cluster: its first pass uses the compatibility
+ * `--target-url` and its second the documented `--env-file`, so the
+ * env-provided target is covered end to end. The drill's own `--admin-url`
+ * carries a throwaway service-container credential created and dropped per run
+ * — not an operator credential, and deliberately not moved into the
+ * environment.
  */
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import {
   RECLAIM_SQL,
+  applyEnvFile,
   assertManifest,
   dbLocation,
   erasurePsqlArgs,
   erasureSql,
   formatCounts,
-  isSameDatabase,
   missingEnv,
   parseEnvFile,
   readLabel,
+  resolveScratchTarget,
   sha256Hex,
   verifyRestore,
 } from "./lib.mjs";
@@ -111,34 +126,22 @@ const ERASE_SQL = erasureSql();
 async function main() {
   const argv = process.argv.slice(2);
   const envFile = argAfter(argv, "--env-file");
-  if (envFile) {
-    const parsed = parseEnvFile(readFileSync(envFile, "utf8"));
-    for (const [k, v] of Object.entries(parsed)) if (!process.env[k]) process.env[k] = v;
-  }
+  if (envFile) applyEnvFile(process.env, parseEnvFile(readFileSync(envFile, "utf8")));
   const missing = missingEnv(process.env).filter((k) => k !== "PGDATABASE_URL");
   if (missing.length > 0) fail(`missing configuration: ${missing.join(", ")} (set in --env-file)`);
 
   const label = readLabel(argAfter(argv, "--label"));
-  const targetUrl = argAfter(argv, "--target-url");
-  if (!targetUrl)
-    fail("--target-url is required — a restore never targets the live URL implicitly");
-  // The live-URL refusal needs PGDATABASE_URL: the restore must know what it
-  // must not touch. Comparing the normalized database location (host, port
-  // with its 5432 default, database name — never credentials or query order)
-  // instead of the raw strings, so a URL that names the live database in a
-  // different spelling is still refused, and a scratch URL written with a
-  // different password or sslmode is not.
-  if (!process.env.PGDATABASE_URL)
-    fail(
-      "PGDATABASE_URL is required — the live URL must be configured so the " +
-        "--target-url guard can refuse a restore over the store that is serving",
-    );
-  if (isSameDatabase(targetUrl, process.env.PGDATABASE_URL)) {
-    fail(
-      "--target-url names the live database (PGDATABASE_URL) — refusing. " +
-        "Restore into a scratch location; restoring over the live store would " +
-        "resurrect erased data (ADR-0043 decision 4).",
-    );
+  // The scratch target comes from the environment; an explicit --target-url
+  // wins over it. Both forms go through the same live-URL refusal inside
+  // resolveScratchTarget — an env-provided target must not skip the guard.
+  let targetUrl;
+  try {
+    targetUrl = resolveScratchTarget({
+      flagTarget: argAfter(argv, "--target-url"),
+      env: process.env,
+    });
+  } catch (err) {
+    fail(err instanceof Error ? err.message : String(err));
   }
   const eraseUser = argAfter(argv, "--erase-user");
   const keep = argv.includes("--keep");
@@ -172,10 +175,10 @@ async function main() {
     }
 
     // 3. Restore into the scratch target. --clean --if-exists makes the drill
-    //    re-runnable; it only ever touches --target-url. The database name
-    //    alone goes to -d: the rest of the connection travels as libpq env
-    //    vars (below), so the password is never on the command line where
-    //    `ps` would expose it.
+    //    re-runnable; it only ever touches the resolved scratch target. The
+    //    database name alone goes to -d: the rest of the connection travels as
+    //    libpq env vars (below), so the password is never on the command line
+    //    where `ps` would expose it.
     run(
       "pg_restore",
       [

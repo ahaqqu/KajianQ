@@ -59,6 +59,7 @@ const LABEL = "drill";
 const TMP = process.env.TMPDIR ?? "/tmp";
 const REPO_DIR = `${TMP}/kajianq-drill-repo-${process.pid}`;
 const PASS_FILE = `${TMP}/kajianq-drill-${process.pid}.pass`;
+const ENV_FILE = `${TMP}/kajianq-drill-${process.pid}.env`;
 
 function fail(msg) {
   console.error(`restore-drill: ${msg}`);
@@ -243,6 +244,21 @@ const backupEnv = {
   RESTIC_PASSWORD_FILE: PASS_FILE,
   RESTIC_PASSWORD: "drill-passphrase",
 };
+// Pass 2 of the restore below drives the CLI through this file instead of
+// `--target-url`, the invocation the setup doc names: `--env-file` is what
+// carries RESTORE_TARGET_URL, so the documented path is exercised in CI rather
+// than only the compatibility flag. Root-owned and single-purpose on a real
+// box; here it is chmod 0600 and removed with the rest of the scratch state.
+writeFileSync(
+  ENV_FILE,
+  [
+    `PGDATABASE_URL=${sourceUrl}`,
+    `RESTIC_REPOSITORY=${REPO_DIR}`,
+    `RESTIC_PASSWORD_FILE=${PASS_FILE}`,
+    `RESTORE_TARGET_URL=${targetUrl}`,
+  ].join("\n") + "\n",
+  { mode: 0o600 },
+);
 // One-time repository creation is a setup-doc step on the VPS
 // (docs/VPS-SETUP.md); the drill does it here so the run is
 // self-contained.
@@ -269,10 +285,12 @@ console.log(`restore-drill: live state after reclamation + Art. 17 erasure (${SO
 // restore into the scratch target — the production script, twice.
 //
 // Pass 1 uses --skip-erasure so the drill can OBSERVE the resurrected rows (its
-// negative control). Pass 2 is the default mode — the exact command the setup doc
-// tells the owner to run — which re-applies the reclamation and the Art. 17
-// erasure. Both passes restore the same snapshot into the same target, so pass
-// 2 is a genuine run of the shipped erasure path.
+// negative control); it passes --target-url, the compatibility form. Pass 2 is
+// the default mode driven through --env-file — the invocation the setup doc
+// tells the owner to run, with the scratch target read from the file — which
+// re-applies the reclamation and the Art. 17 erasure. Both passes restore the
+// same snapshot into the same target, so pass 2 is a genuine run of the shipped
+// erasure path.
 // ---------------------------------------------------------------------------
 const restoreOut = run(
   "bun",
@@ -327,15 +345,7 @@ console.log(
 // ---------------------------------------------------------------------------
 const eraseOut = run(
   "bun",
-  [
-    `${HERE}kajianq-restore.mjs`,
-    "--label",
-    LABEL,
-    "--target-url",
-    targetUrl,
-    "--erase-user",
-    SUBJECT,
-  ],
+  [`${HERE}kajianq-restore.mjs`, "--label", LABEL, "--env-file", ENV_FILE, "--erase-user", SUBJECT],
   backupEnv,
 );
 console.log("restore-drill: restore complete (pass 2 — production erasure re-applied)");
@@ -407,6 +417,7 @@ if (!keep) {
   psql(adminUrl, `DROP DATABASE IF EXISTS ${TARGET_DB} WITH (FORCE)`);
   rmSync(REPO_DIR, { recursive: true, force: true });
   rmSync(PASS_FILE, { force: true });
+  rmSync(ENV_FILE, { force: true });
 }
 console.log(
   `restore-drill: OK — encrypted backup restored into a scratch location and erasure re-applied`,

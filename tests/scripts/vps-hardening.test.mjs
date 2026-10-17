@@ -1,5 +1,7 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vite-plus/test";
 import {
   BACKUP_KEEP_DAILY,
@@ -7,6 +9,7 @@ import {
   LOG_RETENTION_DAYS,
   RECLAIM_SQL,
   REQUIRED_ENV,
+  applyEnvFile,
   assertManifest,
   buildManifest,
   dbLocation,
@@ -18,6 +21,7 @@ import {
   missingEnv,
   parseEnvFile,
   readLabel,
+  resolveScratchTarget,
   retentionArgs,
   sha256Hex,
   verifyRestore,
@@ -41,6 +45,84 @@ const MANIFEST = buildManifest({
   source: { host: "db.internal", database: "kajianq" },
   tool: { pgDump: "pg_dump (PostgreSQL) 18.6", generator: "test" },
 });
+
+/** A URL that embeds credentials — what must never appear in a command line we teach. */
+const CREDENTIALED_URL = /postgres(ql)?:\/\/[^\s"']*:[^\s"'@]+@/;
+
+/** A shell variable holding a connection URL — what a command we teach must never hand out. */
+const URL_VARIABLE = /\$\{?[A-Za-z_][A-Za-z0-9_]*URL\}?/;
+
+/** The executable lines of every bash block in a doc section, comments stripped. */
+function bashLines(text) {
+  return [...text.matchAll(/```bash\n([\s\S]*?)```/g)]
+    .map((m) => m[1])
+    .join("\n")
+    .split("\n")
+    .filter((line) => !/^\s*#/.test(line))
+    .join("\n");
+}
+
+/**
+ * A temporary PATH holding stub `restic`, `pg_restore` and `psql`, so a restore CLI
+ * driven end to end gets past the guard without the real tools: restic materialises the
+ * snapshot the script expects, pg_restore records the libpq connection it was handed
+ * (argument and environment), and psql exits 0. The recorded connection is the resolved
+ * target — the signal a run that only dies at a missing restic cannot give.
+ */
+function stubTools(label) {
+  const dir = mkdtempSync(join(tmpdir(), "kajianq-stub-"));
+  const marker = join(dir, "pg_restore.json");
+  const manifest = buildManifest({
+    label,
+    bytes: 1,
+    sha256: "0".repeat(64),
+    counts: {},
+    source: { host: "stub", database: "kajianq" },
+    tool: { pgDump: "stub", generator: "test" },
+  });
+  const program = (name, source) => {
+    writeFileSync(join(dir, `${name}.mjs`), source);
+    writeFileSync(
+      join(dir, name),
+      `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(join(dir, `${name}.mjs`))} "$@"\n`,
+      { mode: 0o755 },
+    );
+  };
+  program(
+    "restic",
+    `
+import { mkdirSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+const args = process.argv.slice(2);
+const target = args[args.indexOf("--target") + 1];
+const dump = Buffer.from("stub-dump");
+const manifest = ${JSON.stringify(manifest)};
+manifest.dump.bytes = dump.length;
+manifest.dump.sha256 = createHash("sha256").update(dump).digest("hex");
+mkdirSync(target, { recursive: true });
+writeFileSync(target + "/kajianq-${label}.dump", dump);
+writeFileSync(target + "/kajianq-${label}.manifest.json", JSON.stringify(manifest));
+`,
+  );
+  program(
+    "pg_restore",
+    `
+import { writeFileSync } from "node:fs";
+const args = process.argv.slice(2);
+writeFileSync(
+  process.env.PROBE_MARKER,
+  JSON.stringify({
+    database: args[args.indexOf("-d") + 1],
+    PGDATABASE: process.env.PGDATABASE,
+    PGHOST: process.env.PGHOST,
+    PGPORT: process.env.PGPORT,
+  }),
+);
+`,
+  );
+  program("psql", "process.exit(0);\n");
+  return { dir, marker, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+}
 
 describe("retention policy matches the Art. 30 record's §6 values", () => {
   it("keeps one backup per day for 30 days — the session TTL, so a backup cannot outlive its data", () => {
@@ -261,6 +343,14 @@ describe("erasure a restore must re-apply", () => {
         "postgres://u:p@127.0.0.1:5432/kajianq_restored",
       ),
     ).toBe(false);
+    // Query parameters are dropped, not ordered: they change how a connection is made, not
+    // which database it reaches.
+    expect(
+      isSameDatabase(
+        "postgres://u:p@127.0.0.1:5432/kajianq?sslmode=require&application_name=a",
+        "postgres://u:p@127.0.0.1:5432/kajianq?application_name=a&sslmode=require",
+      ),
+    ).toBe(true);
     // Parsing fails closed: an unparseable or non-postgres target can never pass the guard.
     expect(() => dbLocation("not a url")).toThrow(/parseable/);
     expect(() => dbLocation(null)).toThrow(/parseable/);
@@ -271,13 +361,200 @@ describe("erasure a restore must re-apply", () => {
       port: "5432",
       database: "kajianq",
     });
-    // The restore script requires PGDATABASE_URL and uses isSameDatabase, pinned here.
+    // …and the guard itself, asserted rather than described: a live database in ANY of those
+    // spellings is refused through `resolveScratchTarget` — the one path both forms take —
+    // while a real scratch target passes it unchanged. Deleting the comparison from lib.mjs
+    // reddens here, not only at the spawned-CLI cases below.
+    const live = "postgres://u:p@127.0.0.1:5432/kajianq";
+    const scratch = "postgres://u:p@127.0.0.1:5432/kajianq_restored";
+    for (const spelling of [
+      "postgresql://other:secret@127.0.0.1/kajianq", // other scheme, default port omitted
+      "postgres://someone-else:hunter2@127.0.0.1:5432/kajianq", // other credentials
+      "postgres://u:p@127.0.0.1:5432/kajianq?sslmode=require", // same location, query added
+      "postgres://u:p@127.0.0.1:5432/kajianq?application_name=a&sslmode=require", // reordered
+    ]) {
+      expect(() =>
+        resolveScratchTarget({ flagTarget: spelling, env: { PGDATABASE_URL: live } }),
+      ).toThrow(/names the live database/);
+      expect(() =>
+        resolveScratchTarget({ env: { PGDATABASE_URL: live, RESTORE_TARGET_URL: spelling } }),
+      ).toThrow(/names the live database/);
+    }
+    expect(resolveScratchTarget({ flagTarget: scratch, env: { PGDATABASE_URL: live } })).toBe(
+      scratch,
+    );
+    expect(
+      resolveScratchTarget({ env: { PGDATABASE_URL: live, RESTORE_TARGET_URL: scratch } }),
+    ).toBe(scratch);
+    // The CLI has exactly one resolution path: it asks `resolveScratchTarget` for the target
+    // and never reads RESTORE_TARGET_URL itself (its own doc comment may name the key), so no
+    // branch of the entry point can reach libpq without the guard above.
     const restore = readFileSync(
       resolve(process.cwd(), "provision/vps/backup/kajianq-restore.mjs"),
       "utf8",
     );
-    expect(restore).toMatch(/isSameDatabase\(targetUrl, process\.env\.PGDATABASE_URL\)/);
-    expect(restore).toMatch(/PGDATABASE_URL is required/);
+    const restoreCode = restore
+      .split("\n")
+      .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
+      .join("\n");
+    expect(restoreCode).toMatch(/resolveScratchTarget\(/);
+    expect(restoreCode).not.toMatch(/RESTORE_TARGET_URL/);
+    expect(restoreCode).toMatch(/--target-url/);
+  });
+
+  it("refuses a live-database target from the env form exactly as from the flag", () => {
+    // The env form is not a way around the guard: RESTORE_TARGET_URL goes through the same
+    // comparison --target-url does, a missing PGDATABASE_URL fails closed for both, and an
+    // explicitly passed flag wins when both are present (the documented precedence).
+    const live = "postgres://u:p@127.0.0.1:5432/kajianq";
+    const scratch = "postgres://u:p@127.0.0.1:5432/kajianq_restored";
+
+    expect(
+      resolveScratchTarget({ env: { PGDATABASE_URL: live, RESTORE_TARGET_URL: scratch } }),
+    ).toBe(scratch);
+    expect(resolveScratchTarget({ flagTarget: scratch, env: { PGDATABASE_URL: live } })).toBe(
+      scratch,
+    );
+    // The flag wins: the env value is not consulted, even when it names the live database.
+    expect(
+      resolveScratchTarget({
+        flagTarget: scratch,
+        env: { PGDATABASE_URL: live, RESTORE_TARGET_URL: live },
+      }),
+    ).toBe(scratch);
+    // Both forms are refused, including a live database written in another spelling.
+    expect(() => resolveScratchTarget({ flagTarget: live, env: { PGDATABASE_URL: live } })).toThrow(
+      /names the live database/,
+    );
+    expect(() =>
+      resolveScratchTarget({
+        env: {
+          PGDATABASE_URL: live,
+          RESTORE_TARGET_URL: "postgresql://other:secret@127.0.0.1/kajianq",
+        },
+      }),
+    ).toThrow(/names the live database/);
+    // No target at all, and a missing live URL, both fail closed rather than skipping the guard.
+    expect(() => resolveScratchTarget({ env: { PGDATABASE_URL: live } })).toThrow(
+      /scratch target is required/,
+    );
+    expect(() => resolveScratchTarget({ env: { RESTORE_TARGET_URL: scratch } })).toThrow(
+      /PGDATABASE_URL is required/,
+    );
+    expect(() =>
+      resolveScratchTarget({ flagTarget: scratch, env: { RESTORE_TARGET_URL: live } }),
+    ).toThrow(/PGDATABASE_URL is required/);
+  });
+
+  it("the restore CLI stops before restic on a missing or live target, both forms", () => {
+    // Drive the real entry point: the guard runs before anything is decrypted or restored, so
+    // a refactor that moved the check after the restore could not pass this. PATH is empty of
+    // libpq/restic tools so "the guard let it through" is observable as a restic failure.
+    const script = resolve(process.cwd(), "provision/vps/backup/kajianq-restore.mjs");
+    const base = {
+      PATH: "/nonexistent-bin",
+      RESTIC_REPOSITORY: "/nonexistent/restic-repo",
+      RESTIC_PASSWORD_FILE: "/dev/null",
+    };
+    const runRestore = (args, env) =>
+      spawnSync(process.execPath, [script, "--label", "probe-label", ...args], {
+        encoding: "utf8",
+        env: { ...base, ...env },
+      });
+    const live = "postgres://u:p@127.0.0.1:5432/kajianq";
+    const scratch = "postgres://u:p@127.0.0.1:5432/kajianq_restored";
+
+    const refused = [
+      [[], { PGDATABASE_URL: live }, /scratch target is required/],
+      [[], { PGDATABASE_URL: live, RESTORE_TARGET_URL: live }, /names the live database/],
+      [["--target-url", live], { PGDATABASE_URL: live }, /names the live database/],
+      [[], { RESTORE_TARGET_URL: scratch }, /PGDATABASE_URL is required/],
+    ];
+    for (const [args, env, message] of refused) {
+      const res = runRestore(args, env);
+      expect(res.status, `expected a refusal for ${JSON.stringify(args)}`).toBe(1);
+      expect(res.stderr).toMatch(message);
+    }
+    // Precedence, observed on the target that actually reaches libpq: with a live URL in the
+    // environment and a scratch --target-url, the connection must be the scratch database.
+    // Stubs on PATH let the run past the guard and step 1 so pg_restore records what it was
+    // handed — a run that only dies at a missing restic cannot show which target won.
+    const stubs = stubTools("probe-label");
+    try {
+      const passed = runRestore(["--target-url", scratch], {
+        PATH: `${stubs.dir}:${process.env.PATH}`,
+        PGDATABASE_URL: live,
+        RESTORE_TARGET_URL: live,
+        PROBE_MARKER: stubs.marker,
+      });
+      expect(passed.status, passed.stderr).toBe(0);
+      expect(passed.stderr).not.toMatch(
+        /names the live database|scratch target is required|PGDATABASE_URL is required/,
+      );
+      expect(JSON.parse(readFileSync(stubs.marker, "utf8"))).toEqual({
+        database: "kajianq_restored",
+        PGDATABASE: "kajianq_restored",
+        PGHOST: "127.0.0.1",
+        PGPORT: "5432",
+      });
+    } finally {
+      stubs.cleanup();
+    }
+  });
+
+  it("prints a restore plan that never hands a credentialed URL to a shell", () => {
+    // The property, not the copy: a plan must really be printed (the positive control, so a
+    // renamed or emptied command cannot pass vacuously), no line may carry a URL with
+    // embedded credentials (that is what `ps` shows for the process's life), and no line may
+    // hand an operator a URL variable — `$TARGET_URL` and `$DATABASE_URL` alike — to type.
+    const script = resolve(process.cwd(), "packages/infra/scripts/db-snapshot.mjs");
+    const plan = spawnSync("bun", [script, "restore-plan", "probe-label"], {
+      encoding: "utf8",
+      env: { PATH: process.env.PATH, HOME: process.env.HOME },
+    });
+    expect(plan.status, plan.stderr).toBe(0);
+    expect(plan.stdout).toContain("pg_restore");
+    expect(plan.stdout).not.toMatch(CREDENTIALED_URL);
+    expect(plan.stdout).not.toMatch(URL_VARIABLE);
+  });
+
+  it("teaches no restore command that carries a credentialed URL or a URL variable", () => {
+    // Same invariant over what the operator is told to run: a URL — literal, or reachable
+    // through a variable handed to the shell — in a documented command line is readable
+    // through `ps` and kept in shell history. The section anchors are asserted before the
+    // slice, so a renumbered heading fails here instead of making the subject empty and
+    // passing green.
+    const ops = readFileSync(resolve(process.cwd(), "docs/VPS-OPERATIONS.md"), "utf8");
+    const opsAt = ops.indexOf("### 2.7");
+    const opsEnd = ops.indexOf("### 2.8");
+    expect(opsAt, "VPS-OPERATIONS.md: no §2.7 heading").toBeGreaterThan(-1);
+    expect(opsEnd, "VPS-OPERATIONS.md: no §2.8 heading").toBeGreaterThan(-1);
+    expect(opsEnd).toBeGreaterThan(opsAt);
+    const setup = readFileSync(resolve(process.cwd(), "docs/VPS-SETUP.md"), "utf8");
+    const setupAt = setup.indexOf("**Restoring for real**");
+    const setupEnd = setup.indexOf("### Confirm the backup timer");
+    expect(setupAt, "VPS-SETUP.md: no restore step").toBeGreaterThan(-1);
+    expect(setupEnd, "VPS-SETUP.md: no backup-timer heading").toBeGreaterThan(-1);
+    expect(setupEnd).toBeGreaterThan(setupAt);
+    for (const [name, text] of [
+      ["VPS-OPERATIONS §2.7", ops.slice(opsAt, opsEnd)],
+      ["VPS-SETUP restore step", setup.slice(setupAt, setupEnd)],
+    ]) {
+      const lines = bashLines(text);
+      expect(lines.trim().length, `${name}: no executable line to check`).toBeGreaterThan(0);
+      expect(lines, name).not.toMatch(CREDENTIALED_URL);
+      expect(lines, name).not.toMatch(URL_VARIABLE);
+    }
+  });
+
+  it("ships the scratch target in the env template as a placeholder, never the live database", () => {
+    // Config-as-code, like the api.env example: the template is committed, so its values can
+    // only be placeholders, and a restore onto the database it names would be refused.
+    const parsed = parseEnvFile(
+      readFileSync(resolve(process.cwd(), "provision/vps/backup/backup.env.example"), "utf8"),
+    );
+    expect(parsed.RESTORE_TARGET_URL).toMatch(/^postgres:\/\/kajianq:CHANGE_ME@/);
+    expect(isSameDatabase(parsed.RESTORE_TARGET_URL, parsed.PGDATABASE_URL)).toBe(false);
   });
 
   it("names the rows the drill proves gone and the rows it proves survive", () => {
@@ -321,6 +598,84 @@ describe("env handling", () => {
     expect(
       missingEnv({ RESTIC_REPOSITORY: "r", RESTIC_PASSWORD_FILE: "", PGDATABASE_URL: "u" }),
     ).toEqual(["RESTIC_PASSWORD_FILE"]);
+  });
+
+  it("tolerates a shell-style export prefix — a shell env file is what an operator writes", () => {
+    // The file is parsed, never sourced, so `export KEY=value` must not become a key named
+    // "export KEY": that read as a missing RESTORE_TARGET_URL while the value sat in the file.
+    const parsed = parseEnvFile(
+      [
+        "export PGDATABASE_URL=postgres://u:p@127.0.0.1:5432/kajianq",
+        "export   RESTORE_TARGET_URL = postgres://u:p@127.0.0.1:5432/kajianq_restored",
+      ].join("\n"),
+    );
+    expect(parsed.PGDATABASE_URL).toBe("postgres://u:p@127.0.0.1:5432/kajianq");
+    expect(parsed.RESTORE_TARGET_URL).toBe("postgres://u:p@127.0.0.1:5432/kajianq_restored");
+    expect(Object.keys(parsed)).toEqual(["PGDATABASE_URL", "RESTORE_TARGET_URL"]);
+  });
+
+  it("lets the env file supply a key the environment set empty or to whitespace", () => {
+    // The file `--env-file` names is the root-owned one and is authoritative for the keys in
+    // it: a bare `export RESTORE_TARGET_URL=` in the operator's shell must not turn the
+    // documented restore into "a scratch target is required" while the value sits in the file
+    // the command just read. A real value in the environment still wins.
+    const live = "postgres://u:p@127.0.0.1:5432/kajianq";
+    const scratch = "postgres://u:p@127.0.0.1:5432/kajianq_restored";
+    const env = { PGDATABASE_URL: live, RESTORE_TARGET_URL: "   " };
+    expect(applyEnvFile(env, { PGDATABASE_URL: scratch, RESTORE_TARGET_URL: scratch })).toEqual({
+      PGDATABASE_URL: live,
+      RESTORE_TARGET_URL: scratch,
+    });
+    expect(applyEnvFile({ RESTORE_TARGET_URL: "" }, { RESTORE_TARGET_URL: scratch })).toEqual({
+      RESTORE_TARGET_URL: scratch,
+    });
+  });
+
+  it("drives the documented --env-file invocation end to end", () => {
+    // The documented restore is `--env-file <root-owned file> --label <label>`, and the file
+    // carries the target. Spawn the real CLI with no target in the environment (the shell set
+    // it empty) and the export-prefixed file as the only source: the file's scratch target
+    // must get past the guard and reach restic, while a live target in the same file is still
+    // refused. This is the env-file path the restore drill now runs in CI, minus the server.
+    const script = resolve(process.cwd(), "provision/vps/backup/kajianq-restore.mjs");
+    const dir = mkdtempSync(join(tmpdir(), "kajianq-envfile-"));
+    const envFile = join(dir, "backup.env");
+    const live = "postgres://u:p@127.0.0.1:5432/kajianq";
+    const scratch = "postgres://u:p@127.0.0.1:5432/kajianq_restored";
+    const run = () =>
+      spawnSync(process.execPath, [script, "--label", "probe-label", "--env-file", envFile], {
+        encoding: "utf8",
+        env: { PATH: "/nonexistent-bin", RESTORE_TARGET_URL: "" },
+      });
+    try {
+      writeFileSync(
+        envFile,
+        [
+          `export PGDATABASE_URL=${live}`,
+          `export RESTORE_TARGET_URL=${scratch}`,
+          "RESTIC_REPOSITORY=/nonexistent/restic-repo",
+          "RESTIC_PASSWORD_FILE=/dev/null",
+        ].join("\n") + "\n",
+      );
+      const passed = run();
+      expect(passed.stderr).not.toMatch(/scratch target is required|PGDATABASE_URL is required/);
+      expect(passed.stderr).toMatch(/restic/);
+      // Fail-closed is unchanged: the same file naming the live database is refused.
+      writeFileSync(
+        envFile,
+        [
+          `export PGDATABASE_URL=${live}`,
+          `export RESTORE_TARGET_URL=${live}`,
+          "RESTIC_REPOSITORY=/nonexistent/restic-repo",
+          "RESTIC_PASSWORD_FILE=/dev/null",
+        ].join("\n") + "\n",
+      );
+      const refused = run();
+      expect(refused.status).toBe(1);
+      expect(refused.stderr).toMatch(/names the live database/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -370,12 +725,23 @@ describe("provisioning config as code stays true to the ADR", () => {
   it("libpq invocations never take a connection URL on argv", () => {
     // pg_restore/psql get the database name (or nothing) and read the rest of the connection
     // from the PG* environment: a URL on argv would carry the password in the process table.
+    // Assert the property over every `-d` argument rather than the name of one variable — any
+    // `-d` fed something that is not a database name (a URL variable, a URL literal) reddens
+    // here, and a rename of the variable the database name is read off does not.
     const restore = readFileSync(
       resolve(process.cwd(), "provision/vps/backup/kajianq-restore.mjs"),
       "utf8",
     );
-    expect(restore).toMatch(/dbLocation\(targetUrl\)\.database/);
-    expect(restore).not.toMatch(/"-d",\s*targetUrl/);
+    const databases = [...restore.matchAll(/"-d",\s*([^,\n]+)/g)].map((m) => m[1].trim());
+    expect(
+      databases.length,
+      "no -d argument found — the assertion would be vacuous",
+    ).toBeGreaterThan(0);
+    for (const arg of databases) {
+      expect(arg, `-d takes a database name, not a URL: ${arg}`).toMatch(
+        /\.database$|^["'][A-Za-z0-9_-]+["']$/,
+      );
+    }
   });
 
   it("the backup schedule is config-as-code, installed and enabled by apply.sh", () => {
@@ -398,6 +764,49 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(apply).toMatch(/kajianq-backup\.service/);
     expect(apply).toMatch(/kajianq-backup\.timer/);
     expect(apply).toMatch(/enable --now kajianq-backup\.timer/);
+  });
+
+  it("every unit running with ProtectHome= executes a binary outside the home directories", () => {
+    // ProtectHome hides /home and /root from the unit, so an ExecStart naming a
+    // home-directory install fails for a binary that exists. Assert the property over the
+    // shipped units rather than the prose that warns about it: a new unit that hides home and
+    // then runs the runtime from one reddens here.
+    const services = walkFiles("provision/vps/systemd").filter((f) => f.endsWith(".service"));
+    expect(services.length).toBeGreaterThan(0);
+    let guarded = 0;
+    for (const file of services) {
+      const unit = directives(file);
+      if (!/^ProtectHome=(yes|true|read-only|tmpfs)$/m.test(unit)) continue;
+      guarded++;
+      const exec = /^ExecStart=(\S+)/m.exec(unit)?.[1];
+      expect(exec, `${file}: ProtectHome= set without an absolute ExecStart`).toBeTruthy();
+      expect(exec, `${file}: ProtectHome hides ${exec}`).not.toMatch(/^\/(home|root)(\/|$)/);
+    }
+    expect(guarded, "no unit sets ProtectHome= — the assertion would be vacuous").toBeGreaterThan(
+      0,
+    );
+  });
+
+  it("the provisioning SQL creates the role and database apply.sh deliberately does not", () => {
+    // apply.sh installs the Postgres posture but creates no role or database, so the SQL the
+    // operator pastes from the setup doc is the artifact that provisions them: assert its
+    // statements, not the sentences around them. A block that lost LOGIN, the bound password
+    // or OWNER would leave the API unable to start, and nothing else in CI would notice.
+    expect(directives("provision/vps/apply.sh")).not.toMatch(
+      /CREATE ROLE|createuser|CREATE DATABASE|createdb/,
+    );
+    const setup = read("docs/VPS-SETUP.md");
+    const sql = [...setup.matchAll(/```bash\n([\s\S]*?)```/g)]
+      .map((m) => m[1])
+      .find((block) => block.includes("CREATE ROLE"));
+    expect(sql, "docs/VPS-SETUP.md: no block provisions the kajianq role").toBeTruthy();
+    const statements = sql
+      .split("\n")
+      .filter((line) => !/^\s*#/.test(line))
+      .join("\n");
+    expect(statements).toMatch(/psql -v pw="\$DB_PW"/);
+    expect(statements).toMatch(/CREATE ROLE kajianq LOGIN PASSWORD :'pw'/);
+    expect(statements).toMatch(/CREATE DATABASE kajianq OWNER kajianq/);
   });
 
   it("render() substitutes every placeholder a shipped config may carry", () => {
@@ -822,112 +1231,6 @@ describe("provisioning config as code stays true to the ADR", () => {
     for (const key of ["GEMINI_PAID_API_KEY", "DEEPSEEK_API_KEY"]) {
       expect(example).toMatch(new RegExp(`^${key}=CHANGE_ME$`, "m"));
     }
-  });
-
-  it("the setup doc exists and carries the steps a fresh box cannot infer", () => {
-    // The repository is open source, so the provisioning path has to be followable by someone
-    // who is not the owner: pin the steps a reader cannot derive from the configs.
-    const setup = read("docs/VPS-SETUP.md");
-
-    // 1. Bun must be installed at /usr/bin/bun: the units run with ProtectHome=yes, so a
-    //    home-directory Bun is invisible and ExecStart fails for a binary that exists.
-    expect(setup).toMatch(/\/usr\/bin\/bun/);
-    // The doc must name the constraint, not just the path.
-    expect(setup).toMatch(/ProtectHome/);
-    // It must NOT recommend the home-directory installer that causes it.
-    expect(setup).not.toMatch(/curl -fsSL https:\/\/bun\.sh\/install/);
-
-    // 2. apply.sh installs the Postgres POSTURE but creates no role or database.
-    const apply = read("provision/vps/apply.sh");
-    expect(apply).not.toMatch(/CREATE ROLE|createuser/);
-    expect(setup).toMatch(/CREATE ROLE kajianq LOGIN/);
-
-    // 3. The two chat-path precondition keys, without which health stays green while every
-    //    question fails its embedder or reviewer stage.
-    expect(setup).toMatch(/GEMINI_PAID_API_KEY/);
-    expect(setup).toMatch(/DEEPSEEK_API_KEY/);
-
-    // 4. The rate-bypass public key is committed, so an unmodified fork verifies tokens minted
-    //    by anyone holding the project's private key: a public setup doc has to say so.
-    const bypass = read("apps/api/src/lib/rate-bypass.ts");
-    expect(bypass).toMatch(/RATE_BYPASS_PUBLIC_KEY_B64 = "/);
-    expect(setup).toMatch(/rotate/i);
-  });
-
-  it("the setup doc proves the backup with the SERVICE, not a direct script run", () => {
-    // The doc must prove the backup with the service, not `kajianq-backup.mjs` directly: a
-    // direct run writes a snapshot but leaves the unit's ExecMainStatus/ExecMainExitTimestamp
-    // untouched, and the deploy's gate reads exactly those.
-    const setup = read("docs/VPS-SETUP.md");
-    expect(setup).toMatch(/sudo systemctl start kajianq-backup\.service/);
-    // The distinction must be stated, or the next reader reintroduces it.
-    expect(setup).toMatch(/ExecMainStatus/);
-  });
-
-  it("the restore-drill workflow does not claim its image matches the box's major", () => {
-    // The image is the schema under test, not a claim about the box's Postgres major — a wrong
-    // version claim in a comment is how a reader concludes the drill tests something it does not.
-    const workflow = read(".github/workflows/vps-restore-drill.yml");
-    expect(workflow).toMatch(/pgvector\/pgvector:pg18/);
-    expect(workflow).not.toMatch(/the Postgres major the box is provisioned with/);
-  });
-
-  it("the setup doc is reachable from the README and the operator's manual", () => {
-    // An unlinked doc is an unfound doc: a self-hoster has to find it from the front page.
-    expect(read("README.md")).toMatch(/docs\/VPS-SETUP\.md/);
-    expect(read("docs/VPS-OPERATIONS.md")).toMatch(/VPS-SETUP\.md/);
-  });
-
-  it("the retired VPS docs are gone and their load-bearing content moved, not lost", () => {
-    // This test keeps the retirement honest: it fails if a retired file reappears (two sources
-    // of truth), and if the content that had to survive is dropped by a later edit.
-    const setup = read("docs/VPS-SETUP.md");
-    for (const retired of [
-      "docs/VPS-BASELINE-SETUP.md",
-      "docs/VPS-CUTOVER-RUNBOOK.md",
-      "docs/VPS-HARDENING-RUNBOOK.md",
-      "docs/neon-sizing-issue-4.md",
-      // A stale link or a re-created file here means the rename was half-applied.
-      "docs/SELF-HOSTING-GUIDE.md",
-    ]) {
-      expect(existsSync(resolve(process.cwd(), retired)), retired).toBe(false);
-    }
-
-    // The hardening runbook's substance had to land in the setup doc, or the merge silently
-    // dropped the privacy posture: the config-as-code inventory, the nginx rationale, the
-    // CI-side VPS_USER flip, and the retention verification.
-    expect(setup).toMatch(/Everything `apply\.sh` places/);
-    expect(setup).toMatch(/Reverse proxy: nginx, not Caddy/);
-    expect(setup).toMatch(/Retention, not IP masking/);
-    expect(setup).toMatch(/VPS_USER/);
-    expect(setup).toMatch(/Verify retention once traffic exists/);
-    // The retention table's four rows, which ARE the Art. 30 values.
-    expect(setup).toMatch(/restic `--keep-daily`/);
-    expect(setup).toMatch(/journald\/kajianq\.conf/);
-
-    // 1. The acceptance-criteria walk-through had to survive: it is what the issue closes against.
-    const record = read("docs/VPS-CUTOVER-RECORD.md");
-    expect(record).toMatch(/AC-1\b/);
-    expect(record).toMatch(/AC-16\b/);
-    expect(record).toMatch(/## Acceptance criteria/);
-    // The baseline session's record is the chain-of-custody start; its evidence table came along.
-    expect(record).toMatch(/baseline session/i);
-    expect(record).toMatch(/Debian 13 \(trixie\)/);
-
-    // 2. The one procedure in the cutover runbook that outlived its vendor: moving an existing
-    //    database onto a box — snapshot-verify-ship-compare, not Cloudflare or Neon specifics.
-    expect(setup).toMatch(/## 12\. Moving an existing database/);
-    expect(setup).toMatch(/db:snapshot create/);
-    expect(setup).toMatch(/pg_restore/);
-    expect(setup).toMatch(/db:snapshot verify/);
-
-    // 3. The disk figure: the setup runbook is what a self-hoster sizes against, and the
-    //    schema's sizing record must name the host decision in force rather than the retired one.
-    expect(setup).toMatch(/17–18 GiB/);
-    expect(setup).toMatch(/adr\/0020-neon-dual-vector-sizing\.md/);
-    const adr = read("adr/0020-neon-dual-vector-sizing.md");
-    expect(adr).toMatch(/ADR-0043|ADR-0044/);
-    expect(adr).toMatch(/docs\/VPS-SETUP\.md/);
   });
 
   it("a markdown link gate exists and is wired into CI", () => {
