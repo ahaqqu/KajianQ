@@ -47,11 +47,14 @@ import { composeLayers, findEntry } from "../../scripts/lib/dsh-compose.mjs";
  *   and home layer are re-read byte for byte after the suite, so a fixture run
  *   that reached them fails here.
  *
- * Every run goes through `runPreflight`, which sets all five seams and refuses
- * a fixture path outside the fixture root. That is the second layer of the
- * safety boundary; the first is the script's own all-or-nothing guard, which
- * refuses a run that redirects one config root while another stays real
- * (`--fix` included).
+ * Every run goes through `runPreflight`, which sets all five seams and asserts
+ * each fixture path is inside the fixture root before spawning — a check on the
+ * harness, not a boundary: what guards the spawn is the script's own
+ * all-or-nothing seam rule. The two spawns that exercise that rule hand-build
+ * their env with `HOME`, `DSH_HOME` and `DSH_PROFILE_DIR` inside the fixture, so
+ * a guard regression still reads and writes a fixture path rather than this
+ * machine's config — and the machine's real profile patch and home layer are
+ * re-read after every spawn, not only after the suite.
  */
 
 const ROOT = process.cwd();
@@ -76,15 +79,22 @@ const SEAMS = [
   "DSH_PIN_CHECK_CATALOG",
 ];
 
-const roots = [];
-afterAll(() => {
-  for (const root of roots) rmSync(root, { recursive: true, force: true });
+/** The config this machine actually composes, re-read: no fixture run — red or
+ * not — may have reached it. Called after each seam spawn as well as here, so a
+ * regression is caught at the spawn that caused it. */
+function expectRealConfigUntouched() {
   if (REAL_PROFILE_BEFORE !== null)
     expect(readFileSync(REAL_PROFILE_PATCH, "utf8")).toBe(REAL_PROFILE_BEFORE);
   else expect(existsSync(REAL_PROFILE_PATCH)).toBe(false);
   if (REAL_HOME_BEFORE !== null)
     expect(readFileSync(REAL_HOME_PATCH, "utf8")).toBe(REAL_HOME_BEFORE);
   else expect(existsSync(REAL_HOME_PATCH)).toBe(false);
+}
+
+const roots = [];
+afterAll(() => {
+  for (const root of roots) rmSync(root, { recursive: true, force: true });
+  expectRealConfigUntouched();
 });
 
 const UUID = "d5585e04-940a-41f6-a9ec-320bb4fccd7e";
@@ -357,12 +367,19 @@ describe("test seams", () => {
     const fx = fixture();
     writeRole(fx, "reviewer", `model: "${pinFor("alpha-model")}"`);
     writeCatalog(fx, ["alpha-model"]);
-    // HOME is redirected as well, so this test is safe to run even when it is
-    // red: without the guard the script would read (and with --fix write) the
-    // empty temp-home path, never the owner's real file.
+    // Every home-root the script can consult is redirected into the fixture, so
+    // this test is safe to run even when it is red: `DSH_HOME` outranks
+    // `homedir()` (the script resolves its home from it first), and with the
+    // guard gone a run would read — and with --fix write — the fixture path,
+    // never the owner's real file.
     const fakeHome = join(fx.root, "fake-home");
     mkdirSync(fakeHome, { recursive: true });
-    const baseEnv = { ...process.env, HOME: fakeHome };
+    const baseEnv = {
+      ...process.env,
+      HOME: fakeHome,
+      DSH_HOME: fakeHome,
+      DSH_PROFILE_DIR: join(fakeHome, "profiles", "web"),
+    };
     for (const seam of SEAMS) delete baseEnv[seam];
 
     // A read-only seam without the config roots: --fix would write the real
@@ -377,6 +394,7 @@ describe("test seams", () => {
       "DSH_PIN_CHECK_HOME and DSH_PIN_CHECK_PROFILE_DIR and DSH_PIN_CHECK_INSTALL",
     );
     expect(reads.stdout).not.toContain("+ declared");
+    expectRealConfigUntouched();
 
     // One redirected config root while the others stay real: the same hazard.
     const root = spawnSync("bun", [SCRIPT, "--fix"], {
@@ -386,7 +404,11 @@ describe("test seams", () => {
     expect(root.status).toBe(1);
     expect(root.stderr).toContain("the config roots are all-or-nothing");
     expect(root.stdout).not.toContain("+ declared");
-    expect(existsSync(join(fakeHome, ".dsh"))).toBe(false);
+    // The home layer a red run would reach is the redirected one, and it was
+    // not created: `existsSync(fakeHome/.dsh)` could never fail, since the
+    // script never writes under `$HOME`.
+    expect(existsSync(join(fakeHome, "cordis.patch.yml"))).toBe(false);
+    expectRealConfigUntouched();
   });
 });
 
