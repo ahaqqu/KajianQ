@@ -551,9 +551,11 @@ From the box (loopback, so no tunnel):
 ```bash
 # The URL travels in the environment (§3: never argv); its value is read from
 # the root-owned file, never typed — the command line keeps only the substitution.
-export DATABASE_URL="postgres://kajianq:$(sudo cat /etc/kajianq/db-password)@127.0.0.1:5432/kajianq"
-bun run db:status:all
-bun run db:up:all
+# The subshell bounds the value's lifetime: it reaches the two commands that need
+# it, not the rest of this shell's session.
+( export DATABASE_URL="postgres://kajianq:$(sudo cat /etc/kajianq/db-password)@127.0.0.1:5432/kajianq"
+  bun run db:status:all
+  bun run db:up:all )
 ```
 
 `db:status:all` must show every migration applied after a restore (the archive's
@@ -753,8 +755,8 @@ for the Staging workflow's Golden Set smoke, and for any ad-hoc query:
 # keep this shell open for as long as the tunnel is needed
 ssh -N -L 15433:127.0.0.1:5432 <your-own-login>@<host>
 # Elsewhere, the credential stays out of argv and out of shell history: read it
-# from the 0600 copy you keep in your password manager into psql's environment,
-# and give the connection as flags.
+# from your own 0600 copy — docs/VPS-SETUP.md §3 creates it — into psql's
+# environment, and give the connection as flags.
 PGPASSWORD="$(cat ~/.config/kajianq/db-password)" \
   psql -h 127.0.0.1 -p 15433 -U kajianq -d kajianq -Atc 'SELECT current_user, current_database()'
 ```
@@ -772,7 +774,9 @@ above needs no `PGPASSWORD` at all.
 how the repo's own CLIs are built (§3), and the same applies to `PGDATABASE_URL`
 for the backup script and `STAGING_DATABASE_URL` in the Staging workflow. What
 must not happen is the _value_ reaching a command line: build the URL from the
-file, so history keeps only the substitution.
+file, so history keeps only the substitution. The export below lasts as long as
+this tunnel shell — the unit of work here; for a bounded pair of commands use the
+subshell form of §2.3 instead, so no later child inherits the value.
 
 ```bash
 # for the CLIs that take the connection as a URL (db:status:all, db:snapshot,
@@ -874,7 +878,7 @@ monitoring must not create an unbounded personal-data-adjacent log surface. Issu
 | Change the public hostname            | §1.6 — certbot, `proxy.env`, `ALLOWED_ORIGINS`, `apply.sh`, then `VPS_PUBLIC_URL` in both scopes                                                                                                                                                                                                        |
 | Change the environment label          | §1.7 — a fresh rebuild already reads `"env":"staging"`; for a box still reading `production`, `sed` `APP_ENV` in `/etc/kajianq/api.env` as root, restart the unit, then check `/v1/health` (cosmetic: log labels + health JSON only)                                                                    |
 | Check migrations                      | `DATABASE_URL` in env (§2.3, read from the file — never typed) → `bun run db:status:all`                                                                                                                                                                                                                |
-| Take a snapshot                       | `DATABASE_URL` in env (§2.4, read from the file — never typed) → `bun run db:snapshot create <lowercase-label>` with the posture flag                                                                                                                                                                   |
+| Take a snapshot                       | `DATABASE_URL` in env (§2.3, read from the file — never typed) → `bun run db:snapshot create <lowercase-label>` with the posture flag (§2.4)                                                                                                                                                            |
 | Verify a snapshot                     | `bun run db:snapshot verify <label>`                                                                                                                                                                                                                                                                    |
 | Take a backup now                     | `sudo sh -c '. /etc/kajianq/backup.env && bun provision/vps/backup/kajianq-backup.mjs --label <label>'`                                                                                                                                                                                                 |
 | List backups                          | `sudo sh -c '. /etc/kajianq/backup.env && restic snapshots'`                                                                                                                                                                                                                                            |

@@ -53,8 +53,10 @@ export DATABASE_URL="postgres://kajianq:$(cat ~/.config/kajianq/db-password)@127
 
 The connection role is `kajianq` (not the superuser) — it has the corpus
 tables' read/write through the adapter, which is all a pass needs. The
-password lives in `/etc/kajianq/db-password` on the box (root 0600) and in the
-owner's password manager; never in shell history, never in argv. The export
+password lives in `/etc/kajianq/db-password` on the box (root 0600); off the box
+it is your own 0600 copy at `~/.config/kajianq/db-password`, created in
+[`docs/VPS-SETUP.md`](./VPS-SETUP.md) §3 and kept in your password manager too.
+Never in shell history, never in argv. The export
 above is an **environment** assignment — the CLIs read `DATABASE_URL` from the
 environment, which `ps` does not show — and the value is read from the file
 rather than typed, so the history holds only the substitution. A `psql` call
