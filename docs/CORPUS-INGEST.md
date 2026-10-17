@@ -91,8 +91,10 @@ bun run db:snapshot require pre-ingest-<…>         # the gate; fails loudly wh
 
 Price is weighed per model by config (`models.json`); embeddings bill on the
 paid row (~$0.20/MTok input) and parent summaries on DeepSeek. **Hard rule:
-stop and report if a pass's reported `costMicroUsd` passes $5** (ADR-0037 —
-the report is persisted to `eval_runs` and written by `HADITH_REPORT_DIR`).
+stop and report if a pass's reported `costMicroUsd` passes $5** — the recorded
+figure is the config price applied to the pass's tokens, so this is a money
+bound, not a formality (ADR-0037 — the report is persisted to `eval_runs` and
+written by `HADITH_REPORT_DIR`).
 
 The ingest runner embeds _and writes_ a whole run's children together: a pass
 is all-or-nothing in cost (not in persistence — upserts commit per batch).
