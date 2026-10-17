@@ -252,6 +252,96 @@ describe("POST /v1/chat", () => {
     expect(store.allTraces().size).toBe(0);
   });
 
+  it("answers 400 invalid_request to a message the store cannot hold, and writes nothing (#478)", async () => {
+    const { store, token } = await wiredStore();
+    currentStore = store;
+    await seed(store);
+    currentOverrides = { answerText: "an answer that must never be produced" };
+    spendCalls.length = 0;
+
+    // The staging probes plus the classes the same defect hides in: a lone
+    // surrogate is silently rewritten to U+FFFD by a UTF-8 write, so it is
+    // refused here rather than stored as a different message.
+    for (const message of [
+      "\u0000",
+      "\u0000riba",
+      "riba\u0000",
+      "\ud800",
+      "riba\ud800",
+      "\udc00",
+    ]) {
+      const res = await postRaw(token, { message, language: "id" });
+
+      // The typed answer the route's own contract enumerates — never `internal`.
+      expect(res.status, JSON.stringify(message)).toBe(400);
+      expect(await res.json(), JSON.stringify(message)).toEqual({ error: "invalid_request" });
+    }
+
+    // The refusal is at the boundary: no seam was called, no session, message
+    // or trace was written, so nothing of a rejected body survives.
+    expect(spendCalls).toEqual([]);
+    expect(store.allChatSessions()).toEqual([]);
+    expect(store.allChatMessages()).toEqual([]);
+    expect(store.allTraces().size).toBe(0);
+  });
+
+  it("streams the whole frame set for the same body with the U+0000 removed (#474's neighbour)", async () => {
+    const { store, token } = await wiredStore();
+    currentStore = store;
+    await seed(store);
+    currentOverrides = { answerText: "Ayat kursi adalah QS. 2:255." };
+
+    // #474's own control body, byte for byte apart from the NUL: it must keep
+    // its place on the answering path.
+    const { status, frames, answer } = await postChat(token, {
+      message: '</script>"quote"\\backslash\nnewline {invalid json} null',
+      language: "id",
+    });
+
+    expect(status).toBe(200);
+    expect(frames[0]?.event).toBe("meta");
+    for (const event of ["meta", "delta", "citations", "trace", "done"]) {
+      expect(
+        frames.map((f) => f.event),
+        event,
+      ).toContain(event);
+    }
+    expect(frames.at(-1)?.event).toBe("done");
+    expect(answer).toContain("QS. 2:255");
+  }, 15000);
+
+  it("still admits the control characters the admission calls content-free (#478)", async () => {
+    const { store, token } = await wiredStore();
+    currentStore = store;
+    await seed(store);
+    currentOverrides = { answerText: "Ayat kursi adalah QS. 2:255." };
+    spendCalls.length = 0;
+
+    // `Cc` without U+0000 is storable, so it is not a rejected body: it reaches
+    // the route's content-free gate and is declined there. The answer cannot be
+    // fabricated for it — the fan-out is empty, so nothing is retrieved and the
+    // citation the stub writes has no evidence to ground on.
+    const { status, frames } = await postChat(token, { message: "\u0001\u0007" });
+
+    expect(status).toBe(200);
+    expect(frames.at(-1)?.event).toBe("done");
+
+    // Accepted, not dropped: the question is persisted as the user sent it.
+    expect(store.allChatMessages().find((m) => m.role === "user")?.content).toBe("\u0001\u0007");
+
+    const trace = [...store.allTraces().values()].at(0) as
+      | { events: { kind: string; detail?: Record<string, unknown> }[] }
+      | undefined;
+    const intent = trace?.events.find((e) => e.kind === "intent");
+    expect(intent?.detail?.["attributes"]).toMatchObject({ fallback: true, contentFree: true });
+    // No sub-query was admitted, so none is on the trace: the decline is the
+    // deterministic one, not a model route.
+    expect(trace?.events.filter((e) => e.kind === "subquery")).toEqual([]);
+    // The router was gated before its call; the generator and reviewer still
+    // ran (they answer the declined route).
+    expect(spendCalls).not.toContain("router.generate");
+  }, 15000);
+
   it("accepts a message exactly at the ceiling (2,000) and runs the pipeline", async () => {
     const { store, token } = await wiredStore();
     currentStore = store;
