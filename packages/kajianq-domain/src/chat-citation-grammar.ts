@@ -84,15 +84,33 @@ export interface CitationCollectionSlot {
  * never reduce to `no. 5010`, or a fabricated sub-number would ride in on a
  * retrieved one's grounding (fail-closed).
  *
- * Case-insensitive like the grammar whose match it reads: the token class that
- * found the match is the one that has to name the address inside it. A
- * case-sensitive read walks past a `No.` the scan accepted, returns no address,
- * and leaves the tail unstripped — the `:1` of `HR. Bukhari No. 5010:1` then
- * refuses against the very label the chunk grounds, while the same draft in the
- * corpus's own casing is accepted. The read names an address, never a
- * different one: its digit and letter classes are unchanged.
+ * The word is the **pattern's own third capture group**, not a second read of
+ * the text: the grammar that found the match is the only writer of "where the
+ * address word is", and reading it again here is how that rule came to be
+ * written twice — the comparison fold learned to fold case while this read did
+ * not, so a `No.` the scan accepted named no address and the `:1` of
+ * `HR. Bukhari No. 5010:1` refused against the very label the chunk grounds.
+ * The end comes from `match.indices`, which the pattern's `d` flag is what
+ * publishes, so nothing here counts characters and the bound cannot drift when
+ * the pattern gains a group.
+ *
+ * The third group is `undefined` for a token that is not ASCII-digit-led
+ * (`HR. Bukhari no. abc`), which is the same "no address to reduce to" state as
+ * before: the match still exists, the citation is still refused, and the lexical
+ * tail strip owns it. Making that group mandatory instead would delete the match
+ * and let such a citation past the ungrounded scan unseen (fail-open).
+ *
+ * One exception the read shares with the fold, pinned in the validator test: a
+ * letter glued to the number (`no. 5010a`) is part of the number word, so it is
+ * compared as written and `…5010a` / `…5010A` are two comparison forms. The corpus
+ * renders the number numerically, so the exception costs a false refusal only for
+ * a label shape it never carries, and never a false ground.
  */
-const HADITH_ADDRESS = /^(.*?no\.\s*\d[\p{L}\p{Nd}]*)/iu;
+function hadithAddressOf(match: RegExpExecArray): string | null {
+  const numberWord = match.indices?.[3];
+  if (numberWord === undefined) return null;
+  return match[0].slice(0, numberWord[1] - match.index);
+}
 
 /**
  * The citation grammars the product renders. Literal regexes, not strings
@@ -127,16 +145,24 @@ const HADITH_ADDRESS = /^(.*?no\.\s*\d[\p{L}\p{Nd}]*)/iu;
 // brackets: `[HR. Malik no. 18]` must not capture a phantom `…no. 18]` span
 // that normalized to nothing a chunk grounds — a false UNGROUNDED, i.e. a
 // refused grounded answer; the Quran address already skipped them. The match
-// therefore spans address + absorbed tail; `HADITH_ADDRESS` names the address
-// inside it. A **spaced** joiner stays outside this token — `HR. Bukhari no.
+// therefore spans address + absorbed tail; the pattern's second group is that
+// tail and its third is the address's number word — `hadithAddressOf` reads the
+// address end off the third group's recorded bounds rather than searching the
+// text for the address word a second time. A **spaced** joiner stays outside this
+// token — `HR. Bukhari no.
 // 5010 - 5011` scans as its head — a recorded exclusion (ADR-0049's "Hadith
 // ranges" revisit trigger), pinned as deliberate in the validator test. The
 // collection is the first **capture group**, so a consumer rewriting the name
 // reads it out of the match the scan made rather than finding it again.
 const HADITH_GRAMMAR: CitationGrammar = {
+  // The tail is the same run of token characters it always was: the lookahead is
+  // what keeps the token non-empty now that the number word and the absorbed
+  // remainder are separate groups, and it consumes nothing. The number word is the
+  // optional group after it — optional so a non-digit-led token still MATCHES, with
+  // no address for `hadithAddressOf` to name.
   pattern: () =>
-    /\bHR(?:\.|\s)\s*([^\s,.]{1,24}(?:\s+[^\s,.]{1,24}){0,3})(\s+no\.\s*[^\s,;.)[\]]+)/dgi,
-  addressOf: (match) => HADITH_ADDRESS.exec(match[0])?.[1] ?? null,
+    /\bHR(?:\.|\s)\s*([^\s,.]{1,24}(?:\s+[^\s,.]{1,24}){0,3})(\s+no\.\s*(?=[^\s,;.)[\]])(\d[\p{L}\p{Nd}]*)?[^\s,;.)[\]]*)/dgiu,
+  addressOf: (match) => hadithAddressOf(match),
   collectionOf: (match) => hadithCollectionSlot(match),
 };
 
