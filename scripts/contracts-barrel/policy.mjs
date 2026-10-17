@@ -50,7 +50,7 @@ import { BARREL_FILE, SRC_DIR, moduleFiles, readModuleFile, resolveModule } from
  * ANOTHER module (a collision) passes: the import resolves, so the silent gap is
  * closed, and which of the two the author meant is a reader's question. A module
  * that `import`s a name it re-exports is only attributed to that origin when the
- * import clause is `statements.mjs` recognises; otherwise the export stays this
+ * import clause is one `statements.mjs` recognises; otherwise the export stays this
  * module's member and the origin's surfaces as unwired — loud, and fixed by
  * spelling the re-export `export … from`. A namespace re-export (`export * as ns
  * from "./x"`) publishes one name, `ns`: a member reachable only as `ns.carried`
