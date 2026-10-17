@@ -139,6 +139,12 @@ jobs:
     name: post deploy checks
     needs: deploy
     runs-on: ubuntu-latest
+    # The checks read the same environment's values the deploy did: the public
+    # URL the smoke, ZAP and Schemathesis steps target, and the host/user/key the
+    # database tunnel logs in with. Without this scope they resolve
+    # repository-level, which is what keeps a repository-level copy load-bearing
+    # for a staging run.
+    environment: staging
     # The ZAP container image, pinned BY DIGEST — the single bump site for the
     # scan's image, referenced by the pre-pull step, the `docker_name` input and
     # the failure classifier. Never `:stable`: a floating tag is the one input
@@ -214,8 +220,11 @@ jobs:
       # by hardening posture (ADR-0044 decision 5). A GitHub runner reaches it
       # only through an ssh tunnel — the same shape the cutover runbook's
       # post-cutover snapshot uses. The tunnel lives for the smoke step's shell;
-      # the strict host-key check is accepted because the key is environment-
-      # scoped to this repo.
+      # the strict host-key check is accepted because the credential is a
+      # purpose-made deploy key for this repository's deploy identity, not a
+      # shared human login. This job carries `environment: staging`, so the host,
+      # the user and the key resolve at that scope — the key still the
+      # repository-level copy while `staging` holds no secret of its own.
       - name: Open ssh tunnel to the VPS database
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh

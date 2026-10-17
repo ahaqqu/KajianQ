@@ -18,7 +18,12 @@
 #   KAJIANQ_DEPLOY_HOST   the server (or a ~/.ssh/config alias)
 #   KAJIANQ_DEPLOY_USER   the deploy identity (kajianq-deploy — a fixed account,
 #                         see the note below)
-#   KAJIANQ_DEPLOY_ROOT   the deployed tree on the box (default /srv/kajianq)
+#   KAJIANQ_DEPLOY_ROOT   the deployed tree on the box — required, with no
+#                         default: it must name the tree the units serve
+#                         (WorkingDirectory/ReadWritePaths in
+#                         provision/vps/systemd/kajianq-api.service), and a
+#                         silent /srv/kajianq would let a deploy replace a tree
+#                         nothing reads while reporting success
 #   KAJIANQ_PUBLIC_URL    the public base URL the smoke test hits
 #
 # The deploy identity is a dedicated unprivileged account, not a human admin
@@ -108,7 +113,9 @@ fi
 # shellcheck source=/dev/null
 . "${ENV_FILE}"
 
-for var in KAJIANQ_DEPLOY_HOST KAJIANQ_DEPLOY_USER; do
+# The tree belongs in this list: a deploy that cannot name its destination must
+# fail here rather than guess one (the header states why there is no default).
+for var in KAJIANQ_DEPLOY_HOST KAJIANQ_DEPLOY_USER KAJIANQ_DEPLOY_ROOT; do
     # shellcheck disable=SC2154
     if [ -z "${!var:-}" ]; then
         echo "deploy: ${var} is empty in ${ENV_FILE}" >&2
@@ -116,7 +123,7 @@ for var in KAJIANQ_DEPLOY_HOST KAJIANQ_DEPLOY_USER; do
     fi
 done
 
-DEPLOY_ROOT="${KAJIANQ_DEPLOY_ROOT:-/srv/kajianq}"
+DEPLOY_ROOT="${KAJIANQ_DEPLOY_ROOT}"
 PUBLIC_URL="${KAJIANQ_PUBLIC_URL:-}"
 SSH_TARGET="${KAJIANQ_DEPLOY_USER}@${KAJIANQ_DEPLOY_HOST}"
 SSH_OPTS=(-o BatchMode=yes -o StrictHostKeyChecking=accept-new)
