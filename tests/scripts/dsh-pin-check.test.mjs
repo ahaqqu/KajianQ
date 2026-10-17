@@ -799,16 +799,51 @@ describe("unreadable config", () => {
     expect(res.stderr).toContain(fx.profile);
   });
 
-  it("is fatal on a bundle whose declared patch file is absent", () => {
+  it("is fatal on a bundle whose declared patch file is absent, never a partial bundle", () => {
     const fx = fixture();
     const dir = writeBundle(fx, "fixture-bundle-base", [catalogEntry(["alpha-model"])]);
     rmSync(join(dir, "patch-0.yml"));
-    writeProfile(fx, ["fixture-bundle-base"]);
+    // A second, present layer: without it the exit 1 could come from the
+    // `layers.length === 0` path instead of the missing declared file, and the
+    // assertion below would pass vacuously.
+    writeProfile(fx, ["fixture-bundle-base"], insertEntries(catalogEntry(["alpha-model"])));
+    writeRole(fx, "fixer", `model: "${pinFor("alpha-model")}"`);
+    writeCatalog(fx, ["alpha-model"]);
 
     const res = runPreflight(fx);
 
     expect(res.status).toBe(1);
     expect(res.stderr).toContain(join(dir, "patch-0.yml"));
+    expect(res.stderr).toContain("declares the patch file");
+    expect(res.stderr).toContain("drops that whole bundle in the harness (never a partial one)");
+    // Not the empty-layers fatal, and not the unresolvable-bundle fatal: this
+    // one names the declared file.
+    expect(res.stderr).not.toContain("no patch layer to compose");
+    expect(res.stderr).not.toContain("cannot resolve the profile bundle");
+    // No verdict is printed for the layer that is present.
+    expect(res.stdout).not.toContain("composed");
+    expect(res.stdout).not.toContain("fixer: alpha-model");
+  });
+
+  it("never composes a bundle's other declared files when one of them is absent", () => {
+    const fx = fixture();
+    // The bundle declares two patch files; the first carries the catalog and
+    // the default route, so keeping it while dropping the absent second would
+    // compose a partial bundle and pass a pin the harness cannot dispatch.
+    const dir = writeBundle(fx, "fixture-bundle-base", [
+      insertEntries(catalogEntry(["alpha-model"]), defaultRouteEntry("ollama", "alpha-model")),
+      insertEntries(policySettingsInsert()),
+    ]);
+    rmSync(join(dir, "patch-1.yml"));
+    writeProfile(fx, ["fixture-bundle-base"], insertEntries(catalogEntry(["alpha-model"])));
+    writeRole(fx, "fixer", `model: "${pinFor("alpha-model")}"`);
+    writeCatalog(fx, ["alpha-model"]);
+
+    const res = runPreflight(fx);
+
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain(join(dir, "patch-1.yml"));
+    expect(res.stdout).not.toContain("✓ fixer: alpha-model");
   });
 });
 

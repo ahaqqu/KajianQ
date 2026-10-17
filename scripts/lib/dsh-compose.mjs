@@ -191,11 +191,18 @@ export function unquote(value) {
 export const layers = [];
 
 /** Add one patch layer to the stack. A file that is not there contributes no
- * layer: the profile patch and the home layer are optional in the harness, so
- * their absence is a fact to record, not a failure. */
-export async function addLayer(kind, label, file) {
+ * layer when it is optional — the profile patch and the home layer are, in the
+ * harness as here — but a file a bundle's own manifest declares is required:
+ * the harness reads a bundle's declared files inside one `try`, so a single
+ * unreadable file drops that whole bundle, and composing the bundle's other
+ * files instead would be a stack the harness does not have. */
+export async function addLayer(kind, label, file, { required = false } = {}) {
   if (!existsSync(file)) {
-    probe(file, "absent");
+    probe(file, required ? "declared by its bundle manifest but absent" : "absent");
+    if (required)
+      failConfig(
+        `the bundle ${JSON.stringify(label)} declares the patch file ${file} in its dsh.bundle.patch list, and it is absent — one unreadable declared file drops that whole bundle in the harness (never a partial one), so a stack composed from the bundle's other files is not the harness's: restore the file, or drop it from the bundle's dsh.bundle.patch list`,
+      );
     return;
   }
   const patches = await loadPatchFile(file);
@@ -250,7 +257,8 @@ export async function addBundleLayers({ anchor, profileDir, profileManifestPath 
       failConfig(
         `the profile bundle ${JSON.stringify(packageName)} declares no dsh.bundle.patch file list in ${bundleManifestPath}`,
       );
-    for (const file of files) await addLayer("bundle", packageName, resolve(dir, file));
+    for (const file of files)
+      await addLayer("bundle", packageName, resolve(dir, file), { required: true });
   }
 }
 
