@@ -1165,6 +1165,40 @@ describe("provisioning config as code stays true to the ADR", () => {
     }
   });
 
+  it("a re-apply over unchanged unit content leaves the deploy green; a changed definition does not", () => {
+    // The ticket's reproduction, end to end across both scripts: install (apply.sh), re-apply
+    // over unchanged content, then read the deploy's assertion with systemd answering "last run
+    // exited 0, hours ago". Only a changed definition may make that red.
+    const cfg = configInstallFixture();
+    const prov = provenanceFixture();
+    try {
+      const installedAt = 2000;
+      const lastRun = 3000;
+      expect(cfg.run().status).toBe(0);
+      utimesSync(cfg.dst, installedAt, installedAt);
+      const before = prov.run({ unitFile: cfg.dst, exited: lastRun });
+      expect(before.status).toBe(0);
+      expect(before.stdout).toContain("backup unit healthy");
+
+      // The re-apply the ticket was about: identical bytes, so nothing is written and the check
+      // keeps reading the same mtime.
+      expect(cfg.run().stdout).toContain("unchanged");
+      const afterReapply = prov.run({ unitFile: cfg.dst, exited: lastRun });
+      expect(afterReapply.status).toBe(0);
+      expect(afterReapply.stdout).toContain("backup unit healthy");
+
+      // A genuinely changed definition is written, so the unit must run again before it passes.
+      writeFileSync(cfg.src, "[Unit]\nDescription=fixture changed\n");
+      expect(cfg.run().status).toBe(0);
+      const afterChange = prov.run({ unitFile: cfg.dst, exited: lastRun });
+      expect(afterChange.status).toBe(1);
+      expect(afterChange.stderr).toContain("BEFORE its current definition was installed");
+    } finally {
+      cfg.cleanup();
+      prov.cleanup();
+    }
+  });
+
   it("the backup-provenance check reddens on a unit that genuinely never ran", () => {
     // The negative case the #181 guard exists for, executed rather than asserted: an empty
     // ExecMainExitTimestamp is "installed but never executed", and it must fail.
