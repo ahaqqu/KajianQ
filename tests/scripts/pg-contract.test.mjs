@@ -20,8 +20,8 @@ import {
 import { classify, readReport } from "../../scripts/pg-contract/report.mjs";
 import {
   collectedTestFiles,
+  collectsFile,
   globRoots,
-  globToRegExp,
   includeGlobs,
   splitPathList,
 } from "../../scripts/pg-contract/tree.mjs";
@@ -170,14 +170,15 @@ describe("the collected universe is the runner's, read from its own config", () 
     }
   });
 
-  it("compiles a glob the way the runner matches one", () => {
-    const matcher = globToRegExp("packages/**/src/**/*.{test,prop.test}.ts");
-    expect(matcher.test("packages/infra/src/deep/nested/store.test.ts")).toBe(true);
-    expect(matcher.test("packages/infra/src/store.prop.test.ts")).toBe(true);
-    expect(matcher.test("packages/infra/src/store.ts")).toBe(false);
-    // A single star stays inside one segment; a double star crosses any number.
-    expect(matcher.test("packages/infra/store.test.ts")).toBe(false);
-    expect(globToRegExp("tests/*/*.test.mjs").test("tests/a/b/c.test.mjs")).toBe(false);
+  it("matches a path the way the runner's globs do", () => {
+    const globs = ["packages/**/src/**/*.{test,prop.test}.ts"];
+    expect(collectsFile(globs, "packages/infra/src/deep/nested/store.test.ts")).toBe(true);
+    expect(collectsFile(globs, "packages/infra/src/store.prop.test.ts")).toBe(true);
+    expect(collectsFile(globs, "packages/infra/src/store.ts")).toBe(false);
+    // A double star crosses any number of segments, a single star stays inside one.
+    expect(collectsFile(globs, "packages/infra/store.test.ts")).toBe(false);
+    expect(collectsFile(["tests/*/*.test.mjs"], "tests/a/b/c.test.mjs")).toBe(false);
+    expect(collectsFile(["tests/**/*.test.mjs"], "tests/a/b/c.test.mjs")).toBe(true);
   });
 });
 

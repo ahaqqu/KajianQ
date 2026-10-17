@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
-import { join, relative, sep } from "node:path";
+import { join, matchesGlob, relative, sep } from "node:path";
 
 import { skipLiteral } from "./source.mjs";
 
@@ -21,48 +21,28 @@ export const repoRelative = (root, path) => relative(root, path).split(sep).join
 /** The first segment of every glob: the trees the walk has to enter. */
 export const globRoots = (globs) => [...new Set(globs.map((glob) => glob.split("/")[0]))].sort();
 
-const escapeRe = (char) => char.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
 /**
- * One glob as one RegExp: a double star spans zero or more segments, a single star
- * stays within one segment, `{a,b}` is either. Only the shapes a test include uses are
- * understood; anything else matches literally, so an exotic glob collects nothing loudly
- * instead of collecting the wrong files quietly.
+ * A glob as the patterns the platform's matcher takes: `{a,b}` is either one, and the
+ * rest is left to `node:path`'s own glob matcher rather than to a pattern this module
+ * compiles itself — a regex built from a glob is a pattern the gate would have to trust
+ * twice, and the platform's semantics (`**` across segments, `*` within one) are the ones
+ * the runner collects by. The runtime is the one the workflows pin through `setup-bun`.
  */
-export function globToRegExp(glob) {
-  let out = "";
-  for (let i = 0; i < glob.length; i += 1) {
-    const char = glob[i];
-    if (char === "*" && glob[i + 1] === "*") {
-      if (glob[i + 2] === "/") {
-        out += "(?:.*/)?";
-        i += 2;
-      } else {
-        out += ".*";
-        i += 1;
-      }
-      continue;
-    }
-    if (char === "*") {
-      out += "[^/]*";
-      continue;
-    }
-    if (char === "{") {
-      const end = glob.indexOf("}", i);
-      if (end !== -1) {
-        const alternatives = glob
-          .slice(i + 1, end)
-          .split(",")
-          .map(escapeRe);
-        out += `(?:${alternatives.join("|")})`;
-        i = end;
-        continue;
-      }
-    }
-    out += escapeRe(char);
-  }
-  return new RegExp(`^${out}$`);
+export function expandBraces(glob) {
+  const open = glob.indexOf("{");
+  const close = open === -1 ? -1 : glob.indexOf("}", open);
+  if (close === -1) return [glob];
+  const before = glob.slice(0, open);
+  const after = glob.slice(close + 1);
+  return glob
+    .slice(open + 1, close)
+    .split(",")
+    .flatMap((alternative) => expandBraces(before + alternative + after));
 }
+
+/** Whether the runner's globs collect this repo-relative path. */
+export const collectsFile = (globs, file) =>
+  globs.some((glob) => expandBraces(glob).some((pattern) => matchesGlob(file, pattern)));
 
 /**
  * The `test.include` globs of a config source, or null when the object has none.
@@ -133,7 +113,6 @@ function walk(dir, out) {
 
 /** Every file the globs collect under `root`, repo-relative and sorted. */
 export function collectedTestFiles(root, globs) {
-  const matchers = globs.map(globToRegExp);
   const files = [];
   for (const tree of globRoots(globs)) {
     const dir = join(root, tree);
@@ -141,7 +120,7 @@ export function collectedTestFiles(root, globs) {
   }
   return files
     .map((path) => repoRelative(root, path))
-    .filter((file) => matchers.some((matcher) => matcher.test(file)))
+    .filter((file) => collectsFile(globs, file))
     .sort();
 }
 
