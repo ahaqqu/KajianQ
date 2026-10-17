@@ -712,22 +712,31 @@ holds what, and the hostname step that updates each, are
 **Every scope whose jobs read `VPS_USER` must agree on it, and that is easy to
 get half-right.** Changing one scope's copy leaves a dispatch that resolves
 another scope authenticating as the old account, and the failure looks like an
-ssh problem rather than a variable one. Set it in each scope that carries the
-name, then confirm none is left on a different value:
+ssh problem rather than a variable one. Set it in every scope that carries the
+name — on a box whose environments carry it that is each of those environments,
+and on a box where none does it is the repository level — then confirm none is
+left on a different value:
 
 ```bash
-# Repository level: what a job resolves when its environment carries no copy —
-# on a single-scope box, deploy-vps.yml's job and the Staging tunnel.
-gh variable set VPS_USER --body kajianq-deploy
+# `staging` and `prod` each carry their own copy and read the repository level
+# not at all; which scope owns what is docs/VPS-OPERATIONS.md §1.4.
+gh api --method PATCH repos/{owner}/{repo}/environments/staging/variables/VPS_USER \
+    -f name=VPS_USER -f value=kajianq-deploy
 
-# The `prod` environment carries its own environment-scoped copy, which
-# overrides the repo-level value for a prod dispatch.
 gh api --method PATCH repos/{owner}/{repo}/environments/prod/variables/VPS_USER \
     -f name=VPS_USER -f value=kajianq-deploy
 
-gh variable list | grep VPS_USER
+gh api repos/{owner}/{repo}/environments/staging/variables \
+    --jq '.variables[] | "\(.name)=\(.value)"' | grep VPS_USER
 gh api repos/{owner}/{repo}/environments/prod/variables \
     --jq '.variables[] | "\(.name)=\(.value)"' | grep VPS_USER
+gh variable list | grep VPS_USER    # the repository level keeps no copy
+
+# A box where no environment carries the name has one scope instead: the
+# repository level, which is what a job whose environment has no copy resolves.
+# That copy is removed rather than left once an environment carries the name.
+gh variable set VPS_USER --body kajianq-deploy
+gh variable list | grep VPS_USER
 ```
 
 Note whose shell this runs in: `gh` resolves the repository from the working
