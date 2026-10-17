@@ -237,25 +237,28 @@ repo-level set above — `VPS_HOST`, `VPS_USER`, `VPS_PUBLIC_URL` and
 environment-scoped `VPS_HOST`, `VPS_USER`, `VPS_PUBLIC_URL` and `VPS_ROOT`
 variables and its own `VPS_DEPLOY_SSH_KEY` secret. `VPS_ROOT`
 (`deploy-vps.yml` → `KAJIANQ_DEPLOY_ROOT`, the deployed tree) exists only at
-`prod` scope: `deploy-vps.yml` reads `vars.VPS_ROOT` on every dispatch, so a
-`staging` one resolves it empty and `provision/vps/deploy/deploy.sh` falls back
-to its `/srv/kajianq` default.
+`prod` scope in this repository's configuration: `deploy-vps.yml` reads
+`vars.VPS_ROOT` on every dispatch, so a `staging` one resolves it empty and
+`provision/vps/deploy/deploy.sh` falls back to its `/srv/kajianq` default. A
+fresh box built from `docs/VPS-SETUP.md` §8 is configured the other way — that
+guide sets `VPS_ROOT` at repository scope — so there a staging dispatch takes
+the value rather than the default.
 
 **The `prod` environment (owner sign-off gate).** A prod dispatch of
 `Deploy to VPS` targets the `prod` environment, which carries a
 required-reviewer protection rule (the owner) and a protected-branch policy —
 the approval is the owner's sign-off for a production-targeted deploy
 (ADR-0044 decision 2). Only `prod` is environment-scoped: its `VPS_HOST`,
-`VPS_USER`, `VPS_PUBLIC_URL` and `VPS_ROOT` variables and its
-`VPS_DEPLOY_SSH_KEY` secret shadow the repository-level copies for a prod
-dispatch. The `staging` environment carries no credentials of its own, so a
-staging dispatch resolves to the repository-level `VPS_HOST`, `VPS_USER`,
-`VPS_PUBLIC_URL` and `VPS_DEPLOY_SSH_KEY` — editing one of those moves a
-staging deploy immediately, with no environment boundary in between — and to no
-`VPS_ROOT` at all, leaving `provision/vps/deploy/deploy.sh` on its
-`/srv/kajianq` default. Both `VPS_HOST`s point at the **one box** (§1.2),
-because no production deployment is provisioned (ADR-0044 decision 2;
-deferred 2026-10-03).
+`VPS_USER` and `VPS_PUBLIC_URL` variables and its `VPS_DEPLOY_SSH_KEY` secret
+shadow the repository-level copies for a prod dispatch, and its own `VPS_ROOT`
+(the deployed tree) exists at that scope alone. The `staging` environment
+carries no credentials of its own, so a staging dispatch resolves to the
+repository-level `VPS_HOST`, `VPS_USER`, `VPS_PUBLIC_URL` and
+`VPS_DEPLOY_SSH_KEY` — editing one of those moves a staging deploy immediately,
+with no environment boundary in between — and to no `VPS_ROOT` at all, leaving
+`provision/vps/deploy/deploy.sh` on its `/srv/kajianq` default. Both
+`VPS_HOST`s point at the **one box** (§1.2), because no production deployment
+is provisioned (ADR-0044 decision 2; deferred 2026-10-03).
 
 ### 1.5 The permission model (deploy identity ↔ `kajianq`)
 
