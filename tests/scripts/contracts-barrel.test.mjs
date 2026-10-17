@@ -734,7 +734,7 @@ describe("a construct the scanner cannot resolve is refused, not guessed", () =>
       moduleSurface("const outer = {\n  export const inner = 1;\n};\n", "nested.ts"),
     );
     expect(message).toMatch(/nested\.ts:2/);
-    expect(message).toMatch(/not a `namespace` or `declare module` body/);
+    expect(message).toMatch(/not a `namespace`, `module` or `declare global` body/);
   });
 });
 
