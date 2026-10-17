@@ -658,6 +658,48 @@ describe("catalog verdicts", () => {
     );
   });
 
+  it("declares into the home layer when it owns the catalog, mode and tail intact", () => {
+    const fx = fixture();
+    // The bundle declares alpha and beta and defaults to beta; the home layer
+    // replaces the catalog with alpha alone, so the home layer — not the
+    // profile patch — owns `llm-pi-ai` and is the only layer `--fix` may edit.
+    composeBase(fx, { declared: ["alpha-model", "beta-model"], model: "beta-model" });
+    const homeFile = join(fx.home, "cordis.patch.yml");
+    writeHome(fx, catalogEntry(["alpha-model"]));
+    writeRole(fx, "reviewer", `model: "${pinFor("beta-model")}"`);
+    writeCatalog(fx, ["alpha-model", "beta-model"]);
+    chmodSync(homeFile, 0o600);
+    const before = readFileSync(homeFile, "utf8");
+
+    const first = runPreflight(fx, ["--fix"]);
+
+    expect(first.status).toBe(1);
+    expect(first.stdout).toContain(
+      "✗ reviewer: beta-model — NOT DECLARED, inherited route (no policy in force), served",
+    );
+    expect(first.stdout).toContain(`+ declared beta-model in ${homeFile}`);
+    const fixed = readFileSync(homeFile, "utf8");
+    // The append lands at the end of the models list, the file keeps its
+    // terminating newline, and the mode survives the temp+rename write.
+    expect(fixed).toContain("            contextWindow: 1000000\n          - id: beta-model\n");
+    expect(fixed.endsWith("max: max\n")).toBe(true);
+    expect(statSync(homeFile).mode & 0o777).toBe(0o600);
+    expect(
+      layerEntry(parseEntries(fixed), "llm-pi-ai").config.providers.ollama.models,
+    ).toHaveLength(2);
+    const backups = backupsOf(homeFile);
+    expect(backups).toHaveLength(1);
+    expect(statSync(backups[0]).mode & 0o777).toBe(0o600);
+    expect(readFileSync(backups[0], "utf8")).toBe(before);
+
+    const second = runPreflight(fx);
+    expect(second.status).toBe(0);
+    expect(second.stdout).toContain(`catalog 2 model id(s) from ${homeFile}`);
+    expect(second.stdout).toContain(
+      "✓ reviewer: beta-model — declared, inherited route (no policy in force), served",
+    );
+  });
+
   it("refuses to declare into an installed bundle layer", () => {
     const fx = fixture();
     const bundleDir = writeBundle(fx, "fixture-bundle-base", [
@@ -738,6 +780,38 @@ describe("route policy", () => {
     ).toContainEqual({ provider: "ollama", model: "beta-model" });
     expect(readFileSync(patchFile, "utf8")).not.toContain("model: beta-model");
     expect(backupsOf(patchFile)).toHaveLength(0);
+  });
+
+  it("prints the narrowed-route fix into the home layer that owns the policy", () => {
+    const fx = fixture();
+    composeBase(fx, {
+      declared: ["alpha-model", "beta-model"],
+      profilePatch: catalogEntry(["alpha-model", "beta-model"]),
+    });
+    const homeFile = join(fx.home, "cordis.patch.yml");
+    // The home layer patches the policy entry, so it outranks the bundle's
+    // settings entry and is where the route edit belongs.
+    writeHome(fx, policyEntry({ enabled: true, routes: ["ollama/alpha-model"] }));
+    writeRole(fx, "reviewer", `model: "${pinFor("beta-model")}"`);
+    writeCatalog(fx, ["alpha-model", "beta-model"]);
+
+    const res = runPreflight(fx);
+
+    expect(res.status).toBe(1);
+    expect(res.stdout).toContain("✗ reviewer: beta-model — declared, NOT ALLOWED, served");
+    expect(res.stdout).toContain(
+      `fix: add this route to subagent-model-selection-settings.allowedModels in ${homeFile} — never reroute the pin:`,
+    );
+    // The printed row carries the home file's own indentation, and pasting it
+    // into that file's `allowedModels` list settles the verdict.
+    const printed = printedEntry(res.stdout, "ollama", "beta-model");
+    expect([printed.dash, printed.model]).toEqual([6, 8]);
+    writeFileSync(homeFile, `${readFileSync(homeFile, "utf8")}${printed.block}\n`);
+    const after = runPreflight(fx);
+    expect(after.status).toBe(0);
+    expect(after.stdout).toContain("✓ reviewer: beta-model — declared, allowed, served");
+    // The policy edit is owner-side: --fix wrote nothing beside it.
+    expect(backupsOf(homeFile)).toHaveLength(0);
   });
 
   it("fails a pin an enabled policy allows when the delegation tool ignores that policy", () => {
