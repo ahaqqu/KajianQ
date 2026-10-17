@@ -1123,11 +1123,31 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(apply).not.toMatch(
       /install -o root -g root -m 0644 "\$\{SRC\}\/systemd\/kajianq-backup\.service"/,
     );
-    // Not just that unit: no plain 0644 install may remain anywhere in the script. Every
-    // config it places has an mtime a future check could read, and `install` re-stamps an
-    // identical file — the whole class this helper removes. The visudo-gated sudoers grant
-    // (0440) and `install -d` are not 0644 installs and stay as they are.
-    expect(apply).not.toMatch(/install -o root -g root -m 0644/);
+    // Not just that unit: no raw `install` may write a file anywhere in the script, since
+    // every config it places has an mtime a future check could read and `install` re-stamps an
+    // identical file. Pinning one spelling would only catch one spelling — `-m0644`,
+    // `--mode=0644`, `--owner=root --group=root`, `install -m 0644 -o root -g root` all slip
+    // past a substring match — so the rule is an allowlist over the INVOCATIONS: the six that
+    // exist today are four `install -d` (directories hold no content), the helper's own write,
+    // and the visudo-gated sudoers grant, which is staged at 0440 and moved into place by a
+    // parse-gated `mv`. A new invocation anywhere reddens here, whatever its flags.
+    const invocations = apply
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => /^(run )?install\b/.test(line))
+      .map((line) => line.replace(/\s+/g, " "));
+    expect(invocations.length).toBeGreaterThanOrEqual(6);
+    const allowed = [
+      /^(run )?install -d /,
+      /^install -o "\$\{owner\}" -g "\$\{group\}" -m "\$\{mode\}"/,
+      /^install -o root -g root -m 0440 "\$\{tmp\}"/,
+    ];
+    for (const invocation of invocations) {
+      expect(
+        allowed.some((pattern) => pattern.test(invocation)),
+        `raw install in apply.sh — route it through install_config: ${invocation}`,
+      ).toBe(true);
+    }
   });
 
   it("an unchanged config keeps its mtime, so a re-apply cannot fake a changed definition", () => {
@@ -1218,6 +1238,9 @@ describe("provisioning config as code stays true to the ADR", () => {
       const never = fx.run({ exited: "" });
       expect(never.status).toBe(1);
       expect(never.stderr).toContain("has never run");
+      // The remedy is scoped to both causes of an empty timestamp: on systemd 261 an unknown
+      // unit also reports empty, and there `systemctl start` answers "Unit ... not found".
+      expect(never.stderr).toContain("daemon-reload");
 
       // A run that predates the installed definition — the state apply.sh used to manufacture
       // by re-stamping. Also still red.
@@ -1245,6 +1268,12 @@ describe("provisioning config as code stays true to the ADR", () => {
       const timeRead = fx.run({ exited: 3000, showFail: "ExitTimestamp" });
       expect(timeRead.status).toBe(1);
       expect(timeRead.stderr).toContain("last-run timestamp");
+
+      // All digits, but past what `-lt` parses as intmax_t: it errors, and inside an `if`
+      // condition that reads as false — the healthy line — unless the length is bounded.
+      const overflowing = fx.run({ exited: "9".repeat(20) });
+      expect(overflowing.status).toBe(1);
+      expect(overflowing.stderr).toContain("out-of-range last-run timestamp");
 
       // A unit file that is not installed at all is named, not silently read as healthy.
       const absent = fx.run({ unitFile: join(fx.dir, "absent.service"), exited: 3000 });

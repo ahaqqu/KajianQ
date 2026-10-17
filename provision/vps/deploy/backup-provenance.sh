@@ -61,6 +61,8 @@ exited="${exited#@}"
 if [ -z "$exited" ]; then
     echo "deploy: kajianq-backup.service has never run — the encrypted backup is unproven" >&2
     echo "deploy: prove it now: sudo systemctl start kajianq-backup.service" >&2
+    echo "deploy: if that answers 'Unit kajianq-backup.service not found', systemd has not loaded" >&2
+    echo "deploy: the unit at all: sudo systemctl daemon-reload, and re-run provision/vps/apply.sh" >&2
     exit 1
 fi
 # A timestamp that is not a plain integer would make the comparison below an error, and
@@ -73,6 +75,13 @@ case "$exited" in
         exit 1
         ;;
 esac
+# `-lt` parses its operands as intmax_t, so an all-digit run longer than it can hold errors
+# the same way and reaches the same healthy line. Eleven digits already covers every
+# plausible Unix second, so anything longer is refused rather than overflowed.
+if [ "${#exited}" -gt 11 ]; then
+    echo "deploy: kajianq-backup.service reported an out-of-range last-run timestamp (${exited}) — cannot prove it ran as installed" >&2
+    exit 1
+fi
 if [ "$status" != "0" ]; then
     echo "deploy: kajianq-backup.service last run exited $status — the encrypted backup is failing" >&2
     echo "deploy: check: journalctl -u kajianq-backup.service -n 40" >&2
