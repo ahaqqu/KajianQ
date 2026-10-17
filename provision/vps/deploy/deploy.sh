@@ -138,11 +138,10 @@ trap 'rm -rf "${STAGE}"' EXIT
 # tests execute against fixtures is the file that runs on the box.
 #
 # It runs BEFORE the build and before the first mutation because it reads only
-# state that already exists on the box. Failing it here costs an ssh round trip
-# and leaves the box on its previous revision; failing it after the ship — where
-# it used to sit — leaves the new tree live and the API restarted with the smoke
-# and the doctor skipped, a failure whose cost is an unverified deployment
-# already serving.
+# state that already exists on the box: a red here leaves the box on its previous
+# revision, where the same red later in the path would leave the new tree live,
+# the API restarted, and the smoke and the doctor below skipped — an unverified
+# deployment already serving.
 log "preflight: the backup unit's provenance"
 run ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" bash -s \
     <"${REPO_DIR}/provision/vps/deploy/backup-provenance.sh"

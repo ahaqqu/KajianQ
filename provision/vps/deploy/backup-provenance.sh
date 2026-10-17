@@ -45,14 +45,16 @@ if [ ! -f "${UNIT_FILE}" ]; then
     exit 1
 fi
 
-# A unit systemd does not know about (no `daemon-reload` since the apply) is its
-# own broken state, and `systemctl show` exits non-zero on it: name it here, so
-# the log distinguishes "not loaded" from "loaded but never run".
+# Both reads are guarded: a failing `systemctl show` would otherwise abort with its
+# own exit status and no `deploy:` line saying what could not be read.
 if ! status="$(systemctl show "${UNIT}" -p ExecMainStatus --value)"; then
-    echo "deploy: systemd does not know ${UNIT} — is the unit installed and loaded (systemctl daemon-reload)?" >&2
+    echo "deploy: could not read ${UNIT}'s exit status — systemctl show failed" >&2
     exit 1
 fi
-exited="$(systemctl show "${UNIT}" -p ExecMainExitTimestamp --timestamp=unix --value)"
+if ! exited="$(systemctl show "${UNIT}" -p ExecMainExitTimestamp --timestamp=unix --value)"; then
+    echo "deploy: could not read ${UNIT}'s last-run timestamp — systemctl show failed" >&2
+    exit 1
+fi
 installed="$(stat -c %Y "${UNIT_FILE}")"
 exited="${exited#@}"
 
@@ -61,6 +63,16 @@ if [ -z "$exited" ]; then
     echo "deploy: prove it now: sudo systemctl start kajianq-backup.service" >&2
     exit 1
 fi
+# A timestamp that is not a plain integer would make the comparison below an error, and
+# a failing `[` inside an `if` condition is just false — the healthy line. That is the
+# same fall-through-to-healthy shape the missing-unit-file guard closes, so it fails
+# closed here too rather than reporting a health it never established.
+case "$exited" in
+    *[!0-9]*)
+        echo "deploy: kajianq-backup.service reported a non-numeric last-run timestamp (${exited}) — cannot prove it ran as installed" >&2
+        exit 1
+        ;;
+esac
 if [ "$status" != "0" ]; then
     echo "deploy: kajianq-backup.service last run exited $status — the encrypted backup is failing" >&2
     echo "deploy: check: journalctl -u kajianq-backup.service -n 40" >&2

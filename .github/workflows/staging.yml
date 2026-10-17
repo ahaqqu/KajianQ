@@ -116,7 +116,7 @@ permissions:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Deploy. The actual build → ship → restart → smoke lives in the reusable
+  # Deploy. The actual preflight → build → ship → restart → smoke lives in the reusable
   # deploy-vps.yml workflow and provision/vps/deploy/deploy.sh — one
   # implementation, so this workflow cannot drift from the operator path. The
   # job runs on every push to main and every dispatch.

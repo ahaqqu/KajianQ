@@ -184,6 +184,11 @@ function provenanceFixture() {
   writeFileSync(
     join(dir, "systemctl"),
     `#!/bin/sh
+# STUB_SHOW_FAIL names the property whose read fails, so each of the check's two
+# systemctl calls can be made to fail on its own.
+if [ -n "\${STUB_SHOW_FAIL}" ]; then
+  case "$*" in *"\${STUB_SHOW_FAIL}"*) exit 1 ;; esac
+fi
 case "$*" in
   *ExecMainExitTimestamp*) if [ -n "\${STUB_EXITED}" ]; then printf '@%s\\n' "\${STUB_EXITED}"; fi ;;
   *ExecMainStatus*) printf '%s\\n' "\${STUB_STATUS}" ;;
@@ -195,7 +200,7 @@ exit 0
   return {
     dir,
     unit,
-    run: ({ unitFile = unit, exited = "", status = "0" } = {}) =>
+    run: ({ unitFile = unit, exited = "", status = "0", showFail = "" } = {}) =>
       spawnSync(
         "/bin/bash",
         [resolve(process.cwd(), "provision/vps/deploy/backup-provenance.sh"), unitFile],
@@ -206,6 +211,7 @@ exit 0
             PATH: `${dir}:${process.env.PATH}`,
             STUB_EXITED: exited,
             STUB_STATUS: status,
+            STUB_SHOW_FAIL: showFail,
           },
         },
       ),
@@ -1117,6 +1123,11 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(apply).not.toMatch(
       /install -o root -g root -m 0644 "\$\{SRC\}\/systemd\/kajianq-backup\.service"/,
     );
+    // Not just that unit: no plain 0644 install may remain anywhere in the script. Every
+    // config it places has an mtime a future check could read, and `install` re-stamps an
+    // identical file — the whole class this helper removes. The visudo-gated sudoers grant
+    // (0440) and `install -d` are not 0644 installs and stay as they are.
+    expect(apply).not.toMatch(/install -o root -g root -m 0644/);
   });
 
   it("an unchanged config keeps its mtime, so a re-apply cannot fake a changed definition", () => {
@@ -1218,6 +1229,22 @@ describe("provisioning config as code stays true to the ADR", () => {
       const failed = fx.run({ exited: 3000, status: "1" });
       expect(failed.status).toBe(1);
       expect(failed.stderr).toContain("last run exited 1");
+
+      // A timestamp that is not a plain integer cannot be compared; the comparison would
+      // error and fall through to the healthy line had it not been guarded.
+      const garbled = fx.run({ exited: "n/a" });
+      expect(garbled.status).toBe(1);
+      expect(garbled.stderr).toContain("non-numeric last-run timestamp");
+
+      // A `systemctl show` that fails outright names what could not be read, on either read,
+      // instead of aborting with systemd's own exit status.
+      const statusRead = fx.run({ exited: 3000, showFail: "ExecMainStatus" });
+      expect(statusRead.status).toBe(1);
+      expect(statusRead.stderr).toContain("could not read");
+
+      const timeRead = fx.run({ exited: 3000, showFail: "ExitTimestamp" });
+      expect(timeRead.status).toBe(1);
+      expect(timeRead.stderr).toContain("last-run timestamp");
 
       // A unit file that is not installed at all is named, not silently read as healthy.
       const absent = fx.run({ unitFile: join(fx.dir, "absent.service"), exited: 3000 });

@@ -24,8 +24,8 @@ for anything below that drifts.
   (Postgres, migrations, snapshots, backups), §3 (monitoring).
 - [`docs/VPS-SETUP.md`](../../../docs/VPS-SETUP.md) —
   provisioning, the deploy identity's key move, retention verification.
-- `provision/vps/deploy/deploy.sh` — the deploy path itself (build → ship →
-  restart → smoke); `.github/workflows/deploy-vps.yml` — its CI trigger.
+- `provision/vps/deploy/deploy.sh` — the deploy path itself (preflight → build →
+  ship → restart → smoke); `.github/workflows/deploy-vps.yml` — its CI trigger.
 - `.github/workflows/staging.yml` — the post-deploy validation jobs.
 - `docs/ARCHITECTURE.md` §8 (security scanning), §11 (availability), §12
   (reliability), §16 (tooling).
@@ -41,7 +41,7 @@ post-deploy smoke (health, an anonymous-session mint, the SPA HTML check).
 push/merge outside paths-ignore
   └─ Staging workflow
        ├─ deploy            → deploy-vps.yml → provision/vps/deploy/deploy.sh
-       │                       build → rsync → restart → smoke (public URL)
+       │                       preflight → build → rsync → restart → smoke (public URL)
        └─ post deploy checks → Golden Set smoke → ZAP · Schemathesis (smoke-gated)
 ```
 

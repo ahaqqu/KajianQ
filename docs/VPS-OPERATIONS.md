@@ -72,7 +72,7 @@ step both assume this path (a test pins it).
 ### 1.1 The deploy path, end to end
 
 The deployer is its own concern, outside `apps/` (ADR-0044 decision 3): the
-build → ship → restart → smoke path is
+preflight → build → ship → restart → smoke path is
 [`provision/vps/deploy/deploy.sh`](../provision/vps/deploy/deploy.sh), and its
 CI trigger is the reusable
 [`.github/workflows/deploy-vps.yml`](../.github/workflows/deploy-vps.yml). `apps/*`
