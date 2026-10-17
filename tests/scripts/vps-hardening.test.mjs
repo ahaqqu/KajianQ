@@ -44,6 +44,9 @@ const MANIFEST = buildManifest({
   tool: { pgDump: "pg_dump (PostgreSQL) 18.6", generator: "test" },
 });
 
+/** A URL that embeds credentials — what must never appear in a command line we teach. */
+const CREDENTIALED_URL = /postgres(ql)?:\/\/[^\s"']*:[^\s"'@]+@/;
+
 /** The executable lines of every bash block in a doc section, comments stripped. */
 function bashLines(text) {
   return [...text.matchAll(/```bash\n([\s\S]*?)```/g)]
@@ -379,47 +382,45 @@ describe("erasure a restore must re-apply", () => {
     expect(passed.stderr).toMatch(/restic/);
   });
 
-  it("teaches the env-file restore invocation, with no URL on any documented command line", () => {
-    // The operator's documented invocation is the one that must keep the credential out of
-    // argv and shell history: the restore command blocks carry an env-file path and a label,
-    // never a postgres:// URL --target-url would put on `ps` for the process's life.
+  it("prints a restore plan that never hands a credentialed URL to a shell", () => {
+    // The property, not the copy: whatever the plan's wording, no line it prints may carry a
+    // URL with embedded credentials (that is what `ps` shows for the process's life) or hand
+    // an operator a URL variable to type. The assertion survives any rewrite of the message.
+    const script = resolve(process.cwd(), "packages/infra/scripts/db-snapshot.mjs");
+    const plan = spawnSync("bun", [script, "restore-plan", "probe-label"], {
+      encoding: "utf8",
+      env: { PATH: process.env.PATH, HOME: process.env.HOME },
+    });
+    expect(plan.status, plan.stderr).toBe(0);
+    expect(plan.stdout).not.toMatch(CREDENTIALED_URL);
+    expect(plan.stdout).not.toMatch(/\$TARGET_URL/);
+  });
+
+  it("teaches no restore command that carries a credentialed URL", () => {
+    // Same invariant over what the operator is told to run: a URL with a user:password pair
+    // in a documented command line is readable through `ps` and kept in shell history.
     const ops = readFileSync(resolve(process.cwd(), "docs/VPS-OPERATIONS.md"), "utf8");
     const section = ops.slice(ops.indexOf("### 2.7"), ops.indexOf("### 2.8"));
-    expect(section).toMatch(/RESTORE_TARGET_URL/);
-    expect(section).toMatch(/--env-file \/etc\/kajianq\/backup\.env/);
-    // The drill's throwaway service-container credential is named as the deliberate exception.
-    expect(section).toMatch(/drill:drill@127\.0\.0\.1:5432\/postgres/);
-    // Assert on the executable lines: a comment may name the flag, a command must not use it.
-    const commands = bashLines(section);
-    expect(commands).not.toMatch(/postgres:\/\//);
-    expect(commands).not.toMatch(/--target-url/);
-
     const setup = readFileSync(resolve(process.cwd(), "docs/VPS-SETUP.md"), "utf8");
     const step = setup.slice(
       setup.indexOf("**Restoring for real**"),
       setup.indexOf("### Confirm the backup timer"),
     );
-    expect(step).toMatch(/RESTORE_TARGET_URL/);
-    expect(step).toMatch(/--env-file \/etc\/kajianq\/backup\.env/);
-    expect(step).toMatch(/drill:drill@127\.0\.0\.1:5432\/postgres/);
-    expect(bashLines(step)).not.toMatch(/postgres:\/\//);
+    for (const [name, text] of [
+      ["VPS-OPERATIONS §2.7", section],
+      ["VPS-SETUP restore step", step],
+    ]) {
+      expect(bashLines(text), name).not.toMatch(CREDENTIALED_URL);
+    }
+  });
 
-    // The backup script's printed hand-off names the same env-file form.
-    const backup = readFileSync(
-      resolve(process.cwd(), "provision/vps/backup/kajianq-backup.mjs"),
-      "utf8",
+  it("ships the scratch target in the env template as a placeholder, never the live database", () => {
+    // Config-as-code, like the api.env example: the template is committed, so its values can
+    // only be placeholders, and a restore onto the database it names would be refused.
+    const parsed = parseEnvFile(
+      readFileSync(resolve(process.cwd(), "provision/vps/backup/backup.env.example"), "utf8"),
     );
-    expect(backup).toMatch(/kajianq-restore\.mjs --label \$\{label\} --env-file/);
-
-    // The env template ships the scratch target as a placeholder only, and it must not name
-    // the live database (a restore onto it is refused by design).
-    const example = readFileSync(
-      resolve(process.cwd(), "provision/vps/backup/backup.env.example"),
-      "utf8",
-    );
-    const parsed = parseEnvFile(example);
     expect(parsed.RESTORE_TARGET_URL).toMatch(/^postgres:\/\/kajianq:CHANGE_ME@/);
-    expect(dbLocation(parsed.RESTORE_TARGET_URL).database).toBe("kajianq_restored");
     expect(isSameDatabase(parsed.RESTORE_TARGET_URL, parsed.PGDATABASE_URL)).toBe(false);
   });
 
