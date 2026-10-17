@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { Chunk } from "@app/rag-core";
-import { canonicalCollectionName } from "./chat-citation-collection";
+import {
+  HADITH_COLLECTION_ARTICLES,
+  HADITH_COLLECTION_SPELLINGS,
+  HADITH_COLLECTION_WRAPPERS,
+  canonicalCollectionName,
+} from "./chat-citation-collection";
 import { HADITH_COLLECTION_NAMES } from "./hadith-source";
 import { normalizeCitationLabel, validateCitations } from "./chat-citation-validator";
 
@@ -15,40 +20,101 @@ function chunk(label: string): Chunk {
   return { id: `c-${label}`, text: "evidence", metadata: { citation: label } };
 }
 
+/**
+ * The names the fold must carry, written out by hand: the vocabulary's semantic
+ * declaration, which {@link HADITH_COLLECTION_SPELLINGS} is checked against row
+ * for row — so a row cannot be re-mapped to another collection unseen.
+ */
+const DECLARED_COLLECTION_SPELLINGS: readonly (readonly [string, string])[] = [
+  ["Bukhari", "Bukhari"],
+  ["Muslim", "Muslim"],
+  ["Abu Dawud", "Abu Dawud"],
+  ["Abu Daud", "Abu Dawud"],
+  ["Tirmidhi", "Tirmidhi"],
+  ["Tirmidzi", "Tirmidhi"],
+  ["Nasai", "Nasai"],
+  ["Ibn Majah", "Ibn Majah"],
+  ["Ibnu Majah", "Ibn Majah"],
+  ["Malik", "Malik"],
+];
+
+/**
+ * One rendering of a name per wrapper word and per article: the declaration the
+ * generated forms are bound to, so a wrapper added to the fold without a
+ * hand-written meaning here fails the coverage test below.
+ */
+const DECLARED_COLLECTION_RENDERINGS: readonly (readonly [string, string])[] = [
+  ["Bukhari", "Bukhari"],
+  ["Sahih Bukhari", "Bukhari"],
+  ["Shahih Bukhari", "Bukhari"],
+  ["Sahih al-Bukhari", "Bukhari"],
+  ["Muslim", "Muslim"],
+  ["Sahih Muslim", "Muslim"],
+  ["Abu Dawud", "Abu Dawud"],
+  ["Abu Daud", "Abu Dawud"],
+  ["Sunan Abu Dawud", "Abu Dawud"],
+  ["Tirmidhi", "Tirmidhi"],
+  ["Tirmidzi", "Tirmidhi"],
+  ["At-Tirmidzi", "Tirmidhi"],
+  ["Sunan Tirmidzi", "Tirmidhi"],
+  ["Sunan at-Tirmidzi", "Tirmidhi"],
+  ["Nasai", "Nasai"],
+  ["Nasa'i", "Nasai"],
+  ["Nasa’i", "Nasai"],
+  ["An-Nasa'i", "Nasai"],
+  ["Sunan an-Nasa'i", "Nasai"],
+  ["Ibn Majah", "Ibn Majah"],
+  ["Ibnu Majah", "Ibn Majah"],
+  ["Sunan Ibnu Majah", "Ibn Majah"],
+  ["Malik", "Malik"],
+  ["Muwatta Malik", "Malik"],
+  ["Imam Malik", "Malik"],
+];
+
 describe("canonicalCollectionName — the spellings one collection compares as", () => {
-  it.each([
-    ["Bukhari", "Bukhari"],
-    ["Sahih Bukhari", "Bukhari"],
-    ["Shahih Bukhari", "Bukhari"],
-    ["Muslim", "Muslim"],
-    ["Sahih Muslim", "Muslim"],
-    ["Abu Dawud", "Abu Dawud"],
-    ["Abu Daud", "Abu Dawud"],
-    ["Sunan Abu Dawud", "Abu Dawud"],
-    ["Tirmidhi", "Tirmidhi"],
-    ["Tirmidzi", "Tirmidhi"],
-    ["At-Tirmidzi", "Tirmidhi"],
-    ["Sunan Tirmidzi", "Tirmidhi"],
-    ["Nasai", "Nasai"],
-    ["Nasa'i", "Nasai"],
-    ["Nasa’i", "Nasai"],
-    ["An-Nasa'i", "Nasai"],
-    ["Sunan an-Nasa'i", "Nasai"],
-    ["Ibn Majah", "Ibn Majah"],
-    ["Ibnu Majah", "Ibn Majah"],
-    ["Sunan Ibnu Majah", "Ibn Majah"],
-    ["Malik", "Malik"],
-    ["Muwatta Malik", "Malik"],
-    ["Imam Malik", "Malik"],
-  ])("folds %s to the corpus's own name, %s", (spelling, canonical) => {
-    expect(canonicalCollectionName(spelling)).toBe(canonical);
+  it("declares the vocabulary the fold carries, row for row", () => {
+    // A row's key is written lower case by construction; the declaration is
+    // prose, so the two meet on the same fold.
+    const carried = HADITH_COLLECTION_SPELLINGS.map(([spelling, collection]) => [
+      spelling.toLowerCase(),
+      HADITH_COLLECTION_NAMES[collection],
+    ]);
+    expect(carried.sort()).toEqual(
+      DECLARED_COLLECTION_SPELLINGS.map(([spelling, canonical]) => [
+        spelling.toLowerCase(),
+        canonical,
+      ]).sort(),
+    );
   });
+
+  it("resolves every row through one key — no row shadows another", () => {
+    for (const [spelling, collection] of HADITH_COLLECTION_SPELLINGS) {
+      expect(canonicalCollectionName(spelling)).toBe(HADITH_COLLECTION_NAMES[collection]);
+    }
+  });
+
+  it("declares a rendering for every wrapper and article the fold strips", () => {
+    for (const word of [...HADITH_COLLECTION_WRAPPERS, ...HADITH_COLLECTION_ARTICLES]) {
+      const declared = DECLARED_COLLECTION_RENDERINGS.some(([rendering]) => {
+        const tokens = rendering.toLowerCase().split(/[\s-]+/);
+        return tokens.includes(word) && tokens.at(-1) !== word;
+      });
+      expect({ word, declared }).toEqual({ word, declared: true });
+    }
+  });
+
+  it.each(DECLARED_COLLECTION_RENDERINGS)(
+    "folds %s to the corpus's own name, %s",
+    (spelling, canonical) => {
+      expect(canonicalCollectionName(spelling)).toBe(canonical);
+    },
+  );
 
   it("leaves a collection the corpus does not carry exactly as written", () => {
     // The fold is a closed vocabulary, not a fuzzy match: an unknown name keeps
     // its own spelling, so it grounds on no chunk's label and the fabricated
     // citation still refuses.
-    for (const unknown of ["Fakebook", "Bukhariy", "Musannaf", "Sahih Sittah"]) {
+    for (const unknown of ["Fakebook", "Bukhariy", "Musannaf", "Sahih Sittah", "Sunan Tabari"]) {
       expect(canonicalCollectionName(unknown)).toBe(unknown);
     }
   });

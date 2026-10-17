@@ -1,15 +1,20 @@
 import fc from "fast-check";
 import { test } from "@fast-check/vitest";
 import { describe, expect } from "vite-plus/test";
-import { HADITH_COLLECTION_SPELLINGS, canonicalCollectionName } from "./chat-citation-collection";
+import {
+  HADITH_COLLECTION_ARTICLES,
+  HADITH_COLLECTION_SPELLINGS,
+  HADITH_COLLECTION_WRAPPERS,
+  canonicalCollectionName,
+} from "./chat-citation-collection";
 import { HADITH_COLLECTION_NAMES } from "./hadith-source";
 import { normalizeCitationLabel } from "./chat-citation-validator";
 
 /**
  * The fold's laws, on generated inputs: every spelling of a collection compares
- * as the corpus's own name, the address's number is left exactly as written, and
- * a name the table does not hold is the identity — the direction that keeps a
- * fabricated collection refusing.
+ * as the corpus's own name under every rendering the fold strips, the address's
+ * number is left exactly as written, and a name the table does not hold is the
+ * identity — the direction that keeps a fabricated collection refusing.
  */
 
 /** A hadith address number word: ASCII-digit-led, letters or digits continuing it. */
@@ -25,12 +30,38 @@ const foreignCollection = fc
       ),
   );
 
+/** One rendering of a spelling: bare, wrapper-prefixed, and wrapper + article. */
+const renderedSpelling = fc
+  .constantFrom(...HADITH_COLLECTION_SPELLINGS)
+  .chain(([spelling, collection]) =>
+    fc
+      .constantFrom(
+        spelling,
+        ...HADITH_COLLECTION_WRAPPERS.map((wrapper) => `${wrapper} ${spelling}`),
+        ...HADITH_COLLECTION_WRAPPERS.flatMap((wrapper) =>
+          HADITH_COLLECTION_ARTICLES.map((article) => `${wrapper} ${article}-${spelling}`),
+        ),
+      )
+      .map((rendering) => [rendering, collection] as const),
+  );
+
 describe("canonicalCollectionName — the laws the comparison form depends on", () => {
   test.prop([fc.constantFrom(...HADITH_COLLECTION_SPELLINGS), numberWord])(
     "every spelling folds to the corpus's name, and the number is untouched",
     ([spelling, collection], number) => {
       const canonical = HADITH_COLLECTION_NAMES[collection];
       expect(normalizeCitationLabel(`HR. ${spelling} no. ${number}`)).toBe(
+        `HR. ${canonical} no. ${number}`,
+      );
+    },
+  );
+
+  test.prop([renderedSpelling, numberWord])(
+    "every rendered form of a spelling folds to the same name, number untouched",
+    ([rendering, collection], number) => {
+      const canonical = HADITH_COLLECTION_NAMES[collection];
+      expect(canonicalCollectionName(rendering)).toBe(canonical);
+      expect(normalizeCitationLabel(`HR. ${rendering} no. ${number}`)).toBe(
         `HR. ${canonical} no. ${number}`,
       );
     },
