@@ -3,19 +3,17 @@ import { HADITH_COLLECTIONS, HADITH_COLLECTION_NAMES, formatHadithCitation } fro
 import { CITATION_GRAMMARS } from "./chat-citation-grammar";
 
 /**
- * The hadith **address bound**, checked against the reference read it replaced.
+ * The hadith **address bound**: the grammar publishes where a hadith address ends as
+ * its third capture group's recorded coordinates, and the comparison fold owns what
+ * that address compares as.
  *
- * The grammar publishes where a hadith address ends as its third capture group's
- * recorded coordinates, and the comparison fold owns what that address compares as.
- * This file holds the independent reference implementation the bound was measured
- * against — a whole-match scan for the address word followed by the ASCII-digit-led
- * number word — and re-checks the current build against it on every run: the corpus's
- * own labels, every marker and address-word casing, the degenerate tokens, and a
- * seeded fuzz over the character classes a draft can glue to a number.
- *
- * A pattern edited so the third group stops meaning the number word reddens here
- * rather than in a request, and the case count is pinned so widening the sweep is a
- * decision rather than an accident.
+ * This file holds an independent reference implementation of the bound — a whole-match
+ * scan for the address word followed by the ASCII-digit-led number word — and checks
+ * the current build against it: the corpus's own labels, every marker and address-word
+ * casing, the degenerate tokens, and a seeded fuzz over the character classes a draft
+ * can glue to a number. Two readings of one contract, so a pattern edited until the
+ * third group no longer means the number word reddens here rather than in a request,
+ * and the case count is pinned so widening the sweep is a decision.
  */
 
 /** The reference scan: the address word plus the tail it absorbs. */
@@ -202,8 +200,8 @@ describe("the hadith address bound — the reference read", () => {
   });
 
   it("accounts for every case the differential claims", () => {
-    // The pinned total is what makes the figure in the PR reproducible: a sweep that
-    // grows or shrinks has to say so here.
+    // The pinned total makes a change to the sweep a decision: growing or shrinking the
+    // differential has to say so here.
     expect(DIFFERENTIAL_CASES).toBe(CORPUS_CASES + DEGENERATE_CASES + FUZZ_CASES);
     expect(DIFFERENTIAL_CASES).toBe(66_816);
   });
