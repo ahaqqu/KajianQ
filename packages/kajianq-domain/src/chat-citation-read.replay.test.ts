@@ -82,7 +82,7 @@ const TAILS = [
 const MARKERS = ["HR.", "HR", "hr.", "hR.", "Hr"];
 const ADDRESS_WORDS = ["no.", "No.", "nO.", "NO."];
 const NUMBERS = ["1", "224", "573", "5010", "50102", "5010a", "3756.2", "٥٠١٠"];
-const GRADES = [undefined, "Sahih", "Dhaif", "Hasan"] as const;
+const GRADE_STATES = [undefined, "sahih", "hasan", "dhaif"] as const;
 const DEGENERATE_TOKENS = [
   "",
   "abc",
@@ -136,7 +136,7 @@ const FUZZ_CASES = 60_000;
 const CORPUS_CASES =
   HADITH_COLLECTIONS.length *
   NUMBERS.length *
-  GRADES.length *
+  GRADE_STATES.length *
   (1 + (TAILS.length - 1) + MARKERS.length + ADDRESS_WORDS.length);
 /** Each degenerate token at the token, glued, trailing-prose and after-number positions. */
 const DEGENERATE_CASES = DEGENERATE_TOKENS.length * ADDRESS_WORDS.length * 4;
@@ -151,7 +151,7 @@ describe("the hadith address bound — the reference read", () => {
     };
     for (const collection of HADITH_COLLECTIONS) {
       for (const no of NUMBERS) {
-        for (const grade of GRADES) {
+        for (const grade of GRADE_STATES) {
           const corpus = formatHadithCitation({
             collection,
             hadithNo: no,
