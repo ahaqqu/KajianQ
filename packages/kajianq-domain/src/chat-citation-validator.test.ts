@@ -1010,20 +1010,22 @@ describe("validateCitations — ungrounded direction (the trap cases)", () => {
   it("catches a fabricated hadith written with a long collection name", () => {
     // Models write the full collection form ("Sunan Abu Dawud"), so the grammar
     // tolerates the collection-type prefix — otherwise a fabricated citation
-    // sails through the gate.
+    // sails through the gate. The comparison form carries the corpus's own
+    // collection name, so the refusal reports the address it compared, not the
+    // prefix the draft wrapped it in.
     const { ungrounded } = validateCitations("HR. Sunan Abu Dawud no. 99999 menyebutkan …", [
       chunk("HR. Abu Dawud no. 573"),
     ]);
-    expect(ungrounded).toEqual(["HR. Sunan Abu Dawud no. 99999"]);
+    expect(ungrounded).toEqual(["HR. Abu Dawud no. 99999"]);
   });
 
   it("catches a fabricated hadith whose collection name is written with spaces", () => {
     // A spaced collection name (`an Nasai`) is tolerated like the hyphenated
-    // one.
+    // one, and the comparison form folds it to the corpus's own collection name.
     const { ungrounded } = validateCitations("HR. Sunan an Nasai no. 99999 …", [
       chunk("HR. Bukhari no. 573"),
     ]);
-    expect(ungrounded).toEqual(["HR. Sunan an Nasai no. 99999"]);
+    expect(ungrounded).toEqual(["HR. Nasai no. 99999"]);
   });
 
   it("catches a fabricated Quran citation written with the dotted Q.S. marker", () => {
@@ -1290,11 +1292,10 @@ describe("normalizeCitationLabel", () => {
     // This anchored pass is reachable on two paths: a label that does NOT begin
     // with a citation grammar (a full Kitab label is the shape it exists for),
     // and a grammar-initial label that is kept WHOLE, where it is the grade
-    // remover.
-    expect(normalizeCitationLabel("HR. Ibnu Majah no. 224 (Dhaif)")).toBe("HR. Ibnu Majah no. 224");
-    expect(normalizeCitationLabel("HR. Ibnu Majah no. 224 (Dhaif) ")).toBe(
-      "HR. Ibnu Majah no. 224",
-    );
+    // remover. The comparison form also carries the corpus's own collection
+    // name, which is why the collection below folds while the number does not.
+    expect(normalizeCitationLabel("HR. Ibnu Majah no. 224 (Dhaif)")).toBe("HR. Ibn Majah no. 224");
+    expect(normalizeCitationLabel("HR. Ibnu Majah no. 224 (Dhaif) ")).toBe("HR. Ibn Majah no. 224");
     // Path 1 — non-grammar-initial: the lexical strip owns the label.
     expect(normalizeCitationLabel("Al-Umm, Imam Syafi'i, Jilid 1, Hal. 102 (Sahih)")).toBe(
       "Al-Umm, Imam Syafi'i, Jilid 1, Hal. 102",
