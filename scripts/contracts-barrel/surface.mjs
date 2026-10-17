@@ -1,6 +1,7 @@
 import { ContractsBarrelError } from "./errors.mjs";
 import { classifyExports, requireBalanced, requireNoQuotedExports } from "./classify.mjs";
 import { lineOf, scanSource, skipSpace } from "./source.mjs";
+import { startsExportStatement } from "./statements.mjs";
 import { exportStatement, importBindings } from "./statements.mjs";
 
 /**
@@ -26,17 +27,6 @@ import { exportStatement, importBindings } from "./statements.mjs";
  *     ambiguous, and one barrel entry would satisfy two different members.
  */
 
-/**
- * What can follow an `export` keyword that is starting a statement: a declaration,
- * a list, a wildcard, a namespace. A property key (`{ export: 1 }`) or a call is
- * not one, so a nested keyword is an intent to export only when it matches here.
- */
-const STATEMENT_AFTER_EXPORT =
-  /^(?:\{|\*|default\b|declare\b|abstract\b|async\b|const\b|let\b|var\b|function\b|class\b|enum\b|interface\b|type\b|namespace\b|module\b)/;
-
-const exportsAStatement = (code, at) =>
-  STATEMENT_AFTER_EXPORT.test(code.slice(skipSpace(code, at + "export".length)));
-
 /** The `@contracts-internal` directive: the members it withholds, then the reason. */
 export const INTERNAL_MARKER = "@contracts-internal";
 const INTERNAL_RE = new RegExp(
@@ -51,12 +41,15 @@ export function moduleSurface(source, file = "module.ts") {
   requireBalanced(scanned, classified, file);
   requireNoQuotedExports(scanned, classified.quoted, file);
   const { statements } = classified;
-  const hidden = classified.nested.filter((at) => exportsAStatement(scanned.code, at));
-  if (statements.length === 0 && hidden.length > 0) {
+  const hidden = classified.nested.filter(
+    (entry) => !entry.declaration && startsExportStatement(scanned.code, entry.at),
+  );
+  if (hidden.length > 0) {
     throw new ContractsBarrelError(
-      `${file}:${lineOf(scanned.code, hidden[0])}: this \`export\` starts a statement but reads ` +
-        "as nested inside a block, and the module has no export statement at all, so a brace " +
-        "opened in error sits above it and the members below it cannot be seen — close it, or " +
+      `${file}:${lineOf(scanned.code, hidden[0].at)}: this \`export\` starts a statement while it ` +
+        "sits inside a block that is not a `namespace` or `declare module` body — the only " +
+        "constructs that may hold an export keyword off the statement position — so a brace " +
+        "opened in error sits above it and the members below it cannot be seen: close it, or " +
         "write the construct so it reads as code",
     );
   }
@@ -74,8 +67,8 @@ export function moduleSurface(source, file = "module.ts") {
           "scan can read — a statement that yields no member and no edge is a shape it cannot judge",
       );
     }
-    members.push(...statement.members);
-    edges.push(...statement.edges);
+    members.push(...statement.members.map((member) => ({ ...member, at })));
+    edges.push(...statement.edges.map((edge) => ({ ...edge, at })));
   }
   const imports = importBindings(scanned);
   for (const member of members) {
@@ -84,6 +77,7 @@ export function moduleSurface(source, file = "module.ts") {
     if (imported === undefined || imported.imported === "*") continue;
     edges.push({
       from: imported.from,
+      at: member.at,
       names: [
         {
           provided: imported.imported,
@@ -94,23 +88,25 @@ export function moduleSurface(source, file = "module.ts") {
     });
   }
   const origins = new Map();
-  const note = (name, origin) => {
-    const seen = origins.get(name) ?? new Set();
-    seen.add(origin);
+  const note = (name, origin, at) => {
+    const seen = origins.get(name) ?? new Map();
+    if (!seen.has(origin)) seen.set(origin, at);
     origins.set(name, seen);
   };
-  for (const member of members) if (member.binding !== true) note(member.name, "this module");
+  for (const member of members)
+    if (member.binding !== true) note(member.name, "this module", member.at);
   for (const edge of edges) {
     if (edge.names === null) continue;
-    for (const carried of edge.names) note(carried.exported, edge.from);
+    for (const carried of edge.names) note(carried.exported, edge.from, edge.at);
   }
-  const ambiguous = [...origins].filter(([, seen]) => seen.size > 1);
-  if (ambiguous.length > 0) {
+  const [ambiguous] = [...origins].filter(([, seen]) => seen.size > 1);
+  if (ambiguous !== undefined) {
+    const [name, seen] = ambiguous;
+    const positions = [...seen.values()].sort((left, right) => left - right);
     throw new ContractsBarrelError(
-      `${file}: publishes ${ambiguous
-        .map(([name, seen]) => `\`${name}\` from ${[...seen].join(" and ")}`)
-        .join(", ")} — one name has one origin, or a single barrel entry would have to stand for ` +
-        "two different members",
+      `${file}:${lineOf(scanned.code, positions[1])}: publishes \`${name}\` from ` +
+        `${[...seen.keys()].join(" and ")} — one name has one origin, or a single barrel entry ` +
+        "would have to stand for two different members",
     );
   }
   const published = new Set();
@@ -119,7 +115,7 @@ export function moduleSurface(source, file = "module.ts") {
     published.add(member.name);
     return true;
   });
-  return { members: distinct, edges, nested: classified.nested.length };
+  return { members: distinct, edges };
 }
 
 /** The name and reason a module declares itself out of the public surface by, or null. */

@@ -19,23 +19,30 @@ import { ContractsBarrelError } from "./errors.mjs";
  *     the end of the file is how a member disappears — the silence this gate
  *     exists to remove. A `"`/`'` literal is bounded to its own line, because a
  *     JS string cannot span one;
- *   - a `/` that can open a regular-expression literal and has no closing `/` on
- *     its line: whether a `/` is a regex or division turns on the token before
- *     it, and code after `=` can be either. That is refused rather than guessed,
- *     since a wrong guess shifts the scan's bracket count and a member below it
- *     goes missing;
+ *   - a `/` whose position is neither a certain regular-expression start nor a
+ *     certain division: a `/` opens a regex after an operator, an opener, a
+ *     keyword that introduces an expression, another `/`, or the `)` of an
+ *     `if`/`while`/`for`/`with` header, and divides after an identifier, a
+ *     number, a `]`, `++`, `--`, a literal, or any other `)`. Every other
+ *     position is ambiguous — `}` closes a block in one reading and an object
+ *     literal in another, and a line's first token continues the line above or
+ *     starts a statement — so it is refused with the line it is on. Guessing
+ *     here is how a member goes silently missing: a regex read as division puts
+ *     its pattern in the scan as code, where a `/*` in it opens a comment that
+ *     blanks a real `export` below;
+ *   - a `/` that opens a regex and has no closing `/` on its line: the literal's
+ *     extent is unknown, so it is refused rather than closed somewhere below;
  *   - a scan whose brackets do not balance by the end of the file, or that meets
  *     a closer nothing opened: a mis-read regex, string, template or comment is
  *     the way that happens, and an unbalanced count means the statement/nested
- *     split below cannot be trusted;
+ *     split below cannot be trusted.
  *
- * A regular expression is the one construct here recognised by a heuristic: it
- * opens where the token before it cannot end an expression (`(`, `,`, `=`,
- * `return`, …) and divides otherwise. A regex in a position the heuristic calls
- * division is not valid JavaScript, so the guess errs only on code that does not
- * compile; and the two refusals above turn the erring direction into a message
- * instead of a missing member. A regex literal is never treated as quoted text,
- * so a pattern containing the word `export` is not mistaken for prose.
+ * A regular expression is therefore recognised in the positions this scan can
+ * decide, and an undecided one is a message rather than a reading. The claim is
+ * no stronger than that: a regex can appear in more positions than are listed
+ * above, which is why the fallback refuses instead of assuming division. A regex
+ * literal is never treated as quoted text, so a pattern containing the word
+ * `export` is not mistaken for prose.
  */
 
 export const lineOf = (source, offset) => source.slice(0, offset).split("\n").length;
@@ -162,9 +169,8 @@ function previousToken(code, at) {
   return code[i];
 }
 
-/** A regex may open where the token before it cannot end an expression. */
-const AFTER_EXPRESSION_START = new Set([
-  "",
+/** Punctuators after which a `/` can only open a regular expression. */
+const STARTS_EXPRESSION = new Set([
   "(",
   "[",
   "{",
@@ -172,7 +178,6 @@ const AFTER_EXPRESSION_START = new Set([
   ";",
   ":",
   "?",
-  "!",
   "&",
   "|",
   "+",
@@ -193,8 +198,10 @@ const AFTER_EXPRESSION_START = new Set([
   "*=",
   "/=",
   "**",
+  "/",
 ]);
-const AFTER_EXPRESSION_KEYWORD = new Set([
+/** The words after which a `/` can only open a regular expression. */
+const STARTS_EXPRESSION_KEYWORD = new Set([
   "return",
   "typeof",
   "instanceof",
@@ -210,11 +217,84 @@ const AFTER_EXPRESSION_KEYWORD = new Set([
   "else",
   "throw",
 ]);
+/** The keywords whose `)` closes a statement header, so a statement can follow it. */
+const HEADER_KEYWORDS = new Set(["if", "while", "for", "with"]);
 
-const opensRegex = (code, at) => {
-  const token = previousToken(code, at);
-  return AFTER_EXPRESSION_START.has(token) || AFTER_EXPRESSION_KEYWORD.has(token);
+/** Whether a literal ends at index `at` — a literal ends an expression. */
+const endsLiteral = (literals, at) => {
+  for (const literal of literals.values()) if (literal.end - 1 === at) return true;
+  return false;
 };
+
+/** Whether the `)` at `close` closes a header whose statement can hold a regex. */
+function headerBefore(code, close) {
+  let depth = 0;
+  for (let i = close; i >= 0; i -= 1) {
+    if (code[i] === ")") depth += 1;
+    else if (code[i] === "(") {
+      depth -= 1;
+      if (depth === 0) return HEADER_KEYWORDS.has(previousToken(code, i));
+    }
+  }
+  return false;
+}
+
+/**
+ * What the `/` at `at` is: the opening delimiter of a regular expression, a
+ * division sign, or something this scan cannot decide.
+ *
+ * Only two readings are certain. A `/` opens a regex where the token before it
+ * cannot end an expression (an operator, an opener, one of the keywords that
+ * introduce one, a `/` of its own, or the `)` of an `if`/`while`/`for`/`with`
+ * header), and it divides where that token certainly ends an expression (an
+ * identifier, a number, a `]`, `++`, `--`, a literal, or any other `)`). Every
+ * other position is ambiguous — `}` closes a block in one reading and an object
+ * literal in another, and a line's first token continues the line above or
+ * starts a statement — and the caller refuses it rather than guessing: a wrong
+ * reading here blanks or shifts a statement below it, and the member it hides
+ * is exactly what this gate exists to report.
+ */
+function slashReading({ code, literals }, at) {
+  let i = at - 1;
+  let lineStart = false;
+  while (i >= 0 && /\s/.test(code[i])) {
+    if (code[i] === "\n") lineStart = true;
+    i -= 1;
+  }
+  if (i < 0) return { kind: "ambiguous", token: "", lineStart: true };
+  if (lineStart) return { kind: "ambiguous", token: "", lineStart: true };
+  if (endsLiteral(literals, i)) return { kind: "division", token: "<literal>" };
+  const token = previousToken(code, at);
+  if (STARTS_EXPRESSION.has(token) || STARTS_EXPRESSION_KEYWORD.has(token)) {
+    return { kind: "regex", token };
+  }
+  if (token === ")") return { kind: headerBefore(code, i) ? "regex" : "division", token };
+  if (token === "!") {
+    // `!/re/` opens a regex and `value! / 2` divides: a non-null assertion
+    // follows an expression, and a regex cannot.
+    const before = previousToken(code, i);
+    const assertion =
+      before === ")" || before === "]" || /^[\w$]+$/.test(before) || endsLiteral(literals, i - 1);
+    return { kind: assertion ? "division" : "regex", token };
+  }
+  if (token === "]" || token === "++" || token === "--" || /^[\w$]+$/.test(token)) {
+    return { kind: "division", token };
+  }
+  return { kind: "ambiguous", token };
+}
+
+/** The refusal that names what the scan cannot tell apart, and where. */
+function ambiguousSlash(source, file, at, reading) {
+  const where = reading.lineStart
+    ? "a statement that starts with a regular expression reads the same as a division continuing " +
+      "the line above"
+    : `\`${reading.token}\` can end an expression in one reading and begin one in another`;
+  return new ContractsBarrelError(
+    `${file}:${lineOf(source, at)}: this \`/\` follows a position where ${where}, so this scan ` +
+      "cannot tell a regular expression from division — write the division on the same line as its " +
+      "left operand, or parenthesize it, so the line reads as code",
+  );
+}
 
 /**
  * The three views of one source, plus where each literal sits. Throws — with the
@@ -285,20 +365,25 @@ export function scanSource(source, file) {
       i = end;
       continue;
     }
-    if (char === "/" && opensRegex(code.join(""), i)) {
-      const end = regexEnd(source, i);
-      if (end === -1) {
-        throw new ContractsBarrelError(
-          `${file}:${lineOf(source, i)}: a \`/\` here can open a regular-expression literal and ` +
-            "this line has no closing `/`, so the scan cannot tell a regex from division — close " +
-            "the regex on its line, or write the division so it cannot be read as one",
-        );
+    if (char === "/") {
+      const reading = slashReading({ code: code.join(""), literals }, i);
+      if (reading.kind === "ambiguous") throw ambiguousSlash(source, file, i, reading);
+      if (reading.kind === "regex") {
+        const end = regexEnd(source, i);
+        if (end === -1) {
+          throw new ContractsBarrelError(
+            `${file}:${lineOf(source, i)}: this \`/\` opens a regular-expression literal and the ` +
+              "line has no closing `/`, so the scan cannot tell where the regex ends — close it on " +
+              "its line, or split the expression so the `/` is not read as a regex",
+          );
+        }
+        literals.set(i, { start: i, end, kind: "regex", closed: true });
+        blank(directives, i, end);
+        blank(comments, i, end);
+        i = end;
+        continue;
       }
-      literals.set(i, { start: i, end, kind: "regex", closed: true });
-      blank(directives, i, end);
-      blank(comments, i, end);
-      i = end;
-      continue;
+      // A division sign: plain code, and the scan reads on.
     }
     i += 1;
   }

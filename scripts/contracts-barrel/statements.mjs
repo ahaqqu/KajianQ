@@ -22,10 +22,19 @@ import { lineOf, skipSpace } from "./source.mjs";
 const IDENT = "[A-Za-z_$][\\w$]*";
 const NAMED_RE = new RegExp(`^(${IDENT})`);
 const DECLARATOR_RE = new RegExp(`^\\s*${IDENT}\\s*[:=]`);
-const KEYWORD_RE = new RegExp(
-  "^(?:declare\\s+)?(?:(?:abstract|async)\\s+)?" +
-    "(const\\s+enum|const|let|var|function|class|enum|interface|type|namespace|module)\\b",
-);
+const DECLARATION =
+  "(?:declare\\s+)?(?:(?:abstract|async)\\s+)?(const\\s+enum|const|let|var|function|class|enum|interface|type|namespace|module)\\b";
+const KEYWORD_RE = new RegExp(`^${DECLARATION}`);
+/** What starts an `export` statement: a list, a wildcard, `default`, or a declaration. */
+const STATEMENT_RE = new RegExp(`^(?:\\{|\\*|default\\b|${DECLARATION})`);
+
+/**
+ * Whether the `export` at `at` starts a statement, as opposed to a property key
+ * (`{ export: 1 }`) or a call — one list with the grammar below, so the two
+ * cannot disagree.
+ */
+export const startsExportStatement = (code, at) =>
+  STATEMENT_RE.test(code.slice(skipSpace(code, at + "export".length)));
 
 const failAt = (file, source, at, what) => {
   throw new ContractsBarrelError(
