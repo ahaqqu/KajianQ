@@ -7,7 +7,7 @@
 // and a nested key by indentation, which is how the file's own shape is
 // preserved without parsing and re-emitting it.
 import { existsSync } from "node:fs";
-import { readFile, rename, writeFile } from "node:fs/promises";
+import { readFile, rename, stat, writeFile } from "node:fs/promises";
 import { POLICY_ENTRY, unquote } from "./dsh-compose.mjs";
 
 /** The entry block of a layer file's patch list, as a line range. The entry is
@@ -90,14 +90,29 @@ export function policyPatchLines(routes) {
   ];
 }
 
+/** The index an appended row belongs at: just after the block's last non-blank
+ * line. `entryBlock` and `blockUnder` treat a blank line as inside the block, so
+ * their `end` sits past the entry's trailing blank lines and past the empty
+ * element a final newline leaves in the split — appending there would insert
+ * after them and drop the file's terminating newline. */
+export function appendIndex(lines, block) {
+  let at = block.end;
+  while (at > block.idx + 1 && !lines[at - 1].trim()) at--;
+  return at;
+}
+
 /** Replace a layer file with edited text: write a timestamped backup of the
  * original beside it, then the new text through a temp file and a rename, so a
- * reader never sees a half-written config. Returns the backup path. */
+ * reader never sees a half-written config. Both the temp file and the backup
+ * carry the target's own mode: the rename replaces the inode, so whatever the
+ * process default would give them is what the config would be left with.
+ * Returns the backup path. */
 export async function replaceLayerFile(file, { updated, original }) {
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
   const backup = `${file}.bak-${stamp}`;
-  await writeFile(backup, original);
-  await writeFile(`${file}.tmp`, updated);
+  const mode = (await stat(file)).mode & 0o7777;
+  await writeFile(backup, original, { mode });
+  await writeFile(`${file}.tmp`, updated, { mode });
   await rename(`${file}.tmp`, file);
   return backup;
 }

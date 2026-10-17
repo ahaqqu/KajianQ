@@ -1,11 +1,13 @@
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -582,6 +584,8 @@ describe("catalog verdicts", () => {
     writeRole(fx, "reviewer", `model: "${pinFor("beta-model")}"`);
     writeCatalog(fx, ["alpha-model", "beta-model"]);
     const patchFile = join(fx.profile, "cordis.patch.yml");
+    // A config the owner kept private: the write must not publish it.
+    chmodSync(patchFile, 0o600);
     const before = readFileSync(patchFile, "utf8");
 
     // The declaring run still exits non-zero — it reports the failure it just
@@ -602,9 +606,16 @@ describe("catalog verdicts", () => {
     expect(
       layerEntry(parseEntries(fixed), "llm-pi-ai").config.providers.ollama.models.map((m) => m.id),
     ).toEqual(["alpha-model", "beta-model"]);
+    // The append lands at the end of the entry's last line — not after its
+    // trailing blank line — and the file keeps its terminating newline.
+    expect(fixed).toContain("            contextWindow: 1000000\n          - id: beta-model\n");
+    expect(fixed.endsWith("max: max\n")).toBe(true);
+    // The mode of the layer survives the temp+rename write, backup included.
+    expect(statSync(patchFile).mode & 0o777).toBe(0o600);
     const backups = backupsOf(patchFile);
     expect(backups).toHaveLength(1);
     expect(resolve(backups[0]).startsWith(resolve(fx.root))).toBe(true);
+    expect(statSync(backups[0]).mode & 0o777).toBe(0o600);
     expect(readFileSync(backups[0], "utf8")).toBe(before);
 
     const second = runPreflight(fx, ["--fix"]);

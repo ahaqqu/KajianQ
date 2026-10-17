@@ -105,6 +105,7 @@ import {
   unquote,
 } from "./lib/dsh-compose.mjs";
 import {
+  appendIndex,
   blockUnder,
   entryBlock,
   entryLines,
@@ -627,13 +628,14 @@ if (failures > 0) {
         }
       }
       const original = lines.join("\n");
+      let at = appendIndex(lines, models);
       for (const id of declarable) {
         // Belt and braces: an id is validated before the append, and the set is
         // updated as entries land, so a quoted or duplicate id cannot be written.
         if (!MODEL_ID.test(id) || declared.has(id)) continue;
         const appended = entryLines(id, indent);
-        lines.splice(models.end, 0, ...appended);
-        models.end += appended.length;
+        lines.splice(at, 0, ...appended);
+        at += appended.length;
         declared.add(id);
         console.log(`+ declared ${id} in ${layer.file} (DSH hot-reloads the file)`);
       }
