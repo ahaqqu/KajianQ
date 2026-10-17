@@ -71,6 +71,8 @@ This repo ships no payments or sync layer (see `CONTEXT.md` / spec §3.1), so th
 
 - Adapter implementations also get integration tests that exercise the interface contract end to end: the store-seam contract suite runs against a real Postgres + pgvector (the `postgres:contract` CI job, on a `pgvector/pgvector:pg18` service container), and the rest run against mocks locally. The unit-layer contract shape is the `packages/infra/src/object-store.test.ts` exemplar; the store-seam contract suite is `packages/infra/src/rag-store-postgres.test.ts`; full-stack coverage rides the BDD layer, whose webServer boots the real Bun entry (`apps/api/src/boot.ts`).
 
+- A suite that only executes with a database declares `// @requires-postgres` (a line comment in the test file). The `postgres:contract` job derives its selection from that directive, so a new gated suite runs in CI without the workflow being edited — and the DB-less job fails on any suite it skipped in full that no job selects, so a gated suite that forgets the directive reddens instead of passing green.
+
 ## Guards
 
 - Tests MUST test external behavior, not implementation details. Test what the module does, not how it does it.

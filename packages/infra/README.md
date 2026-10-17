@@ -149,13 +149,24 @@ bun packages/infra/scripts/r2-verify.mjs   # R2 read/write from the CLI env (AC)
 ## Contract tests
 
 `src/rag-store-postgres.test.ts` is an integration suite against a real
-Postgres database. It is **skipped unless `DATABASE_URL` is set**, so the
-default `bun run test` job stays green without a database. In CI these run in
-the `postgres:contract` job — which engages on every PR touching
-`packages/infra` — against a `pgvector/pgvector:pg18` service container (the
-same image the restore drill uses), with `--no-file-parallelism` (the tests
-share one fixture namespace keyed off a per-run prefix, so parallel files
-would race). The suite is Effect-shaped (ADR-0027 decision 7): each test
+Postgres database. It declares `// @requires-postgres` and is **skipped unless
+`DATABASE_URL` is set**, so the default `bun run test` job stays green without a
+database. A second gated suite declares the same directive and nothing else: the
+`postgres:contract` job runs whatever `bun scripts/pg-contract.mjs --list`
+derives from the tree, fails when a selected suite executed nothing, and the
+DB-less run fails when a suite it skipped in full is one no job selects (the
+policy, its blind spots, and each mode are in `scripts/pg-contract/policy.mjs`).
+The job engages when a PR can change what those suites execute — the seam's own
+home, a gated suite, or the gate's machinery — and runs them against a
+`pgvector/pgvector:pg18` service container (the same image the restore drill
+uses), with `--no-file-parallelism` (the tests share one fixture namespace keyed
+off a per-run prefix, so parallel files would race). Locally:
+
+```sh
+DATABASE_URL=postgres://… bunx vp test run --no-file-parallelism $(bun scripts/pg-contract.mjs --list)
+```
+
+The suite is Effect-shaped (ADR-0027 decision 7): each test
 composes its seam calls into one `Effect.gen` program with a single
 `Effect.runPromise` at the test's edge. The pure query builder
 (`rag-store-postgres-query.ts`), the driver adapter
