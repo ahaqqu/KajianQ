@@ -24,8 +24,8 @@ import { routedQuery } from "./test-utils/routed-query";
  * retrieved row (never on a derived position), deduplicated against everything
  * already in context, and readable back off the trace.
  *
- * Truncation probes `cap + 1` and says so; a disabled expansion (radius <= 0 or
- * cap <= 0) does not read the store at all.
+ * Truncation probes `cap + 1` past the rows the dedup can drop and says so; a disabled
+ * expansion (radius <= 0 or cap <= 0) does not read the store at all.
  */
 
 const COST = { modelId: "stub-embedder", tokensIn: 1, tokensOut: 1, latencyMs: 1, costMicroUsd: 0 };
@@ -228,12 +228,14 @@ describe("retrieved-verse neighbourhood expansion", () => {
     expect(result.detail?.truncated).toBe(true);
   });
 
-  it("reads one past the cap and reports the truncation exactly", async () => {
+  it("budgets the cap for rows that reach the context and reports the truncation exactly", async () => {
     const store = createMemoryRagStore();
     await seedSurah(store, 2, 10, [4, 5]);
     const { retrieve, events, reads } = harness(store, { radius: 1, cap: 2, limit: 2 });
     const chunks = await retrieve(routed("Pertanyaan tanpa nama surah", ["generic question"]));
-    expect(reads.lastLimit).toBe(3);
+    // The two anchors are adjacent, so each appears inside the other's window and the
+    // dedup drops it: the read gets one slot per anchor it can drop, plus the probe.
+    expect(reads.lastLimit).toBe(2 + 2 + 1);
     expect(neighbourLabels(chunks).sort()).toEqual(["QS. 2:3", "QS. 2:6"]);
     const event = events.find((e) => e.kind === "neighbour_expansion") as
       | { detail: { returned: number; truncated: boolean; anchors: string[] } }
@@ -241,6 +243,47 @@ describe("retrieved-verse neighbourhood expansion", () => {
     expect(event?.detail.returned).toBe(2);
     expect(event?.detail.truncated).toBe(false);
     expect(event?.detail.anchors).toHaveLength(2);
+  });
+
+  it("does not let a window full of anchors starve the cap: the trailing boundary verse arrives", async () => {
+    const store = createMemoryRagStore();
+    // ADR-0045's scope read is a contiguous `ORDER BY ordinal ASC LIMIT cap` window, so
+    // a surah-naming question hands the expansion a page of adjacent verses as anchors.
+    // Every anchor's window then holds other anchors — rows already in context — and the
+    // one row the dedup cannot drop is the verse just past the page: the boundary address
+    // a range extension wants.
+    await seedSurah(store, 3, DEFAULT_NEIGHBOUR_CAP + 1);
+    const rows = await Effect.runPromise(
+      store.listDocChildrenByParentSourceKey(surahSourceKey(3), {
+        limit: DEFAULT_NEIGHBOUR_CAP + 1,
+      }),
+    );
+    const window = [...rows]
+      .sort((a, b) => a.ordinal - b.ordinal)
+      .slice(0, DEFAULT_NEIGHBOUR_CAP)
+      .map((row) => chunkOf(row));
+    const limits: number[] = [];
+    const spy = {
+      ...store,
+      listDocChildNeighboursByChildIds(
+        anchors: readonly string[],
+        readOpts: { radius: number; limit: number },
+      ) {
+        limits.push(readOpts.limit);
+        return store.listDocChildNeighboursByChildIds(anchors, readOpts);
+      },
+    };
+    const result = await expand(spy, window, {
+      radius: DEFAULT_NEIGHBOUR_RADIUS,
+      cap: DEFAULT_NEIGHBOUR_CAP,
+    });
+
+    expect(result.detail?.anchors).toHaveLength(DEFAULT_NEIGHBOUR_CAP);
+    expect(labelsOf(result.chunks)).toEqual([`QS. 3:${DEFAULT_NEIGHBOUR_CAP + 1}`]);
+    expect(result.detail?.returned).toBeGreaterThan(0);
+    expect(result.detail?.truncated).toBe(false);
+    // One slot per anchor the dedup can drop, plus the one-past probe.
+    expect(limits).toEqual([DEFAULT_NEIGHBOUR_CAP + DEFAULT_NEIGHBOUR_CAP + 1]);
   });
 
   it("does not add a neighbour that is already a fused hit or a scope chunk", async () => {

@@ -78,6 +78,9 @@ function isVerse(chunk: Chunk): boolean {
  * Read the neighbourhood of every retrieved verse, bounded by `radius` and `cap`, and
  * return the chunks that are not already in context.
  * `retrieved` doubles as the dedup set, so a verse already there is never added twice.
+ * `cap` bounds the chunks that REACH the context: a row the dedup drops spends none of
+ * it, so a window whose anchors are contiguous still yields the neighbour at the
+ * window's boundary — the address a range extension wants.
  * Returns no chunks and a null detail when `radius <= 0`, `cap <= 0`, or no retrieved
  * chunk is a verse — without issuing a store read, so a query that cannot benefit pays
  * nothing.
@@ -96,23 +99,28 @@ export function expandVerseNeighbours(input: {
     const inContext = new Set(input.retrieved.map((chunk) => chunk.id));
     const unique = [...new Set(input.retrieved.filter(isVerse).map((chunk) => chunk.id))];
     if (unique.length === 0) return { chunks: [], detail: null };
-    // Read one past the cap: a full `cap + 1` result proves more neighbours exist.
+    // The read answers per anchor, so a row already in context — an anchor inside the
+    // window of another anchor — comes back and the dedup drops it. Two counts follow
+    // from that: `cap` budgets the rows that reach the context, and the read is asked
+    // for `cap` plus one slot per row such a drop can spend, plus one more to prove
+    // more neighbours exist. One slot per anchor bounds the drop: a dropped row is a
+    // neighbour of a verse anchor, and the in-context rows a verse anchor's window can
+    // reach are the retrieved verses — the anchors, one result row each.
     const rows = yield* Effect.tryPromise({
       try: () =>
         input.bridge(
           input.store.listDocChildNeighboursByChildIds(unique, {
             radius: input.radius,
-            limit: input.cap + 1,
+            limit: input.cap + unique.length + 1,
           }),
         ),
       catch: (cause: unknown) => ({ cause }),
     });
-    const truncated = rows.length > input.cap;
-    const chunks: Chunk[] = [];
-    for (const row of rows.slice(0, input.cap)) {
-      if (inContext.has(row.id)) continue;
-      chunks.push(expansionChunk(row, NEIGHBOUR_EXPANSION_ORIGIN));
-    }
+    const candidates = rows.filter((row) => !inContext.has(row.id));
+    const truncated = candidates.length > input.cap;
+    const chunks = candidates
+      .slice(0, input.cap)
+      .map((row) => expansionChunk(row, NEIGHBOUR_EXPANSION_ORIGIN));
     return {
       chunks,
       detail: {
