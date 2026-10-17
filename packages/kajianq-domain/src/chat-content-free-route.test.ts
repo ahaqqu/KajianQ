@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { totalCostMicroUsd, type CostRecord } from "@app/contracts";
+import type { Decliner } from "@app/rag-core";
 import { runChatPipeline } from "./chat-pipeline";
 import { CONTENT_FREE_DECLINE_TEXT } from "./chat-content-free-decline";
 import { DEFAULT_REFUSALS } from "./chat-refusal";
@@ -79,7 +80,7 @@ async function seedChunk(store: ReturnType<typeof createMemoryRagStore>): Promis
 }
 
 /** The pipeline deps with a spy on every seam that can spend or read. */
-function harness(options: { generatorText?: string } = {}) {
+function harness(options: { generatorText?: string; decliner?: Decliner<KajianQFilters> } = {}) {
   const store = createMemoryRagStore();
   const routerCalls: string[] = [];
   const embedded: (readonly string[])[] = [];
@@ -154,6 +155,7 @@ function harness(options: { generatorText?: string } = {}) {
             store: spyStore as never,
             bridge: (effect: never) => Effect.runPromise(effect),
             language: options2.language ?? "id",
+            ...(options.decliner !== undefined ? { decliner: options.decliner } : {}),
           } as never,
           { text, ...(options2.filters !== undefined ? { filters: options2.filters } : {}) },
         ) as never,
@@ -235,6 +237,31 @@ describe("a content-free question is not routed", () => {
       expect(h.generatorCalls).toEqual([]);
       expect(llmCallPurposes(answer)).toEqual([]);
     }
+  });
+
+  it("answers from a decliner the composition root injects, not its own", async () => {
+    // The decline is a wiring choice: an injected decliner takes the content-free
+    // route, so a caller whose copy differs does not have to edit this composition
+    // root. What the domain's own decliner answers is the case above.
+    const h = harness({
+      decliner: {
+        decline: () =>
+          Effect.succeed({
+            text: "no question in that message",
+            reason: "the injected decliner took the route",
+            trigger: "injected_decline",
+          }),
+      },
+    });
+
+    const answer = await h.run("\u200b");
+
+    expect((answer as Answer).text).toBe("no question in that message");
+    expect(h.generatorCalls).toEqual([]);
+    expect(eventsOf(answer).find((event) => event.kind === "refusal")).toMatchObject({
+      stage: "generator",
+      detail: { trigger: "injected_decline" },
+    });
   });
 
   it("still pays for a content-bearing question the evidence cannot ground", async () => {

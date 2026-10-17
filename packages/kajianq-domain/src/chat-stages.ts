@@ -6,7 +6,7 @@ import {
 } from "./chat-generator";
 import { createKajianQReviewer, refusalTextFor, type ReviewerProvider } from "./chat-reviewer";
 export type { GeneratorProvider, ReviewerProvider };
-import type { Decider } from "@app/rag-core";
+import type { Decider, Decliner } from "@app/rag-core";
 import { createContentFreeDecliner } from "./chat-content-free-decline";
 
 /**
@@ -21,6 +21,8 @@ export function createChatTailStages(deps: {
   /** The reviewer's decision-model pre-gate; null = the key is not bound. */
   reviewerDecider: Decider | null;
   language: ChatLanguage;
+  /** The decline seam. Absent = the domain's own content-free decline. */
+  decliner?: Decliner<import("./filters").KajianQFilters>;
   skipReviewer?: boolean;
   /** Streamed-delta observation hook (the HTTP edge forwards to SSE). */
   onDelta?: (delta: string) => void;
@@ -46,6 +48,6 @@ export function createChatTailStages(deps: {
       // answer language matches question language).
       refusalText: (reason) => refusalTextFor(deps.language, reason),
     }),
-    decliner: createContentFreeDecliner({ language: deps.language }),
+    decliner: deps.decliner ?? createContentFreeDecliner({ language: deps.language }),
   };
 }
