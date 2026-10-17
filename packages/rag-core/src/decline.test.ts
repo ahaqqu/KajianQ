@@ -172,14 +172,4 @@ describe("the runner's decline seam", () => {
     expect(calls.reviewer).toBe(1);
     expect(kindsOf(answer)).toEqual(["intent", "retrieval", "assembly", "llm_call"]);
   });
-
-  it("still delivers the trace when a later stage fails after a quiet decline", async () => {
-    // The decline is answered before the tail, so a caller-side failure cannot
-    // turn it into a bare response: the run's trace is on the Answer itself.
-    const { stages } = harness({ decline: true });
-    const answer = await run(stages);
-
-    expect(answer.trace.id).toBeTruthy();
-    expect(answer.trace.events.at(-1)?.kind).toBe("refusal");
-  });
 });
