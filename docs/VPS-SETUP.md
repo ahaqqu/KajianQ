@@ -804,11 +804,11 @@ anonymous minting stay green with a missing reviewer or embedder key. The Golden
 Set smoke in the `Staging` workflow is what exercises the real answering path —
 run that next.
 
-> **Ordering trap.** `apply.sh` re-installs the backup unit, and GNU `install`
-> rewrites the destination even when the content is identical, which bumps the
-> unit file's mtime. The deploy's backup gate compares the last run against that
-> mtime, so **re-running `apply.sh` invalidates the gate until a backup runs
-> again**. Prove it with the service, not the script:
+> **Ordering trap.** `apply.sh` writes the unit only when the installed copy
+> differs, so re-running it over unchanged content leaves the unit file's mtime —
+> and the deploy's backup gate — alone. A **changed** unit definition does move
+> that mtime, and then the gate stays red until a backup runs again. Prove it with
+> the service, not the script:
 > `sudo systemctl start kajianq-backup.service`. Running
 > `kajianq-backup.mjs` directly writes a snapshot but does not update the
 > service's `ExecMainStatus`, so it will not satisfy the gate.
@@ -978,9 +978,9 @@ The 30-day rolling window is enforced by the backup script's
 start, so a running process keeps the old values.
 
 **Re-apply box configuration.** Edit `provision/vps/*` in your checkout, pull it
-on the box, and re-run `apply.sh`. Remember the ordering trap in §8: this
-invalidates the backup gate until a backup runs again, so start the service
-afterwards.
+on the box, and re-run `apply.sh`. Remember the ordering trap in §8: a changed
+unit definition invalidates the backup gate until a backup runs again, so start
+the service afterwards.
 
 **Take a backup now.** `sudo systemctl start kajianq-backup.service`.
 
