@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vite-plus/test";
 import {
   BACKUP_KEEP_DAILY,
@@ -18,6 +19,7 @@ import {
   missingEnv,
   parseEnvFile,
   readLabel,
+  resolveScratchTarget,
   retentionArgs,
   sha256Hex,
   verifyRestore,
@@ -41,6 +43,16 @@ const MANIFEST = buildManifest({
   source: { host: "db.internal", database: "kajianq" },
   tool: { pgDump: "pg_dump (PostgreSQL) 18.6", generator: "test" },
 });
+
+/** The executable lines of every bash block in a doc section, comments stripped. */
+function bashLines(text) {
+  return [...text.matchAll(/```bash\n([\s\S]*?)```/g)]
+    .map((m) => m[1])
+    .join("\n")
+    .split("\n")
+    .filter((line) => !/^\s*#/.test(line))
+    .join("\n");
+}
 
 describe("retention policy matches the Art. 30 record's §6 values", () => {
   it("keeps one backup per day for 30 days — the session TTL, so a backup cannot outlive its data", () => {
@@ -271,13 +283,144 @@ describe("erasure a restore must re-apply", () => {
       port: "5432",
       database: "kajianq",
     });
-    // The restore script requires PGDATABASE_URL and uses isSameDatabase, pinned here.
+    // The restore script resolves BOTH forms through resolveScratchTarget, so neither the
+    // flag nor RESTORE_TARGET_URL can reach pg_restore without the comparison above.
     const restore = readFileSync(
       resolve(process.cwd(), "provision/vps/backup/kajianq-restore.mjs"),
       "utf8",
     );
-    expect(restore).toMatch(/isSameDatabase\(targetUrl, process\.env\.PGDATABASE_URL\)/);
-    expect(restore).toMatch(/PGDATABASE_URL is required/);
+    expect(restore).toMatch(/resolveScratchTarget\(/);
+    expect(restore).toMatch(/flagTarget: argAfter\(argv, "--target-url"\)/);
+    expect(restore).toMatch(/env: process\.env/);
+  });
+
+  it("refuses a live-database target from the env form exactly as from the flag", () => {
+    // The env form is not a way around the guard: RESTORE_TARGET_URL goes through the same
+    // comparison --target-url does, a missing PGDATABASE_URL fails closed for both, and an
+    // explicitly passed flag wins when both are present (the documented precedence).
+    const live = "postgres://u:p@127.0.0.1:5432/kajianq";
+    const scratch = "postgres://u:p@127.0.0.1:5432/kajianq_restored";
+
+    expect(
+      resolveScratchTarget({ env: { PGDATABASE_URL: live, RESTORE_TARGET_URL: scratch } }),
+    ).toBe(scratch);
+    expect(resolveScratchTarget({ flagTarget: scratch, env: { PGDATABASE_URL: live } })).toBe(
+      scratch,
+    );
+    // The flag wins: the env value is not consulted, even when it names the live database.
+    expect(
+      resolveScratchTarget({
+        flagTarget: scratch,
+        env: { PGDATABASE_URL: live, RESTORE_TARGET_URL: live },
+      }),
+    ).toBe(scratch);
+    // Both forms are refused, including a live database written in another spelling.
+    expect(() => resolveScratchTarget({ flagTarget: live, env: { PGDATABASE_URL: live } })).toThrow(
+      /names the live database/,
+    );
+    expect(() =>
+      resolveScratchTarget({
+        env: {
+          PGDATABASE_URL: live,
+          RESTORE_TARGET_URL: "postgresql://other:secret@127.0.0.1/kajianq",
+        },
+      }),
+    ).toThrow(/names the live database/);
+    // No target at all, and a missing live URL, both fail closed rather than skipping the guard.
+    expect(() => resolveScratchTarget({ env: { PGDATABASE_URL: live } })).toThrow(
+      /scratch target is required/,
+    );
+    expect(() => resolveScratchTarget({ env: { RESTORE_TARGET_URL: scratch } })).toThrow(
+      /PGDATABASE_URL is required/,
+    );
+    expect(() =>
+      resolveScratchTarget({ flagTarget: scratch, env: { RESTORE_TARGET_URL: live } }),
+    ).toThrow(/PGDATABASE_URL is required/);
+  });
+
+  it("the restore CLI stops before restic on a missing or live target, both forms", () => {
+    // Drive the real entry point: the guard runs before anything is decrypted or restored, so
+    // a refactor that moved the check after the restore could not pass this. PATH is empty of
+    // libpq/restic tools so "the guard let it through" is observable as a restic failure.
+    const script = resolve(process.cwd(), "provision/vps/backup/kajianq-restore.mjs");
+    const base = {
+      PATH: "/nonexistent-bin",
+      RESTIC_REPOSITORY: "/nonexistent/restic-repo",
+      RESTIC_PASSWORD_FILE: "/dev/null",
+    };
+    const runRestore = (args, env) =>
+      spawnSync(process.execPath, [script, "--label", "probe-label", ...args], {
+        encoding: "utf8",
+        env: { ...base, ...env },
+      });
+    const live = "postgres://u:p@127.0.0.1:5432/kajianq";
+    const scratch = "postgres://u:p@127.0.0.1:5432/kajianq_restored";
+
+    const refused = [
+      [[], { PGDATABASE_URL: live }, /scratch target is required/],
+      [[], { PGDATABASE_URL: live, RESTORE_TARGET_URL: live }, /names the live database/],
+      [["--target-url", live], { PGDATABASE_URL: live }, /names the live database/],
+      [[], { RESTORE_TARGET_URL: scratch }, /PGDATABASE_URL is required/],
+    ];
+    for (const [args, env, message] of refused) {
+      const res = runRestore(args, env);
+      expect(res.status, `expected a refusal for ${JSON.stringify(args)}`).toBe(1);
+      expect(res.stderr).toMatch(message);
+    }
+    // Precedence, observed end to end: with a live URL in the env but a scratch flag, the run
+    // gets past the guard (and dies at the missing restic), never on the guard's message.
+    const passed = runRestore(["--target-url", scratch], {
+      PGDATABASE_URL: live,
+      RESTORE_TARGET_URL: live,
+    });
+    expect(passed.stderr).not.toMatch(
+      /names the live database|scratch target is required|PGDATABASE_URL is required/,
+    );
+    expect(passed.stderr).toMatch(/restic/);
+  });
+
+  it("teaches the env-file restore invocation, with no URL on any documented command line", () => {
+    // The operator's documented invocation is the one that must keep the credential out of
+    // argv and shell history: the restore command blocks carry an env-file path and a label,
+    // never a postgres:// URL --target-url would put on `ps` for the process's life.
+    const ops = readFileSync(resolve(process.cwd(), "docs/VPS-OPERATIONS.md"), "utf8");
+    const section = ops.slice(ops.indexOf("### 2.7"), ops.indexOf("### 2.8"));
+    expect(section).toMatch(/RESTORE_TARGET_URL/);
+    expect(section).toMatch(/--env-file \/etc\/kajianq\/backup\.env/);
+    // The drill's throwaway service-container credential is named as the deliberate exception.
+    expect(section).toMatch(/drill:drill@127\.0\.0\.1:5432\/postgres/);
+    // Assert on the executable lines: a comment may name the flag, a command must not use it.
+    const commands = bashLines(section);
+    expect(commands).not.toMatch(/postgres:\/\//);
+    expect(commands).not.toMatch(/--target-url/);
+
+    const setup = readFileSync(resolve(process.cwd(), "docs/VPS-SETUP.md"), "utf8");
+    const step = setup.slice(
+      setup.indexOf("**Restoring for real**"),
+      setup.indexOf("### Confirm the backup timer"),
+    );
+    expect(step).toMatch(/RESTORE_TARGET_URL/);
+    expect(step).toMatch(/--env-file \/etc\/kajianq\/backup\.env/);
+    expect(step).toMatch(/drill:drill@127\.0\.0\.1:5432\/postgres/);
+    expect(bashLines(step)).not.toMatch(/postgres:\/\//);
+
+    // The backup script's printed hand-off names the same env-file form.
+    const backup = readFileSync(
+      resolve(process.cwd(), "provision/vps/backup/kajianq-backup.mjs"),
+      "utf8",
+    );
+    expect(backup).toMatch(/kajianq-restore\.mjs --label \$\{label\} --env-file/);
+
+    // The env template ships the scratch target as a placeholder only, and it must not name
+    // the live database (a restore onto it is refused by design).
+    const example = readFileSync(
+      resolve(process.cwd(), "provision/vps/backup/backup.env.example"),
+      "utf8",
+    );
+    const parsed = parseEnvFile(example);
+    expect(parsed.RESTORE_TARGET_URL).toMatch(/^postgres:\/\/kajianq:CHANGE_ME@/);
+    expect(dbLocation(parsed.RESTORE_TARGET_URL).database).toBe("kajianq_restored");
+    expect(isSameDatabase(parsed.RESTORE_TARGET_URL, parsed.PGDATABASE_URL)).toBe(false);
   });
 
   it("names the rows the drill proves gone and the rows it proves survive", () => {

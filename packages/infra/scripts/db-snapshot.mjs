@@ -258,12 +258,14 @@ function cmdRestorePlan(label, file) {
     [
       `Restore plan for snapshot "${label}" (ADR-0038):`,
       `  1. bun run db:snapshot download ${label}`,
-      `  2. pg_restore --clean --if-exists --no-owner --no-privileges -d "$TARGET_URL" "${path}"`,
-      `  3. psql "$TARGET_URL" -At -c "SELECT count(*) FROM doc_children"`,
+      `  2. PGPASSWORD="$TARGET_PASSWORD" pg_restore --clean --if-exists --no-owner --no-privileges -h <host> -p <port> -U <user> -d <database> "${path}"`,
+      `  3. PGPASSWORD="$TARGET_PASSWORD" psql -h <host> -p <port> -U <user> -d <database> -At -c "SELECT count(*) FROM doc_children"`,
       `  4. bun run db:snapshot verify ${label}   # compares live rows to the manifest`,
       `Restore is manual by design: --clean drops objects in the target, so it never`,
       `defaults to a live database. Restore into a NEW branch or project, verify, then`,
-      `repoint DATABASE_URL.`,
+      `repoint DATABASE_URL. The connection travels as flags with the password in`,
+      `libpq's environment: a URL argument is readable through ps and lands in shell`,
+      `history.`,
     ].join("\n"),
   );
 }

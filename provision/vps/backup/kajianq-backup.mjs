@@ -244,7 +244,7 @@ async function main() {
         `  source    ${manifest.source.host}/${manifest.source.database} (pg ${manifest.source.serverVersion})`,
         `  rows      ${formatCounts(manifest.tableCounts)}`,
         `  retention one snapshot per day, ${keepDaily} days rolling (restic forget --prune)`,
-        `  restore   provision/vps/backup/kajianq-restore.mjs --label ${label} --target-url <scratch>`,
+        `  restore   provision/vps/backup/kajianq-restore.mjs --label ${label} --env-file /etc/kajianq/backup.env`,
       ].join("\n"),
     );
   } finally {

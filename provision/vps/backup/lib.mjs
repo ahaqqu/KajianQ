@@ -214,6 +214,42 @@ export function formatCounts(counts, limit = 8) {
 }
 
 /**
+ * The scratch target a restore writes into: an explicitly passed `--target-url`
+ * wins, otherwise `RESTORE_TARGET_URL` from the environment (which `--env-file`
+ * fills). Both forms go through the same refusal, so an env-provided target
+ * cannot skip the guard, and a missing PGDATABASE_URL fails closed — the guard
+ * cannot know what not to touch, so the restore stops rather than proceeding.
+ * Comparing normalized locations (host, port with its 5432 default, database
+ * name — never credentials or query order) refuses a target that names the live
+ * database in another spelling, and accepts a scratch URL whose password or
+ * sslmode differs. Restoring over the live store would resurrect erased data
+ * (ADR-0043 decision 4).
+ */
+export function resolveScratchTarget({ flagTarget, env } = {}) {
+  const target = flagTarget ?? env?.RESTORE_TARGET_URL;
+  if (!target) {
+    fail(
+      "a scratch target is required — set RESTORE_TARGET_URL, or pass --target-url. " +
+        "A restore never targets the live URL implicitly",
+    );
+  }
+  if (!env?.PGDATABASE_URL) {
+    fail(
+      "PGDATABASE_URL is required — the live URL must be configured so the " +
+        "scratch-target guard can refuse a restore over the store that is serving",
+    );
+  }
+  if (isSameDatabase(target, env.PGDATABASE_URL)) {
+    fail(
+      "the scratch target names the live database (PGDATABASE_URL) — refusing. " +
+        "Restore into a scratch location; restoring over the live store would " +
+        "resurrect erased data (ADR-0043 decision 4).",
+    );
+  }
+  return target;
+}
+
+/**
  * Parse `key=value` lines (an env file) into an object, skipping blanks and
  * `#` comments. Used for `--env-file` so a CLI never has to export credentials
  * into a shell, and so the tests can exercise parsing without a filesystem.
