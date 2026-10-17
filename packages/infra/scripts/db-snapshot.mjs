@@ -22,7 +22,6 @@
  * is the GDPR-D backup tooling, `provision/vps/backup/`, never a second tool).
  */
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { isCorpusTable, pgEnv, run, sql, tableCounts } from "./pg-conn.mjs";
 import {
   archivePrivacy,
@@ -30,6 +29,7 @@ import {
   privacyBanner,
   refusalMessage,
 } from "./snapshot-privacy.mjs";
+import { restorePlan } from "./snapshot-restore-plan.mjs";
 import {
   createSnapshotStore,
   dumpKey,
@@ -91,8 +91,8 @@ async function cmdCreate(label) {
   }
 
   const pgDumpVersion = run("pg_dump", ["--version"]);
-  const dir = mkdtempSync(join(TMP, "kajianq-snapshot-"));
-  const dumpPath = join(dir, `kajianq-${label}.dump`);
+  const dir = mkdtempSync(`${TMP}/kajianq-snapshot-`);
+  const dumpPath = `${dir}/kajianq-${label}.dump`;
   try {
     run(
       "pg_dump",
@@ -242,7 +242,7 @@ async function cmdDownload(label, out) {
   if (!dump) fail(`dump object ${manifest.dump.key} is missing`);
   const actual = sha256Hex(dump);
   if (actual !== manifest.dump.sha256) fail(`hash mismatch for "${label}" — refusing to write it`);
-  const path = out ?? join(process.cwd(), `kajianq-${label}.dump`);
+  const path = out ?? `${process.cwd()}/kajianq-${label}.dump`;
   writeFileSync(path, dump);
   console.log(
     `db-snapshot: wrote ${path} (${(dump.length / 1024 / 1024).toFixed(1)} MB, sha256 verified)`,
@@ -253,19 +253,7 @@ async function cmdDownload(label, out) {
 }
 
 function cmdRestorePlan(label, file) {
-  const path = file ?? `<downloaded kajianq-${label}.dump>`;
-  console.log(
-    [
-      `Restore plan for snapshot "${label}" (ADR-0038):`,
-      `  1. bun run db:snapshot download ${label}`,
-      `  2. PGPASSWORD="$TARGET_PASSWORD" pg_restore --clean --if-exists --no-owner --no-privileges -h <host> -p <port> -U <user> -d <database> "${path}"`,
-      `  3. PGPASSWORD="$TARGET_PASSWORD" psql -h <host> -p <port> -U <user> -d <database> -At -c "SELECT count(*) FROM doc_children"`,
-      `  4. bun run db:snapshot verify ${label}   # compares live rows to the manifest`,
-      `Restore is manual by design: --clean drops objects in the target, so it never`,
-      `defaults to a live database. Restore into a NEW branch or project, verify, then`,
-      `repoint DATABASE_URL. The password travels in libpq's environment, not argv.`,
-    ].join("\n"),
-  );
+  console.log(restorePlan(label, file));
 }
 
 const [command, ...rest] = process.argv.slice(2);
