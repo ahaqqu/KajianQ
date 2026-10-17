@@ -1,12 +1,6 @@
 import { ContractsBarrelError } from "./errors.mjs";
-import {
-  classifyExports,
-  lineOf,
-  skipSpace,
-  requireBalanced,
-  requireNoQuotedExports,
-  scanSource,
-} from "./source.mjs";
+import { classifyExports, requireBalanced, requireNoQuotedExports } from "./classify.mjs";
+import { lineOf, scanSource, skipSpace } from "./source.mjs";
 import { exportStatement, importBindings } from "./statements.mjs";
 
 /**
@@ -19,7 +13,7 @@ import { exportStatement, importBindings } from "./statements.mjs";
  * same scanner and the same statement grammar, so the two sides cannot be read by
  * rules that disagree.
  *
- * Beyond the statement grammar, three shapes are refused here because a wrong
+ * Beyond the statement grammar, two shapes are refused here because a wrong
  * reading of them is silent:
  *
  *   - an export keyword set the scan classified `nested` while the module has no
