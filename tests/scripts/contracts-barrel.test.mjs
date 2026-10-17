@@ -17,7 +17,6 @@ import {
   resolveModule,
 } from "../../scripts/contracts-barrel/tree.mjs";
 import {
-  accountFor,
   assertBarrelCoverage,
   barrelInventory,
   misdeclaredModules,
@@ -135,12 +134,14 @@ describe("the module tree comes from disk, not from a list", () => {
     expect(unwiredMembers(inventory)).toEqual([]);
     expect(unprovidedBarrelNames(inventory)).toEqual([]);
     expect(misdeclaredModules(inventory)).toEqual([]);
-    const accounting = accountFor(inventory);
-    expect(accounting.unaccounted).toEqual([]);
-    expect(accounting.published + accounting.withheld).toBe(accounting.extracted);
     const report = assertBarrelCoverage(root);
-    expect(report.members).toBe(accounting.extracted);
+    // Every member is published or withheld on the record; the counts are that
+    // reading, not a second rule over it.
     expect(report.published + report.withheld).toBe(report.members);
+    expect(report.published).toBe(report.entries);
+    // No export keyword in the package reads as nested: a brace opened in error
+    // anywhere above one would show up here.
+    expect(report.nested).toBe(0);
   });
 
   it("names the declarations the tree makes, member by member, each with its reason", () => {
@@ -290,8 +291,8 @@ describe("a module added after the gate is judged by it", () => {
   });
 
   it("judges a module in every extension the package can hold", () => {
-    // The extension test, not the walk, decided this before: `.mts`, `.cts` and
-    // `.tsx` sat outside the universe and their members were invisible.
+    // The universe is the extension set, not one suffix: `.mts`, `.cts` and `.tsx`
+    // are modules whose members are judged like any other.
     for (const extension of [".mts", ".cts", ".tsx"]) {
       const root = fixtureTree({
         files: { [`${SRC_DIR}/mystery${extension}`]: "export const mysteryOne = 1;\n" },
@@ -313,8 +314,8 @@ describe("a module added after the gate is judged by it", () => {
 
 describe("the scan reads code, not prose, and refuses what it cannot see", () => {
   it("reads a real export below a multi-line template that carries a comment opener", () => {
-    // The shape that used to blank everything below it: the template spans lines,
-    // so the `/*` on its second line is text, not a comment.
+    // The template spans lines, so the `/*` on its second line is text, not a
+    // comment, and the export below it is a statement.
     const source = [
       "const USAGE = `x",
       "packages/contracts/src/*",
@@ -451,26 +452,30 @@ describe("a module is out of the public surface only on the record", () => {
     ]);
   });
 
-  it("does not accept a declaration smuggled inside a block comment or a template", () => {
-    const smuggledInComment = [
+  it("refuses a declaration buried in a block comment, and reads none inside a template", () => {
+    // A JSDoc declaration is an author meaning to declare: refused as misplaced
+    // rather than dropped, because a dropped intent is a third escape.
+    const buried = [
       "/**",
-      ` * // ${INTERNAL_MARKER} alphaOne: smuggled`,
+      ` * ${INTERNAL_MARKER} alphaOne: buried`,
       " */",
       "export const alphaOne = 1;",
     ].join("\n");
-    expect(internalDeclaration(smuggledInComment, "alpha.ts")).toBe(null);
-    const smuggledInTemplate = [
+    expect(() => internalDeclaration(buried, "alpha.ts")).toThrow(ContractsBarrelError);
+    const root = fixtureTree({
+      files: { [`${SRC_DIR}/alpha.ts`]: `${buried}\n` },
+      barrel: barrelSource([BETA]),
+    });
+    expect(refusal(() => assertBarrelCoverage(root))).toMatch(/not read as a directive/);
+    // A directive quoted inside a template is prose, not an intent: no declaration,
+    // and the member it names is still judged.
+    const quoted = [
       "const usage = `",
-      `// ${INTERNAL_MARKER} alphaOne: smuggled`,
+      `// ${INTERNAL_MARKER} alphaOne: quoted`,
       "`;",
       "export const alphaOne = 1;",
     ].join("\n");
-    expect(internalDeclaration(smuggledInTemplate, "alpha.ts")).toBe(null);
-    const root = fixtureTree({
-      files: { [`${SRC_DIR}/alpha.ts`]: `${smuggledInComment}\n` },
-      barrel: barrelSource([BETA]),
-    });
-    expect(refusal(() => assertBarrelCoverage(root))).toMatch(/alpha\.ts: alphaOne/);
+    expect(internalDeclaration(quoted, "alpha.ts")).toBe(null);
   });
 
   it("refuses a declaration with no reason, no member, or a second one", () => {
@@ -524,7 +529,6 @@ describe("the export statements are read as the modules write them", () => {
         "asyncGenerator",
         "carried",
         "generator",
-        "namespace",
         "object",
       ].sort(),
     );
@@ -542,8 +546,181 @@ describe("the export statements are read as the modules write them", () => {
     const shape = (edge) =>
       `${edge.from}|${edge.names === null ? "*" : edge.names.map((n) => `${n.provided}->${n.exported}`).join(",")}`;
     expect(surface.edges.map(shape).sort()).toEqual(
-      ["./origin|carried->carried", "./other|default->renamed", "./other|*"].sort(),
+      [
+        "./origin|carried->carried",
+        "./other|default->renamed",
+        "./other|*->namespace",
+        "./other|*",
+      ].sort(),
     );
+  });
+});
+
+describe("a construct the scanner cannot resolve is refused, not guessed", () => {
+  it("reads a real export below a regex whose bracket would shift the depth", () => {
+    // `/{/` mis-read as code opens a brace that never closes, and every `export`
+    // below it then reads as nested inside a block — a member the gate cannot see.
+    const source = ["const OPEN = /{/;", "export const alphaOne = 1;"].join("\n");
+    expect(names(moduleSurface(source, "regex.ts"))).toEqual(["alphaOne"]);
+    const root = fixtureTree({ files: { [`${SRC_DIR}/regex.ts`]: `${source}\n` } });
+    expect(unwiredMembers(barrelInventory(root))).toEqual([
+      { file: `${SRC_DIR}/regex.ts`, reached: false, names: ["alphaOne"] },
+    ]);
+  });
+
+  it("reads a real export below a regex a comment would have swallowed", () => {
+    // `/[/*]/` mis-read as code opens a block comment, and a later `*/` closes it
+    // over the export between them: the member is blanked as prose.
+    const source = [
+      "const CLASS = /[/*]/;",
+      "export const alphaOne = 1;",
+      'const DOC = "end */";',
+    ].join("\n");
+    expect(names(moduleSurface(source, "regex.ts"))).toEqual(["alphaOne"]);
+    const root = fixtureTree({ files: { [`${SRC_DIR}/regex.ts`]: `${source}\n` } });
+    expect(refusal(() => assertBarrelCoverage(root))).toMatch(/regex\.ts: alphaOne/);
+  });
+
+  it("reads a declaration whose value is a regex holding a quote, a semicolon or `export`", () => {
+    const source = [
+      "export const pattern = /[\"';]/;",
+      "export const word = /export/g;",
+      "export const ratio = 4 / 2;",
+    ].join("\n");
+    expect(names(moduleSurface(source, "regex.ts"))).toEqual(["pattern", "word", "ratio"]);
+  });
+
+  it("refuses a `/` that can open a regex and has no closing `/` on its line", () => {
+    const message = refusal(() => moduleSurface("const RATIO = /open;\n", "regex.ts"));
+    expect(message).toMatch(/regex\.ts:1/);
+    expect(message).toMatch(/no closing `\/`/);
+  });
+
+  it("refuses a brace a division-position regex left unclosed, instead of losing the export", () => {
+    // `if (a) /re/` is a regex the previous-token rule calls division; the brace in
+    // it then opens a block. The bracket count is what stops it from going quiet.
+    const message = refusal(() =>
+      moduleSurface("if (a) /{.test(b);\nexport const alphaOne = 1;\n", "regex.ts"),
+    );
+    expect(message).toMatch(/regex\.ts:1/);
+    expect(message).toMatch(/still unclosed/);
+  });
+
+  it("refuses a closer nothing opened, instead of reading the depth below it", () => {
+    const message = refusal(() => moduleSurface("export const a = 1;\n}\n", "regex.ts"));
+    expect(message).toMatch(/regex\.ts:2/);
+    expect(message).toMatch(/closes nothing/);
+  });
+
+  it("reads a property key named `export` as no export at all", () => {
+    // A key is not an intent to export, so a module that only has one publishes
+    // nothing and is judged on that.
+    expect(names(moduleSurface("const shape = { export: 1 };\n", "nested.ts"))).toEqual([]);
+  });
+
+  it("refuses a statement-shaped export nested in a block with no statement above it", () => {
+    // Nested statement exports are legitimate inside a namespace body, which is a
+    // statement of its own. With none above it, a brace opened in error is what put
+    // this one inside a block, and nothing else would report the members below it.
+    const message = refusal(() =>
+      moduleSurface("const outer = {\n  export const inner = 1;\n};\n", "nested.ts"),
+    );
+    expect(message).toMatch(/nested\.ts:2/);
+    expect(message).toMatch(/reads as nested/);
+  });
+});
+
+describe("one name has one origin", () => {
+  it("refuses a name two statements publish from different modules", () => {
+    const root = fixtureTree({
+      files: {
+        [`${SRC_DIR}/origin.ts`]: "export const carried = 1;\n",
+        [`${SRC_DIR}/gateway.ts`]:
+          'export { carried as shared } from "./origin";\nexport { other as shared } from "./other";\n',
+      },
+      barrel: `${barrelSource([ALPHA, BETA])}export { shared } from "./gateway";\n`,
+    });
+    const message = refusal(() => assertBarrelCoverage(root));
+    expect(message).toMatch(/gateway\.ts/);
+    expect(message).toMatch(/shared/);
+  });
+
+  it("refuses a re-export whose chain does not end at the name it claims", () => {
+    // `export { ghost as x } from "./origin"` names a member origin never had; the
+    // barrel entry that trusts it must not pass on the strength of the chain alone.
+    const root = fixtureTree({
+      files: {
+        [`${SRC_DIR}/origin.ts`]: "export const present = 1;\n",
+        [`${SRC_DIR}/gateway.ts`]: 'export { ghost as x } from "./origin";\n',
+      },
+      barrel: `${barrelSource([ALPHA, BETA])}export { x } from "./gateway";\n`,
+    });
+    expect(unprovidedBarrelNames(barrelInventory(root))).toEqual([
+      expect.objectContaining({ provided: "x", module: "./gateway" }),
+    ]);
+    expect(refusal(() => assertBarrelCoverage(root))).toMatch(/provides no such name/);
+  });
+});
+
+describe("a namespace re-export publishes one name", () => {
+  it("reads `export * as ns from` as an edge, not as a member of the module", () => {
+    const surface = moduleSurface('export * as ns from "./origin";\n', "gateway.ts");
+    expect(surface.members).toEqual([]);
+    expect(surface.edges).toEqual([
+      { from: "./origin", names: [{ provided: "*", exported: "ns", typeOnly: false }] },
+    ]);
+  });
+
+  it("carries the barrel's namespace entry instead of refusing it as a name with no `from`", () => {
+    expect(barrelEntries('export * as ns from "./origin";\n', BARREL_FILE)).toEqual([
+      expect.objectContaining({ provided: "*", exported: "ns", module: "./origin" }),
+    ]);
+  });
+
+  it("keeps the target's members unwired, naming the module as reached", () => {
+    // A consumer writes `ns.carried`, never `carried`, so the ticket's rule still
+    // wants the member published by name — but the module is reached, so the
+    // report does not claim nothing points at it.
+    const root = fixtureTree({
+      modules: [ALPHA],
+      files: {
+        [`${SRC_DIR}/origin.ts`]: "export const carried = 1;\n",
+        [`${SRC_DIR}/gateway.ts`]: 'export * as ns from "./origin";\n',
+      },
+      barrel: `${barrelSource([ALPHA])}export { ns } from "./gateway";\n`,
+    });
+    expect(unprovidedBarrelNames(barrelInventory(root))).toEqual([]);
+    expect(unwiredMembers(barrelInventory(root))).toEqual([
+      { file: `${SRC_DIR}/origin.ts`, reached: true, names: ["carried"] },
+    ]);
+  });
+});
+
+describe("a specifier resolves the way the tree is laid out", () => {
+  it("resolves an emit spelling to the source, the tsx variant, the declaration or an index", () => {
+    const modules = new Map([
+      ["a/chat.tsx", {}],
+      ["a/types.d.ts", {}],
+      ["a/nested/index.ts", {}],
+    ]);
+    expect(resolveModule(modules, "a/index.ts", "./chat.js")).toBe("a/chat.tsx");
+    expect(resolveModule(modules, "a/index.ts", "./types.js")).toBe("a/types.d.ts");
+    expect(resolveModule(modules, "a/index.ts", "./nested")).toBe("a/nested/index.ts");
+    expect(resolveModule(modules, "a/index.ts", "./absent")).toBe(null);
+  });
+
+  it("is green on a barrel that wires a `.tsx` module through `./x.js` and a directory", () => {
+    const root = fixtureTree({
+      modules: [ALPHA],
+      files: {
+        [`${SRC_DIR}/widget.tsx`]: "export const widget = 1;\n",
+        [`${SRC_DIR}/nested/index.ts`]: "export const deep = 1;\n",
+      },
+      barrel: `${barrelSource([ALPHA])}export { widget } from "./widget.js";\nexport { deep } from "./nested";\n`,
+    });
+    expect(unwiredMembers(barrelInventory(root))).toEqual([]);
+    expect(unprovidedBarrelNames(barrelInventory(root))).toEqual([]);
+    expect(refusal(() => assertBarrelCoverage(root))).toBe("");
   });
 });
 

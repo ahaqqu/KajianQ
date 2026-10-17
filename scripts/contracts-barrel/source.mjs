@@ -4,33 +4,42 @@ import { ContractsBarrelError } from "./errors.mjs";
  * Reading a source the way the rules need it read — the lexing layer, and only
  * that.
  *
- * Two views of one file, because the rules need both: `code`, with comments
- * blanked and string/template literals intact (a module specifier lives inside
- * one), and `directives`, with block comments and literals blanked but line
- * comments kept (a directive is a line comment, and one that only appears inside
- * a block comment or a literal is not a directive a reader would find). Newlines
- * are never blanked, so every message can name the line it found.
+ * Three views of one file, because the rules need all three: `code`, with
+ * comments blanked and string/template/regex literals intact (a module specifier
+ * lives inside one); `directives`, with block comments and literals blanked but
+ * line comments kept (a directive is a line comment); and `comments`, with
+ * literals blanked and comments kept (where a directive that is not a line
+ * comment still shows up, so it can be refused rather than silently dropped).
+ * Newlines are never blanked, so every message can name the line it found.
  *
  * What the scan refuses, rather than reading past:
  *
- *   - a block comment that opens and never closes: its closing delimiter may be
- *     the only thing that would end it, so everything below is either code or
- *     prose and this scan cannot tell which. Blanking to the end of the file is
- *     how a real `export` disappears — the silence this gate exists to remove;
- *   - a template literal that opens and never closes, for the same reason. A
- *     template spans lines by design, so unlike `"` and `'` it has no
- *     end-of-line fallback;
- *   - an `export` keyword inside a literal (see `classifyExports`): a module
- *     publishes no member by quoting one, so it is either quoted prose or a
- *     statement the scan mistook for a literal, and both are reported rather
- *     than passed over silently.
+ *   - a block comment that opens and never closes, and a template literal that
+ *     never closes: their extent may swallow a real statement, and blanking to
+ *     the end of the file is how a member disappears — the silence this gate
+ *     exists to remove. A `"`/`'` literal is bounded to its own line, because a
+ *     JS string cannot span one;
+ *   - a `/` that can open a regular-expression literal and has no closing `/` on
+ *     its line: whether a `/` is a regex or division turns on the token before
+ *     it, and code after `=` can be either. That is refused rather than guessed,
+ *     since a wrong guess shifts the scan's bracket count and a member below it
+ *     goes missing;
+ *   - a scan whose brackets do not balance by the end of the file, or that meets
+ *     a closer nothing opened: a mis-read regex, string, template or comment is
+ *     the way that happens, and an unbalanced count means the statement/nested
+ *     split below cannot be trusted;
+ *   - an `export` keyword inside a string or template literal (see
+ *     `requireNoQuotedExports`): a module publishes no member by quoting one, so
+ *     it is either quoted prose or a statement the scan mistook for a literal,
+ *     and both are reported rather than passed over silently.
  *
- * A regex literal is the one construct this layer does not know: a `/` opens one
- * only where the language needs a value, and without that rule a regex holding a
- * quote or a `//` reads as a literal or a comment. Every such mis-reading is
- * bounded to the line it starts on for `"` and `'`, and a backtick or `/*` that
- * swallows a real statement puts that statement's `export` inside a literal —
- * which `classifyExports` reports with the file and line instead of skipping.
+ * A regular expression is the one construct here recognised by a heuristic: it
+ * opens where the token before it cannot end an expression (`(`, `,`, `=`,
+ * `return`, …) and divides otherwise. A regex in a position the heuristic calls
+ * division is not valid JavaScript, so the guess errs only on code that does not
+ * compile; and the two refusals above turn the erring direction into a message
+ * instead of a missing member. A regex literal is never treated as quoted text,
+ * so a pattern containing the word `export` is not mistaken for prose.
  */
 
 export const lineOf = (source, offset) => source.slice(0, offset).split("\n").length;
@@ -114,12 +123,111 @@ function templateEnd(source, from) {
 }
 
 /**
- * The two views of one source, plus where each literal sits. Throws — with the
- * file and line — on the two constructs whose extent this scan cannot see.
+ * A regular expression's closing `/`, or -1 when none is on the same line. A `/`
+ * inside a character class does not close it, and an escaped character (a `/`
+ * included) is skipped, so `/[/]/` and `/\\//` end where they should.
+ */
+function regexEnd(source, from) {
+  let inClass = false;
+  for (let i = from + 1; i < source.length; i += 1) {
+    const char = source[i];
+    if (char === "\\") {
+      i += 1;
+      continue;
+    }
+    if (char === "\n") return -1;
+    if (inClass) {
+      if (char === "]") inClass = false;
+      continue;
+    }
+    if (char === "[") {
+      inClass = true;
+      continue;
+    }
+    if (char === "/") return i + 1;
+  }
+  return -1;
+}
+
+/** The punctuator or word immediately before `at`, read off the blanked code. */
+function previousToken(code, at) {
+  let i = at - 1;
+  while (i >= 0 && /\s/.test(code[i])) i -= 1;
+  if (i < 0) return "";
+  if (/[\w$]/.test(code[i])) {
+    let start = i;
+    while (start >= 0 && /[\w$]/.test(code[start])) start -= 1;
+    return code.slice(start + 1, i + 1);
+  }
+  const tail = code.slice(Math.max(0, i - 2), i + 1);
+  for (const operator of ["++", "--", "=>", "**", "&&", "||", "??", "+=", "-=", "*=", "/="]) {
+    if (tail.endsWith(operator)) return operator;
+  }
+  return code[i];
+}
+
+/** A regex may open where the token before it cannot end an expression. */
+const AFTER_EXPRESSION_START = new Set([
+  "",
+  "(",
+  "[",
+  "{",
+  ",",
+  ";",
+  ":",
+  "?",
+  "!",
+  "&",
+  "|",
+  "+",
+  "-",
+  "*",
+  "%",
+  "^",
+  "~",
+  "=",
+  "<",
+  ">",
+  "=>",
+  "&&",
+  "||",
+  "??",
+  "+=",
+  "-=",
+  "*=",
+  "/=",
+  "**",
+]);
+const AFTER_EXPRESSION_KEYWORD = new Set([
+  "return",
+  "typeof",
+  "instanceof",
+  "in",
+  "of",
+  "new",
+  "delete",
+  "void",
+  "yield",
+  "await",
+  "case",
+  "do",
+  "else",
+  "throw",
+]);
+
+const opensRegex = (code, at) => {
+  const token = previousToken(code, at);
+  return AFTER_EXPRESSION_START.has(token) || AFTER_EXPRESSION_KEYWORD.has(token);
+};
+
+/**
+ * The three views of one source, plus where each literal sits. Throws — with the
+ * file and line — on the constructs whose extent this scan cannot see.
  */
 export function scanSource(source, file) {
   const code = source.split("");
   const directives = source.split("");
+  const comments = source.split("");
   const literals = new Map();
   const blank = (view, from, to) => {
     for (let i = from; i < to; i += 1) if (view[i] !== "\n") view[i] = " ";
@@ -145,6 +253,9 @@ export function scanSource(source, file) {
             "becomes a statement the scan reads",
         );
       }
+      // `code` and `directives` lose a block comment (it is prose, and no
+      // directive lives in one); `comments` keeps it, so a declaration written
+      // inside one is visible to the refusal that names it as misplaced.
       blank(code, i, end + 2);
       blank(directives, i, end + 2);
       i = end + 2;
@@ -152,8 +263,14 @@ export function scanSource(source, file) {
     }
     if (char === '"' || char === "'") {
       const end = quotedEnd(source, i, char);
-      literals.set(i, { start: i, end, closed: end > i + 1 && source[end - 1] === char });
+      literals.set(i, {
+        start: i,
+        end,
+        kind: "string",
+        closed: end > i + 1 && source[end - 1] === char,
+      });
       blank(directives, i, end);
+      blank(comments, i, end);
       i = end;
       continue;
     }
@@ -166,55 +283,126 @@ export function scanSource(source, file) {
             "becomes a statement the scan reads",
         );
       }
-      literals.set(i, { start: i, end, closed: true });
+      literals.set(i, { start: i, end, kind: "template", closed: true });
       blank(directives, i, end);
+      blank(comments, i, end);
+      i = end;
+      continue;
+    }
+    if (char === "/" && opensRegex(code.join(""), i)) {
+      const end = regexEnd(source, i);
+      if (end === -1) {
+        throw new ContractsBarrelError(
+          `${file}:${lineOf(source, i)}: a \`/\` here can open a regular-expression literal and ` +
+            "this line has no closing `/`, so the scan cannot tell a regex from division — close " +
+            "the regex on its line, or write the division so it cannot be read as one",
+        );
+      }
+      literals.set(i, { start: i, end, kind: "regex", closed: true });
+      blank(directives, i, end);
+      blank(comments, i, end);
       i = end;
       continue;
     }
     i += 1;
   }
-  return { code: code.join(""), directives: directives.join(""), literals };
+  return {
+    code: code.join(""),
+    directives: directives.join(""),
+    comments: comments.join(""),
+    literals,
+  };
 }
-
-const EXPORT = "export";
-
-const startsKeyword = (code, i, keyword) =>
-  code.startsWith(keyword, i) &&
-  !/[\w$.]/.test(code[i - 1] ?? "") &&
-  !/[\w$]/.test(code[i + keyword.length] ?? "");
 
 /**
  * Every `export` keyword in the file, split by what it can be: a `statement` to
  * read, a `nested` one inside a block (a namespace member, an object's or a type
- * literal's property — never a module export), or `quoted` text inside a literal.
- * Enumerating all three is what keeps "not a statement" from becoming "not
- * looked at": each keyword lands in exactly one list.
+ * literal's property — never a module export), or `quoted` text inside a string
+ * or template. Enumerating all three is what keeps "not a statement" from
+ * becoming "not looked at": each keyword lands in exactly one list.
+ *
+ * The walk also reports the bracket accounting it used, because depth is what
+ * decides statement from nested: `open` is every opener still unclosed at the end
+ * of the file, and `stray` is the first closer that opened nothing. Either one
+ * means the split cannot be trusted, and the caller refuses.
  */
 export function classifyExports({ code, literals }) {
   const statements = [];
   const nested = [];
   const quoted = [];
-  let depth = 0;
+  const open = [];
+  let stray = null;
   let i = 0;
   while (i < code.length) {
     const literal = literals.get(i);
     if (literal !== undefined) {
-      for (const match of code.slice(literal.start, literal.end).matchAll(/\bexport\b/g)) {
-        quoted.push(literal.start + match.index);
+      if (literal.kind !== "regex") {
+        for (const match of code.slice(literal.start, literal.end).matchAll(/\bexport\b/g)) {
+          quoted.push(literal.start + match.index);
+        }
       }
       i = literal.end;
       continue;
     }
     const char = code[i];
-    if (char === "{" || char === "(" || char === "[") depth += 1;
-    else if (char === "}" || char === ")" || char === "]") depth = Math.max(0, depth - 1);
-    else if (startsKeyword(code, i, EXPORT)) {
-      if (depth > 0) nested.push(i);
+    if (char === "{" || char === "(" || char === "[") open.push(i);
+    else if (char === "}" || char === ")" || char === "]") {
+      if (open.length === 0) {
+        if (stray === null) stray = i;
+      } else {
+        open.pop();
+      }
+    } else if (
+      code.startsWith("export", i) &&
+      !/[\w$.]/.test(code[i - 1] ?? "") &&
+      !/[\w$]/.test(code[i + 6] ?? "")
+    ) {
+      if (open.length > 0) nested.push(i);
       else statements.push(i);
-      i += EXPORT.length;
+      i += "export".length;
       continue;
     }
     i += 1;
   }
-  return { statements, nested, quoted };
+  return { statements, nested, quoted, open, stray };
+}
+
+/**
+ * A bracket the scan never closed, or one it closed with nothing open, means the
+ * statement/nested split below it cannot be trusted: a mis-read regex, string,
+ * template or comment is the way that happens. Refused with the line it started
+ * on rather than judged.
+ */
+export function requireBalanced(scanned, classified, file) {
+  if (classified.stray !== null) {
+    throw new ContractsBarrelError(
+      `${file}:${lineOf(scanned.code, classified.stray)}: a \`}\`/\`)\`/\`]\` closes nothing the ` +
+        "scan opened, so a literal or comment above it was mis-read and the statements below " +
+        "cannot be judged",
+    );
+  }
+  if (classified.open.length === 0) return;
+  const first = classified.open[0];
+  throw new ContractsBarrelError(
+    `${file}:${lineOf(scanned.code, first)}: a \`{\`/\`(\`/\`[\` opened here is still unclosed at ` +
+      `the end of the file (${classified.open.length} left open), so a literal or comment mis-read ` +
+      "above it may be hiding a statement — close it, or write the construct so it reads as code",
+  );
+}
+
+/**
+ * An `export` keyword the scan read as quoted text. A module publishes no member
+ * by quoting one, so this is either prose this gate will not read or a statement
+ * the scan mistook for a literal — and the second is the silence the gate exists
+ * to remove, whatever the first costs.
+ */
+export function requireNoQuotedExports({ code }, quoted, file) {
+  if (quoted.length === 0) return;
+  const lines = quoted.map((at) => lineOf(code, at));
+  throw new ContractsBarrelError(
+    `${file}: the word \`export\` sits inside a string or template literal at line ` +
+      `${lines.join(", ")}: a module publishes no member that way, so this is either quoted ` +
+      "prose this gate will not read or a statement the scan mistook for a literal — reword the " +
+      "literal, since a statement the scan reads past is the silence this gate exists to remove",
+  );
 }

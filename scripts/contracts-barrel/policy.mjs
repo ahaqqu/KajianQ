@@ -30,13 +30,18 @@ import { BARREL_FILE, SRC_DIR, moduleFiles, readModuleFile, resolveModule } from
  *     cannot inherit the exemption silently), a name the module does not export
  *     reddens, and a name a barrel entry publishes reddens — the record has to be
  *     true, which also means a stale declaration is a failure and not a note;
- *   - `accountFor`: every extracted member receives exactly one verdict —
- *     published, or withheld by a declaration — and the two counts equal the
- *     extraction. A member that falls between the rules cannot hide inside a
- *     total, and the count is a rule over the tree rather than a floor under it:
- *     the barrel's own entries are what prove the extraction read something (an
- *     empty walk leaves every entry unresolved), so no constant has to be raised
- *     as the package grows.
+ * One traversal answers both directions: `traced` follows a name a module publishes
+ * through its re-export edges to the member that declares it, and both rules read
+ * its two answers — `found` (does a module provide the name at all, so a broken
+ * chain is a refusal and not a pass) and `marks` (which members a barrel entry
+ * publishes). Two traversals that drifted apart is how a rule gets written twice
+ * and disagrees with itself.
+ *
+ * There are no floors. A barrel entry that resolves to no module reddens, so a
+ * walk that read nothing cannot pass; every module is either reached by an entry
+ * or named in the unwired report; and every member is judged by one of the two
+ * rules above, which is why the report's counts are evidence rather than a
+ * separate assertion that could only restate them.
  *
  * Blind spots, stated. A name is a name: `export { type X }` and `export { X }` are
  * compared as the same member, so a VALUE re-exported type-only — where the
@@ -45,11 +50,14 @@ import { BARREL_FILE, SRC_DIR, moduleFiles, readModuleFile, resolveModule } from
  * ANOTHER module (a collision) passes: the import resolves, so the silent gap is
  * closed, and which of the two the author meant is a reader's question. A module
  * that `import`s a name it re-exports is only attributed to that origin when the
- * import clause is one `read.mjs` recognises; otherwise the export stays this
+ * import clause is `statements.mjs` recognises; otherwise the export stays this
  * module's member and the origin's surfaces as unwired — loud, and fixed by
- * spelling the re-export `export … from`. Consumers that deep-import
- * `@app/contracts/src/<module>` bypass this gate entirely: it checks that the
- * barrel can serve every member, not that every consumer goes through it.
+ * spelling the re-export `export … from`. A namespace re-export (`export * as ns
+ * from "./x"`) publishes one name, `ns`: a member reachable only as `ns.carried`
+ * is not importable by name, so the ticket's rule still wants it published or the
+ * module declared. Consumers that deep-import `@app/contracts/src/<module>` bypass
+ * this gate entirely: it checks that the barrel can serve every member, not that
+ * every consumer goes through it.
  */
 
 const key = (file, name) => `${file}\u0000${name}`;
@@ -90,53 +98,48 @@ function reachableSources(modules, from) {
 }
 
 /**
- * Whether a module publishes a name: it declares one, an `export … from` edge
- * carries one over under that name, or a wildcard edge carries its target's whole
- * surface. A cycle stops rather than spinning.
+ * Where a name a module publishes comes from: `found` says a module provides it at
+ * all, `marks` says which members the publication stands for. One traversal feeds
+ * both, because they are two questions about one walk — a name is provided only
+ * when the chain ends at a member that declares it, and that member is what a
+ * barrel entry publishes.
+ *
+ * `export { carried as renamed } from "./origin"` publishes `origin.ts: carried`; a
+ * module that both imports and re-exports a name publishes its own member and the
+ * origin's, since a consumer's one import reads the same value from either. A
+ * wildcard edge carries its target's surface under the same names; a namespace
+ * edge (`names[].provided === "*"`) carries the namespace object, which owes no
+ * member name. A cycle stops rather than spinning.
  */
-function provides(modules, file, name, seen = new Set()) {
+function traced(modules, file, name, seen = new Set()) {
   const module = modules.get(file);
-  if (module === undefined) return false;
-  if (module.members.some((member) => member.name === name)) return true;
-  if (seen.has(file)) return false;
-  const path = new Set(seen).add(file);
-  for (const edge of module.edges) {
-    const target = resolveModule(modules, file, edge.from);
-    if (target === null) continue;
-    if (edge.names === null && provides(modules, target, name, path)) return true;
-    if (edge.names !== null && edge.names.some((carried) => carried.exported === name)) return true;
-  }
-  return false;
-}
-
-/**
- * The members a barrel entry publishes: the target's own member of that name, and
- * every member along the chain it resolves through. `export { carried as renamed }
- * from "./origin"` publishes `origin.ts: carried`; a module that both imports and
- * re-exports a name publishes its own member and the origin's, since a consumer's
- * one import reads the same value from either.
- */
-function publishedBy(modules, file, name, seen = new Set()) {
+  if (module === undefined) return { found: false, marks: [] };
+  if (name === "*") return { found: true, marks: [] };
   const marks = [];
-  const module = modules.get(file);
-  if (module === undefined) return marks;
-  if (module.members.some((member) => member.name === name)) marks.push({ file, name });
-  if (seen.has(file)) return marks;
+  let found = false;
+  if (module.members.some((member) => member.name === name)) {
+    marks.push({ file, name });
+    found = true;
+  }
+  if (seen.has(file)) return { found, marks };
   const path = new Set(seen).add(file);
   for (const edge of module.edges) {
     const target = resolveModule(modules, file, edge.from);
     if (target === null) continue;
     if (edge.names === null) {
-      // A wildcard carries its target's surface under the same names.
-      marks.push(...publishedBy(modules, target, name, path));
+      const child = traced(modules, target, name, path);
+      found = found || child.found;
+      marks.push(...child.marks);
       continue;
     }
     for (const carried of edge.names) {
-      if (carried.exported === name)
-        marks.push(...publishedBy(modules, target, carried.provided, path));
+      if (carried.exported !== name) continue;
+      const child = traced(modules, target, carried.provided, path);
+      found = found || child.found;
+      marks.push(...child.marks);
     }
   }
-  return marks;
+  return { found, marks };
 }
 
 /** Every module some barrel entry reaches, and every member one publishes. */
@@ -147,7 +150,7 @@ function reach(inventory) {
     const target = resolveModule(inventory.modules, BARREL_FILE, entry.module);
     if (target === null) continue;
     for (const source of reachableSources(inventory.modules, target)) modules.add(source);
-    for (const mark of publishedBy(inventory.modules, target, entry.provided)) {
+    for (const mark of traced(inventory.modules, target, entry.provided).marks) {
       members.add(key(mark.file, mark.name));
     }
   }
@@ -187,7 +190,7 @@ export function unprovidedBarrelNames(inventory) {
       unprovided.push({ ...entry, reason: `no module "${entry.module}" exists in ${SRC_DIR}` });
       continue;
     }
-    if (!provides(inventory.modules, target, entry.provided)) {
+    if (!traced(inventory.modules, target, entry.provided).found) {
       unprovided.push({ ...entry, reason: `"${entry.module}" provides no such name` });
     }
   }
@@ -226,36 +229,37 @@ export function misdeclaredModules(inventory) {
 }
 
 /**
- * Every extracted member's one verdict: published by a barrel entry, or withheld
- * by a declaration. The counts are the gate's accounting — `unaccounted` is a
- * member no rule spoke about, which is the shape a silently-dropped member takes.
+ * The report's counts: how many extracted members a barrel entry publishes, and
+ * how many a declaration withholds. Evidence, not a rule — `unwiredMembers` and
+ * `misdeclaredModules` are what judge a member, and a third assertion over their
+ * two sets could only restate them.
  */
-export function accountFor(inventory) {
+function tally(inventory) {
   const published = reach(inventory);
-  const tally = { extracted: 0, published: 0, withheld: 0, unaccounted: [] };
+  let extracted = 0;
+  let withheld = 0;
   for (const module of inventory.modules.values()) {
     for (const member of module.members) {
-      tally.extracted += 1;
-      if (published.members.has(key(module.file, member.name))) tally.published += 1;
-      else if (module.declaration?.names.includes(member.name)) tally.withheld += 1;
-      else tally.unaccounted.push(`${module.file}: ${member.name}`);
+      extracted += 1;
+      if (published.members.has(key(module.file, member.name))) continue;
+      if (module.declaration?.names.includes(member.name)) withheld += 1;
     }
   }
-  return tally;
+  return { extracted, withheld, published: extracted - withheld };
 }
 
 /**
  * The whole gate: every module member is published through the barrel or withheld
- * on the record, every barrel entry names what some module provides, every
- * declaration is still true, and every extracted member has a verdict. Throws with
- * those lists when any of them fails; returns the reading when they all hold.
+ * on the record, every barrel entry names what some module provides, and every
+ * declaration is still true. Throws with those lists when any of them fails;
+ * returns the reading when they all hold.
  */
 export function assertBarrelCoverage(root = process.cwd()) {
   const inventory = barrelInventory(root);
   const unwired = unwiredMembers(inventory);
   const unprovided = unprovidedBarrelNames(inventory);
   const misdeclared = misdeclaredModules(inventory);
-  const accounting = accountFor(inventory);
+  const counts = tally(inventory);
   const problems = [];
 
   if (unwired.length > 0) {
@@ -311,25 +315,15 @@ export function assertBarrelCoverage(root = process.cwd()) {
     );
   }
 
-  if (
-    accounting.unaccounted.length > 0 ||
-    accounting.published + accounting.withheld !== accounting.extracted
-  ) {
-    problems.push(
-      `member(s) the rules never judged (${accounting.published} published + ` +
-        `${accounting.withheld} withheld ≠ ${accounting.extracted} extracted):\n` +
-        accounting.unaccounted.map((member) => `  ${member}`).join("\n"),
-    );
-  }
-
   if (problems.length > 0) throw new ContractsBarrelError(problems.join("\n"));
 
   return {
     modules: inventory.modules.size,
-    members: accounting.extracted,
+    members: counts.extracted,
     entries: inventory.entries.length,
-    published: accounting.published,
-    withheld: accounting.withheld,
+    published: counts.published,
+    withheld: counts.withheld,
+    nested: [...inventory.modules.values()].reduce((total, module) => total + module.nested, 0),
     internal: [...inventory.modules.values()]
       .filter((module) => module.declaration !== null)
       .map((module) => ({

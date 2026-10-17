@@ -25,14 +25,14 @@ import { ContractsBarrelError } from "./errors.mjs";
 export const SRC_DIR = "packages/contracts/src";
 export const BARREL_FILE = `${SRC_DIR}/index.ts`;
 
-/** The extensions that make a file a module this gate reads. */
-export const MODULE_EXTENSIONS = [".ts", ".tsx", ".mts", ".cts"];
+/** The extensions that make a file a module this gate reads, in resolution order. */
+export const MODULE_EXTENSIONS = [".ts", ".tsx", ".d.ts", ".mts", ".d.mts", ".cts", ".d.cts"];
 
-/** The ESM spellings that name an emit, and the source extension each resolves to. */
+/** The ESM spellings that name an emit, and the source extensions each resolves to. */
 const EMIT_SPELLINGS = [
-  [/\.js$/, ".ts"],
-  [/\.mjs$/, ".mts"],
-  [/\.cjs$/, ".cts"],
+  [/\.js$/, [".ts", ".tsx", ".d.ts"]],
+  [/\.mjs$/, [".mts", ".d.mts"]],
+  [/\.cjs$/, [".cts", ".d.cts"]],
 ];
 
 const TEST_FILE_RE = /\.test\.(m|c)?tsx?$/;
@@ -80,11 +80,21 @@ export function readModuleFile(root, file) {
 export function resolveModule(modules, from, spec) {
   const base = dirname(from);
   const candidates = [spec];
-  for (const [emit, source] of EMIT_SPELLINGS) {
-    if (emit.test(spec)) candidates.push(spec.replace(emit, source));
+  // An emit spelling names a file that is not in the tree: `./chat.js` is
+  // `chat.ts` or `chat.tsx`, `./chat.mjs` is `chat.mts`, and each may have a
+  // declaration sibling. A specifier may also name a directory, which resolves to
+  // its `index` in the same order.
+  let directory = spec;
+  for (const [emit, replacements] of EMIT_SPELLINGS) {
+    if (!emit.test(spec)) continue;
+    directory = spec.replace(emit, "");
+    for (const replacement of replacements) candidates.push(`${directory}${replacement}`);
   }
   for (const extension of MODULE_EXTENSIONS) {
-    candidates.push(`${spec}${extension}`, `${spec}.d${extension}`);
+    candidates.push(`${spec}${extension}`, `${spec}/index${extension}`);
+  }
+  for (const extension of MODULE_EXTENSIONS) {
+    candidates.push(`${directory}${extension}`, `${directory}/index${extension}`);
   }
   for (const candidate of candidates) {
     const path = join(base, candidate).split(sep).join("/");
