@@ -63,26 +63,29 @@ export function foldAddressDigits(text: string): string {
 
 /**
  * Canonicalize a citation's **spelling** to the product's forms, so two spellings
- * of one address compare equal: the dotted `Q.S.` variant folds to `QS.`, the bare
- * `QS` / `HR` forms keep their mandatory separator (so the grammar-excluded
- * `QS2:255` is left alone), separator spacing folds (`no.5010`, `QS. 2: 255`,
+ * of one address compare equal: the dotted `Q.S.` variant folds to `QS.`, a bare
+ * `QS` / `HR` keeps its mandatory separator (so the grammar-excluded `QS2:255` is
+ * left alone), separator spacing folds (`no.5010`, `QS. 2: 255`,
  * `Jilid 1,Hal. 102`), and the hadith collection name folds to the corpus's own
  * spelling of it (`Nasa'i` / `Tirmidzi` / `Ibnu Majah` → `Nasai` / `Tirmidhi` /
- * `Ibn Majah`). Each rule mirrors a form its own grammar makes mandatory, so the
- * fold never rewrites a spelling the scan cannot see: the collection fold runs
- * over the grammar's own matches (`rewriteHadithCollections`), so it rewrites
- * exactly what the scan reads and leaves the rest of the text alone. Folding spelling never
- * changes which digits an address carries, so fabricated addresses stay distinct
- * from retrieved ones — and the collection fold's own boundary is stated on
- * `canonicalCollectionName`, which owns the vocabulary it folds into.
+ * `Ibn Majah`). Every rule mirrors a form its grammar makes mandatory and folds
+ * only the forms that grammar reads — the collection name out of the grammar's own
+ * match (`rewriteHadithCollections`) — so a spelling the scan cannot see is never
+ * rewritten into one that grounds. Folding spelling never changes which digits an
+ * address carries, so a fabricated address stays distinct from a retrieved one;
+ * the collection fold's own boundary is stated on `canonicalCollectionName`.
  */
 export function canonicalizeCitationSpelling(text: string): string {
+  // Case-insensitive because the grammars are: a span they read is a citation, so
+  // its comparison form has to be able to meet a retrieved label — a marker or
+  // address word the scan accepts in any casing is not a different address. The
+  // replacement carries the canonical casing, and no digit is ever rewritten.
   const separated = text
-    .replace(/\bQ\.?S(?:\.|\s)\s*/g, "QS. ")
-    .replace(/\bHR\.?(?=\s)/g, "HR.")
-    .replace(/\bno\.\s*/g, "no. ")
-    .replace(/\bJilid\s+/g, "Jilid ")
-    .replace(/\bHal\.\s*/g, "Hal. ")
+    .replace(/\bQ\.?S(?:\.|\s)\s*/gi, "QS. ")
+    .replace(/\bHR\.?(?=\s)/gi, "HR.")
+    .replace(/\bno\.\s*/gi, "no. ")
+    .replace(/\bJilid\s+/gi, "Jilid ")
+    .replace(/\bHal\.\s*/gi, "Hal. ")
     .replace(/\s*,\s*/g, ", ")
     .replace(/\s*:\s*/g, ":");
   return rewriteHadithCollections(separated, canonicalCollectionName);

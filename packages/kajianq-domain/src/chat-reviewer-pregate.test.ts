@@ -12,10 +12,10 @@ import {
 import { parseTrace, type CostRecord, type TraceEvent } from "@app/contracts";
 import { createKajianQReviewer, type KajianQReviewerDeps } from "./chat-reviewer";
 import { ulamaDisclaimer } from "./chat-postprocess";
+import { claimForCitation } from "./chat-citation-claims";
 import {
   CITATION_SUPPORT_PURPOSE,
   CITATION_SUPPORT_THRESHOLD,
-  claimForCitation,
   planCitationPregate,
 } from "./chat-reviewer-pregate";
 import { CITATION_CRITERIA, CITATION_INSTRUCTIONS } from "./decision-bench-prompts";

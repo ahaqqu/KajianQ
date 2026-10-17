@@ -56,7 +56,10 @@ export const HADITH_COLLECTION_SPELLINGS: readonly (readonly [string, HadithColl
  * rather than a row per combination, so `Sunan <collection>` folds for every
  * collection the corpus carries — which is what lets a test generate the forms.
  * A name is never dropped by it: what is left after the wrappers still has to be
- * a row.
+ * a row. The combination is not attested either — `Sunan Bukhari` names no work
+ * that exists and still folds to `Bukhari`, because what the fold identifies is the
+ * collection an address names, not the book a reader would look up, and the number
+ * it carries still has to match a retrieved label.
  */
 export const HADITH_COLLECTION_WRAPPERS: readonly string[] = [
   "sunan",

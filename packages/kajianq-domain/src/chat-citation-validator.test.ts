@@ -6,11 +6,12 @@ import {
   citationLabelsOf,
   citationMatchText,
   citationSpansIn,
+  declaresAddressList,
   groundingLabelsFor,
   normalizeCitationLabel,
   validateCitations,
 } from "./chat-citation-validator";
-import { CITATION_GRAMMARS, declaresAddressList } from "./chat-citation-grammar";
+import { CITATION_GRAMMARS } from "./chat-citation-grammar";
 import { reduceCitationLabel } from "./chat-citation-reduce";
 
 /**

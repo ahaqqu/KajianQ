@@ -7,7 +7,11 @@ import {
   canonicalCollectionName,
 } from "./chat-citation-collection";
 import { HADITH_COLLECTION_NAMES } from "./hadith-source";
-import { normalizeCitationLabel, validateCitations } from "./chat-citation-validator";
+import {
+  citationMatchText,
+  normalizeCitationLabel,
+  validateCitations,
+} from "./chat-citation-validator";
 
 /**
  * The fold's contract: a collection name the corpus carries spells one address
@@ -167,6 +171,39 @@ describe("the collection fold is spelling only", () => {
       chunk("HR. Ibn Majah no. 224 (Dhaif)"),
     ]);
     expect(ungrounded).toEqual(["HR. Muslim no. 224"]);
+  });
+
+  it("grounds a collection the scan read in a casing the corpus does not use", () => {
+    // The grammars match case-insensitively, so a span they read is a citation: a
+    // marker or address word in another casing is not a different address, and
+    // refusing it would refuse the very label the chunk carries.
+    for (const [draft, label] of [
+      ["hr. Ibnu Majah no. 224 disebutkan …", "HR. Ibn Majah no. 224 (Dhaif)"],
+      ["HR. Bukhari No. 5010 tentang …", "HR. Bukhari no. 5010"],
+      ["ayat kursi qs. 2:255", "QS. 2:255"],
+    ] as const) {
+      const { grounded, ungrounded } = validateCitations(draft, [chunk(label)]);
+      expect({ draft, grounded, ungrounded }).toEqual({
+        draft,
+        grounded: [normalizeCitationLabel(label)],
+        ungrounded: [],
+      });
+    }
+  });
+
+  it("does not fold a spelling the scan cannot read", () => {
+    // The other direction: folding is bounded by what the grammar reads, so a
+    // spelling it excludes is never rewritten into a label that grounds.
+    const excluded = "HRIbnu Majah no. 224 disebutkan";
+    expect(citationMatchText(excluded)).toBe(excluded);
+    expect(validateCitations(excluded, [chunk("HR. Ibn Majah no. 224 (Dhaif)")])).toEqual({
+      grounded: [],
+      ungrounded: [],
+    });
+    const fabricated = validateCitations("hr. Ibnu Majah no. 99999 disebutkan", [
+      chunk("HR. Ibn Majah no. 224 (Dhaif)"),
+    ]);
+    expect(fabricated.ungrounded).toEqual(["HR. Ibn Majah no. 99999"]);
   });
 
   it("leaves the number and its tail untouched", () => {
