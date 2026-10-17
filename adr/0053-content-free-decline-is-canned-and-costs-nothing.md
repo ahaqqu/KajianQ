@@ -38,8 +38,7 @@ already trimmed and admitted the caller's question, and the answer stage reads t
 
 Rejected: teaching the generator to skip its own provider call. The reviewer runs after it and would be
 judging a draft no model wrote, so both stages would have to know the run had nothing to answer — one
-fact with two owners, and a trace that depends on both being right. The decision is run-level because
-it spans stages, and the runner is what owns a run.
+fact with two owners, and a trace that depends on both being right; the run owns it instead.
 
 Rejected: reusing the canonical refusal sentence for the decline. A decline and a Refusal answer
 different questions, and a reader who cannot tell them apart without opening the trace has already lost
@@ -54,5 +53,6 @@ the distinction the vocabulary exists to keep.
 - A declined run's trace carries its intent, retrieval and assembly events as before, the decline's
   record where the generation would stand, and no `llm_call` and no cost anywhere on it.
 - The trace's refusal-trigger vocabulary gains the decline's — the one member that is not a Refusal.
-- The decline is localized with the answer, so it follows the question's language like every other
-  answer.
+- The decline is localized with the answer and follows the question's language like every other answer.
+- A declined run is not a candidate for the sampled faithfulness review — or any paid post-hoc judge of
+  an answer: there is no answer to judge, and this path's contract is that it spends nothing.
