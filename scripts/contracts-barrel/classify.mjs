@@ -13,12 +13,19 @@ import { lineOf } from "./source.mjs";
  * string or template literal (a module publishes no member by quoting one).
  */
 
+/** Whether the `{` at `at` opens a `namespace`/`module` body, the one block that may hold an export. */
+const opensDeclarationBody = (code, at) =>
+  /\b(?:namespace|module)\s+(?:[\w$]+|"[^"]*"|'[^']*')\s*$/.test(
+    code.slice(Math.max(0, at - 80), at),
+  );
+
 /**
  * Every `export` keyword in the file, split by what it can be: a `statement` to
- * read, a `nested` one inside a block (a namespace member, an object's or a type
- * literal's property — never a module export), or `quoted` text inside a string
- * or template. Enumerating all three is what keeps "not a statement" from
- * becoming "not looked at": each keyword lands in exactly one list.
+ * read, a `nested` one inside a block, or `quoted` text inside a string or
+ * template. Enumerating all three is what keeps "not a statement" from becoming
+ * "not looked at": each keyword lands in exactly one list, and a nested one says
+ * whether the block it sits in is a `namespace`/`module` body — the only
+ * construct in which an export keyword is legal off the statement position.
  *
  * The walk also reports the bracket accounting it used, because depth is what
  * decides statement from nested: `open` is every opener still unclosed at the end
@@ -29,7 +36,7 @@ export function classifyExports({ code, literals }) {
   const statements = [];
   const nested = [];
   const quoted = [];
-  const open = [];
+  const stack = [];
   let stray = null;
   let i = 0;
   while (i < code.length) {
@@ -44,26 +51,27 @@ export function classifyExports({ code, literals }) {
       continue;
     }
     const char = code[i];
-    if (char === "{" || char === "(" || char === "[") open.push(i);
-    else if (char === "}" || char === ")" || char === "]") {
-      if (open.length === 0) {
+    if (char === "{" || char === "(" || char === "[") {
+      stack.push({ at: i, declaration: char === "{" && opensDeclarationBody(code, i) });
+    } else if (char === "}" || char === ")" || char === "]") {
+      if (stack.length === 0) {
         if (stray === null) stray = i;
       } else {
-        open.pop();
+        stack.pop();
       }
     } else if (
       code.startsWith("export", i) &&
       !/[\w$.]/.test(code[i - 1] ?? "") &&
       !/[\w$]/.test(code[i + 6] ?? "")
     ) {
-      if (open.length > 0) nested.push(i);
-      else statements.push(i);
+      if (stack.length === 0) statements.push(i);
+      else nested.push({ at: i, declaration: stack.some((frame) => frame.declaration) });
       i += "export".length;
       continue;
     }
     i += 1;
   }
-  return { statements, nested, quoted, open, stray };
+  return { statements, nested, quoted, open: stack.map((frame) => frame.at), stray };
 }
 
 /**

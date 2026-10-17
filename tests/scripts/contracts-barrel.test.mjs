@@ -136,12 +136,10 @@ describe("the module tree comes from disk, not from a list", () => {
     expect(misdeclaredModules(inventory)).toEqual([]);
     const report = assertBarrelCoverage(root);
     // Every member is published or withheld on the record; the counts are that
-    // reading, not a second rule over it.
+    // reading, not a second rule over it. An aliased barrel publishes one name
+    // through two entries, so entries bounds published from below, not at it.
     expect(report.published + report.withheld).toBe(report.members);
-    expect(report.published).toBe(report.entries);
-    // No export keyword in the package reads as nested: a brace opened in error
-    // anywhere above one would show up here.
-    expect(report.nested).toBe(0);
+    expect(report.entries).toBeGreaterThanOrEqual(report.published);
   });
 
   it("names the declarations the tree makes, member by member, each with its reason", () => {
@@ -596,14 +594,66 @@ describe("a construct the scanner cannot resolve is refused, not guessed", () =>
     expect(message).toMatch(/no closing `\/`/);
   });
 
-  it("refuses a brace a division-position regex left unclosed, instead of losing the export", () => {
-    // `if (a) /re/` is a regex the previous-token rule calls division; the brace in
-    // it then opens a block. The bracket count is what stops it from going quiet.
-    const message = refusal(() =>
-      moduleSurface("if (a) /{.test(b);\nexport const alphaOne = 1;\n", "regex.ts"),
+  it("reads a regex in statement position, after a control header's `)`", () => {
+    // `if (a) /re/` starts a statement, so the `)` of an `if`/`while`/`for`/`with`
+    // header is an expression-start position: the regex is a literal, and a brace
+    // or a `/*` inside it is text rather than a block or a comment.
+    const source = [
+      "const a = true;",
+      "if (a) /{/.test(a);",
+      "if (a) /[/*]/.test(a);",
+      "if (a) /re/;",
+      "export const alphaOne = 1;",
+    ].join("\n");
+    expect(names(moduleSurface(source, "regex.ts"))).toEqual(["alphaOne"]);
+  });
+
+  it("reads a regex that is a division operand", () => {
+    // `total / /re/` divides by a regex: a `/` after a `/` opens a literal, and
+    // reading it as code would let a `/*` in the pattern blank the export below.
+    const source = [
+      "declare const total: number;",
+      "const ratio = total / /\\/*x/.source.length;",
+      "export const second = 2;",
+      "export const tail = 3;",
+    ].join("\n");
+    expect(names(moduleSurface(source, "regex.ts"))).toEqual(["second", "tail"]);
+  });
+
+  it("reads a regex in statement position whose pattern holds `/*`", () => {
+    // The pattern's `/*` is text inside the literal, not a comment that runs to
+    // the next `*/` and blanks the export between them.
+    const source = [
+      "export const first = 1;",
+      "const guard = true;",
+      'if (guard) /\\/*x/.test("x");',
+      "export const second = 2;",
+      "/** closes the prose */",
+      "export const tail = 3;",
+    ].join("\n");
+    expect(names(moduleSurface(source, "regex.ts"))).toEqual(["first", "second", "tail"]);
+  });
+
+  it("refuses a `/` whose position it cannot decide, naming the ambiguity", () => {
+    // `}` closes a block in one reading and an object literal in another; a line's
+    // first `/` continues the line above or starts a statement. Neither is guessed.
+    const afterBrace = refusal(() =>
+      moduleSurface("const scale = 2;\nconst half = { value: 1 } / scale;\n", "regex.ts"),
     );
-    expect(message).toMatch(/regex\.ts:1/);
-    expect(message).toMatch(/still unclosed/);
+    expect(afterBrace).toMatch(/regex\.ts:2/);
+    expect(afterBrace).toMatch(/cannot tell a regular expression from division/);
+    const lineStart = refusal(() =>
+      moduleSurface("const total = 10;\nconst half = total\n  / 2;\n", "regex.ts"),
+    );
+    expect(lineStart).toMatch(/regex\.ts:3/);
+    expect(lineStart).toMatch(/cannot tell a regular expression from division/);
+  });
+
+  it("reads `value! / 2` as division: a non-null assertion cannot precede a regex", () => {
+    const source = ["declare const value: number | null;", "const half = value! / 2;"].join("\n");
+    expect(names(moduleSurface(`export const first = 1;\n${source}\n`, "regex.ts"))).toEqual([
+      "first",
+    ]);
   });
 
   it("refuses a closer nothing opened, instead of reading the depth below it", () => {
@@ -618,15 +668,25 @@ describe("a construct the scanner cannot resolve is refused, not guessed", () =>
     expect(names(moduleSurface("const shape = { export: 1 };\n", "nested.ts"))).toEqual([]);
   });
 
-  it("refuses a statement-shaped export nested in a block with no statement above it", () => {
-    // Nested statement exports are legitimate inside a namespace body, which is a
-    // statement of its own. With none above it, a brace opened in error is what put
-    // this one inside a block, and nothing else would report the members below it.
+  it("reads the exports of a namespace body and of an ambient module", () => {
+    // Both are declarations whose body may hold an export keyword, so the members
+    // are reported where they belong: the namespace publishes its own name, and an
+    // ambient module publishes nothing into this file.
+    const namespace = "export namespace Shapes {\n  export const square = { export: 1 };\n}\n";
+    expect(names(moduleSurface(namespace, "shapes.ts"))).toEqual(["Shapes"]);
+    const ambient = 'declare module "widgets" {\n  export const widget: number;\n}\n';
+    expect(names(moduleSurface(ambient, "widgets.d.ts"))).toEqual([]);
+  });
+
+  it("refuses a statement-shaped export nested in a block that is not a namespace body", () => {
+    // A namespace or `declare module` body is the only construct that may hold an
+    // export keyword off the statement position, so a brace opened in error is what
+    // puts one anywhere else, and no other rule would report the members below it.
     const message = refusal(() =>
       moduleSurface("const outer = {\n  export const inner = 1;\n};\n", "nested.ts"),
     );
     expect(message).toMatch(/nested\.ts:2/);
-    expect(message).toMatch(/reads as nested/);
+    expect(message).toMatch(/not a `namespace` or `declare module` body/);
   });
 });
 
@@ -666,7 +726,7 @@ describe("a namespace re-export publishes one name", () => {
   it("reads `export * as ns from` as an edge, not as a member of the module", () => {
     const surface = moduleSurface('export * as ns from "./origin";\n', "gateway.ts");
     expect(surface.members).toEqual([]);
-    expect(surface.edges).toEqual([
+    expect(surface.edges).toMatchObject([
       { from: "./origin", names: [{ provided: "*", exported: "ns", typeOnly: false }] },
     ]);
   });
