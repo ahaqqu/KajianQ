@@ -262,14 +262,15 @@ describe("deriveCitationsFrame — the invariant, adversarial shapes", () => {
     }
   });
 
-  it("keeps the chunk's own casing in the chip for a citation written in another", () => {
-    // The chip's label is the **span's comparison form** — what the grounding decision
-    // returned — not the chunk's own text; the chunk supplies the display row. For a
-    // citation the fold rewrites, that form IS the canonical spelling the chunk
-    // carries, which is why the draft's casing never reaches the UI: the comparison
-    // form folds it, not the display path. A chunk label that is not already canonical
-    // is the other half of the same mechanism, pinned by the grade-suffix test below:
-    // `HR. Malik no. 18 (Sahih)` retrieved yields the chip label `HR. Malik no. 18`.
+  it("keeps the span's comparison form in the chip, not the draft's casing", () => {
+    // The chip label is the **span's comparison form** — the normalized draft span
+    // `deriveCitationsFrame` pushes — and the chunk supplies only the display row. For
+    // a citation the fold rewrites, that form is the canonical spelling the chunk
+    // carries, which is why the draft's casing never reaches the UI. A declared
+    // address list is where the two part visibly: a grounded range's chip reads the
+    // range as written while the grounding decision returns one label per address,
+    // pinned by the range test above; a chunk label that is not already canonical is
+    // the other half, pinned by the grade-suffix test below.
     for (const [span, label] of [
       ["HR. Bukhari No. 5010", "HR. Bukhari no. 5010"],
       ["hr. bukhari no. 5010", "HR. Bukhari no. 5010"],
