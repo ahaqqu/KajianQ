@@ -672,8 +672,13 @@ is **not** the proof above: the proof is a night the timer fired by itself.
 Operate it:
 
 ```bash
-sudo sh -c '. /etc/kajianq/backup.env && restic -r "$RESTIC_REPOSITORY" snapshots'
-sudo sh -c '. /etc/kajianq/backup.env && bun provision/vps/backup/kajianq-backup.mjs --label first-run'
+# A bare `. /etc/kajianq/backup.env` sets shell variables without exporting
+# them, so a command run as a child process never sees them; `set -a` is what
+# puts the file's keys into restic's environment. The two scripts parse the file
+# themselves through `--env-file`, which needs no shell trickery and cannot
+# break this way.
+sudo sh -c 'set -a; . /etc/kajianq/backup.env; set +a; restic -r "$RESTIC_REPOSITORY" snapshots'
+sudo bun provision/vps/backup/kajianq-backup.mjs --env-file /etc/kajianq/backup.env --label first-run
 sudo systemctl list-timers kajianq-backup.timer
 ```
 
@@ -693,17 +698,17 @@ pass while testing nothing), then that re-applying the reclamation and the
 Art. 17 cascade makes the restored target match the live store.
 
 ```bash
-sudo sh -c '. /etc/kajianq/backup.env && \
-  bun provision/vps/backup/restore-drill.mjs \
-    --admin-url "postgres://postgres@127.0.0.1:5432/postgres"'
+sudo bun provision/vps/backup/restore-drill.mjs \
+  --admin-url "postgres://postgres@127.0.0.1:5432/postgres"
 ```
 
 **The gotcha.** The drill is self-contained by design and sets its own
-`RESTIC_PASSWORD` — but restic gives `RESTIC_PASSWORD_FILE` **precedence**. Run
-the drill from a shell that has sourced the production `backup.env` (which the
-runbook's own example does) and the drill's `restic init` encrypts with the
-_production_ key; its backup child then fails with restic exit 12. Run it with
-the inherited variables stripped:
+`RESTIC_PASSWORD` — but restic gives `RESTIC_PASSWORD_FILE` **precedence**. The
+`sudo` form above is safe only by sudo's `env_reset`, which strips an exported
+`RESTIC_PASSWORD_FILE` before the drill starts; run the drill without `sudo`
+with that variable genuinely in its environment and the drill's `restic init`
+encrypts with the _production_ key, its backup child then failing with restic
+exit 12. Run it with the inherited variables stripped:
 
 ```bash
 env -u RESTIC_REPOSITORY -u RESTIC_PASSWORD_FILE -u PGDATABASE_URL \
@@ -722,7 +727,8 @@ removed.
 # command line carries no URL and nothing credential-shaped reaches `ps` or the
 # shell history. The compatibility flag `--target-url` still works, and an
 # explicitly passed flag wins when both are given. Run it without
-# RESTORE_TARGET_URL exported: a real value in the shell wins over the file.
+# RESTORE_TARGET_URL exported: `--env-file` lets a real value in the environment
+# win over the file, unlike the `set -a; . file` form, where the file wins.
 sudo bun provision/vps/backup/kajianq-restore.mjs \
   --env-file /etc/kajianq/backup.env --label <label>
 ```
@@ -891,10 +897,10 @@ monitoring must not create an unbounded personal-data-adjacent log surface. Issu
 | Check migrations                      | `DATABASE_URL` in env (§2.3, read from the file — never typed) → `bun run db:status:all`                                                                                                                                                                                                                |
 | Take a snapshot                       | `DATABASE_URL` in env (§2.3, read from the file — never typed) → `bun run db:snapshot create <lowercase-label>` with the posture flag (§2.4)                                                                                                                                                            |
 | Verify a snapshot                     | `bun run db:snapshot verify <label>`                                                                                                                                                                                                                                                                    |
-| Take a backup now                     | `sudo sh -c '. /etc/kajianq/backup.env && bun provision/vps/backup/kajianq-backup.mjs --label <label>'`                                                                                                                                                                                                 |
-| List backups                          | `sudo sh -c '. /etc/kajianq/backup.env && restic snapshots'`                                                                                                                                                                                                                                            |
+| Take a backup now                     | `sudo bun provision/vps/backup/kajianq-backup.mjs --env-file /etc/kajianq/backup.env --label <label>`                                                                                                                                                                                                   |
+| List backups                          | `sudo sh -c 'set -a; . /etc/kajianq/backup.env; set +a; restic snapshots'`                                                                                                                                                                                                                              |
 | Drill a restore                       | §2.6, with the inherited `RESTIC_*`/`PG*` stripped                                                                                                                                                                                                                                                      |
-| Restore for real                      | `kajianq-restore.mjs --label … --target-url <scratch>` (§2.7)                                                                                                                                                                                                                                           |
+| Restore for real                      | `sudo bun provision/vps/backup/kajianq-restore.mjs --env-file /etc/kajianq/backup.env --label <label>` (§2.7)                                                                                                                                                                                           |
 | Reach the DB from elsewhere           | ssh tunnel (§2.8), port 15433 to match the CI convention                                                                                                                                                                                                                                                |
 | Load the corpus (ingest a collection) | [`docs/CORPUS-INGEST.md`](./CORPUS-INGEST.md) — the operator runbook: preconditions, the snapshot gate, one pass per collection                                                                                                                                                                         |
 | Read the API logs                     | `sudo journalctl -u kajianq-api -f` (non-root users need `systemd-journal` group membership)                                                                                                                                                                                                            |
