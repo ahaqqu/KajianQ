@@ -131,8 +131,10 @@ gh workflow run "Deploy to VPS" -f environment=prod   # waits at the approval ga
 ```
 
 What distinguishes it from a staging deploy is the GitHub environment: `prod`
-carries the required-reviewer rule and its own environment-scoped `VPS_*` vars
-and `VPS_DEPLOY_SSH_KEY`, and both point at the one box. The label itself is
+carries the required-reviewer rule, and a dispatch resolves the `VPS_*` vars and
+the deploy key from the scope it names — `staging` carries its own vars under the
+same decision, and both point at the one box. The measured split of which scope
+holds which value is §1.4 of [`docs/VPS-OPERATIONS.md`](../../../docs/VPS-OPERATIONS.md). The label itself is
 cosmetic (the `env` field on log lines plus the health JSON; no behavioral gate
 differs) and already reads `staging` — the flip ran on the box on 2026-10-03,
 and [`docs/VPS-OPERATIONS.md`](../../../docs/VPS-OPERATIONS.md) §1.7 now holds the
