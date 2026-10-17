@@ -1,3 +1,4 @@
+// @contracts-internal: composed into the TraceEvent union in ./trace-events.ts — a reader parses that union and branches on `kind`, never on a variant module.
 import * as v from "valibot";
 import { CostRecordSchema } from "./trace-primitives";
 
