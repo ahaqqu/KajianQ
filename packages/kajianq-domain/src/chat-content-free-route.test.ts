@@ -1,7 +1,9 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import type { CostRecord } from "@app/contracts";
+import { totalCostMicroUsd, type CostRecord } from "@app/contracts";
 import { runChatPipeline } from "./chat-pipeline";
+import { CONTENT_FREE_DECLINE_TEXT } from "./chat-content-free-decline";
+import { DEFAULT_REFUSALS } from "./chat-refusal";
 import type { RouterProvider } from "./chat-router";
 import type { GeneratorProvider } from "./chat-generator";
 import type { ReviewerProvider } from "./chat-reviewer";
@@ -10,22 +12,26 @@ import { createMemoryRagStore } from "./test-utils/memory-rag-store";
 import type { KajianQFilters } from "./filters";
 
 /**
- * INTEGRATION TEST — the route gate: a question that is not a query is not
- * routed (`SPECS.md` §3.3 stage 1).
+ * INTEGRATION TEST — the route gate and the answer it earns (`SPECS.md` §3.3
+ * stages 1 and 6).
  *
  * The invariant: a caller's text carrying no letter and no digit is not a
  * question, so the router stage asks the model nothing, admits no sub-query for
- * it, and retrieval has nothing to embed and nothing to search. The run still
- * answers — the gate is on the route, not on the answer path — and its trace
- * records the deterministic route (`fallback` beside `contentFree`) instead of a
- * classification invented for a non-question.
+ * it, and retrieval has nothing to embed and nothing to search — **and the run
+ * answers it from the product's own canned copy, without entering the generator
+ * or the reviewer**, so the path buys nothing at all. Its trace records the
+ * deterministic route (`fallback` beside `contentFree`) instead of a
+ * classification invented for a non-question, and the decline instead of a
+ * generation.
  *
  * Asserted through the real composition — `runChatPipeline`, the same
  * `buildChatStages` wiring the chat route runs (ADR-0021) — with a spy on every
  * seam that can spend or read, because the spend is what the defect is about:
- * asserting the router's return value alone would not catch an embed or a search
- * running over an emptied fan-out. The mixed case is the boundary in the other
- * direction: a question carrying content keeps its full fan-out and retrieval.
+ * asserting the router's return value alone would not catch an embed, a search
+ * or a generation running over an emptied fan-out. The mixed cases are the
+ * boundary in the other direction: a question carrying content keeps its full
+ * fan-out, its retrieval, and its paid answer path — a refusal it earns is the
+ * generated one.
  */
 
 const cost = (modelId: string): CostRecord => ({
@@ -73,11 +79,13 @@ async function seedChunk(store: ReturnType<typeof createMemoryRagStore>): Promis
 }
 
 /** The pipeline deps with a spy on every seam that can spend or read. */
-function harness() {
+function harness(options: { generatorText?: string } = {}) {
   const store = createMemoryRagStore();
   const routerCalls: string[] = [];
   const embedded: (readonly string[])[] = [];
   const searches: string[] = [];
+  const generatorCalls: unknown[] = [];
+  const reviewerCalls: unknown[] = [];
 
   const routerProvider: RouterProvider = {
     generate: (spec) => {
@@ -94,15 +102,22 @@ function harness() {
     },
   };
   const generatorProvider: GeneratorProvider = {
-    generate: () =>
-      Effect.succeed({ text: "Jawaban berdasar konteks.", cost: cost("stub-generator") }),
+    generate: (spec) => {
+      generatorCalls.push(spec);
+      return Effect.succeed({
+        text: options.generatorText ?? "Jawaban berdasar konteks.",
+        cost: cost("stub-generator"),
+      });
+    },
   };
   const reviewerProvider: ReviewerProvider = {
-    generate: () =>
-      Effect.succeed({
+    generate: (spec) => {
+      reviewerCalls.push(spec);
+      return Effect.succeed({
         text: JSON.stringify({ verdict: "pass", reason: "stub" }),
         cost: cost("stub-reviewer"),
-      }),
+      });
+    },
   };
 
   // The store with a spy on the one read retrieval makes per (sub-query, track):
@@ -119,10 +134,15 @@ function harness() {
     routerCalls,
     embedded,
     searches,
+    generatorCalls,
+    reviewerCalls,
     seed: async () => {
       await seedChunk(store);
     },
-    run: async (text: string, filters?: KajianQFilters) =>
+    run: async (
+      text: string,
+      options2: { filters?: KajianQFilters; language?: "id" | "en" } = {},
+    ) =>
       Effect.runPromise(
         runChatPipeline(
           {
@@ -133,9 +153,9 @@ function harness() {
             embedder,
             store: spyStore as never,
             bridge: (effect: never) => Effect.runPromise(effect),
-            language: "id",
+            language: options2.language ?? "id",
           } as never,
-          { text, ...(filters !== undefined ? { filters } : {}) },
+          { text, ...(options2.filters !== undefined ? { filters: options2.filters } : {}) },
         ) as never,
       ),
   };
@@ -143,11 +163,22 @@ function harness() {
 
 type Answer = {
   text: string;
-  trace: { events: { kind: string; detail?: Record<string, unknown> }[] };
+  trace: {
+    events: { kind: string; stage?: string; detail?: Record<string, unknown> }[];
+  };
 };
 
-function eventsOf(answer: unknown): { kind: string; detail?: Record<string, unknown> }[] {
+function eventsOf(
+  answer: unknown,
+): { kind: string; stage?: string; detail?: Record<string, unknown> }[] {
   return (answer as Answer).trace.events;
+}
+
+/** Every `llm_call` the run recorded, by the label its stage gave it. */
+function llmCallPurposes(answer: unknown): unknown[] {
+  return eventsOf(answer)
+    .filter((event) => event.kind === "llm_call")
+    .map((event) => event.detail?.["purpose"]);
 }
 
 function subQueriesOf(answer: unknown): { text: string; role?: string; origin?: string }[] {
@@ -180,13 +211,50 @@ describe("a content-free question is not routed", () => {
     // ran: it exists on every route, and on this one it carries nothing.
     const retrieval = eventsOf(answer).find((event) => event.kind === "retrieval");
     expect(retrieval?.detail).toEqual({ chunks: [] });
-    // The router's own call is the one that is missing: the generator's and the
-    // reviewer's are both paid for, because the run still answers.
-    const purposes = eventsOf(answer)
-      .filter((event) => event.kind === "llm_call")
-      .map((event) => event.detail?.["purpose"]);
-    expect(purposes).not.toContain("intent");
-    expect(purposes).toContain("generate");
+    // The whole path is free: no provider call of any kind, so no `llm_call`
+    // event and nothing for the trace to price.
+    expect(llmCallPurposes(answer)).toEqual([]);
+    expect(totalCostMicroUsd((answer as Answer).trace as never)).toBe(0);
+    expect(h.generatorCalls).toEqual([]);
+    expect(h.reviewerCalls).toEqual([]);
+    // The answer is the product's canned decline, not a generated one.
+    expect((answer as Answer).text).toBe(CONTENT_FREE_DECLINE_TEXT.id);
+    // ... and it is a first-class answer: recorded on the trace, with the route
+    // it was declined for still marked.
+    expect(eventsOf(answer).find((event) => event.kind === "refusal")).toMatchObject({
+      stage: "generator",
+      detail: { trigger: "content_free_decline" },
+    });
+  });
+
+  it("declines in the question's language, from the persisted record", async () => {
+    for (const language of ["id", "en"] as const) {
+      const h = harness();
+      const answer = await h.run("\u200b\u200d\u200b", { language });
+      expect((answer as Answer).text).toBe(CONTENT_FREE_DECLINE_TEXT[language]);
+      expect(h.generatorCalls).toEqual([]);
+      expect(llmCallPurposes(answer)).toEqual([]);
+    }
+  });
+
+  it("still pays for a content-bearing question the evidence cannot ground", async () => {
+    // The other direction of the same seam: the decline must not swallow the
+    // ordinary path. A question carrying content reaches the generator, and a
+    // draft that declines is the GENERATED refusal — its trigger and its cost
+    // record are unchanged.
+    const h = harness({ generatorText: DEFAULT_REFUSALS.id });
+    await h.seed();
+
+    const answer = await h.run("Apa hukum riba dalam muamalah?");
+
+    expect(h.generatorCalls).toHaveLength(1);
+    expect(h.reviewerCalls).toEqual([]);
+    expect(llmCallPurposes(answer)).toContain("generate");
+    expect(totalCostMicroUsd((answer as Answer).trace as never)).toBeGreaterThan(0);
+    expect(eventsOf(answer).find((event) => event.kind === "refusal")).toMatchObject({
+      detail: { trigger: "generator_refusal" },
+    });
+    expect((answer as Answer).text).toContain(DEFAULT_REFUSALS.id);
   });
 
   it("declines every content-free shape, not just the zero-width one", async () => {
@@ -217,7 +285,7 @@ describe("a content-free question is not routed", () => {
     // run with are what the trace publishes, so the panel cannot disagree with the
     // route's own decision.
     const h = harness();
-    const answer = await h.run("\u200b", { madzhab: ["hambali"] });
+    const answer = await h.run("\u200b", { filters: { madzhab: ["hambali"] } });
 
     const intent = eventsOf(answer).find((event) => event.kind === "intent");
     expect(intent?.detail).toMatchObject({
