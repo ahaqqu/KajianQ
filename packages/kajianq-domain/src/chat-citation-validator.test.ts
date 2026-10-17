@@ -226,13 +226,12 @@ describe("validateCitations — grounded direction", () => {
     expect(
       validateCitations("Rasulullah bersabda dalam HR. Bukhari No. 5010: matn", [
         chunk("HR. Bukhari no. 5010"),
-      ]).ungrounded,
-    ).toEqual([]);
+      ]),
+    ).toEqual({ grounded: ["HR. Bukhari no. 5010"], ungrounded: [] });
     expect(normalizeCitationLabel("qs. 2:255")).toBe("QS. 2:255");
     expect(
-      validateCitations("Ayat Kursi ada di qs. 2:255: ayat yang agung", [chunk("QS. 2:255")])
-        .ungrounded,
-    ).toEqual([]);
+      validateCitations("Ayat Kursi ada di qs. 2:255: ayat yang agung", [chunk("QS. 2:255")]),
+    ).toEqual({ grounded: ["QS. 2:255"], ungrounded: [] });
     expect(normalizeCitationLabel("Al-Umm, Imam Syafi'i, jilid 1, hal. 102")).toBe(
       "Al-Umm, Imam Syafi'i, Jilid 1, Hal. 102",
     );

@@ -58,7 +58,8 @@ export interface CitationGrammar {
    * grammar that owns an address owns the text inside it: a consumer that
    * rewrites the name — the comparison form's spelling fold — reads the
    * boundary from this declaration instead of re-finding it with a pattern of
-   * its own at the comparison site.
+   * its own at the comparison site, and the declaration reads the bounds the
+   * engine recorded for that group rather than counting characters.
    */
   readonly collectionOf?: (match: RegExpExecArray) => CitationCollectionSlot | null;
 }
@@ -66,8 +67,8 @@ export interface CitationGrammar {
 /**
  * A collection-name slot inside one citation match: the name as the label
  * spells it, and the bounds {@link CitationGrammar.collectionOf} found it at —
- * the offsets let a consumer rewrite the name and leave the rest of the label
- * byte-for-byte.
+ * offsets **into the text the match was found in**, so a consumer rewrites the
+ * name in place and leaves the rest of the label byte-for-byte.
  */
 export interface CitationCollectionSlot {
   readonly collection: string;
@@ -126,23 +127,30 @@ const HADITH_ADDRESS = /^(.*?no\.\s*\d[\p{L}\p{Nd}]*)/u;
 // reads it out of the match the scan made rather than finding it again.
 const HADITH_GRAMMAR: CitationGrammar = {
   pattern: () =>
-    /\bHR(?:\.|\s)\s*([^\s,.]{1,24}(?:\s+[^\s,.]{1,24}){0,3})(\s+no\.\s*[^\s,;.)[\]]+)/gi,
+    /\bHR(?:\.|\s)\s*([^\s,.]{1,24}(?:\s+[^\s,.]{1,24}){0,3})(\s+no\.\s*[^\s,;.)[\]]+)/dgi,
   addressOf: (match) => HADITH_ADDRESS.exec(match[0])?.[1] ?? null,
   collectionOf: (match) => hadithCollectionSlot(match),
 };
 
 /**
  * {@link CitationGrammar.collectionOf} for the hadith grammar: the name is the
- * pattern's own first capture group, and the group after it is the number and the
- * tail the match absorbed — the match's last two pieces, so the name's bounds are
- * their lengths. A spelling rule therefore cannot drift from the scan it folds
- * for, which is what a second pattern at the comparison site would eventually do.
+ * pattern's own first capture group, and its bounds are the ones the engine
+ * recorded for that group — `match.indices`, which the pattern's `d` flag is what
+ * publishes, in the same coordinates as the text the scan read. Nothing here counts characters, so the bounds cannot drift when the
+ * pattern gains a group: they are the group's own coordinates, not a
+ * reconstruction of them.
+ *
+ * A pattern without `d` publishes no indices at all. That state is **loud under
+ * test, never silent in a request**: the slot is absent, the fold declines to
+ * guess, and the spelling the grammar read stops folding onto the corpus's label —
+ * a false ungrounded, which the collection and replay battery fails on. The
+ * grammar still scans, so the citation itself is not lost.
  */
 function hadithCollectionSlot(match: RegExpExecArray): CitationCollectionSlot | null {
   const collection = match[1];
-  if (collection === undefined) return null;
-  const start = match[0].length - collection.length - (match[2]?.length ?? 0);
-  return { collection, start, end: start + collection.length };
+  const bounds = match.indices?.[1];
+  if (collection === undefined || bounds === undefined) return null;
+  return { collection, start: bounds[0], end: bounds[1] };
 }
 
 /**
@@ -161,9 +169,8 @@ export function rewriteHadithCollections(
   for (const match of text.matchAll(HADITH_GRAMMAR.pattern())) {
     const slot = HADITH_GRAMMAR.collectionOf?.(match);
     if (slot === undefined || slot === null) continue;
-    const start = (match.index ?? 0) + slot.start;
-    rewritten += text.slice(cursor, start) + fold(slot.collection);
-    cursor = (match.index ?? 0) + slot.end;
+    rewritten += text.slice(cursor, slot.start) + fold(slot.collection);
+    cursor = slot.end;
   }
   return cursor === 0 ? text : rewritten + text.slice(cursor);
 }
