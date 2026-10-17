@@ -3,7 +3,8 @@ import { join, resolve } from "node:path";
 
 import { PgContractError } from "./errors.mjs";
 import { classify } from "./report.mjs";
-import { codeOnly, collectedTestFiles, includeGlobs } from "./tree.mjs";
+import { codeOnly } from "./source.mjs";
+import { collectedTestFiles, includeGlobs } from "./tree.mjs";
 
 /**
  * The real-Postgres contract gate's policy — the contract its driver
@@ -86,6 +87,7 @@ export const GATE_FILES = [
   "scripts/pg-contract/errors.mjs",
   "scripts/pg-contract/policy.mjs",
   "scripts/pg-contract/report.mjs",
+  "scripts/pg-contract/source.mjs",
   "scripts/pg-contract/tree.mjs",
   "tests/scripts/pg-contract.test.mjs",
   "vitest.config.ts",

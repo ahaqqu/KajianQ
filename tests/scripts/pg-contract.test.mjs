@@ -129,6 +129,15 @@ describe("the collected universe is the runner's, read from its own config", () 
         'export default defineConfig({\n  coverage: {\n    include: ["a.ts"],\n  },\n});\n',
       ),
     ).toBe(null);
+    // The coverage block's own include sits AFTER the test block in the real config:
+    // a scan that looks for the next `include:` reads it the moment the key is renamed.
+    const renamed =
+      'export default defineConfig({\n  test: {\n    files: ["tests/**/*.test.mjs"],\n  },\n  coverage: {\n    include: ["packages/**/src/**/*.ts"],\n  },\n});\n';
+    expect(includeGlobs(renamed)).toBe(null);
+    // A nested block that carries an `include:` before the object's own is not it.
+    const nested =
+      'export default defineConfig({\n  test: {\n    coverage: {\n      include: ["a.ts"],\n    },\n    include: ["tests/**/*.test.mjs"],\n  },\n});\n';
+    expect(includeGlobs(nested)).toEqual(["tests/**/*.test.mjs"]);
   });
 
   it("fails the gate on a root whose universe cannot be read, instead of collecting nothing", () => {
