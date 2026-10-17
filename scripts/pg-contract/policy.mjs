@@ -1,5 +1,9 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join, relative, resolve, sep } from "node:path";
+import { readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+
+import { PgContractError } from "./errors.mjs";
+import { classify } from "./report.mjs";
+import { codeOnly, collectedTestFiles, includeGlobs } from "./tree.mjs";
 
 /**
  * The real-Postgres contract gate's policy — the contract its driver
@@ -14,12 +18,14 @@ import { join, relative, resolve, sep } from "node:path";
  *     declares the marker is picked up by the `postgres:contract` job without
  *     anyone remembering to wire it, and a derivation that quietly comes back
  *     empty reddens instead of passing every check vacuously;
- *   - `assertMarked` reads the DB-less run's own report and fails on any
- *     undeclared file that skipped a test — whole or partial — and, because a
- *     test that returns early reports a pass and leaves no skip to see, it also
- *     fails on any undeclared test file that reads `DATABASE_URL` from the
- *     environment. Two rules, because a suite can hide in two ways: the report
- *     sees every skip, and the tree sees the gate itself;
+ *   - `assertMarked` reads the DB-less run's own report and fails on either
+ *     unrun-but-green shape: an undeclared file that skipped a test — whole or
+ *     partial — and, because a test that returns early reports a pass and leaves
+ *     no skip to see, an undeclared test file that reads `DATABASE_URL` in code
+ *     position. Two rules, because a suite can hide in two ways: the report sees
+ *     every skip, and the tree sees the gate itself. A declaration that turns out
+ *     to gate nothing is a note rather than a failure, so declaring stays the
+ *     cheap remedy for a file the static rule cannot tell from a reader;
  *   - `assertExecuted` fails when a declared suite executed nothing in the run
  *     that was supposed to execute it — the run's report is the evidence, never
  *     an assertion over the SQL text;
@@ -27,15 +33,18 @@ import { join, relative, resolve, sep } from "node:path";
  *     changed declared suite among its triggers, so a newly added gated suite
  *     cannot land in a PR whose contract job never ran.
  *
- * Blind spots, stated. `assertMarked` observes only the files the DB-less run
- * collected: a test file outside `vitest.config.ts`'s `test.include` globs runs
- * in no job at all, which is why `TEST_ROOTS` and `TEST_FILE_RE` are pinned
- * against that config by the gate's own test. Its static rule reads
- * `process.env`; a suite that reaches the variable through a helper module and
- * then returns early reports a pass that nothing here can tell from an executed
- * one — expressing the gate as a skip is the contract, not a suggestion.
+ * Blind spots, stated. The universe both rules read is `vitest.config.ts`'s own
+ * `test.include`, so a test file those globs do not collect is in no job at all
+ * and no rule here — the gate cannot see what the runner never loads. The static
+ * rule knows the spellings below and nothing else: a file whose gate arrives
+ * through a helper module, or through an alias of `process.env`, and which then
+ * returns early rather than skipping, is invisible to both rules — which is why
+ * expressing the gate as a skip is the contract, not a suggestion. A report-based
+ * differential (this file's other candidate) does not close that case either: an
+ * early return reports the same executed/skipped counts with and without a
+ * database, so the two runs agree on exactly the file that needs catching.
  * `contractRelevant` matches paths, not content: a change that alters what the
- * contract suites do without touching the seam, a declared suite, or a file
+ * contract suites do without touching the store seam, a declared suite, or a file
  * listed in `GATE_FILES` does not re-engage the job.
  */
 
@@ -45,20 +54,25 @@ export const MARKER = "@requires-postgres";
 const MARKER_RE = /^[ \t]*\/\/[ \t]*@requires-postgres(?![\w-])/m;
 
 /**
- * How a file reads the variable a gated suite needs. A suite that gates by
- * returning early from a test reaches no skip, so the report cannot see it and
- * this is what does.
+ * The three spellings a gated suite reads its variable with, in code position: the
+ * property, the quoted subscript, and the destructured binding. A suite that gates
+ * by returning early from a test reaches no skip, so the report cannot see it and
+ * this is what does. An alias of `process.env`, or a helper that returns the
+ * variable, is not one of these — the header names that as the residual.
  */
-const ENV_GATE_RE = /process\.env(?:\.DATABASE_URL\b|\[\s*["']DATABASE_URL["']\s*\])/;
+const ENV_GATE_RES = [
+  /process\s*\.\s*env\s*\.\s*DATABASE_URL\b/,
+  /process\s*\.\s*env\s*\[\s*["']DATABASE_URL["']\s*\]/,
+  /(?:const|let|var)\s*\{[^}]*\bDATABASE_URL\b[^}]*\}\s*=\s*(?:process\s*\.\s*env|import\s*\.\s*meta\s*\.\s*env|env)\b/,
+];
 
 /**
- * The trees test files are collected from, and the names collected in them —
- * `vitest.config.ts`'s `test.include` globs as roots and as one pattern. The
- * gate's own test pins both against that config, so a root or a name the runner
- * grows cannot go unwalked.
+ * Whether a source reads the variable in code position — the one predicate the
+ * static half of the gate is, so the spellings it knows are stated in one place
+ * and exercised directly.
  */
-export const TEST_ROOTS = ["packages", "apps", "tests"];
-export const TEST_FILE_RE = /\.(?:prop\.test|test)\.(?:ts|mjs)$/;
+export const readsDatabaseUrl = (source) =>
+  ENV_GATE_RES.some((pattern) => pattern.test(codeOnly(source)));
 
 /** The fewest gated suites a sound derivation can return. */
 export const MIN_GATED_SUITES = 1;
@@ -69,68 +83,63 @@ export const MIN_GATED_SUITES = 1;
  */
 export const GATE_FILES = [
   "scripts/pg-contract.mjs",
+  "scripts/pg-contract/errors.mjs",
   "scripts/pg-contract/policy.mjs",
+  "scripts/pg-contract/report.mjs",
+  "scripts/pg-contract/tree.mjs",
   "tests/scripts/pg-contract.test.mjs",
   "vitest.config.ts",
   ".github/workflows/ci.yml",
 ];
 
-/** The error a caller sees; never a bare stack trace. */
-export class PgContractError extends Error {
-  /** 1 marks a failing gate; 2 marks usage or unreadable input. */
-  exitCode = 1;
-}
-
-/** Raised by the driver's argument parsing: a usage error, not a failing gate. */
-export class UsageError extends PgContractError {
-  exitCode = 2;
-}
-
-function walk(dir, out = []) {
-  for (const name of readdirSync(dir)) {
-    if (name === "node_modules" || name === ".git") continue;
-    const path = join(dir, name);
-    if (statSync(path).isDirectory()) walk(path, out);
-    else out.push(path);
+/**
+ * The include globs the test runner collects, read from `vitest.config.ts`. A
+ * config this cannot read fails the gate rather than shrinking the universe: an
+ * empty selection would satisfy every iteration below while running nothing.
+ */
+export function collectedGlobs(root = process.cwd()) {
+  const path = join(root, "vitest.config.ts");
+  let source;
+  try {
+    source = readFileSync(path, "utf8");
+  } catch {
+    throw new PgContractError(`no ${path}: the gate cannot tell what the test runner collects`);
   }
-  return out;
+  const globs = includeGlobs(source);
+  if (globs === null) {
+    throw new PgContractError(
+      `${path} carries no test.include globs: the gate cannot tell what the test runner collects`,
+    );
+  }
+  return globs;
 }
 
-/** A repo-relative path with forward slashes, whichever platform walked it. */
-const rel = (root, path) => relative(root, path).split(sep).join("/");
-
-/** Every file under the tree roots that the test runner would collect. */
-function collectedTestFiles(root) {
-  return TEST_ROOTS.flatMap((tree) => {
-    const dir = join(root, tree);
-    return existsSync(dir) ? walk(dir) : [];
-  }).filter((path) => TEST_FILE_RE.test(path));
+/** Every test file the runner collects, repo-relative and sorted. */
+export function collectedSuites(root = process.cwd()) {
+  return collectedTestFiles(root, collectedGlobs(root));
 }
 
 /**
- * Every collected test file that declares MARKER, repo-relative, sorted. A root
- * that does not exist contributes nothing — the roots are globs, and the guard
- * in `declaredSuiteFiles` is what makes a derivation that found nothing loud. A
- * declaration is a line comment, so documentation that quotes the marker inside
- * a block comment does not declare the file.
+ * Every collected test file that declares MARKER, repo-relative, sorted. A
+ * declaration is a line comment, so documentation that quotes the marker inside a
+ * block comment does not declare the file.
  */
 export function gatedSuiteFiles(root = process.cwd()) {
-  return collectedTestFiles(root)
-    .filter((path) => MARKER_RE.test(readFileSync(path, "utf8")))
-    .map((path) => rel(root, path))
+  return collectedSuites(root)
+    .filter((file) => MARKER_RE.test(readFileSync(resolve(root, file), "utf8")))
     .sort();
 }
 
 /**
  * The declared gated suites. Throws when the derivation came back short of
- * MIN_GATED_SUITES: an empty selection would satisfy every iteration below
- * while running nothing, which is the failure this whole module is about.
+ * MIN_GATED_SUITES: an empty selection would satisfy every iteration below while
+ * running nothing, which is the failure this whole module is about.
  */
 export function declaredSuiteFiles(root = process.cwd()) {
   const files = gatedSuiteFiles(root);
   if (files.length < MIN_GATED_SUITES) {
     throw new PgContractError(
-      `no gated suite found: nothing under ${TEST_ROOTS.join(", ")} declares "${MARKER}", ` +
+      `no gated suite found: no file the test runner collects declares "${MARKER}", ` +
         `so the contract job would select nothing to run`,
     );
   }
@@ -138,97 +147,31 @@ export function declaredSuiteFiles(root = process.cwd()) {
 }
 
 /**
- * Collected test files that read `DATABASE_URL` from the process environment
- * without declaring the marker — the static half of the gate, and the only half
- * that can see a suite gating by an early return. The gate's own files are
- * exempt: they quote the pattern as fixture text, and they are not suites.
+ * Collected test files that read `DATABASE_URL` from the environment, in code
+ * position, without declaring the marker — the static half of the gate, and the
+ * only half that can see a suite gating by an early return. Comments and string
+ * bodies are blanked first, so documentation and fixtures that quote the pattern
+ * are not readers; a declaration is what such a file owes, and the DB-less run
+ * says when that declaration looks stale.
  */
-export function undeclaredGates(declared, root = process.cwd(), gateFiles = GATE_FILES) {
-  const exempt = new Set([...declared, ...gateFiles]);
-  return collectedTestFiles(root)
-    .filter((path) => ENV_GATE_RE.test(readFileSync(path, "utf8")))
-    .map((path) => rel(root, path))
-    .filter((file) => !exempt.has(file))
+export function undeclaredGates(declared, root = process.cwd()) {
+  const declaredSet = new Set(declared);
+  return collectedSuites(root)
+    .filter((file) => readsDatabaseUrl(readFileSync(resolve(root, file), "utf8")))
+    .filter((file) => !declaredSet.has(file))
     .sort();
 }
 
-/** The vitest JSON report at `path`, or a throw naming what is missing. */
-export function readReport(path) {
-  let text;
-  try {
-    text = readFileSync(path, "utf8");
-  } catch {
-    throw new PgContractError(
-      `no test report at ${path}: the run that writes it did not get far enough to be read`,
-    );
-  }
-  let report;
-  try {
-    report = JSON.parse(text);
-  } catch {
-    throw new PgContractError(
-      `${path} is not parseable as JSON: the run did not finish writing its report`,
-    );
-  }
-  if (!Array.isArray(report?.testResults)) {
-    throw new PgContractError(
-      `${path} is not a vitest JSON report: it carries no testResults array`,
-    );
-  }
-  return report;
-}
-
-const count = (entry, status) =>
-  entry.assertionResults.filter((assertion) => assertion.status === status).length;
-
 /**
- * One reading of a report: for every file the run collected and for every
- * declared suite, whether it is declared, whether the run collected it, how many
- * of its tests executed and how many were skipped. Both assertions below are
- * filters over this, so neither re-derives the space nor repeats the vacuity
- * guards — and the check that catches a hidden suite is a predicate here rather
- * than another special case.
+ * The declared suites the assertions read. An empty derivation would satisfy every
+ * filter below while running nothing, which is the failure this module is about, so
+ * it is refused here rather than left to the caller to notice.
  */
-export function classify(report, declared, root = process.cwd()) {
+function requireDeclared(declared) {
   if (declared.length < MIN_GATED_SUITES) {
     throw new PgContractError("no declared suite to check: the derivation found none");
   }
-  if (report.testResults.length === 0) {
-    throw new PgContractError(
-      "the report lists no test file at all, so every check would pass vacuously",
-    );
-  }
-  const declaredSet = new Set(declared);
-  const suites = report.testResults.map((entry) => {
-    const file = rel(root, resolve(entry.name));
-    return {
-      file,
-      declared: declaredSet.has(file),
-      collected: true,
-      executed: count(entry, "passed"),
-      skipped: count(entry, "skipped"),
-    };
-  });
-  for (const file of declaredSet) {
-    // A declared suite the run never collected is a selected suite that executed
-    // nothing, so it enters the classification with nothing executed.
-    if (!suites.some((suite) => suite.file === file)) {
-      suites.push({ file, declared: true, collected: false, executed: 0, skipped: 0 });
-    }
-  }
-  return {
-    suites,
-    /** Whether this run skipped anything at all — false outside the DB-less run. */
-    skippedAny: suites.some((suite) => suite.skipped > 0),
-    /** Files no job selects that skipped tests: the report-visible half of the gate. */
-    undeclaredSkips: suites.filter((suite) => !suite.declared && suite.skipped > 0),
-    /** Declared suites the run did not execute in full: the selected-and-unrun half. */
-    unexecuted: suites.filter(
-      (suite) => suite.declared && (suite.executed === 0 || suite.skipped > 0),
-    ),
-    /** Declared suites that skipped nothing: a marker claiming a gate that is not there. */
-    neverSkipped: suites.filter((suite) => suite.declared && suite.skipped === 0),
-  };
+  return declared;
 }
 
 /**
@@ -237,7 +180,7 @@ export function classify(report, declared, root = process.cwd()) {
  * executed or not at all, and "not at all" is what reddens here.
  */
 export function assertExecuted(report, declared, root = process.cwd()) {
-  const { unexecuted } = classify(report, declared, root);
+  const { unexecuted } = classify(report, requireDeclared(declared), root);
   if (unexecuted.length === 0) return declared;
   const detail = unexecuted.map((suite) => {
     if (!suite.collected) return `${suite.file} — not collected by the run`;
@@ -255,11 +198,17 @@ export function assertExecuted(report, declared, root = process.cwd()) {
 /**
  * Every suite the DB-less run skipped is declared — some job runs it — and so is
  * every test file that reads `DATABASE_URL`, since a gate written as an early
- * return leaves the report nothing to see. The last check runs the other way: a
- * declared suite that skipped nothing claims a gate that is not there.
+ * return leaves the report nothing to see. The other direction is a note, not a
+ * failure: a declaration that skipped nothing, or that the run never collected, is
+ * how a marker or an include glob goes stale, and a note leaves declaring a file
+ * the cheap remedy for a mention the rule cannot tell from a read.
  */
 export function assertMarked(report, declared, root = process.cwd()) {
-  const { skippedAny, undeclaredSkips, neverSkipped } = classify(report, declared, root);
+  const { skippedAny, undeclaredSkips, neverSkipped, notCollected } = classify(
+    report,
+    requireDeclared(declared),
+    root,
+  );
   if (!skippedAny) {
     throw new PgContractError(
       "the report shows no skipped test, so it does not come from the DB-less run this check reads",
@@ -281,13 +230,17 @@ export function assertMarked(report, declared, root = process.cwd()) {
     );
   }
   if (problems.length > 0) throw new PgContractError(problems.join("\n"));
-  if (neverSkipped.length > 0) {
-    throw new PgContractError(
-      `declared "${MARKER}" but skipped nothing in this DB-less run, so the marker claims a gate ` +
-        `that is not there:\n  ${neverSkipped.map((suite) => suite.file).join("\n  ")}`,
-    );
-  }
-  return declared;
+  return {
+    declared,
+    diagnostics: [
+      ...neverSkipped.map(
+        (suite) => `${suite.file} declares "${MARKER}" but skipped nothing in this run`,
+      ),
+      ...notCollected.map(
+        (suite) => `${suite.file} declares "${MARKER}" but this run never collected it`,
+      ),
+    ],
+  };
 }
 
 /**

@@ -153,11 +153,18 @@ Postgres database. It declares `// @requires-postgres` and is **skipped unless
 `DATABASE_URL` is set**, so the default `bun run test` job stays green without a
 database. A second gated suite declares the same directive and nothing else: the
 `postgres:contract` job runs whatever `bun scripts/pg-contract.mjs --list`
-derives from the tree, fails when a selected suite executed nothing, and the
-DB-less run fails when a suite it skipped is one no job selects, or when a test
-file reads `DATABASE_URL` without declaring the directive — express the gate as
-a skip, since a test that returns early reports a pass and skips nothing (the
-policy, its residual blind spots, and each mode are in
+derives from the tree, and fails when a selected suite executed nothing. Over the
+files `vitest.config.ts` collects, the DB-less run fails on either
+unrun-but-green shape: a test file that skipped a test without declaring the
+directive — whole or partial — or one that reads `DATABASE_URL` in code position
+without it (`process.env.DATABASE_URL`, `process.env["DATABASE_URL"]`,
+`const { DATABASE_URL } = process.env`; a mention in a comment or in fixture text
+is not a read). Express the gate as a skip, since a test that returns early
+reports a pass and skips nothing and only the tree can see it. A file those globs
+do not collect is in no job, and a read reached through an alias of `process.env`
+or a helper module that then returns early is the one shape both rules miss. A
+declaration that gated nothing is a note in the log, not a failure — the policy,
+its residual blind spots, and each mode are in
 `scripts/pg-contract/policy.mjs`).
 The job engages when a PR can change what those suites execute — the seam's own
 home, a gated suite, or the gate's machinery — and runs them against a

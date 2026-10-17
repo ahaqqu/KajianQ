@@ -15,8 +15,11 @@
  *       report — the run itself is the evidence that the gate is real.
  *
  *   bun scripts/pg-contract.mjs --require-marked <report.json>
- *       Fail unless every suite the DB-less run skipped in full is declared.
- *       This is the half that catches a gated suite that forgot the marker.
+ *       Fail unless every file the DB-less run skipped a test in is declared, and
+ *       unless every test file that reads DATABASE_URL in code position declares
+ *       the marker. Two rules, because a suite can hide by skipping (which the
+ *       report sees) or by returning early (which only the tree sees). A
+ *       declaration that gated nothing is printed as a note, not failed.
  *
  *   bun scripts/pg-contract.mjs --touched <changed-files.txt>
  *       Print `touched=true|false`: whether those changed paths can alter what
@@ -25,15 +28,15 @@
  * Exit codes: 0 pass, 1 a failing gate, 2 usage or unreadable input.
  */
 import { readFileSync } from "node:fs";
+import { PgContractError, UsageError } from "./pg-contract/errors.mjs";
 import {
-  PgContractError,
-  UsageError,
   assertExecuted,
   assertMarked,
   contractRelevant,
   declaredSuiteFiles,
-  readReport,
 } from "./pg-contract/policy.mjs";
+import { readReport } from "./pg-contract/report.mjs";
+import { splitPathList } from "./pg-contract/tree.mjs";
 
 const USAGE = `usage:
   bun scripts/pg-contract.mjs --list
@@ -50,11 +53,9 @@ function readChanged(path) {
   try {
     // The workflow writes this list NUL-separated (`git diff -z`, the one form
     // that never quotes a path — a quoted one would match no declared suite); a
-    // hand-written probe file is newline-separated. Both delimiters separate.
-    return readFileSync(path, "utf8")
-      .split(/[\n\0]/)
-      .map((line) => line.trim())
-      .filter(Boolean);
+    // hand-written probe file is newline-separated. The list is split on whichever
+    // delimiter it carries, never on both: a path may hold a newline.
+    return splitPathList(readFileSync(path, "utf8"));
   } catch {
     throw new UsageError(
       `no changed-file list at ${path}: refusing to decide whether the contract job runs`,
@@ -71,9 +72,15 @@ function main([mode, arg]) {
     case "--require-executed":
       assertExecuted(readReport(required(mode, arg)), declaredSuiteFiles(root), root);
       return;
-    case "--require-marked":
-      assertMarked(readReport(required(mode, arg)), declaredSuiteFiles(root), root);
+    case "--require-marked": {
+      const { diagnostics } = assertMarked(
+        readReport(required(mode, arg)),
+        declaredSuiteFiles(root),
+        root,
+      );
+      for (const note of diagnostics) console.error(`pg-contract: note: ${note}`);
       return;
+    }
     case "--touched": {
       const changed = readChanged(required(mode, arg));
       process.stdout.write(`touched=${contractRelevant(changed, declaredSuiteFiles(root))}\n`);

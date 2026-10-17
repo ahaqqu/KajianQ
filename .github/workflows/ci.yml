@@ -37,14 +37,17 @@ jobs:
       #
       # The JSON report is what makes that skip observable instead of silent: it
       # records, per collected file, whether its tests executed or were skipped.
-      # `--require-marked` reads it and fails on any undeclared file that skipped
-      # a test — whole or partial — and on any undeclared test file that reads
-      # DATABASE_URL, since a gate written as an early return leaves the report
-      # nothing to see. A gated suite added in a new file therefore cannot land
-      # green and unrun unless it reaches the variable through a helper *and*
-      # returns early, which the policy records as its residual blind spot. The
-      # report is written outside the checkout, so no generated file sits in the
-      # tree the other gates scan.
+      # `--require-marked` reads it and fails on either unrun-but-green shape, over
+      # the files vitest.config.ts collects: a file that skipped a test without
+      # declaring the directive — whole or partial — or a file that reads
+      # DATABASE_URL in code position without it, since a gate written as an early
+      # return reports a pass and skips nothing and only the tree can see it. A
+      # mention in a comment or in fixture text is not a read, and a declaration
+      # that gated nothing is a note rather than a failure. What the rules cannot
+      # see: a file the include globs do not collect, which is in no job at all,
+      # and a read reached through an alias of `process.env` or a helper module
+      # that then returns early. The report is written outside the checkout, so no
+      # generated file sits in the tree the other gates scan.
       - name: Unit + coverage gate (no database)
         run: bun run test --reporter=default --reporter=json --outputFile.json="${RUNNER_TEMP}/vitest-report.json"
       - name: Every suite this run skipped must be one the contract job runs
