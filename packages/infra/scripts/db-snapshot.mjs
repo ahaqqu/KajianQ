@@ -263,9 +263,7 @@ function cmdRestorePlan(label, file) {
       `  4. bun run db:snapshot verify ${label}   # compares live rows to the manifest`,
       `Restore is manual by design: --clean drops objects in the target, so it never`,
       `defaults to a live database. Restore into a NEW branch or project, verify, then`,
-      `repoint DATABASE_URL. The connection travels as flags with the password in`,
-      `libpq's environment: a URL argument is readable through ps and lands in shell`,
-      `history.`,
+      `repoint DATABASE_URL. The password travels in libpq's environment, not argv.`,
     ].join("\n"),
   );
 }
