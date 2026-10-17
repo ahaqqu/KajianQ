@@ -204,6 +204,16 @@ export const TraceEventSchema = v.variant("kind", [
     at: v.pipe(v.number(), v.integer()),
   }),
   v.object({
+    /**
+     * The answer slot the DELIVERED text occupies, not the stage that wrote the
+     * record: a `refusal` event is a delivery fact — the run's text is the
+     * product's own rather than a model draft — so a run that answers before ever
+     * entering its generator records `generator`, the slot that text replaces. A
+     * record naming a stage the run did not enter is that slot standing in, not a
+     * wiring defect. `detail.trigger` names why the draft was suppressed; a
+     * `refusal` with no sibling `llm_call` and no `cost` is an answer no model was
+     * asked for.
+     */
     stage: StageSchema,
     kind: v.literal("refusal"),
     detail: v.optional(
