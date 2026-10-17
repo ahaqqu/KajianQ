@@ -1,3 +1,4 @@
+// @contracts-internal: composed into the TraceEvent union in ./trace-events.ts, and its detail spread into chat's trace frame in ./chat.ts — both publish the fields inline, so no consumer parses these schemas by name.
 import * as v from "valibot";
 import { CostRecordSchema } from "./trace-primitives";
 
