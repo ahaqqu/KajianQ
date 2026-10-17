@@ -713,36 +713,55 @@ holds what, and the hostname step that updates each, are
 get half-right.** Changing one scope's copy leaves a dispatch that resolves
 another scope authenticating as the old account, and the failure looks like an
 ssh problem rather than a variable one. Set it in every scope that carries the
-name — on a box whose environments carry it that is each of those environments,
-and on a box where none does it is the repository level — then confirm none is
-left on a different value:
+name: each environment whose jobs read it, and — only while no environment
+carries it — the repository level. The table above builds the **mixed** box, a
+repository-level copy beside a `prod` copy beside a `staging` that exists and
+carries nothing, and that box is unfinished rather than settled: `staging` reads
+the repository-level copy only for want of one of its own, so create the copy in
+`staging` too, then delete the repository-level one, which no scope reads once
+both environments carry their own
+([`docs/VPS-OPERATIONS.md`](VPS-OPERATIONS.md) §1.4). Then confirm none is left
+on a different value:
 
 ```bash
-# `staging` and `prod` each carry their own copy and read the repository level
-# not at all; which scope owns what is docs/VPS-OPERATIONS.md §1.4.
-gh api --method PATCH repos/{owner}/{repo}/environments/staging/variables/VPS_USER \
-    -f name=VPS_USER -f value=kajianq-deploy
+# On this repository `VPS_USER` is environment-scoped: `staging` and `prod` each
+# carry their own copy and resolve none of it from the repository level. A box
+# where no environment carries the name resolves it there instead — the branch
+# below. Which scope owns what is docs/VPS-OPERATIONS.md §1.4.
+# `gh variable set` creates an absent environment copy as readily as it
+# overwrites a present one, so it also finishes the mixed box, where `staging`
+# exists and carries nothing yet.
+gh variable set VPS_USER --env staging --repo {owner}/{repo} --body kajianq-deploy
+gh variable set VPS_USER --env prod --repo {owner}/{repo} --body kajianq-deploy
 
-gh api --method PATCH repos/{owner}/{repo}/environments/prod/variables/VPS_USER \
-    -f name=VPS_USER -f value=kajianq-deploy
-
-gh api repos/{owner}/{repo}/environments/staging/variables \
+# Confirm both environment copies landed, then remove the repository-level copy
+# the mixed box started with: shadowed at every scope that reads the name, it is
+# what a scope that loses its own would silently read (docs/VPS-OPERATIONS.md
+# §1.4).
+GH_REPO={owner}/{repo} gh api repos/{owner}/{repo}/environments/staging/variables \
     --jq '.variables[] | "\(.name)=\(.value)"' | grep VPS_USER
-gh api repos/{owner}/{repo}/environments/prod/variables \
+GH_REPO={owner}/{repo} gh api repos/{owner}/{repo}/environments/prod/variables \
     --jq '.variables[] | "\(.name)=\(.value)"' | grep VPS_USER
-gh variable list | grep VPS_USER    # the repository level keeps no copy
+gh variable delete VPS_USER --repo {owner}/{repo}
+gh variable list --repo {owner}/{repo} | grep VPS_USER    # nothing (grep exits 1)
 
-# A box where no environment carries the name has one scope instead: the
-# repository level, which is what a job whose environment has no copy resolves.
-# That copy is removed rather than left once an environment carries the name.
-gh variable set VPS_USER --body kajianq-deploy
-gh variable list | grep VPS_USER
+# A box where no environment carries the name yet has one scope instead — the
+# repository level, which is what a job whose environment carries no copy
+# resolves. That copy is legitimate only while no environment carries the name:
+# once one does, the branch above is the box, and its `gh variable delete` is
+# what removes this copy.
+gh variable set VPS_USER --repo {owner}/{repo} --body kajianq-deploy
+gh variable list --repo {owner}/{repo} | grep VPS_USER
 ```
 
-Note whose shell this runs in: `gh` resolves the repository from the working
-directory's remote, so run these inside your checkout — or pass `--repo`
-explicitly. A `gh variable set` that reports success against an unexpected
-repository is a silent no-op for your deploy.
+Note whose shell this runs in: `gh` picks the repository itself, and in a
+checkout with more than one remote that is not simply the repository you are
+standing in — a bare `gh variable` or `gh secret` call can land on another one
+entirely. So the block above pins it on every line: `--repo` for the
+`gh variable` and `gh secret` families, and `GH_REPO` — or a literal `owner/repo`
+in the path — for `gh api`, which has no `--repo` flag. A `gh variable set` that
+reports success against an unexpected repository is a silent no-op for your
+deploy.
 
 ### Dispatch
 
