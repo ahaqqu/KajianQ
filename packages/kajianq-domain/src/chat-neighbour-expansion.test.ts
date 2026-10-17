@@ -1,6 +1,12 @@
 import { Effect } from "effect";
-import { describe, expect, it } from "vite-plus/test";
+import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { RunContext, type Chunk, type RoutedQuery } from "@app/rag-core";
+import {
+  createPostgresRagStore,
+  disposePostgresPools,
+  postgresPool,
+  postgresSqlRunner,
+} from "@app/infra";
 import { createKajianQAssembler } from "./chat-assembler";
 import { validateCitations } from "./chat-citation-validator";
 import {
@@ -450,5 +456,107 @@ describe("the assembled context grounds the real failing label (#274)", () => {
     // The negative rows do not move: they are red with or without the change.
     expect(validateCitations("Dalilnya QS. 9:99", chunks).ungrounded).toEqual(["QS. 9:99"]);
     expect(validateCitations("Dalilnya QS. 9:99-100", chunks).ungrounded).toEqual(["QS. 9:99-100"]);
+  });
+});
+
+/**
+ * The same expansion against the read that EXECUTES it — the memory store above mirrors
+ * the Postgres adapter's per-anchor contract, and this block holds the two to it on the
+ * window that starved the cap. Like the adapter's own contract suite it needs a real
+ * server: it runs when `DATABASE_URL` is set and is skipped without it.
+ */
+const PG_URL = process.env.DATABASE_URL;
+const pgRun = PG_URL ? describe : describe.skip;
+
+pgRun("the anchored neighbour read on real Postgres (ADR-0049)", () => {
+  const RADIUS = 1;
+  const CAP = DEFAULT_NEIGHBOUR_CAP;
+  /** The page, plus the boundary verse the page stops short of. */
+  const VERSES = CAP + 1;
+  let prefix = "";
+  let sql: ReturnType<typeof postgresSqlRunner> | null = null;
+  let store: ReturnType<typeof createPostgresRagStore> | null = null;
+  /** ADR-0045's scope window: the surah's first `cap` verses, verbatim. */
+  let window: Chunk[] = [];
+  let boundaryLabel = "";
+
+  beforeAll(async () => {
+    if (!PG_URL) return;
+    prefix = `ct-neigh-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+    sql = postgresSqlRunner(postgresPool(PG_URL));
+    store = createPostgresRagStore(sql);
+    const parentId = await Effect.runPromise(
+      store.insertDocParent({
+        sourceKey: prefix,
+        title: prefix,
+        metadata: { sourceType: "quran", surah: 3 },
+      }),
+    );
+    await Effect.runPromise(
+      store.insertDocChildren(
+        Array.from({ length: VERSES }, (_, i) => ({
+          parentId,
+          textRaw: `raw-${prefix}-${i}`,
+          textAr: `ar-${prefix}-${i}`,
+          textId: `id-${prefix}-${i}`,
+          citation: { sourceType: "quran", surah: 3, ayah: i + 1 },
+          embeddingPrimary: null,
+          embeddingFallback: null,
+          ordinal: i,
+          metadata: { sourceType: "quran", surah: 3, ayah: i + 1, citation: `QS. 3:${i + 1}` },
+        })),
+      ),
+    );
+    const rows = await Effect.runPromise(
+      store.listDocChildrenByParentSourceKey(prefix, { limit: VERSES }),
+    );
+    const ordered = [...rows].sort((a, b) => a.ordinal - b.ordinal);
+    window = ordered
+      .slice(0, CAP)
+      .map((row) => ({ id: row.id, text: row.textAr, metadata: row.metadata }));
+    boundaryLabel = ordered[CAP]?.metadata["citation"] as string;
+  });
+
+  afterAll(async () => {
+    if (!PG_URL || sql === null) return;
+    // Exact keys, so the shared database keeps only the rows this block owns.
+    await sql`DELETE FROM doc_children WHERE parent_id IN (
+      SELECT id FROM doc_parents WHERE source_key = ${prefix}
+    )`;
+    await sql`DELETE FROM doc_parents WHERE source_key = ${prefix}`;
+    await disposePostgresPools();
+  });
+
+  it("spends the cap-plus-one read on rows the context already holds", async () => {
+    if (store === null) return;
+    const rows = await Effect.runPromise(
+      store.listDocChildNeighboursByChildIds(
+        window.map((c) => c.id),
+        { radius: RADIUS, limit: CAP + 1 },
+      ),
+    );
+    const inContext = new Set(window.map((c) => c.id));
+    // Per-anchor windows overlap, so all but one slot goes to an anchor the dedup then
+    // drops, and the boundary verse sorts last — out of reach of a `cap + 1` read.
+    expect(rows.length).toBe(CAP + 1);
+    expect(rows.filter((r) => !inContext.has(r.id)).map((r) => r.metadata["citation"])).toEqual([
+      boundaryLabel,
+    ]);
+  });
+
+  it("adds the boundary verse the cap-plus-one read cannot reach", async () => {
+    if (store === null) return;
+    const result = await Effect.runPromise(
+      expandVerseNeighbours({
+        retrieved: window,
+        radius: RADIUS,
+        cap: CAP,
+        store,
+        bridge: (effect) => Effect.runPromise(effect),
+      }),
+    );
+    expect(labelsOf(result.chunks)).toEqual([boundaryLabel]);
+    expect(result.detail?.returned).toBe(1);
+    expect(result.detail?.truncated).toBe(false);
   });
 });
