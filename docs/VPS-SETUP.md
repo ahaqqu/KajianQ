@@ -699,13 +699,21 @@ if you want the approval gate on production deploys, and give it the same
 values override repository-scoped ones, which is how one repository can hold two
 environments.
 
+A fresh box can run from the repository scope alone — this guide's single-scope
+setup works because a job whose environment carries no copy falls back to the
+repository level. This repository splits the values across `staging` and `prod`,
+each scope owning the deploy's host, identity, tree, URL and key; which scope
+holds what, and the hostname step that updates each, are
+[`docs/VPS-OPERATIONS.md`](VPS-OPERATIONS.md) §1.4 and §1.6.
+
 **Both scopes must agree on `VPS_USER`, and that is easy to get half-right.**
 Changing only the repo-level variable leaves a prod dispatch authenticating as
 the old account, and the failure looks like an ssh problem rather than a
 variable one. Set it in both, then confirm no scope still says something else:
 
 ```bash
-# Repo-level (read by deploy-vps.yml and the Staging tunnel).
+# Repository level: what a job resolves when its environment carries no copy —
+# on a single-scope box, deploy-vps.yml's job and the Staging tunnel.
 gh variable set VPS_USER --body kajianq-deploy
 
 # The `prod` environment carries its own environment-scoped copy, which

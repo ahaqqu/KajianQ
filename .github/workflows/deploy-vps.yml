@@ -52,11 +52,10 @@ jobs:
     runs-on: ubuntu-latest
     # Environment-scoped vars/secrets: `staging` and `prod` each carry their own
     # host, deploy identity, tree and public URL under one repository, so a
-    # dispatch is addressed from its own scope. Both scopes name the same box
-    # today, because no production deployment is provisioned (ADR-0044
-    # decision 2). The workflow_dispatch path also requires an approving
-    # environment for `prod`, which is where the issue's "owner explicitly
-    # approves decommissioning" gate belongs.
+    # dispatch is addressed from its own scope (docs/VPS-OPERATIONS.md §1.4).
+    # The workflow_dispatch path also requires an approving environment for
+    # `prod`, which is where the issue's "owner explicitly approves
+    # decommissioning" gate belongs.
     environment: ${{ inputs.environment }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -67,10 +66,11 @@ jobs:
       # The box's name, the deploy identity, the tree and the public URL are the
       # dispatching environment's own vars; this step refuses to proceed when any
       # of them is empty, so a deploy can never fall back to a default tree. The
-      # deploy key belongs to that same scope; `staging` does not hold its own
-      # copy yet, so a staging deploy still reads the repository-level secret.
-      # The private key is written to a file the runner removes when the job
-      # ends.
+      # deploy key resolves at that same scope: a `uses:` caller cannot declare
+      # an environment, so it maps the secret by name, and the environment this
+      # job sets supplies the value. The private key is written to a file the
+      # runner removes when the job ends. Which scope owns each value is
+      # docs/VPS-OPERATIONS.md §1.4.
       - name: Require the deploy access
         run: |
           test -n "$KAJIANQ_DEPLOY_HOST" || { echo "::error::KAJIANQ_DEPLOY_HOST (vars.VPS_HOST) is unset — the VPS is not reachable without it"; exit 1; }

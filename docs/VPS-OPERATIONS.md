@@ -186,8 +186,9 @@ privilege-escalation path. Examples with every key live in
 
 `deploy.sh` requires `KAJIANQ_DEPLOY_HOST`, `KAJIANQ_DEPLOY_USER` and
 `KAJIANQ_DEPLOY_ROOT` from that file, and fails by name on an empty one before it
-builds anything. The tree has **no built-in default** (§1.4), so the operator's
-env file is the only source for where a deploy ships.
+builds anything. The tree has **no built-in default**, so the operator's env file
+is the only source for where a deploy ships; §1.4 records which GitHub scope
+carries that value on the workflow path.
 
 `api.env` is the serving process's **whole** configuration (plus the cron
 entry's, which reads the same `DATABASE_URL`). Its keys mirror
@@ -213,44 +214,51 @@ would 503 while health stayed green.
 
 ### 1.4 GitHub variables and secrets
 
-Nothing here is in the repository. Each value is read at the scope that owns it:
-a job that declares a GitHub environment resolves that scope's variables first,
-and that scope's secret when it holds one, so the dispatching environment decides
-where a deploy lands and what it authenticates with — the repository-level copies
-are the fallback for a value a scope does not carry. Measured from the
-repository's configuration (`gh variable list` / `gh secret list`, with and
-without `--env`):
+Nothing here is in the repository. **The ownership invariant:** a value is read
+at the scope of the job that reads it. A job that declares a GitHub environment
+resolves that environment's copy of a name first, and falls back to the
+repository-level copy only where the scope carries none — so the dispatching
+environment decides where a deploy lands and what it authenticates with. Every
+value the deploy path needs is carried by both scopes, and **no job reads a
+repository-level `VPS_*` value.** Measured from this repository's configuration
+(`gh variable list` / `gh secret list`, with and without `--env`):
 
-**The two environments.** `staging` and `prod` each carry their own `VPS_HOST`,
-`VPS_USER`, `VPS_ROOT` and `VPS_PUBLIC_URL` variables. `prod` carries its own
-`VPS_DEPLOY_SSH_KEY` secret as well; `staging` holds no secret of its own, so a
-staging job that reads the key resolves the repository-level copy. Both
-`VPS_HOST`s point at the **one box** (§1.2), because no production deployment is
-provisioned (ADR-0044 decision 2; deferred 2026-10-03).
+| Kind   | Name                      | Scope             | Read by                                                                                         |
+| ------ | ------------------------- | ----------------- | ----------------------------------------------------------------------------------------------- |
+| var    | `VPS_HOST`                | `staging`, `prod` | the deploy job (→ `KAJIANQ_DEPLOY_HOST`) and the Staging tunnel                                 |
+| var    | `VPS_USER`                | `staging`, `prod` | the deploy job (→ `KAJIANQ_DEPLOY_USER`) and the Staging tunnel                                 |
+| var    | `VPS_ROOT`                | `staging`, `prod` | the deploy job (→ `KAJIANQ_DEPLOY_ROOT`, required — §1.3)                                       |
+| var    | `VPS_PUBLIC_URL`          | `staging`, `prod` | the deploy smoke, and the Staging smoke, ZAP and Schemathesis steps                             |
+| secret | `VPS_DEPLOY_SSH_KEY`      | `staging`, `prod` | the deploy job and the Staging tunnel — each at the scope it declares                           |
+| secret | `STAGING_DATABASE_URL`    | repository        | the Staging Golden Set smoke — the VPS Postgres loopback URL **through the tunnel port** (§2.8) |
+| secret | `RATE_BYPASS_PRIVATE_KEY` | repository        | the Staging Schemathesis fuzz — the purpose-locked bypass token (ADR-0041)                      |
 
-**Repository level** (this repository's configuration) — the copies a dispatch
-resolved before the environments carried their own, and the fallback for a scope
-that lacks a value:
+Both `VPS_HOST`s point at the **one box** (§1.2), because no production
+deployment is provisioned (ADR-0044 decision 2; deferred 2026-10-03).
 
-| Kind   | Name                                 | Purpose                                                                                     |
-| ------ | ------------------------------------ | ------------------------------------------------------------------------------------------- |
-| var    | `VPS_HOST`                           | the server (or an ssh-config alias)                                                         |
-| var    | `VPS_USER`                           | the deploy identity — `kajianq-deploy` (§1.5)                                               |
-| var    | `VPS_PUBLIC_URL`                     | the public base URL                                                                         |
-| var    | `PROD_URL`                           | legacy, the same origin; no workflow reads it                                               |
-| secret | `VPS_DEPLOY_SSH_KEY`                 | the deploy key — dedicated ed25519 key, its public half in the box's `authorized_keys`      |
-| secret | `STAGING_DATABASE_URL`               | Staging Golden Set smoke — the VPS Postgres loopback URL **through the tunnel port** (§2.8) |
-| secret | `RATE_BYPASS_PRIVATE_KEY`            | Staging Schemathesis fuzz — the purpose-locked bypass token (ADR-0041)                      |
-| secret | `DEEPSEEK_API_KEY`, `GEMINI_API_KEY` | no workflow job reads them                                                                  |
+**Repository level — the rest, read by no job:**
 
-`VPS_HOST`, `VPS_USER` and `VPS_PUBLIC_URL` are shadowed at both scopes: no
-staging or prod job reads the repository-level copy, and `VPS_ROOT` does not
-exist at repository level here at all. The deploy key is the exception, and it is
-why the repository-level copies are still load-bearing: the checks job reads it
-in its `staging` scope (which holds none), and the deploy job receives it passed
-from `staging.yml`'s caller job — a job that calls a workflow, and so cannot
-declare an environment of its own. The tunnel URL and the bypass signer are
-repository-level because the Staging workflow is their one consumer.
+| Kind   | Name                                     | Note                                                                     |
+| ------ | ---------------------------------------- | ------------------------------------------------------------------------ |
+| var    | `VPS_HOST`, `VPS_USER`, `VPS_PUBLIC_URL` | dead values: shadowed at both scopes                                     |
+| var    | `PROD_URL`                               | legacy, the same origin; no workflow reads it                            |
+| secret | `VPS_DEPLOY_SSH_KEY`                     | dead value: shadowed at both scopes — only its **name** is in use, below |
+| secret | `DEEPSEEK_API_KEY`, `GEMINI_API_KEY`     | no workflow job reads them                                               |
+
+**The deploy key's name is load-bearing; its value is not.** The deploy job
+receives `VPS_DEPLOY_SSH_KEY` through `staging.yml`'s caller job, and a job that
+calls a reusable workflow cannot declare `environment` — `environment` is not in
+GitHub's supported-keyword set for a `uses:` job. So the caller maps the secret
+**by name**, and the job that sets `environment` in the reusable workflow
+receives that environment's value: a by-name mapping resolves a secret that
+exists only in the environment, while omitting the mapping resolves the name to
+an empty string there. The mapping therefore stays. It is also why the
+repository-level `VPS_*` copies (the three variables and the key) are deleted as
+a settings step **after this change lands**: on `main` before it,
+`post-deploy-checks` declares no environment, so it reads the repository-level
+`VPS_*` values, and deleting them first would break the merge path.
+`STAGING_DATABASE_URL` and `RATE_BYPASS_PRIVATE_KEY` are live repository-level
+readers and stay.
 
 `deploy-vps.yml` fails at a named "Require the deploy access" step when
 `VPS_HOST`, `VPS_USER`, `VPS_ROOT`, `VPS_PUBLIC_URL` or the key is missing — an
@@ -273,9 +281,9 @@ required-reviewer protection rule (the owner) and a protected-branch policy —
 the approval is the owner's sign-off for a production-targeted deploy
 (ADR-0044 decision 2). Its own `VPS_HOST`, `VPS_USER`, `VPS_PUBLIC_URL`,
 `VPS_ROOT` and `VPS_DEPLOY_SSH_KEY` mean a prod dispatch resolves none of them
-from the repository. The `staging` environment carries the same four variables,
-no protection rule, and no secret of its own — that key is the one asymmetry
-left in the scoping.
+from the repository. The `staging` environment carries the same four variables
+and its own `VPS_DEPLOY_SSH_KEY`, and no protection rule — a staging dispatch is
+addressed entirely from its own scope, with no approval gate.
 
 ### 1.5 The permission model (deploy identity ↔ `kajianq`)
 
@@ -462,12 +470,18 @@ sudo certbot delete --cert-name <old-host>
 
 # The scopes whose jobs read the origin: the `staging` and `prod` environments
 # hold their own copy (§1.4), and a scope left on the retired name fails its own
-# deploy smoke while the other scopes stay green.
-gh variable set PROD_URL       --body "https://<new-host>"
+# deploy smoke while the other scopes stay green. No repository-level
+# `VPS_PUBLIC_URL` is written: §1.4 records it as a value no job reads, deleted
+# with the other repository-level `VPS_*` copies, and re-creating it here would
+# restore the fallback scope the scoping decision drops.
 gh api --method PATCH repos/{owner}/{repo}/environments/staging/variables/VPS_PUBLIC_URL \
     -f name=VPS_PUBLIC_URL -f value="https://<new-host>"
 gh api --method PATCH repos/{owner}/{repo}/environments/prod/variables/VPS_PUBLIC_URL \
     -f name=VPS_PUBLIC_URL -f value="https://<new-host>"
+
+# `PROD_URL` never had a reader (§1.4) — re-pointed so the store keeps no
+# retired name, not because a workflow resolves it.
+gh variable set PROD_URL --body "https://<new-host>"
 ```
 
 Finally, prove the CI path end-to-end rather than the box alone: dispatch
@@ -905,7 +919,7 @@ monitoring must not create an unbounded personal-data-adjacent log surface. Issu
 | Deploy from the deploying machine     | `provision/vps/deploy/deploy.sh --env /etc/kajianq/deploy.env`                                                                                                                                                                                                                                          |
 | See what a deploy would do            | `provision/vps/deploy/deploy.sh --dry-run`                                                                                                                                                                                                                                                              |
 | Apply/refresh hardening               | `sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env` (idempotent)                                                                                                                                                                                                                                 |
-| Change the public hostname            | §1.6 — certbot, `proxy.env`, `ALLOWED_ORIGINS`, `apply.sh`, then `VPS_PUBLIC_URL` in both scopes                                                                                                                                                                                                        |
+| Change the public hostname            | §1.6 — certbot, `proxy.env`, `ALLOWED_ORIGINS`, `apply.sh`, then `VPS_PUBLIC_URL` in every scope that carries it (§1.4)                                                                                                                                                                                 |
 | Change the environment label          | §1.7 — a fresh rebuild already reads `"env":"staging"`; for a box still reading `production`, `sed` `APP_ENV` in `/etc/kajianq/api.env` as root, restart the unit, then check `/v1/health` (cosmetic: log labels + health JSON only)                                                                    |
 | Check migrations                      | `DATABASE_URL` in env (§2.3, read from the file — never typed) → `bun run db:status:all`                                                                                                                                                                                                                |
 | Take a snapshot                       | `DATABASE_URL` in env (§2.3, read from the file — never typed) → `bun run db:snapshot create <lowercase-label>` with the posture flag (§2.4)                                                                                                                                                            |
