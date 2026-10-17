@@ -100,9 +100,12 @@ export type ChatCitation = v.InferOutput<typeof ChatCitationSchema>;
  * The SSE `citations` frame payload, emitted after the answer's deltas and
  * before `done`, and with the same shape per assistant message on the
  * rehydration transcript. `citations` is the cited-and-grounded intersection;
- * `refusal` independently reports whether the delivered text is the product's
- * own rather than a model draft — true of a Refusal and of a Content-free
- * decline alike — and never empties the list, so a hybrid answer carries both.
+ * `refusal` independently reports that the run's trace recorded a `refusal` event
+ * — the answer is a Refusal or a Content-free decline — and never empties the list,
+ * so a hybrid answer carries both. It is not a claim that the draft was replaced: a
+ * pure refusal delivers the draft that already was the canonical sentence, and a
+ * hybrid refusal delivers that draft with the product rules' copy appended; every
+ * other refusal delivers product copy in the draft's place.
  * `dhaifWarning` tells the UI to render the deterministic warning card the
  * answer text carries.
  */
