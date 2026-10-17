@@ -344,6 +344,35 @@ describe("validateCitations — grounded direction", () => {
     }
   });
 
+  it("compares a letter glued to the number as written, in both directions", () => {
+    // The recorded exception to "case is not identity", pinned on both sides so the
+    // next hunt does not re-find it and a change that starts folding the glued letter
+    // re-points these rows instead of drifting. The fold rewrites the marker, the
+    // collection and the address word — the slots the grammar and the vocabulary name.
+    // A letter glued to the number is part of the number word (`no. 5010a` is a
+    // DIFFERENT address from `no. 5010`), so it is compared as written.
+    //
+    // Grounded direction: one address, two casings, two verdicts. The corpus renders
+    // the number from `hadithNo`, which is numeric in every edition, so the refusal
+    // costs a label shape the corpus never carries.
+    expect(normalizeCitationLabel("HR. Bukhari no. 5010a")).toBe("HR. Bukhari no. 5010a");
+    expect(normalizeCitationLabel("HR. Bukhari no. 5010A")).toBe("HR. Bukhari no. 5010A");
+    expect(
+      validateCitations("Lihat HR. Bukhari no. 5010a lanjut", [chunk("HR. Bukhari no. 5010a")]),
+    ).toEqual({ grounded: ["HR. Bukhari no. 5010a"], ungrounded: [] });
+    expect(
+      validateCitations("Lihat HR. Bukhari no. 5010A lanjut", [chunk("HR. Bukhari no. 5010a")]),
+    ).toEqual({ grounded: [], ungrounded: ["HR. Bukhari no. 5010A"] });
+    // Fabricated direction: the glued letter never rides in on the retrieved number,
+    // in either casing, and the draft is refused for it.
+    for (const fabricated of ["HR. Bukhari no. 5010a", "HR. Bukhari no. 5010A"]) {
+      const { ungrounded } = validateCitations(`Lihat ${fabricated} lanjut`, [
+        chunk("HR. Bukhari no. 5010"),
+      ]);
+      expect(ungrounded, fabricated).toEqual([fabricated]);
+    }
+  });
+
   it("strips invisible format characters before the number token reads the digits (#264 item 1)", () => {
     // `\p{Cf}` glue carries no address information, so the flatten step drops
     // it and the address token sees the full number.
@@ -1101,6 +1130,27 @@ describe("validateCitations — grounded direction", () => {
 });
 
 describe("validateCitations — ungrounded direction (the trap cases)", () => {
+  it("still refuses a citation whose hadith number is not ASCII-digit-led", () => {
+    // The number word the read names is the pattern's own OPTIONAL group: a token that
+    // is not ASCII-digit-led carries no address to reduce to, so the reduce leaves the
+    // whole label and the lexical tail strip owns it — but the SPAN still exists and is
+    // still refused. A pattern that made that group mandatory would delete the match
+    // instead, and this citation would pass the ungrounded scan unseen: fail-open, on
+    // the one direction the gate exists for.
+    for (const draft of [
+      "HR. Bukhari no. abc",
+      "HR. Bukhari no. iv",
+      "HR. Bukhari no. #5010",
+      "HR. Bukhari No. abc",
+    ]) {
+      const { grounded, ungrounded } = validateCitations(`Lihat ${draft} lanjut`, [
+        chunk("HR. Bukhari no. 5010"),
+      ]);
+      expect(ungrounded, draft).toEqual([normalizeCitationLabel(draft)]);
+      expect(grounded, draft).toEqual([]);
+    }
+  });
+
   it("catches a fabricated Quran citation in prose", () => {
     const { ungrounded } = validateCitations("Allah berfirman dalam QS. 9:99 tentang hal ini.", [
       chunk("QS. 2:255"),

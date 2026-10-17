@@ -263,10 +263,13 @@ describe("deriveCitationsFrame — the invariant, adversarial shapes", () => {
   });
 
   it("keeps the chunk's own casing in the chip for a citation written in another", () => {
-    // The frame is derived from the chunk, so the draft's casing must never reach
-    // the UI: a grounded case variant shows the label the source carries, exactly as
-    // a marker spelling variant does — the fold lives in the comparison, never in
-    // what the reader is shown.
+    // The chip's label is the **span's comparison form** — what the grounding decision
+    // returned — not the chunk's own text; the chunk supplies the display row. For a
+    // citation the fold rewrites, that form IS the canonical spelling the chunk
+    // carries, which is why the draft's casing never reaches the UI: the comparison
+    // form folds it, not the display path. A chunk label that is not already canonical
+    // is the other half of the same mechanism, pinned by the grade-suffix test below:
+    // `HR. Malik no. 18 (Sahih)` retrieved yields the chip label `HR. Malik no. 18`.
     for (const [span, label] of [
       ["HR. Bukhari No. 5010", "HR. Bukhari no. 5010"],
       ["hr. bukhari no. 5010", "HR. Bukhari no. 5010"],

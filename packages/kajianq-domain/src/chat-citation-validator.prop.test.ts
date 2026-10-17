@@ -136,6 +136,15 @@ const FABRICATED_ADDRESSES = [
   "QS. 2:256",
 ] as const;
 
+/**
+ * The casings sweep's own alphabet: {@link ADDRESSES} plus the **kitab** grammar's
+ * address, whose `/gi` marker and address word no other sweep here reaches. Local
+ * rather than appended to `ADDRESSES`: those sweeps glue a tail onto the address, and
+ * the kitab address ends at its page number, so a glued digit would extend the page
+ * rather than sit in a tail.
+ */
+const CASE_ADDRESSES = [...ADDRESSES, "Jilid 1, Hal. 102"] as const;
+
 describe("normalizeCitationLabel — property (#253 tail class, review B1)", () => {
   it("drops every Unicode class that carries no address information", () => {
     for (const { name, chars } of NOISE_CLASSES) {
@@ -463,8 +472,10 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
     // grounded direction (a case variant reaches the label its chunk carries and
     // grounds on it) and the no-collision direction (it reaches no neighbour's
     // comparison form, so a widened fold that merged two references fails here).
+    // The alphabet carries one address per grammar whose comparison form folds case —
+    // marker, collection, address word and page number included.
     const property = fc.property(
-      fc.constantFrom(...ADDRESSES),
+      fc.constantFrom(...CASE_ADDRESSES),
       fc.array(fc.boolean(), { minLength: 1, maxLength: 64 }),
       (address, flips) => {
         const rendered = recase(address, flips);
@@ -483,7 +494,7 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
           validateCitations(`Lihat ${tailed} lanjut`, [chunk(address)]).ungrounded,
           tailed,
         ).toEqual([]);
-        for (const other of ADDRESSES) {
+        for (const other of CASE_ADDRESSES) {
           if (other === address) continue;
           expect(normalizeCitationLabel(rendered), `${rendered} vs ${other}`).not.toBe(other);
         }
