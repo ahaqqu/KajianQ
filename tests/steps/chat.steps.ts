@@ -92,6 +92,20 @@ const REFUSAL_FIXTURE = [
 ].join("");
 
 /**
+ * The CONTENT-FREE DECLINE wire shape: the run answered from the product's
+ * canned copy because the message carried no question, so the stream carries
+ * that copy and the frame carries `refusal: true` with nothing cited — the same
+ * shape a refusal reaches the client with, because both are the product's own
+ * text rather than a draft.
+ */
+const DECLINE_FIXTURE = [
+  'event: meta\ndata: {"sessionId":"sess-e2e","messageId":"m-decline","traceId":"tr-decline"}\n\n',
+  "event: delta\ndata: Mohon maaf, kami tidak menemukan pertanyaan pada pesan Anda.\n\n",
+  'event: citations\ndata: {"messageId":"m-decline","refusal":true,"dhaifWarning":false,"citations":[]}\n\n',
+  "event: done\ndata: {}\n\n",
+].join("");
+
+/**
  * The HYBRID wire shape: a grounded partial answer that quotes a retrieved verse
  * and then continues into the canonical insufficiency sentence plus the
  * disclaimer, while the citations frame carries BOTH the grounded chip and
@@ -261,6 +275,14 @@ When("I ask a question whose answer contains markdown", async ({ page }) => {
 When("I ask something the corpus cannot answer", async ({ page }) => {
   await openChatWithFixtures(page, REFUSAL_FIXTURE);
   await page.getByTestId("composer").fill("Pertanyaan di luar cakupan?");
+  await page.getByTestId("send").click();
+});
+
+When("I send a message that is not a question", async ({ page }) => {
+  await openChatWithFixtures(page, DECLINE_FIXTURE);
+  // The composer sends the content-free shape verbatim: the client does not
+  // judge it, the server's route gate does.
+  await page.getByTestId("composer").fill("\u200b\u200d\u200b");
   await page.getByTestId("send").click();
 });
 
@@ -445,6 +467,18 @@ Then("the refusal renders as a plain card with no citation chips", async ({ page
   await expect(assistant).toContainText("tidak menemukan dalil yang memadai");
   await expect(page.getByTestId("citation-chip")).toHaveCount(0);
   await expect(page.getByTestId("dhaif-warning")).toHaveCount(0);
+});
+
+Then("the decline renders as a plain card with no citation chips", async ({ page }) => {
+  const assistant = page.getByTestId("message-assistant").last();
+  // The decline reaches the page as the settled text plus the frame's own
+  // refusal flag, exactly as a refusal does: the client renders the record, it
+  // does not reconstruct the answer path. Nothing decorates it — the product
+  // rules never ran, because the reviewer never did.
+  await expect(assistant).toContainText("tidak menemukan pertanyaan pada pesan Anda");
+  await expect(page.getByTestId("citation-chip")).toHaveCount(0);
+  await expect(page.getByTestId("dhaif-warning")).toHaveCount(0);
+  await expect(page.getByTestId("ulama-disclaimer")).toHaveCount(0);
 });
 
 Then("the hybrid answer renders its grounded citation chip", async ({ page }) => {

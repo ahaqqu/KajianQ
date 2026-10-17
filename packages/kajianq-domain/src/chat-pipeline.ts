@@ -9,6 +9,7 @@ import {
   type StageError,
   type StoreError,
   type Decider,
+  type Decliner,
 } from "@app/rag-core";
 import { createKajianQRouter, type RouterProvider } from "./chat-router";
 import { createKajianQRetriever, type RetrieverEmbedder, type StoreBridge } from "./chat-retriever";
@@ -43,6 +44,10 @@ export type ChatPipelineDeps = {
   scopeExpansionCap?: number;
   /** Skip the reviewer LLM call (eval refusal cases, budget-capped runs). */
   skipReviewer?: boolean;
+  /** The run's decline seam. Absent = the domain's own content-free decline, so a route the
+   * gate marked content-free is answered from canned copy and neither paid tail stage is
+   * entered; inject a decliner to answer such a route differently. */
+  decliner?: Decliner<import("./filters").KajianQFilters>;
   /** Collector for LLM costs that ride the retrieval stage (embed call). */
   onCost?: (cost: import("@app/contracts").CostRecord) => void;
   /** Streamed-generation hook: each delta as the vendor produces it. The reviewer gates
@@ -71,6 +76,7 @@ export function buildChatStages(
     reviewerDecider: deps.reviewerDecider,
     language: deps.language,
     ...(deps.skipReviewer !== undefined ? { skipReviewer: deps.skipReviewer } : {}),
+    ...(deps.decliner !== undefined ? { decliner: deps.decliner } : {}),
     ...(deps.onDelta !== undefined ? { onDelta: deps.onDelta } : {}),
   });
   return {
@@ -79,6 +85,9 @@ export function buildChatStages(
     assembler: tail.assembler,
     generator: tail.generator,
     reviewer: tail.reviewer,
+    // The decline seam: a route carrying no question is answered from the
+    // product's canned copy and the two paid tail stages are never entered.
+    decliner: tail.decliner,
   };
 }
 

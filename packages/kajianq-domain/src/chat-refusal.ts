@@ -185,8 +185,10 @@ export function isEarnedRefusal(
 }
 
 /**
- * The `refusal` event's machine-readable trigger vocabulary, one home for all
- * four (round A2 of the #443 review). `generator_refusal` covers both
+ * The `refusal` event's machine-readable trigger vocabulary, one home for every
+ * value — `content_free_decline` included, the one that is not a Refusal: it
+ * records the product's canned copy for a route carrying no question at all
+ * (the Content-free decline, `CONTEXT.md`). `generator_refusal` covers both
  * sentence-carrying shapes that return the draft; every other trigger REPLACES
  * the delivered text with product copy — the invariant `traceRefused` in
  * `apps/api/src/lib/chat-trace.ts` relies on.
@@ -195,7 +197,8 @@ export type RefusalTrigger =
   | "generator_refusal"
   | "ungrounded_citation"
   | "reviewer_fail"
-  | "asserting_refusal_draft";
+  | "asserting_refusal_draft"
+  | "content_free_decline";
 
 /**
  * What the refusal path DOES with a draft that reached it, and what its
