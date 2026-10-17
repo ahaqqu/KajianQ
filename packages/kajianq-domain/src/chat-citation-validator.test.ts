@@ -216,6 +216,35 @@ describe("validateCitations — grounded direction", () => {
     ).toEqual([]);
   });
 
+  it("folds the marker and the address word's case, so a read span meets its label", () => {
+    // The grammars match case-insensitively: a span they read is a citation, and a
+    // marker or address word in another casing is not a different address. Folding
+    // it in the comparison form is what lets the span meet the label the chunk
+    // carries — one row per grammar, the casing the corpus does not use.
+    expect(normalizeCitationLabel("HR. Bukhari No. 5010")).toBe("HR. Bukhari no. 5010");
+    expect(normalizeCitationLabel("hr. bukhari no. 5010")).toBe("HR. Bukhari no. 5010");
+    expect(
+      validateCitations("Rasulullah bersabda dalam HR. Bukhari No. 5010: matn", [
+        chunk("HR. Bukhari no. 5010"),
+      ]).ungrounded,
+    ).toEqual([]);
+    expect(normalizeCitationLabel("qs. 2:255")).toBe("QS. 2:255");
+    expect(
+      validateCitations("Ayat Kursi ada di qs. 2:255: ayat yang agung", [chunk("QS. 2:255")])
+        .ungrounded,
+    ).toEqual([]);
+    expect(normalizeCitationLabel("Al-Umm, Imam Syafi'i, jilid 1, hal. 102")).toBe(
+      "Al-Umm, Imam Syafi'i, Jilid 1, Hal. 102",
+    );
+    // The folded spelling still has to be a retrieved address: the case fold
+    // cannot ground a reference the corpus does not carry.
+    expect(
+      validateCitations("Rasulullah bersabda dalam hr. Bukhari No. 99999: matn", [
+        chunk("HR. Bukhari no. 5010"),
+      ]).ungrounded,
+    ).toEqual(["HR. Bukhari no. 99999"]);
+  });
+
   it("strips invisible format characters before the number token reads the digits (#264 item 1)", () => {
     // `\p{Cf}` glue carries no address information, so the flatten step drops
     // it and the address token sees the full number.
