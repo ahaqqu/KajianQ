@@ -83,8 +83,16 @@ export interface CitationCollectionSlot {
  * because they make a **different** address: `no. 5010a` and `no. 50102` must
  * never reduce to `no. 5010`, or a fabricated sub-number would ride in on a
  * retrieved one's grounding (fail-closed).
+ *
+ * Case-insensitive like the grammar whose match it reads: the token class that
+ * found the match is the one that has to name the address inside it. A
+ * case-sensitive read walks past a `No.` the scan accepted, returns no address,
+ * and leaves the tail unstripped — the `:1` of `HR. Bukhari No. 5010:1` then
+ * refuses against the very label the chunk grounds, while the same draft in the
+ * corpus's own casing is accepted. The read names an address, never a
+ * different one: its digit and letter classes are unchanged.
  */
-const HADITH_ADDRESS = /^(.*?no\.\s*\d[\p{L}\p{Nd}]*)/u;
+const HADITH_ADDRESS = /^(.*?no\.\s*\d[\p{L}\p{Nd}]*)/iu;
 
 /**
  * The citation grammars the product renders. Literal regexes, not strings
