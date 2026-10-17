@@ -141,6 +141,14 @@ describe("the collected universe is the runner's, read from its own config", () 
     expect(includeGlobs(nested)).toEqual(["tests/**/*.test.mjs"]);
   });
 
+  it("reads the object's own `test:`, not a mention of one in a comment", () => {
+    // A comment above the object that spells an example out would otherwise be read as the
+    // block itself, and its globs would be the universe — the silent wrong-universe failure
+    // this parser exists to prevent.
+    const config = `export default defineConfig({\n  // the runner reads test: { include: ["docs/**/*.md"] }\n  test: {\n    include: ["tests/**/*.test.mjs"],\n  },\n});\n`;
+    expect(includeGlobs(config)).toEqual(["tests/**/*.test.mjs"]);
+  });
+
   it("fails the gate on a root whose universe cannot be read, instead of collecting nothing", () => {
     const bare = fixtureTree({ "tests/a.test.mjs": "// x\n" }, null);
     const keyless = fixtureTree({ "tests/a.test.mjs": "// x\n" }, fixtureConfig([]));
