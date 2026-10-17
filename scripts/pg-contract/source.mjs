@@ -5,6 +5,13 @@
  * and a read of a variable is never lost behind one.
  */
 
+/**
+ * The names a literal may be and still count as a name: the variable itself, and the
+ * environment object it is read from. `"DATABASE_URL"` and `"env"` in a subscript are those
+ * names rather than prose, so they stay visible to the rules that look for a read.
+ */
+const BARE_NAMES = new Set(["DATABASE_URL", "env"]);
+
 /** After which characters a `/` opens a regex literal rather than dividing. */
 const REGEX_PRECEDES = new Set("(,=:[!&|?{};+-*%~^<>".split(""));
 
@@ -103,15 +110,21 @@ export function codeOnly(source) {
     }
     if (char === '"' || char === "'") {
       const end = quotedEnd(source, i, char);
-      // A literal whose whole content is a bare env-var name is that name rather
-      // than prose: it is the subscript spelling of the read, so it stays visible.
       const closed = end > i + 1 && source[end - 1] === char;
-      if (!(closed && source.slice(i + 1, end - 1) === "DATABASE_URL")) blank(i, end);
+      if (!(closed && BARE_NAMES.has(source.slice(i + 1, end - 1)))) blank(i, end);
       previous = char;
       i = end;
       continue;
     }
     if (char === "`") {
+      // As with a quoted literal: a template whose whole content is a bare name is that
+      // name, so the subscript spelling of the read stays visible.
+      const close = source.indexOf("`", i + 1);
+      if (close !== -1 && BARE_NAMES.has(source.slice(i + 1, close))) {
+        previous = "`";
+        i = close + 1;
+        continue;
+      }
       inTemplate = true;
       blank(i, i + 1);
       i += 1;

@@ -1,18 +1,18 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, matchesGlob, relative, sep } from "node:path";
 
+import { PgContractError } from "./errors.mjs";
 import { skipLiteral } from "./source.mjs";
 
 /**
- * What the test runner collects, read from the runner's own configuration, plus
- * the two source transformations the gate's rules are stated in terms of.
+ * What the test runner collects, read from the runner's own configuration.
  *
- * The include globs are never a second copy kept here: `vitest.config.ts` is
- * parsed for the `test:` block's own `include:` array, that array is compiled to
- * one matcher, and the walk is rooted at the globs' first segment. A config this
- * module cannot read comes back `null` rather than as a smaller universe — a walk
- * that quietly reads the coverage block's `include:` and finds different files is
- * the failure this shape exists to make impossible.
+ * The include globs are never a second copy kept here: `vitest.config.ts` is parsed for the
+ * `test:` object's own `include:` array, that array is matched by `node:path`'s glob matcher,
+ * and the walk is rooted at the globs' first segment. A config this module cannot read fails
+ * the gate rather than shrinking the universe — a walk that quietly reads the coverage
+ * block's `include:` and finds different files is the failure this shape exists to make
+ * impossible.
  */
 
 /** A repo-relative path with forward slashes, whichever platform walked it. */
@@ -50,8 +50,10 @@ export const collectsFile = (globs, file) =>
  * The globs are the object's own direct children: the scan tracks nesting from the
  * `test:` brace, so the coverage block's deeper `include:` — which sits after it and
  * would otherwise be read the moment the key is renamed — is not one of them. Strings,
- * comments and regexes are stepped over, so a glob holding a brace or a bracket does
- * not end the scan early and a comment that mentions one does not start a glob.
+ * template literals and comments are stepped over, so a glob holding a brace or a
+ * bracket does not end the scan early and a comment that mentions one does not start a
+ * glob. A regex literal in the object, or a `test:` that does not open its own line,
+ * yields no globs and the caller refuses to run — the direction that fails loudly.
  */
 export function includeGlobs(configSource) {
   const open = /^[ \t]*test:\s*\{/m.exec(configSource);
@@ -111,17 +113,36 @@ function walk(dir, out) {
   return out;
 }
 
-/** Every file the globs collect under `root`, repo-relative and sorted. */
+/**
+ * The include globs the test runner collects, read from `vitest.config.ts`. A config this
+ * cannot read fails the gate rather than shrinking the universe: an empty selection would
+ * satisfy every check that reads it while running nothing.
+ */
+export function collectedGlobs(root = process.cwd()) {
+  const path = join(root, "vitest.config.ts");
+  let source;
+  try {
+    source = readFileSync(path, "utf8");
+  } catch {
+    throw new PgContractError(`no ${path}: the gate cannot tell what the test runner collects`);
+  }
+  const globs = includeGlobs(source);
+  if (globs === null) {
+    throw new PgContractError(
+      `${path} carries no test.include globs: the gate cannot tell what the test runner collects`,
+    );
+  }
+  return globs;
+}
+
+/** Every file the globs collect under `root`, as the walk found it, sorted. */
 export function collectedTestFiles(root, globs) {
   const files = [];
   for (const tree of globRoots(globs)) {
     const dir = join(root, tree);
     if (existsSync(dir)) walk(dir, files);
   }
-  return files
-    .map((path) => repoRelative(root, path))
-    .filter((file) => collectsFile(globs, file))
-    .sort();
+  return files.filter((file) => collectsFile(globs, repoRelative(root, file))).sort();
 }
 
 /**

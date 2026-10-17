@@ -15,11 +15,12 @@
  *       report — the run itself is the evidence that the gate is real.
  *
  *   bun scripts/pg-contract.mjs --require-marked <report.json>
- *       Fail unless every file the DB-less run skipped a test in is declared, and
- *       unless every test file that reads DATABASE_URL in code position declares
- *       the marker. Two rules, because a suite can hide by skipping (which the
- *       report sees) or by returning early (which only the tree sees). A
- *       declaration that gated nothing is printed as a note, not failed.
+ *       Fail unless every file the DB-less run skipped a test in is declared, unless
+ *       every test file that reads DATABASE_URL in code position declares the marker,
+ *       and unless every declaration is one that run saw gate something. Two rules,
+ *       because a suite can hide by skipping (which the report sees) or by returning
+ *       early (which only the tree sees); the third check is what keeps a declaration
+ *       from being a way out of the first.
  *
  *   bun scripts/pg-contract.mjs --touched <changed-files.txt>
  *       Print `touched=true|false`: whether those changed paths can alter what
@@ -72,15 +73,9 @@ function main([mode, arg]) {
     case "--require-executed":
       assertExecuted(readReport(required(mode, arg)), declaredSuiteFiles(root), root);
       return;
-    case "--require-marked": {
-      const { diagnostics } = assertMarked(
-        readReport(required(mode, arg)),
-        declaredSuiteFiles(root),
-        root,
-      );
-      for (const note of diagnostics) console.error(`pg-contract: note: ${note}`);
+    case "--require-marked":
+      assertMarked(readReport(required(mode, arg)), declaredSuiteFiles(root), root);
       return;
-    }
     case "--touched": {
       const changed = readChanged(required(mode, arg));
       process.stdout.write(`touched=${contractRelevant(changed, declaredSuiteFiles(root))}\n`);

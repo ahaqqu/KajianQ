@@ -10,7 +10,6 @@ import {
   MIN_GATED_SUITES,
   assertExecuted,
   assertMarked,
-  collectedGlobs,
   collectedSuites,
   contractRelevant,
   declaredSuiteFiles,
@@ -19,10 +18,12 @@ import {
 } from "../../scripts/pg-contract/policy.mjs";
 import { classify, readReport } from "../../scripts/pg-contract/report.mjs";
 import {
+  collectedGlobs,
   collectedTestFiles,
   collectsFile,
   globRoots,
   includeGlobs,
+  repoRelative,
   splitPathList,
 } from "../../scripts/pg-contract/tree.mjs";
 
@@ -162,9 +163,11 @@ describe("the collected universe is the runner's, read from its own config", () 
       "tests/scripts/collected.test.mjs": "// x\n",
     });
     try {
-      expect(collectedTestFiles(fixture.root, ["packages/**/src/**/*.test.ts"])).toEqual([
-        "packages/infra/src/collected.test.ts",
-      ]);
+      expect(
+        collectedTestFiles(fixture.root, ["packages/**/src/**/*.test.ts"]).map((file) =>
+          repoRelative(fixture.root, file),
+        ),
+      ).toEqual(["packages/infra/src/collected.test.ts"]);
     } finally {
       fixture.cleanup();
     }
@@ -185,12 +188,21 @@ describe("the collected universe is the runner's, read from its own config", () 
 describe("the static rule reads code, not prose", () => {
   it("knows each spelling a gated suite reaches the variable by", () => {
     expect(readsDatabaseUrl("const url = process.env.DATABASE_URL;\n")).toBe(true);
+    expect(readsDatabaseUrl("const url = process.env?.DATABASE_URL;\n")).toBe(true);
     expect(readsDatabaseUrl('const url = process.env["DATABASE_URL"];\n')).toBe(true);
     expect(readsDatabaseUrl("const url = process.env['DATABASE_URL'];\n")).toBe(true);
+    expect(readsDatabaseUrl("const url = process.env[`DATABASE_URL`];\n")).toBe(true);
     expect(readsDatabaseUrl("const { DATABASE_URL } = process.env;\n")).toBe(true);
     expect(readsDatabaseUrl("const { DATABASE_URL: url } = process.env;\n")).toBe(true);
     expect(readsDatabaseUrl("const { DATABASE_URL } = env;\n")).toBe(true);
+    expect(readsDatabaseUrl('const url = process["env"].DATABASE_URL;\n')).toBe(true);
+    expect(readsDatabaseUrl("const url = import.meta.env.DATABASE_URL;\n")).toBe(true);
+    expect(readsDatabaseUrl("const { DATABASE_URL } = import.meta.env;\n")).toBe(true);
     expect(readsDatabaseUrl("const m = `db ${process.env.DATABASE_URL} up`;\n")).toBe(true);
+    // A key the file itself binds to the name is the same read one step removed.
+    expect(readsDatabaseUrl('const KEY = "DATABASE_URL";\nconst url = process.env[KEY];\n')).toBe(
+      true,
+    );
   });
 
   it("does not read a mention in a comment or in a fixture string", () => {
@@ -220,11 +232,13 @@ describe("the static rule reads code, not prose", () => {
     expect(readsDatabaseUrl('const s = "oops;\nconst u = process.env.DATABASE_URL;\n')).toBe(true);
   });
 
-  it("does not see a read that arrives through an alias — the recorded residual", () => {
-    // An alias of the environment, or a helper that returns the variable, is not one
-    // of the spellings above: a suite that reads it that way and returns early is
-    // invisible here and leaves the report nothing to see. Expressing the gate as a
-    // skip is the contract; the header states this residual.
+  it("does not see a read whose name the file never spells — the recorded residual", () => {
+    // A name built at runtime, a value bound elsewhere, a helper that returns it, and an
+    // alias of `process.env`: none is one of the spellings above, so a suite that reads the
+    // variable that way and returns early leaves the report nothing to see. The header states
+    // this residual; expressing the gate as a skip is the contract.
+    expect(readsDatabaseUrl('const url = process.env["DATA" + "BASE_URL"];\n')).toBe(false);
+    expect(readsDatabaseUrl("const url = process.env[keyFromArgv()];\n")).toBe(false);
     expect(readsDatabaseUrl("const env = process.env;\nconst url = env.DATABASE_URL;\n")).toBe(
       false,
     );
@@ -377,10 +391,7 @@ describe("a DB-less run may only skip suites some job runs", () => {
     const world = gatedWorld();
     try {
       const gated = world.entry(DECLARED, ["skipped", "skipped"]);
-      expect(assertMarked(world.report(gated), world.declared, world.root)).toEqual({
-        declared: world.declared,
-        diagnostics: [],
-      });
+      expect(assertMarked(world.report(gated), world.declared, world.root)).toEqual(world.declared);
     } finally {
       world.cleanup();
     }
@@ -504,48 +515,55 @@ describe("a DB-less run may only skip suites some job runs", () => {
     }
   });
 
-  it("notes a declaration that gated nothing, rather than failing a file into a corner", () => {
-    // Declaring is the remedy for a file the static rule cannot tell from a reader,
-    // so a marker that turns out stale is a note: a red here would leave no way out
-    // but editing text the rule matched on.
+  it("fails a declaration the run never sees used — the way out of the static rule", () => {
+    // A declared file is out of the static rule; one whose tests never skip has either a stale
+    // declaration or a gate that does not skip, and a gate that does not skip reports a pass
+    // whether or not a database is bound. No job could tell it from a test that ran.
     const world = gatedWorld({
       declared: ["tests/scripts/gated-a.test.mjs", "tests/scripts/gated-b.test.mjs"],
     });
     try {
       const gated = world.entry("tests/scripts/gated-a.test.mjs", ["skipped"]);
       const ran = world.entry("tests/scripts/gated-b.test.mjs", ["passed"]);
-      const { diagnostics } = assertMarked(world.report(gated, ran), world.declared, world.root);
-      expect(diagnostics).toEqual([
-        `tests/scripts/gated-b.test.mjs declares "${MARKER}" but skipped nothing in this run`,
-      ]);
+      expect(() => assertMarked(world.report(gated, ran), world.declared, world.root)).toThrow(
+        /declared "@requires-postgres" but gated nothing/,
+      );
+      expect(() => assertMarked(world.report(gated, ran), world.declared, world.root)).toThrow(
+        /gated-b\.test\.mjs — skipped nothing in this run/,
+      );
     } finally {
       world.cleanup();
     }
   });
 
-  it("notes a declaration the run never collected, and names that case for what it is", () => {
+  it("names a declaration the run never collected for the case it is, not as a stale gate", () => {
     const world = gatedWorld({
       declared: ["tests/scripts/gated-a.test.mjs", "tests/scripts/gated-b.test.mjs"],
     });
     try {
       const gated = world.entry("tests/scripts/gated-a.test.mjs", ["skipped"]);
-      const { diagnostics } = assertMarked(world.report(gated), world.declared, world.root);
-      expect(diagnostics).toEqual([
-        `tests/scripts/gated-b.test.mjs declares "${MARKER}" but this run never collected it`,
-      ]);
+      const message = (() => {
+        try {
+          assertMarked(world.report(gated), world.declared, world.root);
+          return "";
+        } catch (error) {
+          return error.message;
+        }
+      })();
+      expect(message).toMatch(/gated-b\.test\.mjs — this run never collected it/);
+      expect(message).not.toMatch(/gated-b\.test\.mjs — skipped nothing/);
     } finally {
       world.cleanup();
     }
   });
 
-  it("prints those notes through the driver while still passing the gate", () => {
+  it("fails that declaration through the driver, with the remedy in the message", () => {
     const world = gatedWorld({
       declared: ["tests/scripts/gated-a.test.mjs", "tests/scripts/gated-b.test.mjs"],
     });
     try {
-      const reportPath = join(world.root, "report.json");
       writeFileSync(
-        reportPath,
+        join(world.root, "report.json"),
         JSON.stringify(
           world.report(
             world.entry("tests/scripts/gated-a.test.mjs", ["skipped"]),
@@ -554,8 +572,9 @@ describe("a DB-less run may only skip suites some job runs", () => {
         ),
       );
       const ran = runDriverIn(world.root, "--require-marked", "report.json");
-      expect(ran.status, ran.stderr).toBe(0);
-      expect(ran.stderr).toMatch(/note: .*gated-b\.test\.mjs/);
+      expect(ran.status).toBe(1);
+      expect(ran.stderr).toMatch(/gated nothing/);
+      expect(ran.stderr).toMatch(/describe\.skipIf/);
     } finally {
       world.cleanup();
     }
