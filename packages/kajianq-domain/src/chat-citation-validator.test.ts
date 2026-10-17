@@ -1269,6 +1269,14 @@ describe("normalizeCitationLabel", () => {
     expect(normalizeCitationLabel("HR. Bukhari no. 5010：")).toBe("HR. Bukhari no. 5010");
   });
 
+  it("keeps a label findable inside a longer text whose collection it folds", () => {
+    // The grounded-label passes read a whole answer: a comparison form that folded
+    // only the text's first hadith address would stop preserving containment, and a
+    // label the answer carries later in the prose would read as absent.
+    const answer = "Lihat QS. 2:255. Menurut HR. Ibnu Majah no. 224 hal ini sah.";
+    expect(citationMatchText(answer)).toContain(citationMatchText("HR. Ibn Majah no. 224"));
+  });
+
   it("does not fold the marker-address spelling the grammar excludes (A2)", () => {
     // The marker fold mirrors the separator the grammar makes mandatory (a dot
     // or a space): folding `QS2:255` to `QS. 2:255` would ground a citation the

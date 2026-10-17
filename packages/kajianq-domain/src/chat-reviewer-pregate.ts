@@ -10,7 +10,6 @@ import {
 import type { Stage } from "@app/contracts";
 import {
   citationLabelsOf,
-  citationMatchText,
   citationSpansIn,
   normalizeCitationLabel,
 } from "./chat-citation-validator";
@@ -271,12 +270,15 @@ function claimSpansIn(text: string): string[] {
   return spans.map((span) => span.trim()).filter((span) => span !== "");
 }
 
-/** The claim span a citation sits in (matched the way the gate grounds it). */
+/** The claim span a citation sits in: the span whose **own** citation labels
+ * include it — compared label against label, never as a substring of its text. */
 export function claimForCitation(
   spans: readonly string[],
   normalizedLabel: string,
 ): string | undefined {
-  return spans.find((span) => citationMatchText(span).includes(normalizedLabel));
+  return spans.find((span) =>
+    citationSpansIn(span).some((citation) => citation.label === normalizedLabel),
+  );
 }
 
 /** Citation label → the retrieved passages that carry it (in chunk order). */

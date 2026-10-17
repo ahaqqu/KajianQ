@@ -550,6 +550,20 @@ describe("#168 reviewer pre-gate — claim spans (domain grammar)", () => {
     expect(plan?.items[0]?.claim).toBe("Ayat Kursi ada di QS 2:255.");
   });
 
+  it("claims the sentence, not the whole draft, for a citation the fold rewrites", () => {
+    // The corpus renders one transliteration of a collection and the draft
+    // another, so the gate folds the name before comparing. The fold must not
+    // cost the pre-gate the claim span: the citation is judged with the sentence
+    // carrying it — in the draft's own spelling — never with the whole answer.
+    const plan = planCitationPregate({
+      draft:
+        "Safar wajib bagi yang mampu. Menurut HR. Ibnu Majah no. 224, safar menggugurkan puasa. Selesai.",
+      chunks: [chunk("HR. Ibn Majah no. 224 (Dhaif)", "ibnu majah passage")],
+    });
+    expect(plan?.items[0]?.label).toBe("HR. Ibn Majah no. 224");
+    expect(plan?.items[0]?.claim).toBe("Menurut HR. Ibnu Majah no. 224, safar menggugurkan puasa.");
+  });
+
   it("joins every passage a citation label grounds, and no other", () => {
     const plan = planCitationPregate({
       draft: "Lihat QS. 2:255.",
