@@ -262,6 +262,31 @@ describe("deriveCitationsFrame — the invariant, adversarial shapes", () => {
     }
   });
 
+  it("keeps the span's comparison form in the chip, not the draft's casing", () => {
+    // The chip label is the **span's comparison form** — the normalized draft span
+    // `deriveCitationsFrame` pushes — and the chunk supplies only the display row. For
+    // a citation the fold rewrites, that form is the canonical spelling the chunk
+    // carries, which is why the draft's casing never reaches the UI. A declared
+    // address list is where the two part visibly: a grounded range's chip reads the
+    // range as written while the grounding decision returns one label per address,
+    // pinned by the range test above; a chunk label that is not already canonical is
+    // the other half, pinned by the grade-suffix test below.
+    for (const [span, label] of [
+      ["HR. Bukhari No. 5010", "HR. Bukhari no. 5010"],
+      ["hr. bukhari no. 5010", "HR. Bukhari no. 5010"],
+      ["HR. BUKHARI NO. 5010:1", "HR. Bukhari no. 5010"],
+      ["Qs. 2:255", "QS. 2:255"],
+      ["jilid 1, hal. 102", "Jilid 1, Hal. 102"],
+    ] as const) {
+      const frame = frameOf(traceWithChunks(["c1"]), `Dalilnya [${span}].`, [chunk("c1", label)]);
+      expect(frame.refusal, span).toBe(false);
+      expect(
+        frame.citations.map((c) => c.label),
+        span,
+      ).toEqual([label]);
+    }
+  });
+
   it("matches a chunk label carrying a grade suffix and surfaces the grade badge", () => {
     const frame = frameOf(traceWithChunks(["h1"]), "Diriwayatkan [HR. Malik no. 18].", [
       chunk("h1", "HR. Malik no. 18 (Sahih)", {
