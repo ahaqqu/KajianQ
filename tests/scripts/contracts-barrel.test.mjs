@@ -362,15 +362,23 @@ describe("the export statements are read as the modules write them", () => {
     ]);
   });
 
-  it("does not read an export keyword in prose, in a comment or in a string", () => {
+  it("does not read an export keyword in a comment as a statement", () => {
     const commented = moduleSurface(
       "// export const ghost = 1;\n/**\n * export const alsoGhost = 1;\n */\nconst x = 1;\nexport { x };\n",
     );
     expect(commented.members.map((member) => member.name)).toEqual(["x"]);
-    const quoted = moduleSurface(
-      'const doc = "export const ghost = 1;";\nexport const real = 1;\n',
+  });
+
+  it("refuses a module whose text quotes an export keyword, since a mis-read hides a statement", () => {
+    // Quoted prose and a scan that mistook code for a literal read the same here,
+    // and the second is the silence this gate exists to remove — so it refuses
+    // rather than reading past the line.
+    expect(() =>
+      moduleSurface('const doc = "export const ghost = 1;";\nexport const real = 1;\n'),
+    ).toThrow(ContractsBarrelError);
+    expect(() => moduleSurface("const doc = `export const ghost = 1;`;\n")).toThrow(
+      ContractsBarrelError,
     );
-    expect(quoted.members.map((member) => member.name)).toEqual(["real"]);
   });
 
   it("refuses a statement shape it cannot read, instead of reading past it", () => {
