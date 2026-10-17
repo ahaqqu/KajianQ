@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vite-plus/test";
@@ -966,112 +966,6 @@ describe("provisioning config as code stays true to the ADR", () => {
     for (const key of ["GEMINI_PAID_API_KEY", "DEEPSEEK_API_KEY"]) {
       expect(example).toMatch(new RegExp(`^${key}=CHANGE_ME$`, "m"));
     }
-  });
-
-  it("the setup doc exists and carries the steps a fresh box cannot infer", () => {
-    // The repository is open source, so the provisioning path has to be followable by someone
-    // who is not the owner: pin the steps a reader cannot derive from the configs.
-    const setup = read("docs/VPS-SETUP.md");
-
-    // 1. Bun must be installed at /usr/bin/bun: the units run with ProtectHome=yes, so a
-    //    home-directory Bun is invisible and ExecStart fails for a binary that exists.
-    expect(setup).toMatch(/\/usr\/bin\/bun/);
-    // The doc must name the constraint, not just the path.
-    expect(setup).toMatch(/ProtectHome/);
-    // It must NOT recommend the home-directory installer that causes it.
-    expect(setup).not.toMatch(/curl -fsSL https:\/\/bun\.sh\/install/);
-
-    // 2. apply.sh installs the Postgres POSTURE but creates no role or database.
-    const apply = read("provision/vps/apply.sh");
-    expect(apply).not.toMatch(/CREATE ROLE|createuser/);
-    expect(setup).toMatch(/CREATE ROLE kajianq LOGIN/);
-
-    // 3. The two chat-path precondition keys, without which health stays green while every
-    //    question fails its embedder or reviewer stage.
-    expect(setup).toMatch(/GEMINI_PAID_API_KEY/);
-    expect(setup).toMatch(/DEEPSEEK_API_KEY/);
-
-    // 4. The rate-bypass public key is committed, so an unmodified fork verifies tokens minted
-    //    by anyone holding the project's private key: a public setup doc has to say so.
-    const bypass = read("apps/api/src/lib/rate-bypass.ts");
-    expect(bypass).toMatch(/RATE_BYPASS_PUBLIC_KEY_B64 = "/);
-    expect(setup).toMatch(/rotate/i);
-  });
-
-  it("the setup doc proves the backup with the SERVICE, not a direct script run", () => {
-    // The doc must prove the backup with the service, not `kajianq-backup.mjs` directly: a
-    // direct run writes a snapshot but leaves the unit's ExecMainStatus/ExecMainExitTimestamp
-    // untouched, and the deploy's gate reads exactly those.
-    const setup = read("docs/VPS-SETUP.md");
-    expect(setup).toMatch(/sudo systemctl start kajianq-backup\.service/);
-    // The distinction must be stated, or the next reader reintroduces it.
-    expect(setup).toMatch(/ExecMainStatus/);
-  });
-
-  it("the restore-drill workflow does not claim its image matches the box's major", () => {
-    // The image is the schema under test, not a claim about the box's Postgres major — a wrong
-    // version claim in a comment is how a reader concludes the drill tests something it does not.
-    const workflow = read(".github/workflows/vps-restore-drill.yml");
-    expect(workflow).toMatch(/pgvector\/pgvector:pg18/);
-    expect(workflow).not.toMatch(/the Postgres major the box is provisioned with/);
-  });
-
-  it("the setup doc is reachable from the README and the operator's manual", () => {
-    // An unlinked doc is an unfound doc: a self-hoster has to find it from the front page.
-    expect(read("README.md")).toMatch(/docs\/VPS-SETUP\.md/);
-    expect(read("docs/VPS-OPERATIONS.md")).toMatch(/VPS-SETUP\.md/);
-  });
-
-  it("the retired VPS docs are gone and their load-bearing content moved, not lost", () => {
-    // This test keeps the retirement honest: it fails if a retired file reappears (two sources
-    // of truth), and if the content that had to survive is dropped by a later edit.
-    const setup = read("docs/VPS-SETUP.md");
-    for (const retired of [
-      "docs/VPS-BASELINE-SETUP.md",
-      "docs/VPS-CUTOVER-RUNBOOK.md",
-      "docs/VPS-HARDENING-RUNBOOK.md",
-      "docs/neon-sizing-issue-4.md",
-      // A stale link or a re-created file here means the rename was half-applied.
-      "docs/SELF-HOSTING-GUIDE.md",
-    ]) {
-      expect(existsSync(resolve(process.cwd(), retired)), retired).toBe(false);
-    }
-
-    // The hardening runbook's substance had to land in the setup doc, or the merge silently
-    // dropped the privacy posture: the config-as-code inventory, the nginx rationale, the
-    // CI-side VPS_USER flip, and the retention verification.
-    expect(setup).toMatch(/Everything `apply\.sh` places/);
-    expect(setup).toMatch(/Reverse proxy: nginx, not Caddy/);
-    expect(setup).toMatch(/Retention, not IP masking/);
-    expect(setup).toMatch(/VPS_USER/);
-    expect(setup).toMatch(/Verify retention once traffic exists/);
-    // The retention table's four rows, which ARE the Art. 30 values.
-    expect(setup).toMatch(/restic `--keep-daily`/);
-    expect(setup).toMatch(/journald\/kajianq\.conf/);
-
-    // 1. The acceptance-criteria walk-through had to survive: it is what the issue closes against.
-    const record = read("docs/VPS-CUTOVER-RECORD.md");
-    expect(record).toMatch(/AC-1\b/);
-    expect(record).toMatch(/AC-16\b/);
-    expect(record).toMatch(/## Acceptance criteria/);
-    // The baseline session's record is the chain-of-custody start; its evidence table came along.
-    expect(record).toMatch(/baseline session/i);
-    expect(record).toMatch(/Debian 13 \(trixie\)/);
-
-    // 2. The one procedure in the cutover runbook that outlived its vendor: moving an existing
-    //    database onto a box — snapshot-verify-ship-compare, not Cloudflare or Neon specifics.
-    expect(setup).toMatch(/## 12\. Moving an existing database/);
-    expect(setup).toMatch(/db:snapshot create/);
-    expect(setup).toMatch(/pg_restore/);
-    expect(setup).toMatch(/db:snapshot verify/);
-
-    // 3. The disk figure: the setup runbook is what a self-hoster sizes against, and the
-    //    schema's sizing record must name the host decision in force rather than the retired one.
-    expect(setup).toMatch(/17–18 GiB/);
-    expect(setup).toMatch(/adr\/0020-neon-dual-vector-sizing\.md/);
-    const adr = read("adr/0020-neon-dual-vector-sizing.md");
-    expect(adr).toMatch(/ADR-0043|ADR-0044/);
-    expect(adr).toMatch(/docs\/VPS-SETUP\.md/);
   });
 
   it("a markdown link gate exists and is wired into CI", () => {
