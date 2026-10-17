@@ -564,6 +564,39 @@ describe("#168 reviewer pre-gate — claim spans (domain grammar)", () => {
     expect(plan?.items[0]?.claim).toBe("Menurut HR. Ibnu Majah no. 224, safar menggugurkan puasa.");
   });
 
+  it("finds the claim and the passage for a citation written in another casing", () => {
+    // A citation written in another casing is the citation the chunk grounds, so the
+    // pre-gate must key it by the same comparison form the gate does and hand the
+    // vendor the passage — a citation whose label no chunk key matches is judged
+    // against an empty passage, which is the starvation the passage map exists to
+    // prevent. The `:1` row is the address read's half: the tail has to strip before
+    // the label can meet the key.
+    for (const [casing, claim] of [
+      [
+        "Pertama. Menurut HR. Bukhari No. 5010, hal ini sah. Terakhir.",
+        "Menurut HR. Bukhari No. 5010, hal ini sah.",
+      ],
+      [
+        "Pertama. Menurut HR. Bukhari No. 5010:1, hal ini sah. Terakhir.",
+        "Menurut HR. Bukhari No. 5010:1, hal ini sah.",
+      ],
+    ] as const) {
+      const plan = planCitationPregate({
+        draft: casing,
+        chunks: [chunk("HR. Bukhari no. 5010", "bukhari passage")],
+      });
+      expect(plan?.items[0]?.claim, casing).toBe(claim);
+      expect(plan?.items[0]?.label, casing).toBe("HR. Bukhari no. 5010");
+      expect(plan?.items[0]?.passage, casing).toBe("bukhari passage");
+    }
+    const quran = planCitationPregate({
+      draft: "Pertama. Ayat Kursi ada di qs. 2:255: ayat yang agung. Terakhir.",
+      chunks: [chunk("QS. 2:255", "kursi passage")],
+    });
+    expect(quran?.items[0]?.claim).toBe("Ayat Kursi ada di qs. 2:255: ayat yang agung.");
+    expect(quran?.items[0]?.passage).toBe("kursi passage");
+  });
+
   it("joins every passage a citation label grounds, and no other", () => {
     const plan = planCitationPregate({
       draft: "Lihat QS. 2:255.",

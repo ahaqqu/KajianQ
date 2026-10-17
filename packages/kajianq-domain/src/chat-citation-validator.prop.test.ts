@@ -111,6 +111,31 @@ const ADDRESS_BEARING_CLASSES = [
 
 const NOISE_POOL: readonly string[] = NOISE_CLASSES.flatMap(({ chars }) => [...chars]);
 
+/**
+ * The **case** alphabet: every casing of an address, generated per character rather
+ * than hand-picked, so the fold is stated over the casings a draft can carry and not
+ * over the handful a hunt turned up. Case is not identity — the grammars read a
+ * citation in any casing, so the comparison form has to reach the label the chunk
+ * carries from any of them, and from any of them only that label.
+ */
+function recase(text: string, flips: readonly boolean[]): string {
+  let cased = 0;
+  return text.replace(/\p{L}/gu, (letter) => {
+    const flip = flips.length > 0 ? (flips[cased % flips.length] ?? false) : false;
+    cased += 1;
+    return flip ? letter.toUpperCase() : letter.toLowerCase();
+  });
+}
+
+/** Fabricated addresses, each one a neighbouring shape of an address in {@link ADDRESSES}. */
+const FABRICATED_ADDRESSES = [
+  "HR. Bukhari no. 99999",
+  "HR. Bukhari no. 5011",
+  "HR. Abu Dawud no. 2",
+  "QS. 9:99",
+  "QS. 2:256",
+] as const;
+
 describe("normalizeCitationLabel — property (#253 tail class, review B1)", () => {
   it("drops every Unicode class that carries no address information", () => {
     for (const { name, chars } of NOISE_CLASSES) {
@@ -428,6 +453,59 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
             span,
           ).not.toBeNull();
         }
+      },
+    );
+    expect(fc.assert(property, { numRuns: 400 })).toBeUndefined();
+  });
+
+  it("folds any casing of an address onto that address, and onto no other (#268)", () => {
+    // Both halves of the case law, over the casings the generator can spell: the
+    // grounded direction (a case variant reaches the label its chunk carries and
+    // grounds on it) and the no-collision direction (it reaches no neighbour's
+    // comparison form, so a widened fold that merged two references fails here).
+    const property = fc.property(
+      fc.constantFrom(...ADDRESSES),
+      fc.array(fc.boolean(), { minLength: 1, maxLength: 64 }),
+      (address, flips) => {
+        const rendered = recase(address, flips);
+        expect(normalizeCitationLabel(rendered), rendered).toBe(address);
+        expect(validateCitations(`Lihat ${rendered} lanjut`, [chunk(address)]), rendered).toEqual({
+          grounded: [address],
+          ungrounded: [],
+        });
+        expect(citationCandidatesIn(`Lihat ${rendered} lanjut`), rendered).toEqual([address]);
+        // The same casing carrying a footnote tail: the address READ has to fold case
+        // too, or it names no address, the tail survives the reduce, and the span
+        // refuses against the label it was written from.
+        const tailed = `${rendered}:1`;
+        expect(normalizeCitationLabel(tailed), tailed).toBe(address);
+        expect(
+          validateCitations(`Lihat ${tailed} lanjut`, [chunk(address)]).ungrounded,
+          tailed,
+        ).toEqual([]);
+        for (const other of ADDRESSES) {
+          if (other === address) continue;
+          expect(normalizeCitationLabel(rendered), `${rendered} vs ${other}`).not.toBe(other);
+        }
+      },
+    );
+    expect(fc.assert(property, { numRuns: 400 })).toBeUndefined();
+  });
+
+  it("still refuses any casing of a fabricated or near-miss address (#268)", () => {
+    // The fail-closed half of the same property: the fold is a fold of spelling, so
+    // a casing the draft chooses can never turn a number the corpus does not carry
+    // into one it does. Reverting the fold's bound — folding more than the marker,
+    // the collection and the address word — reddens this test.
+    const retrieved = [chunk("HR. Bukhari no. 5010"), chunk("QS. 2:255")];
+    const property = fc.property(
+      fc.constantFrom(...FABRICATED_ADDRESSES),
+      fc.array(fc.boolean(), { minLength: 1, maxLength: 64 }),
+      (fabricated, flips) => {
+        const rendered = recase(fabricated, flips);
+        const { grounded, ungrounded } = validateCitations(`Lihat ${rendered} lanjut`, retrieved);
+        expect(ungrounded, rendered).toEqual([normalizeCitationLabel(rendered)]);
+        expect(grounded, rendered).toEqual([]);
       },
     );
     expect(fc.assert(property, { numRuns: 400 })).toBeUndefined();

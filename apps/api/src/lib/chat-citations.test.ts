@@ -262,6 +262,27 @@ describe("deriveCitationsFrame — the invariant, adversarial shapes", () => {
     }
   });
 
+  it("keeps the chunk's own casing in the chip for a citation written in another", () => {
+    // The frame is derived from the chunk, so the draft's casing must never reach
+    // the UI: a grounded case variant shows the label the source carries, exactly as
+    // a marker spelling variant does — the fold lives in the comparison, never in
+    // what the reader is shown.
+    for (const [span, label] of [
+      ["HR. Bukhari No. 5010", "HR. Bukhari no. 5010"],
+      ["hr. bukhari no. 5010", "HR. Bukhari no. 5010"],
+      ["HR. BUKHARI NO. 5010:1", "HR. Bukhari no. 5010"],
+      ["Qs. 2:255", "QS. 2:255"],
+      ["jilid 1, hal. 102", "Jilid 1, Hal. 102"],
+    ] as const) {
+      const frame = frameOf(traceWithChunks(["c1"]), `Dalilnya [${span}].`, [chunk("c1", label)]);
+      expect(frame.refusal, span).toBe(false);
+      expect(
+        frame.citations.map((c) => c.label),
+        span,
+      ).toEqual([label]);
+    }
+  });
+
   it("matches a chunk label carrying a grade suffix and surfaces the grade badge", () => {
     const frame = frameOf(traceWithChunks(["h1"]), "Diriwayatkan [HR. Malik no. 18].", [
       chunk("h1", "HR. Malik no. 18 (Sahih)", {

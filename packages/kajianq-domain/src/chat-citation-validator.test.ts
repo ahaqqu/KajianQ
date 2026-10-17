@@ -244,6 +244,106 @@ describe("validateCitations — grounded direction", () => {
     ).toEqual(["HR. Bukhari no. 99999"]);
   });
 
+  it("reads a case-variant span's address, so its sub-number tail still strips", () => {
+    // The address READ folds case with the grammar that found the match, not only
+    // the comparison form: a case-sensitive read walks past the `No.` the scan
+    // accepted, returns no address, and the reduce never strips the `:1` tail — the
+    // span then refuses against the very label the chunk grounds. Every grammar, in
+    // the casing the corpus does not use, against the chunk's own label.
+    expect(normalizeCitationLabel("HR. Bukhari No. 5010:1")).toBe("HR. Bukhari no. 5010");
+    expect(normalizeCitationLabel("HR. Bukhari NO. 5010:1")).toBe("HR. Bukhari no. 5010");
+    expect(
+      validateCitations("Rasulullah bersabda dalam HR. Bukhari No. 5010:1 tentang hal ini", [
+        chunk("HR. Bukhari no. 5010"),
+      ]),
+    ).toEqual({ grounded: ["HR. Bukhari no. 5010"], ungrounded: [] });
+    expect(
+      validateCitations("Ayat Kursi ada di Qs. 2:255: ayat yang agung", [chunk("QS. 2:255")]),
+    ).toEqual({ grounded: ["QS. 2:255"], ungrounded: [] });
+    expect(
+      validateCitations("Al-Umm, Imam Syafi'i, jilid 1, hal. 102, Bab nikah", [
+        chunk("Jilid 1, Hal. 102"),
+      ]),
+    ).toEqual({ grounded: ["Jilid 1, Hal. 102"], ungrounded: [] });
+  });
+
+  it("refuses a case variant of a reference the corpus does not carry", () => {
+    // The fold folds SPELLING: it maps the casings of ONE address onto that
+    // address and onto nothing else. A capital `No.` must not turn a fabricated
+    // number into a retrieved one, nor a neighbouring number into one.
+    const chunks = [chunk("HR. Bukhari no. 5010"), chunk("QS. 2:255")];
+    const cases: readonly (readonly [string, string])[] = [
+      ["HR. Bukhari No. 99999", "HR. Bukhari no. 99999"],
+      ["hr. bukhari no. 99999", "HR. Bukhari no. 99999"],
+      ["HR. BUKHARI NO. 99999", "HR. Bukhari no. 99999"],
+      ["HR. Bukhari No. 5011", "HR. Bukhari no. 5011"],
+      ["hr. bukhari No. 5011", "HR. Bukhari no. 5011"],
+      ["HR. Bukhari no.5011", "HR. Bukhari no. 5011"],
+      ["HR. Bukhari No. 5011:1", "HR. Bukhari no. 5011"],
+      ["QS. 9:99", "QS. 9:99"],
+      ["qs. 9:99", "QS. 9:99"],
+      ["Qs. 2:256", "QS. 2:256"],
+    ];
+    for (const [draft, reported] of cases) {
+      const { grounded, ungrounded } = validateCitations(`Lihat ${draft} lanjut`, chunks);
+      expect(ungrounded, draft).toEqual([reported]);
+      expect(grounded, draft).toEqual([]);
+    }
+  });
+
+  it("does not merge two genuinely different references when it folds case", () => {
+    // The no-collision half, stated over an alphabet of neighbours: every one of
+    // these canonicalizes to a form of its own, so folding case can only map an
+    // address onto its own comparison form. A fold that merged any two would shrink
+    // the set, and the gate would ground a reference the corpus does not carry.
+    const alphabet = [
+      "HR. Bukhari no. 5010",
+      "HR. Bukhari no. 5011",
+      "HR. Bukhari no. 50102",
+      "HR. Bukhari no. 5010a",
+      "HR. Abu Dawud no. 5010",
+      "HR. Muslim no. 5010",
+      "QS. 2:255",
+      "QS. 2:256",
+      "QS. 2:2550",
+      "QS. 114:6",
+      "Jilid 1, Hal. 102",
+      "Jilid 1, Hal. 103",
+    ];
+    const folded = alphabet.map((address) => normalizeCitationLabel(address));
+    expect(new Set(folded).size).toBe(alphabet.length);
+    // Every casing of an address the corpus can carry reaches that address's
+    // comparison form and none of its neighbours'. The shapes a corpus label is
+    // built from — marker, collection, address word, digits — are exactly the slots
+    // the fold names; `no. 50102` and `no. 5010a` sit in the alphabet above only to
+    // pin their distinctness, because the letter glued to a number is not a folded
+    // slot and the fold leaves it as written.
+    for (const address of [
+      "HR. Bukhari no. 5010",
+      "HR. Abu Dawud no. 5010",
+      "QS. 2:255",
+      "Jilid 1, Hal. 102",
+    ]) {
+      const canonical = normalizeCitationLabel(address);
+      let flip = 0;
+      const mixed = canonical.replace(/[A-Za-z]/g, (letter) =>
+        (flip += 1) % 2 === 0 ? letter.toUpperCase() : letter.toLowerCase(),
+      );
+      for (const variant of [canonical.toUpperCase(), canonical.toLowerCase(), mixed]) {
+        expect(normalizeCitationLabel(variant), variant).toBe(canonical);
+        expect(citationCandidatesIn(variant), variant).toEqual([canonical]);
+        expect(validateCitations(`Lihat ${variant} lanjut`, [chunk(address)]), variant).toEqual({
+          grounded: [canonical],
+          ungrounded: [],
+        });
+        for (const other of folded) {
+          if (other === canonical) continue;
+          expect(normalizeCitationLabel(variant), `${variant} vs ${other}`).not.toBe(other);
+        }
+      }
+    }
+  });
+
   it("strips invisible format characters before the number token reads the digits (#264 item 1)", () => {
     // `\p{Cf}` glue carries no address information, so the flatten step drops
     // it and the address token sees the full number.
