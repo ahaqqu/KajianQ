@@ -11,9 +11,25 @@
 // an entry owns it. `--patch` overlays are argv-scoped and invisible here: the
 // output names every file this check composed.
 //
-// A profile layer this check cannot resolve or parse is fatal, never skipped: a
-// missing layer could carry the catalog or the policy, so no verdict is
-// trustworthy without it.
+// A layer this check cannot read is fatal, never silently skipped — and where
+// that differs from the harness, it differs deliberately:
+//
+//   - A present profile or home patch that cannot be read or parsed fails loud
+//     at boot (`loadOptionalPatches`) and is fatal here. No divergence; an
+//     absent one contributes no layer in either.
+//   - A bundle named in `dsh.profile.bundles` that the install cannot resolve
+//     is a `skippedBundles` note there, and the harness boots on. This check is
+//     fatal: the bundle's layers could carry the catalog or the policy, so a
+//     verdict built without them is a verdict about another tree.
+//   - A patch file a bundle's own `dsh.bundle.patch` list declares but that is
+//     absent drops that whole bundle there — `loadOverlayPatches` throws on a
+//     missing file inside the bundle's `try` — and the harness boots on. This
+//     check is fatal too, so it never composes a bundle's other files into a
+//     partial stack.
+//
+// The one boundary this check cannot see: the harness also drops a bundle whose
+// plugins fail its peer-compatibility check, which this check does not evaluate
+// — it composes what the harness would skip.
 //
 // A pin is expressible only when both of these hold in that composed tree:
 //
@@ -117,6 +133,14 @@ const ROLES_DIR = process.env[SEAM_ROLES_DIR] ?? join(import.meta.dir, "..", ".z
 const CATALOG_FILE = process.env[SEAM_CATALOG] ?? null;
 const CATALOG = "https://ollama.com/v1/models";
 const PROVIDER = "ollama";
+/** The preset chain that carries the delegation tool's own selection switch:
+ * the registry entry names the session's default preset, the preset's plugins
+ * carry the tool row. */
+const PRESET_REGISTRY_ENTRY = "agent-preset-registry";
+const PRESET_PLUGIN = "@deepseek-ai/dsh-agent-preset";
+const DELEGATION_PLUGIN = "@deepseek-ai/dsh-tool-subagent";
+/** The tool name the manager dispatches roles with. */
+const DISPATCH_TOOL = "subagent";
 /** A model id the script is willing to match or declare: a bare id, never a
  * quoted value, a route, or a path. Anything else is a caller error — and
  * --fix must never write it into the global config. */
@@ -223,20 +247,94 @@ const defaultRoute =
     : null;
 const defaultOwner = ownerOf(DEFAULT_ROUTE_ENTRY);
 
+/** The second switch, the one the settings entry alone does not answer: the
+ * delegation tool consults `subagentModelSelection` only when its own config
+ * carries `modelSelectionSettings: true`, and with the flag off it installs
+ * with no policy at all — no `provider`/`model`/`reasoning_effort` parameters
+ * and a throw on a supplied one. The row lives in the agent preset a session
+ * composes, and the composed tree names that preset only through
+ * `agent-preset-registry`'s selected default, so the flag is answered here
+ * exactly while that chain is intact and reported unresolved otherwise. */
+function selectionSwitch(entries) {
+  const registryConfig = findEntry(entries, PRESET_REGISTRY_ENTRY)?.config;
+  const presetId = registryConfig?.selectedDefault ?? registryConfig?.default;
+  if (typeof presetId !== "string")
+    return {
+      flag: null,
+      why: `no \`${PRESET_REGISTRY_ENTRY}\` config in the composed tree names a default preset`,
+    };
+  let preset = null;
+  const walkPresets = (list) => {
+    for (const entry of list) {
+      if (entry?.name === PRESET_PLUGIN && entry.config?.id === presetId) preset = entry;
+      if (entry?.group && Array.isArray(entry.config)) walkPresets(entry.config);
+    }
+  };
+  walkPresets(entries);
+  if (!preset)
+    return {
+      flag: null,
+      preset: presetId,
+      why: `the default preset ${JSON.stringify(presetId)} is not in the composed tree`,
+    };
+  // A preset's `plugins` rows are a plain array, and only `group: true` entries
+  // nest — the same rule the harness's own patch map walks by.
+  let row = null;
+  const walkPlugins = (list) => {
+    for (const entry of list) {
+      if (
+        entry?.name === DELEGATION_PLUGIN &&
+        (entry.config?.toolName ?? DISPATCH_TOOL) === DISPATCH_TOOL &&
+        entry.disabled !== true
+      )
+        row = entry;
+      if (entry?.group && Array.isArray(entry.config)) walkPlugins(entry.config);
+    }
+  };
+  walkPlugins(preset.config?.plugins ?? []);
+  if (!row)
+    return {
+      flag: null,
+      preset: presetId,
+      why: `the default preset ${JSON.stringify(presetId)} carries no enabled \`${DELEGATION_PLUGIN}\` row mounting \`${DISPATCH_TOOL}\``,
+    };
+  return {
+    flag: row.config?.modelSelectionSettings === true,
+    preset: presetId,
+    source: source(ownerOf(preset.id)),
+  };
+}
+const selection = selectionSwitch(entries);
+/** In force only with both switches on: the tool reads the settings entry only
+ * under its own flag, and that entry must be enabled. */
+const policyInForce = policyEnabled && selection.flag === true;
+const switchState =
+  selection.flag === null
+    ? `unresolved (${selection.why})`
+    : `${selection.flag} (preset ${JSON.stringify(selection.preset)} from ${selection.source}${selection.flag ? "" : " — the tool ignores the settings entry even when enabled"}; a session booted with another preset carries its own row)`;
+
 const policyState = !policyEntry
   ? `no \`${POLICY_ENTRY}\` entry in the composed tree`
   : policyConfig === undefined
-    ? `\`${POLICY_ENTRY}\` carries no config in the composed tree (the plugin default is \`enabled: false\`)`
+    ? `\`${POLICY_ENTRY}\` carries no config in the composed tree, so the settings plugin's own default composes (assumed \`enabled: false\` — the plugin is not read here)`
     : `\`${POLICY_ENTRY}\` is present but not enabled (${source(policyOwner)})`;
 
 console.log(
-  `ℹ composed ${layers.length} patch layer(s) for profile ${JSON.stringify(basename(PROFILE_DIR))}; catalog ${declared.size > 0 ? `${declared.size} model id(s)` : "empty"} from ${source(catalogOwner)}; default route ${defaultRoute ? `${defaultRoute.provider}/${defaultRoute.model} from ${source(defaultOwner)}` : "absent from the composed tree"}; policy ${policyEnabled ? `enabled (${source(policyOwner)})` : "not in force"}`,
+  `ℹ composed ${layers.length} patch layer(s) for profile ${JSON.stringify(basename(PROFILE_DIR))}; catalog ${declared.size > 0 ? `${declared.size} model id(s)` : "empty"} from ${source(catalogOwner)}; default route ${defaultRoute ? `${defaultRoute.provider}/${defaultRoute.model} from ${source(defaultOwner)}` : "absent from the composed tree"}; policy ${policyInForce ? `in force — enabled (${source(policyOwner)}) and read` : "not in force"}; ${DELEGATION_PLUGIN}.${DISPATCH_TOOL} modelSelectionSettings ${switchState}`,
 );
-if (!policyEnabled)
+if (!policyInForce) {
+  const whyNot = policyEnabled
+    ? `\`${POLICY_ENTRY}\` is enabled, but ${selection.flag === false ? `the delegation tool's \`modelSelectionSettings\` is \`false\` (${selection.source}), so it ignores the entry` : `whether the delegation tool reads it at all is session-dependent and not resolvable from the composed tree (${selection.why})`}`
+    : policyState;
   console.log(
-    `− no narrowing in force: ${policyState} — route selection is off, so a delegation cannot name provider/model or reasoning_effort: it inherits the session route and effort, which for a fresh session are the composed ${DEFAULT_ROUTE_ENTRY} values (${defaultRoute ? `${defaultRoute.provider}/${defaultRoute.model}${defaultRoute.effort ? `, effort ${defaultRoute.effort}` : ""} from ${source(defaultOwner)}` : "none — no composed default route"}). A pin resolves only where its own model IS that route, and its thoughtLevel is not named either.`,
+    `− no narrowing in force: ${whyNot} — route selection is off, so a delegation cannot name provider/model or reasoning_effort: it inherits the session route and effort, and for a session that has not been switched in the UI those are the composed ${DEFAULT_ROUTE_ENTRY} values (${defaultRoute ? `${defaultRoute.provider}/${defaultRoute.model}${defaultRoute.effort ? `, effort ${defaultRoute.effort}` : ""} from ${source(defaultOwner)}` : "none — no composed default route"}), while a switched session's dispatcher carries that session's own route. A pin resolves only where its own model IS that route, and its thoughtLevel is not named either.`,
   );
-if (!policyEnabled && defaultRoute === null)
+}
+if (policyEnabled && !policyInForce)
+  console.log(
+    `⚠ an enabled \`${POLICY_ENTRY}\` is not in force: ${selection.flag === false ? `the delegation tool does not set \`modelSelectionSettings: true\` (${selection.source}), so \`allowedModels\` is ignored` : `the delegation tool's \`modelSelectionSettings\` is not resolvable from the composed tree (${selection.why}), so this check cannot certify that \`allowedModels\` is read`}.`,
+  );
+if (!policyInForce && defaultRoute === null)
   console.log(
     `⚠ no composed ${DEFAULT_ROUTE_ENTRY} route in the ${layers.length} layer(s) searched: ${layers.map((layer) => layer.file).join(", ")} — with route selection off, no pin can resolve by inheritance either.`,
   );
@@ -333,6 +431,7 @@ const notDeclared = new Set();
 const notAllowed = new Set();
 const notInherited = new Set();
 const notServed = new Set();
+const unresolved = new Set();
 for (const { label, id } of checks) {
   const route = `${PROVIDER}/${id}`;
   const parts = [];
@@ -343,22 +442,37 @@ for (const { label, id } of checks) {
     notDeclared.add(id);
     failed = true;
   }
-  if (policyEnabled) {
+  const inherited = defaultRoute?.provider === PROVIDER && defaultRoute.model === id;
+  if (policyInForce) {
     if (policyRoutes.has(route)) parts.push("allowed");
     else {
       parts.push("NOT ALLOWED");
       notAllowed.add(route);
       failed = true;
     }
-  } else if (defaultRoute?.provider === PROVIDER && defaultRoute.model === id) {
-    parts.push("inherited route (no policy in force)");
+  } else if (!policyEnabled || selection.flag === false) {
+    // Selection is off in every world this run can see, so the pin passes only
+    // by inheritance.
+    if (inherited) parts.push("inherited route (no policy in force)");
+    else {
+      parts.push(
+        defaultRoute
+          ? "NOT the inherited route (no policy in force)"
+          : "no inherited route to resolve to (no policy in force)",
+      );
+      notInherited.add(route);
+      failed = true;
+    }
+  } else if (policyRoutes.has(route) && inherited) {
+    // The policy is enabled and the tool's flag is unresolved: this pin passes
+    // whether or not the tool reads the policy, so the verdict holds in both
+    // worlds even though the narrowing cannot be certified.
+    parts.push("allowed and inherited route (route selection unresolved)");
   } else {
     parts.push(
-      defaultRoute
-        ? "NOT the inherited route (no policy in force)"
-        : "no inherited route to resolve to (no policy in force)",
+      `UNRESOLVED — \`${POLICY_ENTRY}\` is enabled and the delegation tool's \`modelSelectionSettings\` is not resolvable from the composed tree (${selection.why})`,
     );
-    notInherited.add(route);
+    unresolved.add(route);
     failed = true;
   }
   if (served === null) parts.push("served=unknown");
@@ -407,7 +521,9 @@ if (failures > 0) {
   // With no policy in force, a declared pin that is not the inherited route
   // cannot be named on a dispatch at all. Enabling the policy is the fix, and
   // it is an owner-side edit: it restores per-pin route AND reasoning_effort
-  // naming. An undeclared or unserved id is fixed by its own message instead.
+  // naming — but only where the delegation tool reads the policy, so where its
+  // own switch is off or unread the fix names that second edit too. An
+  // undeclared or unserved id is fixed by its own message instead.
   if ([...notInherited].some((route) => declared.has(route.split("/")[1]))) {
     const file = policyEditFile();
     console.log(
@@ -420,6 +536,21 @@ if (failures > 0) {
       console.log(line);
     console.log(
       `    (the default route stays ${defaultRoute ? `${defaultRoute.provider}/${defaultRoute.model}` : "unset"}; enabling also lets a dispatch name the pin's thoughtLevel again)`,
+    );
+    if (selection.flag !== true)
+      console.log(
+        selection.flag === false
+          ? `    (the second switch: the delegation tool in preset ${JSON.stringify(selection.preset)} does not set \`modelSelectionSettings: true\` (${selection.source}), so it ignores the policy above — set that flag on its \`${DELEGATION_PLUGIN}\` row as well, or the dispatch still cannot name a route)`
+          : `    (the second switch: whether the delegation tool reads the policy above is session-dependent and not resolvable from the composed tree — ${selection.why}; set \`modelSelectionSettings: true\` on the \`${DELEGATION_PLUGIN}\` row of the session's preset to be sure)`,
+      );
+  }
+  // An enabled policy whose force this run cannot certify: the pin passes
+  // neither as allowed (unread) nor by inheritance, so the fix names both
+  // switches rather than asserting either.
+  if (unresolved.size > 0) {
+    const file = policyEditFile();
+    console.log(
+      `  fix: \`${POLICY_ENTRY}\` is enabled in the composed tree, but whether the delegation tool reads it is session-dependent and could not be resolved — ${selection.why}. Either set \`modelSelectionSettings: true\` on the \`${DELEGATION_PLUGIN}\` row of the preset the session composes, or route the pin through the composed \`${DEFAULT_ROUTE_ENTRY}\` (${defaultRoute ? `${defaultRoute.provider}/${defaultRoute.model}` : "none composed"}), and re-run: no route can be named on a dispatch while the tool's switch is off, and nothing certifies it is on. The policy edit itself belongs in ${file}.`,
     );
   }
   // Narrowed routes: an owner-side policy edit, never a --fix append and never

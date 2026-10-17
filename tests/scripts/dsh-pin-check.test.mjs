@@ -172,6 +172,42 @@ function policyEntry({ enabled = true, routes = [] }) {
   ].join("\n");
 }
 
+/** The preset-registry entry: it names the preset a session composes, which is
+ * where the delegation tool's own `modelSelectionSettings` row lives. */
+function presetRegistryEntry(presetId) {
+  return [
+    "- id: agent-preset-registry",
+    "  name: '@deepseek-ai/dsh-agent-preset-registry'",
+    "  config:",
+    `    default: ${presetId}`,
+    "",
+  ].join("\n");
+}
+
+/** A preset carrying the delegation tool row, with or without the tool's own
+ * switch — the second switch the verdict has to read. */
+function presetEntry({ id = "fixture-preset", modelSelectionSettings = true } = {}) {
+  return [
+    `- id: preset-${id}`,
+    "  name: '@deepseek-ai/dsh-agent-preset'",
+    "  config:",
+    `    id: ${id}`,
+    "    plugins:",
+    "      - id: delegation",
+    "        name: cordis:group",
+    "        group: true",
+    "        config:",
+    "          - id: tool-subagent",
+    "            name: '@deepseek-ai/dsh-tool-subagent'",
+    "            config:",
+    "              provider: spawn",
+    "              toolName: subagent",
+    ...(modelSelectionSettings ? ["              modelSelectionSettings: true"] : []),
+    "              backgroundMode: continuable",
+    "",
+  ].join("\n");
+}
+
 function writeBundle(fx, name, patches, { anchor = "install" } = {}) {
   const dir = join(anchor === "install" ? fx.install : fx.profile, "node_modules", name);
   mkdirSync(dir, { recursive: true });
@@ -212,16 +248,32 @@ function writeCatalog(fx, ids) {
 }
 
 /** The common composed profile: one bundle inserting the catalog, the default
- * route and (optionally) the settings entry, plus the profile patch. */
+ * route, the preset chain that carries the delegation tool's own selection
+ * switch, and (optionally) the settings entry, plus the profile patch.
+ * `selectionSwitch` is that second switch: `true`/`false` build the row with
+ * and without `modelSelectionSettings`, `null` leaves the whole chain out, so
+ * the check cannot resolve it from the composed tree. */
 function composeBase(
   fx,
-  { declared = ["alpha-model"], model = declared[0], policySettings = true, profilePatch } = {},
+  {
+    declared = ["alpha-model"],
+    model = declared[0],
+    policySettings = true,
+    profilePatch,
+    selectionSwitch = true,
+  } = {},
 ) {
   writeBundle(fx, "fixture-bundle-base", [
     insertEntries(
       catalogEntry(declared),
       defaultRouteEntry("ollama", model),
       ...(policySettings ? [policySettingsInsert()] : []),
+      ...(selectionSwitch === null
+        ? []
+        : [
+            presetRegistryEntry("fixture-preset"),
+            presetEntry({ modelSelectionSettings: selectionSwitch }),
+          ]),
     ),
   ]);
   writeProfile(fx, ["fixture-bundle-base"], profilePatch);
@@ -345,6 +397,8 @@ describe("composed layer stack", () => {
         catalogEntry(["alpha-model", "beta-model"]),
         defaultRouteEntry("ollama", "alpha-model"),
         policySettingsInsert(),
+        presetRegistryEntry("fixture-preset"),
+        presetEntry(),
       ),
     ]);
     // Profile layer: replaces the catalog (beta is gone, not merged) and the
@@ -370,7 +424,9 @@ describe("composed layer stack", () => {
     expect(res.stdout).toContain(
       `catalog 1 model id(s) from ${join(fx.profile, "cordis.patch.yml")}`,
     );
-    expect(res.stdout).toContain(`policy enabled (${join(fx.home, "cordis.patch.yml")})`);
+    expect(res.stdout).toContain(
+      `policy in force — enabled (${join(fx.home, "cordis.patch.yml")}) and read`,
+    );
     expect(res.stdout).toContain(
       `default route ollama/gamma-model from ${join(fx.profile, "cordis.patch.yml")}`,
     );
@@ -383,6 +439,8 @@ describe("composed layer stack", () => {
         catalogEntry(["alpha-model", "beta-model"]),
         defaultRouteEntry("ollama", "alpha-model"),
         policySettingsInsert(),
+        presetRegistryEntry("fixture-preset"),
+        presetEntry(),
       ),
     ]);
     const web = writeBundle(fx, "fixture-bundle-web", [
@@ -396,7 +454,9 @@ describe("composed layer stack", () => {
 
     expect(res.status).toBe(1);
     expect(res.stdout).toContain("✗ reviewer: beta-model — declared, NOT ALLOWED, served");
-    expect(res.stdout).toContain(`policy enabled (${join(web, "patch-0.yml")})`);
+    expect(res.stdout).toContain(
+      `policy in force — enabled (${join(web, "patch-0.yml")}) and read`,
+    );
     // The owner layer for the policy is a bundle, so the printed fix is the
     // whole replacement patch entry, in the user's own layer file.
     expect(res.stdout).toContain(
@@ -667,6 +727,78 @@ describe("route policy", () => {
     ).toContainEqual({ provider: "ollama", model: "beta-model" });
     expect(readFileSync(patchFile, "utf8")).not.toContain("model: beta-model");
     expect(backupsOf(patchFile)).toHaveLength(0);
+  });
+
+  it("fails a pin an enabled policy allows when the delegation tool ignores that policy", () => {
+    const fx = fixture();
+    // Both switches are in the composed tree: the entry is enabled and lists
+    // the pin's route, but the tool row carries no `modelSelectionSettings`, so
+    // the harness installs the tool with no policy at all. Reading the settings
+    // entry alone would print `allowed` and exit 0.
+    composeBase(fx, {
+      declared: ["alpha-model", "beta-model"],
+      model: "alpha-model",
+      profilePatch:
+        catalogEntry(["alpha-model", "beta-model"]) +
+        policyEntry({ enabled: true, routes: ["ollama/beta-model"] }),
+      selectionSwitch: false,
+    });
+    writeRole(fx, "reviewer", `model: "${pinFor("beta-model")}"`);
+    writeCatalog(fx, ["alpha-model", "beta-model"]);
+
+    const res = runPreflight(fx, ["--fix"]);
+
+    expect(res.status).toBe(1);
+    expect(res.stdout).toContain(
+      "✗ reviewer: beta-model — declared, NOT the inherited route (no policy in force), served",
+    );
+    expect(res.stdout).not.toContain("allowed, served");
+    expect(res.stdout).toContain('modelSelectionSettings false (preset "fixture-preset"');
+    expect(res.stdout).toContain(
+      "⚠ an enabled `subagent-model-selection-settings` is not in force",
+    );
+    expect(res.stdout).toContain("does not set `modelSelectionSettings: true`");
+    // The printed fix names the second switch, so the operator does not apply a
+    // policy edit the tool would still ignore.
+    expect(res.stdout).toContain("the second switch:");
+  });
+
+  it("reports an unresolvable selection switch instead of a flat verdict", () => {
+    const fx = fixture();
+    // The policy is enabled and its route list is readable, but no layer names
+    // the preset a session composes, so the tool's own switch is outside what
+    // the composed tree answers.
+    composeBase(fx, {
+      declared: ["alpha-model", "beta-model"],
+      model: "alpha-model",
+      profilePatch:
+        catalogEntry(["alpha-model", "beta-model"]) +
+        policyEntry({ enabled: true, routes: ["ollama/alpha-model", "ollama/beta-model"] }),
+      selectionSwitch: null,
+    });
+    writeRole(fx, "reviewer", `model: "${pinFor("beta-model")}"`);
+    writeRole(fx, "implementer", `model: "${pinFor("alpha-model")}"`);
+    writeCatalog(fx, ["alpha-model", "beta-model"]);
+
+    const res = runPreflight(fx, ["--fix"]);
+
+    expect(res.status).toBe(1);
+    // beta-model passes only if the tool reads the policy, so an unresolved
+    // switch cannot certify it; alpha-model IS the inherited route and IS
+    // allowed, so it passes in both worlds.
+    expect(res.stdout).toContain(
+      "✗ reviewer: beta-model — declared, UNRESOLVED — `subagent-model-selection-settings` is enabled",
+    );
+    expect(res.stdout).toContain("modelSelectionSettings unresolved (");
+    expect(res.stdout).toContain(
+      "✓ implementer: alpha-model — declared, allowed and inherited route (route selection unresolved), served",
+    );
+    expect(res.stdout).toContain(
+      "⚠ an enabled `subagent-model-selection-settings` is not in force",
+    );
+    expect(res.stdout).toContain(
+      "fix: `subagent-model-selection-settings` is enabled in the composed tree, but whether the delegation tool reads it is session-dependent",
+    );
   });
 
   it("exits 0 with the no-narrowing note when the settings entry carries no config", () => {
