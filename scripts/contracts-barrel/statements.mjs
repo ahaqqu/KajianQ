@@ -35,23 +35,6 @@ const failAt = (file, source, at, what) => {
   );
 };
 
-/**
- * An `export` keyword the scan read as quoted text. A module publishes no member
- * by quoting one, so this is either prose this gate will not read or a statement
- * the scan mistook for a literal — and the second is the silence the gate exists
- * to remove, whatever the first costs.
- */
-export function requireNoQuotedExports({ code }, quoted, file) {
-  if (quoted.length === 0) return;
-  const lines = quoted.map((at) => lineOf(code, at));
-  throw new ContractsBarrelError(
-    `${file}: the word \`export\` sits inside a string or template literal at line ` +
-      `${lines.join(", ")}: a module publishes no member that way, so this is either quoted ` +
-      "prose this gate will not read or a statement the scan mistook for a literal — reword the " +
-      "literal, since a statement the scan reads past is the silence this gate exists to remove",
-  );
-}
-
 /** The `from "./module"` clause that opens at `from`, read as the literal it is. */
 function moduleSpecifier({ code, literals }, from, fail) {
   const at = skipSpace(code, from);
@@ -192,10 +175,18 @@ export function exportStatement(source, at, file) {
     const star = typeOnlyWildcard === null ? head : head + typeOnlyWildcard[0].length - 1;
     const asExport = new RegExp(`^\\*\\s+as\\s+(${IDENT})`).exec(code.slice(skipSpace(code, star)));
     if (asExport !== null) {
-      // A namespace member of THIS module, not a doorway to the other one's members.
+      // The namespace object, published under `ns`: one name, and the target owes
+      // no member name to it — a consumer writes `ns.carried`, never `carried`.
       const clause = skipSpace(code, star) + asExport[0].length;
-      moduleSpecifier(source, clause, fail);
-      return { members: [{ name: asExport[1], typeOnly: false }], edges: [] };
+      return {
+        members: [],
+        edges: [
+          {
+            from: moduleSpecifier(source, clause, fail),
+            names: [{ provided: "*", exported: asExport[1], typeOnly: false }],
+          },
+        ],
+      };
     }
     return {
       members: [],
