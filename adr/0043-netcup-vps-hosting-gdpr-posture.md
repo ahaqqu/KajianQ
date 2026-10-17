@@ -20,7 +20,7 @@ Rejected: self-hosting the API while the database stays with the vendor, which l
 ## Consequences
 
 - The register rule is enforced rather than asserted: every serving call site declares that it carries personal data, a compile error to drop, and the serving chains carry paid, personal-data-allowed heads.
-- Capacity stops being a free plan's write ceiling; the corpus scope follows the store that holds it (ADR-0039).
+- Capacity stops being a free plan's write ceiling; the corpus scope follows the store that holds it.
 - Self-hosting is a single point of failure and an ops burden — TLS, log rotation, encrypted backups, restore drills and the nightly reclamation land on the operator — which is why this is a deploy-path change rather than an engine change.
 - The snapshot tool reads a vendor-free connection variable, and its manifest records whether an archive carries personal data; creating a personal-data-bearing archive requires the target to be asserted encrypted at rest or the transitional exposure acknowledged.
 - **Revisit when** a second region or a managed EU Postgres beats self-hosting on agreement and ops economics; snapshot archives become a real exposure (take the corpus-only projection); the host changes its sub-processor list; the product adopts real user identity; or a serving stage moves to a new vendor, or a vendor's tier changes.
