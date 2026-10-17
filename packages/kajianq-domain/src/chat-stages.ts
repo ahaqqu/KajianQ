@@ -1,15 +1,19 @@
 import { createKajianQAssembler } from "./chat-assembler";
-import { createKajianQGenerator, type GeneratorProvider } from "./chat-generator";
+import {
+  createKajianQGenerator,
+  type ChatLanguage,
+  type GeneratorProvider,
+} from "./chat-generator";
 import { createKajianQReviewer, refusalTextFor, type ReviewerProvider } from "./chat-reviewer";
 export type { GeneratorProvider, ReviewerProvider };
 import type { Decider } from "@app/rag-core";
-import type { ChatLanguage } from "./chat-prompts";
+import { createContentFreeDecliner } from "./chat-content-free-decline";
 
 /**
- * Grouped factory for the three deterministic/local chat stages (assembler,
- * generator, reviewer) — a pure convenience barrel so the pipeline
- * composition module stays under the agentic import cap while each stage
- * keeps its own file and seam.
+ * Grouped factory for the chat pipeline's local stages (assembler, generator,
+ * reviewer) and the decline seam — a pure convenience barrel so the pipeline
+ * composition module stays under the agentic import cap while each stage keeps
+ * its own file and seam.
  */
 export function createChatTailStages(deps: {
   generatorProvider: GeneratorProvider;
@@ -24,6 +28,7 @@ export function createChatTailStages(deps: {
   assembler: ReturnType<typeof createKajianQAssembler>;
   generator: ReturnType<typeof createKajianQGenerator>;
   reviewer: ReturnType<typeof createKajianQReviewer>;
+  decliner: ReturnType<typeof createContentFreeDecliner>;
 } {
   return {
     assembler: createKajianQAssembler(),
@@ -41,5 +46,6 @@ export function createChatTailStages(deps: {
       // answer language matches question language).
       refusalText: (reason) => refusalTextFor(deps.language, reason),
     }),
+    decliner: createContentFreeDecliner({ language: deps.language }),
   };
 }

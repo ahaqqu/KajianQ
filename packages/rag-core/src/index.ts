@@ -3,6 +3,8 @@ export {
   type AssembledContext,
   type Assembler,
   type Chunk,
+  type Decline,
+  type Decliner,
   type DefaultFilters,
   type Draft,
   type Generator,

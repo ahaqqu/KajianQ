@@ -8,6 +8,8 @@ import type {
   Answer,
   Assembler,
   Chunk,
+  Decline,
+  Decliner,
   DefaultFilters,
   Draft,
   Generator,
@@ -18,13 +20,19 @@ import type {
   Router,
 } from "./pipeline";
 
-/** The five wired pipeline stages, one of each (ADR-0005). */
+/**
+ * The five wired pipeline stages, one of each (ADR-0005), plus the optional
+ * decline seam. `decliner` is not a sixth walk step but the runner's early
+ * exit: wiring it is what lets a run answer without entering the two stages
+ * that can spend.
+ */
 export type PipelineStages<TFilters extends Record<string, unknown> = DefaultFilters> = {
   router: Router<TFilters>;
   retriever: Retriever<TFilters>;
   assembler: Assembler<TFilters>;
   generator: Generator<TFilters>;
   reviewer: Reviewer<TFilters>;
+  decliner?: Decliner<TFilters>;
 };
 
 /** Injectable run knobs; production defaults are the ambient clock + a UUID. */
@@ -44,7 +52,8 @@ export type RunOptions = {
 };
 
 /**
- * Walk the five stages in order and assemble the full Trace (ADR-0021, ADR-0027).
+ * Walk the five stages in order and assemble the full Trace (ADR-0021, ADR-0027),
+ * stopping at the decline seam when one is wired and it returns a verdict.
  *
  * The runner is the single place that owns the run: it opens the run's
  * `Scope` (per-run `Effect.addFinalizer` teardown, LIFO, even when a stage
@@ -139,20 +148,34 @@ export const runPipeline = <TFilters extends Record<string, unknown> = DefaultFi
       at: now(),
     });
 
+    // The decline seam, and the run's only early exit: it is asked after
+    // assembly and before the two stages that can spend, so a run whose route
+    // carries nothing to generate for never enters the Generator or the
+    // Reviewer — no call, no cost, by construction rather than by the model's
+    // restraint. The runner writes the record itself, from the verdict's own
+    // `reason`/`trigger`, so a decline is never a bare response: the delivered
+    // copy and the trace's account of it are written at the same boundary, and
+    // a decliner cannot decline without the trace saying so. Its `text` replaces
+    // what the Generator would have drafted, so the `refusal` event is the
+    // trace's delivery record and the verdict's `trigger` names why.
+    if (stages.decliner !== undefined) {
+      const declined = yield* stages.decliner.decline(routed, context);
+      if (declined !== null) {
+        events.push(refusalEventOf(declined, now()));
+        return {
+          text: declined.text,
+          trace: yield* assembleTrace(options, events, now),
+        };
+      }
+    }
+
     const draft: Draft = yield* stages.generator.generate(context);
     const finalDraft = yield* stages.reviewer.review(draft, context);
 
-    const trace = yield* Effect.try({
-      try: () =>
-        parseTrace({
-          id: options.traceId ?? crypto.randomUUID(),
-          createdAt: now(),
-          events,
-        }),
-      catch: (cause): StageError => new StageError({ stage: "pipeline", cause }),
-    });
-
-    return { text: finalDraft.text, trace };
+    return {
+      text: finalDraft.text,
+      trace: yield* assembleTrace(options, events, now),
+    };
   });
 
   return program.pipe(
@@ -182,6 +205,44 @@ export const runPipeline = <TFilters extends Record<string, unknown> = DefaultFi
     Effect.scoped,
   );
 };
+
+/**
+ * The trace's record of a decline, written by the runner from the verdict it
+ * was handed — the delivered text is the caller's own copy rather than a
+ * draft, which is the fact the `refusal` event kind records for every reader of
+ * it; `trigger` names this decline's own reason. It carries no `cost`, and
+ * there is no `llm_call` beside it: the decline is the one answer path that
+ * makes no call at all.
+ */
+function refusalEventOf(declined: Decline, at: number): TraceEvent {
+  return {
+    stage: "generator",
+    kind: "refusal",
+    ...(declined.trigger !== undefined ? { detail: { trigger: declined.trigger } } : {}),
+    reason: declined.reason,
+    at,
+  };
+}
+
+/**
+ * Parse the run's collected events into its Trace — the run's single collection
+ * point, on every exit (ADR-0007).
+ */
+function assembleTrace(
+  options: RunOptions,
+  events: TraceEvent[],
+  now: () => number,
+): Effect.Effect<Trace, StageError> {
+  return Effect.try({
+    try: () =>
+      parseTrace({
+        id: options.traceId ?? crypto.randomUUID(),
+        createdAt: now(),
+        events,
+      }),
+    catch: (cause): StageError => new StageError({ stage: "pipeline", cause }),
+  });
+}
 
 /**
  * Record the failed attempts' estimated spend (the `ProviderError`'s

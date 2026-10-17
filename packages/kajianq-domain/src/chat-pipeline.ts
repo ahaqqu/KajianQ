@@ -79,6 +79,9 @@ export function buildChatStages(
     assembler: tail.assembler,
     generator: tail.generator,
     reviewer: tail.reviewer,
+    // The decline seam: a route carrying no question is answered from the
+    // product's canned copy and the two paid tail stages are never entered.
+    decliner: tail.decliner,
   };
 }
 
