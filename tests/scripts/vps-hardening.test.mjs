@@ -521,9 +521,9 @@ describe("erasure a restore must re-apply", () => {
   it("teaches no restore command that carries a credentialed URL or a URL variable", () => {
     // Same invariant over what the operator is told to run: a URL — literal, or reachable
     // through a variable handed to the shell — in a documented command line is readable
-    // through `ps` and kept in shell history. The section anchors are asserted as they are
-    // found: an absent heading used to make `slice(-1, -1)` an empty subject that passed
-    // green while the invariant it exists for was broken.
+    // through `ps` and kept in shell history. The section anchors are asserted before the
+    // slice, so a renumbered heading fails here instead of making the subject empty and
+    // passing green.
     const ops = readFileSync(resolve(process.cwd(), "docs/VPS-OPERATIONS.md"), "utf8");
     const opsAt = ops.indexOf("### 2.7");
     const opsEnd = ops.indexOf("### 2.8");
@@ -793,7 +793,7 @@ describe("provisioning config as code stays true to the ADR", () => {
     // statements, not the sentences around them. A block that lost LOGIN, the bound password
     // or OWNER would leave the API unable to start, and nothing else in CI would notice.
     expect(directives("provision/vps/apply.sh")).not.toMatch(
-      /CREATE ROLE|createuser|CREATE DATABASE/,
+      /CREATE ROLE|createuser|CREATE DATABASE|createdb/,
     );
     const setup = read("docs/VPS-SETUP.md");
     const sql = [...setup.matchAll(/```bash\n([\s\S]*?)```/g)]
