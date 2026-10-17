@@ -160,9 +160,9 @@ function previousToken(code, at) {
   if (/[\w$]/.test(code[i])) {
     let start = i;
     while (start >= 0 && /[\w$]/.test(code[start])) start -= 1;
-    return code.slice(start + 1, i + 1);
+    return code.slice(start + 1, i + 1).join("");
   }
-  const tail = code.slice(Math.max(0, i - 2), i + 1);
+  const tail = code.slice(Math.max(0, i - 2), i + 1).join("");
   for (const operator of ["++", "--", "=>", "**", "&&", "||", "??", "+=", "-=", "*=", "/="]) {
     if (tail.endsWith(operator)) return operator;
   }
@@ -220,12 +220,6 @@ const STARTS_EXPRESSION_KEYWORD = new Set([
 /** The keywords whose `)` closes a statement header, so a statement can follow it. */
 const HEADER_KEYWORDS = new Set(["if", "while", "for", "with"]);
 
-/** Whether a literal ends at index `at` — a literal ends an expression. */
-const endsLiteral = (literals, at) => {
-  for (const literal of literals.values()) if (literal.end - 1 === at) return true;
-  return false;
-};
-
 /** Whether the `)` at `close` closes a header whose statement can hold a regex. */
 function headerBefore(code, close) {
   let depth = 0;
@@ -254,27 +248,27 @@ function headerBefore(code, close) {
  * reading here blanks or shifts a statement below it, and the member it hides
  * is exactly what this gate exists to report.
  */
-function slashReading({ code, literals }, at) {
+function slashReading({ code, literalEnds }, at) {
   let i = at - 1;
-  let lineStart = false;
-  while (i >= 0 && /\s/.test(code[i])) {
-    if (code[i] === "\n") lineStart = true;
-    i -= 1;
-  }
-  if (i < 0) return { kind: "ambiguous", token: "", lineStart: true };
-  if (lineStart) return { kind: "ambiguous", token: "", lineStart: true };
-  if (endsLiteral(literals, i)) return { kind: "division", token: "<literal>" };
+  while (i >= 0 && /\s/.test(code[i])) i -= 1;
+  if (i < 0) return { kind: "ambiguous", token: "" };
+  if (literalEnds.has(i)) return { kind: "division", token: "<literal>" };
   const token = previousToken(code, at);
   if (STARTS_EXPRESSION.has(token) || STARTS_EXPRESSION_KEYWORD.has(token)) {
     return { kind: "regex", token };
   }
   if (token === ")") return { kind: headerBefore(code, i) ? "regex" : "division", token };
   if (token === "!") {
-    // `!/re/` opens a regex and `value! / 2` divides: a non-null assertion
-    // follows an expression, and a regex cannot.
-    const before = previousToken(code, i);
+    // A non-null assertion follows an expression — an identifier, a `]`, a
+    // literal, or any `)` but a control header's — and a prefix `!` opens one.
+    let j = i - 1;
+    while (j >= 0 && /\s/.test(code[j])) j -= 1;
     const assertion =
-      before === ")" || before === "]" || /^[\w$]+$/.test(before) || endsLiteral(literals, i - 1);
+      j < 0 ||
+      /[\w$]/.test(code[j]) ||
+      code[j] === "]" ||
+      literalEnds.has(j) ||
+      (code[j] === ")" && !headerBefore(code, j));
     return { kind: assertion ? "division" : "regex", token };
   }
   if (token === "]" || token === "++" || token === "--" || /^[\w$]+$/.test(token)) {
@@ -285,10 +279,11 @@ function slashReading({ code, literals }, at) {
 
 /** The refusal that names what the scan cannot tell apart, and where. */
 function ambiguousSlash(source, file, at, reading) {
-  const where = reading.lineStart
-    ? "a statement that starts with a regular expression reads the same as a division continuing " +
-      "the line above"
-    : `\`${reading.token}\` can end an expression in one reading and begin one in another`;
+  const where =
+    reading.token === ""
+      ? "the file opens with it, where a statement that begins with a regular expression reads " +
+        "the same as a division continuing an expression that is not there"
+      : `\`${reading.token}\` can end an expression in one reading and begin one in another`;
   return new ContractsBarrelError(
     `${file}:${lineOf(source, at)}: this \`/\` follows a position where ${where}, so this scan ` +
       "cannot tell a regular expression from division — write the division on the same line as its " +
@@ -305,6 +300,7 @@ export function scanSource(source, file) {
   const directives = source.split("");
   const comments = source.split("");
   const literals = new Map();
+  const literalEnds = new Set();
   const blank = (view, from, to) => {
     for (let i = from; i < to; i += 1) if (view[i] !== "\n") view[i] = " ";
   };
@@ -345,6 +341,7 @@ export function scanSource(source, file) {
         kind: "string",
         closed: end > i + 1 && source[end - 1] === char,
       });
+      literalEnds.add(end - 1);
       blank(directives, i, end);
       blank(comments, i, end);
       i = end;
@@ -360,13 +357,14 @@ export function scanSource(source, file) {
         );
       }
       literals.set(i, { start: i, end, kind: "template", closed: true });
+      literalEnds.add(end - 1);
       blank(directives, i, end);
       blank(comments, i, end);
       i = end;
       continue;
     }
     if (char === "/") {
-      const reading = slashReading({ code: code.join(""), literals }, i);
+      const reading = slashReading({ code, literalEnds }, i);
       if (reading.kind === "ambiguous") throw ambiguousSlash(source, file, i, reading);
       if (reading.kind === "regex") {
         const end = regexEnd(source, i);
@@ -378,6 +376,7 @@ export function scanSource(source, file) {
           );
         }
         literals.set(i, { start: i, end, kind: "regex", closed: true });
+        literalEnds.add(end - 1);
         blank(directives, i, end);
         blank(comments, i, end);
         i = end;

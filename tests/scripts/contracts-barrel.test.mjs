@@ -134,12 +134,11 @@ describe("the module tree comes from disk, not from a list", () => {
     expect(unwiredMembers(inventory)).toEqual([]);
     expect(unprovidedBarrelNames(inventory)).toEqual([]);
     expect(misdeclaredModules(inventory)).toEqual([]);
+    // The three rule lists above are the gate; the report is their reading. It is
+    // asserted only to be populated — an identity its own construction guarantees
+    // would be a test that cannot fail.
     const report = assertBarrelCoverage(root);
-    // Every member is published or withheld on the record; the counts are that
-    // reading, not a second rule over it. An aliased barrel publishes one name
-    // through two entries, so entries bounds published from below, not at it.
-    expect(report.published + report.withheld).toBe(report.members);
-    expect(report.entries).toBeGreaterThanOrEqual(report.published);
+    expect(report.modules).toBeGreaterThan(0);
   });
 
   it("names the declarations the tree makes, member by member, each with its reason", () => {
@@ -635,18 +634,49 @@ describe("a construct the scanner cannot resolve is refused, not guessed", () =>
   });
 
   it("refuses a `/` whose position it cannot decide, naming the ambiguity", () => {
-    // `}` closes a block in one reading and an object literal in another; a line's
-    // first `/` continues the line above or starts a statement. Neither is guessed.
+    // `}` closes a block in one reading and an object literal in another, so the
+    // scan refuses instead of guessing; the line break plays no part in it.
     const afterBrace = refusal(() =>
       moduleSurface("const scale = 2;\nconst half = { value: 1 } / scale;\n", "regex.ts"),
     );
     expect(afterBrace).toMatch(/regex\.ts:2/);
     expect(afterBrace).toMatch(/cannot tell a regular expression from division/);
-    const lineStart = refusal(() =>
-      moduleSurface("const total = 10;\nconst half = total\n  / 2;\n", "regex.ts"),
-    );
-    expect(lineStart).toMatch(/regex\.ts:3/);
-    expect(lineStart).toMatch(/cannot tell a regular expression from division/);
+  });
+
+  it("reads a regex that opens a line, where the token before it decides", () => {
+    // The token, not the line break, decides: an array opener, a comma, `(` and
+    // `=` are all expression-start positions, so the regexes are read.
+    const source = [
+      "const rs = [",
+      "  /a/,",
+      "  /b/,",
+      "];",
+      "const r =",
+      "  /re/;",
+      "const t = (",
+      "  /re/",
+      ");",
+      "export const after = 1;",
+    ].join("\n");
+    expect(names(moduleSurface(source, "regex.ts"))).toEqual(["after"]);
+  });
+
+  it("reads a prefix `!` after a control header, where the pattern holds `/*`", () => {
+    // The `!` is a prefix operator here (the `)` belongs to an `if`), so the regex
+    // opens and its `/*` is text — the export below is read, not blanked.
+    const source = [
+      "declare const guard: boolean;",
+      "export const first = 1;",
+      'if (guard) !/\\/*x/.test("x");',
+      "export const second = 2;",
+      "/** closes the prose */",
+      "export const tail = 3;",
+    ].join("\n");
+    expect(names(moduleSurface(source, "regex.ts"))).toEqual(["first", "second", "tail"]);
+    const root = fixtureTree({ files: { [`${SRC_DIR}/regex.ts`]: `${source}\n` } });
+    expect(unwiredMembers(barrelInventory(root))).toEqual([
+      { file: `${SRC_DIR}/regex.ts`, reached: false, names: ["first", "second", "tail"] },
+    ]);
   });
 
   it("reads `value! / 2` as division: a non-null assertion cannot precede a regex", () => {
@@ -676,6 +706,24 @@ describe("a construct the scanner cannot resolve is refused, not guessed", () =>
     expect(names(moduleSurface(namespace, "shapes.ts"))).toEqual(["Shapes"]);
     const ambient = 'declare module "widgets" {\n  export const widget: number;\n}\n';
     expect(names(moduleSurface(ambient, "widgets.d.ts"))).toEqual([]);
+  });
+
+  it("reads a dotted namespace, and a `declare global` body", () => {
+    // A `namespace`/`module` body may hold an export whatever its name spells —
+    // dotted, string, or opened a line below the name — and so may `declare global`.
+    expect(
+      names(moduleSurface("export namespace A.B {\n  export const x = 1;\n}\n", "a.ts")),
+    ).toEqual(["A"]);
+    expect(
+      names(moduleSurface("declare namespace C.D {\n  export const y: number;\n}\n", "c.d.ts")),
+    ).toEqual([]);
+    expect(
+      names(
+        moduleSurface("declare global {\n  export interface Window { z: number }\n}\n", "g.ts"),
+      ),
+    ).toEqual([]);
+    const longBody = `export namespace Shapes {\n${"  // filler\n".repeat(20)}  export const square = 1;\n}\n`;
+    expect(names(moduleSurface(longBody, "shapes.ts"))).toEqual(["Shapes"]);
   });
 
   it("refuses a statement-shaped export nested in a block that is not a namespace body", () => {

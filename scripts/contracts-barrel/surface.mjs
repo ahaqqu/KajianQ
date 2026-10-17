@@ -1,8 +1,7 @@
 import { ContractsBarrelError } from "./errors.mjs";
 import { classifyExports, requireBalanced, requireNoQuotedExports } from "./classify.mjs";
-import { lineOf, scanSource, skipSpace } from "./source.mjs";
-import { startsExportStatement } from "./statements.mjs";
-import { exportStatement, importBindings } from "./statements.mjs";
+import { lineOf, scanSource } from "./source.mjs";
+import { exportStatement, importBindings, startsExportStatement } from "./statements.mjs";
 
 /**
  * The three questions the rules ask of one file — the questions, and only those.
@@ -17,11 +16,11 @@ import { exportStatement, importBindings } from "./statements.mjs";
  * Beyond the statement grammar, two shapes are refused here because a wrong
  * reading of them is silent:
  *
- *   - an export keyword set the scan classified `nested` while the module has no
- *     export statement at all. A brace opened in error (a mis-read regex, say)
- *     turns every export below it into a member of a block, and nothing else in
- *     the gate would notice, because a member that was never extracted cannot be
- *     reported unwired;
+ *   - a statement-shaped export keyword that reads as nested in a block which is
+ *     not a `namespace`/`module` body or a `declare global` block. A brace opened
+ *     in error (a mis-read regex, say) turns every export below it into a member
+ *     of a block, and nothing else in the gate would notice, because a member
+ *     that was never extracted cannot be reported unwired;
  *   - one name published from two places (`export { a } from "./x"` beside
  *     `export { b as a } from "./y"`). Which module provides it is then
  *     ambiguous, and one barrel entry would satisfy two different members.
