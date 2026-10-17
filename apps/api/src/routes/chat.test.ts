@@ -196,6 +196,15 @@ async function postRaw(token: string, body: Record<string, unknown>): Promise<Re
   );
 }
 
+/**
+ * A message carrying quotes, backslashes, a newline, braces and `</script>` —
+ * punctuation-heavy, and every character in it representable, so the contract
+ * admits it. The rejected test below probes the same text with a U+0000
+ * appended, which is the only difference between an admitted body and a
+ * refused one here.
+ */
+const STORABLE_PUNCTUATION_BODY = '</script>"quote"\\backslash\nnewline {invalid json} null';
+
 describe("POST /v1/chat", () => {
   it("rejects an unauthenticated request with 401", async () => {
     const res = await createApi().request(
@@ -259,9 +268,10 @@ describe("POST /v1/chat", () => {
     currentOverrides = { answerText: "an answer that must never be produced" };
     spendCalls.length = 0;
 
-    // The staging probes plus the classes the same defect hides in: a lone
+    // The staging probes, the classes the same defect hides in — a lone
     // surrogate is silently rewritten to U+FFFD by a UTF-8 write, so it is
-    // refused here rather than stored as a different message.
+    // refused here rather than stored as a different message — and the
+    // punctuation-heavy body the neighbour test streams with a U+0000 appended.
     for (const message of [
       "\u0000",
       "\u0000riba",
@@ -269,6 +279,7 @@ describe("POST /v1/chat", () => {
       "\ud800",
       "riba\ud800",
       "\udc00",
+      `${STORABLE_PUNCTUATION_BODY}\u0000`,
     ]) {
       const res = await postRaw(token, { message, language: "id" });
 
@@ -285,16 +296,18 @@ describe("POST /v1/chat", () => {
     expect(store.allTraces().size).toBe(0);
   });
 
-  it("streams the whole frame set for the same body with the U+0000 removed (#474's neighbour)", async () => {
+  it("streams the whole frame set for a punctuation-heavy message, whose U+0000 twin is refused above", async () => {
     const { store, token } = await wiredStore();
     currentStore = store;
     await seed(store);
     currentOverrides = { answerText: "Ayat kursi adalah QS. 2:255." };
 
-    // #474's own control body, byte for byte apart from the NUL: it must keep
-    // its place on the answering path.
+    // The same constant the rejected loop probes with a U+0000 appended: quotes,
+    // backslashes, a newline, braces and `</script>` are all storable, so this
+    // body keeps its place on the answering path and the difference between the
+    // two is the NUL alone.
     const { status, frames, answer } = await postChat(token, {
-      message: '</script>"quote"\\backslash\nnewline {invalid json} null',
+      message: STORABLE_PUNCTUATION_BODY,
       language: "id",
     });
 
@@ -335,11 +348,11 @@ describe("POST /v1/chat", () => {
     const intent = trace?.events.find((e) => e.kind === "intent");
     expect(intent?.detail?.["attributes"]).toMatchObject({ fallback: true, contentFree: true });
     // No sub-query was admitted, so none is on the trace: the decline is the
-    // deterministic one, not a model route.
+    // deterministic one, not a model route. The router was gated before its
+    // call, and the generator still ran — the declined route still answers.
     expect(trace?.events.filter((e) => e.kind === "subquery")).toEqual([]);
-    // The router was gated before its call; the generator and reviewer still
-    // ran (they answer the declined route).
     expect(spendCalls).not.toContain("router.generate");
+    expect(spendCalls.some((call) => call.startsWith("generator."))).toBe(true);
   }, 15000);
 
   it("accepts a message exactly at the ceiling (2,000) and runs the pipeline", async () => {

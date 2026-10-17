@@ -78,9 +78,11 @@ export function isStorableText(text: string): boolean {
 
 /**
  * The `message` field: the user's question, and storable text (see
- * `isStorableText`). The length bounds run before the scan because they are
- * O(1) on the raw string, so a body far past the ceiling is refused without a
- * pass over it.
+ * `isStorableText`). The bounds run first, so an over-length body reports the
+ * length issue first and `minLength`/`maxLength` stay in the published schema —
+ * but `v.pipe` does not stop at a failed action, so the scan runs on every body
+ * that reaches the schema, over-length ones included: one linear,
+ * allocation-free pass over a string `JSON.parse` already produced.
  */
 export const ChatMessageTextSchema = v.pipe(
   v.string(),

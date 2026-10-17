@@ -149,12 +149,19 @@ describe("ChatRequestSchema message storability (#478)", () => {
     expect(accepts("a".repeat(CHAT_MESSAGE_MAX_LENGTH + 1))).toBe(false);
   });
 
-  it("answers the same verdict through the predicate the schema checks", () => {
-    // One rule, two readers: the schema is the boundary and the predicate is
-    // what a caller outside the parse can ask (`isStorableText`).
+  it("carries the storability half of the message verdict, never the length bounds", () => {
+    // One storability rule, two readers: the field schema is the boundary and
+    // `isStorableText` is what a caller outside the parse can ask. They agree on
+    // every storability decision and disagree on length, which is the schema's
+    // half alone — so a caller reaching for the predicate applies the bounds
+    // itself.
     for (const text of ["\u0000", "\ud800", "riba", "😀", "\u0001\u0007"]) {
       expect(isStorableText(text)).toBe(accepts(text));
     }
+    expect(isStorableText("")).toBe(true);
+    expect(accepts("")).toBe(false);
+    expect(isStorableText("a".repeat(CHAT_MESSAGE_MAX_LENGTH + 1))).toBe(true);
+    expect(accepts("a".repeat(CHAT_MESSAGE_MAX_LENGTH + 1))).toBe(false);
   });
 
   /**
@@ -171,20 +178,22 @@ describe("ChatRequestSchema message storability (#478)", () => {
     .map((length) => "a".repeat(length));
 
   /**
-   * The law, against an oracle that shares no code with the implementation: a
-   * message is admissible exactly when it is within the ceiling and survives a
-   * UTF-8 encode/decode round trip unchanged with no U+0000 in it — which is
-   * what "the store can hold it" means. A check that misses an unrepresentable
-   * class disagrees with the round trip and reddens here.
+   * The law, against an oracle that reads the store rather than the check: a
+   * message is admissible exactly when it is within the ceiling, its UTF-8
+   * bytes carry no 0x00, and those bytes decode back to the same text — which is
+   * what "the store can hold it" means, since `text` is stored in the database
+   * encoding. A check that misses an unrepresentable class disagrees with the
+   * bytes and reddens here.
    */
   fcTest.prop([fc.oneof(codeUnitsArb, lengthArb)])(
-    "admits exactly the NUL-free texts that round-trip through UTF-8 inside the ceiling",
+    "admits exactly the texts whose UTF-8 bytes are NUL-free and decode back unchanged",
     (text) => {
+      const encoded = new TextEncoder().encode(text);
       const storable =
         text.length >= 1 &&
         text.length <= CHAT_MESSAGE_MAX_LENGTH &&
-        !text.includes("\u0000") &&
-        new TextDecoder().decode(new TextEncoder().encode(text)) === text;
+        !encoded.includes(0) &&
+        new TextDecoder().decode(encoded) === text;
       expect(v.safeParse(ChatRequestSchema, { message: text }).success).toBe(storable);
     },
   );
@@ -195,7 +204,7 @@ describe("ChatRequestSchema message storability (#478)", () => {
     const sample = fc.sample(codeUnitsArb, { numRuns: 500, seed: 0x478 });
     expect(sample.some((text) => accepts(text))).toBe(true);
     expect(sample.some((text) => !accepts(text))).toBe(true);
-    expect(sample.some((text) => text.includes("\u0000"))).toBe(true);
+    expect(sample.some((text) => new TextEncoder().encode(text).includes(0))).toBe(true);
     expect(sample.some((text) => !isStorableText(text))).toBe(true);
   });
 });
