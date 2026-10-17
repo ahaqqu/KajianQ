@@ -194,9 +194,9 @@ export function dbLocation(url) {
 /**
  * True when two connection URLs name the same database, even when written
  * differently (default port omitted, postgresql:// scheme, other credentials
- * or query order). This is the `--target-url`-must-not-be-the-live-URL guard:
+ * or query order). This is the scratch-target-must-not-be-the-live-URL guard:
  * string equality would both miss an equal database written differently and
- * compare secrets. Used by kajianq-restore.mjs to refuse restoring over the
+ * compare secrets. Used by `resolveScratchTarget` to refuse restoring over the
  * live store (ADR-0043 decision 4).
  */
 export function isSameDatabase(a, b) {
