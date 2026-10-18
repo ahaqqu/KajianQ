@@ -1,8 +1,10 @@
-import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { refusedEntries } from "./entries.mjs";
 import { ContractsBarrelError } from "./errors.mjs";
-import { BARREL_FILE, SRC_DIR, moduleFiles } from "./tree.mjs";
+import { BARREL_FILE, moduleFiles } from "./tree.mjs";
+
+export { refusedEntries };
 
 /**
  * The contracts barrel gate: the values the runtime publishes, against the values
@@ -13,43 +15,58 @@ import { BARREL_FILE, SRC_DIR, moduleFiles } from "./tree.mjs";
  * it reads `undefined` while the suite stays green, and only `tsc` disagrees, one
  * gate later and in another tool. This gate closes that gap at the runtime: it
  * imports the barrel and every module in the tree and compares the names each
- * module binds with the names the barrel publishes.
+ * module binds with the names the barrel publishes, and the values behind them.
  *
- * `Object.keys` of a namespace is the set of names that have a runtime binding
- * after the module executes — what a consumer's import actually reads. A type, or a
- * value only declared, has no binding and is not in that set: a consumer's mistake
- * with one is a type error rather than an `undefined`, so the type checker judges
- * it and this gate does not claim it. Nothing is tokenised, so a module's syntax —
- * a regex, a template, a `debugger` statement, a `/` that opens a line — cannot
- * hide a binding from the loader that executes the module.
+ * A module is never read as text. `Object.keys` of its namespace is the set of
+ * names that have a runtime binding after it executes — what a consumer's import
+ * actually reads — so a module's syntax (a regex, a template, a `debugger`
+ * statement, a `/` that opens a line) cannot hide a binding from the loader. The
+ * barrel is the one file the runtime cannot check by itself, so its entries are
+ * read with the compiler's own scanner — comments are trivia and a template is one
+ * token — and a star or `export type` entry is refused: it publishes a name no line
+ * of the barrel reviews, and it is how a declared-only name gains a value binding
+ * that reads `undefined`.
  *
  * The rules, in the order a caller sees them; the first failing class is the one
- * reported, and its findings are listed together:
+ * reported, and its findings are listed together. A mistake that straddles two
+ * classes takes two runs to show both halves — a rename leaves both an unpublished
+ * origin and an unbound entry:
  *
+ *   - a star entry (`export *`, `export * as ns`) or an `export type` entry in the
+ *     barrel, with its line, since neither is a value entry this gate can verify;
  *   - a value a module binds and the barrel does not publish, with its module;
- *   - a name the barrel publishes that no module in the tree binds, with the
- *     entry, or with the loader's own message when the specifier resolves to
- *     nothing;
+ *   - a name the barrel publishes that no module in the tree binds, with the entry,
+ *     or with the loader's own message when the specifier resolves to nothing;
+ *   - a name the barrel publishes with a value no module binds under that name —
+ *     the entry's value must be the very value a module binds, so a phantom key
+ *     (`export { Absent } from "./mod"` where another module binds `Absent`) reads
+ *     `undefined` and reddens here;
  *   - a name two modules bind with values that are not the same object: one name
  *     must carry one value, so a re-export of the same object is one name and two
  *     different values under one name are a collision;
  *   - a module named in `INTERNAL_MODULES` whose value the barrel publishes anyway,
  *     with the recorded reason;
- *   - an `INTERNAL_MODULES` entry whose module the tree does not hold;
- *   - a star entry in the barrel (`export *`, `export * as ns`), with its line: it
- *     publishes whatever its module binds, so a name it adds is a member no line of
- *     this file reviewed, and a declared-only value keeps its type-level name and
- *     gains no binding — a consumer reads `undefined` while the gate is green. The
- *     barrel names its entries, one line each.
+ *   - an `INTERNAL_MODULES` entry whose module the tree does not hold.
  *
- * Three limits, stated so nothing is claimed past them: a type-only or declared-only
- * name has no runtime binding and is the type checker's to judge; a module that
- * throws on import is a refusal with its own error surfaced, and the gate executes
- * every module's top-level code, so a module that hangs hangs the gate; and a name
- * is published under the name its module binds — `export { x as y } from` publishes
- * `y` where it is written and leaves `x` unpublished at its origin, because the
- * runtime sees values and not specifiers, so a rename belongs at the origin or the
- * origin module belongs in `INTERNAL_MODULES`.
+ * Three limits, stated so nothing is claimed past them. A type-only or
+ * declared-only name has no runtime binding, and a consumer's value use of one is a
+ * type error, not an `undefined`: the type checker judges it, and this gate does not
+ * claim it — which is why the barrel still refuses a star entry, whose publish would
+ * hand such a name a value binding. A module that throws on import is a refusal with
+ * its own error surfaced, and the gate executes every module's top-level code, so a
+ * module that hangs hangs the gate. A name is published under the name its module
+ * binds: `export { x as y } from` publishes `y` where it is written and leaves `x`
+ * unpublished at its origin, a `default` export can only be published as `default`,
+ * and a rename belongs at the origin or the origin module belongs in
+ * `INTERNAL_MODULES`.
+ *
+ * The claim, exactly: every value a module under `packages/contracts/src` binds in
+ * `.ts`, `.tsx` or `.mts` is published by a barrel entry that names it, and every
+ * name the barrel publishes is bound by a module under that name — a star entry,
+ * an `export type` entry and a `.cts` module are outside what this gate judges, and
+ * since a star or type-only entry is refused rather than read, a type-only or
+ * declared-only name reaches a consumer as a type error, never as an `undefined`
+ * this gate missed.
  *
  * An exemption is a row in `INTERNAL_MODULES` — module path to reason — and it
  * grants the whole module at once, for as long as the row stands: exact, reviewable,
@@ -61,35 +78,6 @@ export const INTERNAL_MODULES = {
   "packages/contracts/src/trace-source-routing.ts":
     "composed into the TraceEvent union in ./trace-events.ts and spread into chat's trace frame in ./chat.ts — both publish the fields inline, so no consumer parses these schemas by name",
 };
-
-/** A barrel entry that publishes a module's name set instead of naming each one. */
-const STAR_ENTRY_RE = /^\s*export\s*\*\s*(?:as\s+[\w$]+\s*)?from\s*["']/;
-
-/** The barrel's star entries, with the line each sits on. */
-export function starEntries(root = process.cwd()) {
-  const path = join(root, BARREL_FILE);
-  let text;
-  try {
-    text = readFileSync(path, "utf8");
-  } catch (error) {
-    if (error?.code === "ENOENT") {
-      if (!existsSync(join(root, SRC_DIR))) {
-        throw new ContractsBarrelError(
-          `no ${SRC_DIR} under ${root}: there is no module tree for this gate to read`,
-        );
-      }
-      throw new ContractsBarrelError(
-        `no ${BARREL_FILE} under ${root}: the gate cannot read what it checks`,
-      );
-    }
-    throw new ContractsBarrelError(`${BARREL_FILE} cannot be read: ${error.message}`);
-  }
-  return text
-    .split("\n")
-    .flatMap((line, index) =>
-      STAR_ENTRY_RE.test(line) ? [{ line: index + 1, text: line.trim() }] : [],
-    );
-}
 
 /** One module's runtime namespace, refused rather than read as empty when it throws. */
 async function loadModule(root, file) {
@@ -120,8 +108,8 @@ export async function valueInventory(root = process.cwd(), { internal = INTERNAL
       reason: internal[file],
     });
   }
-  const barrel = Object.keys(await loadModule(root, BARREL_FILE));
-  return { modules, barrel, internal };
+  const barrelValues = await loadModule(root, BARREL_FILE);
+  return { modules, barrel: Object.keys(barrelValues), barrelValues, internal };
 }
 
 function providersOf(modules) {
@@ -159,6 +147,20 @@ export function unprovidedBarrelNames(inventory) {
   return inventory.barrel
     .filter((name) => !bound.has(name))
     .map((name) => ({ file: BARREL_FILE, name }));
+}
+
+/** Every name the barrel publishes with a value no module binds under that name. */
+export function unboundValues(inventory) {
+  const bound = providers(inventory);
+  return inventory.barrel.flatMap((name) => {
+    const list = bound.get(name) ?? [];
+    if (list.length === 0) return [];
+    if (list.some((module) => Object.is(module.values[name], inventory.barrelValues[name])))
+      return [];
+    return [
+      { name, value: inventory.barrelValues[name], modules: list.map((module) => module.file) },
+    ];
+  });
 }
 
 /** Every name two modules bind with values that are not the same object. */
@@ -234,6 +236,20 @@ function rules(inventory) {
         "\n  Add the export to its module, or drop the entry",
     },
     {
+      findings: () => unboundValues(inventory),
+      message: (found) =>
+        "name(s) the barrel publishes with a value no module binds under that name — the entry reads " +
+        "`undefined` while another module binds the name, so only `tsc` (TS2305) disagrees:\n  " +
+        found
+          .map(
+            (entry) =>
+              `${entry.name}: the barrel's is ${String(entry.value)}; ${entry.modules.join(", ")} ` +
+              `bind${entry.modules.length === 1 ? "s" : ""} it`,
+          )
+          .join("\n  ") +
+        "\n  point the entry at the module that binds the value, or drop it",
+    },
+    {
       findings: () => collidingNames(inventory),
       message: (found) =>
         "name(s) two modules bind with values that are not the same:\n  " +
@@ -266,14 +282,17 @@ export async function assertBarrelCoverage(
   root = process.cwd(),
   { internal = INTERNAL_MODULES } = {},
 ) {
-  const stars = starEntries(root);
-  if (stars.length > 0) {
+  const refused = refusedEntries(root);
+  if (refused.length > 0) {
     throw new ContractsBarrelError(
-      "a star entry in the barrel publishes whatever its module binds, so a name it adds is a member " +
-        "no line of this file reviewed, and a declared-only value keeps its type-level name and gains " +
-        "no binding — a consumer reads `undefined` while this gate is green:\n  " +
-        stars.map((entry) => `${BARREL_FILE}:${entry.line}: ${entry.text}`).join("\n  ") +
-        "\n  name each entry, one line per name",
+      "entry(s) in the barrel this gate cannot verify as values — a star entry publishes whatever its " +
+        "module binds, so a name it adds is a member no line of this file reviewed and a declared-only " +
+        "name gains a value binding that reads `undefined`, and an `export type` entry publishes no " +
+        "value at all:\n  " +
+        refused
+          .map((entry) => `${BARREL_FILE}:${entry.line}: ${entry.text} (${entry.reason})`)
+          .join("\n  ") +
+        "\n  name each value, one line per name",
     );
   }
   const inventory = await valueInventory(root, { internal });

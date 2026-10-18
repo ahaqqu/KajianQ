@@ -4,7 +4,8 @@
 // sees. A module the package does not publish is a row in `INTERNAL_MODULES` in
 // `scripts/contracts-barrel/policy.mjs` — module path to reason — and the row withholds the whole
 // module for as long as it stands: to publish it, export its names here and take the row out.
-// A star entry is refused, so every name this package publishes is named on a line of this file.
+// A star entry and an `export type` entry are refused, so every name this file publishes is named
+// on a line of it.
 export {
   HealthResponseSchema,
   HealthErrorSchema,

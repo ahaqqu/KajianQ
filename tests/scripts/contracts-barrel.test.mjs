@@ -9,8 +9,9 @@ import {
   assertBarrelCoverage,
   collidingNames,
   misdeclaredModules,
+  refusedEntries,
   staleDeclarations,
-  starEntries,
+  unboundValues,
   tally,
   unprovidedBarrelNames,
   unwiredMembers,
@@ -86,13 +87,15 @@ describe("the runtime is the truth: the barrel publishes what the tree exports",
       "export const Named = 1;\nexport declare const DeclaredOnly: number;\n",
       'export * from "./mod";\n',
     );
-    expect(starEntries(root)).toEqual([{ line: 1, text: 'export * from "./mod";' }]);
+    expect(refusedEntries(root)).toEqual([
+      { line: 1, text: 'export * from "./mod";', reason: "star" },
+    ]);
     const message = await assertBarrelCoverage(root, { internal: {} }).catch(
       (error) => error.message,
     );
-    expect(message).toMatch(/index\.ts:1: export \* from "\.\/mod";/);
-    expect(message).toMatch(/name each entry, one line per name/);
-    expect(message).toMatch(/declared-only value/);
+    expect(message).toMatch(/index\.ts:1: export \* from "\.\/mod"; \(star\)/);
+    expect(message).toMatch(/name each value, one line per name/);
+    expect(message).toMatch(/declared-only/);
   });
 
   it("refuses `export * as` too, since a namespace name is still one no line reviewed", async () => {
@@ -103,12 +106,56 @@ describe("the runtime is the truth: the barrel publishes what the tree exports",
     expect(message).toMatch(/index\.ts:1: export \* as mod from "\.\/mod";/);
   });
 
+  it("refuses a star entry written with an inline comment, which a line pattern cannot close", async () => {
+    // The formatter rewrites the spaced form into this one; only a scan of the
+    // barrel's tokens sees the star as a star.
+    const root = oneModule("export const Named = 1;\n", 'export * from /* types */ "./mod";\n');
+    expect(refusedEntries(root)).toEqual([
+      { line: 1, text: 'export * from /* types */ "./mod";', reason: "star" },
+    ]);
+    await expect(assertBarrelCoverage(root, { internal: {} })).rejects.toThrow(
+      /index\.ts:1: export \* from \/\* types \*\/ "\.\/mod"; \(star\)/,
+    );
+  });
+
+  it("does not read a star form in trivia or in a template as an entry", async () => {
+    const trivia = oneModule(
+      "export const Named = 1;\n",
+      '/* export * from "./decoy"; */\n// export * from "./decoy";\nexport { Named } from "./mod";\n',
+    );
+    expect(refusedEntries(trivia)).toEqual([]);
+    await expect(assertBarrelCoverage(trivia, { internal: {} })).resolves.toMatchObject({
+      members: 1,
+      published: 1,
+    });
+    const template = oneModule(
+      "export const Named = 1;\n",
+      'const note = `export * from "./decoy"`;\nexport { Named } from "./mod";\n',
+    );
+    expect(refusedEntries(template)).toEqual([]);
+  });
+
+  it("refuses an `export type` entry, which publishes no value at all", async () => {
+    const root = oneModule(
+      "export type Shape = { readonly a: string };\n",
+      'export type { Shape } from "./mod";\n',
+    );
+    expect(refusedEntries(root)).toEqual([
+      { line: 1, text: 'export type { Shape } from "./mod";', reason: "type-only" },
+    ]);
+    const message = await assertBarrelCoverage(root, { internal: {} }).catch(
+      (error) => error.message,
+    );
+    expect(message).toMatch(/\(type-only\)/);
+    expect(message).toMatch(/an `export type` entry publishes no value at all/);
+  });
+
   it("is green when the barrel names every value, which is the only form it accepts", async () => {
     const root = oneModule(
       "export const Named = 1;\nexport declare const DeclaredOnly: number;\n",
       'export { Named } from "./mod";\n',
     );
-    expect(starEntries(root)).toEqual([]);
+    expect(refusedEntries(root)).toEqual([]);
     await expect(assertBarrelCoverage(root, { internal: {} })).resolves.toMatchObject({
       members: 1,
       published: 1,
@@ -179,6 +226,40 @@ describe("the runtime is the truth: the barrel publishes what the tree exports",
     expect(message).toMatch(/one name must carry one value/);
   });
 
+  it("refuses a phantom key: the entry's value must be the value a module binds", async () => {
+    // `Absent` is bound by `other.ts`, but the entry points at `./mod`, so the barrel
+    // key is `undefined` while the name is bound somewhere — the union of names alone
+    // cannot see it, and only `tsc` disagrees on the entry.
+    const root = fixtureTree({
+      [`${SRC_DIR}/mod.ts`]: "export const Real = 1;\n",
+      [`${SRC_DIR}/other.ts`]: "export const Absent = 2;\n",
+      [BARREL_FILE]: 'export { Real } from "./mod";\nexport { Absent } from "./mod";\n',
+    });
+    const inventory = await valueInventory(root, { internal: {} });
+    expect(unboundValues(inventory)).toEqual([
+      { name: "Absent", value: undefined, modules: [`${SRC_DIR}/other.ts`] },
+    ]);
+    const message = await assertBarrelCoverage(root, { internal: {} }).catch(
+      (error) => error.message,
+    );
+    expect(message).toMatch(
+      /Absent: the barrel's is undefined; packages\/contracts\/src\/other\.ts binds it/,
+    );
+    expect(message).toMatch(/point the entry at the module that binds the value/);
+  });
+
+  it("keeps a re-export green, because the identity holds through it", async () => {
+    const root = fixtureTree({
+      [`${SRC_DIR}/mod.ts`]: "export const Real = 1;\n",
+      [`${SRC_DIR}/other.ts`]: 'export { Real } from "./mod";\n',
+      [BARREL_FILE]: 'export { Real } from "./other";\n',
+    });
+    await expect(assertBarrelCoverage(root, { internal: {} })).resolves.toMatchObject({
+      members: 1,
+      published: 1,
+    });
+  });
+
   it("refuses a renamed barrel entry too, naming the module's own name, not the alias", async () => {
     // The barrel binds `Renamed`, the module binds `Named`: there is no entry for
     // the name the module binds, so the finding is that name and the rename note.
@@ -190,7 +271,7 @@ describe("the runtime is the truth: the barrel publishes what the tree exports",
       (error) => error.message,
     );
     expect(message).toMatch(/mod\.ts: Named/);
-    expect(message).toMatch(/is published under the name its module binds/);
+    expect(message).toMatch(/rename at the origin instead/);
   });
 
   it("refuses a renamed re-export, because a value is published under the name its module binds", async () => {
@@ -261,11 +342,11 @@ describe("the runtime is the truth: the barrel publishes what the tree exports",
   });
 });
 
-describe("a statement the text scanners could not read cannot hide a value", () => {
+describe("a module's syntax cannot hide a value from the loader", () => {
   it("reads `debugger`, a type tail and a line-leading regex — green by construction", async () => {
-    // The shapes that defeated the text scanners: a statement ends the line before,
-    // and a `/` opens there. The loader reads the module's namespace, so both
-    // exports are keys regardless of what a tokeniser would have made of the line.
+    // A statement ends the line before and a `/` opens there; the loader reads the
+    // module's namespace, so both exports are keys whatever the line parses as.
+    // The wired tree is green; dropping one export reddens naming it.
     const source = [
       "export const first = 1;",
       "debugger",

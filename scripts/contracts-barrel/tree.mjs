@@ -9,11 +9,15 @@ import { ContractsBarrelError } from "./errors.mjs";
  * module file under `packages/contracts/src`, which is every file whose name ends
  * in `.ts`, `.tsx` or `.mts` — the ESM surface the barrel can name. Test files and
  * declaration files are not part of the package's value surface, and the barrel is
- * not a module the rules judge: it is what they judge against. A `.cts` module is
- * outside the universe because the package is ESM and a CommonJS namespace carries
- * a synthetic `default` that is the module object itself, so its names are not the
- * names a barrel entry can publish. A module outside the universe is a module
- * nothing judges, and that void is what a new file lands in.
+ * not a module the rules judge: it is what they judge against.
+ *
+ * A `.cts` module is outside the universe: it is a CommonJS file inside a
+ * `"type": "module"` package, so it is not part of the ESM surface the barrel
+ * names, and walking it would redden every run on the synthetic `default` binding
+ * the loader reports for the module object (the named keys do come through — it is
+ * that extra `default` that makes the module's name set unusable). The exclusion is
+ * a void: a barrel entry naming a `.cts` value is reported as unbound by the
+ * "no module binds it" rule, by design, since nothing walks that file.
  */
 
 export const SRC_DIR = "packages/contracts/src";
