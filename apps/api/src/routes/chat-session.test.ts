@@ -131,6 +131,40 @@ describe("GET /v1/chat/sessions/:id/messages", () => {
   });
 
   /**
+   * `chat_sessions.id` and `chat_messages.session_id` are uuid columns, whose
+   * cast is case-insensitive, and `isChatSessionId` admits either case — so an
+   * uppercase spelling of a session's own id names that session. Both store
+   * reads key by the column's canonical text: the owner lookup and the
+   * transcript read, so the row and its messages come back, not a 404.
+   */
+  it("rehydrates a session addressed by an UPPERCASE spelling of its id", async () => {
+    const { store, token } = await wiredStore();
+    const userId = (await runStoreEffect<string | null>(store.resolveUserId(token))) as string;
+    const sessionId = await runStoreEffect<string>(store.createChatSession({ userId }));
+    await runStoreEffect<string>(
+      store.insertChatMessage({
+        sessionId,
+        role: "user",
+        content: "Apa itu Ayat Kursi?",
+      }),
+    );
+
+    const res = await getMessages(token, sessionId.toUpperCase());
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      sessionId: string;
+      messages: { role: string; content: string }[];
+      truncated: boolean;
+    };
+    // The route echoes the path's spelling; the rows are the canonical session's.
+    expect(body.sessionId).toBe(sessionId.toUpperCase());
+    expect(body.truncated).toBe(false);
+    expect(body.messages.map((m) => [m.role, m.content])).toEqual([
+      ["user", "Apa itu Ayat Kursi?"],
+    ]);
+  });
+
+  /**
    * The same seam as the chat route's `sessionId`, with no body schema in
    * front of it: the id comes from `c.req.param("id")`, and the store's
    * `${id}::uuid` cast throws on anything that is not a UUID. The guard makes

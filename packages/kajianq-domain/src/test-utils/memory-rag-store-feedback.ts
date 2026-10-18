@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import { FEEDBACK_INITIAL_STATUS } from "@app/contracts";
 import type { AnswerFeedbackTarget, FeedbackInsert, RagStore } from "@app/infra";
+import { canonicalUuid } from "./memory-rag-store-uuid";
 
 /** Feedback methods of the in-memory RagStore, sharing the main factory's maps by reference. */
 export type MemoryFeedbackState = {
@@ -52,14 +53,15 @@ export function memoryFeedbackMethods(
     getAnswerFeedbackTarget(messageId) {
       return Effect.sync(() => {
         // Dual-id resolution: the id may be the trace's `message_id` (the live
-        // stream's meta) or a rehydrated chat row id — the Postgres adapter
-        // resolves both via OR.
+        // stream's meta; a TEXT column the adapter compares exactly) or a
+        // rehydrated chat row id (`chat_messages.id`, uuid-typed, so that OR arm
+        // casts and canonicalises case) — the Postgres adapter resolves both.
         let trace = state.traces.get(messageId);
         let owner = state.traceOwners.get(messageId) ?? null;
         let chatRow = undefined;
         let canonicalMessageId = messageId;
         if (trace === undefined) {
-          chatRow = state.chatMessages.get(messageId);
+          chatRow = state.chatMessages.get(canonicalUuid(messageId));
           const traceId = chatRow?.answerTraceId ?? null;
           if (traceId === null) return null;
           trace = state.traceRows.get(traceId);
