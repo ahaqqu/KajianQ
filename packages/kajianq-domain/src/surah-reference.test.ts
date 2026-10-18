@@ -153,10 +153,10 @@ describe("detectSurahReference — recognises a named reference", () => {
  * surah one maps to, reddens this file.
  *
  * `movedBy` is the entry's referent-moving negative: a longer phrase that
- * contains the entry's own words, whose qualifier moves the referent to a
- * different surah. It is not a bare-form revert (the entry with its complement
- * removed), which proves only that the phrase is not a bare form, not that a
- * qualifier cannot extend it.
+ * contains the entry's own words as a contiguous run, whose qualifier moves the
+ * referent to a different surah. It is not a bare-form revert (the entry with
+ * its complement removed), which proves only that the phrase is not a bare
+ * form, not that a qualifier cannot extend it.
  *
  * The table admits no entry, and the guard below is the structural veto: while
  * detection matches a padded phrase on normalized text, any negative carrying
@@ -176,8 +176,9 @@ const PINNED_DESCRIPTIONS: readonly PinnedDescription[] = [];
 /**
  * Descriptions a maintainer might admit, each beside the natural qualifier that
  * moves its referent to a different surah. They are residual, not entries: every
- * row's qualified phrase carries the base phrase's own words, and detection must
- * stay null on it — re-admitting a base phrase to the table reddens this pin.
+ * row's qualified phrase carries the base phrase's words as a contiguous run,
+ * and detection must stay null on it — re-admitting a base phrase to the table
+ * reddens this pin.
  */
 const REFERENT_MOVING_NEGATIVES: readonly Pick<PinnedDescription, "phrase" | "movedBy">[] = [
   {
@@ -187,6 +188,39 @@ const REFERENT_MOVING_NEGATIVES: readonly Pick<PinnedDescription, "phrase" | "mo
   {
     phrase: "the opening chapter of the quran",
     movedBy: ["the opening chapter of the quran in the order of revelation"],
+  },
+];
+
+/**
+ * True when `phrase`'s words appear in `text` as a contiguous run of whole
+ * words; both are already normalized, so splitting on the single space
+ * `normalizeSurahText` leaves is enough. The detector's description search
+ * matches a padded ` phrase ` on normalized text, so it matches whole words
+ * only — containment has to agree, or a negative like `caves` for `cave` counts
+ * as carrying the entry's words while the detector can never match it.
+ */
+function containsWordRun(text: string, phrase: string): boolean {
+  const words = text.split(" ").filter((word) => word !== "");
+  const run = phrase.split(" ").filter((word) => word !== "");
+  if (run.length === 0 || run.length > words.length) return false;
+  return words.some((_, start) => run.every((word, offset) => words[start + offset] === word));
+}
+
+/**
+ * Negatives the guard must refuse before it trusts a row: each carries its
+ * entry's words as a substring only, never as a contiguous word run, so the
+ * detector's padded search cannot match it and the row's null assertion would
+ * say nothing about the entry. Each row's `name` is the mutation it pins.
+ *
+ * The named mutation (`pluralTypo`): admit `the chapter of the cave` into the
+ * table and pin it with this negative as its `movedBy`; the guard reddens on the
+ * word-run assertion instead of trusting a negative the detector never matches.
+ */
+const WORD_ALIGNMENT_PROBES: readonly { name: string; phrase: string; movedBy: string }[] = [
+  {
+    name: "pluralTypo",
+    phrase: "the chapter of the cave",
+    movedBy: "the chapter of the caves in the hadith",
   },
 ];
 
@@ -208,21 +242,34 @@ describe("detectSurahReference — the curated description table", () => {
 
   it("vetoes every description entry until detection gains a boundary rule", () => {
     // The table admits no entry, so the same construction exercises the
-    // residual rows: every row's negative carries the row's own words, and
-    // detection must stay null on it. Applied to an entry, that null assertion
-    // is the structural veto — the padded phrase match on normalized text finds
-    // the entry inside its referent-moving negative and returns the entry's
-    // surah — so an entry added before the boundary rule reddens here. The
-    // residual rows pass because they are not in the table.
+    // residual rows: every row's negative carries the row's own words as a
+    // contiguous run, and detection must stay null on it. Applied to an entry,
+    // that null assertion is the structural veto — the padded phrase match on
+    // normalized text finds the entry inside its referent-moving negative and
+    // returns the entry's surah — so an entry added before the boundary rule
+    // reddens here. The residual rows pass because they are not in the table.
     const rows = [...PINNED_DESCRIPTIONS, ...REFERENT_MOVING_NEGATIVES];
     expect(rows.length).toBeGreaterThan(0);
     for (const entry of rows) {
       expect(entry.movedBy.length, entry.phrase).toBeGreaterThanOrEqual(1);
       const phrase = normalizeSurahText(entry.phrase);
       for (const moved of entry.movedBy) {
-        expect(normalizeSurahText(moved), `${entry.phrase} -> ${moved}`).toContain(phrase);
+        expect(
+          containsWordRun(normalizeSurahText(moved), phrase),
+          `${entry.phrase} -> ${moved}`,
+        ).toBe(true);
         expect(detectSurahReference(`Which is ${moved}?`), moved).toBeNull();
       }
+    }
+    for (const probe of WORD_ALIGNMENT_PROBES) {
+      const phrase = normalizeSurahText(probe.phrase);
+      const moved = normalizeSurahText(probe.movedBy);
+      // The entry is a substring of this negative but not a word run of it, so
+      // the detector can never match it: a substring containment check would
+      // trust the row for a reason unrelated to the entry.
+      expect(moved, probe.name).toContain(phrase);
+      expect(containsWordRun(moved, phrase), probe.name).toBe(false);
+      expect(detectSurahReference(`Which is ${probe.movedBy}?`), probe.name).toBeNull();
     }
   });
 
