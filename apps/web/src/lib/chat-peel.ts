@@ -83,11 +83,17 @@ function removeCanonicalCopies(text: string): string {
   return remainder;
 }
 
+/** True when `text` is nothing but occurrences of `line` separated by whitespace — a repeat
+ * of one line, whether space- or newline-separated. */
+function isOnlyRepeatsOf(text: string, line: string): boolean {
+  return text.includes(line) && text.replaceAll(line, "").trim() === "";
+}
+
 /** The one canonical copy `text` is made of, whitespace aside, or `null`. A repeat is still
- * one copy: both `copy copy` on a line and `copy\ncopy` in a paragraph qualify. */
+ * one copy: both `copy copy` on a line and `copy\ncopy` in a paragraph qualify. Two locales
+ * in one text match neither copy, so the card can never drop a literal it does not draw. */
 function copyOf(text: string): string | null {
-  const copies = canonicalCopiesIn(text);
-  return copies.length === 1 && removeCanonicalCopies(text).trim() === "" ? copies[0]! : null;
+  return CANONICAL_WARNINGS.find((copy) => isOnlyRepeatsOf(text, copy)) ?? null;
 }
 
 /** True when `line` is one of the product's own rule lines — the MT label or the
@@ -224,9 +230,11 @@ export function splitAnswerBlocks(text: string): SplitAnswer {
   // card draws — above the trailing run and among the rule paragraphs the walk
   // kept in the body. Peel the copy out wherever it sits: a sole-copy paragraph
   // goes entirely, and a paragraph whose remainder is product rule copy (the MT
-  // label, the disclaimer) keeps that remainder byte-identical in place. Prose
-  // that merely opens with a marker, or mixes the copy with the model's own
-  // words, is not that line and stays whole.
+  // label, the disclaimer) keeps that remainder byte-identical in place. A
+  // remainder that is only repeats of the footer's own disclaimer line goes too,
+  // because the footer draws that line once. Prose that merely opens with a
+  // marker, or mixes the copy with the model's own words, is not that line and
+  // stays whole.
   const body: string[] = [];
   for (const paragraph of [...paragraphs.slice(0, cut), ...kept.reverse()]) {
     const copy = splitCanonicalCopy(paragraph);
@@ -236,6 +244,11 @@ export function splitAnswerBlocks(text: string): SplitAnswer {
       body.push(paragraph);
     } else {
       warning = copy.copy;
+      // Needs a footer the walk already peeled: in the delivered shape that is the
+      // model's own closing disclaimer paragraph below the interleave (the
+      // postprocess adds no disclaimer when the draft carries "bukan fatwa"). A
+      // paraphrase that differs by a byte is the model's sentence and stays.
+      if (disclaimer !== null && isOnlyRepeatsOf(copy.remainder, disclaimer)) continue;
       if (copy.remainder !== "") body.push(copy.remainder);
     }
   }

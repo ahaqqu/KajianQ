@@ -272,3 +272,55 @@ describe("AnswerCard dhaif warning renders exactly once when the canonical line 
     expect(occurrences(text, WARNING_EN)).toBe(0);
   });
 });
+
+/**
+ * One trailing paragraph interleaves the canonical line with the disclaimer
+ * sentence. The copies are the card's line wherever they sit, and the repeated
+ * disclaimer sentences are the footer's own line — the model's closing disclaimer
+ * paragraph below the interleave draws it once — so the interleave is consumed
+ * by the two surfaces instead of being drawn in the body as well. A paraphrase
+ * that differs from the footer's line is the model's sentence and stays.
+ */
+describe("AnswerCard renders the interleaved copy + disclaimer paragraph once each (#365)", () => {
+  const INTERLEAVE = [WARNING_ID, DISCLAIMER, WARNING_ID, DISCLAIMER, WARNING_ID, DISCLAIMER].join(
+    " ",
+  );
+
+  it("renders one card and one footer — mutation: peel the copies, keep the interleaved disclaimers", () => {
+    const card = renderCard(["Jawaban awal.", INTERLEAVE, DISCLAIMER, MT].join("\n\n"), true);
+    const text = card.textContent ?? "";
+    expect(screen.getAllByTestId("dhaif-warning")).toHaveLength(1);
+    expect(screen.getAllByTestId("ulama-disclaimer")).toHaveLength(1);
+    expect(occurrences(text, WARNING_ID)).toBe(1); // the card, never the body too
+    expect(occurrences(text, DISCLAIMER)).toBe(1); // the footer, never the body too
+    expect(occurrences(text, "Jawaban awal.")).toBe(1);
+    expect(occurrences(text, MT)).toBe(1);
+  });
+
+  it("splits the boundary interleave: one copy + one disclaimer", () => {
+    const card = renderCard(
+      ["Jawaban awal.", `${WARNING_ID} ${DISCLAIMER}`, MT, DISCLAIMER].join("\n\n"),
+      true,
+    );
+    const text = card.textContent ?? "";
+    expect(screen.getAllByTestId("dhaif-warning")).toHaveLength(1);
+    expect(screen.getAllByTestId("ulama-disclaimer")).toHaveLength(1);
+    expect(occurrences(text, WARNING_ID)).toBe(1);
+    expect(occurrences(text, DISCLAIMER)).toBe(1);
+    expect(occurrences(text, "Jawaban awal.")).toBe(1);
+  });
+
+  it("keeps a paraphrase that differs from the footer's line (A2)", () => {
+    // Not the footer's bytes, so not a repeat the footer draws: the model's
+    // sentence stays in the body, beside the footer's own copy.
+    const other = "Jawaban ini bukan fatwa; silakan bertanya kepada ulama setempat.";
+    const interleave = [WARNING_ID, other, WARNING_ID, other].join(" ");
+    const card = renderCard(["Jawaban awal.", interleave, DISCLAIMER, MT].join("\n\n"), true);
+    const text = card.textContent ?? "";
+    expect(screen.getAllByTestId("dhaif-warning")).toHaveLength(1);
+    expect(screen.getAllByTestId("ulama-disclaimer")).toHaveLength(1);
+    expect(occurrences(text, WARNING_ID)).toBe(1);
+    expect(occurrences(text, other)).toBe(2); // the model's words stay, both copies
+    expect(occurrences(text, DISCLAIMER)).toBe(1); // the footer only
+  });
+});
