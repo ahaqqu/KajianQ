@@ -144,6 +144,14 @@ export function citationSpansIn(text: string): { start: number; end: number; lab
  * unseen. {@link stripInvisibleFormattingWithOffsets} carries the offset policy
  * that keeps each span pointing at where the draft wrote it.
  *
+ * **A marker's separator is a spelling axis, not a residual.** The hadith
+ * grammar admits the ASCII dot, the fullwidth full stop (U+FF0E), the ideographic
+ * full stop (U+3002) and any whitespace, and its tail stop admits the same set at
+ * the pattern's second site, so a marker spelling the scan accepts is never one a
+ * previous citation's tail swallows. The comparison fold maps every one of them
+ * onto `HR. `. The two residuals below are spellings that **omit** a separator,
+ * not spellings of it.
+ *
  * **Accepted residual.** Two spellings stay outside every grammar, so the scan
  * cannot see them at all and an answer carrying one is never judged — the
  * fail-open direction {@link CITATION_GRAMMARS} promises not to take. That

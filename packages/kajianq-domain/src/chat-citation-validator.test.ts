@@ -435,6 +435,10 @@ describe("validateCitations — grounded direction", () => {
     // `QS9:99` a reversal of the separator the grammar requires):
     expect(citationCandidatesIn("QS9:99")).toEqual([]);
     expect(citationCandidatesIn("HR. Bukhari no 99999")).toEqual([]);
+    // The hadith marker's fullwidth and ideographic stops are NOT this class: the
+    // grammar reads them and the fold maps them onto the corpus's form, so they
+    // are named and judged (the marker pin in `citationCandidatesIn`). These two
+    // residuals leave a separator out entirely, which no width of it covers.
     expect(validateCitations("QS9:99 menjelaskan", [chunk("QS. 2:255")])).toEqual({
       grounded: [],
       ungrounded: [],
@@ -1543,16 +1547,29 @@ describe("citationCandidatesIn", () => {
     expect(citationCandidatesIn(draft)).toEqual(["HR. Bukhari no. 4697"]);
   });
 
-  it("pins the hadith marker spelling at the start and at the tail stop (#526 B2)", () => {
+  it("pins the hadith marker spelling at the start and at the tail stop", () => {
     // The marker is spelled at two sites in one pattern — the grammar's start and
     // the tail stop — because the house rule is a literal regex (a constructed one
-    // is the ReDoS shape the security scan blocks). They are one rule: this pin
-    // reddens if either site is widened without the other, so the fail-open the
-    // stop closes cannot silently reopen.
-    const marker = String.raw`\bHR(?:\.|\s)`;
+    // is the ReDoS shape the security scan blocks). They are one rule: the same
+    // separator literal, and this pin reddens if either site is widened without
+    // the other, so the fail-open the stop closes cannot silently reopen.
+    const marker = String.raw`\bHR(?:[.．。]|\s)`;
     expect(CITATION_GRAMMARS[1]!.pattern().source.split(marker)).toHaveLength(3);
-    // The start admits a dot and any whitespace. Walk every printable ASCII
-    // separator and every `\s` code point, ask the start whether it admits the
+  });
+
+  it("keeps the tail stop in step with every marker spelling the start admits", () => {
+    // The start's separator set is the ASCII dot, the fullwidth (U+FF0E) and
+    // ideographic (U+3002) full stops, and any `\s` — which already carries the
+    // ideographic space U+3000. The two CJK stops are admitted, not optional, so
+    // dropping either from the start reddens here before the sweep below.
+    for (const separator of ["\uFF0E", "\u3002"]) {
+      expect(
+        citationCandidatesIn(`HR${separator}Muslim no. 999`),
+        JSON.stringify(separator),
+      ).toEqual(["HR. Muslim no. 999"]);
+    }
+    // Walk every printable ASCII separator, every `\s` code point and every
+    // separator the marker admits by width, ask the start whether it admits the
     // spelling, and require the tail stop to leave that spelling for the scan — a
     // widening to a new separator (a colon, say) reddens here instead of leaving
     // the tail to absorb it.
@@ -1570,6 +1587,8 @@ describe("citationCandidatesIn", () => {
       "\u205f",
       "\u3000",
       "\ufeff",
+      "\uFF0E",
+      "\u3002",
     ];
     const first = "HR. Ibn Majah no. 224";
     for (const casing of ["HR", "hr", "hR", "Hr"]) {
@@ -1586,6 +1605,98 @@ describe("citationCandidatesIn", () => {
         ]);
       }
     }
+  });
+});
+
+describe("the hadith marker's CJK punctuation (fullwidth and ideographic stops)", () => {
+  const retrieved = "HR. Ibn Majah no. 224";
+  const fabricated = "HR. Muslim no. 224";
+  const ticket = "参阅“HR．Muslim no. 224”，后者并不存在。";
+
+  it("names a fabricated citation whose marker is a fullwidth full stop (U+FF0E)", () => {
+    expect(citationCandidatesIn(ticket)).toEqual([fabricated]);
+    // The span still points at where the draft wrote the marker.
+    expect(citationSpansIn(ticket)[0]?.start).toBe(ticket.indexOf("HR．"));
+    expect(validateCitations(ticket, [chunk(retrieved)])).toEqual({
+      grounded: [],
+      ungrounded: [fabricated],
+    });
+  });
+
+  it("grounds the same fullwidth-marked citation when its address was retrieved", () => {
+    expect(validateCitations(ticket, [chunk(fabricated)])).toEqual({
+      grounded: [fabricated],
+      ungrounded: [],
+    });
+    // The marker's width and the spacing after it fold onto the corpus's form, so
+    // a grounded citation is not refused for the punctuation its prose carries.
+    expect(normalizeCitationLabel("HR．Muslim no. 224")).toBe(fabricated);
+    expect(normalizeCitationLabel("HR． Muslim no. 224")).toBe(fabricated);
+    expect(citationMatchText("Menurut HR．Muslim no. 224")).toContain(fabricated);
+    // The same address written with no space after the ASCII marker is one
+    // spelling too: the grammar reads it, so the fold leaves no false ungrounded.
+    expect(normalizeCitationLabel("HR.Muslim no. 224")).toBe(fabricated);
+  });
+
+  it("admits the ideographic full stop (U+3002) as the same marker spelling", () => {
+    const text = "参阅“HR。Muslim no. 224”，后者并不存在。";
+    expect(citationCandidatesIn(text)).toEqual([fabricated]);
+    expect(validateCitations(text, [chunk(retrieved)])).toEqual({
+      grounded: [],
+      ungrounded: [fabricated],
+    });
+    expect(validateCitations(text, [chunk(fabricated)])).toEqual({
+      grounded: [fabricated],
+      ungrounded: [],
+    });
+    // The ideographic space U+3000 is `\s`, so it was already a marker separator;
+    // the sweep above pins it beside the two stops.
+    expect(citationCandidatesIn("参阅“HR　Muslim no. 224”，后者并不存在。")).toEqual([fabricated]);
+  });
+
+  it("names every citation in a chain whose middle marker is fullwidth", () => {
+    const third = "HR. Bukhari no. 1";
+    const text = `参阅“${retrieved}”和“HR．Muslim no. 224”和“${third}”，后者并不存在。`;
+    expect(citationCandidatesIn(text)).toEqual([retrieved, fabricated, third]);
+    expect(validateCitations(text, [chunk(retrieved), chunk(third)])).toEqual({
+      grounded: [retrieved, third],
+      ungrounded: [fabricated],
+    });
+  });
+
+  it("reads a fullwidth full stop after the number as tail punctuation, not an address", () => {
+    // A fullwidth stop terminating the address is dropped by the grammar's
+    // address read: the number before it is the address, and it grounds on that.
+    const text = "参阅“HR. Bukhari no. 224．”，后者并不存在。";
+    expect(citationCandidatesIn(text)).toEqual(["HR. Bukhari no. 224"]);
+    expect(validateCitations(text, [chunk("HR. Bukhari no. 224")])).toEqual({
+      grounded: ["HR. Bukhari no. 224"],
+      ungrounded: [],
+    });
+    // The same stop between the number and the next marker is tail, and the next
+    // marker is still scanned as its own span.
+    const chained = "参阅“HR. Bukhari no. 224．”和“HR．Muslim no. 224”";
+    expect(citationCandidatesIn(chained)).toEqual(["HR. Bukhari no. 224", fabricated]);
+  });
+
+  it("keeps the no-space pair's second citation named with the fullwidth spelling", () => {
+    // The pair the tail stop exists for, with the second marker in the CJK
+    // spelling: the stop learns the same set as the start, so the second address
+    // is neither swallowed by the first tail nor passed silently.
+    const text = `参阅“${retrieved}”和“HR．Muslim no. 224”，后者并不存在。`;
+    expect(citationCandidatesIn(text)).toEqual([retrieved, fabricated]);
+    expect(validateCitations(text, [chunk(retrieved)])).toEqual({
+      grounded: [retrieved],
+      ungrounded: [fabricated],
+    });
+  });
+
+  it("does not admit other fullwidth punctuation as a marker separator", () => {
+    // The axis is the period's width, not every CJK punctuation mark: a fullwidth
+    // comma or colon between the marker and the collection is not the separator
+    // the grammar makes mandatory, so the span stays outside the scan.
+    expect(citationCandidatesIn("参阅“HR，Muslim no. 224”。")).toEqual([]);
+    expect(citationCandidatesIn("参阅“HR：Muslim no. 224”。")).toEqual([]);
   });
 });
 

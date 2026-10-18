@@ -660,7 +660,16 @@ describe("citationCandidatesIn — adjacent citations (#526)", () => {
     "”和“",
   ] as const;
   const FIRST = "HR. Ibn Majah no. 224";
-  const SECOND_FORMS = ["HR. Muslim no. 224", "HR Muslim no. 224", "HR. Bukhari no. 1"] as const;
+  const SECOND_FORMS = [
+    "HR. Muslim no. 224",
+    "HR Muslim no. 224",
+    // The marker's CJK spellings are forms of the same marker: the tail stop
+    // learns every separator the start admits, so a fullwidth-marked second
+    // citation has to be named exactly like the ASCII one.
+    "HR．Muslim no. 224",
+    "HR。Muslim no. 224",
+    "HR. Bukhari no. 1",
+  ] as const;
 
   it("finds the second citation whatever the no-space joiner, and never passes it silently", () => {
     const property = fc.property(
