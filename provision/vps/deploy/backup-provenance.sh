@@ -33,10 +33,11 @@
 #
 # What the record proves is the pair: the last completed run exited 0, and it
 # completed AFTER this unit's current definition was installed. A record older
-# than the unit file means the unit has never been exercised in its current
-# form — the "installed but never executed" state this check exists for. A box
-# whose installed bundle predates this writer cannot produce its first record by
-# starting the unit; it bootstraps once from the checkout (docs/VPS-SETUP.md).
+# than the unit file means no run has recorded itself since that install — the
+# "installed but not yet recorded" state this check exists for. It does not
+# prove the unit's ExecStart ran: on a box whose installed bundle predates this
+# writer, the first record comes from the checkout bootstrap, not the unit
+# (docs/VPS-SETUP.md).
 #
 # The install side keeps that mtime meaningful: apply.sh writes a config only
 # when the installed file differs, so a re-apply over unchanged content does not
@@ -166,6 +167,7 @@ fi
 if [ "${completed}" -lt "${installed}" ]; then
     refuse \
         "${UNIT} last completed BEFORE its current definition was installed" \
-        "this unit has never been exercised as installed — prove it as root: sudo systemctl start ${UNIT}"
+        "this unit has never been exercised as installed — prove it as root: sudo systemctl start ${UNIT}" \
+        "if the installed bundle predates the writer, bootstrap from the checkout: docs/VPS-SETUP.md §8"
 fi
 echo "deploy: backup unit healthy (last recorded run exited 0, after the current unit was installed)"

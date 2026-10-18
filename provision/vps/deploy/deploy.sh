@@ -131,9 +131,9 @@ STAGE="$(mktemp -d "${TMPDIR:-/tmp}/kajianq-deploy-XXXXXX")"
 trap 'rm -rf "${STAGE}"' EXIT
 
 # --- 0. preflight: the backup unit's provenance -----------------------------
-# The assertion is "kajianq-backup.service has been exercised as installed":
-# the job's durable provenance record says the last completed run exited 0 AND
-# completed after the unit's current definition was installed. Its logic, and
+# The assertion is "kajianq-backup.service has a completed backup recorded since
+# its current definition was installed": the job's durable provenance record says
+# the last completed run exited 0 AND completed after that install. Its logic, and
 # why the record rather than systemd's reboot-cleared runtime fields is the
 # evidence, live in provision/vps/deploy/backup-provenance.sh — piped over ssh,
 # so the file the tests execute against fixtures is the file that runs on the box.

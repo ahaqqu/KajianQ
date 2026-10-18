@@ -4,8 +4,9 @@
  * without running a backup.
  *
  * The record lives outside the deployed tree, under a root-owned directory: the
- * deploy identity reads it to prove the backup has been exercised, and cannot
- * write it. Only a root process can produce a record there.
+ * deploy identity reads it to prove the backup job has completed since the
+ * current unit was installed, and cannot write it. Only a root process can
+ * produce a record there.
  */
 import { chmodSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";

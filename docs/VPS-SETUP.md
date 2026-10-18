@@ -796,8 +796,10 @@ The deploy gates on all of these, and fails loudly on any of them:
   (`/var/lib/kajianq/backup-provenance`, root-owned and world-readable) says the
   last completed run exited 0 **and** completed after the unit file's own
   install time. The record survives a reboot, so a run that succeeded before one
-  still proves the unit; the install-time comparison catches a unit that was
-  installed but never executed.
+  still proves the backup job; the install-time comparison rejects a record
+  written before the unit's current definition. It does not by itself prove the
+  unit's `ExecStart` ran, because the documented first-record bootstrap writes
+  from the checkout.
 - the public URL answers `/v1/health`, mints an anonymous session, and serves
   `/chat` through the real proxy and TLS
 
@@ -809,15 +811,20 @@ run that next.
 > **Ordering trap.** `apply.sh` writes the unit only when the installed copy
 > differs, so re-running it over unchanged content leaves the unit file's mtime —
 > and the deploy's backup gate — alone. A **changed** unit definition does move
-> that mtime, and then the gate stays red until a backup runs again. Prove it
-> through the service: `sudo systemctl start kajianq-backup.service`.
+> that mtime, and then the gate stays red until a run after that install. Once
+> the deployed bundle has the writer, prove it through the service:
+> `sudo systemctl start kajianq-backup.service`. A box still on the pre-record
+> bundle bootstraps from the checkout instead (below).
 
 > **First record on a box whose installed bundle predates it.** The deploy ships
 > the writer, but the preflight runs before the ship, so starting the unit on a
 > box with no record yet would run the old `/srv/kajianq/api/backup.js` — the
-> pre-record bundle — and leave the gate red. Bootstrap once, on the box, in its
-> §5 checkout pulled to a commit at or after this change, as root (the checkout's
-> script has the writer; the deployed bundle does not yet):
+> pre-record bundle — and leave the gate red. The order on a transition box is
+> **pull → `apply.sh` → bootstrap → deploy**: `apply.sh` (§7) installs this unit
+> definition, and the bootstrap record must postdate that install. Bootstrap
+> once, on the box, in its §5 checkout pulled to a commit at or after this
+> change, as root (the checkout's script has the writer; the deployed bundle
+> does not yet):
 >
 > ```bash
 > cd /srv/kajianq-src   # the §5 checkout path; adjust if yours differs
@@ -828,9 +835,11 @@ run that next.
 > ```
 >
 > That is a real backup run; its root-owned record satisfies the gate, and a run
-> that is not root cannot write it. The deploy that ships this unit installs a
-> new definition, which moves the unit's mtime past the bootstrap record: start
-> the unit once after that deploy (or let 03:15 run) so later deploys are green.
+> that is not root cannot write it. Bootstrap **after** `apply.sh`, never before:
+> a record written first is older than the unit, and the stale-record refusal
+> cannot be cleared by `systemctl start` while the deployed bundle is still the
+> pre-record one. The deploy that follows ships the new bundle and does not touch
+> the unit's mtime.
 
 ---
 
@@ -987,9 +996,10 @@ either: `systemctl reset-failed` clears it to `success` while — on systemd 257
 — leaving `ExecMainStatus=1` behind, so a reset unit reports success about a
 failed run. The deploy's gate reads the job's durable record and asserts the
 **pair**: the last completed run exited 0 **and** completed after the unit
-file's install time. That second condition is the only thing that catches
-"installed but never executed", and the record — unlike these fields — survives
-a reboot.
+file's install time. That second condition rejects a record written before the
+unit's current definition; it does not by itself prove the unit's `ExecStart`
+ran, because the documented first-record bootstrap writes from the checkout. The
+record — unlike these fields — survives a reboot.
 
 The 30-day rolling window is enforced by the backup script's
 `restic forget --keep-daily 30 --prune` step on every run, not by the timer.

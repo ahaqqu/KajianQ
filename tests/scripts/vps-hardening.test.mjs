@@ -1388,8 +1388,19 @@ describe("provisioning config as code stays true to the ADR", () => {
     const prov = provenanceFixture();
     try {
       const setup = read("docs/VPS-SETUP.md");
-      expect(setup).toContain("provision/vps/backup/kajianq-backup.mjs");
-      expect(setup).toContain("--record /var/lib/kajianq/backup-provenance");
+      // Pin the whole documented command as one block, not each part anywhere in the doc: the
+      // restore section also names --env-file, so a per-part toContain stays green after the
+      // bootstrap loses that line. The order (apply.sh before this run) matters too: apply.sh
+      // installs the unit, so a record written first is stale and cannot be cleared by the
+      // pre-record deployed bundle.
+      expect(setup).toContain("> cd /srv/kajianq-src");
+      expect(setup).toContain(
+        "sudo bun provision/vps/backup/kajianq-backup.mjs \\\n" +
+          ">   --env-file /etc/kajianq/backup.env \\\n" +
+          ">   --label bootstrap \\\n" +
+          ">   --record /var/lib/kajianq/backup-provenance",
+      );
+      expect(setup).toContain("pull → `apply.sh` → bootstrap → deploy");
 
       const boot = backup.run();
       expect(boot.status, boot.stderr).toBe(0);
@@ -1449,6 +1460,10 @@ describe("provisioning config as code stays true to the ADR", () => {
       expect(stale.stderr).toContain("BEFORE its current definition was installed");
       expect(stale.stderr).toContain("never been exercised as installed");
       expect(stale.stderr).toContain("as root");
+      // On a transition box the stale record predates the unit that apply.sh just installed, and
+      // `systemctl start` still runs the pre-record bundle; the refusal must point at the checkout
+      // bootstrap instead of ending at that dead end.
+      expect(stale.stderr).toContain("bootstrap from the checkout");
     } finally {
       fx.cleanup();
     }
