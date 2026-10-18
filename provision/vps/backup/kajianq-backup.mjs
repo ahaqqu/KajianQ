@@ -98,7 +98,8 @@ function argAfter(flags, name) {
  * world-traversable, and the record is root-owned and world-readable: the
  * deploy identity can read a proof it cannot forge, and root can replace it.
  */
-const DEFAULT_RECORD = "/var/lib/kajianq/backup-provenance";
+const DEFAULT_RECORD_DIR = "/var/lib/kajianq";
+const DEFAULT_RECORD = `${DEFAULT_RECORD_DIR}/backup-provenance`;
 
 // Filled in by main() once the flags and identity are known; the exit handler
 // reads them when the process ends.
@@ -117,7 +118,11 @@ let recordEnabled = true;
 function writeRecord(status) {
   const dir = dirname(recordPath);
   mkdirSync(dir, { recursive: true, mode: 0o755 });
-  chmodSync(dir, 0o755);
+  // Only the production directory's world-traversable mode is part of the
+  // contract. A caller-supplied --record directory (the drill's /tmp, a test
+  // fixture) is left as its owner set it — chmodding it could weaken a shared
+  // directory the job does not own.
+  if (dir === DEFAULT_RECORD_DIR) chmodSync(dir, 0o755);
   const body = [
     `status=${status}`,
     `completed_at=${Math.floor(Date.now() / 1000)}`,

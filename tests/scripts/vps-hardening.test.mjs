@@ -1457,7 +1457,9 @@ describe("provisioning config as code stays true to the ADR", () => {
       // unprivileged user. The root ownership that makes it unforgeable is the unit's (it runs as
       // root), so only the modes are assertable here.
       expect(statSync(backup.record).mode & 0o777).toBe(0o644);
-      expect(statSync(backup.dir).mode & 0o777).toBe(0o755);
+      // The writer must not widen a caller-supplied --record directory: the drill points it at
+      // /tmp, and chmodding that would weaken a shared directory the job does not own.
+      expect(statSync(backup.dir).mode & 0o777).toBe(0o700);
 
       const failed = backup.run({ resticFail: true });
       expect(failed.status).toBe(1);
@@ -1504,9 +1506,10 @@ describe("provisioning config as code stays true to the ADR", () => {
     // The writer and the reader must name the same path, and it must not sit under the deploy
     // root: /srv/kajianq belongs to the deploy identity, so a root-owned record there could be
     // renamed away, and the shipped subdirectories are replaced with `rsync --delete`.
-    expect(backup).toMatch(/DEFAULT_RECORD = "\/var\/lib\/kajianq\/backup-provenance"/);
+    expect(backup).toMatch(/DEFAULT_RECORD_DIR = "\/var\/lib\/kajianq"/);
+    expect(backup).toMatch(/DEFAULT_RECORD = `\$\{DEFAULT_RECORD_DIR\}\/backup-provenance`/);
     expect(check).toMatch(/RECORD_FILE="\$\{2:-\/var\/lib\/kajianq\/backup-provenance\}"/);
-    expect(backup).not.toMatch(/DEFAULT_RECORD = "\/srv\/kajianq/);
+    expect(backup).not.toMatch(/DEFAULT_RECORD_DIR = "\/srv\/kajianq/);
     // apply.sh provisions the directory root-owned and traversable; the job writes the file
     // 0644, so the deploy identity can read a proof it cannot write.
     expect(apply).toMatch(/install -d -o root -g root -m 0755 \/var\/lib\/kajianq/);
