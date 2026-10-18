@@ -331,10 +331,11 @@ describe("POST /v1/chat", () => {
     spendCalls.length = 0;
 
     // `Cc` without U+0000 is storable, so it is not a rejected body: it reaches
-    // the route's content-free gate and is declined there. The answer cannot be
-    // fabricated for it — the fan-out is empty, so nothing is retrieved and the
-    // citation the stub writes has no evidence to ground on.
-    const { status, frames } = await postChat(token, { message: "\u0001\u0007" });
+    // the route's content-free gate and is declined there, with the canned copy
+    // and no provider call. Nothing could be generated for it either — the
+    // fan-out is empty, so nothing is retrieved and no citation has evidence to
+    // ground on.
+    const { status, frames, answer } = await postChat(token, { message: "\u0001\u0007" });
 
     expect(status).toBe(200);
     expect(frames.at(-1)?.event).toBe("done");
@@ -348,11 +349,16 @@ describe("POST /v1/chat", () => {
     const intent = trace?.events.find((e) => e.kind === "intent");
     expect(intent?.detail?.["attributes"]).toMatchObject({ fallback: true, contentFree: true });
     // No sub-query was admitted, so none is on the trace: the decline is the
-    // deterministic one, not a model route. The router was gated before its
-    // call, and the generator still ran — the declined route still answers.
+    // deterministic one, not a model route. Nothing reached a provider at all —
+    // the gate declines before the router's call, so no seam call is recorded.
     expect(trace?.events.filter((e) => e.kind === "subquery")).toEqual([]);
-    expect(spendCalls).not.toContain("router.generate");
-    expect(spendCalls.some((call) => call.startsWith("generator."))).toBe(true);
+    expect(spendCalls).toEqual([]);
+
+    const refusal = trace?.events.find((e) => e.kind === "refusal");
+    expect(refusal?.detail?.["trigger"]).toBe("content_free_decline");
+    const copy = "Mohon maaf, kami tidak menemukan pertanyaan pada pesan Anda.";
+    expect(answer).toBe(copy);
+    expect(store.allChatMessages().find((m) => m.role === "assistant")?.content).toBe(copy);
   }, 15000);
 
   it("accepts a message exactly at the ceiling (2,000) and runs the pipeline", async () => {
