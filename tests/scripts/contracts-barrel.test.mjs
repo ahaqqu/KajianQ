@@ -679,6 +679,83 @@ describe("a construct the scanner cannot resolve is refused, not guessed", () =>
     ]);
   });
 
+  it("reads a prefix `!` after `else`, after `do`, and at the start of a file", () => {
+    // A `!` is read through to what precedes it, so the three positions where a
+    // statement begins all open a regex — and its `/*` blanks nothing.
+    const cases = [
+      [
+        "declare const a: boolean;",
+        "export const first = 1;",
+        'if (a) {} else !/\\/*x/.test("x");',
+        "export const second = 2;",
+        "/** closes the prose */",
+      ],
+      [
+        "declare const a: boolean;",
+        "export const first = 1;",
+        'do !/\\/*x/.test("x"); while (a);',
+        "export const second = 2;",
+        "/** closes the prose */",
+      ],
+      [
+        '!/\\/*x/.test("x");',
+        "export const first = 1;",
+        "export const second = 2;",
+        "/** closes the prose */",
+      ],
+      [
+        "/** prose */",
+        '!/\\/*x/.test("x");',
+        "export const first = 1;",
+        "export const second = 2;",
+      ],
+    ];
+    for (const lines of cases) {
+      expect(names(moduleSurface(`${lines.join("\n")}\n`, "regex.ts"))).toEqual([
+        "first",
+        "second",
+      ]);
+    }
+  });
+
+  it("reads a `for await` header's `)`, which starts a statement like a `for` header's", () => {
+    const lines = [
+      "declare const y: AsyncIterable<number>;",
+      "export const first = 1;",
+      "for await (const x of y) /\\/*x/.test(String(x));",
+      "for await (const x of y) !/\\/*x/.test(String(x));",
+      "export const second = 2;",
+      "/** closes the prose */",
+    ];
+    expect(names(moduleSurface(`${lines.join("\n")}\n`, "regex.ts"))).toEqual(["first", "second"]);
+  });
+
+  it("decides a reserved word by its position: `default` opens one, a property name ends one", () => {
+    // `export default /…/` is an expression after the keyword; `obj.return / 2`
+    // is a division after a property name, so the token's position settles it.
+    expect(
+      names(moduleSurface("export default /\\/*x/;\nexport const first = 1;\n", "regex.ts")),
+    ).toEqual(["default", "first"]);
+    const property = [
+      "declare const obj: { return: number };",
+      "export const first = 1;",
+      "const half = obj.return / 2;",
+    ].join("\n");
+    expect(names(moduleSurface(`${property}\n`, "regex.ts"))).toEqual(["first"]);
+  });
+
+  it("refuses `of`, which is a keyword in one reading and a variable in another", () => {
+    const source = [
+      "declare const of: number;",
+      "export const first = 1;",
+      "const half = of / 2;",
+      "export const hidden = 4 / 3;",
+    ].join("\n");
+    const message = refusal(() => moduleSurface(`${source}\n`, "regex.ts"));
+    expect(message).toMatch(/regex\.ts:3/);
+    expect(message).toMatch(/`of` is a keyword in one reading and an identifier in another/);
+  });
+
   it("reads `value! / 2` as division: a non-null assertion cannot precede a regex", () => {
     const source = ["declare const value: number | null;", "const half = value! / 2;"].join("\n");
     expect(names(moduleSurface(`export const first = 1;\n${source}\n`, "regex.ts"))).toEqual([

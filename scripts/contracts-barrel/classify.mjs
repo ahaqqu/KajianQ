@@ -27,8 +27,9 @@ const DECLARATION_BODY_RE = /(?:\b(?:namespace|module)\b[\s\w$."']*|\bdeclare\s+
  * read, a `nested` one inside a block, or `quoted` text inside a string or
  * template. Enumerating all three is what keeps "not a statement" from becoming
  * "not looked at": each keyword lands in exactly one list, and a nested one says
- * whether the block it sits in is a `namespace`/`module` body — the only
- * construct in which an export keyword is legal off the statement position.
+ * whether the block it sits in is a `namespace`/`module` body or a `declare global`
+ * block — the constructs in which an export keyword is legal off the statement
+ * position.
  *
  * The walk also reports the bracket accounting it used, because depth is what
  * decides statement from nested: `open` is every opener still unclosed at the end
