@@ -552,12 +552,29 @@ describe("staging.yml: the attribution must not weaken the gate", () => {
     expect(zap).not.toMatch(/fail_action: false/);
   });
 
-  it("gives the scan step no conditional, no continue-on-error and no fallback", () => {
+  it("lets nothing but cancellation skip the scan: no continue-on-error, no fallback", () => {
     const zap = stepBlock("ZAP baseline");
-    expect(zap).not.toMatch(/^\s*if:/m);
+    // The only conditional runs the scan MORE, never less: an earlier failure
+    // (a red Golden Set smoke) must not skip it. The scan still fails the job
+    // on findings — the `fail_action: true` above is the gate.
+    expect(zap).toMatch(/^\s*if: \$\{\{ !cancelled\(\) \}\}$/m);
     expect(zap).not.toMatch(/continue-on-error/);
     expect(zap).not.toMatch(/\|\|\s*true/);
     expect(zap).not.toMatch(/\|\|\s*echo/);
+  });
+
+  it("keeps the smoke blocking, but does not let a red smoke skip the DAST steps (A2)", () => {
+    // The smoke step itself stays unconditional and blocking: it fails the job.
+    const smoke = stepBlock("Golden Set smoke");
+    expect(smoke).not.toMatch(/^\s*if:/m);
+    expect(smoke).not.toMatch(/continue-on-error/);
+    // DAST is its own gate: the post-deploy checks after the smoke run even
+    // when it is red, and the job still ends red on the smoke's failure.
+    for (const name of ["ZAP image pre-pull", "ZAP baseline", "Schemathesis fuzz"]) {
+      expect(stepBlock(name), `${name} must not be skipped by an earlier failure`).toMatch(
+        /^\s*if: \$\{\{ !cancelled\(\) \}\}$/m,
+      );
+    }
   });
 
   it("swallows nothing anywhere in the workflow", () => {
@@ -568,7 +585,9 @@ describe("staging.yml: the attribution must not weaken the gate", () => {
 
   it("confines the diagnostic fallback to the attribution step, which only runs on failure", () => {
     const attribution = stepBlock("ZAP failure attribution");
-    expect(attribution).toMatch(/^\s*if: failure\(\) && \(steps\.zap\.outcome == 'failure'/m);
+    expect(attribution).toMatch(
+      /^\s*if: \$\{\{ !cancelled\(\) && failure\(\) && \(steps\.zap\.outcome == 'failure'/m,
+    );
     // The fallback exists so the summary is never silently empty, on the
     // diagnostic step only.
     expect(attribution).toMatch(/\|\| \\\n/);
@@ -590,7 +609,7 @@ describe("staging.yml: the attribution must not weaken the gate", () => {
   it("ships the container logs as a pinned artifact, on failure only", () => {
     const upload = stepBlock("Upload ZAP failure diagnostics");
     expect(upload).toMatch(/uses: actions\/upload-artifact@[0-9a-f]{40} # v\d/);
-    expect(upload).toMatch(/^\s*if: failure\(\)/m);
+    expect(upload).toMatch(/^\s*if: \$\{\{ !cancelled\(\) && failure\(\)/m);
     expect(upload).toMatch(/path: zap-failure\//);
     expect(upload).toMatch(/retention-days: 14/);
   });

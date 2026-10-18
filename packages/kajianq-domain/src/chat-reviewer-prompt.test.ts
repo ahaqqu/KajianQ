@@ -16,10 +16,11 @@ import { REVIEWER_SYSTEM_PROMPT } from "./chat-reviewer";
  *
  * 2. Inflated refusals (SPECS §3.4 cost posture): the anti-over-fail
  *    guarantees — translating/quoting/citation labels are required behavior,
- *    and a term the QUESTION itself uses is not an unsupported claim — are what
- *    keep the gate from failing legitimate grounded answers. Deleting or
- *    weakening them while editing the prompt would flip whole Golden Set runs
- *    to refusals, again with no test failing.
+ *    a term the QUESTION itself uses is not an unsupported claim, and a
+ *    comparison answered from the evidence is not a decline — are what keep
+ *    the gate from failing legitimate grounded answers. Deleting or weakening
+ *    them while editing the prompt would flip whole Golden Set runs to
+ *    refusals, again with no test failing.
  *
  * So this file pins the fail case, its narrowness, and the protections — on the
  * prompt itself, not a copy of it. The refusal vocabulary those criteria feed
@@ -68,7 +69,7 @@ describe("the reviewer's decline-to-answer fail case", () => {
   });
 });
 
-describe("the reviewer's anti-over-fail guarantees (unchanged)", () => {
+describe("the reviewer's anti-over-fail guarantees", () => {
   it("still makes translation, quoting, and citation labels required behavior, never a fail", () => {
     expect(prompt).toContain(
       "Translating a quoted passage into the answer's language, quoting it, and naming the citation labels the evidence itself carries are REQUIRED of the answer and are never grounds for failure",
@@ -80,6 +81,19 @@ describe("the reviewer's anti-over-fail guarantees (unchanged)", () => {
       "Using a term the QUESTION itself uses for a passage the evidence contains",
     );
     expect(prompt).toContain("is not an unsupported claim");
+  });
+
+  it("still exempts a comparison answered from what the evidence states", () => {
+    // The decline case covers "a ruling on a specific case"; without this
+    // exemption a correct comparison answer (no explicit ranking in the
+    // evidence) can be re-refused at review even though the generator answered.
+    expect(prompt).toContain(
+      "A draft that answers a comparison, or a request for the most excellent option, from what the evidence states about the things compared is answering, not declining",
+    );
+    expect(prompt).toContain(
+      "the absence of an explicit ranking in the evidence is not an absent fact",
+    );
+    expect(prompt).toContain("is not required to supply a ranking the evidence does not state");
   });
 
   it("still fixes the reply contract: ONLY JSON, pass|fail, with a reason", () => {

@@ -22,9 +22,9 @@ name: Staging
 # ingest skipped the smoke entirely, spending money and producing no evidence
 # for it.
 #
-# A red Golden Set smoke deliberately stops `post deploy checks`: `ZAP baseline`
-# and `Schemathesis fuzz` do not run after it — not an oversight but the accepted
-# trade of #360 (two extra job starts to scan an unhealthy deployment, declined).
+# A red Golden Set smoke fails `post deploy checks` but does not skip the DAST
+# steps: `ZAP baseline` and `Schemathesis fuzz` run regardless — independent
+# gates — and the job still ends red on the smoke.
 on:
   push:
     branches: [main]
@@ -178,7 +178,7 @@ jobs:
         with:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
-      # The PR-time behavioural gate (SPECS §3.7, ticket #10): a deterministic
+      # The deployed behavioural gate (SPECS §3.7, ticket #10): a deterministic
       # stratified slice of the Golden Set — refusal, dhaif trap, English, and
       # Indonesian cases — answered by the *deployed* API and scored from its
       # persisted answer traces through the same harness and ledger as eval:run.
@@ -255,6 +255,12 @@ jobs:
         # was the opposite of that: it keeps the BOTTOM of the log, so once a
         # widened subset pushed the log past 60 lines, the counts and means this
         # block opens with were the lines clipped away.)
+        # Triage rule: a Staging red whose only failed step is this smoke, and
+        # whose only failed case is gs-v0-018, is the known sampled-model
+        # residual (#516) — the gate still deployed, the DAST steps still ran,
+        # and the release decision reads the smoke's other cases against the
+        # previous build. Any other failed case, or gs-v0-018 failing alongside
+        # others, is not triaged.
         run: |
           set -uo pipefail
           bun run eval:smoke 2>&1 | tee /tmp/eval-smoke.log
@@ -286,15 +292,19 @@ jobs:
           EVAL_SMOKE_SIZE: ${{ github.event.inputs.eval_smoke_size || '5' }}
           EVAL_RUN_LABEL: staging-smoke-${{ github.sha }}
       # The image is prepared in its own step so a registry or image failure is
-      # attributed BEFORE the scan: this step goes red by name, the scan never
-      # runs, and "did the site regress?" is not even a possible reading. The
-      # action's own `docker pull` then hits the local cache — no second
-      # download. The pre-scan container list is snapshotted here for the
-      # classifier below, which identifies the scan's container from the
-      # difference when `docker ps --filter ancestor` does not resolve a digest
-      # reference on the runner.
+      # attributed BEFORE the scan: this step goes red by name and the
+      # attribution below names the pre-pull class, so "did the site regress?"
+      # is not a possible reading even though the scan still runs as an
+      # independent gate. The action's own `docker pull` then hits the local
+      # cache — no second download. The pre-scan container list is snapshotted
+      # here for the classifier below, which identifies the scan's container
+      # from the difference when `docker ps --filter ancestor` does not resolve a
+      # digest reference on the runner.
       - name: ZAP image pre-pull
         id: zap-image
+        # The post-deploy gates are independent: an earlier failure must not
+        # skip the DAST steps, and the job still ends red on that failure.
+        if: ${{ !cancelled() }}
         run: |
           set -euo pipefail
           mkdir -p zap-failure
@@ -312,6 +322,7 @@ jobs:
           esac
       - name: ZAP baseline
         id: zap
+        if: ${{ !cancelled() }}
         uses: zaproxy/action-baseline@de8ad967d3548d44ef623df22cf95c3b0baf8b25 # v0.15.0
         with:
           target: ${{ vars.VPS_PUBLIC_URL }}
@@ -336,7 +347,7 @@ jobs:
       # step only: the scan above keeps `fail_action: true` and has no fallback
       # of any kind.
       - name: ZAP failure attribution
-        if: failure() && (steps.zap.outcome == 'failure' || steps.zap-image.outcome == 'failure')
+        if: ${{ !cancelled() && failure() && (steps.zap.outcome == 'failure' || steps.zap-image.outcome == 'failure') }}
         env:
           ZAP_IMAGE_OUTCOME: ${{ steps.zap-image.outcome }}
           ZAP_SCAN_OUTCOME: ${{ steps.zap.outcome }}
@@ -345,7 +356,7 @@ jobs:
           bun scripts/zap-failure-attribution.mjs >> "$GITHUB_STEP_SUMMARY" || \
             echo "### ZAP baseline attribution — unavailable (the classifier itself failed; the step log above is the evidence)" >> "$GITHUB_STEP_SUMMARY"
       - name: Upload ZAP failure diagnostics
-        if: failure() && (steps.zap.outcome == 'failure' || steps.zap-image.outcome == 'failure')
+        if: ${{ !cancelled() && failure() && (steps.zap.outcome == 'failure' || steps.zap-image.outcome == 'failure') }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: zap-failure-diagnostics
@@ -356,6 +367,7 @@ jobs:
           # artifact holds no personal data — the cap is posture, not exposure.
           retention-days: 14
       - name: Schemathesis fuzz
+        if: ${{ !cancelled() }}
         # schemathesis.toml suppresses unsupported_method (an intermediary may
         # return 405 without an Allow header — not our app's behavior). See the
         # config file for the justification comment.

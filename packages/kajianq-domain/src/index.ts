@@ -156,6 +156,7 @@ export {
   isPrincipleTag,
   isSubjectArea,
   PRINCIPLE_TAGS,
+  SMOKE_COVERAGE_TAGS,
   SUB_QUERY_ORIGINS,
   SUB_QUERY_ROLES,
   SUBJECT_AREAS,
