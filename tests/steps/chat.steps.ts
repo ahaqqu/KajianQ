@@ -186,27 +186,50 @@ let chatPostBodies: string[] = [];
  */
 let clampedDraft = "";
 
+/**
+ * The held reconnect refetch a scenario releases once the turn has streamed.
+ * Module scope because a scenario's When and Then steps share it and the suite
+ * runs scenarios sequentially (`fullyParallel: false`).
+ */
+let heldTranscriptRoute: import("@playwright/test").Route | null = null;
+
 /** Intercept auth + chat endpoints with fixtures, then open the app.
  *
  * `rehydrateStatus` mirrors the rehydration endpoint's documented answer for the
  * scenario's stored session id: 200 with a transcript, or the 404 the API answers
  * for a session it does not have — unknown, foreign, or unrepresentable.
+ *
+ * `holdReconnect` answers the first rehydration request with a 500 so the query
+ * has no data and is therefore stale, then holds the reconnect refetch until the
+ * scenario releases it.
  */
 async function openChatWithFixtures(
   page: import("@playwright/test").Page,
   answerFixture: string,
   transcriptFixture: Record<string, unknown> = TRANSCRIPT_FIXTURE,
   rehydrateStatus = 200,
+  holdReconnect = false,
 ): Promise<void> {
   chatPosts = 0;
   chatPostBodies = [];
   clampedDraft = "";
+  heldTranscriptRoute = null;
+  let transcriptRequests = 0;
   await page.route("**/v1/auth/anonymous", (route) => route.fulfill({ json: SESSION }));
-  await page.route("**/v1/chat/sessions/*/messages", (route) =>
-    rehydrateStatus === 200
+  await page.route("**/v1/chat/sessions/*/messages", async (route) => {
+    if (holdReconnect) {
+      transcriptRequests += 1;
+      if (transcriptRequests === 1) {
+        await route.fulfill({ status: 500, json: { error: "internal" } });
+        return;
+      }
+      heldTranscriptRoute = route;
+      return;
+    }
+    await (rehydrateStatus === 200
       ? route.fulfill({ json: transcriptFixture })
-      : route.fulfill({ status: rehydrateStatus, json: { error: "invalid_request" } }),
-  );
+      : route.fulfill({ status: rehydrateStatus, json: { error: "invalid_request" } }));
+  });
   await page.route("**/v1/chat", async (route) => {
     chatPosts += 1;
     chatPostBodies.push(route.request().postData() ?? "");
@@ -337,6 +360,57 @@ Then("the outgoing chat POST carries no session id", async () => {
   const body = JSON.parse(chatPostBodies[0] ?? "{}") as { sessionId?: string };
   // Absent — a new session is minted server-side — never the malformed value.
   expect(body.sessionId).toBeUndefined();
+});
+
+/**
+ * A rehydration request that starts after the initial load failed is stale by
+ * the time it lands: it was fetched before the turn's write, so applying it
+ * would replace the streamed answer with the pre-turn history. The harness
+ * fails the first load, then holds the reconnect refetch while a turn streams.
+ */
+When(
+  "I open a chat whose transcript load failed and hold its reconnect refetch",
+  async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem("kajianq.chat.sessionId", "sess-e2e");
+    });
+    await openChatWithFixtures(page, ANSWER_FIXTURE, undefined, 200, true);
+    await expect(page.getByTestId("chat-error")).toBeVisible();
+  },
+);
+
+When("I ask a question while the reconnect refetch is held", async ({ page }) => {
+  await page.getByTestId("composer").fill("Apa itu ayat kursi?");
+  await page.getByTestId("send").click();
+  // Go offline then online while the turn is streaming: the errored transcript
+  // query is stale, so the reconnect refetches it; the route holds that request.
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event("offline"));
+    window.dispatchEvent(new Event("online"));
+  });
+  // The live stream renders while the refetch is still pending.
+  await expect(page.getByTestId("message-assistant").last()).toContainText(
+    "sebagaimana firman-Nya",
+  );
+});
+
+When("the held reconnect refetch arrives with the pre-turn history", async ({ page }) => {
+  const held = heldTranscriptRoute;
+  if (held === null) throw new Error("the reconnect refetch was never held");
+  await held.fulfill({ json: { ...TRANSCRIPT_FIXTURE, truncated: true } });
+  heldTranscriptRoute = null;
+  // The capped-history card proves the held response rendered, and the settle
+  // lets its apply effect run before the next step reads the transcript.
+  await expect(page.getByTestId("transcript-truncated")).toBeVisible();
+  await page.waitForTimeout(250);
+});
+
+Then("the streamed answer remains in the transcript", async ({ page }) => {
+  await expect(page.getByTestId("message-user")).toHaveCount(1);
+  const assistant = page.getByTestId("message-assistant").last();
+  // The live stream's wording, which the pre-turn transcript's answer lacks.
+  await expect(assistant).toContainText("sebagaimana firman-Nya");
+  await expect(assistant.getByTestId("citation-chip")).toHaveText("[QS. 2:255]");
 });
 
 When("I open the chat and paste a message longer than the ceiling", async ({ page }) => {

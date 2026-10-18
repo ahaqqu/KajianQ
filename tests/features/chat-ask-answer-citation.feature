@@ -78,6 +78,15 @@ Feature: Chat — ask, answer, citations, warnings, disclaimer
     And reloading restores the full transcript
     And the Trace panel is available from the rehydrated transcript
 
+  # A rehydration request that begins after the initial load failed is stale by
+  # the time it lands: it was fetched before the turn's write, so applying it
+  # would replace the streamed answer with the pre-turn history.
+  Scenario: A held reconnect transcript never replaces the streamed answer
+    When I open a chat whose transcript load failed and hold its reconnect refetch
+    And I ask a question while the reconnect refetch is held
+    And the held reconnect refetch arrives with the pre-turn history
+    Then the streamed answer remains in the transcript
+
   Scenario: Expanding the Trace lists the sources consulted in plain language
     When I open the chat and ask about ayat kursi
     And the answer renders with a citation chip
