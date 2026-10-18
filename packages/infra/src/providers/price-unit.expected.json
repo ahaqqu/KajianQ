@@ -6,7 +6,6 @@
   "gemini-paid:gemini-embedding-001": { "in": 200000, "out": 0 },
   "gemini-paid:gemini-embedding-2": { "in": 200000, "out": 0 },
   "qwen:qwen3.7-max": { "in": 2500000, "out": 7500000 },
-  "qwen:qwen3-max": { "in": 780000, "out": 3900000 },
-  "deepseek:deepseek-v4-flash": { "in": 140000, "out": 280000 },
+  "deepseek:deepseek-v4-flash": { "in": 300000, "out": 1200000 },
   "typesafe:jev-1.13.0": { "in": 42000, "out": 0 }
 }
