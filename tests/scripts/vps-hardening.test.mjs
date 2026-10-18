@@ -300,8 +300,24 @@ exit 0`,
   return {
     dir,
     record,
-    run: ({ resticFail = false, interrupt = false, observeRecord = "" } = {}) =>
-      spawnSync(
+    run: ({ resticFail = false, interrupt = false, observeRecord = "" } = {}) => {
+      // No systemd invocation marker: the writer's authority is the root-owned directory, not an
+      // environment variable. Stripping it here also keeps the bootstrap test honest on a runner
+      // that happens to be started by systemd.
+      const env = {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH}`,
+        PGDATABASE_URL: "postgres://stub:stub@127.0.0.1:5432/kajianq",
+        RESTIC_REPOSITORY: join(dir, "repo"),
+        RESTIC_PASSWORD_FILE: passFile,
+        TMPDIR: dir,
+        STUB_RECORD_FILE: record,
+        STUB_OBSERVE_RECORD: observeRecord,
+        STUB_RESTIC_FAIL: resticFail ? "1" : "0",
+        STUB_RESTIC_INTERRUPT: interrupt ? "1" : "0",
+      };
+      delete env.INVOCATION_ID;
+      return spawnSync(
         process.execPath,
         [
           resolve(process.cwd(), "provision/vps/backup/kajianq-backup.mjs"),
@@ -310,22 +326,9 @@ exit 0`,
           "--record",
           record,
         ],
-        {
-          encoding: "utf8",
-          env: {
-            ...process.env,
-            PATH: `${bin}:${process.env.PATH}`,
-            PGDATABASE_URL: "postgres://stub:stub@127.0.0.1:5432/kajianq",
-            RESTIC_REPOSITORY: join(dir, "repo"),
-            RESTIC_PASSWORD_FILE: passFile,
-            TMPDIR: dir,
-            STUB_RECORD_FILE: record,
-            STUB_OBSERVE_RECORD: observeRecord,
-            STUB_RESTIC_FAIL: resticFail ? "1" : "0",
-            STUB_RESTIC_INTERRUPT: interrupt ? "1" : "0",
-          },
-        },
-      ),
+        { encoding: "utf8", env },
+      );
+    },
     cleanup: () => rmSync(dir, { recursive: true, force: true }),
   };
 }
