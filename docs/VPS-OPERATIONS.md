@@ -89,9 +89,16 @@ What it does, in order:
    provenance record — `/var/lib/kajianq/backup-provenance`, root-owned 0644 in
    a root-owned 0755 directory — and asserts that the last completed run exited
    0 _and_ completed since its own definition was installed: a record from
-   before the current unit definition is a backup you cannot yet trust. The
-   record survives a reboot, where systemd's
-   `ExecMainStatus`/`ExecMainExitTimestamp` describe only the current boot. A
+   before the current unit definition is a backup you cannot yet trust. The unit
+   marks every run `pending` from its `ExecStartPre`
+   (`/usr/local/sbin/kajianq-backup-pending`) before the job body, so a run that
+   dies before the job writes anything — a moved `bun`, an absent deployed
+   bundle, a broken `ExecStart`, a missing `backup.env` — leaves that marker and
+   is refused too. The record survives a reboot, where systemd's
+   `ExecMainStatus`/`ExecMainExitTimestamp` describe only the current boot; the
+   gate does not read systemd's failed state for the same reason — a reboot
+   clears it (and `apply.sh` clears it with `reset-failed`), so a unit that
+   failed before a reboot would read as healthy after it. A
    box whose installed bundle predates the writer cannot bootstrap by starting
    the unit — it bootstraps once from the checkout, as `docs/VPS-SETUP.md` §8
    shows. It runs first because it reads only state that already exists on the
@@ -697,11 +704,20 @@ the repository holds a full-database dump carrying chat content and feedback.
 A run also writes its outcome — exit status, start and completion time, label
 and a best-effort revision (usually `unknown` under the deployed bundle) — to
 `/var/lib/kajianq/backup-provenance` (root:root 0644 in a root:root 0755
-directory). It marks the run in progress before the dump, so an interrupted run
-leaves a marker the deploy's preflight refuses instead of the previous success.
-That record is the proof that the backup job has completed since the current
-unit was installed: it survives a reboot, unlike systemd's per-boot run fields,
-and the deploy identity can read it but cannot write it.
+directory). The unit marks every run `pending` from its `ExecStartPre`
+(`/usr/local/sbin/kajianq-backup-pending`, installed by `apply.sh`) before the
+job body runs, and the job then marks it in progress before the dump. A run that
+dies before the job writes anything — a moved `bun`, an absent deployed bundle,
+a broken `ExecStart`, a missing `backup.env` — therefore leaves the pending
+marker instead of the previous success, and an interrupted run leaves `running`
+or an uncompleted start; the deploy's preflight refuses both. The unit's
+`EnvironmentFile` is optional precisely so that marker runs when the file is
+missing: the job then refuses the run itself and records the failure rather than
+the unit failing before anything can write. That record is the proof that the
+backup job has completed since the current unit was installed: it survives a
+reboot, unlike systemd's per-boot run fields (or its failed state, which the
+gate deliberately does not read), and the deploy identity can read it but cannot
+write it.
 
 **The schedule's own product is proven** (2026-09-29, closing #214). The
 `03:15` fires of 2026-09-26…29 each started with **no operator command between

@@ -251,6 +251,20 @@ exec ${JSON.stringify(realCat)} "$@"
 }
 
 /**
+ * The marker kajianq-backup.service's ExecStartPre writes, executed from the repository script
+ * apply.sh installs at /usr/local/sbin/kajianq-backup-pending. A test cannot start a unit, so
+ * this is the unit's half of the pre-body contract: the record the preflight reads is the record
+ * the unit's own marker produced.
+ */
+function runPendingMarker(recordFile) {
+  return spawnSync(
+    "/bin/sh",
+    [resolve(process.cwd(), "provision/vps/backup/kajianq-backup-pending.sh"), recordFile],
+    { encoding: "utf8" },
+  );
+}
+
+/**
  * The production backup job run against stub external tools, with `--record` pointed into the
  * fixture. The tests may not hand-write a record and then call the reader: this fixture is the
  * writer half of the contract, so the file the preflight reads is the file the job produced.
@@ -300,7 +314,12 @@ exit 0`,
   return {
     dir,
     record,
-    run: ({ resticFail = false, interrupt = false, observeRecord = "" } = {}) => {
+    run: ({
+      resticFail = false,
+      interrupt = false,
+      observeRecord = "",
+      missingEnv = false,
+    } = {}) => {
       // No systemd invocation marker: the writer's authority is the root-owned directory, not an
       // environment variable. Stripping it here also keeps the bootstrap test honest on a runner
       // that happens to be started by systemd.
@@ -317,6 +336,12 @@ exit 0`,
         STUB_RESTIC_INTERRUPT: interrupt ? "1" : "0",
       };
       delete env.INVOCATION_ID;
+      // The unit's EnvironmentFile is optional, so a missing backup.env reaches the job as an
+      // empty environment instead of failing the unit before ExecStartPre. The job must refuse
+      // that run itself, and the record it writes is what the preflight then refuses.
+      if (missingEnv) {
+        for (const key of REQUIRED_ENV) delete env[key];
+      }
       return spawnSync(
         process.execPath,
         [
@@ -1028,7 +1053,10 @@ describe("provisioning config as code stays true to the ADR", () => {
   it("the backup schedule is config-as-code, installed and enabled by apply.sh", () => {
     // The retention policy is only real if the timer runs: the units must be shipped files.
     const service = directives("provision/vps/systemd/kajianq-backup.service");
-    expect(service).toContain("EnvironmentFile=/etc/kajianq/backup.env");
+    // Optional (`-`) on purpose: a required file that is missing fails the unit before the
+    // first ExecStartPre, so the pending marker would be absent exactly when the missing file is
+    // the failure. The job refuses the run itself instead, and the record carries status=1.
+    expect(service).toContain("EnvironmentFile=-/etc/kajianq/backup.env");
     // ExecStart names a DEPLOYED artifact, not a path in the repository checkout: a unit
     // running code the deploy never updated can be wired to stale code, so assert the static
     // path and that NO placeholder token remains.
@@ -1563,6 +1591,72 @@ describe("provisioning config as code stays true to the ADR", () => {
     }
   });
 
+  it("refuses a unit run that dies before the job body (mutation: no ExecStartPre marker)", () => {
+    // The unit's start sequence, as installed: ExecStartPre marks the record pending before
+    // ExecStart can fail (a moved bun, an absent deployed bundle, a broken ExecStart), and the
+    // job body never runs to replace the marker. The fixture seeds the previous success first —
+    // exactly the state a pre-body death leaves current if nothing marks the run.
+    const service = directives("provision/vps/systemd/kajianq-backup.service");
+    const marker = /^ExecStartPre=(.+)$/m.exec(service)?.[1];
+    expect(marker, "the unit must mark a run pending before ExecStart").toBe(
+      "/usr/local/sbin/kajianq-backup-pending",
+    );
+    // apply.sh installs the repository script at that path, so executing it here is executing
+    // what the unit executes. The install is outside the deploy tree: /srv/kajianq is
+    // deploy-owned and replaced with --delete, so a marker there could be rewritten by the
+    // identity the record binds.
+    expect(read("provision/vps/apply.sh")).toMatch(
+      /install_config "\$\{SRC\}\/backup\/kajianq-backup-pending\.sh" \/usr\/local\/sbin\/kajianq-backup-pending root root 755/,
+    );
+
+    const fx = provenanceFixture();
+    try {
+      fx.writeRecord();
+      expect(fx.run().status).toBe(0);
+
+      const marked = runPendingMarker(fx.record);
+      expect(marked.status, marked.stderr).toBe(0);
+      const record = readFileSync(fx.record, "utf8");
+      expect(record).toMatch(/^status=pending$/m);
+      expect(record).toMatch(/^started_at=\d+$/m);
+      expect(record).toMatch(/^completed_at=0$/m);
+
+      // The job body never ran, so nothing replaced the marker. A reboot does not change the
+      // verdict: the marker is in the durable record, and the stub reports the post-boot
+      // systemd state (no ExecMainExitTimestamp, exit status 0) that a failed-state read would
+      // have taken as healthy.
+      const gate = fx.run({ exited: "" });
+      expect(gate.status).toBe(1);
+      expect(gate.stderr).toContain("never reached the backup job");
+      expect(gate.stderr).toContain("kajianq-backup.service");
+      expect(gate.stderr).toContain("journalctl -u kajianq-backup.service -n 40");
+      expect(gate.stderr).toContain("sudo systemctl start kajianq-backup.service");
+    } finally {
+      fx.cleanup();
+    }
+  });
+
+  it("marks a run pending atomically and world-readably (mutation: a torn or root-only marker)", () => {
+    // The marker replaces the previous success before anything in the job can fail. It is
+    // written through a same-directory temp file renamed into place, so the deploy identity
+    // reads a whole record rather than a half-written one, and no temp file is left behind.
+    const dir = mkdtempSync(join(tmpdir(), "kajianq-pending-"));
+    const record = join(dir, "backup-provenance");
+    try {
+      writeFileSync(record, provenanceRecord());
+      const marked = runPendingMarker(record);
+      expect(marked.status, marked.stderr).toBe(0);
+      expect(statSync(record).mode & 0o777).toBe(0o644);
+      expect(readdirSync(dir)).toEqual(["backup-provenance"]);
+      const body = readFileSync(record, "utf8");
+      expect(body).toMatch(/^status=pending$/m);
+      expect(body).toMatch(/^started_at=\d+$/m);
+      expect(body).toMatch(/^completed_at=0$/m);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("treats the record as the authority (mutation: forge systemd state both ways)", () => {
     const fx = provenanceFixture();
     try {
@@ -1662,6 +1756,45 @@ describe("provisioning config as code stays true to the ADR", () => {
     }
   });
 
+  it("a missing backup.env is refused with its recorded cause (mutation: required EnvironmentFile)", () => {
+    // The unit's EnvironmentFile is optional so the pending marker runs before the file is
+    // needed; without that, systemd fails the unit before ExecStartPre, nothing marks the run,
+    // and the previous success stays current. With the marker in place the job starts, refuses
+    // the run itself (naming the missing configuration), and records status=1 — the preflight
+    // then refuses with the recorded cause, not only with the pending marker.
+    const service = directives("provision/vps/systemd/kajianq-backup.service");
+    expect(service).toContain("EnvironmentFile=-/etc/kajianq/backup.env");
+
+    const backup = backupRunFixture();
+    const prov = provenanceFixture();
+    try {
+      // A previous success is current before this run, and would stay current without the
+      // marker.
+      writeFileSync(backup.record, provenanceRecord());
+      expect(prov.run({ recordFile: backup.record }).status).toBe(0);
+
+      const marked = runPendingMarker(backup.record);
+      expect(marked.status, marked.stderr).toBe(0);
+      const beforeJob = prov.run({ recordFile: backup.record, exited: "" });
+      expect(beforeJob.status).toBe(1);
+      expect(beforeJob.stderr).toContain("never reached the backup job");
+
+      const bare = backup.run({ missingEnv: true });
+      expect(bare.status, bare.stderr).toBe(1);
+      expect(bare.stderr).toContain("missing configuration");
+      const record = readFileSync(backup.record, "utf8");
+      expect(record).toMatch(/^status=1$/m);
+      expect(record).toMatch(/^completed_at=\d+$/m);
+
+      const afterJob = prov.run({ recordFile: backup.record, exited: "" });
+      expect(afterJob.status).toBe(1);
+      expect(afterJob.stderr).toContain("last run exited 1");
+    } finally {
+      backup.cleanup();
+      prov.cleanup();
+    }
+  });
+
   it("leaves the start marker when SIGTERM interrupts a run after a success (mutation: keep the old success)", () => {
     // The failure direction: the unit is oneshot, so a hung run stopped with SIGTERM exits 143.
     // If the record still held the previous success, the gate would stay green for a run that
@@ -1700,6 +1833,8 @@ describe("provisioning config as code stays true to the ADR", () => {
     // ...the start/completion pair is what exposes an interrupted run...
     expect(executable).toMatch(/if \[ "\$\{status\}" = "running" \]/);
     expect(executable).toMatch(/if \[ "\$\{completed\}" -lt "\$\{started\}" \]/);
+    // ...and the unit's own pre-body marker is its own refusal, not a malformed status...
+    expect(executable).toMatch(/if \[ "\$\{status\}" = "pending" \][^]*?refuse/);
     // ...every value is guarded, so a garbled one cannot reach the healthy line...
     expect(executable).toMatch(/if \[ -z "\$\{started\}" \][^]*?refuse/);
     expect(executable).toMatch(/case "\$\{started\}" in\s*\*\[!0-9\]\*/);
@@ -1749,6 +1884,15 @@ describe("provisioning config as code stays true to the ADR", () => {
     // 0644, so the deploy identity can read a proof it cannot write.
     expect(apply).toMatch(/install -d -o root -g root -m 0755 \/var\/lib\/kajianq/);
     expect(provenance).toMatch(/writeFileSync\(tmp, body, \{ mode: 0o644 \}\)/);
+    // The unit's pre-body marker must write THAT record: a marker at another path would leave
+    // the preflight reading the previous success, and one under the deploy root could be
+    // replaced by the identity the proof binds.
+    const pending = read("provision/vps/backup/kajianq-backup-pending.sh")
+      .split("\n")
+      .filter((line) => !/^\s*#/.test(line))
+      .join("\n");
+    expect(pending).toMatch(/RECORD="\$\{1:-\/var\/lib\/kajianq\/backup-provenance\}"/);
+    expect(pending).not.toMatch(/\/srv\/kajianq/);
   });
 
   it("makes the production record directory world-traversable (mutation: drop the production chmod)", () => {

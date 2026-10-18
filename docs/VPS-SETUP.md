@@ -64,22 +64,23 @@ Every config below is config-as-code under [`provision/vps/`](../provision/vps/)
 — placed and enabled by `apply.sh` in §7, never hand-copied. This table is the
 map from repo file to host path, so you can review a change before it lands:
 
-| File                                        | Lands at                                             | Purpose                                                                               |
-| ------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `apply.sh`                                  | (runs in place)                                      | Places every config below and enables the units                                       |
-| `nginx/kajianq.conf`                        | `/etc/nginx/sites-available/kajianq.conf`            | Reverse proxy + the minimal access-log format                                         |
-| `logrotate/kajianq-proxy`                   | `/etc/logrotate.d/kajianq-proxy`                     | 14-day proxy access/error-log rotation                                                |
-| `logrotate/kajianq-postgres`                | `/etc/logrotate.d/kajianq-postgres`                  | 14-day Postgres log rotation                                                          |
-| `journald/kajianq.conf`                     | `/etc/systemd/journald.conf.d/kajianq.conf`          | 14-day / 512M cap for API structured logs                                             |
-| `postgres/99-kajianq.conf`                  | `/etc/postgresql/<v>/main/conf.d/99-kajianq.conf`    | Loopback-only listener; no statement text in logs                                     |
-| `systemd/kajianq-api.service`               | `/etc/systemd/system/kajianq-api.service`            | Unprivileged API unit, credentials from an env file                                   |
-| `systemd/kajianq-cron.service` / `.timer`   | `/etc/systemd/system/kajianq-cron.{service,timer}`   | Nightly anonymous-session reclamation (ADR-0017) at 03:17                             |
-| `systemd/kajianq-backup.service` / `.timer` | `/etc/systemd/system/kajianq-backup.{service,timer}` | Daily encrypted backup, enabled by `apply.sh`                                         |
-| `backup/kajianq-backup.mjs`                 | (bundled to `/srv/kajianq/api/backup.js`)            | Encrypted dump + manifest + 30-day rolling retention                                  |
-| `backup/kajianq-restore.mjs`                | (runs in place)                                      | Restore into a scratch target, re-applying erasure                                    |
-| `backup/restore-drill.mjs`                  | (CI + on demand)                                     | The executable restore test                                                           |
-| `sudoers/kajianq-deploy`                    | `/etc/sudoers.d/kajianq-deploy`                      | The deploy identity's entire root grant — two commands, installed behind `visudo -cf` |
-| `proxy.env.example` / `backup.env.example`  | `/etc/kajianq/*.env`                                 | The only place real hostnames/credentials appear                                      |
+| File                                        | Lands at                                             | Purpose                                                                                |
+| ------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `apply.sh`                                  | (runs in place)                                      | Places every config below and enables the units                                        |
+| `nginx/kajianq.conf`                        | `/etc/nginx/sites-available/kajianq.conf`            | Reverse proxy + the minimal access-log format                                          |
+| `logrotate/kajianq-proxy`                   | `/etc/logrotate.d/kajianq-proxy`                     | 14-day proxy access/error-log rotation                                                 |
+| `logrotate/kajianq-postgres`                | `/etc/logrotate.d/kajianq-postgres`                  | 14-day Postgres log rotation                                                           |
+| `journald/kajianq.conf`                     | `/etc/systemd/journald.conf.d/kajianq.conf`          | 14-day / 512M cap for API structured logs                                              |
+| `postgres/99-kajianq.conf`                  | `/etc/postgresql/<v>/main/conf.d/99-kajianq.conf`    | Loopback-only listener; no statement text in logs                                      |
+| `systemd/kajianq-api.service`               | `/etc/systemd/system/kajianq-api.service`            | Unprivileged API unit, credentials from an env file                                    |
+| `systemd/kajianq-cron.service` / `.timer`   | `/etc/systemd/system/kajianq-cron.{service,timer}`   | Nightly anonymous-session reclamation (ADR-0017) at 03:17                              |
+| `systemd/kajianq-backup.service` / `.timer` | `/etc/systemd/system/kajianq-backup.{service,timer}` | Daily encrypted backup, enabled by `apply.sh`                                          |
+| `backup/kajianq-backup.mjs`                 | (bundled to `/srv/kajianq/api/backup.js`)            | Encrypted dump + manifest + 30-day rolling retention                                   |
+| `backup/kajianq-backup-pending.sh`          | `/usr/local/sbin/kajianq-backup-pending`             | Marks every run pending before the job body — the deploy gate refuses a pending record |
+| `backup/kajianq-restore.mjs`                | (runs in place)                                      | Restore into a scratch target, re-applying erasure                                     |
+| `backup/restore-drill.mjs`                  | (CI + on demand)                                     | The executable restore test                                                            |
+| `sudoers/kajianq-deploy`                    | `/etc/sudoers.d/kajianq-deploy`                      | The deploy identity's entire root grant — two commands, installed behind `visudo -cf`  |
+| `proxy.env.example` / `backup.env.example`  | `/etc/kajianq/*.env`                                 | The only place real hostnames/credentials appear                                       |
 
 ### Two hardening choices worth stating, since both are deliberate
 
@@ -795,11 +796,18 @@ The deploy gates on all of these, and fails loudly on any of them:
 - **the backup unit is healthy**: the job's durable record
   (`/var/lib/kajianq/backup-provenance`, root-owned and world-readable) says the
   last completed run exited 0 **and** completed after the unit file's own
-  install time. The record survives a reboot, so a run that succeeded before one
-  still proves the backup job; the install-time comparison rejects a record
-  written before the unit's current definition. It does not by itself prove the
-  unit's `ExecStart` ran, because the documented first-record bootstrap writes
-  from the checkout.
+  install time. The unit marks every run `pending` from its `ExecStartPre` before
+  the job body, so a run that dies before the job writes anything — a moved
+  `bun`, an absent deployed bundle, a broken `ExecStart`, a missing
+  `backup.env` — leaves that marker and the deploy refuses it. The record
+  survives a reboot, so a run that succeeded before one still proves the backup
+  job and a pre-body death still refuses after it; the install-time comparison
+  rejects a record written before the unit's current definition. It does not by
+  itself prove the unit's `ExecStart` ran, because the documented first-record
+  bootstrap writes from the checkout. The gate reads no systemd run state:
+  `is-failed` and `Result` describe the current boot (a reboot clears them, and
+  `apply.sh` clears them on a re-install), so they cannot carry a verdict across
+  one.
 - the public URL answers `/v1/health`, mints an anonymous session, and serves
   `/chat` through the real proxy and TLS
 
@@ -815,6 +823,13 @@ run that next.
 > the deployed bundle has the writer, prove it through the service:
 > `sudo systemctl start kajianq-backup.service`. A box still on the pre-record
 > bundle bootstraps from the checkout instead (below).
+
+> **The pre-body marker is installed with the unit.** `apply.sh` (§7) places
+> `/usr/local/sbin/kajianq-backup-pending` and the unit whose `ExecStartPre` runs
+> it. A box that has not been re-applied keeps its previous unit definition — no
+> marker — so a run that dies before the job body leaves no trace the gate can
+> read, and the previous success stays current. Re-apply once after upgrading;
+> the changed unit definition keeps the gate red until a run after that install.
 
 > **First record on a box whose installed bundle predates it.** The deploy ships
 > the writer, but the preflight runs before the ship, so starting the unit on a
