@@ -244,8 +244,8 @@ before implementation. All API routes are under `/v1/`; breaking changes get a
 new version, never an in-place break.
 
 **The deployer is a separate concern, by decision (ADR-0044 decision 3).**
-`apps/*` carries app code and build scripts; the build → ship → restart → smoke
-path lives in [`provision/vps/deploy/deploy.sh`](../provision/vps/deploy/deploy.sh)
+`apps/*` carries app code and build scripts; the preflight → build → ship →
+restart → smoke path lives in [`provision/vps/deploy/deploy.sh`](../provision/vps/deploy/deploy.sh)
 with its CI trigger in `.github/workflows/deploy-vps.yml`; provisioning is under
 `provision/vps/`; CI gates are in `.github/workflows/`. A fork can change or
 replace the deploy path without touching a line of application code — which is

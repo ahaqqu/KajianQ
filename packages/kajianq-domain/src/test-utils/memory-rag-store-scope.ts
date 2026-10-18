@@ -66,14 +66,19 @@ export function memoryScopeMethods(state: MemoryScopeState): {
     listDocChildNeighboursByChildIds(anchorChildIds, opts) {
       return Effect.sync(() => {
         if (opts.radius <= 0 || opts.limit <= 0) return [] as readonly DocChildById[];
-        const seen = new Set<string>();
-        const anchors: { anchorPos: number; parentId: string; ordinal: number }[] = [];
+        const anchored = new Set<string>();
+        const anchors: { id: string; anchorPos: number; parentId: string; ordinal: number }[] = [];
         for (const id of anchorChildIds) {
-          if (id.trim() === "" || seen.has(id)) continue;
-          seen.add(id);
+          if (id.trim() === "" || anchored.has(id)) continue;
+          anchored.add(id);
           const row = state.children.get(id);
           if (row === undefined) continue;
-          anchors.push({ anchorPos: anchors.length, parentId: row.parentId, ordinal: row.ordinal });
+          anchors.push({
+            id,
+            anchorPos: anchors.length,
+            parentId: row.parentId,
+            ordinal: row.ordinal,
+          });
         }
         const windows = new Map<
           string,
@@ -83,7 +88,10 @@ export function memoryScopeMethods(state: MemoryScopeState): {
           for (const row of state.children.values()) {
             if (row.parentId !== anchor.parentId) continue;
             if (Math.abs(row.ordinal - anchor.ordinal) > opts.radius) continue;
-            if (seen.has(row.id)) continue;
+            // Only the anchor itself falls outside its own window: another anchor
+            // inside this window is a neighbour like any other, exactly as the
+            // Postgres read's `n.id <> an.anchor_id` predicate leaves it.
+            if (row.id === anchor.id) continue;
             const existing = windows.get(row.id);
             if (existing === undefined || anchor.anchorPos < existing.anchorPos) {
               windows.set(row.id, { anchorPos: anchor.anchorPos, row });

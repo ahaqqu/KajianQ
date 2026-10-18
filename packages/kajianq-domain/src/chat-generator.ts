@@ -10,6 +10,9 @@ import {
 import type { KajianQFilters } from "./filters";
 import { chatSystemPrompt, chatUserPrompt, type ChatLanguage } from "./chat-prompts";
 
+/** The answer stage's language, re-exported for the barrel that wires its stages. */
+export type { ChatLanguage };
+
 /**
  * KajianQGenerator — stage 6 (spec §3.3): the quality-tier generator with the
  * strict grounding prompt, streaming through the Provider seam. The call's

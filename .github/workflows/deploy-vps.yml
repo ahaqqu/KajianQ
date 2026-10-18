@@ -1,10 +1,11 @@
 name: Deploy to VPS
 
 # The VPS deployer (#181, ADR-0044). Its own home, separate from the app:
-# `provision/vps/deploy/deploy.sh` does build → ship → restart → smoke, and this
-# workflow is the CI-owned trigger. That separation is the recorded decision
-# (ADR-0044 decision 3) — app code carries no hosting/deploy logic, the deploy
-# path lives outside `apps/`, and CI gates stay in `.github/workflows/`.
+# `provision/vps/deploy/deploy.sh` does preflight → build → ship → restart →
+# smoke, and this workflow is the CI-owned trigger. That separation is the
+# recorded decision (ADR-0044 decision 3) — app code carries no hosting or
+# deploy logic, the deploy path lives outside `apps/`, and CI gates stay in
+# `.github/workflows/`.
 #
 # Two triggers, one implementation:
 #   - `workflow_dispatch` for an operator (staging first, then prod — the
@@ -100,7 +101,7 @@ jobs:
           } >> ~/.ssh/config
         env:
           KAJIANQ_DEPLOY_HOST: ${{ vars.VPS_HOST }}
-      - name: Deploy (build → ship → restart → smoke → doctor)
+      - name: Deploy (preflight → build → ship → restart → smoke → doctor)
         # The env file is written 0600 (the script refuses looser permissions —
         # a sourced file with group/other bits is a local privilege issue).
         run: |

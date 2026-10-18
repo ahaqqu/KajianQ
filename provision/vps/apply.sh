@@ -6,12 +6,12 @@
 #
 #   sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env
 #
-# The script is idempotent: every step either overwrites a file with the
-# version from the repo or enables an already-enabled unit. Nothing here touches
-# data — it writes configuration, creates the service account and directories,
-# and enables units. The backup repository's one-time `restic init` is a
-# separate, deliberate step in docs/VPS-SETUP.md, because it mints
-# the encryption key and must be recorded by the owner.
+# The script is idempotent: every step either writes the repository's version of
+# a file when the installed one differs, or enables an already-enabled unit.
+# Nothing here touches data — it writes configuration, creates the service
+# account and directories, and enables units. The backup repository's one-time
+# `restic init` is a separate, deliberate step in docs/VPS-SETUP.md, because it
+# mints the encryption key and must be recorded by the owner.
 #
 # Substitutions: every `__KAJIANQ_*` placeholder in the shipped configs is
 # replaced from --env. No hostname, certificate path, or origin address is
@@ -246,6 +246,34 @@ else
     log "no --deploy-pubkey given: leaving ${DEPLOY_USER}'s authorized_keys to the operator"
 fi
 
+# --- config install ---------------------------------------------------------
+# `install` re-stamps a file's mtime even when the bytes are identical, and one
+# mtime here is load-bearing: the deploy asserts that kajianq-backup.service has
+# run SINCE ITS DEFINITION WAS INSTALLED, so re-installing an unchanged unit
+# would report a unit that has been exercised — successfully, hours earlier — as
+# never exercised, and fail the next deploy until a real backup run happens
+# again. Writing only when something actually differs keeps that mtime meaning
+# "this definition changed", which is what the deploy reads it as.
+#
+# Ownership, mode and a symlinked destination count as differences: a file left
+# at the wrong mode, or pointing somewhere else, is not unchanged, and `install`
+# is what fixes both.
+install_config() {
+    local src="$1" dst="$2"
+    local owner="${3:-root}" group="${4:-root}" mode="${5:-644}"
+    if [ "${DRY_RUN}" -eq 1 ]; then
+        log "would: install ${src} -> ${dst}"
+        return 0
+    fi
+    if [ -f "${dst}" ] && [ ! -L "${dst}" ] &&
+        [ "$(stat -c '%U:%G:%a' "${dst}")" = "${owner}:${group}:${mode}" ] &&
+        cmp -s "${src}" "${dst}"; then
+        log "unchanged: ${dst}"
+        return 0
+    fi
+    install -o "${owner}" -g "${group}" -m "${mode}" "${src}" "${dst}"
+}
+
 # --- reverse proxy ----------------------------------------------------------
 # The server block is rendered from the placeholder template, then installed
 # under sites-available with the standard sites-enabled symlink, so disabling it
@@ -288,7 +316,7 @@ render() {
         rm -f "${tmp}"
         return 0
     fi
-    install -o root -g root -m 0644 "${tmp}" "${dst}"
+    install_config "${tmp}" "${dst}"
     rm -f "${tmp}"
 }
 
@@ -302,8 +330,8 @@ else
 fi
 
 # --- log rotation -----------------------------------------------------------
-run install -o root -g root -m 0644 "${SRC}/logrotate/kajianq-proxy" /etc/logrotate.d/kajianq-proxy
-run install -o root -g root -m 0644 "${SRC}/logrotate/kajianq-postgres" /etc/logrotate.d/kajianq-postgres
+install_config "${SRC}/logrotate/kajianq-proxy" /etc/logrotate.d/kajianq-proxy
+install_config "${SRC}/logrotate/kajianq-postgres" /etc/logrotate.d/kajianq-postgres
 # --debug parses the config without rotating anything; a syntax error must fail
 # the apply rather than surface as a silent rotation failure weeks later.
 run logrotate --debug /etc/logrotate.d/kajianq-proxy
@@ -311,28 +339,28 @@ run logrotate --debug /etc/logrotate.d/kajianq-postgres
 
 # --- API log retention ------------------------------------------------------
 run install -d -o root -g root -m 0755 /etc/systemd/journald.conf.d
-run install -o root -g root -m 0644 "${SRC}/journald/kajianq.conf" /etc/systemd/journald.conf.d/kajianq.conf
+install_config "${SRC}/journald/kajianq.conf" /etc/systemd/journald.conf.d/kajianq.conf
 run systemctl restart systemd-journald
 
 # --- Postgres ---------------------------------------------------------------
 PG_CONF_DIR="$(ls -d /etc/postgresql/*/main/conf.d 2>/dev/null | head -1 || true)"
 if [ -n "${PG_CONF_DIR}" ]; then
-    run install -o root -g root -m 0644 "${SRC}/postgres/99-kajianq.conf" "${PG_CONF_DIR}/99-kajianq.conf"
+    install_config "${SRC}/postgres/99-kajianq.conf" "${PG_CONF_DIR}/99-kajianq.conf"
     run systemctl restart postgresql
 else
     log "no Debian Postgres conf.d found — install postgresql then re-run to apply the log/reachability posture"
 fi
 
 # --- API service ------------------------------------------------------------
-run install -o root -g root -m 0644 "${SRC}/systemd/kajianq-api.service" /etc/systemd/system/kajianq-api.service
+install_config "${SRC}/systemd/kajianq-api.service" /etc/systemd/system/kajianq-api.service
 
 # --- session-reclamation cron (ADR-0017, ADR-0044 decision 6) ---------------
 # The nightly reclamation used to be a Cloudflare Worker cron trigger; on the
 # VPS it is a systemd timer invoking the dedicated entry. Both units are
 # config-as-code, so the schedule is installed and enabled here rather than as a
 # hand-copied crontab line.
-run install -o root -g root -m 0644 "${SRC}/systemd/kajianq-cron.service" /etc/systemd/system/kajianq-cron.service
-run install -o root -g root -m 0644 "${SRC}/systemd/kajianq-cron.timer" /etc/systemd/system/kajianq-cron.timer
+install_config "${SRC}/systemd/kajianq-cron.service" /etc/systemd/system/kajianq-cron.service
+install_config "${SRC}/systemd/kajianq-cron.timer" /etc/systemd/system/kajianq-cron.timer
 
 # --- backup schedule --------------------------------------------------------
 # The unit is installed verbatim: its ExecStart names a DEPLOYED artifact
@@ -341,8 +369,8 @@ run install -o root -g root -m 0644 "${SRC}/systemd/kajianq-cron.timer" /etc/sys
 # what puts this unit's code under the same update mechanism as the API's
 # (#181) — it used to execute whatever revision sat in /srv/kajianq-src, which
 # the deploy never touched.
-run install -o root -g root -m 0644 "${SRC}/systemd/kajianq-backup.service" /etc/systemd/system/kajianq-backup.service
-run install -o root -g root -m 0644 "${SRC}/systemd/kajianq-backup.timer" /etc/systemd/system/kajianq-backup.timer
+install_config "${SRC}/systemd/kajianq-backup.service" /etc/systemd/system/kajianq-backup.service
+install_config "${SRC}/systemd/kajianq-backup.timer" /etc/systemd/system/kajianq-backup.timer
 run systemctl daemon-reload
 
 # The unit's ExecStart target is shipped by the DEPLOY path, not by this script

@@ -149,13 +149,38 @@ bun packages/infra/scripts/r2-verify.mjs   # R2 read/write from the CLI env (AC)
 ## Contract tests
 
 `src/rag-store-postgres.test.ts` is an integration suite against a real
-Postgres database. It is **skipped unless `DATABASE_URL` is set**, so the
-default `bun run test` job stays green without a database. In CI these run in
-the `postgres:contract` job — which engages on every PR touching
-`packages/infra` — against a `pgvector/pgvector:pg18` service container (the
-same image the restore drill uses), with `--no-file-parallelism` (the tests
-share one fixture namespace keyed off a per-run prefix, so parallel files
-would race). The suite is Effect-shaped (ADR-0027 decision 7): each test
+Postgres database. It declares `// @requires-postgres` and is **skipped unless
+`DATABASE_URL` is set**, so the default `bun run test` job stays green without a
+database. A second gated suite declares the same directive and nothing else: the
+`postgres:contract` job runs whatever `bun scripts/pg-contract.mjs --list`
+derives from the tree, and fails when a selected suite executed nothing. Over the
+files `vitest.config.ts` collects, the DB-less run fails on three things: a test
+file that skipped a test without declaring the directive — whole or partial; a test
+file that reads `DATABASE_URL` in code position without it, which is what a gate
+written as an early return does; and a declaration whose file skipped nothing.
+
+It sees a read in code position in these spellings: the property (chained or not), a
+quoted or template subscript, a destructuring from `process.env`, `import.meta.env`
+or an `env` object, a subscript by a key the file binds to the name, and
+`process["env"]` / `import.meta.env`. Reads it does not see: one whose name the file
+never spells — built by concatenation, held in a value bound elsewhere, or returned
+by a helper module — and any read behind an alias of `process.env`. A suite that
+gates that way and returns early instead of skipping leaves the report nothing to
+see, and a test file the include globs do not collect is in no job at all. Express
+the gate as a skip, not an early return (the policy, its residual blind spots, and
+each mode are in `scripts/pg-contract/policy.mjs`).
+
+The job engages when a PR can change what those suites execute — the seam's own
+home, a gated suite, or the gate's machinery — and runs them against a
+`pgvector/pgvector:pg18` service container (the same image the restore drill
+uses), with `--no-file-parallelism` (the tests share one fixture namespace keyed
+off a per-run prefix, so parallel files would race). Locally:
+
+```sh
+DATABASE_URL=postgres://… bunx vp test run --no-file-parallelism $(bun scripts/pg-contract.mjs --list)
+```
+
+The suite is Effect-shaped (ADR-0027 decision 7): each test
 composes its seam calls into one `Effect.gen` program with a single
 `Effect.runPromise` at the test's edge. The pure query builder
 (`rag-store-postgres-query.ts`), the driver adapter

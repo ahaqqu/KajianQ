@@ -7,10 +7,9 @@ import { HADITH_COLLECTION_NAMES, type HadithCollection } from "./hadith-source"
  * The address a hadith grammar identifies includes the collection name — the
  * pattern's own first capture group — so that name is part of identity and must
  * be compared: `HR. Bukhari no. 149` and `HR. Muslim no. 149` are two addresses.
- * Two
- * spellings of **one** collection are not two addresses. The corpus renders one
- * English transliteration per collection (`HADITH_COLLECTION_NAMES`), while the
- * collection list the product publishes and the Indonesian prose its readers
+ * Two spellings of **one** collection are not two addresses. The corpus renders
+ * one English transliteration per collection (`HADITH_COLLECTION_NAMES`), while
+ * the collection list the product publishes and the Indonesian prose its readers
  * and its generator write use others — `Tirmidzi`, `Nasa'i`, `Ibnu Majah`,
  * `Abu Daud` — and the long forms the grammar already tolerates as citations
  * dress the name in the collection-type word or the article the transliteration
