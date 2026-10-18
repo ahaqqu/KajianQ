@@ -619,3 +619,74 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
     }
   });
 });
+
+describe("citationCandidatesIn — adjacent citations (#526)", () => {
+  /**
+   * The law: two well-formed hadith citations separated by **any run of
+   * characters that leaves a word boundary before the second marker** are both
+   * scanned, in text order, and the gate judges each on its own address. The
+   * generator draws the joiner's two **edges** from the non-word class — quotes,
+   * CJK punctuation, ASCII punctuation and whitespace — and its interior from
+   * that class plus the letters and words a no-space language writes, so the
+   * sweep states the class rather than the handful of shapes a hunt turned up.
+   * The edges are what keep the two preconditions of the law true for every
+   * generated string: the first number word stops before the joiner, and the
+   * second marker has the word boundary its grammar's start requires.
+   */
+  const JOINT_EDGE = [
+    "”",
+    "“",
+    "、",
+    "。",
+    "，",
+    "；",
+    "：",
+    " ",
+    "\t",
+    "…",
+    ")",
+    "]",
+    "!",
+    "?",
+  ] as const;
+  const JOINT_INNER = [...JOINT_EDGE, "和", "dan", "lalu", "的", "42", "\u200b", "”和“"] as const;
+  const FIRST = "HR. Ibn Majah no. 224";
+  const SECOND_FORMS = ["HR. Muslim no. 224", "HR Muslim no. 224", "HR. Bukhari no. 1"] as const;
+
+  it("finds the second citation whatever the no-space joiner, and never passes it silently", () => {
+    const property = fc.property(
+      fc.constantFrom(...JOINT_EDGE),
+      fc.array(fc.constantFrom(...JOINT_INNER), { maxLength: 4 }),
+      fc.constantFrom(...JOINT_EDGE),
+      fc.constantFrom(...SECOND_FORMS),
+      (head, inner, tail, second) => {
+        const joiner = `${head}${inner.join("")}${tail}`;
+        const secondLabel = normalizeCitationLabel(second);
+        const text = `参阅“${FIRST}”${joiner}“${second}”`;
+        // Both citations are scanned, in text order — the second is never lost
+        // inside the first's tail.
+        expect(citationCandidatesIn(text), joiner).toEqual([FIRST, secondLabel]);
+        // The safety direction: a fabricated second address is named, and the
+        // grounded first one is not falsely dropped.
+        expect(validateCitations(text, [chunk(FIRST)]), joiner).toEqual({
+          grounded: [FIRST],
+          ungrounded: [secondLabel],
+        });
+        // The mirror: the fabricated first is named beside the grounded second.
+        expect(validateCitations(text, [chunk(secondLabel)]), joiner).toEqual({
+          grounded: [secondLabel],
+          ungrounded: [FIRST],
+        });
+        // Nothing refuses when both were retrieved, and the spaced twin of the
+        // same pair reads identically — spaced prose is unchanged.
+        expect(validateCitations(text, [chunk(FIRST), chunk(secondLabel)]), joiner).toEqual({
+          grounded: [FIRST, secondLabel],
+          ungrounded: [],
+        });
+        const spaced = `参阅“${FIRST}” ${joiner} “${second}”`;
+        expect(citationCandidatesIn(spaced), joiner).toEqual([FIRST, secondLabel]);
+      },
+    );
+    expect(fc.assert(property, { numRuns: 300 })).toBeUndefined();
+  });
+});
