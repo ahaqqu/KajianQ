@@ -48,8 +48,6 @@ export type ChatPipelineDeps = {
    * gate marked content-free is answered from canned copy and neither paid tail stage is
    * entered; inject a decliner to answer such a route differently. */
   decliner?: Decliner<import("./filters").KajianQFilters>;
-  /** Collector for LLM costs that ride the retrieval stage (embed call). */
-  onCost?: (cost: import("@app/contracts").CostRecord) => void;
   /** Streamed-generation hook: each delta as the vendor produces it. The reviewer gates
    * the whole draft before any of it is delivered. */
   onDelta?: (delta: string) => void;
@@ -68,7 +66,6 @@ export function buildChatStages(
     bridge: deps.bridge,
     ...(deps.retrieverLimit !== undefined ? { limit: deps.retrieverLimit } : {}),
     ...(deps.scopeExpansionCap !== undefined ? { scopeExpansionCap: deps.scopeExpansionCap } : {}),
-    onEmbedCost: (cost) => deps.onCost?.(cost),
   });
   const tail = createChatTailStages({
     generatorProvider: deps.generatorProvider,
@@ -91,9 +88,9 @@ export function buildChatStages(
   };
 }
 
-/** Run the chat pipeline through the engine runner. `onCost` receives every LLM/embed cost
- * recorded during the run — the embed stage's costs arrive via the retriever hook — so the
- * HTTP layer can attribute spend to the answer. */
+/** Run the chat pipeline through the engine runner. Every provider call's cost lands on
+ * the answer's trace through the runner's sink — each stage, the retriever's embed call
+ * included, records its own. */
 export function runChatPipeline(
   deps: ChatPipelineDeps,
   query: { text: string; filters?: import("./filters").KajianQFilters },
@@ -107,16 +104,7 @@ export function runChatPipeline(
     ...query,
     ...(deps.history !== undefined ? { history: deps.history } : {}),
   };
-  const withCosts: RunOptions = {
-    ...options,
-    onFailedTrace: (trace) => {
-      for (const event of trace.events) {
-        if (event.cost) deps.onCost?.(event.cost);
-      }
-      options.onFailedTrace?.(trace);
-    },
-  };
-  return runPipeline<import("./filters").KajianQFilters>(stages, withHistory, config, withCosts);
+  return runPipeline<import("./filters").KajianQFilters>(stages, withHistory, config, options);
 }
 
 /**

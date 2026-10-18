@@ -91,8 +91,6 @@ export type KajianQRetrieverDeps = {
    * **either** disables it. */
   neighbourRadius?: number;
   neighbourCap?: number;
-  /** Trace/cost sink for the embed call (the run's collection point). */
-  onEmbedCost?: (cost: CostRecord) => void;
 };
 
 export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<KajianQFilters> {
@@ -103,10 +101,19 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
         "retriever",
         Effect.gen(function* () {
           if (routed.subQueries.length === 0) return [];
+          const run = yield* RunContext;
           const embedded = yield* deps.embedder
             .embed({ texts: routed.subQueries.map((q) => q.text), personalData: true })
             .pipe(Effect.mapError((cause) => ({ cause })));
-          if (deps.onEmbedCost) deps.onEmbedCost(embedded.cost);
+          // The embed call's cost rides the run's own sink like every other provider
+          // call's, so the answer's trace sums to its provider calls by construction.
+          run.record({
+            stage: "retriever",
+            kind: "llm_call",
+            detail: { purpose: "embed" },
+            cost: embedded.cost,
+            at: run.now(),
+          });
           // The route's decision, read into the store's expressible shape. A dimension
           // the store cannot express is a typed stage failure, never a dropped key:
           // silently ignoring `grade` answers a different question than the router chose.
@@ -146,7 +153,6 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
                   relaxation.adopt(probe.dropped);
                   hits = retry;
                 }
-                const run = yield* RunContext;
                 run.record({
                   stage: "retriever",
                   kind: "filter_relaxed",
@@ -205,7 +211,6 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
             bridge: deps.bridge,
           });
           if (expansion.scope !== null) {
-            const run = yield* RunContext;
             run.record({
               stage: "retriever",
               kind: "scope_expansion",
@@ -225,7 +230,6 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
             bridge: deps.bridge,
           });
           if (neighbours.detail !== null) {
-            const run = yield* RunContext;
             run.record({
               stage: "retriever",
               kind: "neighbour_expansion",
