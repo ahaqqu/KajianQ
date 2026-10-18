@@ -12,9 +12,11 @@
  * request schemas before the store, so such a spelling never names a row the
  * application can ask for. Maps whose keys are not a uuid column do not use
  * this: `traces`/`traceOwners` key on `answer_traces.message_id`, a TEXT column
- * the adapter compares exactly, and the auth, eval and feedback maps key on ids
- * the stand-in mints itself (`user<n>`, `s<n>`, `eval<n>`, `fb<n>`), which no
- * contract hands back re-cased.
+ * the adapter compares exactly; `traceRows`/`traceRowOwners` key on the trace
+ * row id as the stand-in mirrors it — `Trace.id`, any non-empty string, where
+ * the adapter mints its own uuid — so no schema admits a re-cased spelling; and
+ * the auth, eval and feedback maps key on ids the stand-in mints itself
+ * (`user<n>`, `s<n>`, `eval<n>`, `fb<n>`), which no contract hands back re-cased.
  */
 export function canonicalUuid(id: string): string {
   return id.toLowerCase();
