@@ -80,10 +80,13 @@ const WRAP_FORMS: readonly { name: string; wrap: (copy: string) => string }[] = 
   { name: "bold around underscore italic", wrap: (copy) => `**_${copy}_**` },
   { name: "bullet", wrap: (copy) => `- ${copy}` },
   { name: "asterisk bullet", wrap: (copy) => `* ${copy}` },
+  { name: "ordered bullet", wrap: (copy) => `1. ${copy}` },
+  { name: "ordered paren bullet", wrap: (copy) => `1) ${copy}` },
   { name: "blockquote", wrap: (copy) => `> ${copy}` },
   { name: "bullet + bold", wrap: (copy) => `- **${copy}**` },
   { name: "blockquote + bold", wrap: (copy) => `> **${copy}**` },
   { name: "blockquote + bullet + bold", wrap: (copy) => `> - **${copy}**` },
+  { name: "blockquote + ordered bullet + bold", wrap: (copy) => `> 1. **${copy}**` },
   { name: "indented bullet + underscore italic", wrap: (copy) => `  - _${copy}_` },
 ];
 
@@ -434,18 +437,19 @@ describe("splitAnswerBlocks — the canonical line mid-answer (#303)", () => {
 
 /**
  * Wrap-only markup around the canonical copy — `**<copy>**`, `_<copy>_`,
- * `- <copy>`, `> <copy>`, their combinations, and one wrap per line. The
- * delimiters are not answer bytes: stripping them with the copy loses nothing
- * the model wrote, so the paragraph goes whole and the card draws the line once.
- * Every row asserts the body bytes that stay are exactly the prose and product
- * rule copy around the peeled paragraph, so a peel that eats one byte of prose
- * reddens here.
+ * `- <copy>`, `1. <copy>`, `> <copy>`, their combinations, and one wrap per
+ * line. The delimiters are not answer bytes: stripping them with the copy loses
+ * nothing the model wrote, so the paragraph goes whole and the card draws the
+ * line once. Every row asserts the body bytes that stay are exactly the prose
+ * and product rule copy around the peeled paragraph, so a peel that eats one
+ * byte of prose reddens here.
  */
 describe("splitAnswerBlocks — the canonical line under wrap-only markup (#548)", () => {
-  // The reachable shape's own row, with the mutation named: a peel whose accept
-  // set is a blank remainder leaves the bold-wrapped copy in `body`, and the
-  // frame-flag card draws the sentence a second time.
-  it("peels the delivered `[prose][**copy**][prose][MT][disclaimer]` shape — mutation: the peel accepts only a blank remainder", () => {
+  // The reachable shape's own row, with the mutation named: the pre-change
+  // peel accepts a paragraph only when the bytes remaining after the copy are
+  // blank or product rule copy, and the bold pair's `****` is neither — so the
+  // wrapped copy stays in `body` and the frame-flag card draws it a second time.
+  it("peels the delivered `[prose][**copy**][prose][MT][disclaimer]` shape — mutation: the remainder must be blank or product rule copy", () => {
     const split = splitAnswerBlocks(
       [PROSE[0], `**${WARNING_ID}**`, PROSE[1], MT, DISCLAIMER].join("\n\n"),
     );
@@ -515,6 +519,42 @@ describe("splitAnswerBlocks — the canonical line under wrap-only markup (#548)
     expect(split.warning).toBe(WARNING_ID);
     expect(split.disclaimer).toBeNull();
     expect(split.body).toBe([PROSE[0], DISCLAIMER, PROSE[1], MT].join("\n\n"));
+    expect(occurrences(displayed(split, true), WARNING_ID)).toBe(1);
+  });
+
+  it("keeps a product rule line's blockquote marker in place", () => {
+    // The label sits behind a blockquote marker, which the renderer does not
+    // draw as structure: the peel reads the line through the marker and keeps
+    // the line's own bytes, so the copy and the label each render once.
+    const split = splitAnswerBlocks(
+      [PROSE[0], `**${WARNING_ID}**\n> ${MT}`, PROSE[1], DISCLAIMER].join("\n\n"),
+    );
+    expect(split.warning).toBe(WARNING_ID);
+    expect(split.disclaimer).toBe(DISCLAIMER);
+    expect(split.body).toBe([PROSE[0], `> ${MT}`, PROSE[1]].join("\n\n"));
+    expect(occurrences(bodyText(split.body), WARNING_ID)).toBe(0);
+    expect(occurrences(bodyText(split.body), MT)).toBe(1);
+    expect(occurrences(displayed(split, true), WARNING_ID)).toBe(1);
+  });
+
+  it("keeps a product rule line's indentation in place", () => {
+    const split = splitAnswerBlocks([PROSE[0], `- ${WARNING_ID}\n  ${MT}`, PROSE[1]].join("\n\n"));
+    expect(split.warning).toBe(WARNING_ID);
+    expect(split.body).toBe([PROSE[0], `  ${MT}`, PROSE[1]].join("\n\n"));
+    expect(occurrences(bodyText(split.body), MT)).toBe(1);
+    expect(occurrences(displayed(split, true), WARNING_ID)).toBe(1);
+  });
+
+  it.each([
+    ["a bold repeat", `**${WARNING_ID} ${WARNING_ID}**`],
+    ["a bullet repeat", `- ${WARNING_ID} ${WARNING_ID}`],
+    ["a blockquote repeat", `> ${WARNING_ID} ${WARNING_ID}`],
+    ["an ordered-bullet repeat", `1. ${WARNING_ID} ${WARNING_ID}`],
+  ])("peels %s on one wrapped line like a bare repeat", (_name, paragraph) => {
+    const split = splitAnswerBlocks([PROSE[0], paragraph, PROSE[1], MT].join("\n\n"));
+    expect(split.warning).toBe(WARNING_ID);
+    expect(split.body).toBe([PROSE[0], PROSE[1], MT].join("\n\n"));
+    expect(occurrences(bodyText(split.body), WARNING_ID)).toBe(0);
     expect(occurrences(displayed(split, true), WARNING_ID)).toBe(1);
   });
 
@@ -590,6 +630,85 @@ describe("splitAnswerBlocks — the canonical line under wrap-only markup (#548)
           expect(bodyText(split.body)).toBe(others.join("\n\n"));
         },
       ),
+      { numRuns: 200 },
+    );
+  });
+});
+
+/**
+ * Both canonical locales in one answer: the card draws one literal, so a peel
+ * that dropped the other would render that delivered sentence **zero** times —
+ * worse than the two renders this ticket removes. A paragraph carrying both
+ * locales is prose and keeps every byte; a paragraph carrying a different
+ * single literal than the card's stays whole too. Every row asserts each
+ * delivered literal renders at least once.
+ */
+describe("splitAnswerBlocks — both canonical locales in one answer (#548)", () => {
+  it("keeps a paragraph carrying both locales whole — no zero render", () => {
+    const paragraph = `**${WARNING_EN}**\n${WARNING_ID}`;
+    const split = splitAnswerBlocks([PROSE[0], paragraph, PROSE[1], MT].join("\n\n"));
+    expect(split.warning).toBeNull();
+    expect(split.body).toBe([PROSE[0], paragraph, PROSE[1], MT].join("\n\n"));
+    expect(occurrences(bodyText(split.body), WARNING_EN)).toBe(1);
+    expect(occurrences(bodyText(split.body), WARNING_ID)).toBe(1);
+    // The frame-flag card draws the UI locale over the prose; neither literal is lost.
+    expect(occurrences(displayed(split, true), WARNING_EN)).toBe(1);
+    expect(occurrences(displayed(split, true), WARNING_ID)).toBe(2);
+  });
+
+  it("cards the first locale and keeps the other one in the body", () => {
+    const split = splitAnswerBlocks(
+      [PROSE[0], `**${WARNING_EN}**`, WARNING_ID, PROSE[1], MT].join("\n\n"),
+    );
+    expect(split.warning).toBe(WARNING_EN);
+    expect(split.body).toBe([PROSE[0], WARNING_ID, PROSE[1], MT].join("\n\n"));
+    expect(occurrences(displayed(split, true), WARNING_EN)).toBe(1);
+    expect(occurrences(displayed(split, true), WARNING_ID)).toBe(1);
+  });
+
+  it("keeps a different second locale whole in the body", () => {
+    const split = splitAnswerBlocks(
+      [PROSE[0], WARNING_ID, `**${WARNING_EN}**`, PROSE[1], MT].join("\n\n"),
+    );
+    expect(split.warning).toBe(WARNING_ID);
+    expect(split.body).toBe([PROSE[0], `**${WARNING_EN}**`, PROSE[1], MT].join("\n\n"));
+    expect(occurrences(displayed(split, true), WARNING_EN)).toBe(1);
+    expect(occurrences(displayed(split, true), WARNING_ID)).toBe(1);
+  });
+
+  it("keeps the other locale in a footer line when the card already draws one", () => {
+    // The walk takes the trailing copy first (warning = ID); the footer line
+    // carries the EN copy. Stripping it there would render EN zero times, so the
+    // footer keeps its own line whole.
+    const footer = `${DISCLAIMER} ${WARNING_EN}`;
+    const split = splitAnswerBlocks([PROSE[0], footer, WARNING_ID, MT].join("\n\n"));
+    expect(split.warning).toBe(WARNING_ID);
+    expect(split.disclaimer).toBe(footer);
+    expect(occurrences(displayed(split, true), WARNING_EN)).toBe(1);
+    expect(occurrences(displayed(split, true), WARNING_ID)).toBe(1);
+  });
+
+  it("never drops a delivered canonical literal (property)", () => {
+    const segment = fc.constantFrom<string>(
+      WARNING_ID,
+      WARNING_EN,
+      `**${WARNING_ID}**`,
+      `**${WARNING_EN}**`,
+      `- ${WARNING_ID}`,
+      `> ${WARNING_EN}`,
+      `1. ${WARNING_ID}`,
+      PROSE[0],
+      PROSE[1],
+      MT,
+    );
+    fc.assert(
+      fc.property(fc.array(segment, { maxLength: 5 }), (paragraphs) => {
+        const delivered = paragraphs.join("\n\n");
+        const drawn = displayed(splitAnswerBlocks(delivered), true);
+        for (const copy of [WARNING_ID, WARNING_EN]) {
+          if (delivered.includes(copy)) expect(occurrences(drawn, copy)).toBeGreaterThanOrEqual(1);
+        }
+      }),
       { numRuns: 200 },
     );
   });
