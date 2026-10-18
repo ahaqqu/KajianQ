@@ -118,7 +118,7 @@ An anonymous user's conversation: a `chat_sessions` row whose turns are `chat_me
 _Avoid_: chat history (ambiguous with the transcript), thread
 
 **Rehydration**:
-Restoring the full transcript — messages plus their derived citation payloads — from the server on reload, via `GET /v1/chat/sessions/:id/messages` (ADR-0040). There is no offline store; chat needs network.
+Restoring the full transcript — messages plus their derived citation payloads — from the server whenever the chat page mounts (a reload or a return to the route), via `GET /v1/chat/sessions/:id/messages` (ADR-0040). There is no offline store; chat needs network.
 _Avoid_: cache restore, sync
 
 **Dhaif warning**:

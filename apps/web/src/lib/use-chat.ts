@@ -15,16 +15,20 @@ import {
 } from "./chat-store";
 
 /**
- * The chat page's state machine: full-transcript rehydration on reload
+ * The chat page's state machine: full-transcript rehydration on mount
  * (TanStack Query over the rehydration endpoint), a streaming-native live
  * turn, session id + token persistence, and the typed error surface. The
  * session id state feeds ONLY the mount-time rehydration; a live turn's
  * session id rides a ref so the query never clobbers a streaming answer.
  *
- * A transcript snapshot is applied only when no turn is in flight and no turn
- * has completed since its request began: the snapshot carries the completion
- * epoch at request time, so a result fetched before a turn's write completed
- * is discarded — never deferred — rather than hiding the completed turn. A
+ * A transcript snapshot is applied only when the current mount of the page
+ * requested it and no turn is in flight or has completed since that request
+ * began: the snapshot carries the mount id and the completion epoch at request
+ * time. The epoch counter is per component instance while the query cache is
+ * module-wide and outlives the route, so a snapshot fetched before a turn that
+ * completed in an earlier mount cannot be told from a current one by its epoch:
+ * the mount that requested it can, and so a mount always fetches its own
+ * transcript and discards — never defers — whatever the cache still holds. A
  * snapshot that answers `null` (the stored session was reclaimed) is session
  * invalidation, not transcript content, and clears the stored id even when
  * its content is discarded.
@@ -32,11 +36,17 @@ import {
 
 export type ChatError = "rate_limited" | "unavailable" | "generic" | "load" | null;
 
-/** A transcript response together with the turn epoch it was requested in. */
+/** A transcript response together with the request's turn epoch and mount. */
 type TranscriptSnapshot = {
   transcript: ChatSessionMessages | null;
   completedTurnEpoch: number;
+  /** The `mountId` of the page mount that requested the snapshot. */
+  requestedByMount: number;
 };
+
+// The transcript cache outlives the chat route, so each mount numbers itself: a
+// snapshot records the mount that requested it, and no later mount applies it.
+let nextMountId = 0;
 
 export function useChat(locale: "id" | "en") {
   const [sessionId, setSessionId] = useState<string | null>(loadStoredSessionId());
@@ -48,6 +58,8 @@ export function useChat(locale: "id" | "en") {
   // Incremented when a turn completes. A snapshot records this at request
   // time: a turn that completed after that point is not in the response.
   const completedTurnEpochRef = useRef(0);
+  // This mount's number, for the lifetime of this component instance.
+  const [mountId] = useState(() => ++nextMountId);
 
   const transcript = useQuery({
     queryKey: ["chat-transcript", sessionId],
@@ -57,15 +69,38 @@ export function useChat(locale: "id" | "en") {
     queryFn: async ({ signal }): Promise<TranscriptSnapshot> => {
       const completedTurnEpoch = completedTurnEpochRef.current;
       const result = await rehydrateSession(sessionId!, signal);
-      return { transcript: result, completedTurnEpoch };
+      return { transcript: result, completedTurnEpoch, requestedByMount: mountId };
     },
   });
 
+  // Whether the transcript result in hand is the one this mount requested. A
+  // snapshot fetched by an earlier mount is not, whatever its epoch says.
+  const transcriptIsThisMount = transcript.data?.requestedByMount === mountId;
+
   // `dataUpdatedAt` of the transcript result this effect last applied — or
-  // discarded because a turn was in flight or had completed since the request.
-  // One ref gives the effect its apply-exactly-once rule across the busy flips
-  // that re-run it.
+  // discarded because another mount requested it, a turn was in flight, or a
+  // turn had completed since the request. One ref gives the effect its
+  // apply-exactly-once rule across the busy flips that re-run it.
   const appliedTranscriptAtRef = useRef(0);
+
+  // The transcript this view is built from is the one this mount requests. The
+  // cache can still hold a snapshot fetched before a turn completed in an
+  // earlier mount, and nothing in that snapshot reveals it, so a mount whose
+  // result belongs elsewhere asks for its own — including once a settled result
+  // from an earlier mount's in-flight request arrives, which the cache would
+  // otherwise keep as current. A failed load surfaces its error and is not
+  // retried here.
+  useEffect(() => {
+    if (sessionId === null || transcriptIsThisMount || transcript.isError) return;
+    if (transcript.fetchStatus !== "idle") return;
+    void transcript.refetch();
+  }, [
+    sessionId,
+    transcriptIsThisMount,
+    transcript.fetchStatus,
+    transcript.isError,
+    transcript.refetch,
+  ]);
 
   useEffect(() => {
     if (transcript.isError) setError("load");
@@ -81,6 +116,15 @@ export function useChat(locale: "id" | "en") {
       liveSessionRef.current = null;
       setSessionId(null);
     }
+    // A snapshot this mount did not request was fetched before the route
+    // remounted, so it may predate a turn completed in that earlier mount —
+    // which its per-instance epoch cannot reveal. It is discarded, never
+    // applied even briefly, because the mount's own fetch is what supplies the
+    // transcript.
+    if (!transcriptIsThisMount) {
+      appliedTranscriptAtRef.current = transcript.dataUpdatedAt;
+      return;
+    }
     // A transcript snapshot is discarded — never deferred — when a turn is in
     // flight, or when a turn completed after its request began: it was fetched
     // before that turn's write, so applying it would hide the completed turn.
@@ -95,7 +139,14 @@ export function useChat(locale: "id" | "en") {
     if (transcript.dataUpdatedAt <= appliedTranscriptAtRef.current) return;
     appliedTranscriptAtRef.current = transcript.dataUpdatedAt;
     setMessages(snapshot.transcript?.messages ?? []);
-  }, [busy, sessionId, transcript.data, transcript.dataUpdatedAt, transcript.isError]);
+  }, [
+    busy,
+    sessionId,
+    transcript.data,
+    transcript.dataUpdatedAt,
+    transcript.isError,
+    transcriptIsThisMount,
+  ]);
 
   useEffect(() => {
     const sync = (): void => setOnline(window.navigator.onLine);
@@ -174,8 +225,15 @@ export function useChat(locale: "id" | "en") {
     busy,
     error,
     online,
-    loadingTranscript: transcript.isPending && sessionId !== null,
-    transcriptTruncated: transcript.data?.transcript?.truncated ?? false,
+    // The rehydration window lasts until this mount owns a transcript — a
+    // settled result from an earlier mount does not end it — and excludes a
+    // failed load, which surfaces its own error instead.
+    loadingTranscript: sessionId !== null && !transcriptIsThisMount && !transcript.isError,
+    // Only this mount's transcript describes what the view shows, so its
+    // truncation flag is the one the view may state.
+    transcriptTruncated: transcriptIsThisMount
+      ? (transcript.data?.transcript?.truncated ?? false)
+      : false,
     send,
     newSession,
   };
