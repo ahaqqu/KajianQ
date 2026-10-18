@@ -95,6 +95,15 @@ const DHAIF_MID_ANSWER =
 
 const DHAIF_MID_FIXTURE = dhaifFixture("dhaif-mid", DHAIF_MID_ANSWER);
 
+// The copy and the MT label sharing ONE paragraph — the ticket's variant:
+// stripping the copy leaves the label line byte-identical in the body.
+const DHAIF_LABEL_SHARED_ANSWER =
+  `Hadits tersebut diriwayatkan [HR. Malik no. 18].\n\n${DHAIF_WARNING}\n` +
+  "[Terjemahan mesin — lihat teks Arab asli]\n\n" +
+  `Riwayat ini dinilai lemah oleh sebagian ulama.\n\n${DISCLAIMER}`;
+
+const DHAIF_LABEL_SHARED_FIXTURE = dhaifFixture("dhaif-label-shared", DHAIF_LABEL_SHARED_ANSWER);
+
 const REFUSAL_FIXTURE = [
   'event: meta\ndata: {"sessionId":"sess-e2e","messageId":"m-ref","traceId":"tr-ref"}\n\n',
   "event: delta\ndata: tidak menemukan dalil yang memadai\n\n",
@@ -347,6 +356,15 @@ When(
   "I ask a question whose dhaif answer carries the canonical line mid-answer",
   async ({ page }) => {
     await openChatWithFixtures(page, DHAIF_MID_FIXTURE);
+    await page.getByTestId("composer").fill("Hadits tentang amalan tertentu?");
+    await page.getByTestId("send").click();
+  },
+);
+
+When(
+  "I ask a question whose dhaif answer puts the label in the canonical line's paragraph",
+  async ({ page }) => {
+    await openChatWithFixtures(page, DHAIF_LABEL_SHARED_FIXTURE);
     await page.getByTestId("composer").fill("Hadits tentang amalan tertentu?");
     await page.getByTestId("send").click();
   },
@@ -632,6 +650,18 @@ Then("the dhaif warning renders exactly once despite the mid-answer line", async
   await expect(text.split(DHAIF_WARNING).length - 1).toBe(1);
   // The prose around the peeled copy still renders, and the disclaimer after
   // the trailing run still reaches its footer.
+  await expect(assistant).toContainText("Hadits tersebut diriwayatkan");
+  await expect(assistant).toContainText("Riwayat ini dinilai lemah");
+  await expect(assistant.getByTestId("ulama-disclaimer")).toHaveCount(1);
+});
+
+Then("the dhaif warning renders exactly once beside the shared label", async ({ page }) => {
+  const assistant = page.getByTestId("message-assistant").last();
+  await expect(assistant.getByTestId("dhaif-warning")).toHaveCount(1);
+  const text = (await assistant.textContent()) ?? "";
+  await expect(text.split(DHAIF_WARNING).length - 1).toBe(1);
+  // The label's bytes stay in the body, once; the prose around it survives.
+  await expect(text.split("Terjemahan mesin").length - 1).toBe(1);
   await expect(assistant).toContainText("Hadits tersebut diriwayatkan");
   await expect(assistant).toContainText("Riwayat ini dinilai lemah");
   await expect(assistant.getByTestId("ulama-disclaimer")).toHaveCount(1);

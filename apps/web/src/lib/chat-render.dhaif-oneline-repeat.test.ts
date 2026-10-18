@@ -158,15 +158,13 @@ describe("splitAnswerBlocks — the A2 guard on a space-separated line (#361)", 
     expect(split.body).toBe([PROSE, paragraph].join("\n\n"));
   });
 
-  it("leaves the p9d interleave as prose — the residual #361 does not claim", () => {
+  it("strips the copies out of the p9d interleave, leaving its disclaimer residual pinned (#365)", () => {
     // A paragraph that interleaves copies with the disclaimer sentence is not
-    // made solely of copies, and the web peel holds no canonical disclaimer
-    // literal — only its opening marker, by design — so it stays prose: the
-    // warning still renders in `body`, the flag-driven card draws the canonical
-    // copy on top of it, and the disclaimer sentence renders both in `body` and
-    // in the footer. Collapsing it would need a hand-copied disclaimer string
-    // or a marker-based match that eats the model's own words; this row pins
-    // that residual.
+    // prose for the copy: every copy is the card's line, so all of them are
+    // removed and the disclaimer sentences stay byte-identical in `body`. The
+    // disclaimer duplication the shape carries is #365's own residual — the web
+    // peel holds no canonical disclaimer literal, only its opening marker — so
+    // it stays pinned at 3 in `body` plus the footer's one.
     for (const paraphrase of [
       DISCLAIMER, // the canonical ID phrasing
       "Jawaban ini bukan fatwa; untuk keputusan hukum, rujuklah ulama yang terpercaya.",
@@ -180,11 +178,14 @@ describe("splitAnswerBlocks — the A2 guard on a space-separated line (#361)", 
         paraphrase,
       ].join(" ");
       const split = splitAnswerBlocks([PROSE, interleave, paraphrase, MT].join("\n\n"));
-      expect(split.warning).toBeNull();
-      expect(split.body).toBe([PROSE, interleave, MT].join("\n\n"));
+      expect(split.warning).toBe(WARNING_ID);
+      // Only the copies moved: the interleave's other bytes are untouched.
+      expect(split.body).toBe(
+        [PROSE, [paraphrase, paraphrase, paraphrase].join("  "), MT].join("\n\n"),
+      );
       expect(split.disclaimer).toBe(paraphrase); // the footer still gets its copy
-      expect(occurrences(displayed(split), WARNING_ID)).toBe(3); // the peel fields: `body` only
-      expect(occurrences(displayed(split, true), WARNING_ID)).toBe(4); // + the frame-flag card
+      expect(occurrences(displayed(split), WARNING_ID)).toBe(1); // the peeled card value
+      expect(occurrences(displayed(split, true), WARNING_ID)).toBe(1); // never a second copy
       expect(occurrences(displayed(split), paraphrase)).toBe(4); // 3 in prose, 1 in the footer
     }
   });

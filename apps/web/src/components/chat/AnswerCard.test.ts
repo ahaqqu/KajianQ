@@ -211,6 +211,38 @@ describe("AnswerCard dhaif warning renders exactly once when the canonical line 
     expect(occurrences(text, "Jawaban lanjutan.")).toBe(1);
   });
 
+  it("renders the canonical line once when the label shares its paragraph", () => {
+    // The ticket's `[copy][MT label]` variant: the peel strips the copy and
+    // keeps the label's bytes in place, so the body draws no copy and the card
+    // draws exactly one. Mutation: a scan that accepts only sole-copy paragraphs
+    // leaves both the copy and the label in `body` — two renders for one wire copy.
+    const delivered = [
+      "Jawaban awal.",
+      `${WARNING_ID}\n${MT}`,
+      "Jawaban lanjutan.",
+      DISCLAIMER,
+    ].join("\n\n");
+    const card = renderCard(delivered, true);
+    const text = card.textContent ?? "";
+    expect(occurrences(text, WARNING_ID)).toBe(1);
+    expect(screen.getAllByTestId("dhaif-warning")).toHaveLength(1);
+    expect(occurrences(text, MT)).toBe(1);
+    expect(screen.getAllByTestId("ulama-disclaimer")).toHaveLength(1);
+    expect(occurrences(text, "Jawaban awal.")).toBe(1);
+    expect(occurrences(text, "Jawaban lanjutan.")).toBe(1);
+  });
+
+  it("pins the residual: a bold-wrapped copy still renders twice", () => {
+    // The bold span is the model's markup, not product rule copy, and the
+    // no-drop constraint keeps the paragraph whole — so the body draws the copy
+    // and the flag-driven card draws it again. Pinned, not endorsed: a widening
+    // that eats the model's markup reddens here.
+    const card = renderCard(["Jawaban awal.", `**${WARNING_ID}**`, MT].join("\n\n"), true);
+    const text = card.textContent ?? "";
+    expect(occurrences(text, WARNING_ID)).toBe(2);
+    expect(screen.getAllByTestId("dhaif-warning")).toHaveLength(1);
+  });
+
   it("does not card marker-prefixed prose mid-answer (A2)", () => {
     const prose = "[Peringatan] Sebagian ulama menilai riwayat ini lemah.";
     const card = renderCard(["Jawaban awal.", prose, "Jawaban lanjutan.", MT].join("\n\n"), false);

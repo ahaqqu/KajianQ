@@ -57,6 +57,13 @@ Feature: Chat — ask, answer, citations, warnings, disclaimer
     When I ask a question whose dhaif answer carries the canonical line mid-answer
     Then the dhaif warning renders exactly once despite the mid-answer line
 
+  # #303: the delivered variant where the copy and the MT label share ONE
+  # paragraph: stripping the copy leaves the label line byte-identical in the
+  # body, so no answer content moves and the card draws the canonical line once.
+  Scenario: The dhaif warning renders once when the label shares the copy's paragraph (#303)
+    When I ask a question whose dhaif answer puts the label in the canonical line's paragraph
+    Then the dhaif warning renders exactly once beside the shared label
+
   Scenario: Markdown in the answer renders as rich text, never literal markers (#150)
     When I ask a question whose answer contains markdown
     Then the answer renders bold, emphasis, and list items with no literal markdown
