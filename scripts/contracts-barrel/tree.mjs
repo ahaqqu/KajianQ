@@ -7,17 +7,20 @@ import { ContractsBarrelError } from "./errors.mjs";
  *
  * The universe is stated, not inherited from one extension: every TypeScript
  * module file under `packages/contracts/src`, which is every file whose name ends
- * in `.ts`, `.tsx`, `.mts` or `.cts`. Test files are not part of the package's
- * surface and are the one exclusion, and the barrel is not a module the rules
- * judge — it is what they judge against. A module that is outside the universe is
- * a module nothing judges, and that void is what a new file lands in.
+ * in `.ts`, `.tsx` or `.mts` — the ESM surface the barrel can name. Test files and
+ * declaration files are not part of the package's value surface, and the barrel is
+ * not a module the rules judge: it is what they judge against. A `.cts` module is
+ * outside the universe because the package is ESM and a CommonJS namespace carries
+ * a synthetic `default` that is the module object itself, so its names are not the
+ * names a barrel entry can publish. A module outside the universe is a module
+ * nothing judges, and that void is what a new file lands in.
  */
 
 export const SRC_DIR = "packages/contracts/src";
 export const BARREL_FILE = `${SRC_DIR}/index.ts`;
 
 /** The extensions that make a file a module this gate judges. */
-export const MODULE_EXTENSIONS = [".ts", ".tsx", ".mts", ".cts"];
+export const MODULE_EXTENSIONS = [".ts", ".tsx", ".mts"];
 
 const TEST_FILE_RE = /\.test\.(m|c)?tsx?$/;
 

@@ -10,6 +10,7 @@ import {
   collidingNames,
   misdeclaredModules,
   staleDeclarations,
+  starEntries,
   tally,
   unprovidedBarrelNames,
   unwiredMembers,
@@ -48,13 +49,20 @@ const oneModule = (exports, barrel) =>
   fixtureTree({ [`${SRC_DIR}/mod.ts`]: exports, [BARREL_FILE]: barrel });
 
 describe("the runtime is the truth: the barrel publishes what the tree exports", () => {
-  it("is green on the real tree, and reports what the runtime sees", async () => {
+  it("is green on the real tree, and every count there is an invariant", async () => {
     const report = await assertBarrelCoverage(process.cwd());
     expect(report.modules).toBe(moduleFiles(process.cwd()).length);
-    expect(report).toMatchObject({ members: 54, published: 54, withheld: 3 });
-    expect(report.internal.map((entry) => entry.module)).toEqual(Object.keys(INTERNAL_MODULES));
+    expect(report.modules).toBeGreaterThan(0);
+    // Every value the tree binds is published and every published name is bound:
+    // the counts agree because they are the same set, not because of a snapshot.
+    expect(report.members).toBe(report.published);
+    // The withheld names are exactly the table's, module by module, each with its reason.
+    const declared = Object.keys(INTERNAL_MODULES).sort();
+    expect(report.internal.map((entry) => entry.module).sort()).toEqual(declared);
+    expect(report.withheld).toBe(
+      report.internal.reduce((total, entry) => total + entry.names.length, 0),
+    );
     for (const entry of report.internal) expect(entry.reason.length).toBeGreaterThan(20);
-    expect(moduleFiles(process.cwd())).toHaveLength(13);
     expect(moduleFiles(process.cwd())).not.toContain(BARREL_FILE);
   });
 
@@ -71,6 +79,40 @@ describe("the runtime is the truth: the barrel publishes what the tree exports",
     expect(message).toMatch(/mod\.ts: Hidden/);
     expect(message).toMatch(/undefined/);
     expect(message).toMatch(/INTERNAL_MODULES/);
+  });
+
+  it("refuses a star entry in the barrel, with its line, instead of publishing what it binds", async () => {
+    const root = oneModule(
+      "export const Named = 1;\nexport declare const DeclaredOnly: number;\n",
+      'export * from "./mod";\n',
+    );
+    expect(starEntries(root)).toEqual([{ line: 1, text: 'export * from "./mod";' }]);
+    const message = await assertBarrelCoverage(root, { internal: {} }).catch(
+      (error) => error.message,
+    );
+    expect(message).toMatch(/index\.ts:1: export \* from "\.\/mod";/);
+    expect(message).toMatch(/name each entry, one line per name/);
+    expect(message).toMatch(/declared-only value/);
+  });
+
+  it("refuses `export * as` too, since a namespace name is still one no line reviewed", async () => {
+    const root = oneModule("export const Named = 1;\n", 'export * as mod from "./mod";\n');
+    const message = await assertBarrelCoverage(root, { internal: {} }).catch(
+      (error) => error.message,
+    );
+    expect(message).toMatch(/index\.ts:1: export \* as mod from "\.\/mod";/);
+  });
+
+  it("is green when the barrel names every value, which is the only form it accepts", async () => {
+    const root = oneModule(
+      "export const Named = 1;\nexport declare const DeclaredOnly: number;\n",
+      'export { Named } from "./mod";\n',
+    );
+    expect(starEntries(root)).toEqual([]);
+    await expect(assertBarrelCoverage(root, { internal: {} })).resolves.toMatchObject({
+      members: 1,
+      published: 1,
+    });
   });
 
   it("refuses a barrel name no module in the tree exports", async () => {
@@ -130,9 +172,27 @@ describe("the runtime is the truth: the barrel publishes what the tree exports",
     expect(collidingNames(inventory)).toEqual([
       { name: "Shared", modules: [`${SRC_DIR}/a.ts`, `${SRC_DIR}/b.ts`] },
     ]);
-    await expect(assertBarrelCoverage(root, { internal: {} })).rejects.toThrow(
-      /Shared: .*a\.ts, .*b\.ts/,
+    const message = await assertBarrelCoverage(root, { internal: {} }).catch(
+      (error) => error.message,
     );
+    expect(message).toMatch(/Shared: .*a\.ts, .*b\.ts/);
+    expect(message).toMatch(/one name must carry one value/);
+  });
+
+  it("refuses a renamed re-export, because a value is published under the name its module binds", async () => {
+    // `b.ts` binds `Renamed`; `a.ts` still binds `Shared`, which no entry publishes.
+    // The runtime sees values and not specifiers, so the rename belongs at the origin.
+    const root = fixtureTree({
+      [`${SRC_DIR}/a.ts`]: "export const Shared = 1;\n",
+      [`${SRC_DIR}/b.ts`]: 'export { Shared as Renamed } from "./a";\n',
+      [BARREL_FILE]: 'export { Renamed } from "./b";\n',
+    });
+    const message = await assertBarrelCoverage(root, { internal: {} }).catch(
+      (error) => error.message,
+    );
+    expect(message).toMatch(/a\.ts: Shared/);
+    expect(message).toMatch(/is published under the name its module binds/);
+    expect(message).toMatch(/rename at the origin/);
   });
 
   it("reads a re-export of the same value as one origin, not a collision", async () => {
@@ -216,6 +276,14 @@ describe("a statement the text scanners could not read cannot hide a value", () 
 });
 
 describe("the tree walk is the tree", () => {
+  it("imports a `.mts` module and judges it like any other", async () => {
+    const root = fixtureTree({
+      [`${SRC_DIR}/esm.mts`]: "export const EsmOnly = 1;\n",
+      [BARREL_FILE]: "",
+    });
+    await expect(assertBarrelCoverage(root, { internal: {} })).rejects.toThrow(/esm\.mts: EsmOnly/);
+  });
+
   it("reads every module file beside the barrel, tests aside, in every extension", () => {
     const root = fixtureTree({
       [`${SRC_DIR}/a.ts`]: "export const A = 1;",
@@ -226,9 +294,10 @@ describe("the tree walk is the tree", () => {
       [`${SRC_DIR}/declared.d.ts`]: "export declare const Declared: 1;",
       [BARREL_FILE]: "",
     });
+    // `.cts` is outside the ESM surface the barrel can name, and a declaration file
+    // carries no runtime value, so neither is a module this gate imports.
     expect(moduleFiles(root)).toEqual([
       `${SRC_DIR}/a.ts`,
-      `${SRC_DIR}/c.cts`,
       `${SRC_DIR}/d.tsx`,
       `${SRC_DIR}/nested/b.mts`,
     ]);
