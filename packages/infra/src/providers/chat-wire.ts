@@ -63,8 +63,8 @@ export function estimateTokens(chars: number): number {
   return Math.ceil(chars / 4);
 }
 
-/** Micro-USD per MTok → micro-USD per token, keeping integer math exact. Prices
- * are integers in micro-USD per MTok; a per-token cost may be fractional. */
+/** Per-MTok price → per-token price; the quotient may be fractional, so a cost
+ * is only integer once the token counts are folded in. */
 function microUsdPerToken(perMTok: number): number {
   return perMTok / 1_000_000;
 }

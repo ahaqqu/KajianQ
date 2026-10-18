@@ -190,3 +190,38 @@ export interface Generator<TFilters extends Record<string, unknown> = DefaultFil
 export interface Reviewer<TFilters extends Record<string, unknown> = DefaultFilters> {
   review(draft: Draft, context: AssembledContext<TFilters>): StageEffect<Draft>;
 }
+
+/**
+ * A run's decline: what the product answers with when the run has nothing to
+ * ask the model about. `text` is the caller's own copy — canned and localized,
+ * so the same input always yields the same answer; the engine carries it
+ * opaquely and names neither a language nor a wording. `reason` is the run's
+ * account of why it declined and `trigger` an optional machine-readable label;
+ * both are trace content, and the engine interprets neither.
+ */
+export type Decline = {
+  text: string;
+  reason: string;
+  trigger?: string;
+};
+
+/**
+ * Decline: the run-level short-circuit the runner consults after assembly, one
+ * step before the two stages that can spend. A non-null verdict is the run's
+ * whole answer — the runner records it and never enters the Generator or the
+ * Reviewer, so a run that declines cannot buy anything.
+ *
+ * An implementation is a deterministic read of the routed query against its own
+ * copy. It must not call a Provider: the one path it answers on is the path
+ * whose contract is that it costs nothing, and a call made here would be a
+ * `llm_call` with no event the run owns.
+ *
+ * Optional in {@link PipelineStages} — a consumer with no decline copy wired
+ * still runs the five stages unchanged.
+ */
+export interface Decliner<TFilters extends Record<string, unknown> = DefaultFilters> {
+  decline(
+    routed: RoutedQuery<TFilters>,
+    context: AssembledContext<TFilters>,
+  ): StageEffect<Decline | null>;
+}

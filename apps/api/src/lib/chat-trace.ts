@@ -53,11 +53,15 @@ export function traceChunkIds(trace: Trace): string[] {
 }
 
 /**
- * True when the trace records a refusal decision — the reviewer's `refusal`
- * event with its trigger, the same signal the eval harness's refusal detection
- * reads (ADR-0007). ONE owner for "did the pipeline refuse?": both the
- * citations frame's flag (`chat-citations.ts`) and the route's chunking branch
- * (`chat.ts`) ask it, so the two spellings cannot drift apart.
+ * True when the trace records a refusal decision — a `refusal` event with its
+ * trigger, the same signal the eval harness's refusal detection reads
+ * (ADR-0007). ONE owner for "is the delivered text the product's own rather
+ * than a draft?": both the citations frame's flag (`chat-citations.ts`) and the
+ * route's chunking branch (`chat.ts`) ask it, so the two spellings cannot drift
+ * apart. The writer is not always the reviewer: a run whose route carries no
+ * question is declined by the runner and records the same event kind, because
+ * the fact the kind carries — the user gets product copy, not a model's draft —
+ * is the same one.
  *
  * The trigger→delivery map this predicate relies on, stated once here for every
  * reader of it (`chat.ts`'s chunking branch included): a `generator_refusal`
@@ -65,10 +69,12 @@ export function traceChunkIds(trace: Trace): string[] {
  * rules — so the settled text must be chunked; **anything else REPLACES the
  * delivered text with product copy** and must not replay the vendor's deltas.
  * The replacement triggers today are `ungrounded_citation` (the deterministic
- * gate), `reviewer_fail` (the paid reviewer) and `asserting_refusal_draft` (the
- * decline backstop); adding one keeps this invariant, which is why the route
- * asks this predicate rather than the trigger value. The vocabulary itself has
- * one owner: `RefusalTrigger` in `@app/kajianq-domain` (`chat-refusal.ts`).
+ * gate), `reviewer_fail` (the paid reviewer), `asserting_refusal_draft` (the
+ * decline backstop) and `content_free_decline` (the runner's decline of a route
+ * that carries no question at all); adding one keeps this invariant, which is
+ * why the route asks this predicate rather than the trigger value. The
+ * vocabulary itself has one owner: `RefusalTrigger` in `@app/kajianq-domain`
+ * (`chat-refusal.ts`).
  */
 export function traceRefused(trace: Trace): boolean {
   return trace.events.some((event) => event.kind === "refusal");

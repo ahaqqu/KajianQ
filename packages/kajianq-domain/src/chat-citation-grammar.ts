@@ -52,6 +52,28 @@ export interface CitationGrammar {
    * one address"). A consumer must refuse it.
    */
   readonly addressesOf?: (match: RegExpExecArray) => readonly string[] | null;
+  /**
+   * Where the **collection name** sits inside this grammar's match, or
+   * `undefined` when the form has no such slot. Declared here because the
+   * grammar that owns an address owns the text inside it: a consumer that
+   * rewrites the name — the comparison form's spelling fold — reads the
+   * boundary from this declaration instead of re-finding it with a pattern of
+   * its own at the comparison site, and the declaration reads the bounds the
+   * engine recorded for that group rather than counting characters.
+   */
+  readonly collectionOf?: (match: RegExpExecArray) => CitationCollectionSlot | null;
+}
+
+/**
+ * A collection-name slot inside one citation match: the name as the label
+ * spells it, and the bounds {@link CitationGrammar.collectionOf} found it at —
+ * offsets **into the text the match was found in**, so a consumer rewrites the
+ * name in place and leaves the rest of the label byte-for-byte.
+ */
+export interface CitationCollectionSlot {
+  readonly collection: string;
+  readonly start: number;
+  readonly end: number;
 }
 
 /**
@@ -85,6 +107,74 @@ const HADITH_ADDRESS = /^(.*?no\.\s*\d[\p{L}\p{Nd}]*)/u;
  * address is ASCII-digit-led, and a number in another script has no address
  * core at all, so the lexical tail rule owns it and it likewise refuses.
  */
+// Hadith: `HR. Bukhari no. 573` / `HR. Ibn Majah no. 224 (Dhaif)`, and the
+// dot-less `HR Bukhari no. 573` (same rationale as the Quran marker).
+// Collection names may be multi-word ("Abu Dawud", "Ibn Majah") and
+// the long forms a model actually writes carry a collection-type prefix
+// ("Sunan Abu Dawud", "Sunan an Nasai"), so up to four tokens are tolerated.
+// Token classes exclude `.` and `,` so the match cannot run across a sentence
+// boundary or swallow a list, and both the token length and the repetition
+// count are bounded — no nested unbounded quantifier, so the pattern stays
+// linear (ReDoS-safe) as required. The trailing number token also skips
+// brackets: `[HR. Malik no. 18]` must not capture a phantom `…no. 18]` span
+// that normalized to nothing a chunk grounds — a false UNGROUNDED, i.e. a
+// refused grounded answer; the Quran address already skipped them. The match
+// therefore spans address + absorbed tail; `HADITH_ADDRESS` names the address
+// inside it. A **spaced** joiner stays outside this token — `HR. Bukhari no.
+// 5010 - 5011` scans as its head — a recorded exclusion (ADR-0049's "Hadith
+// ranges" revisit trigger), pinned as deliberate in the validator test. The
+// collection is the first **capture group**, so a consumer rewriting the name
+// reads it out of the match the scan made rather than finding it again.
+const HADITH_GRAMMAR: CitationGrammar = {
+  pattern: () =>
+    /\bHR(?:\.|\s)\s*([^\s,.]{1,24}(?:\s+[^\s,.]{1,24}){0,3})(\s+no\.\s*[^\s,;.)[\]]+)/dgi,
+  addressOf: (match) => HADITH_ADDRESS.exec(match[0])?.[1] ?? null,
+  collectionOf: (match) => hadithCollectionSlot(match),
+};
+
+/**
+ * {@link CitationGrammar.collectionOf} for the hadith grammar: the name is the
+ * pattern's own first capture group, and its bounds are the ones the engine
+ * recorded for that group — `match.indices`, which the pattern's `d` flag is what
+ * publishes, in the same coordinates as the text the scan read. Nothing here counts characters, so the bounds cannot drift when the
+ * pattern gains a group: they are the group's own coordinates, not a
+ * reconstruction of them.
+ *
+ * A pattern without `d` publishes no indices at all. That state is **loud under
+ * test, never silent in a request**: the slot is absent, the fold declines to
+ * guess, and the spelling the grammar read stops folding onto the corpus's label —
+ * a false ungrounded, which the collection and replay battery fails on. The
+ * grammar still scans, so the citation itself is not lost.
+ */
+function hadithCollectionSlot(match: RegExpExecArray): CitationCollectionSlot | null {
+  const collection = match[1];
+  const bounds = match.indices?.[1];
+  if (collection === undefined || bounds === undefined) return null;
+  return { collection, start: bounds[0], end: bounds[1] };
+}
+
+/**
+ * Rewrite the collection name of **every** hadith address a text carries,
+ * through `fold`. Every occurrence, never only the first: a comparison form that
+ * folded one position would stop preserving containment — a label inside a
+ * longer text would no longer be findable in that text's comparison form — and
+ * the grounded-label passes read a whole answer that way.
+ */
+export function rewriteHadithCollections(
+  text: string,
+  fold: (collection: string) => string,
+): string {
+  let rewritten = "";
+  let cursor = 0;
+  for (const match of text.matchAll(HADITH_GRAMMAR.pattern())) {
+    const slot = HADITH_GRAMMAR.collectionOf?.(match);
+    if (slot === undefined || slot === null) continue;
+    rewritten += text.slice(cursor, slot.start) + fold(slot.collection);
+    cursor = slot.end;
+  }
+  return cursor === 0 ? text : rewritten + text.slice(cursor);
+}
+
 export const CITATION_GRAMMARS: readonly CitationGrammar[] = [
   // Quran: `QS. 2:255` / `Q.S. 2:255` (both dotted spellings Indonesian prose
   // uses) or `QS. Al-Baqarah:255` (surah numeric or named). The marker closes
@@ -130,27 +220,9 @@ export const CITATION_GRAMMARS: readonly CitationGrammar[] = [
     // `QS. Al-Baqarah:255—256`, which is unverifiable and refuses anyway).
     addressesOf: (match) => quranRangeAddresses(match[1], match[2]),
   },
-  // Hadith: `HR. Bukhari no. 573` / `HR. Ibn Majah no. 224 (Dhaif)`, and the
-  // dot-less `HR Bukhari no. 573` (same rationale as the Quran marker).
-  // Collection names may be multi-word ("Abu Dawud", "Ibn Majah") and
-  // the long forms a model actually writes carry a collection-type prefix
-  // ("Sunan Abu Dawud", "Sunan an Nasai"), so up to four tokens are tolerated.
-  // Token classes exclude `.` and `,` so the match cannot run across a sentence
-  // boundary or swallow a list, and both the token length and the repetition
-  // count are bounded — no nested unbounded quantifier, so the pattern stays
-  // linear (ReDoS-safe) as required. The trailing number token also skips
-  // brackets: `[HR. Malik no. 18]` must not capture a phantom `…no. 18]` span
-  // that normalized to nothing a chunk grounds — a false UNGROUNDED, i.e. a
-  // refused grounded answer; the Quran address already skipped them. The match
-  // therefore spans address + absorbed tail; `HADITH_ADDRESS` names the address
-  // inside it. A **spaced** joiner stays outside this token — `HR. Bukhari no.
-  // 5010 - 5011` scans as its head — a recorded exclusion (ADR-0049's "Hadith
-  // ranges" revisit trigger), pinned as deliberate in the validator test.
-  {
-    pattern: () =>
-      /\bHR(?:\.|\s)\s*[^\s,.]{1,24}(?:\s+[^\s,.]{1,24}){0,3}\s+no\.\s*[^\s,;.)[\]]+/gi,
-    addressOf: (match) => HADITH_ADDRESS.exec(match[0])?.[1] ?? null,
-  },
+  // Hadith — declared above with its collection slot, which {@link
+  // rewriteHadithCollections} reads.
+  HADITH_GRAMMAR,
   // Kitab (SPECS §2.1): `Al-Umm, Imam Syafi'i, Jilid 1, Hal. 102, Bab …`.
   // Kitab ingestion has not landed, so any such citation is ungrounded by
   // definition — detecting it is the point, not an accident. The match IS
@@ -160,76 +232,3 @@ export const CITATION_GRAMMARS: readonly CitationGrammar[] = [
     addressOf: (match) => match[0],
   },
 ];
-
-function grammarAtStart(
-  label: string,
-): { grammar: CitationGrammar; match: RegExpExecArray } | null {
-  for (const grammar of CITATION_GRAMMARS) {
-    const match = grammar.pattern().exec(label);
-    if (match?.index !== 0) continue;
-    return { grammar, match };
-  }
-  return null;
-}
-
-/**
- * The address a citation grammar identifies at the **start** of a label — the
- * head of an address list, and the read `chat-citation-reduce` reduces with.
- */
-export function addressAtStart(label: string): string | null {
-  const at = grammarAtStart(label);
-  if (at === null) return null;
-  const address = at.grammar.addressOf(at.match);
-  return address !== null && address !== "" ? address : null;
-}
-
-/**
- * Whether the grammar a label **begins** with declares an address list
- * ({@link CitationGrammar.addressesOf}) — read from the grammar's own
- * structure, never inferred from the shape of the addresses {@link
- * addressesNamedBy} named. A consumer that decides a citation **per address**
- * must branch on this and on nothing else, and **this docstring is the one owner
- * of why**: the comparison site in `chat-citation-validator` points here instead
- * of restating it, and `SPECS.md` §3.7 keeps the reader-facing form.
- *
- * `false` covers both `[]` states, "no grammar at all" and "the grammar declares
- * no list": each names exactly one address and takes the extension rule.
- */
-export function declaresAddressList(label: string): boolean {
-  return grammarAtStart(label)?.grammar.addressesOf !== undefined;
-}
-
-/**
- * Every address the **first** citation grammar in a label names, `[]` when the
- * label begins with no grammar at all, or **`null`** when the grammar declares
- * a list it cannot enumerate. One entry for an ordinary citation; several for a
- * grammar whose form is a list ({@link CitationGrammar.addressesOf}) — the
- * Quran range, where the label is a set of addresses and grounding is decided
- * per address (ADR-0049), the range's **interior** included.
- *
- * A grammar that declares **no** list names exactly one address, and that
- * address is the label itself — not the shorter address {@link
- * CitationGrammar.addressOf} reduces it to. That keeps a consumer comparing
- * labels as **sets** honest: the hadith compound (`HR. Bukhari no. 5010—5011`)
- * names that compound, which no retrieved label equals, so
- * `HR. Bukhari no. 5010` retrieved never grounds it; a match with no address
- * core names nothing and still refuses.
- *
- * **The three states are distinct on purpose.** `[]` is "no grammar, or names
- * no address"; a non-empty list is the declared addresses; **`null` is
- * "declared, and unenumerable"**, which the caller refuses — never a
- * one-element list, the shape of a single-address declaration.
- *
- * The addresses come back in the grammar's own spelling (a range in ascending
- * ayah order); canonicalizing them for comparison belongs to
- * `chat-citation-validator`, which owns the comparison form.
- */
-export function addressesNamedBy(label: string): readonly string[] | null {
-  const at = grammarAtStart(label);
-  if (at === null) return [];
-  const declared = at.grammar.addressesOf?.(at.match);
-  if (declared === null) return null;
-  if (declared !== undefined) return declared.filter((address) => address !== "");
-  const address = at.grammar.addressOf(at.match);
-  return address === null || address === "" ? [] : [label];
-}

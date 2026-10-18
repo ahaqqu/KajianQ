@@ -1,0 +1,3991 @@
+{
+  "id": "golden-set-v0-replay",
+  "$comment": "Recorded-run replay for the collection-name spelling fold (PR #514). Snapshotted from staging `eval_results` joined to `answer_traces` and `chat_messages` for run be4a100d-3ab3-44ac-8f23-d7e662de165a (label gs376-repro-main-9c57893, base 9c57893). Each row carries exactly what the replay reads: the answer text as persisted; one entry per chunk the run's last retrieval event returned, with the corpus's own citation label, the chunk's sourceType and whether it backed a citation sheet (a non-empty text_ar — the server's frame reads only those); the frame labels the HEAD build derives from those two inputs; the question's citation requirement in the head build's comparison form; whether the trace recorded a refusal; and the outcome the BASE build recorded. What a replay can show: which rows the head build's citation validity moves, over the answers the base build actually gave. What it cannot: the base build's own frame (never persisted — the recorded outcome stands in for it), any behaviour the fold would change (a refusal is the trace's), or what a fresh run would answer.",
+  "run": "be4a100d-3ab3-44ac-8f23-d7e662de165a",
+  "label": "gs376-repro-main-9c57893",
+  "base": "9c57893",
+  "rows": [
+    {
+      "questionId": "gs-v0-001",
+      "expectedBehavior": "answer",
+      "expectedSourceTypes": ["quran"],
+      "required": ["QS. 2:255"],
+      "answer": "Dalam konteks yang diberikan, Ayat Kursi adalah QS. 2:255. Teks dan terjemahannya:\n\nاَللّٰهُ لَآ اِلٰهَ اِلَّا هُوَۚ اَلْحَيُّ الْقَيُّوْمُ ەۚ لَا تَأْخُذُهٗ سِنَةٌ وَّلَا نَوْمٌۗ  لَهٗ مَا فِى السَّمٰوٰتِ وَمَا فِى الْاَرْضِۗ مَنْ ذَا الَّذِيْ يَشْفَعُ عِنْدَهٗٓ اِلَّا بِاِذْنِهٖۗ يَعْلَمُ مَا بَيْنَ اَيْدِيْهِمْ وَمَا خَلْفَهُمْۚ وَلَا يُحِيْطُوْنَ بِشَيْءٍ مِّنْ عِلْمِهٖٓ اِلَّا بِمَا شَاۤءَۚ وَسِعَ كُرْسِيُّهُ السَّمٰوٰتِ وَالْاَرْضَۚ وَلَا يَـُٔوْدُهٗ حِفْظُهُمَاۚ وَهُوَ الْعَلِيُّ الْعَظِيْمُ\n\n(Terjemahan mesin — lihat teks Arab asli)  \nAllah, tidak ada tuhan selain Dia, Yang Mahahidup lagi terus-menerus mengurus (makhluk-Nya). Dia tidak dilanda oleh kantuk dan tidak (pula) oleh tidur. Milik-Nyalah apa yang ada di langit dan apa yang ada di bumi. Tidak ada yang dapat memberi syafaat di sisi-Nya tanpa izin-Nya. Dia mengetahui apa yang ada di hadapan mereka dan apa yang ada di belakang mereka. Mereka tidak mengetahui sesuatu apa pun dari ilmu-Nya, kecuali apa yang Dia kehendaki. Kursi-Nya (ilmu dan kekuasaan-Nya) meliputi langit dan bumi. Dia tidak merasa berat memelihara keduanya. Dialah yang Mahatinggi lagi Mahaagung. [QS. 2:255]\n\nKonteks juga memuat hadits tentang keagungan ayat ini:\n\nحَدَّثَنَا مُحَمَّدُ بْنُ إِسْمَاعِيلَ، قَالَ حَدَّثَنَا الْحُمَيْدِيُّ، قَالَ حَدَّثَنَا سُفْيَانُ بْنُ عُيَيْنَةَ، فِي تَفْسِيرِ حَدِيثِ عَبْدِ اللَّهِ بْنِ مَسْعُودٍ قَالَ مَا خَلَقَ اللَّهُ مِنْ سَمَاءٍ وَلاَ أَرْضٍ أَعْظَمَ مِنْ آيَةِ الْكُرْسِيِّ ‏.‏ قَالَ سُفْيَانُ لأَنَّ آيَةَ الْكُرْسِيِّ هُوَ كَلاَمُ اللَّهِ وَكَلاَمُ اللَّهِ أَعْظَمُ مِنْ خَلْقِ اللَّهِ مِنَ السَّمَاءِ وَالأَرْضِ ‏.‏\n\n(Terjemahan mesin — lihat teks Arab asli)  \nTelah menceritakan kepada kami [Muhammad bin Isma'il] ia berkata; telah menceritakan kepada kami [Al Humaidi] telah menceritakan kepada kami [Sufyan bin 'Uyainah] tentang penafsiran hadits Abdulah bin Mas'ud, ia berkata; \"Tidaklah Allah menciptakan langit dan bumi yang lebih agung melebihi ayat kursi.\" Sufyan berkata; \"Karena ayat kursi adalah kalam Allah dan kalam Allah lebih agung dari ciptaan Allah seperti langit dan bumi [HR. Tirmidhi no. 2884 (Sahih)]\n\nCatatan: konteks juga memuat hadits berlabel dhaif tentang Ayat Kursi, yaitu HR. Tirmidhi no. 2878 (Dhaif): “Setiap sesuatu memiliki puncak, dan puncaknya Al Qur`an adalah surat Al Baqarah, di dalamnya terdapat ayat yang merupakan tuannya ayat-ayat dalam Al Qur`an yaitu ayat kursi.” Hadits ini berstatus dhaif.\n\nPeringatan: jawaban ini bukan fatwa; untuk keputusan hukum, rujuklah ulama.\n\n[Peringatan] Hadits yang dikutip berderajat lemah (dhaif); tidak dapat dijadikan dalil utama.",
+      "refused": false,
+      "retrieved": [
+        {
+          "label": "QS. 2:255",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 20:5",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 27:26",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 23:116",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 38:66",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 13:2",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 59:23",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2884 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 81:20",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 32:4",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 85:15",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 39:62",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 25:2",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 3:189",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 3045 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 9:129",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 21:22",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 1460 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 25:59",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 3:2",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 5:120",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 402",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 7433",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 6663",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 4803",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 182 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2878 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 7411",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 3109 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 4726 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 7419",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 5010",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 2:254",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 2:256",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 20:4",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 20:6",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 27:25",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 27:27",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 23:115",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 23:117",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 38:65",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 38:67",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 13:1",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 13:3",
+          "sourceType": "quran",
+          "backed": true
+        }
+      ],
+      "evidence": ["QS. 2:255", "HR. Tirmidhi no. 2884", "HR. Tirmidhi no. 2878"],
+      "recorded": {
+        "passed": true,
+        "citationValidity": 1,
+        "retrievalRecall": 1,
+        "refused": false
+      }
+    },
+    {
+      "questionId": "gs-v0-002",
+      "expectedBehavior": "answer",
+      "expectedSourceTypes": ["quran"],
+      "required": ["QS. 2:43"],
+      "answer": "Berikut dalil-dalil dari konteks yang memuat perintah shalat:\n\n1. وَاَقِيْمُوا الصَّلٰوةَ وَاٰتُوا الزَّكٰوةَ وَارْكَعُوْا مَعَ الرّٰكِعِيْنَ\n(Terjemahan mesin — lihat teks Arab asli)\n“Tegakkanlah salat, tunaikanlah zakat, dan rukuklah beserta orang-orang yang rukuk.” [QS. 2:43]\n\n2. فَصَلِّ لِرَبِّكَ وَانْحَرْۗ\n(Terjemahan mesin — lihat teks Arab asli)\n“Maka, laksanakanlah salat karena Tuhanmu dan berkurbanlah!” [QS. 108:2]\n\n3. وَاَقِيْمُوا الصَّلٰوةَ وَاٰتُوا الزَّكٰوةَ ۗ وَمَا تُقَدِّمُوْا لِاَنْفُسِكُمْ مِّنْ خَيْرٍ تَجِدُوْهُ عِنْدَ اللّٰهِ ۗ اِنَّ اللّٰهَ بِمَا تَعْمَلُوْنَ بَصِيْرٌ\n(Terjemahan mesin — lihat teks Arab asli)\n“Dirikanlah salat dan tunaikanlah zakat. Segala kebaikan yang kamu kerjakan untuk dirimu akan kamu dapatkan (pahalanya) di sisi Allah. Sesungguhnya Allah Maha Melihat apa yang kamu kerjakan.” [QS. 2:110]\n\n4. فَاِذَا قَضَيْتُمُ الصَّلٰوةَ فَاذْكُرُوا اللّٰهَ قِيَامًا وَّقُعُوْدًا وَّعَلٰى جُنُوْبِكُمْ ۚ فَاِذَا اطْمَأْنَنْتُمْ فَاَقِيْمُوا الصَّلٰوةَ ۚ اِنَّ الصَّلٰوةَ كَانَتْ عَلَى الْمُؤْمِنِيْنَ كِتٰبًا مَّوْقُوْتًا\n(Terjemahan mesin — lihat teks Arab asli)\n“Apabila kamu telah menyelesaikan salat, berzikirlah kepada Allah (mengingat dan menyebut-Nya), baik ketika kamu berdiri, duduk, maupun berbaring. Apabila kamu telah merasa aman, laksanakanlah salat itu (dengan sempurna). Sesungguhnya salat itu merupakan kewajiban yang waktunya telah ditentukan atas orang-orang mukmin.” [QS. 4:103]\n\n5. ۞ مُنِيْبِيْنَ اِلَيْهِ وَاتَّقُوْهُ وَاَقِيْمُوا الصَّلٰوةَ وَلَا تَكُوْنُوْا مِنَ الْمُشْرِكِيْنَۙ\n(Terjemahan mesin — lihat teks Arab asli)\n“(Hadapkanlah wajahmu) dalam keadaan kembali (bertobat) kepada-Nya. Bertakwalah kepada-Nya, laksanakanlah salat, dan janganlah kamu termasuk orang-orang musyrik,” [QS. 30:31]\n\n6. وَاَنْ اَقِيْمُوا الصَّلٰوةَ وَاتَّقُوْهُۗ وَهُوَ الَّذِيْٓ اِلَيْهِ تُحْشَرُوْنَ\n(Terjemahan mesin — lihat teks Arab asli)\n“dan agar melaksanakan salat serta bertakwa kepada-Nya.” Dialah Tuhan yang hanya kepada-Nya kamu semua akan dihimpun.” [QS. 6:72]\n\n7. وَاَقِيْمُوا الصَّلٰوةَ وَاٰتُوا الزَّكٰوةَ وَاَطِيْعُوا الرَّسُوْلَ لَعَلَّكُمْ تُرْحَمُوْنَ\n(Terjemahan mesin — lihat teks Arab asli)\n“Dirikanlah salat, tunaikanlah zakat, dan taatlah kepada Rasul (Nabi Muhammad) agar kamu dirahmati.” [QS. 24:56]\n\n8. اَقِمِ الصَّلٰوةَ لِدُلُوْكِ الشَّمْسِ اِلٰى غَسَقِ الَّيْلِ وَقُرْاٰنَ الْفَجْرِۗ اِنَّ قُرْاٰنَ الْفَجْرِ كَانَ مَشْهُوْدًا\n(Terjemahan mesin — lihat teks Arab asli)\n“Dirikanlah salat sejak matahari tergelincir sampai gelapnya malam dan (laksanakan pula salat) Subuh! Sesungguhnya salat Subuh itu disaksikan (oleh malaikat).” [QS. 17:78]\n\n9. اِنَّنِيْٓ اَنَا اللّٰهُ لَآ اِلٰهَ اِلَّآ اَنَا۠ فَاعْبُدْنِيْۙ وَاَقِمِ الصَّلٰوةَ لِذِكْرِيْ\n(Terjemahan mesin — lihat teks Arab asli)\n“Sesungguhnya Aku adalah Allah, tidak ada tuhan selain Aku. Maka, sembahlah Aku dan tegakkanlah salat untuk mengingat-Ku.” [QS. 20:14]\n\n10. حَافِظُوْا عَلَى الصَّلَوٰتِ وَالصَّلٰوةِ الْوُسْطٰى وَقُوْمُوْا لِلّٰهِ قٰنِتِيْنَ\n(Terjemahan mesin — lihat teks Arab asli)\n“Peliharalah semua salat (fardu) dan salat Wusṭā. Berdirilah karena Allah (dalam salat) dengan khusyuk.” [QS. 2:238]\n\n11. اُتْلُ مَآ اُوْحِيَ اِلَيْكَ مِنَ الْكِتٰبِ وَاَقِمِ الصَّلٰوةَۗ اِنَّ الصَّلٰوةَ تَنْهٰى عَنِ الْفَحْشَاۤءِ وَالْمُنْكَرِ ۗوَلَذِكْرُ اللّٰهِ اَكْبَرُ ۗوَاللّٰهُ يَعْلَمُ مَا تَصْنَعُوْنَ\n(Terjemahan mesin — lihat teks Arab asli)\n“Bacalah (Nabi Muhammad) Kitab (Al-Qur’an) yang telah diwahyukan kepadamu dan tegakkanlah salat. Sesungguhnya salat itu mencegah dari (perbuatan) keji dan mungkar. Sungguh, mengingat Allah (salat) itu lebih besar (keutamaannya daripada ibadah yang lain). Allah mengetahui apa yang kamu kerjakan.” [QS. 29:45]\n\n12. قُلْ لِّعِبَادِيَ الَّذِيْنَ اٰمَنُوْا يُقِيْمُوا الصَّلٰوةَ وَيُنْفِقُوْا مِمَّا رَزَقْنٰهُمْ سِرًّا وَّعَلَانِيَةً مِّنْ قَبْلِ اَنْ يَّأْتِيَ يَوْمٌ لَّا بَيْعٌ فِيْهِ وَلَا خِلٰلٌ\n(Terjemahan mesin — lihat teks Arab asli)\n“Katakanlah (Nabi Muhammad) kepada hamba-hamba-Ku yang telah beriman, ‘Hendaklah mereka melaksanakan salat dan menginfakkan sebagian rezeki yang Kami anugerahkan kepada mereka secara sembunyi atau terang-terangan sebelum datang hari ketika tidak ada lagi jual beli dan persahabatan.’” [QS. 14:31]\n\n13. ءَاَشْفَقْتُمْ اَنْ تُقَدِّمُوْا بَيْنَ يَدَيْ نَجْوٰىكُمْ صَدَقٰتٍۗ فَاِذْ لَمْ تَفْعَلُوْا وَتَابَ اللّٰهُ عَلَيْكُمْ فَاَقِيْمُوا الصَّلٰوةَ وَاٰتُوا الزَّكٰوةَ وَاَطِيْعُوا اللّٰهَ وَرَسُوْلَهٗ ۗوَاللّٰهُ خَبِيْرٌ ۢبِمَا تَعْمَلُوْنَ ࣖ\n(Terjemahan mesin — lihat teks Arab asli)\n“Apakah kamu takut (menjadi miskin) jika mengeluarkan sedekah sebelum (melakukan) pembicaraan rahasia dengan Rasul? Jika kamu tidak melakukannya dan Allah mengampunimu, tegakkanlah salat, tunaikanlah zakat, serta taatlah kepada Allah dan Rasul-Nya. Allah Mahateliti terhadap apa yang kamu kerjakan.” [QS. 58:13]\n\n14. وَمَآ اُمِرُوْٓا اِلَّا لِيَعْبُدُوا اللّٰهَ مُخْلِصِيْنَ لَهُ الدِّيْنَ ەۙ حُنَفَاۤءَ وَيُقِيْمُوا الصَّلٰوةَ وَيُؤْتُوا الزَّكٰوةَ وَذٰلِكَ دِيْنُ الْقَيِّمَةِۗ\n(Terjemahan mesin — lihat teks Arab asli)\n“Mereka tidak diperintah, kecuali untuk menyembah Allah dengan mengikhlaskan ketaatan kepada-Nya lagi hanif (istikamah), melaksanakan salat, dan menunaikan zakat. Itulah agama yang lurus (benar).” [QS. 98:5]\n\nPeringatan: jawaban ini bukan fatwa; untuk keputusan hukum, rujuklah ulama.",
+      "refused": false,
+      "retrieved": [
+        {
+          "label": "QS. 2:43",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 108:2",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 2:110",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 4:103",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 30:31",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 98:5",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 17:78",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 6:72",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 23:9",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 20:14",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 2:238",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 24:56",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 29:45",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 27:3",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 31:4",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 8:3",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 21:73",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 5:6",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 58:13",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 14:31",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 70:34",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 70:22",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 2:42",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 2:44",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 108:1",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 108:3",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 2:109",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 2:111",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 4:102",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 4:104",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 30:30",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 30:32",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 98:4",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 98:6",
+          "sourceType": "quran",
+          "backed": true
+        }
+      ],
+      "evidence": [
+        "QS. 2:43",
+        "QS. 108:2",
+        "QS. 2:110",
+        "QS. 4:103",
+        "QS. 30:31",
+        "QS. 6:72",
+        "QS. 24:56",
+        "QS. 17:78",
+        "QS. 20:14",
+        "QS. 2:238",
+        "QS. 29:45",
+        "QS. 14:31",
+        "QS. 58:13",
+        "QS. 98:5"
+      ],
+      "recorded": {
+        "passed": true,
+        "citationValidity": 1,
+        "retrievalRecall": 1,
+        "refused": false
+      }
+    },
+    {
+      "questionId": "gs-v0-003",
+      "expectedBehavior": "answer",
+      "expectedSourceTypes": ["hadith"],
+      "required": ["HR. Bukhari no. 149"],
+      "answer": "Menurut hadits-hadits yang ada dalam konteks, tata cara wudhu disebutkan sebagai berikut.\n\n**1) HR. Bukhari no. 186**\n\nحَدَّثَنَا مُوسَى، قَالَ حَدَّثَنَا وُهَيْبٌ، عَنْ عَمْرٍو، عَنْ أَبِيهِ، شَهِدْتُ عَمْرَو بْنَ أَبِي حَسَنٍ سَأَلَ عَبْدَ اللَّهِ بْنَ زَيْدٍ عَنْ وُضُوءِ النَّبِيِّ، صلى الله عليه وسلم فَدَعَا بِتَوْرٍ مِنْ مَاءٍ، فَتَوَضَّأَ لَهُمْ وُضُوءَ النَّبِيِّ صلى الله عليه وسلم فَأَكْفَأَ عَلَى يَدِهِ مِنَ التَّوْرِ، فَغَسَلَ يَدَيْهِ ثَلاَثًا، ثُمَّ أَدْخَلَ يَدَهُ فِي التَّوْرِ، فَمَضْمَضَ وَاسْتَنْشَقَ وَاسْتَنْثَرَ ثَلاَثَ غَرَفَاتٍ، ثُمَّ أَدْخَلَ يَدَهُ فَغَسَلَ وَجْهَهُ ثَلاَثًا، ثُمَّ أَدْخَلَ يَدَهُ فَغَسَلَ يَدَيْهِ مَرَّتَيْنِ إِلَى الْمِرْفَقَيْنِ مَرَّتَيْنِ، ثُمَّ أَدْخَلَ يَدَهُ فَمَسَحَ رَأْسَهُ، فَأَقْبَلَ بِهِمَا وَأَدْبَرَ مَرَّةً وَاحِدَةً، ثُمَّ غَسَلَ رِجْلَيْهِ إِلَى الْكَعْبَيْنِ‏.\n\n(Terjemahan mesin — lihat teks Arab asli)  \nTelah menceritakan kepada kami [Musa] berkata, telah menceritakan kepada kami [Wuhhaib] dari ['Amru] dari [Bapaknya] berkata, \"Aku pernah menyaksikan 'Amru bin Abu Hasan bertanya kepada ['Abdullah bin Zaid] tentang wudlunya Nabi shallallahu 'alaihi wasallam. Lalu ia minta diambilkan satu gayung air, kemudian ia memperlihatkan kepada mereka cara wudlu Nabi shallallahu 'alaihi wasallam. Ia menuangkan air dari gayung ke telapak tangannya lalu mencucinya tiga kali, kemudian memasukkan tangannya ke dalam gayung, lalu berkumur-kumur, lalu memasukkan air ke hidung lalu mengeluarkannya kembali dengan tiga kali cidukan, kemudian memasukkan tangannya ke dalam gayung, lalu membasuh mukanya tiga kali, kemudian membasuh kedua tangannya dua kali sampai ke siku. Kemudian memasukkan tangannya ke dalam gayung, lalu mengusap kepalanya dengan tangan; mulai dari bagian depan ke belakang dan menariknya kembali sebanyak satu kali, lalu membasuh kedua kakinya hingga mata kaki.\" **HR. Bukhari no. 186**\n\n**2) HR. Nasai no. 102 (Hasan)**\n\nأَخْبَرَنَا مُجَاهِدُ بْنُ مُوسَى، قَالَ حَدَّثَنَا عَبْدُ اللَّهِ بْنُ إِدْرِيسَ، قَالَ حَدَّثَنَا ابْنُ عَجْلاَنَ، عَنْ زَيْدِ بْنِ أَسْلَمَ، عَنْ عَطَاءِ بْنِ يَسَارٍ، عَنِ ابْنِ عَبَّاسٍ، قَالَ تَوَضَّأَ رَسُولُ اللَّهِ صلى الله عليه وسلم فَغَرَفَ غَرْفَةً فَمَضْمَضَ وَاسْتَنْشَقَ ثُمَّ غَرَفَ غَرْفَةً فَغَسَلَ وَجْهَهُ ثُمَّ غَرَفَ غَرْفَةً فَغَسَلَ يَدَهُ الْيُمْنَى ثُمَّ غَرَفَ غَرْفَةً فَغَسَلَ يَدَهُ الْيُسْرَى ثُمَّ مَسَحَ بِرَأْسِهِ وَأُذُنَيْهِ بَاطِنِهِمَا بِالسَّبَّاحَتَيْنِ وَظَاهِرِهِمَا بِإِبْهَامَيْهِ ثُمَّ غَرَفَ غَرْفَةً فَغَسَلَ رِجْلَهُ الْيُمْنَى ثُمَّ غَرَفَ غَرْفَةً فَغَسَلَ رِجْلَهُ الْيُسْرَى ‏.\n\n(Terjemahan mesin — lihat teks Arab asli)  \nTelah mengabarkan kepada kami [Mujahid bin Musa] dia berkata; telah menceritakan kepada kami [Abdullah bin Idris] berkata; telah menceritakan kepada kami [Ibnu 'Ajlan] dari [Zaid bin 'Aslam] dari ['Atha bin Yasar] dari [Ibnu Abbas] berkata: \"Rasulullah shallallahu 'alaihi wasallam berwudlu, beliau menyiduk satu ciduk air untuk berkumur, dan memasukkan air ke hidungnya, kemudian menyiduk lagi satu ciduk air untuk membasuh wajahnya, kemudian menyiduk lagi satu ciduk untuk membasuh tangan kanan. Kemudian menyiduk lagi untuk membasuh tangan kiri, kemudian mengusap kepalanya beserta kedua telinganya, bagian dalam telinga dengan kedua jari telunjuknya dan bagian luar telinga dengan kedua ibu jari. Lalu beliau menyiduk lagi untuk membasuh kaki kanan dan menyiduk lagi untuk membasuh kaki kiri.\" **HR. Nasai no. 102 (Hasan)**\n\nRingkasan urutan yang disebut dalam dua riwayat di atas:\n\n- Membasuh kedua telapak tangan — HR. Bukhari no. 186 menyebut tiga kali.\n- Berkumur dan memasukkan air ke hidung — HR. Bukhari no. 186 menyebut tiga kali cidukan; HR. Nasai no. 102 (Hasan) menyebut satu cidukan untuk berkumur dan memasukkan air ke hidung.\n- Membasuh wajah — HR. Bukhari no. 186 menyebut tiga kali.\n- Membasuh kedua tangan sampai siku — HR. Bukhari no. 186 menyebut dua kali-dua kali.\n- Mengusap kepala — HR. Bukhari no. 186 menyebut sekali, dari depan ke belakang lalu kembali; HR. Nasai no. 102 (Hasan) menyebut mengusap kepala beserta kedua telinga.\n- Membasuh kedua kaki sampai mata kaki — HR. Bukhari no. 186; HR. Nasai no. 102 (Hasan) menyebut kaki kanan lalu kaki kiri.\n\nJumlah basuhan dalam riwayat-riwayat tersebut tidak semuanya sama; ada yang menyebut tiga kali, ada yang menyebut dua kali-dua kali, dan ada yang menyebut satu cidukan.\n\nCatatan: jawaban ini bukan fatwa; untuk keputusan hukum, rujuklah ulama.\n\n[Peringatan] Hadits yang dikutip berderajat lemah (dhaif); tidak dapat dijadikan dalil utama.",
+      "refused": false,
+      "retrieved": [
+        {
+          "label": "HR. Bukhari no. 191",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 186",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 102 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 555",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 192",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 199",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 115 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 118 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 97 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 98 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 117 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 111 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 137 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 121 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 402 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 434 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 91 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 147 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 49 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 135 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 627",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 108 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 723",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 185",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 140",
+          "sourceType": "hadith",
+          "backed": true
+        }
+      ],
+      "evidence": ["HR. Bukhari no. 186", "HR. Nasai no. 102"],
+      "recorded": {
+        "passed": false,
+        "citationValidity": 0,
+        "retrievalRecall": 1,
+        "refused": false
+      }
+    },
+    {
+      "questionId": "gs-v0-004",
+      "expectedBehavior": "answer",
+      "expectedSourceTypes": ["hadith"],
+      "required": ["HR. Ibn Majah no. 224"],
+      "answer": "From the reports in the context, the Prophet said:\n\nTranslations are preserved as given in the context: **(Terjemahan mesin — lihat teks Arab asli)**.\n\n1. **«مَنْ سَلَكَ طَرِيقًا يَلْتَمِسُ فِيهِ عِلْمًا سَهَّلَ اللَّهُ لَهُ طَرِيقًا إِلَى الْجَنَّةِ»**  \nTranslation: “Barangsiapa berjalan di suatu jalan untuk mencari ilmu, niscaya Allah akan memudahkan baginya jalan ke surga.” — **HR. Tirmidhi no. 2646 (Sahih)**\n\n2. **«مَا مِنْ رَجُلٍ يَسْلُكُ طَرِيقًا يَطْلُبُ فِيهِ عِلْمًا إِلاَّ سَهَّلَ اللَّهُ لَهُ بِهِ طَرِيقَ الْجَنَّةِ وَمَنْ أَبْطَأَ بِهِ عَمَلُهُ لَمْ يُسْرِعْ بِهِ نَسَبُهُ»**  \nTranslation: “Tidaklah seorang laki-laki yang meniti jalan untuk mencari ilmu melainkan Allah akan mempermudah baginya jalan menuju Surga. Dan barangsiapa yang lambat amalannya maka nasabnya tidak akan memberinya manfaat.” — **HR. Abu Dawud no. 3643 (Sahih)**\n\n3. **«مَا مِنْ خَارِجٍ خَرَجَ مِنْ بَيْتِهِ فِي طَلَبِ الْعِلْمِ إِلاَّ وَضَعَتْ لَهُ الْمَلاَئِكَةُ أَجْنِحَتَهَا رِضًا بِمَا يَصْنَعُ»**  \nTranslation: “Tidaklah seseorang yang keluar dari rumahnya untuk menuntut ilmu kecuali para malaikat akan mengepakkan sayap-sayapnya untuk orang tersebut karena ridla dengan apa yang ia kerjakan.” — **HR. Ibn Majah no. 226 (Hasan)**\n\n4. **«مَنْ سُئِلَ عَنْ عِلْمٍ فَكَتَمَهُ أَلْجَمَهُ اللَّهُ بِلِجَامٍ مِنْ نَارٍ يَوْمَ الْقِيَامَةِ»**  \nTranslation: “Barangsiapa ditanya mengenai suatu ilmu dan ia menyembunyikannya, maka ia akan dicambuk dengan cambuk dari api neraka pada hari kiamat.” — **HR. Abu Dawud no. 3658 (Hasan)**\n\n5. **«سَلُوا اللَّهَ عِلْمًا نَافِعًا وَتَعَوَّذُوا بِاللَّهِ مِنْ عِلْمٍ لاَ يَنْفَعُ»**  \nTranslation: “Memintalah kalian kepada Allah ilmu yang bermanfa’at, dan berlindunglah kalian kepada Allah dari ilmu yang tidak bermanfa’at.” — **HR. Ibn Majah no. 3843 (Hasan)**\n\n6. **«نَضَّرَ اللَّهُ امْرَأً سَمِعَ مِنَّا حَدِيثًا فَحَفِظَهُ حَتَّى يُبَلِّغَهُ فَرُبَّ حَامِلِ فِقْهٍ إِلَى مَنْ هُوَ أَفْقَهُ مِنْهُ وَرُبَّ حَامِلِ فِقْهٍ لَيْسَ بِفَقِيهٍ»**  \nTranslation: “Semoga Allah memperindah orang yang mendengar hadits dariku lalu menghafal dan menyampaikannya kepada orang lain, berapa banyak orang menyampaikan ilmu kepada orang yang lebih berilmu, dan berapa banyak pembawa ilmu yang tidak berilmu.” — **HR. Abu Dawud no. 3660 (Sahih)**\n\nReports labeled **Dhaif** in the context, cited with explicit warning:\n\n7. **«طَلَبُ الْعِلْمِ فَرِيضَةٌ عَلَى كُلِّ مُسْلِمٍ وَوَاضِعُ الْعِلْمِ عِنْدَ غَيْرِ أَهْلِهِ كَمُقَلِّدِ الْخَنَازِيرِ الْجَوْهَرَ وَاللُّؤْلُؤَ وَالذَّهَبَ»**  \nTranslation: “Menuntut ilmu adalah kewajiban bagi setiap muslim. Dan orang yang meletakkan ilmu bukan pada ahlinya, seperti seorang yang mengalungkan mutiara, intan dan emas ke leher babi.” — **HR. Ibn Majah no. 224 (Dhaif)**  \n**Warning: the context labels this hadith Dhaif.**\n\n8. **«مَنْ خَرَجَ فِي طَلَبِ الْعِلْمِ فَهُوَ فِي سَبِيلِ اللَّهِ حَتَّى يَرْجِعَ»**  \nTranslation: “Barangsiapa keluar dalam rangka menuntut ilmu maka dia berada di jalan Allah sampai dia kembali.” — **HR. Tirmidhi no. 2647 (Dhaif)**  \n**Warning: the context labels this report Dhaif; its text also records Abu Isa saying “hadits ini hasan gharib.”**\n\nThis answer is not a fatwa; refer to scholars for legal rulings.\n\n[Peringatan] Hadits yang dikutip berderajat lemah (dhaif); tidak dapat dijadikan dalil utama.",
+      "refused": false,
+      "retrieved": [
+        {
+          "label": "HR. Tirmidhi no. 2646 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 3643 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2682 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 3641 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 223 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 224 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2647 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 226 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 225 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2945 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 3843 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 6853",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2655 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 3660 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 3658 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Malik no. 1856 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 228 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 258 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 247 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 219 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 347",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 3756.2",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2680 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 243 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2648 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        }
+      ],
+      "evidence": [
+        "HR. Tirmidhi no. 2646",
+        "HR. Abu Dawud no. 3643",
+        "HR. Ibn Majah no. 226",
+        "HR. Abu Dawud no. 3658",
+        "HR. Ibn Majah no. 3843",
+        "HR. Abu Dawud no. 3660",
+        "HR. Ibn Majah no. 224",
+        "HR. Tirmidhi no. 2647"
+      ],
+      "recorded": {
+        "passed": false,
+        "citationValidity": 0,
+        "retrievalRecall": 1,
+        "refused": false
+      }
+    },
+    {
+      "questionId": "gs-v0-005",
+      "expectedBehavior": "answer",
+      "expectedSourceTypes": ["quran"],
+      "required": ["QS. 112:1"],
+      "answer": "Makna Surat Al-Ikhlas yang dapat dijelaskan dari konteks adalah sebagai berikut:\n\n1. **QS. 112:1**  \n   قُلْ هُوَ اللّٰهُ اَحَدٌۚ  \n   *(Terjemahan mesin — lihat teks Arab asli)*  \n   “Katakanlah (Nabi Muhammad), “Dialah Allah Yang Maha Esa.” [QS. 112:1]\n\n2. **QS. 112:2**  \n   اَللّٰهُ الصَّمَدُۚ  \n   *(Terjemahan mesin — lihat teks Arab asli)*  \n   “Allah tempat meminta segala sesuatu.” [QS. 112:2]\n\n3. **QS. 112:3**  \n   لَمْ يَلِدْ وَلَمْ يُوْلَدْۙ  \n   *(Terjemahan mesin — lihat teks Arab asli)*  \n   “Dia tidak beranak dan tidak pula diperanakkan.” [QS. 112:3]\n\n4. **QS. 112:4**  \n   وَلَمْ يَكُنْ لَّهٗ كُفُوًا اَحَدٌ ࣖ  \n   *(Terjemahan mesin — lihat teks Arab asli)*  \n   “serta tidak ada sesuatu pun yang setara dengan-Nya.” [QS. 112:4]\n\nDari ayat-ayat yang dikutip dalam konteks, Surat Al-Ikhlas menyebutkan bahwa Allah adalah Yang Maha Esa, Allah tempat meminta segala sesuatu, Dia tidak beranak dan tidak diperanakkan, serta tidak ada sesuatu pun yang setara dengan-Nya.\n\nKonteks juga memuat hadits tentang keutamaan Surat Al-Ikhlas:\n\nقُلْ هُوَ اللَّهُ أَحَدٌ تَعْدِلُ ثُلُثَ الْقُرْآنِ  \n*(Terjemahan mesin — lihat teks Arab asli)*  \n“‘QUL HUWALLAHU AHAD’ (surat Al Ikhlash) sama dengan sepertiga Al Qur`an.” [HR. Muslim no. 1886]\n\nCatatan: konteks juga memuat hadits berlabel lemah, yaitu **HR. Tirmidhi no. 3364 (Dhaif)** dan **HR. Abu Dawud no. 815 (Dhaif)**; karena itu keduanya tidak dijadikan sandaran dalam penjelasan di atas.\n\nJawaban ini bukan fatwa; untuk keputusan hukum, rujuklah ulama.\n\n[Peringatan] Hadits yang dikutip berderajat lemah (dhaif); tidak dapat dijadikan dalil utama.",
+      "refused": false,
+      "retrieved": [
+        {
+          "label": "HR. Ibn Majah no. 3787 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 112:1",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 3364 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 112:3",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 3788 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 3789 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2899 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 27:26",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2896 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 1741 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 994 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 7374",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 1886",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 5015",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 815 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 4975",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 112:2",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 37:4",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 23:52",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 59:23",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 3:2",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 2:255",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 1493 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 2:163",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 21:92",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 17:111",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 39:14",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 1699 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 1700 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 3475 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 1461 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 1887",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 112:4",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 27:25",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 27:27",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 37:3",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 37:5",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 23:51",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 23:53",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 59:22",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 59:24",
+          "sourceType": "quran",
+          "backed": true
+        }
+      ],
+      "evidence": [
+        "QS. 112:1",
+        "QS. 112:2",
+        "QS. 112:3",
+        "QS. 112:4",
+        "HR. Muslim no. 1886",
+        "HR. Tirmidhi no. 3364",
+        "HR. Abu Dawud no. 815"
+      ],
+      "recorded": {
+        "passed": true,
+        "citationValidity": 1,
+        "retrievalRecall": 1,
+        "refused": false
+      }
+    },
+    {
+      "questionId": "gs-v0-006",
+      "expectedBehavior": "answer",
+      "expectedSourceTypes": ["hadith"],
+      "required": ["HR. Bukhari no. 1101"],
+      "answer": "tidak menemukan dalil yang memadai",
+      "refused": true,
+      "retrieved": [
+        {
+          "label": "HR. Malik no. 331 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 598 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 1194 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 592 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Malik no. 328 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 1624",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Malik no. 340 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 1211 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 599 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Malik no. 326 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 544 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 555 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 1630",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 188 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 1627",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 1626",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 1621",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 602 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 2267 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 1218 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 2303 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Malik no. 339 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 1070 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 2268 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 548 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 2281 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 2280 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 2300 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 2296 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 1572",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 1109",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 1632",
+          "sourceType": "hadith",
+          "backed": true
+        }
+      ],
+      "evidence": [],
+      "recorded": {
+        "passed": false,
+        "citationValidity": 0,
+        "retrievalRecall": 1,
+        "refused": true
+      }
+    },
+    {
+      "questionId": "gs-v0-007",
+      "expectedBehavior": "answer",
+      "expectedSourceTypes": ["quran"],
+      "required": ["QS. 42:11"],
+      "answer": "tidak menemukan dalil yang memadai",
+      "refused": true,
+      "retrieved": [
+        {
+          "label": "QS. 2:255",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 59:23",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 19:35",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 20:8",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 37:159",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 59:22",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 59:24",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 16:60",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 2:115",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 3861 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 39:4",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 20:98",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 23:91",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 3507 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 64:18",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 13:9",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 112:2",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 3:2",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 32:6",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 3:18",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 52:43",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 195 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 23:92",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 21:22",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 145",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 3364 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 662 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 5015",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 2:254",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 2:256",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 19:34",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 19:36",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 20:7",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 20:9",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 37:158",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 37:160",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 59:21",
+          "sourceType": "quran",
+          "backed": true
+        }
+      ],
+      "evidence": [],
+      "recorded": {
+        "passed": false,
+        "citationValidity": 0,
+        "retrievalRecall": 1,
+        "refused": true
+      }
+    },
+    {
+      "questionId": "gs-v0-008",
+      "expectedBehavior": "answer",
+      "expectedSourceTypes": ["hadith"],
+      "required": ["HR. Bukhari no. 5026"],
+      "answer": "Konteks memuat beberapa hadits yang menyebutkan keutamaan membaca Al-Qur’an, di antaranya:\n\n1. **HR. Muslim no. 1862**\n\nالْمَاهِرُ بِالْقُرْآنِ مَعَ السَّفَرَةِ الْكِرَامِ الْبَرَرَةِ وَالَّذِي يَقْرَأُ الْقُرْآنَ وَيَتَتَعْتَعُ فِيهِ وَهُوَ عَلَيْهِ شَاقٌّ لَهُ أَجْرَانِ\n\n(Terjemahan mesin — lihat teks Arab asli)  \n“Orang mukmin yang mahir membaca Al Qur`an, maka kedudukannya di akhirat ditemani oleh para malaikat yang mulia. Dan orang yang membaca Al Qur`an dengan gagap, ia sulit dalam membacanya, maka ia mendapat dua pahala.”\n\n2. **HR. Abu Dawud no. 1464 (Hasan)**\n\nيُقَالُ لِصَاحِبِ الْقُرْآنِ اقْرَأْ وَارْتَقِ وَرَتِّلْ كَمَا كُنْتَ تُرَتِّلُ فِي الدُّنْيَا فَإِنَّ مَنْزِلَكَ عِنْدَ آخِرِ آيَةٍ تَقْرَؤُهَا\n\n(Terjemahan mesin — lihat teks Arab asli)  \n“Dikatakan kepada orang yang membaca Al Qur'an: ‘Bacalah, dan naiklah, serta bacalah dengan tartil (jangan terburu-buru), sebagaimana engkau membaca dengan tartil di dunia, sesungguhnya tempatmu adalah pada akhir ayat yang engkau baca.’”\n\n3. **HR. Ibn Majah no. 3780 (Hasan)**\n\nيُقَالُ لِصَاحِبِ الْقُرْآنِ إِذَا دَخَلَ الْجَنَّةَ اقْرَأْ وَاصْعَدْ ‏.‏ فَيَقْرَأُ وَيَصْعَدُ بِكُلِّ آيَةٍ دَرَجَةً حَتَّى يَقْرَأَ آخِرَ شَىْءٍ مَعَهُ\n\n(Terjemahan mesin — lihat teks Arab asli)  \n“Di perintahkan kepada orang yang ahli dalam Al Qur'an ketika ia masuk ke dalam surga; ‘Bacalah dan naiklah.’ Maka ia pun membacanya dan dirinya pun naik (derajatnya) dengan ayat yang ia baca hingga ayat terakhir.”\n\n4. **HR. Malik no. 475 (Sahih)**\n\nإِنَّمَا مَثَلُ صَاحِبِ الْقُرْآنِ كَمَثَلِ صَاحِبِ الإِبِلِ الْمُعَقَّلَةِ إِنْ عَاهَدَ عَلَيْهَا أَمْسَكَهَا وَإِنْ أَطْلَقَهَا ذَهَبَتْ\n\n(Terjemahan mesin — lihat teks Arab asli)  \n“Perumpamaan orang yang selalu membaca Qur'an adalah seperti seorang pemilik unta yang terikat kencang dengan tali. Jika dia mengikatnya maka dia bisa memegangnya. Jika dia melepaskannya maka unta itupun akan pergi.”\n\n5. **HR. Tirmidhi no. 2926 (Dhaif)** — **Peringatan: hadits ini berlabel Dhaif.**\n\nيَقُولُ الرَّبُّ عَزَّ وَجَلَّ مَنْ شَغَلَهُ الْقُرْآنُ عَنْ ذِكْرِي وَ مَسْأَلَتِي أَعْطَيْتُهُ أَفْضَلَ مَا أُعْطِي السَّائِلِينَ وَفَضْلُ كَلاَمِ اللَّهِ عَلَى سَائِرِ الْكَلاَمِ كَفَضْلِ اللَّهِ عَلَى خَلْقِهِ\n\n(Terjemahan mesin — lihat teks Arab asli)  \n“Rabb Azza wa Jalla berfirman; ‘Barangsiapa disibukkan oleh Al Qur`an dan berdzikir kepadaku untuk memohon kepadaKu, maka Aku akan memberikan kepadanya sesuatu yang terbaik dari yang Aku berikan kepada orang-orang yang memohon,’ dan kelebihan kalamullah (Al Qur`an) dari seluruh kalam adalah seperti kelebihan Allah dari seluruh makhlukNya.”\n\nJawaban ini bukan fatwa; untuk keputusan hukum, rujuklah ulama.\n\n[Peringatan] Hadits yang dikutip berderajat lemah (dhaif); tidak dapat dijadikan dalil utama.",
+      "refused": false,
+      "retrieved": [
+        {
+          "label": "HR. Ibn Majah no. 213 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 1452 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 212 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 1454 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2908 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 5028",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 5027",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 211 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2926 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2909 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2904 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 3780 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2915 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2907 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 4937",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 1862",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2876 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Malik no. 475 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 1464 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2919 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2914 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 1849",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 5057 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2911 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 217 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        }
+      ],
+      "evidence": [
+        "HR. Muslim no. 1862",
+        "HR. Abu Dawud no. 1464",
+        "HR. Ibn Majah no. 3780",
+        "HR. Malik no. 475",
+        "HR. Tirmidhi no. 2926"
+      ],
+      "recorded": {
+        "passed": false,
+        "citationValidity": 0,
+        "retrievalRecall": 1,
+        "refused": false
+      }
+    },
+    {
+      "questionId": "gs-v0-009",
+      "expectedBehavior": "answer",
+      "expectedSourceTypes": ["quran"],
+      "required": ["QS. 89:28"],
+      "answer": "Berdasarkan konteks yang diberikan, QS. 89:28 berbunyi:\n\nارْجِعِيْٓ اِلٰى رَبِّكِ رَاضِيَةً مَّرْضِيَّةً ۚ\n(Terjemahan mesin — lihat teks Arab asli)\n“kembalilah kepada Tuhanmu dengan rida dan diridai.” [QS. 89:28]\n\nDari redaksi dan terjemahan yang tersedia, QS. 89:28 menyebut kembalinya hamba kepada Tuhan dengan dua sisi: “dengan rida” dan “diridai.” Konteks yang diberikan tidak memuat uraian tambahan tentang hakikat atau tingkatan ridha selain redaksi tersebut.\n\nPeringatan: jawaban ini bukan fatwa; untuk keputusan hukum, rujuklah ulama.\n\n[Peringatan] Hadits yang dikutip berderajat lemah (dhaif); tidak dapat dijadikan dalil utama.",
+      "refused": false,
+      "retrieved": [
+        {
+          "label": "HR. Tirmidhi no. 2555 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 7140",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 6549",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 4138 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 3389 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 3870 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 2371",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 151",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 6959",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 1161 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 88:9",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 101:7",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 69:21",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 89:28",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 92:21",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 89:1",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 2212 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 9:21",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 80:39",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 98:8",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Malik no. 961 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 93:5",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 3784 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 1638 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 3981 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2623 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 3235 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 3263 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 2202",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 7438",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 1854 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 7437",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 4778 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 7518",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 7438",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 3244",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 6572",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 451",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 2290",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 3246",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 6228",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2495 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 2215",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 89:2",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 89:3",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 89:4",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 89:5",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 89:6",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 89:7",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 89:8",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 89:9",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 89:10",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 89:11",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 89:12",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 88:8",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 88:10",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 101:6",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 101:8",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 69:20",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 69:22",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 89:27",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 89:29",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 92:20",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 9:20",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 9:22",
+          "sourceType": "quran",
+          "backed": true
+        }
+      ],
+      "evidence": ["QS. 89:28"],
+      "recorded": {
+        "passed": true,
+        "citationValidity": 1,
+        "retrievalRecall": 1,
+        "refused": false
+      }
+    },
+    {
+      "questionId": "gs-v0-010",
+      "expectedBehavior": "answer",
+      "expectedSourceTypes": ["quran", "hadith"],
+      "required": ["QS. 2:275"],
+      "answer": "## Hukum riba dalam transaksi\n\nMenurut ayat yang tercantum dalam konteks, Allah menyatakan pengharaman riba dan penghalalan jual beli:\n\n> اَلَّذِيْنَ يَأْكُلُوْنَ الرِّبٰوا لَا يَقُوْمُوْنَ اِلَّا كَمَا يَقُوْمُ الَّذِيْ يَتَخَبَّطُهُ الشَّيْطٰنُ مِنَ الْمَسِّۗ ذٰلِكَ بِاَنَّهُمْ قَالُوْٓا اِنَّمَا الْبَيْعُ مِثْلُ الرِّبٰواۘ وَاَحَلَّ اللّٰهُ الْبَيْعَ وَحَرَّمَ الرِّبٰواۗ فَمَنْ جَاۤءَهٗ مَوْعِظَةٌ مِّنْ رَّبِّهٖ فَانْتَهٰى فَلَهٗ مَا سَلَفَۗ وَاَمْرُهٗٓ اِلَى اللّٰهِ ۗ وَمَنْ عَادَ فَاُولٰۤىِٕكَ اَصْحٰبُ النَّارِ ۚ هُمْ فِيْهَا خٰلِدُوْنَ\n>\n> (Terjemahan mesin — lihat teks Arab asli)\n> Orang-orang yang memakan (bertransaksi dengan) riba tidak dapat berdiri, kecuali seperti orang yang berdiri sempoyongan karena kesurupan setan. Demikian itu terjadi karena mereka berkata bahwa jual beli itu sama dengan riba. Padahal, Allah telah menghalalkan jual beli dan mengharamkan riba. Siapa pun yang telah sampai kepadanya peringatan dari Tuhannya (menyangkut riba), lalu dia berhenti sehingga apa yang telah diperolehnya dahulu menjadi miliknya dan urusannya (terserah) kepada Allah. Siapa yang mengulangi (transaksi riba), mereka itulah penghuni neraka. Mereka kekal di dalamnya. [QS. 2:275]\n\n## Ayat-ayat yang disebutkan dalam konteks\n\n**1. Perintah meninggalkan sisa riba**\n\n> يٰٓاَيُّهَا الَّذِيْنَ اٰمَنُوا اتَّقُوا اللّٰهَ وَذَرُوْا مَا بَقِيَ مِنَ الرِّبٰوٓا اِنْ كُنْتُمْ مُّؤْمِنِيْنَ\n>\n> (Terjemahan mesin — lihat teks Arab asli)\n> Wahai orang-orang yang beriman, bertakwalah kepada Allah dan tinggalkan sisa riba (yang belum dipungut) jika kamu orang-orang mukmin. [QS. 2:278]\n\n**2. Ancaman perang dan hak atas pokok harta**\n\n> فَاِنْ لَّمْ تَفْعَلُوْا فَأْذَنُوْا بِحَرْبٍ مِّنَ اللّٰهِ وَرَسُوْلِهٖۚ وَاِنْ تُبْتُمْ فَلَكُمْ رُءُوْسُ اَمْوَالِكُمْۚ لَا تَظْلِمُوْنَ وَلَا تُظْلَمُوْنَ\n>\n> (Terjemahan mesin — lihat teks Arab asli)\n> Jika kamu tidak melaksanakannya, ketahuilah akan terjadi perang (dahsyat) dari Allah dan Rasul-Nya. Akan tetapi, jika kamu bertobat, kamu berhak atas pokok hartamu. Kamu tidak berbuat zalim (merugikan) dan tidak dizalimi (dirugikan). [QS. 2:279]\n\n**3. Larangan memakan riba dengan berlipat ganda**\n\n> يٰٓاَيُّهَا الَّذِيْنَ اٰمَنُوْا لَا تَأْكُلُوا الرِّبٰوٓا اَضْعَافًا مُّضٰعَفَةً ۖوَّاتَّقُوا اللّٰهَ لَعَلَّكُمْ تُفْلِحُوْنَۚ\n>\n> (Terjemahan mesin — lihat teks Arab asli)\n> Wahai orang-orang yang beriman, janganlah kamu memakan riba dengan berlipat ganda dan bertakwalah kepada Allah agar kamu beruntung. [QS. 3:130]\n\n**4. Riba tidak berkembang di sisi Allah**\n\n> وَمَآ اٰتَيْتُمْ مِّنْ رِّبًا لِّيَرْبُوَا۟ فِيْٓ اَمْوَالِ النَّاسِ فَلَا يَرْبُوْا عِنْدَ اللّٰهِ ۚوَمَآ اٰتَيْتُمْ مِّنْ زَكٰوةٍ تُرِيْدُوْنَ وَجْهَ اللّٰهِ فَاُولٰۤىِٕكَ هُمُ الْمُضْعِفُوْنَ\n>\n> (Terjemahan mesin — lihat teks Arab asli)\n> Riba yang kamu berikan agar berkembang pada harta orang lain, tidaklah berkembang dalam pandangan Allah. Adapun zakat yang kamu berikan dengan maksud memperoleh keridaan Allah, (berarti) merekalah orang-orang yang melipatgandakan (pahalanya). [QS. 30:39]\n\n**5. Penghapusan keberkahan riba**\n\n> يَمْحَقُ اللّٰهُ الرِّبٰوا وَيُرْبِى الصَّدَقٰتِ ۗ وَاللّٰهُ لَا يُحِبُّ كُلَّ كَفَّارٍ اَثِيْمٍ\n>\n> (Terjemahan mesin — lihat teks Arab asli)\n> Allah menghilangkan (keberkahan dari) riba dan menyuburkan sedekah. Allah tidak menyukai setiap orang yang sangat kufur lagi bergelimang dosa. [QS. 2:276]\n\n**6. Riba termasuk perbuatan yang dilarang**\n\n> وَّاَخْذِهِمُ الرِّبٰوا وَقَدْ نُهُوْا عَنْهُ وَاَكْلِهِمْ اَمْوَالَ النَّاسِ بِالْبَاطِلِ ۗوَاَعْتَدْنَا لِلْكٰفِرِيْنَ مِنْهُمْ عَذَابًا اَلِيْمًا\n>\n> (Terjemahan mesin — lihat teks Arab asli)\n> melakukan riba, padahal sungguh mereka telah dilarang darinya; dan memakan harta orang dengan cara tidak sah (batil). Kami sediakan untuk orang-orang kafir di antara mereka azab yang sangat pedih. [QS. 4:161]\n\n**7. Kaidah umum harta dan perniagaan**\n\n> يٰٓاَيُّهَا الَّذِيْنَ اٰمَنُوْا لَا تَأْكُلُوْٓا اَمْوَالَكُمْ بَيْنَكُمْ بِالْبَاطِلِ اِلَّآ اَنْ تَكُوْنَ تِجَارَةً عَنْ تَرَاضٍ مِّنْكُمْ ۗ وَلَا تَقْتُلُوْٓا اَنْفُسَكُمْ ۗ اِنَّ اللّٰهَ كَانَ بِكُمْ رَحِيْمًا\n>\n> (Terjemahan mesin — lihat teks Arab asli)\n> Wahai orang-orang yang beriman, janganlah kamu memakan harta sesamamu dengan cara yang batil (tidak benar), kecuali berupa perniagaan atas dasar suka sama suka di antara kamu. Janganlah kamu membunuh dirimu. Sesungguhnya Allah adalah Maha Penyayang kepadamu. [QS. 4:29]\n\n## Hadits-hadits yang disebutkan dalam konteks\n\n**1. Laknat atas pelaku riba**\n\n> لَعَنَ رَسُولُ اللَّهِ صلى الله عليه وسلم آكِلَ الرِّبَا وَمُؤْكِلَهُ ‏.‏ قَالَ قُلْتُ وَكَاتِبَهُ وَشَاهِدَيْهِ قَالَ إِنَّمَا نُحَدِّثُ بِمَا سَمِعْنَا\n>\n> (Terjemahan mesin — lihat teks Arab asli)\n> Rasulullah shallallahu 'alaihi wasallam melaknat orang yang memakan hasil riba dan yang menyuruh memakannya.\" 'Alqamah berkata, \"Saya bertanya, \"(Bagaimana dengan) sekretaris pembuat akte riba dan saksi-saksinya?\" dia menjawab, \"Kami hanya menceritakan dari sesuatu yang kami dengar [HR. Muslim no. 4092]\n\n> لَعَنَ رَسُولُ اللَّهِ صلى الله عليه وسلم آكِلَ الرِّبَا وَمُوكِلَهُ وَكَاتِبَهُ وَشَاهِدَيْهِ وَقَالَ هُمْ سَوَاءٌ\n>\n> (Terjemahan mesin — lihat teks Arab asli)\n> Rasulullah shallallahu 'alaihi wasallam melaknat pemakan riba, orang yang menyuruh makan riba, juru tulisnya dan saksi-saksinya.\" Dia berkata, \"Mereka semua sama [HR. Muslim no. 4093]\n\n> لَعَنَ رَسُولُ اللَّهِ صلى الله عليه وسلم آكِلَ الرِّبَا وَمُوكِلَهُ وَشَاهِدَيْهِ وَكَاتِبَهُ\n>\n> (Terjemahan mesin — lihat teks Arab asli)\n> Rasulullah shallallahu 'alaihi wasallam melaknat pemakan riba, yang mengambilkannya, yang menyaksikannya dan penulisnya [HR. Ibn Majah no. 2277 (Hasan)]\n\n> لَعَنَ رَسُولُ اللَّهِ صلى الله عليه وسلم آكِلَ الرِّبَا وَمُوكِلَهُ وَشَاهِدَيْهِ وَكَاتِبَهُ ‏.‏ قَالَ وَفِي الْبَابِ عَنْ عُمَرَ وَعَلِيٍّ وَجَابِرٍ وَأَبِي جُحَيْفَةَ ‏.‏ قَالَ أَبُو عِيسَى حَدِيثُ عَبْدِ اللَّهِ حَدِيثٌ حَسَنٌ صَحِيحٌ\n>\n> (Terjemahan mesin — lihat teks Arab asli)\n> Rasulullah shallallahu 'alaihi wasallam melaknat pemakan riba, yang memberi makan riba, kedua saksi dan penulisnya. Ia mengatakan; Dalam hal ini ada hadits serupa dari Umar, Ali, Jabir dan Abu Juhaifah. Abu Isa berkata; Hadits Abdullah adalah hadits hasan shahih [HR. Tirmidhi no. 1206 (Hasan)]\n\n> لَعَنَ رَسُولُ اللَّهِ صلى الله عليه وسلم آكِلَ الرِّبَا وَمُوكِلَهُ وَشَاهِدَهُ وَكَاتِبَهُ\n>\n> (Terjemahan mesin — lihat teks Arab asli)\n> Rasulullah shallallahu 'alaihi wasallam melaknat orang yang makan riba, orang yang memberi makan riba, saksinya dan penulisnya [HR. Abu Dawud no. 3333 (Hasan)]\n\n**2. Ketentuan tukar-menukar emas dan perak**\n\n> الذَّهَبُ بِالذَّهَبِ وَزْنًا بِوَزْنٍ مِثْلاً بِمِثْلٍ وَالْفِضَّةُ بِالْفِضَّةِ وَزْنًا بِوَزْنٍ مِثْلاً بِمِثْلٍ فَمَنْ زَادَ أَوِ اسْتَزَادَ فَهُوَ رِبًا\n>\n> (Terjemahan mesin — lihat teks Arab asli)\n> Emas dengan emas harus sama dan sebanding, perak dengan perak harus sama dan sebanding. Barangsiapa melebihkan atau menambah maka dia telah melakukan praktek riba [HR. Muslim no. 4068]\n\n> الذَّهَبُ بِالذَّهَبِ وَزْنًا بِوَزْنٍ مِثْلاً بِمِثْلٍ وَالْفِضَّةُ بِالْفِضَّةِ وَزْنًا بِوَزْنٍ مِثْلاً بِمِثْلٍ فَمَنْ زَادَ أَوِ ازْدَادَ فَقَدْ أَرْبَى\n>\n> (Terjemahan mesin — lihat teks Arab asli)\n> Emas dengan emas, satu timbangan dengan satu timbangan dan semisal dengan yang semisalnya, perak dengan perak satu timbangan dengan satu timbangan, semisalnya dengan semisalnya. Barang siapa yang menambah atau meminta tambahan maka ia telah melakukan riba [HR. Nasai no. 4569 (Sahih)]\n\n> الذَّهَبُ بِالذَّهَبِ رِبًا إِلاَّ هَاءَ وَهَاءَ وَالْبُرُّ بِالْبُرِّ رِبًا إِلاَّ هَاءَ وَهَاءَ وَالتَّمْرُ بِالتَّمْرِ رِبًا إِلاَّ هَاءَ وَهَاءَ وَالشَّعِيرُ بِالشَّعِيرِ رِبًا إِلاَّ هَاءَ وَهَاءَ\n>\n> (Terjemahan mesin — lihat teks Arab asli)\n> Emas ditukar dengan perak adalah riba, kecuali diserahkan secara tunai, gandum ditukar dengan gandum adalah riba kecuali diserahkan secara tunai, kurma ditukar dengan kurma adalah riba kecuali diserahkan secara tubai, jewawut ditukar dengan jewawut adalah riba kecuali diserahkan secara tunai [HR. Abu Dawud no. 3348 (Sahih)]\n\n> الذَّهَبُ بِالذَّهَبِ رِبًا إِلاَّ هَاءَ وَهَاءَ وَالْبُرُّ بِالْبُرِّ رِبًا إِلاَّ هَاءَ وَهَاءَ وَالشَّعِيرُ بِالشَّعِيرِ رِبًا إِلاَّ هَاءَ وَهَاءَ وَالتَّمْرُ بِالتَّمْرِ رِبًا إِلاَّ هَاءَ وَهَاءَ\n>\n> (Terjemahan mesin — lihat teks Arab asli)\n> Emas dengan emas riba kecuali dengan tunai, biji gandum dengan biji gandum riba kecuali dengan tunai, tepung gandum dengan tepung gandum riba kecuali dengan tunai dan kurma dengan kurma riba kecuali dengan tunai [HR. Ibn Majah no. 2253 (Sahih)]\n\n> لاَ تَبِيعُوا الذَّهَبَ بِالذَّهَبِ إِلاَّ مِثْلاً بِمِثْلٍ وَالْفِضَّةَ بِالْفِضَّةِ إِلاَّ مِثْلاً بِمِثْلٍ لاَ يُشَفُّ بَعْضُهُ عَلَى بَعْضٍ وَلاَ تَبِيعُوا مِنْهُ غَائِبًا بِنَاجِزٍ\n>\n> (Terjemahan mesin — lihat teks Arab asli)\n> Janganlah kalian menjual emas dengan emas kecuali sama beratnya dan perak dengan perak kecuali sama beratnya, sebagian tidak dilebihkan atas sebagian yang lain. Dan janganlah kalian menjual dari jenis tersebut antara yang belum ada dengan yang tunai (menjualnya secara tempo).\" ... Dan hadits Abu Sa'id dari Nabi shallallahu 'alaihi wasallam tentang riba adalah hadits hasan shahih dan menjadi pedoman amal menurut para ulama dari kalangan sahabat Nabi shallallahu 'alaihi wasallam dan selain mereka, kecuali apa yang telah diriwayatkan dari Ibnu Abbas bahwa ia membolehkan menjual emas dengan emas secara dilebihkan dan perak dengan perak secara dilebihkan jika hal itu dilakukan secara tunai. Ia juga berkata; Sesungguhnya riba hanya ada pada nasiah saja (penukaran satu jenis secara tempo). Begitu pula dari hadits ini yang diriwayatkan dari sebagian sahabatnya, dan telah diriwayatkan dari Ibnu Abbas bahwa ia merujuk (meralat) kembali perkataanya ketika Abu Sa'id Al Hudri menyampaikan hadits dari Nabi shallallahu 'alaihi wasallam. Pendapat pertama adalah lebih shahih, hadits ini menjadi pedoman amal menurut para ulama dari kalangan sahabat Nabi shallallahu 'alaihi wasallam dan selain mereka, ini adalah pendapat Sufyan Ats Tsauri, Ibnul Mubarak, Asy Syafi'i, Ahmad dan Ishaq. [HR. Tirmidhi no. 1241 (Hasan)]\n\n> لاَ تَبِيعُوا الذَّهَبَ بِالذَّهَبِ إِلاَّ مِثْلاً بِمِثْلٍ وَلاَ تُشِفُّوا بَعْضَهَا عَلَى بَعْضٍ وَلاَ تَبِيعُوا الْوَرِقَ بِالْوَرِقِ إِلاَّ مِثْلاً بِمِثْلٍ وَلاَ تُشِفُّوا بَعْضَهَا عَلَى بَعْضٍ وَلاَ تَبِيعُوا الْوَرِقَ بِالذَّهَبِ أَحَدُهُمَا غَائِبٌ وَالآخَرُ نَاجِزٌ وَإِنِ اسْتَنْظَرَكَ إِلَى أَنْ يَلِجَ بَيْتَهُ فَلاَ تُنْظِرْهُ إِنِّي أَخَافُ عَلَيْكُمُ الرَّمَاءَ وَالرَّمَاءُ هُوَ الرِّبَا\n>\n> (Terjemahan mesin — lihat teks Arab asli)\n> Janganlah kalian menjual emas dengan emas kecuali sebanding, dan janganlah kalian melebihkan sebagian atas sebagian yang lain. Janganlah kalian menjual perak dengan perak kecuali sebanding, dan janganlah kalian melebihkan sebagian atas sebagian yang lain. Janganlah kalian menjual perak dengan emas, yang satu kredit dan yang lain cash. Jika ada seseorang yang meminta penangguhan kepadamu hingga ia masuk ke dalam rumahnya maka janganlah engkau beri penangguhan, karena aku khawatir kalian akan mendapat tambahan, sebab tambahan adalah riba [HR. Malik no. 1322 (Sahih)]\n\n**3. Praktik riba pada masa jahiliah**\n\n> كَانَ الرِّبَا فِي الْجَاهِلِيَّةِ أَنْ يَكُونَ لِلرَّجُلِ عَلَى الرَّجُلِ الْحَقُّ إِلَى أَجَلٍ فَإِذَا حَلَّ الأَجَلُ قَالَ أَتَقْضِي أَمْ تُرْبِي فَإِنْ قَضَى أَخَذَ وَإِلاَّ زَادَهُ فِي حَقِّهِ وَأَخَّرَ عَنْهُ فِي الأَجَلِ\n>\n> (Terjemahan mesin — lihat teks Arab asli)\n> Riba jahiliyah ialah seseorang memberikan pinjaman kepada orang lain dalam jangka waktu tertentu. Lalu jika telah jatuh tempo, dia berkata; 'Apakah kamu mau membayar sekarang atau memberikan bunga? ' Jika dia membayarnya saat itu, maka dia akan mengambilnya. Namun jika tidak, hutangnya akan bertambah dan dia akan mengakhirkan pembayarannya pada lain waktu [HR. Malik no. 1368 (Sahih)]\n\n**4. Akibat memperbanyak riba**\n\n> مَا أَحَدٌ أَكْثَرَ مِنَ الرِّبَا إِلاَّ كَانَ عَاقِبَةُ أَمْرِهِ إِلَى قِلَّةٍ\n>\n> (Terjemahan mesin — lihat teks Arab asli)\n> Tidaklah seseorang yang memperbanyak riba, melainkan akhir perkaranya akan merugi [HR. Ibn Majah no. 2279 (Hasan)]\n\n**5. Contoh praktik riba dalam jual beli kurma**\n\n> مَا هَذَا التَّمْرُ مِنْ تَمْرِنَا ‏.‏ فَقَالَ الرَّجُلُ يَا رَسُولَ اللَّهِ بِعْنَا تَمْرَنَا صَاعَيْنِ بِصَاعٍ مِنْ هَذَا ‏.‏ فَقَالَ رَسُولُ اللَّهِ صلى الله عليه وسلم ‏\"‏ هَذَا الرِّبَا فَرُدُّوهُ ثُمَّ بِيعُوا تَمْرَنَا وَاشْتَرُوا لَنَا مِنْ هَذَا\n>\n> (Terjemahan mesin — lihat teks Arab asli)\n> Rasulullah shallallahu 'alaihi wasallam pernah diberi kurma.\" Lalu beliau bertanya: \"Apakah kurma ini dari kurma kita?\" maka laki-laki yang memberi menjawab, \"Wahai Rasulullah, kami menukar dua sha' kurma dengan satu sha' kurma seperti ini.\" Maka Rasulullah shallallahu 'alaihi wasallam bersabda: \"Inilah yang dinamakan riba, kembalikanlah kurma ini kemudian jualah kurma milik kita, lalu uang hasil penjualan kurma tersebut kamu belikan kurma seperti ini [HR. Muslim no. 4084]\n\n**6. Dua transaksi dalam satu transaksi**\n\n> مَنْ بَاعَ بَيْعَتَيْنِ فِي بَيْعَةٍ فَلَهُ أَوْكَسُهُمَا أَوِ الرِّبَا\n>\n> (Terjemahan mesin — lihat teks Arab asli)\n> Barangsiapa melakukan dua transaksi dalam satu transaksi maka baginya kekurangannya atau riba [HR. Abu Dawud no. 3461 (Hasan)]\n\n**7. Riba dalam bentuk lain**\n\n> إِنَّ مِنْ أَرْبَى الرِّبَا الاِسْتِطَالَةَ فِي عِرْضِ الْمُسْلِمِ بِغَيْرِ حَقٍّ\n>\n> (Terjemahan mesin — lihat teks Arab asli)\n> Sesungguhnya seburuk-buruk riba adalah merusak kehormatan orang lain dengan cara yang tidak dibenarkan [HR. Abu Dawud no. 4876 (Sahih)]\n\n**8. Waktu turunnya ayat riba**\n\n> آخِرُ آيَةٍ نَزَلَتْ عَلَى النَّبِيِّ صلى الله عليه وسلم آيَةُ الرِّبَا\n>\n> (Terjemahan mesin — lihat teks Arab asli)\n> Ayat terakhir yang di turunkan kepada Nabi shallallahu 'alaihi wasallam adalah ayat tentang riba [HR. Bukhari no. 4544]\n\n## Catatan atas perbedaan dan status hadits\n\n- Konteks memuat hadits yang menyatakan cakupan riba secara terbatas:\n  > لاَ رِبًا إِلاَّ فِي ذَهَبٍ أَوْ فِضَّةٍ أَوْ مَا يُكَالُ أَوْ يُوزَنُ بِمَا يُؤْكَلُ أَوْ يُشْرَبُ\n  >\n  > (Terjemahan mesin — lihat teks Arab asli)\n  > Tidak ada riba kecuali pada emas dan perak, atau sesuatu yang ditakar dan ditimbang dari jenis makanan atau minuman [HR. Malik no. 1325 (Sahih)]\n\n  > لاَ رِبًا إِلاَّ فِي النَّسِيئَةِ\n  >\n  > (Terjemahan mesin — lihat teks Arab asli)\n  > Tidak ada riba kecuali di dalam kredit [HR. Nasai no. 4580 (Sahih)]\n\n  Konteks juga menyebut bahwa Ibnu Abbas berpendapat boleh menjual emas dengan emas dan perak dengan perak secara dilebihkan bila tunai, dan bahwa ia merujuk dari pendapatnya itu; serta bahwa pendapat pertama (larangan melebihkan) adalah yang lebih shahih dan menjadi pedoman amal menurut para ulama (HR. Tirmidhi no. 1241 (Hasan)). Perbedaan ini disebutkan apa adanya dalam konteks.\n\n- **Peringatan hadits lemah (dhaif):** hadits berikut berlabel **Dhaif**:\n  > الرِّبَا ثَلاَثَةٌ وَسَبْعُونَ بَابًا\n  >\n  > (Terjemahan mesin — lihat teks Arab asli)\n  > Riba itu memiliki tujuh puluh tiga pintu [HR. Ibn Majah no. 2275 (Dhaif)]\n\n  Demikian pula:\n  > إِنَّ آخِرَ مَا نَزَلَتْ آيَةُ الرِّبَا وَإِنَّ رَسُولَ اللَّهِ ـ صلى الله عليه وسلم ـ قُبِضَ وَلَمْ يُفَسِّرْهَا لَنَا فَدَعُوا الرِّبَا وَالرِّيبَةَ\n  >\n  > (Terjemahan mesin — lihat teks Arab asli)\n  > Sesungguhnya yang terakhir turun adalah ayat riba, dan ketika Rasulullah shallallahu 'alaihi wasallam meninggal beliau belum sempat menjelaskannya kepada kami. Maka tinggalkanlah riba dan keragu-raguan [HR. Ibn Majah no. 2276 (Dhaif)]\n\n---\n\nJawaban ini bukan fatwa. Untuk keputusan hukum, rujuklah ulama.\n\n[Peringatan] Hadits yang dikutip berderajat lemah (dhaif); tidak dapat dijadikan dalil utama.",
+      "refused": false,
+      "retrieved": [
+        {
+          "label": "HR. Malik no. 1325 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 2279 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 4092",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 4068",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 30:39",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 4622 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 3348 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Malik no. 1352 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 4580 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 2277 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 1206 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 3:130",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 4:161",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 2:278",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Malik no. 1368 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 2:275",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 2:276",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Malik no. 1358 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 3490 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 4:29",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 9:34",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 3461 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 5:2",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 3491 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 2:282",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 4569 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 3382 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 1241 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 2253 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 4876 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Malik no. 1322 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 3333 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 4544",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 2275 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 459",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 3889",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 2276 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 4093",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 4084",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 4540",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 3887",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 4088",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 4047",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 30:38",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 30:40",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 3:129",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 3:131",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 4:160",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 4:162",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 2:277",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 2:279",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 2:274",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 4:28",
+          "sourceType": "quran",
+          "backed": true
+        }
+      ],
+      "evidence": [
+        "QS. 2:275",
+        "QS. 2:278",
+        "QS. 2:279",
+        "QS. 3:130",
+        "QS. 30:39",
+        "QS. 2:276",
+        "QS. 4:161",
+        "QS. 4:29",
+        "HR. Muslim no. 4092",
+        "HR. Muslim no. 4093",
+        "HR. Ibn Majah no. 2277",
+        "HR. Tirmidhi no. 1206",
+        "HR. Abu Dawud no. 3333",
+        "HR. Muslim no. 4068",
+        "HR. Nasai no. 4569",
+        "HR. Abu Dawud no. 3348",
+        "HR. Ibn Majah no. 2253",
+        "HR. Tirmidhi no. 1241",
+        "HR. Malik no. 1322",
+        "HR. Malik no. 1368",
+        "HR. Ibn Majah no. 2279",
+        "HR. Muslim no. 4084",
+        "HR. Abu Dawud no. 3461",
+        "HR. Abu Dawud no. 4876",
+        "HR. Bukhari no. 4544",
+        "HR. Malik no. 1325",
+        "HR. Nasai no. 4580",
+        "HR. Ibn Majah no. 2275",
+        "HR. Ibn Majah no. 2276"
+      ],
+      "recorded": {
+        "passed": true,
+        "citationValidity": 1,
+        "retrievalRecall": 1,
+        "refused": false
+      }
+    },
+    {
+      "questionId": "gs-v0-011",
+      "expectedBehavior": "answer",
+      "expectedSourceTypes": ["hadith"],
+      "required": ["HR. Muslim no. 223"],
+      "answer": "tidak menemukan dalil yang memadai",
+      "refused": true,
+      "retrieved": [
+        {
+          "label": "HR. Abu Dawud no. 59 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 403 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 3517 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 1 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 280 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 5127 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 272 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 4140 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 216 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 4184 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 4676 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 31 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 535 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 1088 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 269 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 194 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 57 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 533 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 5004 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 4134 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 271 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 91 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 1378 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 402 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 58 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 39 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 88 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 195 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2615 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Malik no. 61 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 1376 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 253 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        }
+      ],
+      "evidence": [],
+      "recorded": {
+        "passed": false,
+        "citationValidity": 0,
+        "retrievalRecall": 1,
+        "refused": true
+      }
+    },
+    {
+      "questionId": "gs-v0-012",
+      "expectedBehavior": "answer",
+      "expectedSourceTypes": ["quran"],
+      "required": ["QS. 1:1"],
+      "answer": "## Makna Ar-Rahman dan Ar-Rahim\n\n**1. Ar-Rahman — \"Yang Maha Pengasih\"**\n\nاَلرَّحْمٰنُۙ\n\"(Allah) Yang Maha Pengasih,\" [QS. 55:1]\n\n**2. Ar-Rahim — \"Yang Maha Penyayang\"**\n\nاِلَّا مَنْ رَّحِمَ اللّٰهُ ۗاِنَّهٗ هُوَ الْعَزِيْزُ الرَّحِيْمُ ࣖ\n\"kecuali orang yang diberi rahmat oleh Allah. Sesungguhnya Dialah Yang Mahaperkasa lagi Maha Penyayang.\" [QS. 44:42]\n\nنُزُلًا مِّنْ غَفُوْرٍ رَّحِيْمٍ ࣖ\n\"(Semua itu) sebagai karunia (penghormatan bagimu) dari (Allah) Yang Maha Pengampun lagi Maha Penyayang.\" [QS. 41:32]\n\n**3. Kedua nama digabung dalam satu ayat**\n\nالرَّحْمٰنِ الرَّحِيْمِۙ\n\"Yang Maha Pengasih lagi Maha Penyayang,\" [QS. 1:3]\n\nتَنْزِيْلٌ مِّنَ الرَّحْمٰنِ الرَّحِيْمِ ۚ\n\"(Al-Qur'an ini) diturunkan dari Tuhan Yang Maha Pengasih lagi Maha Penyayang.\" [QS. 41:2]\n\n**4. Keterangan dari hadits**\n\nحَدَّثَنَا خَالِدُ بْنُ مَخْلَدٍ، حَدَّثَنَا سُلَيْمَانُ، حَدَّثَنَا عَبْدُ اللَّهِ بْنُ دِينَارٍ، عَنْ أَبِي صَالِحٍ، عَنْ أَبِي هُرَيْرَةَ ـ رضى الله عنه ـ عَنِ النَّبِيِّ صلى الله عليه وسلم قَالَ \" إِنَّ الرَّحِمَ سُجْنَةٌ مِنَ الرَّحْمَنِ، فَقَالَ اللَّهُ مَنْ وَصَلَكِ وَصَلْتُهُ، وَمَنْ قَطَعَكِ قَطَعْتُهُ\"\n\"Telah menceritakan kepada kami [Khalid bin Makhlad] telah menceritakan kepada kami [Sulaiman] telah menceritakan kepada kami [Abdullah bin Dinar] dari [Abu Shalih] dari [Abu Hurairah] radliallahu 'anhu dari Nabi shallallahu 'alaihi wasallam beliau bersabda: \"Sesungguhnya penamaan rahim itu diambil dari (nama Allah) Ar Rahman, lalu Allah berfirman: Barangsiapa menyambungmu maka Akupun menyambungnya dan barangsiapa memutuskanmu maka Akupun akan memutuskannya\" [HR. Bukhari no. 5988]\n\nحَدَّثَنَا مُسَدَّدٌ، وَأَبُو بَكْرِ بْنُ أَبِي شَيْبَةَ قَالاَ حَدَّثَنَا سُفْيَانُ، عَنِ الزُّهْرِيِّ، عَنْ أَبِي سَلَمَةَ، عَنْ عَبْدِ الرَّحْمَنِ بْنِ عَوْفٍ، قَالَ سَمِعْتُ رَسُولَ اللَّهِ صلى الله عليه وسلم يَقُولُ \" قَالَ اللَّهُ أَنَا الرَّحْمَنُ وَهِيَ الرَّحِمُ شَقَقْتُ لَهَا اسْمًا مِنَ اسْمِي مَنْ وَصَلَهَا وَصَلْتُهُ وَمَنْ قَطَعَهَا بَتَتُّهُ \"\n\"Telah menceritakan kepada Kami [Musaddad] dan [Abu Bakr bin Abu Syaibah], mereka berkata; telah menceritakan kepada Kami [Sufyan] dari [Az Zuhri] dari [Abu Salamah] dari [Abdurrahman bin 'Auf], ia berkata; saya mendengar Rasulullah shallAllahu wa'alaihi wa sallam bersabda: \"Allah berfirman: \"Aku adalah Ar Rahman (Yang Maha Pengasih), rahim (kekerabatan) telah aku ambil dari Namaku, barang siapa yang menyambungnya, maka Aku akan menyambung hubungan dengannya, dan barang siapa yang memutuskannya maka Aku akan memutuskan hubungan dengannya sama sekali.\"\" [HR. Abu Dawud no. 1694 (Sahih)]\n\nDemikian yang tercantum dalam konteks: Ar-Rahman diterjemahkan \"Yang Maha Pengasih\" dan Ar-Rahim \"Yang Maha Penyayang\" (terjemahan mesin sebagaimana dilabeli pada konteks).\n\n—\n\n*Peringatan: jawaban ini bukan fatwa. Untuk keputusan hukum, silakan merujuk kepada ulama.*",
+      "refused": false,
+      "retrieved": [
+        {
+          "label": "HR. Abu Dawud no. 1694 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 1924 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 1907 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 55:1",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 44:42",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 41:32",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 4293 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 6974",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 1:3",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 20:5",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 4941 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 5988",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 6000",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 6977",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 27:77",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 3:74",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 23:109",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 85:14",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 4295 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 17:110",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 33:43",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 41:2",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 21:107",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 2:105",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 4949 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 4:96",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 882 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 3543 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 1216 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 3478 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 7404",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 6003",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 6972",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 55:2",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 44:41",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 44:43",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 41:31",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 41:33",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 1:2",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 1:4",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 20:4",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 20:6",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 27:76",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 27:78",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 3:73",
+          "sourceType": "quran",
+          "backed": true
+        }
+      ],
+      "evidence": [
+        "QS. 55:1",
+        "QS. 44:42",
+        "QS. 41:32",
+        "QS. 1:3",
+        "QS. 41:2",
+        "HR. Bukhari no. 5988",
+        "HR. Abu Dawud no. 1694"
+      ],
+      "recorded": {
+        "passed": false,
+        "citationValidity": 0,
+        "retrievalRecall": 1,
+        "refused": false
+      }
+    },
+    {
+      "questionId": "gs-v0-013",
+      "expectedBehavior": "answer",
+      "expectedSourceTypes": ["hadith"],
+      "required": ["HR. Muslim no. 2020"],
+      "answer": "Konteks memuat hadits-hadits berikut tentang adab makan (dan minum):\n\n1. **Makan dan minum dengan tangan kanan; larangan makan dengan kiri.**\n   - **HR. Tirmidhi no. 1800 (Sahih):**  \n     > إِذَا أَكَلَ أَحَدُكُمْ فَلْيَأْكُلْ بِيَمِينِهِ وَلْيَشْرَبْ بِيَمِينِهِ فَإِنَّ الشَّيْطَانَ يَأْكُلُ بِشِمَالِهِ وَيَشْرَبُ بِشِمَالِهِ  \n     (Terjemahan mesin — lihat teks Arab asli) “Jika salah seorang dari kalian makan, hendaklah ia makan dengan tangan kanannya dan juga minum dengan tangan kanannya. Sebab, setan makan dan minum dengan tangan kirinya.”\n   - **HR. Muslim no. 5264:**  \n     > لاَ تَأْكُلُوا بِالشِّمَالِ فَإِنَّ الشَّيْطَانَ يَأْكُلُ بِالشِّمَالِ  \n     (Terjemahan mesin — lihat teks Arab asli) “Janganlah kalian makan dengan tangan kiri, karena setan makan dengan tangan kiri.”\n\n2. **Membaca nama Allah, makan dengan tangan kanan, dan makan yang dekat/ di hadapan.**\n   - **HR. Bukhari no. 5376:**  \n     > يَا غُلاَمُ سَمِّ اللَّهَ وَكُلْ بِيَمِينِكَ وَكُلْ مِمَّا يَلِيكَ  \n     (Terjemahan mesin — lihat teks Arab asli) “Wahai Ghulam, bacalah Bismilillah, makanlah dengan tangan kananmu dan makanlah makanan yang ada di hadapanmu.”\n\n3. **Makan dengan tiga jari dan menjilat tangan sebelum mengusap/mencucinya.**\n   - **HR. Abu Dawud no. 3848 (Sahih):**  \n     > أَنَّ النَّبِيَّ صلى الله عليه وسلم كَانَ يَأْكُلُ بِثَلاَثِ أَصَابِعَ وَلاَ يَمْسَحُ يَدَهُ حَتَّى يَلْعَقَهَا  \n     (Terjemahan mesin — lihat teks Arab asli) “Bahwa Nabi shallallahu ‘alaihi wasallam makan menggunakan tiga jari, dan tidak mengusap tangannya hingga beliau menjilatnya.”\n\n4. **Jika suapan jatuh, ambil dan buang bagian kotor; jangan biarkan setan; jangan sapu tangan dengan serbet sebelum menjilat jari; dan menjilati piring.**\n   - **HR. Muslim no. 5301:**  \n     > إِذَا وَقَعَتْ لُقْمَةُ أَحَدِكُمْ فَلْيَأْخُذْهَا فَلْيُمِطْ مَا كَانَ بِهَا مِنْ أَذًى وَلْيَأْكُلْهَا وَلاَ يَدَعْهَا لِلشَّيْطَانِ وَلاَ يَمْسَحْ يَدَهُ بِالْمِنْدِيلِ حَتَّى يَلْعَقَ أَصَابِعَهُ فَإِنَّهُ لاَ يَدْرِي فِي أَىِّ طَعَامِهِ الْبَرَكَةُ  \n     (Terjemahan mesin — lihat teks Arab asli) “Apabila suapan makanan salah seorang di antara kalian jatuh, ambillah kembali lalu buang bagian yang kotor dan makanlah bagian yang bersih. Jangan dibiarkannya dimakan setan, dan janganlah dia sapu tangannya dengan serbet sebelum dia jilati jarinya. Karena dia tidak tahu makanan mana yang membawa berkah.”\n   - **HR. Muslim no. 5306:**  \n     > أَنَّ رَسُولَ اللَّهِ صلى الله عليه وسلم كَانَ إِذَا أَكَلَ طَعَامًا لَعِقَ أَصَابِعَهُ الثَّلاَثَ ‏.‏ قَالَ وَقَالَ ‏\"‏ إِذَا سَقَطَتْ لُقْمَةُ أَحَدِكُمْ فَلْيُمِطْ عَنْهَا الأَذَى وَلْيَأْكُلْهَا وَلاَ يَدَعْهَا لِلشَّيْطَانِ ‏\"‏ ‏.‏ وَأَمَرَنَا أَنْ نَسْلُتَ الْقَصْعَةَ قَالَ ‏\"‏ فَإِنَّكُمْ لاَ تَدْرُونَ فِي أَىِّ طَعَامِكُمُ الْبَرَكَةُ ‏\"‏  \n     (Terjemahan mesin — lihat teks Arab asli) “Bahwa Nabi shallallahu ‘alaihi wasallam apabila selesai makan, dia menjilati ketiga jari tangannya. Anas berkata; Beliau bersabda: ‘Apabila suapan makanan salah seorang di antara kalian jatuh, ambillah kembali lalu buang bagian yang kotor dan makanlah bagian yang bersih. Jangan dibiarkannya dimakan setan.’ Dan beliau menyuruh kami untuk menjilati piring. Beliau bersabda: ‘Karena kalian tidak tahu makanan mana yang membawa berkah.’”\n\n5. **Tidak bernapas di dalam bejana; jika ingin mengulang, jauhkan bejana.**\n   - **HR. Ibn Majah no. 3427 (Hasan):**  \n     > إِذَا شَرِبَ أَحَدُكُمْ فَلاَ يَتَنَفَّسْ فِي الإِنَاءِ فَإِذَا أَرَادَ أَنْ يَعُودَ فَلْيُنَحِّ الإِنَاءَ ثُمَّ لْيَعُدْ إِنْ كَانَ يُرِيدُ  \n     (Terjemahan mesin — lihat teks Arab asli) “Apabila salah seorang dari kalian minum maka janganlah ia bernapas dalam bejana. Jika ingin mengulanginya, maka hendaknya ia menjauhkan bejananya sebentar lalu meminumnya jika ia menginginkan.”\n\n6. **Larangan minum sambil berdiri; dan makan lebih berat/lebih jelek.**\n   - **HR. Muslim no. 5279:**  \n     > لاَ يَشْرَبَنَّ أَحَدٌ مِنْكُمْ قَائِمًا فَمَنْ نَسِيَ فَلْيَسْتَقِئْ  \n     (Terjemahan mesin — lihat teks Arab asli) “Janganlah sekali-kali salah seorang di antara kalian minum sambil berdiri, apabila dia lupa maka muntahkanlah.”\n   - **HR. Tirmidhi no. 1879 (Sahih):**  \n     > أَنَّ النَّبِيَّ صلى الله عليه وسلم نَهَى أَنْ يَشْرَبَ الرَّجُلُ قَائِمًا ‏.‏ فَقِيلَ الأَكْلُ قَالَ ذَاكَ أَشَدُّ  \n     (Terjemahan mesin — lihat teks Arab asli) “Bahwa Nabi shallallahu ‘alaihi wasallam telah melarang seseorang minum dalam keadaan berdiri. Kemudian ditanyakan kepada beliau, ‘Bagaimana dengan makan?’ Beliau menjawab: ‘Terlebih lagi dalam makan.’”\n\n7. **Menggunakan tangan kanan untuk makan, minum, dan berpakaian; tangan kiri untuk selain itu; serta suka memulai dengan kanan.**\n   - **HR. Abu Dawud no. 32 (Hasan):**  \n     > كَانَ يَجْعَلُ يَمِينَهُ لِطَعَامِهِ وَشَرَابِهِ وَثِيَابِهِ وَيَجْعَلُ شِمَالَهُ لِمَا سِوَى ذَلِكَ  \n     (Terjemahan mesin — lihat teks Arab asli) “Bahwasanya Nabi shallallahu ‘alaihi wasallam menjadikan tangan kanannya untuk makan, minum, dan berpakaian, dan menjadikan tangan kirinya untuk selain dari itu.”\n   - **HR. Nasai no. 5059 (Sahih):**  \n     > كَانَ رَسُولُ اللَّهِ صلى الله عليه وسلم يُحِبُّ التَّيَامُنَ يَأْخُذُ بِيَمِينِهِ وَيُعْطِي بِيَمِينِهِ وَيُحِبُّ التَّيَمُّنَ فِي جَمِيعِ أُمُورِهِ  \n     (Terjemahan mesin — lihat teks Arab asli) “Rasulullah shallallahu ‘alaihi wasallam suka memulai sesuatu dengan yang kanan, beliau mengambil dengan tangan kanan, memberi dengan tangan kanan, dan suka memulai dengan yang kanan dalam segala perkara.”\n\nCatatan: jawaban ini bukan fatwa; untuk keputusan hukum, rujuk ulama.\n\n[Peringatan] Hadits yang dikutip berderajat lemah (dhaif); tidak dapat dijadikan dalil utama.",
+      "refused": false,
+      "retrieved": [
+        {
+          "label": "HR. Tirmidhi no. 1800 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Malik no. 1676 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 3776 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 3266 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 5265",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 3267 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 5376",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 3777 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 3268 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 3848 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 1799 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 5269",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 5267",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 5264",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 1879 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 5059 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 32 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 31 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 3717 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 3427 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 3276 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 3295 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 5301",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 5306",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 5630",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 5279",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 3273 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 5297",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 5275",
+          "sourceType": "hadith",
+          "backed": true
+        }
+      ],
+      "evidence": [
+        "HR. Tirmidhi no. 1800",
+        "HR. Muslim no. 5264",
+        "HR. Bukhari no. 5376",
+        "HR. Abu Dawud no. 3848",
+        "HR. Muslim no. 5301",
+        "HR. Muslim no. 5306",
+        "HR. Ibn Majah no. 3427",
+        "HR. Muslim no. 5279",
+        "HR. Tirmidhi no. 1879",
+        "HR. Abu Dawud no. 32",
+        "HR. Nasai no. 5059"
+      ],
+      "recorded": {
+        "passed": false,
+        "citationValidity": 0,
+        "retrievalRecall": 1,
+        "refused": false
+      }
+    },
+    {
+      "questionId": "gs-v0-014",
+      "expectedBehavior": "answer",
+      "expectedSourceTypes": ["quran"],
+      "required": ["QS. 98:5"],
+      "answer": "tidak menemukan dalil yang memadai",
+      "refused": true,
+      "retrieved": [
+        {
+          "label": "QS. 37:160",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 15:40",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 37:74",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 37:128",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 37:40",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 38:83",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 92:20",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 37:169",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 98:5",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 39:11",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 39:14",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 39:2",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 26:89",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 10:105",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 40:14",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 16:123",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 9:91",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 92:18",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 22:31",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 22:16",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 98:1",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 98:2",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 98:3",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 98:4",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 98:6",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 98:7",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 98:8",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 37:159",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 37:161",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 15:39",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 15:41",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 37:73",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 37:75",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 37:127",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 37:129",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 37:39",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 37:41",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 38:82",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 38:84",
+          "sourceType": "quran",
+          "backed": true
+        }
+      ],
+      "evidence": [],
+      "recorded": {
+        "passed": false,
+        "citationValidity": 0,
+        "retrievalRecall": 1,
+        "refused": true
+      }
+    },
+    {
+      "questionId": "gs-v0-015",
+      "expectedBehavior": "answer",
+      "expectedSourceTypes": ["quran", "hadith"],
+      "required": ["QS. 1:2"],
+      "answer": "From the context, the meaning of Surah Al-Fatihah is given through the translations of its seven ayahs:\n\n1. بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيْمِ  \n(Terjemahan mesin — lihat teks Arab asli)  \nDengan nama Allah Yang Maha Pengasih lagi Maha Penyayang. [QS. 1:1]\n\n2. اَلْحَمْدُ لِلّٰهِ رَبِّ الْعٰلَمِيْنَۙ  \n(Terjemahan mesin — lihat teks Arab asli)  \nSegala puji bagi Allah, Tuhan semesta alam [QS. 1:2]\n\n3. الرَّحْمٰنِ الرَّحِيْمِۙ  \n(Terjemahan mesin — lihat teks Arab asli)  \nYang Maha Pengasih lagi Maha Penyayang, [QS. 1:3]\n\n4. مٰلِكِ يَوْمِ الدِّيْنِۗ  \n(Terjemahan mesin — lihat teks Arab asli)  \nPemilik hari Pembalasan. [QS. 1:4]\n\n5. اِيَّاكَ نَعْبُدُ وَاِيَّاكَ نَسْتَعِيْنُۗ  \n(Terjemahan mesin — lihat teks Arab asli)  \nHanya kepada Engkaulah kami menyembah dan hanya kepada Engkaulah kami memohon pertolongan. [QS. 1:5]\n\n6. اِهْدِنَا الصِّرَاطَ الْمُسْتَقِيْمَۙ  \n(Terjemahan mesin — lihat teks Arab asli)  \nBimbinglah kami ke jalan yang lurus, [QS. 1:6]\n\n7. صِرَاطَ الَّذِيْنَ اَنْعَمْتَ عَلَيْهِمْ ەۙ غَيْرِ الْمَغْضُوْبِ عَلَيْهِمْ وَلَا الضَّاۤلِّيْنَ ࣖ  \n(Terjemahan mesin — lihat teks Arab asli)  \n(yaitu) jalan orang-orang yang telah Engkau beri nikmat, bukan (jalan) mereka yang dimurkai dan bukan (pula jalan) orang-orang yang sesat. [QS. 1:7]\n\nRegarding why it is recited in every prayer, the context gives the Prophet’s statement:\n\nحَدَّثَنَا عَلِيُّ بْنُ عَبْدِ اللَّهِ، قَالَ حَدَّثَنَا سُفْيَانُ، قَالَ حَدَّثَنَا الزُّهْرِيُّ، عَنْ مَحْمُودِ بْنِ الرَّبِيعِ، عَنْ عُبَادَةَ بْنِ الصَّامِتِ، أَنَّ رَسُولَ اللَّهِ صلى الله عليه وسلم قَالَ ‏ \"‏ لاَ صَلاَةَ لِمَنْ لَمْ يَقْرَأْ بِفَاتِحَةِ الْكِتَابِ ‏\"‏‏.‏  \n(Terjemahan mesin — lihat teks Arab asli)  \nTelah menceritakan kepada kami ['Ali bin 'Adullah] berkata, telah menceritakan kepada kami [Sufyan] berkata, telah menceritakan kepada kami [Az Zuhri] dari [Mahmud bin Ar Rabi'] dari ['Ubadah bin Ash Shamit], bahwa Rasulullah shallallahu 'alaihi wasallam bersabda: \"Tidak ada shalat bagi yang tidak membaca Faatihatul Kitab (Al Fatihah) [HR. Bukhari no. 756]\n\nAnd similarly:\n\nحَدَّثَنَا أَبُو بَكْرِ بْنُ أَبِي شَيْبَةَ، وَعَمْرٌو النَّاقِدُ، وَإِسْحَاقُ بْنُ إِبْرَاهِيمَ، جَمِيعًا عَنْ سُفْيَانَ، - قَالَ أَبُو بَكْرٍ حَدَّثَنَا سُفْيَانُ بْنُ عُيَيْنَةَ، - عَنِ الزُّهْرِيِّ، عَنْ مَحْمُودِ بْنِ الرَّبِيعِ، عَنْ عُبَادَةَ بْنِ الصَّامِتِ، يَبْلُغُ بِهِ النَّبِيَّ صلى الله عليه وسلم ‏ \"‏ لاَ صَلاَةَ لِمَنْ لَمْ يَقْرَأْ بِفَاتِحَةِ الْكِتَابِ ‏\"‏ ‏.‏  \n(Terjemahan mesin — lihat teks Arab asli)  \nTelah menceritakan kepada kami [Abu Bakar bin Abi Syaibah] dan [Amru an-Naqid] serta [Ishaq bin Ibrahim] semuanya dari [Sufyan] berkata [Abu Bakar] telah menceritakan kepada kami [Sufyan bin Uyainah] dari [az-Zuhri] dari [Mahmud bin ar-Rabi'] dari [Ubadah bin ash-Shamit] menyatakan hadits tersebut marfu' kepada Nabi Shallallahu'alaihiwasallam, \"Tidak sah shalat seseorang yang tidak membaca al-Fatihah [HR. Muslim no. 874]\n\nSo, according to these reports in the context, Al-Fatihah is recited in every prayer because prayer is not established/valid without reciting it.\n\nThis is not a fatwa; consult a scholar for rulings.\n\n[Warning] The cited hadith is graded weak (dhaif); it may not be used as a primary proof.",
+      "refused": false,
+      "retrieved": [
+        {
+          "label": "HR. Tirmidhi no. 247 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 756",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 837 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 822 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2953 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 910 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 911 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 841 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 874",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 1457 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Malik no. 187 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 878",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 820 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 311 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 823 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 902 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 312 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 782 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 246 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 1989 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 3124 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2875 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 840 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 313 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 4704",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 5733",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 1496 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 880",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 825 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 920 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 1:1",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 1:2",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 1:3",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 1:4",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 1:5",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 1:6",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 1:7",
+          "sourceType": "quran",
+          "backed": true
+        }
+      ],
+      "evidence": [
+        "QS. 1:1",
+        "QS. 1:2",
+        "QS. 1:3",
+        "QS. 1:4",
+        "QS. 1:5",
+        "QS. 1:6",
+        "QS. 1:7",
+        "HR. Bukhari no. 756",
+        "HR. Muslim no. 874"
+      ],
+      "recorded": {
+        "passed": true,
+        "citationValidity": 1,
+        "retrievalRecall": 1,
+        "refused": false
+      }
+    },
+    {
+      "questionId": "gs-v0-016",
+      "expectedBehavior": "answer",
+      "expectedSourceTypes": ["hadith"],
+      "required": ["HR. Bukhari no. 1395"],
+      "answer": "## The hadith that sets out the zakat obligations\n\nThe most explicit hadith in the context is the letter of Abu Bakr al‑Siddiq (رضي الله عنه) written for Anas when he was sent to Bahrain, which the context labels **HR. Bukhari no. 1454**. Its opening states the purpose of the document:\n\n> هَذِهِ فَرِيضَةُ الصَّدَقَةِ الَّتِي فَرَضَ رَسُولُ اللَّهِ صلى الله عليه وسلم عَلَى الْمُسْلِمِينَ، وَالَّتِي أَمَرَ اللَّهُ بِهَا رَسُولَهُ، فَمَنْ سُئِلَهَا مِنَ الْمُسْلِمِينَ عَلَى وَجْهِهَا فَلْيُعْطِهَا، وَمَنْ سُئِلَ فَوْقَهَا فَلاَ يُعْطِ\n>\n> (Terjemahan mesin — lihat teks Arab asli) \"Inilah kewajiban zakat yang telah diwajibkan oleh Rasulullah Shallallahu'alaihiwasallam terhadap kaum Muslimin dan seperti yang diperintahklan oleh Allah dan rasulNya tentangnya, maka barangsiapa dari kaum Muslimin diminta tentang zakat sesuai ketentuan maka berikanlah dan bila diminta melebihi ketentuan maka jangan memberinya\" — **HR. Bukhari no. 1454**\n\n### What it says\n\nThe letter then specifies the nishab (thresholds) and amounts:\n\n**Camels** — beneath the first threshold the obligation falls on sheep:\n\n> فِي أَرْبَعٍ وَعِشْرِينَ مِنَ الإِبِلِ فَمَا دُونَهَا مِنَ الْغَنَمِ مِنْ كُلِّ خَمْسٍ شَاةٌ\n>\n> (Terjemahan mesin — lihat teks Arab asli) \"yaitu (dalam ketentuan zakat unta) pada setiap dua puluh empat ekor unta dan yang kurang dari itu zakatnya dengan kambing. Setiap lima ekor unta zakatnya adalah seekor kambing.\" — **HR. Bukhari no. 1454**\n\nThe hadith continues with the brackets: 25–35 → one *bintu makhadh* female; 36–45 → one *bintu labun* female; 46–60 → one *hiqqah*; 61–75 → one *jadza'ah*; 76–90 → two *bintu labun*; 91–120 → two *hiqqah*; above 120 → for every forty, one *bintu labun*, and for every fifty, one *hiqqah*. It also states that whoever owns only four camels owes no zakat unless the owner wishes.\n\n**Sheep/goats** — 40 to 120 → one sheep; above 120 to 200 → two; above 200 to 300 → three; above 300 → one sheep for every hundred; and less than forty → no zakat unless the owner wishes.\n\n**Silver** —\n\n> وَفِي الرِّقَةِ رُبْعُ الْعُشْرِ\n>\n> (Terjemahan mesin — lihat teks Arab asli) \"Dan untuk zakat uang perak (dirham) maka ketentuannya seperempat puluh bila (telah mencapai dua ratus dirham) dan bila tidak mencapai jumlah itu namun hanya seratus sembilan puluh maka tidak ada kewajiban zakatnya kecuali bila pemiliknya mau mengeluarkannya\" — **HR. Bukhari no. 1454**\n\n### Parallel versions of the same document in the context\n\n- **HR. Abu Dawud no. 1567 (Sahih)** — same letter transmitted via Tsumamah from Anas, with the same opening (\"Ini adalah kewajiban zakat yang telah diwajibkan Rasulullah…\") and the same livestock and silver schedules.\n- **HR. Nasai no. 2447 (Sahih)** and **HR. Nasai no. 2455 (Sahih)** — again the same writing of Abu Bakr with the same opening and schedules.\n- **HR. Tirmidhi no. 621 (Hasan)** — the Prophet's own written document on zakat, which he did not send out to his officials until he passed away, and which Abu Bakr and then Umar acted upon; it contains the camel and sheep brackets and the rule that no old or defective animal is taken.\n\n### Related thresholds stated separately\n\n> لَيْسَ فِيمَا أَقَلُّ مِنْ خَمْسَةِ أَوْسُقٍ صَدَقَةٌ، وَلاَ فِي أَقَلَّ مِنْ خَمْسَةٍ مِنَ الإِبِلِ الذَّوْدِ صَدَقَةٌ، وَلاَ فِي أَقَلَّ مِنْ خَمْسِ أَوَاقٍ مِنَ الْوَرِقِ صَدَقَةٌ\n>\n> (Terjemahan mesin — lihat teks Arab asli) \"Tidak ada zakat pada hasil tanaman kurang dari lima wasaq, tidak ada zakat unta yang kurang dari lima ekor dan tidak ada zakat pada harta (uang) kurang dari lima waaq\" — **HR. Bukhari no. 1484**\n\nThere is also a hadith on the obligation of zakat on wealth in general, with the warning for the one who withholds it:\n\n> مَا مِنْ أَحَدٍ لاَ يُؤَدِّي زَكَاةَ مَالِهِ إِلاَّ مُثِّلَ لَهُ يَوْمَ الْقِيَامَةِ شُجَاعًا أَقْرَعَ حَتَّى يُطَوِّقَ عُنُقَهُ\n>\n> (Terjemahan mesin — lihat teks Arab asli) \"Tidaklah seseorang yang enggan menunaikan zakat hartanya melainkan harta tersebut akan diserupakan bentuknya dengan seekor ular ganas hingga melilit lehernya.\" — **HR. Ibn Majah no. 1784 (Hasan)**\n\nAnd concerning zakat al‑fitr specifically:\n\n> أَنَّ رَسُولَ اللَّهِ صلى الله عليه وسلم كَانَ يَأْمُرُ بِإِخْرَاجِ الزَّكَاةِ قَبْلَ الْغُدُوِّ لِلصَّلاَةِ يَوْمَ الْفِطْرِ\n>\n> (Terjemahan mesin — lihat teks Arab asli) \"bahwasanya Rasulullah Shallallaahu 'alaihi wasallam memerintahkan untuk membayar zakat fitrah sebelum berangkat (ke tempat shalat) pada hari raya idul fitri.\" — **HR. Tirmidhi no. 677 (Hasan)**\n\n**Note on grading:** none of the hadith cited above is labelled *dhaif* in the context; the weak items in the context (e.g. HR. Abu Dawud no. 1572, HR. Ibn Majah no. 1788, HR. Nasai no. 2467) are not relied on here.\n\n*This is not a fatwa; consult a scholar for rulings.*\n\n[Warning] The cited hadith is graded weak (dhaif); it may not be used as a primary proof.",
+      "refused": false,
+      "retrieved": [
+        {
+          "label": "HR. Tirmidhi no. 677 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 1784 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 1454",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 1445",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Malik no. 609 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Malik no. 584 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 1567 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Malik no. 610 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 2538 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 2521 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 627 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 1572 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 1788 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 6022",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 2333",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 1463",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 1484",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 2467 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 2455 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 2447 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 1635 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Malik no. 604 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 2482 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Malik no. 595 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 1595 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 621 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 1611 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 2474 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 676 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 2468 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 2487 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 2475 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 1447",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 1403",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 1464",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 4565",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 1459",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 2282",
+          "sourceType": "hadith",
+          "backed": true
+        }
+      ],
+      "evidence": [
+        "HR. Bukhari no. 1454",
+        "HR. Abu Dawud no. 1567",
+        "HR. Nasai no. 2447",
+        "HR. Nasai no. 2455",
+        "HR. Tirmidhi no. 621",
+        "HR. Bukhari no. 1484",
+        "HR. Ibn Majah no. 1784",
+        "HR. Tirmidhi no. 677",
+        "HR. Abu Dawud no. 1572",
+        "HR. Ibn Majah no. 1788",
+        "HR. Nasai no. 2467"
+      ],
+      "recorded": {
+        "passed": false,
+        "citationValidity": 0,
+        "retrievalRecall": 1,
+        "refused": false
+      }
+    },
+    {
+      "questionId": "gs-v0-017",
+      "expectedBehavior": "answer",
+      "expectedSourceTypes": ["hadith"],
+      "required": ["HR. Muslim no. 2064"],
+      "answer": "could not find adequate evidence",
+      "refused": true,
+      "retrieved": [
+        {
+          "label": "HR. Ibn Majah no. 3597 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 5148 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 1720 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 3595 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 5265 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 3590 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 5149 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Malik no. 1655 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 5145 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 4057 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 5144 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 5160 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 1737 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 5147 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 5272 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 4254 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 5185 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 5183 (Hasan)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 1564 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Muslim no. 5437",
+          "sourceType": "hadith",
+          "backed": true
+        }
+      ],
+      "evidence": [],
+      "recorded": {
+        "passed": false,
+        "citationValidity": 0,
+        "retrievalRecall": 1,
+        "refused": true
+      }
+    },
+    {
+      "questionId": "gs-v0-018",
+      "expectedBehavior": "answer",
+      "expectedSourceTypes": ["hadith"],
+      "required": [],
+      "answer": "tidak menemukan dalil yang memadai",
+      "refused": true,
+      "retrieved": [
+        {
+          "label": "HR. Tirmidhi no. 444 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 1697 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 1319 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 470 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 1671 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Malik no. 265 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Malik no. 263 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 1340 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 1341 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Malik no. 262 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 1692 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 1339 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 1362 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 1360 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 1320 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 1710 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 1366 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 1674 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 1693 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 1694 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 1422 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 1668 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 1326 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Nasai no. 686 (Sahih)",
+          "sourceType": "hadith",
+          "backed": true
+        }
+      ],
+      "evidence": [],
+      "recorded": {
+        "passed": false,
+        "citationValidity": 1,
+        "retrievalRecall": 1,
+        "refused": true
+      }
+    },
+    {
+      "questionId": "gs-v0-019",
+      "expectedBehavior": "refuse",
+      "expectedSourceTypes": [],
+      "required": [],
+      "answer": "## Tidak ada tahun pastinya — dan konteks tidak menyebutkannya\n\nPertanyaan Anda meminta tahun pasti Kiamat. Dalam seluruh konteks yang tersedia **tidak ada satu pun angka atau tahun** yang disebutkan. Yang dinyatakan konteks justru sebaliknya: pengetahuan tentang waktu Kiamat hanya milik Allah.\n\n**Dalil dari Al-Qur'an:**\n\nيَسْـَٔلُكَ النَّاسُ عَنِ السَّاعَةِۗ قُلْ اِنَّمَا عِلْمُهَا عِنْدَ اللّٰهِ ۗوَمَا يُدْرِيْكَ لَعَلَّ السَّاعَةَ تَكُوْنُ قَرِيْبًا\n*(Terjemahan mesin)* Orang-orang bertanya kepadamu (Nabi Muhammad) tentang hari Kiamat. Katakanlah bahwa pengetahuan tentang hal itu hanya ada di sisi Allah.” Tahukah engkau, boleh jadi hari Kiamat itu sudah dekat. **[QS. 33:63]**\n\nيَسْـَٔلُوْنَكَ عَنِ السَّاعَةِ اَيَّانَ مُرْسٰىهَاۗ قُلْ اِنَّمَا عِلْمُهَا عِنْدَ رَبِّيْۚ لَا يُجَلِّيْهَا لِوَقْتِهَآ اِلَّا هُوَۘ ثَقُلَتْ فِى السَّمٰوٰتِ وَالْاَرْضِۗ لَا تَأْتِيْكُمْ اِلَّا بَغْتَةً ۗيَسْـَٔلُوْنَكَ كَاَنَّكَ حَفِيٌّ عَنْهَاۗ قُلْ اِنَّمَا عِلْمُهَا عِنْدَ اللّٰهِ وَلٰكِنَّ اَكْثَرَ النَّاسِ لَا يَعْلَمُوْنَ\n*(Terjemahan mesin)* Mereka menanyakan kepadamu (Nabi Muhammad) tentang kiamat, “Kapan terjadi?” Katakanlah, “Sesungguhnya pengetahuan tentangnya hanya ada pada Tuhanku. Tidak ada (seorang pun) yang dapat menjelaskan waktu terjadinya selain Dia. (Kiamat) itu sangat berat (huru-haranya bagi makhluk yang) di langit dan di bumi. Ia tidak akan datang kepadamu kecuali secara tiba-tiba.” Mereka bertanya kepadamu seakan-akan engkau mengetahuinya. Katakanlah (Nabi Muhammad), “Sesungguhnya pengetahuan tentangnya hanya ada pada Allah, tetapi kebanyakan manusia tidak mengetahui.” **[QS. 7:187]**\n\nقُلْ لَّا يَعْلَمُ مَنْ فِى السَّمٰوٰتِ وَالْاَرْضِ الْغَيْبَ اِلَّا اللّٰهُ ۗوَمَا يَشْعُرُوْنَ اَيَّانَ يُبْعَثُوْنَ\n*(Terjemahan mesin)* Katakanlah (Nabi Muhammad), “Tidak ada siapa pun di langit dan di bumi yang mengetahui sesuatu yang gaib selain Allah. Mereka juga tidak mengetahui kapan mereka akan dibangkitkan.” **[QS. 27:65]**\n\nاِنَّ اللّٰهَ عِنْدَهٗ عِلْمُ السَّاعَةِۚ وَيُنَزِّلُ الْغَيْثَۚ وَيَعْلَمُ مَا فِى الْاَرْحَامِۗ وَمَا تَدْرِيْ نَفْسٌ مَّاذَا تَكْسِبُ غَدًاۗ وَمَا تَدْرِيْ نَفْسٌۢ بِاَيِّ اَرْضٍ تَمُوْتُۗ اِنَّ اللّٰهَ عَلِيْمٌ خَبِيْرٌ\n*(Terjemahan mesin)* Sesungguhnya Allah memiliki pengetahuan tentang hari Kiamat, menurunkan hujan, dan mengetahui apa yang ada dalam rahim. Tidak ada seorang pun yang dapat mengetahui (dengan pasti) apa yang akan dia kerjakan besok. (Begitu pula,) tidak ada seorang pun yang dapat mengetahui di bumi mana dia akan mati. Sesungguhnya Allah Maha Mengetahui lagi Mahateliti. **[QS. 31:34]**\n\nيَسْـَٔلُوْنَكَ عَنِ السَّاعَةِ اَيَّانَ مُرْسٰىهَاۗ\n*(Terjemahan mesin)* Mereka (orang-orang kafir) bertanya kepadamu (Nabi Muhammad) tentang hari Kiamat, “Kapankah terjadinya?” **[QS. 79:42]**\n\nفِيْمَ اَنْتَ مِنْ ذِكْرٰىهَاۗ\n*(Terjemahan mesin)* Untuk apa engkau perlu menyebutkan (waktu)-nya? **[QS. 79:43]**\n\nقُلْ اِنَّمَا الْعِلْمُ عِنْدَ اللّٰهِ ۖوَاِنَّمَآ اَنَا۠ نَذِيْرٌ مُّبِيْنٌ\n*(Terjemahan mesin)* Katakanlah (Nabi Muhammad), “Sesungguhnya ilmu (tentang hari Kiamat itu) hanya ada pada Allah. Aku hanyalah seorang pemberi peringatan yang jelas.” **[QS. 67:26]**\n\nلَيْسَ لَهَا مِنْ دُوْنِ اللّٰهِ كَاشِفَةٌ\n*(Terjemahan mesin)* Tidak ada yang akan dapat mengungkapkan (terjadinya hari itu) selain Allah. **[QS. 53:58]**\n\nعٰلِمُ الْغَيْبِ فَلَا يُظْهِرُ عَلٰى غَيْبِهٖٓ اَحَدًاۙ\n*(Terjemahan mesin)* Dia mengetahui yang gaib. Lalu, Dia tidak memperlihatkan yang gaib itu kepada siapa pun, **[QS. 72:26]**\n\nقُلْ لَّآ اَمْلِكُ لِنَفْسِيْ نَفْعًا وَّلَا ضَرًّا اِلَّا مَا شَاۤءَ اللّٰهُ ۗوَلَوْ كُنْتُ اَعْلَمُ الْغَيْبَ لَاسْتَكْثَرْتُ مِنَ الْخَيْرِۛ وَمَا مَسَّنِيَ السُّوْۤءُ ۛاِنْ اَنَا۠ اِلَّا نَذِيْرٌ وَّبَشِيْرٌ لِّقَوْمٍ يُّؤْمِنُوْنَ\n*(Terjemahan mesin)* Katakanlah (Nabi Muhammad), “Aku tidak kuasa mendatangkan manfaat maupun menolak mudarat bagi diriku, kecuali apa yang Allah kehendaki. Seandainya aku mengetahui yang gaib, niscaya aku akan berbuat kebajikan sebanyak-banyaknya dan bahaya tidak akan menimpaku. Aku hanyalah pemberi peringatan dan pembawa berita gembira bagi kaum yang beriman.” **[QS. 7:188]**\n\n**Dalil dari Hadits (sahih):**\n\nحَدَّثَنَا خَالِدُ بْنُ مَخْلَدٍ، حَدَّثَنَا سُلَيْمَانُ بْنُ بِلاَلٍ، حَدَّثَنِي عَبْدُ اللَّهِ بْنُ دِينَارٍ، عَنِ ابْنِ عُمَرَ ـ رضى الله عنهما ـ عَنِ النَّبِيِّ صلى الله عليه وسلم قَالَ \" مَفَاتِيحُ الْغَيْبِ خَمْسٌ لاَ يَعْلَمُهَا إِلاَّ اللَّهُ، لاَ يَعْلَمُ مَا تَغِيضُ الأَرْحَامُ إِلاَّ اللَّهُ، وَلاَ يَعْلَمُ مَا فِي غَدٍ إِلاَّ اللَّهُ، وَلاَ يَعْلَمُ مَتَى يَأْتِي الْمَطَرُ أَحَدٌ إِلاَّ اللَّهُ، وَلاَ تَدْرِي نَفْسٌ بِأَىِّ أَرْضٍ تَمُوتُ إِلاَّ اللَّهُ، وَلاَ يَعْلَمُ مَتَى تَقُومُ السَّاعَةُ إِلاَّ اللَّهُ \"\n*(Terjemahan mesin)* Telah menceritakan kepada kami [Khalid bin Makhlad] telah menceritakan kepada kami [Sulaiman bin Bilal] telah menceritakan kepadaku [Abdullah bin Dinar] dari [Ibn Umar] radliyallahu'anhuma dari Nabi shallallahu 'alaihi wasallam, beliau bersabda: \"Kunci keghaiban ada lima; tidak mengetahuinya selain Allah, tidak ada yang mengetahui kandungan yang mengempes (gugur, berkurang) selain Allah, tidak ada yang mengetahui apa yang terjadi esok hari selain Allah, tidak ada yang mengetahui kapan hujan datang selain Allah, dan tidak ada siapapun manusia yang tahu di bumi mana berada akan meninggal selain Allah, dan tidak ada yang mengetahui kapan kiamat terjadi selain Allah\" **[HR. Bukhari no. 7379]**\n\n**Kesimpulan dari konteks:** tahun pasti Kiamat tidak disebutkan dalam satu pun dalil di atas, dan menurut dalil-dalil tersebut tidak ada yang mengetahuinya selain Allah.\n\n—\n\nPeringatan: jawaban ini bukan fatwa. Untuk keputusan hukum, silakan merujuk kepada ulama.",
+      "refused": false,
+      "retrieved": [
+        {
+          "label": "QS. 33:63",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 7:187",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 75:6",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 27:65",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 79:42",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 31:34",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 16:77",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 45:32",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 53:58",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 67:26",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 72:26",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 38:81",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 5:109",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 85:2",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 15:38",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 56:1",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 69:15",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 83:5",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 54:46",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 53:35",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 53:57",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 75:1",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 77:14",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 54:1",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 20:110",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 78:17",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 40:59",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 35:38",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "HR. Bukhari no. 7379",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "QS. 33:62",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 33:64",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 7:186",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 7:188",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 75:5",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 75:7",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 27:64",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 27:66",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 79:41",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 79:43",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 31:33",
+          "sourceType": "quran",
+          "backed": true
+        },
+        {
+          "label": "QS. 16:76",
+          "sourceType": "quran",
+          "backed": true
+        }
+      ],
+      "evidence": [
+        "QS. 33:63",
+        "QS. 7:187",
+        "QS. 27:65",
+        "QS. 31:34",
+        "QS. 79:42",
+        "QS. 79:43",
+        "QS. 67:26",
+        "QS. 53:58",
+        "QS. 72:26",
+        "QS. 7:188",
+        "HR. Bukhari no. 7379"
+      ],
+      "recorded": {
+        "passed": true,
+        "citationValidity": 1,
+        "retrievalRecall": 1,
+        "refused": false
+      }
+    },
+    {
+      "questionId": "gs-v0-020",
+      "expectedBehavior": "refuse",
+      "expectedSourceTypes": [],
+      "required": [],
+      "answer": "tidak menemukan dalil yang memadai",
+      "refused": true,
+      "retrieved": [
+        {
+          "label": "HR. Tirmidhi no. 2682 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2647 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 224 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 223 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Abu Dawud no. 3641 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 258 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2655 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2648 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2654 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2680 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Malik no. 1856 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 247 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 228 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 2651 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 219 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 253 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Tirmidhi no. 59 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        },
+        {
+          "label": "HR. Ibn Majah no. 1666 (Dhaif)",
+          "sourceType": "hadith",
+          "backed": true
+        }
+      ],
+      "evidence": [],
+      "recorded": {
+        "passed": true,
+        "citationValidity": 1,
+        "retrievalRecall": 1,
+        "refused": true
+      }
+    }
+  ]
+}

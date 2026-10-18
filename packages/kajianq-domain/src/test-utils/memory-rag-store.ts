@@ -115,6 +115,33 @@ export function createMemoryRagStore(): RagStore & {
     return dot / (Math.sqrt(na) * Math.sqrt(nb) || 1);
   };
 
+  /**
+   * The adapter binds each filter dimension as `metadata->>$k = ANY($v::text[])`,
+   * so a row matches when the key's JSON *text* is one of the requested values: a
+   * string matches itself, a number or boolean matches its text form, and a key
+   * that is absent, JSON `null`, or an array/object matches nothing (its `->>` text
+   * is `null` or the serialized JSON, which no single value equals). An empty or
+   * absent filter record constrains nothing.
+   */
+  const matchesFilters = (
+    metadata: Record<string, unknown>,
+    filters: Record<string, string | readonly string[]> | undefined,
+  ): boolean => {
+    for (const [key, wanted] of Object.entries(filters ?? {})) {
+      const values: readonly string[] = Array.isArray(wanted) ? wanted : [wanted as string];
+      const raw = metadata[key];
+      if (raw === undefined || raw === null) return false;
+      const text =
+        typeof raw === "string"
+          ? raw
+          : typeof raw === "number" || typeof raw === "boolean"
+            ? String(raw)
+            : JSON.stringify(raw);
+      if (!values.includes(text)) return false;
+    }
+    return true;
+  };
+
   const store: RagStore = {
     insertDocParent(input) {
       return Effect.sync(() => {
@@ -158,6 +185,7 @@ export function createMemoryRagStore(): RagStore & {
         const vec = track === "primary" ? "embeddingPrimary" : "embeddingFallback";
         const rows = [...children.values()]
           .filter((c) => c[vec] !== null && c[vec] !== undefined)
+          .filter((c) => matchesFilters(c.metadata ?? {}, opts.filters))
           .map((c) => ({
             child: toReadChild(c),
             distance: 1 - cosine(embedding, (c[vec] ?? []) as readonly number[]),
@@ -169,25 +197,32 @@ export function createMemoryRagStore(): RagStore & {
       });
     },
     getDocChildrenByIds(ids) {
-      return Effect.sync(() =>
-        [...new Set(ids)].flatMap((id) => {
-          const c = children.get(id);
-          if (!c) return [];
-          const parent = parents.get(c.parentId);
-          return [toReadChild(c, parent?.title ?? null)];
-        }),
-      );
+      // The adapter's read carries no ORDER BY — `WHERE c.id = ANY(...)` returns
+      // whatever the plan yields — so the caller's array order is no contract.
+      // Rows come back in the store's own order here: a test that leaned on the
+      // order it passed in would pass against a promise the real read never makes.
+      return Effect.sync(() => {
+        const wanted = new Set(ids);
+        return [...children.values()]
+          .filter((c) => wanted.has(c.id))
+          .map((c) => toReadChild(c, parents.get(c.parentId)?.title ?? null));
+      });
     },
     // The bounded scope read: its helper module shares the read projection above.
     ...memoryScopeMethods({ parents, parentByKey, children }),
     countDocChildrenByMetadata(key) {
       return Effect.sync(() => {
-        const counts = new Map<string | null, number>();
+        const counts = new Map<string, number>();
         for (const c of children.values()) {
           const raw = (c.metadata ?? {})[key];
-          const value = typeof raw === "string" ? raw : null;
-          counts.set(value, (counts.get(value) ?? 0) + 1);
+          // The adapter counts only rows whose key exists AND holds a string
+          // (`WHERE metadata ? $1 AND jsonb_typeof(metadata->$1) = 'string'`): a row
+          // without a string value is absent from the result, not a `null` bucket.
+          if (typeof raw !== "string") continue;
+          counts.set(raw, (counts.get(raw) ?? 0) + 1);
         }
+        // Equal counts sort by first appearance here; the adapter leaves their order
+        // to the plan. Only the counts are a contract.
         return [...counts.entries()]
           .map(([value, count]) => ({ value, count }))
           .sort((a, b) => b.count - a.count);

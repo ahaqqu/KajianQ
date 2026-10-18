@@ -107,7 +107,9 @@ export const TraceEventSchema = v.variant("kind", [
     detail: v.object({
       key: v.pipe(v.string(), v.minLength(1)),
       value: v.pipe(v.string(), v.minLength(1)),
-      /** Children added; the configured cap; whether it truncated them. */
+      /** Children added; the configured cap; whether the scope held more children
+       * than the cap read from its opening ordinal. A child the caller already
+       * held is read but not added, and does not raise the flag. */
       returned: v.pipe(v.number(), v.integer(), v.minValue(0)),
       cap: v.pipe(v.number(), v.integer(), v.minValue(0)),
       truncated: v.boolean(),
@@ -123,7 +125,10 @@ export const TraceEventSchema = v.variant("kind", [
     kind: v.literal("neighbour_expansion"),
     detail: v.object({
       anchors: v.array(v.pipe(v.string(), v.minLength(1))),
-      /** Children added; the configured radius, cap, and truncation flag. */
+      /** Children added; the configured radius, cap, and truncation flag. This cap
+       * bounds the chunks that reach the context, so the flag says the read offered
+       * more neighbours outside it than the cap could add — not that the read was
+       * cut short by rows the caller already held. */
       returned: v.pipe(v.number(), v.integer(), v.minValue(0)),
       radius: v.pipe(v.number(), v.integer(), v.minValue(0)),
       cap: v.pipe(v.number(), v.integer(), v.minValue(0)),
@@ -204,6 +209,18 @@ export const TraceEventSchema = v.variant("kind", [
     at: v.pipe(v.number(), v.integer()),
   }),
   v.object({
+    /**
+     * The answer slot the DELIVERED text occupies, not the stage that wrote the
+     * record: a `refusal` event is a delivery fact — the run settled on delivering
+     * a refusal — so a run that answers before ever entering its generator records
+     * `generator`, the slot that text replaces. A record naming a stage the run did
+     * not enter is that slot standing in, not a wiring defect. The event does not
+     * say the draft was replaced: a run whose own model wrote the refusal delivers
+     * that draft — the pure refusal unchanged, the hybrid with the product rules'
+     * copy appended — and every mode that replaces the text delivers product copy in
+     * its place. `detail.trigger` names the mode; a `refusal` with no sibling
+     * `llm_call` and no `cost` is an answer no model was asked for.
+     */
     stage: StageSchema,
     kind: v.literal("refusal"),
     detail: v.optional(

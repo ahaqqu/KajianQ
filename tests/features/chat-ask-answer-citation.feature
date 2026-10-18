@@ -56,6 +56,14 @@ Feature: Chat — ask, answer, citations, warnings, disclaimer
     When I ask something the corpus cannot answer
     Then the refusal renders as a plain card with no citation chips
 
+  # #506: a message carrying no letter and no digit is not a question, so the run
+  # answers it from the product's canned decline instead of generating one. It is
+  # rendered from the record like every other answer — and nothing decorates it,
+  # because the stages that append the rules were never entered.
+  Scenario: A message carrying no question is declined from canned copy
+    When I send a message that is not a question
+    Then the decline renders as a plain card with no citation chips
+
   # #436: a HYBRID answer — a grounded partial answer that runs into the canonical
   # insufficiency sentence — is a refusal on the trace AND a cited answer on the
   # page. The frame carries both, and the reader must keep the chip the verse in

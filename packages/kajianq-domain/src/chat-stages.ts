@@ -1,15 +1,19 @@
 import { createKajianQAssembler } from "./chat-assembler";
-import { createKajianQGenerator, type GeneratorProvider } from "./chat-generator";
+import {
+  createKajianQGenerator,
+  type ChatLanguage,
+  type GeneratorProvider,
+} from "./chat-generator";
 import { createKajianQReviewer, refusalTextFor, type ReviewerProvider } from "./chat-reviewer";
 export type { GeneratorProvider, ReviewerProvider };
-import type { Decider } from "@app/rag-core";
-import type { ChatLanguage } from "./chat-prompts";
+import type { Decider, Decliner } from "@app/rag-core";
+import { createContentFreeDecliner } from "./chat-content-free-decline";
 
 /**
- * Grouped factory for the three deterministic/local chat stages (assembler,
- * generator, reviewer) — a pure convenience barrel so the pipeline
- * composition module stays under the agentic import cap while each stage
- * keeps its own file and seam.
+ * Grouped factory for the chat pipeline's local stages (assembler, generator,
+ * reviewer) and the decline seam — a pure convenience barrel so the pipeline
+ * composition module stays under the agentic import cap while each stage keeps
+ * its own file and seam.
  */
 export function createChatTailStages(deps: {
   generatorProvider: GeneratorProvider;
@@ -17,6 +21,8 @@ export function createChatTailStages(deps: {
   /** The reviewer's decision-model pre-gate; null = the key is not bound. */
   reviewerDecider: Decider | null;
   language: ChatLanguage;
+  /** The decline seam. Absent = the domain's own content-free decline. */
+  decliner?: Decliner<import("./filters").KajianQFilters>;
   skipReviewer?: boolean;
   /** Streamed-delta observation hook (the HTTP edge forwards to SSE). */
   onDelta?: (delta: string) => void;
@@ -24,6 +30,7 @@ export function createChatTailStages(deps: {
   assembler: ReturnType<typeof createKajianQAssembler>;
   generator: ReturnType<typeof createKajianQGenerator>;
   reviewer: ReturnType<typeof createKajianQReviewer>;
+  decliner: ReturnType<typeof createContentFreeDecliner>;
 } {
   return {
     assembler: createKajianQAssembler(),
@@ -41,5 +48,6 @@ export function createChatTailStages(deps: {
       // answer language matches question language).
       refusalText: (reason) => refusalTextFor(deps.language, reason),
     }),
+    decliner: deps.decliner ?? createContentFreeDecliner({ language: deps.language }),
   };
 }

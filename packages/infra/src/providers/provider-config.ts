@@ -8,7 +8,6 @@ import modelsJson from "./models.json";
  * The model ids, endpoints, and env names all arrive as config values.
  */
 
-/** Price in micro-USD per million tokens, in and out. Integer arithmetic only. */
 const PriceSchema = v.object({
   in: v.pipe(v.number(), v.integer(), v.minValue(0)),
   out: v.pipe(v.number(), v.integer(), v.minValue(0)),

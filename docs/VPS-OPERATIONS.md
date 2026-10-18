@@ -72,7 +72,7 @@ step both assume this path (a test pins it).
 ### 1.1 The deploy path, end to end
 
 The deployer is its own concern, outside `apps/` (ADR-0044 decision 3): the
-build → ship → restart → smoke path is
+preflight → build → ship → restart → smoke path is
 [`provision/vps/deploy/deploy.sh`](../provision/vps/deploy/deploy.sh), and its
 CI trigger is the reusable
 [`.github/workflows/deploy-vps.yml`](../.github/workflows/deploy-vps.yml). `apps/*`
@@ -84,25 +84,33 @@ provision/vps/deploy/deploy.sh --env /etc/kajianq/deploy.env
 
 What it does, in order:
 
-1. **Build.** `bun run build:web` for the PWA, then two `bun build
+1. **Preflight — the backup unit's provenance.** Before anything is built or
+   touched, `backup-provenance.sh` (piped over ssh) asserts that
+   `kajianq-backup.service` last exited 0 _and_ has run since its own definition
+   was installed: a unit that has never been exercised as installed is a backup
+   you do not have. It runs first because it reads only state that already
+   exists on the box — a red here costs an ssh round trip and leaves the box on
+   its previous revision, where a red after the ship would leave the new tree
+   live, the API restarted, and the smoke and doctor below skipped.
+2. **Build.** `bun run build:web` for the PWA, then two `bun build
 --target=bun` bundles from `apps/api/src/boot.ts` (serving) and
    `apps/api/src/cleanup.ts` (the nightly reclamation). Bundling for Bun is what
    makes `pg` a dependency of the artifact rather than a runtime resolve against
    a `node_modules` tree the box does not have. A missing
    `apps/web/dist/index.html` fails the deploy here — an empty web directory
    would otherwise serve the API's 503 and look like an app bug.
-2. **Ship.** `rsync -az --delete --chmod=D755,F644` of the two trees to
+3. **Ship.** `rsync -az --delete --chmod=D755,F644` of the two trees to
    `/srv/kajianq/api` and `/srv/kajianq/web`. `--delete` is deliberate: the SPA
    is content-hashed, and a stale file on the box is a stale file, not a
    rollback.
-3. **Restart.** `sudo systemctl restart kajianq-api.service`, then a plain
+4. **Restart.** `sudo systemctl restart kajianq-api.service`, then a plain
    (unprivileged) `systemctl is-active --quiet` so a unit that died on start
    fails the deploy immediately, then `sudo systemctl start kajianq-cron.service`
    once, so a rotated env var or a missing key fails the deploy now rather than
    silently at 03:17. The timer itself is not restarted — its schedule does not
    depend on the shipped code. Both `sudo` calls are covered by exactly two
    grants (§1.5); the `is-active` check needs none.
-4. **Smoke, against the public URL** (through DNS, the proxy, and TLS — never
+5. **Smoke, against the public URL** (through DNS, the proxy, and TLS — never
    the loopback port, which would skip exactly where a TLS, upstream, header,
    or content-type regression shows up):
    - `GET /v1/health` succeeds;
@@ -115,7 +123,7 @@ What it does, in order:
      while health stays green).
 
 Flags: `--dry-run` prints every action without writing; `--no-smoke` skips step
-4; `--env <path>` overrides the env file. The script exits non-zero on the first
+5; `--env <path>` overrides the env file. The script exits non-zero on the first
 failure — a half-shipped tree that reported success is worse than a failed
 deploy.
 
@@ -694,10 +702,12 @@ proof the same way, per night:
 journalctl -u kajianq-backup.service --since "-7 days" | grep -E 'Starting|created|Deactivated'
 ```
 
-A hardening re-apply (`apply.sh`) re-installs the unit file, which makes the
-next deploy demand a fresh run — the gate cannot tell a re-installed identical
-unit from a changed one (#320). An operator-started run satisfies that gate but
-is **not** the proof above: the proof is a night the timer fired by itself.
+A hardening re-apply (`apply.sh`) writes a config only when the installed copy
+differs, so re-applying an unchanged unit leaves its mtime — and therefore the
+deploy's provenance gate — alone; a genuinely changed unit definition still
+fails the next deploy until the unit has run once. An operator-started run
+satisfies that gate but is **not** the proof above: the proof is a night the
+timer fired by itself.
 
 Operate it:
 
@@ -869,8 +879,9 @@ below is config-as-code under [`provision/vps/`](../provision/vps/) placed by
 | OS maintenance               | `unattended-upgrades` for security patches (installed at baseline)                                                                                                                                                                                                                                                                                             |
 | Config as code               | `apply.sh` renders and installs every file above, validates the nginx config (`nginx -t`) and both logrotate stanzas (`logrotate --debug`) as part of the run, and **enables** the units without starting the API — a box that comes up hardened rather than accidentally serving                                                                              |
 
-`apply.sh` is safe to re-run: it overwrites each file from the repository and
-enables already-enabled units. It **fails closed**: a half-applied hardening
+`apply.sh` is safe to re-run: it installs a file from the repository only when
+the installed copy differs in content, owner or mode, and enables
+already-enabled units. It **fails closed**: a half-applied hardening
 config is worse than an unapplied one, because it looks done.
 
 ## 4. Monitoring — where it stands

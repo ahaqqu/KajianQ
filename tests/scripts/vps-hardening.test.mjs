@@ -1,4 +1,14 @@
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -122,6 +132,91 @@ writeFileSync(
   );
   program("psql", "process.exit(0);\n");
   return { dir, marker, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+}
+
+/** The text of a bash function, exactly as the script ships it. */
+function bashFunction(rel, name) {
+  const text = readFileSync(resolve(process.cwd(), rel), "utf8");
+  const start = text.indexOf(`${name}() {`);
+  if (start === -1) throw new Error(`${rel} does not define ${name}()`);
+  const end = text.indexOf("\n}\n", start);
+  if (end === -1) throw new Error(`${name}() in ${rel} is not closed at column 0`);
+  return text.slice(start, end + 2);
+}
+
+/**
+ * apply.sh's install_config() as shipped, driven against a fixture pair. The test's own user
+ * and group stand in for root:root, because no test runs as root — and owner/group are part of
+ * what the function compares, so they have to match on both sides of the fixture.
+ */
+function configInstallFixture() {
+  const dir = mkdtempSync(join(tmpdir(), "kajianq-config-"));
+  const owner = spawnSync("id", ["-un"], { encoding: "utf8" }).stdout.trim();
+  const group = spawnSync("id", ["-gn"], { encoding: "utf8" }).stdout.trim();
+  const src = join(dir, "kajianq-backup.service");
+  const dst = join(dir, "installed.service");
+  writeFileSync(src, "[Unit]\nDescription=fixture\n");
+  const shim = `${bashFunction("provision/vps/apply.sh", "install_config")}
+log() { printf 'log: %s\\n' "$*"; }
+install_config "$@"`;
+  return {
+    dir,
+    src,
+    dst,
+    run: (env = {}) =>
+      spawnSync("/bin/bash", ["-c", shim, "probe", src, dst, owner, group, "644"], {
+        encoding: "utf8",
+        env: { ...process.env, DRY_RUN: "0", ...env },
+      }),
+    cleanup: () => rmSync(dir, { recursive: true, force: true }),
+  };
+}
+
+/**
+ * The deployed provenance check run against one box state. Only systemd is faked; the unit file
+ * is real, so `stat` and the mtime comparison run exactly as they do on the box.
+ */
+function provenanceFixture() {
+  const dir = mkdtempSync(join(tmpdir(), "kajianq-provenance-"));
+  const unit = join(dir, "kajianq-backup.service");
+  writeFileSync(unit, "[Unit]\nDescription=fixture\n");
+  utimesSync(unit, 2000, 2000);
+  writeFileSync(
+    join(dir, "systemctl"),
+    `#!/bin/sh
+# STUB_SHOW_FAIL names the property whose read fails, so each of the check's two
+# systemctl calls can be made to fail on its own.
+if [ -n "\${STUB_SHOW_FAIL}" ]; then
+  case "$*" in *"\${STUB_SHOW_FAIL}"*) exit 1 ;; esac
+fi
+case "$*" in
+  *ExecMainExitTimestamp*) if [ -n "\${STUB_EXITED}" ]; then printf '@%s\\n' "\${STUB_EXITED}"; fi ;;
+  *ExecMainStatus*) printf '%s\\n' "\${STUB_STATUS}" ;;
+esac
+exit 0
+`,
+    { mode: 0o755 },
+  );
+  return {
+    dir,
+    unit,
+    run: ({ unitFile = unit, exited = "", status = "0", showFail = "" } = {}) =>
+      spawnSync(
+        "/bin/bash",
+        [resolve(process.cwd(), "provision/vps/deploy/backup-provenance.sh"), unitFile],
+        {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            PATH: `${dir}:${process.env.PATH}`,
+            STUB_EXITED: exited,
+            STUB_STATUS: status,
+            STUB_SHOW_FAIL: showFail,
+          },
+        },
+      ),
+    cleanup: () => rmSync(dir, { recursive: true, force: true }),
+  };
 }
 
 describe("retention policy matches the Art. 30 record's §6 values", () => {
@@ -849,7 +944,7 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(renderBody).toMatch(/exit 1/);
     // It must run BEFORE the install, or the broken file is already in place when it fires.
     expect(renderBody.search(/grep -qE '__KAJIANQ_\[A-Z_\]\+__'/)).toBeLessThan(
-      renderBody.indexOf("install -o root"),
+      renderBody.indexOf("install_config"),
     );
   });
 
@@ -1017,27 +1112,226 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(script).toMatch(/<!doctype html/);
   });
 
-  it("the deploy fails on a broken backup unit rather than trusting an active timer", () => {
-    // `is-active` means the SCHEDULE is armed, never that the job works, so the deploy reads
-    // the service's own run record instead.
-    const script = read("provision/vps/deploy/deploy.sh");
-    // The exit status is the assertion...
-    expect(script).toMatch(/systemctl show kajianq-backup\.service -p ExecMainStatus/);
-    expect(script).toMatch(/if \[ "\$status" != "0" \][^]*?exit 1/);
-    // ...and the timestamp-vs-install comparison is the other half, because `Result` cannot
+  it("apply.sh installs the backup unit through the write-if-changed helper", () => {
+    // The deploy reads this unit's mtime, so a plain `install` here — which re-stamps a file
+    // even when the bytes are identical — is the regression that marks an exercised unit as
+    // never exercised and fails the next deploy.
+    const apply = read("provision/vps/apply.sh");
+    expect(apply).toMatch(
+      /install_config "\$\{SRC\}\/systemd\/kajianq-backup\.service" \/etc\/systemd\/system\/kajianq-backup\.service/,
+    );
+    expect(apply).not.toMatch(
+      /install -o root -g root -m 0644 "\$\{SRC\}\/systemd\/kajianq-backup\.service"/,
+    );
+    // Not just that unit: no raw `install` may write a file anywhere in the script, since
+    // every config it places has an mtime a future check could read and `install` re-stamps an
+    // identical file. Pinning one spelling would only catch one spelling — `-m0644`,
+    // `--mode=0644`, `--owner=root --group=root`, `install -m 0644 -o root -g root` all slip
+    // past a substring match — so the rule is an allowlist over the INVOCATIONS: the six that
+    // exist today are four `install -d` (directories hold no content), the helper's own write,
+    // and the visudo-gated sudoers grant, which is staged at 0440 and moved into place by a
+    // parse-gated `mv`. A new invocation anywhere reddens here, whatever its flags.
+    const invocations = apply
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => /^(run )?install\b/.test(line))
+      .map((line) => line.replace(/\s+/g, " "));
+    expect(invocations.length).toBeGreaterThanOrEqual(6);
+    const allowed = [
+      /^(run )?install -d /,
+      /^install -o "\$\{owner\}" -g "\$\{group\}" -m "\$\{mode\}"/,
+      /^install -o root -g root -m 0440 "\$\{tmp\}"/,
+    ];
+    for (const invocation of invocations) {
+      expect(
+        allowed.some((pattern) => pattern.test(invocation)),
+        `raw install in apply.sh — route it through install_config: ${invocation}`,
+      ).toBe(true);
+    }
+  });
+
+  it("an unchanged config keeps its mtime, so a re-apply cannot fake a changed definition", () => {
+    // The falsification of the fix, run against apply.sh's own install_config(): pin the
+    // installed copy's mtime to a known instant, re-run, and require it to be untouched. A
+    // changed definition, a wrong mode or a symlinked destination must still be written.
+    const fx = configInstallFixture();
+    try {
+      const installedAt = 1_000_000_000;
+      expect(fx.run().status).toBe(0);
+      expect(readFileSync(fx.dst, "utf8")).toBe(readFileSync(fx.src, "utf8"));
+      expect(statSync(fx.dst).mode & 0o777).toBe(0o644);
+
+      utimesSync(fx.dst, installedAt, installedAt);
+      const unchanged = fx.run();
+      expect(unchanged.status).toBe(0);
+      expect(unchanged.stdout).toContain("unchanged");
+      expect(Math.round(statSync(fx.dst).mtimeMs / 1000)).toBe(installedAt);
+
+      writeFileSync(fx.src, "[Unit]\nDescription=fixture changed\n");
+      expect(fx.run().status).toBe(0);
+      expect(readFileSync(fx.dst, "utf8")).toBe(readFileSync(fx.src, "utf8"));
+      expect(Math.round(statSync(fx.dst).mtimeMs / 1000)).toBeGreaterThan(installedAt);
+
+      chmodSync(fx.dst, 0o600);
+      expect(fx.run().status).toBe(0);
+      expect(statSync(fx.dst).mode & 0o777).toBe(0o644);
+
+      const elsewhere = join(fx.dir, "elsewhere");
+      writeFileSync(elsewhere, readFileSync(fx.src));
+      rmSync(fx.dst);
+      symlinkSync(elsewhere, fx.dst);
+      expect(fx.run().status).toBe(0);
+      expect(statSync(fx.dst).isSymbolicLink()).toBe(false);
+      expect(readFileSync(fx.dst, "utf8")).toBe(readFileSync(fx.src, "utf8"));
+
+      utimesSync(fx.dst, installedAt, installedAt);
+      writeFileSync(fx.src, "[Unit]\nDescription=dry run\n");
+      const dry = fx.run({ DRY_RUN: "1" });
+      expect(dry.status).toBe(0);
+      expect(dry.stdout).toContain("would: install");
+      expect(readFileSync(fx.dst, "utf8")).not.toContain("dry run");
+      expect(Math.round(statSync(fx.dst).mtimeMs / 1000)).toBe(installedAt);
+    } finally {
+      fx.cleanup();
+    }
+  });
+
+  it("a re-apply over unchanged unit content leaves the deploy green; a changed definition does not", () => {
+    // The ticket's reproduction, end to end across both scripts: install (apply.sh), re-apply
+    // over unchanged content, then read the deploy's assertion with systemd answering "last run
+    // exited 0, hours ago". Only a changed definition may make that red.
+    const cfg = configInstallFixture();
+    const prov = provenanceFixture();
+    try {
+      const installedAt = 2000;
+      const lastRun = 3000;
+      expect(cfg.run().status).toBe(0);
+      utimesSync(cfg.dst, installedAt, installedAt);
+      const before = prov.run({ unitFile: cfg.dst, exited: lastRun });
+      expect(before.status).toBe(0);
+      expect(before.stdout).toContain("backup unit healthy");
+
+      // The re-apply the ticket was about: identical bytes, so nothing is written and the check
+      // keeps reading the same mtime.
+      expect(cfg.run().stdout).toContain("unchanged");
+      const afterReapply = prov.run({ unitFile: cfg.dst, exited: lastRun });
+      expect(afterReapply.status).toBe(0);
+      expect(afterReapply.stdout).toContain("backup unit healthy");
+
+      // A genuinely changed definition is written, so the unit must run again before it passes.
+      writeFileSync(cfg.src, "[Unit]\nDescription=fixture changed\n");
+      expect(cfg.run().status).toBe(0);
+      const afterChange = prov.run({ unitFile: cfg.dst, exited: lastRun });
+      expect(afterChange.status).toBe(1);
+      expect(afterChange.stderr).toContain("BEFORE its current definition was installed");
+    } finally {
+      cfg.cleanup();
+      prov.cleanup();
+    }
+  });
+
+  it("the backup-provenance check reddens on a unit that genuinely never ran", () => {
+    // The negative case the #181 guard exists for, executed rather than asserted: an empty
+    // ExecMainExitTimestamp is "installed but never executed", and it must fail.
+    const fx = provenanceFixture();
+    try {
+      const never = fx.run({ exited: "" });
+      expect(never.status).toBe(1);
+      expect(never.stderr).toContain("has never run");
+      // The remedy is scoped to both causes of an empty timestamp: on systemd 261 an unknown
+      // unit also reports empty, and there `systemctl start` answers "Unit ... not found".
+      expect(never.stderr).toContain("daemon-reload");
+
+      // A run that predates the installed definition — the state apply.sh used to manufacture
+      // by re-stamping. Also still red.
+      const before = fx.run({ exited: 1000 });
+      expect(before.status).toBe(1);
+      expect(before.stderr).toContain("BEFORE its current definition was installed");
+
+      // A failed last run is red on the status half of the pair alone.
+      const failed = fx.run({ exited: 3000, status: "1" });
+      expect(failed.status).toBe(1);
+      expect(failed.stderr).toContain("last run exited 1");
+
+      // A timestamp that is not a plain integer cannot be compared; the comparison would
+      // error and fall through to the healthy line had it not been guarded.
+      const garbled = fx.run({ exited: "n/a" });
+      expect(garbled.status).toBe(1);
+      expect(garbled.stderr).toContain("non-numeric last-run timestamp");
+
+      // A `systemctl show` that fails outright names what could not be read, on either read,
+      // instead of aborting with systemd's own exit status.
+      const statusRead = fx.run({ exited: 3000, showFail: "ExecMainStatus" });
+      expect(statusRead.status).toBe(1);
+      expect(statusRead.stderr).toContain("could not read");
+
+      const timeRead = fx.run({ exited: 3000, showFail: "ExitTimestamp" });
+      expect(timeRead.status).toBe(1);
+      expect(timeRead.stderr).toContain("last-run timestamp");
+
+      // All digits, but past what `-lt` parses as intmax_t: it errors, and inside an `if`
+      // condition that reads as false — the healthy line — unless the length is bounded.
+      const overflowing = fx.run({ exited: "9".repeat(20) });
+      expect(overflowing.status).toBe(1);
+      expect(overflowing.stderr).toContain("out-of-range last-run timestamp");
+
+      // A unit file that is not installed at all is named, not silently read as healthy.
+      const absent = fx.run({ unitFile: join(fx.dir, "absent.service"), exited: 3000 });
+      expect(absent.status).toBe(1);
+      expect(absent.stderr).toContain("is not installed");
+
+      // And the positive control: exit 0, run after the definition landed.
+      const healthy = fx.run({ exited: 3000 });
+      expect(healthy.status).toBe(0);
+      expect(healthy.stdout).toContain("backup unit healthy");
+    } finally {
+      fx.cleanup();
+    }
+  });
+
+  it("the backup-provenance check asserts the pair, never `Result` or the timer", () => {
+    const check = read("provision/vps/deploy/backup-provenance.sh");
+    // The exit status is one half of the assertion...
+    expect(check).toMatch(/systemctl show "\$\{UNIT\}" -p ExecMainStatus/);
+    expect(check).toMatch(/if \[ "\$status" != "0" \][^]*?exit 1/);
+    // ...and the timestamp-vs-install comparison is the other, because `Result` cannot
     // distinguish "the last run passed" from "no run since the unit changed".
-    expect(script).toMatch(/ExecMainExitTimestamp --timestamp=unix/);
-    expect(script).toMatch(/stat -c %Y \/etc\/systemd\/system\/kajianq-backup\.service/);
-    expect(script).toMatch(/if \[ "\$exited" -lt "\$installed" \][^]*?exit 1/);
+    expect(check).toMatch(/ExecMainExitTimestamp --timestamp=unix/);
+    expect(check).toMatch(/stat -c %Y "\$\{UNIT_FILE\}"/);
+    expect(check).toMatch(/if \[ "\$exited" -lt "\$installed" \][^]*?exit 1/);
     // A never-run unit must fail too, not pass on empty strings.
-    expect(script).toMatch(/if \[ -z "\$exited" \][^]*?exit 1/);
+    expect(check).toMatch(/if \[ -z "\$exited" \][^]*?exit 1/);
     // Failures name the follow-up, or the operator reads a bare code.
-    expect(script).toMatch(/journalctl -u kajianq-backup\.service/);
+    expect(check).toMatch(/journalctl -u kajianq-backup\.service/);
     // `Result` must NOT be the assertion: `reset-failed` clears it to `success` while leaving
     // ExecMainStatus=1, so gating on it reports a failed run as healthy.
-    expect(script).not.toMatch(/-p Result/);
+    expect(check).not.toMatch(/-p Result/);
     // And it must not merely re-check the timer, the reassuring-looking field.
-    expect(script).not.toMatch(/is-active --quiet kajianq-backup\.timer/);
+    expect(check).not.toMatch(/is-active --quiet kajianq-backup\.timer/);
+  });
+
+  it("the deploy runs the provenance preflight before it builds, ships or restarts anything", () => {
+    // Read-only and independent of the shipped tree, so it can — and must — fail before the
+    // first mutation: after the ship, the same red leaves the new tree live, the API restarted
+    // and the smoke and doctor skipped.
+    const script = read("provision/vps/deploy/deploy.sh");
+    const preflight = script.indexOf("backup-provenance.sh");
+    expect(preflight).toBeGreaterThan(-1);
+    // Shipped as a file piped into `bash -s`, not quoted into the remote command, so the file
+    // the tests execute is the file that runs on the box.
+    expect(script).toMatch(
+      /bash -s[\s\S]{0,40}<"\$\{REPO_DIR\}\/provision\/vps\/deploy\/backup-provenance\.sh"/,
+    );
+    for (const mutation of [
+      "bun run build:web",
+      "rsync -az",
+      "sudo ${SYSTEMCTL} restart",
+      "sudo ${SYSTEMCTL} start kajianq-cron.service",
+    ]) {
+      const at = script.indexOf(mutation);
+      expect(at, `deploy.sh must still contain: ${mutation}`).toBeGreaterThan(-1);
+      expect(preflight, `the provenance preflight must precede ${mutation}`).toBeLessThan(at);
+    }
   });
 
   it("apply.sh clears the backup unit's stale failure state after installing it", () => {

@@ -153,6 +153,21 @@ describe("traceRefused — the refusal decision's one reader (#436)", () => {
     expect(traceRefused(traceOf([], [refusal]))).toBe(true);
     expect(traceRefused(traceOf([{ id: "c1" }], [refusal]))).toBe(true);
   });
+
+  it("is true for a run's own decline, which no reviewer judged", () => {
+    // A route carrying no question is declined by the runner: the delivered text
+    // is product copy with no model behind it, so the frame must flag it exactly
+    // as it flags a refusal — the client renders the record, it does not
+    // reconstruct which stage wrote the text.
+    const decline: Trace["events"][number] = {
+      stage: "generator",
+      kind: "refusal",
+      detail: { trigger: "content_free_decline" },
+      reason: "the route carries no question, so no answer is generated for it",
+      at: 3,
+    };
+    expect(traceRefused(traceOf([], [decline]))).toBe(true);
+  });
 });
 
 describe("deriveTraceFrame — the technical layer", () => {
