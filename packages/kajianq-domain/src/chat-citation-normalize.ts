@@ -195,12 +195,12 @@ export function citationSpansIn(text: string): { start: number; end: number; lab
  * at all: a false pass traded for a false refusal, the direction this gate must
  * not take.
  *
- * **Scan limit.** On Bun/JSC a hadith match whose non-address tail crosses
- * roughly 290k characters produces no match, and the scan stops iterating from
- * there — that match and every later hadith citation in the draft are not found
- * (a match attempt that hits the engine's limit reports no match). The tail is
- * the run of non-address characters after the address word, so an answer-sized
- * draft never carries one.
+ * **Scan limit.** On Bun/JSC a hadith match whose non-address tail is a roughly
+ * 290k-character run of quotes and CJK punctuation produces no match, and the
+ * scan stops iterating from there — that match and every later hadith citation
+ * in the draft are not found (a match attempt that hits the engine's limit
+ * reports no match). The tail is the run of non-address characters after the
+ * address word, so an answer-sized draft never carries one.
  *
  * The rows are pinned in the unit test, so widening one is a deliberate act
  * that updates this record and those rows together, never a silent one. Revisit
