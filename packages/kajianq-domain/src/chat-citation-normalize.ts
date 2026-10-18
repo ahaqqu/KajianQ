@@ -174,14 +174,40 @@ export function citationSpansIn(text: string): { start: number; end: number; lab
  * token rule can reach it — the hadith tail stops only at a marker this grammar
  * could itself match — and closing it is a start-boundary widening of all three
  * grammars, which is what keeps `XHR.` and a word ending in `hr` (`Mohr. Bukhari
- * no. 1`) out of the scan. A marker after a non-word character (punctuation,
- * whitespace, an Arabic or CJK letter) has that boundary and is judged.
+ * no. 1`) out of the scan.
+ *
+ * **A marker is judged exactly when the scan reaches it**: the address word ended
+ * before it (the character after its digits is not a letter or digit) and it has
+ * the word boundary its grammar's start requires. A **letter** glued straight
+ * onto the digits continues the address word (`… no. 224和HR. Muslim no. 224`), so
+ * that marker is absorbed into a merged address — a different label that refuses,
+ * the same fail-closed shape as the word-character glue above — rather than being
+ * named.
+ *
+ * **Recorded over-fire.** A bare marker in the prose between two citations
+ * (`… no. 224”HR. “HR Muslim no. 224”`) starts a match whose collection name
+ * absorbs the following dot-less marker (`“HR Muslim`), so the scan reports a
+ * phantom label (`HR. “HR. Muslim no. 224`) beside the real citations: with both
+ * real addresses retrieved the phantom is ungrounded and the draft refuses.
+ * That is fail-closed, and it is recorded rather than suppressed because the
+ * only clean suppression — making the collection group stop at a marker too —
+ * would stop a doubled-marker fabrication (`HR. HR Muslim no. 999`) from forming
+ * at all: a false pass traded for a false refusal, the direction this gate must
+ * not take.
+ *
+ * **Scan limit.** On Bun/JSC a hadith match whose non-address tail crosses
+ * roughly 290k characters produces no match, and the scan stops iterating from
+ * there — that match and every later hadith citation in the draft are not found
+ * (a match attempt that hits the engine's limit reports no match). The tail is
+ * the run of non-address characters after the address word, so an answer-sized
+ * draft never carries one.
  *
  * The rows are pinned in the unit test, so widening one is a deliberate act
  * that updates this record and those rows together, never a silent one. Revisit
  * when a draft is observed writing any of them, when the prompt stops
- * requiring the retrieved label verbatim, or when a corpus label drops the
- * separator or the dot.
+ * requiring the retrieved label verbatim, when a corpus label drops the
+ * separator or the dot, or when a draft can carry an uninterrupted non-address
+ * tail longer than the scan can read.
  */
 function scanCitations(text: string): { start: number; end: number; label: string }[] {
   const found: { start: number; end: number; label: string }[] = [];

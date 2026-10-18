@@ -181,6 +181,13 @@ const HADITH_GRAMMAR: CitationGrammar = {
   // `hadithAddressOf` to name. The remainder's own lookahead stops it before a
   // marker this grammar would match, so the scan re-enters on that marker
   // instead of skipping past it inside the tail.
+  //
+  // The marker is spelled **twice** — at the start and in the tail stop —
+  // because the house rule is a literal regex (a constructed one is the ReDoS
+  // shape the security scan blocks). The two spellings are one rule: the
+  // validator test pins them as identical, so widening the start without
+  // widening the stop reddens it instead of reopening the fail-open the stop
+  // closes.
   pattern: () =>
     /\bHR(?:\.|\s)\s*([^\s,.]{1,24}(?:\s+[^\s,.]{1,24}){0,3})(\s+no\.\s*(?=[^\s,;.)[\]])(\d[\p{L}\p{Nd}]*)?(?:(?!\bHR(?:\.|\s))[^\s,;.)[\]])*)/dgiu,
   addressOf: (match) => hadithAddressOf(match),

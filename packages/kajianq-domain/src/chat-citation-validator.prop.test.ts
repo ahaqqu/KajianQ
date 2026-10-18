@@ -622,18 +622,21 @@ describe("normalizeCitationLabel — property (#253 tail class, review B1)", () 
 
 describe("citationCandidatesIn — adjacent citations (#526)", () => {
   /**
-   * The law: two well-formed hadith citations separated by **any run of
-   * characters that leaves a word boundary before the second marker** are both
-   * scanned, in text order, and the gate judges each on its own address. The
-   * generator draws the joiner's two **edges** from the non-word class — quotes,
-   * CJK punctuation, ASCII punctuation and whitespace — and its interior from
-   * that class plus the letters and words a no-space language writes, so the
-   * sweep states the class rather than the handful of shapes a hunt turned up.
-   * The edges are what keep the two preconditions of the law true for every
-   * generated string: the first number word stops before the joiner, and the
-   * second marker has the word boundary its grammar's start requires.
+   * The law: two well-formed hadith citations separated by **any run of prose
+   * characters** are both scanned, in text order, and the gate judges each on
+   * its own address. The template's own quotes hold both preconditions of the
+   * law — the closing quote after the first citation ends its number word, and
+   * the opening quote before the second gives that marker the word boundary its
+   * grammar's start requires — so the generated joiner is free-form and the
+   * sweep states the prose class (quotes, CJK punctuation, ASCII punctuation,
+   * whitespace, the letters and words a no-space language writes) rather than
+   * the handful of shapes a hunt turned up.
+   *
+   * The alphabet omits a bare `HR.`/`HR ` marker on purpose: a marker inside the
+   * joiner forms the phantom the scan register records as an over-fire, and that
+   * class is pinned in the unit test instead of being asserted away here.
    */
-  const JOINT_EDGE = [
+  const JOINER_PARTS = [
     "”",
     "“",
     "、",
@@ -648,19 +651,23 @@ describe("citationCandidatesIn — adjacent citations (#526)", () => {
     "]",
     "!",
     "?",
+    "和",
+    "dan",
+    "lalu",
+    "的",
+    "42",
+    "\u200b",
+    "”和“",
   ] as const;
-  const JOINT_INNER = [...JOINT_EDGE, "和", "dan", "lalu", "的", "42", "\u200b", "”和“"] as const;
   const FIRST = "HR. Ibn Majah no. 224";
   const SECOND_FORMS = ["HR. Muslim no. 224", "HR Muslim no. 224", "HR. Bukhari no. 1"] as const;
 
   it("finds the second citation whatever the no-space joiner, and never passes it silently", () => {
     const property = fc.property(
-      fc.constantFrom(...JOINT_EDGE),
-      fc.array(fc.constantFrom(...JOINT_INNER), { maxLength: 4 }),
-      fc.constantFrom(...JOINT_EDGE),
+      fc.array(fc.constantFrom(...JOINER_PARTS), { maxLength: 6 }),
       fc.constantFrom(...SECOND_FORMS),
-      (head, inner, tail, second) => {
-        const joiner = `${head}${inner.join("")}${tail}`;
+      (parts, second) => {
+        const joiner = parts.join("");
         const secondLabel = normalizeCitationLabel(second);
         const text = `参阅“${FIRST}”${joiner}“${second}”`;
         // Both citations are scanned, in text order — the second is never lost
@@ -685,6 +692,56 @@ describe("citationCandidatesIn — adjacent citations (#526)", () => {
         });
         const spaced = `参阅“${FIRST}” ${joiner} “${second}”`;
         expect(citationCandidatesIn(spaced), joiner).toEqual([FIRST, secondLabel]);
+      },
+    );
+    expect(fc.assert(property, { numRuns: 300 })).toBeUndefined();
+  });
+
+  it("never passes the second citation silently when the joiner sits against the number word", () => {
+    /**
+     * One boundary harder: with no closing quote between the first citation and
+     * the joiner, the joiner's own head decides whether the number word stops or
+     * a letter continues it. A continuing letter merges the marker into a
+     * different address, which must REFUSE; a stopped one leaves the marker to be
+     * scanned, which must NAME it. Either way a fabricated second address is
+     * never passed silently, and the grounded first label is never dropped. The
+     * joiner ends on a non-word part, so the second marker has the boundary its
+     * grammar's start requires — a marker glued to a word character is the
+     * recorded boundary pinned in the unit test.
+     */
+    const EDGE = [
+      "”",
+      "“",
+      "、",
+      "。",
+      "，",
+      "；",
+      "：",
+      " ",
+      "\t",
+      "…",
+      ")",
+      "]",
+      "!",
+      "?",
+    ] as const;
+    const PARTS = [...EDGE, "和", "dan", "42", "\u200b", "HR.", "HR ", "“HR", "”和"] as const;
+    const property = fc.property(
+      fc.array(fc.constantFrom(...PARTS), { maxLength: 4 }),
+      fc.constantFrom(...EDGE),
+      fc.constantFrom(...SECOND_FORMS),
+      (parts, edge, second) => {
+        const joiner = `${parts.join("")}${edge}`;
+        const text = `参阅“${FIRST}${joiner}${second}”`;
+        const { grounded, ungrounded } = validateCitations(text, [chunk(FIRST)]);
+        // The grounded label is a literal substring of the draft: never dropped.
+        expect(grounded, joiner).toContain(FIRST);
+        // Refused or named — a fabricated second address may be merged into a
+        // different address or read on its own, but it is never silently passed.
+        expect(
+          ungrounded.length,
+          `${joiner} — the fabricated citation must be named or refused`,
+        ).toBeGreaterThan(0);
       },
     );
     expect(fc.assert(property, { numRuns: 300 })).toBeUndefined();
