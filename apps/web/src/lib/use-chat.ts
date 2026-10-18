@@ -119,12 +119,9 @@ export function useChat(locale: "id" | "en") {
     // A snapshot this mount did not request was fetched before the route
     // remounted, so it may predate a turn completed in that earlier mount —
     // which its per-instance epoch cannot reveal. It is discarded, never
-    // applied even briefly, because the mount's own fetch is what supplies the
+    // applied even briefly; the mount's own result is what supplies the
     // transcript.
-    if (!transcriptIsThisMount) {
-      appliedTranscriptAtRef.current = transcript.dataUpdatedAt;
-      return;
-    }
+    if (!transcriptIsThisMount) return;
     // A transcript snapshot is discarded — never deferred — when a turn is in
     // flight, or when a turn completed after its request began: it was fetched
     // before that turn's write, so applying it would hide the completed turn.
