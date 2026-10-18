@@ -31,6 +31,18 @@
 # timeout) leaves `status=running` or `completed_at < started_at` — refused,
 # rather than leaving an earlier success looking current.
 #
+# The unit writes its own marker before the job body runs (ExecStartPre, from
+# /usr/local/sbin/kajianq-backup-pending): `status=pending`. It exists because a
+# run can die before the job writes anything at all — a moved `bun`, an absent
+# deployed bundle, a broken ExecStart, an unreadable backup.env — and without it
+# the record keeps the previous success and this check reads a failed run as
+# current. `pending` is refused as its own case, below.
+#
+# systemd's failed state is deliberately NOT read as a second signal: it
+# describes the current boot. A reboot clears it (and `apply.sh` clears it with
+# `reset-failed` on a re-install), so a unit that failed before a reboot reads
+# as healthy afterwards — the opposite of the durability this check exists for.
+#
 # What the record proves is the pair: the last completed run exited 0, and it
 # completed AFTER this unit's current definition was installed. A record older
 # than the unit file means no run has recorded itself since that install — the
@@ -103,6 +115,18 @@ interrupted() {
 
 if [ "${status}" = "running" ]; then
     interrupted
+fi
+
+# A run that started and never reached the job body: the unit's own marker is
+# still in place, so nothing in the job ever overwrote it (a moved bun, an
+# absent deployed bundle, a broken ExecStart, an unreadable backup.env). The
+# record carries no exit status here, so it is its own refusal rather than the
+# non-numeric-status one below.
+if [ "${status}" = "pending" ]; then
+    refuse \
+        "${UNIT} started a run that never reached the backup job — the encrypted backup is unproven" \
+        "check: systemctl status ${UNIT}; journalctl -u ${UNIT} -n 40" \
+        "prove it as root: sudo systemctl start ${UNIT}"
 fi
 
 # Every value is bounded: a non-numeric or oversized timestamp would make `-lt`

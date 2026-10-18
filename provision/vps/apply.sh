@@ -369,6 +369,16 @@ install_config "${SRC}/systemd/kajianq-cron.service" /etc/systemd/system/kajianq
 install_config "${SRC}/systemd/kajianq-cron.timer" /etc/systemd/system/kajianq-cron.timer
 
 # --- backup schedule --------------------------------------------------------
+# The unit's ExecStartPre marker is a root-owned script outside /etc and outside
+# the deployed tree: /srv/kajianq belongs to the deploy identity and is rsynced
+# with --delete, so a copy there could be rewritten by the very identity the
+# record binds. It must exist for every start, including the starts where
+# ExecStart cannot run — which is why it is not part of the job body.
+#
+# `755` is compared verbatim by install_config against `stat -c %a` (which
+# prints 755, not 0755), so an unchanged copy is still left untouched.
+install_config "${SRC}/backup/kajianq-backup-pending.sh" /usr/local/sbin/kajianq-backup-pending root root 755
+
 # The unit is installed verbatim: its ExecStart names a DEPLOYED artifact
 # (api/backup.js), so there is no placeholder to render and nothing here reads
 # the repository checkout. The bundle is shipped by the deploy path, which is
