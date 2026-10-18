@@ -36,6 +36,20 @@ export type StubChatProviderOverrides = {
   reviewerVerdict?: "pass" | "fail";
   /** Omit `stream` so the generator's non-streaming fallback is exercised. */
   noStream?: boolean;
+  /** The embedder's CostRecord fields to override (default: one token each way,
+   * 1 ms, 0 µUSD). A non-zero `costMicroUsd` makes the embed's place in an
+   * answer's recorded spend visible. */
+  embedCost?: Partial<{
+    modelId: string;
+    tokensIn: number;
+    tokensOut: number;
+    latencyMs: number;
+    costMicroUsd: number;
+    estimated: boolean;
+  }>;
+  /** Wire the reviewer's decision-model pre-gate with this call's micro-USD.
+   * Absent = no decider, the unkeyed-decision-vendor environment. */
+  pregateMicroUsd?: number;
 };
 
 export function createStubChatProviders(overrides: StubChatProviderOverrides = {}): {
@@ -48,7 +62,7 @@ export function createStubChatProviders(overrides: StubChatProviderOverrides = {
    * environment where the decision vendor's key is absent, so pipeline tests
    * that do not opt in exercise the reviewer path without it.
    */
-  reviewerDecider: null;
+  reviewerDecider: import("@app/rag-core").Decider | null;
 } {
   const answerText = overrides.answerText ?? "Jawaban berdasar konteks.";
   const deltas = overrides.streamDeltas ?? [answerText];
@@ -98,9 +112,27 @@ export function createStubChatProviders(overrides: StubChatProviderOverrides = {
       embed: () =>
         Effect.succeed({
           vectors: [[1, 0, 0]],
-          cost: cost("stub-embedder", 0),
+          cost: { ...cost("stub-embedder", 0), ...overrides.embedCost },
         }),
     },
-    reviewerDecider: null,
+    reviewerDecider:
+      overrides.pregateMicroUsd === undefined
+        ? null
+        : {
+            modelId: "stub-decider",
+            // Every question clears the support threshold, so the pre-gate skips
+            // the paid reviewer and the decision call is the reviewer stage's
+            // only spend.
+            decide: (spec) =>
+              Effect.succeed({
+                answers: Object.fromEntries(
+                  Object.keys(spec.questions).map((key) => [
+                    key,
+                    { type: "noul" as const, noul: 1 },
+                  ]),
+                ),
+                cost: cost("stub-decider", overrides.pregateMicroUsd as number),
+              }),
+          },
   };
 }

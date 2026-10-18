@@ -179,6 +179,20 @@ export function buildChatWiring(env: Record<string, string | undefined>): ChatWi
       reviewerProvider: providers.reviewer,
       reviewerDecider: providers.decider,
       embedder: providers.embedder,
+      // The retrieval stage's embed call is the one provider call with no event
+      // of its own: the retriever hands this collector the run's trace sink, so
+      // the CostRecord (model, tokens, latency, µUSD, estimate flag) becomes a
+      // retriever-stage `llm_call` on the answer's trace. Without it the trace
+      // sums short of the run's provider calls and the Trace panel cannot name
+      // the embedder.
+      onCost: (cost, sink) =>
+        sink.record({
+          stage: "retriever",
+          kind: "llm_call",
+          detail: { purpose: "embed" },
+          cost,
+          at: sink.now(),
+        }),
       store,
       bridge: storeBridge(store),
       // Absent = the domain default: the per-query expansion budget is a
