@@ -665,7 +665,7 @@ describe("citationCandidatesIn — adjacent citations (#526)", () => {
     "HR Muslim no. 224",
     // The marker's CJK spellings are forms of the same marker: the tail stop
     // learns every separator the start admits, so a fullwidth-marked second
-    // citation has to be named exactly like the ASCII one.
+    // citation still has to be scanned as its own span.
     "HR．Muslim no. 224",
     "HR。Muslim no. 224",
     "HR. Bukhari no. 1",

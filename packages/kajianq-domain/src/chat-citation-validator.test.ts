@@ -1693,10 +1693,12 @@ describe("the hadith marker's CJK punctuation (fullwidth and ideographic stops)"
 
   it("does not admit other fullwidth punctuation as a marker separator", () => {
     // The axis is the period's width, not every CJK punctuation mark: a fullwidth
-    // comma or colon between the marker and the collection is not the separator
-    // the grammar makes mandatory, so the span stays outside the scan.
+    // comma, colon or semicolon between the marker and the collection is not the
+    // separator the grammar makes mandatory, so the span stays outside the scan —
+    // the non-period separator family the scan register accepts as a residual.
     expect(citationCandidatesIn("参阅“HR，Muslim no. 224”。")).toEqual([]);
     expect(citationCandidatesIn("参阅“HR：Muslim no. 224”。")).toEqual([]);
+    expect(citationCandidatesIn("参阅“HR；Muslim no. 224”。")).toEqual([]);
   });
 });
 

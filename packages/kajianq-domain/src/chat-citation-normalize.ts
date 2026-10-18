@@ -149,30 +149,39 @@ export function citationSpansIn(text: string): { start: number; end: number; lab
  * full stop (U+3002) and any whitespace, and its tail stop admits the same set at
  * the pattern's second site, so a marker spelling the scan accepts is never one a
  * previous citation's tail swallows. The comparison fold maps every one of them
- * onto `HR. `. The two residuals below are spellings that **omit** a separator,
- * not spellings of it.
+ * onto `HR. `. The two **omission** residuals below are spellings that omit a
+ * separator, not spellings of it; the third is a different separator character,
+ * not a spelling of the dot.
  *
- * **Accepted residual.** Two spellings stay outside every grammar, so the scan
- * cannot see them at all and an answer carrying one is never judged — the
- * fail-open direction {@link CITATION_GRAMMARS} promises not to take. That
- * silence is not coverage: the scan judges the citation attempts it can match,
- * not every way a draft might write one, and a draft carrying either spelling
- * below passes this gate unjudged.
+ * **Accepted residual.** Two spellings and one separator family stay outside
+ * every grammar, so the scan cannot see them at all and an answer carrying one is
+ * never judged — the fail-open direction {@link CITATION_GRAMMARS} promises not
+ * to take. That silence is not coverage: the scan judges the citation attempts it
+ * can match, not every way a draft might write one, and a draft carrying any of
+ * the rows below passes this gate unjudged.
  *
- * They are **accepted rather than closed** because neither has an emitter: the
- * prompt requires every citation to be the retrieved label itself, and a label
- * is a spelling the corpus generates — `formatQuranCitation` writes the
- * separator after the Quran marker, `formatHadithCitation` the dot after the
- * address word — so a draft that follows the prompt cannot drop either. Closing
- * one is a grammar widening — a spelling rule the match pattern, the address
- * extraction and the comparison fold would all have to carry — and for the
- * separator-less form it reverses the boundary the Quran grammar is built on:
+ * The two **omission** spellings are **accepted rather than closed** because
+ * neither has an emitter: the prompt requires every citation to be the retrieved
+ * label itself, and a label is a spelling the corpus generates —
+ * `formatQuranCitation` writes the separator after the Quran marker,
+ * `formatHadithCitation` the dot after the address word — so a draft that follows
+ * the prompt cannot drop either. Closing one is a grammar widening — a spelling
+ * rule the match pattern, the address extraction and the comparison fold would all
+ * have to carry — and for the separator-less form it reverses the boundary the
+ * Quran grammar is built on. The **non-period separator family** is accepted for
+ * a different reason: a comma, colon or semicolon is not a width of the dot, so
+ * admitting it would move the token boundary between marker, collection and
+ * address rather than widen a rendering of the same period — a different rule,
+ * not a spelling fold:
  *
  * - `QS9:99` (no separator between marker and address) — the grammar requires
  *   one, and {@link canonicalizeCitationSpelling} mirrors that exclusion instead
  *   of folding a spelling the scan cannot see;
  * - `HR. Bukhari no 99999` (dot-less address marker) — the hadith pattern
- *   requires `no.`.
+ *   requires `no.`;
+ * - `HR，Muslim no. 224`, `HR：Muslim no. 224`, `HR；Muslim no. 224` (non-period
+ *   separator) — the marker requires a period or whitespace, and the fold mirrors
+ *   that exclusion too.
  *
  * **Recorded boundary, same direction, different cause.** A marker glued to a
  * preceding ASCII word character (`42HR. Muslim no. 224`, or in a previous
