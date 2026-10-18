@@ -30,6 +30,12 @@ EnvironmentFile=/etc/kajianq/backup.env
 WorkingDirectory=/srv/kajianq
 ExecStart=/usr/bin/bun run /srv/kajianq/api/backup.js
 
+# A hung run must not hold the last successful record forever. The job writes a
+# start marker before the dump, so a run killed by this bound leaves the marker
+# in place and the deploy's provenance preflight refuses it until a later run
+# completes. Type=oneshot has no default start timeout.
+TimeoutStartSec=2h
+
 # The dump is plaintext while it exists; a private tmp isolates it from other
 # processes for the run's duration, and the script removes it in a finally.
 PrivateTmp=yes

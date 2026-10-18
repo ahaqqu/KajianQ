@@ -17,10 +17,11 @@
  *      This is the only deletion path: a snapshot is never overwritten in
  *      place, it is superseded and then pruned (the immutable-label rule,
  *      ADR-0038 semantics).
- *   5. Record the run's outcome — exit status, completion time, label and the
- *      revision it ran from — where the deploy's provenance preflight can read
- *      it. The record is the proof, not systemd's run fields: those describe
- *      the current boot and a reboot clears them.
+ *   5. Record the run's outcome — exit status, start and completion time, label
+ *      and a best-effort revision — where the deploy's provenance preflight can
+ *      read it. A start marker goes down before the dump, so an interrupted run
+ *      cannot leave an earlier success looking current; the record, not
+ *      systemd's run fields, is the proof.
  *
  * Credentials travel through the environment, never argv: `--env-file` is
  * parsed by this script and merged into `process.env`, so a password is never
@@ -29,17 +30,8 @@
  * The target is never a free tier (ADR-0043 register rule): the repository is
  * the owner's encrypted storage endpoint, configured in backup.env.
  */
-import {
-  chmodSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import {
@@ -54,6 +46,7 @@ import {
   retentionArgs,
   sha256Hex,
 } from "./lib.mjs";
+import { RECORD_PATH, recordBody, writeRecordFile } from "./provenance.mjs";
 
 function fail(msg) {
   console.error(`kajianq-backup: ${msg}`);
@@ -94,53 +87,37 @@ function argAfter(flags, name) {
  * Deliberately under /var/lib, not the deploy root: /srv/kajianq belongs to the
  * deploy identity, so a root-owned file there could still be renamed away by
  * the very identity the proof is meant to bind, and anything inside api/ or
- * web/ would be deleted by the next rsync. This directory is root-owned and
- * world-traversable, and the record is root-owned and world-readable: the
- * deploy identity can read a proof it cannot forge, and root can replace it.
+ * web/ would be deleted by the next rsync. The directory's root ownership is
+ * the security boundary: only a root process can write a record there.
  */
-const DEFAULT_RECORD_DIR = "/var/lib/kajianq";
-const DEFAULT_RECORD = `${DEFAULT_RECORD_DIR}/backup-provenance`;
-
-// Filled in by main() once the flags and identity are known; the exit handler
-// reads them when the process ends.
-let recordPath = DEFAULT_RECORD;
+let recordPath = RECORD_PATH;
 let recordLabel = "unknown";
 let recordRevision = "unknown";
+let recordStartedAt = 0;
 let recordEnabled = true;
 
 /**
- * Write the run's outcome for the deploy's provenance preflight. Temp file plus
- * rename, so a reader never sees a half-written record.
- *
- * Never throws: a failed write must not turn a backup that succeeded into a
- * failed run, and this runs from the process's exit handler.
+ * Write one state of the run to the record. Never throws from the exit handler:
+ * a failed write must not turn a backup that succeeded into a failed run.
  */
-function writeRecord(status) {
-  const dir = dirname(recordPath);
-  mkdirSync(dir, { recursive: true, mode: 0o755 });
-  // Only the production directory's world-traversable mode is part of the
-  // contract. A caller-supplied --record directory (the drill's /tmp, a test
-  // fixture) is left as its owner set it — chmodding it could weaken a shared
-  // directory the job does not own.
-  if (dir === DEFAULT_RECORD_DIR) chmodSync(dir, 0o755);
-  const body = [
-    `status=${status}`,
-    `completed_at=${Math.floor(Date.now() / 1000)}`,
-    `label=${recordLabel}`,
-    `revision=${recordRevision}`,
-    "",
-  ].join("\n");
-  const tmp = join(dir, `.${basename(recordPath)}.${process.pid}.tmp`);
-  writeFileSync(tmp, body, { mode: 0o644 });
-  chmodSync(tmp, 0o644);
-  renameSync(tmp, recordPath);
+function writeRecord(status, completedAt) {
+  writeRecordFile(
+    recordPath,
+    recordBody({
+      status,
+      startedAt: recordStartedAt,
+      completedAt,
+      label: recordLabel,
+      revision: recordRevision,
+    }),
+  );
 }
 
 process.on("exit", (code) => {
   // A dry run uploads nothing and must not overwrite the last real run's proof.
   if (!recordEnabled) return;
   try {
-    writeRecord(code ?? 1);
+    writeRecord(String(code ?? 1), Math.floor(Date.now() / 1000));
   } catch (err) {
     console.error(
       `kajianq-backup: could not write the provenance record at ${recordPath}: ${err.message}`,
@@ -192,10 +169,12 @@ function tableCounts() {
 }
 
 /**
- * The deployed revision, for the manifest's provenance field.
+ * A best-effort revision for the manifest's provenance field.
  *
  * Best-effort by design: a backup's integrity does not depend on knowing which
- * commit produced it, so nothing here may abort the run.
+ * commit produced it, so nothing here may abort the run. Under the deployed
+ * bundle this reads `unknown`, and a .git planted in the deploy-owned tree can
+ * steer it; the record's label, not this value, is the identity the gate uses.
  *
  * `cwd` is pointed at the script's own directory rather than inherited: the
  * unit's `WorkingDirectory` is the deployed tree, which is not a repository, so
@@ -214,12 +193,15 @@ async function main() {
   const dryRun = argv.includes("--dry-run");
   const recordArg = argAfter(argv, "--record");
   if (recordArg) recordPath = recordArg;
-  // A record is proof about the UNIT, so only the unit's own run may leave one:
-  // systemd sets INVOCATION_ID for it. A checkout invocation records only when
-  // --record explicitly names a path (tests, the restore drill), because it does
-  // not prove the unit's ExecStart or environment. A dry run records nothing
-  // either way: it uploads nothing and must not overwrite the last real run.
-  recordEnabled = !dryRun && (Boolean(recordArg) || process.env.INVOCATION_ID !== undefined);
+  // The security boundary is the production directory's ownership, not the
+  // caller or an environment variable: /var/lib/kajianq is root-owned, so only
+  // a root process can write the proof. `--record` exists for tests and the
+  // restore drill, which must not touch the real record; a root run of the
+  // checkout writer is the documented one-time bootstrap on a box whose deployed
+  // bundle predates the writer. A dry run records nothing: it uploads nothing
+  // and must not overwrite the last real run's proof.
+  recordEnabled = !dryRun;
+  recordStartedAt = Math.floor(Date.now() / 1000);
 
   const keepDaily = Number(argAfter(argv, "--keep-daily") ?? BACKUP_KEEP_DAILY);
   const label =
@@ -230,12 +212,26 @@ async function main() {
       .replace(/\.\d+Z$/, "Z")
       .toLowerCase()}`;
   readLabel(label);
-  // The record's identity and the manifest's provenance are the same probe; it
-  // is best-effort and is taken before a failure can end the run, so a failed
-  // run's record still says which revision and label it failed on.
+  // The record's identity and the manifest's provenance are the same probe. It
+  // is best-effort — `unknown` on the deployed bundle, and steerable by a .git
+  // planted in the deploy-owned tree — so it is informational, never the proof.
   const git = gitInfo();
   recordLabel = label;
   recordRevision = git.sha;
+
+  // Mark the run in progress before the dump. A run killed between here and the
+  // exit handler (SIGTERM/SIGINT, OOM, systemd's start timeout) leaves this
+  // marker, so the preflight refuses it; a completion-only record would keep the
+  // previous successful run green.
+  if (recordEnabled) {
+    try {
+      writeRecord("running", 0);
+    } catch (err) {
+      console.error(
+        `kajianq-backup: could not write the in-progress provenance record at ${recordPath}: ${err.message}`,
+      );
+    }
+  }
 
   const envFile = argAfter(argv, "--env-file");
   if (envFile) applyEnvFile(process.env, parseEnvFile(readFileSync(envFile, "utf8")));

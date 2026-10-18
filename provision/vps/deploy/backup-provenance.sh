@@ -21,15 +21,22 @@
 # so a unit that ran successfully hours earlier reads as exit status 0 with an
 # empty timestamp — indistinguishable from one that has never run. The backup
 # job therefore writes its own record (/var/lib/kajianq/backup-provenance on the
-# box) on every completed run of the unit, as root. The directory is root-owned
-# and 0755, the record is root-owned and 0644: the deploy identity can read the
-# proof but cannot write or replace it, and only root can run the backup that
-# produces it.
+# box) as root: status, start and completion time, label and a best-effort
+# revision. The directory is root-owned and 0755, the record is root-owned and
+# 0644: the deploy identity can read the proof but cannot write or replace it,
+# and only root can run the backup that produces it.
+#
+# The job writes a start marker before it touches the database and completes it
+# on the way out, so an interrupted run (SIGTERM/SIGINT, OOM, the unit's start
+# timeout) leaves `status=running` or `completed_at < started_at` — refused,
+# rather than leaving an earlier success looking current.
 #
 # What the record proves is the pair: the last completed run exited 0, and it
 # completed AFTER this unit's current definition was installed. A record older
 # than the unit file means the unit has never been exercised in its current
-# form — the "installed but never executed" state this check exists for.
+# form — the "installed but never executed" state this check exists for. A box
+# whose installed bundle predates this writer cannot produce its first record by
+# starting the unit; it bootstraps once from the checkout (docs/VPS-SETUP.md).
 #
 # The install side keeps that mtime meaningful: apply.sh writes a config only
 # when the installed file differs, so a re-apply over unchanged content does not
@@ -41,81 +48,123 @@ UNIT="kajianq-backup.service"
 UNIT_FILE="${1:-/etc/systemd/system/${UNIT}}"
 RECORD_FILE="${2:-/var/lib/kajianq/backup-provenance}"
 
-if [ ! -f "${UNIT_FILE}" ]; then
-    echo "deploy: ${UNIT_FILE} is not installed — provision/vps/apply.sh has not placed it on this box" >&2
+# Print each line as a deploy refusal and exit 1; keeps the matrix below readable.
+refuse() {
+    local line
+    for line in "$@"; do
+        printf 'deploy: %s\n' "${line}" >&2
+    done
     exit 1
+}
+
+if [ ! -f "${UNIT_FILE}" ]; then
+    refuse "${UNIT_FILE} is not installed — provision/vps/apply.sh has not placed it on this box"
 fi
 
 # Absent record: the backup has never completed on this box. The same refusal
 # as before the record existed, because the proof is still missing.
 if [ ! -f "${RECORD_FILE}" ]; then
-    echo "deploy: ${UNIT} has never run — the encrypted backup is unproven" >&2
-    echo "deploy: a human with root must prove it: sudo systemctl start ${UNIT}" >&2
-    echo "deploy: if that answers 'Unit ${UNIT} not found', systemd has not loaded" >&2
-    echo "deploy: the unit at all: sudo systemctl daemon-reload, and re-run provision/vps/apply.sh" >&2
-    exit 1
+    refuse \
+        "${UNIT} has never run — the encrypted backup is unproven" \
+        "a human with root must prove it: sudo systemctl start ${UNIT}" \
+        "if that answers 'Unit ${UNIT} not found', systemd has not loaded" \
+        "the unit at all: sudo systemctl daemon-reload, and re-run provision/vps/apply.sh"
 fi
 
-# Every read is guarded: a failing `sed` or `stat` would otherwise abort with its
-# own exit status and no `deploy:` line saying what could not be read.
-record_field() {
-    sed -n "s/^$1=//p" "${RECORD_FILE}"
+# One read, then parse the buffer. Reading the file once per field would pair a
+# status from one write with a timestamp from another when the job renames a new
+# record between the reads.
+if ! record="$(cat -- "${RECORD_FILE}")"; then
+    refuse "could not read ${RECORD_FILE} — cannot prove ${UNIT} ran as installed"
+fi
+
+status=""
+started=""
+completed=""
+while IFS= read -r line || [ -n "${line}" ]; do
+    case "${line}" in
+        status=*) status="${line#status=}" ;;
+        started_at=*) started="${line#started_at=}" ;;
+        completed_at=*) completed="${line#completed_at=}" ;;
+    esac
+done <<< "${record}"
+
+# An interrupted run: the start marker was written and never completed. This is
+# the SIGTERM / OOM / systemd-timeout state; without it a killed run would leave
+# the previous success in place and the deploy would pass.
+interrupted() {
+    refuse \
+        "${UNIT} started a run but has not recorded its completion — the backup is unproven until a run completes" \
+        "check: journalctl -u ${UNIT} -n 40" \
+        "prove it as root: sudo systemctl start ${UNIT}"
 }
-if ! status="$(record_field status)"; then
-    echo "deploy: could not read ${RECORD_FILE} — cannot prove ${UNIT} ran as installed" >&2
-    exit 1
-fi
-if ! completed="$(record_field completed_at)"; then
-    echo "deploy: could not read ${RECORD_FILE} — cannot prove ${UNIT} ran as installed" >&2
-    exit 1
-fi
-if ! installed="$(stat -c %Y "${UNIT_FILE}")"; then
-    echo "deploy: could not read ${UNIT_FILE}'s install time — cannot prove ${UNIT} ran as installed" >&2
-    exit 1
+
+if [ "${status}" = "running" ]; then
+    interrupted
 fi
 
-# An empty or non-numeric status cannot be reported as an exit code or matched
-# against success, and inside `case` a bad value is the healthy line. Fail closed
-# on a record that does not name a status at all.
-if [ -z "${status}" ]; then
-    echo "deploy: ${RECORD_FILE} does not record an exit status — cannot prove ${UNIT} ran as installed" >&2
-    exit 1
+# Every value is bounded: a non-numeric or oversized timestamp would make `-lt`
+# error, and a failing `[` inside `if` is just false — the healthy line. Eleven
+# digits already covers every plausible Unix second.
+if [ -z "${started}" ]; then
+    refuse "${RECORD_FILE} does not record when the last run started — cannot prove ${UNIT} ran as installed"
 fi
-case "${status}" in
+case "${started}" in
     *[!0-9]*)
-        echo "deploy: ${UNIT} recorded a non-numeric exit status (${status}) — cannot prove it ran as installed" >&2
-        exit 1
+        refuse "${UNIT} recorded a non-numeric start timestamp (${started}) — cannot prove it ran as installed"
         ;;
 esac
-# A completed_at that is not a plain integer has the same fail-open shape as a
-# garbled status; the length bound keeps `-lt` from erroring on a number larger
-# than intmax_t, which inside `if` would read as the healthy line. Eleven digits
-# already covers every plausible Unix second.
+if [ "${#started}" -gt 11 ]; then
+    refuse "${UNIT} recorded an out-of-range start timestamp (${started}) — cannot prove it ran as installed"
+fi
+
 if [ -z "${completed}" ]; then
-    echo "deploy: ${RECORD_FILE} does not record when the last run completed — cannot prove ${UNIT} ran as installed" >&2
-    exit 1
+    refuse "${RECORD_FILE} does not record when the last run completed — cannot prove ${UNIT} ran as installed"
 fi
 case "${completed}" in
     *[!0-9]*)
-        echo "deploy: ${UNIT} recorded a non-numeric completion timestamp (${completed}) — cannot prove it ran as installed" >&2
-        exit 1
+        refuse "${UNIT} recorded a non-numeric completion timestamp (${completed}) — cannot prove it ran as installed"
         ;;
 esac
 if [ "${#completed}" -gt 11 ]; then
-    echo "deploy: ${UNIT} recorded an out-of-range completion timestamp (${completed}) — cannot prove it ran as installed" >&2
-    exit 1
+    refuse "${UNIT} recorded an out-of-range completion timestamp (${completed}) — cannot prove it ran as installed"
 fi
+
+if [ "${completed}" -lt "${started}" ]; then
+    interrupted
+fi
+
+if [ -z "${status}" ]; then
+    refuse "${RECORD_FILE} does not record an exit status — cannot prove ${UNIT} ran as installed"
+fi
+case "${status}" in
+    *[!0-9]*)
+        refuse "${UNIT} recorded a non-numeric exit status (${status}) — cannot prove it ran as installed"
+        ;;
+esac
 
 # A failure recorded by the job is the last completed run, so it refuses the
 # deploy even when an earlier run succeeded. The journal is where the cause is.
 if [ "${status}" != "0" ]; then
-    echo "deploy: ${UNIT} last run exited ${status} — the encrypted backup is failing" >&2
-    echo "deploy: check: journalctl -u ${UNIT} -n 40" >&2
-    exit 1
+    refuse \
+        "${UNIT} last run exited ${status} — the encrypted backup is failing" \
+        "check: journalctl -u ${UNIT} -n 40"
+fi
+
+if ! installed="$(stat -c %Y "${UNIT_FILE}")"; then
+    refuse "could not read ${UNIT_FILE}'s install time — cannot prove ${UNIT} ran as installed"
+fi
+case "${installed}" in
+    *[!0-9]*)
+        refuse "could not parse ${UNIT_FILE}'s install time (${installed}) — cannot prove ${UNIT} ran as installed"
+        ;;
+esac
+if [ "${#installed}" -gt 11 ]; then
+    refuse "could not parse ${UNIT_FILE}'s install time (${installed}) — cannot prove ${UNIT} ran as installed"
 fi
 if [ "${completed}" -lt "${installed}" ]; then
-    echo "deploy: ${UNIT} last completed BEFORE its current definition was installed" >&2
-    echo "deploy: this unit has never been exercised as installed — prove it as root: sudo systemctl start ${UNIT}" >&2
-    exit 1
+    refuse \
+        "${UNIT} last completed BEFORE its current definition was installed" \
+        "this unit has never been exercised as installed — prove it as root: sudo systemctl start ${UNIT}"
 fi
 echo "deploy: backup unit healthy (last recorded run exited 0, after the current unit was installed)"

@@ -91,11 +91,13 @@ What it does, in order:
    0 _and_ completed since its own definition was installed: a unit that has
    never been exercised as installed is a backup you do not have. The record
    survives a reboot, where systemd's `ExecMainStatus`/`ExecMainExitTimestamp`
-   describe only the current boot. It runs first because it reads only state
-   that already exists on the box — a red here costs an ssh round trip and
-   leaves the box on its previous revision, where a red after the ship would
-   leave the new tree live, the API restarted, and the smoke and doctor below
-   skipped.
+   describe only the current boot. A box whose installed bundle predates the
+   writer cannot bootstrap by starting the unit — it bootstraps once from the
+   checkout, as `docs/VPS-SETUP.md` §8 shows. It runs first because it reads
+   only state that already exists on the box — a red here costs an ssh round
+   trip and leaves the box on its previous revision, where a red after the ship
+   would leave the new tree live, the API restarted, and the smoke and doctor
+   below skipped.
 2. **Build.** `bun run build:web` for the PWA, then two `bun build
 --target=bun` bundles from `apps/api/src/boot.ts` (serving) and
    `apps/api/src/cleanup.ts` (the nightly reclamation). Bundling for Bun is what
@@ -692,12 +694,14 @@ world-readable: a world-readable repository key silently undoes the encryption
 it exists to provide. The target must never be a free tier (the register rule) —
 the repository holds a full-database dump carrying chat content and feedback.
 
-A completed run also writes its outcome — exit status, completion time, label
-and the revision it ran from — to `/var/lib/kajianq/backup-provenance`
-(root:root 0644 in a root:root 0755 directory). That record is the deploy's
-proof that the backup has been exercised as installed: it survives a reboot,
-unlike systemd's per-boot run fields, and the deploy identity can read it but
-cannot write it.
+A run also writes its outcome — exit status, start and completion time, label
+and a best-effort revision (usually `unknown` under the deployed bundle) — to
+`/var/lib/kajianq/backup-provenance` (root:root 0644 in a root:root 0755
+directory). It marks the run in progress before the dump, so an interrupted run
+leaves a marker the deploy's preflight refuses instead of the previous success.
+That record is the proof that the backup has been exercised as installed: it
+survives a reboot, unlike systemd's per-boot run fields, and the deploy identity
+can read it but cannot write it.
 
 **The schedule's own product is proven** (2026-09-29, closing #214). The
 `03:15` fires of 2026-09-26…29 each started with **no operator command between

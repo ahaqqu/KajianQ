@@ -810,10 +810,26 @@ run that next.
 > differs, so re-running it over unchanged content leaves the unit file's mtime —
 > and the deploy's backup gate — alone. A **changed** unit definition does move
 > that mtime, and then the gate stays red until a backup runs again. Prove it
-> through the service, not a checkout script:
-> `sudo systemctl start kajianq-backup.service`. Running
-> `kajianq-backup.mjs` directly writes a snapshot but not the unit's record, so
-> it will not satisfy the gate.
+> through the service: `sudo systemctl start kajianq-backup.service`.
+
+> **First record on a box whose installed bundle predates it.** The deploy ships
+> the writer, but the preflight runs before the ship, so starting the unit on a
+> box with no record yet would run the old `/srv/kajianq/api/backup.js` — the
+> pre-record bundle — and leave the gate red. Bootstrap once, as root, from a
+> checkout at or after this change (the checkout's script has the writer; the
+> deployed bundle does not yet):
+>
+> ```bash
+> sudo bun provision/vps/backup/kajianq-backup.mjs \
+>   --env-file /etc/kajianq/backup.env \
+>   --label bootstrap \
+>   --record /var/lib/kajianq/backup-provenance
+> ```
+>
+> That is a real backup run; its root-owned record satisfies the gate, and a run
+> that is not root cannot write it. The deploy that ships this unit installs a
+> new definition, which moves the unit's mtime past the bootstrap record: start
+> the unit once after that deploy (or let 03:15 run) so later deploys are green.
 
 ---
 
@@ -960,7 +976,9 @@ After the first scheduled fire, the record at
 newer than the unit file — that is what "the backup works" looks like.
 `ExecMainStatus` and `ExecMainExitTimestamp` above are the same run's report for
 the current boot; a reboot empties the timestamp, which is why the deploy does
-not read them.
+not read them. A record reading `status=running`, or carrying a `completed_at`
+earlier than its `started_at`, is an interrupted run: check
+`journalctl -u kajianq-backup.service`; the next successful run replaces it.
 
 **Read the fields carefully, because two of them lie.** `is-active` on the
 timer only says the schedule is armed. And `Result` alone is not the signal
