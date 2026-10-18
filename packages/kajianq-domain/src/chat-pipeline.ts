@@ -12,12 +12,7 @@ import {
   type Decliner,
 } from "@app/rag-core";
 import { createKajianQRouter, type RouterProvider } from "./chat-router";
-import {
-  createKajianQRetriever,
-  type EmbedCostSink,
-  type RetrieverEmbedder,
-  type StoreBridge,
-} from "./chat-retriever";
+import { createKajianQRetriever, type RetrieverEmbedder, type StoreBridge } from "./chat-retriever";
 import { createChatTailStages, type GeneratorProvider, type ReviewerProvider } from "./chat-stages";
 
 /**
@@ -53,10 +48,6 @@ export type ChatPipelineDeps = {
    * gate marked content-free is answered from canned copy and neither paid tail stage is
    * entered; inject a decliner to answer such a route differently. */
   decliner?: Decliner<import("./filters").KajianQFilters>;
-  /** Collector for the embed cost that rides the retrieval stage. The composition
-   * root supplies it, and the retriever hands it the run's trace sink, so the call
-   * becomes an event on the answer's trace; without it the cost has no event. */
-  onCost?: (cost: import("@app/contracts").CostRecord, sink: EmbedCostSink) => void;
   /** Streamed-generation hook: each delta as the vendor produces it. The reviewer gates
    * the whole draft before any of it is delivered. */
   onDelta?: (delta: string) => void;
@@ -75,7 +66,6 @@ export function buildChatStages(
     bridge: deps.bridge,
     ...(deps.retrieverLimit !== undefined ? { limit: deps.retrieverLimit } : {}),
     ...(deps.scopeExpansionCap !== undefined ? { scopeExpansionCap: deps.scopeExpansionCap } : {}),
-    onEmbedCost: (cost, sink) => deps.onCost?.(cost, sink),
   });
   const tail = createChatTailStages({
     generatorProvider: deps.generatorProvider,
@@ -99,8 +89,8 @@ export function buildChatStages(
 }
 
 /** Run the chat pipeline through the engine runner. Every provider call's cost lands on
- * the answer's trace: the paid stages record through the runner's sink, and the retrieval
- * stage's embed call through the collector the composition root supplies as `onCost`. */
+ * the answer's trace through the runner's sink — each stage, the retriever's embed call
+ * included, records its own. */
 export function runChatPipeline(
   deps: ChatPipelineDeps,
   query: { text: string; filters?: import("./filters").KajianQFilters },

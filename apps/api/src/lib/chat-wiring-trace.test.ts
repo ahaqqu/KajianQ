@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { totalCostMicroUsd } from "@app/contracts";
+import { totalCostMicroUsd, type Trace } from "@app/contracts";
 import { runChatPipelinePromise, runStoreEffect, type ChatPipelineDeps } from "@app/kajianq-domain";
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 import { createStubChatProviders } from "@app/kajianq-domain/test-utils/stub-chat-providers";
@@ -7,17 +7,16 @@ import { deriveTraceFrame } from "./chat-trace";
 import { buildChatWiring } from "./chat-wiring";
 
 /**
- * INTEGRATION TEST — an answered run's trace cost equals the sum of its
- * provider calls, asserted through the real serving composition root
- * (`buildChatWiring`), not a hand-built deps literal.
+ * INTEGRATION TEST — a run's trace cost equals the sum of its provider calls,
+ * asserted through the real serving composition root (`buildChatWiring`), not a
+ * hand-built deps literal.
  *
- * The retrieval stage's embed call is the provider call no stage records
- * through the runner's own sink on its behalf: the composition root supplies
- * the collector, the pipeline hands that collector the run's trace sink, and
- * the collector writes a cost-bearing `llm_call` beside the router's,
- * generator's and pre-gate's. Removing the wiring's `onCost` leaves the trace
- * short by the embed's cost and drops the embedder from `technical.models` —
- * this test is what reddens then.
+ * The retrieval stage records its embed call through the run's own sink, like
+ * every other stage records its provider call, so the cost is on the trace by
+ * construction rather than by a composition root remembering to wire a
+ * collector. A run that fails after the embed keeps exactly one embed record:
+ * the cost settles once at the sink, and nothing re-forwards a failed trace's
+ * costs into it.
  *
  * The zero is a route carrying no sub-query: the retriever returns before it
  * embeds anything (`subQueries.length === 0`), so the run makes no provider
@@ -90,8 +89,7 @@ function watch<T extends object>(seam: Seam, impl: T, calls: string[]): T {
 
 /**
  * The serving wiring with its provider seams replaced by the domain's stubs and
- * its store by the memory store. Everything else — including the cost collector
- * under test — is `buildChatWiring`'s own.
+ * its store by the memory store. Everything else is `buildChatWiring`'s own.
  */
 function wiredDeps(
   store: ReturnType<typeof createMemoryRagStore>,
@@ -201,5 +199,51 @@ describe("buildChatWiring — the embed call's cost rides the answer trace", () 
     expect(calls).toEqual([]);
     expect(totalCostMicroUsd(answer.trace)).toBe(0);
     expect(answer.trace.events.filter((event) => event.kind === "llm_call")).toEqual([]);
+  });
+
+  it("keeps exactly one embed record when the run fails after embedding", async () => {
+    // A failure after retrieval has spent: the embed's cost settled at the run's
+    // sink before the generator failed, so the failed trace carries it once —
+    // never zero times, and never twice through a failed-trace re-forward.
+    const store = createMemoryRagStore();
+    await seedAyatKursi(store);
+    const calls: string[] = [];
+    let failedTrace: Trace | undefined;
+    await expect(
+      runChatPipelinePromise(
+        wiredDeps(store, calls, {
+          answerText: `Jawaban ${CITATION}: Allah Mahahidup.`,
+          embedCost: {
+            tokensIn: 3,
+            tokensOut: 0,
+            latencyMs: 7,
+            costMicroUsd: PROVIDER_COST_MICRO_USD.embed,
+            estimated: true,
+          },
+          generatorFails: true,
+        }),
+        { text: "Apa itu Ayat Kursi?" },
+        {},
+        {
+          onFailedTrace: (trace) => {
+            failedTrace = trace;
+          },
+        },
+      ),
+    ).rejects.toThrow();
+
+    expect(failedTrace).toBeDefined();
+    const trace = failedTrace as Trace;
+    const embedEvents = trace.events.filter(
+      (event) => event.kind === "llm_call" && event.cost?.modelId === "stub-embedder",
+    );
+    expect(embedEvents).toHaveLength(1);
+    // The router's call plus the embed's: the generator failed before it could
+    // settle a cost, and nothing re-forwarding the failed trace adds the embed
+    // a second time.
+    expect(totalCostMicroUsd(trace)).toBe(
+      PROVIDER_COST_MICRO_USD.router + PROVIDER_COST_MICRO_USD.embed,
+    );
+    expect(totalCostMicroUsd(trace)).toBe(12);
   });
 });

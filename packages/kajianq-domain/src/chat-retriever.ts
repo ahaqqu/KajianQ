@@ -7,7 +7,6 @@ import {
   type CostRecord,
   type RoutedQuery,
   type Retriever,
-  type RunContextService,
   type StoreError,
 } from "@app/rag-core";
 import type { KajianQFilters } from "./filters";
@@ -79,13 +78,6 @@ export type RetrieverStore = {
 /** Effect bridge the wiring injects (keeps this module free of runner imports). */
 export type StoreBridge = <A>(effect: Effect.Effect<A, StoreError>) => Promise<A>;
 
-/**
- * The run's trace sink and clock, as the embed cost's collector receives them:
- * the collector appends the cost as an event to the run's trace and stamps it
- * with the run's own clock — the single collection point (ADR-0021).
- */
-export type EmbedCostSink = Pick<RunContextService, "record" | "now">;
-
 export type KajianQRetrieverDeps = {
   store: RetrieverStore;
   embedder: RetrieverEmbedder;
@@ -99,10 +91,6 @@ export type KajianQRetrieverDeps = {
    * **either** disables it. */
   neighbourRadius?: number;
   neighbourCap?: number;
-  /** Trace/cost sink for the embed call (the run's collection point). The run hands
-   * its sink in, so a collector the composition root supplies records the cost on
-   * the answer's trace. */
-  onEmbedCost?: (cost: CostRecord, sink: EmbedCostSink) => void;
 };
 
 export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<KajianQFilters> {
@@ -113,13 +101,19 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
         "retriever",
         Effect.gen(function* () {
           if (routed.subQueries.length === 0) return [];
+          const run = yield* RunContext;
           const embedded = yield* deps.embedder
             .embed({ texts: routed.subQueries.map((q) => q.text), personalData: true })
             .pipe(Effect.mapError((cause) => ({ cause })));
-          if (deps.onEmbedCost) {
-            const sink = yield* RunContext;
-            deps.onEmbedCost(embedded.cost, sink);
-          }
+          // The embed call's cost rides the run's own sink like every other provider
+          // call's, so the answer's trace sums to its provider calls by construction.
+          run.record({
+            stage: "retriever",
+            kind: "llm_call",
+            detail: { purpose: "embed" },
+            cost: embedded.cost,
+            at: run.now(),
+          });
           // The route's decision, read into the store's expressible shape. A dimension
           // the store cannot express is a typed stage failure, never a dropped key:
           // silently ignoring `grade` answers a different question than the router chose.
@@ -159,7 +153,6 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
                   relaxation.adopt(probe.dropped);
                   hits = retry;
                 }
-                const run = yield* RunContext;
                 run.record({
                   stage: "retriever",
                   kind: "filter_relaxed",

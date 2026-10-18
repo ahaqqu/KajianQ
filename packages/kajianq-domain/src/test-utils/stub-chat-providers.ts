@@ -36,6 +36,8 @@ export type StubChatProviderOverrides = {
   reviewerVerdict?: "pass" | "fail";
   /** Omit `stream` so the generator's non-streaming fallback is exercised. */
   noStream?: boolean;
+  /** The generator's call fails, so a run can fail after retrieval has spent. */
+  generatorFails?: boolean;
   /** The embedder's CostRecord fields to override (default: one token each way,
    * 1 ms, 0 µUSD). A non-zero `costMicroUsd` makes the embed's place in an
    * answer's recorded spend visible. */
@@ -66,20 +68,25 @@ export function createStubChatProviders(overrides: StubChatProviderOverrides = {
 } {
   const answerText = overrides.answerText ?? "Jawaban berdasar konteks.";
   const deltas = overrides.streamDeltas ?? [answerText];
+  const generatorFails = overrides.generatorFails === true;
   const generatorProvider: GeneratorProvider = {
     generate: () =>
-      Effect.succeed({
-        text: answerText,
-        cost: cost("stub-generator", 2),
-      }),
+      generatorFails
+        ? Effect.fail(new Error("stub generator failure"))
+        : Effect.succeed({
+            text: answerText,
+            cost: cost("stub-generator", 2),
+          }),
     ...(overrides.noStream === true
       ? {}
       : {
           stream: () =>
-            Effect.succeed({
-              deltas: Stream.fromIterable(deltas),
-              cost: () => Effect.succeed(cost("stub-generator", 2)),
-            }),
+            generatorFails
+              ? Effect.fail(new Error("stub generator failure"))
+              : Effect.succeed({
+                  deltas: Stream.fromIterable(deltas),
+                  cost: () => Effect.succeed(cost("stub-generator", 2)),
+                }),
         }),
   };
   return {
