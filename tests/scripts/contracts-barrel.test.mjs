@@ -179,6 +179,20 @@ describe("the runtime is the truth: the barrel publishes what the tree exports",
     expect(message).toMatch(/one name must carry one value/);
   });
 
+  it("refuses a renamed barrel entry too, naming the module's own name, not the alias", async () => {
+    // The barrel binds `Renamed`, the module binds `Named`: there is no entry for
+    // the name the module binds, so the finding is that name and the rename note.
+    const root = oneModule(
+      "export const Named = 1;\n",
+      'export { Named as Renamed } from "./mod";\n',
+    );
+    const message = await assertBarrelCoverage(root, { internal: {} }).catch(
+      (error) => error.message,
+    );
+    expect(message).toMatch(/mod\.ts: Named/);
+    expect(message).toMatch(/is published under the name its module binds/);
+  });
+
   it("refuses a renamed re-export, because a value is published under the name its module binds", async () => {
     // `b.ts` binds `Renamed`; `a.ts` still binds `Shared`, which no entry publishes.
     // The runtime sees values and not specifiers, so the rename belongs at the origin.
