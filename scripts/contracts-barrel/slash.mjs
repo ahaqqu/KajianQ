@@ -24,6 +24,13 @@ function previousToken(code, at) {
   return code[i];
 }
 
+/** The index of the first character of the word that ends at `at`. */
+function wordStart(code, at) {
+  let start = at;
+  while (start > 0 && /[\w$]/.test(code[start - 1])) start -= 1;
+  return start;
+}
+
 /** Punctuators after which a `/` can only open a regular expression. */
 const STARTS_EXPRESSION = new Set([
   "(",
@@ -89,77 +96,105 @@ const AMBIGUOUS_WORDS = new Set(["of"]);
 /** The keywords whose `)` closes a statement header, so a statement can follow it. */
 const HEADER_KEYWORDS = new Set(["if", "while", "for", "with"]);
 
-/** The index of the first character of the word that ends at `at`. */
-function wordStart(code, at) {
-  let start = at;
-  while (start > 0 && /[\w$]/.test(code[start - 1])) start -= 1;
-  return start;
-}
-
-/** Whether the `)` at `close` closes a statement header, `for await (…)` included. */
-function headerBefore(code, close) {
+/** The index of the `(` that matches the `)` at `close` on the blanked view, or -1. */
+function matchingParen(syntax, close) {
   let depth = 0;
   for (let i = close; i >= 0; i -= 1) {
-    if (code[i] === ")") depth += 1;
-    else if (code[i] === "(") {
+    if (syntax[i] === ")") depth += 1;
+    else if (syntax[i] === "(") {
       depth -= 1;
-      if (depth === 0) {
-        let at = i - 1;
-        while (at >= 0 && /\s/.test(code[at])) at -= 1;
-        let keyword = previousToken(code, i);
-        // `for await (…)`: the header keyword stands before the `await`.
-        if (keyword === "await") keyword = previousToken(code, wordStart(code, at));
-        return HEADER_KEYWORDS.has(keyword);
-      }
+      if (depth === 0) return i;
     }
   }
-  return false;
+  return -1;
+}
+
+/** Whether the token that starts at `start` is a property name, read off its lead. */
+const isPropertyName = (code, start) => previousToken(code, start) === ".";
+
+/**
+ * What the `)` at `close` closes: a control header (whose `)` a statement can
+ * follow), an ordinary call or grouping (which ends an expression), or something
+ * the syntax cannot settle — each undecided answer naming its own reason.
+ *
+ * The parens are matched on the view with literals and comments blanked, so a
+ * `"("` in a string cannot shift the match, and a reserved word led by `.` is a
+ * property name — `g.if(…)` is a call, not a header. `for await (…)` is a `for`
+ * header, read across the `await`.
+ */
+function parenKind({ syntax, code }, close) {
+  const open = matchingParen(syntax, close);
+  if (open === -1) return { kind: "undecided", why: "unmatched-paren" };
+  let at = open - 1;
+  while (at >= 0 && /\s/.test(code[at])) at -= 1;
+  if (at < 0) return { kind: "ordinary" };
+  let keyword = previousToken(code, open);
+  let start = wordStart(code, at);
+  if (keyword === "await") {
+    if (isPropertyName(code, start)) return { kind: "ordinary" };
+    let before = start - 1;
+    while (before >= 0 && /\s/.test(code[before])) before -= 1;
+    if (before < 0) return { kind: "undecided", why: "unread-header" };
+    keyword = previousToken(code, start);
+    start = wordStart(code, before);
+  }
+  if (keyword === "") return { kind: "undecided", why: "unread-header" };
+  if (AMBIGUOUS_WORDS.has(keyword)) return { kind: "undecided", why: "soft-keyword" };
+  if (isPropertyName(code, start)) return { kind: "ordinary" };
+  return { kind: HEADER_KEYWORDS.has(keyword) ? "header" : "ordinary" };
 }
 
 /**
  * What the text before `at` is: whether it certainly ends an expression (`ends`),
- * certainly starts one (`starts`), or can be read either way (`undecided`).
+ * certainly starts one (`starts`), or can be read either way (`undecided`, with
+ * the reason named once, here).
  *
- * Only positions the language settles are decided here. A literal, a `]`, `++`,
- * `--`, an identifier or a number end an expression; an operator, an opener, a
- * reserved word that introduces an expression, or a `)` that closes a header start
- * one; and a `/` after `!` is read through to whatever precedes the `!`. A
- * reserved word led by `.` is a property name and ends an expression. Everything
- * else — a `}` (a block end or an object literal), a soft keyword such as `of` (a
- * keyword or a variable), and the start of a file — is undecided, and the caller
- * refuses it rather than guessing.
+ * Only positions the language settles are decided: a literal, a `]`, `++`, `--`,
+ * an identifier or a number end an expression; an operator, an opener, a reserved
+ * word that introduces an expression, or a `)` that closes a header start one; a
+ * `/` after `!` is read through to whatever precedes the `!`; and a reserved word
+ * led by `.` is a property name that ends one. Everything else — a `}`, a soft
+ * keyword, a `/` at the start of a file, a `)` whose `(` is not there — is
+ * undecided, and the caller refuses it.
  */
-export function expressionSide({ code, literalEnds }, at) {
+function expressionSide({ code, syntax, literalEnds }, at) {
   let i = at - 1;
   while (i >= 0 && /\s/.test(code[i])) i -= 1;
-  if (i < 0) return { side: "undecided", token: "" };
+  if (i < 0) return { side: "undecided", token: "", why: "no-predecessor" };
   if (literalEnds.has(i)) return { side: "ends", token: "<literal>" };
   if (/[\w$]/.test(code[i])) {
     const start = wordStart(code, i);
     const token = code.slice(start, i + 1).join("");
-    if (AMBIGUOUS_WORDS.has(token)) return { side: "undecided", token };
+    if (AMBIGUOUS_WORDS.has(token)) return { side: "undecided", token, why: "soft-keyword" };
     if (!STARTS_EXPRESSION_KEYWORD.has(token)) return { side: "ends", token };
-    const lead = previousToken(code, start);
-    return { side: lead === "." || lead === "?." ? "ends" : "starts", token };
+    return { side: isPropertyName(code, start) ? "ends" : "starts", token };
   }
   const token = previousToken(code, at);
   if (token === "!") {
     // A `!` is read through to what precedes it: a non-null assertion keeps the
     // position's reading, a prefix `!` takes the one before it — and at the start
     // of a file there is an expression after it, never an assertion.
-    const before = expressionSide({ code, literalEnds }, i);
-    return before.token === "" ? { side: "starts", token: "!" } : { side: before.side, token: "!" };
+    const before = expressionSide({ code, syntax, literalEnds }, i);
+    return before.why === "no-predecessor"
+      ? { side: "starts", token: "!" }
+      : { side: before.side, token: "!", why: before.why };
   }
-  if (token === ")") return { side: headerBefore(code, i) ? "starts" : "ends", token };
+  if (token === ")") {
+    const paren = parenKind({ syntax, code }, i);
+    if (paren.kind === "header") return { side: "starts", token };
+    if (paren.kind === "ordinary") return { side: "ends", token };
+    return { side: "undecided", token, why: paren.why };
+  }
   if (STARTS_EXPRESSION.has(token)) return { side: "starts", token };
   if (token === "]" || token === "++" || token === "--") return { side: "ends", token };
-  return { side: "undecided", token };
+  if (token === "}") return { side: "undecided", token, why: "object-or-block" };
+  return { side: "undecided", token, why: "unlisted-token" };
 }
 
 /** What a `/` at `at` is, as far as the position decides it. */
 export function slashReading(context, at) {
-  const { side, token } = expressionSide(context, at);
+  const { side, token, why } = expressionSide(context, at);
   if (side === "ends") return { kind: "division", token };
   if (side === "starts") return { kind: "regex", token };
-  return { kind: "ambiguous", token };
+  return { kind: "ambiguous", token, why };
 }

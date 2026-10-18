@@ -18,18 +18,22 @@ import { slashReading } from "./slash.mjs";
  *   - a block comment that opens and never closes, and a template literal that
  *     never closes: their extent may swallow a real statement, and blanking to
  *     the end of the file is how a member disappears — the silence this gate
- *     exists to remove. A `"`/`'` literal is bounded to its own line, because a
- *     JS string cannot span one;
+ *     exists to remove. A `"`/`'` literal ends at its closing quote or at its own
+ *     line's end, because a JS string holds no raw newline; a backslash escapes
+ *     the character after it, a newline included, so a continued string spans
+ *     lines;
  *   - a `/` whose position the language does not settle. The scan decides a `/`
  *     only where the text before it cannot mean the other thing: a literal, a
  *     `]`, `++`, `--`, an identifier or a number end an expression; an operator,
  *     an opener, a reserved word that introduces an expression, or a `)` that
  *     closes a header (`for await (…)` included) start one; a `!` is read
  *     through to whatever precedes it; and a reserved word led by `.` is a
- *     property name, so it ends one. A `}` (a block end or an object literal), a
- *     soft keyword such as `of` (a keyword in a `for…of` header, a variable
- *     elsewhere), and the start of a file cannot be settled by a token, so they
- *     are refused with the line they are on. Guessing here is how a member goes
+ *     property name, so it ends one. The parens are matched on a view with
+ *     literals and comments blanked, so a `"("` in a string cannot shift a match,
+ *     and a `)` whose `(` is not there is refused rather than guessed. A `}` (a
+ *     block end or an object literal), a soft keyword such as `of` (a keyword in
+ *     a `for…of` header, a variable elsewhere), and the start of a file cannot be
+ *     settled by a token, so they are refused with the line they are on. Guessing here is how a member goes
  *     silently missing: a regex read as division puts its pattern into the scan
  *     as code, where a `/*` in it opens a comment that blanks a real `export`
  *     below;
@@ -41,12 +45,12 @@ import { slashReading } from "./slash.mjs";
  *     split below cannot be trusted.
  *
  * The claim is no stronger than the mechanism: this gate judges every module
- * whose `/` positions the text before them settles, and refuses a module whose
- * positions it cannot settle. So a member cannot be silently absent from a
- * module the gate reads — and a module it refuses is judged by no rule here,
- * which is the edge a source scanner has and a parser would not. A regex literal
- * is never treated as quoted text, so a pattern containing the word `export` is
- * not mistaken for prose.
+ * whose `/` positions, literal extents and bracket matches the text settles, and
+ * refuses a module it cannot settle — never reads past it. So a member cannot be
+ * silently absent from a module the gate reads, and a module it refuses is judged
+ * by no rule here: the edge a source scanner has and a parser would not. A regex
+ * literal is never treated as quoted text, so a pattern containing the word
+ * `export` is not mistaken for prose.
  */
 
 export const lineOf = (source, offset) => source.slice(0, offset).split("\n").length;
@@ -62,7 +66,11 @@ const lineEnd = (source, from) => {
   return end === -1 ? source.length : end;
 };
 
-/** A `"`/`'` literal ends at its own line: a JS string cannot span one. */
+/**
+ * A `"`/`'` literal's end: its closing quote, or its own line's end when it has
+ * none. A JS string cannot hold a raw newline, but a backslash escapes the
+ * character after it — a newline included — so a continued string spans lines.
+ */
 function quotedEnd(source, from, quote) {
   for (let i = from + 1; i < source.length; i += 1) {
     if (source[i] === "\\") i += 1;
@@ -156,15 +164,24 @@ function regexEnd(source, from) {
   return -1;
 }
 
+/** The sentence for each reason `slashReading` refuses for — one taxonomy, one place. */
+const AMBIGUITY_REASONS = {
+  "no-predecessor":
+    "the file opens with it, where a statement that begins with a regular expression reads the " +
+    "same as a division continuing an expression that is not there",
+  "object-or-block": "`}` ends a block in one reading and an object literal in another",
+  "soft-keyword": (token) =>
+    `\`${token}\` is a keyword in one reading and an identifier in another`,
+  "unmatched-paren": "the `)` before it closes a `(` this scan cannot find",
+  "unread-header": "the `(` before it follows a keyword this scan cannot read",
+  "unlisted-token": (token) =>
+    `\`${token}\` is a token this scan does not place on either side of an expression`,
+};
+
 /** The refusal that names what the scan cannot tell apart, and where. */
 function ambiguousSlash(source, file, at, reading) {
-  const where =
-    reading.token === ""
-      ? "the file opens with it, where a statement that begins with a regular expression reads " +
-        "the same as a division continuing an expression that is not there"
-      : reading.token === "}"
-        ? "`}` ends a block in one reading and an object literal in another"
-        : `\`${reading.token}\` is a keyword in one reading and an identifier in another`;
+  const reason = AMBIGUITY_REASONS[reading.why] ?? AMBIGUITY_REASONS["unlisted-token"];
+  const where = typeof reason === "function" ? reason(reading.token) : reason;
   return new ContractsBarrelError(
     `${file}:${lineOf(source, at)}: this \`/\` follows a position where ${where}, so this scan ` +
       "cannot tell a regular expression from division — write the division on the same line as its " +
@@ -180,6 +197,7 @@ export function scanSource(source, file) {
   const code = source.split("");
   const directives = source.split("");
   const comments = source.split("");
+  const syntax = source.split("");
   const literals = new Map();
   const literalEnds = new Set();
   const blank = (view, from, to) => {
@@ -194,6 +212,7 @@ export function scanSource(source, file) {
       // directive, so only `code` loses it.
       const end = lineEnd(source, i);
       blank(code, i, end);
+      blank(syntax, i, end);
       i = end;
       continue;
     }
@@ -211,6 +230,7 @@ export function scanSource(source, file) {
       // inside one is visible to the refusal that names it as misplaced.
       blank(code, i, end + 2);
       blank(directives, i, end + 2);
+      blank(syntax, i, end + 2);
       i = end + 2;
       continue;
     }
@@ -225,6 +245,7 @@ export function scanSource(source, file) {
       literalEnds.add(end - 1);
       blank(directives, i, end);
       blank(comments, i, end);
+      blank(syntax, i, end);
       i = end;
       continue;
     }
@@ -232,20 +253,22 @@ export function scanSource(source, file) {
       const end = templateEnd(source, i);
       if (end === -1) {
         throw new ContractsBarrelError(
-          `${file}:${lineOf(source, i)}: a template literal opens here and never closes, so this ` +
-            "gate cannot tell what is code below it — close it, and an `export` it was swallowing " +
-            "becomes a statement the scan reads",
+          `${file}:${lineOf(source, i)}: a template literal opens here and this scan cannot find ` +
+            "its closing backtick — an interpolation whose braces, quotes or regex it cannot follow, " +
+            "or a template that never closes, both end here — write the interpolation so it reads as " +
+            "code, or close the template",
         );
       }
       literals.set(i, { start: i, end, kind: "template", closed: true });
       literalEnds.add(end - 1);
       blank(directives, i, end);
       blank(comments, i, end);
+      blank(syntax, i, end);
       i = end;
       continue;
     }
     if (char === "/") {
-      const reading = slashReading({ code, literalEnds }, i);
+      const reading = slashReading({ code, syntax: syntax.join(""), literalEnds }, i);
       if (reading.kind === "ambiguous") throw ambiguousSlash(source, file, i, reading);
       if (reading.kind === "regex") {
         const end = regexEnd(source, i);
@@ -260,6 +283,7 @@ export function scanSource(source, file) {
         literalEnds.add(end - 1);
         blank(directives, i, end);
         blank(comments, i, end);
+        blank(syntax, i, end);
         i = end;
         continue;
       }
@@ -268,6 +292,7 @@ export function scanSource(source, file) {
     i += 1;
   }
   return {
+    syntax: syntax.join(""),
     code: code.join(""),
     directives: directives.join(""),
     comments: comments.join(""),

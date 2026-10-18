@@ -744,6 +744,56 @@ describe("a construct the scanner cannot resolve is refused, not guessed", () =>
     expect(names(moduleSurface(`${property}\n`, "regex.ts"))).toEqual(["first"]);
   });
 
+  it("matches a header's parens on the code, not on the text inside a string", () => {
+    // The `"("` in the string is a literal on the blanked view, so the `)` closes
+    // `if (` — a header, whose regex statement must not be read as a comment.
+    const source = [
+      "export const first = 1;",
+      'const label = "x";',
+      'if (label === "(") /\\/*x/.test(label);',
+      "export const second = 2;",
+      "/** closes the prose */",
+    ].join("\n");
+    expect(names(moduleSurface(source, "regex.ts"))).toEqual(["first", "second"]);
+    const root = fixtureTree({ files: { [`${SRC_DIR}/regex.ts`]: `${source}\n` } });
+    expect(unwiredMembers(barrelInventory(root))).toEqual([
+      { file: `${SRC_DIR}/regex.ts`, reached: false, names: ["first", "second"] },
+    ]);
+  });
+
+  it("reads a property-named reserved word as a call, so the `/` after it divides", () => {
+    // `g.if(…)` is a method called `if`, not a control header: its `)` ends an
+    // expression, and the division that follows must not become a literal.
+    const source = [
+      "export const first = 1;",
+      "declare const g: { if(n: number): number };",
+      "const r = g.if(1) / 2;",
+      "export const second = 4 / 3;",
+    ].join("\n");
+    expect(names(moduleSurface(source, "regex.ts"))).toEqual(["first", "second"]);
+    const root = fixtureTree({ files: { [`${SRC_DIR}/regex.ts`]: `${source}\n` } });
+    expect(unwiredMembers(barrelInventory(root))).toEqual([
+      { file: `${SRC_DIR}/regex.ts`, reached: false, names: ["first", "second"] },
+    ]);
+  });
+
+  it("refuses a `)` whose `(` it cannot find, rather than guessing a division", () => {
+    const source = ["export const first = 1;", "const half = (1)) / 2;"].join("\n");
+    const message = refusal(() => moduleSurface(`${source}\n`, "regex.ts"));
+    expect(message).toMatch(/regex\.ts:2/);
+    expect(message).toMatch(/closes a `\(` this scan cannot find/);
+  });
+
+  it("names the interpolation, not the template, when it cannot follow one", () => {
+    // The template closes; a brace inside a regex in its `${…}` is what the scan
+    // cannot read, and the message says so instead of blaming the template.
+    const source = ['const t = `${/{/.test("x") ? 1 : 2}`;', "export const second = 2;"].join("\n");
+    const message = refusal(() => moduleSurface(`${source}\n`, "regex.ts"));
+    expect(message).toMatch(/regex\.ts:1/);
+    expect(message).toMatch(/interpolation whose braces, quotes or regex it cannot follow/);
+    expect(message).not.toMatch(/opens here and never closes/);
+  });
+
   it("refuses `of`, which is a keyword in one reading and a variable in another", () => {
     const source = [
       "declare const of: number;",
