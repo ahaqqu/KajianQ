@@ -25,3 +25,8 @@ apps/api/.mf/
 
 # Agentic subagent git worktrees (manager skill)
 .worktrees/
+
+# Schemathesis' local example database, and the bytecode Python writes beside
+# the fuzz hooks module
+.schemathesis/
+__pycache__/

@@ -44,6 +44,27 @@ export const ChatSessionIdSchema = v.pipe(
 export const isChatSessionId = (value: string): boolean => v.is(ChatSessionIdSchema, value);
 
 /**
+ * The storability rule in the one form both of its readers share: a sequence of
+ * UTF-16 code units that are neither U+0000 nor a surrogate, or well-formed
+ * surrogate pairs.
+ *
+ * Runtime validation and the published API documentation read this same
+ * string. A custom `v.check` predicate has no JSON-Schema form, so publishing
+ * it would leave `message` a bare string and every client generated from
+ * `/openapi.json` would believe a body the route must refuse is valid; this
+ * pattern IS the rule, so the emitted schema's `pattern` and the parse cannot
+ * drift apart.
+ */
+export const STORABLE_TEXT_PATTERN = String.raw`^(?:[^\u0000\uD800-\uDFFF]|[\uD800-\uDBFF][\uDC00-\uDFFF])*$`;
+
+/**
+ * Compiled once from the published source, deliberately without the `g`/`y`
+ * flags: `test` then carries no `lastIndex` state between the boundary parse
+ * and any caller reading the predicate.
+ */
+const STORABLE_TEXT = new RegExp(STORABLE_TEXT_PATTERN);
+
+/**
  * Can the store hold this text unchanged? A message is written to a Postgres
  * `text` column, which is stored in the database encoding, so the value must
  * be UTF-8 encodable and NUL-free: U+0000 is legal JSON and legal UTF-8 but no
@@ -53,43 +74,39 @@ export const isChatSessionId = (value: string): boolean => v.is(ChatSessionIdSch
  * store or any pipeline stage, with the same `400 invalid_request` an
  * over-length body gets.
  *
+ * The decision is `STORABLE_TEXT_PATTERN`'s, not a second reading of the rule:
+ * a high surrogate is admitted only as the lead of a pair (an unpaired one,
+ * including one at the end of the string, is refused rather than rewritten),
+ * and a lone low surrogate is refused, exactly as the pattern says.
+ *
  * Every other control character the admission treats as content-free (a `Cc`
  * like U+0001, a `Cf` zero-width space or joiner, whitespace, punctuation, an
  * emoji) IS storable, and stays exactly that: a message that is not a
  * question, declined deterministically rather than refused as a body.
  */
 export function isStorableText(text: string): boolean {
-  if (text.includes("\u0000")) return false;
-  for (let i = 0; i < text.length; i += 1) {
-    const unit = text.charCodeAt(i);
-    if (unit >= 0xd800 && unit <= 0xdbff) {
-      // A high surrogate is a scalar value only as the lead of a pair; an
-      // unpaired one (including one at the end of the string) cannot be
-      // encoded, so it is refused rather than rewritten.
-      const low = text.charCodeAt(i + 1);
-      if (!(low >= 0xdc00 && low <= 0xdfff)) return false;
-      i += 1;
-    } else if (unit >= 0xdc00 && unit <= 0xdfff) {
-      return false;
-    }
-  }
-  return true;
+  return STORABLE_TEXT.test(text);
 }
 
 /**
  * The `message` field: the user's question, and storable text (see
  * `isStorableText`). The bounds run first, so an over-length body reports the
  * length issue first and `minLength`/`maxLength` stay in the published schema —
- * but `v.pipe` does not stop at a failed action, so the scan runs on every body
- * that reaches the schema, over-length ones included: one linear,
- * allocation-free pass over a string `JSON.parse` already produced.
+ * but `v.pipe` does not stop at a failed action, so the pattern runs on every
+ * body that reaches the schema, over-length ones included: one linear match
+ * over a string `JSON.parse` already produced.
+ *
+ * `v.regex` is deliberate, not a stylistic choice: `toOpenAPISchema` publishes
+ * its `requirement.source` as the field's `pattern`, which is the one form
+ * JSON Schema has for this rule. The schema a client reads and the parse the
+ * route runs are then the same string.
  */
 export const ChatMessageTextSchema = v.pipe(
   v.string(),
   v.minLength(1),
   v.maxLength(CHAT_MESSAGE_MAX_LENGTH),
-  v.check(
-    isStorableText,
+  v.regex(
+    STORABLE_TEXT,
     `A message must be storable as text: no U+0000 and no unpaired surrogate (1 to ${CHAT_MESSAGE_MAX_LENGTH} characters).`,
   ),
   v.description(

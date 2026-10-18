@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createApi } from "./app";
-import { CHAT_MESSAGE_MAX_LENGTH } from "@app/contracts";
+import { CHAT_MESSAGE_MAX_LENGTH, STORABLE_TEXT_PATTERN } from "@app/contracts";
 import type { AssetFetcher } from "@app/hardening";
 import { toOpenApiPath } from "./lib/openapi-path";
 
@@ -185,6 +185,43 @@ describe("generated OpenAPI doc", () => {
     // The trim/length rule is part of the documented surface too: a client must
     // not assume a body that trims to the ceiling is accepted.
     expect(message?.description).toContain("no trim");
+  });
+
+  it("documents the message storability rule as the pattern the route enforces (#535)", async () => {
+    const { doc } = await getDoc();
+    // JSON Schema has no form for the custom storage predicate the route runs,
+    // so the rule reaches the document as a `pattern` — the form a schema-driven
+    // client can read. Without it the body schema says a message the store
+    // cannot hold is valid, and a client generated from /openapi.json sends one.
+    const body = doc.paths["/v1/chat"]?.["post"]?.["requestBody"] as
+      | {
+          content: {
+            "application/json": {
+              schema: {
+                properties: { message: { pattern?: string; description?: string } };
+              };
+            };
+          };
+        }
+      | undefined;
+    const message = body?.content["application/json"].schema.properties.message;
+    // The published pattern is the contract's own source, not a copy of it.
+    expect(message?.pattern).toBe(STORABLE_TEXT_PATTERN);
+
+    const published = new RegExp(message?.pattern ?? "(?!)");
+    // The body the fuzz generated as schema-compliant — unpaired surrogates and
+    // U+0000 — is now excluded by the emitted document itself.
+    expect(published.test("\ud95c\udce9\u00cc\u0000")).toBe(false);
+    expect(published.test("\ud800")).toBe(false);
+    expect(published.test("\u0000riba")).toBe(false);
+    // The classes the contract still admits are still matched by the published
+    // rule: control characters the store can hold, whitespace, astral text.
+    for (const accepted of ["riba", "😀", "\u0001\u0007", " ", "؟!؟", "\u200b"]) {
+      expect(published.test(accepted), JSON.stringify(accepted)).toBe(true);
+    }
+    // The description names the same two refusals the pattern expresses.
+    expect(message?.description).toContain("U+0000");
+    expect(message?.description).toContain("unpaired surrogate");
   });
 
   it("documents the sessionId's UUID format on the request body (#271)", async () => {

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import * as v from "valibot";
 import {
   CHAT_MESSAGE_MAX_LENGTH,
+  STORABLE_TEXT_PATTERN,
   ChatCitationSchema,
   ChatCitationsFrameSchema,
   ChatMetaSchema,
@@ -206,6 +207,108 @@ describe("ChatRequestSchema message storability (#478)", () => {
     expect(sample.some((text) => !accepts(text))).toBe(true);
     expect(sample.some((text) => new TextEncoder().encode(text).includes(0))).toBe(true);
     expect(sample.some((text) => !isStorableText(text))).toBe(true);
+  });
+});
+
+/**
+ * The published pattern and the runtime predicate are one rule: JSON Schema has
+ * no form for a custom check, so the rule is written as the `pattern` the
+ * emitter publishes. This differential is what licenses that form — it pins the
+ * pattern to an explicit per-code-unit reading of the same rule over the whole
+ * input space, so the two readers cannot drift apart.
+ */
+describe("the message storability pattern decides what the code-unit scan decides (#535)", () => {
+  /**
+   * The rule read explicitly, one code unit at a time, independent of the regex
+   * engine: U+0000 refused anywhere, a high surrogate admitted only as the lead
+   * of a low one, a low surrogate never on its own.
+   */
+  const scansAsStorable = (text: string): boolean => {
+    if (text.includes("\u0000")) return false;
+    for (let i = 0; i < text.length; i += 1) {
+      const unit = text.charCodeAt(i);
+      if (unit >= 0xd800 && unit <= 0xdbff) {
+        const low = text.charCodeAt(i + 1);
+        if (!(low >= 0xdc00 && low <= 0xdfff)) return false;
+        i += 1;
+      } else if (unit >= 0xdc00 && unit <= 0xdfff) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const published = () => new RegExp(STORABLE_TEXT_PATTERN);
+
+  it("agrees on every UTF-16 code unit as a one-unit string", () => {
+    const pattern = published();
+    const mismatches: string[] = [];
+    for (let unit = 0; unit <= 0xffff; unit += 1) {
+      const text = String.fromCharCode(unit);
+      if (pattern.test(text) !== scansAsStorable(text)) {
+        mismatches.push(`U+${unit.toString(16).toUpperCase().padStart(4, "0")}`);
+      }
+    }
+    expect(mismatches).toEqual([]);
+  });
+
+  it("agrees on every Unicode code point, astral characters included", () => {
+    // The whole scalar range, plus the surrogate block that `fromCodePoint`
+    // still emits as a lone unit: every astral character is a well-formed pair,
+    // which is what exercises the pattern's pair alternative.
+    const pattern = published();
+    const mismatches: string[] = [];
+    for (let point = 0; point <= 0x10ffff; point += 1) {
+      const text = String.fromCodePoint(point);
+      if (pattern.test(text) !== scansAsStorable(text)) {
+        mismatches.push(`U+${point.toString(16).toUpperCase()}`);
+      }
+    }
+    expect(mismatches).toEqual([]);
+  });
+
+  /**
+   * Raw UTF-16 code units, drawn heavily from the surrogate block and U+0000 so
+   * that lone surrogates land mid-string and at either end; astral strings add
+   * the valid-pair and astral-character half of the space.
+   */
+  const unitStrings = fc
+    .array(
+      fc.oneof(
+        { weight: 4, arbitrary: fc.integer({ min: 0xd800, max: 0xdfff }) },
+        {
+          weight: 2,
+          arbitrary: fc.constantFrom(0x0000, 0x0001, 0x007f, 0x00cc, 0xfeff, 0xffff),
+        },
+        { weight: 1, arbitrary: fc.integer({ min: 0, max: 0xffff }) },
+      ),
+      { maxLength: 24 },
+    )
+    .map((units) => String.fromCharCode(...units));
+
+  const astralStrings = fc
+    .array(fc.integer({ min: 0x10000, max: 0x10ffff }), { maxLength: 8 })
+    .map((points) => String.fromCodePoint(...points));
+
+  /** Lone surrogates pinned at both ends, so no draw can miss the edge cases. */
+  const wrappedSurrogates = fc
+    .tuple(
+      fc.integer({ min: 0xd800, max: 0xdfff }),
+      fc.string({ maxLength: 12 }),
+      fc.integer({ min: 0xd800, max: 0xdfff }),
+    )
+    .map(([lead, middle, tail]) => String.fromCharCode(lead) + middle + String.fromCharCode(tail));
+
+  const textArb = fc.oneof(unitStrings, astralStrings, wrappedSurrogates);
+
+  fcTest.prop([textArb])("the pattern and the scan agree on every generated string", (text) => {
+    expect(published().test(text), JSON.stringify(text)).toBe(scansAsStorable(text));
+  });
+
+  it("draws both verdicts from each generator, so the differential is not vacuous", () => {
+    const sample = fc.sample(textArb, { numRuns: 500, seed: 0x535 });
+    expect(sample.some((text) => scansAsStorable(text))).toBe(true);
+    expect(sample.some((text) => !scansAsStorable(text))).toBe(true);
   });
 });
 
