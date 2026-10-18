@@ -169,50 +169,48 @@ export type SurahDescriptionAlias = {
 };
 
 /**
- * The curated descriptions the detector recognises without a name or an
- * address (ADR-0045 decision 2): a question may name a surah by a fixed
- * description — "the opening chapter of the Quran" — instead of by a name or an
- * explicit address.
+ * The curated descriptions that may name a surah without a name or an address
+ * (ADR-0045 decision 2).
  *
- * The table is deliberately bounded and curated, and its admission rule is the
- * one a maintainer applies when adding an entry, never a wider match:
+ * The table is empty, and that is its current state, not a gap: no phrase is
+ * admitted. A question that describes a surah rather than naming it — a bare
+ * form, a positional phrase a natural qualifier moves, a tradition-named
+ * description whose referent rests on a hadith attribution the product does
+ * not assert at retrieval time, or any other unlisted description — gets no
+ * reference read and stays a recorded residual. The phrases are curated **per
+ * language**, and the residual is per language too: the Indonesian bare forms
+ * ("surah pertama") name the first revealed as readily as the first in the
+ * mushaf, so they fail the same rule the English ones do.
  *
- * - the phrase must fix its Quran referent **on its own**, and no natural
- *   qualifier may move that referent. A positional description carrying the
- *   complement that fixes it to the Quran ("the opening chapter of the Quran")
- *   is still a prefix of a revelation-order phrasing ("the opening chapter of
- *   the Quran in the order of revelation"), which names Al-Alaq, not
- *   Al-Fatihah. A phrase whose boundary exists only because normalization
- *   erased the punctuation after it does not belong here;
+ * The admission rule a maintainer applies before adding a phrase:
+ *
+ * - the phrase must fix its Quran referent **on its own**, complement included,
+ *   and no natural qualifier may move that referent. "the first surah of the
+ *   quran" is a prefix of "the first surah of the quran to be revealed", which
+ *   names Al-Alaq, not Al-Fatihah; a phrase whose boundary exists only because
+ *   normalization erased the punctuation after it does not belong here;
  * - a tradition-named description is not admitted whatever its recall value:
- *   "the heart of the quran" and "the seven oft-repeated" denote a surah only
- *   through a hadith attribution the product does not assert at retrieval time,
- *   and one attribution is disputed — a deterministic read of the wrong surah
- *   is the failure this table must not ship;
- * - it is matched as a whole phrase after normalization, so the words listed are
- *   the words required, never a fragment or an ordinary adjective;
- * - its expected mapping is pinned as a literal in `surah-reference.test.ts`,
- *   with a referent-moving negative that carries the entry's own words, so
- *   adding or changing an entry reddens the suite rather than widening
- *   detection silently.
+ *   "the heart of the quran" denotes Ya-Sin only through a hadith attribution
+ *   the product does not assert at retrieval time, and one attribution is
+ *   disputed — a deterministic read of the wrong surah is the failure this
+ *   table must not ship;
+ * - it is matched as a whole phrase after normalization, so the words listed
+ *   are the words required, never a fragment or an ordinary adjective;
+ * - its expected mapping and a referent-moving negative that carries the
+ *   entry's own words would be pinned as literals in `surah-reference.test.ts`,
+ *   so adding or changing an entry cannot widen detection silently.
  *
- * The table is empty: no phrase passes the admission rule. The two positional
- * phrasings it was meant to admit ("the first surah of the quran", "the opening
- * chapter of the quran") are each a prefix of a revelation-order phrasing whose
- * referent is a different surah, and a tradition-named description fails the
- * attribution test above. An empty table with an honest residual is the
- * intended state, not a gap to fill.
- *
- * The phrases are curated **per language**, and the residual is per language:
- * an unlisted description in English, Indonesian or any other language gets no
- * reference read. The Indonesian equivalents are not admitted for the same
- * reason: the natural Indonesian bare forms name the first revealed as readily
- * as the first in the mushaf ("surah pertama").
+ * No phrase can be admitted until detection gains a boundary rule: the detector
+ * searches normalized text for a padded phrase, so a negative carrying the
+ * entry's own words always prefix-matches and the admission guard's null
+ * assertion would return the entry's surah. The table stays empty under that
+ * veto; ADR-0045's revisit trigger records the same boundary.
  *
  * Mapping arbitrary free text to a surah is the semantic inference this
  * detection refuses, and a model-based resolver or a fuzzy match would spend
- * budget on a surah the question never named. Adding a phrase is a reviewed
- * table edit, exactly like a name alias.
+ * budget on a surah the question never named. Adding a phrase would be a
+ * reviewed table edit, exactly like a name alias, after the boundary rule
+ * lands.
  */
 export const SURAH_DESCRIPTION_ALIASES: readonly SurahDescriptionAlias[] = [];
 
