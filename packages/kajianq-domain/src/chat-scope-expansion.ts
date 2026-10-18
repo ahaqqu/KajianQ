@@ -51,7 +51,7 @@ export const DEFAULT_SCOPE_EXPANSION_CAP = 12;
 export type ScopeStore = {
   listDocChildrenByParentSourceKey(
     parentSourceKey: string,
-    opts: { limit: number },
+    opts: { limit: number; fromOrdinal?: number },
   ): Effect.Effect<readonly ScopeChildRow[], StoreError>;
 };
 
@@ -101,9 +101,12 @@ export function expansionChunk(row: ScopeChildRow, origin: string): Chunk {
 
 /**
  * Detect a surah reference in the question and read that surah's children,
- * bounded by `cap`. Returns no chunks and a null scope when the question names
- * no surah, or when the cap disables expansion (`cap <= 0`); returns a scope
- * with `returned: 0` when the reference was recognised but the store held no
+ * bounded by `cap`. The window begins at the reference: the parent's opening
+ * position for a surah reference, and the named verse's own position for a
+ * verse reference, so a verse past the opening window still arrives from this
+ * read. Returns no chunks and a null scope when the question names no surah, or
+ * when the cap disables expansion (`cap <= 0`); returns a scope with
+ * `returned: 0` when the reference was recognised but the store held no
  * children for it — a recognised-but-empty scope is machinery the trace must
  * still show.
  *
@@ -121,6 +124,11 @@ export function expandSurahScope(input: {
   return Effect.gen(function* () {
     const ref = detectSurahReference(input.sourceText ?? "");
     if (ref === null || input.cap <= 0) return { chunks: [], scope: null };
+    // The Quran ingest writes one child per ayah in Tanzil order with a
+    // zero-based `ordinal`, so a named verse's position in its parent is the
+    // reference's own ayah number minus one — the reference sets where the
+    // window starts, and the store's ordinal order is the one position source.
+    const fromOrdinal = ref.ayah === undefined ? undefined : ref.ayah - 1;
     // Read one past the cap: a full `cap + 1` result is the exact signal that
     // the scope holds more children than the budget allows (no second count
     // query, and no guessing from a full-looking window).
@@ -129,6 +137,7 @@ export function expandSurahScope(input: {
         input.bridge(
           input.store.listDocChildrenByParentSourceKey(surahSourceKey(ref.surah), {
             limit: input.cap + 1,
+            ...(fromOrdinal === undefined ? {} : { fromOrdinal }),
           }),
         ),
       catch: (cause: unknown) => ({ cause }),

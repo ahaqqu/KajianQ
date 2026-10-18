@@ -112,15 +112,19 @@ function harness(
 ): {
   retrieve: (routed: RoutedQuery<KajianQFilters>) => Promise<readonly Chunk[]>;
   events: Recorded[];
-  reads: { count: number; lastLimit: number };
+  reads: { count: number; lastLimit: number; lastFromOrdinal: number | undefined };
 } {
   const events: Recorded[] = [];
-  const reads = { count: 0, lastLimit: 0 };
+  const reads = { count: 0, lastLimit: 0, lastFromOrdinal: undefined as number | undefined };
   const spy = {
     ...store,
-    listDocChildrenByParentSourceKey(parentSourceKey: string, opts: { limit: number }) {
+    listDocChildrenByParentSourceKey(
+      parentSourceKey: string,
+      opts: { limit: number; fromOrdinal?: number },
+    ) {
       reads.count += 1;
       reads.lastLimit = opts.limit;
+      reads.lastFromOrdinal = opts.fromOrdinal;
       return store.listDocChildrenByParentSourceKey(parentSourceKey, opts);
     },
   };
@@ -211,6 +215,8 @@ describe("surah-reference scoped expansion", () => {
     );
     // The read probes one past the cap — the exact truncation signal.
     expect(reads.lastLimit).toBe(cap + 1);
+    // A surah reference (no verse) reads the parent's opening: no lower bound.
+    expect(reads.lastFromOrdinal).toBeUndefined();
     const event = events.find((e) => e.kind === "scope_expansion") as
       | {
           detail: { returned: number; cap: number; truncated: boolean; key: string; value: string };
@@ -234,15 +240,86 @@ describe("surah-reference scoped expansion", () => {
     );
   });
 
-  it("expands a verse reference as its surah and records the verse", async () => {
+  it("anchors the window on a named verse past the opening window", async () => {
     const { store } = await corpus();
-    const { retrieve, events } = harness(store);
+    const cap = 12;
+    const { retrieve, events, reads } = harness(store, cap);
     const chunks = await retrieve(routed("Apa makna QS. 2:255?", ["makna ayat kursi"]));
-    expect(chunks.filter((c) => c.origin === SCOPE_EXPANSION_ORIGIN).length).toBeGreaterThan(0);
+
+    // The named verse sets where the window starts, so a reference past the
+    // opening is supplied by the deterministic read rather than by the fused
+    // tracks.
+    expect(reads.lastFromOrdinal).toBe(254);
+    expect(reads.lastLimit).toBe(cap + 1);
+    expect(labels(chunks.filter((c) => c.origin === SCOPE_EXPANSION_ORIGIN))).toEqual(
+      Array.from({ length: cap }, (_, i) => `QS. 2:${255 + i}`),
+    );
     const event = events.find((e) => e.kind === "scope_expansion") as
-      | { detail: { value: string } }
+      | {
+          detail: { returned: number; cap: number; truncated: boolean; key: string; value: string };
+        }
       | undefined;
-    expect(event?.detail.value).toBe("2:255");
+    expect(event?.detail).toEqual({
+      key: "surah",
+      value: "2:255",
+      returned: cap,
+      cap,
+      truncated: true,
+    });
+  });
+
+  it("returns a short verse-anchored window when the surah ends there", async () => {
+    const { store } = await corpus();
+    const { retrieve, events } = harness(store, 12);
+    // The last verse of Al-Baqarah: the window cannot reach the cap, and that is
+    // not truncation — the parent simply ends.
+    const chunks = await retrieve(routed("Apa makna QS. 2:286?", ["makna akhir al-baqarah"]));
+    expect(labels(chunks.filter((c) => c.origin === SCOPE_EXPANSION_ORIGIN))).toEqual([
+      "QS. 2:286",
+    ]);
+    const event = events.find((e) => e.kind === "scope_expansion") as
+      | { detail: { returned: number; truncated: boolean; value: string } }
+      | undefined;
+    expect(event?.detail).toEqual(
+      expect.objectContaining({ value: "2:286", returned: 1, truncated: false }),
+    );
+  });
+
+  it("expands a surah named by a curated description (no marker word)", async () => {
+    const { store } = await corpus();
+    const { retrieve, events, reads } = harness(store);
+    const chunks = await retrieve(
+      routed("What does the opening chapter of the Quran mean?", ["opening chapter meaning"]),
+    );
+    // The description is the reference: detection fires, the window is the
+    // surah's opening, and the trace records the surah number it resolved to.
+    expect(reads.count).toBe(1);
+    expect(reads.lastFromOrdinal).toBeUndefined();
+    expect(labels(chunks.filter((c) => c.origin === SCOPE_EXPANSION_ORIGIN))).toEqual([
+      "QS. 1:1",
+      "QS. 1:2",
+      "QS. 1:3",
+      "QS. 1:4",
+      "QS. 1:5",
+      "QS. 1:6",
+      "QS. 1:7",
+    ]);
+    const event = events.find((e) => e.kind === "scope_expansion") as
+      | { detail: { value: string; returned: number } }
+      | undefined;
+    expect(event?.detail.value).toBe("1");
+    expect(event?.detail.returned).toBe(7);
+  });
+
+  it("does not expand a description the curated table does not carry", async () => {
+    const { store } = await corpus();
+    const { retrieve, events, reads } = harness(store);
+    const chunks = await retrieve(
+      routed("What does the surah that begins with praise mean?", ["surah beginning with praise"]),
+    );
+    expect(chunks.every((c) => c.origin !== SCOPE_EXPANSION_ORIGIN)).toBe(true);
+    expect(events.filter((e) => e.kind === "scope_expansion")).toHaveLength(0);
+    expect(reads.count).toBe(0);
   });
 
   it("disables the expansion entirely at cap 0", async () => {

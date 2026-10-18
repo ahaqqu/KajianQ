@@ -2,6 +2,7 @@ import { TOTAL_SURAHS } from "./quran-source";
 import {
   normalizeSurahText,
   SURAH_AYAH_COUNTS,
+  SURAH_DESCRIPTION_ALIASES,
   SURAH_NAMES,
   withoutArticle,
   type SurahName,
@@ -35,6 +36,9 @@ import {
  *    article-stripped (`surat Fatihah`), space-insensitive compact
  *    (`surat Yasin`, `surat Annas`), elongation-collapsed (`surat Yaa Siin`)
  *    or an explicit table alias (`surat Thaha`).
+ * 3. A description the curated table carries (`SURAH_DESCRIPTION_ALIASES`):
+ *    a whole phrase whose referent is fixed to one surah, matched after
+ *    normalization without a marker word — the phrase is the reference.
  *
  * A bare name is **not** a reference, even in its definite-article form.
  * Almost every surah name is also an ordinary Arabic word or a divine name,
@@ -48,7 +52,8 @@ import {
  * an oversight. Arabic-script names (`سورة الفاتحة`) are not recognised — the
  * table is Latin transliteration only — and a Latin variant no table rule
  * reaches (`Yaseen`, `Fatehah`) is a recorded revisit trigger, never a fuzzy
- * match.
+ * match. Rule 3 is bounded the same way: only a whole phrase the table lists
+ * matches, and a description it does not carry is a recorded residual.
  */
 
 /** A surah reference detected in a question: the surah, and the verse if named. */
@@ -187,6 +192,25 @@ function firstNamedReference(
 }
 
 /**
+ * The earliest curated description in the normalized question, if any. No
+ * marker word is required — the phrase itself is the reference — which is
+ * exactly why the table is whole-phrase and curated rather than a general
+ * description matcher: the phrase has to fix its referent on its own.
+ */
+function firstDescriptionReference(q: string): { index: number; ref: SurahReference } | null {
+  const padded = ` ${q} `;
+  let best: { index: number; ref: SurahReference } | null = null;
+  for (const entry of SURAH_DESCRIPTION_ALIASES) {
+    const phrase = normalizeSurahText(entry.phrase);
+    if (phrase === "") continue;
+    const index = padded.indexOf(` ${phrase} `);
+    if (index < 0) continue;
+    if (best === null || index < best.index) best = { index, ref: { surah: entry.surah } };
+  }
+  return best;
+}
+
+/**
  * Detect the surah (and verse, when named) a question references, or null
  * when it names none. The earliest reference in the question wins, so a
  * comparison naming two surahs expands the first — the expansion is bounded
@@ -203,6 +227,8 @@ export function detectSurahReference(
   if (numeric !== null) candidates.push(numeric);
   const named = firstNamedReference(q, names);
   if (named !== null) candidates.push(named);
+  const described = firstDescriptionReference(q);
+  if (described !== null) candidates.push(described);
   if (candidates.length === 0) return null;
   candidates.sort((a, b) => a.index - b.index);
   return candidates[0]?.ref ?? null;

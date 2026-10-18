@@ -13,7 +13,10 @@
  * The table is the authoritative name source for reference detection. It is
  * keyed by Tanzil number, the same key the ingestion writes onto every surah
  * parent (`surahSourceKey`) and every ayah child (`citation.surah`), so a
- * detected reference and the corpus agree by number, never by string.
+ * detected reference and the corpus agree by number, never by string. Beside it
+ * lives the curated description table ({@link SURAH_DESCRIPTION_ALIASES}) for a
+ * question that names a surah by a fixed description instead of by a name or an
+ * address.
  *
  * It also carries the per-surah ayah counts (`SURAH_AYAH_COUNTS`) the detector
  * validates an explicit address against, so a question can never put an
@@ -155,6 +158,47 @@ export const SURAH_NAMES: readonly SurahName[] = [
   { number: 112, name: "Al-Ikhlas" },
   { number: 113, name: "Al-Falaq" },
   { number: 114, name: "An-Nas" },
+];
+
+/** One description a question may name a surah by, and the surah it denotes. */
+export type SurahDescriptionAlias = {
+  /** The canonical English phrase; normalized before it is matched. */
+  phrase: string;
+  /** The Tanzil surah number the phrase denotes. */
+  surah: number;
+};
+
+/**
+ * The curated descriptions the detector recognises without a name or an
+ * address (ADR-0045 decision 3): a question may name a surah by a fixed
+ * description — "the opening chapter of the Quran" — instead of by a name or an
+ * explicit address.
+ *
+ * The table is deliberately bounded and curated, and its admission rule is the
+ * one a maintainer applies when adding an entry, never a wider match:
+ *
+ * - the phrase must fix its referent **on its own** — either it is a name the
+ *   tradition uses for one surah, or every noun in it belongs to the Quran's own
+ *   address vocabulary (a *surah* is a Quran chapter, so "the first surah" names
+ *   one while "the first chapter" would describe a position in any book and is
+ *   therefore not admitted);
+ * - it is matched as a whole phrase after normalization, so the words listed are
+ *   the words required, never a fragment or an ordinary adjective;
+ * - it carries a test of its own (`surah-reference.test.ts`), so a phrase added
+ *   without one reddens the suite rather than widening detection silently.
+ *
+ * A description the table does not carry is an accepted residual, not an
+ * oversight: mapping arbitrary free text to a surah is the semantic inference
+ * this detection refuses, and a model-based resolver or a fuzzy match would
+ * spend budget on a surah the question never named. Adding a phrase is a
+ * reviewed table edit, exactly like a name alias.
+ */
+export const SURAH_DESCRIPTION_ALIASES: readonly SurahDescriptionAlias[] = [
+  { phrase: "the opening chapter", surah: 1 },
+  { phrase: "the opening surah", surah: 1 },
+  { phrase: "the first surah", surah: 1 },
+  { phrase: "the seven oft-repeated", surah: 1 },
+  { phrase: "the heart of the quran", surah: 36 },
 ];
 
 /**

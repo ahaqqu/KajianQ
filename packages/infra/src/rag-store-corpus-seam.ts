@@ -59,12 +59,14 @@ export interface RagStoreCorpus {
 
   /** List a parent's child chunks in stable within-parent order (`ordinal`
    * ascending), at most `limit` rows, with no embeddings and the parent title.
-   * The parent is addressed by its opaque `source_key` — the store never learns
-   * what that document is. `limit` is required so a caller cannot read an
-   * unbounded child set by accident; `limit <= 0` returns no rows. */
+   * The parent is addressed by its opaque `source_key` and the window by an
+   * optional inclusive `fromOrdinal` lower bound — the store never learns what
+   * that document is or which child the caller meant. `limit` is required so a
+   * caller cannot read an unbounded child set by accident; `limit <= 0` returns
+   * no rows, and an absent `fromOrdinal` starts at the parent's first ordinal. */
   listDocChildrenByParentSourceKey(
     parentSourceKey: string,
-    opts: { limit: number },
+    opts: { limit: number; fromOrdinal?: number },
   ): Effect.Effect<readonly DocChildById[], StoreError>;
 
   /**

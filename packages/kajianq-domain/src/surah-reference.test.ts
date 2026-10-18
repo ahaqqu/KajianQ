@@ -1,7 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 import { TOTAL_AYAHS, TOTAL_SURAHS } from "./quran-source";
-import { SURAH_AYAH_COUNTS, SURAH_NAMES, normalizeSurahText, withoutArticle } from "./surah-names";
+import {
+  SURAH_AYAH_COUNTS,
+  SURAH_DESCRIPTION_ALIASES,
+  SURAH_NAMES,
+  normalizeSurahText,
+  withoutArticle,
+} from "./surah-names";
 import { detectSurahReference } from "./surah-reference";
 
 /**
@@ -137,6 +143,69 @@ describe("detectSurahReference — recognises a named reference", () => {
       surah: 112,
       ayah: 1,
     });
+  });
+});
+
+describe("detectSurahReference — recognises a curated description", () => {
+  it("detects every phrase the curated table carries, in a sentence", () => {
+    // One test per entry: a phrase added without its own case is a table edit
+    // the suite has not reviewed, and the doc comment makes that a rule.
+    for (const alias of SURAH_DESCRIPTION_ALIASES) {
+      expect(detectSurahReference(`What does ${alias.phrase} mean?`), alias.phrase).toEqual({
+        surah: alias.surah,
+      });
+    }
+  });
+
+  it("detects the measured unnamed whole-surah phrasings", () => {
+    // The shape the name and address rules never reached: a description with no
+    // marker word, so the fused tracks alone decided whether the surah arrived.
+    expect(detectSurahReference("What does the opening chapter of the Quran mean?")).toEqual({
+      surah: 1,
+    });
+    expect(detectSurahReference("What is the meaning of the first surah of the Quran?")).toEqual({
+      surah: 1,
+    });
+  });
+
+  it("admits only whole phrases whose referent is fixed on its own", () => {
+    // The table's admission rule, pinned structurally: a phrase is at least two
+    // words, carries no number, and is no bare name form (which would match
+    // without a marker and turn an ordinary word into a surah).
+    expect(SURAH_DESCRIPTION_ALIASES.length).toBeGreaterThan(0);
+    const nameForms = new Set(
+      SURAH_NAMES.flatMap((entry) => {
+        const canonical = normalizeSurahText(entry.name);
+        return [canonical, withoutArticle(canonical)];
+      }),
+    );
+    for (const alias of SURAH_DESCRIPTION_ALIASES) {
+      const normalized = normalizeSurahText(alias.phrase);
+      expect(normalized.split(" ").length, alias.phrase).toBeGreaterThan(1);
+      expect(normalized, alias.phrase).not.toMatch(/\d/);
+      expect(nameForms.has(normalized), alias.phrase).toBe(false);
+      expect(alias.surah, alias.phrase).toBeGreaterThanOrEqual(1);
+      expect(alias.surah, alias.phrase).toBeLessThanOrEqual(TOTAL_SURAHS);
+    }
+  });
+
+  it("orders a description against a name by position, like every other rule", () => {
+    expect(detectSurahReference("Is the opening chapter different from Surah Al-Ikhlas?")).toEqual({
+      surah: 1,
+    });
+    expect(detectSurahReference("Surah Al-Ikhlas, unlike the opening chapter")).toEqual({
+      surah: 112,
+    });
+  });
+
+  it("ignores a description the table does not carry (the recorded residual)", () => {
+    // Mapping this to a surah would be the semantic inference the detection
+    // refuses, so it stays a hole rather than becoming a fuzzy match.
+    expect(detectSurahReference("What does the surah that begins with praise mean?")).toBeNull();
+    // A phrase that could describe a position in any book is not admitted: its
+    // referent is not fixed to one surah.
+    expect(detectSurahReference("What does the first chapter of Al-Umm say?")).toBeNull();
+    expect(detectSurahReference("Bagaimana isi surah yang pertama turun?")).toBeNull();
   });
 });
 

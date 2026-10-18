@@ -33,7 +33,7 @@ const FIXTURE = JSON.parse(
 );
 
 /** The cases the deployed sample asks, in the subset's order. */
-const DEFAULT_IDS = ["gs-v0-019", "gs-v0-020", "gs-v0-018", "gs-v0-001", "gs-v0-002"];
+const DEFAULT_IDS = ["gs-v0-019", "gs-v0-020", "gs-v0-018", "gs-v0-015", "gs-v0-001"];
 
 /**
  * The held-out cases' expectations, pinned as literals: a non-emptiness check
@@ -43,7 +43,6 @@ const DEFAULT_IDS = ["gs-v0-019", "gs-v0-020", "gs-v0-018", "gs-v0-001", "gs-v0-
 const HELD_OUT_EXPECTATIONS = {
   "gs-v0-003": { expectedSourceTypes: ["hadith"], requiredCitations: ["HR. Bukhari no. 149"] },
   "gs-v0-004": { expectedSourceTypes: ["hadith"], requiredCitations: ["HR. Ibnu Majah no. 224"] },
-  "gs-v0-015": { expectedSourceTypes: ["quran", "hadith"], requiredCitations: ["QS. 1:2"] },
   "gs-v0-016": { expectedSourceTypes: ["hadith"], requiredCitations: ["HR. Bukhari no. 1395"] },
   "gs-v0-017": { expectedSourceTypes: ["hadith"], requiredCitations: ["HR. Muslim no. 2064"] },
 };
@@ -58,36 +57,29 @@ describe("the staged smoke subset's default membership", () => {
   it("is exactly the cases the deployed gate samples at the default size", () => {
     const { set, reasons } = select();
     expect(set.questions.map((q) => q.id)).toEqual(DEFAULT_IDS);
-    // Each required label class is reported under its own tag, so the run's
-    // printed plan names the coverage it bought.
+    // Each required label class is reported under its own tag, and the English
+    // class is sampled again now that its carrier is out of the hold-out list,
+    // so the run's printed plan names the coverage it bought.
     expect(reasons.map((r) => r.reason)).toEqual([
       "refusal coverage",
       ...SMOKE_COVERAGE_TAGS.map((tag) => `required tag coverage: ${tag}`),
+      "English language coverage",
       "Indonesian answer coverage",
-      "fill (stable order)",
     ]);
   });
 
-  it("names the class it can no longer cover instead of passing silently", () => {
+  it("samples the English case instead of reporting it unavailable", () => {
     const selection = select();
-    expect(selection.unavailable).toEqual([
-      {
-        reason: "English language coverage",
-        heldOut: ["gs-v0-015", "gs-v0-016", "gs-v0-017"],
-      },
-    ]);
+    // The English class is carried by a sampled question again, so the plan has
+    // no unavailable line to print; the membership above is the evidence.
+    expect(selection.unavailable).toEqual([]);
     // The cross-madzhab case keeps the hadith path in the sample; nothing else
     // the full set asks for is dropped without a line.
     expect(selection.uncoveredSourceTypes).toEqual([]);
-    // The class line names the held-out carriers; the plan's own held-out line
-    // is owned by the selection data, not echoed from the caller's constant.
     expect(selection.heldOutIds).toEqual([...SMOKE_HELD_OUT_IDS]);
     const plan = formatSmokePlan(selection, FIXTURE).join("\n");
-    expect(plan).toContain(
-      "not covered: English language coverage (held out: gs-v0-015, gs-v0-016, gs-v0-017)",
-    );
+    expect(plan).not.toContain("not covered:");
     expect(plan).toContain(`held out of this sample: ${SMOKE_HELD_OUT_IDS.join(", ")}`);
-    expect(plan).not.toContain("not covered: expected source type");
   });
 
   it("keeps the cross-madzhab case an answer question with no citation floor", () => {
