@@ -83,8 +83,36 @@ export interface CitationCollectionSlot {
  * because they make a **different** address: `no. 5010a` and `no. 50102` must
  * never reduce to `no. 5010`, or a fabricated sub-number would ride in on a
  * retrieved one's grounding (fail-closed).
+ *
+ * The word is the **pattern's own third capture group**, not a second read of
+ * the text: the grammar that found the match is the only writer of "where the
+ * address word is". A second read would have to stay in step with the pattern by
+ * hand, and a `No.` it walks past names no address — the `:1` of
+ * `HR. Bukhari No. 5010:1` then refuses against the very label the chunk grounds,
+ * while the comparison fold has long since folded that casing into one string.
+ * The end comes from `match.indices`, which the pattern's `d` flag is what
+ * publishes: nothing here counts characters, so the bound is the group's own
+ * recorded coordinates. It is **positional** — a capture group added before the
+ * third re-points `indices[3]` — so the validator battery is what catches that,
+ * rather than a request.
+ *
+ * The third group is `undefined` for a token that is not ASCII-digit-led
+ * (`HR. Bukhari no. abc`), the "no address to reduce to" state: the match still
+ * exists, the citation is still refused, and the lexical tail strip owns it. A
+ * mandatory group would delete the match instead and let such a citation past the
+ * ungrounded scan unseen (fail-open).
+ *
+ * One exception the read shares with the fold, pinned in the validator test: a
+ * letter glued to the number (`no. 5010a`) is part of the number word, so it is
+ * compared as written and `…5010a` / `…5010A` are two comparison forms. The corpus
+ * renders the number numerically, so the exception costs a false refusal only for
+ * a label shape it never carries, and never a false ground.
  */
-const HADITH_ADDRESS = /^(.*?no\.\s*\d[\p{L}\p{Nd}]*)/u;
+function hadithAddressOf(match: RegExpExecArray): string | null {
+  const numberWord = match.indices?.[3];
+  if (numberWord === undefined) return null;
+  return match[0].slice(0, numberWord[1] - match.index);
+}
 
 /**
  * The citation grammars the product renders. Literal regexes, not strings
@@ -119,16 +147,24 @@ const HADITH_ADDRESS = /^(.*?no\.\s*\d[\p{L}\p{Nd}]*)/u;
 // brackets: `[HR. Malik no. 18]` must not capture a phantom `…no. 18]` span
 // that normalized to nothing a chunk grounds — a false UNGROUNDED, i.e. a
 // refused grounded answer; the Quran address already skipped them. The match
-// therefore spans address + absorbed tail; `HADITH_ADDRESS` names the address
-// inside it. A **spaced** joiner stays outside this token — `HR. Bukhari no.
+// therefore spans address + absorbed tail; the pattern's second group is that
+// tail and its third is the address's number word — `hadithAddressOf` reads the
+// address end off the third group's recorded bounds rather than searching the
+// text for the address word a second time. A **spaced** joiner stays outside this
+// token — `HR. Bukhari no.
 // 5010 - 5011` scans as its head — a recorded exclusion (ADR-0049's "Hadith
 // ranges" revisit trigger), pinned as deliberate in the validator test. The
 // collection is the first **capture group**, so a consumer rewriting the name
 // reads it out of the match the scan made rather than finding it again.
 const HADITH_GRAMMAR: CitationGrammar = {
+  // The tail is one run of token characters, split into the number word and the
+  // remainder that run absorbs: the lookahead is what keeps it non-empty (it
+  // consumes nothing), and the number word is the optional group after it —
+  // optional so a token that is not digit-led still MATCHES, with no address for
+  // `hadithAddressOf` to name.
   pattern: () =>
-    /\bHR(?:\.|\s)\s*([^\s,.]{1,24}(?:\s+[^\s,.]{1,24}){0,3})(\s+no\.\s*[^\s,;.)[\]]+)/dgi,
-  addressOf: (match) => HADITH_ADDRESS.exec(match[0])?.[1] ?? null,
+    /\bHR(?:\.|\s)\s*([^\s,.]{1,24}(?:\s+[^\s,.]{1,24}){0,3})(\s+no\.\s*(?=[^\s,;.)[\]])(\d[\p{L}\p{Nd}]*)?[^\s,;.)[\]]*)/dgiu,
+  addressOf: (match) => hadithAddressOf(match),
   collectionOf: (match) => hadithCollectionSlot(match),
 };
 
