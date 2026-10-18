@@ -196,7 +196,7 @@ export function citationSpansIn(text: string): { start: number; end: number; lab
  * not take.
  *
  * **Scan limit.** On Bun/JSC a hadith match whose non-address tail is a roughly
- * 290k-character run of quotes and CJK punctuation produces no match, and the
+ * 290k-character quote-bearing CJK run produces no match, and the
  * scan stops iterating from there — that match and every later hadith citation
  * in the draft are not found (a match attempt that hits the engine's limit
  * reports no match). The tail is the run of non-address characters after the
