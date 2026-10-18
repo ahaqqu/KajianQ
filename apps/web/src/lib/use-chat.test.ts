@@ -16,14 +16,28 @@ import { useChat } from "./use-chat";
  * discards a snapshot fetched before the current turn completed and any
  * snapshot that arrives while a turn is in flight; neither is deferred past
  * the turn, and the completed turn is never hidden by a pre-turn transcript.
+ *
+ * The same rule has to hold across a route remount: the transcript query cache
+ * is a module singleton that outlives the page, so a mount after a completed
+ * turn must fetch its own transcript instead of applying the pre-turn snapshot
+ * the cache still holds.
  */
+
+type ChatMeta = { sessionId: string };
 
 const mocks = vi.hoisted(() => ({
   loadStoredSessionId: vi.fn<() => string | null>(),
   clearStoredSessionId: vi.fn(),
   rehydrateSession: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-  askChat:
-    vi.fn<(body: unknown, handlers: { onDelta: (delta: string) => void }) => Promise<void>>(),
+  askChat: vi.fn<
+    (
+      body: unknown,
+      handlers: {
+        onMeta?: (meta: { sessionId: string }) => void;
+        onDelta: (delta: string) => void;
+      },
+    ) => Promise<void>
+  >(),
 }));
 
 vi.mock("./chat-store", () => ({
@@ -61,6 +75,39 @@ const OLD_TRANSCRIPT: ChatSessionMessages = {
 };
 /** Distinct from the applied history so its delivery is observable via the hook. */
 const LATE_TRANSCRIPT: ChatSessionMessages = { ...OLD_TRANSCRIPT, truncated: true };
+/**
+ * What the rehydration endpoint serves once the turn is persisted: the old pair
+ * plus the turn, with the server's ids and the settled answer text (which the
+ * live stream has not produced — it streams `Jawaban `).
+ */
+const TURN_TRANSCRIPT: ChatSessionMessages = {
+  sessionId: "sess-1",
+  truncated: false,
+  messages: [
+    ...OLD_MESSAGES,
+    { id: "m2", role: "user", content: "Siapa Nabi Muhammad?", createdAt: 3 },
+    { id: "m3", role: "assistant", content: "Jawaban lengkap", createdAt: 4 },
+  ],
+};
+
+/** The anonymous session's transcript after its first turn. */
+const ANON_FIRST_TURN: ChatSessionMessages = {
+  sessionId: "sess-anon",
+  truncated: false,
+  messages: [
+    { id: "a0", role: "user", content: "Siapa Nabi Muhammad?", createdAt: 1 },
+    { id: "a1", role: "assistant", content: "Jawaban pertama", createdAt: 2 },
+  ],
+};
+/** The same session's transcript after the second turn (same mount as its first). */
+const ANON_SECOND_TURN: ChatSessionMessages = {
+  ...ANON_FIRST_TURN,
+  messages: [
+    ...ANON_FIRST_TURN.messages,
+    { id: "a2", role: "user", content: "Pertanyaan kedua", createdAt: 3 },
+    { id: "a3", role: "assistant", content: "Jawaban kedua", createdAt: 4 },
+  ],
+};
 
 const TRANSCRIPT_KEY = ["chat-transcript", "sess-1"] as const;
 
@@ -89,21 +136,34 @@ function setupChat(
   mocks.rehydrateSession.mockReturnValue(transcript.promise);
   const answer = deferred<void>();
   let onDelta: (delta: string) => void = () => {};
+  let onMeta: (meta: ChatMeta) => void = () => {};
   mocks.askChat.mockImplementation(
-    (_body: unknown, handlers: { onDelta: (delta: string) => void }) => {
+    (
+      _body: unknown,
+      handlers: { onMeta?: (meta: ChatMeta) => void; onDelta: (delta: string) => void },
+    ) => {
       onDelta = handlers.onDelta;
+      if (handlers.onMeta) onMeta = handlers.onMeta;
       return answer.promise;
     },
   );
-  const { result } = renderHook(() => useChat("id"), { wrapper: wrapperFor(client) });
+  const { result, unmount } = renderHook(() => useChat("id"), { wrapper: wrapperFor(client) });
   return {
     client,
     result,
+    unmount,
     transcript,
     answer,
     send: (text = "Siapa Nabi Muhammad?") => act(() => result.current.send(text)),
     delta: (text = "Jawaban ") => act(() => onDelta(text)),
+    /** The stream's `meta` frame: the session the server minted or confirmed. */
+    meta: (sessionId: string) => act(() => onMeta({ sessionId })),
   };
+}
+
+/** Mount one instance of the hook on a client (a route mount or remount). */
+function mountChat(client: QueryClient) {
+  return renderHook(() => useChat("id"), { wrapper: wrapperFor(client) });
 }
 
 /** Start a transcript request while the turn is streaming (a reconnect refetch). */
@@ -113,7 +173,7 @@ function refetchMidTurn(chat: ReturnType<typeof setupChat>): void {
   });
 }
 
-describe("useChat — transcript vs. in-flight turn", () => {
+describe("useChat — transcript vs. the live turn and the route", () => {
   beforeEach(() => {
     let n = 0;
     vi.stubGlobal("crypto", { randomUUID: () => `id-${++n}` });
@@ -293,5 +353,184 @@ describe("useChat — transcript vs. in-flight turn", () => {
     mocks.rehydrateSession.mockRejectedValue(new Error("store down"));
     const { result } = renderHook(() => useChat("id"), { wrapper: wrapperFor(makeClient()) });
     await waitFor(() => expect(result.current.error).toBe("load"));
+  });
+
+  it("a route remount shows the completed turn, not the cached pre-turn transcript", async () => {
+    const first = deferred<ChatSessionMessages | null>();
+    const chat = setupChat({ initialTranscript: first.promise });
+    first.resolve(OLD_TRANSCRIPT);
+    await waitFor(() => expect(chat.result.current.messages).toEqual(OLD_MESSAGES));
+
+    // One completed turn: its pair lives in this instance until the endpoint
+    // serves it, and the mount-time snapshot in the cache is now pre-turn.
+    chat.send();
+    chat.delta();
+    act(() => chat.answer.resolve());
+    await waitFor(() => expect(chat.result.current.busy).toBe(false));
+    expect(chat.result.current.messages).toHaveLength(4);
+    chat.unmount();
+
+    // Navigating back mounts a fresh instance on the same (shared) client,
+    // whose cache still holds the snapshot fetched before the turn.
+    mocks.rehydrateSession.mockResolvedValue(TURN_TRANSCRIPT);
+    const remount = mountChat(chat.client);
+    // That snapshot is not this mount's transcript: it must not be applied, not
+    // even for the render before this mount's own response lands.
+    expect(remount.result.current.messages).toEqual([]);
+    expect(remount.result.current.loadingTranscript).toBe(true);
+
+    await waitFor(() => expect(remount.result.current.messages).toHaveLength(4));
+    expect(remount.result.current.messages[3]).toMatchObject({
+      role: "assistant",
+      content: "Jawaban lengkap",
+    });
+    expect(remount.result.current.loadingTranscript).toBe(false);
+  });
+
+  it("a failed remount fetch shows a load error instead of the cached pre-turn transcript", async () => {
+    const first = deferred<ChatSessionMessages | null>();
+    const chat = setupChat({ initialTranscript: first.promise });
+    first.resolve(OLD_TRANSCRIPT);
+    await waitFor(() => expect(chat.result.current.messages).toEqual(OLD_MESSAGES));
+    chat.send();
+    chat.delta();
+    act(() => chat.answer.resolve());
+    await waitFor(() => expect(chat.result.current.busy).toBe(false));
+    chat.unmount();
+
+    // The cache's pre-turn snapshot is not a fallback: it would hide the
+    // completed turn, so a failed load reports its error instead.
+    mocks.rehydrateSession.mockRejectedValue(new Error("store down"));
+    const remount = mountChat(chat.client);
+    await waitFor(() => expect(remount.result.current.error).toBe("load"));
+    expect(remount.result.current.messages).toEqual([]);
+    expect(remount.result.current.loadingTranscript).toBe(false);
+  });
+
+  it("an anonymous session shows the completed turn across route remounts", async () => {
+    // A first visit stores no session: the id is minted by the turn's `meta`
+    // frame and persisted by the client once the stream settles.
+    let stored: string | null = null;
+    mocks.loadStoredSessionId.mockImplementation(() => stored);
+    mocks.clearStoredSessionId.mockImplementation(() => {
+      stored = null;
+    });
+
+    const visit = setupChat();
+    expect(mocks.rehydrateSession).not.toHaveBeenCalled();
+    visit.send();
+    visit.delta();
+    visit.meta("sess-anon");
+    stored = "sess-anon";
+    act(() => visit.answer.resolve());
+    await waitFor(() => expect(visit.result.current.busy).toBe(false));
+    expect(visit.result.current.messages).toHaveLength(2);
+    visit.unmount();
+
+    // Back on the chat: the stored id enables rehydration, which serves the turn.
+    mocks.rehydrateSession.mockResolvedValue(ANON_FIRST_TURN);
+    const firstMount = mountChat(visit.client);
+    await waitFor(() => expect(firstMount.result.current.messages).toHaveLength(2));
+
+    // A second turn in this mount, then away and back again: the cache now
+    // holds the snapshot fetched before that turn.
+    const secondAnswer = deferred<void>();
+    let secondDelta: (delta: string) => void = () => {};
+    mocks.askChat.mockImplementation(
+      (
+        _body: unknown,
+        handlers: { onMeta?: (meta: ChatMeta) => void; onDelta: (delta: string) => void },
+      ) => {
+        secondDelta = handlers.onDelta;
+        return secondAnswer.promise;
+      },
+    );
+    act(() => firstMount.result.current.send("Pertanyaan kedua"));
+    act(() => secondDelta("Jawaban "));
+    act(() => secondAnswer.resolve());
+    await waitFor(() => expect(firstMount.result.current.busy).toBe(false));
+    expect(firstMount.result.current.messages).toHaveLength(4);
+    firstMount.unmount();
+
+    mocks.rehydrateSession.mockResolvedValue(ANON_SECOND_TURN);
+    const secondMount = mountChat(visit.client);
+    expect(secondMount.result.current.messages).toEqual([]);
+    await waitFor(() => expect(secondMount.result.current.messages).toHaveLength(4));
+    expect(secondMount.result.current.messages[3]).toMatchObject({
+      role: "assistant",
+      content: "Jawaban kedua",
+    });
+  });
+
+  it("a mount makes one transcript request and a remount makes exactly one more", async () => {
+    const client = makeClient();
+    mocks.rehydrateSession.mockResolvedValue(OLD_TRANSCRIPT);
+    const first = mountChat(client);
+    await waitFor(() => expect(first.result.current.messages).toEqual(OLD_MESSAGES));
+    expect(mocks.rehydrateSession).toHaveBeenCalledTimes(1);
+    first.unmount();
+
+    const second = mountChat(client);
+    await waitFor(() => expect(second.result.current.messages).toEqual(OLD_MESSAGES));
+    expect(mocks.rehydrateSession).toHaveBeenCalledTimes(2);
+
+    // Settled: the ownership rule does not refetch against its own snapshot.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    });
+    expect(mocks.rehydrateSession).toHaveBeenCalledTimes(2);
+  });
+
+  it("a second live mount cannot turn the ownership rule into a request loop", async () => {
+    // Two live mounts are a precondition violation (the route mounts one page),
+    // so the cap on each mount's recovery request is what keeps them from
+    // hammering the endpoint: a macrotask-resolved transcript lets a loop run
+    // far enough to be observed if that boundary ever disappears.
+    const client = makeClient();
+    let requests = 0;
+    mocks.rehydrateSession.mockImplementation(() => {
+      requests += 1;
+      return new Promise((resolve) => setTimeout(() => resolve(OLD_TRANSCRIPT), 0));
+    });
+    mountChat(client);
+    mountChat(client);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    });
+    const settled = requests;
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    });
+    expect(requests).toBe(settled);
+    expect(requests).toBeLessThanOrEqual(3);
+  });
+
+  it("a mount after a module re-evaluation gets its own identity and transcript", async () => {
+    // What Vite's HMR does to a hook module: the registry is cleared and the
+    // module is evaluated again. Identity must not be re-issued by that.
+    const client = makeClient();
+    mocks.rehydrateSession.mockResolvedValue(OLD_TRANSCRIPT);
+    const first = mountChat(client);
+    await waitFor(() => expect(first.result.current.messages).toEqual(OLD_MESSAGES));
+    const firstId = (
+      client.getQueryData(TRANSCRIPT_KEY) as { requestedByMount?: string } | undefined
+    )?.requestedByMount;
+    expect(firstId).toBeDefined();
+    first.unmount();
+
+    vi.resetModules();
+    const reEvaluated = await import("./use-chat");
+    mocks.rehydrateSession.mockResolvedValue(OLD_TRANSCRIPT);
+    const second = renderHook(() => reEvaluated.useChat("id"), { wrapper: wrapperFor(client) });
+    // The cached snapshot belongs to the earlier module's mount, so this mount
+    // fetches its own instead of adopting it.
+    expect(second.result.current.messages).toEqual([]);
+    await waitFor(() => expect(second.result.current.messages).toEqual(OLD_MESSAGES));
+    const secondId = (
+      client.getQueryData(TRANSCRIPT_KEY) as { requestedByMount?: string } | undefined
+    )?.requestedByMount;
+    expect(secondId).toBeDefined();
+    expect(secondId).not.toBe(firstId);
+    expect(mocks.rehydrateSession).toHaveBeenCalledTimes(2);
   });
 });
