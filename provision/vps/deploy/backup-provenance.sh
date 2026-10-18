@@ -68,7 +68,8 @@ if [ ! -f "${RECORD_FILE}" ]; then
         "${UNIT} has never run — the encrypted backup is unproven" \
         "a human with root must prove it: sudo systemctl start ${UNIT}" \
         "if that answers 'Unit ${UNIT} not found', systemd has not loaded" \
-        "the unit at all: sudo systemctl daemon-reload, and re-run provision/vps/apply.sh"
+        "the unit at all: sudo systemctl daemon-reload, and re-run provision/vps/apply.sh" \
+        "if the installed bundle predates the writer, bootstrap from the checkout: docs/VPS-SETUP.md §8"
 fi
 
 # One read, then parse the buffer. Reading the file once per field would pair a

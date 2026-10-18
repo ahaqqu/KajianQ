@@ -1413,8 +1413,11 @@ describe("provisioning config as code stays true to the ADR", () => {
       expect(absent.stderr).toContain("a human with root must prove it");
       expect(absent.stderr).toContain("sudo systemctl start kajianq-backup.service");
       // The remedy covers an unloaded unit too: there `systemctl start` answers "Unit ... not
-      // found", which is what the daemon-reload line is for.
+      // found", which is what the daemon-reload line is for. It also points a transition box at
+      // the checkout bootstrap, because starting the installed pre-record bundle cannot write a
+      // record and would leave the gate red.
       expect(absent.stderr).toContain("daemon-reload");
+      expect(absent.stderr).toContain("bootstrap from the checkout");
     } finally {
       fx.cleanup();
     }

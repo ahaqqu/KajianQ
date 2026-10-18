@@ -815,11 +815,12 @@ run that next.
 > **First record on a box whose installed bundle predates it.** The deploy ships
 > the writer, but the preflight runs before the ship, so starting the unit on a
 > box with no record yet would run the old `/srv/kajianq/api/backup.js` — the
-> pre-record bundle — and leave the gate red. Bootstrap once, as root, from a
-> checkout at or after this change (the checkout's script has the writer; the
-> deployed bundle does not yet):
+> pre-record bundle — and leave the gate red. Bootstrap once, on the box, in its
+> §5 checkout pulled to a commit at or after this change, as root (the checkout's
+> script has the writer; the deployed bundle does not yet):
 >
 > ```bash
+> cd /srv/kajianq-src   # the §5 checkout path; adjust if yours differs
 > sudo bun provision/vps/backup/kajianq-backup.mjs \
 >   --env-file /etc/kajianq/backup.env \
 >   --label bootstrap \
