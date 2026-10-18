@@ -13,8 +13,8 @@ import { useChat } from "./use-chat";
  * The rehydration/streaming boundary: a transcript
  * result that resolves while a turn is in flight must never clobber the
  * optimistic turns — they are the live answer's only body, and the stream's
- * patches key on their ids. The guard lives in the hook's effect: a mid-turn
- * transcript result is discarded, never deferred past the turn (it was
+ * patches key on their ids. The guard lives in the hook's effect: a transcript
+ * requested before the turn is discarded, never deferred past the turn (it was
  * fetched before the turn's write, so applying it late would hide the
  * completed turn instead).
  */
@@ -67,14 +67,6 @@ function makeWrapper(): (props: { children: ReactNode }) => ReactNode {
   return ({ children }) => createElement(QueryClientProvider, { client }, children);
 }
 
-/** Flush a full scheduler turn: React Query notifies on a macrotask, so an
- * empty async act (microtasks only) does not deliver its state updates. */
-async function flush(): Promise<void> {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  });
-}
-
 describe("useChat — transcript vs. in-flight turn", () => {
   beforeEach(() => {
     let n = 0;
@@ -86,7 +78,7 @@ describe("useChat — transcript vs. in-flight turn", () => {
     vi.clearAllMocks();
   });
 
-  it("a transcript resolving mid-turn never clobbers the streaming turn (thermo-review A1)", async () => {
+  it("a transcript resolving mid-turn never replaces the streaming turn", async () => {
     const transcript = deferred<ChatSessionMessages>();
     mocks.rehydrateSession.mockReturnValue(transcript.promise);
     const answer = deferred<void>();
@@ -109,9 +101,12 @@ describe("useChat — transcript vs. in-flight turn", () => {
     // the pre-send history (it cannot contain the in-flight turn).
     act(() => onDelta("Jawaban "));
     act(() => transcript.resolve(OLD_TRANSCRIPT));
-    await flush();
+    // Wait until the result has been observed while the turn is streaming:
+    // the hook's discard — not the assertion's timing — is what must keep the
+    // optimistic turns.
+    await waitFor(() => expect(result.current.loadingTranscript).toBe(false));
 
-    // Without the busy guard, this is where the optimistic turns vanish and
+    // Without the guard, this is where the optimistic turns vanish and
     // the subsequent deltas become no-ops on the removed assistant id.
     expect(result.current.messages).toHaveLength(2);
     expect(result.current.messages[0]).toMatchObject({
@@ -125,6 +120,39 @@ describe("useChat — transcript vs. in-flight turn", () => {
     await waitFor(() => expect(result.current.busy).toBe(false));
     expect(result.current.messages).toHaveLength(2);
     expect(result.current.messages[1]).toMatchObject({ content: "Jawaban " });
+  });
+
+  it("a transcript fetched before the turn never replaces it when it resolves after the turn", async () => {
+    const transcript = deferred<ChatSessionMessages>();
+    mocks.rehydrateSession.mockReturnValue(transcript.promise);
+    const answer = deferred<void>();
+    let onDelta: (delta: string) => void = () => {};
+    mocks.askChat.mockImplementation(
+      (_body: unknown, handlers: { onDelta: (delta: string) => void }) => {
+        onDelta = handlers.onDelta;
+        return answer.promise;
+      },
+    );
+
+    const { result } = renderHook(() => useChat("id"), { wrapper: makeWrapper() });
+
+    // The rehydration fetch is still in flight when the user sends, and the
+    // turn completes before the pre-send transcript resolves.
+    act(() => result.current.send("Siapa Nabi Muhammad?"));
+    act(() => onDelta("Jawaban "));
+    act(() => answer.resolve());
+    await waitFor(() => expect(result.current.busy).toBe(false));
+
+    // Applying that transcript now would hide the completed turn.
+    transcript.resolve(OLD_TRANSCRIPT);
+    await waitFor(() => expect(result.current.loadingTranscript).toBe(false));
+
+    expect(result.current.messages).toHaveLength(2);
+    expect(result.current.messages[0]).toMatchObject({
+      role: "user",
+      content: "Siapa Nabi Muhammad?",
+    });
+    expect(result.current.messages[1]).toMatchObject({ role: "assistant", content: "Jawaban " });
   });
 
   it("applies the transcript when no turn is in flight (normal rehydration)", async () => {

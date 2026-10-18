@@ -29,13 +29,21 @@ export function useChat(locale: "id" | "en") {
   const [error, setError] = useState<ChatError>(null);
   const [online, setOnline] = useState(true);
   const liveSessionRef = useRef<string | null>(loadStoredSessionId());
+  // Turn epochs decide whether a transcript result is still safe to apply: a
+  // transcript requested in an earlier epoch was fetched before the turn's
+  // write, so it cannot contain the turn.
+  const turnEpochRef = useRef(0);
+  const transcriptEpochRef = useRef(0);
 
   const transcript = useQuery({
     queryKey: ["chat-transcript", sessionId],
     enabled: sessionId !== null,
     staleTime: Infinity,
     retry: false,
-    queryFn: ({ signal }) => rehydrateSession(sessionId!, signal),
+    queryFn: ({ signal }) => {
+      transcriptEpochRef.current = turnEpochRef.current;
+      return rehydrateSession(sessionId!, signal);
+    },
   });
 
   // `dataUpdatedAt` of the transcript result this effect last applied — or
@@ -48,11 +56,14 @@ export function useChat(locale: "id" | "en") {
     if (transcript.data === undefined) return;
     // A transcript (re)load must never clobber an in-flight streaming turn:
     // the optimistic turns it would overwrite are the live answer's only
-    // body, and the stream's patches key on their ids. A result that resolves
-    // mid-turn is DISCARDED — not deferred — because it was fetched before the
-    // turn's write, so applying it after the turn would hide the completed
-    // turn instead.
-    if (busy) {
+    // body, and the stream's patches key on their ids. A result requested
+    // before the current turn is DISCARDED — not deferred — because it was
+    // fetched before the turn's write, so applying it after the turn would
+    // hide the completed turn instead. The request epoch, not `busy` alone,
+    // holds that rule: React can render a stale result's arrival together
+    // with the turn-completion render, leaving `busy` false when the effect
+    // runs.
+    if (busy || transcriptEpochRef.current !== turnEpochRef.current) {
       appliedTranscriptAtRef.current = transcript.dataUpdatedAt;
       return;
     }
@@ -83,6 +94,7 @@ export function useChat(locale: "id" | "en") {
   const send = useCallback(
     (text: string): void => {
       if (busy) return;
+      turnEpochRef.current += 1;
       setError(null);
       setBusy(true);
       const userTurn: ChatSessionMessage = {
