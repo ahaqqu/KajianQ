@@ -285,30 +285,28 @@ describe("surah-reference scoped expansion", () => {
     );
   });
 
-  it("expands a surah named by a curated description (no marker word)", async () => {
+  it("adds no read for a description a natural qualifier moves", async () => {
     const { store } = await corpus();
     const { retrieve, events, reads } = harness(store);
-    const chunks = await retrieve(
-      routed("What does the opening chapter of the Quran mean?", ["opening chapter meaning"]),
-    );
-    // The description is the reference: detection fires, the window is the
-    // surah's opening, and the trace records the surah number it resolved to.
-    expect(reads.count).toBe(1);
-    expect(reads.lastFromOrdinal).toBeUndefined();
-    expect(labels(chunks.filter((c) => c.origin === SCOPE_EXPANSION_ORIGIN))).toEqual([
-      "QS. 1:1",
-      "QS. 1:2",
-      "QS. 1:3",
-      "QS. 1:4",
-      "QS. 1:5",
-      "QS. 1:6",
-      "QS. 1:7",
-    ]);
-    const event = events.find((e) => e.kind === "scope_expansion") as
-      | { detail: { value: string; returned: number } }
-      | undefined;
-    expect(event?.detail.value).toBe("1");
-    expect(event?.detail.returned).toBe(7);
+    // The table carries no phrase: a positional description under a
+    // revelation-order qualifier names Al-Alaq, not Al-Fatihah, so the read must
+    // not fire — a wrong deterministic read is the failure this table exists to
+    // prevent.
+    for (const question of [
+      "Which was the first surah of the Quran to be revealed?",
+      "Which is the opening chapter of the Quran in the order of revelation?",
+    ]) {
+      const chunks = await retrieve(routed(question, ["first revealed surah"]));
+      expect(
+        chunks.every((c) => c.origin !== SCOPE_EXPANSION_ORIGIN),
+        question,
+      ).toBe(true);
+      expect(
+        events.filter((e) => e.kind === "scope_expansion"),
+        question,
+      ).toHaveLength(0);
+      expect(reads.count, question).toBe(0);
+    }
   });
 
   it("does not expand a description the curated table does not carry", async () => {

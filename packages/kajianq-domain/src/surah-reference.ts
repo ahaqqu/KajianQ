@@ -39,7 +39,9 @@ import {
  * 3. A description the curated table carries (`SURAH_DESCRIPTION_ALIASES`):
  *    the whole phrase a question uses, complement included, so the phrase
  *    fixes its Quran referent without a marker word — the phrase is the
- *    reference. The table is curated per language.
+ *    reference. The table is curated per language and currently carries no
+ *    phrase: an entry is admitted only when no natural qualifier moves its
+ *    referent, and a description it does not carry is a recorded residual.
  *
  * A bare name is **not** a reference, even in its definite-article form.
  * Almost every surah name is also an ordinary Arabic word or a divine name,
@@ -54,7 +56,9 @@ import {
  * table is Latin transliteration only — and a Latin variant no table rule
  * reaches (`Yaseen`, `Fatehah`) is a recorded revisit trigger, never a fuzzy
  * match. Rule 3 is bounded the same way: only a whole phrase the table lists
- * matches, and a description it does not carry is a recorded residual.
+ * matches, and a description it does not carry — a bare form, a qualifier-moved
+ * phrase or a tradition-named description, whose referent the product does not
+ * assert at retrieval time — is a recorded residual.
  */
 
 /** A surah reference detected in a question: the surah, and the verse if named. */
@@ -196,7 +200,9 @@ function firstNamedReference(
  * The earliest curated description in the normalized question, if any. No
  * marker word is required — the phrase itself is the reference — which is
  * exactly why the table is whole-phrase and curated rather than a general
- * description matcher: the phrase has to fix its referent on its own.
+ * description matcher: the phrase has to fix its referent on its own, with no
+ * natural qualifier moving it. The table carries no entry, so this matches
+ * nothing until a reviewed phrase passes that rule.
  */
 function firstDescriptionReference(q: string): { index: number; ref: SurahReference } | null {
   const padded = ` ${q} `;

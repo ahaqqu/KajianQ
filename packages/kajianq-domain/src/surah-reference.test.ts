@@ -148,31 +148,73 @@ describe("detectSurahReference — recognises a named reference", () => {
 });
 
 /**
- * The reviewed phrase→surah mapping, pinned as literals: the description table
- * is a recall device, so its content is a reviewed edit — adding an entry, or
- * changing the surah one maps to, reddens this file.
+ * The reviewed description table, pinned as literals: the table is a recall
+ * device, so its content is a reviewed edit — adding an entry, or changing the
+ * surah one maps to, reddens this file.
  *
- * `movedBy` is the entry's negative case: a longer phrase in which its words
- * appear but whose referent is a different surah.
+ * `movedBy` is the entry's referent-moving negative: a longer phrase that
+ * contains the entry's own words, whose qualifier moves the referent to a
+ * different surah. It is not a bare-form revert (the entry with its complement
+ * removed), which proves only that the phrase is not a bare form, not that a
+ * qualifier cannot extend it.
  */
-const PINNED_DESCRIPTIONS = [
-  {
-    phrase: "the opening chapter of the quran",
-    surah: 1,
-    movedBy: ["the opening chapter of Al-Umm"],
-  },
+type PinnedDescription = {
+  phrase: string;
+  /** The Tanzil surah the phrase denotes in mushaf order. */
+  surah: number;
+  movedBy: readonly string[];
+};
+
+const PINNED_DESCRIPTIONS: readonly PinnedDescription[] = [];
+
+/**
+ * Descriptions a maintainer might admit, each beside the natural qualifier that
+ * moves its referent to a different surah. They are residual, not entries: every
+ * row's qualified phrase carries the base phrase's own words, and detection must
+ * stay null on it — re-admitting a base phrase to the table reddens this pin.
+ */
+const REFERENT_MOVING_NEGATIVES: readonly Pick<PinnedDescription, "phrase" | "movedBy">[] = [
   {
     phrase: "the first surah of the quran",
-    surah: 1,
-    movedBy: ["the first surah revealed", "the first surah after Al-Fatihah"],
+    movedBy: ["the first surah of the quran to be revealed"],
   },
-] as const;
+  {
+    phrase: "the opening chapter of the quran",
+    movedBy: ["the opening chapter of the quran in the order of revelation"],
+  },
+];
 
-describe("detectSurahReference — recognises a curated description", () => {
+describe("detectSurahReference — the curated description table", () => {
   it("carries exactly the reviewed descriptions, pinned as literals", () => {
     expect(SURAH_DESCRIPTION_ALIASES.map((alias) => [alias.phrase, alias.surah])).toEqual(
       PINNED_DESCRIPTIONS.map((entry) => [entry.phrase, entry.surah]),
     );
+  });
+
+  it("carries no phrase a natural qualifier moves", () => {
+    // The table is empty by design: the positional phrasings are prefixes of
+    // revelation-order phrasings (Al-Alaq, not Al-Fatihah), and a tradition-named
+    // description's referent rests on an attribution the product does not assert
+    // at retrieval time. An empty table with an honest residual is the intended
+    // state, not a gap to fill.
+    expect(PINNED_DESCRIPTIONS).toEqual([]);
+  });
+
+  it("pins a referent-moving negative that carries the entry's own words, per entry", () => {
+    // The guarded property is the qualifier-moved referent, not the bare-form
+    // revert: an entry a natural qualifier turns into a different surah cannot
+    // pass, and neither can a row whose negative is only the entry's bare form.
+    // The table's entries and the residual rows run the same construction.
+    const rows = [...PINNED_DESCRIPTIONS, ...REFERENT_MOVING_NEGATIVES];
+    expect(rows.length).toBeGreaterThan(0);
+    for (const entry of rows) {
+      expect(entry.movedBy.length, entry.phrase).toBeGreaterThanOrEqual(1);
+      const phrase = normalizeSurahText(entry.phrase);
+      for (const moved of entry.movedBy) {
+        expect(normalizeSurahText(moved), `${entry.phrase} -> ${moved}`).toContain(phrase);
+        expect(detectSurahReference(`Which is ${moved}?`), moved).toBeNull();
+      }
+    }
   });
 
   it("detects every pinned description in a sentence", () => {
@@ -183,32 +225,10 @@ describe("detectSurahReference — recognises a curated description", () => {
     }
   });
 
-  it("detects the measured unnamed whole-surah phrasings", () => {
-    // The shape the name and address rules never reached: a description with no
-    // marker word, so the fused tracks alone decided whether the surah arrived.
-    expect(detectSurahReference("What does the opening chapter of the Quran mean?")).toEqual({
-      surah: 1,
-    });
-    expect(detectSurahReference("What is the meaning of the first surah of the Quran?")).toEqual({
-      surah: 1,
-    });
-  });
-
-  it("does not fire when a longer phrase moves the referent", () => {
-    // The complement is part of the entry, so the bare form is a different
-    // phrase and a longer phrase that moves the referent is not the entry.
-    for (const entry of PINNED_DESCRIPTIONS) {
-      for (const moved of entry.movedBy) {
-        expect(detectSurahReference(`What about ${moved}?`), moved).toBeNull();
-      }
-    }
-  });
-
-  it("admits only whole phrases whose referent is fixed on its own", () => {
+  it("admits only whole phrases once one is admitted", () => {
     // The table's admission rule, pinned structurally: a phrase is at least two
     // words, carries no number, and is no bare name form (which would match
     // without a marker and turn an ordinary word into a surah).
-    expect(SURAH_DESCRIPTION_ALIASES.length).toBeGreaterThan(0);
     const nameForms = new Set(
       SURAH_NAMES.flatMap((entry) => {
         const canonical = normalizeSurahText(entry.name);
@@ -225,20 +245,19 @@ describe("detectSurahReference — recognises a curated description", () => {
     }
   });
 
-  it("orders a description against a name by position, like every other rule", () => {
+  it("leaves every description the table does not carry to the residual", () => {
+    // A description outside the table gets no reference read: a bare form (any
+    // book's opening chapter, or Al-Fatihah only when the question's own context
+    // supplies it), a phrase a natural qualifier moves, a tradition-named
+    // description whose referent rests on an attribution the product does not
+    // assert at retrieval time, an unlisted description, and an Indonesian
+    // description the table does not carry. Mapping any of them would be the
+    // semantic inference the detection refuses.
     expect(
-      detectSurahReference("Is the opening chapter of the Quran different from Surah Al-Ikhlas?"),
-    ).toEqual({ surah: 1 });
-    expect(
-      detectSurahReference("Surah Al-Ikhlas, unlike the opening chapter of the Quran"),
-    ).toEqual({ surah: 112 });
-  });
-
-  it("leaves the bare forms and unlisted descriptions to the residual", () => {
-    // The bare "opening chapter" is any book's opening chapter, and the bare
-    // "first surah" is Al-Fatihah only when the question's own context supplies
-    // it. Mapping either — or an Indonesian description the table does not
-    // carry — would be the semantic inference the detection refuses.
+      detectSurahReference("Which was the first surah of the Quran to be revealed?"),
+    ).toBeNull();
+    expect(detectSurahReference("What does the seven oft-repeated mean?")).toBeNull();
+    expect(detectSurahReference("Why is Ya-Sin called the heart of the Quran?")).toBeNull();
     expect(detectSurahReference("What does the opening chapter say about mercy?")).toBeNull();
     expect(detectSurahReference("What does the first surah teach about prayer?")).toBeNull();
     expect(detectSurahReference("What does the surah that begins with praise mean?")).toBeNull();
