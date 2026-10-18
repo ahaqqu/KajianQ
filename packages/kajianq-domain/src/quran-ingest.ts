@@ -2,6 +2,7 @@ import type { MorphToken } from "@app/contracts";
 import type { ParsedParent, SourceInput, SourceParser } from "@app/rag-ingest";
 import {
   ayahMetadata,
+  quranChildOrdinal,
   surahSourceKey,
   TOTAL_AYAHS,
   type QuranAyah,
@@ -209,7 +210,7 @@ export function quranSourceParser(
           surahNameId: surah.nameId,
           ayahCount: surah.ayahCount,
         },
-        children: ayahs.map((ayah, i) => ({
+        children: ayahs.map((ayah) => ({
           sourceKey: `${surahSourceKey(surah.number)}:${ayah.ayah}`,
           textRaw: ayah.textAr,
           textPrimary: ayah.textAr,
@@ -223,7 +224,7 @@ export function quranSourceParser(
             ...ayahMetadata(ayah),
             morphology: corpus.morphology.get(`${ayah.surah}:${ayah.ayah}`) ?? [],
           },
-          ordinal: i,
+          ordinal: quranChildOrdinal(ayah.ayah),
         })),
       });
     }

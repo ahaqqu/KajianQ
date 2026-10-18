@@ -12,7 +12,7 @@ import {
   quranSourceParser,
 } from "./quran-ingest";
 import { quranPairSink, surahSummarizer } from "./quran-llm";
-import { formatQuranCitation } from "./quran-source";
+import { formatQuranCitation, quranChildOrdinal } from "./quran-source";
 import { Effect } from "effect";
 
 /**
@@ -194,6 +194,46 @@ describe("Quran ingestion (fixture = real source data)", () => {
     expect(result.report.costMicroUsd).toBe(
       result.report.llmCalls.reduce((s, c) => s + c.costMicroUsd, 0),
     );
+  });
+
+  it("writes every ayah at its own zero-based ordinal, so a verse sits at ayah - 1", async () => {
+    // The reference read derives a named verse's window start from this
+    // position, so the convention is pinned where the ingest produces it: a
+    // 1-based ordinal here would shift every anchored window one verse.
+    const raw = await loadFixtureBundle();
+    const store = createMemoryRagStore();
+    await runIngestion(
+      quranSourceParser(22, 4),
+      {
+        archiveKey: "quran/test-fixture",
+        raw,
+      },
+      {
+        store,
+        embedder: createCrossLingualEmbedder(DICT),
+        summarizer: surahSummarizer(deterministicSummarizer()),
+        pairSink: quranPairSink(store),
+      },
+    );
+    const children = store.allChildren();
+    expect(children).toHaveLength(22);
+    for (const stored of children) {
+      const citation = stored.citation as { surah: number; ayah: number };
+      const where = `QS. ${citation.surah}:${citation.ayah}`;
+      expect(stored.ordinal, where).toBe(citation.ayah - 1);
+      expect(stored.ordinal, where).toBe(quranChildOrdinal(citation.ayah));
+    }
+    // Each parent holds its own contiguous 0..count-1 run, so a named verse's
+    // position is its own number and nothing else.
+    for (const surah of [1, 112, 113, 114]) {
+      const ordinals = children
+        .filter((c) => (c.citation as { surah: number }).surah === surah)
+        .map((c) => c.ordinal)
+        .sort((a, b) => a - b);
+      expect(ordinals, `surah ${surah}`).toEqual(
+        Array.from({ length: ordinals.length }, (_, i) => i),
+      );
+    }
   });
 
   it("computes parent embeddings from summaries, not full text", async () => {

@@ -14,7 +14,8 @@ import { detectSurahReference } from "./surah-reference";
  * Surah/verse-reference detection (ADR-0045).
  *
  * The invariant under test: a question that names a surah (by explicit
- * address or by name) is recognised deterministically, and a question that
+ * address, by a marker-gated name, or by a description the curated table
+ * carries) is recognised deterministically, and a question that
  * does not name one is not. The second half is the trap — expansion is
  * additive context, so a false positive spends budget on an unrelated surah
  * and, worse, would let a question about the *person* Muhammad or the
@@ -146,13 +147,38 @@ describe("detectSurahReference — recognises a named reference", () => {
   });
 });
 
+/**
+ * The reviewed phrase→surah mapping, pinned as literals: the description table
+ * is a recall device, so its content is a reviewed edit — adding an entry, or
+ * changing the surah one maps to, reddens this file.
+ *
+ * `movedBy` is the entry's negative case: a longer phrase in which its words
+ * appear but whose referent is a different surah.
+ */
+const PINNED_DESCRIPTIONS = [
+  {
+    phrase: "the opening chapter of the quran",
+    surah: 1,
+    movedBy: ["the opening chapter of Al-Umm"],
+  },
+  {
+    phrase: "the first surah of the quran",
+    surah: 1,
+    movedBy: ["the first surah revealed", "the first surah after Al-Fatihah"],
+  },
+] as const;
+
 describe("detectSurahReference — recognises a curated description", () => {
-  it("detects every phrase the curated table carries, in a sentence", () => {
-    // One test per entry: a phrase added without its own case is a table edit
-    // the suite has not reviewed, and the doc comment makes that a rule.
-    for (const alias of SURAH_DESCRIPTION_ALIASES) {
-      expect(detectSurahReference(`What does ${alias.phrase} mean?`), alias.phrase).toEqual({
-        surah: alias.surah,
+  it("carries exactly the reviewed descriptions, pinned as literals", () => {
+    expect(SURAH_DESCRIPTION_ALIASES.map((alias) => [alias.phrase, alias.surah])).toEqual(
+      PINNED_DESCRIPTIONS.map((entry) => [entry.phrase, entry.surah]),
+    );
+  });
+
+  it("detects every pinned description in a sentence", () => {
+    for (const entry of PINNED_DESCRIPTIONS) {
+      expect(detectSurahReference(`What does ${entry.phrase} mean?`), entry.phrase).toEqual({
+        surah: entry.surah,
       });
     }
   });
@@ -166,6 +192,16 @@ describe("detectSurahReference — recognises a curated description", () => {
     expect(detectSurahReference("What is the meaning of the first surah of the Quran?")).toEqual({
       surah: 1,
     });
+  });
+
+  it("does not fire when a longer phrase moves the referent", () => {
+    // The complement is part of the entry, so the bare form is a different
+    // phrase and a longer phrase that moves the referent is not the entry.
+    for (const entry of PINNED_DESCRIPTIONS) {
+      for (const moved of entry.movedBy) {
+        expect(detectSurahReference(`What about ${moved}?`), moved).toBeNull();
+      }
+    }
   });
 
   it("admits only whole phrases whose referent is fixed on its own", () => {
@@ -190,20 +226,22 @@ describe("detectSurahReference — recognises a curated description", () => {
   });
 
   it("orders a description against a name by position, like every other rule", () => {
-    expect(detectSurahReference("Is the opening chapter different from Surah Al-Ikhlas?")).toEqual({
-      surah: 1,
-    });
-    expect(detectSurahReference("Surah Al-Ikhlas, unlike the opening chapter")).toEqual({
-      surah: 112,
-    });
+    expect(
+      detectSurahReference("Is the opening chapter of the Quran different from Surah Al-Ikhlas?"),
+    ).toEqual({ surah: 1 });
+    expect(
+      detectSurahReference("Surah Al-Ikhlas, unlike the opening chapter of the Quran"),
+    ).toEqual({ surah: 112 });
   });
 
-  it("ignores a description the table does not carry (the recorded residual)", () => {
-    // Mapping this to a surah would be the semantic inference the detection
-    // refuses, so it stays a hole rather than becoming a fuzzy match.
+  it("leaves the bare forms and unlisted descriptions to the residual", () => {
+    // The bare "opening chapter" is any book's opening chapter, and the bare
+    // "first surah" is Al-Fatihah only when the question's own context supplies
+    // it. Mapping either — or an Indonesian description the table does not
+    // carry — would be the semantic inference the detection refuses.
+    expect(detectSurahReference("What does the opening chapter say about mercy?")).toBeNull();
+    expect(detectSurahReference("What does the first surah teach about prayer?")).toBeNull();
     expect(detectSurahReference("What does the surah that begins with praise mean?")).toBeNull();
-    // A phrase that could describe a position in any book is not admitted: its
-    // referent is not fixed to one surah.
     expect(detectSurahReference("What does the first chapter of Al-Umm say?")).toBeNull();
     expect(detectSurahReference("Bagaimana isi surah yang pertama turun?")).toBeNull();
   });

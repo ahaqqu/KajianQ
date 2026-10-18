@@ -170,35 +170,44 @@ export type SurahDescriptionAlias = {
 
 /**
  * The curated descriptions the detector recognises without a name or an
- * address (ADR-0045 decision 3): a question may name a surah by a fixed
+ * address (ADR-0045 decision 2): a question may name a surah by a fixed
  * description — "the opening chapter of the Quran" — instead of by a name or an
  * explicit address.
  *
  * The table is deliberately bounded and curated, and its admission rule is the
  * one a maintainer applies when adding an entry, never a wider match:
  *
- * - the phrase must fix its referent **on its own** — either it is a name the
- *   tradition uses for one surah, or every noun in it belongs to the Quran's own
- *   address vocabulary (a *surah* is a Quran chapter, so "the first surah" names
- *   one while "the first chapter" would describe a position in any book and is
- *   therefore not admitted);
+ * - the phrase must fix its Quran referent **on its own**, in the Quran's own
+ *   context: it is a positional description that carries the complement fixing
+ *   it to the Quran ("the first surah of the quran"). The bare form is a
+ *   different phrase and is not admitted: "opening chapter" is any book's
+ *   opening chapter, and "first surah" is Al-Fatihah only when the question's
+ *   own context supplies it — the context a longer phrase such as "the first
+ *   surah revealed" moves;
  * - it is matched as a whole phrase after normalization, so the words listed are
  *   the words required, never a fragment or an ordinary adjective;
- * - it carries a test of its own (`surah-reference.test.ts`), so a phrase added
- *   without one reddens the suite rather than widening detection silently.
+ * - its expected mapping is pinned as a literal in `surah-reference.test.ts`,
+ *   with a negative case for a longer phrase that moves the referent, so adding
+ *   or changing an entry reddens the suite rather than widening detection
+ *   silently.
  *
- * A description the table does not carry is an accepted residual, not an
- * oversight: mapping arbitrary free text to a surah is the semantic inference
- * this detection refuses, and a model-based resolver or a fuzzy match would
- * spend budget on a surah the question never named. Adding a phrase is a
- * reviewed table edit, exactly like a name alias.
+ * The phrases are curated **per language**, and the residual is per language:
+ * an unlisted description in English, Indonesian or any other language gets no
+ * reference read. The table carries the English phrasings the unnamed-surah
+ * measurement produced; the Indonesian equivalents are not admitted yet because
+ * the measured class is English and the natural Indonesian bare forms name the
+ * first revealed as readily as the first in the mushaf ("surah pertama"), so an
+ * Indonesian entry needs its own qualified phrase and its own negative case
+ * first.
+ *
+ * Mapping arbitrary free text to a surah is the semantic inference this
+ * detection refuses, and a model-based resolver or a fuzzy match would spend
+ * budget on a surah the question never named. Adding a phrase is a reviewed
+ * table edit, exactly like a name alias.
  */
 export const SURAH_DESCRIPTION_ALIASES: readonly SurahDescriptionAlias[] = [
-  { phrase: "the opening chapter", surah: 1 },
-  { phrase: "the opening surah", surah: 1 },
-  { phrase: "the first surah", surah: 1 },
-  { phrase: "the seven oft-repeated", surah: 1 },
-  { phrase: "the heart of the quran", surah: 36 },
+  { phrase: "the opening chapter of the quran", surah: 1 },
+  { phrase: "the first surah of the quran", surah: 1 },
 ];
 
 /**

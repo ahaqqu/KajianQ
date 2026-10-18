@@ -37,8 +37,9 @@ import {
  *    (`surat Yasin`, `surat Annas`), elongation-collapsed (`surat Yaa Siin`)
  *    or an explicit table alias (`surat Thaha`).
  * 3. A description the curated table carries (`SURAH_DESCRIPTION_ALIASES`):
- *    a whole phrase whose referent is fixed to one surah, matched after
- *    normalization without a marker word — the phrase is the reference.
+ *    the whole phrase a question uses, complement included, so the phrase
+ *    fixes its Quran referent without a marker word — the phrase is the
+ *    reference. The table is curated per language.
  *
  * A bare name is **not** a reference, even in its definite-article form.
  * Almost every surah name is also an ordinary Arabic word or a divine name,

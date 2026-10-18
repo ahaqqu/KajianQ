@@ -77,6 +77,16 @@ export function surahSourceKey(surah: number): string {
   return `quran/tanzil-uthmani/surah/${surah}`;
 }
 
+/**
+ * The position an ayah occupies inside its surah parent: one child per ayah in
+ * Tanzil order, in a zero-based `ordinal`. The ingest writes it, and the
+ * reference read derives a named verse's window start from it, so both sides
+ * share one owner and a 1-based ingest cannot silently shift the window.
+ */
+export function quranChildOrdinal(ayah: number): number {
+  return ayah - 1;
+}
+
 export function ayahPairId(surah: number, ayah: number): string {
   return `quran-pair:${surah}:${ayah}`;
 }

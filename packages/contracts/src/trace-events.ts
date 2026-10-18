@@ -108,7 +108,7 @@ export const TraceEventSchema = v.variant("kind", [
       key: v.pipe(v.string(), v.minLength(1)),
       value: v.pipe(v.string(), v.minLength(1)),
       /** Children added; the configured cap; whether the scope held more children
-       * than the cap read from its opening ordinal. A child the caller already
+       * than the cap read from the window's start. A child the caller already
        * held is read but not added, and does not raise the flag. */
       returned: v.pipe(v.number(), v.integer(), v.minValue(0)),
       cap: v.pipe(v.number(), v.integer(), v.minValue(0)),
