@@ -48,6 +48,15 @@ Feature: Chat — ask, answer, citations, warnings, disclaimer
     When I ask a question whose dhaif answer repeats the canonical line space-separated
     Then the dhaif warning renders exactly once despite the space-separated repeat
 
+  # #303: the postprocess suppresses its own append when the draft already
+  # carries the canonical copy (`hasWeakWarning`), so the delivered answer is
+  # `[prose][canonical warning][prose][MT label][disclaimer]` and the frame still
+  # flags the dhaif. The peel owns that copy wherever it sits: the card draws it
+  # once and the body keeps none of it.
+  Scenario: The dhaif warning renders once when the canonical line sits mid-answer (#303)
+    When I ask a question whose dhaif answer carries the canonical line mid-answer
+    Then the dhaif warning renders exactly once despite the mid-answer line
+
   Scenario: Markdown in the answer renders as rich text, never literal markers (#150)
     When I ask a question whose answer contains markdown
     Then the answer renders bold, emphasis, and list items with no literal markdown

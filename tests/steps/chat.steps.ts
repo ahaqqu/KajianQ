@@ -84,6 +84,17 @@ const DHAIF_SPACE_REPEAT_ANSWER =
 
 const DHAIF_SPACE_REPEAT_FIXTURE = dhaifFixture("dhaif-space", DHAIF_SPACE_REPEAT_ANSWER);
 
+// The canonical line MID-ANSWER: the draft already carried the copy, so the
+// postprocess suppressed its own append and the trailing run holds only the MT
+// label and the disclaimer — while the frame still flags the dhaif.
+const DHAIF_MID_ANSWER =
+  `Hadits tersebut diriwayatkan [HR. Malik no. 18].\n\n${DHAIF_WARNING}\n\n` +
+  `Riwayat ini dinilai lemah oleh sebagian ulama.\n\n` +
+  "[Terjemahan mesin — lihat teks Arab asli]\n\n" +
+  DISCLAIMER;
+
+const DHAIF_MID_FIXTURE = dhaifFixture("dhaif-mid", DHAIF_MID_ANSWER);
+
 const REFUSAL_FIXTURE = [
   'event: meta\ndata: {"sessionId":"sess-e2e","messageId":"m-ref","traceId":"tr-ref"}\n\n',
   "event: delta\ndata: tidak menemukan dalil yang memadai\n\n",
@@ -327,6 +338,15 @@ When(
   "I ask a question whose dhaif answer repeats the canonical line space-separated",
   async ({ page }) => {
     await openChatWithFixtures(page, DHAIF_SPACE_REPEAT_FIXTURE);
+    await page.getByTestId("composer").fill("Hadits tentang amalan tertentu?");
+    await page.getByTestId("send").click();
+  },
+);
+
+When(
+  "I ask a question whose dhaif answer carries the canonical line mid-answer",
+  async ({ page }) => {
+    await openChatWithFixtures(page, DHAIF_MID_FIXTURE);
     await page.getByTestId("composer").fill("Hadits tentang amalan tertentu?");
     await page.getByTestId("send").click();
   },
@@ -604,6 +624,18 @@ Then(
     await expect(assistant.getByTestId("ulama-disclaimer")).toHaveCount(1);
   },
 );
+
+Then("the dhaif warning renders exactly once despite the mid-answer line", async ({ page }) => {
+  const assistant = page.getByTestId("message-assistant").last();
+  await expect(assistant.getByTestId("dhaif-warning")).toHaveCount(1);
+  const text = (await assistant.textContent()) ?? "";
+  await expect(text.split(DHAIF_WARNING).length - 1).toBe(1);
+  // The prose around the peeled copy still renders, and the disclaimer after
+  // the trailing run still reaches its footer.
+  await expect(assistant).toContainText("Hadits tersebut diriwayatkan");
+  await expect(assistant).toContainText("Riwayat ini dinilai lemah");
+  await expect(assistant.getByTestId("ulama-disclaimer")).toHaveCount(1);
+});
 
 Then(
   "the answer renders bold, emphasis, and list items with no literal markdown",

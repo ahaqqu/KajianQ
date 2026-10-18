@@ -100,6 +100,9 @@ function classifyRule(paragraph: string): { kind: RuleKind; text: string } | nul
  * kind dispatches once:
  * - **warning**: peels only when it equals the product's canonical line (`CANONICAL_WARNINGS`),
  *   so marker-prefixed prose stays prose; a repeat is dropped as the card renders it once.
+ *   The canonical line is taken **wherever the paragraph sits**, not only in the trailing run:
+ *   the postprocess suppresses its own append when the draft already carries the copy, so a
+ *   mid-answer copy is the same line the card draws and would otherwise render twice.
  * - **disclaimer**: peels into its footer whatever `bukan fatwa` phrasing opens it (the
  *   server's loose predicate); an identical repeat is dropped, a different one stays.
  * - **MT label**: peels into no field and stays in `body`, in order, with the text it describes.
@@ -126,8 +129,18 @@ export function splitAnswerBlocks(text: string): SplitAnswer {
       kept.push(rule.text);
     }
   }
+  // Above the trailing run, a paragraph made solely of the canonical copy is the
+  // same line the card draws: peel it there too, so it never also renders as
+  // body prose. Prose that merely opens with a marker, or mixes the copy with
+  // the model's own words, is not that line and stays whole.
+  const body: string[] = [];
+  for (const paragraph of paragraphs.slice(0, cut)) {
+    const repeat = repeatOfCanonicalWarning(paragraph);
+    if (repeat === null) body.push(paragraph);
+    else warning ??= repeat;
+  }
   return {
-    body: [...paragraphs.slice(0, cut), ...kept.reverse()].join("\n\n"),
+    body: [...body, ...kept.reverse()].join("\n\n"),
     warning,
     disclaimer,
   };

@@ -180,3 +180,53 @@ describe("AnswerCard dhaif warning renders exactly once (#292)", () => {
     expect(occurrences(text, prose)).toBe(1);
   });
 });
+
+/**
+ * The canonical line can sit mid-answer. `applyProductRules` suppresses its own
+ * append when the draft already carries the copy, so the delivered text is
+ * `[prose][canonical warning][prose][MT label][disclaimer]` and the trailing run
+ * holds only the label and the disclaimer — while the frame still reports
+ * `dhaifWarning: true`. Both surfaces must still draw the sentence once: the
+ * peel owns the copy wherever it sits, so the card draws it and `body` keeps
+ * none of it.
+ *
+ * The first row names the mutation it pins: a peel that walks only the trailing
+ * run leaves the copy in `body` while the flag-driven card draws it again.
+ */
+describe("AnswerCard dhaif warning renders exactly once when the canonical line sits mid-answer (#303)", () => {
+  const delivered = ["Jawaban awal.", WARNING_ID, "Jawaban lanjutan.", MT, DISCLAIMER].join("\n\n");
+
+  it("renders the canonical line once — mutation: the peel walks only the trailing run", () => {
+    const card = renderCard(delivered, true);
+    const text = card.textContent ?? "";
+    expect(occurrences(text, WARNING_ID)).toBe(1);
+    expect(screen.getAllByTestId("dhaif-warning")).toHaveLength(1);
+    // The disclaimer above the trailing run still reaches its footer once, the
+    // label stays provenance in the body, and the prose around the copy keeps
+    // rendering.
+    expect(screen.getAllByTestId("ulama-disclaimer")).toHaveLength(1);
+    expect(occurrences(text, DISCLAIMER)).toBe(1);
+    expect(occurrences(text, MT)).toBe(1);
+    expect(occurrences(text, "Jawaban awal.")).toBe(1);
+    expect(occurrences(text, "Jawaban lanjutan.")).toBe(1);
+  });
+
+  it("does not card marker-prefixed prose mid-answer (A2)", () => {
+    const prose = "[Peringatan] Sebagian ulama menilai riwayat ini lemah.";
+    const card = renderCard(["Jawaban awal.", prose, "Jawaban lanjutan.", MT].join("\n\n"), false);
+    const text = card.textContent ?? "";
+    expect(screen.queryAllByTestId("dhaif-warning")).toHaveLength(0);
+    expect(occurrences(text, prose)).toBe(1);
+    expect(occurrences(text, WARNING_ID)).toBe(0);
+  });
+
+  it("keeps one localized card when a mid-answer copy and the frame flag meet", () => {
+    // The copy peels to the card, whose value is the answer's own canonical
+    // wording — the localized frame copy is not drawn beside it.
+    const card = renderCard(delivered, true, "en");
+    const text = card.textContent ?? "";
+    expect(screen.getAllByTestId("dhaif-warning")).toHaveLength(1);
+    expect(occurrences(text, WARNING_ID)).toBe(1);
+    expect(occurrences(text, WARNING_EN)).toBe(0);
+  });
+});

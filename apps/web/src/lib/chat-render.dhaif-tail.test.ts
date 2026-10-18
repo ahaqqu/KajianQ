@@ -216,13 +216,14 @@ describe("splitAnswerBlocks — marker tolerance (A3)", () => {
   });
 
   it("does not classify a paragraph that merely mentions the phrase mid-sentence", () => {
-    // No bracketed opening, so it is prose — and prose stops the walk, keeping
-    // a warning-like line earlier in the answer out of the card.
+    // No bracketed opening, so it is prose and stays whole in `body`. The
+    // canonical line above it is the card's copy wherever it sits, so it peels
+    // rather than leaving the card to draw over a prose copy.
     const split = splitAnswerBlocks(
       [WARNING_ID, "Peringatan tanpa kurung sama sekali.", MT].join("\n\n"),
     );
-    expect(split.warning).toBeNull();
-    expect(split.body).toBe([WARNING_ID, "Peringatan tanpa kurung sama sekali.", MT].join("\n\n"));
+    expect(split.warning).toBe(WARNING_ID);
+    expect(split.body).toBe(["Peringatan tanpa kurung sama sekali.", MT].join("\n\n"));
   });
 
   it("does not eat prose when the trailing rule run ends", () => {
