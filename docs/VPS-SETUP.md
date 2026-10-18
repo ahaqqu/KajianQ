@@ -874,7 +874,8 @@ questions will fail on retrieval rather than on your configuration.
 
 Run the full `Staging` workflow (or push any non-docs commit to `main`). It
 deploys, then runs the Golden Set smoke against your live box — and the ZAP
-baseline and Schemathesis fuzz only when that smoke passes:
+baseline and Schemathesis fuzz run even when that smoke is red (independent
+gates; the job still ends red on the smoke):
 
 | Check            | What it proves                                                                                                                          |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------- |

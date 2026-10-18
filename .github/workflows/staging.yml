@@ -22,9 +22,9 @@ name: Staging
 # ingest skipped the smoke entirely, spending money and producing no evidence
 # for it.
 #
-# A red Golden Set smoke deliberately stops `post deploy checks`: `ZAP baseline`
-# and `Schemathesis fuzz` do not run after it — not an oversight but the accepted
-# trade of #360 (two extra job starts to scan an unhealthy deployment, declined).
+# A red Golden Set smoke fails `post deploy checks` but does not skip the DAST
+# steps: `ZAP baseline` and `Schemathesis fuzz` run regardless — independent
+# gates — and the job still ends red on the smoke.
 on:
   push:
     branches: [main]
@@ -178,7 +178,7 @@ jobs:
         with:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
-      # The PR-time behavioural gate (SPECS §3.7, ticket #10): a deterministic
+      # The deployed behavioural gate (SPECS §3.7, ticket #10): a deterministic
       # stratified slice of the Golden Set — refusal, dhaif trap, English, and
       # Indonesian cases — answered by the *deployed* API and scored from its
       # persisted answer traces through the same harness and ledger as eval:run.
@@ -292,13 +292,14 @@ jobs:
           EVAL_SMOKE_SIZE: ${{ github.event.inputs.eval_smoke_size || '5' }}
           EVAL_RUN_LABEL: staging-smoke-${{ github.sha }}
       # The image is prepared in its own step so a registry or image failure is
-      # attributed BEFORE the scan: this step goes red by name, the scan never
-      # runs, and "did the site regress?" is not even a possible reading. The
-      # action's own `docker pull` then hits the local cache — no second
-      # download. The pre-scan container list is snapshotted here for the
-      # classifier below, which identifies the scan's container from the
-      # difference when `docker ps --filter ancestor` does not resolve a digest
-      # reference on the runner.
+      # attributed BEFORE the scan: this step goes red by name and the
+      # attribution below names the pre-pull class, so "did the site regress?"
+      # is not a possible reading even though the scan still runs as an
+      # independent gate. The action's own `docker pull` then hits the local
+      # cache — no second download. The pre-scan container list is snapshotted
+      # here for the classifier below, which identifies the scan's container
+      # from the difference when `docker ps --filter ancestor` does not resolve a
+      # digest reference on the runner.
       - name: ZAP image pre-pull
         id: zap-image
         # The post-deploy gates are independent: an earlier failure must not

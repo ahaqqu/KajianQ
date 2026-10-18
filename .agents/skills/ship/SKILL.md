@@ -34,7 +34,8 @@ for anything below that drifts.
 
 The `Staging` workflow runs on every push/merge outside `paths-ignore`: it deploys via
 the reusable `deploy-vps.yml`, then runs the Golden Set smoke; ZAP baseline and
-Schemathesis fuzz follow only when it passes. The deploy script performs its own
+Schemathesis fuzz are independent gates that run even when the smoke is red, and the
+job still ends red on the smoke. The deploy script performs its own
 post-deploy smoke (health, an anonymous-session mint, the SPA HTML check).
 
 ```
@@ -42,7 +43,7 @@ push/merge outside paths-ignore
   └─ Staging workflow
        ├─ deploy            → deploy-vps.yml → provision/vps/deploy/deploy.sh
        │                       preflight → build → rsync → restart → smoke (public URL)
-       └─ post deploy checks → Golden Set smoke → ZAP · Schemathesis (smoke-gated)
+       └─ post deploy checks → Golden Set smoke → ZAP · Schemathesis (independent gates)
 ```
 
 To deploy by hand (an operator action, or a re-run):
