@@ -203,13 +203,13 @@ Account deletion cascades across all data stores, including `answer_traces`
   only. ZAP findings may only be suppressed in `.github/zap-rules.tsv` with an
   inline justification; staging runs with `fail_action: true`.
 
-| Layer                      | Tool               | When                                                                                                                                                                         |
-| -------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Static analysis            | Semgrep            | Every PR                                                                                                                                                                     |
-| Dependency vulnerabilities | OSV-Scanner        | Merge to main + nightly (deliberately not on PRs — see `vuln-scan.yml`)                                                                                                      |
-| Secret scanning            | gitleaks           | Every PR                                                                                                                                                                     |
-| Dynamic security scan      | OWASP ZAP Baseline | Every main merge against staging, outside `paths-ignore`, after the Golden Set smoke passes (deliberate — a deployment that fails its own smoke is not worth scanning; #360) |
-| API fuzzing                | Schemathesis       | Every main merge against staging, outside `paths-ignore`, after the Golden Set smoke passes (deliberate — a deployment that fails its own smoke is not worth scanning; #360) |
+| Layer                      | Tool               | When                                                                                                                                                                   |
+| -------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Static analysis            | Semgrep            | Every PR                                                                                                                                                               |
+| Dependency vulnerabilities | OSV-Scanner        | Merge to main + nightly (deliberately not on PRs — see `vuln-scan.yml`)                                                                                                |
+| Secret scanning            | gitleaks           | Every PR                                                                                                                                                               |
+| Dynamic security scan      | OWASP ZAP Baseline | Every main merge against staging, outside `paths-ignore`; an independent gate that runs even when the Golden Set smoke is red, and the job still ends red on the smoke |
+| API fuzzing                | Schemathesis       | Every main merge against staging, outside `paths-ignore`; an independent gate that runs even when the Golden Set smoke is red, and the job still ends red on the smoke |
 
 ## 9. Observable — easy to monitor _(inherited)_
 
@@ -351,16 +351,16 @@ generator's vendor — §1); what does not relax is the deterministic gate: the
 citation validator runs on 100% of answers, and a fabricated citation is refused
 regardless of who reviews.
 
-| Layer           | Tool                             | Required when                                                                                                                                                                |
-| --------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Unit            | Vitest                           | All business logic, schemas, store queries                                                                                                                                   |
-| Property        | fast-check                       | Adapter invariants (idempotency, immutability)                                                                                                                               |
-| E2E/BDD         | Playwright-BDD                   | User-facing flows (+ axe accessibility)                                                                                                                                      |
-| Golden Set      | `packages/eval`                  | Release gate (operator-invoked); smoke on every staging deploy (`staging.yml` `post deploy checks`); no nightly, none planned (#359)                                         |
-| Bundle          | size-limit                       | Every PR                                                                                                                                                                     |
-| API fuzz / DAST | Schemathesis / ZAP               | Every main merge against staging, outside `paths-ignore`, after the Golden Set smoke passes (deliberate — a deployment that fails its own smoke is not worth scanning; #360) |
-| Security        | Semgrep + OSV-Scanner + gitleaks | Every PR; OSV-Scanner on merge to main + nightly                                                                                                                             |
-| Boundary        | `scripts/check-boundary.mjs`     | Every PR                                                                                                                                                                     |
+| Layer           | Tool                             | Required when                                                                                                                                                       |
+| --------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit            | Vitest                           | All business logic, schemas, store queries                                                                                                                          |
+| Property        | fast-check                       | Adapter invariants (idempotency, immutability)                                                                                                                      |
+| E2E/BDD         | Playwright-BDD                   | User-facing flows (+ axe accessibility)                                                                                                                             |
+| Golden Set      | `packages/eval`                  | Release gate (operator-invoked); smoke on every staging deploy (`staging.yml` `post deploy checks`); no nightly, none planned (#359)                                |
+| Bundle          | size-limit                       | Every PR                                                                                                                                                            |
+| API fuzz / DAST | Schemathesis / ZAP               | Every main merge against staging, outside `paths-ignore`; independent gates that run even when the Golden Set smoke is red, and the job still ends red on the smoke |
+| Security        | Semgrep + OSV-Scanner + gitleaks | Every PR; OSV-Scanner on merge to main + nightly                                                                                                                    |
+| Boundary        | `scripts/check-boundary.mjs`     | Every PR                                                                                                                                                            |
 
 Coverage gate: 80% lines/functions/statements, 70% branches over logic globs
 (packages, API, web lib) — UI components are covered by BDD + axe instead.

@@ -4,16 +4,16 @@
  *
  * Runs a small, stratified slice of the Golden Set against a target `/v1/chat`,
  * through the same harness and ledger as the full run (`eval:run`). `selectSmokeSubset`
- * picks it deterministically — refusal, trap, English and Indonesian cases first,
- * then fill, over the questions the product has not held out — so a PR-time gate
- * cannot pass by accident on easy questions alone.
+ * picks it deterministically — refusal, the label classes the product requires, English
+ * and Indonesian cases first, then fill — so the deployed gate cannot pass by accident on
+ * easy questions alone.
  *
  * Env (the same validated config as `eval:run`, plus one knob):
  *   EVAL_API_BASE_URL      the staging /v1/chat origin (required)
  *   EVAL_API_TOKEN         an anonymous Bearer token (required)
  *   DATABASE_URL           the staging store for traces and run rows (required)
  *   EVAL_BUDGET_MICRO_USD  hard spend cap in micro-USD (unset/0 = uncapped)
- *   EVAL_SMOKE_SIZE        subset size (default 5, the spec's PR-time size)
+ *   EVAL_SMOKE_SIZE        subset size (default 5 — the deployed smoke's default size)
  *
  * Exit code is non-zero when any smoke question fails, is skipped, or was never
  * measured — the shared `exitPolicy` in `eval-cli.mjs`, the same one `eval:run`
@@ -30,10 +30,9 @@
  * the shared CLI glue in `eval-cli.mjs`; this script keeps only the subset selection.
  */
 import * as evalpkg from "@app/eval";
-// The trap marker is the domain pack's vocabulary, imported so a rename cannot strand the gate.
-// The held-out ids are the domain pack's Golden Set curation: the selector receives
-// them opaquely and still fills every coverage class from the rest of the set.
-import { DAIF_TRAP_LABEL, SMOKE_HELD_OUT_IDS } from "@app/kajianq-domain";
+// The required coverage classes and the held-out cases are the domain pack's
+// vocabulary, imported so a rename cannot strand the gate.
+import { SMOKE_COVERAGE_TAGS, SMOKE_HELD_OUT_IDS } from "@app/kajianq-domain";
 import { createStagingHarness } from "./staging-harness.mjs";
 import {
   createBudget,
@@ -63,24 +62,19 @@ const selection = (() => {
   try {
     return evalpkg.selectSmokeSubset(fixture, {
       size,
-      trapTag: DAIF_TRAP_LABEL,
+      requiredTags: SMOKE_COVERAGE_TAGS,
       exclude: SMOKE_HELD_OUT_IDS,
     });
   } catch (err) {
-    // A fixture that no longer carries the trap tag must redden the gate, not
-    // shrink it: the selector refuses to skip the adversarial case silently.
+    // A fixture that no longer carries a required coverage class must redden
+    // the gate, not shrink it: the selector refuses to skip that class silently.
     fail("eval:smoke", err instanceof Error ? err.message : String(err));
   }
 })();
 console.log(
   [
-    `eval:smoke: ${selection.set.questions.length} of ${fixture.questions.length} questions from "${fixture.id}"`,
-    ...selection.reasons.map((r) => `  ${r.id}: ${r.reason}`),
-    // The plan names what it did not ask: a held-out question stays in the full
-    // set, so a reader of the gate's log can see the sample is smaller than the set.
-    ...(SMOKE_HELD_OUT_IDS.length > 0
-      ? [`  held out of this sample: ${SMOKE_HELD_OUT_IDS.join(", ")}`]
-      : []),
+    ...evalpkg.formatSmokePlan(selection, fixture),
+    `  held out of this sample: ${SMOKE_HELD_OUT_IDS.join(", ")}`,
   ].join("\n"),
 );
 

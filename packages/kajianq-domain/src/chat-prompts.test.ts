@@ -154,3 +154,63 @@ describe("the usul authority order", () => {
     expect(chatSystemPrompt("en")).toMatch(/not evidence standing on their own/);
   });
 });
+
+/**
+ * The evidence-present rule: a question is answered when the context carries
+ * the fact it asks about — even where the question's own term or name for it
+ * is not printed in the context — and a request for a comparison or "the most
+ * excellent" is answered from what the context states about the things
+ * compared. Without it the refusal condition could swallow such a question:
+ * rule 1 listed an absent "name" among the things that make an answer missing,
+ * and rule 7's ban on added interpretation left no stated permission to reuse
+ * the question's own term for a passage the context contains. The duty lives
+ * INSIDE rule 1, beside the refusal it qualifies, because a separate rule was
+ * ignored (see the specific-fact block above).
+ */
+describe("the evidence-present answer rule", () => {
+  /** Rule 1's line — the refusal and the duty that qualifies it share it. */
+  const ruleOne = (language: "id" | "en"): string =>
+    chatSystemPrompt(language)
+      .split("\n")
+      .find((line) => line.startsWith("1."))!;
+
+  it("answers from the context under the question's own term, per language", () => {
+    // The licence is scoped to evidence that describes the asked thing under
+    // another name — ADR-0015's condition, not a general "the term is absent,
+    // so answer anyway".
+    expect(ruleOne("id")).toMatch(
+      /Bila konteks memuat jawaban atas hal yang ditanyakan, sekalipun konteks menyebut hal itu dengan nama lain/,
+    );
+    expect(ruleOne("en")).toMatch(
+      /When the context contains the answer to the thing the question asks about, even where the context describes that thing under another name/,
+    );
+    // Using the question's own term is not itself grounds for refusal.
+    expect(ruleOne("id")).toMatch(
+      /memakai istilah pertanyaan bukan menambah tafsir dan bukan alasan menolak/,
+    );
+    expect(ruleOne("en")).toMatch(
+      /using the question's own term is not adding interpretation and is not a reason to refuse/,
+    );
+  });
+
+  it("answers a comparison from what the context states, without inventing a ranking", () => {
+    expect(ruleOne("id")).toMatch(/meminta perbandingan atau mana yang paling utama/);
+    expect(ruleOne("en")).toMatch(/asks for a comparison or which option is most excellent/);
+    // The negative half is the product's boundary: the ranking is the evidence's
+    // to state, never the model's to supply.
+    expect(ruleOne("id")).toMatch(/jangan menetapkan peringkat yang tidak dinyatakan konteks/);
+    expect(ruleOne("en")).toMatch(/do not set out a ranking the context does not state/);
+  });
+
+  it("leaves the absent-fact refusal and the no-gloss ban intact", () => {
+    // The permission must not read as "answer anything topical": the same rule
+    // still routes a demanded-but-absent fact to the exact sentence, and rule 7
+    // still forbids interpretation the context does not carry.
+    expect(ruleOne("id")).toContain(`"${DEFAULT_REFUSALS.id}"`);
+    expect(ruleOne("en")).toContain(`"${DEFAULT_REFUSALS.en}"`);
+    expect(ruleOne("id")).toMatch(/tidak ada di konteks/);
+    expect(ruleOne("en")).toMatch(/is absent from the context/);
+    expect(chatSystemPrompt("id")).toMatch(/Jangan menambahkan tafsir/);
+    expect(chatSystemPrompt("en")).toMatch(/Do not add tafsir/);
+  });
+});

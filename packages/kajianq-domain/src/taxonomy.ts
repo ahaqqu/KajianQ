@@ -104,16 +104,23 @@ export const GOLDEN_SET_TAG_VOCABULARY: readonly string[] = [
 export const DAIF_TRAP_LABEL = "dhaif-trap";
 
 /**
- * Golden Set questions the default staged smoke holds out of its sample: the
- * cases whose outcome the deployed commit cannot decide consistently. A held-out
- * question stays in the full set and in QA — it is not a member the deploy gate
- * samples, because its result turns on the router's sampled reading or on a
+ * The Golden Set label classes the staged smoke must always cover: the trap,
+ * and the cross-madzhab answer the over-refusal risk is measured on. The
+ * selector receives them as opaque required tags — a tag no question carries
+ * fails the gate rather than shrinking the subset — so a fixture reshuffle or
+ * a selector change cannot silently drop either class from the smoke.
+ */
+export const SMOKE_COVERAGE_TAGS = [DAIF_TRAP_LABEL, "cross-madzhab"] as const;
+
+/**
+ * Golden Set questions the staged smoke holds out of its sample. A held-out
+ * question stays in the full set and in QA — the deployed gate does not sample
+ * it, because its outcome turns on the router's sampled reading or on a
  * required citation the retrieval cannot ground yet, so sampling it would make
  * the gate red or green by chance instead of by regression. The eval script
- * passes these ids to the selector opaquely (the engine names no product id).
- * The whole-surah retrieval defect behind gs-v0-015 is #533's; the
- * required-citation cases are the retrieval-precision work's. An id leaves this
- * list when what it measures is deterministic again.
+ * passes these ids to the selector opaquely (the engine names no product id);
+ * an id leaves this list when what it measures is deterministic again. The
+ * retrieval half of gs-v0-015's gap is #533's.
  */
 export const SMOKE_HELD_OUT_IDS: readonly string[] = [
   "gs-v0-003",
