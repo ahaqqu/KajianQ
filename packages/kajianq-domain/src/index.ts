@@ -259,10 +259,12 @@ export {
 // -- Surah-reference scoped expansion (ADR-0045) ---------------------------
 export {
   SURAH_AYAH_COUNTS,
+  SURAH_DESCRIPTION_ALIASES,
   SURAH_NAMES,
   normalizeSurahText,
   leadingArticle,
   withoutArticle,
+  type SurahDescriptionAlias,
   type SurahName,
 } from "./surah-names";
 export { detectSurahReference, type SurahReference } from "./surah-reference";

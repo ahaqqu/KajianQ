@@ -13,7 +13,10 @@
  * The table is the authoritative name source for reference detection. It is
  * keyed by Tanzil number, the same key the ingestion writes onto every surah
  * parent (`surahSourceKey`) and every ayah child (`citation.surah`), so a
- * detected reference and the corpus agree by number, never by string.
+ * detected reference and the corpus agree by number, never by string. Beside it
+ * lives the curated description table ({@link SURAH_DESCRIPTION_ALIASES}) for a
+ * question that names a surah by a fixed description instead of by a name or an
+ * address.
  *
  * It also carries the per-surah ayah counts (`SURAH_AYAH_COUNTS`) the detector
  * validates an explicit address against, so a question can never put an
@@ -156,6 +159,62 @@ export const SURAH_NAMES: readonly SurahName[] = [
   { number: 113, name: "Al-Falaq" },
   { number: 114, name: "An-Nas" },
 ];
+
+/** One description a question may name a surah by, and the surah it denotes. */
+export type SurahDescriptionAlias = {
+  /** The canonical English phrase; normalized before it is matched. */
+  phrase: string;
+  /** The Tanzil surah number the phrase denotes. */
+  surah: number;
+};
+
+/**
+ * The curated descriptions the detector recognises without a name or an
+ * address (ADR-0045 decision 2): a question may name a surah by a fixed
+ * description — "the opening chapter of the Quran" — instead of by a name or an
+ * explicit address.
+ *
+ * The table is deliberately bounded and curated, and its admission rule is the
+ * one a maintainer applies when adding an entry, never a wider match:
+ *
+ * - the phrase must fix its Quran referent **on its own**, and no natural
+ *   qualifier may move that referent. A positional description carrying the
+ *   complement that fixes it to the Quran ("the opening chapter of the Quran")
+ *   is still a prefix of a revelation-order phrasing ("the opening chapter of
+ *   the Quran in the order of revelation"), which names Al-Alaq, not
+ *   Al-Fatihah. A phrase whose boundary exists only because normalization
+ *   erased the punctuation after it does not belong here;
+ * - a tradition-named description is not admitted whatever its recall value:
+ *   "the heart of the quran" and "the seven oft-repeated" denote a surah only
+ *   through a hadith attribution the product does not assert at retrieval time,
+ *   and one attribution is disputed — a deterministic read of the wrong surah
+ *   is the failure this table must not ship;
+ * - it is matched as a whole phrase after normalization, so the words listed are
+ *   the words required, never a fragment or an ordinary adjective;
+ * - its expected mapping is pinned as a literal in `surah-reference.test.ts`,
+ *   with a referent-moving negative that carries the entry's own words, so
+ *   adding or changing an entry reddens the suite rather than widening
+ *   detection silently.
+ *
+ * The table is empty: no phrase passes the admission rule. The two positional
+ * phrasings it was meant to admit ("the first surah of the quran", "the opening
+ * chapter of the quran") are each a prefix of a revelation-order phrasing whose
+ * referent is a different surah, and a tradition-named description fails the
+ * attribution test above. An empty table with an honest residual is the
+ * intended state, not a gap to fill.
+ *
+ * The phrases are curated **per language**, and the residual is per language:
+ * an unlisted description in English, Indonesian or any other language gets no
+ * reference read. The Indonesian equivalents are not admitted for the same
+ * reason: the natural Indonesian bare forms name the first revealed as readily
+ * as the first in the mushaf ("surah pertama").
+ *
+ * Mapping arbitrary free text to a surah is the semantic inference this
+ * detection refuses, and a model-based resolver or a fuzzy match would spend
+ * budget on a surah the question never named. Adding a phrase is a reviewed
+ * table edit, exactly like a name alias.
+ */
+export const SURAH_DESCRIPTION_ALIASES: readonly SurahDescriptionAlias[] = [];
 
 /**
  * The ayah count of each surah, Tanzil order (index 0 = surah 1). The

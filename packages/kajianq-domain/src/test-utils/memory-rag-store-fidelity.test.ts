@@ -224,4 +224,23 @@ pgRun("the memory stand-in and the adapter agree on one fixture (real Postgres)"
     };
     expect(await byIds(mem, memByOrdinal)).toEqual(await byIds(pg, pgByOrdinal));
   });
+
+  it("reads the same ordinal window from a fromOrdinal lower bound", async () => {
+    if (pg === null || mem === null) return;
+    const window = async (store: CorpusStore, byOrdinal: Map<number, string>) => {
+      const idToOrdinal = new Map([...byOrdinal].map(([ordinal, id]) => [id, ordinal]));
+      const rows = await Effect.runPromise(
+        store.listDocChildrenByParentSourceKey(prefix, { limit: 2, fromOrdinal: 2 }),
+      );
+      return rows.map((r) => idToOrdinal.get(r.id) ?? -1);
+    };
+    // The bound's own row is included and everything before it is not, on both
+    // sides — the window start the scope read depends on has one meaning.
+    expect(await window(mem, memByOrdinal)).toEqual([2, 3]);
+    expect(await window(pg, pgByOrdinal)).toEqual([2, 3]);
+    // A bound past the parent's last ordinal is empty on both sides.
+    const past = { limit: 5, fromOrdinal: 9 } as const;
+    expect(await Effect.runPromise(mem.listDocChildrenByParentSourceKey(prefix, past))).toEqual([]);
+    expect(await Effect.runPromise(pg.listDocChildrenByParentSourceKey(prefix, past))).toEqual([]);
+  });
 });

@@ -124,7 +124,6 @@ export const SMOKE_COVERAGE_TAGS = [DAIF_TRAP_LABEL, "cross-madzhab"] as const;
 export const SMOKE_HELD_OUT_IDS: readonly string[] = [
   "gs-v0-003",
   "gs-v0-004",
-  "gs-v0-015",
   "gs-v0-016",
   "gs-v0-017",
 ];

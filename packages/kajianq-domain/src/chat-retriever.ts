@@ -61,10 +61,11 @@ export type RetrieverStore = {
     }[],
     StoreError
   >;
-  /** The bounded, capped read of a named surah's children, in the corpus's order. */
+  /** The bounded, capped read of a named surah's children, in the corpus's order,
+   * optionally beginning at an ordinal lower bound — the named verse's position. */
   listDocChildrenByParentSourceKey(
     parentSourceKey: string,
-    opts: { limit: number },
+    opts: { limit: number; fromOrdinal?: number },
   ): Effect.Effect<readonly ScopeChildRow[], StoreError>;
   /** The bounded read of the children within `radius` ordinals of each anchor child, in
    * the caller's priority order; anchors are opaque child ids, so the window cannot be

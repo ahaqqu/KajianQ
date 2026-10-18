@@ -910,14 +910,30 @@ describe("Postgres eval-ledger methods (unit, fake SQL)", () => {
     const rows = await runOk(
       store.listDocChildrenByParentSourceKey("collection/part/1", { limit: 12 }),
     );
-    expect(sql._calls[0]?.values).toEqual(["collection/part/1", 12]);
+    expect(sql._calls[0]?.values).toEqual(["collection/part/1", 12, 0]);
     expect(sql._calls[0]?.text).toContain("WHERE p.source_key = $1");
+    expect(sql._calls[0]?.text).toContain("AND c.ordinal >= $3");
     expect(sql._calls[0]?.text).toContain("ORDER BY c.ordinal ASC");
     expect(sql._calls[0]?.text).toContain("LIMIT $2");
     expect(rows.map((r) => r.id)).toEqual(["c1", "c2"]);
     expect(rows[0]).toMatchObject({ parentTitle: "Parent One", textAr: "ar-1" });
     expect(rows[0]?.embeddingPrimary).toBeNull();
     expect(rows[0]?.embeddingFallback).toBeNull();
+  });
+
+  it("listDocChildrenByParentSourceKey moves the window's start with fromOrdinal", async () => {
+    const sql = makeFakeSql();
+    const store = createPostgresRagStore(sql);
+    sql._setQuery([]);
+    await runOk(
+      store.listDocChildrenByParentSourceKey("collection/part/1", {
+        limit: 13,
+        fromOrdinal: 254,
+      }),
+    );
+    // The lower bound is a bound parameter, never interpolated into the statement.
+    expect(sql._calls[0]?.values).toEqual(["collection/part/1", 13, 254]);
+    expect(sql._calls[0]?.text).toContain("AND c.ordinal >= $3");
   });
 
   it("listDocChildrenByParentSourceKey short-circuits a non-positive limit without a query", async () => {

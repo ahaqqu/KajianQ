@@ -115,7 +115,8 @@ export function postgresChildMethods(
       // The parent's source_key is UNIQUE and indexed, so the join is a point
       // lookup; `ordinal` is the corpus's stable within-parent order (the
       // `UNIQUE (parent_id, ordinal)` key), which is what makes the bounded
-      // window deterministic. A non-positive limit can never be a real read
+      // window deterministic — `fromOrdinal` moves the window's start without
+      // changing that order. A non-positive limit can never be a real read
       // (the seam requires the caller to bound it), so it short-circuits
       // instead of issuing `LIMIT 0`.
       if (opts.limit <= 0) return Effect.succeed([] as readonly DocChildById[]);
@@ -131,10 +132,11 @@ export function postgresChildMethods(
           FROM doc_children c
           JOIN doc_parents p ON p.id = c.parent_id
           WHERE p.source_key = $1
+            AND c.ordinal >= $3
           ORDER BY c.ordinal ASC, c.id ASC
           LIMIT $2
         `,
-              [parentSourceKey, opts.limit],
+              [parentSourceKey, opts.limit, opts.fromOrdinal ?? 0],
             ) as Promise<(ChildRow & { parent_title: string | null })[]>,
         ),
         (rows) =>

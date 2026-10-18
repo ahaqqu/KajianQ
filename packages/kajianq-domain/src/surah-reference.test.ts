@@ -1,14 +1,21 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 import { TOTAL_AYAHS, TOTAL_SURAHS } from "./quran-source";
-import { SURAH_AYAH_COUNTS, SURAH_NAMES, normalizeSurahText, withoutArticle } from "./surah-names";
+import {
+  SURAH_AYAH_COUNTS,
+  SURAH_DESCRIPTION_ALIASES,
+  SURAH_NAMES,
+  normalizeSurahText,
+  withoutArticle,
+} from "./surah-names";
 import { detectSurahReference } from "./surah-reference";
 
 /**
  * Surah/verse-reference detection (ADR-0045).
  *
  * The invariant under test: a question that names a surah (by explicit
- * address or by name) is recognised deterministically, and a question that
+ * address, by a marker-gated name, or by a description the curated table
+ * carries) is recognised deterministically, and a question that
  * does not name one is not. The second half is the trap — expansion is
  * additive context, so a false positive spends budget on an unrelated surah
  * and, worse, would let a question about the *person* Muhammad or the
@@ -137,6 +144,125 @@ describe("detectSurahReference — recognises a named reference", () => {
       surah: 112,
       ayah: 1,
     });
+  });
+});
+
+/**
+ * The reviewed description table, pinned as literals: the table is a recall
+ * device, so its content is a reviewed edit — adding an entry, or changing the
+ * surah one maps to, reddens this file.
+ *
+ * `movedBy` is the entry's referent-moving negative: a longer phrase that
+ * contains the entry's own words, whose qualifier moves the referent to a
+ * different surah. It is not a bare-form revert (the entry with its complement
+ * removed), which proves only that the phrase is not a bare form, not that a
+ * qualifier cannot extend it.
+ */
+type PinnedDescription = {
+  phrase: string;
+  /** The Tanzil surah the phrase denotes in mushaf order. */
+  surah: number;
+  movedBy: readonly string[];
+};
+
+const PINNED_DESCRIPTIONS: readonly PinnedDescription[] = [];
+
+/**
+ * Descriptions a maintainer might admit, each beside the natural qualifier that
+ * moves its referent to a different surah. They are residual, not entries: every
+ * row's qualified phrase carries the base phrase's own words, and detection must
+ * stay null on it — re-admitting a base phrase to the table reddens this pin.
+ */
+const REFERENT_MOVING_NEGATIVES: readonly Pick<PinnedDescription, "phrase" | "movedBy">[] = [
+  {
+    phrase: "the first surah of the quran",
+    movedBy: ["the first surah of the quran to be revealed"],
+  },
+  {
+    phrase: "the opening chapter of the quran",
+    movedBy: ["the opening chapter of the quran in the order of revelation"],
+  },
+];
+
+describe("detectSurahReference — the curated description table", () => {
+  it("carries exactly the reviewed descriptions, pinned as literals", () => {
+    expect(SURAH_DESCRIPTION_ALIASES.map((alias) => [alias.phrase, alias.surah])).toEqual(
+      PINNED_DESCRIPTIONS.map((entry) => [entry.phrase, entry.surah]),
+    );
+  });
+
+  it("carries no phrase a natural qualifier moves", () => {
+    // The table is empty by design: the positional phrasings are prefixes of
+    // revelation-order phrasings (Al-Alaq, not Al-Fatihah), and a tradition-named
+    // description's referent rests on an attribution the product does not assert
+    // at retrieval time. An empty table with an honest residual is the intended
+    // state, not a gap to fill.
+    expect(PINNED_DESCRIPTIONS).toEqual([]);
+  });
+
+  it("pins a referent-moving negative that carries the entry's own words, per entry", () => {
+    // The guarded property is the qualifier-moved referent, not the bare-form
+    // revert: an entry a natural qualifier turns into a different surah cannot
+    // pass, and neither can a row whose negative is only the entry's bare form.
+    // The table's entries and the residual rows run the same construction.
+    const rows = [...PINNED_DESCRIPTIONS, ...REFERENT_MOVING_NEGATIVES];
+    expect(rows.length).toBeGreaterThan(0);
+    for (const entry of rows) {
+      expect(entry.movedBy.length, entry.phrase).toBeGreaterThanOrEqual(1);
+      const phrase = normalizeSurahText(entry.phrase);
+      for (const moved of entry.movedBy) {
+        expect(normalizeSurahText(moved), `${entry.phrase} -> ${moved}`).toContain(phrase);
+        expect(detectSurahReference(`Which is ${moved}?`), moved).toBeNull();
+      }
+    }
+  });
+
+  it("detects every pinned description in a sentence", () => {
+    for (const entry of PINNED_DESCRIPTIONS) {
+      expect(detectSurahReference(`What does ${entry.phrase} mean?`), entry.phrase).toEqual({
+        surah: entry.surah,
+      });
+    }
+  });
+
+  it("admits only whole phrases once one is admitted", () => {
+    // The table's admission rule, pinned structurally: a phrase is at least two
+    // words, carries no number, and is no bare name form (which would match
+    // without a marker and turn an ordinary word into a surah).
+    const nameForms = new Set(
+      SURAH_NAMES.flatMap((entry) => {
+        const canonical = normalizeSurahText(entry.name);
+        return [canonical, withoutArticle(canonical)];
+      }),
+    );
+    for (const alias of SURAH_DESCRIPTION_ALIASES) {
+      const normalized = normalizeSurahText(alias.phrase);
+      expect(normalized.split(" ").length, alias.phrase).toBeGreaterThan(1);
+      expect(normalized, alias.phrase).not.toMatch(/\d/);
+      expect(nameForms.has(normalized), alias.phrase).toBe(false);
+      expect(alias.surah, alias.phrase).toBeGreaterThanOrEqual(1);
+      expect(alias.surah, alias.phrase).toBeLessThanOrEqual(TOTAL_SURAHS);
+    }
+  });
+
+  it("leaves every description the table does not carry to the residual", () => {
+    // A description outside the table gets no reference read: a bare form (any
+    // book's opening chapter, or Al-Fatihah only when the question's own context
+    // supplies it), a phrase a natural qualifier moves, a tradition-named
+    // description whose referent rests on an attribution the product does not
+    // assert at retrieval time, an unlisted description, and an Indonesian
+    // description the table does not carry. Mapping any of them would be the
+    // semantic inference the detection refuses.
+    expect(
+      detectSurahReference("Which was the first surah of the Quran to be revealed?"),
+    ).toBeNull();
+    expect(detectSurahReference("What does the seven oft-repeated mean?")).toBeNull();
+    expect(detectSurahReference("Why is Ya-Sin called the heart of the Quran?")).toBeNull();
+    expect(detectSurahReference("What does the opening chapter say about mercy?")).toBeNull();
+    expect(detectSurahReference("What does the first surah teach about prayer?")).toBeNull();
+    expect(detectSurahReference("What does the surah that begins with praise mean?")).toBeNull();
+    expect(detectSurahReference("What does the first chapter of Al-Umm say?")).toBeNull();
+    expect(detectSurahReference("Bagaimana isi surah yang pertama turun?")).toBeNull();
   });
 });
 

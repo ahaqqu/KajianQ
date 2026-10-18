@@ -39,10 +39,10 @@ export type MemoryScopeState = {
 /**
  * The bounded scope read (ADR-0045) and the anchored neighbour read
  * (ADR-0049): the parent is addressed by its opaque `source_key` or by child
- * ids, rows come back in the same stable order the Postgres adapter uses
- * (`ordinal` ascending, id as tie-break), capped by `limit`. The two
- * implementations must agree — the memory store is the test seam the
- * retriever's own tests read through.
+ * ids, and a scope window may begin at an inclusive `fromOrdinal`. Rows come
+ * back in the same stable order the Postgres adapter uses (`ordinal` ascending,
+ * id as tie-break), capped by `limit`. The two implementations must agree — the
+ * memory store is the test seam the retriever's own tests read through.
  */
 export function memoryScopeMethods(state: MemoryScopeState): {
   listDocChildrenByParentSourceKey: RagStore["listDocChildrenByParentSourceKey"];
@@ -55,8 +55,9 @@ export function memoryScopeMethods(state: MemoryScopeState): {
         const parentId = state.parentByKey.get(parentSourceKey);
         if (parentId === undefined) return [] as readonly DocChildById[];
         const parent = state.parents.get(parentId);
+        const fromOrdinal = opts.fromOrdinal ?? 0;
         return [...state.children.values()]
-          .filter((c) => c.parentId === parentId)
+          .filter((c) => c.parentId === parentId && c.ordinal >= fromOrdinal)
           .sort((a, b) => a.ordinal - b.ordinal || a.id.localeCompare(b.id))
           .slice(0, opts.limit)
           .map((c) => toReadChild(c, parent?.title ?? null));

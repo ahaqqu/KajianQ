@@ -622,6 +622,24 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
         store.listDocChildrenByParentSourceKey(corpusKey("-census"), { limit: 2 }),
       );
       expect(capped.map((r) => r.id)).toEqual(childAt.slice(0, 2));
+      // `fromOrdinal` moves the window's start inclusively: the rows before the
+      // bound are not read, and the bound's own row is.
+      const fromMiddle = await Effect.runPromise(
+        store.listDocChildrenByParentSourceKey(corpusKey("-census"), {
+          limit: 10,
+          fromOrdinal: 1,
+        }),
+      );
+      expect(fromMiddle.map((r) => r.ordinal)).toEqual([1, 2]);
+      // A bound past the parent's last ordinal is an empty read, not a failure.
+      expect(
+        await Effect.runPromise(
+          store.listDocChildrenByParentSourceKey(corpusKey("-census"), {
+            limit: 5,
+            fromOrdinal: 3,
+          }),
+        ),
+      ).toEqual([]);
       // A source key no parent carries is an empty read, not a failure.
       expect(
         await Effect.runPromise(
