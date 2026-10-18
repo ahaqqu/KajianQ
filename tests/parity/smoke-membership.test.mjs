@@ -12,8 +12,8 @@ import { SMOKE_COVERAGE_TAGS } from "../../packages/kajianq-domain/src/taxonomy"
  * The pin is the membership itself, not the selector's mechanism: re-curating
  * the fixture, renaming a label, or reshuffling the selection rule reddens this
  * suite instead of silently shrinking the gate that runs on every deploy. The
- * subset's default size is the spec's PR-time size; a fixture that grows past
- * it still has to keep these ids.
+ * subset's default size is the deployed smoke's; a fixture that grows past it
+ * still has to keep these ids.
  */
 
 const FIXTURE = JSON.parse(

@@ -79,6 +79,63 @@ const set: GoldenSet = {
   ],
 };
 
+/**
+ * Tag-heavy fixture: every required tag points at a refusal question, so the
+ * budget can be consumed by tags and leave the language classes uncovered —
+ * the failure a plan that only prints "required tag coverage" lines would hide.
+ */
+const taggedSet: GoldenSet = {
+  id: "golden-set-v0-tagged",
+  status: "v0-draft",
+  questions: [
+    {
+      id: "tag-1",
+      question: "First tagged refusal",
+      language: "id",
+      expectedSourceTypes: [],
+      requiredCitations: [],
+      expectedBehavior: "refuse",
+      tags: ["tag-a"],
+    },
+    {
+      id: "tag-2",
+      question: "Second tagged refusal",
+      language: "id",
+      expectedSourceTypes: [],
+      requiredCitations: [],
+      expectedBehavior: "refuse",
+      tags: ["tag-b"],
+    },
+    {
+      id: "tag-3",
+      question: "Third tagged refusal",
+      language: "id",
+      expectedSourceTypes: [],
+      requiredCitations: [],
+      expectedBehavior: "refuse",
+      tags: ["tag-c"],
+    },
+    {
+      id: "tag-en",
+      question: "English answer",
+      language: "en",
+      expectedSourceTypes: ["primary-source"],
+      requiredCitations: [],
+      expectedBehavior: "answer",
+      tags: [],
+    },
+    {
+      id: "tag-id-answer",
+      question: "Indonesian answer",
+      language: "id",
+      expectedSourceTypes: ["primary-source"],
+      requiredCitations: [],
+      expectedBehavior: "answer",
+      tags: [],
+    },
+  ],
+};
+
 describe("selectSmokeSubset", () => {
   it("always includes a refusal, every required class, an English, and an Indonesian case", () => {
     const { set: smoke } = selectSmokeSubset(set, {
@@ -96,24 +153,54 @@ describe("selectSmokeSubset", () => {
   });
 
   it("honors the size budget", () => {
-    expect(selectSmokeSubset(set, { size: 2 }).set.questions).toHaveLength(2);
+    // Size 4 fits the refusal, the trap, English and the Indonesian answer;
+    // size 3 fits the three classes that remain without a required tag. A
+    // budget too small for a class the fixture carries throws (next test).
     expect(
       selectSmokeSubset(set, { size: 4, requiredTags: ["trap-tag"] }).set.questions,
     ).toHaveLength(4);
+    expect(selectSmokeSubset(set, { size: 3 }).set.questions).toHaveLength(3);
     // Size larger than the set returns the whole set, never a padded duplicate.
     expect(selectSmokeSubset(set, { size: 99 }).set.questions).toHaveLength(set.questions.length);
-    // A required class beyond the budget cannot be added without exceeding it;
-    // the refusal case keeps the first slot.
-    expect(
-      selectSmokeSubset(set, { size: 1, requiredTags: ["trap-tag"] }).set.questions.map(
-        (q) => q.id,
-      ),
-    ).toEqual(["q-refuse-1"]);
   });
 
-  it("prefers the refusal case even when size is 1", () => {
-    const { set: smoke } = selectSmokeSubset(set, { size: 1 });
-    expect(smoke.questions.map((q) => q.id)).toEqual(["q-refuse-1"]);
+  it("refuses a budget that cannot cover every class the fixture carries", () => {
+    // The refusal case keeps the first slot, but a subset that silently drops
+    // the language classes is not the gate the selector promises: the run must
+    // fail instead of printing a clean plan for a weaker subset.
+    expect(() => selectSmokeSubset(set, { size: 1 })).toThrow(SmokeSubsetError);
+    expect(() => selectSmokeSubset(set, { size: 1 })).toThrow(
+      /size 1 cannot cover every class the set carries/,
+    );
+    expect(() => selectSmokeSubset(set, { size: 1 })).toThrow(
+      /missing: English language coverage, Indonesian answer coverage/,
+    );
+    // Size 2 buys English; the Indonesian answer class still does not fit.
+    expect(() => selectSmokeSubset(set, { size: 2 })).toThrow(
+      /size 2 cannot cover every class the set carries .*missing: Indonesian answer coverage/,
+    );
+    // A required tag is a class too, but its question can also cover a
+    // language class: the coverage-tag question is an Indonesian answer, so
+    // size 3 leaves only English uncovered — the assertion reads `picked`.
+    expect(() =>
+      selectSmokeSubset(set, { size: 3, requiredTags: ["trap-tag", "coverage-tag"] }),
+    ).toThrow(/missing: English language coverage; picked 3: q-refuse-1, q-trap-1, q-coverage-1/);
+  });
+
+  it("names the classes a tag-heavy budget pushes out", () => {
+    // Three required tags consume the budget after the refusal slot: no room
+    // for either language class at size 3, nor for the Indonesian answer case
+    // at size 4.
+    expect(() =>
+      selectSmokeSubset(taggedSet, { size: 3, requiredTags: ["tag-a", "tag-b", "tag-c"] }),
+    ).toThrow(
+      /size 3 cannot cover every class the set carries .*missing: English language coverage, Indonesian answer coverage/,
+    );
+    expect(() =>
+      selectSmokeSubset(taggedSet, { size: 4, requiredTags: ["tag-a", "tag-b", "tag-c"] }),
+    ).toThrow(
+      /size 4 cannot cover every class the set carries .*missing: Indonesian answer coverage/,
+    );
   });
 
   it("takes the required classes in the caller's order", () => {

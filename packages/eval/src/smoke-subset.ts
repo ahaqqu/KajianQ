@@ -30,8 +30,11 @@ export class SmokeSubsetError extends Error {
   override readonly name = "SmokeSubsetError";
 }
 
+/** The keys `SmokeSelectOptions` declares — the guard and its message share them. */
+const KNOWN_SMOKE_OPTIONS = ["size", "requiredTags"] as const;
+
 export type SmokeSelectOptions = {
-  /** Maximum questions in the subset (default 5 — the spec's PR-time size). */
+  /** Maximum questions in the subset (default 5 — the deployed smoke's default size). */
   size?: number;
   /**
    * Label tags the product requires the subset to cover, in the caller's
@@ -42,14 +45,31 @@ export type SmokeSelectOptions = {
   requiredTags?: readonly string[];
 };
 
+/** One behaviour the subset must exercise, and how a picked question satisfies it. */
+type SmokeCoverage = {
+  reason: string;
+  present: (question: GoldenQuestion) => boolean;
+  /**
+   * A required tag: a fixture carrying no such question is a vocabulary
+   * disagreement, not a coverage gap the selector may skip.
+   */
+  tag?: string;
+};
+
 /**
- * Pick a representative smoke subset. Order of preference:
+ * Pick a representative smoke subset. The classes are taken in this order, and
+ * the budget must fit every class the fixture carries:
  *   1. one refusal case (the plain-refusal behaviour)
  *   2. one question per required tag, in the caller's order (the label
  *      classes the product's risk table names)
  *   3. one English case (language matching)
  *   4. one Indonesian answer case (the default path)
  *   5. remaining slots: the set's own order, skipping duplicates of the above
+ *
+ * A class the set carries but the budget cannot fit throws — a subset that
+ * silently dropped it would be a weaker gate than the plan it prints. A class
+ * the set does not carry at all is the fixture's content bar to enforce, and
+ * only a required tag is fatal there.
  */
 export function selectSmokeSubset(set: GoldenSet, opts: SmokeSelectOptions = {}): SmokeSelection {
   const size = Math.max(1, opts.size ?? 5);
@@ -58,9 +78,9 @@ export function selectSmokeSubset(set: GoldenSet, opts: SmokeSelectOptions = {})
   // never sees, so a renamed option would otherwise drop a required class
   // while the run printed a clean plan.
   for (const key of Object.keys(opts)) {
-    if (key !== "size" && key !== "requiredTags") {
+    if (!(KNOWN_SMOKE_OPTIONS as readonly string[]).includes(key)) {
       throw new SmokeSubsetError(
-        `unknown smoke-subset option "${key}" (known: size, requiredTags)`,
+        `unknown smoke-subset option "${key}" (known: ${KNOWN_SMOKE_OPTIONS.join(", ")})`,
       );
     }
   }
@@ -76,34 +96,53 @@ export function selectSmokeSubset(set: GoldenSet, opts: SmokeSelectOptions = {})
     reasons.push({ id: q.id, reason });
   };
 
-  take(
-    set.questions.find((q) => q.expectedBehavior === "refuse"),
-    "refusal coverage",
-  );
-  for (const tag of requiredTags) {
-    const match = set.questions.find((q) => (q.tags ?? []).includes(tag));
-    // Fail loudly, never shrink quietly. A required tag no question carries
-    // means the caller and the fixture disagree about the vocabulary — a
-    // rename that reached one side only. Skipping it would drop the class from
-    // the subset while the run still printed a clean plan, and `eval:smoke` is
-    // the gate that runs on every staging deploy: a gate that silently stops
-    // testing what it exists to test is worse than a red one.
+  const coverage: readonly SmokeCoverage[] = [
+    { reason: "refusal coverage", present: (q) => q.expectedBehavior === "refuse" },
+    ...requiredTags.map((tag): SmokeCoverage => ({
+      reason: `required tag coverage: ${tag}`,
+      present: (q) => (q.tags ?? []).includes(tag),
+      tag,
+    })),
+    { reason: "English language coverage", present: (q) => q.language === "en" },
+    {
+      reason: "Indonesian answer coverage",
+      present: (q) => q.language === "id" && q.expectedBehavior === "answer",
+    },
+  ];
+
+  for (const cls of coverage) {
+    const match = set.questions.find(cls.present);
     if (match === undefined) {
-      throw new SmokeSubsetError(
-        `no question in "${set.id}" carries the required tag "${tag}" (${set.questions.length} questions, ` +
-          `${set.questions.filter((q) => (q.tags ?? []).length > 0).length} tagged)`,
-      );
+      // Fail loudly, never shrink quietly. A required tag no question carries
+      // means the caller and the fixture disagree about the vocabulary — a
+      // rename that reached one side only. Skipping it would drop the class
+      // from the subset while the run still printed a clean plan, and
+      // `eval:smoke` is the gate that runs on every staging deploy: a gate
+      // that silently stops testing what it exists to test is worse than red.
+      if (cls.tag !== undefined) {
+        throw new SmokeSubsetError(
+          `no question in "${set.id}" carries the required tag "${cls.tag}" (${set.questions.length} questions, ` +
+            `${set.questions.filter((q) => (q.tags ?? []).length > 0).length} tagged)`,
+        );
+      }
+      continue;
     }
-    take(match, `required tag coverage: ${tag}`);
+    take(match, cls.reason);
   }
-  take(
-    set.questions.find((q) => q.language === "en"),
-    "English language coverage",
+
+  // A class the set carries but the budget did not fit is a silently weaker
+  // gate: assert over the picked questions, not over the plan's intentions.
+  const missed = coverage.filter(
+    (cls) => set.questions.some(cls.present) && !picked.some(cls.present),
   );
-  take(
-    set.questions.find((q) => q.language === "id" && q.expectedBehavior === "answer"),
-    "Indonesian answer coverage",
-  );
+  if (missed.length > 0) {
+    throw new SmokeSubsetError(
+      `size ${size} cannot cover every class the set carries (missing: ${missed
+        .map((cls) => cls.reason)
+        .join(", ")}; picked ${picked.length}: ${picked.map((q) => q.id).join(", ")})`,
+    );
+  }
+
   for (const q of set.questions) {
     if (picked.length >= size) break;
     take(q, "fill (stable order)");

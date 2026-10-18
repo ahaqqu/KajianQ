@@ -175,13 +175,21 @@ describe("the evidence-present answer rule", () => {
       .find((line) => line.startsWith("1."))!;
 
   it("answers from the context under the question's own term, per language", () => {
-    expect(ruleOne("id")).toMatch(/istilah atau nama yang dipakai pertanyaan tidak tercetak/);
-    expect(ruleOne("en")).toMatch(/the term or name the question uses is not printed/);
-    // The permission is scoped to a context that carries the answer, so it can
-    // never license answering a fact the context lacks.
-    expect(ruleOne("id")).toMatch(/Bila konteks memuat jawaban atas hal yang ditanyakan/);
+    // The licence is scoped to evidence that describes the asked thing under
+    // another name — ADR-0015's condition, not a general "the term is absent,
+    // so answer anyway".
+    expect(ruleOne("id")).toMatch(
+      /Bila konteks memuat jawaban atas hal yang ditanyakan, sekalipun konteks menyebut hal itu dengan nama lain/,
+    );
     expect(ruleOne("en")).toMatch(
-      /When the context contains the answer to the thing the question asks about/,
+      /When the context contains the answer to the thing the question asks about, even where the context describes that thing under another name/,
+    );
+    // Using the question's own term is not itself grounds for refusal.
+    expect(ruleOne("id")).toMatch(
+      /memakai istilah pertanyaan bukan menambah tafsir dan bukan alasan menolak/,
+    );
+    expect(ruleOne("en")).toMatch(
+      /using the question's own term is not adding interpretation and is not a reason to refuse/,
     );
   });
 

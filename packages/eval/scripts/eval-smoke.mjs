@@ -5,7 +5,7 @@
  * Runs a small, stratified slice of the Golden Set against a target `/v1/chat`,
  * through the same harness and ledger as the full run (`eval:run`). `selectSmokeSubset`
  * picks it deterministically — refusal, the label classes the product requires, English
- * and Indonesian cases first, then fill — so a PR-time gate cannot pass by accident on
+ * and Indonesian cases first, then fill — so the deployed gate cannot pass by accident on
  * easy questions alone.
  *
  * Env (the same validated config as `eval:run`, plus one knob):
@@ -13,7 +13,7 @@
  *   EVAL_API_TOKEN         an anonymous Bearer token (required)
  *   DATABASE_URL           the staging store for traces and run rows (required)
  *   EVAL_BUDGET_MICRO_USD  hard spend cap in micro-USD (unset/0 = uncapped)
- *   EVAL_SMOKE_SIZE        subset size (default 5, the spec's PR-time size)
+ *   EVAL_SMOKE_SIZE        subset size (default 5 — the deployed smoke's default size)
  *
  * Exit code is non-zero when any smoke question fails, is skipped, or was never
  * measured — the shared `exitPolicy` in `eval-cli.mjs`, the same one `eval:run`
