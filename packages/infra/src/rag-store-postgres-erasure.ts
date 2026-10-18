@@ -42,8 +42,9 @@ export const ERASURE_SUBJECT_SETTING = "kajianq.erasure.subject";
  * `answer_traces.user_id` and `feedback.user_id` are nullable — is not matched
  * by any of these predicates and survives the call silently: the erasure cannot
  * attribute it to a subject, and nothing here can tell it apart from another
- * user's row. Closing that is a `NOT NULL` migration or an out-of-band audit of
- * the rows whose owner is NULL; the postcondition is not a detector for it.
+ * user's row. The postcondition is not a detector for it; the only detectors are
+ * a `NOT NULL` migration (the owner's decision) or an out-of-band audit of the
+ * rows whose owner is NULL.
  */
 export function eraseUserTree(sql: SqlRunner, userId: string): Effect.Effect<void, StoreError> {
   return Effect.asVoid(

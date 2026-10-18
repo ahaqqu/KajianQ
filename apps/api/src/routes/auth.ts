@@ -52,7 +52,7 @@ const ANONYMOUS_OPENAPI = describeRoute({
 const DELETE_ME_OPENAPI = describeRoute({
   summary: "Delete the current anonymous user",
   description:
-    "Erases the authenticated user and their whole subtree — sessions, chat sessions and messages, feedback, answer traces — in one transaction (ADR-0017, ADR-0007). Every table of that subtree is verified empty inside the transaction, so a `200 {deleted: true}` means the rows are gone: a row the sweeps could not remove aborts the transaction, and the rollback leaves the user's rows untouched rather than half-erased. A row whose owner column is NULL is not attributable to any user and is outside this guarantee. The store call is idempotent, but a repeat cannot re-authenticate once the user's sessions are gone — that is a `401`, not a success.",
+    "Erases the authenticated user and their whole subtree — sessions, chat sessions and messages, feedback, answer traces — in one transaction (ADR-0017, ADR-0007). Every table of that subtree is verified empty inside the transaction, so a `200 {deleted: true}` means the rows are gone: a row the sweeps could not remove aborts the transaction, and the rollback leaves the user's rows untouched rather than half-erased. A row whose owner column is NULL is not attributable to any user: it survives this call silently, and the postcondition cannot detect it — only a `NOT NULL` migration (the owner's decision) or an out-of-band audit of NULL-owned rows can. The store call is idempotent, but a repeat cannot re-authenticate once the user's sessions are gone — that is a `401`, not a success.",
   responses: {
     200: {
       description: "The user and their whole subtree are gone",

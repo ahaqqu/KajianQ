@@ -160,8 +160,9 @@ export interface RagStore
    * `StoreError` with the rows untouched — the caller answers with an error,
    * never with a success response. A call on an already-erased user is a no-op
    * success, so the operation is idempotent. A row whose owner column is NULL
-   * cannot be attributed to any user; it is outside this guarantee and survives
-   * silently. */
+   * cannot be attributed to any user: it survives the call silently, and the
+   * postcondition is not a detector for it — only a `NOT NULL` migration (the
+   * owner's decision) or an out-of-band audit of NULL-owned rows can find it. */
   deleteUserCascade(userId: string): Effect.Effect<void, StoreError>;
 
   /** Reclaim expired anonymous sessions: delete session rows whose TTL has
