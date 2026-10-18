@@ -87,6 +87,14 @@ Feature: Chat — ask, answer, citations, warnings, disclaimer
     And the held reconnect refetch arrives with the pre-turn history
     Then the streamed answer remains in the transcript
 
+  # A route change, not a reload: the page's fresh mount meets the transcript
+  # the shared query cache fetched before the turn. Applying that snapshot would
+  # drop the answer the reader just received; the mount fetches the session's
+  # current transcript instead.
+  Scenario: Leaving the chat and coming back keeps the completed answer
+    When I open the chat with a stored session and ask about ayat kursi, then leave and come back
+    Then the completed answer is still in the transcript
+
   Scenario: Expanding the Trace lists the sources consulted in plain language
     When I open the chat and ask about ayat kursi
     And the answer renders with a citation chip

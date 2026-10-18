@@ -159,6 +159,40 @@ const TRANSCRIPT_FIXTURE = {
 };
 
 /**
+ * What the rehydration endpoint serves once the turn is persisted: the pre-turn
+ * pair plus the turn the page just streamed, which only a fresh request can see
+ * (the route's cached transcript predates it).
+ */
+const TURNED_TRANSCRIPT_FIXTURE = {
+  sessionId: "sess-e2e",
+  truncated: false,
+  messages: [
+    ...TRANSCRIPT_FIXTURE.messages,
+    { id: "m2", role: "user", content: "Apa itu ayat kursi?", createdAt: 1_700_000_120_000 },
+    {
+      id: "m3",
+      role: "assistant",
+      content: `Allah Mahahidup sebagaimana firman-Nya [QS. 2:255].\n\n${DISCLAIMER}`,
+      createdAt: 1_700_000_180_000,
+      citations: {
+        messageId: "m3",
+        refusal: false,
+        dhaifWarning: false,
+        citations: [
+          {
+            label: "QS. 2:255",
+            arabic: "اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ",
+            translation: "Allah, tidak ada tuhan selain Dia.",
+            machineTranslated: true,
+            source: "Al-Baqarah",
+          },
+        ],
+      },
+    },
+  ],
+};
+
+/**
  * The chat message ceiling, in characters. The e2e layer cannot import
  * `@app/contracts` (workspace packages resolve inside the apps), so the value is
  * repeated here: a drift against the contract fails the ceiling scenario loudly.
@@ -202,6 +236,10 @@ let heldTranscriptRoute: import("@playwright/test").Route | null = null;
  * `holdReconnect` answers the first rehydration request with a 500 so the query
  * has no data and is therefore stale, then holds the reconnect refetch until the
  * scenario releases it.
+ *
+ * `transcriptAfterChatPost` is the transcript the endpoint serves once a turn
+ * has been posted — the state a fresh request sees and the page's cached
+ * transcript does not.
  */
 async function openChatWithFixtures(
   page: import("@playwright/test").Page,
@@ -209,6 +247,7 @@ async function openChatWithFixtures(
   transcriptFixture: Record<string, unknown> = TRANSCRIPT_FIXTURE,
   rehydrateStatus = 200,
   holdReconnect = false,
+  transcriptAfterChatPost?: Record<string, unknown>,
 ): Promise<void> {
   chatPosts = 0;
   chatPostBodies = [];
@@ -224,6 +263,10 @@ async function openChatWithFixtures(
         return;
       }
       heldTranscriptRoute = route;
+      return;
+    }
+    if (transcriptAfterChatPost !== undefined && chatPosts > 0) {
+      await route.fulfill({ json: transcriptAfterChatPost });
       return;
     }
     await (rehydrateStatus === 200
@@ -409,6 +452,48 @@ Then("the streamed answer remains in the transcript", async ({ page }) => {
   await expect(page.getByTestId("message-user")).toHaveCount(1);
   const assistant = page.getByTestId("message-assistant").last();
   // The live stream's wording, which the pre-turn transcript's answer lacks.
+  await expect(assistant).toContainText("sebagaimana firman-Nya");
+  await expect(assistant.getByTestId("citation-chip")).toHaveText("[QS. 2:255]");
+});
+
+/**
+ * A route change, not a reload: the SPA keeps the module-singleton query client,
+ * so the chat page's fresh mount meets the transcript the cache fetched before
+ * the turn. The stored session id makes the app hydrate at boot (that snapshot),
+ * and the endpoint serves the persisted turn once it has been posted.
+ */
+When(
+  "I open the chat with a stored session and ask about ayat kursi, then leave and come back",
+  async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem("kajianq.chat.sessionId", "sess-e2e");
+    });
+    await openChatWithFixtures(
+      page,
+      ANSWER_FIXTURE,
+      undefined,
+      200,
+      false,
+      TURNED_TRANSCRIPT_FIXTURE,
+    );
+    await page.getByTestId("composer").fill("Apa itu ayat kursi?");
+    await page.getByTestId("send").click();
+    await expect(page.getByTestId("message-assistant").last()).toContainText(
+      "sebagaimana firman-Nya",
+    );
+    const nav = page.getByRole("navigation", { name: "Navigasi utama" });
+    await nav.getByRole("link", { name: "Tentang" }).click();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Tentang KajianQ");
+    await nav.getByRole("link", { name: "Obrolan" }).click();
+    await expect(page.getByTestId("composer")).toBeVisible();
+  },
+);
+
+Then("the completed answer is still in the transcript", async ({ page }) => {
+  // Both turns are on the page: the persisted transcript's own pair and the
+  // turn the reader just received.
+  await expect(page.getByTestId("message-user")).toHaveCount(2);
+  const assistant = page.getByTestId("message-assistant").last();
   await expect(assistant).toContainText("sebagaimana firman-Nya");
   await expect(assistant.getByTestId("citation-chip")).toHaveText("[QS. 2:255]");
 });
