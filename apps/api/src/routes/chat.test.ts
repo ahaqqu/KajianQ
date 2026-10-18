@@ -196,6 +196,15 @@ async function postRaw(token: string, body: Record<string, unknown>): Promise<Re
   );
 }
 
+/**
+ * A message carrying quotes, backslashes, a newline, braces and `</script>` —
+ * punctuation-heavy, and every character in it representable, so the contract
+ * admits it. The rejected test below probes the same text with a U+0000
+ * appended, which is the only difference between an admitted body and a
+ * refused one here.
+ */
+const STORABLE_PUNCTUATION_BODY = '</script>"quote"\\backslash\nnewline {invalid json} null';
+
 describe("POST /v1/chat", () => {
   it("rejects an unauthenticated request with 401", async () => {
     const res = await createApi().request(
@@ -251,6 +260,106 @@ describe("POST /v1/chat", () => {
     expect(store.allChatMessages()).toEqual([]);
     expect(store.allTraces().size).toBe(0);
   });
+
+  it("answers 400 invalid_request to a message the store cannot hold, and writes nothing (#478)", async () => {
+    const { store, token } = await wiredStore();
+    currentStore = store;
+    await seed(store);
+    currentOverrides = { answerText: "an answer that must never be produced" };
+    spendCalls.length = 0;
+
+    // The staging probes, the classes the same defect hides in — a lone
+    // surrogate is silently rewritten to U+FFFD by a UTF-8 write, so it is
+    // refused here rather than stored as a different message — and the
+    // punctuation-heavy body the neighbour test streams with a U+0000 appended.
+    for (const message of [
+      "\u0000",
+      "\u0000riba",
+      "riba\u0000",
+      "\ud800",
+      "riba\ud800",
+      "\udc00",
+      `${STORABLE_PUNCTUATION_BODY}\u0000`,
+    ]) {
+      const res = await postRaw(token, { message, language: "id" });
+
+      // The typed answer the route's own contract enumerates — never `internal`.
+      expect(res.status, JSON.stringify(message)).toBe(400);
+      expect(await res.json(), JSON.stringify(message)).toEqual({ error: "invalid_request" });
+    }
+
+    // The refusal is at the boundary: no seam was called, no session, message
+    // or trace was written, so nothing of a rejected body survives.
+    expect(spendCalls).toEqual([]);
+    expect(store.allChatSessions()).toEqual([]);
+    expect(store.allChatMessages()).toEqual([]);
+    expect(store.allTraces().size).toBe(0);
+  });
+
+  it("streams the whole frame set for a punctuation-heavy message, whose U+0000 twin is refused above", async () => {
+    const { store, token } = await wiredStore();
+    currentStore = store;
+    await seed(store);
+    currentOverrides = { answerText: "Ayat kursi adalah QS. 2:255." };
+
+    // The same constant the rejected loop probes with a U+0000 appended: quotes,
+    // backslashes, a newline, braces and `</script>` are all storable, so this
+    // body keeps its place on the answering path and the difference between the
+    // two is the NUL alone.
+    const { status, frames, answer } = await postChat(token, {
+      message: STORABLE_PUNCTUATION_BODY,
+      language: "id",
+    });
+
+    expect(status).toBe(200);
+    expect(frames[0]?.event).toBe("meta");
+    for (const event of ["meta", "delta", "citations", "trace", "done"]) {
+      expect(
+        frames.map((f) => f.event),
+        event,
+      ).toContain(event);
+    }
+    expect(frames.at(-1)?.event).toBe("done");
+    expect(answer).toContain("QS. 2:255");
+  }, 15000);
+
+  it("still admits the control characters the admission calls content-free (#478)", async () => {
+    const { store, token } = await wiredStore();
+    currentStore = store;
+    await seed(store);
+    currentOverrides = { answerText: "Ayat kursi adalah QS. 2:255." };
+    spendCalls.length = 0;
+
+    // `Cc` without U+0000 is storable, so it is not a rejected body: it reaches
+    // the route's content-free gate and is declined there, with the canned copy
+    // and no provider call. Nothing could be generated for it either — the
+    // fan-out is empty, so nothing is retrieved and no citation has evidence to
+    // ground on.
+    const { status, frames, answer } = await postChat(token, { message: "\u0001\u0007" });
+
+    expect(status).toBe(200);
+    expect(frames.at(-1)?.event).toBe("done");
+
+    // Accepted, not dropped: the question is persisted as the user sent it.
+    expect(store.allChatMessages().find((m) => m.role === "user")?.content).toBe("\u0001\u0007");
+
+    const trace = [...store.allTraces().values()].at(0) as
+      | { events: { kind: string; detail?: Record<string, unknown> }[] }
+      | undefined;
+    const intent = trace?.events.find((e) => e.kind === "intent");
+    expect(intent?.detail?.["attributes"]).toMatchObject({ fallback: true, contentFree: true });
+    // No sub-query was admitted, so none is on the trace: the decline is the
+    // deterministic one, not a model route. Nothing reached a provider at all —
+    // the gate declines before the router's call, so no seam call is recorded.
+    expect(trace?.events.filter((e) => e.kind === "subquery")).toEqual([]);
+    expect(spendCalls).toEqual([]);
+
+    const refusal = trace?.events.find((e) => e.kind === "refusal");
+    expect(refusal?.detail?.["trigger"]).toBe("content_free_decline");
+    const copy = "Mohon maaf, kami tidak menemukan pertanyaan pada pesan Anda.";
+    expect(answer).toBe(copy);
+    expect(store.allChatMessages().find((m) => m.role === "assistant")?.content).toBe(copy);
+  }, 15000);
 
   it("accepts a message exactly at the ceiling (2,000) and runs the pipeline", async () => {
     const { store, token } = await wiredStore();
