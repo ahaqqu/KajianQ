@@ -792,10 +792,12 @@ The deploy gates on all of these, and fails loudly on any of them:
 - the API restarted and `systemctl is-active` reports active
 - the reclamation ran once — so a rotated env var fails the deploy rather than
   surfacing at 03:17
-- **the backup unit is healthy**: its last run exited 0 **and** that run is
-  newer than the unit file's own install time. That second condition is what
-  catches a unit that was installed but never executed — a state no single
-  systemd field reports, and one this project has been bitten by
+- **the backup unit is healthy**: the job's durable record
+  (`/var/lib/kajianq/backup-provenance`, root-owned and world-readable) says the
+  last completed run exited 0 **and** completed after the unit file's own
+  install time. The record survives a reboot, so a run that succeeded before one
+  still proves the unit; the install-time comparison catches a unit that was
+  installed but never executed.
 - the public URL answers `/v1/health`, mints an anonymous session, and serves
   `/chat` through the real proxy and TLS
 
@@ -807,11 +809,11 @@ run that next.
 > **Ordering trap.** `apply.sh` writes the unit only when the installed copy
 > differs, so re-running it over unchanged content leaves the unit file's mtime —
 > and the deploy's backup gate — alone. A **changed** unit definition does move
-> that mtime, and then the gate stays red until a backup runs again. Prove it with
-> the service, not the script:
+> that mtime, and then the gate stays red until a backup runs again. Prove it
+> through the service, not a checkout script:
 > `sudo systemctl start kajianq-backup.service`. Running
-> `kajianq-backup.mjs` directly writes a snapshot but does not update the
-> service's `ExecMainStatus`, so it will not satisfy the gate.
+> `kajianq-backup.mjs` directly writes a snapshot but not the unit's record, so
+> it will not satisfy the gate.
 
 ---
 
@@ -953,17 +955,22 @@ systemctl cat kajianq-backup.service | grep '^ExecStart'
 systemctl list-timers kajianq-backup.timer
 ```
 
-After the first scheduled fire, `ExecMainStatus=0` and a timestamp newer than
-the unit file is what "the backup works" looks like.
+After the first scheduled fire, the record at
+`/var/lib/kajianq/backup-provenance` reports `status=0` and a `completed_at`
+newer than the unit file — that is what "the backup works" looks like.
+`ExecMainStatus` and `ExecMainExitTimestamp` above are the same run's report for
+the current boot; a reboot empties the timestamp, which is why the deploy does
+not read them.
 
 **Read the fields carefully, because two of them lie.** `is-active` on the
 timer only says the schedule is armed. And `Result` alone is not the signal
 either: `systemctl reset-failed` clears it to `success` while — on systemd 257
 — leaving `ExecMainStatus=1` behind, so a reset unit reports success about a
-failed run. The deploy's gate asserts the **pair**: exit status 0 **and** a last
-run newer than the unit file's install time. That second condition is the only
-thing that catches "installed but never executed", which is exactly the state
-this project's backup unit sat in for its entire life.
+failed run. The deploy's gate reads the job's durable record and asserts the
+**pair**: the last completed run exited 0 **and** completed after the unit
+file's install time. That second condition is the only thing that catches
+"installed but never executed", and the record — unlike these fields — survives
+a reboot.
 
 The 30-day rolling window is enforced by the backup script's
 `restic forget --keep-daily 30 --prune` step on every run, not by the timer.
@@ -1161,7 +1168,8 @@ a bad `DATABASE_URL` are the two common causes.
 `KAJIANQ_WEB_ROOT` is unset or wrong in `api.env`. Its default resolves to a
 path that does not exist on the deployed tree.
 
-**The deploy says the backup unit "has never run".** Start it once:
+**The deploy says the backup unit "has never run".** Start it once as root —
+the deploy identity's grant does not include it:
 `sudo systemctl start kajianq-backup.service`. See the ordering trap in §8.
 
 **The backup fails with `git exited 128`.** You are running the backup from the

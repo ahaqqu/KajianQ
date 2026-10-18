@@ -132,10 +132,11 @@ trap 'rm -rf "${STAGE}"' EXIT
 
 # --- 0. preflight: the backup unit's provenance -----------------------------
 # The assertion is "kajianq-backup.service has been exercised as installed":
-# exit status 0 AND a last run after the unit's current definition was installed.
-# Its logic, and why `Result` and the timer are not the signal, live in
-# provision/vps/deploy/backup-provenance.sh — piped over ssh, so the file the
-# tests execute against fixtures is the file that runs on the box.
+# the job's durable provenance record says the last completed run exited 0 AND
+# completed after the unit's current definition was installed. Its logic, and
+# why the record rather than systemd's reboot-cleared runtime fields is the
+# evidence, live in provision/vps/deploy/backup-provenance.sh — piped over ssh,
+# so the file the tests execute against fixtures is the file that runs on the box.
 #
 # It runs BEFORE the build and before the first mutation because it reads only
 # state that already exists on the box: a red here leaves the box on its previous

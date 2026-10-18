@@ -85,13 +85,17 @@ provision/vps/deploy/deploy.sh --env /etc/kajianq/deploy.env
 What it does, in order:
 
 1. **Preflight — the backup unit's provenance.** Before anything is built or
-   touched, `backup-provenance.sh` (piped over ssh) asserts that
-   `kajianq-backup.service` last exited 0 _and_ has run since its own definition
-   was installed: a unit that has never been exercised as installed is a backup
-   you do not have. It runs first because it reads only state that already
-   exists on the box — a red here costs an ssh round trip and leaves the box on
-   its previous revision, where a red after the ship would leave the new tree
-   live, the API restarted, and the smoke and doctor below skipped.
+   touched, `backup-provenance.sh` (piped over ssh) reads the backup job's own
+   provenance record — `/var/lib/kajianq/backup-provenance`, root-owned 0644 in
+   a root-owned 0755 directory — and asserts that the last completed run exited
+   0 _and_ completed since its own definition was installed: a unit that has
+   never been exercised as installed is a backup you do not have. The record
+   survives a reboot, where systemd's `ExecMainStatus`/`ExecMainExitTimestamp`
+   describe only the current boot. It runs first because it reads only state
+   that already exists on the box — a red here costs an ssh round trip and
+   leaves the box on its previous revision, where a red after the ship would
+   leave the new tree live, the API restarted, and the smoke and doctor below
+   skipped.
 2. **Build.** `bun run build:web` for the PWA, then two `bun build
 --target=bun` bundles from `apps/api/src/boot.ts` (serving) and
    `apps/api/src/cleanup.ts` (the nightly reclamation). Bundling for Bun is what
@@ -687,6 +691,13 @@ The script **refuses to run** when the password file is group- or
 world-readable: a world-readable repository key silently undoes the encryption
 it exists to provide. The target must never be a free tier (the register rule) —
 the repository holds a full-database dump carrying chat content and feedback.
+
+A completed run also writes its outcome — exit status, completion time, label
+and the revision it ran from — to `/var/lib/kajianq/backup-provenance`
+(root:root 0644 in a root:root 0755 directory). That record is the deploy's
+proof that the backup has been exercised as installed: it survives a reboot,
+unlike systemd's per-boot run fields, and the deploy identity can read it but
+cannot write it.
 
 **The schedule's own product is proven** (2026-09-29, closing #214). The
 `03:15` fires of 2026-09-26…29 each started with **no operator command between

@@ -1,5 +1,6 @@
 import {
   chmodSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -172,46 +173,139 @@ install_config "$@"`;
   };
 }
 
+/** The record the backup job writes, as key=value lines the bash preflight reads. */
+function provenanceRecord({
+  status = "0",
+  completed = 3000,
+  label = "daily-20261018t031500z",
+  revision = "deadbeef",
+} = {}) {
+  return [
+    `status=${status}`,
+    `completed_at=${completed}`,
+    `label=${label}`,
+    `revision=${revision}`,
+    "",
+  ].join("\n");
+}
+
 /**
- * The deployed provenance check run against one box state. Only systemd is faked; the unit file
- * is real, so `stat` and the mtime comparison run exactly as they do on the box.
+ * The deployed provenance check run against one box state. The unit file and the record are real,
+ * so `stat` and the mtime comparison run exactly as they do on the box. `systemctl` is stubbed and
+ * reports a healthy run by default: a check that still trusts it would pass the absent-record case,
+ * which is the reboot bug this check exists to close.
  */
 function provenanceFixture() {
   const dir = mkdtempSync(join(tmpdir(), "kajianq-provenance-"));
   const unit = join(dir, "kajianq-backup.service");
   writeFileSync(unit, "[Unit]\nDescription=fixture\n");
   utimesSync(unit, 2000, 2000);
+  const record = join(dir, "backup-provenance");
+  const realSed = spawnSync("sh", ["-c", "command -v sed"], { encoding: "utf8" }).stdout.trim();
   writeFileSync(
     join(dir, "systemctl"),
     `#!/bin/sh
-# STUB_SHOW_FAIL names the property whose read fails, so each of the check's two
-# systemctl calls can be made to fail on its own.
-if [ -n "\${STUB_SHOW_FAIL}" ]; then
-  case "$*" in *"\${STUB_SHOW_FAIL}"*) exit 1 ;; esac
-fi
 case "$*" in
-  *ExecMainExitTimestamp*) if [ -n "\${STUB_EXITED}" ]; then printf '@%s\\n' "\${STUB_EXITED}"; fi ;;
-  *ExecMainStatus*) printf '%s\\n' "\${STUB_STATUS}" ;;
+  *ExecMainExitTimestamp*) printf '@%s\\n' "\${STUB_EXITED-3000}" ;;
+  *ExecMainStatus*) printf '%s\\n' "\${STUB_STATUS:-0}" ;;
 esac
 exit 0
+`,
+    { mode: 0o755 },
+  );
+  // A failing `sed` simulates an unreadable record without relying on file modes, which a root
+  // test runner would ignore.
+  writeFileSync(
+    join(dir, "sed"),
+    `#!/bin/sh
+if [ -n "\${STUB_SED_FAIL:-}" ]; then exit 1; fi
+exec ${JSON.stringify(realSed)} "$@"
 `,
     { mode: 0o755 },
   );
   return {
     dir,
     unit,
-    run: ({ unitFile = unit, exited = "", status = "0", showFail = "" } = {}) =>
+    record,
+    writeRecord: (fields = {}) => writeFileSync(record, provenanceRecord(fields)),
+    run: ({ unitFile = unit, recordFile = record, exited, status, sedFail = false } = {}) =>
       spawnSync(
         "/bin/bash",
-        [resolve(process.cwd(), "provision/vps/deploy/backup-provenance.sh"), unitFile],
+        [resolve(process.cwd(), "provision/vps/deploy/backup-provenance.sh"), unitFile, recordFile],
         {
           encoding: "utf8",
           env: {
             ...process.env,
             PATH: `${dir}:${process.env.PATH}`,
-            STUB_EXITED: exited,
-            STUB_STATUS: status,
-            STUB_SHOW_FAIL: showFail,
+            STUB_EXITED: exited ?? "3000",
+            STUB_STATUS: status ?? "0",
+            STUB_SED_FAIL: sedFail ? "1" : "",
+          },
+        },
+      ),
+    cleanup: () => rmSync(dir, { recursive: true, force: true }),
+  };
+}
+
+/**
+ * The production backup job run against stub external tools, with `--record` pointed into the
+ * fixture. The tests may not hand-write a record and then call the reader: this fixture is the
+ * writer half of the contract, so the file the preflight reads is the file the job produced.
+ */
+function backupRunFixture() {
+  const dir = mkdtempSync(join(tmpdir(), "kajianq-backup-run-"));
+  const bin = join(dir, "bin");
+  mkdirSync(bin);
+  const record = join(dir, "backup-provenance");
+  const passFile = join(dir, "restic.pass");
+  writeFileSync(passFile, "stub-passphrase\n", { mode: 0o600 });
+  const program = (name, body) =>
+    writeFileSync(join(bin, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+  program(
+    "pg_dump",
+    `case "$1" in
+  --version) printf 'pg_dump (PostgreSQL) 16.0\\n'; exit 0 ;;
+esac
+file=""
+while [ $# -gt 0 ]; do case "$1" in --file) file="$2"; shift 2 ;; *) shift ;; esac; done
+printf 'stub-dump' > "$file"`,
+  );
+  program(
+    "psql",
+    `case "$*" in
+  *"SHOW server_version"*) printf '16.0\\n' ;;
+  *pg_stat_user_tables*) printf 'users|3\\nsessions|2\\n' ;;
+esac
+exit 0`,
+  );
+  program(
+    "restic",
+    `if [ "\${STUB_RESTIC_FAIL:-0}" = "1" ]; then printf 'stub restic failure\\n' >&2; exit 1; fi
+exit 0`,
+  );
+  return {
+    dir,
+    record,
+    run: ({ resticFail = false } = {}) =>
+      spawnSync(
+        process.execPath,
+        [
+          resolve(process.cwd(), "provision/vps/backup/kajianq-backup.mjs"),
+          "--label",
+          "daily-20261018t031500z",
+          "--record",
+          record,
+        ],
+        {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            PATH: `${bin}:${process.env.PATH}`,
+            PGDATABASE_URL: "postgres://stub:stub@127.0.0.1:5432/kajianq",
+            RESTIC_REPOSITORY: join(dir, "repo"),
+            RESTIC_PASSWORD_FILE: passFile,
+            TMPDIR: dir,
+            STUB_RESTIC_FAIL: resticFail ? "1" : "0",
           },
         },
       ),
@@ -1127,10 +1221,11 @@ describe("provisioning config as code stays true to the ADR", () => {
     // every config it places has an mtime a future check could read and `install` re-stamps an
     // identical file. Pinning one spelling would only catch one spelling — `-m0644`,
     // `--mode=0644`, `--owner=root --group=root`, `install -m 0644 -o root -g root` all slip
-    // past a substring match — so the rule is an allowlist over the INVOCATIONS: the six that
-    // exist today are four `install -d` (directories hold no content), the helper's own write,
-    // and the visudo-gated sudoers grant, which is staged at 0440 and moved into place by a
-    // parse-gated `mv`. A new invocation anywhere reddens here, whatever its flags.
+    // past a substring match — so the rule is an allowlist over the INVOCATIONS: the raw
+    // invocations that exist are the `install -d` directory creations (directories hold no
+    // content), the helper's own write, and the visudo-gated sudoers grant, which is staged at
+    // 0440 and moved into place by a parse-gated `mv`. A new invocation anywhere reddens here,
+    // whatever its flags.
     const invocations = apply
       .split("\n")
       .map((line) => line.trim())
@@ -1197,9 +1292,9 @@ describe("provisioning config as code stays true to the ADR", () => {
   });
 
   it("a re-apply over unchanged unit content leaves the deploy green; a changed definition does not", () => {
-    // The ticket's reproduction, end to end across both scripts: install (apply.sh), re-apply
-    // over unchanged content, then read the deploy's assertion with systemd answering "last run
-    // exited 0, hours ago". Only a changed definition may make that red.
+    // End to end across both scripts: install (apply.sh), the record a completed run leaves,
+    // re-apply over unchanged content, then read the deploy's assertion. Only a changed definition
+    // may make that red.
     const cfg = configInstallFixture();
     const prov = provenanceFixture();
     try {
@@ -1207,21 +1302,22 @@ describe("provisioning config as code stays true to the ADR", () => {
       const lastRun = 3000;
       expect(cfg.run().status).toBe(0);
       utimesSync(cfg.dst, installedAt, installedAt);
-      const before = prov.run({ unitFile: cfg.dst, exited: lastRun });
+      prov.writeRecord({ completed: lastRun });
+      const before = prov.run({ unitFile: cfg.dst });
       expect(before.status).toBe(0);
       expect(before.stdout).toContain("backup unit healthy");
 
       // The re-apply the ticket was about: identical bytes, so nothing is written and the check
       // keeps reading the same mtime.
       expect(cfg.run().stdout).toContain("unchanged");
-      const afterReapply = prov.run({ unitFile: cfg.dst, exited: lastRun });
+      const afterReapply = prov.run({ unitFile: cfg.dst });
       expect(afterReapply.status).toBe(0);
       expect(afterReapply.stdout).toContain("backup unit healthy");
 
       // A genuinely changed definition is written, so the unit must run again before it passes.
       writeFileSync(cfg.src, "[Unit]\nDescription=fixture changed\n");
       expect(cfg.run().status).toBe(0);
-      const afterChange = prov.run({ unitFile: cfg.dst, exited: lastRun });
+      const afterChange = prov.run({ unitFile: cfg.dst });
       expect(afterChange.status).toBe(1);
       expect(afterChange.stderr).toContain("BEFORE its current definition was installed");
     } finally {
@@ -1230,84 +1326,191 @@ describe("provisioning config as code stays true to the ADR", () => {
     }
   });
 
-  it("the backup-provenance check reddens on a unit that genuinely never ran", () => {
-    // The negative case the #181 guard exists for, executed rather than asserted: an empty
-    // ExecMainExitTimestamp is "installed but never executed", and it must fail.
+  it("passes on a record written before a reboot (mutation: the reboot clears systemd's run state)", () => {
+    // The reboot case: the job wrote its record, then the box rebooted. systemd's
+    // ExecMainExitTimestamp is empty and only the persistent timer stamp survived. The record
+    // alone must carry the proof — the old systemd-reading check reddens on exactly this fixture.
+    const backup = backupRunFixture();
+    const prov = provenanceFixture();
+    try {
+      const ran = backup.run();
+      expect(ran.status, ran.stderr).toBe(0);
+      const record = readFileSync(backup.record, "utf8");
+      expect(record).toMatch(/^status=0$/m);
+      expect(record).toContain("label=daily-20261018t031500z");
+
+      const afterReboot = prov.run({ recordFile: backup.record, exited: "" });
+      expect(afterReboot.status).toBe(0);
+      expect(afterReboot.stdout).toContain("backup unit healthy");
+    } finally {
+      backup.cleanup();
+      prov.cleanup();
+    }
+  });
+
+  it("fails on a missing record (mutation: delete the record)", () => {
+    // systemd still reports a healthy run. A check that reads systemd would pass here; the
+    // record is gone, so the backup is unproven and the deploy must fail closed.
     const fx = provenanceFixture();
     try {
-      const never = fx.run({ exited: "" });
-      expect(never.status).toBe(1);
-      expect(never.stderr).toContain("has never run");
-      // The remedy is scoped to both causes of an empty timestamp: on systemd 261 an unknown
-      // unit also reports empty, and there `systemctl start` answers "Unit ... not found".
-      expect(never.stderr).toContain("daemon-reload");
-
-      // A run that predates the installed definition — the state apply.sh used to manufacture
-      // by re-stamping. Also still red.
-      const before = fx.run({ exited: 1000 });
-      expect(before.status).toBe(1);
-      expect(before.stderr).toContain("BEFORE its current definition was installed");
-
-      // A failed last run is red on the status half of the pair alone.
-      const failed = fx.run({ exited: 3000, status: "1" });
-      expect(failed.status).toBe(1);
-      expect(failed.stderr).toContain("last run exited 1");
-
-      // A timestamp that is not a plain integer cannot be compared; the comparison would
-      // error and fall through to the healthy line had it not been guarded.
-      const garbled = fx.run({ exited: "n/a" });
-      expect(garbled.status).toBe(1);
-      expect(garbled.stderr).toContain("non-numeric last-run timestamp");
-
-      // A `systemctl show` that fails outright names what could not be read, on either read,
-      // instead of aborting with systemd's own exit status.
-      const statusRead = fx.run({ exited: 3000, showFail: "ExecMainStatus" });
-      expect(statusRead.status).toBe(1);
-      expect(statusRead.stderr).toContain("could not read");
-
-      const timeRead = fx.run({ exited: 3000, showFail: "ExitTimestamp" });
-      expect(timeRead.status).toBe(1);
-      expect(timeRead.stderr).toContain("last-run timestamp");
-
-      // All digits, but past what `-lt` parses as intmax_t: it errors, and inside an `if`
-      // condition that reads as false — the healthy line — unless the length is bounded.
-      const overflowing = fx.run({ exited: "9".repeat(20) });
-      expect(overflowing.status).toBe(1);
-      expect(overflowing.stderr).toContain("out-of-range last-run timestamp");
-
-      // A unit file that is not installed at all is named, not silently read as healthy.
-      const absent = fx.run({ unitFile: join(fx.dir, "absent.service"), exited: 3000 });
+      const absent = fx.run({ exited: 3000, status: "0" });
       expect(absent.status).toBe(1);
-      expect(absent.stderr).toContain("is not installed");
-
-      // And the positive control: exit 0, run after the definition landed.
-      const healthy = fx.run({ exited: 3000 });
-      expect(healthy.status).toBe(0);
-      expect(healthy.stdout).toContain("backup unit healthy");
+      expect(absent.stderr).toContain("has never run");
+      expect(absent.stderr).toContain("a human with root must prove it");
+      expect(absent.stderr).toContain("sudo systemctl start kajianq-backup.service");
+      // The remedy covers an unloaded unit too: there `systemctl start` answers "Unit ... not
+      // found", which is what the daemon-reload line is for.
+      expect(absent.stderr).toContain("daemon-reload");
     } finally {
       fx.cleanup();
     }
   });
 
-  it("the backup-provenance check asserts the pair, never `Result` or the timer", () => {
+  it("fails on a failed run's record (mutation: record status=1)", () => {
+    // The last completed run failed. systemd's stub claims success, so this row also proves the
+    // record decides; the message must name the journal.
+    const fx = provenanceFixture();
+    try {
+      fx.writeRecord({ status: "1", completed: 3000 });
+      const failed = fx.run({ exited: 3000, status: "0" });
+      expect(failed.status).toBe(1);
+      expect(failed.stderr).toContain("last run exited 1");
+      expect(failed.stderr).toContain("journalctl -u kajianq-backup.service -n 40");
+    } finally {
+      fx.cleanup();
+    }
+  });
+
+  it("fails on a record older than the installed unit (mutation: move completion before install)", () => {
+    // The unit was changed after the last successful run, so it has never been exercised as
+    // installed — the second half of the pair, and still red.
+    const fx = provenanceFixture();
+    try {
+      fx.writeRecord({ completed: 1000 }); // the unit's mtime is 2000
+      const stale = fx.run({ exited: 3000, status: "0" });
+      expect(stale.status).toBe(1);
+      expect(stale.stderr).toContain("BEFORE its current definition was installed");
+      expect(stale.stderr).toContain("never been exercised as installed");
+      expect(stale.stderr).toContain("as root");
+    } finally {
+      fx.cleanup();
+    }
+  });
+
+  it("treats the record as the authority (mutation: forge systemd state both ways)", () => {
+    const fx = provenanceFixture();
+    try {
+      // Absent record + healthy systemd: red.
+      const absent = fx.run({ exited: 3000, status: "0" });
+      expect(absent.status).toBe(1);
+      expect(absent.stderr).toContain("has never run");
+
+      // Good record + systemd claiming a failed run with no timestamp: green.
+      fx.writeRecord();
+      const good = fx.run({ exited: "", status: "1" });
+      expect(good.status).toBe(0);
+      expect(good.stdout).toContain("backup unit healthy");
+    } finally {
+      fx.cleanup();
+    }
+  });
+
+  it("fails closed on a malformed or unreadable record", () => {
+    const fx = provenanceFixture();
+    try {
+      const cases = [
+        [{ status: "" }, "does not record an exit status"],
+        [{ status: "zero" }, "non-numeric exit status"],
+        [{ completed: "" }, "does not record when the last run completed"],
+        [{ completed: "n/a" }, "non-numeric completion timestamp"],
+        [{ completed: "9".repeat(20) }, "out-of-range completion timestamp"],
+      ];
+      for (const [fields, message] of cases) {
+        fx.writeRecord(fields);
+        const res = fx.run();
+        expect(res.status, message).toBe(1);
+        expect(res.stderr).toContain(message);
+      }
+
+      // A record that cannot be read names itself instead of aborting with sed's exit status.
+      const unreadable = fx.run({ sedFail: true });
+      expect(unreadable.status).toBe(1);
+      expect(unreadable.stderr).toContain("could not read");
+      expect(unreadable.stderr).toContain(fx.record);
+
+      // A unit file that is not installed at all is named, not silently read as healthy.
+      const absentUnit = fx.run({ unitFile: join(fx.dir, "absent.service") });
+      expect(absentUnit.status).toBe(1);
+      expect(absentUnit.stderr).toContain("is not installed");
+    } finally {
+      fx.cleanup();
+    }
+  });
+
+  it("the backup job records its outcome, including a failed run", () => {
+    const backup = backupRunFixture();
+    try {
+      const ok = backup.run();
+      expect(ok.status, ok.stderr).toBe(0);
+      expect(readFileSync(backup.record, "utf8")).toMatch(/^status=0$/m);
+      // World-readable, and the directory is traversable: the deploy identity reads this as an
+      // unprivileged user. The root ownership that makes it unforgeable is the unit's (it runs as
+      // root), so only the modes are assertable here.
+      expect(statSync(backup.record).mode & 0o777).toBe(0o644);
+      expect(statSync(backup.dir).mode & 0o777).toBe(0o755);
+
+      const failed = backup.run({ resticFail: true });
+      expect(failed.status).toBe(1);
+      const record = readFileSync(backup.record, "utf8");
+      expect(record).toMatch(/^status=1$/m);
+      expect(record).toContain("label=daily-20261018t031500z");
+      expect(record).toMatch(/^completed_at=\d+$/m);
+    } finally {
+      backup.cleanup();
+    }
+  });
+
+  it("the backup-provenance check reads the durable record, never systemd runtime state", () => {
     const check = read("provision/vps/deploy/backup-provenance.sh");
-    // The exit status is one half of the assertion...
-    expect(check).toMatch(/systemctl show "\$\{UNIT\}" -p ExecMainStatus/);
-    expect(check).toMatch(/if \[ "\$status" != "0" \][^]*?exit 1/);
-    // ...and the timestamp-vs-install comparison is the other, because `Result` cannot
-    // distinguish "the last run passed" from "no run since the unit changed".
-    expect(check).toMatch(/ExecMainExitTimestamp --timestamp=unix/);
-    expect(check).toMatch(/stat -c %Y "\$\{UNIT_FILE\}"/);
-    expect(check).toMatch(/if \[ "\$exited" -lt "\$installed" \][^]*?exit 1/);
-    // A never-run unit must fail too, not pass on empty strings.
-    expect(check).toMatch(/if \[ -z "\$exited" \][^]*?exit 1/);
-    // Failures name the follow-up, or the operator reads a bare code.
-    expect(check).toMatch(/journalctl -u kajianq-backup\.service/);
-    // `Result` must NOT be the assertion: `reset-failed` clears it to `success` while leaving
-    // ExecMainStatus=1, so gating on it reports a failed run as healthy.
-    expect(check).not.toMatch(/-p Result/);
-    // And it must not merely re-check the timer, the reassuring-looking field.
-    expect(check).not.toMatch(/is-active --quiet kajianq-backup\.timer/);
+    const executable = check
+      .split("\n")
+      .filter((line) => !/^\s*#/.test(line))
+      .join("\n");
+    // The record is the only evidence...
+    expect(executable).toMatch(/RECORD_FILE="\$\{2:-\/var\/lib\/kajianq\/backup-provenance\}"/);
+    expect(executable).toMatch(/record_field\(\) \{\s*sed -n/);
+    expect(executable).toMatch(/if \[ "\$\{status\}" != "0" \][^]*?exit 1/);
+    expect(executable).toMatch(/stat -c %Y "\$\{UNIT_FILE\}"/);
+    expect(executable).toMatch(/if \[ "\$\{completed\}" -lt "\$\{installed\}" \][^]*?exit 1/);
+    // ...both halves are guarded, so a garbled value cannot reach the healthy line...
+    expect(executable).toMatch(/if \[ -z "\$\{status\}" \][^]*?exit 1/);
+    expect(executable).toMatch(/case "\$\{status\}" in\s*\*\[!0-9\]\*/);
+    expect(executable).toMatch(/if \[ -z "\$\{completed\}" \][^]*?exit 1/);
+    expect(executable).toMatch(/\*\[!0-9\]\*/);
+    expect(executable).toMatch(/-gt 11/);
+    // ...failures name the follow-up...
+    expect(executable).toMatch(/journalctl -u \$\{UNIT\} -n 40/);
+    // ...and no systemd runtime read may sneak back in.
+    expect(executable).not.toMatch(
+      /systemctl show|ExecMainStatus|ExecMainExitTimestamp|systemctl reset-failed/,
+    );
+    expect(executable).not.toMatch(/-p Result/);
+  });
+
+  it("the provenance record lives outside the deploy tree, root-owned and world-readable", () => {
+    const backup = read("provision/vps/backup/kajianq-backup.mjs");
+    const check = read("provision/vps/deploy/backup-provenance.sh");
+    const apply = read("provision/vps/apply.sh");
+    // The writer and the reader must name the same path, and it must not sit under the deploy
+    // root: /srv/kajianq belongs to the deploy identity, so a root-owned record there could be
+    // renamed away, and the shipped subdirectories are replaced with `rsync --delete`.
+    expect(backup).toMatch(/DEFAULT_RECORD = "\/var\/lib\/kajianq\/backup-provenance"/);
+    expect(check).toMatch(/RECORD_FILE="\$\{2:-\/var\/lib\/kajianq\/backup-provenance\}"/);
+    expect(backup).not.toMatch(/DEFAULT_RECORD = "\/srv\/kajianq/);
+    // apply.sh provisions the directory root-owned and traversable; the job writes the file
+    // 0644, so the deploy identity can read a proof it cannot write.
+    expect(apply).toMatch(/install -d -o root -g root -m 0755 \/var\/lib\/kajianq/);
+    expect(backup).toMatch(/writeFileSync\(tmp, body, \{ mode: 0o644 \}\)/);
   });
 
   it("the deploy runs the provenance preflight before it builds, ships or restarts anything", () => {

@@ -4,7 +4,7 @@
  * Postgres store (ADR-0043 decision 4).
  *
  *   kajianq-backup.mjs [--env-file /etc/kajianq/backup.env] [--label <label>]
- *                      [--keep-daily 30] [--dry-run]
+ *                      [--keep-daily 30] [--dry-run] [--record <path>]
  *
  * What it does, in order:
  *   1. `pg_dump --format=custom` of the whole database into a private temp dir.
@@ -17,6 +17,10 @@
  *      This is the only deletion path: a snapshot is never overwritten in
  *      place, it is superseded and then pruned (the immutable-label rule,
  *      ADR-0038 semantics).
+ *   5. Record the run's outcome — exit status, completion time, label and the
+ *      revision it ran from — where the deploy's provenance preflight can read
+ *      it. The record is the proof, not systemd's run fields: those describe
+ *      the current boot and a reboot clears them.
  *
  * Credentials travel through the environment, never argv: `--env-file` is
  * parsed by this script and merged into `process.env`, so a password is never
@@ -25,8 +29,17 @@
  * The target is never a free tier (ADR-0043 register rule): the repository is
  * the owner's encrypted storage endpoint, configured in backup.env.
  */
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import {
@@ -73,6 +86,62 @@ function argAfter(flags, name) {
   const i = flags.indexOf(name);
   return i >= 0 ? flags[i + 1] : undefined;
 }
+
+/**
+ * Where a completed run records its outcome for
+ * provision/vps/deploy/backup-provenance.sh.
+ *
+ * Deliberately under /var/lib, not the deploy root: /srv/kajianq belongs to the
+ * deploy identity, so a root-owned file there could still be renamed away by
+ * the very identity the proof is meant to bind, and anything inside api/ or
+ * web/ would be deleted by the next rsync. This directory is root-owned and
+ * world-traversable, and the record is root-owned and world-readable: the
+ * deploy identity can read a proof it cannot forge, and root can replace it.
+ */
+const DEFAULT_RECORD = "/var/lib/kajianq/backup-provenance";
+
+// Filled in by main() once the flags and identity are known; the exit handler
+// reads them when the process ends.
+let recordPath = DEFAULT_RECORD;
+let recordLabel = "unknown";
+let recordRevision = "unknown";
+let recordEnabled = true;
+
+/**
+ * Write the run's outcome for the deploy's provenance preflight. Temp file plus
+ * rename, so a reader never sees a half-written record.
+ *
+ * Never throws: a failed write must not turn a backup that succeeded into a
+ * failed run, and this runs from the process's exit handler.
+ */
+function writeRecord(status) {
+  const dir = dirname(recordPath);
+  mkdirSync(dir, { recursive: true, mode: 0o755 });
+  chmodSync(dir, 0o755);
+  const body = [
+    `status=${status}`,
+    `completed_at=${Math.floor(Date.now() / 1000)}`,
+    `label=${recordLabel}`,
+    `revision=${recordRevision}`,
+    "",
+  ].join("\n");
+  const tmp = join(dir, `.${basename(recordPath)}.${process.pid}.tmp`);
+  writeFileSync(tmp, body, { mode: 0o644 });
+  chmodSync(tmp, 0o644);
+  renameSync(tmp, recordPath);
+}
+
+process.on("exit", (code) => {
+  // A dry run uploads nothing and must not overwrite the last real run's proof.
+  if (!recordEnabled) return;
+  try {
+    writeRecord(code ?? 1);
+  } catch (err) {
+    console.error(
+      `kajianq-backup: could not write the provenance record at ${recordPath}: ${err.message}`,
+    );
+  }
+});
 
 /** Decompose a connection URL into libpq PG* env vars (never argv). */
 function pgEnv(url) {
@@ -137,6 +206,32 @@ function gitInfo() {
 
 async function main() {
   const argv = process.argv.slice(2);
+  const dryRun = argv.includes("--dry-run");
+  const recordArg = argAfter(argv, "--record");
+  if (recordArg) recordPath = recordArg;
+  // A record is proof about the UNIT, so only the unit's own run may leave one:
+  // systemd sets INVOCATION_ID for it. A checkout invocation records only when
+  // --record explicitly names a path (tests, the restore drill), because it does
+  // not prove the unit's ExecStart or environment. A dry run records nothing
+  // either way: it uploads nothing and must not overwrite the last real run.
+  recordEnabled = !dryRun && (Boolean(recordArg) || process.env.INVOCATION_ID !== undefined);
+
+  const keepDaily = Number(argAfter(argv, "--keep-daily") ?? BACKUP_KEEP_DAILY);
+  const label =
+    argAfter(argv, "--label") ??
+    `daily-${new Date()
+      .toISOString()
+      .replace(/[-:]/g, "")
+      .replace(/\.\d+Z$/, "Z")
+      .toLowerCase()}`;
+  readLabel(label);
+  // The record's identity and the manifest's provenance are the same probe; it
+  // is best-effort and is taken before a failure can end the run, so a failed
+  // run's record still says which revision and label it failed on.
+  const git = gitInfo();
+  recordLabel = label;
+  recordRevision = git.sha;
+
   const envFile = argAfter(argv, "--env-file");
   if (envFile) applyEnvFile(process.env, parseEnvFile(readFileSync(envFile, "utf8")));
 
@@ -162,17 +257,6 @@ async function main() {
   } catch (err) {
     fail(`RESTIC_PASSWORD_FILE ${passFile} is not readable: ${err.message}`);
   }
-
-  const dryRun = argv.includes("--dry-run");
-  const keepDaily = Number(argAfter(argv, "--keep-daily") ?? BACKUP_KEEP_DAILY);
-  const label =
-    argAfter(argv, "--label") ??
-    `daily-${new Date()
-      .toISOString()
-      .replace(/[-:]/g, "")
-      .replace(/\.\d+Z$/, "Z")
-      .toLowerCase()}`;
-  readLabel(label);
 
   const url = process.env.PGDATABASE_URL;
   adoptPgEnv(url);
@@ -208,7 +292,7 @@ async function main() {
         pgDump: run("pg_dump", ["--version"]),
         generator: "provision/vps/backup/kajianq-backup.mjs",
       },
-      git: gitInfo(),
+      git,
     });
     writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 

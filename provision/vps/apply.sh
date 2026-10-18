@@ -162,6 +162,12 @@ else
     log "would: chown -R ${DEPLOY_USER}:${DEPLOY_USER} /srv/kajianq/api /srv/kajianq/web"
 fi
 run install -d -o root -g root -m 0700 /etc/kajianq
+# The backup job's durable provenance record lives here: outside the deployed
+# tree (so neither rsync nor the deploy identity's ownership can touch it),
+# root-owned and world-readable, so the deploy identity can read a proof it
+# cannot write. /var/lib is root-owned, which is what keeps a root-owned 0755
+# directory here un-replaceable from the deploy account.
+run install -d -o root -g root -m 0755 /var/lib/kajianq
 
 # --- the deploy identity's root grant ---------------------------------------
 # Installed only after `visudo -cf` parses the candidate: a malformed file in
