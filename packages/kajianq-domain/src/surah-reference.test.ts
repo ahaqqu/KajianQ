@@ -157,6 +157,12 @@ describe("detectSurahReference — recognises a named reference", () => {
  * different surah. It is not a bare-form revert (the entry with its complement
  * removed), which proves only that the phrase is not a bare form, not that a
  * qualifier cannot extend it.
+ *
+ * The table admits no entry, and the guard below is the structural veto: while
+ * detection matches a padded phrase on normalized text, any negative carrying
+ * an entry's words prefix-matches, so the null assertion would return the
+ * entry's surah for every admitted entry. An entry added before the boundary
+ * rule reddens the guard.
  */
 type PinnedDescription = {
   phrase: string;
@@ -200,11 +206,14 @@ describe("detectSurahReference — the curated description table", () => {
     expect(PINNED_DESCRIPTIONS).toEqual([]);
   });
 
-  it("pins a referent-moving negative that carries the entry's own words, per entry", () => {
-    // The guarded property is the qualifier-moved referent, not the bare-form
-    // revert: an entry a natural qualifier turns into a different surah cannot
-    // pass, and neither can a row whose negative is only the entry's bare form.
-    // The table's entries and the residual rows run the same construction.
+  it("vetoes every description entry until detection gains a boundary rule", () => {
+    // The table admits no entry, so the same construction exercises the
+    // residual rows: every row's negative carries the row's own words, and
+    // detection must stay null on it. Applied to an entry, that null assertion
+    // is the structural veto — the padded phrase match on normalized text finds
+    // the entry inside its referent-moving negative and returns the entry's
+    // surah — so an entry added before the boundary rule reddens here. The
+    // residual rows pass because they are not in the table.
     const rows = [...PINNED_DESCRIPTIONS, ...REFERENT_MOVING_NEGATIVES];
     expect(rows.length).toBeGreaterThan(0);
     for (const entry of rows) {
@@ -217,11 +226,15 @@ describe("detectSurahReference — the curated description table", () => {
     }
   });
 
-  it("detects every pinned description in a sentence", () => {
-    for (const entry of PINNED_DESCRIPTIONS) {
-      expect(detectSurahReference(`What does ${entry.phrase} mean?`), entry.phrase).toEqual({
-        surah: entry.surah,
-      });
+  it("detects no description in a sentence while the table admits none", () => {
+    // The empty table's consequence on the detector: a description-shaped
+    // question is residual until a boundary rule lets an entry be admitted, and
+    // this reddens when one is.
+    for (const question of [
+      "What does the surah of the cave mean?",
+      "What does the surah that begins with praise mean?",
+    ]) {
+      expect(detectSurahReference(question), question).toBeNull();
     }
   });
 
