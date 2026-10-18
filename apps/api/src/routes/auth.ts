@@ -4,7 +4,7 @@ import {
   DeletedUserSchema,
   type AnonymousSession,
 } from "@app/contracts";
-import { createLogger } from "@app/infra";
+import { createLogger, StoreError } from "@app/infra";
 import { describeRoute, resolver } from "hono-openapi";
 import { newRouter } from "../lib/guard";
 import { authGuard, buildStoreWiring, wiringOr503 } from "../lib/chat-wiring";
@@ -18,12 +18,13 @@ import { authGuard, buildStoreWiring, wiringOr503 } from "../lib/chat-wiring";
  * chat pipeline, so a missing LLM role cannot gate token minting or the
  * self-deletion erasure right.
  *
- * `DELETE /v1/auth/me` is guarded: the Bearer token identifies the user, and
- * the erasure of the user's whole subtree (sessions, chat sessions/messages,
+ * `DELETE /v1/auth/me` is guarded: the Bearer token identifies the user, and the
+ * erasure of the user's whole subtree (sessions, chat sessions/messages,
  * feedback, and the user's answer traces — ADR-0007) is one transactional store
- * call whose success means the rows are gone; an erasure that leaves a row is an
- * error response, never `{ deleted: true }`. Deleting with an unauthenticated
- * request is a 401, never a no-op.
+ * call whose postcondition is checked inside that transaction. Success therefore
+ * means the rows are gone, and a failure is an error response with the rows
+ * untouched — never `{ deleted: true }` over a surviving subtree. Deleting with
+ * an unauthenticated request is a 401, never a no-op.
  */
 
 type AuthEnv = import("../env").ApiEnv["Bindings"] & Record<string, string | undefined>;
@@ -51,7 +52,7 @@ const ANONYMOUS_OPENAPI = describeRoute({
 const DELETE_ME_OPENAPI = describeRoute({
   summary: "Delete the current anonymous user",
   description:
-    "Erases the authenticated user and their whole subtree — sessions, chat sessions and messages, feedback, answer traces — in one transaction (ADR-0017, ADR-0007). One call erases all of it, and a `200 {deleted: true}` means the rows are gone: the erasure verifies every table of the subtree inside the transaction and answers an error instead if any row survives. A failed erasure rolls back, so the subtree is never half-erased. The call is idempotent, but a repeat cannot re-authenticate once the user's sessions are gone — that is a `401`, not a success.",
+    "Erases the authenticated user and their whole subtree — sessions, chat sessions and messages, feedback, answer traces — in one transaction (ADR-0017, ADR-0007). Every table of that subtree is verified empty inside the transaction, so a `200 {deleted: true}` means the rows are gone: a row the sweeps could not remove aborts the transaction, and the rollback leaves the user's rows untouched rather than half-erased. A row whose owner column is NULL is not attributable to any user and is outside this guarantee. The store call is idempotent, but a repeat cannot re-authenticate once the user's sessions are gone — that is a `401`, not a success.",
   responses: {
     200: {
       description: "The user and their whole subtree are gone",
@@ -108,7 +109,19 @@ export const authRoutes = newRouter()
     const unauthorized = await authGuard(c, fullStore);
     if (unauthorized !== undefined) return unauthorized;
     const { userId } = c.get("authed");
-    await runStore(fullStore.deleteUserCascade(userId));
+    try {
+      await runStore(fullStore.deleteUserCascade(userId));
+    } catch (err) {
+      // The client still gets the generic 500 (the global handler answers it);
+      // the residual tables are the operator's only diagnostic for an incomplete
+      // erasure, so they are logged here. The cause is the driver's message —
+      // table names, no user data, no SQL text — and no user id is logged.
+      logger.error("auth.erasure_incomplete", {
+        kind: err instanceof StoreError ? err.kind : "unknown",
+        cause: err instanceof StoreError && err.cause instanceof Error ? err.cause.message : null,
+      });
+      throw err;
+    }
     // No user id in the log line: the point of this endpoint is erasure.
     logger.info("auth.user_deleted");
     return c.json({ deleted: true } satisfies { deleted: true });

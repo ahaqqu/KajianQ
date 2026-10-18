@@ -1,11 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
-import { fc, test as fcTest } from "@fast-check/vitest";
 import { Effect, Exit } from "effect";
 import type { StoreError } from "@app/rag-core";
 import { runFail } from "@app/rag-core/testing";
 import { createPostgresRagStore, type SqlRunner } from "./rag-store-postgres";
 import { sqlEffect } from "./rag-store-postgres-errors";
-import { ERASURE_VERIFIED_TABLES, erasureResiduals } from "./rag-store-postgres-erasure";
+import { ERASURE_SUBJECT_SETTING } from "./rag-store-postgres-erasure";
 import { createRagStore } from "./rag-store-factory";
 import type { Logger, LogFields } from "./logger";
 import type { Trace } from "@app/contracts";
@@ -430,83 +429,90 @@ describe("rag-store-postgres adapter (fake runner)", () => {
     expect(statements[1]).toContain("NOT EXISTS (SELECT 1 FROM sessions");
   });
 
-  it("deleteUserCascade sweeps every user table, the user row, and the postcondition in one transaction", async () => {
+  it("deleteUserCascade erases in one transaction whose postcondition runs inside it", async () => {
     const sql = makeFakeSql();
     const store = createPostgresRagStore(sql);
-    sql._setTxn([
-      [],
-      [],
-      [],
-      [],
-      [],
-      [],
-      [{ users: 0, sessions: 0, chat_sessions: 0, answer_traces: 0, feedback: 0 }],
-    ]);
     await runOk(store.deleteUserCascade("u1"));
 
-    // One batch call, never a sequence of standalone statements: a mid-batch
-    // failure must roll the whole subtree back, not leave it half-erased.
+    // One batch call, never a sequence of standalone statements: the postcondition
+    // statements share the transaction, so a surviving row rolls the whole subtree
+    // back instead of committing over it.
     expect(sql._calls.filter((c) => c.kind === "transaction")).toHaveLength(1);
-    const statements = sql._calls.filter((c) => c.kind === "tag").map((c) => c.text);
-    expect(statements).toHaveLength(7);
+    const statements = sql._calls.filter((c) => c.kind === "tag");
+    const text = statements.map((c) => c.text);
+
+    // The subject id is bound once and the assertions read it back: a DO block
+    // cannot take parameters, so every occurrence has to name the same setting.
+    expect(statements[0]?.values).toEqual(["kajianq.erasure.subject", "u1"]);
+    const settings = new Set(
+      [...text.join("\n").matchAll(/'kajianq\.erasure\.[a-z_]+'/g)].map((m) => m[0]),
+    );
+    expect([...settings]).toEqual([`'${ERASURE_SUBJECT_SETTING}'`]);
+
     // Each child table is named explicitly, so the erasure does not depend on the
     // FK cascade alone; chat messages are swept through the user's sessions while
     // those sessions still exist.
-    expect(statements[0]).toContain("DELETE FROM chat_messages");
-    expect(statements[0]).toContain("SELECT id FROM chat_sessions WHERE user_id");
-    expect(statements[1]).toContain("DELETE FROM feedback WHERE user_id");
-    expect(statements[2]).toContain("DELETE FROM answer_traces WHERE user_id");
-    expect(statements[3]).toContain("DELETE FROM chat_sessions WHERE user_id");
-    expect(statements[4]).toContain("DELETE FROM sessions WHERE user_id");
+    expect(text[1]).toContain("DELETE FROM chat_messages");
+    expect(text[1]).toContain("SELECT id FROM chat_sessions WHERE user_id");
+    expect(text[3]).toContain("DELETE FROM feedback WHERE user_id");
+    expect(text[4]).toContain("DELETE FROM answer_traces WHERE user_id");
+    expect(text[5]).toContain("DELETE FROM chat_sessions WHERE user_id");
+    expect(text[6]).toContain("DELETE FROM sessions WHERE user_id");
     // The parent delete is last: its FK cascade is the backstop for anything
     // committed between a sweep and this statement.
-    expect(statements[5]).toContain("DELETE FROM users WHERE id");
-    // The postcondition counts the subtree after the deletes.
-    expect(statements[6]).toContain("count(*)");
-    expect(statements[6]).toContain("answer_traces");
+    expect(text[7]).toContain("DELETE FROM users WHERE id");
+
+    // The message sweep is verified before the chat sessions go — the only point
+    // where a message can still be attributed to the user — and the remaining
+    // tables are verified after the parent delete.
+    expect(text[2]).toContain("DO $$");
+    expect(text[2]).toContain("'chat_messages' AS verified_table");
+    expect(text[2]).toContain("ERRCODE = '23514'");
+    expect(text[8]).toContain("DO $$");
+    expect(text[8]).toContain("ERRCODE = '23514'");
   });
 
-  it("deleteUserCascade fails when a row survives, instead of reporting success", async () => {
+  it("every swept table is verified, and every verified table is swept", async () => {
     const sql = makeFakeSql();
-    const store = createPostgresRagStore(sql);
-    sql._setTxn([
-      [],
-      [],
-      [],
-      [],
-      [],
-      [],
-      [{ users: 0, sessions: 0, chat_sessions: 1, answer_traces: 0, feedback: 0 }],
-    ]);
-    const err = await runFail(store.deleteUserCascade("u1"));
+    await runOk(createPostgresRagStore(sql).deleteUserCascade("u1"));
+    const text = sql._calls
+      .filter((c) => c.kind === "tag")
+      .map((c) => c.text)
+      .join("\n");
+    const swept = new Set([...text.matchAll(/DELETE FROM ([a-z_]+)/g)].map((m) => m[1]!));
+    const verified = new Set(
+      [...text.matchAll(/SELECT '([a-z_]+)' AS verified_table/g)].map((m) => m[1]!),
+    );
+    // The contract suite pins this set against the schema's cascading closure; here
+    // the pin is that a table cannot be swept without being verified, or verified
+    // without being swept.
+    expect([...verified].sort()).toEqual([...swept].sort());
+  });
+
+  it("deleteUserCascade reports a surviving row as a constraint error naming it", async () => {
+    const sql = makeFakeSql();
+    // The postcondition raised inside the transaction: the driver rolled back and
+    // rejected with the server error, so the caller sees the typed failure.
+    sql.transaction = () =>
+      Promise.reject(
+        Object.assign(new Error("user erasure left rows behind in: chat_sessions"), {
+          severity: "ERROR",
+          code: "23514",
+        }),
+      );
+    const err = await runFail(createPostgresRagStore(sql).deleteUserCascade("u1"));
     expect(err.kind).toBe("constraint");
     expect(String(err.cause)).toContain("chat_sessions");
-  });
-
-  it("deleteUserCascade fails closed when the driver returns no postcondition row", async () => {
-    const sql = makeFakeSql();
-    const store = createPostgresRagStore(sql);
-    // Six deletes, no verification result: a driver that resolves the batch
-    // differently is a contract violation, never a pass.
-    sql._setTxn([[], [], [], [], [], []]);
-    const err = await runFail(store.deleteUserCascade("u1"));
-    expect(err.kind).toBe("constraint");
   });
 
   it("deleteUserCascade is idempotent on an already-empty subtree", async () => {
     const sql = makeFakeSql();
     const store = createPostgresRagStore(sql);
-    sql._setTxn([
-      [],
-      [],
-      [],
-      [],
-      [],
-      [],
-      [{ users: 0, sessions: 0, chat_sessions: 0, answer_traces: 0, feedback: 0 }],
-    ]);
     await runOk(store.deleteUserCascade("u1"));
     await runOk(store.deleteUserCascade("u1"));
+    // An empty subtree is a no-op success: the deletes remove nothing and every
+    // postcondition statement passes.
+    expect(sql._calls.filter((c) => c.kind === "transaction")).toHaveLength(2);
   });
 
   it("deleteUserCascade surfaces a failing statement as a StoreError (the batch rolls back)", async () => {
@@ -1102,32 +1108,5 @@ describe("Postgres eval-ledger methods (unit, fake SQL)", () => {
       store.listDocChildNeighboursByChildIds(["c-1"], { radius: 1, limit: 4 }),
     );
     expect(err.kind).toBe("transport");
-  });
-});
-
-describe("erasure postcondition", () => {
-  // One arbitrary whole count per verified table, in declaration order.
-  const counts = fc.array(fc.nat({ max: 4 }), {
-    minLength: ERASURE_VERIFIED_TABLES.length,
-    maxLength: ERASURE_VERIFIED_TABLES.length,
-  });
-
-  const rowOf = (values: readonly number[]) =>
-    Object.fromEntries(ERASURE_VERIFIED_TABLES.map((table, i) => [table, values[i]]));
-
-  fcTest.prop([counts])("names exactly the tables that still hold a row", (values) => {
-    const expected = ERASURE_VERIFIED_TABLES.filter((_, i) => values[i] !== 0);
-    expect(erasureResiduals(rowOf(values))).toEqual(expected);
-  });
-
-  fcTest.prop([fc.constantFrom(undefined, null, "0", Number.NaN, Number.POSITIVE_INFINITY)])(
-    "a count it cannot read as a whole number is residual (fail closed)",
-    (bad) => {
-      expect(erasureResiduals({ users: bad } as never)).toContain("users");
-    },
-  );
-
-  it("reports every table when the batch resolved no postcondition row", () => {
-    expect(erasureResiduals(undefined)).toEqual([...ERASURE_VERIFIED_TABLES]);
   });
 });

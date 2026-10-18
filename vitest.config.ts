@@ -5,6 +5,13 @@ export default defineConfig({
     dedupe: ["effect"],
   },
   test: {
+    // The real-Postgres contract suites share one database and mutate its schema
+    // (the erasure suite drops a foreign key and installs BEFORE DELETE triggers),
+    // so two of them must never run at once. They only exist when a database is
+    // configured, which is exactly when the runner has to serialize the files; the
+    // DB-less gate keeps full parallelism. The serial property therefore belongs to
+    // the configuration, not to whoever remembers to pass a flag.
+    fileParallelism: !process.env.DATABASE_URL,
     include: [
       "packages/**/src/**/*.{test,prop.test}.ts",
       "apps/**/src/**/*.{test,prop.test}.ts",

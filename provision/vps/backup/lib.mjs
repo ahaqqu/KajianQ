@@ -154,31 +154,93 @@ export const RECLAIM_SQL = [
 ];
 
 /**
- * The Art. 17 erasure a restore re-applies — the same statement set production
+ * The residual assertions the erasure batch carries: each `verified_table` row
+ * exists only while that table still holds a row for the subject, and a non-empty
+ * list raises SQLSTATE 23514, which aborts the transaction under `ON_ERROR_STOP`.
+ * `chat_messages` is checked between its own sweep and the `chat_sessions` delete,
+ * the only point where its transitive owner can still be read.
+ */
+const CHAT_MESSAGES_RESIDUAL = `DO $$
+DECLARE residual text;
+BEGIN
+  SELECT string_agg(verified_table, ', ') INTO residual FROM (
+    SELECT 'chat_messages' AS verified_table
+    WHERE EXISTS (
+      SELECT 1
+      FROM chat_messages m
+      JOIN chat_sessions s ON s.id = m.session_id
+      WHERE s.user_id = current_setting('kajianq.erasure.subject')::uuid
+    )
+  ) checked;
+  IF residual IS NOT NULL THEN
+    RAISE EXCEPTION 'user erasure left rows behind in: %', residual USING ERRCODE = '23514';
+  END IF;
+END $$;`;
+
+const SUBTREE_RESIDUAL = `DO $$
+DECLARE residual text;
+BEGIN
+  SELECT string_agg(verified_table, ', ') INTO residual FROM (
+    SELECT 'users' AS verified_table
+    WHERE EXISTS (
+      SELECT 1 FROM users WHERE id = current_setting('kajianq.erasure.subject')::uuid
+    )
+    UNION ALL
+    SELECT 'sessions' AS verified_table
+    WHERE EXISTS (
+      SELECT 1 FROM sessions WHERE user_id = current_setting('kajianq.erasure.subject')::uuid
+    )
+    UNION ALL
+    SELECT 'chat_sessions' AS verified_table
+    WHERE EXISTS (
+      SELECT 1 FROM chat_sessions WHERE user_id = current_setting('kajianq.erasure.subject')::uuid
+    )
+    UNION ALL
+    SELECT 'answer_traces' AS verified_table
+    WHERE EXISTS (
+      SELECT 1 FROM answer_traces WHERE user_id = current_setting('kajianq.erasure.subject')::uuid
+    )
+    UNION ALL
+    SELECT 'feedback' AS verified_table
+    WHERE EXISTS (
+      SELECT 1 FROM feedback WHERE user_id = current_setting('kajianq.erasure.subject')::uuid
+    )
+  ) checked;
+  IF residual IS NOT NULL THEN
+    RAISE EXCEPTION 'user erasure left rows behind in: %', residual USING ERRCODE = '23514';
+  END IF;
+END $$;`;
+
+/**
+ * The Art. 17 erasure a restore re-applies — the same statements production
  * `deleteUserCascade` runs (`packages/infra/src/rag-store-postgres-erasure.ts`),
  * in one transaction, with the user id bound and never interpolated: it travels
  * as a psql variable (`-v uid=…` + `:'uid'`), so psql quotes it and every
- * statement's text is fixed. The child sweeps name each table explicitly and the
- * parent delete runs last, exactly as production does, so a restore cannot
- * re-create a row production erasure would have removed by not relying on the
- * same foreign keys. A unit test compares this batch's statements to the
- * adapter's, so the restore path cannot drift from the live erasure.
+ * statement's text is fixed. The child sweeps name each table explicitly, the
+ * parent delete runs last, and the residual assertions run inside the transaction
+ * exactly as production does — a restore can neither resurrect a row production
+ * erased nor report a half-applied erasure as done. A unit test compares both
+ * directions (swept and verified tables) to the adapter's, so the restore path
+ * cannot drift from the live erasure.
  *
- * `psql` runs it on stdin with `ON_ERROR_STOP=1` (see `kajianq-restore.mjs`), so
- * a failed statement aborts before `COMMIT` and the scratch target is not left
- * half-erased. The postcondition the API endpoint verifies is asserted here by
- * the drill's own before/after table counts, not by a statement that cannot fail
- * the run.
+ * `psql` runs it on stdin with `ON_ERROR_STOP=1` (see `kajianq-restore.mjs`), so a
+ * residual assertion aborts before `COMMIT`: the batch exits non-zero and the
+ * scratch target is not left half-erased.
  */
 export function erasureSql() {
   return [
     "BEGIN;",
+    // A DO block cannot take parameters, so the subject id is bound once into a
+    // transaction-local setting that the assertions read back.
+    "SELECT set_config('kajianq.erasure.subject', :'uid', true);",
     "DELETE FROM chat_messages WHERE session_id IN (SELECT id FROM chat_sessions WHERE user_id = :'uid');",
+    CHAT_MESSAGES_RESIDUAL,
     "DELETE FROM feedback WHERE user_id = :'uid';",
     "DELETE FROM answer_traces WHERE user_id = :'uid';",
     "DELETE FROM chat_sessions WHERE user_id = :'uid';",
     "DELETE FROM sessions WHERE user_id = :'uid';",
     "DELETE FROM users WHERE id = :'uid';",
+    SUBTREE_RESIDUAL,
     "COMMIT;",
   ].join("\n");
 }

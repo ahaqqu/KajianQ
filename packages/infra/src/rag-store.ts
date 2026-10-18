@@ -153,12 +153,15 @@ export interface RagStore
   resolveUserId(token: string): Effect.Effect<string | null, StoreError>;
 
   /** Erase a user and their whole subtree — sessions, chat sessions and their
-   * messages, feedback, and the user's answer traces — in ONE transaction, and
-   * resolve only after verifying every table in that subtree is empty for the
-   * user. Failure (a failed statement, or a row the erasure could not remove)
-   * rolls the transaction back and is a `StoreError`: the caller answers with an
-   * error, never with a success response. A call on an already-erased user is a
-   * no-op success, so the operation is idempotent. */
+   * messages, feedback, and the user's answer traces — in ONE transaction whose
+   * postcondition is checked inside it: every table of the subtree is counted
+   * after its sweep, and a surviving row aborts the transaction. The call
+   * therefore resolves only for an empty subtree, and a failure is a
+   * `StoreError` with the rows untouched — the caller answers with an error,
+   * never with a success response. A call on an already-erased user is a no-op
+   * success, so the operation is idempotent. A row whose owner column is NULL
+   * cannot be attributed to any user; it is outside this guarantee and survives
+   * silently. */
   deleteUserCascade(userId: string): Effect.Effect<void, StoreError>;
 
   /** Reclaim expired anonymous sessions: delete session rows whose TTL has

@@ -480,31 +480,60 @@ describe("erasure a restore must re-apply", () => {
     expect(orphan).toMatch(/kind = 'anonymous'/);
   });
 
-  it("the Art. 17 batch matches production deleteUserCascade — the restore path cannot drift", () => {
-    // Production erasure (DELETE /v1/auth/me → deleteUserCascade) sweeps each user table by id
-    // inside one transaction; the restore re-applies the same statements with the id bound as a
-    // psql variable. The comparison normalizes the adapter's tagged templates against the
-    // restore's `:'uid'` binding — the same placeholder role — so a table swept in one path and
-    // not the other reddens here.
+  /** The tables a batch sweeps, in order, and the tables it verifies. */
+  const erasedTables = (sql) => [...sql.matchAll(/DELETE FROM ([a-z_]+)/g)].map((m) => m[1]);
+  const verifiedTables = (sql) => [
+    ...new Set([...sql.matchAll(/SELECT '([a-z_]+)' AS verified_table/g)].map((m) => m[1])),
+  ];
+  const adapterErasure = () =>
+    readFileSync(
+      resolve(process.cwd(), "packages/infra/src/rag-store-postgres-erasure.ts"),
+      "utf8",
+    );
+
+  it("the Art. 17 batch matches production deleteUserCascade in both directions — the restore path cannot drift", () => {
+    // Production erasure (DELETE /v1/auth/me → deleteUserCascade) sweeps and verifies each
+    // table of the subtree inside one transaction; the restore re-applies the same statements
+    // with the id bound as a psql variable. Both sets are compared BOTH ways, so a table swept
+    // in one path and not the other reddens here whichever side it was added to.
+    const adapter = adapterErasure();
+    const restore = erasureSql();
+    const adapterSwept = erasedTables(adapter).sort();
+    const restoreSwept = erasedTables(restore).sort();
+    expect(restoreSwept).toEqual(adapterSwept);
+    // Five child tables plus the user row: a set that silently shrinks (a sweep dropped) or
+    // grows (a sweep added to one path) fails here.
+    expect(adapterSwept).toEqual([
+      "answer_traces",
+      "chat_messages",
+      "chat_sessions",
+      "feedback",
+      "sessions",
+      "users",
+    ]);
+    // Every swept table is verified, and the restore verifies the same set production does.
+    expect(verifiedTables(restore).sort()).toEqual([...adapterSwept].sort());
+    expect(verifiedTables(adapter).sort()).toEqual([...adapterSwept].sort());
+    // And each restore sweep is production's statement, with the id bound as the psql variable
+    // instead of the adapter's interpolated one — a predicate that drifts reddens here too.
     const normalize = (text) =>
       text
         .replace(/\s+/g, " ")
         .replace(/\$\{userId\}/g, ":'uid'")
         .trim();
-    const adapter = normalize(
-      readFileSync(
-        resolve(process.cwd(), "packages/infra/src/rag-store-postgres-erasure.ts"),
-        "utf8",
-      ),
-    );
-    const deletes = erasureSql()
-      .split("\n")
-      .filter((line) => line.startsWith("DELETE"));
-    // The five child tables plus the user row.
-    expect(deletes).toHaveLength(6);
-    for (const statement of deletes) {
-      expect(adapter, statement).toContain(normalize(statement).replace(/;$/, ""));
+    const adapterText = normalize(adapter);
+    for (const statement of restore.split("\n").filter((line) => line.startsWith("DELETE"))) {
+      expect(adapterText, statement).toContain(normalize(statement).replace(/;$/, ""));
     }
+  });
+
+  it("asserts the postcondition inside the restore transaction, so a residual fails the run", () => {
+    const batch = erasureSql();
+    // The same failing statement production gets: 23514 aborts the transaction, and psql runs
+    // the batch with ON_ERROR_STOP=1, so a surviving row exits non-zero before COMMIT instead
+    // of being reported as an applied erasure.
+    expect(batch.match(/ERRCODE = '23514'/g)).toHaveLength(2);
+    expect(batch).not.toMatch(/\bSELECT count\(\*\)/);
   });
 
   it("re-applies erasure in one transaction, sweeping children before the parent", () => {
@@ -514,17 +543,38 @@ describe("erasure a restore must re-apply", () => {
     // transaction (psql runs it with ON_ERROR_STOP=1, so a failure aborts before COMMIT).
     expect(lines[0]).toBe("BEGIN;");
     expect(lines.at(-1)).toBe("COMMIT;");
-    // The parent delete runs last: its FK cascade is the backstop for anything committed
-    // between a child sweep and the user delete.
+    // The parent delete runs last of the deletes: its FK cascade is the backstop for anything
+    // committed between a child sweep and the user delete. The subtree assertion follows it,
+    // still inside the transaction.
     const parent = lines.findIndex((line) => line.startsWith("DELETE FROM users"));
-    expect(parent).toBe(lines.length - 2);
+    const lastChild = lines.reduce(
+      (last, line, i) => (line.startsWith("DELETE FROM") && i !== parent ? i : last),
+      0,
+    );
+    expect(parent).toBeGreaterThan(lastChild);
+    expect(lines.slice(parent + 1).join("\n")).toContain("SELECT 'users' AS verified_table");
+    // `chat_messages` is verified between its own sweep and the `chat_sessions` delete — the
+    // only point where its transitive owner can still be read.
+    const messagesSweep = lines.findIndex((line) => line.startsWith("DELETE FROM chat_messages"));
+    const messagesAssert = lines.findIndex((line) =>
+      line.includes("SELECT 'chat_messages' AS verified_table"),
+    );
+    const sessionsSweep = lines.findIndex((line) => line.startsWith("DELETE FROM chat_sessions"));
+    expect(messagesSweep).toBeLessThan(messagesAssert);
+    expect(messagesAssert).toBeLessThan(sessionsSweep);
   });
 
   it("binds the erasure user id as a psql variable, never into the statement text", () => {
     // Fixed text: the id travels in erasurePsqlArgs, quoted by psql itself, and every sweep
-    // binds it the same way.
-    expect(erasureSql().match(/:'uid'/g)).toHaveLength(6);
+    // binds it the same way (the six deletes plus the transaction-local setting the assertions
+    // read back).
+    expect(erasureSql().match(/:'uid'/g)).toHaveLength(7);
     expect(erasureSql()).not.toMatch(/\$\{/);
+    // The assertions read the setting the batch seeds, and never a literal id.
+    const settings = new Set(
+      [...erasureSql().matchAll(/'kajianq\.erasure\.[a-z_]+'/g)].map((m) => m[0]),
+    );
+    expect([...settings]).toEqual(["'kajianq.erasure.subject'"]);
     expect(erasurePsqlArgs("33333333-3333-4333-8333-333333333333")).toEqual([
       "-v",
       "uid=33333333-3333-4333-8333-333333333333",

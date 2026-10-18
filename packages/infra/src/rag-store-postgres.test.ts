@@ -2,6 +2,9 @@
 /// <reference types="node" />
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { Effect, Exit } from "effect";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { runFail } from "@app/rag-core/testing";
 import { createPostgresRagStore } from "./rag-store-postgres";
 import { disposePostgresPools, postgresPool, postgresSqlRunner } from "./rag-store-postgres-driver";
 import type { RagStore } from "./rag-store";
@@ -11,9 +14,10 @@ import type { RagStore } from "./rag-store";
  *
  * They only run when DATABASE_URL is set — without it they are skipped so unit
  * runs (and any environment lacking the secret) stay green. When the URL is
- * present they must be run in SERIES (`vitest --no-file-parallelism` or a
- * single-file run) because they share one fixture namespace keyed off a per-run
- * prefix; parallel runs against the same database would race.
+ * present they must run in SERIES: `vitest.config.ts` turns file parallelism off
+ * whenever a database is configured, because the suites share one database and
+ * this one mutates its schema. A parallel run against the same database would
+ * race.
  *
  * The `@requires-postgres` directive above is what the `postgres:contract` job
  * derives its selection from, so a suite gated on DATABASE_URL runs there without
@@ -792,6 +796,102 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
       await Effect.runPromise(store.deleteUserCascade(userId));
       expect(await subtreeCounts(userId, chatSessionId)).toMatchObject({ users: 0, feedback: 0 });
     }, 60_000);
+
+    /** A `BEFORE DELETE` trigger that silently skips the subject's rows on one
+     * table — the failure the postcondition exists for: the sweep succeeds and
+     * removes nothing, so only a count inside the transaction can see it. Returns
+     * the cleanup that drops the trigger and its function. */
+    const suppressDeletes = async (table: "feedback" | "chat_messages", when: string) => {
+      const fn = `suppress_${table}_${PREFIX.replace(/[^a-zA-Z0-9_]/g, "_")}`;
+      await sql!.query(
+        `CREATE FUNCTION ${fn}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$`,
+      );
+      await sql!.query(
+        `CREATE TRIGGER ${fn} BEFORE DELETE ON ${table} FOR EACH ROW
+          WHEN (${when}) EXECUTE FUNCTION ${fn}()`,
+      );
+      return async () => {
+        await sql!.query(`DROP TRIGGER IF EXISTS ${fn} ON ${table}`);
+        await sql!.query(`DROP FUNCTION IF EXISTS ${fn}()`);
+      };
+    };
+
+    const SEEDED = {
+      users: 1,
+      sessions: 1,
+      chat_sessions: 1,
+      chat_messages: 2,
+      answer_traces: 1,
+      feedback: 1,
+    };
+
+    it("a suppressed child delete fails the erasure and rolls the whole subtree back", async () => {
+      if (!URL) return;
+      const { userId, chatSessionId } = await seedSubtree();
+      const cleanup = await suppressDeletes("feedback", `OLD.user_id = '${userId}'::uuid`);
+      try {
+        const failure = await runFail(store.deleteUserCascade(userId));
+        expect(failure.kind).toBe("constraint");
+        expect(String(failure.cause)).toContain("feedback");
+        // The postcondition raised before COMMIT, so the deletes went with the
+        // transaction: the subtree is intact for a retry, never half-erased with a
+        // dangling foreign key.
+        expect(await subtreeCounts(userId, chatSessionId)).toEqual(SEEDED);
+      } finally {
+        await cleanup();
+      }
+      // The obstruction is gone, so the same call completes the erasure.
+      await Effect.runPromise(store.deleteUserCascade(userId));
+      expect(await subtreeCounts(userId, chatSessionId)).toEqual(EMPTY);
+    }, 60_000);
+
+    it("a suppressed chat-message delete fails the erasure — messages are counted before their sessions go", async () => {
+      if (!URL) return;
+      const { userId, chatSessionId } = await seedSubtree();
+      // `chat_messages` has no user column: its owner is its session. The sweep runs
+      // while that session still exists, and so does its residual check — after the
+      // `chat_sessions` delete the rows could no longer be attributed to the user.
+      const cleanup = await suppressDeletes(
+        "chat_messages",
+        `OLD.session_id = '${chatSessionId}'::uuid`,
+      );
+      try {
+        const failure = await runFail(store.deleteUserCascade(userId));
+        expect(failure.kind).toBe("constraint");
+        expect(String(failure.cause)).toContain("chat_messages");
+        expect(await subtreeCounts(userId, chatSessionId)).toEqual(SEEDED);
+      } finally {
+        await cleanup();
+      }
+      await Effect.runPromise(store.deleteUserCascade(userId));
+      expect(await subtreeCounts(userId, chatSessionId)).toEqual(EMPTY);
+    }, 60_000);
+
+    it("verifies every table a cascading foreign key path reaches from users", async () => {
+      if (!URL) return;
+      // The declared set, read from the module's own postcondition SQL: a table a
+      // cascading FK path reaches from `users` is a table the erasure must verify,
+      // so a migration that adds one reddens here instead of being forgotten.
+      const source = readFileSync(
+        resolve(process.cwd(), "packages/infra/src/rag-store-postgres-erasure.ts"),
+        "utf8",
+      );
+      const declared = [
+        ...new Set([...source.matchAll(/SELECT '([a-z_]+)' AS verified_table/g)].map((m) => m[1]!)),
+      ];
+      const derived = (await sql!.query(
+        `WITH RECURSIVE cascading(tbl) AS (
+           SELECT 'users'::regclass::oid
+           UNION
+           SELECT c.conrelid
+           FROM pg_constraint c
+           JOIN cascading ON c.confrelid = cascading.tbl
+           WHERE c.contype = 'f' AND c.confdeltype = 'c'
+         )
+         SELECT tbl::regclass::text AS table_name FROM cascading`,
+      )) as { table_name: string }[];
+      expect(declared.sort()).toEqual(derived.map((row) => row.table_name).sort());
+    });
 
     it("keeps the eval ledger row and nulls its trace pointer — the ledger is not the subject's data", async () => {
       if (!URL) return;

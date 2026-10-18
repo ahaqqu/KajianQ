@@ -57,8 +57,11 @@ bridge (`@app/rag-ingest` pipeline) is the canonical one.
   atomic batched transaction; `resolveUserId(token)` resolves it (rejects
   expired rows); `deleteUserCascade(userId)` erases the user and everything
   they own in one transaction — sweeping sessions, chat, feedback, and — per
-  the ADR-0007 — the user's `answer_traces` by user id, then verifying each
-  empty, with the `ON DELETE CASCADE` keys as the backstop; `cleanupExpiredSessions()`
+  the ADR-0007 — the user's `answer_traces` by user id, then checking each empty
+  inside the same transaction (chat messages included, counted before their
+  sessions are deleted), with the `ON DELETE CASCADE` keys as the backstop, so a
+  surviving row aborts the call instead of being reported as success;
+  `cleanupExpiredSessions()`
   reclaims expired session rows (wire to a cron). The auth routes these feed
   are mounted in #10, not here.
 - Ingestion is idempotent (AGENTS.md rule 13): `insertDocParent` upserts by
@@ -174,11 +177,12 @@ each mode are in `scripts/pg-contract/policy.mjs`).
 The job engages when a PR can change what those suites execute — the seam's own
 home, a gated suite, or the gate's machinery — and runs them against a
 `pgvector/pgvector:pg18` service container (the same image the restore drill
-uses), with `--no-file-parallelism` (the tests share one fixture namespace keyed
-off a per-run prefix, so parallel files would race). Locally:
+uses). The suites share one database and mutate its schema, so `vitest.config.ts`
+turns file parallelism off whenever a database is configured — the serial
+property does not depend on the invocation. Locally:
 
 ```sh
-DATABASE_URL=postgres://… bunx vp test run --no-file-parallelism $(bun scripts/pg-contract.mjs --list)
+DATABASE_URL=postgres://… bunx vp test run $(bun scripts/pg-contract.mjs --list)
 ```
 
 The suite is Effect-shaped (ADR-0027 decision 7): each test

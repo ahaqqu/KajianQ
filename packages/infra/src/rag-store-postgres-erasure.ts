@@ -10,37 +10,16 @@ import { sqlEffect, type SqlRunner } from "./rag-store-postgres-errors";
  */
 
 /**
- * The user-owned tables the erasure postcondition counts, in the order the
- * verification row returns them. Any row left in one of them after the
- * transaction's deletes is an incomplete erasure, whatever produced it.
+ * The transaction-local setting the postcondition statements read the subject
+ * id from. A `DO` block cannot take bind parameters, so the id is bound once by
+ * `set_config(…, true)` at the head of the batch and read back with
+ * `current_setting(...)` in the assertions — never interpolated into statement
+ * text. The `true` scopes it to this transaction, so it cannot leak into the
+ * next one on the same connection. The assertions spell the name as a literal
+ * because their bodies are not parsed for parameters; a test pins every
+ * occurrence to this constant.
  */
-export const ERASURE_VERIFIED_TABLES = [
-  "users",
-  "sessions",
-  "chat_sessions",
-  "answer_traces",
-  "feedback",
-] as const;
-
-export type ErasureVerifiedTable = (typeof ERASURE_VERIFIED_TABLES)[number];
-
-type ResidualRow = Record<string, unknown>;
-
-/**
- * The tables the erasure postcondition still finds rows in, read from its
- * verification row. It fails closed: a missing row (a driver resolving the batch
- * differently is a contract violation) reports every table rather than none, and
- * a count that is not a finite number is residual too — a postcondition never
- * passes on a value it could not read. Counts arrive as JS numbers because the
- * SELECT casts `count(*)` to `int`.
- */
-export function erasureResiduals(row: ResidualRow | undefined): ErasureVerifiedTable[] {
-  if (row === undefined) return [...ERASURE_VERIFIED_TABLES];
-  return ERASURE_VERIFIED_TABLES.filter((table) => {
-    const count = row[table];
-    return typeof count !== "number" || !Number.isFinite(count) || count !== 0;
-  });
-}
+export const ERASURE_SUBJECT_SETTING = "kajianq.erasure.subject";
 
 /**
  * Erase one user's subtree in ONE transaction: the child sweeps name every table
@@ -50,58 +29,97 @@ export function erasureResiduals(row: ResidualRow | undefined): ErasureVerifiedT
  * chat turn either commits before it (and is cascaded) or blocks on its lock and
  * then fails its own FK check: no write can land after the commit.
  *
- * The final statement is the postcondition the caller's `{ deleted: true }`
- * claims: count every table the user can still be found in. A surviving row — a
- * nullable owner column written as NULL, a constraint missing from the deployed
- * schema, a table added later without a user FK — fails the transaction and so
- * the call, never a success response with rows left behind. `chat_messages` is
- * absent from the count because its owner is transitive (`session_id →
- * chat_sessions.user_id`): once the owning chat session is deleted the column
- * cannot be read back, so its sweep runs before that delete and the chat-session
- * FK cascade is its backstop.
+ * The sweeps are followed by postcondition statements in the SAME transaction,
+ * so a surviving row makes one of them raise — the transaction rolls back and
+ * `{ deleted: true }` only ever covers an empty subtree. Every table a cascading
+ * foreign-key path from `users` reaches is counted: `users`, `sessions`,
+ * `chat_sessions`, `answer_traces` and `feedback` after the deletes, and
+ * `chat_messages` between its own sweep and the `chat_sessions` delete — its
+ * owner is transitive (`session_id → chat_sessions.user_id`), so that is the
+ * only point where it can still be attributed to the subject.
+ *
+ * A row written with a NULL owner — `chat_sessions.user_id`,
+ * `answer_traces.user_id` and `feedback.user_id` are nullable — is not matched
+ * by any of these predicates and survives the call silently: the erasure cannot
+ * attribute it to a subject, and nothing here can tell it apart from another
+ * user's row. Closing that is a `NOT NULL` migration or an out-of-band audit of
+ * the rows whose owner is NULL; the postcondition is not a detector for it.
  */
 export function eraseUserTree(sql: SqlRunner, userId: string): Effect.Effect<void, StoreError> {
-  return Effect.flatMap(
-    sqlEffect(
-      sql,
-      () =>
-        sql.transaction([
-          sql`
+  return Effect.asVoid(
+    sqlEffect(sql, () =>
+      sql.transaction([
+        sql`SELECT set_config(${ERASURE_SUBJECT_SETTING}, ${userId}, true)`,
+        sql`
             DELETE FROM chat_messages
             WHERE session_id IN (SELECT id FROM chat_sessions WHERE user_id = ${userId})
           `,
-          sql`DELETE FROM feedback WHERE user_id = ${userId}`,
-          sql`DELETE FROM answer_traces WHERE user_id = ${userId}`,
-          sql`DELETE FROM chat_sessions WHERE user_id = ${userId}`,
-          sql`DELETE FROM sessions WHERE user_id = ${userId}`,
-          sql`DELETE FROM users WHERE id = ${userId}`,
-          sql`
-            SELECT
-              (SELECT count(*)::int FROM users WHERE id = ${userId}) AS users,
-              (SELECT count(*)::int FROM sessions WHERE user_id = ${userId}) AS sessions,
-              (SELECT count(*)::int FROM chat_sessions WHERE user_id = ${userId}) AS chat_sessions,
-              (SELECT count(*)::int FROM answer_traces WHERE user_id = ${userId}) AS answer_traces,
-              (SELECT count(*)::int FROM feedback WHERE user_id = ${userId}) AS feedback
+        sql`
+            DO $$
+            DECLARE residual text;
+            BEGIN
+              SELECT string_agg(verified_table, ', ') INTO residual FROM (
+                SELECT 'chat_messages' AS verified_table
+                WHERE EXISTS (
+                  SELECT 1
+                  FROM chat_messages m
+                  JOIN chat_sessions s ON s.id = m.session_id
+                  WHERE s.user_id = current_setting('kajianq.erasure.subject')::uuid
+                )
+              ) checked;
+              IF residual IS NOT NULL THEN
+                RAISE EXCEPTION 'user erasure left rows behind in: %', residual
+                  USING ERRCODE = '23514';
+              END IF;
+            END $$
           `,
-        ]) as Promise<unknown[][]>,
+        sql`DELETE FROM feedback WHERE user_id = ${userId}`,
+        sql`DELETE FROM answer_traces WHERE user_id = ${userId}`,
+        sql`DELETE FROM chat_sessions WHERE user_id = ${userId}`,
+        sql`DELETE FROM sessions WHERE user_id = ${userId}`,
+        sql`DELETE FROM users WHERE id = ${userId}`,
+        sql`
+            DO $$
+            DECLARE residual text;
+            BEGIN
+              SELECT string_agg(verified_table, ', ') INTO residual FROM (
+                SELECT 'users' AS verified_table
+                WHERE EXISTS (
+                  SELECT 1 FROM users
+                  WHERE id = current_setting('kajianq.erasure.subject')::uuid
+                )
+                UNION ALL
+                SELECT 'sessions' AS verified_table
+                WHERE EXISTS (
+                  SELECT 1 FROM sessions
+                  WHERE user_id = current_setting('kajianq.erasure.subject')::uuid
+                )
+                UNION ALL
+                SELECT 'chat_sessions' AS verified_table
+                WHERE EXISTS (
+                  SELECT 1 FROM chat_sessions
+                  WHERE user_id = current_setting('kajianq.erasure.subject')::uuid
+                )
+                UNION ALL
+                SELECT 'answer_traces' AS verified_table
+                WHERE EXISTS (
+                  SELECT 1 FROM answer_traces
+                  WHERE user_id = current_setting('kajianq.erasure.subject')::uuid
+                )
+                UNION ALL
+                SELECT 'feedback' AS verified_table
+                WHERE EXISTS (
+                  SELECT 1 FROM feedback
+                  WHERE user_id = current_setting('kajianq.erasure.subject')::uuid
+                )
+              ) checked;
+              IF residual IS NOT NULL THEN
+                RAISE EXCEPTION 'user erasure left rows behind in: %', residual
+                  USING ERRCODE = '23514';
+              END IF;
+            END $$
+          `,
+      ]),
     ),
-    (results) => {
-      const row = Array.isArray(results)
-        ? (results.at(-1)?.[0] as ResidualRow | undefined)
-        : undefined;
-      const residual = erasureResiduals(row);
-      // An idempotent second call on an already-empty subtree still passes: every
-      // count is 0 and the call is a no-op, never an error.
-      return residual.length === 0
-        ? Effect.void
-        : Effect.fail(
-            new StoreError({
-              // Deterministic data state, not a retryable blip: the caller must
-              // surface the failure, never report success.
-              kind: "constraint",
-              cause: new Error(`user erasure left rows behind in: ${residual.join(", ")}`),
-            }),
-          );
-    },
   );
 }

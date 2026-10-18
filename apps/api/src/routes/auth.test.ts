@@ -161,9 +161,37 @@ describe("DELETE /v1/auth/me", () => {
         }),
       );
 
-    const res = await erase(session.token);
-    expect(res.status).toBe(500);
-    expect(await res.json()).toEqual({ error: "internal" });
+    const logged: string[] = [];
+    const sink = vi.spyOn(console, "log").mockImplementation((line: unknown) => {
+      logged.push(String(line));
+    });
+    let body: unknown;
+    try {
+      const res = await erase(session.token);
+      expect(res.status).toBe(500);
+      body = await res.json();
+    } finally {
+      sink.mockRestore();
+    }
+    // The body stays generic: no table name, no SQL, no user id.
+    expect(body).toEqual({ error: "internal" });
+    // The residual tables are the erasure's only diagnostic, and they reach the
+    // log under a named event rather than only inside the generic request error.
+    const incomplete = logged
+      .map((line) => {
+        try {
+          return JSON.parse(line) as Record<string, unknown>;
+        } catch {
+          return {};
+        }
+      })
+      .find((line) => line.msg === "auth.erasure_incomplete");
+    expect(incomplete).toMatchObject({
+      level: "error",
+      route: "auth",
+      kind: "constraint",
+      cause: "user erasure left rows behind in: feedback",
+    });
     // Not half-erased: the store was never told to erase, so the subtree is still
     // coherent for a retry.
     expect(currentStore.allChatMessages()).toHaveLength(2);
