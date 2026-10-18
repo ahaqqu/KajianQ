@@ -221,7 +221,8 @@ END $$;`;
  * exactly as production does — a restore can neither resurrect a row production
  * erased nor report a half-applied erasure as done. A unit test compares both
  * directions (swept and verified tables) to the adapter's, so the restore path
- * cannot drift from the live erasure.
+ * cannot drift from the live erasure: the sweeps and the residual-assertion
+ * blocks are compared to the adapter's, predicates included.
  *
  * `psql` runs it on stdin with `ON_ERROR_STOP=1` (see `kajianq-restore.mjs`), so a
  * residual assertion aborts before `COMMIT`: the batch exits non-zero and the

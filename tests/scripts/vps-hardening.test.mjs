@@ -552,6 +552,34 @@ describe("erasure a restore must re-apply", () => {
     }
   });
 
+  it("the restore assertions are production's DO blocks, predicate for predicate — a weakened restore predicate reddens", () => {
+    // The sweep comparison above pins the DELETE predicates; the residual assertions are
+    // what turn a surviving row into a non-zero exit, and their predicates live in the DO
+    // blocks. Whole blocks are compared, so a weakened predicate cannot hide behind a marker
+    // that is still spelled. Normalisation is per-line leading/trailing whitespace, blank lines,
+    // and the trailing statement terminator the adapter's template leaves to its runner and
+    // psql's batch spells; internal spacing and literals are compared verbatim, so
+    // `WHERE EXISTS (…)` against `WHERE false` is a difference.
+    const doBlocks = (text) => [...text.matchAll(/DO \$\$[\s\S]*?END \$\$/g)].map((m) => m[0]);
+    const normalize = (block) =>
+      block
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .join(" ")
+        .replace(/;$/, "");
+    const adapterBlocks = doBlocks(adapterErasure()).map(normalize);
+    const restoreBlocks = doBlocks(erasureSql()).map(normalize);
+    expect(adapterBlocks).toHaveLength(2);
+    expect(restoreBlocks).toHaveLength(2);
+    // Positional comparison, so the `chat_messages` assertion must stay the block before the
+    // `chat_sessions` sweep (the ordering test below pins that) and the subtree assertion the
+    // block after the `users` delete.
+    expect(restoreBlocks[0]).toContain("'chat_messages' AS verified_table");
+    expect(restoreBlocks[1]).toContain("'users' AS verified_table");
+    expect(restoreBlocks).toEqual(adapterBlocks);
+  });
+
   it("asserts the postcondition inside the restore transaction, so a residual fails the run", () => {
     const batch = erasureSql();
     // The same failing statement production gets: 23514 aborts the transaction, and psql runs

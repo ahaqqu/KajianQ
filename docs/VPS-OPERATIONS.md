@@ -824,8 +824,8 @@ write to the live database, by construction:
   a psql variable, and it carries the same in-transaction residual check as
   production `deleteUserCascade` — a surviving row aborts the batch, so the
   restore fails instead of reporting a half-applied erasure. A test compares the
-  batch to production in both directions, so the restore path cannot drift from
-  the live erasure.
+  batch's sweeps and its residual-assertion blocks to production's, so the restore
+  path cannot drift from the live erasure.
 
 The restore **drill** is the deliberate exception to the no-URL-on-argv rule:
 its `--admin-url "postgres://drill:drill@127.0.0.1:5432/postgres"`

@@ -181,7 +181,11 @@ jobs:
         run: |
           set -euo pipefail
           FILES="$(bun scripts/pg-contract.mjs --list)"
-          bunx vp test run --no-file-parallelism --reporter=default --reporter=json --outputFile.json="${RUNNER_TEMP}/pg-contract-report.json" $FILES
+          # No `--no-file-parallelism`: vitest.config.ts serializes files whenever
+          # DATABASE_URL is set, and DATABASE_URL is set here, so this run exercises
+          # that default instead of overriding it. The suites share one database and
+          # mutate its schema, which is why the config owns the serialization.
+          bunx vp test run --reporter=default --reporter=json --outputFile.json="${RUNNER_TEMP}/pg-contract-report.json" $FILES
       # Derived selection is half the gate; this is the other half. The run's own
       # report says whether each selected suite executed, so a selection that skipped
       # anyway — DATABASE_URL not reaching the run, a suite gating on a different skip
