@@ -9,6 +9,7 @@ import {
   isPrincipleTag,
   isSubjectArea,
   PRINCIPLE_TAGS,
+  SMOKE_COVERAGE_TAGS,
   SUBJECT_AREAS,
   SUB_QUERY_ORIGINS,
   SUB_QUERY_ROLES,
@@ -67,6 +68,14 @@ describe("classification vocabularies", () => {
 
   it("names the dhaif trap inside the eval labels", () => {
     expect(GOLDEN_SET_LABELS as readonly string[]).toContain(DAIF_TRAP_LABEL);
+  });
+
+  it("names only eval labels as the smoke's required coverage classes", () => {
+    // The staged smoke's required tags are read by the engine selector as
+    // opaque strings; a typo here would redden every deploy instead of a test.
+    for (const tag of SMOKE_COVERAGE_TAGS) {
+      expect(GOLDEN_SET_LABELS as readonly string[]).toContain(tag);
+    }
   });
 
   it("keeps every Golden Set fixture tag inside the vocabulary", () => {

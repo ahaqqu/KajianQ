@@ -4,8 +4,9 @@
  *
  * Runs a small, stratified slice of the Golden Set against a target `/v1/chat`,
  * through the same harness and ledger as the full run (`eval:run`). `selectSmokeSubset`
- * picks it deterministically — refusal, trap, English and Indonesian cases first,
- * then fill — so a PR-time gate cannot pass by accident on easy questions alone.
+ * picks it deterministically — refusal, the label classes the product requires, English
+ * and Indonesian cases first, then fill — so a PR-time gate cannot pass by accident on
+ * easy questions alone.
  *
  * Env (the same validated config as `eval:run`, plus one knob):
  *   EVAL_API_BASE_URL      the staging /v1/chat origin (required)
@@ -29,8 +30,9 @@
  * the shared CLI glue in `eval-cli.mjs`; this script keeps only the subset selection.
  */
 import * as evalpkg from "@app/eval";
-// The trap marker is the domain pack's vocabulary, imported so a rename cannot strand the gate.
-import { DAIF_TRAP_LABEL } from "@app/kajianq-domain";
+// The required coverage classes are the domain pack's vocabulary, imported so a
+// rename cannot strand the gate.
+import { SMOKE_COVERAGE_TAGS } from "@app/kajianq-domain";
 import { createStagingHarness } from "./staging-harness.mjs";
 import {
   createBudget,
@@ -58,10 +60,10 @@ const fixture = loadFixture("eval:smoke", config);
 
 const selection = (() => {
   try {
-    return evalpkg.selectSmokeSubset(fixture, { size, trapTag: DAIF_TRAP_LABEL });
+    return evalpkg.selectSmokeSubset(fixture, { size, requiredTags: SMOKE_COVERAGE_TAGS });
   } catch (err) {
-    // A fixture that no longer carries the trap tag must redden the gate, not
-    // shrink it: the selector refuses to skip the adversarial case silently.
+    // A fixture that no longer carries a required coverage class must redden
+    // the gate, not shrink it: the selector refuses to skip that class silently.
     fail("eval:smoke", err instanceof Error ? err.message : String(err));
   }
 })();

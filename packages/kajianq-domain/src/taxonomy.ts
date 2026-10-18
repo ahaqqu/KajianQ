@@ -103,6 +103,15 @@ export const GOLDEN_SET_TAG_VOCABULARY: readonly string[] = [
  */
 export const DAIF_TRAP_LABEL = "dhaif-trap";
 
+/**
+ * The Golden Set label classes the staged smoke must always cover: the trap,
+ * and the cross-madzhab answer the over-refusal risk is measured on. The
+ * selector receives them as opaque required tags — a tag no question carries
+ * fails the gate rather than shrinking the subset — so a fixture reshuffle or
+ * a selector change cannot silently drop either class from the smoke.
+ */
+export const SMOKE_COVERAGE_TAGS = [DAIF_TRAP_LABEL, "cross-madzhab"] as const;
+
 function oneOf<T extends string>(values: readonly T[], value: string): value is T {
   return (values as readonly string[]).includes(value);
 }

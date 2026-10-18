@@ -9,9 +9,10 @@ export default defineConfig({
       "packages/**/src/**/*.{test,prop.test}.ts",
       "apps/**/src/**/*.{test,prop.test}.ts",
       "tests/scripts/**/*.test.mjs",
-      // Cross-package specs (the client↔server rule-copy parity guard): the one
-      // tree where both an app's and a package's source may be imported without
-      // an app→package dependency edge.
+      // Cross-package specs (the client↔server rule-copy parity guard and the
+      // smoke's fixture↔selector membership pin): the one tree where both an
+      // app's and a package's source may be imported without an app→package
+      // dependency edge.
       "tests/parity/**/*.test.mjs",
     ],
     coverage: {
