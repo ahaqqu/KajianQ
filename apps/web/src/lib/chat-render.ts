@@ -1,4 +1,5 @@
 import type { ChatCitation } from "@app/contracts";
+import { LIST_LINE, STYLED_SPAN } from "./chat-markup";
 
 /**
  * Rendering rules for an assistant answer. The citation payload comes
@@ -22,6 +23,13 @@ export {
   WARNING_MARKERS,
 } from "./chat-peel";
 
+/**
+ * The markdown grammar is owned once, in `chat-markup.ts`: the renderer and the rule peel
+ * both read it, and the peel consumes that module directly because this file re-exports the
+ * peel (importing it back would close a cycle).
+ */
+export { INLINE_DELIMITERS, LINE_MARKERS, LIST_LINE, STYLED_SPAN } from "./chat-markup";
+
 export type AnswerInline =
   | { kind: "text"; text: string }
   | { kind: "citation"; label: string }
@@ -31,21 +39,6 @@ export type AnswerInline =
 export type AnswerBlock =
   | { kind: "para"; inlines: AnswerInline[] }
   | { kind: "list"; ordered: boolean; items: AnswerInline[][] };
-
-/**
- * A styled span's content must not start or end with whitespace (so
- * `2 * 3 = 6` stays arithmetic), and a one-asterisk emphasis must not open
- * or close against a word character (so `snake_case` and `3*4*5` stay
- * verbatim). Bold-italic (`***x***`) is tried first, then bold — whose
- * content may carry non-adjacent single asterisks, so `**a *b* c**` nests
- * the emphasis instead of leaking its markers — and bold is tried before
- * emphasis, so `**x**` never degrades to an emphasis pair around a lone `*`.
- */
-const STYLED_SPAN =
-  /\*\*\*([^*\s](?:[^*]*[^*\s])?)\*\*\*|\*\*([^*\s](?:(?:\*(?!\*)|[^*])*[^*\s])?)\*\*|(?<!\w)\*([^*\s](?:[^*]*[^*\s])?)\*(?!\w)|(?<!\w)_([^_\s](?:[^_]*[^_\s])?)_(?!\w)/;
-
-/** A list line: an optional 3-space indent, then a `- `/`* ` bullet or a `1.`/`1)` number. */
-const LIST_LINE = /^ {0,3}(?:([-*])|\d{1,9}[.)])\s+(.+)$/;
 
 /**
  * Locate the frame's labels in a plain-text run: a chip replaces the whole
@@ -139,12 +132,12 @@ export function renderBodyBlocks(body: string, citations: readonly ChatCitation[
     const listItem = LIST_LINE.exec(line);
     if (listItem !== null) {
       flushPara();
-      const ordered = listItem[1] === undefined;
+      const ordered = listItem[2] !== undefined;
       if (list === null || list.ordered !== ordered) {
         flushList();
         list = { ordered, items: [] };
       }
-      list.items.push(listItem[2]!);
+      list.items.push(listItem[3]!);
     } else if (line.trim() === "") {
       // A blank line separates blocks: it never renders as a leading or
       // trailing blank row inside a paragraph.

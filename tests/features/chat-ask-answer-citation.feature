@@ -64,6 +64,14 @@ Feature: Chat — ask, answer, citations, warnings, disclaimer
     When I ask a question whose dhaif answer puts the label in the canonical line's paragraph
     Then the dhaif warning renders exactly once beside the shared label
 
+  # #548: the model can wrap the canonical line in markup that wraps ONLY the
+  # copy (`**<copy>**`, `- <copy>`, `> <copy>`). The delimiters are not answer
+  # bytes, so the peel takes them with the copy: the card draws the line once
+  # and no literal wrap markup is left in the body.
+  Scenario: The dhaif warning renders once when wrap-only markup wraps the canonical line (#548)
+    When I ask a question whose dhaif answer wraps the canonical line in markup
+    Then the dhaif warning renders exactly once with no wrap markup left
+
   Scenario: Markdown in the answer renders as rich text, never literal markers (#150)
     When I ask a question whose answer contains markdown
     Then the answer renders bold, emphasis, and list items with no literal markdown
