@@ -1,4 +1,5 @@
 import { ContractsBarrelError } from "./errors.mjs";
+import { slashReading } from "./slash.mjs";
 
 /**
  * Reading a source the way the rules need it read — the lexing layer, and only
@@ -19,17 +20,19 @@ import { ContractsBarrelError } from "./errors.mjs";
  *     the end of the file is how a member disappears — the silence this gate
  *     exists to remove. A `"`/`'` literal is bounded to its own line, because a
  *     JS string cannot span one;
- *   - a `/` whose position is neither a certain regular-expression start nor a
- *     certain division: a `/` opens a regex after an operator, an opener, a
- *     keyword that introduces an expression, another `/`, or the `)` of an
- *     `if`/`while`/`for`/`with` header, and divides after an identifier, a
- *     number, a `]`, `++`, `--`, a literal, or any other `)`. Every other
- *     position is ambiguous — `}` closes a block in one reading and an object
- *     literal in another, and a line's first token continues the line above or
- *     starts a statement — so it is refused with the line it is on. Guessing
- *     here is how a member goes silently missing: a regex read as division puts
- *     its pattern in the scan as code, where a `/*` in it opens a comment that
- *     blanks a real `export` below;
+ *   - a `/` whose position the language does not settle. The scan decides a `/`
+ *     only where the text before it cannot mean the other thing: a literal, a
+ *     `]`, `++`, `--`, an identifier or a number end an expression; an operator,
+ *     an opener, a reserved word that introduces an expression, or a `)` that
+ *     closes a header (`for await (…)` included) start one; a `!` is read
+ *     through to whatever precedes it; and a reserved word led by `.` is a
+ *     property name, so it ends one. A `}` (a block end or an object literal), a
+ *     soft keyword such as `of` (a keyword in a `for…of` header, a variable
+ *     elsewhere), and the start of a file cannot be settled by a token, so they
+ *     are refused with the line they are on. Guessing here is how a member goes
+ *     silently missing: a regex read as division puts its pattern into the scan
+ *     as code, where a `/*` in it opens a comment that blanks a real `export`
+ *     below;
  *   - a `/` that opens a regex and has no closing `/` on its line: the literal's
  *     extent is unknown, so it is refused rather than closed somewhere below;
  *   - a scan whose brackets do not balance by the end of the file, or that meets
@@ -37,12 +40,13 @@ import { ContractsBarrelError } from "./errors.mjs";
  *     the way that happens, and an unbalanced count means the statement/nested
  *     split below cannot be trusted.
  *
- * A regular expression is therefore recognised in the positions this scan can
- * decide, and an undecided one is a message rather than a reading. The claim is
- * no stronger than that: a regex can appear in more positions than are listed
- * above, which is why the fallback refuses instead of assuming division. A regex
- * literal is never treated as quoted text, so a pattern containing the word
- * `export` is not mistaken for prose.
+ * The claim is no stronger than the mechanism: this gate judges every module
+ * whose `/` positions the text before them settles, and refuses a module whose
+ * positions it cannot settle. So a member cannot be silently absent from a
+ * module the gate reads — and a module it refuses is judged by no rule here,
+ * which is the edge a source scanner has and a parser would not. A regex literal
+ * is never treated as quoted text, so a pattern containing the word `export` is
+ * not mistaken for prose.
  */
 
 export const lineOf = (source, offset) => source.slice(0, offset).split("\n").length;
@@ -152,138 +156,15 @@ function regexEnd(source, from) {
   return -1;
 }
 
-/** The punctuator or word immediately before `at`, read off the blanked code. */
-function previousToken(code, at) {
-  let i = at - 1;
-  while (i >= 0 && /\s/.test(code[i])) i -= 1;
-  if (i < 0) return "";
-  if (/[\w$]/.test(code[i])) {
-    let start = i;
-    while (start >= 0 && /[\w$]/.test(code[start])) start -= 1;
-    return code.slice(start + 1, i + 1).join("");
-  }
-  const tail = code.slice(Math.max(0, i - 2), i + 1).join("");
-  for (const operator of ["++", "--", "=>", "**", "&&", "||", "??", "+=", "-=", "*=", "/="]) {
-    if (tail.endsWith(operator)) return operator;
-  }
-  return code[i];
-}
-
-/** Punctuators after which a `/` can only open a regular expression. */
-const STARTS_EXPRESSION = new Set([
-  "(",
-  "[",
-  "{",
-  ",",
-  ";",
-  ":",
-  "?",
-  "&",
-  "|",
-  "+",
-  "-",
-  "*",
-  "%",
-  "^",
-  "~",
-  "=",
-  "<",
-  ">",
-  "=>",
-  "&&",
-  "||",
-  "??",
-  "+=",
-  "-=",
-  "*=",
-  "/=",
-  "**",
-  "/",
-]);
-/** The words after which a `/` can only open a regular expression. */
-const STARTS_EXPRESSION_KEYWORD = new Set([
-  "return",
-  "typeof",
-  "instanceof",
-  "in",
-  "of",
-  "new",
-  "delete",
-  "void",
-  "yield",
-  "await",
-  "case",
-  "do",
-  "else",
-  "throw",
-]);
-/** The keywords whose `)` closes a statement header, so a statement can follow it. */
-const HEADER_KEYWORDS = new Set(["if", "while", "for", "with"]);
-
-/** Whether the `)` at `close` closes a header whose statement can hold a regex. */
-function headerBefore(code, close) {
-  let depth = 0;
-  for (let i = close; i >= 0; i -= 1) {
-    if (code[i] === ")") depth += 1;
-    else if (code[i] === "(") {
-      depth -= 1;
-      if (depth === 0) return HEADER_KEYWORDS.has(previousToken(code, i));
-    }
-  }
-  return false;
-}
-
-/**
- * What the `/` at `at` is: the opening delimiter of a regular expression, a
- * division sign, or something this scan cannot decide.
- *
- * Only two readings are certain. A `/` opens a regex where the token before it
- * cannot end an expression (an operator, an opener, one of the keywords that
- * introduce one, a `/` of its own, or the `)` of an `if`/`while`/`for`/`with`
- * header), and it divides where that token certainly ends an expression (an
- * identifier, a number, a `]`, `++`, `--`, a literal, or any other `)`). Every
- * other position is ambiguous — `}` closes a block in one reading and an object
- * literal in another, and a line's first token continues the line above or
- * starts a statement — and the caller refuses it rather than guessing: a wrong
- * reading here blanks or shifts a statement below it, and the member it hides
- * is exactly what this gate exists to report.
- */
-function slashReading({ code, literalEnds }, at) {
-  let i = at - 1;
-  while (i >= 0 && /\s/.test(code[i])) i -= 1;
-  if (i < 0) return { kind: "ambiguous", token: "" };
-  if (literalEnds.has(i)) return { kind: "division", token: "<literal>" };
-  const token = previousToken(code, at);
-  if (STARTS_EXPRESSION.has(token) || STARTS_EXPRESSION_KEYWORD.has(token)) {
-    return { kind: "regex", token };
-  }
-  if (token === ")") return { kind: headerBefore(code, i) ? "regex" : "division", token };
-  if (token === "!") {
-    // A non-null assertion follows an expression — an identifier, a `]`, a
-    // literal, or any `)` but a control header's — and a prefix `!` opens one.
-    let j = i - 1;
-    while (j >= 0 && /\s/.test(code[j])) j -= 1;
-    const assertion =
-      j < 0 ||
-      /[\w$]/.test(code[j]) ||
-      code[j] === "]" ||
-      literalEnds.has(j) ||
-      (code[j] === ")" && !headerBefore(code, j));
-    return { kind: assertion ? "division" : "regex", token };
-  }
-  if (token === "]" || token === "++" || token === "--" || /^[\w$]+$/.test(token)) {
-    return { kind: "division", token };
-  }
-  return { kind: "ambiguous", token };
-}
-
 /** The refusal that names what the scan cannot tell apart, and where. */
 function ambiguousSlash(source, file, at, reading) {
   const where =
     reading.token === ""
       ? "the file opens with it, where a statement that begins with a regular expression reads " +
         "the same as a division continuing an expression that is not there"
-      : `\`${reading.token}\` can end an expression in one reading and begin one in another`;
+      : reading.token === "}"
+        ? "`}` ends a block in one reading and an object literal in another"
+        : `\`${reading.token}\` is a keyword in one reading and an identifier in another`;
   return new ContractsBarrelError(
     `${file}:${lineOf(source, at)}: this \`/\` follows a position where ${where}, so this scan ` +
       "cannot tell a regular expression from division — write the division on the same line as its " +
