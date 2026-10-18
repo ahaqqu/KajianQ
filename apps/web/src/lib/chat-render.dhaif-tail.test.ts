@@ -186,25 +186,35 @@ describe("splitAnswerBlocks — the card's copy authority (A2)", () => {
 });
 
 describe("splitAnswerBlocks — marker tolerance (A3)", () => {
-  // A copy tweak in the marker's own form must not stop the peel and
-  // resurrect the duplicate; the copy after the marker is not inspected.
-  it.each(["[peringatan] catatan tambahan", "[Peringatan: versi lain", "[Warning!] note"])(
-    "still walks past %s to the canonical line above it",
+  // The canonical line above a non-canonical rule paragraph is taken by the body
+  // scan wherever the walk stops, so the tolerance is load-bearing one paragraph
+  // higher: a rule paragraph ABOVE the variant (the disclaimer) must still reach
+  // its footer. The first row per tolerance is compatibility, the second is the
+  // discriminating one — it reddens when the tolerant opening match is removed.
+  const VARIANTS = ["[peringatan] catatan tambahan", "[Peringatan: versi lain", "[Warning!] note"];
+
+  it.each(VARIANTS)("still walks past %s to the canonical line above it", (variant) => {
+    const split = splitAnswerBlocks([PROSE, WARNING_ID, variant, MT].join("\n\n"));
+    expect(split.warning).toBe(WARNING_ID);
+    expect(split.body).toBe([PROSE, variant, MT].join("\n\n"));
+  });
+
+  // Mutation: exact-marker matching (`p.startsWith(m)`). The variant between the
+  // disclaimer and the tail counts as prose, the walk stops there, and the
+  // disclaimer stays in `body` instead of the footer.
+  it.each(VARIANTS)(
+    "still walks past %s so the disclaimer above it reaches its footer",
     (variant) => {
-      // The variant sits BETWEEN the canonical line and the tail. Without the
-      // tolerant opening match it counts as prose, breaks the walk, and the
-      // canonical line stays in `body` — the duplicate is back.
-      const split = splitAnswerBlocks([PROSE, WARNING_ID, variant, MT].join("\n\n"));
-      expect(split.warning).toBe(WARNING_ID);
+      const split = splitAnswerBlocks([PROSE, DISCLAIMER, variant, MT].join("\n\n"));
+      expect(split.disclaimer).toBe(DISCLAIMER);
+      expect(split.warning).toBeNull();
       expect(split.body).toBe([PROSE, variant, MT].join("\n\n"));
     },
   );
 
   // The label peels bracket-optional (`RULE_KINDS` → `opensWith(…, false)`), so
   // both forms are pinned: a rehydrated or hand-edited answer carries it bare,
-  // which is the branch `opensWith`'s ternary takes for the label. Making the
-  // label bracket-required must redden here rather than resurrect the
-  // duplicate silently.
+  // which is the branch `opensWith`'s ternary takes for the label.
   it.each([
     ["bracketed + reworded head (B1 shape)", "[Terjemahan mesin — rujuk teks Arab asli]"],
     ["bare + reworded head", "Terjemahan mesin — rujuk teks Arab asli"],
@@ -215,14 +225,44 @@ describe("splitAnswerBlocks — marker tolerance (A3)", () => {
     expect(split.body).toBe([PROSE, label].join("\n\n"));
   });
 
+  // Mutation: the label made bracket-required (`opensWith(…, true)`). A bare
+  // label between the disclaimer and the tail no longer classifies, the walk
+  // stops, and the disclaimer stays in `body` — the two bare rows redden here.
+  it.each([
+    ["bracketed + reworded head (B1 shape)", "[Terjemahan mesin — rujuk teks Arab asli]"],
+    ["bare + reworded head", "Terjemahan mesin — rujuk teks Arab asli"],
+    ["bare + canonical label", MACHINE_TRANSLATION_LABEL],
+  ])(
+    "still walks past the MT label so the disclaimer above it reaches its footer: %s",
+    (_name, label) => {
+      const split = splitAnswerBlocks([PROSE, DISCLAIMER, label].join("\n\n"));
+      expect(split.disclaimer).toBe(DISCLAIMER);
+      expect(split.warning).toBeNull();
+      expect(split.body).toBe([PROSE, label].join("\n\n"));
+    },
+  );
+
   it("does not classify a paragraph that merely mentions the phrase mid-sentence", () => {
-    // No bracketed opening, so it is prose — and prose stops the walk, keeping
-    // a warning-like line earlier in the answer out of the card.
+    // No bracketed opening, so it is prose and stays whole in `body`. The
+    // canonical line above it is the card's copy wherever it sits, so it peels
+    // rather than leaving the card to draw over a prose copy.
     const split = splitAnswerBlocks(
       [WARNING_ID, "Peringatan tanpa kurung sama sekali.", MT].join("\n\n"),
     );
+    expect(split.warning).toBe(WARNING_ID);
+    expect(split.body).toBe(["Peringatan tanpa kurung sama sekali.", MT].join("\n\n"));
+  });
+
+  // Mutation: warning markers made bracket-optional (`opensWith(…, false)`). The
+  // unbracketed phrase would classify as a warning rule, the walk would continue
+  // past it, and the disclaimer above would peel; at head the phrase is prose,
+  // so the walk stops and the disclaimer stays whole in `body`.
+  it("does not treat an unbracketed phrase as a warning rule", () => {
+    const phrase = "Peringatan tanpa kurung sama sekali.";
+    const split = splitAnswerBlocks([PROSE, DISCLAIMER, phrase, MT].join("\n\n"));
     expect(split.warning).toBeNull();
-    expect(split.body).toBe([WARNING_ID, "Peringatan tanpa kurung sama sekali.", MT].join("\n\n"));
+    expect(split.disclaimer).toBeNull();
+    expect(split.body).toBe([PROSE, DISCLAIMER, phrase, MT].join("\n\n"));
   });
 
   it("does not eat prose when the trailing rule run ends", () => {
