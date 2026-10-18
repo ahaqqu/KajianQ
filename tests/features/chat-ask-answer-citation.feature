@@ -64,11 +64,20 @@ Feature: Chat — ask, answer, citations, warnings, disclaimer
     When I ask a question whose dhaif answer puts the label in the canonical line's paragraph
     Then the dhaif warning renders exactly once beside the shared label
 
+  # #548: the model can wrap the canonical line in markup that wraps ONLY the
+  # copy (`**<copy>**`, `- <copy>`, `> <copy>`). The delimiters are not answer
+  # bytes, so the peel takes them with the copy: the card draws the line once
+  # and no literal wrap markup is left in the body.
+  Scenario: The dhaif warning renders once when wrap-only markup wraps the canonical line (#548)
+    When I ask a question whose dhaif answer wraps the canonical line in markup
+    Then the dhaif warning renders exactly once with no wrap markup left
+
   # #365: ONE trailing paragraph alternates the canonical line with the disclaimer
-  # sentence, and a standalone disclaimer paragraph below it owns the footer. The
-  # copies peel to the card like every other copy; the interleaved sentences are
-  # the footer's own line, so they leave the body with the copies — each sentence
-  # renders once, and nothing the model wrote is dropped.
+  # sentence, and the model's closing disclaimer paragraph below it owns the
+  # footer (the postprocess adds none when the draft already says "bukan fatwa").
+  # The copies peel to the card like every other copy; the interleaved sentences
+  # are the footer's own line, so they leave the body with the copies — each
+  # sentence renders once, and nothing the model wrote is dropped.
   Scenario: The dhaif warning renders once when the trailing paragraph interleaves the disclaimer (#365)
     When I ask a question whose dhaif answer interleaves the canonical line with the disclaimer
     Then the dhaif warning renders exactly once and the disclaimer once despite the interleave

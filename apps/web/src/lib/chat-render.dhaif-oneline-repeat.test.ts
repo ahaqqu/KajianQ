@@ -160,8 +160,9 @@ describe("splitAnswerBlocks — the A2 guard on a space-separated line (#361)", 
 
   it("splits the interleaved copy + disclaimer paragraph into one card and one footer (#365)", () => {
     // ONE paragraph alternates the canonical line with the disclaimer sentence,
-    // and the standalone disclaimer paragraph below it is the footer. The copies
-    // peel to the card like every other copy; the interleave's disclaimer
+    // and the model's closing disclaimer paragraph below it is the footer (the
+    // postprocess adds none when the draft already carries the phrasing). The
+    // copies peel to the card like every other copy; the interleave's disclaimer
     // repetitions are the footer's own line, which the footer draws once, so
     // they leave `body` with the copies and nothing renders twice. The match is
     // byte-equality to the line the peel already took for the footer — never a
@@ -191,6 +192,27 @@ describe("splitAnswerBlocks — the A2 guard on a space-separated line (#361)", 
       expect(occurrences(displayed(split, true), WARNING_ID)).toBe(1); // never a second copy
       expect(occurrences(displayed(split), paraphrase)).toBe(1); // the footer only
     }
+  });
+
+  it("keeps an interleave with no footer line whole — the strip needs a peeled footer (#365)", () => {
+    // No standalone disclaimer paragraph means `split.disclaimer` stays null, so
+    // there is no footer line to match and the guard leaves the interleave's
+    // sentences in `body` exactly as written (the copies still peel). Nothing
+    // renders zero times: the copies are the card's, and the sentences stay.
+    const interleave = [
+      WARNING_ID,
+      DISCLAIMER,
+      WARNING_ID,
+      DISCLAIMER,
+      WARNING_ID,
+      DISCLAIMER,
+    ].join(" ");
+    const split = splitAnswerBlocks([PROSE, interleave].join("\n\n"));
+    expect(split.warning).toBe(WARNING_ID);
+    expect(split.disclaimer).toBeNull();
+    expect(split.body).toBe([PROSE, [DISCLAIMER, DISCLAIMER, DISCLAIMER].join("  ")].join("\n\n"));
+    expect(occurrences(displayed(split), WARNING_ID)).toBe(1);
+    expect(occurrences(displayed(split), DISCLAIMER)).toBe(3); // body only; no footer exists
   });
 
   it("splits the boundary pairs: one copy + one disclaimer, then three of each (#365)", () => {
