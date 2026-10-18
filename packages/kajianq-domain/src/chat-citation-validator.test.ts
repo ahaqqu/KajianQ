@@ -460,6 +460,14 @@ describe("validateCitations — grounded direction", () => {
         ungrounded: [],
       },
     );
+    // The same shape inside a previous citation's tail: the digit before the
+    // marker is part of the tail's run, so the marker has no boundary there
+    // either — the instance the token's marker stop cannot reach.
+    expect(
+      validateCitations("参阅“HR. Ibn Majah no. 224”42HR. Muslim no. 224", [
+        chunk("HR. Ibn Majah no. 224"),
+      ]),
+    ).toEqual({ grounded: ["HR. Ibn Majah no. 224"], ungrounded: [] });
     expect(citationCandidatesIn("参阅和HR. Muslim no. 224")).toEqual(["HR. Muslim no. 224"]);
   });
 

@@ -163,9 +163,10 @@ function hadithAddressOf(match: RegExpExecArray): string | null {
 // does not move. A marker glued to a word character (`42HR. Muslim no. 224`,
 // `… no. 224xHR. Muslim no. 224`) is not a marker to this grammar — the
 // pattern's own `\b` is read from the character before it wherever the scan
-// starts — so it is absorbed (by the number word when it follows the digits,
-// otherwise by the collection group) and the merged token is a different
-// address, which refuses.
+// starts — so it is absorbed by whichever token it sits in. In the number word
+// or the collection group the merged token is a different address, which
+// refuses; in the tail the first address stays intact and the marker is
+// invisible, the recorded boundary the scan documents.
 //
 // A **spaced** joiner stays outside this token — `HR. Bukhari no.
 // 5010 - 5011` scans as its head — a recorded exclusion (ADR-0049's "Hadith

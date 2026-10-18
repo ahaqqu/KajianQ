@@ -167,15 +167,15 @@ export function citationSpansIn(text: string): { start: number; end: number; lab
  *   requires `no.`.
  *
  * **Recorded boundary, same direction, different cause.** A marker glued to a
- * preceding ASCII word character (`42HR. Muslim no. 224`) is invisible at
- * **every** scan position, because every grammar's start requires `\b` and that
- * boundary is read from the character before the marker, wherever the scan
- * begins. No token rule can reach it — the hadith tail stops only at a marker
- * this grammar could itself match — and closing it is a start-boundary widening
- * of all three grammars, which is what keeps `XHR.` and a word ending in `hr`
- * (`Mohr. Bukhari no. 1`) out of the scan. A marker after a non-word character
- * (punctuation, whitespace, an Arabic or CJK letter) has that boundary and is
- * judged.
+ * preceding ASCII word character (`42HR. Muslim no. 224`, or in a previous
+ * citation's tail `… no. 224”42HR. Muslim no. 224`) is invisible at **every**
+ * scan position, because every grammar's start requires `\b` and that boundary
+ * is read from the character before the marker, wherever the scan begins. No
+ * token rule can reach it — the hadith tail stops only at a marker this grammar
+ * could itself match — and closing it is a start-boundary widening of all three
+ * grammars, which is what keeps `XHR.` and a word ending in `hr` (`Mohr. Bukhari
+ * no. 1`) out of the scan. A marker after a non-word character (punctuation,
+ * whitespace, an Arabic or CJK letter) has that boundary and is judged.
  *
  * The rows are pinned in the unit test, so widening one is a deliberate act
  * that updates this record and those rows together, never a silent one. Revisit
