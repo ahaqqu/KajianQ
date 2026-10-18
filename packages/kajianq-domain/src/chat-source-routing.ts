@@ -19,6 +19,13 @@ import type { Intent, PrincipleTag, SubjectArea, SubQueryRole } from "./taxonomy
  * A source the selection omits is unreachable (`metadata->>sourceType = ANY(…)`),
  * so the omission is a silent failure nothing but this rule notices.
  *
+ * Coverage over the *reading* is the second half of that invariant: the category
+ * is a sampled classification, so a row may not leave a source the question's own
+ * evidence needs out of reach on one sample and in reach on another. The scriptural
+ * areas therefore share one breadth ({@link SCRIPTURAL_SOURCES}), and every
+ * non-empty row selects the Sunnah — which of the scriptural areas a reading
+ * settles cannot decide whether hadith evidence is searched at all.
+ *
  * Both maps are `Record`s over the vocabulary that owns them, so a vocabulary value
  * added without a decision here is a typecheck failure rather than a silent
  * omission; a role this module cannot express throws
@@ -46,13 +53,26 @@ export type SourceRoutingInput = {
   subQueries: readonly SubQuery[];
 };
 
-/** The sources a subject area is answered from, in the authority order (Quran → Hadith → Tafsir → Kitab); an empty row is a decision, not a gap. */
+/**
+ * The scriptural breadth: what a question about the Quran is answered from.
+ *
+ * The Quran, its commentary, and the Sunnah that carries the practice the
+ * question asks about — **one** set shared by both scriptural areas, because
+ * which of the two a reading settles is a distinction the evidence does not
+ * draw. Rows that share it cannot be split without one of them dropping the
+ * Sunnah from reach on a sampled label, so the sharing is the invariant, not
+ * two equal-looking rows kept in sync by hand.
+ */
+const SCRIPTURAL_SOURCES = ["quran", "tafsir", "hadith"] as const;
+
+/** The sources a subject area is answered from; an empty row is a decision, not a gap. */
 const CATEGORY_SOURCES: Readonly<Record<SubjectArea, readonly RoutableSource[]>> = {
-  quran: ["quran"],
+  quran: SCRIPTURAL_SOURCES,
+  // A hadith question's evidence is the Sunnah the question names.
   hadith: ["hadith"],
-  // Tafsir is commentary *on* the Quran, so the Quran is searched with it — and
-  // the Sunnah too, where the corpus carries a practice's evidence.
-  tafsir: ["quran", "tafsir", "hadith"],
+  // Commentary goes with the text it explains, and with the Sunnah, whose
+  // evidence carries the "why is it recited" half of a commentary question.
+  tafsir: SCRIPTURAL_SOURCES,
   // A ruling question: Quran, then Sunnah, then the works carrying the madzhab
   // reasoning — the authority order spent as breadth.
   fikih: ["quran", "hadith", "kitab"],
