@@ -144,10 +144,21 @@ export function citationSpansIn(text: string): { start: number; end: number; lab
  * unseen. {@link stripInvisibleFormattingWithOffsets} carries the offset policy
  * that keeps each span pointing at where the draft wrote it.
  *
- * **Recorded residual.** Two spellings stay outside every grammar and so still
- * pass unseen — the fail-open direction the digit posture on {@link
- * CITATION_GRAMMARS} promises not to take. They are recorded, not closed,
- * because closing either is a grammar widening:
+ * **Accepted residual.** Two spellings stay outside every grammar, so the scan
+ * cannot see them at all and an answer carrying one is never judged — the
+ * fail-open direction {@link CITATION_GRAMMARS} promises not to take. That
+ * silence is not coverage: the scan judges the citation attempts it can match,
+ * not every way a draft might write one, and a draft carrying either spelling
+ * below passes this gate unjudged.
+ *
+ * They are **accepted rather than closed** because neither has an emitter: the
+ * prompt requires every citation to be the retrieved label itself, and a label
+ * is a spelling the corpus generates — `formatQuranCitation` writes the
+ * separator after the Quran marker, `formatHadithCitation` the dot after the
+ * address word — so a draft that follows the prompt cannot drop either. Closing
+ * one is a grammar widening — a spelling rule the match pattern, the address
+ * extraction and the comparison fold would all have to carry — and for the
+ * separator-less form it reverses the boundary the Quran grammar is built on:
  *
  * - `QS9:99` (no separator between marker and address) — the grammar requires
  *   one, and {@link canonicalizeCitationSpelling} mirrors that exclusion instead
@@ -155,7 +166,11 @@ export function citationSpansIn(text: string): { start: number; end: number; lab
  * - `HR. Bukhari no 99999` (dot-less address marker) — the hadith pattern
  *   requires `no.`.
  *
- * Both rows are pinned in the unit test so the next hunt does not re-find them.
+ * Both rows are pinned in the unit test, so widening one is a deliberate act
+ * that updates this record and those rows together, never a silent one. Revisit
+ * when a draft is observed writing either spelling, when the prompt stops
+ * requiring the retrieved label verbatim, or when a corpus label drops the
+ * separator or the dot.
  */
 function scanCitations(text: string): { start: number; end: number; label: string }[] {
   const found: { start: number; end: number; label: string }[] = [];
