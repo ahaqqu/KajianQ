@@ -1551,17 +1551,36 @@ describe("citationCandidatesIn", () => {
     // stop closes cannot silently reopen.
     const marker = String.raw`\bHR(?:\.|\s)`;
     expect(CITATION_GRAMMARS[1]!.pattern().source.split(marker)).toHaveLength(3);
-    // Every separator the start's `(?:\.|\s)` admits, in every casing its `i` flag
-    // admits: the start reads the citation, and the tail stop leaves the same
-    // spelling for the scan.
+    // The start admits a dot and any whitespace. Walk every printable ASCII and
+    // whitespace separator, ask the start whether it admits the spelling, and
+    // require the tail stop to leave that spelling for the scan — a widening to a
+    // new separator (a colon, say) reddens here instead of leaving the tail to
+    // absorb it.
+    const separators = [
+      ...Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i)),
+      "\t",
+      "\n",
+      "\r",
+      "\u00a0",
+      "\u1680",
+      "\u2003",
+      "\u2028",
+      "\u3000",
+      "\ufeff",
+    ];
     const first = "HR. Ibn Majah no. 224";
     for (const casing of ["HR", "hr", "hR", "Hr"]) {
-      for (const separator of [".", " ", "\t", "\u00a0", "\n"]) {
-        const spelling = `${casing}${separator}`;
-        const citation = `${spelling}Muslim no. 999`;
-        const label = normalizeCitationLabel(citation);
-        expect(citationCandidatesIn(citation), spelling).toEqual([label]);
-        expect(citationCandidatesIn(`参阅“${first}”${citation}`), spelling).toEqual([first, label]);
+      for (const separator of separators) {
+        const spelling = `${casing}${JSON.stringify(separator)}`;
+        const citation = `${casing}${separator}Muslim no. 999`;
+        const startLabel = citationCandidatesIn(citation);
+        // Only a spelling the start admits is a marker spelling to keep in step.
+        if (startLabel.length === 0) continue;
+        expect(startLabel, spelling).toHaveLength(1);
+        expect(citationCandidatesIn(`参阅“${first}”${citation}`), spelling).toEqual([
+          first,
+          ...startLabel,
+        ]);
       }
     }
   });
