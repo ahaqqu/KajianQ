@@ -119,8 +119,9 @@ function tableCounts(url) {
   return counts;
 }
 
-// The Art. 17 statement is fixed text with the user id bound as a psql
-// variable (see lib.mjs) — the id never becomes part of the statement.
+// The Art. 17 batch is fixed text with the user id bound as a psql variable
+// (see lib.mjs) — the id never becomes part of the statement — and runs as one
+// transaction, so a failed statement cannot leave the target half-erased.
 const ERASE_SQL = erasureSql();
 
 async function main() {

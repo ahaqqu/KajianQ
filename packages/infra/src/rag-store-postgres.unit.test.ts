@@ -4,6 +4,7 @@ import type { StoreError } from "@app/rag-core";
 import { runFail } from "@app/rag-core/testing";
 import { createPostgresRagStore, type SqlRunner } from "./rag-store-postgres";
 import { sqlEffect } from "./rag-store-postgres-errors";
+import { ERASURE_SUBJECT_SETTING } from "./rag-store-postgres-erasure";
 import { createRagStore } from "./rag-store-factory";
 import type { Logger, LogFields } from "./logger";
 import type { Trace } from "@app/contracts";
@@ -428,11 +429,107 @@ describe("rag-store-postgres adapter (fake runner)", () => {
     expect(statements[1]).toContain("NOT EXISTS (SELECT 1 FROM sessions");
   });
 
-  it("deleteUserCascade deletes from users (cascade does the rest)", async () => {
+  it("deleteUserCascade erases in one transaction whose postcondition runs inside it", async () => {
     const sql = makeFakeSql();
     const store = createPostgresRagStore(sql);
     await runOk(store.deleteUserCascade("u1"));
-    expect(sql._calls[0]?.text).toContain("DELETE FROM users WHERE id =");
+
+    // One batch call, never a sequence of standalone statements: the postcondition
+    // statements share the transaction, so a surviving row rolls the whole subtree
+    // back instead of committing over it.
+    expect(sql._calls.filter((c) => c.kind === "transaction")).toHaveLength(1);
+    const statements = sql._calls.filter((c) => c.kind === "tag");
+    const text = statements.map((c) => c.text);
+
+    // The subject id is bound once and the assertions read it back: a DO block
+    // cannot take parameters, so every occurrence has to name the same setting.
+    expect(statements[0]?.values).toEqual(["kajianq.erasure.subject", "u1"]);
+    const settings = new Set(
+      [...text.join("\n").matchAll(/'kajianq\.erasure\.[a-z_]+'/g)].map((m) => m[0]),
+    );
+    expect([...settings]).toEqual([`'${ERASURE_SUBJECT_SETTING}'`]);
+
+    // Each child table is named explicitly, so the erasure does not depend on the
+    // FK cascade alone; chat messages are swept through the user's sessions while
+    // those sessions still exist.
+    expect(text[1]).toContain("DELETE FROM chat_messages");
+    expect(text[1]).toContain("SELECT id FROM chat_sessions WHERE user_id");
+    expect(text[3]).toContain("DELETE FROM feedback WHERE user_id");
+    expect(text[4]).toContain("DELETE FROM answer_traces WHERE user_id");
+    expect(text[5]).toContain("DELETE FROM chat_sessions WHERE user_id");
+    expect(text[6]).toContain("DELETE FROM sessions WHERE user_id");
+    // The parent delete is last: its FK cascade is the backstop for anything
+    // committed between a sweep and this statement.
+    expect(text[7]).toContain("DELETE FROM users WHERE id");
+
+    // The message sweep is verified before the chat sessions go — the only point
+    // where a message can still be attributed to the user — and the remaining
+    // tables are verified after the parent delete.
+    expect(text[2]).toContain("DO $$");
+    expect(text[2]).toContain("'chat_messages' AS verified_table");
+    expect(text[2]).toContain("ERRCODE = '23514'");
+    expect(text[8]).toContain("DO $$");
+    expect(text[8]).toContain("ERRCODE = '23514'");
+  });
+
+  it("every swept table is verified, and every verified table is swept", async () => {
+    const sql = makeFakeSql();
+    await runOk(createPostgresRagStore(sql).deleteUserCascade("u1"));
+    const text = sql._calls
+      .filter((c) => c.kind === "tag")
+      .map((c) => c.text)
+      .join("\n");
+    const swept = new Set([...text.matchAll(/DELETE FROM ([a-z_]+)/g)].map((m) => m[1]!));
+    const verified = new Set(
+      [...text.matchAll(/SELECT '([a-z_]+)' AS verified_table/g)].map((m) => m[1]!),
+    );
+    // The contract suite pins this set against the schema's cascading closure; here
+    // the pin is that a table cannot be swept without being verified, or verified
+    // without being swept.
+    expect([...verified].sort()).toEqual([...swept].sort());
+  });
+
+  it("deleteUserCascade reports a surviving row as a constraint error naming it", async () => {
+    const sql = makeFakeSql();
+    // The postcondition raised inside the transaction: the driver rolled back and
+    // rejected with the server error, so the caller sees the typed failure.
+    sql.transaction = () =>
+      Promise.reject(
+        Object.assign(new Error("user erasure left rows behind in: chat_sessions"), {
+          severity: "ERROR",
+          code: "23514",
+        }),
+      );
+    const err = await runFail(createPostgresRagStore(sql).deleteUserCascade("u1"));
+    expect(err.kind).toBe("constraint");
+    expect(String(err.cause)).toContain("chat_sessions");
+  });
+
+  it("deleteUserCascade is idempotent on an already-empty subtree", async () => {
+    const sql = makeFakeSql();
+    const store = createPostgresRagStore(sql);
+    await runOk(store.deleteUserCascade("u1"));
+    await runOk(store.deleteUserCascade("u1"));
+    // An empty subtree is a no-op success: the deletes remove nothing and every
+    // postcondition statement passes.
+    expect(sql._calls.filter((c) => c.kind === "transaction")).toHaveLength(2);
+  });
+
+  it("deleteUserCascade surfaces a failing statement as a StoreError (the batch rolls back)", async () => {
+    const sql = makeFakeSql();
+    // The driver's batch primitive rejects when a statement fails (after its own
+    // ROLLBACK); the fake's tag calls stay resolved, so only the batch rejects —
+    // the shape a real mid-batch failure has.
+    sql.transaction = () =>
+      Promise.reject(
+        Object.assign(new Error("could not serialize access"), {
+          severity: "ERROR",
+          code: "40001",
+        }),
+      );
+    const store = createPostgresRagStore(sql);
+    const err = await runFail(store.deleteUserCascade("u1"));
+    expect(err.kind).toBe("transport");
   });
 
   it("classifies a Postgres unique violation as constraint (taxonomy, ADR-0027 d7)", async () => {

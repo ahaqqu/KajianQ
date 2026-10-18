@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import type { RagStore } from "./rag-store";
 import { hashToken, randomToken } from "./rag-store-shared";
+import { eraseUserTree } from "./rag-store-postgres-erasure";
 import { postgresErrorToStoreError, sqlEffect, type SqlRunner } from "./rag-store-postgres-errors";
 
 /**
@@ -208,14 +209,7 @@ export function postgresSessionMethods(
     },
 
     deleteUserCascade(userId) {
-      // sessions, chat_sessions/chat_messages, feedback, and answer_traces
-      // all reference users with ON DELETE CASCADE (answer_traces via its
-      // user_id FK, ADR-0007), so one delete removes the full
-      // subtree — including the user's Q&A traces.
-      return Effect.as(
-        sqlEffect(sql, () => sql`DELETE FROM users WHERE id = ${userId}` as Promise<unknown[]>),
-        void 0,
-      );
+      return eraseUserTree(sql, userId);
     },
   };
 }

@@ -96,8 +96,12 @@ export function createMemoryRagStore(): RagStore & {
     authSessions,
     tokens,
     chatSessions,
+    chatMessages,
     traces,
     traceOwners,
+    traceRows,
+    traceRowOwners,
+    traceRowMessageIds,
     feedback,
     nextId: () => (seq += 1),
   });

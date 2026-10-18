@@ -804,9 +804,12 @@ write to the live database, by construction:
 - After the restore it re-runs the reclamation and the Art. 17 cascade for the
   affected window (`--erase-user <id>` when a subject request arrived after the
   backup), because otherwise a restored row silently resurrects deleted data
-  (ADR-0043 decision 4). The cascade statement is bound as a psql variable and
-  pinned by test against production `deleteUserCascade`, so the restore path
-  cannot drift from the live erasure.
+  (ADR-0043 decision 4). The erasure statements run as one transaction bound as
+  a psql variable, and it carries the same in-transaction residual check as
+  production `deleteUserCascade` — a surviving row aborts the batch, so the
+  restore fails instead of reporting a half-applied erasure. A test compares the
+  batch to production in both directions, so the restore path cannot drift from
+  the live erasure.
 
 The restore **drill** is the deliberate exception to the no-URL-on-argv rule:
 its `--admin-url "postgres://drill:drill@127.0.0.1:5432/postgres"`
