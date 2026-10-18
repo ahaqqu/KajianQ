@@ -25,7 +25,7 @@ const COST: CostRecord = {
 type Captured = {
   turns: readonly { role: string; content: string }[];
   personalData: true;
-  options?: Record<string, unknown>;
+  options: Record<string, unknown>;
 };
 
 function harness(replyText: string): {

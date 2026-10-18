@@ -877,11 +877,11 @@ deploys, then runs the Golden Set smoke against your live box — and the ZAP
 baseline and Schemathesis fuzz run even when that smoke is red (independent
 gates; the job still ends red on the smoke):
 
-| Check            | What it proves                                                                                                                          |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Golden Set smoke | Real questions, answered by your deployed API and scored from its persisted traces — refusal, dhaif trap, English, and Indonesian cases |
-| ZAP baseline     | No new security warnings on the served surface                                                                                          |
-| Schemathesis     | The API survives property-based fuzzing against its own OpenAPI spec                                                                    |
+| Check            | What it proves                                                                                                                                                                                                                                 |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Golden Set smoke | Real questions, answered by your deployed API and scored from its persisted traces — refusal, dhaif trap, cross-madzhab, and Indonesian answer cases; the English cases are held out of the deploy sample while the full suite still runs them |
+| ZAP baseline     | No new security warnings on the served surface                                                                                                                                                                                                 |
+| Schemathesis     | The API survives property-based fuzzing against its own OpenAPI spec                                                                                                                                                                           |
 
 Then run the restore drill on the host. This is the acceptance criterion the
 whole backup layer exists to serve — a backup nobody has restored is a hope, not

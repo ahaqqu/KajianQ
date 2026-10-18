@@ -119,8 +119,7 @@ export const SMOKE_COVERAGE_TAGS = [DAIF_TRAP_LABEL, "cross-madzhab"] as const;
  * required citation the retrieval cannot ground yet, so sampling it would make
  * the gate red or green by chance instead of by regression. The eval script
  * passes these ids to the selector opaquely (the engine names no product id);
- * an id leaves this list when what it measures is deterministic again. The
- * retrieval half of gs-v0-015's gap is #533's.
+ * an id leaves this list when what it measures is deterministic again.
  */
 export const SMOKE_HELD_OUT_IDS: readonly string[] = [
   "gs-v0-003",

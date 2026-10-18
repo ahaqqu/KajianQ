@@ -336,13 +336,24 @@ describe("selectSmokeSubset", () => {
   });
 
   it("reports a class whose carriers are all held out instead of throwing or filling it", () => {
-    const { set: smoke, unavailable } = selectSmokeSubset(set, {
+    const {
+      set: smoke,
+      unavailable,
+      heldOutIds,
+    } = selectSmokeSubset(set, {
       size: 5,
       requiredTags: ["trap-tag"],
       exclude: ["q-en-1"],
     });
     expect(smoke.questions.map((q) => q.id)).not.toContain("q-en-1");
     expect(unavailable).toEqual([{ reason: "English language coverage", heldOut: ["q-en-1"] }]);
+    expect(heldOutIds).toEqual(["q-en-1"]);
+  });
+
+  it("refuses a hold-out list that would leave the sample empty", () => {
+    expect(() =>
+      selectSmokeSubset(set, { size: 5, exclude: set.questions.map((q) => q.id) }),
+    ).toThrow(/no question left in "golden-set-v0" after the held-out ids/);
   });
 
   it("refuses an excluded id the set does not carry", () => {
@@ -407,5 +418,6 @@ describe("selectSmokeSubset", () => {
     const plan = formatSmokePlan(selection, typedSet).join("\n");
     expect(plan).toContain("not covered: English language coverage (held out: q-en-1)");
     expect(plan).toContain("not covered: expected source type tertiary-source");
+    expect(plan).toContain("held out of this sample: q-en-1");
   });
 });

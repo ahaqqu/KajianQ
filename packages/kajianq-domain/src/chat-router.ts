@@ -81,8 +81,13 @@ export type RouterProvider = {
      * free-tier candidates for the call (`personalDataAllowed`, ADR-0009).
      */
     personalData: true;
-    /** Per-model wire settings, passed through by the provider seam. */
-    options?: Record<string, unknown>;
+    /**
+     * Per-model wire settings, passed through by the provider seam. Required,
+     * like `personalData`: the router's determinism depends on this call
+     * carrying its sampling, so an optional field would let a call site drop it
+     * without a compile error.
+     */
+    options: Record<string, unknown>;
   }): Effect.Effect<{ text: string; cost: CostRecord }, unknown>;
 };
 

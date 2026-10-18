@@ -32,6 +32,8 @@ export type SmokeSelection = {
    * fixture's own opaque vocabulary.
    */
   uncoveredSourceTypes: readonly string[];
+  /** The caller's held-out ids, in the set's order (for the printed plan). */
+  heldOutIds: readonly string[];
 };
 
 /**
@@ -93,7 +95,8 @@ type SmokeCoverage = {
  * prints. A class the available set does not carry because every eligible
  * question is held out is reported in `unavailable`, never filled from a
  * held-out question; a class the fixture does not carry at all is the
- * fixture's content bar to enforce, and only a required tag is fatal there.
+ * fixture's content bar to enforce, and only a required tag is fatal there. A
+ * hold-out list that would leave the sample empty throws.
  */
 export function selectSmokeSubset(set: GoldenSet, opts: SmokeSelectOptions = {}): SmokeSelection {
   const size = Math.max(1, opts.size ?? 5);
@@ -124,11 +127,12 @@ export function selectSmokeSubset(set: GoldenSet, opts: SmokeSelectOptions = {})
     );
   }
 
-  const isHeldOut = (q: GoldenQuestion): boolean => exclude.has(q.id);
-  const available = set.questions.filter((q) => !isHeldOut(q));
+  // One eligibility boundary: every class rule, the fill and the coverage check
+  // read the same available set, so a held-out id cannot re-enter by another path.
+  const available = set.questions.filter((q) => !exclude.has(q.id));
 
   const take = (q: GoldenQuestion | undefined, reason: string): void => {
-    if (!q || isHeldOut(q) || taken.has(q.id) || picked.length >= size) return;
+    if (!q || taken.has(q.id) || picked.length >= size) return;
     taken.add(q.id);
     picked.push(q);
     reasons.push({ id: q.id, reason });
@@ -194,9 +198,17 @@ export function selectSmokeSubset(set: GoldenSet, opts: SmokeSelectOptions = {})
     );
   }
 
-  for (const q of set.questions) {
+  for (const q of available) {
     if (picked.length >= size) break;
     take(q, "fill (stable order)");
+  }
+
+  // A sample with no questions would spend the deploy gate's budget and ask
+  // nothing: hold-out lists may narrow the sample, never empty it.
+  if (picked.length === 0) {
+    throw new SmokeSubsetError(
+      `no question left in "${set.id}" after the held-out ids (${set.questions.length} questions)`,
+    );
   }
 
   // Which expected source types the gate no longer asks for: the sample may shrink
@@ -209,12 +221,14 @@ export function selectSmokeSubset(set: GoldenSet, opts: SmokeSelectOptions = {})
     reasons,
     unavailable,
     uncoveredSourceTypes: [...fixtureTypes].filter((type) => !sampleTypes.has(type)),
+    heldOutIds: set.questions.filter((q) => exclude.has(q.id)).map((q) => q.id),
   };
 }
 
 /**
- * The run's printed plan: the sample, why each case was picked, and every class
- * and expected source type the sample no longer exercises. Kept here rather
+ * The run's printed plan: the sample, why each case was picked, every class
+ * and expected source type the sample no longer exercises, and the held-out ids
+ * the selection used. Kept here rather
  * than in the CLI script so a test can pin the uncovered lines: a gate that
  * passes while silently covering less would be worse than a red one.
  */
@@ -226,5 +240,8 @@ export function formatSmokePlan(selection: SmokeSelection, fixture: GoldenSet): 
       (cls) => `  not covered: ${cls.reason} (held out: ${cls.heldOut.join(", ")})`,
     ),
     ...selection.uncoveredSourceTypes.map((type) => `  not covered: expected source type ${type}`),
+    ...(selection.heldOutIds.length > 0
+      ? [`  held out of this sample: ${selection.heldOutIds.join(", ")}`]
+      : []),
   ];
 }

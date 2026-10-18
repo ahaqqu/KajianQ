@@ -35,6 +35,19 @@ const FIXTURE = JSON.parse(
 /** The cases the deployed sample asks, in the subset's order. */
 const DEFAULT_IDS = ["gs-v0-019", "gs-v0-020", "gs-v0-018", "gs-v0-001", "gs-v0-002"];
 
+/**
+ * The held-out cases' expectations, pinned as literals: a non-emptiness check
+ * would let a dropped required citation or a narrowed source-type set pass while
+ * the sample still pointed at the case.
+ */
+const HELD_OUT_EXPECTATIONS = {
+  "gs-v0-003": { expectedSourceTypes: ["hadith"], requiredCitations: ["HR. Bukhari no. 149"] },
+  "gs-v0-004": { expectedSourceTypes: ["hadith"], requiredCitations: ["HR. Ibnu Majah no. 224"] },
+  "gs-v0-015": { expectedSourceTypes: ["quran", "hadith"], requiredCitations: ["QS. 1:2"] },
+  "gs-v0-016": { expectedSourceTypes: ["hadith"], requiredCitations: ["HR. Bukhari no. 1395"] },
+  "gs-v0-017": { expectedSourceTypes: ["hadith"], requiredCitations: ["HR. Muslim no. 2064"] },
+};
+
 const select = () =>
   selectSmokeSubset(FIXTURE, {
     requiredTags: SMOKE_COVERAGE_TAGS,
@@ -66,10 +79,14 @@ describe("the staged smoke subset's default membership", () => {
     // The cross-madzhab case keeps the hadith path in the sample; nothing else
     // the full set asks for is dropped without a line.
     expect(selection.uncoveredSourceTypes).toEqual([]);
+    // The class line names the held-out carriers; the plan's own held-out line
+    // is owned by the selection data, not echoed from the caller's constant.
+    expect(selection.heldOutIds).toEqual([...SMOKE_HELD_OUT_IDS]);
     const plan = formatSmokePlan(selection, FIXTURE).join("\n");
     expect(plan).toContain(
       "not covered: English language coverage (held out: gs-v0-015, gs-v0-016, gs-v0-017)",
     );
+    expect(plan).toContain(`held out of this sample: ${SMOKE_HELD_OUT_IDS.join(", ")}`);
     expect(plan).not.toContain("not covered: expected source type");
   });
 
@@ -87,8 +104,13 @@ describe("the staged smoke subset's default membership", () => {
     const held = FIXTURE.questions.filter((q) => SMOKE_HELD_OUT_IDS.includes(q.id));
     expect(held.map((q) => q.id)).toEqual([...SMOKE_HELD_OUT_IDS]);
     for (const q of held) {
+      const pinned = HELD_OUT_EXPECTATIONS[q.id];
+      expect(pinned).toBeDefined();
       expect(q.expectedBehavior).toBe("answer");
-      expect(q.expectedSourceTypes.length).toBeGreaterThan(0);
+      // Literal expectations, not non-emptiness: a dropped required citation or a
+      // narrowed source-type set is the weakening the hold-out must not hide.
+      expect(q.expectedSourceTypes).toEqual(pinned?.expectedSourceTypes);
+      expect(q.requiredCitations).toEqual(pinned?.requiredCitations);
     }
     // Only the sample is narrower; the full set and QA still ask every case.
     const all = FIXTURE.questions.map((q) => q.id);

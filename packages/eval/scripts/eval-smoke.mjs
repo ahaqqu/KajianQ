@@ -71,12 +71,7 @@ const selection = (() => {
     fail("eval:smoke", err instanceof Error ? err.message : String(err));
   }
 })();
-console.log(
-  [
-    ...evalpkg.formatSmokePlan(selection, fixture),
-    `  held out of this sample: ${SMOKE_HELD_OUT_IDS.join(", ")}`,
-  ].join("\n"),
-);
+console.log(evalpkg.formatSmokePlan(selection, fixture).join("\n"));
 
 // The staging bootstrap (store, sourceType scan, transport, traces, ledger, refusal
 // markers) is shared with eval:run — one copy, no drift.
