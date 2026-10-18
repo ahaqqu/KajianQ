@@ -211,7 +211,6 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
             bridge: deps.bridge,
           });
           if (expansion.scope !== null) {
-            const run = yield* RunContext;
             run.record({
               stage: "retriever",
               kind: "scope_expansion",
@@ -231,7 +230,6 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
             bridge: deps.bridge,
           });
           if (neighbours.detail !== null) {
-            const run = yield* RunContext;
             run.record({
               stage: "retriever",
               kind: "neighbour_expansion",

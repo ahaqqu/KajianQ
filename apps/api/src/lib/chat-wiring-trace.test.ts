@@ -13,8 +13,7 @@ import { buildChatWiring } from "./chat-wiring";
  *
  * The retrieval stage records its embed call through the run's own sink, like
  * every other stage records its provider call, so the cost is on the trace by
- * construction rather than by a composition root remembering to wire a
- * collector. A run that fails after the embed keeps exactly one embed record:
+ * construction. A run that fails after the embed keeps exactly one embed record:
  * the cost settles once at the sink, and nothing re-forwards a failed trace's
  * costs into it.
  *
@@ -126,7 +125,7 @@ describe("buildChatWiring — the embed call's cost rides the answer trace", () 
     const answer = await runChatPipelinePromise(
       wiredDeps(store, calls, {
         answerText: `Jawaban ${CITATION}: Allah Mahahidup.`,
-        // A non-zero, estimated embed record: the shape the collector must carry.
+        // A non-zero, estimated embed record: the shape every provider call carries.
         embedCost: {
           tokensIn: 3,
           tokensOut: 0,
