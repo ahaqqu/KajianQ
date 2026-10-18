@@ -14,6 +14,7 @@ export {
 } from "./health";
 export {
   CHAT_MESSAGE_MAX_LENGTH,
+  STORABLE_TEXT_PATTERN,
   ChatErrorSchema,
   ChatMessageTextSchema,
   ChatMetaSchema,
