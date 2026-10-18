@@ -4,7 +4,7 @@
  * Postgres store (ADR-0043 decision 4).
  *
  *   kajianq-backup.mjs [--env-file /etc/kajianq/backup.env] [--label <label>]
- *                      [--keep-daily 30] [--dry-run]
+ *                      [--keep-daily 30] [--dry-run] [--record <path>]
  *
  * What it does, in order:
  *   1. `pg_dump --format=custom` of the whole database into a private temp dir.
@@ -17,6 +17,11 @@
  *      This is the only deletion path: a snapshot is never overwritten in
  *      place, it is superseded and then pruned (the immutable-label rule,
  *      ADR-0038 semantics).
+ *   5. Record the run's outcome — exit status, start and completion time, label
+ *      and a best-effort revision — where the deploy's provenance preflight can
+ *      read it. A start marker goes down before the dump, so an interrupted run
+ *      cannot leave an earlier success looking current; the record, not
+ *      systemd's run fields, is the proof.
  *
  * Credentials travel through the environment, never argv: `--env-file` is
  * parsed by this script and merged into `process.env`, so a password is never
@@ -41,6 +46,7 @@ import {
   retentionArgs,
   sha256Hex,
 } from "./lib.mjs";
+import { RECORD_PATH, recordBody, writeRecordFile } from "./provenance.mjs";
 
 function fail(msg) {
   console.error(`kajianq-backup: ${msg}`);
@@ -73,6 +79,51 @@ function argAfter(flags, name) {
   const i = flags.indexOf(name);
   return i >= 0 ? flags[i + 1] : undefined;
 }
+
+/**
+ * Where a completed run records its outcome for
+ * provision/vps/deploy/backup-provenance.sh.
+ *
+ * Deliberately under /var/lib, not the deploy root: /srv/kajianq belongs to the
+ * deploy identity, so a root-owned file there could still be renamed away by
+ * the very identity the proof is meant to bind, and anything inside api/ or
+ * web/ would be deleted by the next rsync. The directory's root ownership is
+ * the security boundary: only a root process can write a record there.
+ */
+let recordPath = RECORD_PATH;
+let recordLabel = "unknown";
+let recordRevision = "unknown";
+let recordStartedAt = 0;
+let recordEnabled = true;
+
+/**
+ * Write one state of the run to the record. Never throws from the exit handler:
+ * a failed write must not turn a backup that succeeded into a failed run.
+ */
+function writeRecord(status, completedAt) {
+  writeRecordFile(
+    recordPath,
+    recordBody({
+      status,
+      startedAt: recordStartedAt,
+      completedAt,
+      label: recordLabel,
+      revision: recordRevision,
+    }),
+  );
+}
+
+process.on("exit", (code) => {
+  // A dry run uploads nothing and must not overwrite the last real run's proof.
+  if (!recordEnabled) return;
+  try {
+    writeRecord(String(code ?? 1), Math.floor(Date.now() / 1000));
+  } catch (err) {
+    console.error(
+      `kajianq-backup: could not write the provenance record at ${recordPath}: ${err.message}`,
+    );
+  }
+});
 
 /** Decompose a connection URL into libpq PG* env vars (never argv). */
 function pgEnv(url) {
@@ -118,10 +169,12 @@ function tableCounts() {
 }
 
 /**
- * The deployed revision, for the manifest's provenance field.
+ * A best-effort revision for the manifest's provenance field.
  *
  * Best-effort by design: a backup's integrity does not depend on knowing which
- * commit produced it, so nothing here may abort the run.
+ * commit produced it, so nothing here may abort the run. Under the deployed
+ * bundle this reads `unknown`, and a .git planted in the deploy-owned tree can
+ * steer it; the record's label, not this value, is the identity the gate uses.
  *
  * `cwd` is pointed at the script's own directory rather than inherited: the
  * unit's `WorkingDirectory` is the deployed tree, which is not a repository, so
@@ -137,6 +190,49 @@ function gitInfo() {
 
 async function main() {
   const argv = process.argv.slice(2);
+  const dryRun = argv.includes("--dry-run");
+  const recordArg = argAfter(argv, "--record");
+  if (recordArg) recordPath = recordArg;
+  // The security boundary is the production directory's ownership, not the
+  // caller or an environment variable: /var/lib/kajianq is root-owned, so only
+  // a root process can write the proof. `--record` exists for tests and the
+  // restore drill, which must not touch the real record; a root run of the
+  // checkout writer is the documented one-time bootstrap on a box whose deployed
+  // bundle predates the writer. A dry run records nothing: it uploads nothing
+  // and must not overwrite the last real run's proof.
+  recordEnabled = !dryRun;
+  recordStartedAt = Math.floor(Date.now() / 1000);
+
+  const keepDaily = Number(argAfter(argv, "--keep-daily") ?? BACKUP_KEEP_DAILY);
+  const label =
+    argAfter(argv, "--label") ??
+    `daily-${new Date()
+      .toISOString()
+      .replace(/[-:]/g, "")
+      .replace(/\.\d+Z$/, "Z")
+      .toLowerCase()}`;
+  readLabel(label);
+  // The record's identity and the manifest's provenance are the same probe. It
+  // is best-effort — `unknown` on the deployed bundle, and steerable by a .git
+  // planted in the deploy-owned tree — so it is informational, never the proof.
+  const git = gitInfo();
+  recordLabel = label;
+  recordRevision = git.sha;
+
+  // Mark the run in progress before the dump. A run killed between here and the
+  // exit handler (SIGTERM/SIGINT, OOM, systemd's start timeout) leaves this
+  // marker, so the preflight refuses it; a completion-only record would keep the
+  // previous successful run green.
+  if (recordEnabled) {
+    try {
+      writeRecord("running", 0);
+    } catch (err) {
+      console.error(
+        `kajianq-backup: could not write the in-progress provenance record at ${recordPath}: ${err.message}`,
+      );
+    }
+  }
+
   const envFile = argAfter(argv, "--env-file");
   if (envFile) applyEnvFile(process.env, parseEnvFile(readFileSync(envFile, "utf8")));
 
@@ -162,17 +258,6 @@ async function main() {
   } catch (err) {
     fail(`RESTIC_PASSWORD_FILE ${passFile} is not readable: ${err.message}`);
   }
-
-  const dryRun = argv.includes("--dry-run");
-  const keepDaily = Number(argAfter(argv, "--keep-daily") ?? BACKUP_KEEP_DAILY);
-  const label =
-    argAfter(argv, "--label") ??
-    `daily-${new Date()
-      .toISOString()
-      .replace(/[-:]/g, "")
-      .replace(/\.\d+Z$/, "Z")
-      .toLowerCase()}`;
-  readLabel(label);
 
   const url = process.env.PGDATABASE_URL;
   adoptPgEnv(url);
@@ -208,7 +293,7 @@ async function main() {
         pgDump: run("pg_dump", ["--version"]),
         generator: "provision/vps/backup/kajianq-backup.mjs",
       },
-      git: gitInfo(),
+      git,
     });
     writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 

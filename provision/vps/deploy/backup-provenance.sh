@@ -3,33 +3,41 @@
 # exercised AS INSTALLED?
 #
 # Run ON the box, by provision/vps/deploy/deploy.sh over ssh, BEFORE the deploy
-# touches anything. It reads only state that already exists there — the unit's
-# own run record and the installed unit file's mtime — so a box that fails it is
-# left on its previous revision, and the failure costs an ssh round trip instead
-# of a shipped tree whose smoke and doctor were skipped.
+# touches anything. It reads only durable state that already exists there — the
+# backup job's own provenance record and the installed unit file's mtime — so a
+# box that fails it is left on its previous revision, and the failure costs an
+# ssh round trip instead of a shipped tree whose smoke and doctor were skipped.
 #
-# Usage: bash backup-provenance.sh [unit-file]
+# Usage: bash backup-provenance.sh [unit-file] [record-file]
 #
-# The unit file path is an argument so the assertion can be executed against a
-# fixture by tests/scripts/vps-hardening.test.mjs; the deploy passes nothing and
-# gets the installed unit. The deploy pipes this file into `bash -s` rather than
-# quoting it into the ssh command line, so what the test runs is byte-for-byte
-# what the box runs.
+# Both paths are arguments so the assertion can be executed against a fixture by
+# tests/scripts/vps-hardening.test.mjs; the deploy passes nothing and gets the
+# installed unit and the installed record. The deploy pipes this file into
+# `bash -s` rather than quoting it into the ssh command line, so what the test
+# runs is byte-for-byte what the box runs.
 #
-# What NOT to assert, learned the hard way: `Result` alone is not the signal, and
-# neither is the timer. The timer's `is-active` only says the schedule is armed —
-# it stayed green through every failed run. `Result` alone is also unreliable
-# because `systemctl reset-failed` clears it to `success` while, on systemd 257
-# (the box), LEAVING `ExecMainStatus=1` behind — so a reset unit reports
-# `Result=success` about a failed run, which is precisely the masking this check
-# exists to prevent. Verified on both versions: systemd 261 clears both fields,
-# 257 clears only `Result`.
+# The record is the authority, never systemd's runtime state. `ExecMainStatus`
+# and `ExecMainExitTimestamp` describe the CURRENT boot: a reboot clears them,
+# so a unit that ran successfully hours earlier reads as exit status 0 with an
+# empty timestamp — indistinguishable from one that has never run. The backup
+# job therefore writes its own record (/var/lib/kajianq/backup-provenance on the
+# box) as root: status, start and completion time, label and a best-effort
+# revision. The directory is root-owned and 0755, the record is root-owned and
+# 0644: the deploy identity can read the proof but cannot write or replace it,
+# and only root can run the backup that produces it.
 #
-# So the assertion is the pair: the last exit status must be 0 AND the last run
-# must have happened AFTER this unit's current definition was installed. A unit
-# whose last run predates its own file has, by definition, never been exercised
-# in its current form — that is the "installed but never executed" state the
-# backup spent its whole life in, and no field reports it directly.
+# The job writes a start marker before it touches the database and completes it
+# on the way out, so an interrupted run (SIGTERM/SIGINT, OOM, the unit's start
+# timeout) leaves `status=running` or `completed_at < started_at` — refused,
+# rather than leaving an earlier success looking current.
+#
+# What the record proves is the pair: the last completed run exited 0, and it
+# completed AFTER this unit's current definition was installed. A record older
+# than the unit file means no run has recorded itself since that install — the
+# "installed but not yet recorded" state this check exists for. It does not
+# prove the unit's ExecStart ran: on a box whose installed bundle predates this
+# writer, the first record comes from the checkout bootstrap, not the unit
+# (docs/VPS-SETUP.md).
 #
 # The install side keeps that mtime meaningful: apply.sh writes a config only
 # when the installed file differs, so a re-apply over unchanged content does not
@@ -39,57 +47,127 @@ set -euo pipefail
 
 UNIT="kajianq-backup.service"
 UNIT_FILE="${1:-/etc/systemd/system/${UNIT}}"
+RECORD_FILE="${2:-/var/lib/kajianq/backup-provenance}"
+
+# Print each line as a deploy refusal and exit 1; keeps the matrix below readable.
+refuse() {
+    local line
+    for line in "$@"; do
+        printf 'deploy: %s\n' "${line}" >&2
+    done
+    exit 1
+}
 
 if [ ! -f "${UNIT_FILE}" ]; then
-    echo "deploy: ${UNIT_FILE} is not installed — provision/vps/apply.sh has not placed it on this box" >&2
-    exit 1
+    refuse "${UNIT_FILE} is not installed — provision/vps/apply.sh has not placed it on this box"
 fi
 
-# Both reads are guarded: a failing `systemctl show` would otherwise abort with its
-# own exit status and no `deploy:` line saying what could not be read.
-if ! status="$(systemctl show "${UNIT}" -p ExecMainStatus --value)"; then
-    echo "deploy: could not read ${UNIT}'s exit status — systemctl show failed" >&2
-    exit 1
+# Absent record: the backup has never completed on this box. The same refusal
+# as before the record existed, because the proof is still missing.
+if [ ! -f "${RECORD_FILE}" ]; then
+    refuse \
+        "${UNIT} has never run — the encrypted backup is unproven" \
+        "a human with root must prove it: sudo systemctl start ${UNIT}" \
+        "if that answers 'Unit ${UNIT} not found', systemd has not loaded" \
+        "the unit at all: sudo systemctl daemon-reload, and re-run provision/vps/apply.sh" \
+        "if the installed bundle predates the writer, bootstrap from the checkout: docs/VPS-SETUP.md §8"
 fi
-if ! exited="$(systemctl show "${UNIT}" -p ExecMainExitTimestamp --timestamp=unix --value)"; then
-    echo "deploy: could not read ${UNIT}'s last-run timestamp — systemctl show failed" >&2
-    exit 1
-fi
-installed="$(stat -c %Y "${UNIT_FILE}")"
-exited="${exited#@}"
 
-if [ -z "$exited" ]; then
-    echo "deploy: kajianq-backup.service has never run — the encrypted backup is unproven" >&2
-    echo "deploy: prove it now: sudo systemctl start kajianq-backup.service" >&2
-    echo "deploy: if that answers 'Unit kajianq-backup.service not found', systemd has not loaded" >&2
-    echo "deploy: the unit at all: sudo systemctl daemon-reload, and re-run provision/vps/apply.sh" >&2
-    exit 1
+# One read, then parse the buffer. Reading the file once per field would pair a
+# status from one write with a timestamp from another when the job renames a new
+# record between the reads.
+if ! record="$(cat -- "${RECORD_FILE}")"; then
+    refuse "could not read ${RECORD_FILE} — cannot prove ${UNIT} ran as installed"
 fi
-# A timestamp that is not a plain integer would make the comparison below an error, and
-# a failing `[` inside an `if` condition is just false — the healthy line. That is the
-# same fall-through-to-healthy shape the missing-unit-file guard closes, so it fails
-# closed here too rather than reporting a health it never established.
-case "$exited" in
+
+status=""
+started=""
+completed=""
+while IFS= read -r line || [ -n "${line}" ]; do
+    case "${line}" in
+        status=*) status="${line#status=}" ;;
+        started_at=*) started="${line#started_at=}" ;;
+        completed_at=*) completed="${line#completed_at=}" ;;
+    esac
+done <<< "${record}"
+
+# An interrupted run: the start marker was written and never completed. This is
+# the SIGTERM / OOM / systemd-timeout state; without it a killed run would leave
+# the previous success in place and the deploy would pass.
+interrupted() {
+    refuse \
+        "${UNIT} started a run but has not recorded its completion — the backup is unproven until a run completes" \
+        "check: journalctl -u ${UNIT} -n 40" \
+        "prove it as root: sudo systemctl start ${UNIT}"
+}
+
+if [ "${status}" = "running" ]; then
+    interrupted
+fi
+
+# Every value is bounded: a non-numeric or oversized timestamp would make `-lt`
+# error, and a failing `[` inside `if` is just false — the healthy line. Eleven
+# digits already covers every plausible Unix second.
+if [ -z "${started}" ]; then
+    refuse "${RECORD_FILE} does not record when the last run started — cannot prove ${UNIT} ran as installed"
+fi
+case "${started}" in
     *[!0-9]*)
-        echo "deploy: kajianq-backup.service reported a non-numeric last-run timestamp (${exited}) — cannot prove it ran as installed" >&2
-        exit 1
+        refuse "${UNIT} recorded a non-numeric start timestamp (${started}) — cannot prove it ran as installed"
         ;;
 esac
-# `-lt` parses its operands as intmax_t, so an all-digit run longer than it can hold errors
-# the same way and reaches the same healthy line. Eleven digits already covers every
-# plausible Unix second, so anything longer is refused rather than overflowed.
-if [ "${#exited}" -gt 11 ]; then
-    echo "deploy: kajianq-backup.service reported an out-of-range last-run timestamp (${exited}) — cannot prove it ran as installed" >&2
-    exit 1
+if [ "${#started}" -gt 11 ]; then
+    refuse "${UNIT} recorded an out-of-range start timestamp (${started}) — cannot prove it ran as installed"
 fi
-if [ "$status" != "0" ]; then
-    echo "deploy: kajianq-backup.service last run exited $status — the encrypted backup is failing" >&2
-    echo "deploy: check: journalctl -u kajianq-backup.service -n 40" >&2
-    exit 1
+
+if [ -z "${completed}" ]; then
+    refuse "${RECORD_FILE} does not record when the last run completed — cannot prove ${UNIT} ran as installed"
 fi
-if [ "$exited" -lt "$installed" ]; then
-    echo "deploy: kajianq-backup.service last ran BEFORE its current definition was installed" >&2
-    echo "deploy: this unit has never been exercised as installed — prove it: sudo systemctl start kajianq-backup.service" >&2
-    exit 1
+case "${completed}" in
+    *[!0-9]*)
+        refuse "${UNIT} recorded a non-numeric completion timestamp (${completed}) — cannot prove it ran as installed"
+        ;;
+esac
+if [ "${#completed}" -gt 11 ]; then
+    refuse "${UNIT} recorded an out-of-range completion timestamp (${completed}) — cannot prove it ran as installed"
 fi
-echo "deploy: backup unit healthy (last run exited 0, after the current unit was installed)"
+
+if [ "${completed}" -lt "${started}" ]; then
+    interrupted
+fi
+
+if [ -z "${status}" ]; then
+    refuse "${RECORD_FILE} does not record an exit status — cannot prove ${UNIT} ran as installed"
+fi
+case "${status}" in
+    *[!0-9]*)
+        refuse "${UNIT} recorded a non-numeric exit status (${status}) — cannot prove it ran as installed"
+        ;;
+esac
+
+# A failure recorded by the job is the last completed run, so it refuses the
+# deploy even when an earlier run succeeded. The journal is where the cause is.
+if [ "${status}" != "0" ]; then
+    refuse \
+        "${UNIT} last run exited ${status} — the encrypted backup is failing" \
+        "check: journalctl -u ${UNIT} -n 40"
+fi
+
+if ! installed="$(stat -c %Y "${UNIT_FILE}")"; then
+    refuse "could not read ${UNIT_FILE}'s install time — cannot prove ${UNIT} ran as installed"
+fi
+case "${installed}" in
+    *[!0-9]*)
+        refuse "could not parse ${UNIT_FILE}'s install time (${installed}) — cannot prove ${UNIT} ran as installed"
+        ;;
+esac
+if [ "${#installed}" -gt 11 ]; then
+    refuse "could not parse ${UNIT_FILE}'s install time (${installed}) — cannot prove ${UNIT} ran as installed"
+fi
+if [ "${completed}" -lt "${installed}" ]; then
+    refuse \
+        "${UNIT} last completed BEFORE its current definition was installed" \
+        "this unit has never been exercised as installed — prove it as root: sudo systemctl start ${UNIT}" \
+        "if the installed bundle predates the writer, bootstrap from the checkout: docs/VPS-SETUP.md §8"
+fi
+echo "deploy: backup unit healthy (last recorded run exited 0, after the current unit was installed)"

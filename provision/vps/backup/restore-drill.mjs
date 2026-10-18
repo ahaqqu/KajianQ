@@ -60,6 +60,10 @@ const TMP = process.env.TMPDIR ?? "/tmp";
 const REPO_DIR = `${TMP}/kajianq-drill-repo-${process.pid}`;
 const PASS_FILE = `${TMP}/kajianq-drill-${process.pid}.pass`;
 const ENV_FILE = `${TMP}/kajianq-drill-${process.pid}.env`;
+// The drill runs the production backup job but must not write the real
+// provenance record: this is not a run of the scheduled unit, and a CI runner is
+// neither root nor the box. A scratch path exercises the same writer instead.
+const RECORD_FILE = `${TMP}/kajianq-drill-${process.pid}.record`;
 
 function fail(msg) {
   console.error(`restore-drill: ${msg}`);
@@ -263,7 +267,11 @@ writeFileSync(
 // (docs/VPS-SETUP.md); the drill does it here so the run is
 // self-contained.
 run("restic", ["init"], { RESTIC_REPOSITORY: REPO_DIR, RESTIC_PASSWORD: "drill-passphrase" });
-const backupOut = run("bun", [`${HERE}kajianq-backup.mjs`, "--label", LABEL], backupEnv);
+const backupOut = run(
+  "bun",
+  [`${HERE}kajianq-backup.mjs`, "--label", LABEL, "--record", RECORD_FILE],
+  backupEnv,
+);
 console.log("restore-drill: backup complete");
 console.log(
   backupOut
@@ -418,6 +426,7 @@ if (!keep) {
   rmSync(REPO_DIR, { recursive: true, force: true });
   rmSync(PASS_FILE, { force: true });
   rmSync(ENV_FILE, { force: true });
+  rmSync(RECORD_FILE, { force: true });
 }
 console.log(
   `restore-drill: OK — encrypted backup restored into a scratch location and erasure re-applied`,
