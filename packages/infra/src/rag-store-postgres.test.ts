@@ -1,7 +1,7 @@
 // @requires-postgres
 /// <reference types="node" />
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
-import { Effect } from "effect";
+import { Effect, Exit } from "effect";
 import { createPostgresRagStore } from "./rag-store-postgres";
 import { disposePostgresPools, postgresPool, postgresSqlRunner } from "./rag-store-postgres-driver";
 import type { RagStore } from "./rag-store";
@@ -628,6 +628,192 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
           store.listDocChildrenByParentSourceKey(`${PREFIX}-absent-parent`, { limit: 5 }),
         ),
       ).toEqual([]);
+    }, 60_000);
+  });
+
+  describe("user erasure: one call empties the whole subtree", () => {
+    // A row in every table the erasure claims: the session token, a chat session
+    // with two messages (the assistant one linked to a trace), the trace itself,
+    // and a feedback verdict anchored in it.
+    const seedSubtree = async () => {
+      const { userId, token } = await Effect.runPromise(store.createSession());
+      const chatSessionId = await Effect.runPromise(
+        store.createChatSession({ userId, metadata: { pfx: PREFIX } }),
+      );
+      const messageId = crypto.randomUUID();
+      await Effect.runPromise(
+        store.insertChatMessage({ sessionId: chatSessionId, role: "user", content: "question" }),
+      );
+      const storedTraceId = await Effect.runPromise(
+        store.insertAnswerTrace({
+          messageId,
+          userId,
+          trace: { id: `trace-${messageId}`, createdAt: 1_700_000_000_000, events: [] },
+        }),
+      );
+      await Effect.runPromise(
+        store.insertChatMessage({
+          sessionId: chatSessionId,
+          role: "assistant",
+          content: "answer",
+          answerTraceId: storedTraceId,
+        }),
+      );
+      await Effect.runPromise(
+        store.insertFeedback({
+          messageId,
+          userId,
+          rating: -1,
+          anchorType: "chunk",
+          anchorId: "chunk-1",
+          category: "irrelevant_chunk",
+          freeText: "free text",
+        }),
+      );
+      return { userId, token, chatSessionId, messageId, storedTraceId };
+    };
+
+    /** One count per table the erasure claims, read back through raw SQL: the
+     * assertion is about the stored rows, not about the seam that wrote them.
+     * `chat_messages` is counted through its owning session id, captured before
+     * the erasure — its owner is transitive, so it cannot be counted by user. */
+    const subtreeCounts = async (userId: string, chatSessionId: string) => {
+      const rows = (await sql!.query(
+        `SELECT
+           (SELECT count(*)::int FROM users WHERE id = $1::uuid) AS users,
+           (SELECT count(*)::int FROM sessions WHERE user_id = $1::uuid) AS sessions,
+           (SELECT count(*)::int FROM chat_sessions WHERE user_id = $1::uuid) AS chat_sessions,
+           (SELECT count(*)::int FROM chat_messages WHERE session_id = $2::uuid) AS chat_messages,
+           (SELECT count(*)::int FROM answer_traces WHERE user_id = $1::uuid) AS answer_traces,
+           (SELECT count(*)::int FROM feedback WHERE user_id = $1::uuid) AS feedback`,
+        [userId, chatSessionId],
+      )) as Record<string, number>[];
+      return rows[0];
+    };
+
+    const EMPTY = {
+      users: 0,
+      sessions: 0,
+      chat_sessions: 0,
+      chat_messages: 0,
+      answer_traces: 0,
+      feedback: 0,
+    };
+
+    it("erases every table in one call, and a repeat call is a no-op", async () => {
+      if (!URL) return;
+      const { userId, token, chatSessionId } = await seedSubtree();
+      expect(await subtreeCounts(userId, chatSessionId)).toEqual({
+        users: 1,
+        sessions: 1,
+        chat_sessions: 1,
+        chat_messages: 2,
+        answer_traces: 1,
+        feedback: 1,
+      });
+
+      await Effect.runPromise(store.deleteUserCascade(userId));
+      expect(await subtreeCounts(userId, chatSessionId)).toEqual(EMPTY);
+      // The token died with the user's sessions, and the erased subtree is not an
+      // error the second time: the call is a no-op success.
+      expect(await Effect.runPromise(store.resolveUserId(token))).toBeNull();
+      await Effect.runPromise(store.deleteUserCascade(userId));
+      expect(await subtreeCounts(userId, chatSessionId)).toEqual(EMPTY);
+    }, 60_000);
+
+    it("sweeps a child row the FK cascade cannot reach — the FK is the backstop, not the mechanism", async () => {
+      if (!URL) return;
+      const { userId } = await Effect.runPromise(store.createSession());
+      const messageId = `${PREFIX}-no-user-fk`;
+      // A deployment whose `feedback` user FK is missing — drift, or a table added
+      // later without one — leaves rows the parent delete cannot cascade. The
+      // explicit sweep is what removes them; the FK is only the backstop.
+      await sql!.query("ALTER TABLE feedback DROP CONSTRAINT IF EXISTS feedback_user_fk");
+      try {
+        await sql!`INSERT INTO feedback (message_id, user_id, rating, anchor_type)
+          VALUES (${messageId}, ${userId}::uuid, 1, 'answer')`;
+        expect(await subtreeCounts(userId, crypto.randomUUID())).toMatchObject({ feedback: 1 });
+
+        await Effect.runPromise(store.deleteUserCascade(userId));
+        expect(await subtreeCounts(userId, crypto.randomUUID())).toMatchObject({
+          users: 0,
+          sessions: 0,
+          feedback: 0,
+        });
+      } finally {
+        // Leave the shared schema exactly as it was found, even on a failure: the
+        // fixture rows first (a survivor would block the constraint re-add), then
+        // the constraint itself when the drop left it absent.
+        await sql!`DELETE FROM feedback WHERE message_id = ${messageId}`;
+        await sql!`DELETE FROM users WHERE id = ${userId}::uuid`;
+        await sql!.query(`DO $$
+          BEGIN
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_constraint
+              WHERE conname = 'feedback_user_fk' AND conrelid = 'feedback'::regclass
+            ) THEN
+              ALTER TABLE feedback ADD CONSTRAINT feedback_user_fk
+                FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE;
+            END IF;
+          END $$`);
+      }
+    }, 60_000);
+
+    it("a failing child delete rolls the erasure back and surfaces as an error", async () => {
+      if (!URL) return;
+      const { userId, chatSessionId } = await seedSubtree();
+      const refusal = `refuse_feedback_${PREFIX.replace(/[^a-zA-Z0-9_]/g, "_")}`;
+      await sql!.query(
+        `CREATE FUNCTION ${refusal}() RETURNS trigger LANGUAGE plpgsql AS $$
+          BEGIN RAISE EXCEPTION 'erasure refused by the contract suite'; END $$`,
+      );
+      await sql!.query(
+        `CREATE TRIGGER ${refusal} BEFORE DELETE ON feedback FOR EACH ROW
+          WHEN (OLD.user_id = '${userId}'::uuid) EXECUTE FUNCTION ${refusal}()`,
+      );
+      try {
+        const exit = await Effect.runPromiseExit(store.deleteUserCascade(userId));
+        expect(Exit.isFailure(exit)).toBe(true);
+        // The whole transaction rolled back: a failed erasure leaves the subtree
+        // intact rather than half-erased, so a retry can still complete it.
+        expect(await subtreeCounts(userId, chatSessionId)).toEqual({
+          users: 1,
+          sessions: 1,
+          chat_sessions: 1,
+          chat_messages: 2,
+          answer_traces: 1,
+          feedback: 1,
+        });
+      } finally {
+        await sql!.query(`DROP TRIGGER IF EXISTS ${refusal} ON feedback`);
+        await sql!.query(`DROP FUNCTION IF EXISTS ${refusal}()`);
+      }
+      // With the obstruction gone the same call completes — and now empties it.
+      await Effect.runPromise(store.deleteUserCascade(userId));
+      expect(await subtreeCounts(userId, chatSessionId)).toMatchObject({ users: 0, feedback: 0 });
+    }, 60_000);
+
+    it("keeps the eval ledger row and nulls its trace pointer — the ledger is not the subject's data", async () => {
+      if (!URL) return;
+      const { userId, storedTraceId } = await seedSubtree();
+      // `eval_results` carries no user id and no user FK: it belongs to an eval run
+      // over the Golden Set, so the erasure must not delete it, and its
+      // `answer_trace_id` is `ON DELETE SET NULL` rather than CASCADE.
+      const runId = crypto.randomUUID();
+      await sql!`INSERT INTO eval_runs (id, label, report)
+        VALUES (${runId}::uuid, ${`${PREFIX}-erasure-run`}, '{}'::jsonb)`;
+      await sql!`INSERT INTO eval_results (id, run_id, question_id, answer_trace_id, outcome)
+        VALUES (${crypto.randomUUID()}::uuid, ${runId}::uuid, 'gs-v0-001', ${storedTraceId}::uuid, '{}'::jsonb)`;
+      try {
+        await Effect.runPromise(store.deleteUserCascade(userId));
+        const rows = (await sql!.query(
+          "SELECT answer_trace_id FROM eval_results WHERE run_id = $1::uuid",
+          [runId],
+        )) as { answer_trace_id: string | null }[];
+        expect(rows).toEqual([{ answer_trace_id: null }]);
+      } finally {
+        await sql!`DELETE FROM eval_runs WHERE id = ${runId}::uuid`;
+      }
     }, 60_000);
   });
 });

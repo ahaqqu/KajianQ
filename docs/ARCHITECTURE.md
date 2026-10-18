@@ -122,9 +122,11 @@ retrieval; an offline mode cannot answer. Instead:
   ledger, model configs.
 - **Anonymous sessions are first-class** — `users` / `sessions` tables, 30-day
   Bearer tokens (SHA-256-hashed), no hosted identity in v1 (ADR-0017).
-- **Erasure is complete**: `deleteUserCascade` removes the user's sessions,
-  chat, feedback, and traces (`ON DELETE CASCADE`) — the anonymous user's right
-  to erasure wins over trace retention (ADR-0007 Decision).
+- **Erasure is complete**: `deleteUserCascade` erases the user's sessions,
+  chat, feedback, and traces in one transaction and verifies the subtree empty
+  before it resolves — the `ON DELETE CASCADE` keys are the backstop, never the
+  only mechanism — because the anonymous user's right to erasure wins over
+  trace retention (ADR-0007 Decision).
 - **Raw sources are immutable**: `text_raw` is never overwritten; re-runnable
   ingestion is idempotent (AGENTS.md rule 13).
 

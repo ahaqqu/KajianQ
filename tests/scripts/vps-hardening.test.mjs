@@ -480,11 +480,12 @@ describe("erasure a restore must re-apply", () => {
     expect(orphan).toMatch(/kind = 'anonymous'/);
   });
 
-  it("the Art. 17 statement matches production deleteUserCascade — the restore path cannot drift", () => {
-    // Production erasure (DELETE /v1/auth/me → deleteUserCascade) executes a parameterized
-    // `DELETE FROM users WHERE id = ${userId}`; the restore re-applies the same statement with
-    // the id bound as a psql variable. The comparison normalizes the adapter's tagged template
-    // against the restore statement's `:'uid'` binding — the same placeholder role.
+  it("the Art. 17 batch matches production deleteUserCascade — the restore path cannot drift", () => {
+    // Production erasure (DELETE /v1/auth/me → deleteUserCascade) sweeps each user table by id
+    // inside one transaction; the restore re-applies the same statements with the id bound as a
+    // psql variable. The comparison normalizes the adapter's tagged templates against the
+    // restore's `:'uid'` binding — the same placeholder role — so a table swept in one path and
+    // not the other reddens here.
     const normalize = (text) =>
       text
         .replace(/\s+/g, " ")
@@ -492,16 +493,37 @@ describe("erasure a restore must re-apply", () => {
         .trim();
     const adapter = normalize(
       readFileSync(
-        resolve(process.cwd(), "packages/infra/src/rag-store-postgres-session.ts"),
+        resolve(process.cwd(), "packages/infra/src/rag-store-postgres-erasure.ts"),
         "utf8",
       ),
     );
-    expect(adapter).toContain(normalize(erasureSql()));
+    const deletes = erasureSql()
+      .split("\n")
+      .filter((line) => line.startsWith("DELETE"));
+    // The five child tables plus the user row.
+    expect(deletes).toHaveLength(6);
+    for (const statement of deletes) {
+      expect(adapter, statement).toContain(normalize(statement).replace(/;$/, ""));
+    }
+  });
+
+  it("re-applies erasure in one transaction, sweeping children before the parent", () => {
+    const batch = erasureSql();
+    const lines = batch.split("\n");
+    // A failed statement must not leave the scratch target half-erased: the batch is one
+    // transaction (psql runs it with ON_ERROR_STOP=1, so a failure aborts before COMMIT).
+    expect(lines[0]).toBe("BEGIN;");
+    expect(lines.at(-1)).toBe("COMMIT;");
+    // The parent delete runs last: its FK cascade is the backstop for anything committed
+    // between a child sweep and the user delete.
+    const parent = lines.findIndex((line) => line.startsWith("DELETE FROM users"));
+    expect(parent).toBe(lines.length - 2);
   });
 
   it("binds the erasure user id as a psql variable, never into the statement text", () => {
-    expect(erasureSql()).toBe("DELETE FROM users WHERE id = :'uid'");
-    // Fixed text: the id travels in erasurePsqlArgs, quoted by psql itself.
+    // Fixed text: the id travels in erasurePsqlArgs, quoted by psql itself, and every sweep
+    // binds it the same way.
+    expect(erasureSql().match(/:'uid'/g)).toHaveLength(6);
     expect(erasureSql()).not.toMatch(/\$\{/);
     expect(erasurePsqlArgs("33333333-3333-4333-8333-333333333333")).toEqual([
       "-v",

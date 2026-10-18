@@ -6,9 +6,12 @@ import type { RagStore } from "@app/infra";
  * `memory-rag-store.ts` to respect the agentic size limits — same pattern as
  * `memory-rag-store-eval.ts` / `memory-rag-store-feedback.ts`. The maps are
  * owned by the main factory and shared here by reference. Cleanup and cascade
- * semantics mirror the Postgres adapter's contract: expired
- * sessions AND the anonymous users left with no session, one call, reclaimed
- * user count returned; the cascade removes the user's full subtree.
+ * semantics mirror the Postgres adapter's contract: expired sessions AND the
+ * anonymous users left with no session, one call, reclaimed user count
+ * returned; the cascade removes the user's full subtree — chat sessions and
+ * their messages, answer traces (both the message-keyed and the row-keyed maps),
+ * and feedback — so a route test can assert the same emptiness the adapter's
+ * postcondition asserts.
  */
 export type MemoryAuthState = {
   users: Map<string, { kind: string }>;
@@ -16,14 +19,62 @@ export type MemoryAuthState = {
   /** Hash-standin token → userId. */
   tokens: Map<string, string>;
   chatSessions: Map<string, string>;
+  chatMessages: Map<
+    string,
+    { sessionId: string; role: string; content: string; answerTraceId: string | null }
+  >;
   /** Traces by message id, plus their owners (ADR-0007). */
   traces: Map<string, unknown>;
   traceOwners: Map<string, string | null>;
-  feedback: Map<string, { userId: string }>;
+  /** The same traces by their stored row id — what rehydration reads. */
+  traceRows: Map<string, unknown>;
+  traceRowOwners: Map<string, string | null>;
+  traceRowMessageIds: Map<string, string>;
+  feedback: Map<string, { userId: string | null }>;
   nextId: () => number;
 };
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Remove one user's whole subtree — what `users` plus its `ON DELETE CASCADE`
+ * fan-out does in Postgres. Chat messages go with their owning chat session
+ * (their owner is transitive), traces go from both maps, feedback goes by owner.
+ */
+function eraseSubtree(state: MemoryAuthState, userId: string): void {
+  state.users.delete(userId);
+  for (const [id, owner] of [...state.chatSessions]) {
+    if (owner !== userId) continue;
+    state.chatSessions.delete(id);
+    for (const [messageId, message] of [...state.chatMessages]) {
+      if (message.sessionId === id) state.chatMessages.delete(messageId);
+    }
+  }
+  for (const [id, session] of [...state.authSessions]) {
+    if (session.userId === userId) state.authSessions.delete(id);
+  }
+  // The token is the session credential: erasing the sessions must retire it,
+  // or `resolveUserId` would keep resolving a token whose row is gone.
+  for (const [token, owner] of [...state.tokens]) {
+    if (owner === userId) state.tokens.delete(token);
+  }
+  for (const [messageId, owner] of [...state.traceOwners]) {
+    if (owner === userId) {
+      state.traces.delete(messageId);
+      state.traceOwners.delete(messageId);
+    }
+  }
+  for (const [rowId, owner] of [...state.traceRowOwners]) {
+    if (owner === userId) {
+      state.traceRows.delete(rowId);
+      state.traceRowOwners.delete(rowId);
+      state.traceRowMessageIds.delete(rowId);
+    }
+  }
+  for (const [id, row] of [...state.feedback]) {
+    if (row.userId === userId) state.feedback.delete(id);
+  }
+}
 
 export function memoryAuthMethods(
   state: MemoryAuthState,
@@ -54,24 +105,9 @@ export function memoryAuthMethods(
       return Effect.sync(() => state.tokens.get(token) ?? null);
     },
     deleteUserCascade(userId) {
-      return Effect.sync(() => {
-        state.users.delete(userId);
-        for (const [id, owner] of [...state.chatSessions]) {
-          if (owner === userId) state.chatSessions.delete(id);
-        }
-        for (const [id, session] of [...state.authSessions]) {
-          if (session.userId === userId) state.authSessions.delete(id);
-        }
-        for (const [messageId, owner] of [...state.traceOwners]) {
-          if (owner === userId) {
-            state.traces.delete(messageId);
-            state.traceOwners.delete(messageId);
-          }
-        }
-        for (const [id, row] of [...state.feedback]) {
-          if (row.userId === userId) state.feedback.delete(id);
-        }
-      });
+      // A no-op on a user that is already gone: the adapter's postcondition
+      // (every count zero) passes on an empty subtree exactly as this does.
+      return Effect.sync(() => eraseSubtree(state, userId));
     },
     cleanupExpiredSessions(before = new Date()) {
       return Effect.sync(() => {
@@ -83,13 +119,9 @@ export function memoryAuthMethods(
         for (const [id, user] of [...state.users]) {
           if (user.kind !== "anonymous") continue;
           const stillHasSession = [...state.authSessions.values()].some((s) => s.userId === id);
-          if (!stillHasSession) {
-            state.users.delete(id);
-            for (const [chatId, owner] of [...state.chatSessions]) {
-              if (owner === id) state.chatSessions.delete(chatId);
-            }
-            reclaimed += 1;
-          }
+          if (stillHasSession) continue;
+          eraseSubtree(state, id);
+          reclaimed += 1;
         }
         return reclaimed;
       });

@@ -154,15 +154,33 @@ export const RECLAIM_SQL = [
 ];
 
 /**
- * The Art. 17 cascade — the same statement production `deleteUserCascade`
- * runs (`packages/infra/src/rag-store-postgres-session.ts`), with the user id
- * bound, never interpolated into the statement text. The id travels as a psql
- * variable (`-v uid=…` + `:'uid'`), so it is quoted by psql and the statement
- * text is fixed — a unit test normalizes this statement and the adapter's to
- * the same text, so the restore path cannot drift from production erasure.
+ * The Art. 17 erasure a restore re-applies — the same statement set production
+ * `deleteUserCascade` runs (`packages/infra/src/rag-store-postgres-erasure.ts`),
+ * in one transaction, with the user id bound and never interpolated: it travels
+ * as a psql variable (`-v uid=…` + `:'uid'`), so psql quotes it and every
+ * statement's text is fixed. The child sweeps name each table explicitly and the
+ * parent delete runs last, exactly as production does, so a restore cannot
+ * re-create a row production erasure would have removed by not relying on the
+ * same foreign keys. A unit test compares this batch's statements to the
+ * adapter's, so the restore path cannot drift from the live erasure.
+ *
+ * `psql` runs it on stdin with `ON_ERROR_STOP=1` (see `kajianq-restore.mjs`), so
+ * a failed statement aborts before `COMMIT` and the scratch target is not left
+ * half-erased. The postcondition the API endpoint verifies is asserted here by
+ * the drill's own before/after table counts, not by a statement that cannot fail
+ * the run.
  */
 export function erasureSql() {
-  return "DELETE FROM users WHERE id = :'uid'";
+  return [
+    "BEGIN;",
+    "DELETE FROM chat_messages WHERE session_id IN (SELECT id FROM chat_sessions WHERE user_id = :'uid');",
+    "DELETE FROM feedback WHERE user_id = :'uid';",
+    "DELETE FROM answer_traces WHERE user_id = :'uid';",
+    "DELETE FROM chat_sessions WHERE user_id = :'uid';",
+    "DELETE FROM sessions WHERE user_id = :'uid';",
+    "DELETE FROM users WHERE id = :'uid';",
+    "COMMIT;",
+  ].join("\n");
 }
 
 /** psql args binding the user id for `erasureSql()`; a non-UUID is refused. */

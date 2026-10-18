@@ -55,9 +55,10 @@ bridge (`@app/rag-ingest` pipeline) is the canonical one.
 - Anonymous sessions per ADR-0017: `createSession()` mints a 30-day Bearer
   token (stored SHA-256-hashed only) and writes the user + session rows in one
   atomic batched transaction; `resolveUserId(token)` resolves it (rejects
-  expired rows); `deleteUserCascade(userId)` removes the user and everything
-  they own via `ON DELETE CASCADE` (sessions, chat, feedback, and — per the
-  ADR-0007 — the user's `answer_traces`); `cleanupExpiredSessions()`
+  expired rows); `deleteUserCascade(userId)` erases the user and everything
+  they own in one transaction — sweeping sessions, chat, feedback, and — per
+  the ADR-0007 — the user's `answer_traces` by user id, then verifying each
+  empty, with the `ON DELETE CASCADE` keys as the backstop; `cleanupExpiredSessions()`
   reclaims expired session rows (wire to a cron). The auth routes these feed
   are mounted in #10, not here.
 - Ingestion is idempotent (AGENTS.md rule 13): `insertDocParent` upserts by

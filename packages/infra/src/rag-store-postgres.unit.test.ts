@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
+import { fc, test as fcTest } from "@fast-check/vitest";
 import { Effect, Exit } from "effect";
 import type { StoreError } from "@app/rag-core";
 import { runFail } from "@app/rag-core/testing";
 import { createPostgresRagStore, type SqlRunner } from "./rag-store-postgres";
 import { sqlEffect } from "./rag-store-postgres-errors";
+import { ERASURE_VERIFIED_TABLES, erasureResiduals } from "./rag-store-postgres-erasure";
 import { createRagStore } from "./rag-store-factory";
 import type { Logger, LogFields } from "./logger";
 import type { Trace } from "@app/contracts";
@@ -428,11 +430,100 @@ describe("rag-store-postgres adapter (fake runner)", () => {
     expect(statements[1]).toContain("NOT EXISTS (SELECT 1 FROM sessions");
   });
 
-  it("deleteUserCascade deletes from users (cascade does the rest)", async () => {
+  it("deleteUserCascade sweeps every user table, the user row, and the postcondition in one transaction", async () => {
     const sql = makeFakeSql();
     const store = createPostgresRagStore(sql);
+    sql._setTxn([
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [{ users: 0, sessions: 0, chat_sessions: 0, answer_traces: 0, feedback: 0 }],
+    ]);
     await runOk(store.deleteUserCascade("u1"));
-    expect(sql._calls[0]?.text).toContain("DELETE FROM users WHERE id =");
+
+    // One batch call, never a sequence of standalone statements: a mid-batch
+    // failure must roll the whole subtree back, not leave it half-erased.
+    expect(sql._calls.filter((c) => c.kind === "transaction")).toHaveLength(1);
+    const statements = sql._calls.filter((c) => c.kind === "tag").map((c) => c.text);
+    expect(statements).toHaveLength(7);
+    // Each child table is named explicitly, so the erasure does not depend on the
+    // FK cascade alone; chat messages are swept through the user's sessions while
+    // those sessions still exist.
+    expect(statements[0]).toContain("DELETE FROM chat_messages");
+    expect(statements[0]).toContain("SELECT id FROM chat_sessions WHERE user_id");
+    expect(statements[1]).toContain("DELETE FROM feedback WHERE user_id");
+    expect(statements[2]).toContain("DELETE FROM answer_traces WHERE user_id");
+    expect(statements[3]).toContain("DELETE FROM chat_sessions WHERE user_id");
+    expect(statements[4]).toContain("DELETE FROM sessions WHERE user_id");
+    // The parent delete is last: its FK cascade is the backstop for anything
+    // committed between a sweep and this statement.
+    expect(statements[5]).toContain("DELETE FROM users WHERE id");
+    // The postcondition counts the subtree after the deletes.
+    expect(statements[6]).toContain("count(*)");
+    expect(statements[6]).toContain("answer_traces");
+  });
+
+  it("deleteUserCascade fails when a row survives, instead of reporting success", async () => {
+    const sql = makeFakeSql();
+    const store = createPostgresRagStore(sql);
+    sql._setTxn([
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [{ users: 0, sessions: 0, chat_sessions: 1, answer_traces: 0, feedback: 0 }],
+    ]);
+    const err = await runFail(store.deleteUserCascade("u1"));
+    expect(err.kind).toBe("constraint");
+    expect(String(err.cause)).toContain("chat_sessions");
+  });
+
+  it("deleteUserCascade fails closed when the driver returns no postcondition row", async () => {
+    const sql = makeFakeSql();
+    const store = createPostgresRagStore(sql);
+    // Six deletes, no verification result: a driver that resolves the batch
+    // differently is a contract violation, never a pass.
+    sql._setTxn([[], [], [], [], [], []]);
+    const err = await runFail(store.deleteUserCascade("u1"));
+    expect(err.kind).toBe("constraint");
+  });
+
+  it("deleteUserCascade is idempotent on an already-empty subtree", async () => {
+    const sql = makeFakeSql();
+    const store = createPostgresRagStore(sql);
+    sql._setTxn([
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [{ users: 0, sessions: 0, chat_sessions: 0, answer_traces: 0, feedback: 0 }],
+    ]);
+    await runOk(store.deleteUserCascade("u1"));
+    await runOk(store.deleteUserCascade("u1"));
+  });
+
+  it("deleteUserCascade surfaces a failing statement as a StoreError (the batch rolls back)", async () => {
+    const sql = makeFakeSql();
+    // The driver's batch primitive rejects when a statement fails (after its own
+    // ROLLBACK); the fake's tag calls stay resolved, so only the batch rejects —
+    // the shape a real mid-batch failure has.
+    sql.transaction = () =>
+      Promise.reject(
+        Object.assign(new Error("could not serialize access"), {
+          severity: "ERROR",
+          code: "40001",
+        }),
+      );
+    const store = createPostgresRagStore(sql);
+    const err = await runFail(store.deleteUserCascade("u1"));
+    expect(err.kind).toBe("transport");
   });
 
   it("classifies a Postgres unique violation as constraint (taxonomy, ADR-0027 d7)", async () => {
@@ -1011,5 +1102,32 @@ describe("Postgres eval-ledger methods (unit, fake SQL)", () => {
       store.listDocChildNeighboursByChildIds(["c-1"], { radius: 1, limit: 4 }),
     );
     expect(err.kind).toBe("transport");
+  });
+});
+
+describe("erasure postcondition", () => {
+  // One arbitrary whole count per verified table, in declaration order.
+  const counts = fc.array(fc.nat({ max: 4 }), {
+    minLength: ERASURE_VERIFIED_TABLES.length,
+    maxLength: ERASURE_VERIFIED_TABLES.length,
+  });
+
+  const rowOf = (values: readonly number[]) =>
+    Object.fromEntries(ERASURE_VERIFIED_TABLES.map((table, i) => [table, values[i]]));
+
+  fcTest.prop([counts])("names exactly the tables that still hold a row", (values) => {
+    const expected = ERASURE_VERIFIED_TABLES.filter((_, i) => values[i] !== 0);
+    expect(erasureResiduals(rowOf(values))).toEqual(expected);
+  });
+
+  fcTest.prop([fc.constantFrom(undefined, null, "0", Number.NaN, Number.POSITIVE_INFINITY)])(
+    "a count it cannot read as a whole number is residual (fail closed)",
+    (bad) => {
+      expect(erasureResiduals({ users: bad } as never)).toContain("users");
+    },
+  );
+
+  it("reports every table when the batch resolved no postcondition row", () => {
+    expect(erasureResiduals(undefined)).toEqual([...ERASURE_VERIFIED_TABLES]);
   });
 });

@@ -1,9 +1,10 @@
-import { describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createApi } from "../app";
 
 vi.mock("@sentry/bun", () => ({ captureException: vi.fn() }));
-import { runStoreEffect } from "@app/kajianq-domain";
+import { runStoreEffect, type StoreBridge } from "@app/kajianq-domain";
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
+import { StoreError } from "@app/infra";
 import type { AnonymousSession } from "@app/contracts";
 
 /**
@@ -13,6 +14,14 @@ import type { AnonymousSession } from "@app/contracts";
  */
 
 let currentStore: ReturnType<typeof createMemoryRagStore>;
+/** The store bridge the route calls its seam through; a test can replace it with
+ * a failing one to drive the erasure's error path (the API itself never imports
+ * the effect runtime — ADR-0027 decision 3 — so the failure is injected here). */
+let currentBridge: StoreBridge = runStoreEffect;
+
+beforeEach(() => {
+  currentBridge = runStoreEffect;
+});
 
 vi.mock("../lib/chat-wiring", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/chat-wiring")>();
@@ -22,7 +31,7 @@ vi.mock("../lib/chat-wiring", async (importOriginal) => {
     // this path at all, so the mock supplies just the store and its bridge.
     buildStoreWiring: () => ({
       fullStore: currentStore,
-      runStore: runStoreEffect,
+      runStore: currentBridge,
     }),
   };
 });
@@ -69,27 +78,107 @@ describe("POST /v1/auth/anonymous", () => {
 });
 
 describe("DELETE /v1/auth/me", () => {
-  it("erases the authenticated user and their data", async () => {
+  /** A user with a row in every table of the erasure's subtree — the same shape
+   * the adapter's postcondition counts, so "every table empty" is assertable
+   * through the store's own reads. */
+  const seedSubtree = async () => {
     currentStore = createMemoryRagStore();
     const session = await runStoreEffect<AnonymousSession>(currentStore.createSession());
-    // Give the user a chat session + message so the cascade has something to
-    // erase (the memory store's deleteUserCascade is a no-op stand-in for the
-    // FK cascade; the route's contract is that it is called once, with
-    // the authenticated user id).
     const chatSessionId = await runStoreEffect<string>(
       currentStore.createChatSession({ userId: session.userId }),
     );
+    const messageId = crypto.randomUUID();
     await runStoreEffect<string>(
       currentStore.insertChatMessage({ sessionId: chatSessionId, role: "user", content: "hi" }),
     );
+    const storedTraceId = await runStoreEffect<string>(
+      currentStore.insertAnswerTrace({
+        messageId,
+        userId: session.userId,
+        trace: { id: `trace-${messageId}`, createdAt: 1_700_000_000_000, events: [] },
+      }),
+    );
+    await runStoreEffect<string>(
+      currentStore.insertChatMessage({
+        sessionId: chatSessionId,
+        role: "assistant",
+        content: "salaam",
+        answerTraceId: storedTraceId,
+      }),
+    );
+    await runStoreEffect<string>(
+      currentStore.insertFeedback({
+        messageId,
+        userId: session.userId,
+        rating: 1,
+        anchorType: "answer",
+        anchorId: null,
+        category: null,
+        freeText: null,
+      }),
+    );
+    return { session, chatSessionId, messageId, storedTraceId };
+  };
 
-    const res = await createApi().request(
+  const erase = (token: string) =>
+    createApi().request(
       "/v1/auth/me",
-      { method: "DELETE", headers: { authorization: `Bearer ${session.token}` } },
+      { method: "DELETE", headers: { authorization: `Bearer ${token}` } },
       env,
     );
+
+  it("erases the authenticated user's whole subtree in one call", async () => {
+    const { session, messageId, storedTraceId } = await seedSubtree();
+    expect(currentStore.allChatMessages()).toHaveLength(2);
+    expect(currentStore.allFeedback()).toHaveLength(1);
+
+    const res = await erase(session.token);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ deleted: true });
+
+    // Every table of the subtree is empty — the response is the claim the store's
+    // own reads now back up.
+    expect(currentStore.allChatMessages()).toEqual([]);
+    expect(currentStore.allChatSessions()).toEqual([]);
+    expect(currentStore.allFeedback()).toEqual([]);
+    expect(currentStore.allTraces().size).toBe(0);
+    // The trace is unreachable by BOTH its keys, and the token no longer resolves.
+    expect(await runStoreEffect(currentStore.getAnswerTraceById(storedTraceId))).toBeNull();
+    expect(await runStoreEffect(currentStore.getAnswerTraceByMessage(messageId))).toBeNull();
+    expect(await runStoreEffect(currentStore.resolveUserId(session.token))).toBeNull();
+  });
+
+  it("answers an error, never {deleted: true}, when the erasure fails", async () => {
+    const { session } = await seedSubtree();
+    // A store whose erasure failed — a surviving row, a failed statement, or a
+    // rolled-back transaction — must surface as an error: the response is the
+    // erasure's only success claim, so it may never be sent over a live subtree.
+    currentBridge = () =>
+      Promise.reject(
+        new StoreError({
+          kind: "constraint",
+          cause: new Error("user erasure left rows behind in: feedback"),
+        }),
+      );
+
+    const res = await erase(session.token);
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: "internal" });
+    // Not half-erased: the store was never told to erase, so the subtree is still
+    // coherent for a retry.
+    expect(currentStore.allChatMessages()).toHaveLength(2);
+    expect(currentStore.allChatSessions()).toHaveLength(1);
+    expect(currentStore.allFeedback()).toHaveLength(1);
+    expect(currentStore.allTraces().size).toBe(1);
+  });
+
+  it("401s a repeat call with the erased token — the token died with the sessions", async () => {
+    const { session } = await seedSubtree();
+    expect((await erase(session.token)).status).toBe(200);
+    // The store call is idempotent (a no-op on an empty subtree), but the TOKEN is
+    // not: it authenticated a user whose sessions are gone, so the honest answer is
+    // a 401, never a second success claim about rows that no longer exist.
+    expect((await erase(session.token)).status).toBe(401);
   });
 
   it("401s without a token — erasure is never a silent no-op", async () => {

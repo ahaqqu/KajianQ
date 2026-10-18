@@ -152,8 +152,13 @@ export interface RagStore
    * sessions, which the caller maps to a 401. */
   resolveUserId(token: string): Effect.Effect<string | null, StoreError>;
 
-  /** Delete a user and everything they own (sessions, chat sessions and their
-   * messages, feedback, and the user's answer traces) via cascade. */
+  /** Erase a user and their whole subtree — sessions, chat sessions and their
+   * messages, feedback, and the user's answer traces — in ONE transaction, and
+   * resolve only after verifying every table in that subtree is empty for the
+   * user. Failure (a failed statement, or a row the erasure could not remove)
+   * rolls the transaction back and is a `StoreError`: the caller answers with an
+   * error, never with a success response. A call on an already-erased user is a
+   * no-op success, so the operation is idempotent. */
   deleteUserCascade(userId: string): Effect.Effect<void, StoreError>;
 
   /** Reclaim expired anonymous sessions: delete session rows whose TTL has
