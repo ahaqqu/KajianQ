@@ -1,3 +1,6 @@
+// Every member below is re-exported by hand, and one this list omits reaches a consumer as
+// `undefined` — vitest stays green where `tsc` alone says TS2305. `tests/scripts/contracts-barrel.test.mjs`
+// refuses that gap; a module the package does not publish says so with `// @contracts-internal <name>: <reason>`.
 export {
   HealthResponseSchema,
   HealthErrorSchema,
@@ -33,9 +36,11 @@ export {
   FeedbackAnchorTypeSchema,
   FeedbackCategorySchema,
   FeedbackErrorSchema,
+  FeedbackFlagShape,
   FeedbackRatingSchema,
   FeedbackRequestSchema,
   FeedbackResponseSchema,
+  FeedbackThumbShape,
   type FeedbackAnchor,
   type FeedbackAnchorType,
   type FeedbackCategory,
