@@ -9,8 +9,9 @@ import { apiFetch } from "./api";
 /**
  * Client chat-session state: the anonymous Bearer token and the active
  * session id, persisted in localStorage (ADR-0017 anonymous sessions — low
- * stakes by design). The transcript rehydrates from the server on reload;
- * there is no offline store (SPECS §3.1 — chat needs network anyway).
+ * stakes by design). The transcript rehydrates from the server whenever the
+ * chat page mounts — a reload or a return to the route — and there is no
+ * offline store (SPECS §3.1 — chat needs network anyway).
  *
  * Storage access goes through a lazy wrapper so the module also runs where
  * localStorage is absent (tests, hardened webviews) instead of crashing.
@@ -101,9 +102,9 @@ export async function fetchSessionMessages(
 }
 
 /**
- * Reload-time rehydration: bootstraps a token when none is stored, retries
- * a 401 once with a fresh anonymous session, and maps a 404 (the stored
- * session was reclaimed) to null — a fresh start, not an error.
+ * Mount-time rehydration: bootstraps a token when none is stored, retries a
+ * 401 once with a fresh anonymous session, and maps a 404 (the stored session
+ * was reclaimed) to null — a fresh start, not an error.
  */
 export async function rehydrateSession(
   sessionId: string,
