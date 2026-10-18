@@ -1260,11 +1260,10 @@ describe("validateCitations — ungrounded direction (the trap cases)", () => {
 
   it("catches a fabricated hadith that follows another with no whitespace (#526)", () => {
     // The failing input: no-space prose writes the second citation straight after
-    // the first's closing quote. The first number token used to run through
-    // `”和“HR` and stop at the second marker's dot; `matchAll` resumed after it,
-    // so the fabricated address was never scanned and the gate answered
-    // `ungrounded: []`. The token now stops before the marker, so the scan
-    // re-enters on it.
+    // the first's closing quote. The first number token stops before the second
+    // marker, so `matchAll` re-enters on it and both addresses are scanned — the
+    // gate names the fabricated one beside the grounded one instead of answering
+    // `ungrounded: []`.
     const first = "HR. Ibn Majah no. 224";
     const second = "HR. Muslim no. 224";
     const text = "参阅“HR. Ibn Majah no. 224”和“HR. Muslim no. 224”，后者并不存在。";
@@ -1280,7 +1279,7 @@ describe("validateCitations — ungrounded direction (the trap cases)", () => {
     expect(spans[1]?.start).toBe(text.indexOf(second));
   });
 
-  it("finds the second citation after every non-space joiner, and leaves spaced prose as it was (#526)", () => {
+  it("finds the second citation after every no-space joiner, and reads spaced prose the same (#526)", () => {
     const first = "HR. Ibn Majah no. 224";
     const second = "HR. Muslim no. 224";
     const ground = chunk(first);
