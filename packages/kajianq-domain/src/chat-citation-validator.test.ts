@@ -1551,20 +1551,23 @@ describe("citationCandidatesIn", () => {
     // stop closes cannot silently reopen.
     const marker = String.raw`\bHR(?:\.|\s)`;
     expect(CITATION_GRAMMARS[1]!.pattern().source.split(marker)).toHaveLength(3);
-    // The start admits a dot and any whitespace. Walk every printable ASCII and
-    // whitespace separator, ask the start whether it admits the spelling, and
-    // require the tail stop to leave that spelling for the scan — a widening to a
-    // new separator (a colon, say) reddens here instead of leaving the tail to
-    // absorb it.
+    // The start admits a dot and any whitespace. Walk every printable ASCII
+    // separator and every `\s` code point, ask the start whether it admits the
+    // spelling, and require the tail stop to leave that spelling for the scan — a
+    // widening to a new separator (a colon, say) reddens here instead of leaving
+    // the tail to absorb it.
     const separators = [
       ...Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i)),
+      ...Array.from({ length: 11 }, (_, i) => String.fromCharCode(0x2000 + i)),
       "\t",
       "\n",
       "\r",
       "\u00a0",
       "\u1680",
-      "\u2003",
       "\u2028",
+      "\u2029",
+      "\u202f",
+      "\u205f",
       "\u3000",
       "\ufeff",
     ];

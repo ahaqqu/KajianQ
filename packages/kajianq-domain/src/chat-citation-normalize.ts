@@ -180,9 +180,8 @@ export function citationSpansIn(text: string): { start: number; end: number; lab
  * before it (the character after its digits is not a letter or digit) and it has
  * the word boundary its grammar's start requires. A **letter** glued straight
  * onto the digits continues the address word (`… no. 224和HR. Muslim no. 224`), so
- * that marker is absorbed into a merged address — a different label that refuses,
- * the same fail-closed shape as the word-character glue above — rather than being
- * named.
+ * that marker is absorbed into a merged address — a different label that refuses
+ * rather than being named, so the failure direction stays closed.
  *
  * **Recorded over-fire.** A bare marker in the prose between two citations
  * (`… no. 224”HR. “HR Muslim no. 224”`) starts a match whose collection name
