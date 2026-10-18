@@ -32,6 +32,12 @@ import {
  * snapshot that answers `null` (the stored session was reclaimed) is session
  * invalidation, not transcript content, and clears the stored id even when
  * its content is discarded.
+ *
+ * One mount of the chat page consumes the hook at a time: the transcript cache
+ * and the stored session are shared, so a second live mount would keep
+ * discarding the other's snapshot and fetching its own, each capped at one
+ * recovery request — a stuck view, not a transcript. The route mounts one
+ * page; a second consumer is a bug, not a configuration to support.
  */
 
 export type ChatError = "rate_limited" | "unavailable" | "generic" | "load" | null;
@@ -41,12 +47,8 @@ type TranscriptSnapshot = {
   transcript: ChatSessionMessages | null;
   completedTurnEpoch: number;
   /** The `mountId` of the page mount that requested the snapshot. */
-  requestedByMount: number;
+  requestedByMount: string;
 };
-
-// The transcript cache outlives the chat route, so each mount numbers itself: a
-// snapshot records the mount that requested it, and no later mount applies it.
-let nextMountId = 0;
 
 export function useChat(locale: "id" | "en") {
   const [sessionId, setSessionId] = useState<string | null>(loadStoredSessionId());
@@ -58,8 +60,10 @@ export function useChat(locale: "id" | "en") {
   // Incremented when a turn completes. A snapshot records this at request
   // time: a turn that completed after that point is not in the response.
   const completedTurnEpochRef = useRef(0);
-  // This mount's number, for the lifetime of this component instance.
-  const [mountId] = useState(() => ++nextMountId);
+  // This mount's identity, for the lifetime of this component instance. It
+  // comes from the platform, not from module state, so a module re-evaluation
+  // cannot hand a later mount an earlier mount's identity.
+  const [mountId] = useState(() => crypto.randomUUID());
 
   const transcript = useQuery({
     queryKey: ["chat-transcript", sessionId],
@@ -90,9 +94,15 @@ export function useChat(locale: "id" | "en") {
   // from an earlier mount's in-flight request arrives, which the cache would
   // otherwise keep as current. A failed load surfaces its error and is not
   // retried here.
+  //
+  // One recovery request per mount: in the supported single-consumer state a
+  // mount asks at most once, and if a second live mount ever shared the cache
+  // the cap keeps the two from fetching against each other in a loop.
+  const recoveryRequestedRef = useRef(false);
   useEffect(() => {
     if (sessionId === null || transcriptIsThisMount || transcript.isError) return;
-    if (transcript.fetchStatus !== "idle") return;
+    if (transcript.fetchStatus !== "idle" || recoveryRequestedRef.current) return;
+    recoveryRequestedRef.current = true;
     void transcript.refetch();
   }, [
     sessionId,
