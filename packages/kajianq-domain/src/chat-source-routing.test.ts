@@ -9,7 +9,7 @@ import {
   sourceTypesOf,
 } from "./chat-source-routing";
 import type { SourceRoutingInput } from "./chat-source-routing";
-import { SUB_QUERY_ROLES } from "./taxonomy";
+import { SUBJECT_AREAS, SUB_QUERY_ROLES, INTENTS } from "./taxonomy";
 import { routedQuery } from "./test-utils/routed-query";
 
 const cost = { modelId: "m", tokensIn: 1, tokensOut: 1, latencyMs: 1, costMicroUsd: 1 };
@@ -45,10 +45,11 @@ const part = (text: string, role?: string) => ({
 
 describe("source routing reads the subject area into an index selection", () => {
   it.each([
-    ["quran", ["quran"]],
+    // The scriptural breadth: a question about the Quran is answered from the
+    // Quran, its commentary and the Sunnah that carries its practice — one set
+    // for both scriptural areas, so neither reading can drop the Sunnah.
+    ["quran", ["quran", "tafsir", "hadith"]],
     ["hadith", ["hadith"]],
-    // Commentary goes with the text it explains, and with the Sunnah, whose
-    // evidence carries the "why is it recited" half of a commentary question.
     ["tafsir", ["quran", "tafsir", "hadith"]],
     // A ruling question spends the authority order as breadth: Quran, Sunnah,
     // then the works carrying the madzhab reasoning.
@@ -125,16 +126,20 @@ describe("route-wide coverage: the category's sources union every part's own rol
     expect(filters.sourceType).toEqual(["quran", "tafsir", "hadith"]);
   });
 
-  it("puts a role's source in play under a category that names neither", () => {
-    for (const [role, source] of [
-      ["sanad", "hadith"],
-      ["dalil", "hadith"],
-      ["principle", "principle"],
-    ] as const) {
-      expect(
-        sourceTypesOf(reading({ category: "quran", subQueries: [part("q", role)] })),
-        `a ${role} part must put ${source} in play`,
-      ).toContain(source);
+  it("puts a role's source in play under every area that carries one", () => {
+    // `dalil`/`sanad` name the Sunnah every non-empty row already selects;
+    // `principle` is the one source no row names, so it stays the role that widens.
+    for (const category of ["quran", "hadith", "tafsir", "fikih"] as const) {
+      for (const [role, source] of [
+        ["sanad", "hadith"],
+        ["dalil", "hadith"],
+        ["principle", "principle"],
+      ] as const) {
+        expect(
+          sourceTypesOf(reading({ category, subQueries: [part("q", role)] })),
+          `a ${role} part must put ${source} in play under ${category}`,
+        ).toContain(source);
+      }
     }
   });
 
@@ -143,7 +148,7 @@ describe("route-wide coverage: the category's sources union every part's own rol
     // question is about, so inventing one here would filter every route.
     expect(
       sourceTypesOf(reading({ category: "quran", subQueries: [part("q", "factual")] })),
-    ).toEqual(["quran"]);
+    ).toEqual(["quran", "tafsir", "hadith"]);
   });
 
   it("publishes the union as the record retrieval is handed, from one derivation", () => {
@@ -207,6 +212,132 @@ describe("route-wide coverage: the category's sources union every part's own rol
   });
 });
 
+/**
+ * **The reading is sampled; the evidence is not.** The subject area is a model
+ * output, so the same verbatim question can come back `quran` on one run and
+ * `tafsir` on the next. The selection must cover the scriptural evidence the
+ * shape of the question needs under **every** value the vocabulary declares —
+ * which is why every case below is universally quantified over that vocabulary
+ * instead of checked against the two labels one measurement happened to see.
+ */
+describe("the sampled reading cannot decide whether scriptural evidence is searched", () => {
+  /** The two areas whose readings differ only in a distinction retrieval does not draw. */
+  const SCRIPTURAL_AREAS = ["quran", "tafsir"] as const;
+
+  it("selects the same sources for the two scriptural areas, for every intent, part and lens", () => {
+    const roleSets = [
+      [],
+      ["factual"],
+      ["dalil"],
+      ["sanad"],
+      ["principle"],
+      ["factual", "dalil"],
+      ["factual", "principle"],
+    ] as const;
+    for (const intent of INTENTS) {
+      for (const needsPrinciple of [false, true]) {
+        for (const roles of roleSets) {
+          const selectionOf = (category: (typeof SCRIPTURAL_AREAS)[number]) =>
+            sourceTypesOf(
+              reading({
+                category,
+                intent,
+                needsPrinciple,
+                subQueries: roles.map((role, i) => part(`p${i}`, role)),
+              }),
+            );
+          expect(
+            selectionOf("quran"),
+            `${intent} / needsPrinciple=${needsPrinciple} / ${roles.join("+") || "no part"}`,
+          ).toEqual(selectionOf("tafsir"));
+        }
+      }
+    }
+  });
+
+  it("never makes the Sunnah unreachable, for any area the vocabulary declares", () => {
+    // An empty selection is the whole corpus, so it already reaches the Sunnah; a
+    // non-empty one must name it. Nothing downstream can notice the omission: the
+    // filter makes those rows unreachable to every sub-query the route runs.
+    for (const category of SUBJECT_AREAS) {
+      const sources = sourceTypesOf(reading({ category }));
+      expect(
+        sources.length === 0 || sources.includes("hadith"),
+        `area ${category} makes the Sunnah unreachable: ${sources.join(",") || "(none)"}`,
+      ).toBe(true);
+    }
+  });
+
+  it("searches the Sunnah half of a whole-surah question under either scriptural reading", () => {
+    // A surah named in the question, asked what it means and why it is recited:
+    // the "why" is the practice's evidence, so both scriptural readings must
+    // search the Sunnah — otherwise the answer and its recall flip with the sample.
+    const shape = {
+      subQueries: [
+        part("makna Surah Al-Fatihah", "factual"),
+        part("mengapa dibaca dalam setiap salat", "factual"),
+      ],
+    };
+    for (const category of SCRIPTURAL_AREAS) {
+      expect(routeFilters(reading({ ...shape, category })).sourceType).toEqual([
+        "quran",
+        "tafsir",
+        "hadith",
+      ]);
+    }
+  });
+});
+
+describe("the retriever's scope is the filter record, never the classification", () => {
+  it("hands the store the same filters whatever reading produced the routed query", async () => {
+    // Stage 3 decides the scope; the retriever only binds it. If the retriever
+    // ever read the classification back — the category the trace carries — the
+    // sampled-label dependence stage 3 closes would return through this seam.
+    const filtersFor = async (intent: string, category: string) => {
+      const calls: (Record<string, string | readonly string[]> | undefined)[] = [];
+      const retriever = createKajianQRetriever({
+        store: {
+          similaritySearch: (
+            _track: string,
+            _embedding: readonly number[],
+            o: { filters?: Record<string, string | readonly string[]> },
+          ) => {
+            calls.push(o.filters);
+            return Effect.succeed([
+              {
+                child: { id: "c1", textAr: "نص", textId: null, metadata: {} },
+                distance: 0.1,
+                rankDense: 1,
+              },
+            ]);
+          },
+          listDocChildNeighboursByChildIds: () => Effect.succeed([]),
+          // The question names a surah, so ADR-0045's scope read runs too; it
+          // reads by parent key and is not the scope under test.
+          listDocChildrenByParentSourceKey: () => Effect.succeed([]),
+        } as never,
+        embedder: { embed: () => Effect.succeed({ vectors: [[0.1, 0.2]], cost }) },
+        bridge: ((e: unknown) => Effect.runPromise(e as never)) as never,
+        limit: 5,
+      });
+      const routed = routedQuery("apa makna Surah Al-Fatihah", {
+        intent,
+        filters: { sourceType: ["quran", "tafsir", "hadith"] },
+        attributes: { category },
+      });
+      await Effect.runPromise(
+        Effect.provideService(retriever.retrieve(routed) as never, RunContext, {
+          config: {},
+          now: () => 1,
+          record: () => {},
+        } as never) as never,
+      );
+      return calls;
+    };
+    expect(await filtersFor("factual", "quran")).toEqual(await filtersFor("comparison", "tafsir"));
+  });
+});
+
 describe("routeFilters decides, the reply only hints", () => {
   it("carries the reply's own hints through as the sets the store binds", () => {
     expect(routeFilters(reading({ filters: { madzhab: ["syafii"], grade: ["sahih"] } }))).toEqual({
@@ -240,7 +371,10 @@ describe("routeFilters decides, the reply only hints", () => {
           filters: { principleTags: ["dharar"] },
         }),
       ),
-    ).toEqual({ principleTags: ["dharar"], sourceType: ["quran", "principle"] });
+    ).toEqual({
+      principleTags: ["dharar"],
+      sourceType: ["quran", "tafsir", "hadith", "principle"],
+    });
   });
 
   it("does not invent a tag filter from a lens that has no tags", () => {

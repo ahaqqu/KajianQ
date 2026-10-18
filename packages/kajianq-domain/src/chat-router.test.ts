@@ -148,36 +148,38 @@ describe("createKajianQRouter", () => {
     });
   });
 
-  it("puts a role's source in the filter where the category row names no such source", async () => {
-    // The role union made load-bearing: the category row (`quran` → `["quran"]`)
-    // contains no `hadith`, so the reply's own `dalil` part is the only thing that can
-    // select it — deleting the union loop reddens this case, and no row widening can
-    // rescue it. The invariant is route-wide coverage: every part the route decomposed
-    // is searchable.
+  it("puts a role's source in the filter where no category row names it", async () => {
+    // The role union made load-bearing: no row names `principle`, so the reply's
+    // own `principle` part is the only thing that can select it — deleting the
+    // union loop reddens this case, and no row widening can rescue it. The
+    // invariant is route-wide coverage: every part the route decomposed is
+    // searchable.
     const h = harness(
       JSON.stringify({
         intent: "ruling",
-        category: "quran",
+        category: "hadith",
         needsPrinciple: false,
-        subQueries: [{ text: "dalil tentang keutamaan membaca Al-Quran", role: "dalil" }],
+        subQueries: [{ text: "kaidah yusr dalam ibadah", role: "principle" }],
       }),
     );
-    const routed = (await h.route({ text: "Apa keutamaan membaca Al-Quran?" })) as {
+    const routed = (await h.route({ text: "Apa kaidah kemudahan dalam ibadah?" })) as {
       filters: KajianQFilters;
       subQueries: readonly { text: string; role?: string; origin?: string }[];
     };
 
-    // The union reads the set retrieval fans out over, not the reply's raw list.
+    // The union reads the set retrieval fans out over, not the reply's raw list —
+    // the `hadith` category's own `sanad` rule included.
     expect(routed.subQueries.map((s) => [s.role, s.origin])).toEqual([
-      ["dalil", "model"],
+      ["principle", "model"],
       ["factual", "rule"],
+      ["sanad", "rule"],
     ]);
-    expect(routed.filters.sourceType).toEqual(["quran", "hadith"]);
+    expect(routed.filters.sourceType).toEqual(["hadith", "principle"]);
     expect(h.events.at(-1)).toMatchObject({
       kind: "source_routing",
       detail: {
-        sources: ["quran", "hadith"],
-        filters: { sourceType: ["quran", "hadith"] },
+        sources: ["hadith", "principle"],
+        filters: { sourceType: ["hadith", "principle"] },
       },
     });
   });
