@@ -103,6 +103,26 @@ export const GOLDEN_SET_TAG_VOCABULARY: readonly string[] = [
  */
 export const DAIF_TRAP_LABEL = "dhaif-trap";
 
+/**
+ * Golden Set questions the default staged smoke holds out of its sample: the
+ * cases whose outcome the deployed commit cannot decide consistently. A held-out
+ * question stays in the full set and in QA — it is not a member the deploy gate
+ * samples, because its result turns on the router's sampled reading or on a
+ * required citation the retrieval cannot ground yet, so sampling it would make
+ * the gate red or green by chance instead of by regression. The eval script
+ * passes these ids to the selector opaquely (the engine names no product id).
+ * The whole-surah retrieval defect behind gs-v0-015 is #533's; the
+ * required-citation cases are the retrieval-precision work's. An id leaves this
+ * list when what it measures is deterministic again.
+ */
+export const SMOKE_HELD_OUT_IDS: readonly string[] = [
+  "gs-v0-003",
+  "gs-v0-004",
+  "gs-v0-015",
+  "gs-v0-016",
+  "gs-v0-017",
+];
+
 function oneOf<T extends string>(values: readonly T[], value: string): value is T {
   return (values as readonly string[]).includes(value);
 }

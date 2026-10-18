@@ -122,6 +122,37 @@ describe("selectSmokeSubset", () => {
     expect(smoke.questions.map((q) => q.id)).toContain("q-trap-1");
   });
 
+  it("keeps a held-out question out of every class and fills the class from the rest", () => {
+    const { set: smoke, reasons } = selectSmokeSubset(set, {
+      size: 5,
+      trapTag: "trap-tag",
+      exclude: ["q-id-1"],
+    });
+    const ids = smoke.questions.map((q) => q.id);
+    expect(ids).not.toContain("q-id-1");
+    // The Indonesian answer class is still covered — by the next eligible case,
+    // not by silently dropping the class the subset promises.
+    expect(reasons.find((r) => r.reason === "Indonesian answer coverage")?.id).toBe("q-id-2");
+    expect(ids).toHaveLength(5);
+  });
+
+  it("refuses an excluded id the set does not carry", () => {
+    // A renamed question would otherwise leave the gate sampling the case the
+    // caller meant to hold out: fail loudly, like a missing trap tag.
+    expect(() => selectSmokeSubset(set, { size: 5, exclude: ["q-gone"] })).toThrow(
+      SmokeSubsetError,
+    );
+    expect(() => selectSmokeSubset(set, { size: 5, exclude: ["q-gone"] })).toThrow(
+      /excluded id\(s\) not in "golden-set-v0": q-gone/,
+    );
+  });
+
+  it("leaves the caller's full set untouched when it holds a question out", () => {
+    selectSmokeSubset(set, { size: 5, exclude: ["q-en-1"] });
+    expect(set.questions).toHaveLength(6);
+    expect(set.questions.map((q) => q.id)).toContain("q-en-1");
+  });
+
   it("refuses a trap tag the set does not carry instead of skipping the case", () => {
     // A tag that reached one side of a rename only: the selector must redden
     // the gate, never return a smaller subset that silently dropped the

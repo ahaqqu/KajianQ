@@ -22,7 +22,11 @@ const COST: CostRecord = {
   costMicroUsd: 3,
 };
 
-type Captured = { turns: readonly { role: string; content: string }[]; personalData: true };
+type Captured = {
+  turns: readonly { role: string; content: string }[];
+  personalData: true;
+  options?: Record<string, unknown>;
+};
 
 function harness(replyText: string): {
   route: (query: { text: string; filters?: KajianQFilters }) => Promise<unknown>;
@@ -102,6 +106,15 @@ describe("createKajianQRouter", () => {
       ["principle", "rule"],
       ["dalil", "rule"],
     ]);
+  });
+
+  it("pins the call's sampling to the vendor's deterministic setting", async () => {
+    const h = harness(REPLY);
+    await h.route({ text: "Kenapa shalat orang sakit diringankan?" });
+    // The reading decides source routing, so the call must not sample. Asserted as
+    // the literal wire setting rather than through the constant that carries it: an
+    // edit to the constant has to redden this test.
+    expect(h.captured[0]?.options).toEqual({ temperature: 0 });
   });
 
   it("searches every source the route's own parts imply — the gs-v0-015 shape", async () => {

@@ -37,6 +37,16 @@ export type SmokeSelectOptions = {
    * vocabulary — the engine must not name it).
    */
   trapTag?: string;
+  /**
+   * Question ids the caller holds out of the sample, supplied opaquely (the
+   * engine names no product id). A held-out question is not eligible for a
+   * class rule or the fill, so a class the set still carries is filled from the
+   * rest rather than from a held-out case; a class with no eligible question is
+   * absent. The held-out case stays in the caller's full set, which this
+   * function never mutates. An id the set does not carry is a caller/fixture
+   * disagreement and throws, like a missing `trapTag`.
+   */
+  exclude?: readonly string[];
 };
 
 /**
@@ -47,27 +57,45 @@ export type SmokeSelectOptions = {
  *   3. one English case (language matching)
  *   4. one Indonesian answer case (the default path)
  *   5. remaining slots: the set's own order, skipping duplicates of the above
+ * Each class is taken from the questions the caller did not hold out; a class
+ * with no eligible question is absent rather than filled from a held-out one.
  */
 export function selectSmokeSubset(set: GoldenSet, opts: SmokeSelectOptions = {}): SmokeSelection {
   const size = Math.max(1, opts.size ?? 5);
   const trapTag = opts.trapTag;
+  const exclude = new Set(opts.exclude ?? []);
   const picked: GoldenQuestion[] = [];
   const reasons: { id: string; reason: string }[] = [];
   const taken = new Set<string>();
 
+  // Fail loudly, never shrink quietly. An excluded id the set does not carry is a
+  // caller/fixture disagreement — a renamed question — and ignoring it would leave
+  // the gate sampling the case the caller meant to hold out.
+  const unknown = [...exclude].filter((id) => !set.questions.some((q) => q.id === id));
+  if (unknown.length > 0) {
+    throw new SmokeSubsetError(
+      `excluded id(s) not in "${set.id}": ${unknown.join(", ")} (${set.questions.length} questions)`,
+    );
+  }
+
+  const first = (predicate: (q: GoldenQuestion) => boolean): GoldenQuestion | undefined =>
+    set.questions.find((q) => !exclude.has(q.id) && predicate(q));
+
+  const isExcluded = (q: GoldenQuestion): boolean => exclude.has(q.id);
+
   const take = (q: GoldenQuestion | undefined, reason: string): void => {
-    if (!q || taken.has(q.id) || picked.length >= size) return;
+    if (!q || isExcluded(q) || taken.has(q.id) || picked.length >= size) return;
     taken.add(q.id);
     picked.push(q);
     reasons.push({ id: q.id, reason });
   };
 
   take(
-    set.questions.find((q) => q.expectedBehavior === "refuse"),
+    first((q) => q.expectedBehavior === "refuse"),
     "refusal coverage",
   );
   if (trapTag !== undefined && trapTag !== "") {
-    const trap = set.questions.find((q) => (q.tags ?? []).includes(trapTag));
+    const trap = first((q) => (q.tags ?? []).includes(trapTag));
     // Fail loudly, never shrink quietly. A `trapTag` no question carries means
     // the caller and the fixture disagree about the vocabulary — a rename that
     // reached one side only. Skipping it would drop the adversarial case from
@@ -83,11 +111,11 @@ export function selectSmokeSubset(set: GoldenSet, opts: SmokeSelectOptions = {})
     take(trap, "trap coverage");
   }
   take(
-    set.questions.find((q) => q.language === "en"),
+    first((q) => q.language === "en"),
     "English language coverage",
   );
   take(
-    set.questions.find((q) => q.language === "id" && q.expectedBehavior === "answer"),
+    first((q) => q.language === "id" && q.expectedBehavior === "answer"),
     "Indonesian answer coverage",
   );
   for (const q of set.questions) {
