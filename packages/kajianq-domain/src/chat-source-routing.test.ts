@@ -9,7 +9,8 @@ import {
   sourceTypesOf,
 } from "./chat-source-routing";
 import type { SourceRoutingInput } from "./chat-source-routing";
-import { SUBJECT_AREAS, SUB_QUERY_ROLES, INTENTS } from "./taxonomy";
+import type { RoutableSource } from "./filters";
+import { SUBJECT_AREAS, SUB_QUERY_ROLES, INTENTS, type SubQueryRole } from "./taxonomy";
 import { routedQuery } from "./test-utils/routed-query";
 
 const cost = { modelId: "m", tokensIn: 1, tokensOut: 1, latencyMs: 1, costMicroUsd: 1 };
@@ -28,6 +29,18 @@ const cost = { modelId: "m", tokensIn: 1, tokensOut: 1, latencyMs: 1, costMicroU
  * widen it. An unlisted category stays unfiltered, and a part's role can only
  * widen a selection the category already made.
  */
+
+/**
+ * The role map's own expected rows, as an exhaustive record over the vocabulary:
+ * a role added to `SUB_QUERY_ROLES` without an expectation here is a typecheck
+ * failure, so the pin below cannot silently skip it.
+ */
+const ROLE_SOURCES_EXPECTED: Readonly<Record<SubQueryRole, readonly RoutableSource[]>> = {
+  factual: [],
+  dalil: ["hadith"],
+  sanad: ["hadith"],
+  principle: ["principle"],
+};
 
 const reading = (overrides: Partial<SourceRoutingInput> = {}): SourceRoutingInput => ({
   intent: "ruling",
@@ -126,29 +139,21 @@ describe("route-wide coverage: the category's sources union every part's own rol
     expect(filters.sourceType).toEqual(["quran", "tafsir", "hadith"]);
   });
 
-  it("puts a role's source in play under every area that carries one", () => {
-    // `dalil`/`sanad` name the Sunnah every non-empty row already selects;
-    // `principle` is the one source no row names, so it stays the role that widens.
-    for (const category of ["quran", "hadith", "tafsir", "fikih"] as const) {
-      for (const [role, source] of [
-        ["sanad", "hadith"],
-        ["dalil", "hadith"],
-        ["principle", "principle"],
-      ] as const) {
-        expect(
-          sourceTypesOf(reading({ category, subQueries: [part("q", role)] })),
-          `a ${role} part must put ${source} in play under ${category}`,
-        ).toContain(source);
-      }
-    }
+  it.each([...SUB_QUERY_ROLES])("maps the %s role to its own sources, and nothing else", (role) => {
+    // Pinned on the role map itself, not through a routing result: every
+    // non-empty category row already selects the Sunnah, so a `dalil`/`sanad`
+    // part adding it is unobservable downstream — and a role whose set quietly
+    // lost a source would be a part the route stopped searching.
+    expect(roleSources(role)).toEqual(ROLE_SOURCES_EXPECTED[role]);
   });
 
   it("adds nothing for a factual part — the category is what the factual part is about", () => {
     // `factual` implies no source *of its own*: the category says what the
-    // question is about, so inventing one here would filter every route.
+    // question is about, so inventing one here would filter every route. Asserted
+    // under the narrowest row, where any added source would be visible.
     expect(
-      sourceTypesOf(reading({ category: "quran", subQueries: [part("q", "factual")] })),
-    ).toEqual(["quran", "tafsir", "hadith"]);
+      sourceTypesOf(reading({ category: "hadith", subQueries: [part("q", "factual")] })),
+    ).toEqual(["hadith"]);
   });
 
   it("publishes the union as the record retrieval is handed, from one derivation", () => {

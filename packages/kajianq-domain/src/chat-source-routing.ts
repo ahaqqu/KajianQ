@@ -65,7 +65,7 @@ export type SourceRoutingInput = {
  */
 const SCRIPTURAL_SOURCES = ["quran", "tafsir", "hadith"] as const;
 
-/** The sources a subject area is answered from, in the authority order (Quran → Hadith → Tafsir → Kitab); an empty row is a decision, not a gap. */
+/** The sources a subject area is answered from; an empty row is a decision, not a gap. */
 const CATEGORY_SOURCES: Readonly<Record<SubjectArea, readonly RoutableSource[]>> = {
   quran: SCRIPTURAL_SOURCES,
   // A hadith question's evidence is the Sunnah the question names.
