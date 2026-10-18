@@ -104,6 +104,17 @@ const DHAIF_LABEL_SHARED_ANSWER =
 
 const DHAIF_LABEL_SHARED_FIXTURE = dhaifFixture("dhaif-label-shared", DHAIF_LABEL_SHARED_ANSWER);
 
+// The canonical line under wrap-only markup: the bold pair wraps the copy and
+// nothing else, so the peel takes the delimiters with the copy and changes no
+// other answer byte.
+const DHAIF_WRAPPED_ANSWER =
+  `Hadits tersebut diriwayatkan [HR. Malik no. 18].\n\n**${DHAIF_WARNING}**\n\n` +
+  `Riwayat ini dinilai lemah oleh sebagian ulama.\n\n` +
+  "[Terjemahan mesin — lihat teks Arab asli]\n\n" +
+  DISCLAIMER;
+
+const DHAIF_WRAPPED_FIXTURE = dhaifFixture("dhaif-wrapped", DHAIF_WRAPPED_ANSWER);
+
 const REFUSAL_FIXTURE = [
   'event: meta\ndata: {"sessionId":"sess-e2e","messageId":"m-ref","traceId":"tr-ref"}\n\n',
   "event: delta\ndata: tidak menemukan dalil yang memadai\n\n",
@@ -369,6 +380,12 @@ When(
     await page.getByTestId("send").click();
   },
 );
+
+When("I ask a question whose dhaif answer wraps the canonical line in markup", async ({ page }) => {
+  await openChatWithFixtures(page, DHAIF_WRAPPED_FIXTURE);
+  await page.getByTestId("composer").fill("Hadits tentang amalan tertentu?");
+  await page.getByTestId("send").click();
+});
 
 When("I ask a question whose answer contains markdown", async ({ page }) => {
   await openChatWithFixtures(page, MD_FIXTURE);
@@ -662,6 +679,19 @@ Then("the dhaif warning renders exactly once beside the shared label", async ({ 
   await expect(text.split(DHAIF_WARNING).length - 1).toBe(1);
   // The label's bytes stay in the body, once; the prose around it survives.
   await expect(text.split("Terjemahan mesin").length - 1).toBe(1);
+  await expect(assistant).toContainText("Hadits tersebut diriwayatkan");
+  await expect(assistant).toContainText("Riwayat ini dinilai lemah");
+  await expect(assistant.getByTestId("ulama-disclaimer")).toHaveCount(1);
+});
+
+Then("the dhaif warning renders exactly once with no wrap markup left", async ({ page }) => {
+  const assistant = page.getByTestId("message-assistant").last();
+  await expect(assistant.getByTestId("dhaif-warning")).toHaveCount(1);
+  const text = (await assistant.textContent()) ?? "";
+  await expect(text.split(DHAIF_WARNING).length - 1).toBe(1);
+  // The wrappers left with the copy: no literal bold marker survives, and the
+  // prose around the peeled paragraph still renders.
+  await expect(assistant).not.toContainText("**");
   await expect(assistant).toContainText("Hadits tersebut diriwayatkan");
   await expect(assistant).toContainText("Riwayat ini dinilai lemah");
   await expect(assistant.getByTestId("ulama-disclaimer")).toHaveCount(1);

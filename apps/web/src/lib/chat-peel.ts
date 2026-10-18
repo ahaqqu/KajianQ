@@ -92,7 +92,16 @@ function isProductRuleLine(line: string): boolean {
   );
 }
 
-/** Every canonical copy removed from `text`, with the copy to treat as the card's value, or
+/** The wrap-only line prefix a model puts before a copy: an optional indent, then blockquote
+ * markers and a bullet, nested in any order (`> - `). A `*` with no space after it is an
+ * inline emphasis delimiter, not a bullet. */
+const LINE_WRAP_PREFIX = /^[ \t]*(?:(?:>[ \t]*)|(?:[-*][ \t]+))+/;
+
+/** The inline emphasis delimiters the card renders, longest first: `***` is bold italic,
+ * `**` bold, `*` and `_` emphasis. */
+const INLINE_WRAPS = ["***", "**", "*", "_"] as const;
+
+/** Every canonical line removed from `text`, with the copy to treat as the card's value, or
  * `null` when the text carries none. The remainder keeps every other byte, so product rule
  * copy embedded in a rule value never draws the sentence twice. */
 function stripCanonicalCopy(text: string): { copy: string; remainder: string } | null {
@@ -103,16 +112,75 @@ function stripCanonicalCopy(text: string): { copy: string; remainder: string } |
   return { copy: copies[0]!, remainder: remainder.trim() };
 }
 
+/** Peel one layer of wrap-only markup off `text`: a line prefix, or a symmetric emphasis pair
+ * around its content (the pair may repeat, so `__x__` peels one underscore at a time).
+ * `null` when the text opens with neither. */
+function peelWrapLayer(text: string): string | null {
+  const unPrefixed = text.replace(LINE_WRAP_PREFIX, "").trim();
+  if (unPrefixed !== text) return unPrefixed;
+  for (const wrap of INLINE_WRAPS) {
+    if (text.length <= wrap.length * 2) continue;
+    if (text.startsWith(wrap) && text.endsWith(wrap)) {
+      return text.slice(wrap.length, text.length - wrap.length).trim();
+    }
+  }
+  return null;
+}
+
+/** The line's content once every layer of wrap-only markup is peeled, or `null` when the
+ * line carries none. A line that opens with markup but does not close it stays as the text
+ * the peel reached, which no canonical copy equals. */
+function peelWrapOnly(line: string): string | null {
+  let text = line.trim();
+  let peeled = false;
+  for (;;) {
+    const next = peelWrapLayer(text);
+    if (next === null) return peeled ? text : null;
+    peeled = true;
+    text = next;
+  }
+}
+
+/** When every line of `paragraph` is a canonical copy under wrap-only markup, or product rule
+ * copy, the copy the card draws arrived wrapped: return the product rule copy that stays in
+ * `body` byte-identical, or `null` when any line carries the model's own words. Stripping a
+ * wrap-only copy loses no answer bytes — the copy goes to the card and its delimiters with
+ * it — so this is the one paragraph the peel empties without touching a word it renders. */
+function wrapOnlyRemainder(paragraph: string, copy: string): string | null {
+  const kept: string[] = [];
+  let carried = false;
+  for (const line of paragraph.split("\n")) {
+    if (line.trim() === "") continue;
+    if (isProductRuleLine(line)) {
+      const stripped = stripCanonicalCopy(line);
+      const remainder = stripped === null ? line.trim() : stripped.remainder;
+      if (remainder !== "") kept.push(remainder);
+      continue;
+    }
+    const bare = stripCanonicalCopy(line);
+    if (bare !== null && bare.remainder === "") {
+      carried = true; // the line is nothing but copies
+      continue;
+    }
+    if (peelWrapOnly(line) !== copy) return null;
+    carried = true;
+  }
+  return carried ? kept.join("\n") : null;
+}
+
 /** The canonical copy a paragraph carries and what is left of it once every copy is removed:
- * the remainder must be blank or product rule copy only, so stripping the copy drops no
- * answer content and the remainder stays byte-identical in `body`. `null` when the paragraph
- * carries no copy, or what remains is the model's own words or markup — that paragraph is
- * prose and stays whole. Both directions read the one `CANONICAL_WARNINGS` set. */
+ * the remainder must be blank, product rule copy only, or wrap-only markup around the copy,
+ * so stripping the copy drops no answer content and the bytes that stay are byte-identical in
+ * `body`. `null` when the paragraph carries no copy, or what remains is the model's own words
+ * — that paragraph is prose and stays whole. Both directions read the one
+ * `CANONICAL_WARNINGS` set. */
 function splitCanonicalCopy(paragraph: string): { copy: string; remainder: string } | null {
   const stripped = stripCanonicalCopy(paragraph);
   if (stripped === null || stripped.remainder === "") return stripped;
   const lines = stripped.remainder.split("\n").filter((line) => line.trim() !== "");
-  return lines.every(isProductRuleLine) ? stripped : null;
+  if (lines.every(isProductRuleLine)) return stripped;
+  const remainder = wrapOnlyRemainder(paragraph, stripped.copy);
+  return remainder === null ? null : { copy: stripped.copy, remainder };
 }
 
 /** Classify one paragraph as a rule line (`kind` + trimmed text) or `null` for prose. Short
@@ -135,10 +203,11 @@ function classifyRule(paragraph: string): { kind: RuleKind; text: string } | nul
  * - **warning**: peels only when it equals the product's canonical line (`CANONICAL_WARNINGS`),
  *   so marker-prefixed prose stays prose; a repeat is dropped as the card renders it once.
  *   The canonical line is taken **wherever the paragraph sits**, not only in the trailing run,
- *   and out of a paragraph that also carries product rule copy (the MT label, the disclaimer):
- *   the postprocess suppresses its own append when the draft already carries the copy, so a
- *   mid-answer copy is the same line the card draws and would otherwise render twice. The
- *   remainder's bytes stay in `body`; only the copy the card renders is removed.
+ *   and out of a paragraph that also carries product rule copy (the MT label, the disclaimer)
+ *   or only wrap-only markup (`**`, `_`, `*`, `- `, `* `, `> `): the postprocess suppresses
+ *   its own append when the draft already carries the copy, so a mid-answer copy is the same
+ *   line the card draws and would otherwise render twice. Wrap delimiters are not answer
+ *   bytes, so a wrap-only paragraph goes whole; product rule copy's bytes stay in `body`.
  * - **disclaimer**: peels into its footer whatever `bukan fatwa` phrasing opens it (the
  *   server's loose predicate); an identical repeat is dropped, a different one stays.
  * - **MT label**: peels into no field and stays in `body`, in order, with the text it describes.

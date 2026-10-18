@@ -232,12 +232,22 @@ describe("AnswerCard dhaif warning renders exactly once when the canonical line 
     expect(occurrences(text, "Jawaban lanjutan.")).toBe(1);
   });
 
-  it("pins the residual: a bold-wrapped copy still renders twice", () => {
-    // The bold span is the model's markup, not product rule copy, and the
-    // no-drop constraint keeps the paragraph whole — so the body draws the copy
-    // and the flag-driven card draws it again. Pinned, not endorsed: a widening
-    // that eats the model's markup reddens here.
+  it("renders the warning once when the copy arrives under wrap-only markup", () => {
+    // The bold pair wraps only the copy: the peel takes the delimiters with it,
+    // so the body keeps no copy and the card draws the canonical line once.
     const card = renderCard(["Jawaban awal.", `**${WARNING_ID}**`, MT].join("\n\n"), true);
+    const text = card.textContent ?? "";
+    expect(occurrences(text, WARNING_ID)).toBe(1);
+    expect(screen.getAllByTestId("dhaif-warning")).toHaveLength(1);
+  });
+
+  it("pins the residual: a wrapped copy carrying the model's words still renders twice", () => {
+    // The bold span also carries the model's sentence, so stripping the copy
+    // would rewrite the model's words — the no-drop constraint keeps the
+    // paragraph whole, and the flag-driven card draws the copy again. Pinned,
+    // not endorsed: a widening that eats the model's words reddens here.
+    const paragraph = `**${WARNING_ID} Sebagian ulama menilai riwayat ini lemah.**`;
+    const card = renderCard(["Jawaban awal.", paragraph, MT].join("\n\n"), true);
     const text = card.textContent ?? "";
     expect(occurrences(text, WARNING_ID)).toBe(2);
     expect(screen.getAllByTestId("dhaif-warning")).toHaveLength(1);

@@ -20,10 +20,12 @@ import { messages } from "./i18n-messages";
  * sentence renders twice — once as prose, once as the card.
  *
  * The card's copy authority is unchanged (`CANONICAL_WARNINGS` is the one set,
- * both directions): the copy moves to the card wherever it sits — alone, or out
- * of a paragraph whose remainder is product rule copy (the label, the
- * disclaimer), whose bytes stay in the body. A paragraph whose remainder is the
- * model's words or markup stays whole (A2 and the pinned residual below).
+ * both directions): the copy moves to the card wherever it sits — alone, out of
+ * a paragraph whose remainder is product rule copy (the label, the disclaimer),
+ * whose bytes stay in the body, or under wrap-only markup (`**`, `_`, `*`, `- `,
+ * `* `, `> ` and their combinations), whose delimiters are not answer bytes and
+ * go with the copy. A paragraph whose remainder is the model's words stays whole
+ * (A2 and the pinned residual below).
  */
 
 /** The product's canonical copies — read from the i18n copy the card renders. */
@@ -68,6 +70,23 @@ const displayed = (split: SplitAnswer, cardFlag: boolean): string =>
     split.disclaimer ?? "",
   ].join("\n\n");
 
+/** The wrap-only markup a model puts around the copy: delimiters only, never an answer
+ * byte. Each form is the whole line, so its lines carry no other content. */
+const WRAP_FORMS: readonly { name: string; wrap: (copy: string) => string }[] = [
+  { name: "bold", wrap: (copy) => `**${copy}**` },
+  { name: "italic", wrap: (copy) => `*${copy}*` },
+  { name: "underscore italic", wrap: (copy) => `_${copy}_` },
+  { name: "bold italic", wrap: (copy) => `***${copy}***` },
+  { name: "bold around underscore italic", wrap: (copy) => `**_${copy}_**` },
+  { name: "bullet", wrap: (copy) => `- ${copy}` },
+  { name: "asterisk bullet", wrap: (copy) => `* ${copy}` },
+  { name: "blockquote", wrap: (copy) => `> ${copy}` },
+  { name: "bullet + bold", wrap: (copy) => `- **${copy}**` },
+  { name: "blockquote + bold", wrap: (copy) => `> **${copy}**` },
+  { name: "blockquote + bullet + bold", wrap: (copy) => `> - **${copy}**` },
+  { name: "indented bullet + underscore italic", wrap: (copy) => `  - _${copy}_` },
+];
+
 /** The delivered shape `[prose][copy…][prose][MT label][disclaimer]`, varied. */
 function deliveredShape(input: {
   /** Where among the prose paragraphs the copy paragraph sits (0..PROSE.length). */
@@ -76,8 +95,11 @@ function deliveredShape(input: {
   copies: number;
   /** Where the disclaimer sits: the footer after the label, the body, or absent. */
   disclaimer: "footer" | "body" | "none";
+  /** The wrap-only markup around each copy line, or none. */
+  wrap?: (copy: string) => string;
 }): string {
-  const warning = Array.from({ length: input.copies }, () => WARNING_ID).join("\n");
+  const line = input.wrap?.(WARNING_ID) ?? WARNING_ID;
+  const warning = Array.from({ length: input.copies }, () => line).join("\n");
   const paragraphs: string[] = [...PROSE];
   paragraphs.splice(input.warningAt, 0, warning);
   if (input.disclaimer === "body") {
@@ -411,25 +433,201 @@ describe("splitAnswerBlocks — the canonical line mid-answer (#303)", () => {
 });
 
 /**
+ * Wrap-only markup around the canonical copy — `**<copy>**`, `_<copy>_`,
+ * `- <copy>`, `> <copy>`, their combinations, and one wrap per line. The
+ * delimiters are not answer bytes: stripping them with the copy loses nothing
+ * the model wrote, so the paragraph goes whole and the card draws the line once.
+ * Every row asserts the body bytes that stay are exactly the prose and product
+ * rule copy around the peeled paragraph, so a peel that eats one byte of prose
+ * reddens here.
+ */
+describe("splitAnswerBlocks — the canonical line under wrap-only markup (#548)", () => {
+  // The reachable shape's own row, with the mutation named: a peel whose accept
+  // set is a blank remainder leaves the bold-wrapped copy in `body`, and the
+  // frame-flag card draws the sentence a second time.
+  it("peels the delivered `[prose][**copy**][prose][MT][disclaimer]` shape — mutation: the peel accepts only a blank remainder", () => {
+    const split = splitAnswerBlocks(
+      [PROSE[0], `**${WARNING_ID}**`, PROSE[1], MT, DISCLAIMER].join("\n\n"),
+    );
+    expect(split.warning).toBe(WARNING_ID);
+    expect(split.disclaimer).toBe(DISCLAIMER);
+    expect(split.body).toBe([PROSE[0], PROSE[1], MT].join("\n\n"));
+    expect(occurrences(bodyText(split.body), WARNING_ID)).toBe(0);
+    expect(occurrences(displayed(split, true), WARNING_ID)).toBe(1);
+  });
+
+  it.each(WRAP_FORMS)("peels $name at every body position, at one render", ({ wrap }) => {
+    for (const warningAt of [0, 1, 2, 3]) {
+      const paragraphs: string[] = [...PROSE];
+      paragraphs.splice(warningAt, 0, wrap(WARNING_ID));
+      paragraphs.push(MT, DISCLAIMER);
+      const split = splitAnswerBlocks(paragraphs.join("\n\n"));
+      expect(split.warning).toBe(WARNING_ID);
+      // No other byte changed: every prose paragraph and the label render as
+      // written, and no delimiter survives anywhere in the body.
+      expect(split.body).toBe([...PROSE, MT].join("\n\n"));
+      expect(occurrences(bodyText(split.body), WARNING_ID)).toBe(0);
+      expect(occurrences(displayed(split, true), WARNING_ID)).toBe(1);
+    }
+  });
+
+  it.each([
+    ["two bold copies", [`**${WARNING_ID}**`, `**${WARNING_ID}**`]],
+    ["a bold and a bare copy", [`**${WARNING_ID}**`, WARNING_ID]],
+    ["two blockquote copies", [`> ${WARNING_ID}`, `> ${WARNING_ID}`]],
+    ["two bullet copies", [`- ${WARNING_ID}`, `- ${WARNING_ID}`]],
+    ["a bullet and a blockquote copy", [`> ${WARNING_ID}`, `- ${WARNING_ID}`]],
+    ["a blockquote bold copy and a bare copy", [`> **${WARNING_ID}**`, WARNING_ID]],
+  ])("peels %s in one paragraph, at one render", (_name, lines) => {
+    const split = splitAnswerBlocks([PROSE[0], lines.join("\n"), PROSE[1], MT].join("\n\n"));
+    expect(split.warning).toBe(WARNING_ID);
+    expect(split.body).toBe([PROSE[0], PROSE[1], MT].join("\n\n"));
+    expect(occurrences(bodyText(split.body), WARNING_ID)).toBe(0);
+    expect(occurrences(displayed(split, true), WARNING_ID)).toBe(1);
+  });
+
+  it("peels the EN copy under wrap-only markup", () => {
+    const split = splitAnswerBlocks([PROSE[0], `> _${WARNING_EN}_`, PROSE[1], MT].join("\n\n"));
+    expect(split.warning).toBe(WARNING_EN);
+    expect(split.body).toBe([PROSE[0], PROSE[1], MT].join("\n\n"));
+    expect(occurrences(bodyText(split.body), WARNING_EN)).toBe(0);
+    expect(occurrences(displayed(split, true), WARNING_EN)).toBe(1);
+  });
+
+  it("keeps the MT label byte-identical when it shares the wrapped copy's paragraph", () => {
+    // The label line is product copy, not a wrapper: stripping the copy takes
+    // the delimiters with it and leaves the label's bytes in their own place.
+    const split = splitAnswerBlocks(
+      [PROSE[0], `**${WARNING_ID}**\n${MT}`, PROSE[1], DISCLAIMER].join("\n\n"),
+    );
+    expect(split.warning).toBe(WARNING_ID);
+    expect(split.disclaimer).toBe(DISCLAIMER);
+    expect(split.body).toBe([PROSE[0], MT, PROSE[1]].join("\n\n"));
+    expect(occurrences(bodyText(split.body), WARNING_ID)).toBe(0);
+    expect(occurrences(bodyText(split.body), MT)).toBe(1);
+    expect(occurrences(displayed(split, true), WARNING_ID)).toBe(1);
+  });
+
+  it("keeps the disclaimer in place when it shares the wrapped copy's paragraph", () => {
+    const split = splitAnswerBlocks(
+      [PROSE[0], `- ${WARNING_ID}\n${DISCLAIMER}`, PROSE[1], MT].join("\n\n"),
+    );
+    expect(split.warning).toBe(WARNING_ID);
+    expect(split.disclaimer).toBeNull();
+    expect(split.body).toBe([PROSE[0], DISCLAIMER, PROSE[1], MT].join("\n\n"));
+    expect(occurrences(displayed(split, true), WARNING_ID)).toBe(1);
+  });
+
+  /**
+   * The enumeration over the wrap kinds: every form × body position × disclaimer
+   * position asserts one render of the canonical line, the body bytes exactly
+   * the prose and label that surrounded the peeled paragraph, and the disclaimer
+   * on the surface that owns it.
+   */
+  describe("enumeration: wrap kind × body position × disclaimer position", () => {
+    const rows = WRAP_FORMS.flatMap(({ name, wrap }) =>
+      [0, 1, 2, 3].flatMap((warningAt) =>
+        (["footer", "body", "none"] as const).map((disclaimer) => ({
+          name,
+          wrap,
+          warningAt,
+          disclaimer,
+        })),
+      ),
+    );
+
+    it.each(rows)(
+      "exactly one render for $name at $warningAt × disclaimer in $disclaimer",
+      (row) => {
+        const split = splitAnswerBlocks(
+          deliveredShape({
+            warningAt: row.warningAt,
+            copies: 1,
+            disclaimer: row.disclaimer,
+            wrap: row.wrap,
+          }),
+        );
+        expect(split.warning).toBe(WARNING_ID);
+        expect(occurrences(bodyText(split.body), WARNING_ID)).toBe(0);
+        expect(occurrences(displayed(split, true), WARNING_ID)).toBe(1);
+        // No other byte changed: the prose and the label render exactly as
+        // delivered, with the wrapped copy paragraph gone whole.
+        expect(split.body).toBe(
+          [...(row.disclaimer === "body" ? [DISCLAIMER] : []), ...PROSE, MT].join("\n\n"),
+        );
+        if (row.disclaimer === "footer") {
+          expect(split.disclaimer).toBe(DISCLAIMER);
+        } else if (row.disclaimer === "body") {
+          expect(split.disclaimer).toBeNull();
+          expect(occurrences(bodyText(split.body), DISCLAIMER)).toBe(1);
+        } else {
+          expect(split.disclaimer).toBeNull();
+          expect(occurrences(displayed(split, true), DISCLAIMER)).toBe(0);
+        }
+      },
+    );
+  });
+
+  it("holds for any wrap form, position and copy count (property)", () => {
+    const segment = fc.constantFrom<string>(...PROSE, MT, "Kalimat model lain.");
+    const wrapForm = fc.constantFrom<(copy: string) => string>(...WRAP_FORMS.map((f) => f.wrap));
+    fc.assert(
+      fc.property(
+        fc.array(segment, { maxLength: 6 }),
+        fc.nat({ max: 7 }),
+        fc.integer({ min: 1, max: 4 }),
+        wrapForm,
+        (others, rawAt, copies, wrap) => {
+          const at = Math.min(rawAt, others.length);
+          const wrapped = Array.from({ length: copies }, () => wrap(WARNING_ID)).join("\n");
+          const paragraphs = [...others];
+          paragraphs.splice(at, 0, wrapped);
+          const split = splitAnswerBlocks(paragraphs.join("\n\n"));
+          expect(split.warning).toBe(WARNING_ID);
+          expect(occurrences(bodyText(split.body), WARNING_ID)).toBe(0);
+          expect(occurrences(displayed(split, true), WARNING_ID)).toBe(1);
+          // Every other paragraph survives byte-identical, in order.
+          expect(bodyText(split.body)).toBe(others.join("\n\n"));
+        },
+      ),
+      { numRuns: 200 },
+    );
+  });
+});
+
+/**
  * The residual the owner deliberately leaves: a copy the paragraph does not stop
- * at — wrapped in markdown, opened as a list/blockquote item, or embedded in the
- * model's own sentence. Stripping those would drop markup the card does not
- * render or rewrite the model's words, which the no-drop constraint forbids; the
- * frame flag still draws the card, so the sentence renders twice. These rows pin
- * that residual so a future widening that eats the model's words reddens here.
+ * at — embedded in the model's own sentence, under a marker prefix, or carried
+ * beside the model's words even when wrapped. Stripping those would rewrite the
+ * model's words, which the no-drop constraint forbids; the frame flag still
+ * draws the card, so the sentence renders twice. These rows pin that residual so
+ * a widening that eats the model's words reddens here.
  */
 describe("splitAnswerBlocks — the copy's residual shapes (#303)", () => {
   const RESIDUAL_SHAPES: readonly { name: string; paragraph: string }[] = [
-    { name: "bold copy", paragraph: `**${WARNING_ID}**` },
-    { name: "list item copy", paragraph: `- ${WARNING_ID}` },
-    { name: "blockquote copy", paragraph: `> ${WARNING_ID}` },
     {
       name: "copy embedded in the model's words",
       paragraph: `${WARNING_ID} Sebagian ulama menilai riwayat ini lemah.`,
     },
     {
+      name: "copy inside the model's sentence",
+      paragraph: `Hadits ini dinilai lemah karena ${WARNING_ID} sehingga tidak dijadikan dalil.`,
+    },
+    {
+      name: "copy under a marker prefix",
+      paragraph: `[Peringatan] ${WARNING_ID}`,
+    },
+    {
       name: "copy above marker-prefixed prose",
       paragraph: `${WARNING_ID}\n[Peringatan] Sebagian ulama menilai riwayat ini lemah.`,
+    },
+    {
+      name: "bold copy carrying the model's words",
+      paragraph: `**${WARNING_ID} Sebagian ulama menilai riwayat ini lemah.**`,
+    },
+    {
+      name: "list item copy carrying the model's words",
+      paragraph: `- ${WARNING_ID} — riwayat ini dinilai lemah.`,
     },
   ];
 
