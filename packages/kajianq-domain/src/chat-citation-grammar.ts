@@ -135,8 +135,12 @@ function hadithAddressOf(match: RegExpExecArray): string | null {
  * address is ASCII-digit-led, and a number in another script has no address
  * core at all, so the lexical tail rule owns it and it likewise refuses.
  */
-// Hadith: `HR. Bukhari no. 573` / `HR. Ibn Majah no. 224 (Dhaif)`, and the
-// dot-less `HR Bukhari no. 573` (same rationale as the Quran marker).
+// Hadith: `HR. Bukhari no. 573` / `HR. Ibn Majah no. 224 (Dhaif)`, the dot-less
+// `HR Bukhari no. 573`, and the CJK spellings `HR．Muslim no. 224` (U+FF0E) /
+// `HR。Muslim no. 224` (U+3002). The separator is one set — ASCII dot, those two
+// stops, or `\s` (which carries U+3000) — and the tail stop spells it the same
+// way, so a marker the start reads is never one the previous tail swallows.
+// Other fullwidth punctuation (`，`, `：`) is not a period spelling and stays out.
 // Collection names may be multi-word ("Abu Dawud", "Ibn Majah") and
 // the long forms a model actually writes carry a collection-type prefix
 // ("Sunan Abu Dawud", "Sunan an Nasai"), so up to four tokens are tolerated.
@@ -182,14 +186,10 @@ const HADITH_GRAMMAR: CitationGrammar = {
   // marker this grammar would match, so the scan re-enters on that marker
   // instead of skipping past it inside the tail.
   //
-  // The marker is spelled **twice** — at the start and in the tail stop —
-  // because the house rule is a literal regex (a constructed one is the ReDoS
-  // shape the security scan blocks). The two spellings are one rule: the
-  // validator test pins them as identical, so widening the start without
-  // widening the stop reddens it instead of reopening the fail-open the stop
-  // closes.
+  // A literal regex, never a constructed one: a built pattern is the ReDoS shape
+  // the security scan blocks.
   pattern: () =>
-    /\bHR(?:\.|\s)\s*([^\s,.]{1,24}(?:\s+[^\s,.]{1,24}){0,3})(\s+no\.\s*(?=[^\s,;.)[\]])(\d[\p{L}\p{Nd}]*)?(?:(?!\bHR(?:\.|\s))[^\s,;.)[\]])*)/dgiu,
+    /\bHR(?:[.．。]|\s)\s*([^\s,.]{1,24}(?:\s+[^\s,.]{1,24}){0,3})(\s+no\.\s*(?=[^\s,;.)[\]])(\d[\p{L}\p{Nd}]*)?(?:(?!\bHR(?:[.．。]|\s))[^\s,;.)[\]])*)/dgiu,
   addressOf: (match) => hadithAddressOf(match),
   collectionOf: (match) => hadithCollectionSlot(match),
 };

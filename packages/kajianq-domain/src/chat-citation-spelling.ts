@@ -63,17 +63,20 @@ export function foldAddressDigits(text: string): string {
 
 /**
  * Canonicalize a citation's **spelling** to the product's forms, so two spellings
- * of one address compare equal: the dotted `Q.S.` variant folds to `QS.`, a bare
- * `QS` / `HR` keeps its mandatory separator (so the grammar-excluded `QS2:255` is
- * left alone), separator spacing folds (`no.5010`, `QS. 2: 255`,
- * `Jilid 1,Hal. 102`), and the hadith collection name folds to the corpus's own
- * spelling of it (`Nasa'i` / `Tirmidzi` / `Ibnu Majah` → `Nasai` / `Tirmidhi` /
- * `Ibn Majah`). Every rule mirrors a form its grammar makes mandatory and folds
- * only the forms that grammar reads — the collection name out of the grammar's own
- * match (`rewriteHadithCollections`) — so a spelling the scan cannot see is never
- * rewritten into one that grounds. Folding spelling never changes which digits an
- * address carries, so a fabricated address stays distinct from a retrieved one;
- * the collection fold's own boundary is stated on `canonicalCollectionName`.
+ * of one address compare equal: the dotted `Q.S.` variant folds to `QS.`, the
+ * hadith marker's separator folds to `HR. ` in every width and spacing the
+ * grammar admits (ASCII dot, fullwidth and ideographic stops, any whitespace —
+ * and no space after the dot), while a marker with no separator at all is left
+ * alone (the grammar-excluded `QS2:255` stays `QS2:255`), separator spacing folds
+ * (`no.5010`, `QS. 2: 255`, `Jilid 1,Hal. 102`), and the hadith collection name
+ * folds to the corpus's own spelling of it (`Nasa'i` / `Tirmidzi` / `Ibnu Majah`
+ * → `Nasai` / `Tirmidhi` / `Ibn Majah`). Every rule mirrors a form its grammar
+ * makes mandatory and folds only the forms that grammar reads — the collection
+ * name out of the grammar's own match (`rewriteHadithCollections`) — so a
+ * spelling the scan cannot see is never rewritten into one that grounds. Folding
+ * spelling never changes which digits an address carries, so a fabricated address
+ * stays distinct from a retrieved one; the collection fold's own boundary is
+ * stated on `canonicalCollectionName`.
  */
 export function canonicalizeCitationSpelling(text: string): string {
   // Case-insensitive because the grammars are: a span they read is a citation, so
@@ -82,7 +85,7 @@ export function canonicalizeCitationSpelling(text: string): string {
   // replacement carries the canonical casing, and no digit is ever rewritten.
   const separated = text
     .replace(/\bQ\.?S(?:\.|\s)\s*/gi, "QS. ")
-    .replace(/\bHR\.?(?=\s)/gi, "HR.")
+    .replace(/\bHR(?:[.．。]|\s)\s*/gi, "HR. ")
     .replace(/\bno\.\s*/gi, "no. ")
     .replace(/\bJilid\s+/gi, "Jilid ")
     .replace(/\bHal\.\s*/gi, "Hal. ")
