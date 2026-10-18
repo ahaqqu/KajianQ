@@ -444,6 +444,33 @@ describe("validateCitations — grounded direction", () => {
     ).toEqual({ grounded: [], ungrounded: [] });
   });
 
+  it("records the marker-boundary shape no scan position can match (#526 boundary)", () => {
+    // A marker glued to a preceding ASCII word character has no `\b` before it,
+    // and every grammar's start requires one — read from the character before the
+    // marker wherever the scan begins, so this is not a tail rule and the hadith
+    // token's marker stop cannot reach it. Recorded, not closed: deleting the `\b`
+    // from all three grammars would start matching a word ending in `hr`
+    // (`Mohr. Bukhari no. 1`). The judged side of the same boundary is pinned for
+    // contrast: a marker after a CJK letter is found.
+    expect(citationCandidatesIn("42HR. Muslim no. 224")).toEqual([]);
+    expect(citationCandidatesIn("参阅42HR. Muslim no. 224")).toEqual([]);
+    expect(validateCitations("参阅42HR. Muslim no. 224", [chunk("HR. Ibn Majah no. 224")])).toEqual(
+      {
+        grounded: [],
+        ungrounded: [],
+      },
+    );
+    // The same shape inside a previous citation's tail: the digit before the
+    // marker is part of the tail's run, so the marker has no boundary there
+    // either — the instance the token's marker stop cannot reach.
+    expect(
+      validateCitations("参阅“HR. Ibn Majah no. 224”42HR. Muslim no. 224", [
+        chunk("HR. Ibn Majah no. 224"),
+      ]),
+    ).toEqual({ grounded: ["HR. Ibn Majah no. 224"], ungrounded: [] });
+    expect(citationCandidatesIn("参阅和HR. Muslim no. 224")).toEqual(["HR. Muslim no. 224"]);
+  });
+
   it("folds the fullwidth digit block, the one \\p{Nd} script a label can render (#264 item 5)", () => {
     // Fullwidth digits are the same number, so the fold grounds them instead
     // of leaving the citation invisible (Quran) or refused (hadith).
@@ -1239,6 +1266,106 @@ describe("validateCitations — ungrounded direction (the trap cases)", () => {
     expect(ungrounded).toContain("HR. Muslim no. 77777");
   });
 
+  it("catches a fabricated hadith that follows another with no whitespace (#526)", () => {
+    // The failing input: no-space prose writes the second citation straight after
+    // the first's closing quote. The first number token stops before the second
+    // marker, so `matchAll` re-enters on it and both addresses are scanned — the
+    // gate names the fabricated one beside the grounded one instead of answering
+    // `ungrounded: []`.
+    const first = "HR. Ibn Majah no. 224";
+    const second = "HR. Muslim no. 224";
+    const text = "参阅“HR. Ibn Majah no. 224”和“HR. Muslim no. 224”，后者并不存在。";
+    expect(citationCandidatesIn(text)).toEqual([first, second]);
+    expect(validateCitations(text, [chunk(first)])).toEqual({
+      grounded: [first],
+      ungrounded: [second],
+    });
+    // The reviewer pre-gate masks claims by span offsets, so the two spans stay
+    // separate and the second begins at its own marker.
+    const spans = citationSpansIn(text);
+    expect(spans.map((span) => span.label)).toEqual([first, second]);
+    expect(spans[1]?.start).toBe(text.indexOf(second));
+  });
+
+  it("finds the second citation after every no-space joiner, and reads spaced prose the same (#526)", () => {
+    const first = "HR. Ibn Majah no. 224";
+    const second = "HR. Muslim no. 224";
+    const ground = chunk(first);
+    for (const joiner of ["”和“", "”“", "”、“", "”。“", "”：", " ", " dan ", "，", "\t"]) {
+      const text = `Menurut “${first}”${joiner}“${second}” …`;
+      expect(citationCandidatesIn(text), joiner).toEqual([first, second]);
+      expect(validateCitations(text, [ground]), joiner).toEqual({
+        grounded: [first],
+        ungrounded: [second],
+      });
+    }
+    // A dot-less second marker reads the same boundary and folds to its label.
+    expect(citationCandidatesIn(`参阅“${first}”和“HR Muslim no. 224”，后者并不存在。`)).toEqual([
+      first,
+      second,
+    ]);
+    // A legitimate multi-word collection name is one citation and grounds on its
+    // own label: the stop cannot split `Ibn Majah`.
+    expect(validateCitations("HR. Ibn Majah no. 224", [ground])).toEqual({
+      grounded: [first],
+      ungrounded: [],
+    });
+    expect(validateCitations("HR. Bukhari no. 1", [chunk("HR. Bukhari no. 1")])).toEqual({
+      grounded: ["HR. Bukhari no. 1"],
+      ungrounded: [],
+    });
+  });
+
+  it("still refuses when the following marker is glued inside another token (#526, fail-closed)", () => {
+    // The stop covers a marker this grammar could itself match. A marker glued to
+    // a word character has no word boundary, so no scan position can read it: the
+    // token absorbs it and the merged span is a different address, which refuses
+    // rather than passing. This is the refused edge of the boundary, not a silent
+    // one — pinned so the next widening cannot trade it for a pass.
+    const mergedCollection = "HR. Ibn Majah”“HR. Muslim no. 224";
+    expect(
+      validateCitations("参阅“HR. Ibn Majah”“HR Muslim no. 224”", [chunk("HR. Ibn Majah no. 224")]),
+    ).toEqual({ grounded: [], ungrounded: [mergedCollection] });
+    const mergedNumber = "HR. Ibn Majah no. 224HR";
+    expect(
+      validateCitations("参阅HR. Ibn Majah no. 224HR Muslim no. 224", [
+        chunk("HR. Ibn Majah no. 224"),
+      ]),
+    ).toEqual({ grounded: ["HR. Ibn Majah no. 224"], ungrounded: [mergedNumber] });
+    // A letter continuing the number word absorbs the marker the same way, and
+    // the merged address refuses — the fabricated label is not named, even when
+    // both real addresses were retrieved. The scan register states that scope.
+    const mergedLetter = "HR. Ibn Majah no. 224和HR";
+    expect(
+      validateCitations("参阅HR. Ibn Majah no. 224和HR. Muslim no. 224", [
+        chunk("HR. Ibn Majah no. 224"),
+        chunk("HR. Muslim no. 224"),
+      ]),
+    ).toEqual({
+      grounded: ["HR. Ibn Majah no. 224", "HR. Muslim no. 224"],
+      ungrounded: [mergedLetter],
+    });
+  });
+
+  it("records the phantom a bare marker forms between two citations (#526 over-fire)", () => {
+    // A bare marker in the prose between two citations starts a match whose
+    // collection absorbs the following dot-less marker, so the scan reports a
+    // phantom label beside the real ones. With both real addresses retrieved the
+    // phantom is ungrounded and the draft refuses — fail-closed, and recorded
+    // rather than suppressed because making the collection marker-aware would
+    // hide a doubled-marker fabrication instead (a false pass for a false
+    // refusal). Pinned so the trade is never silent.
+    const phantom = "HR. “HR. Muslim no. 224";
+    const text = "参阅“HR. Ibn Majah no. 224”HR. “HR Muslim no. 224”";
+    expect(citationCandidatesIn(text)).toEqual(["HR. Ibn Majah no. 224", phantom]);
+    expect(
+      validateCitations(text, [chunk("HR. Ibn Majah no. 224"), chunk("HR. Muslim no. 224")]),
+    ).toEqual({
+      grounded: ["HR. Ibn Majah no. 224", "HR. Muslim no. 224"],
+      ungrounded: [phantom],
+    });
+  });
+
   it("catches a multi-word collection name that is not in the corpus", () => {
     const { ungrounded } = validateCitations("HR. Abu Dawud no. 1 …", []);
     expect(ungrounded).toEqual(["HR. Abu Dawud no. 1"]);
@@ -1414,6 +1541,51 @@ describe("citationCandidatesIn", () => {
   it("de-duplicates the same address written with and without its tail (#253)", () => {
     const draft = "HR. Bukhari no. 4697: pertama, HR. Bukhari no. 4697 kedua";
     expect(citationCandidatesIn(draft)).toEqual(["HR. Bukhari no. 4697"]);
+  });
+
+  it("pins the hadith marker spelling at the start and at the tail stop (#526 B2)", () => {
+    // The marker is spelled at two sites in one pattern — the grammar's start and
+    // the tail stop — because the house rule is a literal regex (a constructed one
+    // is the ReDoS shape the security scan blocks). They are one rule: this pin
+    // reddens if either site is widened without the other, so the fail-open the
+    // stop closes cannot silently reopen.
+    const marker = String.raw`\bHR(?:\.|\s)`;
+    expect(CITATION_GRAMMARS[1]!.pattern().source.split(marker)).toHaveLength(3);
+    // The start admits a dot and any whitespace. Walk every printable ASCII
+    // separator and every `\s` code point, ask the start whether it admits the
+    // spelling, and require the tail stop to leave that spelling for the scan — a
+    // widening to a new separator (a colon, say) reddens here instead of leaving
+    // the tail to absorb it.
+    const separators = [
+      ...Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i)),
+      ...Array.from({ length: 11 }, (_, i) => String.fromCharCode(0x2000 + i)),
+      "\t",
+      "\n",
+      "\r",
+      "\u00a0",
+      "\u1680",
+      "\u2028",
+      "\u2029",
+      "\u202f",
+      "\u205f",
+      "\u3000",
+      "\ufeff",
+    ];
+    const first = "HR. Ibn Majah no. 224";
+    for (const casing of ["HR", "hr", "hR", "Hr"]) {
+      for (const separator of separators) {
+        const spelling = `${casing}${JSON.stringify(separator)}`;
+        const citation = `${casing}${separator}Muslim no. 999`;
+        const startLabel = citationCandidatesIn(citation);
+        // Only a spelling the start admits is a marker spelling to keep in step.
+        if (startLabel.length === 0) continue;
+        expect(startLabel, spelling).toHaveLength(1);
+        expect(citationCandidatesIn(`参阅“${first}”${citation}`), spelling).toEqual([
+          first,
+          ...startLabel,
+        ]);
+      }
+    }
   });
 });
 

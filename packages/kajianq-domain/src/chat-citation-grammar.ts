@@ -150,8 +150,25 @@ function hadithAddressOf(match: RegExpExecArray): string | null {
 // therefore spans address + absorbed tail; the pattern's second group is that
 // tail and its third is the address's number word — `hadithAddressOf` reads the
 // address end off the third group's recorded bounds rather than searching the
-// text for the address word a second time. A **spaced** joiner stays outside this
-// token — `HR. Bukhari no.
+// text for the address word a second time.
+//
+// That trailing token **stops before a following hadith marker**, because the
+// scan resumes after the whole match: a token that ran across
+// `… no. 224”和“HR. Muslim no. 224` would take the second `HR` with it, and the
+// next citation would never be scanned at all — a fabricated address delivered
+// unjudged, the fail-open direction this gate exists to close. The stop is a
+// constant-size lookahead per consumed character, and it can only shorten a
+// **non-address** tail: the number word is read before it and the address end
+// comes from the recorded bounds, so the address a digit-led match reduces to
+// does not move. A marker glued to a word character (`42HR. Muslim no. 224`,
+// `… no. 224xHR. Muslim no. 224`) is not a marker to this grammar — the
+// pattern's own `\b` is read from the character before it wherever the scan
+// starts — so it is absorbed by whichever token it sits in. In the number word
+// or the collection group the merged token is a different address, which
+// refuses; in the tail the first address stays intact and the marker is
+// invisible, the recorded boundary the scan documents.
+//
+// A **spaced** joiner stays outside this token — `HR. Bukhari no.
 // 5010 - 5011` scans as its head — a recorded exclusion (ADR-0049's "Hadith
 // ranges" revisit trigger), pinned as deliberate in the validator test. The
 // collection is the first **capture group**, so a consumer rewriting the name
@@ -161,9 +178,18 @@ const HADITH_GRAMMAR: CitationGrammar = {
   // remainder that run absorbs: the lookahead is what keeps it non-empty (it
   // consumes nothing), and the number word is the optional group after it —
   // optional so a token that is not digit-led still MATCHES, with no address for
-  // `hadithAddressOf` to name.
+  // `hadithAddressOf` to name. The remainder's own lookahead stops it before a
+  // marker this grammar would match, so the scan re-enters on that marker
+  // instead of skipping past it inside the tail.
+  //
+  // The marker is spelled **twice** — at the start and in the tail stop —
+  // because the house rule is a literal regex (a constructed one is the ReDoS
+  // shape the security scan blocks). The two spellings are one rule: the
+  // validator test pins them as identical, so widening the start without
+  // widening the stop reddens it instead of reopening the fail-open the stop
+  // closes.
   pattern: () =>
-    /\bHR(?:\.|\s)\s*([^\s,.]{1,24}(?:\s+[^\s,.]{1,24}){0,3})(\s+no\.\s*(?=[^\s,;.)[\]])(\d[\p{L}\p{Nd}]*)?[^\s,;.)[\]]*)/dgiu,
+    /\bHR(?:\.|\s)\s*([^\s,.]{1,24}(?:\s+[^\s,.]{1,24}){0,3})(\s+no\.\s*(?=[^\s,;.)[\]])(\d[\p{L}\p{Nd}]*)?(?:(?!\bHR(?:\.|\s))[^\s,;.)[\]])*)/dgiu,
   addressOf: (match) => hadithAddressOf(match),
   collectionOf: (match) => hadithCollectionSlot(match),
 };
