@@ -158,13 +158,15 @@ describe("splitAnswerBlocks — the A2 guard on a space-separated line (#361)", 
     expect(split.body).toBe([PROSE, paragraph].join("\n\n"));
   });
 
-  it("strips the copies out of the p9d interleave, leaving its disclaimer residual pinned (#365)", () => {
-    // A paragraph that interleaves copies with the disclaimer sentence is not
-    // prose for the copy: every copy is the card's line, so all of them are
-    // removed and the disclaimer sentences stay byte-identical in `body`. The
-    // disclaimer duplication the shape carries is #365's own residual — the web
-    // peel holds no canonical disclaimer literal, only its opening marker — so
-    // it stays pinned at 3 in `body` plus the footer's one.
+  it("splits the interleaved copy + disclaimer paragraph into one card and one footer (#365)", () => {
+    // ONE paragraph alternates the canonical line with the disclaimer sentence,
+    // and the standalone disclaimer paragraph below it is the footer. The copies
+    // peel to the card like every other copy; the interleave's disclaimer
+    // repetitions are the footer's own line, which the footer draws once, so
+    // they leave `body` with the copies and nothing renders twice. The match is
+    // byte-equality to the line the peel already took for the footer — never a
+    // second disclaimer literal or the opening marker — so the web bundle holds
+    // no new canonical copy.
     for (const paraphrase of [
       DISCLAIMER, // the canonical ID phrasing
       "Jawaban ini bukan fatwa; untuk keputusan hukum, rujuklah ulama yang terpercaya.",
@@ -179,14 +181,62 @@ describe("splitAnswerBlocks — the A2 guard on a space-separated line (#361)", 
       ].join(" ");
       const split = splitAnswerBlocks([PROSE, interleave, paraphrase, MT].join("\n\n"));
       expect(split.warning).toBe(WARNING_ID);
-      // Only the copies moved: the interleave's other bytes are untouched.
-      expect(split.body).toBe(
-        [PROSE, [paraphrase, paraphrase, paraphrase].join("  "), MT].join("\n\n"),
-      );
       expect(split.disclaimer).toBe(paraphrase); // the footer still gets its copy
+      // The interleave is consumed by the two surfaces, so `body` keeps only the
+      // prose and the label's provenance bytes.
+      expect(split.body).toBe([PROSE, MT].join("\n\n"));
+      expect(occurrences(bodyText(split.body), WARNING_ID)).toBe(0);
+      expect(occurrences(bodyText(split.body), paraphrase)).toBe(0);
       expect(occurrences(displayed(split), WARNING_ID)).toBe(1); // the peeled card value
       expect(occurrences(displayed(split, true), WARNING_ID)).toBe(1); // never a second copy
-      expect(occurrences(displayed(split), paraphrase)).toBe(4); // 3 in prose, 1 in the footer
+      expect(occurrences(displayed(split), paraphrase)).toBe(1); // the footer only
     }
+  });
+
+  it("splits the boundary pairs: one copy + one disclaimer, then three of each (#365)", () => {
+    for (const pairs of [1, 3]) {
+      const interleave = Array.from({ length: pairs }, () => `${WARNING_ID} ${DISCLAIMER}`).join(
+        " ",
+      );
+      const split = splitAnswerBlocks([PROSE, interleave, MT, DISCLAIMER].join("\n\n"));
+      expect(split.warning).toBe(WARNING_ID);
+      expect(split.disclaimer).toBe(DISCLAIMER);
+      expect(split.body).toBe([PROSE, MT].join("\n\n"));
+      expect(occurrences(bodyText(split.body), WARNING_ID)).toBe(0);
+      expect(occurrences(bodyText(split.body), DISCLAIMER)).toBe(0);
+      expect(occurrences(displayed(split), WARNING_ID)).toBe(1);
+      expect(occurrences(displayed(split), DISCLAIMER)).toBe(1);
+    }
+  });
+
+  it("keeps a paraphrase that is not the footer's line — the match is not the marker (#365)", () => {
+    // The paragraph alternates the copy with a DIFFERENT "bukan fatwa" phrasing,
+    // while the footer's line is the canonical one. Only the footer's own bytes
+    // are a repeat the footer draws, so the paraphrase is the model's sentence:
+    // the copies still peel, and the paraphrase's bytes stay in `body`.
+    const other = "Jawaban ini bukan fatwa; silakan bertanya kepada ulama setempat.";
+    const interleave = [WARNING_ID, other, WARNING_ID, other].join(" ");
+    const split = splitAnswerBlocks([PROSE, interleave, DISCLAIMER, MT].join("\n\n"));
+    expect(split.warning).toBe(WARNING_ID);
+    expect(split.disclaimer).toBe(DISCLAIMER);
+    expect(split.body).toBe([PROSE, `${other}  ${other}`, MT].join("\n\n"));
+    expect(occurrences(displayed(split), WARNING_ID)).toBe(1);
+    expect(occurrences(displayed(split), DISCLAIMER)).toBe(1); // the footer only
+    expect(occurrences(displayed(split), other)).toBe(2); // both body copies stay, pinned
+  });
+
+  it("keeps the footer line's bytes when the paragraph also carries the model's sentence (#365)", () => {
+    // The paragraph holds the copy, the footer's own line, and a model sentence.
+    // Removing the copy leaves a remainder that is not only the footer line, so
+    // the paragraph keeps its bytes: only the copy the card renders is dropped.
+    const model = "Riwayat ini dinilai lemah oleh sebagian ulama.";
+    const paragraph = `${WARNING_ID} ${DISCLAIMER} ${model}`;
+    const split = splitAnswerBlocks([PROSE, paragraph, DISCLAIMER, MT].join("\n\n"));
+    expect(split.warning).toBe(WARNING_ID);
+    expect(split.disclaimer).toBe(DISCLAIMER);
+    expect(split.body).toBe([PROSE, `${DISCLAIMER} ${model}`, MT].join("\n\n"));
+    expect(occurrences(bodyText(split.body), model)).toBe(1); // no model words dropped
+    expect(occurrences(displayed(split), WARNING_ID)).toBe(1);
+    expect(occurrences(displayed(split), DISCLAIMER)).toBe(2); // body + footer, pinned
   });
 });

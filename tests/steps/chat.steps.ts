@@ -104,6 +104,17 @@ const DHAIF_LABEL_SHARED_ANSWER =
 
 const DHAIF_LABEL_SHARED_FIXTURE = dhaifFixture("dhaif-label-shared", DHAIF_LABEL_SHARED_ANSWER);
 
+// ONE paragraph alternates the canonical line with the disclaimer sentence, and
+// the standalone disclaimer paragraph below it supplies the footer. The copies
+// peel to the card; the interleaved sentences are the footer's own line, so they
+// leave the body with the copies instead of drawing beside the footer's copy.
+const DHAIF_INTERLEAVE_ANSWER =
+  `Hadits tersebut diriwayatkan [HR. Malik no. 18].\n\n` +
+  [DHAIF_WARNING, DISCLAIMER, DHAIF_WARNING, DISCLAIMER, DHAIF_WARNING, DISCLAIMER].join(" ") +
+  `\n\n${DISCLAIMER}\n\n[Terjemahan mesin — lihat teks Arab asli]`;
+
+const DHAIF_INTERLEAVE_FIXTURE = dhaifFixture("dhaif-interleave", DHAIF_INTERLEAVE_ANSWER);
+
 const REFUSAL_FIXTURE = [
   'event: meta\ndata: {"sessionId":"sess-e2e","messageId":"m-ref","traceId":"tr-ref"}\n\n',
   "event: delta\ndata: tidak menemukan dalil yang memadai\n\n",
@@ -365,6 +376,15 @@ When(
   "I ask a question whose dhaif answer puts the label in the canonical line's paragraph",
   async ({ page }) => {
     await openChatWithFixtures(page, DHAIF_LABEL_SHARED_FIXTURE);
+    await page.getByTestId("composer").fill("Hadits tentang amalan tertentu?");
+    await page.getByTestId("send").click();
+  },
+);
+
+When(
+  "I ask a question whose dhaif answer interleaves the canonical line with the disclaimer",
+  async ({ page }) => {
+    await openChatWithFixtures(page, DHAIF_INTERLEAVE_FIXTURE);
     await page.getByTestId("composer").fill("Hadits tentang amalan tertentu?");
     await page.getByTestId("send").click();
   },
@@ -666,6 +686,21 @@ Then("the dhaif warning renders exactly once beside the shared label", async ({ 
   await expect(assistant).toContainText("Riwayat ini dinilai lemah");
   await expect(assistant.getByTestId("ulama-disclaimer")).toHaveCount(1);
 });
+
+Then(
+  "the dhaif warning renders exactly once and the disclaimer once despite the interleave",
+  async ({ page }) => {
+    const assistant = page.getByTestId("message-assistant").last();
+    await expect(assistant.getByTestId("dhaif-warning")).toHaveCount(1);
+    await expect(assistant.getByTestId("ulama-disclaimer")).toHaveCount(1);
+    const text = (await assistant.textContent()) ?? "";
+    // Each sentence is drawn by its own surface: the card for the canonical
+    // line, the footer for the disclaimer. The interleave adds no second copy.
+    await expect(text.split(DHAIF_WARNING).length - 1).toBe(1);
+    await expect(text.split(DISCLAIMER).length - 1).toBe(1);
+    await expect(assistant).toContainText("Hadits tersebut diriwayatkan");
+  },
+);
 
 Then(
   "the answer renders bold, emphasis, and list items with no literal markdown",

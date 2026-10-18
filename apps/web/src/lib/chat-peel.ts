@@ -115,6 +115,15 @@ function splitCanonicalCopy(paragraph: string): { copy: string; remainder: strin
   return lines.every(isProductRuleLine) ? stripped : null;
 }
 
+/** True when `text` is nothing but occurrences of `line` separated by whitespace. The line
+ * is the disclaimer value the peel already took for the footer, never a second literal: an
+ * interleaved paragraph alternates the canonical copy with that same sentence, so removing
+ * the repeats drops no answer content — the footer draws the sentence once. Any other byte
+ * is the model's, so the paragraph keeps its text. */
+function isOnlyRepeatsOf(text: string, line: string): boolean {
+  return text.includes(line) && text.replaceAll(line, "").trim() === "";
+}
+
 /** Classify one paragraph as a rule line (`kind` + trimmed text) or `null` for prose. Short
  * lines only — except the canonical copy, whose equality counts and whose byte-identical
  * repeats collapse to the one copy the card draws. */
@@ -175,9 +184,11 @@ export function splitAnswerBlocks(text: string): SplitAnswer {
   // card draws — above the trailing run and among the rule paragraphs the walk
   // kept in the body. Peel the copy out wherever it sits: a sole-copy paragraph
   // goes entirely, and a paragraph whose remainder is product rule copy (the MT
-  // label, the disclaimer) keeps that remainder byte-identical in place. Prose
-  // that merely opens with a marker, or mixes the copy with the model's own
-  // words or markup, is not that line and stays whole.
+  // label, the disclaimer) keeps that remainder byte-identical in place. A
+  // remainder that is only repeats of the footer's own disclaimer line goes too,
+  // because the footer draws that line once. Prose that merely opens with a
+  // marker, or mixes the copy with the model's own words or markup, is not that
+  // line and stays whole.
   const body: string[] = [];
   for (const paragraph of [...paragraphs.slice(0, cut), ...kept.reverse()]) {
     const copy = splitCanonicalCopy(paragraph);
@@ -185,6 +196,11 @@ export function splitAnswerBlocks(text: string): SplitAnswer {
       body.push(paragraph);
     } else {
       warning ??= copy.copy;
+      // The match is the footer's already-peeled line, so the interleave is
+      // recognised in the delivered order — the draft, then the rules the
+      // postprocess appends below it. A paraphrase that differs by a byte is the
+      // model's sentence and stays.
+      if (disclaimer !== null && isOnlyRepeatsOf(copy.remainder, disclaimer)) continue;
       if (copy.remainder !== "") body.push(copy.remainder);
     }
   }
