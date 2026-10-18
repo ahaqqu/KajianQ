@@ -140,17 +140,20 @@ describe("route-wide coverage: the category's sources union every part's own rol
   });
 
   it.each([...SUB_QUERY_ROLES])("maps the %s role to its own sources, and nothing else", (role) => {
-    // Pinned on the role map itself, not through a routing result: every
-    // non-empty category row already selects the Sunnah, so a `dalil`/`sanad`
-    // part adding it is unobservable downstream — and a role whose set quietly
-    // lost a source would be a part the route stopped searching.
+    // Pinned on the role map itself, because a routing result cannot see most of
+    // it: every non-empty category row already names the Sunnah, so a lost or
+    // added `dalil`/`sanad` source changes no selection today, and only
+    // `principle` is observable downstream. What this buys is the map's
+    // declaration staying exactly as decided — a role widened or narrowed here is
+    // a deliberate edit against this test rather than a silent one no reader sees.
     expect(roleSources(role)).toEqual(ROLE_SOURCES_EXPECTED[role]);
   });
 
   it("adds nothing for a factual part — the category is what the factual part is about", () => {
     // `factual` implies no source *of its own*: the category says what the
     // question is about, so inventing one here would filter every route. Asserted
-    // under the narrowest row, where any added source would be visible.
+    // under the `hadith` row, the narrowest non-empty row — every source type but
+    // the Sunnah itself would show there as an addition.
     expect(
       sourceTypesOf(reading({ category: "hadith", subQueries: [part("q", "factual")] })),
     ).toEqual(["hadith"]);
@@ -262,8 +265,9 @@ describe("the sampled reading cannot decide whether scriptural evidence is searc
 
   it("never makes the Sunnah unreachable, for any area the vocabulary declares", () => {
     // An empty selection is the whole corpus, so it already reaches the Sunnah; a
-    // non-empty one must name it. Nothing downstream can notice the omission: the
-    // filter makes those rows unreachable to every sub-query the route runs.
+    // non-empty one must name it. Nothing downstream restores the omission: the
+    // filter hides those rows from every fused search — the one way back is a
+    // zero-hit search's relaxation, which the run records as its own event.
     for (const category of SUBJECT_AREAS) {
       const sources = sourceTypesOf(reading({ category }));
       expect(
