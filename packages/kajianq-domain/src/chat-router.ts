@@ -59,6 +59,17 @@ export { extractJsonObject, ROUTER_SYSTEM_PROMPT } from "./chat-router-output";
  * origin a text can reach the fan-out from.
  */
 
+/**
+ * The router's sampling, pinned at the call to the vendor's deterministic
+ * setting. The router's classification decides source routing, so a reading
+ * that varies between runs searches a different corpus for the same question:
+ * determinism is the stage's contract. It is deliberately code, not a
+ * deployment knob — config names which model serves a stage (ADR-0009), and a
+ * sampling dial would let a deployment re-open the variance. The answer
+ * generator's sampling is a product decision and is not set here.
+ */
+const ROUTER_SAMPLING = { temperature: 0 };
+
 export type RouterProvider = {
   generate(spec: {
     turns: readonly { role: string; content: string }[];
@@ -70,6 +81,13 @@ export type RouterProvider = {
      * free-tier candidates for the call (`personalDataAllowed`, ADR-0009).
      */
     personalData: true;
+    /**
+     * Per-model wire settings, passed through by the provider seam. Required,
+     * like `personalData`: the router's determinism depends on this call
+     * carrying its sampling, so an optional field would let a call site drop it
+     * without a compile error.
+     */
+    options: Record<string, unknown>;
   }): Effect.Effect<{ text: string; cost: CostRecord }, unknown>;
 };
 
@@ -96,6 +114,7 @@ export function createKajianQRouter(
               // The user's question is personal data — never a free-tier ride
               // (ADR-0043 Consequences; enforced by the provider seam).
               personalData: true,
+              options: ROUTER_SAMPLING,
             })
             .pipe(Effect.mapError((cause) => ({ cause })));
           run.record({

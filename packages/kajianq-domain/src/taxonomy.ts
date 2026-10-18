@@ -112,6 +112,23 @@ export const DAIF_TRAP_LABEL = "dhaif-trap";
  */
 export const SMOKE_COVERAGE_TAGS = [DAIF_TRAP_LABEL, "cross-madzhab"] as const;
 
+/**
+ * Golden Set questions the staged smoke holds out of its sample. A held-out
+ * question stays in the full set and in QA — the deployed gate does not sample
+ * it, because its outcome turns on the router's sampled reading or on a
+ * required citation the retrieval cannot ground yet, so sampling it would make
+ * the gate red or green by chance instead of by regression. The eval script
+ * passes these ids to the selector opaquely (the engine names no product id);
+ * an id leaves this list when what it measures is deterministic again.
+ */
+export const SMOKE_HELD_OUT_IDS: readonly string[] = [
+  "gs-v0-003",
+  "gs-v0-004",
+  "gs-v0-015",
+  "gs-v0-016",
+  "gs-v0-017",
+];
+
 function oneOf<T extends string>(values: readonly T[], value: string): value is T {
   return (values as readonly string[]).includes(value);
 }

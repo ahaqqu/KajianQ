@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { GoldenSet } from "@app/contracts";
-import { selectSmokeSubset, SmokeSubsetError, type SmokeSelectOptions } from "./smoke-subset";
+import {
+  formatSmokePlan,
+  selectSmokeSubset,
+  SmokeSubsetError,
+  type SmokeSelectOptions,
+} from "./smoke-subset";
 
 /**
  * Smoke-subset selection. The selector's job is coverage, not sampling: a
@@ -170,14 +175,14 @@ describe("selectSmokeSubset", () => {
     // fail instead of printing a clean plan for a weaker subset.
     expect(() => selectSmokeSubset(set, { size: 1 })).toThrow(SmokeSubsetError);
     expect(() => selectSmokeSubset(set, { size: 1 })).toThrow(
-      /size 1 cannot cover every class the set carries/,
+      /size 1 cannot cover every class the available set carries/,
     );
     expect(() => selectSmokeSubset(set, { size: 1 })).toThrow(
       /missing: English language coverage, Indonesian answer coverage/,
     );
     // Size 2 buys English; the Indonesian answer class still does not fit.
     expect(() => selectSmokeSubset(set, { size: 2 })).toThrow(
-      /size 2 cannot cover every class the set carries .*missing: Indonesian answer coverage/,
+      /size 2 cannot cover every class the available set carries .*missing: Indonesian answer coverage/,
     );
     // A required tag is a class too, but its question can also cover a
     // language class: the coverage-tag question is an Indonesian answer, so
@@ -194,12 +199,12 @@ describe("selectSmokeSubset", () => {
     expect(() =>
       selectSmokeSubset(taggedSet, { size: 3, requiredTags: ["tag-a", "tag-b", "tag-c"] }),
     ).toThrow(
-      /size 3 cannot cover every class the set carries .*missing: English language coverage, Indonesian answer coverage/,
+      /size 3 cannot cover every class the available set carries .*missing: English language coverage, Indonesian answer coverage/,
     );
     expect(() =>
       selectSmokeSubset(taggedSet, { size: 4, requiredTags: ["tag-a", "tag-b", "tag-c"] }),
     ).toThrow(
-      /size 4 cannot cover every class the set carries .*missing: Indonesian answer coverage/,
+      /size 4 cannot cover every class the available set carries .*missing: Indonesian answer coverage/,
     );
   });
 
@@ -276,7 +281,7 @@ describe("selectSmokeSubset", () => {
     const renamed = { size: 5, trapTag: "trap-tag" } as unknown as SmokeSelectOptions;
     expect(() => selectSmokeSubset(set, renamed)).toThrow(SmokeSubsetError);
     expect(() => selectSmokeSubset(set, renamed)).toThrow(
-      /unknown smoke-subset option "trapTag" \(known: size, requiredTags\)/,
+      /unknown smoke-subset option "trapTag" \(known: size, requiredTags, exclude\)/,
     );
   });
 
@@ -316,5 +321,103 @@ describe("selectSmokeSubset", () => {
     const { set: smoke } = selectSmokeSubset(set, { size: 7 });
     const ids = smoke.questions.map((q) => q.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("keeps a held-out question out of every class and fills the class from the rest", () => {
+    const { set: smoke, reasons } = selectSmokeSubset(set, {
+      size: 5,
+      requiredTags: ["trap-tag"],
+      exclude: ["q-id-1"],
+    });
+    // The excluded question was the first Indonesian answer; the class still
+    // fills, from the next eligible question.
+    expect(smoke.questions.map((q) => q.id)).not.toContain("q-id-1");
+    expect(reasons.find((r) => r.reason === "Indonesian answer coverage")?.id).toBe("q-id-2");
+  });
+
+  it("reports a class whose carriers are all held out instead of throwing or filling it", () => {
+    const {
+      set: smoke,
+      unavailable,
+      heldOutIds,
+    } = selectSmokeSubset(set, {
+      size: 5,
+      requiredTags: ["trap-tag"],
+      exclude: ["q-en-1"],
+    });
+    expect(smoke.questions.map((q) => q.id)).not.toContain("q-en-1");
+    expect(unavailable).toEqual([{ reason: "English language coverage", heldOut: ["q-en-1"] }]);
+    expect(heldOutIds).toEqual(["q-en-1"]);
+  });
+
+  it("refuses a hold-out list that would leave the sample empty", () => {
+    expect(() =>
+      selectSmokeSubset(set, { size: 5, exclude: set.questions.map((q) => q.id) }),
+    ).toThrow(/no question left in "golden-set-v0" after the held-out ids/);
+  });
+
+  it("refuses an excluded id the set does not carry", () => {
+    expect(() => selectSmokeSubset(set, { size: 5, exclude: ["q-missing"] })).toThrow(
+      /excluded id\(s\) not in "golden-set-v0": q-missing/,
+    );
+  });
+
+  it("refuses a required tag whose carriers are all held out", () => {
+    expect(() =>
+      selectSmokeSubset(set, { size: 5, requiredTags: ["trap-tag"], exclude: ["q-trap-1"] }),
+    ).toThrow(/required tag "trap-tag" is carried only by held-out question\(s\) \(q-trap-1\)/);
+  });
+
+  it("leaves the caller's full set untouched", () => {
+    const before = set.questions.map((q) => q.id);
+    selectSmokeSubset(set, { size: 5, exclude: ["q-en-1"] });
+    expect(set.questions.map((q) => q.id)).toEqual(before);
+  });
+
+  it("reports expected source types the sample no longer asks for", () => {
+    const typedSet: GoldenSet = {
+      ...set,
+      questions: [
+        ...set.questions,
+        {
+          id: "q-typed-1",
+          question: "A third source type",
+          language: "id",
+          expectedSourceTypes: ["tertiary-source"],
+          requiredCitations: [],
+          expectedBehavior: "answer",
+          tags: ["topic-d"],
+        },
+      ],
+    };
+    const selection = selectSmokeSubset(typedSet, { size: 5, requiredTags: ["trap-tag"] });
+    expect(selection.uncoveredSourceTypes).toEqual(["tertiary-source"]);
+  });
+
+  it("prints the classes and source types the sample does not cover", () => {
+    const typedSet: GoldenSet = {
+      ...set,
+      questions: [
+        ...set.questions,
+        {
+          id: "q-typed-1",
+          question: "A third source type",
+          language: "id",
+          expectedSourceTypes: ["tertiary-source"],
+          requiredCitations: [],
+          expectedBehavior: "answer",
+          tags: ["topic-d"],
+        },
+      ],
+    };
+    const selection = selectSmokeSubset(typedSet, {
+      size: 5,
+      requiredTags: ["trap-tag"],
+      exclude: ["q-en-1"],
+    });
+    const plan = formatSmokePlan(selection, typedSet).join("\n");
+    expect(plan).toContain("not covered: English language coverage (held out: q-en-1)");
+    expect(plan).toContain("not covered: expected source type tertiary-source");
+    expect(plan).toContain("held out of this sample: q-en-1");
   });
 });

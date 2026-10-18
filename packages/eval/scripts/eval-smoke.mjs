@@ -30,9 +30,9 @@
  * the shared CLI glue in `eval-cli.mjs`; this script keeps only the subset selection.
  */
 import * as evalpkg from "@app/eval";
-// The required coverage classes are the domain pack's vocabulary, imported so a
-// rename cannot strand the gate.
-import { SMOKE_COVERAGE_TAGS } from "@app/kajianq-domain";
+// The required coverage classes and the held-out cases are the domain pack's
+// vocabulary, imported so a rename cannot strand the gate.
+import { SMOKE_COVERAGE_TAGS, SMOKE_HELD_OUT_IDS } from "@app/kajianq-domain";
 import { createStagingHarness } from "./staging-harness.mjs";
 import {
   createBudget,
@@ -60,19 +60,18 @@ const fixture = loadFixture("eval:smoke", config);
 
 const selection = (() => {
   try {
-    return evalpkg.selectSmokeSubset(fixture, { size, requiredTags: SMOKE_COVERAGE_TAGS });
+    return evalpkg.selectSmokeSubset(fixture, {
+      size,
+      requiredTags: SMOKE_COVERAGE_TAGS,
+      exclude: SMOKE_HELD_OUT_IDS,
+    });
   } catch (err) {
     // A fixture that no longer carries a required coverage class must redden
     // the gate, not shrink it: the selector refuses to skip that class silently.
     fail("eval:smoke", err instanceof Error ? err.message : String(err));
   }
 })();
-console.log(
-  [
-    `eval:smoke: ${selection.set.questions.length} of ${fixture.questions.length} questions from "${fixture.id}"`,
-    ...selection.reasons.map((r) => `  ${r.id}: ${r.reason}`),
-  ].join("\n"),
-);
+console.log(evalpkg.formatSmokePlan(selection, fixture).join("\n"));
 
 // The staging bootstrap (store, sourceType scan, transport, traces, ledger, refusal
 // markers) is shared with eval:run — one copy, no drift.

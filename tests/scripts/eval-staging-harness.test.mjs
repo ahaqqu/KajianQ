@@ -132,18 +132,25 @@ describe("CITATION_GRAMMAR (shared staging harness)", () => {
 
 /**
  * The smoke's coverage wiring. `selectSmokeSubset` enforces the required classes
- * internally, but its caller is a `.mjs` entry typecheck never sees: deleting the
- * `requiredTags` argument would drop both product classes while every runtime
- * suite stayed green, because the selector's own tests pass their tags directly.
- * The wiring is therefore pinned in the source, the same instrument this file
- * uses for the citation-grammar pass-through.
+ * and the held-out ids internally, but its caller is a `.mjs` entry typecheck
+ * never sees: deleting the `requiredTags` argument would drop both product
+ * classes, and deleting the `exclude` argument would sample the held-out cases
+ * again, while every runtime suite stayed green — the selector's own tests pass
+ * the arguments directly. The printed plan's held-out line must also come from
+ * the selection, not a second copy of the caller's constant. The wiring is
+ * therefore pinned in the source, the same instrument this file uses for the
+ * citation-grammar pass-through.
  */
-describe("the smoke's required-class wiring", () => {
-  it("passes the product's coverage classes to the selector", () => {
+describe("the smoke's coverage wiring", () => {
+  it("passes the coverage classes and the held-out ids to the selector", () => {
     const source = readFileSync(
       resolve(process.cwd(), "packages/eval/scripts/eval-smoke.mjs"),
       "utf8",
     );
     expect(source).toContain("requiredTags: SMOKE_COVERAGE_TAGS");
+    expect(source).toContain("exclude: SMOKE_HELD_OUT_IDS");
+    // One source of truth for the printed list: the selection, not the input.
+    expect(source).toContain("formatSmokePlan(selection, fixture)");
+    expect(source).not.toContain("SMOKE_HELD_OUT_IDS.join");
   });
 });
