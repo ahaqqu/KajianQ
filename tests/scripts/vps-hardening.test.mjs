@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vite-plus/test";
 import {
@@ -255,12 +255,20 @@ exec ${JSON.stringify(realCat)} "$@"
  * apply.sh installs at /usr/local/sbin/kajianq-backup-pending. A test cannot start a unit, so
  * this is the unit's half of the pre-body contract: the record the preflight reads is the record
  * the unit's own marker produced.
+ *
+ * A caller may stub `mv` through PATH to observe the rename: the stub logs its argv and
+ * snapshots the destination before the real binary performs it.
  */
-function runPendingMarker(recordFile) {
+function runPendingMarker(recordFile, { stubDir, mvLog, mvBefore, realMv } = {}) {
+  const env = { ...process.env };
+  if (stubDir) env.PATH = `${stubDir}:${process.env.PATH}`;
+  if (mvLog) env.MV_LOG = mvLog;
+  if (mvBefore) env.MV_BEFORE = mvBefore;
+  if (realMv) env.REAL_MV = realMv;
   return spawnSync(
     "/bin/sh",
     [resolve(process.cwd(), "provision/vps/backup/kajianq-backup-pending.sh"), recordFile],
-    { encoding: "utf8" },
+    { encoding: "utf8", env },
   );
 }
 
@@ -1669,10 +1677,40 @@ describe("provisioning config as code stays true to the ADR", () => {
     // written through a same-directory temp file renamed into place, so the deploy identity
     // reads a whole record rather than a half-written one, and no temp file is left behind.
     const dir = mkdtempSync(join(tmpdir(), "kajianq-pending-"));
+    const bin = mkdtempSync(join(tmpdir(), "kajianq-pending-bin-"));
     const record = join(dir, "backup-provenance");
+    const mvLog = join(bin, "mv.log");
+    const mvBefore = join(bin, "record-before");
     try {
-      writeFileSync(record, provenanceRecord());
-      const marked = runPendingMarker(record);
+      const previous = provenanceRecord();
+      writeFileSync(record, previous);
+      const realMv = spawnSync("/bin/sh", ["-c", "command -v mv"], {
+        encoding: "utf8",
+      }).stdout.trim();
+      expect(realMv).not.toBe("");
+      writeFileSync(
+        join(bin, "mv"),
+        [
+          "#!/bin/sh",
+          // Log the argv the marker hands mv, and snapshot the destination first: the test then
+          // sees what the record held at the moment of the rename.
+          'if [ -z "${MV_LOG:-}" ] || [ -z "${MV_BEFORE:-}" ] || [ -z "${REAL_MV:-}" ]; then exit 1; fi',
+          ': > "${MV_LOG}"',
+          'for arg in "$@"; do printf \'%s\\n\' "${arg}" >> "${MV_LOG}"; done',
+          'for arg in "$@"; do dest="${arg}"; done',
+          'cp -- "${dest}" "${MV_BEFORE}" 2>/dev/null || :',
+          'exec "${REAL_MV}" "$@"',
+          "",
+        ].join("\n"),
+        { mode: 0o755 },
+      );
+
+      const marked = runPendingMarker(record, {
+        stubDir: bin,
+        mvLog,
+        mvBefore,
+        realMv,
+      });
       expect(marked.status, marked.stderr).toBe(0);
       expect(statSync(record).mode & 0o777).toBe(0o644);
       expect(readdirSync(dir)).toEqual(["backup-provenance"]);
@@ -1680,8 +1718,23 @@ describe("provisioning config as code stays true to the ADR", () => {
       expect(body).toMatch(/^status=pending$/m);
       expect(body).toMatch(/^started_at=\d+$/m);
       expect(body).toMatch(/^completed_at=0$/m);
+
+      // A rename, not an in-place write: the marker hands mv a temp file in the record's own
+      // directory and the record path as the destination. A direct `printf > record` never
+      // reaches this stub, and a temp file outside that directory would not rename atomically.
+      const args = readFileSync(mvLog, "utf8").trim().split("\n");
+      expect(args.slice(0, 2)).toEqual(["-f", "--"]);
+      expect(args).toHaveLength(4);
+      const [tmp, dest] = args.slice(2);
+      expect(dest).toBe(record);
+      expect(dirname(tmp)).toBe(dir);
+      expect(tmp).not.toBe(record);
+      // At the rename the record still held the previous success: the pending body existed only
+      // in the temp file until the move.
+      expect(readFileSync(mvBefore, "utf8")).toBe(previous);
     } finally {
       rmSync(dir, { recursive: true, force: true });
+      rmSync(bin, { recursive: true, force: true });
     }
   });
 
