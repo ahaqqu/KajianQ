@@ -1367,8 +1367,14 @@ describe("provisioning config as code stays true to the ADR", () => {
     // even when the bytes are identical — is the regression that marks an exercised unit as
     // never exercised and fails the next deploy.
     const apply = read("provision/vps/apply.sh");
+    // The unit is one row of apply.sh's artifact table; the install dispatcher
+    // routes that row's `config` kind through install_config.
     expect(apply).toMatch(
-      /install_config "\$\{SRC\}\/systemd\/kajianq-backup\.service" \/etc\/systemd\/system\/kajianq-backup\.service/,
+      /^backup-unit\|config\|systemd\/kajianq-backup\.service\|\/etc\/systemd\/system\/kajianq-backup\.service\|root\|root\|644$/m,
+    );
+    expect(apply).toMatch(/install_artifact backup-unit/);
+    expect(apply).toMatch(
+      /config\) install_config "\$\{src\}" "\$\{dst\}" "\$\{owner\}" "\$\{group\}" "\$\{mode\}"/,
     );
     expect(apply).not.toMatch(
       /install -o root -g root -m 0644 "\$\{SRC\}\/systemd\/kajianq-backup\.service"/,
@@ -1634,7 +1640,7 @@ describe("provisioning config as code stays true to the ADR", () => {
     // deploy-owned and replaced with --delete, so a marker there could be rewritten by the
     // identity the record binds.
     expect(read("provision/vps/apply.sh")).toMatch(
-      /install_config "\$\{SRC\}\/backup\/kajianq-backup-pending\.sh" \/usr\/local\/sbin\/kajianq-backup-pending root root 755/,
+      /^backup-marker\|config\|backup\/kajianq-backup-pending\.sh\|\/usr\/local\/sbin\/kajianq-backup-pending\|root\|root\|755$/m,
     );
 
     const fx = provenanceFixture();
