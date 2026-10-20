@@ -797,9 +797,13 @@ The deploy gates on all of these, and fails loudly on any of them:
   (`/var/lib/kajianq/backup-provenance`, root-owned and world-readable) says the
   last completed run exited 0 **and** completed after the unit file's own
   install time. The unit marks every run `pending` from its `ExecStartPre` before
-  the job body, so a run that dies before the job writes anything — a moved
-  `bun`, an absent deployed bundle, a broken `ExecStart`, a missing
-  `backup.env` — leaves that marker and the deploy refuses it. The record
+  the job body, so a run that starts and dies before the job writes anything —
+  a moved `bun`, an absent deployed bundle, a broken `ExecStart` — leaves that
+  marker and the deploy refuses it. A missing or unreadable `backup.env` is
+  recorded by the job as `status=1` (the unit's `EnvironmentFile` is optional,
+  so the run starts), and a run systemd never starts —
+  `Requires=postgresql.service` failing before any `ExecStartPre` runs — leaves
+  the previous record in place, outside what the gate can see. The record
   survives a reboot, so a run that succeeded before one still proves the backup
   job and a pre-body death still refuses after it; the install-time comparison
   rejects a record written before the unit's current definition. It does not by

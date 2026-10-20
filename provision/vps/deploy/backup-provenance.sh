@@ -33,10 +33,15 @@
 #
 # The unit writes its own marker before the job body runs (ExecStartPre, from
 # /usr/local/sbin/kajianq-backup-pending): `status=pending`. It exists because a
-# run can die before the job writes anything at all — a moved `bun`, an absent
-# deployed bundle, a broken ExecStart, an unreadable backup.env — and without it
-# the record keeps the previous success and this check reads a failed run as
-# current. `pending` is refused as its own case, below.
+# run that starts can die before the job writes anything at all — a moved `bun`,
+# an absent deployed bundle, a broken ExecStart — and without it the record
+# keeps the previous success and this check reads a failed run as current.
+# `pending` is refused as its own case, below. A missing or unreadable
+# backup.env is not that case: the unit's optional EnvironmentFile lets it
+# start, and the job records status=1 itself. A run systemd never starts — a
+# Requires= dependency failing before any ExecStartPre — leaves the previous
+# record in place, so this marker guards the pre-body window, not the pre-spawn
+# one.
 #
 # systemd's failed state is deliberately NOT read as a second signal: it
 # describes the current boot. A reboot clears it (and `apply.sh` clears it with
@@ -119,9 +124,8 @@ fi
 
 # A run that started and never reached the job body: the unit's own marker is
 # still in place, so nothing in the job ever overwrote it (a moved bun, an
-# absent deployed bundle, a broken ExecStart, an unreadable backup.env). The
-# record carries no exit status here, so it is its own refusal rather than the
-# non-numeric-status one below.
+# absent deployed bundle, a broken ExecStart). The record carries no exit status
+# here, so it is its own refusal rather than the non-numeric-status one below.
 if [ "${status}" = "pending" ]; then
     refuse \
         "${UNIT} started a run that never reached the backup job — the encrypted backup is unproven" \

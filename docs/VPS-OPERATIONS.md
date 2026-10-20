@@ -92,9 +92,14 @@ What it does, in order:
    before the current unit definition is a backup you cannot yet trust. The unit
    marks every run `pending` from its `ExecStartPre`
    (`/usr/local/sbin/kajianq-backup-pending`) before the job body, so a run that
-   dies before the job writes anything — a moved `bun`, an absent deployed
-   bundle, a broken `ExecStart`, a missing `backup.env` — leaves that marker and
-   is refused too. The record survives a reboot, where systemd's
+   starts and dies before the job writes anything — a moved `bun`, an absent
+   deployed bundle, a broken `ExecStart` — leaves that marker and is refused
+   too. A missing or unreadable `/etc/kajianq/backup.env` is not that case: the
+   unit's optional `EnvironmentFile` lets it start, and the job records
+   `status=1` itself. A run systemd never starts — `Requires=postgresql.service`
+   failing before any `ExecStartPre` runs — leaves the previous record in place,
+   so the marker guards the pre-body window, not the pre-spawn one. The record
+   survives a reboot, where systemd's
    `ExecMainStatus`/`ExecMainExitTimestamp` describe only the current boot; the
    gate does not read systemd's failed state for the same reason — a reboot
    clears it (and `apply.sh` clears it with `reset-failed`), so a unit that
@@ -707,13 +712,16 @@ and a best-effort revision (usually `unknown` under the deployed bundle) — to
 directory). The unit marks every run `pending` from its `ExecStartPre`
 (`/usr/local/sbin/kajianq-backup-pending`, installed by `apply.sh`) before the
 job body runs, and the job then marks it in progress before the dump. A run that
-dies before the job writes anything — a moved `bun`, an absent deployed bundle,
-a broken `ExecStart`, a missing `backup.env` — therefore leaves the pending
-marker instead of the previous success, and an interrupted run leaves `running`
-or an uncompleted start; the deploy's preflight refuses both. The unit's
-`EnvironmentFile` is optional precisely so that marker runs when the file is
-missing: the job then refuses the run itself and records the failure rather than
-the unit failing before anything can write. That record is the proof that the
+starts and dies before the job writes anything — a moved `bun`, an absent
+deployed bundle, a broken `ExecStart` — therefore leaves the pending marker
+instead of the previous success, and an interrupted run leaves `running` or an
+uncompleted start; the deploy's preflight refuses both. A missing or unreadable
+`backup.env` is recorded by the job, not left at `pending`: the unit's
+`EnvironmentFile` is optional so the run starts, and the job then refuses it
+without its configuration and records `status=1`. A run systemd never starts —
+`Requires=postgresql.service` failing before any `ExecStartPre` runs — leaves
+the previous record untouched, so the marker covers the pre-body window, not the
+pre-spawn one. That record is the proof that the
 backup job has completed since the current unit was installed: it survives a
 reboot, unlike systemd's per-boot run fields (or its failed state, which the
 gate deliberately does not read), and the deploy identity can read it but cannot
