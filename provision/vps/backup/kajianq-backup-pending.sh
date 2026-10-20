@@ -13,7 +13,9 @@
 # systemd loads that file before the first ExecStartPre, and a missing required
 # file fails the unit without spawning anything at all — the marker would be
 # absent exactly when the missing env file is the failure, and the previous
-# success would stay current.
+# success would stay current. Optional, a missing file lets the run start: this
+# marker lands and the job records `status=1` when it finds its configuration
+# missing.
 #
 # The record is written atomically (a same-directory temp file renamed into
 # place) at 0644 inside the root-owned record directory: the unprivileged
