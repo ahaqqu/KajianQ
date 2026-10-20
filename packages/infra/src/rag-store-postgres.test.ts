@@ -815,11 +815,22 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
       expect(await subtreeCounts(userId, chatSessionId)).toMatchObject({ users: 0, feedback: 0 });
     }, 60_000);
 
+    type SuppressedTable =
+      | "users"
+      | "sessions"
+      | "chat_sessions"
+      | "chat_messages"
+      | "answer_traces"
+      | "feedback";
+
+    type SubtreeIds = { userId: string; chatSessionId: string };
+
     /** A `BEFORE DELETE` trigger that silently skips the subject's rows on one
      * table — the failure the postcondition exists for: the sweep succeeds and
-     * removes nothing, so only a count inside the transaction can see it. Returns
+     * removes nothing, and the FK cascade's own delete is skipped the same way,
+     * so only a count inside the transaction can see the surviving row. Returns
      * the cleanup that drops the trigger and its function. */
-    const suppressDeletes = async (table: "feedback" | "chat_messages", when: string) => {
+    const suppressDeletes = async (table: SuppressedTable, when: string) => {
       const fn = `suppress_${table}_${PREFIX.replace(/[^a-zA-Z0-9_]/g, "_")}`;
       await sql!.query(
         `CREATE FUNCTION ${fn}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$`,
@@ -843,47 +854,50 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
       feedback: 1,
     };
 
-    it("a suppressed child delete fails the erasure and rolls the whole subtree back", async () => {
-      if (!URL) return;
-      const { userId, chatSessionId } = await seedSubtree();
-      const cleanup = await suppressDeletes("feedback", `OLD.user_id = '${userId}'::uuid`);
-      try {
-        const failure = await runFail(store.deleteUserCascade(userId));
-        expect(failure.kind).toBe("constraint");
-        expect(String(failure.cause)).toContain("feedback");
-        // The postcondition raised before COMMIT, so the deletes went with the
-        // transaction: the subtree is intact for a retry, never half-erased with a
-        // dangling foreign key.
-        expect(await subtreeCounts(userId, chatSessionId)).toEqual(SEEDED);
-      } finally {
-        await cleanup();
-      }
-      // The obstruction is gone, so the same call completes the erasure.
-      await Effect.runPromise(store.deleteUserCascade(userId));
-      expect(await subtreeCounts(userId, chatSessionId)).toEqual(EMPTY);
-    }, 60_000);
+    // One case per table the residual assertion verifies: the trigger suppresses
+    // that table's delete for the subject's rows, so the postcondition has to
+    // name it and roll the transaction back. A weakened assertion predicate —
+    // `WHERE false` in place of `WHERE EXISTS (…)`, on either side of the
+    // restore pin — makes the call succeed with the row still there, so the
+    // table's case reddens.
+    const SUPPRESSED: { table: SuppressedTable; when: (ids: SubtreeIds) => string }[] = [
+      { table: "users", when: ({ userId }) => `OLD.id = '${userId}'::uuid` },
+      { table: "sessions", when: ({ userId }) => `OLD.user_id = '${userId}'::uuid` },
+      { table: "chat_sessions", when: ({ userId }) => `OLD.user_id = '${userId}'::uuid` },
+      // `chat_messages` has no user column: its owner is its session, and its
+      // residual check runs before the `chat_sessions` delete — the only point
+      // where the rows can still be attributed to the subject.
+      {
+        table: "chat_messages",
+        when: ({ chatSessionId }) => `OLD.session_id = '${chatSessionId}'::uuid`,
+      },
+      { table: "answer_traces", when: ({ userId }) => `OLD.user_id = '${userId}'::uuid` },
+      { table: "feedback", when: ({ userId }) => `OLD.user_id = '${userId}'::uuid` },
+    ];
 
-    it("a suppressed chat-message delete fails the erasure — messages are counted before their sessions go", async () => {
-      if (!URL) return;
-      const { userId, chatSessionId } = await seedSubtree();
-      // `chat_messages` has no user column: its owner is its session. The sweep runs
-      // while that session still exists, and so does its residual check — after the
-      // `chat_sessions` delete the rows could no longer be attributed to the user.
-      const cleanup = await suppressDeletes(
-        "chat_messages",
-        `OLD.session_id = '${chatSessionId}'::uuid`,
-      );
-      try {
-        const failure = await runFail(store.deleteUserCascade(userId));
-        expect(failure.kind).toBe("constraint");
-        expect(String(failure.cause)).toContain("chat_messages");
-        expect(await subtreeCounts(userId, chatSessionId)).toEqual(SEEDED);
-      } finally {
-        await cleanup();
-      }
-      await Effect.runPromise(store.deleteUserCascade(userId));
-      expect(await subtreeCounts(userId, chatSessionId)).toEqual(EMPTY);
-    }, 60_000);
+    for (const { table, when } of SUPPRESSED) {
+      it(`a suppressed ${table} delete fails the erasure — the residual assertion is the detector`, async () => {
+        if (!URL) return;
+        const ids = await seedSubtree();
+        const cleanup = await suppressDeletes(table, when(ids));
+        try {
+          const failure = await runFail(store.deleteUserCascade(ids.userId));
+          expect(failure.kind).toBe("constraint");
+          // The raise names the table whose row survived; an incidental failure
+          // (a foreign-key violation, a missing relation) does not read this way.
+          expect(String(failure.cause)).toContain(`user erasure left rows behind in: ${table}`);
+          // The postcondition raised before COMMIT, so the deletes went with the
+          // transaction: the subtree is intact for a retry, never half-erased with
+          // a dangling foreign key.
+          expect(await subtreeCounts(ids.userId, ids.chatSessionId)).toEqual(SEEDED);
+        } finally {
+          await cleanup();
+        }
+        // The obstruction is gone, so the same call completes the erasure.
+        await Effect.runPromise(store.deleteUserCascade(ids.userId));
+        expect(await subtreeCounts(ids.userId, ids.chatSessionId)).toEqual(EMPTY);
+      }, 60_000);
+    }
 
     it("verifies every table a cascading foreign key path reaches from users", async () => {
       if (!URL) return;

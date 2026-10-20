@@ -524,6 +524,56 @@ describe("erasure a restore must re-apply", () => {
       "utf8",
     );
 
+  /**
+   * The adapter's sweep statements, normalised to compare with the restore's: the
+   * SQL the adapter interpolates the id into becomes the psql variable the batch
+   * binds, whitespace collapses, and the statement terminator the template leaves
+   * to its runner is dropped. Only the `sql` tagged bodies that are a `DELETE`
+   * count — the `set_config` bind and the `DO` blocks are not sweeps.
+   */
+  const adapterSweeps = (text) =>
+    [...text.matchAll(/sql`([\s\S]*?)`/g)]
+      .map((match) =>
+        match[1]
+          .replace(/\s+/g, " ")
+          .replace(/\$\{userId\}/g, ":'uid'")
+          .trim()
+          .replace(/;$/, ""),
+      )
+      .filter((statement) => statement.startsWith("DELETE FROM"));
+
+  /** The restore's sweep lines, normalised the same way the adapter's are. */
+  const restoreSweeps = (text) =>
+    text
+      .split("\n")
+      .map((line) =>
+        line
+          .replace(/\s+/g, " ")
+          .replace(/\$\{userId\}/g, ":'uid'")
+          .trim()
+          .replace(/;$/, ""),
+      )
+      .filter((statement) => statement.startsWith("DELETE FROM"));
+
+  /** The `DO` blocks in a batch, in order. */
+  const doBlocks = (text) => [...text.matchAll(/DO \$\$[\s\S]*?END \$\$/g)].map((m) => m[0]);
+
+  /**
+   * One residual assertion block in comparable form: `--` comment text is stripped
+   * per line before the lines are joined (a comment runs to the end of its line, so
+   * stripping after the join would let a commented-out predicate and a live one
+   * normalise to the same text), then blank lines, leading/trailing whitespace and
+   * the trailing statement terminator are dropped. Internal spacing and literals
+   * stay verbatim.
+   */
+  const normalizeBlock = (block) =>
+    block
+      .split("\n")
+      .map((line) => line.replace(/--.*$/, "").trim())
+      .filter(Boolean)
+      .join(" ")
+      .replace(/;$/, "");
+
   it("the Art. 17 batch matches production deleteUserCascade in both directions — the restore path cannot drift", () => {
     // Production erasure (DELETE /v1/auth/me → deleteUserCascade) sweeps and verifies each
     // table of the subtree inside one transaction; the restore re-applies the same statements
@@ -547,37 +597,35 @@ describe("erasure a restore must re-apply", () => {
     // Every swept table is verified, and the restore verifies the same set production does.
     expect(verifiedTables(restore).sort()).toEqual([...adapterSwept].sort());
     expect(verifiedTables(adapter).sort()).toEqual([...adapterSwept].sort());
-    // And each restore sweep is production's statement, with the id bound as the psql variable
-    // instead of the adapter's interpolated one — a predicate that drifts reddens here too.
-    const normalize = (text) =>
-      text
-        .replace(/\s+/g, " ")
-        .replace(/\$\{userId\}/g, ":'uid'")
-        .trim();
-    const adapterText = normalize(adapter);
-    for (const statement of restore.split("\n").filter((line) => line.startsWith("DELETE"))) {
-      expect(adapterText, statement).toContain(normalize(statement).replace(/;$/, ""));
-    }
+    // And each restore sweep is production's statement, statement for statement. The comparison
+    // is equality, not containment: a restore statement that drops its predicate is a substring
+    // of the adapter's (`DELETE FROM feedback` in `DELETE FROM feedback WHERE user_id = …`) and
+    // would satisfy a one-directional check, so the two lists are compared element by element.
+    expect(restoreSweeps(restore)).toEqual(adapterSweeps(adapter));
+  });
+
+  it("reddens on a dropped sweep predicate in either direction — the comparison is equality, not containment", () => {
+    // An adapter-side predicate change and a restore-side one both move a list element; a
+    // dropped predicate does not shorten the adapter list, it makes the two lists differ.
+    const adapter = adapterSweeps("sql`DELETE FROM feedback WHERE user_id = ${userId}`");
+    expect(restoreSweeps("DELETE FROM feedback WHERE user_id = :'uid';")).toEqual(adapter);
+    expect(restoreSweeps("DELETE FROM feedback;")).not.toEqual(adapter);
+    expect(adapterSweeps("sql`DELETE FROM feedback`")).not.toEqual(
+      restoreSweeps("DELETE FROM feedback WHERE user_id = :'uid';"),
+    );
   });
 
   it("the restore assertions are production's DO blocks, predicate for predicate — a weakened restore predicate reddens", () => {
     // The sweep comparison above pins the DELETE predicates; the residual assertions are
     // what turn a surviving row into a non-zero exit, and their predicates live in the DO
     // blocks. Whole blocks are compared, so a weakened predicate cannot hide behind a marker
-    // that is still spelled. Normalisation is per-line leading/trailing whitespace, blank lines,
-    // and the trailing statement terminator the adapter's template leaves to its runner and
-    // psql's batch spells; internal spacing and literals are compared verbatim, so
+    // that is still spelled. Normalisation strips `--` comment text per line (a comment runs
+    // to the end of its line), then per-line leading/trailing whitespace, blank lines, and the
+    // trailing statement terminator the adapter's template leaves to its runner and psql's
+    // batch spells; internal spacing and literals are compared verbatim, so
     // `WHERE EXISTS (…)` against `WHERE false` is a difference.
-    const doBlocks = (text) => [...text.matchAll(/DO \$\$[\s\S]*?END \$\$/g)].map((m) => m[0]);
-    const normalize = (block) =>
-      block
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .join(" ")
-        .replace(/;$/, "");
-    const adapterBlocks = doBlocks(adapterErasure()).map(normalize);
-    const restoreBlocks = doBlocks(erasureSql()).map(normalize);
+    const adapterBlocks = doBlocks(adapterErasure()).map(normalizeBlock);
+    const restoreBlocks = doBlocks(erasureSql()).map(normalizeBlock);
     expect(adapterBlocks).toHaveLength(2);
     expect(restoreBlocks).toHaveLength(2);
     // Positional comparison, so the `chat_messages` assertion must stay the block before the
@@ -586,6 +634,35 @@ describe("erasure a restore must re-apply", () => {
     expect(restoreBlocks[0]).toContain("'chat_messages' AS verified_table");
     expect(restoreBlocks[1]).toContain("'users' AS verified_table");
     expect(restoreBlocks).toEqual(adapterBlocks);
+  });
+
+  it("keeps `--` comment scope when comparing the assertion blocks", () => {
+    // The blocks are compared after their lines are joined, so a comment must be stripped
+    // before the join: `-- scope AND false` comments the predicate out, while `-- scope` on
+    // its own line followed by `AND false` leaves it live. Joining first would make the two
+    // the same text and the pin green against an assertion turned into a no-op.
+    const commentedOut = [
+      "DO $$",
+      "BEGIN",
+      "  IF EXISTS (SELECT 1) -- scope AND false",
+      "  THEN NULL;",
+      "  END IF;",
+      "END $$",
+    ].join("\n");
+    const live = [
+      "DO $$",
+      "BEGIN",
+      "  IF EXISTS (SELECT 1) -- scope",
+      "  AND false THEN NULL;",
+      "  END IF;",
+      "END $$",
+    ].join("\n");
+    expect(normalizeBlock(commentedOut)).not.toBe(normalizeBlock(live));
+    // A comment's own text is not part of the predicate: two blocks that differ only in a
+    // comment are equal, so re-wording one does not redden the pin.
+    expect(normalizeBlock("DO $$\nBEGIN\n  NULL; -- note\nEND $$")).toBe(
+      normalizeBlock("DO $$\nBEGIN\n  NULL;\nEND $$"),
+    );
   });
 
   it("asserts the postcondition inside the restore transaction, so a residual fails the run", () => {
