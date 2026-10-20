@@ -59,6 +59,13 @@
 # The install side keeps that mtime meaningful: apply.sh writes a config only
 # when the installed file differs, so a re-apply over unchanged content does not
 # re-stamp the unit and cannot mark an exercised unit as unproven.
+#
+# The marker script is itself a provisioned artifact, and the deploy runs its
+# provisioned-artifact preflight (provision-drift.sh) before this check: a
+# missing, non-executable or stale /usr/local/sbin/kajianq-backup-pending is
+# refused there, naming the file, so a post-install deletion of the marker
+# cannot leave this check reading an older success. This check does not repeat
+# that assertion.
 
 set -euo pipefail
 

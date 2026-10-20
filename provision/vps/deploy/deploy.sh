@@ -8,6 +8,18 @@
 # and the deploy path lives here with the workflow that calls it. A single
 # decision, recorded in ADR-0044 decision 3.
 #
+# Two read-only preflights run before anything is built or shipped, because a
+# red after the ship would leave the new tree live, the API restarted and the
+# smoke and doctor skipped — an unverified deployment already serving:
+#
+#   1. the provisioned files on the box match this checkout. Provisioning is an
+#      operator action (apply.sh, as root), so a merged change to a unit, script
+#      or config is inert until it is applied; this gate refuses to call such a
+#      box healthy and names the file to apply.
+#   2. the backup job's durable record proves it ran as installed.
+#
+# Neither writes to the box, so a red costs an ssh round trip and nothing else.
+#
 # Usage:
 #   provision/vps/deploy/deploy.sh --env /etc/kajianq/deploy.env
 #   provision/vps/deploy/deploy.sh --env-file <path> [--dry-run] [--no-smoke]
@@ -130,7 +142,35 @@ SSH_OPTS=(-o BatchMode=yes -o StrictHostKeyChecking=accept-new)
 STAGE="$(mktemp -d "${TMPDIR:-/tmp}/kajianq-deploy-XXXXXX")"
 trap 'rm -rf "${STAGE}"' EXIT
 
-# --- 0. preflight: the backup unit's provenance -----------------------------
+# --- 0. preflight: the box runs the provisioning this checkout describes -----
+# Provisioning is an operator action — only apply.sh, run as root on the box,
+# places a unit, script or config — so a merged change under provision/vps/ can
+# sit inert while a deploy reports healthy. This gate closes that: it compares
+# every artifact apply.sh places (enumerated from apply.sh's own table via
+# `--list-artifacts`, never a list copied here) with the checkout, and refuses
+# the deploy, naming each file, when the box is stale.
+#
+# It runs before the provenance preflight below because that gate reads a
+# durable record a stale unit can satisfy: a backup unit installed before its
+# current definition still has a record saying a run exited 0, and the record
+# cannot tell the difference. Reading the record is only meaningful once the
+# installed unit is the one this checkout describes.
+#
+# Read-only on the box (stat, hash, compare), so a red here costs an ssh round
+# trip and leaves the box on its previous revision — the same reason the
+# provenance preflight below also runs before the build.
+log "preflight: provisioned artifacts match the checkout"
+DRIFT_MANIFEST_B64="$(bash "${REPO_DIR}/provision/vps/deploy/provision-drift.sh" \
+    --emit-manifest "${REPO_DIR}" | base64 -w0)"
+if [ "${DRY_RUN}" -eq 1 ]; then
+    log "would: compare the installed provisioned artifacts against the checkout"
+else
+    ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" bash -s -- \
+        --check --manifest-base64 "${DRIFT_MANIFEST_B64}" \
+        <"${REPO_DIR}/provision/vps/deploy/provision-drift.sh"
+fi
+
+# --- 0b. preflight: the backup unit's provenance ----------------------------
 # The assertion is "kajianq-backup.service has a completed backup recorded since
 # its current definition was installed": the job's durable provenance record says
 # the last completed run exited 0 AND completed after that install. Its logic, and

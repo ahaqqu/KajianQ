@@ -20,11 +20,19 @@
 #
 # Usage:
 #   provision/vps/apply.sh [--env <file>] [--dry-run] [--deploy-pubkey <file>]
+#   provision/vps/apply.sh --list-artifacts
 #
 # --deploy-pubkey installs the given public key file into the deploy account's
 # authorized_keys. Without it, the key step is left to the operator (the
 # setup doc carries the command that moves the deploy keys off the admin
 # account); a key is never read from the repository, which is public.
+#
+# --list-artifacts prints the artifact table — every file this script places,
+# its source under provision/vps/, destination, owner, group and mode — and
+# exits before the root and env-file checks, so it needs no provisioning
+# rights. The deploy's drift preflight (provision/vps/deploy/provision-drift.sh)
+# enumerates what to compare from that output, so the set it checks and the set
+# this script installs are one table, not two lists that drift apart.
 #
 # Exit non-zero on the first failure: a half-applied hardening config is worse
 # than an unapplied one, because it looks done.
@@ -36,6 +44,7 @@ SRC="${REPO_DIR}/provision/vps"
 ENV_FILE="/etc/kajianq/proxy.env"
 DRY_RUN=0
 DEPLOY_PUBKEY=""
+LIST_ARTIFACTS=0
 
 # The deploy identity is fixed, not configurable (#181, ADR-0044 decision 6).
 # Three places must agree on it: this account here, the sudoers
@@ -46,6 +55,78 @@ DEPLOY_PUBKEY=""
 # name drift is a lint failure (tests/scripts/vps-hardening.test.mjs), not a
 # silent possibility.
 DEPLOY_USER="kajianq-deploy"
+
+# --- the provisioned artifact table -----------------------------------------
+# Every file this script places, in one table. The install section below takes
+# each file's source, destination, ownership and mode from here, and
+# `--list-artifacts` prints the same rows for the deploy's drift preflight, so
+# the set it compares and the set this script installs cannot disagree.
+#
+# Fields: name|kind|source (under provision/vps)|destination|owner|group|mode
+#   config   installed verbatim through install_config()
+#   render   __KAJIANQ_* placeholders substituted from --env through render()
+#   sudoers  parsed by `visudo -cf` through install_sudoers()
+# A destination may be a glob where the host's layout carries a value the
+# repository cannot know: the Postgres config lives under the server's
+# major-version directory.
+ARTIFACTS='
+nginx-conf|render|nginx/kajianq.conf|/etc/nginx/sites-available/kajianq.conf|root|root|644
+logrotate-proxy|config|logrotate/kajianq-proxy|/etc/logrotate.d/kajianq-proxy|root|root|644
+logrotate-postgres|config|logrotate/kajianq-postgres|/etc/logrotate.d/kajianq-postgres|root|root|644
+journald|config|journald/kajianq.conf|/etc/systemd/journald.conf.d/kajianq.conf|root|root|644
+postgres|config|postgres/99-kajianq.conf|/etc/postgresql/*/main/conf.d/99-kajianq.conf|root|root|644
+api-unit|config|systemd/kajianq-api.service|/etc/systemd/system/kajianq-api.service|root|root|644
+cron-unit|config|systemd/kajianq-cron.service|/etc/systemd/system/kajianq-cron.service|root|root|644
+cron-timer|config|systemd/kajianq-cron.timer|/etc/systemd/system/kajianq-cron.timer|root|root|644
+backup-marker|config|backup/kajianq-backup-pending.sh|/usr/local/sbin/kajianq-backup-pending|root|root|755
+backup-unit|config|systemd/kajianq-backup.service|/etc/systemd/system/kajianq-backup.service|root|root|644
+backup-timer|config|systemd/kajianq-backup.timer|/etc/systemd/system/kajianq-backup.timer|root|root|644
+deploy-grant|sudoers|sudoers/kajianq-deploy|/etc/sudoers.d/kajianq-deploy|root|root|440
+'
+
+list_artifacts() {
+    local row
+    while IFS= read -r row; do
+        [ -n "${row}" ] || continue
+        printf '%s\n' "${row}"
+    done <<< "${ARTIFACTS}"
+}
+
+artifact_spec() {
+    local name="$1" row
+    while IFS= read -r row; do
+        [ -n "${row}" ] || continue
+        case "${row}" in
+            "${name}|"*) printf '%s\n' "${row}"; return 0 ;;
+        esac
+    done <<< "${ARTIFACTS}"
+    echo "apply: no provisioned artifact named ${name}" >&2
+    return 1
+}
+
+# The install dispatcher: every file this script places goes through the table,
+# so the rows `--list-artifacts` prints and the rows installed here are the same
+# rows. The helpers it names are defined further down, before the first call
+# that reaches them.
+install_artifact() {
+    local name="$1" dst_override="${2:-}"
+    local spec kind src dst owner group mode
+    spec="$(artifact_spec "${name}")" || exit 1
+    IFS='|' read -r _kind_name kind src dst owner group mode <<< "${spec}"
+    if [ -n "${dst_override}" ]; then
+        dst="${dst_override}"
+    fi
+    src="${SRC}/${src}"
+    case "${kind}" in
+        config) install_config "${src}" "${dst}" "${owner}" "${group}" "${mode}" ;;
+        render) render "${src}" "${dst}" ;;
+        sudoers) install_sudoers "${src}" "${dst}" ;;
+        *)
+            echo "apply: ${name} has unknown artifact kind ${kind}" >&2
+            exit 1
+            ;;
+    esac
+}
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -61,12 +142,24 @@ while [ $# -gt 0 ]; do
             DEPLOY_PUBKEY="${2:?--deploy-pubkey needs a path}"
             shift 2
             ;;
+        --list-artifacts)
+            LIST_ARTIFACTS=1
+            shift
+            ;;
         *)
             echo "apply: unknown argument: $1" >&2
             exit 1
             ;;
     esac
 done
+
+# A read-only query: print what the install section places and exit before the
+# root and env-file checks, so the deploy can enumerate the set it must compare
+# without provisioning rights.
+if [ "${LIST_ARTIFACTS}" -eq 1 ]; then
+    list_artifacts
+    exit 0
+fi
 
 log() { printf '%s\n' "apply: $*"; }
 
@@ -175,9 +268,12 @@ run install -d -o root -g root -m 0755 /var/lib/kajianq
 # install rather than following it. The candidate is validated first and moved
 # into place after, so a failed parse leaves the previous grant intact.
 install_sudoers() {
-    local src="${SRC}/sudoers/kajianq-deploy"
-    local dst="/etc/sudoers.d/${DEPLOY_USER}"
+    local src="$1" dst="$2"
     local tmp
+    if [ "${dst}" != "/etc/sudoers.d/${DEPLOY_USER}" ]; then
+        echo "apply: the grant's destination ${dst} disagrees with ${DEPLOY_USER} — name drift" >&2
+        exit 1
+    fi
     tmp="$(mktemp)"
     cat "${src}" >"${tmp}"
     if [ "${DRY_RUN}" -eq 1 ]; then
@@ -208,7 +304,7 @@ if [ -d /etc/sudoers.d ]; then
         echo "apply: ${SRC}/sudoers/kajianq-deploy does not grant ${DEPLOY_USER} — name drift" >&2
         exit 1
     fi
-    install_sudoers
+    install_artifact deploy-grant
 else
     echo "apply: /etc/sudoers.d is missing — the deploy grant cannot be installed" >&2
     exit 1
@@ -327,7 +423,7 @@ render() {
 }
 
 if [ -d /etc/nginx ]; then
-    render "${SRC}/nginx/kajianq.conf" /etc/nginx/sites-available/kajianq.conf
+    install_artifact nginx-conf
     run ln -sfn /etc/nginx/sites-available/kajianq.conf /etc/nginx/sites-enabled/kajianq.conf
     run nginx -t
     run systemctl reload nginx
@@ -336,8 +432,8 @@ else
 fi
 
 # --- log rotation -----------------------------------------------------------
-install_config "${SRC}/logrotate/kajianq-proxy" /etc/logrotate.d/kajianq-proxy
-install_config "${SRC}/logrotate/kajianq-postgres" /etc/logrotate.d/kajianq-postgres
+install_artifact logrotate-proxy
+install_artifact logrotate-postgres
 # --debug parses the config without rotating anything; a syntax error must fail
 # the apply rather than surface as a silent rotation failure weeks later.
 run logrotate --debug /etc/logrotate.d/kajianq-proxy
@@ -345,28 +441,28 @@ run logrotate --debug /etc/logrotate.d/kajianq-postgres
 
 # --- API log retention ------------------------------------------------------
 run install -d -o root -g root -m 0755 /etc/systemd/journald.conf.d
-install_config "${SRC}/journald/kajianq.conf" /etc/systemd/journald.conf.d/kajianq.conf
+install_artifact journald
 run systemctl restart systemd-journald
 
 # --- Postgres ---------------------------------------------------------------
 PG_CONF_DIR="$(ls -d /etc/postgresql/*/main/conf.d 2>/dev/null | head -1 || true)"
 if [ -n "${PG_CONF_DIR}" ]; then
-    install_config "${SRC}/postgres/99-kajianq.conf" "${PG_CONF_DIR}/99-kajianq.conf"
+    install_artifact postgres "${PG_CONF_DIR}/99-kajianq.conf"
     run systemctl restart postgresql
 else
     log "no Debian Postgres conf.d found — install postgresql then re-run to apply the log/reachability posture"
 fi
 
 # --- API service ------------------------------------------------------------
-install_config "${SRC}/systemd/kajianq-api.service" /etc/systemd/system/kajianq-api.service
+install_artifact api-unit
 
 # --- session-reclamation cron (ADR-0017, ADR-0044 decision 6) ---------------
 # The nightly reclamation used to be a Cloudflare Worker cron trigger; on the
 # VPS it is a systemd timer invoking the dedicated entry. Both units are
 # config-as-code, so the schedule is installed and enabled here rather than as a
 # hand-copied crontab line.
-install_config "${SRC}/systemd/kajianq-cron.service" /etc/systemd/system/kajianq-cron.service
-install_config "${SRC}/systemd/kajianq-cron.timer" /etc/systemd/system/kajianq-cron.timer
+install_artifact cron-unit
+install_artifact cron-timer
 
 # --- backup schedule --------------------------------------------------------
 # The unit's ExecStartPre marker is a root-owned script outside /etc and outside
@@ -377,7 +473,7 @@ install_config "${SRC}/systemd/kajianq-cron.timer" /etc/systemd/system/kajianq-c
 #
 # `755` is compared verbatim by install_config against `stat -c %a` (which
 # prints 755, not 0755), so an unchanged copy is still left untouched.
-install_config "${SRC}/backup/kajianq-backup-pending.sh" /usr/local/sbin/kajianq-backup-pending root root 755
+install_artifact backup-marker
 
 # The unit is installed verbatim: its ExecStart names a DEPLOYED artifact
 # (api/backup.js), so there is no placeholder to render and nothing here reads
@@ -385,8 +481,8 @@ install_config "${SRC}/backup/kajianq-backup-pending.sh" /usr/local/sbin/kajianq
 # what puts this unit's code under the same update mechanism as the API's
 # (#181) — it used to execute whatever revision sat in /srv/kajianq-src, which
 # the deploy never touched.
-install_config "${SRC}/systemd/kajianq-backup.service" /etc/systemd/system/kajianq-backup.service
-install_config "${SRC}/systemd/kajianq-backup.timer" /etc/systemd/system/kajianq-backup.timer
+install_artifact backup-unit
+install_artifact backup-timer
 run systemctl daemon-reload
 
 # The unit's ExecStart target is shipped by the DEPLOY path, not by this script

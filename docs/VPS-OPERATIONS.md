@@ -84,7 +84,26 @@ provision/vps/deploy/deploy.sh --env /etc/kajianq/deploy.env
 
 What it does, in order:
 
-1. **Preflight — the backup unit's provenance.** Before anything is built or
+1. **Preflight — the provisioned files on the box match this checkout.**
+   Provisioning is an operator action: only `provision/vps/apply.sh`, run as
+   root on the box, places a unit, script or config. `provision-drift.sh` (piped
+   over ssh) enumerates what `apply.sh` places from the script's own table
+   (`provision/vps/apply.sh --list-artifacts`, so the checked set and the
+   installed set cannot drift apart) and compares every installed copy with the
+   checkout the deploy runs from: a unit, timer, logrotate/journald/Postgres
+   config or the backup unit's `ExecStartPre` marker script by content hash,
+   owner and mode; the rendered nginx block line by line, with each
+   `__KAJIANQ_*__` value treated as the box's (a different domain or upstream is
+   configuration, not drift); the sudoers grant by owner, mode and size, because
+   it is 0440 root:root and unreadable from the deploy identity by design, and
+   the commands it grants are exercised by this very deploy. A mismatch fails
+   the deploy and names each file with the remedy: run
+   `sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env` on the box from a
+   checkout of the revision being deployed, then deploy again. The gate is
+   read-only, and it runs before the provenance check below because a stale unit
+   can satisfy that check's record — exactly the state a deploy must not call
+   healthy.
+2. **Preflight — the backup unit's provenance.** Before anything is built or
    touched, `backup-provenance.sh` (piped over ssh) reads the backup job's own
    provenance record — `/var/lib/kajianq/backup-provenance`, root-owned 0644 in
    a root-owned 0755 directory — and asserts that the last completed run exited
@@ -106,29 +125,29 @@ What it does, in order:
    failed before a reboot would read as healthy after it. A
    box whose installed bundle predates the writer cannot bootstrap by starting
    the unit — it bootstraps once from the checkout, as `docs/VPS-SETUP.md` §8
-   shows. It runs first because it reads only state that already exists on the
-   box — a red here costs an ssh round trip and leaves the box on its previous
-   revision, where a red after the ship would leave the new tree live, the API
-   restarted, and the smoke and doctor below skipped.
-2. **Build.** `bun run build:web` for the PWA, then two `bun build
+   shows. It runs before the build because it reads only state that already
+   exists on the box — a red here costs an ssh round trip and leaves the box on
+   its previous revision, where a red after the ship would leave the new tree
+   live, the API restarted, and the smoke and doctor below skipped.
+3. **Build.** `bun run build:web` for the PWA, then two `bun build
 --target=bun` bundles from `apps/api/src/boot.ts` (serving) and
    `apps/api/src/cleanup.ts` (the nightly reclamation). Bundling for Bun is what
    makes `pg` a dependency of the artifact rather than a runtime resolve against
    a `node_modules` tree the box does not have. A missing
    `apps/web/dist/index.html` fails the deploy here — an empty web directory
    would otherwise serve the API's 503 and look like an app bug.
-3. **Ship.** `rsync -az --delete --chmod=D755,F644` of the two trees to
+4. **Ship.** `rsync -az --delete --chmod=D755,F644` of the two trees to
    `/srv/kajianq/api` and `/srv/kajianq/web`. `--delete` is deliberate: the SPA
    is content-hashed, and a stale file on the box is a stale file, not a
    rollback.
-4. **Restart.** `sudo systemctl restart kajianq-api.service`, then a plain
+5. **Restart.** `sudo systemctl restart kajianq-api.service`, then a plain
    (unprivileged) `systemctl is-active --quiet` so a unit that died on start
    fails the deploy immediately, then `sudo systemctl start kajianq-cron.service`
    once, so a rotated env var or a missing key fails the deploy now rather than
    silently at 03:17. The timer itself is not restarted — its schedule does not
    depend on the shipped code. Both `sudo` calls are covered by exactly two
    grants (§1.5); the `is-active` check needs none.
-5. **Smoke, against the public URL** (through DNS, the proxy, and TLS — never
+6. **Smoke, against the public URL** (through DNS, the proxy, and TLS — never
    the loopback port, which would skip exactly where a TLS, upstream, header,
    or content-type regression shows up):
    - `GET /v1/health` succeeds;
@@ -141,12 +160,14 @@ What it does, in order:
      while health stays green).
 
 Flags: `--dry-run` prints every action without writing; `--no-smoke` skips step
-5; `--env <path>` overrides the env file. The script exits non-zero on the first
+6; `--env <path>` overrides the env file. The script exits non-zero on the first
 failure — a half-shipped tree that reported success is worse than a failed
 deploy.
 
-A deploy **does not**: run migrations (operator action — §2.3), take a
-snapshot (§2.4), touch DNS, or restart the backup timer.
+A deploy **does not**: run migrations (operator action — §2.3), run
+`provision/vps/apply.sh` (step 1 refuses a stale box instead — applying is
+root's, on the box), take a snapshot (§2.4), touch DNS, or restart the backup
+timer.
 
 ### 1.2 What triggers a deploy
 

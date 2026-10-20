@@ -61,8 +61,13 @@ before provisioning keys.
 ### Everything `apply.sh` places, and where it comes from
 
 Every config below is config-as-code under [`provision/vps/`](../provision/vps/)
-— placed and enabled by `apply.sh` in §7, never hand-copied. This table is the
-map from repo file to host path, so you can review a change before it lands:
+— placed and enabled by `apply.sh` in §7, never hand-copied. The authoritative
+list of what it places is what `provision/vps/apply.sh --list-artifacts` prints:
+the deploy's preflight compares exactly that list with the checkout
+([`docs/VPS-OPERATIONS.md`](VPS-OPERATIONS.md) §1.1 step 1), so a change to a
+provisioned file is a deploy failure until it is applied. This table is the map
+from repo file to host path, including the files the deploy bundles rather than
+`apply.sh` placing, so you can review a change before it lands:
 
 | File                                        | Lands at                                             | Purpose                                                                                |
 | ------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------- |
@@ -556,7 +561,10 @@ sudo sh -c 'set -a; . /etc/kajianq/backup.env; set +a; restic -r "$RESTIC_REPOSI
 ```
 
 Now apply the configuration. This is idempotent — re-running it is safe and is
-the normal way to pick up a config change.
+the normal way to pick up a config change. Run it from a checkout pulled to the
+revision being deployed: the deploy's preflight compares every installed file
+with that checkout and refuses a box whose provisioning is stale, naming the
+file ([`docs/VPS-OPERATIONS.md`](VPS-OPERATIONS.md) §1.1 step 1).
 
 ```bash
 cd /srv/kajianq-src
@@ -789,6 +797,13 @@ public-URL checks (for a box whose DNS or certificate is not ready yet).
 
 The deploy gates on all of these, and fails loudly on any of them:
 
+- **the provisioned files match the checkout**: every file `apply.sh` places —
+  the units, the `ExecStartPre` marker script, the logrotate/journald/Postgres
+  config, the rendered nginx block and the sudoers grant — is compared with the
+  checkout the deploy runs from. A difference fails the deploy, naming the file
+  and the remedy: run `apply.sh` on the box from a pulled checkout. The marker
+  script's presence, mode and content are part of that comparison, so a deleted
+  or non-executable marker is refused before the provenance gate reads a record.
 - the web build produced an SPA (`apps/web/dist/index.html` exists)
 - the API restarted and `systemctl is-active` reports active
 - the reclamation ran once — so a rotated env var fails the deploy rather than
@@ -826,7 +841,9 @@ run that next.
 > that mtime, and then the gate stays red until a run after that install. Once
 > the deployed bundle has the writer, prove it through the service:
 > `sudo systemctl start kajianq-backup.service`. A box still on the pre-record
-> bundle bootstraps from the checkout instead (below).
+> bundle bootstraps from the checkout instead (below). The re-apply is enforced:
+> the deploy's first preflight refuses a box whose installed artifacts differ
+> from the checkout, so an unapplied unit can no longer read as healthy.
 
 > **The pre-body marker is installed with the unit.** `apply.sh` (§7) places
 > `/usr/local/sbin/kajianq-backup-pending` and the unit whose `ExecStartPre` runs
