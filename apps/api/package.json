@@ -14,7 +14,7 @@
     "@app/rag-core": "workspace:*",
     "@app/rate": "workspace:*",
     "@hono/standard-validator": "0.4.0",
-    "@sentry/bun": "10.71.0",
+    "@sentry/bun": "11.6.0",
     "@standard-community/standard-json": "0.3.6",
     "@standard-community/standard-openapi": "0.2.10",
     "@valibot/to-json-schema": "1.8.0",
