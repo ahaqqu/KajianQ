@@ -23,10 +23,10 @@ import { MACHINE_TRANSLATION_LABEL } from "./chat-assembler";
  *
  * The **disclaimer** has one owner: the rule. Its canonical copy is the last
  * paragraph of every answer the rules decorate, written whether the draft
- * carried, paraphrased, or omitted the claim. A unit whose entire content is the
- * claim and its consult instruction is removed first; a unit that mixes the claim
- * with answer content is preserved, so a paraphrase may survive beside the close,
- * never instead of it, and no sentence the rule cannot prove is deleted.
+ * carried, paraphrased, or omitted the claim. The draft's own disclaimer is
+ * cleared unit by unit, and only where the unit's comparison tokens are exactly one
+ * of the templates below: a unit carrying any other token is preserved
+ * byte-for-byte, so a second disclaimer is possible and a deleted sentence is not.
  *
  * Which rules changed the delivered text is returned in
  * `ProductRulesResult.applied` and recorded on the trace by the only production
@@ -95,98 +95,94 @@ function contextHasTranslation(context: AssembledContext<KajianQFilters>): boole
 }
 
 /**
- * The claim every disclaimer makes, in either language — the answer is not a
- * fatwa. It is the CLAIM, not the product's copy, because the rule has to
- * recognise the model's own wording of it: that wording is what it clears away.
- * A qualifier may sit between the negation and the noun ("bukan suatu fatwa",
- * "not a legal fatwa", "not meant to be a fatwa"), because that is the same claim
- * paraphrased. A sentence that only advises consulting a scholar, without denying
- * that the answer is a fatwa, is a different promise and is not matched.
+ * Wrap-only markup — emphasis, strikethrough, code, and the quotation marks that
+ * wrap a quoted sentence — is never answer bytes, so comparison reads through it:
+ * `bukan **fatwa**` and `"bukan fatwa"` carry the same words.
  */
-const DISCLAIMER_CLAIM =
-  /\b(?:bukan(?:lah)?\s+(?:(?:merupakan|sebuah|suatu|sebagai|berupa)\s+)*fatwa|not\s+(?:(?:a|an|any|legal|religious|formal|binding|meant\s+to\s+be|intended\s+to\s+be)\s+)*fatwa)\b/iu;
+const WRAP_ONLY = /[*_~`"'“”‘’]+/g;
 
-/**
- * Wrap-only markup — emphasis, strikethrough, code — is never answer bytes: the
- * predicate reads the words it wraps, so `bukan **fatwa**` is the same claim.
- */
-const WRAP_ONLY = /[*_~`]+/g;
+/** The marker prefix a disclaimer sentence may carry; it is not answer content. */
+const MARKER_PREFIX =
+  /^(?:\[\s*(?:peringatan|warning|catatan|note)\s*\]|(?:peringatan|warning|catatan|note)\s*:)\s*/iu;
 
-/** True when the text carries the claim, wrap-only markup aside. */
-function carriesDisclaimerClaim(text: string): boolean {
-  return DISCLAIMER_CLAIM.test(text.replace(WRAP_ONLY, " "));
+/** The punctuation run that ends a sentence, in either script. */
+const TERMINAL_PUNCTUATION = /[.!?؟۔]+$/u;
+
+/** A unit's comparison tokens — normalisation that exists only to compare, never to
+ * rewrite: wrap-only markup and a leading rule marker go, case folds, whitespace
+ * collapses, and the terminal punctuation run goes. Every other character stays, so
+ * two units compare equal only when they carry the same words in the same order. */
+function comparisonTokens(text: string): string[] {
+  let normalised = text.replace(WRAP_ONLY, "");
+  for (;;) {
+    const next = normalised.replace(MARKER_PREFIX, "");
+    if (next === normalised) break;
+    normalised = next;
+  }
+  return normalised
+    .toLowerCase()
+    .replace(/\s+/gu, " ")
+    .trim()
+    .replace(TERMINAL_PUNCTUATION, "")
+    .split(" ")
+    .filter((token) => token !== "");
 }
 
-/**
- * The units a disclaimer can occupy. A sentence ends at a run of terminal
- * punctuation in either script, plus any markup that closes it — a quotation
- * mark, a bracket, a table cell's pipe, or a wrap delimiter. None of those is
- * answer text, and a boundary that stopped inside one would merge the next
- * sentence into the disclaimer's unit and take it with the removal. The refusal
- * split reads a sentence the same way. A paragraph break is a unit boundary too.
- * The split KEEPS the separators, so everything the rule does not remove
- * survives byte-for-byte — an abbreviation like "QS." only makes a unit shorter,
- * never merges text across a boundary.
- */
+/** Every sentence the rule may delete, one literal token sequence each — the canonical
+ * copy in both languages, and the paraphrase shapes delivered answers actually carried:
+ * the claim alone, and the claim with the consult instruction the copy pairs with it.
+ * The set is closed: a sentence outside it is answer content, and widening it is how a
+ * rule that misreads a word regains the power to delete a sentence. */
+const DISCLAIMER_TEMPLATES: readonly (readonly string[])[] = [
+  ulamaDisclaimer("id"),
+  ulamaDisclaimer("en"),
+  "Jawaban ini bukan fatwa.",
+  "Jawaban ini bukan fatwa; rujuk ulama.",
+  "Jawaban ini bukan fatwa; ruklah ulama.",
+  "Jawaban ini bukan fatwa; untuk keputusan hukum, silakan merujuk kepada ulama.",
+  "Jawaban ini bukan suatu fatwa; rujuk ulama.",
+  "This answer is not a fatwa.",
+  "This answer is not a fatwa; for legal rulings, please consult a scholar.",
+  "This is not a legal fatwa; ask a scholar.",
+  "This is not meant to be a fatwa; ask a scholar.",
+].map(comparisonTokens);
+
+/** True when two token sequences carry the same tokens, in the same order. */
+function sameTokens(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((token, index) => token === b[index]);
+}
+
+/** True when the unit's comparison tokens are exactly a template's — token for token,
+ * never a substring, a frame, or "starts with a subject". Any token the template does
+ * not have makes the unit answer content, and the rule keeps it. */
+function isDisclaimerTemplate(unit: string): boolean {
+  const tokens = comparisonTokens(unit);
+  return tokens.length > 0 && DISCLAIMER_TEMPLATES.some((template) => sameTokens(tokens, template));
+}
+
+/** The units a disclaimer can occupy. A sentence ends at terminal punctuation in either
+ * script plus any markup that closes it — a quotation mark, a bracket, a table pipe, a
+ * wrap delimiter — because none of those is answer text, and a boundary that stopped
+ * inside one would merge the next sentence into the unit and delete it with the
+ * disclaimer. A paragraph break is a unit boundary too, and the split keeps the
+ * separators so everything the rule does not remove survives byte-for-byte. */
 const DISCLAIMER_UNITS = /([.!?؟۔]+["'”’)\]*_~`|]*)(?=\s|$)/;
 
 /** Runs of the wrap-only markdown a sentence may carry; never answer bytes. */
 const WRAP_RUNS = /\*+|_+|~+|`+/g;
 
-/** The marker prefix a disclaimer may carry; it is not answer content. */
-const DISCLAIMER_PREFIX =
-  /^(?:\[\s*(?:peringatan|warning|catatan|note)\s*\]|(?:peringatan|warning|catatan|note)\s*:)\s*/iu;
-
-/**
- * The words a unit may carry and still be nothing but the disclaimer: its
- * subject, the claim's own vocabulary, and the consult instruction the copy pairs
- * with the claim. Any other word makes the unit answer content, and it is
- * preserved. The list is deliberately narrow: the safe failure is a paraphrase
- * left beside the close, never a sentence the reader needed deleted.
- */
-const DISCLAIMER_FRAMING =
-  /^(?:[\s.,;:!?"'“”‘’()\-—–/]|jawaban|ini|this|answer|response|is|bukan|bukanlah|merupakan|sebuah|suatu|sebagai|berupa|fatwa|not|a|an|any|legal|religious|formal|binding|meant|to|be|intended|untuk|keputusan|hukum|for|rulings?|silakan|please|kindly|rujuk\w*|ruk\w*|merujuk\w*|konsultasi\w*|consult\w*|ask|refer|bertanya|ulama|scholar|scholars|ahli|kepada|dan|and|atau|or|dengan|with|cara|mengenai|regarding|tentang|about|langsung|directly|tertentu|specific|kasus|case|pribadi|personal)*$/iu;
-
-/**
- * The unit's words once the marker prefix and wrap-only markup a disclaimer may
- * carry are removed. Nothing the unit ASSERTS is removed: a unit that keeps one
- * word outside the disclaimer's framing is rejected whole.
- */
-function disclaimerContent(unit: string): string {
-  let text = unit.replace(WRAP_ONLY, " ").trim();
-  for (;;) {
-    const next = text.replace(DISCLAIMER_PREFIX, "").trim();
-    if (next === text) return text;
-    text = next;
-  }
-}
-
-/**
- * True when the unit is nothing but a disclaimer: the claim, and only the framing
- * the product's own copy gives it. A unit that also states something about the
- * evidence — a dhaif note, a contrastive clause, a table row — is answer content,
- * and the rule keeps every byte of it.
- */
-function isWholeDisclaimer(unit: string): boolean {
-  const content = disclaimerContent(unit);
-  return carriesDisclaimerClaim(content) && DISCLAIMER_FRAMING.test(content);
-}
-
-/**
- * Drop every unit whose entire content is the disclaimer claim, keeping the
- * other bytes. A unit that mixes the claim with answer content is kept whole:
- * removing it would delete a sentence that is not a disclaimer. When the removed
- * unit opened a markdown wrap that the paragraph closes later, the closing run
- * survives as the paragraph's only run of its marker — an orphaned delimiter, not
- * answer text — and is removed with it.
- */
+/** Drop every unit that is, token for token, one of the disclaimer templates, keeping the
+ * other bytes; a unit that matches no template is kept whole. When the removed unit
+ * opened a markdown wrap the paragraph closes later, the closing run survives as the
+ * paragraph's only run of its marker — an orphaned delimiter, not answer text — and is
+ * removed with it. */
 function dropDisclaimerUnits(paragraph: string): string {
   const units = paragraph.split(DISCLAIMER_UNITS);
   const opening = /^\s*([*_~`]+)/.exec(paragraph)?.[1] ?? "";
-  const openingDropped = isWholeDisclaimer(units[0] ?? "");
+  const openingDropped = isDisclaimerTemplate(units[0] ?? "");
   let kept = "";
   for (let i = 0; i < units.length; i += 2) {
-    if (isWholeDisclaimer(units[i] ?? "")) continue;
+    if (isDisclaimerTemplate(units[i] ?? "")) continue;
     kept += (units[i] ?? "") + (units[i + 1] ?? "");
   }
   if (openingDropped && opening !== "") {
@@ -199,16 +195,11 @@ function dropDisclaimerUnits(paragraph: string): string {
   return kept;
 }
 
-/**
- * Remove the draft's own disclaimer wherever the model put it, so the copy the
- * rule appends sits at the close the renderer peels. A unit is removed only when
- * it is wholly the disclaimer; a paragraph the removal empties is dropped, and a
- * paragraph whose other sentences survive keeps them byte-identical. A disclaimer
- * folded into answer content stays beside the close: content the rule cannot
- * prove is the disclaimer is never deleted.
- */
+/** Remove every unit that is, token for token, one of the disclaimer templates, so the
+ * copy the rule appends sits at the close the renderer peels. Every other unit is kept
+ * byte-for-byte — a paraphrase outside the set, a dhaif note, a table row, a sentence
+ * using the claim in another sense — and a paragraph the removal empties is dropped. */
 function withoutDisclaimer(text: string): string {
-  if (!carriesDisclaimerClaim(text)) return text;
   let changed = false;
   const paragraphs: string[] = [];
   for (const paragraph of text.split(/\n{2,}/)) {
@@ -267,10 +258,10 @@ export function applyProductRules(
   language: "id" | "en",
 ): ProductRulesResult {
   const applied: string[] = [];
-  // The disclaimer's wording is the rule's. Clearing the draft's disclaimer-shaped
-  // units before anything is appended makes the canonical copy the answer's close;
-  // a unit that is not wholly the disclaimer stays, so the copy can sit beside the
-  // model's paraphrase but never after it.
+  // The disclaimer's wording is the rule's. Clearing the units that equal a template
+  // before anything is appended makes the canonical copy the answer's close; every
+  // other unit stays byte-for-byte, so the copy can sit beside a paraphrase but never
+  // instead of it.
   const body = withoutDisclaimer(draft.text);
   const parts: string[] = body === "" ? [] : [body];
 
