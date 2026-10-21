@@ -565,10 +565,15 @@ Now apply the configuration. This is idempotent — re-running it is safe and is
 the normal way to pick up a config change. Run it from a checkout pulled to the
 revision being deployed: the deploy's preflight compares every installed file
 with that checkout and refuses a box whose provisioning is stale, naming the
-file ([`docs/VPS-OPERATIONS.md`](VPS-OPERATIONS.md) §1.1 step 1). A path the
-deploy identity cannot read or search is the exception: that refusal names the
-path and its own mode or ownership remedy, not an apply, because the apply
-installs into that tree and leaves the mode that hides it in place.
+file and, for a difference an apply clears, the apply
+([`docs/VPS-OPERATIONS.md`](VPS-OPERATIONS.md) §1.1 step 1, whose table lists
+what each refusal state ends with). A refusal whose remedy needs no apply
+closes with that remedy and no apply instruction — a path the deploy identity
+cannot read or search is one, and its remedy is that path's mode or ownership,
+because the apply installs into that tree and leaves the mode that hides it in
+place. One state's repair is followed by an install, so its remedy names both: a
+`conf.d` that is not a directory is repaired first (Postgres recreated so the
+path is a directory again), then applied, then deployed.
 
 ```bash
 cd /srv/kajianq-src
@@ -825,24 +830,27 @@ The deploy gates on all of these, and fails loudly on any of them:
   one. Those are also the paths where the preflight and the installer could pick
   different versions: `apply.sh` runs as root and expands through a directory the
   deploy identity cannot enter, so the preflight refuses a version it cannot
-  enumerate instead of comparing the one it can see. The remedy is to make the
-  named path readable and searchable for the deploy identity (its mode or
-  ownership), then deploy again; `apply.sh` cannot clear it, because it installs
-  into that tree and leaves the mode that hides it in place. That refusal closes
-  with that remedy alone and does not repeat the `apply.sh` instruction. The
-  generic `apply.sh` closing prints only when no refusal in the run is one an
-  apply cannot clear, so a mismatch in such a run keeps its per-file `apply.sh`
-  line and the run ends without the generic closing; the count line then reads
-  `could not be compared or do not match the checkout` rather than `do not match
-  the checkout`. A rendered block whose comparison cannot run — the scratch file
-  is unavailable or the manifest's template payload does not decode — is
-  refused with that cause and its own remedy, not reported as a mismatch. A row
-  naming a kind outside `config`, `render`, `link` and `sudoers` is refused
-  with a repair of the artifact table, installed or not, because `apply.sh`
-  exits 1 on that table. A
-  `conf.d` that is a regular file is refused with a remedy to repair Postgres so
-  that path is a directory again, then apply and deploy again; removing the file
-  alone leaves the row skipped, so the posture stays unapplied.
+  enumerate instead of comparing the one it can see. That refusal's remedy is
+  to make the named path readable and searchable for the deploy identity (its
+  mode or ownership), then deploy again; `apply.sh` cannot clear it, because it
+  installs into that tree and leaves the mode that hides it in place. Each
+  refusal ends the way its state does: one whose remedy needs no apply closes
+  with that remedy and no `apply.sh` instruction, and one whose repair is
+  followed by an install names both. The one refusal of the second shape is the
+  `conf.d` that is a regular file: repair Postgres so that path is a directory
+  again, then apply and deploy again — removing the file alone leaves the row
+  skipped, so the posture stays unapplied. The state-by-state endings are in
+  [`docs/VPS-OPERATIONS.md`](VPS-OPERATIONS.md) §1.1. The generic `apply.sh`
+  closing prints only when no refusal in the run is one an apply cannot clear,
+  so a mismatch in such a run keeps its per-file `apply.sh` line and the run
+  ends without the generic closing; the count line then reads `could not be
+  compared or do not match the checkout` rather than `do not match the
+  checkout`. A rendered block whose comparison cannot run — the scratch file is
+  unavailable or the manifest's template payload does not decode — is refused
+  with that cause and its own remedy, not reported as a mismatch. A row naming a
+  kind outside `config`, `render`, `link` and `sudoers` is refused with a repair
+  of the artifact table, installed or not, because `apply.sh` exits 1 on that
+  table.
   The marker script's presence, mode and content are part of that comparison, so
   a deleted or non-executable marker is refused before the provenance gate reads
   a record.
