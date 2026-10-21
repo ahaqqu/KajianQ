@@ -226,10 +226,10 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
    * The recording is deliberately keyed on `applyProductRules !== false` (the
    * same condition that gates the call), so the event means "the rules ran",
    * never "the stage passed". The returned draft stays the single source of
-   * truth for the delivered text; `applied` names only which rules appended
-   * text, and an empty list is the honest record of "ran, appended nothing" —
-   * it does not separate "no rule had a trigger" from "a trigger matched and
-   * the copy was already present".
+   * truth for the delivered text; `applied` names only which rules changed it,
+   * and an empty list is the honest record of "ran, changed nothing" — it does
+   * not separate "no rule had a trigger" from "a trigger matched and the rule
+   * was already satisfied".
    */
   function withRules(
     draft: Draft,

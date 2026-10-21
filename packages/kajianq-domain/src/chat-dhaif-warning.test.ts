@@ -272,15 +272,15 @@ describe("#278 — the dhaif warning as the wiring runs it", () => {
  * the WIRING takes.
  *
  * The invariant: **a delivered answer whose deterministic rules ran carries
- * exactly one `product_rules` event naming the rules that appended text — on
+ * exactly one `product_rules` event naming the rules that changed its text — on
  * every path that applies them — and no such event where they did not run.**
  *
  * The three rules-applying exits are `provider === null || skipLlm`, the
  * ADR-0042 pre-gate skip, and reviewer-passed, and the pre-gate skip records
  * **no `review` event at all** — so this event is the only trace evidence the
- * rules ran there. An empty `applied` is only "ran, appended nothing": it does
- * not separate "no rule had a trigger" from "a trigger matched and the copy was
- * already present" (the exact-copy case that motivated the event), and both
+ * rules ran there. An empty `applied` is only "ran, changed nothing": it does
+ * not separate "no rule had a trigger" from "a trigger matched and the rule was
+ * already satisfied" (the exact-copy case that motivated the event), and both
  * empty-list paths are pinned below.
  */
 
@@ -308,7 +308,7 @@ async function answerVia(
 }
 
 describe("#285 — the product_rules event on the wiring's delivery paths", () => {
-  it("records the rules that appended text on the pre-gate skip path (the #278 trace's path)", async () => {
+  it("records the rules that changed text on the pre-gate skip path (the #278 trace's path)", async () => {
     const store = createMemoryRagStore();
     await seedChild(store, DHAIF_METADATA, 0);
 
@@ -335,7 +335,7 @@ describe("#285 — the product_rules event on the wiring's delivery paths", () =
     expect(text).toContain(ulamaDisclaimer("id"));
   });
 
-  it("records the rules that appended text on the reviewer-passed path", async () => {
+  it("records the rules that changed text on the reviewer-passed path", async () => {
     const store = createMemoryRagStore();
     await seedChild(store, DHAIF_METADATA, 0);
 
@@ -348,7 +348,7 @@ describe("#285 — the product_rules event on the wiring's delivery paths", () =
     ["no reviewer provider wired", { reviewerProvider: null }],
     ["skipLlm", { skipReviewer: true }],
   ])(
-    "records the rules that appended text when the stage stops before the reviewer (%s)",
+    "records the rules that changed text when the stage stops before the reviewer (%s)",
     async (_label, overrides) => {
       const store = createMemoryRagStore();
       await seedChild(store, DHAIF_METADATA, 0);
@@ -361,8 +361,8 @@ describe("#285 — the product_rules event on the wiring's delivery paths", () =
 
   it("records `applied: []` when the draft already carries every rule's copy (the exact-copy path)", async () => {
     // The model reproduced the canonical copy character-for-character, so every
-    // rule found its own text present and appended nothing: `applied: []` records
-    // "ran, appended nothing" — the same value a run with no trigger records,
+    // rule found its own text present and changed nothing: `applied: []` records
+    // "ran, changed nothing" — the same value a run with no trigger records,
     // since only the event's PRESENCE separates either from "the rules never
     // ran".
     //
@@ -660,5 +660,40 @@ describe("#443 — a citation-free asserting refusal draft ships the product's r
       "generator_refusal",
     );
     expect(productRulesEvents(answer)).toHaveLength(0);
+  });
+});
+
+/**
+ * INTEGRATION TEST — the disclaimer's one owner on the path the WIRING runs.
+ *
+ * The invariant: **the delivered answer closes with exactly one canonical
+ * not-a-fatwa disclaimer.** A model paraphrase cannot satisfy the control — it
+ * may state a weaker promise, and the footer peel cannot see it — and it cannot
+ * survive beside the canonical copy either: the rule removes the draft's
+ * wording and writes its own at the close. The `product_rules` event names the
+ * rule, so the trace shows the normalisation happened instead of the delivered
+ * text carrying it by luck.
+ */
+describe("the disclaimer's one canonical close on the wiring's path", () => {
+  it("replaces a paraphrased disclaimer instead of suppressing the canonical copy", async () => {
+    const store = createMemoryRagStore();
+    await seedChild(store, SAHIH_METADATA, 0, null);
+    const draft = [
+      `Jawaban memakai [${SAHIH_CITATION}].`,
+      "Jawaban ini bukan fatwa; untuk keputusan hukum, silakan merujuk kepada ulama.",
+    ].join("\n\n");
+
+    const answer = await answerVia(store, draft, { reviewerDecider: SKIPPING_DECIDER });
+    const text = (answer as { text: string }).text;
+    // The pre-gate skip path records no `review` event; the rules run anyway.
+    expect(eventsOf(answer).find((e) => e.kind === "decision")?.detail["outcome"]).toBe("skip");
+    expect(eventsOf(answer).some((e) => e.kind === "review")).toBe(false);
+    expect(text).not.toContain("silakan merujuk kepada ulama");
+    expect(text.startsWith(`Jawaban memakai [${SAHIH_CITATION}].`)).toBe(true);
+    expect(text.split(ulamaDisclaimer("id")).length - 1).toBe(1);
+    expect(text.endsWith(ulamaDisclaimer("id"))).toBe(true);
+    const rules = productRulesEvents(answer);
+    expect(rules).toHaveLength(1);
+    expect(rules[0]?.detail["applied"]).toContain("ulama_disclaimer");
   });
 });

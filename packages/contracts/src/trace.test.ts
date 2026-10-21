@@ -139,8 +139,9 @@ describe("trace contract", () => {
       },
       { stage: "reviewer", kind: "review", detail: { verdict: "faithful" }, at: 6 },
       {
-        // The deterministic product rules ran: the rule ids that appended text are
-        // persisted trace content, kept opaque — a domain pack owns their meaning.
+        // The deterministic product rules ran: the rule ids that changed the
+        // delivered text are persisted trace content, kept opaque — a domain pack
+        // owns their meaning.
         stage: "reviewer",
         kind: "product_rules",
         detail: { applied: ["rule_one", "rule_two"] },
@@ -199,8 +200,8 @@ describe("trace contract", () => {
     },
   );
 
-  it("accepts an empty `applied` list — the rules ran and appended nothing (#285)", () => {
-    // An empty list records "the rules ran and appended nothing": a `minLength(1)`
+  it("accepts an empty `applied` list — the rules ran and changed nothing (#285)", () => {
+    // An empty list records "the rules ran and changed nothing": a `minLength(1)`
     // on the array, or treating `[]` as absent, would erase that record.
     const parsed = v.safeParse(TraceSchema, {
       id: "t",

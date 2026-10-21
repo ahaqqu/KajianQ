@@ -60,8 +60,9 @@ const DHAIF_ANSWER = `Hadits tersebut diriwayatkan [HR. Malik no. 18].\n\n${DHAI
 
 const DHAIF_FIXTURE = dhaifFixture("dhaif", DHAIF_ANSWER);
 
-// The draft already carries its disclaimer, so the postprocess leaves
-// `[warning][MT label]` as the tail.
+// A rehydrated answer whose disclaimer sits ahead of the warning and the MT
+// label: the footer peel still has to take the whole trailing run, because a
+// persisted transcript keeps the order it was delivered with.
 const DHAIF_MT_ANSWER =
   `Hadits tersebut diriwayatkan [HR. Malik no. 18].\n\n${DISCLAIMER}\n\n${DHAIF_WARNING}\n\n` +
   "[Terjemahan mesin — lihat teks Arab asli]";

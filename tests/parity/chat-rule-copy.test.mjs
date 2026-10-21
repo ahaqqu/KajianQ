@@ -7,7 +7,11 @@ import {
 } from "../../apps/web/src/lib/chat-render";
 import { messages } from "../../apps/web/src/lib/i18n-messages";
 import { MACHINE_TRANSLATION_LABEL as ASSEMBLER_LABEL } from "../../packages/kajianq-domain/src/chat-assembler";
-import { dhaifWarning, ulamaDisclaimer } from "../../packages/kajianq-domain/src/chat-postprocess";
+import {
+  applyProductRules,
+  dhaifWarning,
+  ulamaDisclaimer,
+} from "../../packages/kajianq-domain/src/chat-postprocess";
 
 /**
  * Client↔server parity for the product's rule copy. The web peel classifies the
@@ -63,5 +67,24 @@ describe("the web rule copy matches the domain pack's canonical copy", () => {
       expect(withFooter.disclaimer).toBe(ulamaDisclaimer(locale));
       expect(withFooter.body).toBe(`Jawaban.\n\n[${ASSEMBLER_LABEL}]`);
     }
+  });
+});
+
+describe("the delivered answer's disclaimer is the footer the client peels", () => {
+  // The server's normalisation and the client's footer peel are separate
+  // implementations. This pins the seam: a paraphrase draft ships one canonical
+  // paragraph at the close, and the peel puts it in the footer instead of
+  // leaving a duplicate in the body. The paraphrase's own wording is gone from
+  // both places.
+  const CONTEXT = { chunks: [], turns: [] };
+  const PARAPHRASE =
+    "Jawaban ini bukan fatwa; untuk keputusan hukum, silakan merujuk kepada ulama.";
+
+  it("turns a model paraphrase into one canonical closing paragraph", () => {
+    const { draft } = applyProductRules({ text: `Jawaban.\n\n${PARAPHRASE}` }, CONTEXT, "id");
+    const split = splitAnswerBlocks(draft.text);
+    expect(split.disclaimer).toBe(ulamaDisclaimer("id"));
+    expect(split.body).toBe("Jawaban.");
+    expect(split.body).not.toContain("bukan fatwa");
   });
 });

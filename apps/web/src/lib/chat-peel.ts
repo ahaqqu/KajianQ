@@ -192,8 +192,9 @@ function classifyRule(paragraph: string): { kind: RuleKind; text: string } | nul
  *   the same line the card draws and would otherwise render twice. Wrap delimiters are not
  *   answer bytes, so a wrap-only paragraph goes whole; product rule copy's bytes stay in
  *   `body`. A different canonical literal (the other locale) is never dropped.
- * - **disclaimer**: peels into its footer whatever `bukan fatwa` phrasing opens it (the
- *   server's loose predicate); an identical repeat is dropped, a different one stays.
+ * - **disclaimer**: peels into its footer whatever `bukan fatwa` phrasing opens it, so a
+ *   model paraphrase that reached a persisted transcript still renders a footer rather than
+ *   prose; an identical repeat is dropped, a different one stays.
  * - **MT label**: peels into no field and stays in `body`, in order, with the text it describes.
  * - anything else stops the walk, so prose is never eaten; only a repeat of copy the card still
  *   renders is dropped.
@@ -244,10 +245,10 @@ export function splitAnswerBlocks(text: string): SplitAnswer {
       body.push(paragraph);
     } else {
       warning = copy.copy;
-      // Needs a footer the walk already peeled: in the delivered shape that is the
-      // model's own closing disclaimer paragraph below the interleave (the
-      // postprocess adds no disclaimer when the draft carries "bukan fatwa"). A
-      // paraphrase that differs by a byte is the model's sentence and stays.
+      // Needs a footer the walk already peeled: the delivered answer's closing
+      // disclaimer paragraph. A remainder that only repeats that line is the same
+      // sentence and is dropped with the repeat; a paraphrase that differs by a
+      // byte is the model's sentence and stays.
       if (disclaimer !== null && isOnlyRepeatsOf(copy.remainder, disclaimer)) continue;
       if (copy.remainder !== "") body.push(copy.remainder);
     }

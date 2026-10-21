@@ -15,37 +15,41 @@ import { MACHINE_TRANSLATION_LABEL } from "./chat-assembler";
  * - **Ulama disclaimer** — every delivered answer closes with the
  *   not-a-fatwa disclaimer.
  *
- * They are appended, never rewritten: the model's own text is preserved, and
- * a rule whose own copy the text already carries is not duplicated (a double
- * disclaimer is a visible defect). For the **dhaif rule**, "already carries"
- * means the product's copy, never a model paraphrase of it — that control is
- * deterministic precisely so it does not depend on the model. The disclaimer
- * predicate is deliberately looser: `hasDisclaimer` accepts any "bukan fatwa"
- * phrasing, and whether a paraphrase satisfies the disclaimer or the canonical
- * copy is required (the dhaif rule's treatment) is an open product-copy
- * decision.
+ * The dhaif warning and the machine-translation label are appended: the model's
+ * own text is preserved, and a rule whose own copy the text already carries is
+ * not duplicated (a second copy is a visible defect). For the **dhaif rule**,
+ * "already carries" means the product's copy, never a model paraphrase of it —
+ * that control is deterministic precisely so it does not depend on the model.
  *
- * Which rules appended text is returned in `ProductRulesResult.applied` and
- * recorded on the trace by the only production caller (`chat-reviewer.ts`'s
- * `withRules`) as a `product_rules` event, on every path that applies the
- * rules. The event's PRESENCE is what says the rules ran; absence says they did
- * not only for traces written after the kind shipped (ADR-0007), since a trace
- * written before it carries no such event although the rules ran. `applied`
- * names the rules that appended text. An empty `applied` therefore says only
- * "ran, appended nothing" — it does not separate "no rule had a trigger" from
- * "a trigger matched and the copy was already present", and the delivered text
- * is identical either way. The delivered text stays the single source of truth
- * for what the answer says.
+ * The **disclaimer** has one owner: the rule. Its canonical copy is the last
+ * paragraph of every delivered answer, and every disclaimer-like sentence in
+ * the draft — a paraphrase included — is removed before the copy is written, so
+ * the reader sees the wording the contract promises exactly once, at the close,
+ * instead of a paraphrase beside it. A suppression predicate cannot give that
+ * guarantee: a paraphrase it matches leaves the canonical line out, and one it
+ * does not leaves two disclaimers.
+ *
+ * Which rules changed the delivered text is returned in
+ * `ProductRulesResult.applied` and recorded on the trace by the only production
+ * caller (`chat-reviewer.ts`'s `withRules`) as a `product_rules` event, on every
+ * path that applies the rules. The event's PRESENCE is what says the rules ran;
+ * absence says they did not only for traces written after the kind shipped
+ * (ADR-0007), since a trace written before it carries no such event although the
+ * rules ran. An empty `applied` says the rules ran and left the draft's text as
+ * it was; it does not separate "no rule had a trigger" from "a trigger matched
+ * and the rule was already satisfied". The delivered text stays the single
+ * source of truth for what the answer says.
  */
 
 export type ProductRulesResult = {
   draft: Draft;
   /**
-   * Which deterministic rules appended text, in application order. Recorded
-   * verbatim on the reviewer stage's `product_rules` trace event. `[]` says
-   * the rules ran and appended nothing; it does not separate "no rule had a
-   * trigger" from "a trigger matched and the copy was already present", and it
-   * is not the same as the rules being skipped (that records no event at all).
+   * Which deterministic rules changed the delivered text, in application order.
+   * Recorded verbatim on the reviewer stage's `product_rules` trace event. `[]`
+   * says the rules ran and left the draft's text as it was; it does not separate
+   * "no rule had a trigger" from "a trigger matched and the rule was already
+   * satisfied", and it is not the same as the rules being skipped (that records
+   * no event at all).
    */
   applied: readonly string[];
 };
@@ -57,7 +61,10 @@ export function dhaifWarning(language: "id" | "en"): string {
     : "[Peringatan] Hadits yang dikutip berderajat lemah (dhaif); tidak dapat dijadikan dalil utama.";
 }
 
-/** The not-a-fatwa disclaimer (ID/EN). */
+/**
+ * The not-a-fatwa disclaimer (ID/EN) — the copy every delivered answer closes
+ * with, and the one wording the product promises. `applyProductRules` owns it.
+ */
 export function ulamaDisclaimer(language: "id" | "en"): string {
   return language === "en"
     ? "This answer is not a fatwa; consult a scholar for legal rulings."
@@ -87,9 +94,71 @@ function contextHasTranslation(context: AssembledContext<KajianQFilters>): boole
   return context.turns.some((turn) => turn.content.includes(MACHINE_TRANSLATION_LABEL));
 }
 
-/** True when the text already carries a disclaimer (any phrasing we emit). */
-function hasDisclaimer(text: string): boolean {
-  return /bukan fatwa|not a fatwa/i.test(text);
+/**
+ * The claim every disclaimer makes, in either language — the answer is not a
+ * fatwa. It is the CLAIM, not the product's copy, because the rule has to
+ * recognise the model's own wording of it: that wording is what it removes
+ * before writing the copy the contract promises. A sentence that only advises
+ * consulting a scholar, without denying that the answer is a fatwa, is a
+ * different promise and is not matched.
+ */
+const DISCLAIMER_CLAIM =
+  /\b(?:bukan(?:lah)?\s+(?:merupakan\s+)?(?:sebuah\s+)?fatwa|not\s+(?:a|an)\s+fatwa)\b/iu;
+
+/**
+ * The units a disclaimer can occupy. A sentence ends at a run of terminal
+ * punctuation in either script, plus any markdown that immediately closes it:
+ * a bold sentence ends `.**`, and a delimiter left outside the boundary would
+ * merge the next sentence into the unit and take it with the removal. The
+ * refusal split reads a sentence the same way. A paragraph break is a unit
+ * boundary too. The split KEEPS the separators, so everything the rule does not
+ * remove survives byte-for-byte — an abbreviation like "QS." only makes a unit
+ * shorter, never merges text across a boundary.
+ */
+const DISCLAIMER_UNITS = /([.!?؟۔]+[*_~`]*)(?=\s|$)/;
+
+/** Runs of the wrap-only markdown a sentence may carry; never answer bytes. */
+const WRAP_RUNS = /\*+|_+|~+|`+/g;
+
+/**
+ * Drop every unit that carries the disclaimer claim, keeping the other bytes.
+ * When the removed unit opened a markdown wrap that the paragraph closes later,
+ * the closing run survives as the paragraph's only run of its marker — an
+ * orphaned delimiter, not answer text — and is removed with it.
+ */
+function dropDisclaimerUnits(paragraph: string): string {
+  const units = paragraph.split(DISCLAIMER_UNITS);
+  const opening = /^\s*([*_~`]+)/.exec(paragraph)?.[1] ?? "";
+  const openingDropped = DISCLAIMER_CLAIM.test(units[0] ?? "");
+  let kept = "";
+  for (let i = 0; i < units.length; i += 2) {
+    if (DISCLAIMER_CLAIM.test(units[i] ?? "")) continue;
+    kept += (units[i] ?? "") + (units[i + 1] ?? "");
+  }
+  if (openingDropped && opening !== "") {
+    const runs = kept.match(WRAP_RUNS) ?? [];
+    const [run] = runs;
+    if (runs.length === 1 && run !== undefined && kept.trimEnd().endsWith(run)) {
+      kept = kept.trimEnd().slice(0, -run.length);
+    }
+  }
+  return kept;
+}
+
+/**
+ * Remove the draft's own disclaimer, whatever its wording and wherever the
+ * model put it, so the canonical copy the rule appends is the answer's only
+ * disclaimer and it sits at the close the renderer peels. A paragraph the
+ * removal empties is dropped; a paragraph whose other sentences survive keeps
+ * them (a disclaimer folded in beside a dhaif note loses only its own sentence).
+ */
+function withoutDisclaimer(text: string): string {
+  if (!DISCLAIMER_CLAIM.test(text)) return text;
+  const kept = text
+    .split(/\n{2,}/)
+    .map((paragraph) => dropDisclaimerUnits(paragraph).trim())
+    .filter((paragraph) => paragraph !== "");
+  return kept.join("\n\n");
 }
 
 /**
@@ -138,13 +207,17 @@ export function applyProductRules(
   language: "id" | "en",
 ): ProductRulesResult {
   const applied: string[] = [];
-  const parts: string[] = [draft.text];
+  // The disclaimer's wording is the rule's. Removing the draft's own before
+  // anything is appended is what makes the canonical copy the answer's only
+  // disclaimer, at the close, whichever way the model phrased or placed it.
+  const body = withoutDisclaimer(draft.text);
+  const parts: string[] = body === "" ? [] : [body];
 
-  if (hasWeakGradeChunk(context.chunks) && !hasWeakWarning(draft.text)) {
+  if (hasWeakGradeChunk(context.chunks) && !hasWeakWarning(body)) {
     parts.push(dhaifWarning(language));
     applied.push("dhaif_warning");
   }
-  if (contextHasTranslation(context) && !quotesTranslation(draft.text)) {
+  if (contextHasTranslation(context) && !quotesTranslation(body)) {
     // The label is a provenance claim about the text that follows it; if the
     // model dropped it, restore it as a standalone notice rather than
     // guessing which line it belonged to. The label is intentionally
@@ -152,10 +225,14 @@ export function applyProductRules(
     parts.push(`[${MACHINE_TRANSLATION_LABEL}]`);
     applied.push("machine_translation_label");
   }
-  if (!hasDisclaimer(draft.text)) {
-    parts.push(ulamaDisclaimer(language));
+  const text = [...parts, ulamaDisclaimer(language)].join("\n\n");
+  // The copy is always written, but the rule is recorded only when doing so
+  // changed the delivered text: a draft that already closed with it is left
+  // as the model wrote it, and the event stays a record of change, not of
+  // execution (the event's presence already says the rules ran).
+  if (text !== draft.text.trim()) {
     applied.push("ulama_disclaimer");
   }
 
-  return { draft: { text: parts.join("\n\n") }, applied };
+  return { draft: { text }, applied };
 }

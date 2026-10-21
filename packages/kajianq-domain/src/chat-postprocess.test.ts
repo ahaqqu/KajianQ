@@ -13,9 +13,10 @@ import type { KajianQFilters } from "./filters";
 import { routedQuery } from "./test-utils/routed-query";
 
 /**
- * The deterministic product rules: the dhaif warning, the machine-translation
- * label, and the ulama disclaimer are appended when the model omitted them, never
- * duplicated when it did not, and never applied to a refusal.
+ * The deterministic product rules: the dhaif warning and the
+ * machine-translation label are appended when the model omitted them and never
+ * duplicated when it did not; the ulama disclaimer is the rule's own close,
+ * written exactly once whatever the model wrote; none is applied to a refusal.
  */
 
 const context = (
@@ -45,17 +46,6 @@ describe("applyProductRules", () => {
     const { draft, applied } = applyProductRules({ text: "Jawaban." }, context([]), "id");
     expect(draft.text).toContain(ulamaDisclaimer("id"));
     expect(applied).toContain("ulama_disclaimer");
-  });
-
-  it("does not duplicate a disclaimer the answer already carries", () => {
-    const { draft, applied } = applyProductRules(
-      { text: `Jawaban.\n\n${ulamaDisclaimer("id")}` },
-      context([]),
-      "id",
-    );
-    const occurrences = draft.text.split("bukan fatwa").length - 1;
-    expect(occurrences).toBe(1);
-    expect(applied).not.toContain("ulama_disclaimer");
   });
 
   it("appends the dhaif warning when the context carries a weak-grade hadith", () => {
@@ -226,6 +216,163 @@ describe("applyProductRules", () => {
     expect(lines[1]).toContain(dhaifWarning("id"));
     expect(lines[2]).toContain(MACHINE_TRANSLATION_LABEL);
     expect(lines[3]).toContain(ulamaDisclaimer("id"));
+  });
+});
+
+/**
+ * The ulama disclaimer has one owner: the rule. Four draft shapes pin the
+ * contract — a paraphrase, the canonical copy, both, and a different promise —
+ * plus the prefixed shapes answers actually carried. Each asserts the same
+ * invariant from a different starting point: exactly one canonical copy, as the
+ * last paragraph, never a weaker paraphrase of it.
+ */
+describe("the ulama disclaimer — one canonical close, whatever the draft says", () => {
+  const canonical = ulamaDisclaimer("id");
+  const closesWithCanonical = (text: string) => text.endsWith(canonical);
+  const occurrences = (text: string, copy: string) => text.split(copy).length - 1;
+
+  it("replaces a paraphrase with the canonical copy", () => {
+    // The model's own wording of the claim: the predicate this rule used to
+    // consult accepted it and left the canonical line out, so the control never
+    // fired.
+    const paraphrase =
+      "Jawaban ini bukan fatwa; untuk keputusan hukum, silakan merujuk kepada ulama.";
+    const { draft, applied } = applyProductRules(
+      { text: `Jawaban.\n\n${paraphrase}` },
+      context([]),
+      "id",
+    );
+    expect(draft.text).not.toContain("silakan merujuk kepada ulama");
+    expect(occurrences(draft.text, canonical)).toBe(1);
+    expect(closesWithCanonical(draft.text)).toBe(true);
+    expect(applied).toContain("ulama_disclaimer");
+  });
+
+  it("leaves a draft that already closes with the canonical copy untouched", () => {
+    const original = `Jawaban.\n\n${canonical}`;
+    const { draft, applied } = applyProductRules({ text: original }, context([]), "id");
+    expect(draft.text).toBe(original);
+    expect(occurrences(draft.text, canonical)).toBe(1);
+    // The rule ran and changed nothing: the event records a change, and its
+    // presence already says the rules ran.
+    expect(applied).not.toContain("ulama_disclaimer");
+  });
+
+  it("collapses a draft carrying both copies to one canonical close", () => {
+    const paraphrase =
+      "Jawaban ini bukan fatwa; untuk keputusan hukum, silakan merujuk kepada ulama.";
+    for (const text of [
+      `Jawaban.\n\n${canonical}\n\n${paraphrase}`,
+      `Jawaban.\n\n${paraphrase}\n\n${canonical}`,
+    ]) {
+      const { draft, applied } = applyProductRules({ text }, context([]), "id");
+      expect(occurrences(draft.text, canonical), text).toBe(1);
+      expect(draft.text).not.toContain("silakan merujuk kepada ulama");
+      expect(closesWithCanonical(draft.text)).toBe(true);
+      expect(applied).toContain("ulama_disclaimer");
+    }
+  });
+
+  it("does not mistake a different promise for the disclaimer", () => {
+    // A consult-ulama instruction is not the claim "this is not a fatwa": the
+    // model's sentence stays, and the canonical copy still closes the answer.
+    const other = "Pastikan konsultasi dengan ulama sebelum mengamalkan.";
+    const { draft, applied } = applyProductRules(
+      { text: `Jawaban.\n\n${other}` },
+      context([]),
+      "id",
+    );
+    expect(draft.text).toContain(other);
+    expect(occurrences(draft.text, canonical)).toBe(1);
+    expect(closesWithCanonical(draft.text)).toBe(true);
+    expect(applied).toContain("ulama_disclaimer");
+  });
+
+  it("removes a disclaimer the model placed mid-answer and closes with the canonical copy", () => {
+    const { draft } = applyProductRules(
+      { text: `Jawaban pertama.\n\n${canonical}\n\nPenutup lain.` },
+      context([]),
+      "id",
+    );
+    expect(draft.text).toBe(`Jawaban pertama.\n\nPenutup lain.\n\n${canonical}`);
+  });
+
+  it("normalises the prefixed shapes answers actually carried", () => {
+    // The paraphrase carries the same claim under a rule marker or a label
+    // prefix; the footer peel cannot see either, so the old predicate's
+    // suppression left the reader with no disclaimer at all.
+    for (const preface of ["[Peringatan] ", "Peringatan: ", "[Warning] "]) {
+      const { draft } = applyProductRules(
+        {
+          text:
+            `Jawaban.\n\n${preface}` +
+            "Jawaban ini bukan fatwa; untuk keputusan hukum, silakan merujuk kepada ulama.",
+        },
+        context([]),
+        "id",
+      );
+      expect(draft.text, preface).toBe(`Jawaban.\n\n${canonical}`);
+    }
+  });
+
+  it("keeps a dhaif note that shared the model's disclaimer paragraph", () => {
+    // A disclaimer sentence beside another sentence loses only its own
+    // sentence: the warning rule has its own trigger and must not be starved by
+    // the disclaimer's removal.
+    const note = "Peringatan: hadits ini dhaif.";
+    const { draft, applied } = applyProductRules(
+      {
+        text:
+          `Jawaban.\n\nPeringatan: jawaban ini bukan fatwa; ruklah ulama. ${note} ` +
+          "[HR. Malik no. 18].",
+      },
+      context([chunk({ sourceType: "hadith", grade: "dhaif", citation: "HR. Malik no. 18" })]),
+      "id",
+    );
+    expect(draft.text).toContain(note);
+    expect(draft.text).toContain(dhaifWarning("id"));
+    expect(applied).toContain("dhaif_warning");
+  });
+
+  it("keeps the sentence after a bold-wrapped disclaimer", () => {
+    // The closing delimiter rides the sentence boundary; it must not merge the
+    // next sentence into the removed unit.
+    const { draft } = applyProductRules(
+      { text: "Jawaban. **Jawaban ini bukan fatwa; ruklah ulama.** Penutup." },
+      context([]),
+      "id",
+    );
+    expect(draft.text).toContain("Penutup.");
+    expect(draft.text).not.toContain("ruklah ulama.**");
+    expect(occurrences(draft.text, canonical)).toBe(1);
+  });
+
+  it("takes the orphaned wrap of a removed disclaimer with it", () => {
+    // A wrap that enclosed the disclaimer and its consult sentence loses its
+    // opening with the removed claim; its closing run is a delimiter, not text.
+    const { draft } = applyProductRules(
+      {
+        text:
+          "Jawaban.\n\n*Peringatan: jawaban ini bukan fatwa. " +
+          "Untuk keputusan hukum, silakan merujuk kepada ulama.*",
+      },
+      context([]),
+      "id",
+    );
+    expect(draft.text).not.toContain("*");
+    expect(draft.text).not.toContain("bukan fatwa. Untuk");
+  });
+
+  it("uses the EN copy for an EN paraphrase", () => {
+    const canonicalEn = ulamaDisclaimer("en");
+    const { draft } = applyProductRules(
+      {
+        text: "Answer.\n\nThis answer is not a fatwa; for legal rulings, please consult a scholar.",
+      },
+      context([]),
+      "en",
+    );
+    expect(draft.text).toBe(`Answer.\n\n${canonicalEn}`);
   });
 });
 
