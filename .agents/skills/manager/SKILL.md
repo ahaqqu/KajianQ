@@ -42,7 +42,7 @@ Each adapter carries only its own harness's mechanics — spawn, continue, resul
 
 The **board carries the ticket's workflow state; the issue carries its content.** The issue's open/closed flag is not the process state: the PR's `Closes #` closes it on merge — except a QA-needed change, whose issue stays open until the verdict (step 7), so there the flag tracks that one thing, the verdict still owed — while the board tracks where the work sits on either side of that point, including states GitHub has no concept of. Consult the board to answer "where is this ticket?", the issue to answer "what is this ticket?".
 
-**Status is state; labels are routing.** The board carries state only: the routing labels (`model:high`, `model:plus-human`, `ready-for-agent`) remain the routing authority `AGENTS.md` names them, and a card's column never selects a model, overrides a label, or authorizes a dispatch — a `Ready` card is not a dispatch trigger. Read the labels to answer "who implements it?".
+**Status is state; model and triage labels route; type labels classify.** The board carries state only: the routing labels (`model:high`, `model:plus-human`, `ready-for-agent`) remain the routing authority `AGENTS.md` names them, and a card's column never selects a model, overrides a label, or authorizes a dispatch — a `Ready` card is not a dispatch trigger. The type label (`bug`, `enhancement`, `feature` — `to-tickets` § Type labels) is a third family, the ticket's **kind** rather than its state or its route: it selects no model and authorizes no dispatch, and triage reads it beside the routing labels to answer "what kind of work is it?", where they answer "who implements it?".
 
 Seven states, and who moves what:
 
@@ -59,7 +59,7 @@ Seven states, and who moves what:
 The manager owns every board move; role subagents never touch the board — they report an artifact, and the manager reflects it as a move. The rules govern every ticket, this skill's own workflow ticket included. The transition rules:
 
 - **A ticket arriving with no Status is carded at intake.** An unset Status leaves an item in no column — a review round's defect ticket, a finding the QA role opens, the owner's own filing — so intake places it in **Backlog** the moment the manager sees it, and the transition rules below reach every ticket, not only one already sitting in **Backlog**.
-- **Backlog → Ready** once triage settles the ticket as dispatchable (`to-tickets` output and routing labels in place).
+- **Backlog → Ready** once triage settles the ticket as dispatchable (`to-tickets` output, routing labels and exactly one type label in place); an untyped tracker issue has not been triaged, so it stays in **Backlog** until intake classifies it.
 - **Ready → In progress** at A's dispatch (step 1), on the dispatch's returned agent id — the id is the artifact that proves the dispatch exists, and the `agent/<slug>` branch and the PR URL (`gh pr view`) join it as they appear.
 - **In progress → In review** at B's dispatch (step 3), on an open PR for the ticket (`gh pr view`) and B's returned reviewer dispatch id; it stays there through a fixer round, because a reviewer/fixer round is what the state means. A ticket sits in **In review** only while that round is actually in flight — the moment the review artifact (posted item comments covering the head) and green `gh pr checks` land, move it to **Waiting for merge**.
 - **In review → Waiting for merge** when the gate is clear and no scoped re-review is pending (the fix-then-re-review trigger). **Waiting for merge** is the owner's queue: recommend merge, then leave the state alone until the owner acts.
@@ -90,6 +90,7 @@ Every state change below follows the transition rules under **Project board — 
 ### 0. Intake
 
 - Establish the task scope: what the change is, what done looks like, and the target branch (default `main`).
+- **A tracker issue arriving with no type label is classified at intake, before any dispatch, and labelled.** `to-tickets` § Type labels owns the three definitions and the invariant — every ticket published to an issue tracker carries exactly one of `bug`, `enhancement` or `feature` — so classify by that section, not by a restatement. An issue with none — a review finding, a QA defect, the owner's own filing — is classified by that rule and labelled before any dispatch; the omission is silent exactly like an uncarded ticket.
 - If the task is underspecified, grill the user (`grill-with-docs`) or escalate before spawning A. A clear task up front prevents flaky downstream runs.
 - A defect the task surfaces anywhere in the loop that reached a state the workflow calls good — merged work, an accepted ticket, a defect the QA role or the owner filed, a red post-merge run — is an **escaped defect** and a **bug retrospective** trigger, not only a fix to schedule: file the defect's ticket if none exists and run the retrospective beside its fix (**Bug retrospectives**).
 
