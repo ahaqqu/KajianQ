@@ -41,10 +41,10 @@ const DEFAULT_IDS = ["gs-v0-019", "gs-v0-020", "gs-v0-018", "gs-v0-015", "gs-v0-
  * the sample still pointed at the case.
  */
 const HELD_OUT_EXPECTATIONS = {
-  "gs-v0-003": { expectedSourceTypes: ["hadith"], requiredCitations: ["HR. Bukhari no. 149"] },
+  "gs-v0-003": { expectedSourceTypes: ["hadith"], requiredCitations: ["HR. Bukhari no. 191"] },
   "gs-v0-004": { expectedSourceTypes: ["hadith"], requiredCitations: ["HR. Ibnu Majah no. 224"] },
   "gs-v0-016": { expectedSourceTypes: ["hadith"], requiredCitations: ["HR. Bukhari no. 1395"] },
-  "gs-v0-017": { expectedSourceTypes: ["hadith"], requiredCitations: ["HR. Muslim no. 2064"] },
+  "gs-v0-017": { expectedSourceTypes: ["hadith"], requiredCitations: ["HR. Nasai no. 5144"] },
 };
 
 const select = () =>
