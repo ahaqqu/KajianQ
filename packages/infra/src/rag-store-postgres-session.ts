@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import type { RagStore } from "./rag-store";
+import { canonicalMessageId, type RagStore } from "./rag-store";
 import { hashToken, randomToken } from "./rag-store-shared";
 import { eraseUserTree } from "./rag-store-postgres-erasure";
 import { postgresErrorToStoreError, sqlEffect, type SqlRunner } from "./rag-store-postgres-errors";
@@ -58,9 +58,12 @@ export function postgresSessionMethods(
     },
 
     insertChatMessage(input) {
-      // A caller-supplied id is the message's identity in `answer_traces.message_id`
-      // too; the column's default is the fallback, never a second mint.
-      const id = input.id ?? crypto.randomUUID();
+      // One value names this message on the stream, in the transcript and in
+      // `answer_traces.message_id`. The caller's id is stored in the uuid
+      // column's canonical form and returned as such, so the trace reference
+      // and the stream use the spelling the row can actually keep; absent, the
+      // store mints it here rather than leaving the column default to run.
+      const id = canonicalMessageId(input.id ?? crypto.randomUUID());
       return Effect.as(
         sqlEffect(
           sql,

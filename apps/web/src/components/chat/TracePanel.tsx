@@ -18,15 +18,19 @@ import { FlagButton } from "./FeedbackControls";
  * persisted trace before storing.
  *
  * Rendered only when the message carries a trace frame; a message without
- * one (user turns, degraded traces) shows no affordance, by data.
+ * one (user turns, degraded traces) shows no affordance, by data. `persisted`
+ * gates the flag affordance: a live turn before `meta` has no row for the
+ * report to name.
  */
 
 export function TracePanel({
   trace,
   messageId,
+  persisted,
 }: {
   trace: ChatTraceFrame | undefined;
   messageId: string;
+  persisted: boolean;
 }) {
   const locale: Locale = useLocale();
   const [open, setOpen] = useState(false);
@@ -72,6 +76,7 @@ export function TracePanel({
                     </span>
                     <FlagButton
                       messageId={messageId}
+                      persisted={persisted}
                       anchor={{ type: "chunk", category: "irrelevant_chunk", id: chunk.id }}
                       labelKey="flagIrrelevantChunk"
                       testId={`trace-flag-${chunk.id}`}

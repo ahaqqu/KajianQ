@@ -13,8 +13,18 @@ import { FeedbackBar, FlagButton } from "./FeedbackControls";
  * here so its footer can carry the trace-anchored flags: the failing element a
  * user reports from the sheet — wrong citation, bad machine translation,
  * questionable grade — anchors to the label the server-derived frame showed.
+ *
+ * `persisted` gates every feedback affordance: the live turn is rendered from
+ * `send()` onward under a client-local placeholder id that names no row until
+ * `meta` re-keys it, and a report posted against that placeholder 404s.
  */
-export function MessageCard({ message }: { message: ChatSessionMessage }) {
+export function MessageCard({
+  message,
+  persisted,
+}: {
+  message: ChatSessionMessage;
+  persisted: boolean;
+}) {
   const sheet = useCitationSheet();
   if (message.role === "user") {
     return (
@@ -30,12 +40,13 @@ export function MessageCard({ message }: { message: ChatSessionMessage }) {
   return (
     <>
       <AnswerCard message={message} onOpenCitation={openCitation} />
-      <FeedbackBar messageId={message.id} />
-      <TracePanel trace={message.trace} messageId={message.id} />
+      <FeedbackBar messageId={message.id} persisted={persisted} />
+      <TracePanel trace={message.trace} messageId={message.id} persisted={persisted} />
       {sheet.active !== null && (
         <CitationSheet citation={sheet.active} onClose={sheet.close}>
           <FlagButton
             messageId={message.id}
+            persisted={persisted}
             anchor={{ type: "citation", category: "wrong_citation", id: sheet.active.label }}
             labelKey="flagWrongCitation"
             testId="flag-citation"
@@ -43,6 +54,7 @@ export function MessageCard({ message }: { message: ChatSessionMessage }) {
           {sheet.active.machineTranslated && (
             <FlagButton
               messageId={message.id}
+              persisted={persisted}
               anchor={{
                 type: "translation",
                 category: "bad_machine_translation",
@@ -55,6 +67,7 @@ export function MessageCard({ message }: { message: ChatSessionMessage }) {
           {sheet.active.grade !== undefined && (
             <FlagButton
               messageId={message.id}
+              persisted={persisted}
               anchor={{ type: "grade", category: "questionable_grade", id: sheet.active.label }}
               labelKey="flagQuestionableGrade"
               testId="flag-grade"

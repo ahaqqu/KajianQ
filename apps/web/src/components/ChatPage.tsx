@@ -39,6 +39,7 @@ export function ChatPage({ locale }: { locale: "id" | "en" }) {
     <ChatView
       locale={locale}
       messages={chat.messages}
+      persistedMessageIds={chat.persistedMessageIds}
       busy={chat.busy}
       loadingTranscript={chat.loadingTranscript}
       transcriptTruncated={chat.transcriptTruncated}

@@ -463,6 +463,86 @@ describe("POST /v1/chat", () => {
     expect(citationsFrame.messageId).toBe(meta.messageId);
   }, 15000);
 
+  // The same join when the caller mints a RE-CASED uuid: `chat_messages.id` is
+  // a uuid column (canonical lowercase on read) while `answer_traces.message_id`
+  // is TEXT (keeps the bytes it is given). The seam must canonicalise, not the
+  // caller's spelling: otherwise the stream would name `0B8F…` while the
+  // transcript and the trace name `0b8f…` — the split this change removes,
+  // reached by case.
+  it("streams the canonical message id when the minted id is an uppercase uuid", async () => {
+    const { store, token } = await wiredStore();
+    currentStore = store;
+    await seed(store);
+    currentOverrides = { answerText: "Jawaban berdasar konteks. QS. 2:255" };
+
+    // Every mint in the request (chat session, answer message, trace row) is an
+    // uppercase uuid, so the route hands the seam the spelling the uuid column
+    // cannot keep.
+    let n = 0;
+    const mintUpper = (): ReturnType<typeof crypto.randomUUID> =>
+      `0B8FE2A5-6B1A-4D0E-9A7C-${(0x1f2e3d4c5b60 + n++).toString(16).toUpperCase()}` as ReturnType<
+        typeof crypto.randomUUID
+      >;
+    const spy = vi.spyOn(Crypto.prototype, "randomUUID").mockImplementation(mintUpper);
+    try {
+      const { status, frames, meta } = await postChat(token, { message: "Apa itu Ayat Kursi?" });
+      expect(status).toBe(200);
+
+      // The stream carries the canonical form the row stores, never the mint's
+      // spelling.
+      expect(meta.messageId).toBe(meta.messageId.toLowerCase());
+
+      const rowId = store.allChatMessages().find((m) => m.role === "assistant")?.id as string;
+      expect(rowId).toBe(meta.messageId);
+      // The trace's message reference is that same canonical value.
+      expect(store.allTraces().has(meta.messageId)).toBe(true);
+      expect(store.allTraces().has(meta.messageId.toUpperCase())).toBe(false);
+
+      const res = await createApi().request(
+        `/v1/chat/sessions/${meta.sessionId}/messages`,
+        { headers: { authorization: `Bearer ${token}` } },
+        env,
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        messages: {
+          id: string;
+          role: string;
+          citations?: { messageId: string };
+          trace?: { messageId: string };
+        }[];
+      };
+      const assistant = body.messages.find((m) => m.role === "assistant");
+      expect(assistant?.id).toBe(meta.messageId);
+      expect(assistant?.citations?.messageId).toBe(meta.messageId);
+      expect(assistant?.trace?.messageId).toBe(meta.messageId);
+
+      const citationsFrame = JSON.parse(
+        frames.find((f) => f.event === "citations")?.data ?? "null",
+      ) as { messageId: string };
+      const traceFrame = JSON.parse(frames.find((f) => f.event === "trace")?.data ?? "null") as {
+        messageId: string;
+      };
+      expect(citationsFrame.messageId).toBe(meta.messageId);
+      expect(traceFrame.messageId).toBe(meta.messageId);
+
+      // The feedback leg: the streamed id names the persisted answer, so the
+      // same value a client holds is accepted — not a 404 from the placeholder.
+      const feedbackRes = await createApi().request(
+        "/v1/feedback",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify({ messageId: meta.messageId, rating: "up" }),
+        },
+        env,
+      );
+      expect(feedbackRes.status).toBe(200);
+    } finally {
+      spy.mockRestore();
+    }
+  }, 15000);
+
   it("replays the vendor's own delta sequence, with appended rules as a trailing delta", async () => {
     const { store, token } = await wiredStore();
     currentStore = store;

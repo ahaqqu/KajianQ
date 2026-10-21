@@ -4,16 +4,16 @@ import { createMemoryRagStore } from "./memory-rag-store";
 
 /**
  * The stand-in's feedback-target read resolves the two ids the feedback route
- * accepts — the trace's `message_id` (TEXT, compared exactly, as the adapter's
- * first OR arm does) and a rehydrated chat row id (`chat_messages.id`, uuid,
- * cast and therefore case-insensitive, as the adapter's second arm does). A
- * re-cased chat row id still reaches its answer; a re-cased trace message id
- * stays a miss, exactly as production answers.
+ * accepts — the trace's `message_id` (TEXT, written canonically by the seam) and
+ * a rehydrated chat row id (`chat_messages.id`, uuid, cast and therefore
+ * case-insensitive). Both are message ids in one canonical form, so a re-cased
+ * spelling of either reaches the same answer, and the target carries the
+ * canonical value.
  *
  * Mutations these rows pin, in `memory-rag-store-feedback.ts`: drop
- * `canonicalUuid` from the `chatMessages` lookup and the uppercase row reddens
- * (the TEXT arm's miss no longer falls through to the row); lowercase the
- * `traces` lookup and the text-arm row reddens.
+ * `canonicalMessageId` from the `traces` lookup and the re-cased trace row
+ * reddens; drop `canonicalUuid` from the `chatMessages` lookup and the uppercase
+ * row reddens (the trace arm's miss no longer falls through to the row).
  */
 
 const TRACE_MESSAGE_ID = "7b1a712f-3990-46ce-9964-4eb344a867c5";
@@ -40,7 +40,7 @@ async function storeWithOneAnswer() {
   return { store, chatRowId };
 }
 
-describe("memory RagStore feedback target resolves the uuid arm by case", () => {
+describe("memory RagStore feedback target resolves either message-id arm by case", () => {
   it("finds the answer for an UPPERCASE spelling of the chat row id", async () => {
     const { store, chatRowId } = await storeWithOneAnswer();
     const target = await Effect.runPromise(store.getAnswerFeedbackTarget(chatRowId.toUpperCase()));
@@ -49,11 +49,13 @@ describe("memory RagStore feedback target resolves the uuid arm by case", () => 
     expect(target?.answerText).toBe("Allah Mahahidup.");
   });
 
-  it("does NOT match the trace's TEXT message_id when only its case differs", async () => {
+  it("finds the answer for an UPPERCASE spelling of the trace's message_id", async () => {
     const { store } = await storeWithOneAnswer();
     const target = await Effect.runPromise(
       store.getAnswerFeedbackTarget(TRACE_MESSAGE_ID.toUpperCase()),
     );
-    expect(target).toBeNull();
+    // The seam stores one canonical reference, so case is spelling, not identity.
+    expect(target?.messageId).toBe(TRACE_MESSAGE_ID);
+    expect(target?.answerText).toBe("Allah Mahahidup.");
   });
 });

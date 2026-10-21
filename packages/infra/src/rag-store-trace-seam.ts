@@ -17,8 +17,10 @@ export interface RagStoreTrace {
    * trace carries a reserved id with no message row, because the run produced
    * no answer to address. The store writes the @app/contracts `Trace` shape
    * verbatim — it never re-serializes or invents a parallel trace schema
-   * (ADR-0007). The user link makes the trace cascade-delete with its owner on
-   * anonymous self-deletion (ADR-0007).
+   * (ADR-0007). The message reference is stored canonically
+   * (`canonicalMessageId`), so a caller's re-cased spelling cannot disagree with
+   * the `chat_messages.id` row it names. The user link makes the trace
+   * cascade-delete with its owner on anonymous self-deletion (ADR-0007).
    */
   insertAnswerTrace(input: {
     messageId: string;
@@ -26,7 +28,8 @@ export interface RagStoreTrace {
     trace: Trace;
   }): Effect.Effect<string, StoreError>;
 
-  /** Fetch a persisted Trace by the answer's message id (`chat_messages.id`). */
+  /** Fetch a persisted Trace by the answer's message id (`chat_messages.id`);
+   * the id is canonicalised, so either case of the row's uuid names it. */
   getAnswerTraceByMessage(messageId: string): Effect.Effect<Trace | null, StoreError>;
 
   /**

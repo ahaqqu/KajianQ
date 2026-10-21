@@ -55,6 +55,7 @@ export {
   type RetryBudgets,
 } from "./providers/retry-schedule";
 export {
+  canonicalMessageId,
   type AlignedPairInsert,
   type AnswerFeedbackTarget,
   type ChatMessage,

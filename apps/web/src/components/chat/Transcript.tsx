@@ -18,6 +18,7 @@ export type TranscriptError = "rate_limited" | "unavailable" | "generic" | "load
 export function Transcript({
   locale,
   messages,
+  persistedMessageIds,
   busy,
   loadingTranscript,
   transcriptTruncated,
@@ -28,6 +29,8 @@ export function Transcript({
 }: {
   locale: Locale;
   messages: readonly ChatSessionMessage[];
+  /** The message ids known to name a persisted row (the hook's view gate). */
+  persistedMessageIds: ReadonlySet<string>;
   busy: boolean;
   loadingTranscript: boolean;
   transcriptTruncated: boolean;
@@ -76,7 +79,11 @@ export function Transcript({
           <EmptyState locale={locale} onSuggest={onSuggest} />
         )}
         {messages.map((message) => (
-          <MessageCard key={message.id} message={message} />
+          <MessageCard
+            key={message.id}
+            message={message}
+            persisted={persistedMessageIds.has(message.id)}
+          />
         ))}
         {stagedLabel !== null && (
           <MonoLabel data-testid="staged-loading" aria-live="polite" className="text-[11px]">

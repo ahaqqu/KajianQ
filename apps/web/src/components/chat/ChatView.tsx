@@ -41,6 +41,7 @@ export type ChatViewError = TranscriptError;
 export function ChatView({
   locale,
   messages,
+  persistedMessageIds,
   busy,
   loadingTranscript,
   transcriptTruncated,
@@ -52,6 +53,8 @@ export function ChatView({
 }: {
   locale: Locale;
   messages: readonly ChatSessionMessage[];
+  /** The message ids known to name a persisted row (the hook's view gate). */
+  persistedMessageIds: ReadonlySet<string>;
   busy: boolean;
   loadingTranscript: boolean;
   transcriptTruncated: boolean;
@@ -143,6 +146,7 @@ export function ChatView({
         <Transcript
           locale={locale}
           messages={messages}
+          persistedMessageIds={persistedMessageIds}
           busy={busy}
           loadingTranscript={loadingTranscript}
           transcriptTruncated={transcriptTruncated}

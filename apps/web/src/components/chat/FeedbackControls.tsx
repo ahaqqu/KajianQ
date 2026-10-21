@@ -12,6 +12,10 @@ import { t, useLocale, type Locale } from "../../lib/i18n";
  * recorded, never a silent no-op). Sent/error is component-local: a report is
  * one-shot per affordance, so no client cache is needed (server state stays
  * with the API; spec §3.1).
+ *
+ * Both take `persisted`: until the live turn's `meta` names its row, the turn
+ * still carries a client-local placeholder id that no row answers, so the
+ * affordance renders nothing rather than posting a guaranteed 404.
  */
 
 /** One-shot POST with inline idle→sent/error state, shared by both shapes. */
@@ -38,9 +42,10 @@ const FLAG_BUTTON =
   "inline-flex items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-secondary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60";
 
 /** Thumbs up/down for one answer; the tap stores against the answer's trace. */
-export function FeedbackBar({ messageId }: { messageId: string }) {
+export function FeedbackBar({ messageId, persisted }: { messageId: string; persisted: boolean }) {
   const locale: Locale = useLocale();
   const { send, sent, failed } = useSendFeedback(messageId);
+  if (!persisted) return null;
   if (sent) {
     return (
       <p data-testid="feedback-thanks" className="ml-10 mt-1 text-xs text-muted-foreground">
@@ -95,6 +100,7 @@ export function FlagButton({
   anchor,
   labelKey,
   testId,
+  persisted,
 }: {
   messageId: string;
   anchor: FeedbackAnchor;
@@ -104,9 +110,11 @@ export function FlagButton({
     | "flagBadTranslation"
     | "flagQuestionableGrade";
   testId: string;
+  persisted: boolean;
 }) {
   const locale: Locale = useLocale();
   const { send, sent, failed } = useSendFeedback(messageId);
+  if (!persisted) return null;
   if (sent) {
     return (
       <span data-testid={`${testId}-sent`} className="font-mono text-[10px] text-muted-foreground">

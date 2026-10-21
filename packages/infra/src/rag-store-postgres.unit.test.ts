@@ -394,6 +394,31 @@ describe("rag-store-postgres adapter (fake runner)", () => {
     expect(sql._calls[0]?.values?.[0]).toBe(id);
   });
 
+  it("canonicalises a supplied message id on both the trace reference and the chat row", async () => {
+    const sql = makeFakeSql();
+    const store = createPostgresRagStore(sql);
+    // A re-cased uuid is admitted by the uuid column's cast, but the trace's
+    // TEXT reference would keep the spelling: both writes canonicalise, and the
+    // returned row id is what the caller streams.
+    const upper = "0B8FE2A5-6B1A-4D0E-9A7C-1F2E3D4C5B6A";
+    const canonical = upper.toLowerCase();
+
+    await runOk(store.insertAnswerTrace({ messageId: upper, userId: "u1", trace: sampleTrace }));
+    // The answer_traces INSERT binds (id, message_id, user_id, trace).
+    expect(sql._calls[0]?.values?.[1]).toBe(canonical);
+
+    const written = await runOk(
+      store.insertChatMessage({ id: upper, sessionId: "s1", role: "assistant", content: "hi" }),
+    );
+    expect(written).toBe(canonical);
+    expect(sql._calls[1]?.values?.[0]).toBe(canonical);
+
+    // Reads address the same canonical reference, so either case names the row.
+    sql._setTag([{ trace: sampleTrace }]);
+    expect(await runOk(store.getAnswerTraceByMessage(upper))).not.toBeNull();
+    expect(sql._calls[2]?.values?.[0]).toBe(canonical);
+  });
+
   it("createSession writes users + sessions in one atomic transaction", async () => {
     const sql = makeFakeSql();
     const store = createPostgresRagStore(sql);
