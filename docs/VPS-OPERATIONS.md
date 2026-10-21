@@ -230,9 +230,9 @@ standing where `provision/vps/deploy/provision-drift.sh` interpolates them; the
 class is the one the script assigns, and the run-level close in step 1 follows
 from it. A `manual` remedy can still name `provision/vps/apply.sh` — the
 artifact table it repairs lives there — and both table-repair rows say an apply
-cannot change their state. The `conf.d`-is-a-directory repair is the one state
-whose remedy names a run of the apply, because the repair is followed by an
-install.
+cannot change their state. The `conf.d`-is-a-file repair is the one `manual`
+state whose remedy names a run of the apply, because the repair is followed by
+an install.
 
 | State                                                                                     | Class    | The closing line(s)                                                                                                                                                                   |
 | ----------------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -246,7 +246,7 @@ install.
 | a rendered block that differs                                                             | `apply`  | `<path> does not match provision/vps/<src> (placeholder values aside): <first difference> — run provision/vps/apply.sh on the box`                                                    |
 | any other installed-state difference: a link's target, owner/group/mode, a digest, a size | `apply`  | the line names the file, its installed state and the checkout's expected state, then `— run provision/vps/apply.sh on the box`                                                        |
 
-The two skip states are not refusals and print no count: with no
+The two skip states are not refusals and add no failure to the count: with no
 `/etc/postgresql` at all the line names the skip and no apply, and with
 `/etc/postgresql` present but no `main/conf.d` the row is still skipped, and the
 line names the install that would apply the posture.
