@@ -67,9 +67,12 @@ gh pr checks <pr>                       # the pre-merge picture
 
 Expected green: `CI` (check, lint, test, boundary, agentic-limits, openapi,
 size-limit, postgres:contract), `E2E` (BDD), `VPS restore drill`, and `Staging`.
-A docs-only or tests-only merge correctly produces none of the latter three — every
-changed file matches `paths-ignore` — so on a merge whose only changes are docs or
-tests read the **last code-bearing commit's** runs instead, and do not read a skip
+A docs-only merge correctly produces none of the latter three. A tests-only merge
+skips `VPS restore drill` and `Staging` — both ignore the whole test class — but
+runs `E2E` whenever a changed file is under `tests/**` or is
+`playwright.config.ts`: those two are the suite E2E executes and the config that
+selects it, so a test-only merge inside them must still run E2E. Read the **last
+code-bearing commit's** runs for a workflow that skipped, and do not read a skip
 as a red.
 **A red `Staging` deploy is the signal that the box did not take the new code** —
 read its log (`gh run view <id> --log-failed`) instead of re-deploying blind. The

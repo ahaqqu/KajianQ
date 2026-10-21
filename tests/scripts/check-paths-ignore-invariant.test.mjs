@@ -132,15 +132,23 @@ const DEPLOY_SH = [
 ].join("\n");
 
 /**
- * The drill fixture models the real drill's execution set: two imports, two scripts
- * spawned through `run("bun", …)` and one migration handed to `psql`. The spawned
- * scripts are NOT imports — that is the A1 gap this fixture has to be able to see.
+ * The drill fixture models the real drill's execution set: two imports, three psql
+ * invocation sites (the inline, stdin and file helpers), two scripts spawned through
+ * `run("bun", …)` and one migration applied through `psqlFile`. The spawned scripts
+ * and the applied file are NOT imports — that is the A1 gap this fixture has to see.
  */
 const DRILL_LINES = [
   'import { RECLAIM_SQL } from "./lib.mjs";',
   "",
   'const HERE = new URL("./", import.meta.url);',
   "const MIGRATIONS = `${REPO_ROOT}packages/infra/migrations/0001_init.sql`;",
+  "",
+  "const psql = (url, statement) =>",
+  '  run("psql", ["-At", "-c", statement], pgEnv(url));',
+  "const psqlVar = (url, statement) =>",
+  '  spawnSync("psql", ["-At", "-f", "-"], { input: statement });',
+  "const psqlFile = (url, file) =>",
+  '  run("psql", ["-At", "-f", file], pgEnv(url));',
   "",
   "psqlFile(sourceUrl, MIGRATIONS);",
   "const backupOut = run(",
@@ -374,13 +382,13 @@ describe("#399 trigger parsing refuses rather than passing", () => {
     ).toThrow(/not a non-empty string/);
   });
 
-  it("refuses paths together with paths-ignore (a combination GitHub rejects)", () => {
+  it("refuses a paths inclusion filter instead of reading it as an ignore list", () => {
     expect(() =>
       parsePathsIgnore(
         JSON.stringify({ on: { push: { paths: ["src/**"], "paths-ignore": ["docs/**"] } } }),
         jsonParser,
       ),
-    ).toThrow(/both `paths` and `paths-ignore`/);
+    ).toThrow(/carries a `paths` inclusion filter alongside `paths-ignore`/);
   });
 
   it("refuses a document the parser itself rejects", () => {
@@ -709,6 +717,83 @@ describe("#399 the drill's execution set is walked, not just its imports", () =>
     const { status, stderr } = runCli(dir);
     expect(status).not.toBe(0);
     expect(stderr).toContain("runs `bun` 4 time(s) but this check knows 3 spawn site(s)");
+    expect(stderr).toContain("(DRILL_BUN_SPAWNS)");
+    expect(stderr).toContain("bump DRILL_BUN_SPAWNS");
+  });
+
+  it("T1: a fifth file applied as a plain relative psqlFile literal refuses, naming it", () => {
+    // The reviewer's repro: no `${REPO_ROOT}` prefix, so a pattern-only pin never
+    // sees it, while the gate's own `**/test-fixtures*` matches the applied file.
+    const dir = makeRepo(
+      tree({
+        "provision/vps/backup/restore-drill.mjs": drillWith(
+          'psqlFile(sourceUrl, "packages/infra/migrations/test-fixtures-0002.sql");',
+        ),
+        "packages/infra/migrations/test-fixtures-0002.sql": "SELECT 1;\n",
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain(
+      'executes "packages/infra/migrations/test-fixtures-0002.sql", which this check does not walk',
+    );
+  });
+
+  it("T1: a psqlFile argument this check cannot read refuses instead of passing", () => {
+    const dir = makeRepo(
+      tree({
+        "provision/vps/backup/restore-drill.mjs": DRILL_MJS.replace(
+          "psqlFile(sourceUrl, MIGRATIONS);",
+          "psqlFile(sourceUrl, argv[2]);",
+        ),
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain("a form this check cannot read");
+    expect(stderr).toContain("file application must be a string literal");
+  });
+
+  it("T1: a psql file application reached through an alias refuses", () => {
+    const dir = makeRepo(
+      tree({
+        "provision/vps/backup/restore-drill.mjs": drillWith(
+          "const applyFile = psqlFile;\napplyFile(sourceUrl, MIGRATIONS);",
+        ),
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain("references psqlFile in a form this check cannot read");
+  });
+
+  it("T1: a second psql file application refuses, naming DRILL_PSQL_FILE_SITES", () => {
+    const dir = makeRepo(
+      tree({
+        "provision/vps/backup/restore-drill.mjs": drillWith("psqlFile(sourceUrl, MIGRATIONS);"),
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain(
+      "applies a file through psql 2 time(s) but this check knows 1 application site(s) " +
+        "(DRILL_PSQL_FILE_SITES)",
+    );
+  });
+
+  it("T1: a new psql invocation site refuses, naming DRILL_PSQL_SITES", () => {
+    const dir = makeRepo(
+      tree({
+        "provision/vps/backup/restore-drill.mjs": drillWith(
+          'run("psql", ["-At", "-c", "SELECT 1"]);',
+        ),
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain(
+      "invokes `psql` 4 time(s) but this check knows 3 site(s) (DRILL_PSQL_SITES)",
+    );
   });
 
   it("T1: an ignored helper imported by a spawned script refuses, with its chain", () => {
@@ -756,6 +841,36 @@ describe("#399 the Playwright selection this check walks is pinned", () => {
     const { status, stderr } = runCli(dir);
     expect(status).not.toBe(0);
     expect(stderr).toContain("playwright.config.ts no longer names apps/api/src/boot.ts");
+  });
+
+  it("T1: refuses a moved selection whose old literal survives only in a comment", () => {
+    const dir = makeRepo(
+      tree({
+        "playwright.config.ts":
+          "export default {\n" +
+          '  // features: "tests/features/**/*.feature",\n' +
+          '  features: "e2e/features/**/*.feature",\n' +
+          '  steps: "tests/steps/**/*.ts",\n' +
+          '  webServer: { command: "bun apps/api/src/boot.ts" },\n' +
+          "};\n",
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain(
+      "playwright.config.ts no longer names tests/features/**/*.feature in code",
+    );
+  });
+
+  it("T1: refuses an unparsable config that still carries the three literals", () => {
+    const dir = makeRepo(
+      tree({
+        "playwright.config.ts": `${PLAYWRIGHT_CONFIG_TEXT}]];\n`,
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain("playwright.config.ts does not parse");
   });
 });
 
@@ -841,7 +956,7 @@ describe("#399 green case — matched paths outside every deploy closure", () =>
     expect(drill, stdout).not.toBeNull();
     expect(Number(drill[1])).toBe(4);
     expect(Number(drill[2])).toBeGreaterThan(4);
-    expect(stdout).toContain("not policed, on purpose (no paths-ignore): .github/workflows/ci.yml");
+    expect(stdout).toContain("not policed, on purpose (no path filter): .github/workflows/ci.yml");
   });
 });
 
@@ -875,13 +990,13 @@ describe("#399 fail-closed — unreadable input exits non-zero", () => {
       fragment: "`on.push.paths-ignore` is absent",
     },
     {
-      name: "paths together with paths-ignore",
+      name: "an inclusion filter on a policed workflow",
       files: tree({
         [POLICED_WORKFLOW]: workflowWith(
           '    paths:\n      - "src/**"\n    paths-ignore:\n      - "docs/**"',
         ),
       }),
-      fragment: "both `paths` and `paths-ignore`",
+      fragment: "carries a `paths` inclusion filter",
     },
     {
       name: "a scalar instead of a pattern list",
@@ -969,7 +1084,7 @@ describe("#399 the triggered workflows derive the class and pin their PR half", 
 
   it("lists the workflows it does not police instead of hiding them", () => {
     const { stdout } = runCli(makeRepo(tree()));
-    expect(stdout).toContain("not policed, on purpose (no paths-ignore): .github/workflows/ci.yml");
+    expect(stdout).toContain("not policed, on purpose (no path filter): .github/workflows/ci.yml");
   });
 
   it("refuses a push set that drops a class member", () => {
@@ -1061,6 +1176,21 @@ describe("#399 the triggered workflows derive the class and pin their PR half", 
     expect(status).not.toBe(0);
     expect(stderr).toContain(".github/workflows/extra.yml carries on.push.paths-ignore");
     expect(stderr).toContain("is not listed in WORKFLOW_SPECS");
+  });
+
+  it("T1: an unpoliced workflow with a paths inclusion filter refuses too", () => {
+    // A paths-only workflow skips every push it does not include — the same
+    // absent-run-reads-as-success class as paths-ignore, so it is refused rather
+    // than printed as "not policed".
+    const dir = makeRepo(
+      tree({
+        ".github/workflows/extra.yml": 'name: Extra\non:\n  push:\n    paths:\n      - "docs/**"\n',
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain(".github/workflows/extra.yml carries on.push.paths");
+    expect(stderr).toContain("an inclusion filter this check does not police");
   });
 
   it("T1: a pull_request half on a workflow recorded as having none refuses", () => {
