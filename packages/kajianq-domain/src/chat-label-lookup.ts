@@ -71,7 +71,9 @@ export type LabelLookup = {
  * Read the chunks the question's citation labels address and add the ones the
  * caller does not already hold, bounded by `cap`. A recognised label with no
  * stored row is recorded in `missing` — machinery the trace must show, and the
- * trace's own statement that no evidence was invented for it.
+ * trace's own statement that no evidence was invented for it. A citation-shaped
+ * span the lookup declines is recorded in `dropped` with its reason, so the
+ * trace never confuses it with a question that named no label at all.
  */
 export function lookupCitationLabels(input: {
   sourceText: string | undefined;
