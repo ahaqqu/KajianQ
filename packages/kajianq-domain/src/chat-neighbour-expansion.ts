@@ -3,11 +3,12 @@ import type { Chunk, StoreError } from "@app/rag-core";
 import { expansionChunk } from "./chat-scope-expansion";
 
 /**
- * Retrieved-verse neighbourhood expansion (ADR-0049) — the second trigger for
- * ADR-0045's deterministic read: it widens the context around the verses
- * **retrieval returned**, where ADR-0045 widens around a surah the question named.
- * The citation gate withholds a range whose head was never in context, so the fix is to
- * put that address in the context — one ordinal away, and the store knows it.
+ * Retrieved-verse neighbourhood expansion (ADR-0049) — a deterministic read
+ * beside the fused hits: it widens the context one ordinal around the verses
+ * **retrieval returned**, where the surah reads (ADR-0045) take a whole short
+ * surah or a named surah's window. The citation gate withholds a range whose
+ * head was never in context, so the fix is to put that address in the context —
+ * one ordinal away, and the store knows it.
  *
  * Three properties are load-bearing:
  *

@@ -41,9 +41,10 @@ export type ChatPipelineDeps = {
   bridge: StoreBridge;
   language: import("./chat-prompts").ChatLanguage;
   retrieverLimit?: number;
-  /** ADR-0045 scope-expansion budget: at most this many children of a named surah join the
-   * fused hits; absent = the domain default, set from deployment config at the composition
-   * root so the cost of a scoped query is a knob, not a literal. */
+  /** ADR-0045 surah-read budget: at most this many children of a surah join the fused
+   * hits — the surah the question names and a retrieved verse's short surah share it;
+   * absent = the domain default, set from deployment config at the composition root so
+   * the cost of a scoped query is a knob, not a literal. */
   scopeExpansionCap?: number;
   /** The citation-label lookup's budget; absent = the domain default, `0` disables it. */
   labelLookupCap?: number;

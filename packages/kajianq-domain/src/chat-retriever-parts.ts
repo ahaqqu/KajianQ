@@ -9,10 +9,12 @@
  * (RRF + hierarchy bonuses); `chat-filter-policy` is the store-facing filter
  * mapping (the exhaustive dimension map, the loud unexpressible-dimension
  * failure, and the relaxation order); `chat-scope-expansion` widens
- * around a scope the **question named** (ADR-0045); `chat-neighbour-expansion`
- * widens around the verses **retrieval returned** (ADR-0049). The two
- * expansions share the bounded-read discipline, the trace-reporting shape and
- * the chunk builder; they do not share a trigger.
+ * around a scope the **question named** (ADR-0045); `chat-surah-completion`
+ * widens around a short surah **retrieval returned**, the same read's second
+ * trigger; `chat-neighbour-expansion` widens around the verses **retrieval
+ * returned** one ordinal out (ADR-0049). The deterministic reads share the
+ * bounded-read discipline, the trace-reporting shape and the chunk builder;
+ * they do not share a trigger.
  */
 export { HIERARCHY_BONUS, RRF_K, hierarchyBonus, rrfFuse, type TrackHit } from "./chat-fusion";
 export {
@@ -32,9 +34,15 @@ export {
   expansionChunk,
   type ScopeBridge,
   type ScopeChildRow,
+  type ScopeDetail,
   type ScopeExpansion,
   type ScopeStore,
 } from "./chat-scope-expansion";
+export {
+  RETRIEVED_SCOPE_KEY,
+  expandRetrievedSurahScope,
+  shortSurahsAmong,
+} from "./chat-surah-completion";
 export {
   DEFAULT_NEIGHBOUR_CAP,
   DEFAULT_NEIGHBOUR_RADIUS,

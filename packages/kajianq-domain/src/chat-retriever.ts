@@ -15,6 +15,7 @@ import {
   DEFAULT_NEIGHBOUR_CAP,
   DEFAULT_NEIGHBOUR_RADIUS,
   DEFAULT_SCOPE_EXPANSION_CAP,
+  expandRetrievedSurahScope,
   expandSurahScope,
   expandVerseNeighbours,
   createFilterRelaxation,
@@ -63,8 +64,8 @@ export type RetrieverStore = {
     }[],
     StoreError
   >;
-  /** The bounded, capped read of a named surah's children, in the corpus's order,
-   * optionally beginning at an ordinal lower bound — the named verse's position. */
+  /** The bounded, capped read of a surah's children, in the corpus's order,
+   * optionally beginning at an ordinal lower bound — a named verse's position. */
   listDocChildrenByParentSourceKey(
     parentSourceKey: string,
     opts: { limit: number; fromOrdinal?: number },
@@ -93,7 +94,8 @@ export type KajianQRetrieverDeps = {
   bridge: StoreBridge;
   /** Per-track hits per sub-query (spec §3.7 smoke keeps this small). */
   limit?: number;
-  /** Budget cap for ADR-0045's scope expansion over a named surah's children; `0` disables it. */
+  /** Budget cap for ADR-0045's surah reads — the surah the question names and a
+   * retrieved verse's short surah share it, the named read first; `0` disables both. */
   scopeExpansionCap?: number;
   /** ADR-0049's neighbourhood expansion: ordinals per side and total chunks added,
    * defaulting to `DEFAULT_NEIGHBOUR_RADIUS` / `DEFAULT_NEIGHBOUR_CAP`; `0` on
@@ -231,6 +233,26 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
             });
           }
           const scoped = [...fused, ...expansion.chunks];
+          // ADR-0045's second trigger: a fused verse can be one of a short surah's
+          // verses while the surah's opening — the verse that may answer the question
+          // — sits outside every list. The same bounded read completes it from the
+          // parent's opening, out of what the named read left of the one budget.
+          const completion = yield* expandRetrievedSurahScope({
+            retrieved: fused,
+            existingIds: new Set(scoped.map((chunk) => chunk.id)),
+            cap: (deps.scopeExpansionCap ?? DEFAULT_SCOPE_EXPANSION_CAP) - expansion.chunks.length,
+            store: deps.store,
+            bridge: deps.bridge,
+          });
+          for (const scope of completion.scopes) {
+            run.record({
+              stage: "retriever",
+              kind: "scope_expansion",
+              detail: scope,
+              at: run.now(),
+            });
+          }
+          const expanded = [...scoped, ...completion.chunks];
           // An exact citation label is an identifier, not a topic: the passage it
           // names can lose a similarity race to its own neighbours, so the label
           // the question wrote is read from the corpus's identity for it. Detection
@@ -238,7 +260,7 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
           // chunks beside the fused hits and never renders one from the string.
           const lookup = yield* lookupCitationLabels({
             sourceText: routed.sourceText,
-            existingIds: new Set(scoped.map((c) => c.id)),
+            existingIds: new Set(expanded.map((chunk) => chunk.id)),
             cap: deps.labelLookupCap ?? DEFAULT_LABEL_LOOKUP_CAP,
             store: deps.store,
             bridge: deps.bridge,
@@ -251,7 +273,7 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
               at: run.now(),
             });
           }
-          const inContext = [...scoped, ...lookup.chunks];
+          const inContext = [...expanded, ...lookup.chunks];
           // ADR-0049: the neighbourhood of the verses now in context — the gate requires
           // every address a citation names, so the fix is to have the address, not to weaken
           // the gate. `inContext` is both the anchor source (in retrieval order) and the dedup set.
