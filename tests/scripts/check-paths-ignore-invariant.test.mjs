@@ -5,17 +5,24 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
+  DOCS_ONLY_PATTERNS,
+  DRILL_ENTRY,
+  DRILL_SPAWN_SCRIPTS,
+  DRILL_SQL,
   FILE_ENTRIES,
   InvariantRefusal,
   POLICED_WORKFLOW,
   REPO_ROOT,
   WEB_ENTRY,
   assertDeployEntrySet,
+  assertDrillEntrySet,
   buildClosure,
   collectRepoFiles,
   compilePattern,
   compilePatterns,
   deployEntries,
+  deriveTestClass,
+  drillEntries,
   extractSpecifiers,
   firstMatch,
   importChain,
@@ -27,15 +34,21 @@ import {
 } from "../../scripts/check-paths-ignore-invariant.mjs";
 
 /**
- * The gate for staging.yml's paths-ignore invariant.
+ * The gate for the three workflows' paths-ignore classes.
  *
  * The traps this suite is built around, named before the assertions:
- *   falsification   a matched path that IS imported by a deploy entry must
- *                   exit non-zero — a suite that only ever passes the clean
- *                   tree tests nothing;
+ *   falsification   a matched path that IS reachable from an execution entry
+ *                   must exit non-zero — a suite that only ever passes the
+ *                   clean tree tests nothing;
  *   rename          the production module is moved into the class by a NAME
  *                   change (`prod-test-utils.ts`), so any check built from a
  *                   name list would pass it — the closure must catch it;
+ *   kept input      a workflow that refuses to ignore its own suite must fail
+ *                   when that suite leaves the closure, so the exception cannot
+ *                   outlive the reason for it;
+ *   PR half         a pull_request filter wider than the docs class is refused:
+ *                   a path-ignored workflow never reports, so the widening is a
+ *                   gating decision, not a trigger edit;
  *   comment         a file containing the text of an import of a matched
  *                   module, inside a comment, must stay green — that is the
  *                   difference between "imports" and "mentions";
@@ -72,19 +85,41 @@ function runCli(root) {
   return { status: result.status, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
 }
 
-const WORKFLOW = `name: Staging
-on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - "tests/**"
-      - "**/*.test.ts"
-      - "**/test-utils/**"
-      - "**/*test-utils*"
-      - "**/test-fixtures*"
-      - "vitest.config.ts"
-  workflow_dispatch:
-`;
+/** One trigger's pattern list, as YAML. */
+function patternsYaml(patterns) {
+  return patterns.map((pattern) => `      - ${JSON.stringify(pattern)}`).join("\n");
+}
+
+/** One workflow's `on:` block; an absent `pullRequest` means no PR trigger. */
+function workflowYaml(name, { push, pullRequest }) {
+  return (
+    `name: ${name}\non:\n` +
+    (pullRequest ? `  pull_request:\n    paths-ignore:\n${patternsYaml(pullRequest)}\n` : "") +
+    `  push:\n    branches: [main]\n    paths-ignore:\n${patternsYaml(push)}\n` +
+    "  workflow_dispatch:\n"
+  );
+}
+
+/** The test class the staging fixture defines; the docs class the PR halves carry. */
+const DOCS = DOCS_ONLY_PATTERNS;
+const TEST_CLASS = [
+  "tests/**",
+  "**/*.test.ts",
+  "**/*.test.mjs",
+  "**/test-utils/**",
+  "**/*test-utils*",
+  "**/test-fixtures*",
+  "vitest.config.ts",
+  "playwright.config.ts",
+];
+/** The class source carries the pinned docs class plus the test class it defines. */
+const STAGING_PUSH = [...DOCS, ...TEST_CLASS];
+/** E2E keeps its own BDD suite and config out of the ignore list. */
+const E2E_KEEP = ["tests/**", "playwright.config.ts"];
+const E2E_PUSH = STAGING_PUSH.filter((pattern) => !E2E_KEEP.includes(pattern));
+const DRILL_PUSH = STAGING_PUSH;
+
+const WORKFLOW = workflowYaml("Staging", { push: STAGING_PUSH });
 
 const DEPLOY_SH = [
   "#!/usr/bin/env bash",
@@ -97,13 +132,69 @@ const DEPLOY_SH = [
 ].join("\n");
 
 /**
+ * The drill fixture models the real drill's execution set: two imports, three psql
+ * invocation sites (the inline, stdin and file helpers), two scripts spawned through
+ * `run("bun", …)` and one migration applied through `psqlFile`. The spawned scripts
+ * and the applied file are NOT imports — that is the A1 gap this fixture has to see.
+ */
+const DRILL_LINES = [
+  'import { RECLAIM_SQL } from "./lib.mjs";',
+  "",
+  'const HERE = new URL("./", import.meta.url);',
+  "const MIGRATIONS = `${REPO_ROOT}packages/infra/migrations/0001_init.sql`;",
+  "",
+  "const psql = (url, statement) =>",
+  '  run("psql", ["-At", "-c", statement], pgEnv(url));',
+  "const psqlVar = (url, statement) =>",
+  '  spawnSync("psql", ["-At", "-f", "-"], { input: statement });',
+  "const psqlFile = (url, file) =>",
+  '  run("psql", ["-At", "-f", file], pgEnv(url));',
+  "",
+  "psqlFile(sourceUrl, MIGRATIONS);",
+  "const backupOut = run(",
+  '  "bun",',
+  '  [`${HERE}kajianq-backup.mjs`, "--label", LABEL],',
+  ");",
+  "const restoreOut = run(",
+  '  "bun",',
+  '  [`${HERE}kajianq-restore.mjs`, "--label", LABEL],',
+  ");",
+  "const eraseOut = run(",
+  '  "bun",',
+  '  [`${HERE}kajianq-restore.mjs`, "--label", LABEL, "--erase-user", SUBJECT],',
+  ");",
+  "export const drill = () => backupOut || restoreOut || eraseOut || RECLAIM_SQL;",
+];
+const DRILL_MJS = `${DRILL_LINES.join("\n")}\n`;
+
+const PLAYWRIGHT_CONFIG_TEXT = [
+  "export default {",
+  '  features: "tests/features/**/*.feature",',
+  '  steps: "tests/steps/**/*.ts",',
+  '  webServer: { command: "bun run build && bun apps/api/src/boot.ts" },',
+  "};",
+  "",
+].join("\n");
+
+/**
  * The green tree: every class member exists, and none of them is imported by a
  * deploy entry. `app.test.ts` imports the domain pack's test-utils, and
  * `app.tsx` carries an import statement inside a comment.
  */
 const BASE = {
   ".github/workflows/staging.yml": WORKFLOW,
+  ".github/workflows/e2e.yml": workflowYaml("E2E", { push: E2E_PUSH, pullRequest: DOCS }),
+  ".github/workflows/vps-restore-drill.yml": workflowYaml("VPS restore drill", {
+    push: DRILL_PUSH,
+    pullRequest: DOCS,
+  }),
+  // Carries no filter: the inventory line must name it rather than hide it.
+  ".github/workflows/ci.yml": "name: CI\non:\n  push:\n  pull_request:\n",
   "provision/vps/deploy/deploy.sh": DEPLOY_SH,
+  "provision/vps/backup/restore-drill.mjs": DRILL_MJS,
+  "playwright.config.ts": PLAYWRIGHT_CONFIG_TEXT,
+  "tests/features/chat.feature": "Feature: chat\n",
+  "tests/steps/chat.steps.ts": "export const steps = 1;\n",
   "package.json": `${JSON.stringify(
     { name: "fixture", private: true, workspaces: ["apps/*", "packages/*"] },
     null,
@@ -128,8 +219,12 @@ const BASE = {
     'import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";\n',
   "apps/api/src/cleanup.ts": 'import { run } from "./lib/scheduled";\nrun();\n',
   "apps/api/src/lib/scheduled.ts": "export const run = () => {};\n",
-  "provision/vps/backup/kajianq-backup.mjs": 'import { lib } from "./lib.mjs";\nlib();\n',
+  "provision/vps/backup/kajianq-backup.mjs":
+    'import { lib } from "./lib.mjs";\nimport { record } from "./provenance.mjs";\nlib(record);\n',
+  "provision/vps/backup/kajianq-restore.mjs": 'import { lib } from "./lib.mjs";\nlib();\n',
+  "provision/vps/backup/provenance.mjs": "export const record = 1;\n",
   "provision/vps/backup/lib.mjs": "export const lib = () => {};\n",
+  "packages/infra/migrations/0001_init.sql": "CREATE TABLE users (id uuid primary key);\n",
   "packages/kajianq-domain/package.json": `${JSON.stringify({
     name: "@app/kajianq-domain",
     exports: { ".": "./src/index.ts", "./test-utils/*": "./src/test-utils/*" },
@@ -146,6 +241,11 @@ function tree(overrides = {}, removed = []) {
   const files = { ...BASE, ...overrides };
   for (const key of removed) delete files[key];
   return files;
+}
+
+/** The drill fixture with one extra line appended — a mutation the gate must see. */
+function drillWith(extra) {
+  return `${DRILL_MJS}${extra}\n`;
 }
 
 /** The JSON subset `parsePathsIgnore` accepts as an injected parser. */
@@ -227,6 +327,25 @@ describe("#399 trigger parsing refuses rather than passing", () => {
     expect(patterns).toEqual(["docs/**", "tests/**"]);
   });
 
+  it("reads a pull_request filter with the event selector", () => {
+    const patterns = parsePathsIgnore(
+      JSON.stringify({ on: { pull_request: { "paths-ignore": ["docs/**"] } } }),
+      jsonParser,
+      "pull_request",
+    );
+    expect(patterns).toEqual(["docs/**"]);
+  });
+
+  it("refuses an absent pull_request trigger", () => {
+    expect(() =>
+      parsePathsIgnore(
+        JSON.stringify({ on: { push: { "paths-ignore": ["docs/**"] } } }),
+        jsonParser,
+        "pull_request",
+      ),
+    ).toThrow(/no `on\.pull_request` trigger/);
+  });
+
   it("accepts a document keyed by YAML 1.1's boolean `on`", () => {
     const patterns = parsePathsIgnore(
       JSON.stringify({ true: { push: { "paths-ignore": ["docs/**"] } } }),
@@ -263,13 +382,13 @@ describe("#399 trigger parsing refuses rather than passing", () => {
     ).toThrow(/not a non-empty string/);
   });
 
-  it("refuses paths together with paths-ignore (a combination GitHub rejects)", () => {
+  it("refuses a paths inclusion filter instead of reading it as an ignore list", () => {
     expect(() =>
       parsePathsIgnore(
         JSON.stringify({ on: { push: { paths: ["src/**"], "paths-ignore": ["docs/**"] } } }),
         jsonParser,
       ),
-    ).toThrow(/both `paths` and `paths-ignore`/);
+    ).toThrow(/carries a `paths` inclusion filter alongside `paths-ignore`/);
   });
 
   it("refuses a document the parser itself rejects", () => {
@@ -313,6 +432,7 @@ describe("#399 import extraction follows edges, not mentions", () => {
         'export * from "./c";',
         'export { d } from "./d";',
         'const e = await import("./e");',
+        'const f = require("./f");',
       ].join("\n"),
       "ts",
     );
@@ -323,8 +443,14 @@ describe("#399 import extraction follows edges, not mentions", () => {
       "./c",
       "./d",
       "./e",
+      "./f",
     ]);
     expect(specs.every((edge) => edge.kind === "module")).toBe(true);
+  });
+
+  it("does not follow a require whose specifier is not a literal (a disclosed gap)", () => {
+    expect(extractSpecifiers("const a = require(name);", "ts")).toEqual([]);
+    expect(extractSpecifiers("const b = require(`./${name}`);", "ts")).toEqual([]);
   });
 
   it("extracts CSS imports as modules and url() assets as assets", () => {
@@ -532,6 +658,244 @@ describe("#399 falsification — a matched path inside a deploy closure fails", 
   });
 });
 
+describe("#399 the drill's execution set is walked, not just its imports", () => {
+  it("lists the drill's spawned scripts and migration as entries", () => {
+    expect(drillEntries().map((entry) => entry.file)).toEqual([
+      DRILL_ENTRY,
+      ...DRILL_SPAWN_SCRIPTS,
+      DRILL_SQL,
+    ]);
+  });
+
+  it("asserts the real drill still names every file this check walks", () => {
+    const drill = execFileSync("git", ["show", `HEAD:${DRILL_ENTRY}`], {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+    });
+    expect(() => assertDrillEntrySet(drill)).not.toThrow();
+  });
+
+  it("walks four drill entries and six files, not the drill and its import alone", () => {
+    const { status, stdout } = runCli(makeRepo(tree()));
+    expect(status).toBe(0);
+    const evidence =
+      /vps-restore-drill\.yml on\.push\.paths-ignore \(\d+ patterns, \d+ matched paths\) × static import closure of (\d+) entries \((\d+) files\)/.exec(
+        stdout,
+      );
+    expect(evidence, stdout).not.toBeNull();
+    expect(Number(evidence[1])).toBe(4);
+    expect(Number(evidence[2])).toBe(6);
+  });
+
+  it("T1: a drill that spawns a new file the ignore list covers refuses, naming it", () => {
+    const dir = makeRepo(
+      tree({
+        "provision/vps/backup/restore-drill.mjs": drillWith(
+          'run("bun", [`${HERE}test-fixtures-drill.mjs`]);',
+        ),
+        // Matches the class's `**/test-fixtures*`, so the gate must not certify it.
+        "provision/vps/backup/test-fixtures-drill.mjs": "export const fixture = 1;\n",
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain(
+      'executes "provision/vps/backup/test-fixtures-drill.mjs", which this check does not walk',
+    );
+    expect(stderr).toContain("add it to the drill entries deliberately");
+  });
+
+  it("T1: a fourth bun spawn refuses even when its target is not a path literal", () => {
+    const dir = makeRepo(
+      tree({
+        "provision/vps/backup/restore-drill.mjs": drillWith(
+          'run("bun", ["test-fixtures-drill.mjs"]);',
+        ),
+        "test-fixtures-drill.mjs": "export const fixture = 1;\n",
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain("runs `bun` 4 time(s) but this check knows 3 spawn site(s)");
+    expect(stderr).toContain("(DRILL_BUN_SPAWNS)");
+    expect(stderr).toContain("bump DRILL_BUN_SPAWNS");
+  });
+
+  it("T1: a fifth file applied as a plain relative psqlFile literal refuses, naming it", () => {
+    // The reviewer's repro: no `${REPO_ROOT}` prefix, so a pattern-only pin never
+    // sees it, while the gate's own `**/test-fixtures*` matches the applied file.
+    const dir = makeRepo(
+      tree({
+        "provision/vps/backup/restore-drill.mjs": drillWith(
+          'psqlFile(sourceUrl, "packages/infra/migrations/test-fixtures-0002.sql");',
+        ),
+        "packages/infra/migrations/test-fixtures-0002.sql": "SELECT 1;\n",
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain(
+      'executes "packages/infra/migrations/test-fixtures-0002.sql", which this check does not walk',
+    );
+  });
+
+  it("T1: a psqlFile argument this check cannot read refuses instead of passing", () => {
+    const dir = makeRepo(
+      tree({
+        "provision/vps/backup/restore-drill.mjs": DRILL_MJS.replace(
+          "psqlFile(sourceUrl, MIGRATIONS);",
+          "psqlFile(sourceUrl, argv[2]);",
+        ),
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain("a form this check cannot read");
+    expect(stderr).toContain("file application must be a string literal");
+  });
+
+  it("T1: a psql file application reached through an alias refuses", () => {
+    const dir = makeRepo(
+      tree({
+        "provision/vps/backup/restore-drill.mjs": drillWith(
+          "const applyFile = psqlFile;\napplyFile(sourceUrl, MIGRATIONS);",
+        ),
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain("references psqlFile in a form this check cannot read");
+  });
+
+  it("T1: a second psql file application refuses, naming DRILL_PSQL_FILE_SITES", () => {
+    const dir = makeRepo(
+      tree({
+        "provision/vps/backup/restore-drill.mjs": drillWith("psqlFile(sourceUrl, MIGRATIONS);"),
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain(
+      "applies a file through psql 2 time(s) but this check knows 1 application site(s) " +
+        "(DRILL_PSQL_FILE_SITES)",
+    );
+  });
+
+  it("T1: a new psql invocation site refuses, naming DRILL_PSQL_SITES", () => {
+    const dir = makeRepo(
+      tree({
+        "provision/vps/backup/restore-drill.mjs": drillWith(
+          'run("psql", ["-At", "-c", "SELECT 1"]);',
+        ),
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain(
+      "invokes `psql` 4 time(s) but this check knows 3 site(s) (DRILL_PSQL_SITES)",
+    );
+  });
+
+  it("T1: an ignored helper imported by a spawned script refuses, with its chain", () => {
+    // `kajianq-restore.mjs` is spawned by the drill and is not a deploy artifact, so
+    // only the drill's closure can reach it.
+    const dir = makeRepo(
+      tree({
+        "provision/vps/backup/kajianq-restore.mjs":
+          'import { helper } from "../../../test-utils/helper";\nexport const restore = helper;\n',
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain('"**/test-utils/**" matches test-utils/helper.ts');
+    expect(stderr).toContain(
+      "reachable from execution entry provision/vps/backup/kajianq-restore.mjs: " +
+        "provision/vps/backup/kajianq-restore.mjs → test-utils/helper.ts",
+    );
+  });
+});
+
+describe("#399 the Playwright selection this check walks is pinned", () => {
+  it("T1: refuses a config that moved the BDD suite to another directory", () => {
+    const dir = makeRepo(
+      tree({
+        "playwright.config.ts":
+          'export default { features: "e2e/features/**/*.feature", ' +
+          'steps: "tests/steps/**/*.ts", webServer: { command: "bun apps/api/src/boot.ts" } };\n',
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain("playwright.config.ts no longer names tests/features/**/*.feature");
+  });
+
+  it("T1: refuses a config whose webServer stopped booting the walked API entry", () => {
+    const dir = makeRepo(
+      tree({
+        "playwright.config.ts": PLAYWRIGHT_CONFIG_TEXT.replace(
+          "bun run build && bun apps/api/src/boot.ts",
+          "bun run build && bun apps/api/src/server.ts",
+        ),
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain("playwright.config.ts no longer names apps/api/src/boot.ts");
+  });
+
+  it("T1: refuses a moved selection whose old literal survives only in a comment", () => {
+    const dir = makeRepo(
+      tree({
+        "playwright.config.ts":
+          "export default {\n" +
+          '  // features: "tests/features/**/*.feature",\n' +
+          '  features: "e2e/features/**/*.feature",\n' +
+          '  steps: "tests/steps/**/*.ts",\n' +
+          '  webServer: { command: "bun apps/api/src/boot.ts" },\n' +
+          "};\n",
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain(
+      "playwright.config.ts no longer names tests/features/**/*.feature in code",
+    );
+  });
+
+  it("T1: refuses an unparsable config that still carries the three literals", () => {
+    const dir = makeRepo(
+      tree({
+        "playwright.config.ts": `${PLAYWRIGHT_CONFIG_TEXT}]];\n`,
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain("playwright.config.ts does not parse");
+  });
+});
+
+describe("#399 a walk that follows no edge is refused", () => {
+  it("T1: refuses a policed workflow whose entries import nothing", () => {
+    const dir = makeRepo(
+      tree({
+        "provision/vps/backup/restore-drill.mjs": DRILL_MJS.replace(
+          'import { RECLAIM_SQL } from "./lib.mjs";\n',
+          "",
+        ),
+        "provision/vps/backup/kajianq-backup.mjs": "export const backup = 1;\n",
+        "provision/vps/backup/kajianq-restore.mjs": "export const restore = 1;\n",
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain("followed no import edge from its 4 entries (4 file(s) in all)");
+  });
+
+  it("refuses to call an empty entry set a closure", () => {
+    expect(() => buildClosure([], REPO_ROOT)).toThrow(/no execution entries to walk/);
+  });
+});
+
 describe("#399 green case — matched paths outside every deploy closure", () => {
   it("T3+T4: passes a tree where the class exists and only tests import it", () => {
     const dir = makeRepo(tree());
@@ -540,7 +904,7 @@ describe("#399 green case — matched paths outside every deploy closure", () =>
     // Non-vacuous: the class really was matched, and the walk really walked.
     const evidence = /\((\d+) patterns, (\d+) matched paths\) × .*\((\d+) files\)/.exec(stdout);
     expect(evidence, stdout).not.toBeNull();
-    expect(Number(evidence[1])).toBe(6);
+    expect(Number(evidence[1])).toBe(14);
     expect(Number(evidence[2])).toBeGreaterThan(3);
     expect(Number(evidence[3])).toBeGreaterThan(5);
     expect(stdout).toContain("0 matches");
@@ -583,6 +947,16 @@ describe("#399 green case — matched paths outside every deploy closure", () =>
     // floors are what make the pass mean something.
     expect(Number(evidence[2])).toBeGreaterThan(50);
     expect(Number(evidence[3])).toBeGreaterThan(100);
+    // The drill's own walk covers its spawned scripts and migration, not just the
+    // drill and its one import.
+    const drill =
+      /vps-restore-drill\.yml on\.push\.paths-ignore .*closure of (\d+) entries \((\d+) files\)/.exec(
+        stdout,
+      );
+    expect(drill, stdout).not.toBeNull();
+    expect(Number(drill[1])).toBe(4);
+    expect(Number(drill[2])).toBeGreaterThan(4);
+    expect(stdout).toContain("not policed, on purpose (no path filter): .github/workflows/ci.yml");
   });
 });
 
@@ -616,13 +990,13 @@ describe("#399 fail-closed — unreadable input exits non-zero", () => {
       fragment: "`on.push.paths-ignore` is absent",
     },
     {
-      name: "paths together with paths-ignore",
+      name: "an inclusion filter on a policed workflow",
       files: tree({
         [POLICED_WORKFLOW]: workflowWith(
           '    paths:\n      - "src/**"\n    paths-ignore:\n      - "docs/**"',
         ),
       }),
-      fragment: "both `paths` and `paths-ignore`",
+      fragment: "carries a `paths` inclusion filter",
     },
     {
       name: "a scalar instead of a pattern list",
@@ -649,7 +1023,7 @@ describe("#399 fail-closed — unreadable input exits non-zero", () => {
     {
       name: "a deploy entry file that vanished",
       files: tree({}, ["apps/api/src/cleanup.ts"]),
-      fragment: "deploy entry apps/api/src/cleanup.ts not found",
+      fragment: "execution entry apps/api/src/cleanup.ts not found",
     },
     {
       name: "a deploy.sh with a fifth build entry",
@@ -691,35 +1065,220 @@ describe("#399 fail-closed — unreadable input exits non-zero", () => {
   });
 });
 
-describe("#399 unpoliced workflows stay docs-only (#379)", () => {
-  it("passes when the other triggered workflows ignore only docs patterns", () => {
-    const dir = makeRepo(
-      tree({
-        ".github/workflows/e2e.yml":
-          "name: E2E\non:\n  push:\n    branches: [main]\n    paths-ignore:\n" +
-          '      - "**.md"\n      - "docs/**"\n',
-      }),
-    );
-    expect(runCli(dir).status).toBe(0);
+describe("#399 the triggered workflows derive the class and pin their PR half", () => {
+  it("derives the test class from the source's non-docs patterns", () => {
+    expect(deriveTestClass([...DOCS, ...TEST_CLASS])).toEqual(TEST_CLASS);
   });
 
-  it("refuses when an unpoliced workflow grows a class this check does not vouch for", () => {
+  it("passes the green tree and names every policed workflow in its evidence", () => {
+    const { status, stdout, stderr } = runCli(makeRepo(tree()));
+    expect(stderr).toBe("");
+    expect(status).toBe(0);
+    expect(stdout).toContain(".github/workflows/staging.yml on.push.paths-ignore");
+    expect(stdout).toContain(".github/workflows/e2e.yml on.push.paths-ignore");
+    expect(stdout).toContain(".github/workflows/vps-restore-drill.yml on.push.paths-ignore");
+    expect(stdout).toContain("test class derived from .github/workflows/staging.yml: 8 patterns");
+    expect(stdout).toContain("docs class pinned at 6 patterns");
+    expect(stdout).toContain("pull_request filters carry the docs class only");
+  });
+
+  it("lists the workflows it does not police instead of hiding them", () => {
+    const { stdout } = runCli(makeRepo(tree()));
+    expect(stdout).toContain("not policed, on purpose (no path filter): .github/workflows/ci.yml");
+  });
+
+  it("refuses a push set that drops a class member", () => {
     const dir = makeRepo(
       tree({
-        ".github/workflows/e2e.yml":
-          "name: E2E\non:\n  push:\n    branches: [main]\n    paths-ignore:\n" +
-          '      - "docs/**"\n      - "**/test-utils/**"\n',
+        ".github/workflows/e2e.yml": workflowYaml("E2E", {
+          pullRequest: DOCS,
+          push: E2E_PUSH.filter((pattern) => pattern !== "vitest.config.ts"),
+        }),
       }),
     );
     const { status, stderr } = runCli(dir);
     expect(status).not.toBe(0);
-    expect(stderr).toContain("carries a non-docs paths-ignore class (**/test-utils/**)");
-    expect(stderr).toContain("Add its trigger set to POLICED_WORKFLOWS");
+    expect(stderr).toContain(
+      "is not the pinned docs class plus the test class at .github/workflows/staging.yml",
+    );
+    expect(stderr).toContain('missing "vitest.config.ts"');
+    expect(stderr).toContain("add it to this workflow's own list, the source already carries it");
   });
 
-  it("names what it does not police in its own output", () => {
-    const { stdout } = runCli(REPO_ROOT);
-    expect(stdout).toContain("not policed, on purpose: .github/workflows/e2e.yml");
-    expect(stdout).toContain(".github/workflows/vps-restore-drill.yml");
+  it("refuses a push set that adds a pattern the class does not define", () => {
+    const dir = makeRepo(
+      tree({
+        ".github/workflows/e2e.yml": workflowYaml("E2E", {
+          pullRequest: DOCS,
+          push: [...E2E_PUSH, "**/*.spec.ts"],
+        }),
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain('unexpected "**/*.spec.ts"');
+    expect(stderr).toContain(
+      "remove it here, or add it at the source .github/workflows/staging.yml",
+    );
+  });
+
+  it("refuses a kept input that is no longer in the execution closure", () => {
+    const dir = makeRepo(tree({}, ["tests/features/chat.feature", "tests/steps/chat.steps.ts"]));
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain('keeps "tests/**" out of its push paths-ignore');
+    expect(stderr).toContain("no file in its execution closure matches it");
+  });
+
+  it("refuses a policed workflow that vanished instead of skipping it", () => {
+    const dir = makeRepo(tree({}, [".github/workflows/e2e.yml"]));
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain(".github/workflows/e2e.yml not found");
+  });
+
+  it("T1: dropping a docs pattern from the class source refuses too", () => {
+    // The paid deploy re-widens here, and nothing else in the graph would notice:
+    // the test class is derived from this list, so only the pinned docs half can.
+    const dir = makeRepo(
+      tree({
+        [POLICED_WORKFLOW]: workflowYaml("Staging", {
+          push: STAGING_PUSH.filter((pattern) => pattern !== "docs/**"),
+        }),
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain('missing "docs/**"');
+    expect(stderr).toContain("it is part of the pinned docs class");
+  });
+
+  it("pins the docs class to the real staging.yml's docs half", () => {
+    const text = execFileSync("git", ["show", `HEAD:${POLICED_WORKFLOW}`], {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+    });
+    // Read the checked-in list textually: this test pins the source's docs half to
+    // the constant, and a YAML parser is the CLI's runtime seam, not this test's.
+    const docs = [...text.matchAll(/^\s+- "([^"]+)"$/gm)]
+      .map((match) => match[1])
+      .filter((pattern) => DOCS_ONLY_PATTERNS.includes(pattern));
+    expect(docs).toEqual(DOCS_ONLY_PATTERNS);
+  });
+
+  it("T1: a fourth filtered workflow refuses instead of passing unseen", () => {
+    const dir = makeRepo(
+      tree({
+        ".github/workflows/extra.yml": workflowYaml("Extra", { push: ["tests/**"] }),
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain(".github/workflows/extra.yml carries on.push.paths-ignore");
+    expect(stderr).toContain("is not listed in WORKFLOW_SPECS");
+  });
+
+  it("T1: an unpoliced workflow with a paths inclusion filter refuses too", () => {
+    // A paths-only workflow skips every push it does not include — the same
+    // absent-run-reads-as-success class as paths-ignore, so it is refused rather
+    // than printed as "not policed".
+    const dir = makeRepo(
+      tree({
+        ".github/workflows/extra.yml": 'name: Extra\non:\n  push:\n    paths:\n      - "docs/**"\n',
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain(".github/workflows/extra.yml carries on.push.paths");
+    expect(stderr).toContain("an inclusion filter this check does not police");
+  });
+
+  it("T1: a pull_request half on a workflow recorded as having none refuses", () => {
+    const dir = makeRepo(
+      tree({
+        [POLICED_WORKFLOW]: workflowYaml("Staging", { push: TEST_CLASS, pullRequest: DOCS }),
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain(".github/workflows/staging.yml carries on.pull_request.paths-ignore");
+    expect(stderr).toContain("WORKFLOW_SPECS records no pull_request half");
+  });
+
+  it("T1: an E2E step importing an ignored test-support helper exits non-zero", () => {
+    const dir = makeRepo(
+      tree({
+        "tests/steps/chat.steps.ts":
+          'import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";\n' +
+          "export const steps = createMemoryRagStore;\n",
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain(
+      '"**/test-utils/**" matches packages/kajianq-domain/src/test-utils/memory-rag-store.ts',
+    );
+    expect(stderr).toContain(
+      "reachable from execution entry tests/steps/chat.steps.ts: " +
+        "tests/steps/chat.steps.ts → packages/kajianq-domain/src/test-utils/memory-rag-store.ts",
+    );
+  });
+
+  it("T1: a drill entry importing an ignored helper exits non-zero", () => {
+    const dir = makeRepo(
+      tree({
+        "provision/vps/backup/restore-drill.mjs": DRILL_MJS.replace(
+          'import { RECLAIM_SQL } from "./lib.mjs";',
+          'import { RECLAIM_SQL } from "./lib.mjs";\nimport { helper } from "../../../test-utils/helper";',
+        ),
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain('"**/test-utils/**" matches test-utils/helper.ts');
+    expect(stderr).toContain("provision/vps/backup/restore-drill.mjs → test-utils/helper.ts");
+  });
+
+  it("refuses a pull_request filter wider than the docs class", () => {
+    const dir = makeRepo(
+      tree({
+        ".github/workflows/e2e.yml": workflowYaml("E2E", {
+          pullRequest: [...DOCS, "**/*.test.ts"],
+          push: E2E_PUSH,
+        }),
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain(
+      ".github/workflows/e2e.yml's on.pull_request.paths-ignore is not the docs class",
+    );
+    expect(stderr).toContain('it adds "**/*.test.ts"');
+    expect(stderr).toContain("never reports on a pull request at all");
+  });
+
+  it("refuses a pull_request filter that drops a docs pattern", () => {
+    const dir = makeRepo(
+      tree({
+        ".github/workflows/vps-restore-drill.yml": workflowYaml("VPS restore drill", {
+          pullRequest: DOCS.slice(1),
+          push: DRILL_PUSH,
+        }),
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain('it drops "**.md"');
+  });
+
+  it("refuses a PR-triggered workflow that removes its pull_request trigger", () => {
+    const dir = makeRepo(
+      tree({
+        ".github/workflows/e2e.yml": workflowYaml("E2E", { push: E2E_PUSH }),
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain("no `on.pull_request` trigger");
   });
 });

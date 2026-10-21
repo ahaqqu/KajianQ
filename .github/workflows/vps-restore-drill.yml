@@ -10,8 +10,17 @@ name: VPS restore drill
 # and that re-applying the reclamation and the Art. 17 cascade makes the
 # restored target match the live store.
 #
-# paths-ignore mirrors E2E: a docs-only change cannot alter the scripts this
-# drill exercises. workflow_dispatch is unaffected.
+# paths-ignore derives from the test class E2E and Staging share: no test-class
+# file is in this drill's execution closure — restore-drill.mjs, the modules it
+# imports, the two scripts it spawns through `run("bun", …)` (kajianq-backup.mjs
+# and kajianq-restore.mjs) and the migration it applies with psql — so a
+# docs-only or tests-only change cannot alter what the drill proves. The lint
+# check walks those four entries and refuses a drill that starts executing a
+# file outside them. pull_request keeps the docs class only — a path-ignored
+# workflow never reports on a PR at all, so widening that half is a gating
+# decision rather than a trigger edit. scripts/check-paths-ignore-invariant.mjs
+# enforces both halves.
+# workflow_dispatch is unaffected.
 on:
   pull_request:
     paths-ignore:
@@ -30,6 +39,20 @@ on:
       - "NOTICES/**"
       - ".agents/**"
       - ".zcode/**"
+      # The full shared test class: none of these members is in this drill's
+      # execution closure — its imports, the scripts it spawns and the migration
+      # it applies — so a tests-only merge cannot change what the drill proves.
+      # The test class is defined once, at staging.yml's push trigger; the lint
+      # check keeps this list identical to it and proves their absence from the
+      # walked closure.
+      - "tests/**"
+      - "**/*.test.ts"
+      - "**/*.test.mjs"
+      - "**/test-utils/**"
+      - "**/*test-utils*"
+      - "**/test-fixtures*"
+      - "vitest.config.ts"
+      - "playwright.config.ts"
   workflow_dispatch:
 
 permissions:
