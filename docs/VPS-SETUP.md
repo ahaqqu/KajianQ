@@ -831,8 +831,8 @@ The deploy gates on all of these, and fails loudly on any of them:
   into that tree and leaves the mode that hides it in place. That refusal closes
   with that remedy alone and does not repeat the `apply.sh` instruction; a
   mismatch closes with the `apply.sh` remedy. A `conf.d` that is a regular file
-  is refused with remove-the-file or repair-Postgres, then apply and deploy
-  again, because `apply.sh` resolves it and fails to install into it.
+  is refused with a remedy to remove it or repair Postgres, then apply and
+  deploy again, because `apply.sh` resolves it and fails to install into it.
   The marker script's presence, mode and content are part of that comparison, so
   a deleted or non-executable marker is refused before the provenance gate reads
   a record.

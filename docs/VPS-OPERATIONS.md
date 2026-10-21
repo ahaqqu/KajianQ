@@ -128,8 +128,8 @@ What it does, in order:
    `apply.sh` closing only for failures an apply can clear. Any other row
    carrying a versioned destination is refused with a repair of the artifact
    table, because `apply.sh` hands that row's literal path to install and
-   fails. A `conf.d` that is a regular file is refused with remove-the-file or
-   repair-Postgres, then apply and deploy again, because `apply.sh` would
+   fails. A `conf.d` that is a regular file is refused with a remedy to remove
+   it or repair Postgres, then apply and deploy again, because `apply.sh` would
    resolve it and fail to install into it. A mismatch fails the deploy and
    names each file, with the expected and installed digest
    for a content change and the first mismatching line of a rendered block, and
