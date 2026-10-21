@@ -345,6 +345,9 @@ describe("the drift preflight", () => {
       expect(drift.stderr).toContain("/etc/systemd/system/kajianq-backup.service");
       expect(drift.stderr).toContain("provision/vps/systemd/kajianq-backup.service");
       expect(drift.stderr).toContain("run provision/vps/apply.sh");
+      expect(drift.stderr).toContain(
+        "run provision/vps/apply.sh on the box from a checkout of the revision being deployed, then deploy again",
+      );
       expect(drift.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
     } finally {
       fixture.cleanup();
@@ -623,6 +626,13 @@ describe("the drift preflight", () => {
       expect(result.stderr).not.toContain("no conf.d directory");
       expect(result.stderr).not.toContain("no directory matches");
       expect(result.stderr).not.toContain("is not installed");
+      expect(result.stderr).toContain(
+        `make ${hidden} readable and searchable for the deploy identity, then deploy again`,
+      );
+      expect(result.stderr).not.toContain("run provision/vps/apply.sh");
+      expect(result.stderr).not.toContain(
+        "run provision/vps/apply.sh on the box from a checkout of the revision being deployed",
+      );
       expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
       expect(result.stdout).not.toContain("match the checkout");
     } finally {
@@ -721,6 +731,12 @@ describe("the drift preflight", () => {
       expect(result.status, result.stderr).toBe(1);
       expect(result.stderr).toContain("/etc/postgresql/16/main/conf.d is not a directory");
       expect(result.stderr).not.toContain("no directory matches");
+      expect(result.stderr).toContain(
+        `remove ${fixture.path("/etc/postgresql/16/main/conf.d")} or repair Postgres, then run provision/vps/apply.sh on the box and deploy again`,
+      );
+      expect(result.stderr).not.toContain(
+        "run provision/vps/apply.sh on the box from a checkout of the revision being deployed",
+      );
       expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
     } finally {
       fixture.cleanup();
@@ -743,10 +759,35 @@ describe("the drift preflight", () => {
       expect(result.stderr).toContain("/etc/postgresql/*/main/log.d/99-kajianq.conf");
       expect(result.stderr).toContain("carries a versioned destination");
       expect(result.stderr).not.toContain("no directory matches");
+      expect(result.stderr).toContain("repair the artifact table");
+      expect(result.stderr).not.toContain(
+        "run provision/vps/apply.sh on the box from a checkout of the revision being deployed",
+      );
       expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS + 1}`);
     } finally {
       fixture.cleanup();
       checkout.cleanup();
+    }
+  });
+
+  it("refuses an unknown artifact kind without naming the apply remedy", () => {
+    // The check compares four kinds. A manifest naming a fifth is a table bug
+    // the installer cannot clear: apply.sh would place its own row and the next
+    // deploy would refuse the same unknown kind again.
+    const fixture = driftFixture();
+    try {
+      const manifest = fixture.manifest.replace("|config|", "|bogus|");
+      expect(manifest).not.toBe(fixture.manifest);
+      const result = fixture.check({ manifest });
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain("unknown artifact kind in the manifest (bogus)");
+      expect(result.stderr).toContain("repair the artifact table");
+      expect(result.stderr).not.toContain(
+        "run provision/vps/apply.sh on the box from a checkout of the revision being deployed",
+      );
+      expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
+    } finally {
+      fixture.cleanup();
     }
   });
 

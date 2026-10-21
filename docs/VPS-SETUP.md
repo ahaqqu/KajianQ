@@ -565,7 +565,10 @@ Now apply the configuration. This is idempotent — re-running it is safe and is
 the normal way to pick up a config change. Run it from a checkout pulled to the
 revision being deployed: the deploy's preflight compares every installed file
 with that checkout and refuses a box whose provisioning is stale, naming the
-file ([`docs/VPS-OPERATIONS.md`](VPS-OPERATIONS.md) §1.1 step 1).
+file ([`docs/VPS-OPERATIONS.md`](VPS-OPERATIONS.md) §1.1 step 1). A path the
+deploy identity cannot read or search is the exception: that refusal names the
+path and its own mode or ownership remedy, not an apply, because the apply
+installs into that tree and leaves the mode that hides it in place.
 
 ```bash
 cd /srv/kajianq-src
@@ -825,9 +828,11 @@ The deploy gates on all of these, and fails loudly on any of them:
   enumerate instead of comparing the one it can see. The remedy is to make the
   named path readable and searchable for the deploy identity (its mode or
   ownership), then deploy again; `apply.sh` cannot clear it, because it installs
-  into that tree and leaves the mode that hides it in place. A `conf.d` that is a
-  regular file is refused too, because `apply.sh` resolves it and fails to
-  install into it.
+  into that tree and leaves the mode that hides it in place. That refusal closes
+  with that remedy alone and does not repeat the `apply.sh` instruction; a
+  mismatch closes with the `apply.sh` remedy. A `conf.d` that is a regular file
+  is refused with remove-the-file or repair-Postgres, then apply and deploy
+  again, because `apply.sh` resolves it and fails to install into it.
   The marker script's presence, mode and content are part of that comparison, so
   a deleted or non-executable marker is refused before the provenance gate reads
   a record.

@@ -123,13 +123,19 @@ What it does, in order:
    preflight does not hold. The remedy is to make the named path readable and
    searchable for the deploy identity (its mode or ownership), then deploy
    again; `apply.sh` cannot clear it, because it installs into that tree and
-   leaves the mode that hides it in place. Any other row carrying a versioned
-   destination is refused, because `apply.sh` hands that row's literal path to
-   install and fails. A mismatch fails the deploy and names each file, with the
-   expected and installed digest
+   leaves the mode that hides it in place. That refusal closes with this remedy
+   and no `apply.sh` instruction; the failure summary prints the generic
+   `apply.sh` closing only for failures an apply can clear. Any other row
+   carrying a versioned destination is refused with a repair of the artifact
+   table, because `apply.sh` hands that row's literal path to install and
+   fails. A `conf.d` that is a regular file is refused with remove-the-file or
+   repair-Postgres, then apply and deploy again, because `apply.sh` would
+   resolve it and fail to install into it. A mismatch fails the deploy and
+   names each file, with the expected and installed digest
    for a content change and the first mismatching line of a rendered block, and
-   the remedy: run `sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env` on
-   the box from a checkout of the revision being deployed, then deploy again.
+   closes with the remedy: run `sudo provision/vps/apply.sh --env
+   /etc/kajianq/proxy.env` on the box from a checkout of the revision being
+   deployed, then deploy again.
    The gate changes no installed state (comparing the rendered block writes one
    short-lived file under `/tmp`), and it runs before the provenance check below
    because a stale unit can satisfy that check's record — exactly the state a

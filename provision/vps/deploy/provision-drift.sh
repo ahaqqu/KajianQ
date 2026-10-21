@@ -155,13 +155,28 @@ FAILURES=0
 CHECKED=0
 SKIPPED=0
 SKIPPED_NO_CONF_D=0
+NON_APPLY_FAILURES=0
+REFUSAL_LINES=()
 
+# Failure text is held until the end, then printed after the count so each
+# refusal keeps its own closing instruction and the generic apply.sh summary
+# can be withheld from a refusal an apply cannot clear.
 refuse() {
     local line
     for line in "$@"; do
-        printf 'deploy: %s\n' "${line}" >&2
+        REFUSAL_LINES+=("${line}")
     done
     FAILURES=$((FAILURES + 1))
+}
+
+# A refusal an apply.sh run cannot clear: a path this identity cannot read, a
+# destination only the Postgres row resolves through a glob, a conf.d that is
+# not a directory, or a kind this check cannot compare. Running apply.sh over
+# any of these leaves the condition in place and the next deploy refuses again,
+# so the closing summary must not name it as the remedy.
+refuse_uncleared_by_apply() {
+    refuse "$@"
+    NON_APPLY_FAILURES=$((NON_APPLY_FAILURES + 1))
 }
 
 # The one row whose destination apply.sh resolves through a versioned glob: its
@@ -412,23 +427,23 @@ check_manifest() {
                 ;;
             4)
                 CHECKED=$((CHECKED + 1))
-                refuse \
+                refuse_uncleared_by_apply \
                     "${dst} carries a versioned destination, but apply.sh resolves a versioned destination only for the ${VERSIONED_SKIP_ROW} row — its literal path would reach install and fail" \
-                    "the deploy refuses a row it cannot compare the way apply.sh installs it"
+                    "repair the artifact table in provision/vps/apply.sh so only the ${VERSIONED_SKIP_ROW} row carries a directory glob, then deploy again — running apply.sh cannot place this row's literal path"
                 continue
                 ;;
             5)
                 CHECKED=$((CHECKED + 1))
-                refuse \
+                refuse_uncleared_by_apply \
                     "cannot read or search ${installed} as $(id -un) — an unreadable path and an absent one both yield an empty glob, and root's apply.sh expands through paths this identity cannot enter, so ${dst} is refused instead of skipped" \
                     "make ${installed} readable and searchable for the deploy identity, then deploy again"
                 continue
                 ;;
             6)
                 CHECKED=$((CHECKED + 1))
-                refuse \
+                refuse_uncleared_by_apply \
                     "${installed} is not a directory — apply.sh resolves the first conf.d match with ls -d and would fail to install provision/vps/${src} into it" \
-                    "remove ${installed} or repair Postgres, then run provision/vps/apply.sh on the box"
+                    "remove ${installed} or repair Postgres, then run provision/vps/apply.sh on the box and deploy again — apply.sh cannot install into a file"
                 continue
                 ;;
         esac
@@ -502,7 +517,9 @@ check_manifest() {
                 fi
                 ;;
             *)
-                refuse "${dst} has an unknown artifact kind in the manifest (${kind})"
+                refuse_uncleared_by_apply \
+                    "${dst} has an unknown artifact kind in the manifest (${kind})" \
+                    "repair the artifact table in provision/vps/apply.sh so the row names config, render, link or sudoers, then deploy again — apply.sh cannot change a kind this check does not compare"
                 ;;
         esac
     done <<< "${manifest}"
@@ -527,9 +544,19 @@ fi
 check_manifest "${MANIFEST}"
 
 if [ "${FAILURES}" -ne 0 ]; then
-    printf 'deploy: %s of %s provisioned artifact(s) do not match the checkout\n' \
-        "${FAILURES}" "$((CHECKED + SKIPPED))" >&2
-    printf 'deploy: run provision/vps/apply.sh on the box from a checkout of the revision being deployed, then deploy again\n' >&2
+    if [ "${NON_APPLY_FAILURES}" -ne 0 ]; then
+        printf 'deploy: %s of %s provisioned artifact(s) could not be compared or do not match the checkout\n' \
+            "${FAILURES}" "$((CHECKED + SKIPPED))" >&2
+    else
+        printf 'deploy: %s of %s provisioned artifact(s) do not match the checkout\n' \
+            "${FAILURES}" "$((CHECKED + SKIPPED))" >&2
+    fi
+    for line in "${REFUSAL_LINES[@]}"; do
+        printf 'deploy: %s\n' "${line}" >&2
+    done
+    if [ "${NON_APPLY_FAILURES}" -eq 0 ]; then
+        printf 'deploy: run provision/vps/apply.sh on the box from a checkout of the revision being deployed, then deploy again\n' >&2
+    fi
     exit 1
 fi
 if [ "${SKIPPED}" -ne 0 ]; then
