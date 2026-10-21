@@ -469,13 +469,14 @@ describe("detectSurahReference — the collapse's recorded false positive (R2)",
 });
 
 /**
- * Every class normalization transforms — case, vowels, apostrophes,
- * separators, diacritics, digits — densely enough that a step which stops
- * producing a fixed point is generated rather than stumbled on. `fc.string()`
- * covers the rest of the input space.
+ * Every class the comparison form keeps or rewrites — case, vowels,
+ * apostrophes, separators, diacritics, digits, tatweel, Arabic letters — has a
+ * representative in the unit list, so a step which stops producing a fixed
+ * point is generated rather than stumbled on. The grapheme-unit string samples
+ * printable Unicode beyond that list.
  */
 const normalizationInput = fc.oneof(
-  fc.string(),
+  fc.string({ unit: "grapheme" }),
   fc.string({
     unit: fc.constantFrom(
       "a",
@@ -499,6 +500,8 @@ const normalizationInput = fc.oneof(
       "\u0301",
       "\u2019",
       "é",
+      "\u0640",
+      "\u0627",
     ),
   }),
 );
