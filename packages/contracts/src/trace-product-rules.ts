@@ -23,16 +23,16 @@ import { CostRecordSchema } from "./trace-primitives";
  * **no `review` event at all**. Folding the rules into `review` would leave
  * that path unobservable.
  *
- * **Reading it.** `applied` names the rule ids that appended text, in
- * application order. An EMPTY array is a meaningful value, not a missing one:
- * the rules ran and appended nothing. It does NOT separate "no rule had a
- * trigger" from "a trigger matched and the copy was already present" — the
- * residual exact-copy suppression case is the motivating example, not a
- * count the field carries. PRESENCE is the signal (the rules ran); absence is
- * authoritative only for traces written after the event shipped (ADR-0007).
- * The delivered text remains the single source of truth for what
- * the answer says; this event records only which rules appended text, never
- * whether their text survived.
+ * **Reading it.** `applied` names the rule ids whose application changed the
+ * delivered text, in application order. An EMPTY array is a meaningful value,
+ * not a missing one: the rules ran and left the draft's text as it was. It does
+ * NOT separate "no rule had a trigger" from "a trigger matched and the rule was
+ * already satisfied" — a draft that already carries every rule's copy records
+ * the same `[]` a run with no trigger does. PRESENCE is the signal (the rules
+ * ran); absence is authoritative only for traces written after the event shipped
+ * (ADR-0007). The delivered text remains the single source of truth for what the
+ * answer says; this event records only which rules changed it, never whether
+ * their text survived.
  */
 export const productRulesEventSchema = v.object({
   /**
@@ -42,7 +42,7 @@ export const productRulesEventSchema = v.object({
   stage: v.literal("reviewer"),
   kind: v.literal("product_rules"),
   detail: v.object({
-    /** The rule ids that appended text, in order; `[]` = ran, appended nothing. */
+    /** The rule ids that changed the delivered text, in order; `[]` = ran, changed nothing. */
     applied: v.array(v.pipe(v.string(), v.minLength(1))),
   }),
   cost: v.optional(CostRecordSchema),

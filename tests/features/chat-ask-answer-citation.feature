@@ -22,10 +22,11 @@ Feature: Chat — ask, answer, citations, warnings, disclaimer
     When I ask a question whose answer carries a dhaif hadith
     Then the dhaif warning renders as a warning card with the grade badge
 
-  # #292: the postprocess appends warning → MT label → disclaimer, and a draft
-  # that already carried its disclaimer leaves `[warning][MT label]` as the
-  # tail. The pre-fix two-paragraph peel left the warning in the body and the
-  # card drew it again — the canonical sentence rendered twice.
+  # #292: the postprocess appends warning → MT label → disclaimer, and a
+  # rehydrated answer may carry its disclaimer ahead of the warning and the MT
+  # label. The peel must walk the whole trailing run: the pre-fix two-paragraph
+  # peel left the warning in the body and the card drew it again — the canonical
+  # sentence rendered twice.
   Scenario: The dhaif warning renders once when the MT label follows it (#292)
     When I ask a question whose dhaif answer ends with the machine-translation label
     Then the dhaif warning renders exactly once beside the MT label

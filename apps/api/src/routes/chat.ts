@@ -181,10 +181,12 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
   // and the settled text is chunked instead. Which citations that text earns is
   // the frame derivation's decision, never this flag's. Otherwise the vendor's
   // own delta sequence is replayed when it reproduces the delivered text;
-  // post-processing may have APPENDED deterministic rules (disclaimer, dhaif
-  // warning), which ride one trailing delta so the model's streamed text stays
-  // byte-identical on the wire. When generation did not stream at all, the text
-  // is chunked.
+  // post-processing may have appended deterministic rules (the dhaif warning)
+  // after the model's stream, which ride one trailing delta so that stream stays
+  // byte-identical on the wire. A text that is not the stream plus an appended
+  // tail — the closing disclaimer is normalised, and a replaced draft is the
+  // refusal path above — is chunked whole instead. When generation did not
+  // stream at all, the text is chunked.
   const refused = traceRefused(answer.trace);
   const streamed = deltas.join("");
   const frames = refused

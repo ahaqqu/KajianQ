@@ -671,8 +671,8 @@ describe("POST /v1/chat", () => {
     expect(frame.citations[0]?.arabic).toBe(AYAT_KURSI.textAr);
     expect(frame.dhaifWarning).toBe(false);
     // The reader's text still carries the draft: partial answer, its verse and the
-    // refusal sentence — the reviewer replaced nothing; only the deterministic rules
-    // were APPENDED.
+    // refusal sentence — the reviewer replaced nothing, and the rules ran after the
+    // draft with this draft carrying no disclaimer, so none of its text was rewritten.
     expect(answer).toContain("Allah Mahahidup");
     expect(answer).toContain("[QS. 2:255]");
     expect(answer).toContain(DEFAULT_REFUSALS.id);
