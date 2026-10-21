@@ -1,20 +1,36 @@
 #!/usr/bin/env bun
 /**
- * check-paths-ignore-invariant.mjs — the gate for `staging.yml`'s paths-ignore invariant.
+ * check-paths-ignore-invariant.mjs — the gate for the workflows' paths-ignore classes.
  *
  * THE INVARIANT
- *   No path matched by `.github/workflows/staging.yml`'s `on.push.paths-ignore` is
- *   reachable through static imports from any of the four entries
- *   `provision/vps/deploy/deploy.sh` builds: `apps/web/index.html` (`bun run
- *   build:web`), `apps/api/src/boot.ts`, `apps/api/src/cleanup.ts` and
- *   `provision/vps/backup/kajianq-backup.mjs` (`bun build --target=bun`).
+ *   For each policed workflow, no path matched by its `on.push.paths-ignore` is
+ *   reachable through static imports from that workflow's own execution entries.
+ *   `staging.yml` builds and ships four artifacts through
+ *   `provision/vps/deploy/deploy.sh` — `apps/web/index.html` (`bun run build:web`),
+ *   `apps/api/src/boot.ts`, `apps/api/src/cleanup.ts` and
+ *   `provision/vps/backup/kajianq-backup.mjs` — and those are its entries.
+ *   `e2e.yml` boots the web build and the API entry and executes the Playwright-BDD
+ *   suite, so its entries add `playwright.config.ts`, `tests/features/**` and
+ *   `tests/steps/**`. `vps-restore-drill.yml` executes
+ *   `provision/vps/backup/restore-drill.mjs`.
  *
  * WHY IT EXISTS (the silent failure it closes)
  *   GitHub skips a push run only when EVERY changed file matches an ignore pattern:
  *   move a production module into the ignored test-support class (a `test-utils/`
  *   directory, or a name containing `test-utils` / starting `test-fixtures`) and a
- *   push touching only that module skips `Staging` while `CI` and `E2E` stay green.
- *   A skipped deploy is an ABSENT run, not a red one: silence reads as success.
+ *   push touching only that module skips the workflow while `CI` stays green. A
+ *   skipped run is an ABSENT run, not a red one: silence reads as success. The same
+ *   class is worse on `pull_request`, where a path-ignored workflow never reports at
+ *   all — a required check then blocks the merge forever — so the two PR-triggered
+ *   workflows pin that half to the docs class and widening it is a refusal here.
+ *
+ * THE CLASS IS DEFINED ONCE AND DERIVED PER WORKFLOW
+ *   `staging.yml`'s push trigger defines the docs class and the test class. The other
+ *   two workflows must apply exactly the docs class plus the test class, minus the
+ *   members each names as its own execution input: `e2e.yml` keeps `tests/**` and
+ *   `playwright.config.ts` because they ARE the suite it runs; the drill keeps none.
+ *   A member added at `staging.yml` therefore fails this gate until it is applied or
+ *   recorded as a kept input — a second, drifting glob list cannot pass.
  *
  * THE CLOSURE IS COMPUTED FROM IMPORTS, NEVER FROM A NAME LIST
  *   A name-based check passes the exact failure it exists to catch — a RENAME into
@@ -33,28 +49,22 @@
  *
  * FAIL CLOSED
  *   Every "cannot read my input" state refuses with a non-zero exit rather than
- *   passing: an unreadable or unparsable `staging.yml`; a missing, mistyped or
- *   empty `on.push.paths-ignore`; a `deploy.sh` whose artifact set no longer matches
- *   the four entries; an import specifier that resolves to nothing (a resolver gap
- *   must never look like "no edge"); and a missing YAML parser.
- *
- * WHAT IT POLICES, AND WHY NOT THE OTHER TWO
- *   This check polices `staging.yml`'s push trigger only. `e2e.yml` and
- *   `vps-restore-drill.yml` ignore only the docs patterns and carry a different
- *   invariant: they also trigger on `pull_request`, where a path-ignored workflow
- *   never reports — its checks stay "Pending" and a required check blocks the
- *   merge, a visible failure rather than a skipped deploy. This check verifies they
- *   stay docs-only; its refusal is where a new trigger set gets added deliberately.
+ *   passing: an unreadable or unparsable workflow; a missing, mistyped or empty
+ *   trigger list; a missing policed workflow; a push set that does not derive from
+ *   the class; a kept input no closure file backs; a `pull_request` filter wider than
+ *   the docs class; a `deploy.sh` whose artifact set moved; an import specifier that
+ *   resolves to nothing (a resolver gap must never look like "no edge"); and a
+ *   missing YAML parser.
  *
  * WHAT IT DOES NOT COVER
- *   - `paths:` include-filters (ordered `!` semantics), and `pull_request.paths-ignore` anywhere.
+ *   - `paths:` include-filters (ordered `!` semantics).
  *   - Non-import reachability of build inputs: `tsconfig.json`, `vite.config.ts`,
  *     `package.json`, Tailwind's content scanning, `tsc --noEmit` inputs (the
  *     colocated `*.test.ts` files `build:web` typechecks are outside the emitted
  *     graph by design), `import.meta.glob`, and Vite-plugin virtual modules.
  *   - Files in `node_modules`: never in a push's changed-file set, treated as leaves.
- *   - Whether the *ignored* patterns are the right class: this gate keeps the
- *     class safe, not correctly scoped.
+ *   - Workflows that carry no `paths-ignore`: this gate judges filters, not their
+ *     absence. It also keeps each class safe, not correctly scoped.
  *
  * Run: `bun run lint`. `--root <dir>` is a read-only test seam for fixture
  * trees; the check writes nothing, ever.
@@ -70,9 +80,13 @@ export const REPO_ROOT = resolve(HERE, "..");
 /** Every "cannot verify" state — the refusal the caller turns into exit 1. */
 export class InvariantRefusal extends Error {}
 
+/** The push trigger that defines the docs class and the test class. */
 export const POLICED_WORKFLOW = ".github/workflows/staging.yml";
+export const E2E_WORKFLOW = ".github/workflows/e2e.yml";
+export const DRILL_WORKFLOW = ".github/workflows/vps-restore-drill.yml";
 
-/** Patterns that cannot alter a build artifact, so ignoring only these needs no deploy-closure check. */
+/** Patterns that cannot alter a build artifact or a workflow's execution, so
+ * ignoring only these needs no closure check. */
 export const DOCS_ONLY_PATTERNS = [
   "**.md",
   "docs/**",
@@ -80,23 +94,6 @@ export const DOCS_ONLY_PATTERNS = [
   "NOTICES/**",
   ".agents/**",
   ".zcode/**",
-];
-
-/** Workflows carrying a push `paths-ignore` this check does not police, with the
- * recorded reason; their lists must stay docs-only. */
-export const UNPOLICED_WORKFLOWS = [
-  {
-    file: ".github/workflows/e2e.yml",
-    reason:
-      "docs-only class; also triggers on pull_request, where a path-ignored workflow never " +
-      "reports at all (#379)",
-  },
-  {
-    file: ".github/workflows/vps-restore-drill.yml",
-    reason:
-      "docs-only class; also triggers on pull_request, where a path-ignored workflow never " +
-      "reports at all (#379)",
-  },
 ];
 
 export const DEPLOY_SH = "provision/vps/deploy/deploy.sh";
@@ -109,6 +106,13 @@ export const FILE_ENTRIES = [
   "apps/api/src/cleanup.ts",
   "provision/vps/backup/kajianq-backup.mjs",
 ];
+
+/** The API entry E2E boots, the config that selects its suite, and the suite dirs. */
+export const API_ENTRY = "apps/api/src/boot.ts";
+export const PLAYWRIGHT_CONFIG = "playwright.config.ts";
+export const BDD_DIRS = ["tests/features", "tests/steps"];
+/** The entry the restore drill executes. */
+export const DRILL_ENTRY = "provision/vps/backup/restore-drill.mjs";
 
 /** Module extensions tried when a specifier carries none, in order. */
 const MODULE_EXTS = [".ts", ".tsx", ".mts", ".cts", ".mjs", ".cjs", ".js", ".jsx"];
@@ -194,10 +198,11 @@ export function firstMatch(compiled, file) {
 
 /**
  * Read the policed workflow's `on.push.paths-ignore`, refusing anything it cannot
- * read exactly (no YAML parser, unparsable document, missing `on.push`, absent/
- * mistyped/empty list, non-string entry); `yamlParse` is injectable for tests.
+ * read exactly (no YAML parser, unparsable document, missing trigger, absent/
+ * mistyped/empty list, non-string entry); `yamlParse` is injectable for tests and
+ * `event` selects the trigger (`push` by default).
  */
-export function parsePathsIgnore(text, yamlParse) {
+export function parsePathsIgnore(text, yamlParse, event = "push") {
   const parse = yamlParse ?? runtimeYamlParser();
   let doc;
   try {
@@ -213,41 +218,42 @@ export function parsePathsIgnore(text, yamlParse) {
   if (on === null || typeof on !== "object" || Array.isArray(on)) {
     throw new InvariantRefusal("no `on:` trigger block in the policed workflow — cannot verify");
   }
-  const push = on.push;
-  if (push === null || typeof push !== "object" || Array.isArray(push)) {
+  const trigger = on[event];
+  const label = `on.${event}`;
+  if (trigger === null || typeof trigger !== "object" || Array.isArray(trigger)) {
     throw new InvariantRefusal(
-      "no `on.push` trigger in the policed workflow — this check polices the push trigger's " +
+      `no \`${label}\` trigger in the policed workflow — this check reads that trigger's ` +
         "paths-ignore, so its absence is a refusal, not an empty match set",
     );
   }
-  if (push.paths !== undefined) {
+  if (trigger.paths !== undefined) {
     throw new InvariantRefusal(
-      "`on.push` carries both `paths` and `paths-ignore` — GitHub rejects that combination " +
+      `\`${label}\` carries both \`paths\` and \`paths-ignore\` — GitHub rejects that combination ` +
         "(a filter has one or the other); fix the trigger before this check can police it",
     );
   }
-  const list = push["paths-ignore"];
+  const list = trigger["paths-ignore"];
   if (list === undefined) {
     throw new InvariantRefusal(
-      "`on.push.paths-ignore` is absent — the deploy-skip class this check exists for is not " +
+      `\`${label}.paths-ignore\` is absent — the class this check exists for is not ` +
         "where it was; if the class moved, move this check with it",
     );
   }
   if (!Array.isArray(list)) {
     throw new InvariantRefusal(
-      `\`on.push.paths-ignore\` is ${typeof list}, not a list — cannot read the pattern set`,
+      `\`${label}.paths-ignore\` is ${typeof list}, not a list — cannot read the pattern set`,
     );
   }
   if (list.length === 0) {
     throw new InvariantRefusal(
-      "`on.push.paths-ignore` is empty — this check would police nothing and pass vacuously; " +
+      `\`${label}.paths-ignore\` is empty — this check would police nothing and pass vacuously; ` +
         "remove the filter deliberately and retire this check in the same change",
     );
   }
   return list.map((entry, index) => {
     if (typeof entry !== "string" || entry.trim() === "") {
       throw new InvariantRefusal(
-        `\`on.push.paths-ignore[${index}]\` is not a non-empty string — cannot read the pattern set`,
+        `\`${label}.paths-ignore[${index}]\` is not a non-empty string — cannot read the pattern set`,
       );
     }
     return entry;
@@ -586,23 +592,38 @@ export function assertDeployEntrySet(deployShText) {
   }
 }
 
-/** A workflow outside `POLICED_WORKFLOW` must ignore docs-only patterns; the refusal
- * is where a new class gets a decision instead of a silent hole in the coverage
- * claim. */
-export function assertUnpolicedWorkflows(root, unpoliced = UNPOLICED_WORKFLOWS) {
-  for (const { file, reason } of unpoliced) {
-    const abs = join(root, file);
-    if (!existsSync(abs)) continue;
-    const patterns = parsePathsIgnore(readFileSync(abs, "utf8"));
-    const foreign = patterns.filter((pattern) => !DOCS_ONLY_PATTERNS.includes(pattern));
-    if (foreign.length > 0) {
-      throw new InvariantRefusal(
-        `${file} carries a non-docs paths-ignore class (${foreign.join(", ")}) that this check ` +
-          `does not police — recorded reason was "${reason}". Add its trigger set to ` +
-          "POLICED_WORKFLOWS with its own artifact entries, or record why its invariant differs",
-      );
+/** The files under a repo-relative directory, POSIX separators, sorted for
+ * deterministic output. A missing directory yields no files; a kept pattern that
+ * pointed at it then fails its closure assertion rather than passing vacuously. */
+function filesUnder(root, dir) {
+  const out = [];
+  const walk = (abs, rel) => {
+    for (const entry of readdirSync(abs, { withFileTypes: true })) {
+      const childAbs = join(abs, entry.name);
+      const childRel = `${rel}/${entry.name}`;
+      if (entry.isDirectory()) walk(childAbs, childRel);
+      else if (entry.isFile()) out.push(childRel);
     }
-  }
+  };
+  const abs = join(root, dir);
+  if (existsSync(abs)) walk(abs, dir);
+  return out.sort();
+}
+
+/** The entries `e2e.yml` executes: the web build and API entry it boots, the
+ * Playwright config, and every BDD feature/step file. */
+export function e2eEntries(root) {
+  return [
+    { file: WEB_ENTRY, baseDir: dirname(WEB_ENTRY) },
+    { file: API_ENTRY, baseDir: "." },
+    { file: PLAYWRIGHT_CONFIG, baseDir: "." },
+    ...BDD_DIRS.flatMap((dir) => filesUnder(root, dir).map((file) => ({ file, baseDir: "." }))),
+  ];
+}
+
+/** The entry `vps-restore-drill.yml` executes. */
+export function drillEntries() {
+  return [{ file: DRILL_ENTRY, baseDir: "." }];
 }
 
 export function deployEntries() {
@@ -612,69 +633,202 @@ export function deployEntries() {
   ];
 }
 
-/** Verify the invariant against `root`; returns the evidence the OK line prints and
- * throws InvariantRefusal for any "cannot verify" state or any hit. */
+/** The test class: every non-docs pattern at the class source's push trigger. */
+export function deriveTestClass(classPatterns) {
+  return classPatterns.filter((pattern) => !DOCS_ONLY_PATTERNS.includes(pattern));
+}
+
+/** How each policed workflow derives from the class at `POLICED_WORKFLOW`.
+ * `definesClass` marks the source; `keep` names class members the workflow itself
+ * executes, so it must not ignore them; `pullRequest` marks a workflow whose PR half
+ * this check pins to the docs class. */
+export const WORKFLOW_SPECS = [
+  {
+    file: POLICED_WORKFLOW,
+    definesClass: true,
+    pullRequest: false,
+    entryLabel: "deploy entry",
+    entries: () => deployEntries(),
+  },
+  {
+    file: E2E_WORKFLOW,
+    keep: ["tests/**", PLAYWRIGHT_CONFIG],
+    pullRequest: true,
+    entryLabel: "execution entry",
+    entries: (root) => e2eEntries(root),
+  },
+  {
+    file: DRILL_WORKFLOW,
+    keep: [],
+    pullRequest: true,
+    entryLabel: "execution entry",
+    entries: () => drillEntries(),
+  },
+];
+
+/** List the items of `a` that `b` does not carry, in `a`'s order. */
+function missingFrom(a, b) {
+  return a.filter((item) => !b.includes(item));
+}
+
+/** Refuse a push set that is not exactly the docs class plus the test class minus
+ * this workflow's kept inputs — the class is named once, at its source. */
+function assertDerivedPushClass(spec, patterns, testClass) {
+  const keep = spec.keep ?? [];
+  const staleKeep = missingFrom(keep, testClass);
+  if (staleKeep.length > 0) {
+    throw new InvariantRefusal(
+      `${spec.file} keeps ${staleKeep.map((p) => `"${p}"`).join(", ")} out of its push ` +
+        `paths-ignore, but that is not in the test class at ${POLICED_WORKFLOW} — drop the stale ` +
+        "exception, or add the class member once at its source",
+    );
+  }
+  const expected = [...DOCS_ONLY_PATTERNS, ...missingFrom(testClass, keep)];
+  const missing = missingFrom(expected, patterns);
+  const unexpected = missingFrom(patterns, expected);
+  if (missing.length === 0 && unexpected.length === 0) return;
+  throw new InvariantRefusal(
+    `${spec.file}'s on.push.paths-ignore does not derive from the class at ${POLICED_WORKFLOW}` +
+      (missing.length > 0 ? `; missing ${missing.map((p) => `"${p}"`).join(", ")}` : "") +
+      (unexpected.length > 0 ? `; unexpected ${unexpected.map((p) => `"${p}"`).join(", ")}` : "") +
+      " — the class is named once at its source; apply a new member there, or record it as " +
+      "this workflow's kept execution input",
+  );
+}
+
+/** Refuse a `pull_request` filter wider than the docs class. A path-ignored
+ * workflow never reports on a PR at all, so a required check would block forever;
+ * widening that half is a gating decision, not a trigger edit. */
+function assertPullRequestDocsOnly(file, text) {
+  const patterns = parsePathsIgnore(text, undefined, "pull_request");
+  const foreign = missingFrom(patterns, DOCS_ONLY_PATTERNS);
+  const dropped = missingFrom(DOCS_ONLY_PATTERNS, patterns);
+  if (foreign.length === 0 && dropped.length === 0) return;
+  throw new InvariantRefusal(
+    `${file}'s on.pull_request.paths-ignore is not the docs class` +
+      (foreign.length > 0 ? `; it adds ${foreign.map((p) => `"${p}"`).join(", ")}` : "") +
+      (dropped.length > 0 ? `; it drops ${dropped.map((p) => `"${p}"`).join(", ")}` : "") +
+      " — a path-ignored workflow never reports on a pull request at all, so its checks are " +
+      "absent rather than failed and a required one blocks the merge forever; if the PR half is " +
+      "deliberately filtered, record why the check is not required and update this check",
+  );
+}
+
+/** Prove each kept input is real: at least one file in the workflow's execution
+ * closure matches it, so an exception cannot outlive the suite it was written for. */
+function assertKeptInputs(spec, closure, root) {
+  for (const kept of spec.keep ?? []) {
+    const regex = compilePattern(kept);
+    const hit = [...closure.keys()].some((abs) =>
+      regex.test(relative(root, abs).split(sep).join("/")),
+    );
+    if (!hit) {
+      throw new InvariantRefusal(
+        `${spec.file} keeps "${kept}" out of its push paths-ignore, but no file in its execution ` +
+          "closure matches it — a kept input must be something the workflow really runs; if the " +
+          "suite moved, update this check's closure entries with it",
+      );
+    }
+  }
+}
+
+/** Verify every policed workflow against `root`; returns the evidence the OK line
+ * prints and throws InvariantRefusal for any "cannot verify" state or any hit. */
 export function verify(root = REPO_ROOT) {
-  const workflowPath = join(root, POLICED_WORKFLOW);
-  if (!existsSync(workflowPath)) {
+  const classPath = join(root, POLICED_WORKFLOW);
+  if (!existsSync(classPath)) {
     throw new InvariantRefusal(
-      `${POLICED_WORKFLOW} not found under ${root} — this check polices that trigger set; ` +
-        "refusing to pass without it",
+      `${POLICED_WORKFLOW} not found under ${root} — this check derives the class from that ` +
+        "push trigger; refusing to pass without it",
     );
   }
-  const patterns = parsePathsIgnore(readFileSync(workflowPath, "utf8"));
-  const compiled = compilePatterns(patterns);
-  assertUnpolicedWorkflows(root);
-
-  const deployShPath = join(root, DEPLOY_SH);
-  if (!existsSync(deployShPath)) {
-    throw new InvariantRefusal(`${DEPLOY_SH} not found — cannot derive the deploy artifact set`);
+  const testClass = deriveTestClass(parsePathsIgnore(readFileSync(classPath, "utf8")));
+  if (testClass.length === 0) {
+    throw new InvariantRefusal(
+      `${POLICED_WORKFLOW}'s push paths-ignore carries no test class — the other policed ` +
+        "workflows derive their class from it, so an empty class would police them vacuously",
+    );
   }
-  assertDeployEntrySet(readFileSync(deployShPath, "utf8"));
-
-  const entries = deployEntries();
-  const { closure, looseRefs } = buildClosure(entries, root);
   const files = collectRepoFiles(root);
-  const matched = files.flatMap((file) => {
-    const hit = firstMatch(compiled, file);
-    return hit ? [{ file, pattern: hit.pattern }] : [];
-  });
-  const violations = matched.filter(({ file }) => closure.has(resolve(root, file)));
-  if (violations.length > 0) {
-    const detail = violations
-      .map(({ file, pattern }) => {
-        const chain = importChain(resolve(root, file), closure, root);
-        return (
-          `  paths-ignore-invariant: "${pattern}" matches ${file}\n` +
-          `    reachable from deploy entry ${chain[0]}: ${chain.join(" → ")}`
+  const workflows = [];
+  for (const spec of WORKFLOW_SPECS) {
+    const workflowPath = join(root, spec.file);
+    if (!existsSync(workflowPath)) {
+      throw new InvariantRefusal(
+        `${spec.file} not found under ${root} — this check polices that trigger set; ` +
+          "refusing to pass without it",
+      );
+    }
+    const text = readFileSync(workflowPath, "utf8");
+    const patterns = parsePathsIgnore(text);
+    if (!spec.definesClass) assertDerivedPushClass(spec, patterns, testClass);
+    if (spec.pullRequest) assertPullRequestDocsOnly(spec.file, text);
+    if (spec.file === POLICED_WORKFLOW) {
+      const deployShPath = join(root, DEPLOY_SH);
+      if (!existsSync(deployShPath)) {
+        throw new InvariantRefusal(
+          `${DEPLOY_SH} not found — cannot derive the deploy artifact set`,
         );
-      })
-      .join("\n");
-    throw new InvariantRefusal(
-      `${violations.length} path(s) matched by ${POLICED_WORKFLOW}'s paths-ignore are in the ` +
-        `deploy import closure — a change to them skips the deploy while changing the artifact:\n${detail}`,
-    );
+      }
+      assertDeployEntrySet(readFileSync(deployShPath, "utf8"));
+    }
+
+    const entries = spec.entries(root);
+    const { closure, looseRefs } = buildClosure(entries, root);
+    assertKeptInputs(spec, closure, root);
+
+    const compiled = compilePatterns(patterns);
+    const matched = files.flatMap((file) => {
+      const hit = firstMatch(compiled, file);
+      return hit ? [{ file, pattern: hit.pattern }] : [];
+    });
+    const violations = matched.filter(({ file }) => closure.has(resolve(root, file)));
+    if (violations.length > 0) {
+      const detail = violations
+        .map(({ file, pattern }) => {
+          const chain = importChain(resolve(root, file), closure, root);
+          return (
+            `  paths-ignore-invariant: "${pattern}" matches ${file}\n` +
+            `    reachable from ${spec.entryLabel} ${chain[0]}: ${chain.join(" → ")}`
+          );
+        })
+        .join("\n");
+      throw new InvariantRefusal(
+        `${violations.length} path(s) matched by ${spec.file}'s paths-ignore are in its static ` +
+          `import closure — a change to them skips the workflow while changing what it exercises:\n${detail}`,
+      );
+    }
+    workflows.push({ file: spec.file, patterns, matched, closure, entries, looseRefs });
   }
-  return { patterns, matched, closure, entries, looseRefs };
+  return { testClass, workflows };
 }
 
 function main() {
   const flag = process.argv.indexOf("--root");
   const root = flag === -1 ? REPO_ROOT : resolve(process.argv[flag + 1]);
   try {
-    const { patterns, matched, closure, entries, looseRefs } = verify(root);
+    const { testClass, workflows } = verify(root);
+    for (const workflow of workflows) {
+      console.log(
+        `paths-ignore-invariant OK — ${workflow.file} on.push.paths-ignore ` +
+          `(${workflow.patterns.length} patterns, ${workflow.matched.length} matched paths) × ` +
+          `static import closure of ${workflow.entries.length} entries ` +
+          `(${workflow.closure.size} files): 0 matches`,
+      );
+    }
     console.log(
-      `paths-ignore-invariant OK — ${POLICED_WORKFLOW} on.push.paths-ignore ` +
-        `(${patterns.length} patterns, ${matched.length} matched paths) × static import closure of ` +
-        `${entries.length} deploy entries (${closure.size} files): 0 matches`,
+      `  test class derived from ${POLICED_WORKFLOW}: ${testClass.length} patterns; ` +
+        "pull_request filters carry the docs class only",
+    );
+    // The same asset can sit in several closures; count each reference once.
+    const loose = new Set(
+      workflows.flatMap((workflow) =>
+        workflow.looseRefs.map((ref) => `${ref.from}\u0000${ref.spec}`),
+      ),
     );
     console.log(
-      `  assets referenced but not files (runtime URLs, outside the graph): ${looseRefs.length}`,
+      `  assets referenced but not files (runtime URLs, outside the graph): ${loose.size}`,
     );
-    const unpoliced = UNPOLICED_WORKFLOWS.map(({ file, reason }) => `${file} (${reason})`).join(
-      "; ",
-    );
-    console.log(`  not policed, on purpose: ${unpoliced}`);
   } catch (error) {
     if (error instanceof InvariantRefusal) {
       console.error(`paths-ignore-invariant: ${error.message}`);

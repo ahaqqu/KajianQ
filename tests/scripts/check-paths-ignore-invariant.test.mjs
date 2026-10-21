@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
+  DOCS_ONLY_PATTERNS,
   FILE_ENTRIES,
   InvariantRefusal,
   POLICED_WORKFLOW,
@@ -16,6 +17,7 @@ import {
   compilePattern,
   compilePatterns,
   deployEntries,
+  deriveTestClass,
   extractSpecifiers,
   firstMatch,
   importChain,
@@ -27,15 +29,21 @@ import {
 } from "../../scripts/check-paths-ignore-invariant.mjs";
 
 /**
- * The gate for staging.yml's paths-ignore invariant.
+ * The gate for the three workflows' paths-ignore classes.
  *
  * The traps this suite is built around, named before the assertions:
- *   falsification   a matched path that IS imported by a deploy entry must
- *                   exit non-zero — a suite that only ever passes the clean
- *                   tree tests nothing;
+ *   falsification   a matched path that IS reachable from an execution entry
+ *                   must exit non-zero — a suite that only ever passes the
+ *                   clean tree tests nothing;
  *   rename          the production module is moved into the class by a NAME
  *                   change (`prod-test-utils.ts`), so any check built from a
  *                   name list would pass it — the closure must catch it;
+ *   kept input      a workflow that refuses to ignore its own suite must fail
+ *                   when that suite leaves the closure, so the exception cannot
+ *                   outlive the reason for it;
+ *   PR half         a pull_request filter wider than the docs class is refused:
+ *                   a path-ignored workflow never reports, so the widening is a
+ *                   gating decision, not a trigger edit;
  *   comment         a file containing the text of an import of a matched
  *                   module, inside a comment, must stay green — that is the
  *                   difference between "imports" and "mentions";
@@ -72,19 +80,39 @@ function runCli(root) {
   return { status: result.status, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
 }
 
-const WORKFLOW = `name: Staging
-on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - "tests/**"
-      - "**/*.test.ts"
-      - "**/test-utils/**"
-      - "**/*test-utils*"
-      - "**/test-fixtures*"
-      - "vitest.config.ts"
-  workflow_dispatch:
-`;
+/** One trigger's pattern list, as YAML. */
+function patternsYaml(patterns) {
+  return patterns.map((pattern) => `      - ${JSON.stringify(pattern)}`).join("\n");
+}
+
+/** One workflow's `on:` block; an absent `pullRequest` means no PR trigger. */
+function workflowYaml(name, { push, pullRequest }) {
+  return (
+    `name: ${name}\non:\n` +
+    (pullRequest ? `  pull_request:\n    paths-ignore:\n${patternsYaml(pullRequest)}\n` : "") +
+    `  push:\n    branches: [main]\n    paths-ignore:\n${patternsYaml(push)}\n` +
+    "  workflow_dispatch:\n"
+  );
+}
+
+/** The test class the staging fixture defines; the docs class the PR halves carry. */
+const DOCS = DOCS_ONLY_PATTERNS;
+const TEST_CLASS = [
+  "tests/**",
+  "**/*.test.ts",
+  "**/*.test.mjs",
+  "**/test-utils/**",
+  "**/*test-utils*",
+  "**/test-fixtures*",
+  "vitest.config.ts",
+  "playwright.config.ts",
+];
+/** E2E keeps its own BDD suite and config out of the ignore list. */
+const E2E_KEEP = ["tests/**", "playwright.config.ts"];
+const E2E_PUSH = [...DOCS, ...TEST_CLASS.filter((pattern) => !E2E_KEEP.includes(pattern))];
+const DRILL_PUSH = [...DOCS, ...TEST_CLASS];
+
+const WORKFLOW = workflowYaml("Staging", { push: TEST_CLASS });
 
 const DEPLOY_SH = [
   "#!/usr/bin/env bash",
@@ -103,7 +131,16 @@ const DEPLOY_SH = [
  */
 const BASE = {
   ".github/workflows/staging.yml": WORKFLOW,
+  ".github/workflows/e2e.yml": workflowYaml("E2E", { push: E2E_PUSH, pullRequest: DOCS }),
+  ".github/workflows/vps-restore-drill.yml": workflowYaml("VPS restore drill", {
+    push: DRILL_PUSH,
+    pullRequest: DOCS,
+  }),
   "provision/vps/deploy/deploy.sh": DEPLOY_SH,
+  "provision/vps/backup/restore-drill.mjs": "export const drill = () => 1;\n",
+  "playwright.config.ts": "export default {};\n",
+  "tests/features/chat.feature": "Feature: chat\n",
+  "tests/steps/chat.steps.ts": "export const steps = 1;\n",
   "package.json": `${JSON.stringify(
     { name: "fixture", private: true, workspaces: ["apps/*", "packages/*"] },
     null,
@@ -225,6 +262,25 @@ describe("#399 trigger parsing refuses rather than passing", () => {
       jsonParser,
     );
     expect(patterns).toEqual(["docs/**", "tests/**"]);
+  });
+
+  it("reads a pull_request filter with the event selector", () => {
+    const patterns = parsePathsIgnore(
+      JSON.stringify({ on: { pull_request: { "paths-ignore": ["docs/**"] } } }),
+      jsonParser,
+      "pull_request",
+    );
+    expect(patterns).toEqual(["docs/**"]);
+  });
+
+  it("refuses an absent pull_request trigger", () => {
+    expect(() =>
+      parsePathsIgnore(
+        JSON.stringify({ on: { push: { "paths-ignore": ["docs/**"] } } }),
+        jsonParser,
+        "pull_request",
+      ),
+    ).toThrow(/no `on\.pull_request` trigger/);
   });
 
   it("accepts a document keyed by YAML 1.1's boolean `on`", () => {
@@ -540,7 +596,7 @@ describe("#399 green case — matched paths outside every deploy closure", () =>
     // Non-vacuous: the class really was matched, and the walk really walked.
     const evidence = /\((\d+) patterns, (\d+) matched paths\) × .*\((\d+) files\)/.exec(stdout);
     expect(evidence, stdout).not.toBeNull();
-    expect(Number(evidence[1])).toBe(6);
+    expect(Number(evidence[1])).toBe(8);
     expect(Number(evidence[2])).toBeGreaterThan(3);
     expect(Number(evidence[3])).toBeGreaterThan(5);
     expect(stdout).toContain("0 matches");
@@ -691,35 +747,138 @@ describe("#399 fail-closed — unreadable input exits non-zero", () => {
   });
 });
 
-describe("#399 unpoliced workflows stay docs-only (#379)", () => {
-  it("passes when the other triggered workflows ignore only docs patterns", () => {
-    const dir = makeRepo(
-      tree({
-        ".github/workflows/e2e.yml":
-          "name: E2E\non:\n  push:\n    branches: [main]\n    paths-ignore:\n" +
-          '      - "**.md"\n      - "docs/**"\n',
-      }),
-    );
-    expect(runCli(dir).status).toBe(0);
+describe("#399 the triggered workflows derive the class and pin their PR half", () => {
+  it("derives the test class from the source's non-docs patterns", () => {
+    expect(deriveTestClass([...DOCS, ...TEST_CLASS])).toEqual(TEST_CLASS);
   });
 
-  it("refuses when an unpoliced workflow grows a class this check does not vouch for", () => {
+  it("passes the green tree and names every policed workflow in its evidence", () => {
+    const { status, stdout, stderr } = runCli(makeRepo(tree()));
+    expect(stderr).toBe("");
+    expect(status).toBe(0);
+    expect(stdout).toContain(".github/workflows/staging.yml on.push.paths-ignore");
+    expect(stdout).toContain(".github/workflows/e2e.yml on.push.paths-ignore");
+    expect(stdout).toContain(".github/workflows/vps-restore-drill.yml on.push.paths-ignore");
+    expect(stdout).toContain("test class derived from .github/workflows/staging.yml: 8 patterns");
+    expect(stdout).toContain("pull_request filters carry the docs class only");
+  });
+
+  it("refuses a push set that drops a class member", () => {
     const dir = makeRepo(
       tree({
-        ".github/workflows/e2e.yml":
-          "name: E2E\non:\n  push:\n    branches: [main]\n    paths-ignore:\n" +
-          '      - "docs/**"\n      - "**/test-utils/**"\n',
+        ".github/workflows/e2e.yml": workflowYaml("E2E", {
+          pullRequest: DOCS,
+          push: E2E_PUSH.filter((pattern) => pattern !== "vitest.config.ts"),
+        }),
       }),
     );
     const { status, stderr } = runCli(dir);
     expect(status).not.toBe(0);
-    expect(stderr).toContain("carries a non-docs paths-ignore class (**/test-utils/**)");
-    expect(stderr).toContain("Add its trigger set to POLICED_WORKFLOWS");
+    expect(stderr).toContain("does not derive from the class at .github/workflows/staging.yml");
+    expect(stderr).toContain('missing "vitest.config.ts"');
   });
 
-  it("names what it does not police in its own output", () => {
-    const { stdout } = runCli(REPO_ROOT);
-    expect(stdout).toContain("not policed, on purpose: .github/workflows/e2e.yml");
-    expect(stdout).toContain(".github/workflows/vps-restore-drill.yml");
+  it("refuses a push set that adds a pattern the class does not define", () => {
+    const dir = makeRepo(
+      tree({
+        ".github/workflows/e2e.yml": workflowYaml("E2E", {
+          pullRequest: DOCS,
+          push: [...E2E_PUSH, "**/*.spec.ts"],
+        }),
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain('unexpected "**/*.spec.ts"');
+  });
+
+  it("refuses a kept input that is no longer in the execution closure", () => {
+    const dir = makeRepo(tree({}, ["tests/features/chat.feature", "tests/steps/chat.steps.ts"]));
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain('keeps "tests/**" out of its push paths-ignore');
+    expect(stderr).toContain("no file in its execution closure matches it");
+  });
+
+  it("refuses a policed workflow that vanished instead of skipping it", () => {
+    const dir = makeRepo(tree({}, [".github/workflows/e2e.yml"]));
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain(".github/workflows/e2e.yml not found");
+  });
+
+  it("T1: an E2E step importing an ignored test-support helper exits non-zero", () => {
+    const dir = makeRepo(
+      tree({
+        "tests/steps/chat.steps.ts":
+          'import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";\n' +
+          "export const steps = createMemoryRagStore;\n",
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain(
+      '"**/test-utils/**" matches packages/kajianq-domain/src/test-utils/memory-rag-store.ts',
+    );
+    expect(stderr).toContain(
+      "reachable from execution entry tests/steps/chat.steps.ts: " +
+        "tests/steps/chat.steps.ts → packages/kajianq-domain/src/test-utils/memory-rag-store.ts",
+    );
+  });
+
+  it("T1: a drill entry importing an ignored helper exits non-zero", () => {
+    const dir = makeRepo(
+      tree({
+        "provision/vps/backup/restore-drill.mjs":
+          'import { helper } from "../../../test-utils/helper";\nexport const drill = helper;\n',
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain('"**/test-utils/**" matches test-utils/helper.ts');
+    expect(stderr).toContain("provision/vps/backup/restore-drill.mjs → test-utils/helper.ts");
+  });
+
+  it("refuses a pull_request filter wider than the docs class", () => {
+    const dir = makeRepo(
+      tree({
+        ".github/workflows/e2e.yml": workflowYaml("E2E", {
+          pullRequest: [...DOCS, "**/*.test.ts"],
+          push: E2E_PUSH,
+        }),
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain(
+      ".github/workflows/e2e.yml's on.pull_request.paths-ignore is not the docs class",
+    );
+    expect(stderr).toContain('it adds "**/*.test.ts"');
+    expect(stderr).toContain("never reports on a pull request at all");
+  });
+
+  it("refuses a pull_request filter that drops a docs pattern", () => {
+    const dir = makeRepo(
+      tree({
+        ".github/workflows/vps-restore-drill.yml": workflowYaml("VPS restore drill", {
+          pullRequest: DOCS.slice(1),
+          push: DRILL_PUSH,
+        }),
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain('it drops "**.md"');
+  });
+
+  it("refuses a PR-triggered workflow that removes its pull_request trigger", () => {
+    const dir = makeRepo(
+      tree({
+        ".github/workflows/e2e.yml": workflowYaml("E2E", { push: E2E_PUSH }),
+      }),
+    );
+    const { status, stderr } = runCli(dir);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain("no `on.pull_request` trigger");
   });
 });

@@ -1,9 +1,18 @@
 name: E2E
-# Docs-only changes (markdown, docs/, adr/, NOTICES/, .agents/, .zcode/) cannot
-# change app behaviour the BDD suite exercises, so they skip both the
-# pull_request and push triggers. GitHub skips a trigger only when EVERY
-# changed file matches an ignore pattern, so a change mixing docs and code
-# still runs. workflow_dispatch is unaffected — an operator can always run it.
+# Docs-only and test-class-only changes cannot change the app behaviour the BDD
+# suite exercises, so the push trigger ignores the docs class and the test class
+# staging.yml defines (tests/**, *.test.ts, *.test.mjs, and the test-support
+# helpers and runner configs named there). This workflow applies that class
+# minus its own two inputs: tests/features and tests/steps are the suite
+# `bun run e2e` executes, and playwright.config.ts selects them, so a change to
+# either still runs E2E. GitHub skips a trigger only when EVERY changed file
+# matches an ignore pattern, so a change mixing docs/tests and code still runs.
+#
+# pull_request keeps the docs class only: a path-ignored workflow does not fail
+# on a PR, it never reports at all, so widening that half is a gating decision,
+# not a trigger edit. scripts/check-paths-ignore-invariant.mjs refuses a wider
+# PR filter and checks this push class against the workflow's own execution
+# closure. workflow_dispatch is unaffected — an operator can always run it.
 on:
   pull_request:
     paths-ignore:
@@ -22,6 +31,17 @@ on:
       - "NOTICES/**"
       - ".agents/**"
       - ".zcode/**"
+      # The shared test class minus `tests/**` and playwright.config.ts: those
+      # two ARE this suite's input, so they are deliberately not listed. The
+      # check named in the header keeps every other member in sync with
+      # staging.yml and proves none of them reaches the closure this workflow
+      # executes.
+      - "**/*.test.ts"
+      - "**/*.test.mjs"
+      - "**/test-utils/**"
+      - "**/*test-utils*"
+      - "**/test-fixtures*"
+      - "vitest.config.ts"
   workflow_dispatch:
 
 jobs:

@@ -10,8 +10,13 @@ name: VPS restore drill
 # and that re-applying the reclamation and the Art. 17 cascade makes the
 # restored target match the live store.
 #
-# paths-ignore mirrors E2E: a docs-only change cannot alter the scripts this
-# drill exercises. workflow_dispatch is unaffected.
+# paths-ignore derives from the class E2E and Staging share: no test-class file
+# is in this drill's execution closure (restore-drill.mjs and the modules it
+# imports), so a docs-only or tests-only change cannot alter what the drill
+# proves. pull_request keeps the docs class only — a path-ignored workflow never
+# reports on a PR at all, so widening that half is a gating decision rather than
+# a trigger edit. scripts/check-paths-ignore-invariant.mjs enforces both halves.
+# workflow_dispatch is unaffected.
 on:
   pull_request:
     paths-ignore:
@@ -30,6 +35,19 @@ on:
       - "NOTICES/**"
       - ".agents/**"
       - ".zcode/**"
+      # The full shared test class: none of these members is reachable from
+      # restore-drill.mjs's static imports, so a tests-only merge cannot change
+      # the scripts this drill exercises. The class is defined once, at
+      # staging.yml's push trigger; the lint check keeps this list identical to
+      # it and proves their absence from the closure.
+      - "tests/**"
+      - "**/*.test.ts"
+      - "**/*.test.mjs"
+      - "**/test-utils/**"
+      - "**/*test-utils*"
+      - "**/test-fixtures*"
+      - "vitest.config.ts"
+      - "playwright.config.ts"
   workflow_dispatch:
 
 permissions:
