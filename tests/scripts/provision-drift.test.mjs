@@ -5,9 +5,11 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -30,10 +32,14 @@ const DEPLOY = resolve(REPO, "provision/vps/deploy/deploy.sh");
 const read = (rel) => readFileSync(resolve(REPO, rel), "utf8");
 
 /**
- * Every file apply.sh places. A new row in its table must be added here too —
- * the count is the coverage check for "every artifact the deploy depends on".
+ * Every artifact apply.sh places, including the sites-enabled link. A new row in
+ * its table must be added here too — the count is the coverage check for "every
+ * artifact the deploy depends on".
  */
-const PROVISIONED_ARTIFACTS = 12;
+const PROVISIONED_ARTIFACTS = 13;
+
+/** The 12-character digest the drift refusal prints, computed independently. */
+const digest12 = (text) => createHash("sha256").update(text).digest("hex").slice(0, 12);
 
 const OWNER = spawnSync("id", ["-un"], { encoding: "utf8" }).stdout.trim();
 const GROUP = spawnSync("id", ["-gn"], { encoding: "utf8" }).stdout.trim();
@@ -92,11 +98,24 @@ function driftFixture() {
   const rows = artifacts();
   const template = (row) => read(join("provision/vps", row.src));
   const path = (dst) => join(dir, dst.replace(/^\//, "").replace("*", "16"));
-  for (const row of rows) {
+  const install = (row) => {
     const installed = path(row.dst);
     mkdirSync(dirname(installed), { recursive: true });
+    if (row.kind === "link") {
+      rmSync(installed, { force: true });
+      symlinkSync(path(row.src), installed);
+      return;
+    }
     writeFileSync(installed, row.kind === "render" ? renderTemplate(template(row)) : template(row));
     chmodSync(installed, parseInt(row.mode, 8));
+  };
+  // Files first, then links: a link's target must exist when it is created, as
+  // it does on a box where apply.sh installs the block before enabling it.
+  for (const row of rows) {
+    if (row.kind !== "link") install(row);
+  }
+  for (const row of rows) {
+    if (row.kind === "link") install(row);
   }
   const manifest = fixtureManifest(emitManifest());
   return {
@@ -104,14 +123,7 @@ function driftFixture() {
     rows,
     manifest,
     path,
-    install: (row) => {
-      const installed = path(row.dst);
-      writeFileSync(
-        installed,
-        row.kind === "render" ? renderTemplate(template(row)) : template(row),
-      );
-      chmodSync(installed, parseInt(row.mode, 8));
-    },
+    install,
     check: ({ manifest: given = manifest, base64 = false } = {}) =>
       base64
         ? sh("bash", [
@@ -133,17 +145,27 @@ function provenance(unit, record) {
 }
 
 describe("the artifact set is enumerated from apply.sh itself", () => {
-  it("lists every file apply.sh places, with its destination, owner and mode", () => {
+  it("lists every artifact apply.sh places, with its destination, owner and mode", () => {
     const rows = artifacts();
     expect(rows.length, "every provisioned artifact must be listed").toBe(PROVISIONED_ARTIFACTS);
+    const byName = new Map(rows.map((row) => [row.name, row]));
     for (const row of rows) {
-      expect(row.kind, row.name).toMatch(/^(config|render|sudoers)$/);
+      expect(row.kind, row.name).toMatch(/^(config|render|sudoers|link)$/);
       expect(row.dst, row.name).toMatch(/^\//);
       expect(row.owner, row.name).toBe("root");
       expect(row.group, row.name).toBe("root");
-      expect(() => statSync(resolve(REPO, "provision/vps", row.src)), row.src).not.toThrow();
+      if (row.kind === "link") {
+        // A link row's source is its absolute target, and the target must be
+        // another row's destination: a link to a path the table does not place
+        // is a dangling promise, not an artifact.
+        expect(
+          [...byName.values()].some((other) => other.dst === row.src),
+          row.name,
+        ).toBe(true);
+      } else {
+        expect(() => statSync(resolve(REPO, "provision/vps", row.src)), row.src).not.toThrow();
+      }
     }
-    const byName = new Map(rows.map((row) => [row.name, row]));
     // The artifacts the deploy's own verdict reads: the units it restarts, the
     // marker the backup unit's ExecStartPre runs, the grant its sudo calls need.
     expect(byName.get("backup-unit").dst).toBe("/etc/systemd/system/kajianq-backup.service");
@@ -152,6 +174,12 @@ describe("the artifact set is enumerated from apply.sh itself", () => {
     expect(byName.get("backup-marker").mode).toBe("755");
     expect(byName.get("deploy-grant").mode).toBe("440");
     expect(byName.get("nginx-conf").kind).toBe("render");
+    // The enabled site is the link nginx resolves, so it is provisioned state in
+    // its own right: a retargeted or deleted link leaves the box serving a block
+    // this checkout does not describe.
+    expect(byName.get("nginx-enabled").kind).toBe("link");
+    expect(byName.get("nginx-enabled").src).toBe(byName.get("nginx-conf").dst);
+    expect(byName.get("nginx-enabled").dst).toBe("/etc/nginx/sites-enabled/kajianq.conf");
     expect(byName.get("postgres").dst).toBe("/etc/postgresql/*/main/conf.d/99-kajianq.conf");
   });
 
@@ -163,6 +191,12 @@ describe("the artifact set is enumerated from apply.sh itself", () => {
     // A direct install would place a file the drift check never hears about.
     expect(apply).not.toMatch(/^(run )?install_config "\$\{SRC\}/m);
     expect(apply).not.toMatch(/^render "\$\{SRC\}/m);
+    // The same rule for the enabled site: the one `ln` is the helper the table's
+    // `link` row calls, not a placement in the install section.
+    const linkBody = /install_link\(\) \{[\s\S]*?\n\}/.exec(apply)?.[0];
+    expect(linkBody, "apply.sh must install the link through install_link()").toBeTruthy();
+    expect(linkBody).toMatch(/ln -sfn/);
+    expect(apply.replace(linkBody, "")).not.toMatch(/^\s*(run )?ln /m);
   });
 
   it("needs no root and no env file to print the list", () => {
@@ -272,8 +306,42 @@ describe("the drift preflight", () => {
       },
     },
     {
+      case: "a second directive appended to a rendered placeholder line",
+      artifact: "/etc/nginx/sites-available/kajianq.conf",
+      source: "provision/vps/nginx/kajianq.conf",
+      mutate: (fixture) => {
+        const conf = fixture.path("/etc/nginx/sites-available/kajianq.conf");
+        writeFileSync(
+          conf,
+          readFileSync(conf, "utf8").replace(
+            "proxy_pass http://127.0.0.1:8787;",
+            "proxy_pass http://127.0.0.1:8787; proxy_set_header X-Injected yes;",
+          ),
+        );
+      },
+    },
+    {
+      case: "the sites-enabled link retargeted at an older copy",
+      artifact: "/etc/nginx/sites-enabled/kajianq.conf",
+      source: "/etc/nginx/sites-available/kajianq.conf",
+      mutate: (fixture) => {
+        const enabled = fixture.path("/etc/nginx/sites-enabled/kajianq.conf");
+        const old = fixture.path("/etc/nginx/sites-available/kajianq.conf.old");
+        writeFileSync(old, read("provision/vps/nginx/kajianq.conf"));
+        rmSync(enabled);
+        symlinkSync(old, enabled);
+      },
+    },
+    {
+      case: "the sites-enabled link deleted",
+      artifact: "/etc/nginx/sites-enabled/kajianq.conf",
+      source: "/etc/nginx/sites-available/kajianq.conf",
+      mutate: (fixture) => rmSync(fixture.path("/etc/nginx/sites-enabled/kajianq.conf")),
+    },
+    {
       case: "the Postgres posture absent",
-      artifact: "/etc/postgresql/*/main/conf.d/99-kajianq.conf",
+      // The refusal names the file apply.sh would write, not the table's glob.
+      artifact: "/etc/postgresql/16/main/conf.d/99-kajianq.conf",
       source: "provision/vps/postgres/99-kajianq.conf",
       mutate: (fixture) => rmSync(fixture.path("/etc/postgresql/*/main/conf.d/99-kajianq.conf")),
     },
@@ -306,6 +374,63 @@ describe("the drift preflight", () => {
       }
     });
   }
+
+  it("resolves a versioned destination from the first conf.d directory, as apply.sh does", () => {
+    // apply.sh installs the Postgres posture into the first conf.d DIRECTORY
+    // (`ls -d /etc/postgresql/*/main/conf.d | head -1`), whether or not it already
+    // holds the file. Resolving the first existing FILE instead lets a matching
+    // copy in a later major version hide an apply that never wrote its target.
+    const fixture = driftFixture();
+    try {
+      const applyTarget = fixture.path("/etc/postgresql/15/main/conf.d/99-kajianq.conf");
+      mkdirSync(dirname(applyTarget), { recursive: true });
+
+      const result = fixture.check();
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain(applyTarget);
+      expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
+
+      // Once apply.sh's own target exists, it is what the check compares; the
+      // matching copy under the later version is not the installed artifact.
+      writeFileSync(applyTarget, read("provision/vps/postgres/99-kajianq.conf"));
+      chmodSync(applyTarget, 0o644);
+      const green = fixture.check();
+      expect(green.status, green.stderr).toBe(0);
+      expect(green.stdout).toContain(`(${PROVISIONED_ARTIFACTS})`);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it("names the expected and installed digests, and the first mismatching rendered line", () => {
+    const fixture = driftFixture();
+    try {
+      const original = read("provision/vps/systemd/kajianq-api.service");
+      const edited = original.replace("Description=", "Description=edited ");
+      const unit = fixture.path("/etc/systemd/system/kajianq-api.service");
+      writeFileSync(unit, edited);
+      const conf = fixture.path("/etc/nginx/sites-available/kajianq.conf");
+      writeFileSync(
+        conf,
+        readFileSync(conf, "utf8").replace("client_max_body_size 1m;", "client_max_body_size 2m;"),
+      );
+
+      const result = fixture.check();
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain(`2 of ${PROVISIONED_ARTIFACTS}`);
+      expect(result.stderr).toContain(`checkout sha256 ${digest12(original)}`);
+      expect(result.stderr).toContain(`installed ${digest12(edited)}`);
+      const line =
+        read("provision/vps/nginx/kajianq.conf")
+          .split("\n")
+          .findIndex((text) => text.includes("client_max_body_size 1m;")) + 1;
+      expect(result.stderr).toContain(`line ${line} differs`);
+      expect(result.stderr).toContain("client_max_body_size 2m;");
+      expect(result.stderr).toContain("client_max_body_size 1m;");
+    } finally {
+      fixture.cleanup();
+    }
+  });
 
   it("treats a changed placeholder value as box configuration, not drift", () => {
     // proxy.env holds the domain, TLS paths and upstream. Only the repository

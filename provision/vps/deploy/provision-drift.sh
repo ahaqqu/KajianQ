@@ -20,9 +20,11 @@
 #                                --manifest-base64, which is how the deploy
 #                                passes it) and compares every installed copy.
 #
-# Read-only: it stats and hashes, never writes. --root exists so the tests can
-# drive the box-side half against a fixture tree; the deploy passes nothing and
-# checks /.
+# Changes no installed state: it stats, hashes and reads links. Comparing a
+# rendered config writes one short-lived file under /tmp (removed before the
+# script returns); nothing on the box is installed, edited or enabled.
+# --root exists so the tests can drive the box-side half against a fixture tree;
+# the deploy passes nothing and checks /.
 #
 # The artifact set is not enumerated here: it comes from apply.sh's own table
 # through --list-artifacts, so the set this check compares and the set apply.sh
@@ -31,8 +33,13 @@
 # The comparison depends on the kind apply.sh reports:
 #   config   the installed bytes must hash to the checkout's source bytes
 #   render   the __KAJIANQ_* tokens are values only the box's proxy.env holds,
-#            so each one matches any text; every other byte must match the
-#            template. A stale template is drift; a different domain is not.
+#            so each one matches any text up to the directive's `;`; every other
+#            byte must match the template. A stale template, or a second
+#            directive appended to a placeholder line, is drift; a different
+#            domain is not.
+#   link     a symlink apply.sh places (the nginx sites-enabled link) is compared
+#            by its target: a link missing, retargeted at an older copy, or
+#            replaced by a regular file is drift.
 #   sudoers  /etc/sudoers.d/kajianq-deploy is 0440 root:root, unreadable from
 #            the deploy identity by design, so it is compared by owner, mode
 #            and size. The deploy's own privileged calls are the functional
@@ -90,12 +97,18 @@ done
 
 # One line per artifact, completing apply.sh's table with what only the
 # checkout knows: the source bytes' hash, their size, and the render template.
+# A link row carries its target in the source field and no hash or bytes.
 emit_manifest() {
     local checkout="$1" artifacts name kind src dst owner group mode
     local path sha bytes payload
     artifacts="$(bash "${checkout}/provision/vps/apply.sh" --list-artifacts)"
     while IFS='|' read -r name kind src dst owner group mode; do
         [ -n "${name}" ] || continue
+        if [ "${kind}" = "link" ]; then
+            printf '%s|%s|%s|%s|%s|%s|%s|||\n' \
+                "${name}" "${kind}" "${src}" "${dst}" "${owner}" "${group}" "${mode}"
+            continue
+        fi
         path="${checkout}/provision/vps/${src}"
         if [ ! -f "${path}" ]; then
             echo "deploy: ${path} is missing from the checkout" >&2
@@ -125,37 +138,66 @@ refuse() {
 }
 
 # Resolve a destination from the table. A destination may be a glob — the
-# Postgres conf.d path carries the server's major version — and the first
-# existing match is the file apply.sh's `ls -d ... | head -1` installs to.
+# Postgres conf.d path carries the server's major version — and apply.sh picks
+# the first existing DIRECTORY (`ls -d .../conf.d | head -1`), then appends the
+# file name. Resolving the first existing file instead would let a matching copy
+# under a later major version hide a target apply.sh never wrote.
 resolve_destination() {
-    local dst="$1" pattern="${ROOT%/}/${1#/}" candidate
+    local dst="$1" pattern="${ROOT%/}/${1#/}" dir base candidate
     case "${pattern}" in
         *'*'*)
-            # shellcheck disable=SC2086 # the glob IS the destination
-            for candidate in ${pattern}; do
-                if [ -e "${candidate}" ]; then
-                    printf '%s\n' "${candidate}"
-                    return 0
-                fi
-            done
+            dir="$(dirname "${pattern}")"
+            base="$(basename "${pattern}")"
+            case "${dir}" in
+                *'*'*)
+                    # shellcheck disable=SC2086 # the glob IS the destination
+                    for candidate in ${dir}; do
+                        if [ -d "${candidate}" ]; then
+                            printf '%s/%s\n' "${candidate}" "${base}"
+                            return 0
+                        fi
+                    done
+                    ;;
+                *)
+                    # A glob in the file name itself: first existing match.
+                    # shellcheck disable=SC2086
+                    for candidate in ${pattern}; do
+                        if [ -e "${candidate}" ]; then
+                            printf '%s\n' "${candidate}"
+                            return 0
+                        fi
+                    done
+                    ;;
+            esac
             return 1
             ;;
     esac
-    if [ -e "${pattern}" ]; then
+    # -L as well as -e: a symlink whose target is absent still exists as an
+    # installed artifact, and the link branch reports the real mismatch.
+    if [ -e "${pattern}" ] || [ -L "${pattern}" ]; then
         printf '%s\n' "${pattern}"
         return 0
     fi
     return 1
 }
 
+# The first difference render_matches found, for the refusal message.
+RENDER_MISMATCH=""
+
 # Compare a rendered config against its repository template. Each
 # __KAJIANQ_*__ token stands for a value from the box's proxy.env, so it matches
-# any text; every other character must match its line. The line count must
-# match too, which catches a template that gained or lost a line.
+# any text up to the directive's `;`: a placeholder is a directive's value, and
+# a second directive appended to the same line is a hand edit, not a value. The
+# line count must match too, which catches a template that gained or lost a line.
 render_matches() {
     local installed="$1" template_b64="$2" template line actual regex total n=0
-    template="$(mktemp)"
+    RENDER_MISMATCH=""
+    if ! template="$(mktemp)"; then
+        RENDER_MISMATCH="comparison scratch file could not be created"
+        return 1
+    fi
     if ! printf '%s' "${template_b64}" | base64 -d >"${template}"; then
+        RENDER_MISMATCH="the template could not be decoded from the manifest"
         rm -f "${template}"
         return 1
     fi
@@ -165,14 +207,16 @@ render_matches() {
         case "${line}" in
             *'__KAJIANQ_'*)
                 regex="$(printf '%s' "${line}" |
-                    sed -e 's/[][\.^$*+?(){}|]/\\&/g' -e 's/__KAJIANQ_[A-Z_]*__/.*/g')"
+                    sed -e 's/[][\.^$*+?(){}|]/\\&/g' -e 's/__KAJIANQ_[A-Z_]*__/[^;]*/g')"
                 if ! [[ "${actual}" =~ ^${regex}$ ]]; then
+                    RENDER_MISMATCH="line ${n} differs: installed '${actual}', template '${line}'"
                     rm -f "${template}"
                     return 1
                 fi
                 ;;
             *)
                 if [ "${actual}" != "${line}" ]; then
+                    RENDER_MISMATCH="line ${n} differs: installed '${actual}', template '${line}'"
                     rm -f "${template}"
                     return 1
                 fi
@@ -182,6 +226,7 @@ render_matches() {
     total="$(wc -l <"${installed}")"
     rm -f "${template}"
     if [ "${total}" -ne "${n}" ]; then
+        RENDER_MISMATCH="the installed copy has ${total} lines, the template has ${n}"
         return 1
     fi
     return 0
@@ -189,13 +234,48 @@ render_matches() {
 
 check_manifest() {
     local manifest="$1" name kind src dst owner group mode sha bytes payload
-    local installed actual
+    local installed actual expected
     while IFS='|' read -r name kind src dst owner group mode sha bytes payload; do
         [ -n "${name}" ] || continue
         CHECKED=$((CHECKED + 1))
         if ! installed="$(resolve_destination "${dst}")"; then
+            case "${kind}" in
+                link)
+                    refuse \
+                        "${dst} is not installed — the checkout creates it as a link to ${src}, so run provision/vps/apply.sh on the box" \
+                        "the deploy refuses a box whose provisioned files do not match the checkout"
+                    ;;
+                *)
+                    refuse \
+                        "${dst} is not installed — the checkout installs provision/vps/${src}, so run provision/vps/apply.sh on the box" \
+                        "the deploy refuses a box whose provisioned files do not match the checkout"
+                    ;;
+            esac
+            continue
+        fi
+        if [ "${kind}" = "link" ]; then
+            if [ ! -L "${installed}" ]; then
+                refuse \
+                    "${dst} is not a symlink — the checkout links it to ${src} — run provision/vps/apply.sh on the box"
+                continue
+            fi
+            actual="$(readlink -- "${installed}")"
+            expected="${src}"
+            if [ -n "${ROOT}" ]; then
+                expected="${ROOT%/}${src}"
+            fi
+            if [ "${actual}" != "${expected}" ]; then
+                refuse \
+                    "${dst} points at ${actual}; the checkout links it to ${src} — run provision/vps/apply.sh on the box"
+            fi
+            continue
+        fi
+        # A versioned destination resolves to the directory apply.sh targets, so
+        # the file it would write can be absent while an older version's copy
+        # exists. That is drift, and the path named is the one apply.sh targets.
+        if [ ! -e "${installed}" ]; then
             refuse \
-                "${dst} is not installed — the checkout installs provision/vps/${src}, so run provision/vps/apply.sh on the box" \
+                "${installed} is not installed — the checkout installs provision/vps/${src}, so run provision/vps/apply.sh on the box" \
                 "the deploy refuses a box whose provisioned files do not match the checkout"
             continue
         fi
@@ -210,13 +290,13 @@ check_manifest() {
                 actual="$(sha256sum -- "${installed}" | cut -d' ' -f1)"
                 if [ "${actual}" != "${sha}" ]; then
                     refuse \
-                        "${dst} differs from provision/vps/${src} — run provision/vps/apply.sh on the box"
+                        "${dst} differs from provision/vps/${src} (checkout sha256 ${sha:0:12}, installed ${actual:0:12}) — run provision/vps/apply.sh on the box"
                 fi
                 ;;
             render)
                 if ! render_matches "${installed}" "${payload}"; then
                     refuse \
-                        "${dst} does not match provision/vps/${src} (placeholder values aside) — run provision/vps/apply.sh on the box"
+                        "${dst} does not match provision/vps/${src} (placeholder values aside): ${RENDER_MISMATCH} — run provision/vps/apply.sh on the box"
                 fi
                 ;;
             sudoers)

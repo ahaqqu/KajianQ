@@ -27,12 +27,13 @@
 # setup doc carries the command that moves the deploy keys off the admin
 # account); a key is never read from the repository, which is public.
 #
-# --list-artifacts prints the artifact table — every file this script places,
-# its source under provision/vps/, destination, owner, group and mode — and
-# exits before the root and env-file checks, so it needs no provisioning
-# rights. The deploy's drift preflight (provision/vps/deploy/provision-drift.sh)
-# enumerates what to compare from that output, so the set it checks and the set
-# this script installs are one table, not two lists that drift apart.
+# --list-artifacts prints the artifact table — every artifact this script
+# places, a file or the sites-enabled link, with its source, destination, owner,
+# group and mode — and exits before the root and env-file checks, so it needs no
+# provisioning rights. The deploy's drift preflight
+# (provision/vps/deploy/provision-drift.sh) enumerates what to compare from that
+# output, so the set it checks and the set this script installs are one table,
+# not two lists that drift apart.
 #
 # Exit non-zero on the first failure: a half-applied hardening config is worse
 # than an unapplied one, because it looks done.
@@ -57,20 +58,26 @@ LIST_ARTIFACTS=0
 DEPLOY_USER="kajianq-deploy"
 
 # --- the provisioned artifact table -----------------------------------------
-# Every file this script places, in one table. The install section below takes
-# each file's source, destination, ownership and mode from here, and
+# Every artifact this script places, in one table. The install section below
+# takes each one's source, destination, ownership and mode from here, and
 # `--list-artifacts` prints the same rows for the deploy's drift preflight, so
 # the set it compares and the set this script installs cannot disagree.
 #
-# Fields: name|kind|source (under provision/vps)|destination|owner|group|mode
-#   config   installed verbatim through install_config()
+# Fields: name|kind|source|destination|owner|group|mode
+#   config   installed verbatim through install_config(); source is a file under
+#            provision/vps/
 #   render   __KAJIANQ_* placeholders substituted from --env through render()
 #   sudoers  parsed by `visudo -cf` through install_sudoers()
+#   link     a symlink to another row's destination through install_link(); its
+#            source is the absolute link TARGET, not a repository file, and its
+#            mode is `-` because a symlink's mode is neither applied nor checked
 # A destination may be a glob where the host's layout carries a value the
 # repository cannot know: the Postgres config lives under the server's
-# major-version directory.
+# major-version directory. The glob resolves to the first existing directory,
+# then the file name, which is what the install for that row does.
 ARTIFACTS='
 nginx-conf|render|nginx/kajianq.conf|/etc/nginx/sites-available/kajianq.conf|root|root|644
+nginx-enabled|link|/etc/nginx/sites-available/kajianq.conf|/etc/nginx/sites-enabled/kajianq.conf|root|root|-
 logrotate-proxy|config|logrotate/kajianq-proxy|/etc/logrotate.d/kajianq-proxy|root|root|644
 logrotate-postgres|config|logrotate/kajianq-postgres|/etc/logrotate.d/kajianq-postgres|root|root|644
 journald|config|journald/kajianq.conf|/etc/systemd/journald.conf.d/kajianq.conf|root|root|644
@@ -116,11 +123,14 @@ install_artifact() {
     if [ -n "${dst_override}" ]; then
         dst="${dst_override}"
     fi
-    src="${SRC}/${src}"
+    if [ "${kind}" != "link" ]; then
+        src="${SRC}/${src}"
+    fi
     case "${kind}" in
         config) install_config "${src}" "${dst}" "${owner}" "${group}" "${mode}" ;;
-        render) render "${src}" "${dst}" ;;
-        sudoers) install_sudoers "${src}" "${dst}" ;;
+        render) render "${src}" "${dst}" "${owner}" "${group}" "${mode}" ;;
+        sudoers) install_sudoers "${src}" "${dst}" "${owner}" "${group}" "${mode}" ;;
+        link) install_link "${src}" "${dst}" ;;
         *)
             echo "apply: ${name} has unknown artifact kind ${kind}" >&2
             exit 1
@@ -269,6 +279,7 @@ run install -d -o root -g root -m 0755 /var/lib/kajianq
 # into place after, so a failed parse leaves the previous grant intact.
 install_sudoers() {
     local src="$1" dst="$2"
+    local owner="${3:-root}" group="${4:-root}" mode="${5:-440}"
     local tmp
     if [ "${dst}" != "/etc/sudoers.d/${DEPLOY_USER}" ]; then
         echo "apply: the grant's destination ${dst} disagrees with ${DEPLOY_USER} — name drift" >&2
@@ -289,8 +300,9 @@ install_sudoers() {
     # The staged name keeps a dot so sudo ignores it while it exists: sudoers(5)
     # skips files in sudoers.d whose names contain a `.`. Staging beside the
     # target (same filesystem) makes the final mv atomic, so no sudo invocation
-    # can ever read a half-written grant.
-    install -o root -g root -m 0440 "${tmp}" "${dst}.new"
+    # can ever read a half-written grant. The table's owner/group/mode are used
+    # here too, so the grant is installed exactly as the drift check demands it.
+    install -o "${owner}" -g "${group}" -m "${mode}" "${tmp}" "${dst}.new"
     mv -f "${dst}.new" "${dst}"
     rm -f "${tmp}"
 }
@@ -379,7 +391,8 @@ install_config() {
 # --- reverse proxy ----------------------------------------------------------
 # The server block is rendered from the placeholder template, then installed
 # under sites-available with the standard sites-enabled symlink, so disabling it
-# is one `rm` and not an edit of a tracked file.
+# is one `rm` and not an edit of a tracked file. Both placements are table rows,
+# so the deploy's drift check covers the link as well as the block.
 #
 # Every `__KAJIANQ_*__` token a shipped config may carry is substituted here, so
 # the function takes no placeholder list. The leftover-token check below is the
@@ -394,6 +407,7 @@ install_config() {
 # reintroduces one.
 render() {
     local src="$1" dst="$2"
+    local owner="${3:-root}" group="${4:-root}" mode="${5:-644}"
     local tmp
     tmp="$(mktemp)"
     sed \
@@ -418,13 +432,24 @@ render() {
         rm -f "${tmp}"
         return 0
     fi
-    install_config "${tmp}" "${dst}"
+    install_config "${tmp}" "${dst}" "${owner}" "${group}" "${mode}"
     rm -f "${tmp}"
+}
+
+# --- the enabled site --------------------------------------------------------
+# The sites-enabled link is provisioned state, not a convenience: nginx resolves
+# it to decide which server block is live, so a link retargeted at an older copy
+# leaves the box serving a block this checkout no longer describes. The table's
+# source for this row is the link target (an absolute path), and there is no
+# ownership or mode to apply.
+install_link() {
+    local target="$1" dst="$2"
+    run ln -sfn "${target}" "${dst}"
 }
 
 if [ -d /etc/nginx ]; then
     install_artifact nginx-conf
-    run ln -sfn /etc/nginx/sites-available/kajianq.conf /etc/nginx/sites-enabled/kajianq.conf
+    install_artifact nginx-enabled
     run nginx -t
     run systemctl reload nginx
 else

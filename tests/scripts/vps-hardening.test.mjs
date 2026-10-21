@@ -1482,7 +1482,6 @@ describe("provisioning config as code stays true to the ADR", () => {
     const allowed = [
       /^(run )?install -d /,
       /^install -o "\$\{owner\}" -g "\$\{group\}" -m "\$\{mode\}"/,
-      /^install -o root -g root -m 0440 "\$\{tmp\}"/,
     ];
     for (const invocation of invocations) {
       expect(
@@ -1490,6 +1489,30 @@ describe("provisioning config as code stays true to the ADR", () => {
         `raw install in apply.sh — route it through install_config: ${invocation}`,
       ).toBe(true);
     }
+  });
+
+  it("threads the table's owner, group and mode through render and the sudoers install", () => {
+    // The table is the one place a row's ownership and mode are decided. A helper
+    // that hard-codes them would install one thing and have the drift check demand
+    // another the moment a row changes.
+    const apply = read("provision/vps/apply.sh");
+    expect(apply).toMatch(
+      /render\) render "\$\{src\}" "\$\{dst\}" "\$\{owner\}" "\$\{group\}" "\$\{mode\}"/,
+    );
+    expect(apply).toMatch(
+      /sudoers\) install_sudoers "\$\{src\}" "\$\{dst\}" "\$\{owner\}" "\$\{group\}" "\$\{mode\}"/,
+    );
+    const renderBody = /render\(\) \{[\s\S]*?\n\}/.exec(apply)?.[0];
+    expect(renderBody, "apply.sh must define render()").toBeTruthy();
+    expect(renderBody).toMatch(
+      /install_config "\$\{tmp\}" "\$\{dst\}" "\$\{owner\}" "\$\{group\}" "\$\{mode\}"/,
+    );
+    const sudoersBody = /install_sudoers\(\) \{[\s\S]*?\n\}/.exec(apply)?.[0];
+    expect(sudoersBody, "apply.sh must define install_sudoers()").toBeTruthy();
+    expect(sudoersBody).not.toMatch(/0440|root -g root/);
+    expect(sudoersBody).toMatch(
+      /install -o "\$\{owner\}" -g "\$\{group\}" -m "\$\{mode\}" "\$\{tmp\}" "\$\{dst\}\.new"/,
+    );
   });
 
   it("an unchanged config keeps its mtime, so a re-apply cannot fake a changed definition", () => {
@@ -2238,8 +2261,13 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(apply).toMatch(/if ! visudo -cf[^]*?exit 1/);
     // Staged with a dot in the name: sudoers(5) ignores dot-named files.
     expect(apply).toMatch(/\$\{dst\}\.new/);
-    // The grant must not be left world- or group-readable.
-    expect(apply).toMatch(/install -o root -g root -m 0440/);
+    // The grant must not be left world- or group-readable: the table's row is
+    // 440 and install_sudoers installs exactly the row's owner, group and mode.
+    expect(apply).toMatch(
+      /^deploy-grant\|sudoers\|sudoers\/kajianq-deploy\|\/etc\/sudoers\.d\/kajianq-deploy\|root\|root\|440$/m,
+    );
+    expect(apply).toMatch(/install -o "\$\{owner\}" -g "\$\{group\}" -m "\$\{mode\}" "\$\{tmp\}"/);
+    expect(apply).not.toMatch(/install -o root -g root -m 0440/);
     // The drift assert runs against the shipped file, not a substituted value.
     expect(apply).toMatch(/grep -q "\^\$\{DEPLOY_USER\} ALL=\(root\)"/);
   });

@@ -73,6 +73,7 @@ from repo file to host path, including the files the deploy bundles rather than
 | ------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | `apply.sh`                                  | (runs in place)                                      | Places every config below and enables the units                                        |
 | `nginx/kajianq.conf`                        | `/etc/nginx/sites-available/kajianq.conf`            | Reverse proxy + the minimal access-log format                                          |
+| `nginx/kajianq.conf` (enabled)              | `/etc/nginx/sites-enabled/kajianq.conf` (symlink)    | Enables the block; drift = the link missing or retargeted                              |
 | `logrotate/kajianq-proxy`                   | `/etc/logrotate.d/kajianq-proxy`                     | 14-day proxy access/error-log rotation                                                 |
 | `logrotate/kajianq-postgres`                | `/etc/logrotate.d/kajianq-postgres`                  | 14-day Postgres log rotation                                                           |
 | `journald/kajianq.conf`                     | `/etc/systemd/journald.conf.d/kajianq.conf`          | 14-day / 512M cap for API structured logs                                              |
@@ -575,11 +576,12 @@ sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env
 first time.
 
 What it does, in order: creates the `kajianq` service account and the
-`kajianq-deploy` identity; renders and installs the nginx server block and
-reloads nginx; installs both logrotate stanzas and validates them; installs the
-journald cap; installs the Postgres posture; installs and **enables** (does not
-start) the API and cron units; installs the backup units and enables the timer;
-installs the sudo grant for `kajianq-deploy` only after `visudo -cf` parses it.
+`kajianq-deploy` identity; renders and installs the nginx server block, links it
+into `sites-enabled`, and reloads nginx; installs both logrotate stanzas and
+validates them; installs the journald cap; installs the Postgres posture;
+installs and **enables** (does not start) the API and cron units; installs the
+backup units and enables the timer; installs the sudo grant for
+`kajianq-deploy` only after `visudo -cf` parses it.
 
 ### Create the deploy identity's key
 
@@ -797,13 +799,16 @@ public-URL checks (for a box whose DNS or certificate is not ready yet).
 
 The deploy gates on all of these, and fails loudly on any of them:
 
-- **the provisioned files match the checkout**: every file `apply.sh` places —
-  the units, the `ExecStartPre` marker script, the logrotate/journald/Postgres
-  config, the rendered nginx block and the sudoers grant — is compared with the
-  checkout the deploy runs from. A difference fails the deploy, naming the file
-  and the remedy: run `apply.sh` on the box from a pulled checkout. The marker
-  script's presence, mode and content are part of that comparison, so a deleted
-  or non-executable marker is refused before the provenance gate reads a record.
+- **the provisioned files match the checkout**: every artifact `apply.sh`
+  places — the units, the `ExecStartPre` marker script, the
+  logrotate/journald/Postgres config, the rendered nginx block and the
+  `sites-enabled` link that enables it, and the sudoers grant — is compared with
+  the checkout the deploy runs from. A difference fails the deploy, naming the
+  file and the remedy: run `apply.sh` on the box from a pulled checkout. A
+  content change is reported with the expected and installed digest, a rendered
+  block with the first line that differs. The marker script's presence, mode and
+  content are part of that comparison, so a deleted or non-executable marker is
+  refused before the provenance gate reads a record.
 - the web build produced an SPA (`apps/web/dist/index.html` exists)
 - the API restarted and `systemctl is-active` reports active
 - the reclamation ran once — so a rotated env var fails the deploy rather than

@@ -8,17 +8,21 @@
 # and the deploy path lives here with the workflow that calls it. A single
 # decision, recorded in ADR-0044 decision 3.
 #
-# Two read-only preflights run before anything is built or shipped, because a
-# red after the ship would leave the new tree live, the API restarted and the
-# smoke and doctor skipped — an unverified deployment already serving:
+# Two preflights that change no installed state run before anything is built or
+# shipped, because a red after the ship would leave the new tree live, the API
+# restarted and the smoke and doctor skipped — an unverified deployment already
+# serving:
 #
 #   1. the provisioned files on the box match this checkout. Provisioning is an
 #      operator action (apply.sh, as root), so a merged change to a unit, script
 #      or config is inert until it is applied; this gate refuses to call such a
-#      box healthy and names the file to apply.
+#      box healthy and names the file to apply. It also checks the nginx
+#      sites-enabled link, which decides which block the box actually serves.
 #   2. the backup job's durable record proves it ran as installed.
 #
-# Neither writes to the box, so a red costs an ssh round trip and nothing else.
+# Neither changes installed state (the drift check writes one short-lived temp
+# file under /tmp to compare a rendered config), so a red costs an ssh round
+# trip and nothing else.
 #
 # Usage:
 #   provision/vps/deploy/deploy.sh --env /etc/kajianq/deploy.env
@@ -156,9 +160,10 @@ trap 'rm -rf "${STAGE}"' EXIT
 # cannot tell the difference. Reading the record is only meaningful once the
 # installed unit is the one this checkout describes.
 #
-# Read-only on the box (stat, hash, compare), so a red here costs an ssh round
-# trip and leaves the box on its previous revision — the same reason the
-# provenance preflight below also runs before the build.
+# Changes no installed state on the box (stat, hash, compare; the rendered-config
+# comparison writes one short-lived temp file under /tmp), so a red here costs an
+# ssh round trip and leaves the box on its previous revision — the same reason
+# the provenance preflight below also runs before the build.
 log "preflight: provisioned artifacts match the checkout"
 DRIFT_MANIFEST_B64="$(bash "${REPO_DIR}/provision/vps/deploy/provision-drift.sh" \
     --emit-manifest "${REPO_DIR}" | base64 -w0)"

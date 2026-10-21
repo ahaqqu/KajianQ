@@ -94,15 +94,23 @@ What it does, in order:
    config or the backup unit's `ExecStartPre` marker script by content hash,
    owner and mode; the rendered nginx block line by line, with each
    `__KAJIANQ_*__` value treated as the box's (a different domain or upstream is
-   configuration, not drift); the sudoers grant by owner, mode and size, because
+   configuration, not drift, but a second directive appended to a placeholder
+   line is not); the nginx `sites-enabled` link by its target, because that link
+   decides which block the box actually serves — a link retargeted at an older
+   copy, or deleted, is drift; the sudoers grant by owner, mode and size, because
    it is 0440 root:root and unreadable from the deploy identity by design, and
-   the commands it grants are exercised by this very deploy. A mismatch fails
-   the deploy and names each file with the remedy: run
-   `sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env` on the box from a
-   checkout of the revision being deployed, then deploy again. The gate is
-   read-only, and it runs before the provenance check below because a stale unit
-   can satisfy that check's record — exactly the state a deploy must not call
-   healthy.
+   the commands it grants are exercised by this very deploy. A destination under
+   the server's major-version directory is resolved the way `apply.sh` resolves
+   it — the first existing `conf.d` directory, then the file name — so a copy
+   under another version cannot stand in for the target. A mismatch fails the
+   deploy and names each file, with the expected and installed digest for a
+   content change and the first mismatching line of a rendered block, and the
+   remedy: run `sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env` on the
+   box from a checkout of the revision being deployed, then deploy again. The
+   gate changes no installed state (comparing the rendered block writes one
+   short-lived file under `/tmp`), and it runs before the provenance check below
+   because a stale unit can satisfy that check's record — exactly the state a
+   deploy must not call healthy.
 2. **Preflight — the backup unit's provenance.** Before anything is built or
    touched, `backup-provenance.sh` (piped over ssh) reads the backup job's own
    provenance record — `/var/lib/kajianq/backup-provenance`, root-owned 0644 in
