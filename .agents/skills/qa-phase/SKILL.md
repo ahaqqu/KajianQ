@@ -16,11 +16,14 @@ The manager owns the decision and the ticket; the `qa` role agent runs the probe
 
 A change is classified before its PR merges, and the manager records the decision either way (a `QA phase: not needed because …` line in the final summary counts as the record).
 
-| Change                                                                   | Shape              | What verifies it                                                                                                 |
-| ------------------------------------------------------------------------ | ------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| Tests-only, scripts, docs, skills, agent files, CI metadata              | **Inert**          | Nothing — no QA phase. Record why: the change cannot alter deployed behaviour.                                   |
-| Eval scorers, fixtures, smoke selection                                  | **Gate-affecting** | **Falsification** — does the gate still fail when it should? Staging user-behaviour probing cannot judge a gate. |
-| Routes, chat pipeline, prompts, retrieval, contracts, migrations, web UI | **Runtime**        | **Full staging QA**, adversarial persona included.                                                               |
+| Change                                                                               | Shape              | What verifies it                                                                                                 |
+| ------------------------------------------------------------------------------------ | ------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| Tests, docs, skills, agent and role files, ADRs, `SPECS.md`, CI metadata             | **Inert**          | Nothing — no QA phase. A CI test settles every claim the change makes. Record why.                               |
+| Tooling and its tests: `provision/`, `scripts/`, a check's own fixtures and messages | **Inert**          | Nothing — no QA phase. The change decides nothing about deployed behaviour; its fixtures redden in CI.           |
+| Eval scorers, Golden Set fixtures, smoke selection                                   | **Gate-affecting** | **Falsification** — does the gate still fail when it should? Staging user-behaviour probing cannot judge a gate. |
+| Routes, chat pipeline, prompts, retrieval, contracts, migrations, web UI             | **Runtime**        | **Full staging QA**, adversarial persona included.                                                               |
+
+**The deciding question is whether a test can settle the claim, not whether the file is code.** QA's instrument is the deployed environment, so it is owed only where the claim lives there: that a user-visible behaviour is right, or that the eval gate still goes red on a wrong answer. Everything a fixture in CI can prove is inert, however many lines it moves — a checker's refusal text, a table's mode validator, a parser's strictness, a property's coverage. Over-classifying is a real cost: a QA round for an inert change spends a session and a paid probe proving what a unit test already proved, and delays the queue behind it.
 
 The middle shape is the one that gets mistaken for the third. A gate-affecting change ships no user-visible behaviour to probe, and a healthy answer from staging says nothing about whether the gate can still go red — so its QA phase is the gate's own falsification, written as a QA ticket with a mutation observable (`the gate must fail on <defect>` — the mutations the ticket names, e.g. an ungrounded non-refusal) instead of a user observable.
 
