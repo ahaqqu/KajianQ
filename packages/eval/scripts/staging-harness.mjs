@@ -16,6 +16,7 @@
  * `DEFAULT_REFUSALS`, so the scripts, the pipeline, and the scorer cannot
  * disagree about what counts as a refusal.
  */
+import { readFileSync } from "node:fs";
 import { Effect } from "effect";
 import { createLogger, resolvePostgresStore } from "@app/infra";
 import { BudgetExceededError, postChatSse } from "@app/eval";
@@ -24,7 +25,9 @@ import {
   SCOPE_EXPANSION_ORIGIN,
   addressesNamedBy,
   citationCandidatesIn,
+  identityResolver,
   normalizeCitationLabel,
+  parseHadithIdentitySet,
 } from "@app/kajianq-domain";
 
 /** The generator's refusal text in each answer language (domain-owned). */
@@ -56,6 +59,29 @@ export const CITATION_GRAMMAR = {
   normalizeLabel: normalizeCitationLabel,
   labelsInText: citationCandidatesIn,
   addressesNamedBy,
+};
+
+/**
+ * The canonical hadith-identity resolver the scorer compares citations with.
+ * The map is the DOMAIN's curated, owner-signed data (`hadith-identities-v0`);
+ * the composition root loads it here and hands the engine an opaque resolver,
+ * so the engine learns no hadith vocabulary and cannot drift from the map. A
+ * label the map does not carry resolves to `null`, which keeps the scorer on
+ * its exact-label comparison — an unmapped or fabricated citation cannot match
+ * another.
+ */
+const HADITH_IDENTITY_FIXTURE = new URL(
+  "../../kajianq-domain/fixtures/hadith-identities-v0.json",
+  import.meta.url,
+);
+
+export const CITATION_IDENTITY = {
+  identityOf: identityResolver(
+    parseHadithIdentitySet(
+      JSON.parse(readFileSync(HADITH_IDENTITY_FIXTURE, "utf8")),
+      "hadith-identities-v0",
+    ),
+  ),
 };
 
 /**
@@ -164,6 +190,7 @@ export async function createStagingHarness(config, budget) {
     ledger,
     refusalMarkers: REFUSAL_MARKERS,
     citationGrammar: CITATION_GRAMMAR,
+    citationIdentity: CITATION_IDENTITY,
     expansionOrigin: EXPANSION_ORIGIN,
   };
 }

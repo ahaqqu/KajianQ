@@ -24,6 +24,10 @@ _Avoid_: sect, denomination, school (unqualified)
 The original authorial text of a kitab, as opposed to commentary written about it. Of a hadith: the body text, as opposed to its Isnad.
 _Avoid_: original text (ambiguous)
 
+**Matn identity**:
+The canonical hadith a narration belongs to: every chain that carries the same report or instruction, allowing different wording, shares one identity; a hadith that shares only a subject or a theme does not. Recorded in a curated, owner-signed map, not inferred from the citation number, so citation validity can accept a parallel chain without accepting an unrelated hadith.
+_Avoid_: citation number, hadith ID (ambiguous with the corpus row)
+
 **Sharh**:
 A commentary written to explain a matn. Ingestion must distinguish sharh from matn and never mix them in one chunk.
 _Avoid_: commentary (ambiguous in English prose)

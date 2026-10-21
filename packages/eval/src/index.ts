@@ -29,6 +29,11 @@ export {
 } from "./scorers";
 export { Budget, BudgetExceededError, budgetCapFromEnv } from "./budget";
 export { CitationGrammarError, requireCitationGrammar } from "./citation-grammar";
+export {
+  CitationIdentityError,
+  requireCitationIdentity,
+  resolveIdentity,
+} from "./citation-identity";
 export { EvalConfigError, loadEvalRunConfig, type EvalRunConfig } from "./eval-config";
 export {
   ChatTransportError,
@@ -53,6 +58,7 @@ export type {
   ChunkRefLike,
   CitationFrameLike,
   CitationGrammar,
+  CitationIdentity,
   RetrievalLike,
   TraceEventLike,
 } from "./harness-types";

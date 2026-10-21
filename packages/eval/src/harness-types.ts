@@ -80,3 +80,17 @@ export type CitationGrammar = {
    */
   addressesNamedBy: (label: string) => readonly string[] | null;
 };
+
+/**
+ * The **canonical identity** of a citation label, injected by the composition
+ * root. The engine compares opaque keys and learns no domain vocabulary; the
+ * domain pack owns the curated map that assigns them.
+ *
+ * `identityOf` returns the canonical key for a label the map carries and `null`
+ * for a label it does not — the fail-closed state the scorer keeps its exact
+ * label comparison for. A fabricated or unmatched label therefore never
+ * resolves into a group.
+ */
+export type CitationIdentity = {
+  identityOf: (label: string) => string | null;
+};
