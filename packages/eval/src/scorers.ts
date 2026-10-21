@@ -8,6 +8,9 @@ import type {
   TraceEventLike,
 } from "./harness-types";
 import { requireCitationIdentity, resolveIdentity } from "./citation-identity";
+import { comparedAddressesOf } from "./scorers-address";
+
+export { citationAddressRecall } from "./scorers-address";
 
 /** Deterministic scorers — source-type recall, citation-address recall,
  * citation validity, refusal correctness — with no LLM involvement: the metrics
@@ -29,51 +32,6 @@ export function sourceTypeRecall(
     expectedSourceTypes.filter((t) => retrieved.some((c) => sourceTypeOf(c.id) === t)),
   );
   return hit.size / expectedSourceTypes.length;
-}
-
-/**
- * Citation-address recall: the fraction of the question's required citations
- * whose **specific address** the retrieval event's chunks carry — the metric
- * source-type recall cannot see. Every entry of `requiredCitations` is required;
- * an empty list scores 1.
- *
- * The chunk ids on the trace are joined to their `citation` metadata by the
- * caller's `citationOf`. Each label is read as the addresses it names (a range
- * names every verse in it) in the injected grammar's normalized form, so the
- * fixture's and the corpus's spelling of one address compare equal; an
- * unenumerable required citation is a miss, never a guess. Deliberately not
- * satisfied by a citation identity: recall asks for the exact address, so a
- * parallel narration that may satisfy citation validity does not count here.
- */
-export function citationAddressRecall(
-  requiredCitations: readonly string[],
-  retrieved: readonly ChunkRefLike[],
-  citationOf: (chunkId: string) => string | undefined,
-  grammar?: CitationGrammar,
-): number {
-  if (requiredCitations.length === 0) return 1;
-  const retrievedAddresses = new Set<string>();
-  for (const chunk of retrieved) {
-    const label = citationOf(chunk.id);
-    if (label === undefined) continue;
-    for (const address of addressesOfLabel(label, grammar)) retrievedAddresses.add(address);
-  }
-  const present = requiredCitations.filter((citation) => {
-    const required = addressesOfLabel(citation, grammar);
-    return required.length > 0 && required.every((address) => retrievedAddresses.has(address));
-  }).length;
-  return present / requiredCitations.length;
-}
-
-/** The normalized addresses one label names; `null` (an unenumerable declared
- * list) names nothing, and `[]` (no grammar match) falls back to the label so an
- * opaque label still compares as one address. */
-function addressesOfLabel(label: string, grammar?: CitationGrammar): readonly string[] {
-  if (grammar === undefined) return [label];
-  const declared = grammar.addressesNamedBy(label);
-  if (declared === null) return [];
-  const addresses = declared.length > 0 ? declared : [label];
-  return addresses.map(grammar.normalizeLabel);
 }
 
 /**
@@ -179,12 +137,10 @@ function groundedLabels(
         sameIdentity(identity, citation, evidence),
     );
   }
-  const named = new Set(
-    evidence.flatMap((label) => namedAddressesOf(label, grammar) ?? []).map(grammar.normalizeLabel),
-  );
+  const named = new Set(evidence.flatMap((label) => comparedAddressesOf(label, grammar) ?? []));
   return required.filter((citation) => {
-    const addresses = namedAddressesOf(citation, grammar);
-    if (addresses !== null && addresses.every((a) => named.has(grammar.normalizeLabel(a)))) {
+    const addresses = comparedAddressesOf(citation, grammar);
+    if (addresses !== null && addresses.every((address) => named.has(address))) {
       return true;
     }
     return sameIdentity(identity, citation, evidence);
@@ -204,13 +160,6 @@ function sameIdentity(
   if (requiredIdentity === null) return false;
   return evidence.some((label) => resolveIdentity(identity, label) === requiredIdentity);
 }
-
-/** The addresses one label names; `null` is a refusal, and `[]` falls back to
- * the label so a label the grammar cannot parse matches whole. */
-const namedAddressesOf = (label: string, grammar: CitationGrammar): readonly string[] | null => {
-  const declared = grammar.addressesNamedBy(label);
-  return declared === null ? null : declared.length > 0 ? declared : [label];
-};
 
 /**
  * Citation validity: the fraction of the question's required citations the

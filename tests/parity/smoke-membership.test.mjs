@@ -6,6 +6,7 @@ import {
   SmokeSubsetError,
 } from "../../packages/eval/src/smoke-subset";
 import {
+  ADDRESS_RECALL_TRACKED_MISSES,
   SMOKE_COVERAGE_TAGS,
   SMOKE_HELD_OUT_IDS,
 } from "../../packages/kajianq-domain/src/taxonomy";
@@ -108,6 +109,14 @@ describe("the staged smoke subset's default membership", () => {
     const all = FIXTURE.questions.map((q) => q.id);
     for (const id of SMOKE_HELD_OUT_IDS) expect(all).toContain(id);
     for (const id of SMOKE_HELD_OUT_IDS) expect(DEFAULT_IDS).not.toContain(id);
+  });
+
+  it("keeps the reported address debt pointing at real fixture questions", () => {
+    const ids = new Set(FIXTURE.questions.map((q) => q.id));
+    for (const id of ADDRESS_RECALL_TRACKED_MISSES) expect(ids.has(id), id).toBe(true);
+    // The debt is reported by the smoke but never held out of QA: every id stays
+    // in the full set the release run and QA ask.
+    expect(ADDRESS_RECALL_TRACKED_MISSES.length).toBeGreaterThan(0);
   });
 
   it("reddens when the fixture no longer carries a held-out case", () => {

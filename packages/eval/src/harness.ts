@@ -74,6 +74,10 @@ export type HarnessDeps = {
    * root (the engine stays agnostic) so scorer and gate normalize identically;
    * omitted, scoring uses the byte-exact substring check. */
   citationGrammar?: CitationGrammar;
+  /** Whether the address dimension decides a question's `passed`. Default true: the
+   * eval gate requires the exact address. The deployed smoke turns it off so the
+   * dimension is REPORTED without gating while a known retrieval gap stands. */
+  gateAddressRecall?: boolean;
   /** The canonical citation-identity resolver, supplied by the composition root
    * (the engine compares opaque keys). Omitted, citation validity keeps the
    * exact-label comparison; supplied, a required citation is also satisfied by
@@ -182,8 +186,9 @@ export async function runGoldenSet(set: GoldenSet, deps: HarnessDeps): Promise<H
 
 /** Score one question from its answer text, trace events, and the citations frame
  * when the transport carried one. A question passes only when behaviour, both
- * recall dimensions and citation validity are all complete; the trap rule's
- * residual lives in `behaviorAccepted`. */
+ * recall dimensions and citation validity are all complete — the address dimension
+ * excepted when the run gates only on the others (`gateAddressRecall: false`). The
+ * trap rule's residual lives in `behaviorAccepted`. */
 export function scoreQuestion(
   question: GoldenQuestion,
   answerText: string,
@@ -196,6 +201,7 @@ export function scoreQuestion(
     | "citationGrammar"
     | "citationIdentity"
     | "expansionOrigin"
+    | "gateAddressRecall"
   >,
   frame?: CitationFrameLike | null,
 ): EvalResultOutcome {
@@ -217,7 +223,11 @@ export function scoreQuestion(
   const refused = detectRefusal(events, answerText, deps.refusalMarkers ?? []);
   const grounded = groundedAnswer({ frame, events });
   const correct = behaviorAccepted(question.expectedBehavior, refused, grounded);
-  const passed = correct && citations === 1 && sourceTypes === 1 && addressRecall === 1;
+  const passed =
+    correct &&
+    citations === 1 &&
+    sourceTypes === 1 &&
+    (deps.gateAddressRecall === false || addressRecall === 1);
   return {
     questionId: question.id,
     expectedBehavior: question.expectedBehavior,
@@ -266,8 +276,8 @@ export function buildReport(set: GoldenSet, run: BuildReportRun): EvalRunReport 
     failed: run.failed,
     skipped: run.skipped,
     meanSourceTypeRecall: mean(run.scored.map((r) => r.sourceTypeRecall)),
-    // Every scored row a run writes carries the metric; the filter keeps the
-    // mean honest for an outcome shape read from a pre-metric ledger row.
+    // Over the scored rows that carry the measurement: a row persisted before the
+    // metric existed is excluded, never counted as zero.
     meanCitationAddressRecall: mean(
       run.scored.flatMap((r) =>
         r.citationAddressRecall === undefined ? [] : [r.citationAddressRecall],

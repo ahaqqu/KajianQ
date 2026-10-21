@@ -62,7 +62,9 @@ export type GoldenSet = v.InferOutput<typeof GoldenSetSchema>;
 export type EvalResultOutcome = {
   questionId: string;
   expectedBehavior: "answer" | "refuse";
-  /** True when the pipeline behaved as the question expects. */
+  /** True when the question passed the run's gate: the expected behaviour plus every
+   * dimension that run gated on. The deployed smoke reports, but does not gate on,
+   * citation-address recall while a known retrieval gap stands. */
   passed: boolean;
   /**
    * Source-type recall: the fraction of the question's expected source types
@@ -196,7 +198,9 @@ export type EvalRunReport = {
   skipped: number;
   /** Mean source-type recall over scored questions (null when none scored). */
   meanSourceTypeRecall: number | null;
-  /** Mean citation-address recall over scored questions; absent on pre-metric rows. */
+  /** Mean citation-address recall over the scored questions that carry the
+   * measurement — a row persisted before the metric existed is excluded, not
+   * counted as zero; null when none carry it. Absent on pre-metric reports. */
   meanCitationAddressRecall?: number | null | undefined;
   /** Mean citation validity over scored questions (null when none scored). */
   meanCitationValidity: number | null;

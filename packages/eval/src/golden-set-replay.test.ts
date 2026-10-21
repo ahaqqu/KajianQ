@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 import type { GoldenQuestion } from "@app/contracts";
+import { addressesNamedBy, normalizeCitationLabel } from "@app/kajianq-domain";
 import { scoreQuestion } from "./harness";
 import type { CitationGrammar, TraceEventLike } from "./harness-types";
 
@@ -10,12 +11,15 @@ import type { CitationGrammar, TraceEventLike } from "./harness-types";
  * on (`packages/kajianq-domain/fixtures/golden-set-v0-replay.json` — the snapshot's
  * own `$comment` states what it carries and what a replay can and cannot show).
  *
- * The grammar here is the **identity**, and that is the point: every label the
- * fixture holds is already in the head build's comparison form, snapshotted with the
- * gate that produced it. The domain-side `chat-citation-replay` test re-derives both
- * sides from the recorded answer texts and retrieved chunks, so this file cannot
- * score a vocabulary of its own — and the engine stays domain-agnostic. With a frame
- * on every row, the text path is unreachable, which is why `labelsInText` is empty.
+ * The grammar is the domain pack's own — the same functions the staging
+ * composition root injects — and the requirements are read from the Golden Set at
+ * head, not from the replay snapshot's pre-folded copy: a stub that stripped only
+ * the grade would flip `gs-v0-004` red, so a normaliser weaker than production
+ * cannot pass this test. The snapshot's own `required` entries are asserted to be
+ * the comparison form of the head fixture below. The domain-side
+ * `chat-citation-replay` test re-derives both sides from the recorded answer texts
+ * and retrieved chunks; this file only replays them. With a frame on every row, the
+ * text path is unreachable, which is why `labelsInText` is empty.
  */
 
 type RetrievalRow = { label: string | null; sourceType: string | null; backed: boolean };
@@ -43,15 +47,24 @@ const FIXTURE = JSON.parse(
 ) as { id: string; run: string; base: string; rows: Row[] };
 const ROWS = FIXTURE.rows;
 
+const HEAD = JSON.parse(
+  readFileSync(new URL("packages/kajianq-domain/fixtures/golden-set-v0.json", ROOT), "utf8"),
+) as { questions: { id: string; requiredCitations: string[] }[] };
+const HEAD_REQUIRED = new Map(HEAD.questions.map((q) => [q.id, q.requiredCitations]));
+
+/** The real comparison form, injected exactly as the staging composition root does. */
 const GRAMMAR: CitationGrammar = {
-  // The fixture's `required` labels are already in the gate's comparison form;
-  // its retrieved labels keep the corpus's trailing grade, which the comparison
-  // form drops. No other normalization is needed, so this file adds no
-  // vocabulary of its own.
-  normalizeLabel: (label) => label.replace(/\s+\([^)]*\)$/u, ""),
+  normalizeLabel: normalizeCitationLabel,
   labelsInText: () => [],
-  addressesNamedBy: (label) => [label],
+  addressesNamedBy,
 };
+
+/** The requirement the Golden Set carries at head for this row. */
+function requiredOf(row: Row): string[] {
+  const required = HEAD_REQUIRED.get(row.questionId);
+  if (required === undefined) throw new Error(`the Golden Set carries no ${row.questionId}`);
+  return required;
+}
 
 /** The trace events the scorer reads, rebuilt from the fixture's own fields. */
 function eventsOf(row: Row): TraceEventLike[] {
@@ -75,7 +88,7 @@ function questionOf(row: Row): GoldenQuestion {
     question: row.questionId,
     language: "id",
     expectedSourceTypes: row.expectedSourceTypes,
-    requiredCitations: row.required,
+    requiredCitations: requiredOf(row),
     expectedBehavior: row.expectedBehavior,
   };
 }
@@ -100,6 +113,13 @@ const mean = (values: readonly number[]): number =>
   values.reduce((sum, value) => sum + value, 0) / values.length;
 
 describe("golden-set-v0 replay — the collection fold measured on the recorded run", () => {
+  it("stores every replay requirement in the comparison form the head fixture defines", () => {
+    for (const row of ROWS) {
+      expect(row.required, row.questionId).toEqual(requiredOf(row).map(GRAMMAR.normalizeLabel));
+      for (const entry of row.required) expect(GRAMMAR.normalizeLabel(entry), entry).toBe(entry);
+    }
+  });
+
   it("carries the whole run, so the replay below is not vacuous", () => {
     expect(FIXTURE.rows.length).toBe(20);
     expect(ROWS.filter((row) => row.recorded.passed).length).toBe(8);

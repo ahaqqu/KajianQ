@@ -175,8 +175,14 @@ export function failureLines(failed, questions) {
 /**
  * `costMicroUsd` is the settled figure: the ledger's record when it exists, else the live
  * budget — the ledger is authoritative once the row is written. `questions` is required.
+ * `trackedAddressMisses` is the caller's reported-not-gated line: the smoke names the
+ * known retrieval misses it does not gate on; `eval:run`, which gates on the address
+ * dimension, omits it.
  */
-export function printSummary(prefix, { runId, questionCount, result, costMicroUsd, questions }) {
+export function printSummary(
+  prefix,
+  { runId, questionCount, result, costMicroUsd, questions, trackedAddressMisses },
+) {
   requireFixture(questions, "printSummary");
   const scored = result.results.filter((x) => x.skipped !== true);
   const skipped = result.results.filter((x) => x.skipped === true);
@@ -194,6 +200,11 @@ export function printSummary(prefix, { runId, questionCount, result, costMicroUs
             .map((x) => x.citationAddressRecall),
         )?.toFixed(3) ?? "n/a"
       }`,
+      ...(trackedAddressMisses === undefined
+        ? []
+        : [
+            `  address recall: reported, not gated — tracked retrieval debt: ${trackedAddressMisses.join(", ")}`,
+          ]),
       `  mean citation validity: ${mean(scored.map((x) => x.citationValidity))?.toFixed(3) ?? "n/a"}`,
       `  cost: ${(costMicroUsd / 1e6).toFixed(6)} USD  budget exceeded: ${result.budgetExceeded}`,
       ...expansionLines(scored),

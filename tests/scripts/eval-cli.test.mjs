@@ -76,7 +76,7 @@ const FIXTURE = [
   {
     id: "gs-v0-003",
     expectedSourceTypes: ["hadith"],
-    requiredCitations: ["HR. Bukhari no. 149"],
+    requiredCitations: ["HR. Bukhari no. 191"],
     expectedBehavior: "answer",
   },
   {
@@ -116,7 +116,7 @@ describe("failureLines (#340)", () => {
     expect(
       failureLines([scoredOutcome("gs-v0-003", { citationAddressRecall: 0 })], FIXTURE),
     ).toEqual([
-      "  failed: gs-v0-003 citationAddressRecall=0.000 (required HR. Bukhari no. 149, retrieved 0/1)",
+      "  failed: gs-v0-003 citationAddressRecall=0.000 (required HR. Bukhari no. 191, retrieved 0/1)",
     ]);
   });
 
@@ -227,7 +227,7 @@ describe("printSummary (#290, #340)", () => {
   };
 
   // `questions` has no default: every caller hands the fixture it holds, as both CLIs do.
-  function printedSummary(result, questions) {
+  function printedSummary(result, questions, extra = {}) {
     const spy = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
       printSummary("eval:smoke", {
@@ -236,6 +236,7 @@ describe("printSummary (#290, #340)", () => {
         result,
         costMicroUsd: 25,
         questions,
+        ...extra,
       });
       // Read the calls before `mockRestore`, which drops them.
       return spy.mock.calls.map((call) => call[0]).join("\n");
@@ -291,6 +292,32 @@ describe("printSummary (#290, #340)", () => {
       "  scoped: q3 — expansion chunks 5, fused-only source-type recall 1.000 (reported 1.000)",
     ]);
     expect(printed).not.toMatch(/^ {2}(failed|skipped): /m);
+  });
+
+  it("names the smoke's reported-but-not-gated address misses as tracked debt", () => {
+    const printed = printedSummary(
+      {
+        passed: 1,
+        failed: 0,
+        skipped: 0,
+        budgetExceeded: false,
+        results: [scored],
+      },
+      FIXTURE,
+      { trackedAddressMisses: ["gs-v0-006", "gs-v0-016"] },
+    );
+    expect(printed).toContain(
+      "  address recall: reported, not gated — tracked retrieval debt: gs-v0-006, gs-v0-016",
+    );
+    // The address mean still prints above it: the dimension is reported in full.
+    expect(printed).toContain("  mean citation-address recall: 1.000");
+    // A caller that gates on the dimension (eval:run) prints no debt line.
+    expect(
+      printedSummary(
+        { passed: 1, failed: 0, skipped: 0, budgetExceeded: false, results: [scored] },
+        FIXTURE,
+      ),
+    ).not.toContain("tracked retrieval debt");
   });
 
   it("keeps the summary shape and order, with the failure line between scoped and skipped", () => {

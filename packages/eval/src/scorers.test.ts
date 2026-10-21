@@ -188,6 +188,23 @@ describe("citationAddressRecall", () => {
       ),
     ).toBe(1);
   });
+
+  it("refuses a grammar that cannot say what a label names, as a typed error", () => {
+    // The production injector is JavaScript, so the declaration can be missing at
+    // runtime: this is the shape a `.mjs` grammar loses by deleting one line. The
+    // engine must fail typed from its own guard, not as a bare TypeError from the
+    // metric's first call.
+    const withoutDeclaration = {
+      normalizeLabel: (label: string) => label,
+      labelsInText: () => [],
+    } as unknown as CitationGrammar;
+    const call = (required: string[]) =>
+      citationAddressRecall(required, [{ id: "c1" }], () => "SRC. Alpha no. 1", withoutDeclaration);
+    expect(() => call(["SRC. Alpha no. 1"])).toThrow(CitationGrammarError);
+    expect(() => call(["SRC. Alpha no. 1"])).toThrow(/addressesNamedBy/);
+    // Guarded before the empty-required short-circuit, so no question escapes it.
+    expect(() => call([])).toThrow(CitationGrammarError);
+  });
 });
 
 describe("citationValidity", () => {
@@ -810,6 +827,31 @@ describe("scoreQuestion", () => {
     expect(dropped.sourceTypeRecall).toBe(1);
     expect(dropped.citationAddressRecall).toBe(0);
     expect(dropped.passed).toBe(false);
+  });
+
+  it("reports an address miss without gating it when the run turns the gate off", () => {
+    // The deployed smoke's policy: the address dimension is still measured and
+    // persisted, but it does not decide `passed` — the eval gate keeps it on.
+    const neighbourEvent: TraceEventLike = {
+      kind: "retrieval",
+      stage: "retriever",
+      detail: { chunks: [{ id: "c2" }, { id: "c3" }] },
+    };
+    const deps = {
+      sourceTypeOf: (id: string) => (id === "c2" ? "source-a" : "source-b"),
+      citationOf: (id: string) => (id === "c2" ? "label-2" : "label-3"),
+    };
+    const gated = scoreQuestion(question, "… label-1 …", [neighbourEvent], deps);
+    expect(gated.sourceTypeRecall).toBe(1);
+    expect(gated.citationValidity).toBe(1);
+    expect(gated.citationAddressRecall).toBe(0);
+    expect(gated.passed).toBe(false);
+    const reported = scoreQuestion(question, "… label-1 …", [neighbourEvent], {
+      ...deps,
+      gateAddressRecall: false,
+    });
+    expect(reported.citationAddressRecall).toBe(0);
+    expect(reported.passed).toBe(true);
   });
 
   it("fails when the required citation is missing", () => {

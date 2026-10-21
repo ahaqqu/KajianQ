@@ -425,6 +425,56 @@ describe("runGoldenSet", () => {
     expect(byId.get("unscored")).not.toHaveProperty("skipped");
   });
 
+  it("applies a run's address-gate policy to every outcome it persists", async () => {
+    // The deployed smoke reports citation-address recall without gating on it;
+    // `runGoldenSet` is the path that decision travels, so the flag must reach the
+    // scorer and the persisted row, not only the direct `scoreQuestion` call.
+    const one: GoldenSet = {
+      id: "set-gate",
+      status: "v0-draft",
+      questions: [
+        {
+          id: "q1",
+          question: "one",
+          language: "id",
+          expectedSourceTypes: ["source-a"],
+          requiredCitations: ["label-1"],
+          expectedBehavior: "answer",
+        },
+      ],
+    };
+    const addressMiss = makeDeps({
+      traceEvents: () => [
+        {
+          kind: "retrieval",
+          stage: "retriever",
+          detail: { chunks: [{ id: "c2" }, { id: "c3" }] },
+        },
+      ],
+    }).deps;
+    const withNeighbours = {
+      ...addressMiss,
+      sourceTypeOf: (id: string) => (id === "c2" ? "source-a" : undefined),
+      citationOf: (id: string) => (id === "c2" ? "label-2" : "label-3"),
+    };
+    const gated = await runGoldenSet(one, withNeighbours);
+    expect(gated.passed).toBe(0);
+    expect(gated.results[0]).toMatchObject({
+      citationAddressRecall: 0,
+      citationValidity: 1,
+      sourceTypeRecall: 1,
+      passed: false,
+    });
+    const reported = await runGoldenSet(one, { ...withNeighbours, gateAddressRecall: false });
+    expect(reported.passed).toBe(1);
+    expect(reported.results[0]).toMatchObject({
+      citationAddressRecall: 0,
+      citationValidity: 1,
+      sourceTypeRecall: 1,
+      passed: true,
+    });
+  });
+
   it("persists the expansion's contribution on each scoped outcome (C1)", async () => {
     const { deps, savedResults } = makeDeps({
       expansionOrigin: "expansion",
