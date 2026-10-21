@@ -122,7 +122,9 @@ describe("recorded run — the two retrieval metrics", () => {
   it("reads 0.750 once the short-surah completion is applied to the recorded set", () => {
     // The recorded retrieval is fixed; this is the same set with the addresses a
     // completion read adds beside it — the target surahs come from the recorded
-    // labels, and the read is the corpus's own surah rows.
+    // labels, and the read is the corpus's own surah rows. The whole budget is
+    // modelled here: a recorded set already carries any named scope read's chunks,
+    // and the one row the metric moves has no named reference, so its union is exact.
     const completed = REPLAY.map((row) => {
       const verses = row.retrieved.flatMap((entry, index) => {
         const match = /^QS\. (\d+):(\d+)$/.exec(entry.label ?? "");
