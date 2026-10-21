@@ -166,18 +166,15 @@ function applyWithMode(mode) {
 }
 
 /**
- * A checkout whose apply.sh table carries one extra row, for the shape probe a
- * future versioned destination would trip. The real source tree is linked in,
- * so the shipped manifest emitter hashes the shipped files.
+ * A checkout whose apply.sh table is rewritten, for the shapes a future
+ * destination would trip. The real source tree is linked in, so the shipped
+ * manifest emitter hashes the shipped files.
  */
-function checkoutWithExtraRow(row) {
-  const dir = mkdtempSync(join(tmpdir(), "kajianq-extra-row-"));
+function checkoutWithTable(rewrite) {
+  const dir = mkdtempSync(join(tmpdir(), "kajianq-table-"));
   const source = join(dir, "provision/vps");
   mkdirSync(source, { recursive: true });
-  writeFileSync(
-    join(source, "apply.sh"),
-    read("provision/vps/apply.sh").replace("deploy-grant|", `${row}\ndeploy-grant|`),
-  );
+  writeFileSync(join(source, "apply.sh"), rewrite(read("provision/vps/apply.sh")));
   for (const entry of [
     "backup",
     "journald",
@@ -190,6 +187,11 @@ function checkoutWithExtraRow(row) {
     symlinkSync(resolve(REPO, "provision/vps", entry), join(source, entry));
   }
   return { checkout: dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+}
+
+/** A checkout whose apply.sh table carries one extra row (the shape probe). */
+function checkoutWithExtraRow(row) {
+  return checkoutWithTable((table) => table.replace("deploy-grant|", `${row}\ndeploy-grant|`));
 }
 
 describe("the artifact set is enumerated from apply.sh itself", () => {
@@ -505,6 +507,40 @@ describe("the drift preflight", () => {
     }
   });
 
+  it("resolves a version glob that shares its directory component with fixed text", () => {
+    // The static prefix is the directory that holds the glob, not the text
+    // before its `*`: read as a path, `postgresql-` does not exist, and the row
+    // would be skipped as "not installed" while apply.sh installs into the
+    // first match of the glob.
+    const checkout = checkoutWithTable((table) =>
+      table.replace(
+        "|/etc/postgresql/*/main/conf.d/99-kajianq.conf|",
+        "|/etc/postgresql/postgresql-*/main/conf.d/99-kajianq.conf|",
+      ),
+    );
+    const fixture = driftFixture();
+    try {
+      const manifest = fixtureManifest(emitManifest(checkout.checkout));
+      const applyTarget = join(
+        fixture.dir,
+        "etc/postgresql/postgresql-15/main/conf.d/99-kajianq.conf",
+      );
+      mkdirSync(dirname(applyTarget), { recursive: true });
+      const drifted = `${read("provision/vps/postgres/99-kajianq.conf")}# drift\n`;
+      writeFileSync(applyTarget, drifted);
+      chmodSync(applyTarget, 0o644);
+
+      const result = fixture.check({ manifest });
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain(`installed ${digest12(drifted)}`);
+      expect(result.stderr).not.toContain("no directory matches");
+      expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
+    } finally {
+      fixture.cleanup();
+      checkout.cleanup();
+    }
+  });
+
   it("skips the Postgres row when Postgres is not installed, as apply.sh does", () => {
     // apply.sh resolves the row against the first existing conf.d directory and
     // logs "install postgresql" when there is none. The check must skip the same
@@ -564,6 +600,110 @@ describe("the drift preflight", () => {
       expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
     } finally {
       chmodSync(postgres, 0o755);
+      fixture.cleanup();
+    }
+  });
+
+  it("refuses a version directory it cannot search, instead of skipping the row", () => {
+    // The file is installed and drifted; only the search bit on `<ver>/main`
+    // hides it from the deploy identity. The glob's expansion path — not just
+    // the text before its `*` — has to be searched, or the row is skipped with
+    // the "Postgres has no conf.d" message while root's apply.sh would place it.
+    const fixture = driftFixture();
+    const hidden = join(fixture.dir, "etc/postgresql/16/main");
+    try {
+      const installed = join(hidden, "conf.d/99-kajianq.conf");
+      writeFileSync(installed, `${readFileSync(installed, "utf8")}# drift\n`);
+      chmodSync(hidden, 0o000);
+
+      const result = fixture.check();
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain("cannot read or search");
+      expect(result.stderr).toContain(hidden);
+      expect(result.stderr).not.toContain("no conf.d directory");
+      expect(result.stderr).not.toContain("no directory matches");
+      expect(result.stderr).not.toContain("is not installed");
+      expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
+      expect(result.stdout).not.toContain("match the checkout");
+    } finally {
+      chmodSync(hidden, 0o755);
+      fixture.cleanup();
+    }
+  });
+
+  it("refuses a version directory it cannot enumerate, instead of comparing another", () => {
+    // The two versions diverge: root's expansion orders `15` first and apply.sh
+    // writes the first match, but the deploy identity cannot enter `15/main`
+    // and sees only `16`. Comparing `16` would report the box healthy over a
+    // drifted file in the directory the installer actually targets.
+    const fixture = driftFixture();
+    const older = join(fixture.dir, "etc/postgresql/15/main");
+    const versions = join(fixture.dir, "etc/postgresql");
+    const firstConfD = () =>
+      sh("bash", ["-c", 'ls -d "$1"/*/main/conf.d | head -1', "probe", versions]);
+    try {
+      const installed = join(older, "conf.d/99-kajianq.conf");
+      mkdirSync(dirname(installed), { recursive: true });
+      writeFileSync(installed, `${read("provision/vps/postgres/99-kajianq.conf")}# drift\n`);
+      // What root's `ls -d` picks: the same tree without the search bit that
+      // stops this identity, which is the whole difference between the two.
+      const rootView = firstConfD();
+      expect(rootView.status, rootView.stderr).toBe(0);
+      expect(rootView.stdout.trim()).toBe(dirname(installed));
+
+      chmodSync(older, 0o000);
+      const result = fixture.check();
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain("cannot read or search");
+      expect(result.stderr).toContain(older);
+      expect(result.stderr).not.toContain("no conf.d directory");
+      expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
+      expect(result.stdout).not.toContain("match the checkout");
+    } finally {
+      chmodSync(older, 0o755);
+      fixture.cleanup();
+    }
+  });
+
+  it("refuses a version directory that is itself unsearchable", () => {
+    // The search bit can be off on `<ver>` rather than `<ver>/main` — a cluster
+    // directory an older Postgres left at 700. Root expands through it; this
+    // identity cannot, so no version is compared.
+    const fixture = driftFixture();
+    const hidden = join(fixture.dir, "etc/postgresql/16");
+    try {
+      chmodSync(hidden, 0o000);
+      const result = fixture.check();
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain("cannot read or search");
+      expect(result.stderr).toContain(hidden);
+      expect(result.stderr).not.toContain("no conf.d directory");
+      expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
+    } finally {
+      chmodSync(hidden, 0o755);
+      fixture.cleanup();
+    }
+  });
+
+  it("refuses a conf.d directory it cannot search, the fourth expansion level", () => {
+    // The last level the walk enters is `conf.d` itself: `16/main` stays
+    // enterable, so only a test of that fixed component catches a 000 conf.d.
+    // Root's apply.sh resolves the same match and installs into it, so this
+    // identity's blind spot must refuse instead of skipping the row.
+    const fixture = driftFixture();
+    const hidden = join(fixture.dir, "etc/postgresql/16/main/conf.d");
+    try {
+      chmodSync(hidden, 0o000);
+      const result = fixture.check();
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain("cannot read or search");
+      expect(result.stderr).toContain(hidden);
+      expect(result.stderr).not.toContain("no conf.d directory");
+      expect(result.stderr).not.toContain("no directory matches");
+      expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
+      expect(result.stdout).not.toContain("match the checkout");
+    } finally {
+      chmodSync(hidden, 0o755);
       fixture.cleanup();
     }
   });
