@@ -1,8 +1,8 @@
 import { Effect, Stream } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { RunContext, type AssembledContext, type Chunk } from "@app/rag-core";
+import { ProviderError, RunContext, type AssembledContext, type Chunk } from "@app/rag-core";
 import type { CostRecord } from "@app/contracts";
-import { createKajianQGenerator } from "./chat-generator";
+import { createKajianQGenerator, REFUSAL_REREAD_LIMIT } from "./chat-generator";
 import { createKajianQReviewer } from "./chat-reviewer";
 import type { KajianQFilters } from "./filters";
 import { runChatPipeline } from "./chat-pipeline";
@@ -162,6 +162,253 @@ describe("createKajianQGenerator — streaming", () => {
       language: "id",
     });
     await expect(runStage(gen.generate(context([])))).rejects.toBeTruthy();
+  });
+});
+
+/**
+ * A refusal is a reading of the evidence, not a verdict on the topic. A single
+ * sampled refusal is not shipped: the generator rereads the same turns, and the
+ * refusal ships only when the reread declines too. Both readings pay and both
+ * costs land on the trace. Only a pure refusal is reread: a draft that answers,
+ * a hybrid partial answer carrying the sentence included, is final.
+ */
+describe("createKajianQGenerator — the refusal reread", () => {
+  const refusal = "tidak menemukan dalil yang memadai";
+  /** A grounded partial answer that runs into the canonical sentence. */
+  const hybrid =
+    "Konteks menyebut QS. 2:255 dan tidak menjawab bagian lain. tidak menemukan dalil yang memadai";
+  /** Content of the draft's own, no citation, plus the canonical sentence. */
+  const asserting = "Hadits tentang keutamaan Tarawih sahih. tidak menemukan dalil yang memadai";
+
+  type StageRun = {
+    draft: { text: string };
+    seen: string[][];
+    events: { kind: string; detail?: { purpose?: string }; cost?: CostRecord }[];
+  };
+
+  /** Run the stage against a scripted provider, keyed by call index. */
+  const runScripted = async (
+    reply: (call: number) => Effect.Effect<{ text: string; cost: CostRecord }, unknown>,
+  ): Promise<StageRun> => {
+    const seen: string[][] = [];
+    const events: StageRun["events"] = [];
+    const gen = createKajianQGenerator({
+      provider: {
+        generate: (spec) => {
+          seen.push(spec.turns.map((turn) => turn.content));
+          return reply(seen.length - 1);
+        },
+      },
+      language: "id",
+    });
+    const { RunContext } = await import("@app/rag-core");
+    const draft = (await Effect.runPromise(
+      Effect.provideService(gen.generate(context([chunk("QS. 2:255")])) as never, RunContext, {
+        config: {},
+        now: () => 1,
+        record: (e: never) => events.push(e),
+      } as never) as never,
+    )) as { text: string };
+    return { draft, seen, events };
+  };
+
+  const recording = (replies: readonly string[]): Promise<StageRun> =>
+    runScripted((call) =>
+      Effect.succeed({ text: replies[call] ?? replies.at(-1) ?? refusal, cost: cost("stub", 7) }),
+    );
+
+  /** The first reading declines; the reread fails with `failure`. */
+  const rereadFails = (failure: unknown): Promise<StageRun> =>
+    runScripted((call) =>
+      call === 0 ? Effect.succeed({ text: refusal, cost: cost("stub", 7) }) : Effect.fail(failure),
+    );
+
+  it("rereads a refused draft on the same evidence and ships the answer", async () => {
+    const { draft, seen, events } = await recording([refusal, "Menurut QS. 2:255 …"]);
+    expect(draft.text).toBe("Menurut QS. 2:255 …");
+    expect(seen).toHaveLength(2);
+    // The reread sees the identical evidence: it is a second reading, not a new shot
+    // at a different question.
+    expect(seen[1]).toEqual(seen[0]);
+    const calls = events.filter((e) => e.kind === "llm_call");
+    expect(calls.map((e) => e.detail?.purpose)).toEqual(["generate", "generate_reread"]);
+    // Every paid reading is on the trace, including the one that did not ship.
+    expect(calls.map((e) => e.cost?.costMicroUsd)).toEqual([7, 7]);
+  });
+
+  it("ships the refusal when the reread declines too", async () => {
+    const { draft, seen, events } = await recording([refusal, refusal]);
+    expect(draft.text).toBe(refusal);
+    expect(seen).toHaveLength(2);
+    expect(events.filter((e) => e.kind === "llm_call")).toHaveLength(2);
+  });
+
+  it("does not reread an answer", async () => {
+    const { draft, seen, events } = await recording(["Menurut QS. 2:255 …"]);
+    expect(draft.text).toBe("Menurut QS. 2:255 …");
+    expect(seen).toHaveLength(1);
+    expect(events.filter((e) => e.kind === "llm_call")).toHaveLength(1);
+  });
+
+  it("does not reread a hybrid draft — a draft that answers is final", async () => {
+    // The sentence detector is a substring match and also fires on a hybrid: the
+    // canonical sentence riding a grounded partial answer. That draft has
+    // answered, so a reread would spend a generation on an answer already
+    // delivered and could replace it with a different one.
+    const { draft, seen, events } = await recording([hybrid]);
+    expect(draft.text).toBe(hybrid);
+    expect(seen).toHaveLength(1);
+    expect(events.filter((e) => e.kind === "llm_call")).toHaveLength(1);
+  });
+
+  it("does not reread an asserting refusal draft", async () => {
+    // The other sentence-carrying shape: content of its own and no citation. The
+    // product refuses it deterministically, so it is not a decline a second
+    // reading could confirm or contradict.
+    const { draft, seen } = await recording([asserting]);
+    expect(draft.text).toBe(asserting);
+    expect(seen).toHaveLength(1);
+  });
+
+  it("ships the reread's hybrid instead of the refusal it answered past", async () => {
+    // Both call sites read the one predicate: a reread that answers part of the
+    // question is not a second decline, so the refusal does not ship.
+    const { draft, seen } = await recording([refusal, hybrid]);
+    expect(draft.text).toBe(hybrid);
+    expect(seen).toHaveLength(2);
+  });
+
+  it("pins the reread bound to one extra reading", async () => {
+    // The stage, the spec and the decision record say one reread; a change to
+    // the constant reddens here so the documents move with it.
+    expect(REFUSAL_REREAD_LIMIT).toBe(1);
+    const { seen } = await recording([refusal, refusal]);
+    expect(seen).toHaveLength(1 + REFUSAL_REREAD_LIMIT);
+  });
+
+  it("does not reread a refusal on an empty context", async () => {
+    const seen: string[][] = [];
+    const gen = createKajianQGenerator({
+      provider: {
+        generate: (spec) => {
+          seen.push(spec.turns.map((turn) => turn.content));
+          return Effect.succeed({ text: refusal, cost: cost("stub", 7) });
+        },
+      },
+      language: "id",
+    });
+    const draft = await runStage<{ text: string }>(gen.generate(context([])));
+    expect(draft.text).toBe(refusal);
+    expect(seen).toHaveLength(1);
+  });
+
+  it("keeps the first refusal when the reread fails", async () => {
+    // The first reading earned the refusal and the second is optional: a
+    // failure there must not turn an earned refusal into a stage failure, so
+    // the refusal ships rather than the run rejecting.
+    const { draft, seen, events } = await rereadFails({ kind: "transport", message: "wire cut" });
+    expect(draft.text).toBe(refusal);
+    expect(seen).toHaveLength(2);
+    expect(events.filter((e) => e.kind === "llm_call")).toHaveLength(1);
+  });
+
+  it("records the failed reread's estimated spend on the trace", async () => {
+    // A vendor-reaching attempt spent tokens even though it failed; the estimate
+    // stays on the cost trail under the runner's label for a failed attempt.
+    const { draft, events } = await rereadFails(
+      new ProviderError({
+        kind: "transport",
+        message: "wire cut",
+        attemptCosts: [cost("stub", 9)],
+      }),
+    );
+    expect(draft.text).toBe(refusal);
+    const calls = events.filter((e) => e.kind === "llm_call");
+    expect(calls.map((e) => e.detail?.purpose)).toEqual(["generate", "failed-attempt"]);
+    expect(calls.map((e) => e.cost?.costMicroUsd)).toEqual([7, 9]);
+  });
+
+  it("rereads via the streaming path too, keeping both readings' cost", async () => {
+    const seen: number[] = [];
+    const events: { kind: string; cost?: CostRecord }[] = [];
+    const gen = createKajianQGenerator({
+      provider: {
+        generate: () => Effect.die("stream exists"),
+        stream: () => {
+          seen.push(seen.length + 1);
+          const first = seen.length === 1;
+          return Effect.succeed({
+            deltas: Stream.fromIterable([first ? refusal : "Menurut QS. 2:255 …"]),
+            cost: () => Effect.succeed(cost("stub", 3)),
+          });
+        },
+      },
+      language: "id",
+    });
+    const { RunContext } = await import("@app/rag-core");
+    const draft = (await Effect.runPromise(
+      Effect.provideService(gen.generate(context([chunk("QS. 2:255")])) as never, RunContext, {
+        config: {},
+        now: () => 1,
+        record: (e: never) => events.push(e),
+      } as never) as never,
+    )) as { text: string };
+    expect(draft.text).toBe("Menurut QS. 2:255 …");
+    expect(seen).toHaveLength(2);
+    expect(events.filter((e) => e.kind === "llm_call").map((e) => e.cost?.costMicroUsd)).toEqual([
+      3, 3,
+    ]);
+  });
+
+  it("keeps the first refusal when the reread's stream is cut mid-flight", async () => {
+    // The production path: the reread's deltas are already forwarded to the
+    // edge, so a cut stream must still ship the first refusal — and the failed
+    // stream's estimated spend must still settle on the trace.
+    const forwarded: string[] = [];
+    const events: { kind: string; detail?: { purpose?: string }; cost?: CostRecord }[] = [];
+    let calls = 0;
+    const gen = createKajianQGenerator({
+      provider: {
+        generate: () => Effect.die("stream exists"),
+        stream: () => {
+          calls += 1;
+          return Effect.succeed(
+            calls === 1
+              ? {
+                  deltas: Stream.fromIterable([refusal]),
+                  cost: () => Effect.succeed(cost("stub", 3)),
+                }
+              : {
+                  deltas: Stream.concat(
+                    Stream.fromIterable(["Sebagian jawaban "]),
+                    Stream.fail(
+                      new ProviderError({
+                        kind: "transport",
+                        message: "wire cut",
+                        attemptCosts: [cost("stub", 4)],
+                      }),
+                    ),
+                  ),
+                  cost: () => Effect.succeed(cost("stub", 4)),
+                },
+          );
+        },
+      },
+      language: "id",
+      onDelta: (delta) => forwarded.push(delta),
+    });
+    const { RunContext } = await import("@app/rag-core");
+    const draft = (await Effect.runPromise(
+      Effect.provideService(gen.generate(context([chunk("QS. 2:255")])) as never, RunContext, {
+        config: {},
+        now: () => 1,
+        record: (e: never) => events.push(e),
+      } as never) as never,
+    )) as { text: string };
+    expect(draft.text).toBe(refusal);
+    expect(forwarded).toEqual([refusal, "Sebagian jawaban "]);
+    const calls2 = events.filter((e) => e.kind === "llm_call");
+    expect(calls2.map((e) => e.detail?.purpose)).toEqual(["generate", "failed-attempt"]);
   });
 });
 

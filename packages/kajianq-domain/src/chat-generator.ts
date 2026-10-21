@@ -1,21 +1,37 @@
 import { Effect, Stream } from "effect";
-import type { CostRecord } from "@app/contracts";
 import {
+  ProviderError,
   RunContext,
   toStageError,
   type AssembledContext,
+  type CostRecord,
   type Draft,
   type Generator,
+  type RunContextService,
 } from "@app/rag-core";
 import type { KajianQFilters } from "./filters";
 import { chatSystemPrompt, chatUserPrompt, type ChatLanguage } from "./chat-prompts";
+import { isRefusalOnly } from "./chat-refusal";
 
 /** The answer stage's language, re-exported for the barrel that wires its stages. */
 export type { ChatLanguage };
 
 /**
+ * How many more times the generator reads the same evidence before a pure
+ * refusal is shipped. A refusal claims the evidence cannot answer; a single
+ * sampled reading of a stochastic model is not enough to ship that claim, so a
+ * pure refusal is reread and only a refusal that reproduces ships. A draft that
+ * answers is never reread — a hybrid carrying the sentence at the tail of a
+ * grounded partial answer included, because that draft has answered.
+ *
+ * Named, not inlined: it is the rule's whole value, and `chat-generator.test.ts`
+ * pins both the bound and the two-reading behaviour.
+ */
+export const REFUSAL_REREAD_LIMIT = 1;
+
+/**
  * KajianQGenerator — stage 6 (spec §3.3): the quality-tier generator with the
- * strict grounding prompt, streaming through the Provider seam. The call's
+ * strict grounding prompt, streaming through the Provider seam. Every call's
  * CostRecord is recorded to the run's trace sink (ADR-0021).
  *
  * Streaming contract: the generator calls `Provider.stream`, so
@@ -29,6 +45,12 @@ export type { ChatLanguage };
  * The hook is optional and best-effort: a consumer that is not streaming (the
  * eval harness's non-streamed consume path, a unit test) omits it and the
  * stage behaves exactly like `generate`.
+ *
+ * A pure refusal is reread on the same evidence. When that happens the refused
+ * attempt's deltas precede the reread's, so a consumer replaying deltas must
+ * replay only a prefix that reproduces the delivered text — and a reread that
+ * fails mid-flight can leave a partial tail behind (the HTTP edge's chunking
+ * fallback is exactly that guard).
  */
 
 /** The streamed-generation seam: `Provider.stream` narrowed to what we need. */
@@ -99,17 +121,48 @@ export function createKajianQGenerator(deps: KajianQGeneratorDeps): Generator<Ka
           // a `!` inside the stage) still keeps the invariant in the type.
           const provider = deps.provider;
           const stream = provider.stream?.bind(provider);
-          const streamed =
-            stream !== undefined
-              ? yield* streamDraft(deps, stream, turns)
-              : yield* generateDraft(deps, turns);
-          run.record({
-            stage: "generator",
-            kind: "llm_call",
-            detail: { purpose: "generate" },
-            cost: streamed.cost,
-            at: run.now(),
-          });
+          // One attempt is one paid reading of the same turns; its cost is
+          // recorded whether or not the draft it produced is the one that ships.
+          const attempt = (purpose: string) =>
+            Effect.gen(function* () {
+              const streamed =
+                stream !== undefined
+                  ? yield* streamDraft(deps, stream, turns)
+                  : yield* generateDraft(deps, turns);
+              run.record({
+                stage: "generator",
+                kind: "llm_call",
+                detail: { purpose },
+                cost: streamed.cost,
+                at: run.now(),
+              });
+              return streamed;
+            });
+          let streamed = yield* attempt("generate");
+          // Only a pure refusal is reread: a draft that answered is final. A
+          // refusal ships only when the reread declines too, and an empty
+          // context has nothing to reread, so it is not paid for twice.
+          for (
+            let reread = 0;
+            reread < REFUSAL_REREAD_LIMIT &&
+            context.chunks.length > 0 &&
+            isRefusalOnly(streamed.text);
+            reread++
+          ) {
+            // A reread that cannot be read leaves the first refusal standing:
+            // an optional second opinion must never become a run-level failure,
+            // and the refusal is the safe direction. Its estimated spend stays
+            // on the trace when the provider reports one.
+            const next = yield* Effect.catch(attempt("generate_reread"), (failure) => {
+              recordFailedAttempt(run, failure.cause);
+              return Effect.succeed(undefined);
+            });
+            if (next === undefined) break;
+            if (!isRefusalOnly(next.text)) {
+              streamed = next;
+              break;
+            }
+          }
           const draft: Draft = { text: streamed.text };
           return draft;
         }),
@@ -120,6 +173,25 @@ export function createKajianQGenerator(deps: KajianQGeneratorDeps): Generator<Ka
 /** The stage's typed failure wrapper: one place, not three inline wraps. */
 const mapCause = <A>(effect: Effect.Effect<A, unknown>): Effect.Effect<A, { cause: unknown }> =>
   Effect.mapError(effect, (cause: unknown) => ({ cause }));
+
+/**
+ * Record a failed attempt's estimated spend, when the provider reports one, so
+ * a vendor-reaching attempt never vanishes from the cost trail (traceability
+ * rule 4). The purpose is the runner's own label for a failed attempt: the call
+ * produced no reading, so it is not labelled with one it never reached.
+ */
+function recordFailedAttempt(run: RunContextService, cause: unknown): void {
+  if (!(cause instanceof ProviderError)) return;
+  for (const cost of cause.attemptCosts ?? []) {
+    run.record({
+      stage: "generator",
+      kind: "llm_call",
+      detail: { purpose: "failed-attempt" },
+      cost,
+      at: run.now(),
+    });
+  }
+}
 
 /**
  * The non-streamed path: one `generate` call. Used when the provider exposes

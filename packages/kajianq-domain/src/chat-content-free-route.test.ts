@@ -267,16 +267,17 @@ describe("a content-free question is not routed", () => {
   it("still pays for a content-bearing question the evidence cannot ground", async () => {
     // The other direction of the same seam: the decline must not swallow the
     // ordinary path. A question carrying content reaches the generator, and a
-    // draft that declines is the GENERATED refusal — its trigger and its cost
-    // record are unchanged.
+    // draft that declines is the GENERATED refusal — read twice before it ships,
+    // with both readings' costs on the trace.
     const h = harness({ generatorText: DEFAULT_REFUSALS.id });
     await h.seed();
 
     const answer = await h.run("Apa hukum riba dalam muamalah?");
 
-    expect(h.generatorCalls).toHaveLength(1);
+    expect(h.generatorCalls).toHaveLength(2);
     expect(h.reviewerCalls).toEqual([]);
     expect(llmCallPurposes(answer)).toContain("generate");
+    expect(llmCallPurposes(answer)).toContain("generate_reread");
     expect(totalCostMicroUsd((answer as Answer).trace as never)).toBeGreaterThan(0);
     expect(eventsOf(answer).find((event) => event.kind === "refusal")).toMatchObject({
       detail: { trigger: "generator_refusal" },

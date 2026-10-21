@@ -3,11 +3,8 @@ import type { ChatLanguage } from "./chat-prompts";
 /**
  * The refusal vocabulary — one owner for the canonical insufficiency sentence,
  * the pinned floors around it, the predicates that read a draft for it, the
- * decision table and the trace vocabulary that decision records.
- *
- * Split out of `chat-reviewer-prompt.ts` (round B1 of the #443 review) when
- * that module reached 298 of the 300-line agentic cap; it re-exports these
- * names so the stage keeps its one import (the stage sits at the 5-import cap).
+ * decision table and the trace vocabulary that decision records. It lives apart
+ * from its first caller so the stage keeps its one import.
  */
 
 /**
@@ -145,7 +142,10 @@ function isRefusalSegment(sentence: string): boolean {
  * an assertion leaves it standing (SPECS §2.2). An assertion inside the
  * refusal's OWN sentence is the floor's own shape, so only the frame's own
  * ordered words separate the claim (`haditsnya`, `sahih`, `namun`) from the
- * frame (#452); both directions are pinned in `chat-refusal.test.ts`.
+ * frame (#452); both directions are pinned in `chat-refusal.test.ts`. The
+ * generator stage rereads exactly the drafts this test admits — a hybrid has
+ * answered, and an asserting draft is refused deterministically — so only a pure
+ * refusal is a decline a second reading can confirm.
  */
 export function isRefusalOnly(text: string): boolean {
   if (!isRefusalDraft(text)) return false;
