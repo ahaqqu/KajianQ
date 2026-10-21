@@ -896,9 +896,10 @@ describe("scoreQuestion", () => {
     expect(outcome.expansion).toEqual({ chunks: 2, fusedOnlySourceTypeRecall: 0.5 });
   });
 
-  it("keeps every expansion path out of the fused-only leg (A4 of the #274 fix round)", () => {
-    // The fused-only leg must exclude BOTH refs: excluding only the scope origin
-    // would count the neighbour chunk as fused and equal the reported recall.
+  it("keeps every deterministic path out of the fused-only leg (A4 of the #274 fix round)", () => {
+    // The fused-only leg must exclude every labelled ref: excluding only the scope
+    // origin would count a neighbour or label-lookup chunk as fused and equal the
+    // reported recall.
     const scoped: TraceEventLike = {
       kind: "retrieval",
       stage: "retriever",
@@ -907,6 +908,7 @@ describe("scoreQuestion", () => {
           { id: "c1", score: 0.5, rankDense: 1 },
           { id: "x1", origin: "expansion" },
           { id: "n1", origin: "verse_neighbours" },
+          { id: "l1", origin: "citation_lookup" },
         ],
       },
     };

@@ -26,6 +26,7 @@ export function postgresCorpusMethods(
   | "getDocChildrenByIds"
   | "countDocChildrenByMetadata"
   | "listDocChildrenByParentSourceKey"
+  | "findDocChildrenByMetadata"
   | "listDocChildNeighboursByChildIds"
 > {
   return {

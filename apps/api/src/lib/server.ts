@@ -37,9 +37,11 @@ const PASSTHROUGH_KEYS = [
   // Optional config (absent = the domain default) that must ride this filtered
   // view or the knob is dead in serving.
   "SCOPE_EXPANSION_CAP",
-  // Same contract as the scope cap, for the two neighbourhood knobs.
+  // Same contract as the scope cap, for the two neighbourhood knobs and the
+  // citation-label lookup's budget.
   "NEIGHBOUR_EXPANSION_RADIUS",
   "NEIGHBOUR_EXPANSION_CAP",
+  "LABEL_LOOKUP_CAP",
 ] as const;
 
 /** The filtered env view requests receive: every present (non-empty) `PASSTHROUGH_KEYS`

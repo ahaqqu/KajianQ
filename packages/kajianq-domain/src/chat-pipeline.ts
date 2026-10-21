@@ -33,7 +33,10 @@ export type ChatPipelineDeps = {
   embedder: RetrieverEmbedder;
   store: Pick<
     import("@app/infra").RagStore,
-    "similaritySearch" | "listDocChildrenByParentSourceKey" | "listDocChildNeighboursByChildIds"
+    | "similaritySearch"
+    | "listDocChildrenByParentSourceKey"
+    | "listDocChildNeighboursByChildIds"
+    | "findDocChildrenByMetadata"
   >;
   bridge: StoreBridge;
   language: import("./chat-prompts").ChatLanguage;
@@ -42,6 +45,8 @@ export type ChatPipelineDeps = {
    * fused hits; absent = the domain default, set from deployment config at the composition
    * root so the cost of a scoped query is a knob, not a literal. */
   scopeExpansionCap?: number;
+  /** The citation-label lookup's budget; absent = the domain default, `0` disables it. */
+  labelLookupCap?: number;
   /** Skip the reviewer LLM call (eval refusal cases, budget-capped runs). */
   skipReviewer?: boolean;
   /** The run's decline seam. Absent = the domain's own content-free decline, so a route the
@@ -66,6 +71,7 @@ export function buildChatStages(
     bridge: deps.bridge,
     ...(deps.retrieverLimit !== undefined ? { limit: deps.retrieverLimit } : {}),
     ...(deps.scopeExpansionCap !== undefined ? { scopeExpansionCap: deps.scopeExpansionCap } : {}),
+    ...(deps.labelLookupCap !== undefined ? { labelLookupCap: deps.labelLookupCap } : {}),
   });
   const tail = createChatTailStages({
     generatorProvider: deps.generatorProvider,

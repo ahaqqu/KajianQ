@@ -79,6 +79,7 @@ export function postgresChildMethods(
   | "getDocChildrenByIds"
   | "countDocChildrenByMetadata"
   | "listDocChildrenByParentSourceKey"
+  | "findDocChildrenByMetadata"
   | "listDocChildNeighboursByChildIds"
 > {
   return {
@@ -137,6 +138,45 @@ export function postgresChildMethods(
           LIMIT $2
         `,
               [parentSourceKey, opts.limit, opts.fromOrdinal ?? 0],
+            ) as Promise<(ChildRow & { parent_title: string | null })[]>,
+        ),
+        (rows) =>
+          Effect.forEach(rows, (r) =>
+            Effect.map(rowToChildEffect(r), (child): DocChildById => ({
+              ...child,
+              parentTitle: r.parent_title ?? null,
+            })),
+          ),
+      );
+    },
+
+    findDocChildrenByMetadata(match, opts) {
+      // JSONB containment against the metadata column, bound as one parameter
+      // and covered by the column's GIN index — no key is interpolated, and the
+      // store never interprets a key or a value. Scalars compare as stored: a
+      // metadata value of `2` does not match `"2"`, which is what keeps a
+      // caller's address a structural identity rather than a text search. A
+      // non-positive limit or an empty match is not a read at all.
+      const pairs = Object.entries(match);
+      if (opts.limit <= 0 || pairs.length === 0) {
+        return Effect.succeed([] as readonly DocChildById[]);
+      }
+      return Effect.flatMap(
+        sqlEffect(
+          sql,
+          () =>
+            sql.query(
+              `
+          SELECT c.id, c.parent_id, c.text_raw, c.text_ar, c.text_id, c.citation,
+                 NULL::text AS embedding_primary, NULL::text AS embedding_fallback,
+                 c.ordinal, c.metadata, c.created_at, p.title AS parent_title
+          FROM doc_children c
+          LEFT JOIN doc_parents p ON p.id = c.parent_id
+          WHERE c.metadata @> $1::jsonb
+          ORDER BY c.id ASC
+          LIMIT $2
+        `,
+              [JSON.stringify(match), opts.limit],
             ) as Promise<(ChildRow & { parent_title: string | null })[]>,
         ),
         (rows) =>

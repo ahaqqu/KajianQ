@@ -46,6 +46,11 @@ export type AppBindings = {
    * second spelling of "off". They ride the same filtered env view as the scope cap. */
   NEIGHBOUR_EXPANSION_RADIUS?: string;
   NEIGHBOUR_EXPANSION_CAP?: string;
+  /** The citation-label lookup's budget, as a non-negative integer string: how many
+   * chunks a question's own `HR. … no. N` / `QS. n:m` labels may add. Absent = the
+   * domain default; `0` disables the lookup, and a negative value is a typed config
+   * failure when the chat wiring builds. Same filtered-env view as the caps above. */
+  LABEL_LOOKUP_CAP?: string;
 };
 
 /** Resolved per-request identity, set by `authGuard` before guarded routes run; session

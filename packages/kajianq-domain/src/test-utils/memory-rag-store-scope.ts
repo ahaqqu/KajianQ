@@ -37,15 +37,18 @@ export type MemoryScopeState = {
 };
 
 /**
- * The bounded scope read (ADR-0045) and the anchored neighbour read
- * (ADR-0049): the parent is addressed by its opaque `source_key` or by child
- * ids, and a scope window may begin at an inclusive `fromOrdinal`. Rows come
- * back in the same stable order the Postgres adapter uses (`ordinal` ascending,
- * id as tie-break), capped by `limit`. The two implementations must agree — the
- * memory store is the test seam the retriever's own tests read through.
+ * The bounded scope read (ADR-0045), the anchored neighbour read (ADR-0049) and
+ * the metadata exact-match read: the parent is addressed by its opaque
+ * `source_key` or by child ids, and a scope window may begin at an inclusive
+ * `fromOrdinal`; a metadata match returns every row carrying all of the given
+ * key/value pairs. Rows come back in the same stable order the Postgres adapter
+ * uses (`ordinal` ascending then id, or id alone for the metadata read), capped
+ * by `limit`. The two implementations must agree — the memory store is the test
+ * seam the retriever's own tests read through.
  */
 export function memoryScopeMethods(state: MemoryScopeState): {
   listDocChildrenByParentSourceKey: RagStore["listDocChildrenByParentSourceKey"];
+  findDocChildrenByMetadata: RagStore["findDocChildrenByMetadata"];
   listDocChildNeighboursByChildIds: RagStore["listDocChildNeighboursByChildIds"];
 } {
   return {
@@ -61,6 +64,23 @@ export function memoryScopeMethods(state: MemoryScopeState): {
           .sort((a, b) => a.ordinal - b.ordinal || a.id.localeCompare(b.id))
           .slice(0, opts.limit)
           .map((c) => toReadChild(c, parent?.title ?? null));
+      });
+    },
+
+    findDocChildrenByMetadata(match, opts) {
+      return Effect.sync(() => {
+        const pairs = Object.entries(match);
+        if (opts.limit <= 0 || pairs.length === 0) return [] as readonly DocChildById[];
+        // JSONB containment compares scalars as stored: a metadata value of `2`
+        // does not match the string `"2"`, and an absent key matches nothing.
+        return [...state.children.values()]
+          .filter((c) => {
+            const metadata = c.metadata ?? {};
+            return pairs.every(([key, wanted]) => metadata[key] === wanted);
+          })
+          .sort((a, b) => a.id.localeCompare(b.id))
+          .slice(0, opts.limit)
+          .map((c) => toReadChild(c, state.parents.get(c.parentId)?.title ?? null));
       });
     },
 

@@ -286,3 +286,13 @@ export {
   type ScopeExpansion,
   type ScopeStore,
 } from "./chat-scope-expansion";
+
+// -- Citation-label lookup (ADR-0054) ---------------------------------------
+export {
+  CITATION_LOOKUP_ORIGIN,
+  DEFAULT_LABEL_LOOKUP_CAP,
+  lookupCitationLabels,
+  type LabelLookup,
+  type LabelLookupBridge,
+  type LabelLookupStore,
+} from "./chat-label-lookup";

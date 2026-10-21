@@ -45,3 +45,11 @@ export {
   type NeighbourExpansion,
   type NeighbourStore,
 } from "./chat-neighbour-expansion";
+export {
+  CITATION_LOOKUP_ORIGIN,
+  DEFAULT_LABEL_LOOKUP_CAP,
+  lookupCitationLabels,
+  type LabelLookup,
+  type LabelLookupBridge,
+  type LabelLookupStore,
+} from "./chat-label-lookup";

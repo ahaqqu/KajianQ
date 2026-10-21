@@ -65,6 +65,9 @@ function fakeStore() {
     listDocChildrenByParentSourceKey() {
       return Effect.succeed([]);
     },
+    findDocChildrenByMetadata() {
+      return Effect.succeed([]);
+    },
     listDocChildNeighboursByChildIds() {
       return Effect.succeed([]);
     },

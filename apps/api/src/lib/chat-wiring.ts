@@ -11,6 +11,7 @@ import {
 import {
   ChatConfigError,
   createRagStoreFromEnv,
+  parseLabelLookupCap,
   parseNeighbourCap,
   parseNeighbourRadius,
   parseScopeExpansionCap,
@@ -22,6 +23,7 @@ export { chunkFetcher, traceRefused } from "./chat-trace";
 export {
   ChatConfigError,
   createRagStoreFromEnv,
+  parseLabelLookupCap,
   parseNeighbourCap,
   parseNeighbourRadius,
   parseScopeExpansionCap,
@@ -172,6 +174,7 @@ export function buildChatWiring(env: Record<string, string | undefined>): ChatWi
   const scopeExpansionCap = parseScopeExpansionCap(env["SCOPE_EXPANSION_CAP"]);
   const neighbourRadius = parseNeighbourRadius(env["NEIGHBOUR_EXPANSION_RADIUS"]);
   const neighbourCap = parseNeighbourCap(env["NEIGHBOUR_EXPANSION_CAP"]);
+  const labelLookupCap = parseLabelLookupCap(env["LABEL_LOOKUP_CAP"]);
   return {
     pipeline: {
       routerProvider: providers.router,
@@ -189,6 +192,9 @@ export function buildChatWiring(env: Record<string, string | undefined>): ChatWi
       // because the parsers above reject it as a typed config failure.
       ...(neighbourRadius !== undefined ? { neighbourRadius } : {}),
       ...(neighbourCap !== undefined ? { neighbourCap } : {}),
+      // The citation-label lookup's budget: absent = the domain default, `0` turns
+      // the arm off, and a malformed value never reaches this object.
+      ...(labelLookupCap !== undefined ? { labelLookupCap } : {}),
     },
     fullStore: store,
     runStore: storeBridge(store),

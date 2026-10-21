@@ -31,6 +31,7 @@ type CorpusStore = Pick<
   | "listDocChildrenByParentSourceKey"
   | "similaritySearch"
   | "countDocChildrenByMetadata"
+  | "findDocChildrenByMetadata"
   | "getDocChildrenByIds"
 >;
 
@@ -120,6 +121,25 @@ describe("the memory stand-in's corpus reads answer what the adapter's SQL answe
       { value: "malik", count: 2 },
       { value: "bukhari", count: 1 },
     ]);
+  });
+
+  it("matches metadata by JSON scalar, as the adapter's containment predicate does", async () => {
+    const { store, byOrdinal } = await storeWithFixture();
+    const idToOrdinal = new Map([...byOrdinal].map(([ordinal, id]) => [id, ordinal]));
+    const ordinals = async (match: Record<string, string | number>): Promise<number[]> =>
+      (await Effect.runPromise(store.findDocChildrenByMetadata(match, { limit: 10 })))
+        .map((row) => idToOrdinal.get(row.id) ?? -1)
+        .sort((a, b) => a - b);
+    expect(await ordinals({ collection: "malik" })).toEqual([0, 3]);
+    // A number in `metadata` is not its text: containment compares the JSON
+    // scalars, unlike the `->>` filter predicate, which stringifies them.
+    expect(await ordinals({ collection: 7 })).toEqual([1]);
+    expect(await ordinals({ collection: "7" })).toEqual([]);
+    // Dimensions AND together, the absent key matches nothing, and an empty
+    // match is not a read.
+    expect(await ordinals({ sourceType: "quran", collection: "malik" })).toEqual([3]);
+    expect(await ordinals({ collection: "sahih" })).toEqual([]);
+    expect(await ordinals({})).toEqual([]);
   });
 
   it("returns the by-id read in the store's order, not the caller's", async () => {
@@ -223,6 +243,19 @@ pgRun("the memory stand-in and the adapter agree on one fixture (real Postgres)"
         .sort((a, b) => a - b);
     };
     expect(await byIds(mem, memByOrdinal)).toEqual(await byIds(pg, pgByOrdinal));
+  });
+
+  it("matches the same metadata pairs on both sides", async () => {
+    if (pg === null || mem === null) return;
+    const matched = async (store: CorpusStore, byOrdinal: Map<number, string>) => {
+      const idToOrdinal = new Map([...byOrdinal].map(([ordinal, id]) => [id, ordinal]));
+      const rows = await Effect.runPromise(
+        store.findDocChildrenByMetadata({ collection: "malik" }, { limit: 10 }),
+      );
+      return rows.map((row) => idToOrdinal.get(row.id) ?? -1).sort((a, b) => a - b);
+    };
+    expect(await matched(mem, memByOrdinal)).toEqual([0, 3]);
+    expect(await matched(pg, pgByOrdinal)).toEqual([0, 3]);
   });
 
   it("reads the same ordinal window from a fromOrdinal lower bound", async () => {
