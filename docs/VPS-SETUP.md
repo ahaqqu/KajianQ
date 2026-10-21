@@ -817,13 +817,17 @@ The deploy gates on all of these, and fails loudly on any of them:
   the row the installer skips, but says so as a misconfiguration, so the deploy
   does not pass over it silently. A path the deploy identity cannot read or
   search is refused rather than skipped — at `/etc/postgresql`, at a `<ver>`
-  directory under it, and at `<ver>/main` — because an empty glob under an
-  unsearchable directory is indistinguishable from an absent one. Those are also
-  the paths where the preflight and the installer could pick different versions:
-  `apply.sh` runs as root and expands through a directory the deploy identity
-  cannot enter, so the preflight refuses a version it cannot enumerate instead
-  of comparing the one it can see. A `conf.d` that is a regular file is refused
-  too, because `apply.sh` resolves it and fails to install into it.
+  directory under it, at `<ver>/main`, and at the `conf.d` below it — because an
+  empty glob under an unsearchable directory is indistinguishable from an absent
+  one. Those are also the paths where the preflight and the installer could pick
+  different versions: `apply.sh` runs as root and expands through a directory the
+  deploy identity cannot enter, so the preflight refuses a version it cannot
+  enumerate instead of comparing the one it can see. The remedy is to make the
+  named path readable and searchable for the deploy identity (its mode or
+  ownership), then deploy again; `apply.sh` cannot clear it, because it installs
+  into that tree and leaves the mode that hides it in place. A `conf.d` that is a
+  regular file is refused too, because `apply.sh` resolves it and fails to
+  install into it.
   The marker script's presence, mode and content are part of that comparison, so
   a deleted or non-executable marker is refused before the provenance gate reads
   a record.

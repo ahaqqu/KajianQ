@@ -113,16 +113,20 @@ What it does, in order:
    deploy does not demand a posture the installer cannot place. A path the
    deploy identity cannot read or search is refused instead of skipped, at every
    level the glob has to expand through: `/etc/postgresql` itself, each `<ver>`
-   directory under it, and each `<ver>/main`. An empty glob under an
-   unsearchable directory looks exactly like an absent one, so a skip there
-   would hide a tree the box has. That is also the one place the check cannot
-   see what `apply.sh` sees: the installer runs as root, and root expands
-   through directories the deploy identity cannot enter, so the check refuses a
-   version it cannot enumerate rather than compare whichever version it can see
-   — it does not resolve as root, which would need privilege the preflight does
-   not hold. Any other row carrying a versioned destination is refused, because
-   `apply.sh` hands that row's literal path to install and fails. A mismatch
-   fails the deploy and names each file, with the expected and installed digest
+   directory under it, each `<ver>/main`, and each `conf.d` below it. An empty
+   glob under an unsearchable directory looks exactly like an absent one, so a
+   skip there would hide a tree the box has. That is also the one place the
+   check cannot see what `apply.sh` sees: the installer runs as root, and root
+   expands through directories the deploy identity cannot enter, so the check
+   refuses a version it cannot enumerate rather than compare whichever version
+   it can see — it does not resolve as root, which would need privilege the
+   preflight does not hold. The remedy is to make the named path readable and
+   searchable for the deploy identity (its mode or ownership), then deploy
+   again; `apply.sh` cannot clear it, because it installs into that tree and
+   leaves the mode that hides it in place. Any other row carrying a versioned
+   destination is refused, because `apply.sh` hands that row's literal path to
+   install and fails. A mismatch fails the deploy and names each file, with the
+   expected and installed digest
    for a content change and the first mismatching line of a rendered block, and
    the remedy: run `sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env` on
    the box from a checkout of the revision being deployed, then deploy again.

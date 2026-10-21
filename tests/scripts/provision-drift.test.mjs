@@ -685,6 +685,29 @@ describe("the drift preflight", () => {
     }
   });
 
+  it("refuses a conf.d directory it cannot search, the fourth expansion level", () => {
+    // The last level the walk enters is `conf.d` itself: `16/main` stays
+    // enterable, so only a test of that fixed component catches a 000 conf.d.
+    // Root's apply.sh resolves the same match and installs into it, so this
+    // identity's blind spot must refuse instead of skipping the row.
+    const fixture = driftFixture();
+    const hidden = join(fixture.dir, "etc/postgresql/16/main/conf.d");
+    try {
+      chmodSync(hidden, 0o000);
+      const result = fixture.check();
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain("cannot read or search");
+      expect(result.stderr).toContain(hidden);
+      expect(result.stderr).not.toContain("no conf.d directory");
+      expect(result.stderr).not.toContain("no directory matches");
+      expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
+      expect(result.stdout).not.toContain("match the checkout");
+    } finally {
+      chmodSync(hidden, 0o755);
+      fixture.cleanup();
+    }
+  });
+
   it("refuses a conf.d that is not a directory, as apply.sh fails to install into it", () => {
     // apply.sh resolves this row with `ls -d`, which matches a regular file and
     // then hands <file>/99-kajianq.conf to install. The check must fail the row
