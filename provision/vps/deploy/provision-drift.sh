@@ -155,11 +155,48 @@ FAILURES=0
 CHECKED=0
 SKIPPED=0
 SKIPPED_NO_CONF_D=0
+MANUAL_REFUSAL=0
+REFUSAL_LINES=()
 
-refuse() {
+# Failure text is held until the end so the count line leads the refusals and
+# each refusal keeps its own closing instruction. The EXIT trap is what keeps a
+# command failure inside the loop from swallowing the text: an unguarded tool
+# error exits under `set -e`, and the lines gathered so far still reach the
+# operator.
+flush_refusals() {
     local line
-    for line in "$@"; do
+    [ "${#REFUSAL_LINES[@]}" -gt 0 ] || return 0
+    for line in "${REFUSAL_LINES[@]}"; do
         printf 'deploy: %s\n' "${line}" >&2
+    done
+    REFUSAL_LINES=()
+}
+trap flush_refusals EXIT
+
+# One entry point for a refusal, with its class as the required first argument
+# so a call site cannot leave it to a default. The class is decided by what the
+# refusal is: "apply" when the comparison ran and found installed state that
+# differs from the checkout — apply.sh rewrites it from that checkout; "manual"
+# when no comparison could run (the scratch file, the template payload) or the
+# manifest names a state apply.sh cannot place (an unreadable path, a conf.d
+# that is not a directory, a versioned destination on the wrong row, a kind
+# this check does not compare) — no apply clears those. The run's classes then
+# select the ending: the generic apply.sh closing prints only when every
+# refusal is "apply", and the count line names a comparison that could not
+# happen when any refusal is "manual".
+refuse() {
+    local class="$1" line
+    shift
+    case "${class}" in
+        apply) ;;
+        manual) MANUAL_REFUSAL=1 ;;
+        *)
+            printf 'deploy: provision-drift: refuse: unknown refusal class %s\n' "${class}" >&2
+            exit 2
+            ;;
+    esac
+    for line in "$@"; do
+        REFUSAL_LINES+=("${line}")
     done
     FAILURES=$((FAILURES + 1))
 }
@@ -341,19 +378,31 @@ resolve_destination() {
 # a second directive appended to the same line is a hand edit, not a value. The
 # line count must match too, which catches a template that gained or lost a line.
 #
-# On a mismatch this prints the first difference on stdout and returns 1; on a
-# match it prints nothing and returns 0. The reason travels as the function's
-# output, so a call site inside a command substitution still carries it.
+# Returns 0 on a match; 1 when the installed copy differs, printing the first
+# difference on stdout; 2 when the comparison's scratch file cannot be created
+# or written; 3 when the manifest's template payload does not decode. 2 and 3
+# print their reason and mean no comparison ran, so the caller must not report
+# them as a mismatch or name an apply as their remedy. The reason travels as the
+# function's output, so a call site inside a command substitution still carries
+# it.
 render_matches() {
     local installed="$1" template_b64="$2" template line actual regex total n=0
     if ! template="$(mktemp)"; then
         printf 'comparison scratch file could not be created'
-        return 1
+        return 2
     fi
-    if ! printf '%s' "${template_b64}" | base64 -d >"${template}" 2>/dev/null; then
+    # Decode to the pipe first so an invalid payload is told apart from a
+    # scratch file the filesystem will not hold: the caller's remedy differs by
+    # cause.
+    if ! printf '%s' "${template_b64}" | base64 -d >/dev/null 2>&1; then
         printf 'the template could not be decoded from the manifest'
         rm -f "${template}"
-        return 1
+        return 3
+    fi
+    if ! printf '%s' "${template_b64}" | base64 -d >"${template}" 2>/dev/null; then
+        printf 'the comparison scratch file could not be written'
+        rm -f "${template}"
+        return 2
     fi
     while IFS= read -r line || [ -n "${line}" ]; do
         n=$((n + 1))
@@ -393,6 +442,19 @@ check_manifest() {
     local installed actual expected status reason
     while IFS='|' read -r name kind src dst owner group mode sha bytes payload; do
         [ -n "${name}" ] || continue
+        # A kind is classified before the installed state is read, so an unknown
+        # one ends the same way whether or not its destination exists: apply.sh
+        # exits 1 on that row of the table, so no apply clears it.
+        case "${kind}" in
+            config | render | link | sudoers) ;;
+            *)
+                CHECKED=$((CHECKED + 1))
+                refuse manual \
+                    "${dst} has an unknown artifact kind in the manifest (${kind})" \
+                    "repair the artifact table in provision/vps/apply.sh so the row names config, render, link or sudoers, then deploy again — apply.sh cannot change a kind this check does not compare"
+                continue
+                ;;
+        esac
         status=0
         installed="$(resolve_destination "${name}" "${dst}")" || status=$?
         case "${status}" in
@@ -412,23 +474,23 @@ check_manifest() {
                 ;;
             4)
                 CHECKED=$((CHECKED + 1))
-                refuse \
+                refuse manual \
                     "${dst} carries a versioned destination, but apply.sh resolves a versioned destination only for the ${VERSIONED_SKIP_ROW} row — its literal path would reach install and fail" \
-                    "the deploy refuses a row it cannot compare the way apply.sh installs it"
+                    "repair the artifact table in provision/vps/apply.sh so only the ${VERSIONED_SKIP_ROW} row carries a directory glob, then deploy again — running apply.sh cannot place this row's literal path"
                 continue
                 ;;
             5)
                 CHECKED=$((CHECKED + 1))
-                refuse \
+                refuse manual \
                     "cannot read or search ${installed} as $(id -un) — an unreadable path and an absent one both yield an empty glob, and root's apply.sh expands through paths this identity cannot enter, so ${dst} is refused instead of skipped" \
                     "make ${installed} readable and searchable for the deploy identity, then deploy again"
                 continue
                 ;;
             6)
                 CHECKED=$((CHECKED + 1))
-                refuse \
-                    "${installed} is not a directory — apply.sh resolves the first conf.d match with ls -d and would fail to install provision/vps/${src} into it" \
-                    "remove ${installed} or repair Postgres, then run provision/vps/apply.sh on the box"
+                refuse manual \
+                    "${installed} is not a directory — apply.sh resolves the first conf.d match with ls -d and would fail to install provision/vps/${src} into it, and removing it alone leaves the row skipped, so the posture stays unapplied" \
+                    "repair Postgres so ${installed} is a directory (recreate conf.d), then run provision/vps/apply.sh on the box and deploy again"
                 continue
                 ;;
         esac
@@ -436,12 +498,12 @@ check_manifest() {
         if [ "${status}" -ne 0 ]; then
             case "${kind}" in
                 link)
-                    refuse \
+                    refuse apply \
                         "${dst} is not installed — the checkout creates it as a link to ${src}, so run provision/vps/apply.sh on the box" \
                         "the deploy refuses a box whose provisioned files do not match the checkout"
                     ;;
                 *)
-                    refuse \
+                    refuse apply \
                         "${dst} is not installed — the checkout installs provision/vps/${src}, so run provision/vps/apply.sh on the box" \
                         "the deploy refuses a box whose provisioned files do not match the checkout"
                     ;;
@@ -450,7 +512,7 @@ check_manifest() {
         fi
         if [ "${kind}" = "link" ]; then
             if [ ! -L "${installed}" ]; then
-                refuse \
+                refuse apply \
                     "${dst} is not a symlink — the checkout links it to ${src} — run provision/vps/apply.sh on the box"
                 continue
             fi
@@ -460,7 +522,7 @@ check_manifest() {
                 expected="${ROOT%/}${src}"
             fi
             if [ "${actual}" != "${expected}" ]; then
-                refuse \
+                refuse apply \
                     "${dst} points at ${actual}; the checkout links it to ${src} — run provision/vps/apply.sh on the box"
             fi
             continue
@@ -469,14 +531,14 @@ check_manifest() {
         # the file it would write can be absent while an older version's copy
         # exists. That is drift, and the path named is the one apply.sh targets.
         if [ ! -e "${installed}" ]; then
-            refuse \
+            refuse apply \
                 "${installed} is not installed — the checkout installs provision/vps/${src}, so run provision/vps/apply.sh on the box" \
                 "the deploy refuses a box whose provisioned files do not match the checkout"
             continue
         fi
         actual="$(stat -c '%U:%G:%a' -- "${installed}")"
         if [ "${actual}" != "${owner}:${group}:${mode}" ]; then
-            refuse \
+            refuse apply \
                 "${dst} is ${actual}; the checkout installs provision/vps/${src} as ${owner}:${group}:${mode} — run provision/vps/apply.sh on the box"
             continue
         fi
@@ -484,25 +546,48 @@ check_manifest() {
             config)
                 actual="$(sha256sum -- "${installed}" | cut -d' ' -f1)"
                 if [ "${actual}" != "${sha}" ]; then
-                    refuse \
+                    refuse apply \
                         "${dst} differs from provision/vps/${src} (checkout sha256 ${sha:0:12}, installed ${actual:0:12}) — run provision/vps/apply.sh on the box"
                 fi
                 ;;
             render)
-                if ! reason="$(render_matches "${installed}" "${payload}")"; then
-                    refuse \
-                        "${dst} does not match provision/vps/${src} (placeholder values aside): ${reason} — run provision/vps/apply.sh on the box"
-                fi
+                status=0
+                reason="$(render_matches "${installed}" "${payload}")" || status=$?
+                case "${status}" in
+                    0) ;;
+                    1)
+                        refuse apply \
+                            "${dst} does not match provision/vps/${src} (placeholder values aside): ${reason} — run provision/vps/apply.sh on the box"
+                        ;;
+                    2)
+                        refuse manual \
+                            "${dst} could not be compared with provision/vps/${src}: ${reason} — apply.sh's render() creates its scratch file the same way, so an apply fails the same way" \
+                            "make the deploy identity's scratch directory writable (TMPDIR, or /tmp when it is unset), free space there if it is full, then deploy again"
+                        ;;
+                    3)
+                        refuse manual \
+                            "${dst} could not be compared with provision/vps/${src}: ${reason} — a manifest payload that does not decode names no installed state to install over" \
+                            "re-emit the manifest from a checkout of the revision being deployed, then deploy again"
+                        ;;
+                    *)
+                        printf 'deploy: provision-drift: render_matches returned unexpected status %s\n' "${status}" >&2
+                        exit 2
+                        ;;
+                esac
                 ;;
             sudoers)
                 actual="$(stat -c %s -- "${installed}")"
                 if [ "${actual}" != "${bytes}" ]; then
-                    refuse \
+                    refuse apply \
                         "${dst} is ${actual} bytes; the checkout's provision/vps/${src} installs ${bytes} — run provision/vps/apply.sh on the box"
                 fi
                 ;;
             *)
-                refuse "${dst} has an unknown artifact kind in the manifest (${kind})"
+                # Unreachable: the kind is validated at the top of the loop. It
+                # stays so a kind added there without a comparison cannot pass
+                # this row as compared.
+                printf 'deploy: provision-drift: no comparison for artifact kind %s\n' "${kind}" >&2
+                exit 2
                 ;;
         esac
     done <<< "${manifest}"
@@ -527,9 +612,17 @@ fi
 check_manifest "${MANIFEST}"
 
 if [ "${FAILURES}" -ne 0 ]; then
-    printf 'deploy: %s of %s provisioned artifact(s) do not match the checkout\n' \
-        "${FAILURES}" "$((CHECKED + SKIPPED))" >&2
-    printf 'deploy: run provision/vps/apply.sh on the box from a checkout of the revision being deployed, then deploy again\n' >&2
+    if [ "${MANUAL_REFUSAL}" -eq 1 ]; then
+        printf 'deploy: %s of %s provisioned artifact(s) could not be compared or do not match the checkout\n' \
+            "${FAILURES}" "$((CHECKED + SKIPPED))" >&2
+    else
+        printf 'deploy: %s of %s provisioned artifact(s) do not match the checkout\n' \
+            "${FAILURES}" "$((CHECKED + SKIPPED))" >&2
+    fi
+    flush_refusals
+    if [ "${MANUAL_REFUSAL}" -eq 0 ]; then
+        printf 'deploy: run provision/vps/apply.sh on the box from a checkout of the revision being deployed, then deploy again\n' >&2
+    fi
     exit 1
 fi
 if [ "${SKIPPED}" -ne 0 ]; then

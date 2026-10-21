@@ -123,13 +123,32 @@ What it does, in order:
    preflight does not hold. The remedy is to make the named path readable and
    searchable for the deploy identity (its mode or ownership), then deploy
    again; `apply.sh` cannot clear it, because it installs into that tree and
-   leaves the mode that hides it in place. Any other row carrying a versioned
-   destination is refused, because `apply.sh` hands that row's literal path to
-   install and fails. A mismatch fails the deploy and names each file, with the
-   expected and installed digest
-   for a content change and the first mismatching line of a rendered block, and
-   the remedy: run `sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env` on
-   the box from a checkout of the revision being deployed, then deploy again.
+   leaves the mode that hides it in place. A rendered block whose comparison
+   cannot run — no writable scratch file under `TMPDIR` or `/tmp`, or a
+   manifest payload that does not decode — is refused the same way, naming the
+   scratch directory or the manifest: `apply.sh`'s own `render()` needs the
+   same scratch file, and a corrupt payload names no installed state to install
+   over. A row naming a kind outside `config`, `render`, `link` and `sudoers` is
+   refused with a repair of the artifact table whether or not the row is
+   installed, because `apply.sh` exits 1 on that table. Any
+   other row carrying a versioned destination is refused the same way, because
+   `apply.sh` hands that row's literal path to install and fails. A `conf.d`
+   that is a regular file is refused with a remedy to repair Postgres so that
+   path is a directory again, then apply and deploy again; removing the file
+   alone leaves the row skipped, so the posture stays unapplied. These
+   refusals close with their own remedy and no `apply.sh` instruction.
+   The failure summary prints the generic `apply.sh` closing only when no
+   refusal in the run is one an apply cannot clear; a mismatch in such a run
+   keeps its per-file `apply.sh` line and the run ends without the generic
+   closing. The count line reads `N of M provisioned artifact(s) do not match
+   the checkout` when every refusal is one an apply clears, and `N of M
+   provisioned artifact(s) could not be compared or do not match the checkout`
+   when any refusal is not. A mismatch fails the deploy and names each file,
+   with the expected and installed digest for a content change and the first
+   mismatching line of a rendered block; when every refusal in the run is one
+   an apply clears, the run also closes with the remedy: run `sudo
+   provision/vps/apply.sh --env /etc/kajianq/proxy.env` on the box from a
+   checkout of the revision being deployed, then deploy again.
    The gate changes no installed state (comparing the rendered block writes one
    short-lived file under `/tmp`), and it runs before the provenance check below
    because a stale unit can satisfy that check's record — exactly the state a
