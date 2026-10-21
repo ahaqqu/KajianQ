@@ -195,3 +195,68 @@ describe("recorded run replay — citation identity", () => {
     ).toBe(0);
   });
 });
+
+/**
+ * A `gs-v0-006` frame carrying both travel members the group holds (Bukhari
+ * 1109, Muslim 1621) beside the rows it does not. The recorded row above matches
+ * through Muslim 1624, so this frame is what pins the added members' effect on
+ * the scorer: 0 without the map, 1 with it, and no neighbouring row inside.
+ */
+const TRAVEL_ANSWER_FRAME = [
+  "HR. Bukhari no. 1109",
+  "HR. Muslim no. 1621",
+  "HR. Muslim no. 1626",
+  "HR. Muslim no. 1627",
+  "HR. Muslim no. 1630",
+  "HR. Malik no. 326",
+  "HR. Malik no. 331",
+  "HR. Abu Dawud no. 1218",
+  "HR. Tirmidhi no. 553",
+  "HR. Tirmidhi no. 188",
+  "HR. Ibn Majah no. 1070",
+  "HR. Ibn Majah no. 1194",
+  "HR. Nasai no. 597",
+  "HR. Nasai no. 588",
+];
+
+describe("the travel group's added members", () => {
+  it("scores the answer's two travel parallels as one narration, and only with the map", () => {
+    const frame = { citations: TRAVEL_ANSWER_FRAME.map((label) => ({ label })) };
+    expect(citationValidity(["HR. Bukhari no. 1108"], "", { frame, grammar })).toBe(0);
+    expect(citationValidity(["HR. Bukhari no. 1108"], "", { frame, grammar, identity })).toBe(1);
+    expect(identity.identityOf("HR. Bukhari no. 1109")).toBe("HR. Bukhari no. 1108");
+    expect(identity.identityOf("HR. Muslim no. 1621")).toBe("HR. Bukhari no. 1108");
+  });
+
+  it("keeps the frame's unmapped travel rows out of the group one by one", () => {
+    for (const label of TRAVEL_ANSWER_FRAME.filter(
+      (candidate) => candidate !== "HR. Bukhari no. 1109" && candidate !== "HR. Muslim no. 1621",
+    )) {
+      expect(identity.identityOf(label), label).toBeNull();
+      expect(
+        citationValidity(["HR. Bukhari no. 1108"], "", {
+          frame: { citations: [{ label }] },
+          grammar,
+          identity,
+        }),
+        label,
+      ).toBe(0);
+    }
+  });
+
+  it("keeps the recorded row's match on Muslim 1624, not on the added members", () => {
+    const row = ROWS.find((candidate) => candidate.questionId === "gs-v0-006");
+    expect(row).toBeDefined();
+    expect(row.evidence).toContain("HR. Muslim no. 1624");
+    expect(row.evidence).not.toContain("HR. Bukhari no. 1109");
+    expect(row.evidence).not.toContain("HR. Muslim no. 1621");
+    const withoutMatch = row.evidence.filter((label) => label !== "HR. Muslim no. 1624");
+    expect(
+      citationValidity(row.required, "", {
+        frame: { citations: withoutMatch.map((label) => ({ label })) },
+        grammar,
+        identity,
+      }),
+    ).toBe(0);
+  });
+});

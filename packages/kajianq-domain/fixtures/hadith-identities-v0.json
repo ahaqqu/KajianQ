@@ -41,7 +41,12 @@
     {
       "id": "combining-prayers-in-travel-maghrib-isha",
       "canonical": "HR. Bukhari no. 1108",
-      "members": ["HR. Bukhari no. 1110", "HR. Muslim no. 1624"]
+      "members": [
+        "HR. Bukhari no. 1109",
+        "HR. Bukhari no. 1110",
+        "HR. Muslim no. 1621",
+        "HR. Muslim no. 1624"
+      ]
     }
   ]
 }
