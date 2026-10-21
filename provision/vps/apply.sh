@@ -91,6 +91,45 @@ backup-timer|config|systemd/kajianq-backup.timer|/etc/systemd/system/kajianq-bac
 deploy-grant|sudoers|sudoers/kajianq-deploy|/etc/sudoers.d/kajianq-deploy|root|root|440
 '
 
+# Validate the table at load, before `--list-artifacts` or an install reads a
+# row. A mode is the string `stat -c %a` prints — the octal value without a
+# leading zero — because that is what the drift check compares an installed file
+# against: `install -m 0440` installs 0440 while `stat -c %a` prints 440, so a
+# `0440` cell would install one mode and the deploy would demand another,
+# reddening every check until someone edited the table. Rejecting the cell here
+# keeps the install and the comparison on one spelling. A link's mode is `-`,
+# which is neither applied nor compared.
+validate_artifact_table() {
+    local row name kind src dst owner group mode
+    while IFS= read -r row; do
+        [ -n "${row}" ] || continue
+        IFS='|' read -r name kind src dst owner group mode <<< "${row}"
+        case "${kind}" in
+            config | render | sudoers)
+                case "${mode}" in
+                    0 | [1-7] | [1-7][0-7] | [1-7][0-7][0-7] | [1-7][0-7][0-7][0-7]) ;;
+                    *)
+                        echo "apply: ${name} has mode ${mode}; write the form stat -c %a prints, with no leading zero (440, not 0440)" >&2
+                        exit 1
+                        ;;
+                esac
+                ;;
+            link)
+                if [ "${mode}" != "-" ]; then
+                    echo "apply: ${name} is a link and its mode must be '-', not ${mode}" >&2
+                    exit 1
+                fi
+                ;;
+            *)
+                echo "apply: ${name} has unknown artifact kind ${kind}" >&2
+                exit 1
+                ;;
+        esac
+    done <<< "${ARTIFACTS}"
+}
+
+validate_artifact_table
+
 list_artifacts() {
     local row
     while IFS= read -r row; do
@@ -470,6 +509,9 @@ install_artifact journald
 run systemctl restart systemd-journald
 
 # --- Postgres ---------------------------------------------------------------
+# The drift check resolves this same glob and, with no directory here, skips the
+# row instead of refusing: a row this script cannot place is not one the check
+# may demand.
 PG_CONF_DIR="$(ls -d /etc/postgresql/*/main/conf.d 2>/dev/null | head -1 || true)"
 if [ -n "${PG_CONF_DIR}" ]; then
     install_artifact postgres "${PG_CONF_DIR}/99-kajianq.conf"

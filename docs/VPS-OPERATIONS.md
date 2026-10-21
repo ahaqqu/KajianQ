@@ -101,9 +101,22 @@ What it does, in order:
    it is 0440 root:root and unreadable from the deploy identity by design, and
    the commands it grants are exercised by this very deploy. A destination under
    the server's major-version directory is resolved the way `apply.sh` resolves
-   it — the first existing `conf.d` directory, then the file name — so a copy
-   under another version cannot stand in for the target. A mismatch fails the
-   deploy and names each file, with the expected and installed digest for a
+   it — the first `ls -d` match, directory or not, then the file name — so a
+   copy under another version cannot stand in for the target; a `conf.d` that is
+   a regular file is refused, because `apply.sh` would resolve it too and fail
+   to install into it. The zero-directory skip is split on `/etc/postgresql`
+   itself. With no `/etc/postgresql`, Postgres is not installed: `apply.sh`
+   skips the row and the check skips it too, naming that. With `/etc/postgresql`
+   present but no `main/conf.d` beneath it, Postgres is installed and its
+   log/reachability posture is never applied — a misconfiguration the check says
+   out loud on stderr while still skipping the row `apply.sh` skips, so the
+   deploy does not demand a posture the installer cannot place. A
+   `/etc/postgresql` the deploy identity cannot read or search is refused
+   instead of skipped: an empty glob under an unsearchable directory looks
+   exactly like an absent one, so a skip there would hide a tree the box has.
+   Any other row carrying a versioned destination is refused, because `apply.sh`
+   hands that row's literal path to install and fails. A mismatch fails
+   the deploy and names each file, with the expected and installed digest for a
    content change and the first mismatching line of a rendered block, and the
    remedy: run `sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env` on the
    box from a checkout of the revision being deployed, then deploy again. The

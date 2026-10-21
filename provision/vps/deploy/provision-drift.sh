@@ -46,6 +46,21 @@
 #            test of what the grant authorizes; widening the grant to read the
 #            file would trade that boundary for a weaker check.
 #
+# One destination carries the server's major version in a directory glob (the
+# Postgres conf.d path), and apply.sh's install section resolves exactly that
+# row: `ls -d` takes the first match, directory or not, the file name is
+# appended, and the row is skipped with a log line when nothing matches. This
+# check mirrors that one row. It resolves the same first match and refuses an
+# entry that is not a directory (the install into it would fail); it skips only
+# where apply.sh skips, and it names the two skip states apart — no Postgres at
+# all, versus Postgres installed with no conf.d, where the log/reachability
+# posture is never applied. An unsearchable /etc/postgresql is refused rather
+# than skipped: an empty glob under a directory this identity cannot read looks
+# the same as an absent one. Any other row whose destination carries a
+# directory glob is refused because apply.sh hands that row's literal path to
+# install and fails, so the check must not skip it uncompared. A skipped row is
+# named and is not counted as compared; the green line reports it.
+#
 # Usage: bash provision-drift.sh --emit-manifest <checkout>
 #        bash provision-drift.sh --check [--root <dir>] [--manifest-base64 <value>]
 
@@ -128,6 +143,8 @@ emit_manifest() {
 
 FAILURES=0
 CHECKED=0
+SKIPPED=0
+SKIPPED_NO_CONF_D=0
 
 refuse() {
     local line
@@ -137,26 +154,76 @@ refuse() {
     FAILURES=$((FAILURES + 1))
 }
 
-# Resolve a destination from the table. A destination may be a glob — the
-# Postgres conf.d path carries the server's major version — and apply.sh picks
-# the first existing DIRECTORY (`ls -d .../conf.d | head -1`), then appends the
-# file name. Resolving the first existing file instead would let a matching copy
-# under a later major version hide a target apply.sh never wrote.
+# The one row whose destination apply.sh resolves through a versioned glob: its
+# install section computes PG_CONF_DIR and logs a skip when the glob is empty.
+# Every other row's destination reaches install literally, so a versioned
+# destination there is a row apply.sh cannot place and this check refuses it.
+VERSIONED_SKIP_ROW="postgres"
+
+# The first path in the static prefix's chain that this identity cannot read and
+# search. An empty glob under an unsearchable ancestor is not evidence of an
+# absent directory: every probe below it fails the same way, so a skip there
+# would hide a tree the box has.
+unsearchable_prefix() {
+    local path="$1" parent
+    while [ -n "${path}" ] && [ "${path}" != "/" ]; do
+        if [ -e "${path}" ] && { [ ! -r "${path}" ] || [ ! -x "${path}" ]; }; then
+            printf '%s\n' "${path}"
+            return 0
+        fi
+        parent="$(dirname "${path}")"
+        [ "${parent}" != "${path}" ] || break
+        path="${parent}"
+    done
+    return 1
+}
+
+# Resolve a destination from the table. A destination may be a directory glob —
+# the Postgres conf.d path carries the server's major version — and apply.sh
+# picks the first match of `ls -d .../conf.d` (directory or not), then appends
+# the file name. Resolving the first existing DIRECTORY instead would let a
+# matching copy under a later major version hide a target apply.sh never wrote,
+# and a regular file at conf.d would skip a row apply.sh resolves and fails.
+#
+# Returns 0 with the resolved path on stdout, or a status naming why not:
+#   1  not installed (the caller refuses with the artifact's usual remedy)
+#   2  the row apply.sh skips, with no static prefix on the box
+#   3  the row apply.sh skips, with a static prefix but no match under it
+#   4  a versioned destination on a row apply.sh does not resolve
+#   5  the static prefix exists but this identity cannot read or search it
+#   6  the glob matched an entry that is not a directory
+# For 3, 5 and 6 the offending path is printed on stdout.
 resolve_destination() {
-    local dst="$1" pattern="${ROOT%/}/${1#/}" dir base candidate
+    local name="$1" dst="$2" pattern="${ROOT%/}/${2#/}" dir base prefix found match candidate
     case "${pattern}" in
         *'*'*)
             dir="$(dirname "${pattern}")"
             base="$(basename "${pattern}")"
             case "${dir}" in
                 *'*'*)
+                    [ "${name}" = "${VERSIONED_SKIP_ROW}" ] || return 4
+                    # The text before the first `*` is the only part of the
+                    # pattern that is a fixed path on the box.
+                    prefix="${dir%%\**}"
+                    prefix="${prefix%/}"
+                    [ -n "${prefix}" ] || prefix="/"
+                    if found="$(unsearchable_prefix "${prefix}")"; then
+                        printf '%s\n' "${found}"
+                        return 5
+                    fi
+                    [ -e "${prefix}" ] || return 2
                     # shellcheck disable=SC2086 # the glob IS the destination
-                    for candidate in ${dir}; do
-                        if [ -d "${candidate}" ]; then
-                            printf '%s/%s\n' "${candidate}" "${base}"
-                            return 0
-                        fi
-                    done
+                    match="$(ls -d ${dir} 2>/dev/null | head -1 || true)"
+                    if [ -z "${match}" ]; then
+                        printf '%s\n' "${prefix}"
+                        return 3
+                    fi
+                    if [ ! -d "${match}" ]; then
+                        printf '%s\n' "${match}"
+                        return 6
+                    fi
+                    printf '%s/%s\n' "${match}" "${base}"
+                    return 0
                     ;;
                 *)
                     # A glob in the file name itself: first existing match.
@@ -181,23 +248,23 @@ resolve_destination() {
     return 1
 }
 
-# The first difference render_matches found, for the refusal message.
-RENDER_MISMATCH=""
-
 # Compare a rendered config against its repository template. Each
 # __KAJIANQ_*__ token stands for a value from the box's proxy.env, so it matches
 # any text up to the directive's `;`: a placeholder is a directive's value, and
 # a second directive appended to the same line is a hand edit, not a value. The
 # line count must match too, which catches a template that gained or lost a line.
+#
+# On a mismatch this prints the first difference on stdout and returns 1; on a
+# match it prints nothing and returns 0. The reason travels as the function's
+# output, so a call site inside a command substitution still carries it.
 render_matches() {
     local installed="$1" template_b64="$2" template line actual regex total n=0
-    RENDER_MISMATCH=""
     if ! template="$(mktemp)"; then
-        RENDER_MISMATCH="comparison scratch file could not be created"
+        printf 'comparison scratch file could not be created'
         return 1
     fi
-    if ! printf '%s' "${template_b64}" | base64 -d >"${template}"; then
-        RENDER_MISMATCH="the template could not be decoded from the manifest"
+    if ! printf '%s' "${template_b64}" | base64 -d >"${template}" 2>/dev/null; then
+        printf 'the template could not be decoded from the manifest'
         rm -f "${template}"
         return 1
     fi
@@ -209,14 +276,16 @@ render_matches() {
                 regex="$(printf '%s' "${line}" |
                     sed -e 's/[][\.^$*+?(){}|]/\\&/g' -e 's/__KAJIANQ_[A-Z_]*__/[^;]*/g')"
                 if ! [[ "${actual}" =~ ^${regex}$ ]]; then
-                    RENDER_MISMATCH="line ${n} differs: installed '${actual}', template '${line}'"
+                    printf 'line %s differs: installed %s, template %s' \
+                        "${n}" "'${actual}'" "'${line}'"
                     rm -f "${template}"
                     return 1
                 fi
                 ;;
             *)
                 if [ "${actual}" != "${line}" ]; then
-                    RENDER_MISMATCH="line ${n} differs: installed '${actual}', template '${line}'"
+                    printf 'line %s differs: installed %s, template %s' \
+                        "${n}" "'${actual}'" "'${line}'"
                     rm -f "${template}"
                     return 1
                 fi
@@ -226,7 +295,7 @@ render_matches() {
     total="$(wc -l <"${installed}")"
     rm -f "${template}"
     if [ "${total}" -ne "${n}" ]; then
-        RENDER_MISMATCH="the installed copy has ${total} lines, the template has ${n}"
+        printf 'the installed copy has %s lines, the template has %s' "${total}" "${n}"
         return 1
     fi
     return 0
@@ -234,11 +303,50 @@ render_matches() {
 
 check_manifest() {
     local manifest="$1" name kind src dst owner group mode sha bytes payload
-    local installed actual expected
+    local installed actual expected status reason
     while IFS='|' read -r name kind src dst owner group mode sha bytes payload; do
         [ -n "${name}" ] || continue
+        status=0
+        installed="$(resolve_destination "${name}" "${dst}")" || status=$?
+        case "${status}" in
+            0) ;;
+            2)
+                SKIPPED=$((SKIPPED + 1))
+                printf 'deploy: no directory matches %s — Postgres is not installed, so apply.sh skips this row too and it is not compared\n' \
+                    "$(dirname "${dst}")" >&2
+                continue
+                ;;
+            3)
+                SKIPPED=$((SKIPPED + 1))
+                SKIPPED_NO_CONF_D=$((SKIPPED_NO_CONF_D + 1))
+                printf 'deploy: no conf.d directory under %s — Postgres is installed but its log/reachability posture is not applied on this box; install or repair Postgres, then run provision/vps/apply.sh\n' \
+                    "${installed}" >&2
+                continue
+                ;;
+            4)
+                CHECKED=$((CHECKED + 1))
+                refuse \
+                    "${dst} carries a versioned destination, but apply.sh resolves a versioned destination only for the ${VERSIONED_SKIP_ROW} row — its literal path would reach install and fail" \
+                    "the deploy refuses a row it cannot compare the way apply.sh installs it"
+                continue
+                ;;
+            5)
+                CHECKED=$((CHECKED + 1))
+                refuse \
+                    "cannot read or search ${installed} as $(id -un) — an unreadable path and an absent one both yield an empty glob, so ${dst} is refused instead of skipped" \
+                    "make ${installed} readable and searchable for the deploy identity, then deploy again"
+                continue
+                ;;
+            6)
+                CHECKED=$((CHECKED + 1))
+                refuse \
+                    "${installed} is not a directory — apply.sh resolves the first conf.d match with ls -d and would fail to install provision/vps/${src} into it" \
+                    "remove ${installed} or repair Postgres, then run provision/vps/apply.sh on the box"
+                continue
+                ;;
+        esac
         CHECKED=$((CHECKED + 1))
-        if ! installed="$(resolve_destination "${dst}")"; then
+        if [ "${status}" -ne 0 ]; then
             case "${kind}" in
                 link)
                     refuse \
@@ -294,9 +402,9 @@ check_manifest() {
                 fi
                 ;;
             render)
-                if ! render_matches "${installed}" "${payload}"; then
+                if ! reason="$(render_matches "${installed}" "${payload}")"; then
                     refuse \
-                        "${dst} does not match provision/vps/${src} (placeholder values aside): ${RENDER_MISMATCH} — run provision/vps/apply.sh on the box"
+                        "${dst} does not match provision/vps/${src} (placeholder values aside): ${reason} — run provision/vps/apply.sh on the box"
                 fi
                 ;;
             sudoers)
@@ -333,8 +441,18 @@ check_manifest "${MANIFEST}"
 
 if [ "${FAILURES}" -ne 0 ]; then
     printf 'deploy: %s of %s provisioned artifact(s) do not match the checkout\n' \
-        "${FAILURES}" "${CHECKED}" >&2
+        "${FAILURES}" "$((CHECKED + SKIPPED))" >&2
     printf 'deploy: run provision/vps/apply.sh on the box from a checkout of the revision being deployed, then deploy again\n' >&2
     exit 1
 fi
-printf 'deploy: provisioned artifacts match the checkout (%s)\n' "${CHECKED}"
+if [ "${SKIPPED}" -ne 0 ]; then
+    if [ "${SKIPPED_NO_CONF_D}" -ne 0 ]; then
+        printf 'deploy: provisioned artifacts match the checkout (%s of %s; %s skipped — Postgres is installed but has no conf.d, so its log/reachability posture is not applied on this box)\n' \
+            "${CHECKED}" "$((CHECKED + SKIPPED))" "${SKIPPED}"
+    else
+        printf 'deploy: provisioned artifacts match the checkout (%s of %s; %s skipped — Postgres is not installed, as apply.sh also skips the row)\n' \
+            "${CHECKED}" "$((CHECKED + SKIPPED))" "${SKIPPED}"
+    fi
+else
+    printf 'deploy: provisioned artifacts match the checkout (%s)\n' "${CHECKED}"
+fi

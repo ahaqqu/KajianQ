@@ -1,5 +1,6 @@
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -62,8 +63,8 @@ function artifacts() {
 }
 
 /** The manifest the deploy ships to the box, emitted from the real checkout. */
-function emitManifest() {
-  const result = sh("bash", [DRIFT, "--emit-manifest", REPO]);
+function emitManifest(checkout = REPO) {
+  const result = sh("bash", [DRIFT, "--emit-manifest", checkout]);
   expect(result.status, result.stderr).toBe(0);
   return result.stdout;
 }
@@ -93,7 +94,7 @@ function renderTemplate(text, overrides = {}) {
 }
 
 /** A fixture box: every artifact installed from the checkout, at its real mode. */
-function driftFixture() {
+function driftFixture({ without = [] } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "kajianq-drift-"));
   const rows = artifacts();
   const template = (row) => read(join("provision/vps", row.src));
@@ -112,10 +113,10 @@ function driftFixture() {
   // Files first, then links: a link's target must exist when it is created, as
   // it does on a box where apply.sh installs the block before enabling it.
   for (const row of rows) {
-    if (row.kind !== "link") install(row);
+    if (row.kind !== "link" && !without.includes(row.name)) install(row);
   }
   for (const row of rows) {
-    if (row.kind === "link") install(row);
+    if (row.kind === "link" && !without.includes(row.name)) install(row);
   }
   const manifest = fixtureManifest(emitManifest());
   return {
@@ -139,9 +140,56 @@ function driftFixture() {
   };
 }
 
+/** The `render_matches` function as provision-drift.sh defines it. */
+function renderMatchesSource() {
+  const body = /^render_matches\(\) \{\n[\s\S]*?^\}\n/m.exec(
+    read("provision/vps/deploy/provision-drift.sh"),
+  )?.[0];
+  expect(body, "provision-drift.sh must define render_matches()").toBeTruthy();
+  return body;
+}
+
 /** Run the shipped provenance gate against a fixture unit and record. */
 function provenance(unit, record) {
   return sh("bash", [resolve(REPO, "provision/vps/deploy/backup-provenance.sh"), unit, record]);
+}
+
+/** apply.sh with its deploy-grant mode cell rewritten, for a table-load probe. */
+function applyWithMode(mode) {
+  const dir = mkdtempSync(join(tmpdir(), "kajianq-apply-mode-"));
+  const copy = join(dir, "apply.sh");
+  writeFileSync(
+    copy,
+    read("provision/vps/apply.sh").replace("|root|root|440", `|root|root|${mode}`),
+  );
+  return { dir, copy };
+}
+
+/**
+ * A checkout whose apply.sh table carries one extra row, for the shape probe a
+ * future versioned destination would trip. The real source tree is linked in,
+ * so the shipped manifest emitter hashes the shipped files.
+ */
+function checkoutWithExtraRow(row) {
+  const dir = mkdtempSync(join(tmpdir(), "kajianq-extra-row-"));
+  const source = join(dir, "provision/vps");
+  mkdirSync(source, { recursive: true });
+  writeFileSync(
+    join(source, "apply.sh"),
+    read("provision/vps/apply.sh").replace("deploy-grant|", `${row}\ndeploy-grant|`),
+  );
+  for (const entry of [
+    "backup",
+    "journald",
+    "logrotate",
+    "nginx",
+    "postgres",
+    "sudoers",
+    "systemd",
+  ]) {
+    symlinkSync(resolve(REPO, "provision/vps", entry), join(source, entry));
+  }
+  return { checkout: dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
 describe("the artifact set is enumerated from apply.sh itself", () => {
@@ -183,6 +231,20 @@ describe("the artifact set is enumerated from apply.sh itself", () => {
     expect(byName.get("postgres").dst).toBe("/etc/postgresql/*/main/conf.d/99-kajianq.conf");
   });
 
+  it("carries one versioned destination, and the checker keys its skip to that row", () => {
+    // The zero-conf.d skip is the one apply.sh implements, for its Postgres row
+    // only; every other row's destination reaches install literally. The
+    // checker's skip row must name this row, so a new versioned row cannot slip
+    // into the skip just by carrying a glob.
+    const versioned = artifacts().filter((row) => dirname(row.dst).includes("*"));
+    expect(versioned.map((row) => row.name)).toEqual(["postgres"]);
+    const checker = read("provision/vps/deploy/provision-drift.sh");
+    const skipRow = /^VERSIONED_SKIP_ROW="([^"]+)"/m.exec(checker)?.[1];
+    expect(skipRow, "provision-drift.sh must name the row apply.sh resolves").toBe(
+      versioned[0].name,
+    );
+  });
+
   it("has one install site per row and no install that bypasses the table", () => {
     const apply = read("provision/vps/apply.sh");
     const calls = [...apply.matchAll(/^\s*install_artifact (\S+)/gm)].map((match) => match[1]);
@@ -214,6 +276,34 @@ describe("the artifact set is enumerated from apply.sh itself", () => {
     expect(user, "apply.sh must bind DEPLOY_USER").toBeTruthy();
     const grant = artifacts().find((row) => row.name === "deploy-grant");
     expect(grant.dst).toBe(`/etc/sudoers.d/${user}`);
+  });
+
+  it("rejects a mode cell with a leading zero before it can install or be demanded", () => {
+    // `install -m 0440` installs 0440 while `stat -c %a` prints 440. A cell
+    // written that way would install one mode and the drift check would demand
+    // another forever, so the table refuses it at load, before any install.
+    const { dir, copy } = applyWithMode("0440");
+    try {
+      const result = sh("bash", [copy, "--list-artifacts"]);
+      expect(result.status).toBe(1);
+      expect(result.stdout.trim()).toBe("");
+      expect(result.stderr).toContain("deploy-grant");
+      expect(result.stderr).toContain("0440");
+      expect(result.stderr).toContain("no leading zero");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a mode cell that is not octal", () => {
+    const { dir, copy } = applyWithMode("44o");
+    try {
+      const result = sh("bash", [copy, "--list-artifacts"]);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("44o");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -339,6 +429,18 @@ describe("the drift preflight", () => {
       mutate: (fixture) => rmSync(fixture.path("/etc/nginx/sites-enabled/kajianq.conf")),
     },
     {
+      case: "the sites-enabled link replaced by a regular copy",
+      artifact: "/etc/nginx/sites-enabled/kajianq.conf",
+      source: "/etc/nginx/sites-available/kajianq.conf",
+      detail: "is not a symlink",
+      mutate: (fixture) => {
+        const enabled = fixture.path("/etc/nginx/sites-enabled/kajianq.conf");
+        const target = readFileSync(fixture.path("/etc/nginx/sites-available/kajianq.conf"));
+        rmSync(enabled);
+        writeFileSync(enabled, target);
+      },
+    },
+    {
       case: "the Postgres posture absent",
       // The refusal names the file apply.sh would write, not the table's glob.
       artifact: "/etc/postgresql/16/main/conf.d/99-kajianq.conf",
@@ -358,7 +460,7 @@ describe("the drift preflight", () => {
     },
   ];
 
-  for (const { case: name, artifact, source, mutate } of MUTATIONS) {
+  for (const { case: name, artifact, source, detail, mutate } of MUTATIONS) {
     it(`refuses ${name}, naming the artifact and the remedy`, () => {
       const fixture = driftFixture();
       try {
@@ -369,6 +471,7 @@ describe("the drift preflight", () => {
         expect(result.stderr).toContain(source);
         expect(result.stderr).toContain("run provision/vps/apply.sh");
         expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
+        if (detail) expect(result.stderr).toContain(detail);
       } finally {
         fixture.cleanup();
       }
@@ -399,6 +502,140 @@ describe("the drift preflight", () => {
       expect(green.stdout).toContain(`(${PROVISIONED_ARTIFACTS})`);
     } finally {
       fixture.cleanup();
+    }
+  });
+
+  it("skips the Postgres row when Postgres is not installed, as apply.sh does", () => {
+    // apply.sh resolves the row against the first existing conf.d directory and
+    // logs "install postgresql" when there is none. The check must skip the same
+    // row — and say that is why, so this case is not confused with a Postgres
+    // tree that lost its conf.d directory: refusing would name a remedy apply.sh
+    // cannot carry out on that box, so the deploy would fail again on every retry.
+    const fixture = driftFixture({ without: ["postgres"] });
+    try {
+      expect(existsSync(join(fixture.dir, "etc/postgresql"))).toBe(false);
+      const result = fixture.check();
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stderr).toContain("no directory matches /etc/postgresql/*/main/conf.d");
+      expect(result.stderr).toContain("Postgres is not installed");
+      expect(result.stderr).not.toContain("run provision/vps/apply.sh");
+      expect(result.stdout).toContain(
+        `(${PROVISIONED_ARTIFACTS - 1} of ${PROVISIONED_ARTIFACTS}; 1 skipped`,
+      );
+      expect(result.stdout).toContain("Postgres is not installed, as apply.sh also skips the row");
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it("names the consequence when Postgres is installed but has no conf.d", () => {
+    // `/etc/postgresql` present without main/conf.d is not "Postgres is not
+    // installed": the installer skips the row and the log/reachability posture
+    // is never applied. The check still skips the row apply.sh skips, but it
+    // must say that the posture is missing rather than pass a bare skip.
+    const fixture = driftFixture({ without: ["postgres"] });
+    try {
+      mkdirSync(join(fixture.dir, "etc/postgresql/16/main"), { recursive: true });
+      const result = fixture.check();
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stderr).toContain("no conf.d directory under");
+      expect(result.stderr).toContain("/etc/postgresql");
+      expect(result.stderr).toContain("posture is not applied on this box");
+      expect(result.stderr).not.toContain("Postgres is not installed");
+      expect(result.stdout).toContain("Postgres is installed but has no conf.d");
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it("refuses an unreadable /etc/postgresql instead of skipping it", () => {
+    // chmod 000 makes the glob expand to nothing for the same reason an absent
+    // directory does. The check cannot tell "no Postgres" from "cannot see
+    // Postgres", so it must refuse rather than pass the box green.
+    const fixture = driftFixture();
+    const postgres = join(fixture.dir, "etc/postgresql");
+    try {
+      chmodSync(postgres, 0o000);
+      const result = fixture.check();
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain("cannot read or search");
+      expect(result.stderr).toContain("/etc/postgresql");
+      expect(result.stderr).not.toContain("no directory matches");
+      expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
+    } finally {
+      chmodSync(postgres, 0o755);
+      fixture.cleanup();
+    }
+  });
+
+  it("refuses a conf.d that is not a directory, as apply.sh fails to install into it", () => {
+    // apply.sh resolves this row with `ls -d`, which matches a regular file and
+    // then hands <file>/99-kajianq.conf to install. The check must fail the row
+    // too, not read the missing directory as "nothing to place".
+    const fixture = driftFixture({ without: ["postgres"] });
+    try {
+      const confD = fixture.path("/etc/postgresql/*/main/conf.d");
+      mkdirSync(dirname(confD), { recursive: true });
+      writeFileSync(confD, "not a directory\n");
+      const result = fixture.check();
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain("/etc/postgresql/16/main/conf.d is not a directory");
+      expect(result.stderr).not.toContain("no directory matches");
+      expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it("refuses a second versioned row instead of skipping it uncompared", () => {
+    // apply.sh resolves a versioned destination for the Postgres row only; a
+    // second row carrying a directory glob would reach `install` literally and
+    // fail. The check must refuse it, not infer a skip from the glob shape.
+    const extra =
+      "postgres-log|config|postgres/99-kajianq.conf|/etc/postgresql/*/main/log.d/99-kajianq.conf|root|root|644";
+    const checkout = checkoutWithExtraRow(extra);
+    const fixture = driftFixture();
+    try {
+      const manifest = fixtureManifest(emitManifest(checkout.checkout));
+      expect(manifest.split("\n").filter(Boolean)).toHaveLength(PROVISIONED_ARTIFACTS + 1);
+      const result = fixture.check({ manifest });
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain("/etc/postgresql/*/main/log.d/99-kajianq.conf");
+      expect(result.stderr).toContain("carries a versioned destination");
+      expect(result.stderr).not.toContain("no directory matches");
+      expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS + 1}`);
+    } finally {
+      fixture.cleanup();
+      checkout.cleanup();
+    }
+  });
+
+  it("carries a rendered mismatch out of a command substitution", () => {
+    // A mismatch reason stored in a variable disappears when the comparison runs
+    // in a subshell. The reason must travel as render_matches' output, so a call
+    // site inside `$(...)` still hands it to the refusal.
+    const dir = mkdtempSync(join(tmpdir(), "kajianq-render-probe-"));
+    try {
+      const installed = join(dir, "kajianq.conf");
+      const rendered = renderTemplate(read("provision/vps/nginx/kajianq.conf"));
+      writeFileSync(installed, `${rendered}# extra line\n`);
+      const probe = sh("bash", [
+        "-c",
+        [
+          "set -euo pipefail",
+          renderMatchesSource(),
+          'reason="$(render_matches "$1" "$2")" || status=$?',
+          'printf "status=%s\\nreason=%s\\n" "${status:-0}" "${reason}"',
+        ].join("\n"),
+        "probe",
+        installed,
+        Buffer.from(rendered).toString("base64"),
+      ]);
+      expect(probe.status, probe.stderr).toBe(0);
+      expect(probe.stdout).toContain("status=1");
+      expect(probe.stdout).toContain("the installed copy has");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 
@@ -514,7 +751,7 @@ describe("deploy.sh wiring", () => {
     }
   });
 
-  it("ships the checker over ssh and passes the manifest on argv, read-only", () => {
+  it("ships the checker over ssh and passes the manifest on argv, changing no installed state", () => {
     const script = read("provision/vps/deploy/deploy.sh");
     const start = script.indexOf('log "preflight: provisioned artifacts match the checkout"');
     const end = script.indexOf("# --- 0b. preflight");
@@ -524,7 +761,9 @@ describe("deploy.sh wiring", () => {
     // The file the tests execute is the file the box runs: piped into `bash -s`.
     expect(block).toMatch(/bash -s --[\s\S]*--check --manifest-base64/);
     expect(block).toMatch(/<"\$\{REPO_DIR\}\/provision\/vps\/deploy\/provision-drift\.sh"/);
-    // Read-only on the box: no mutation, no privilege.
+    // No installed state changes on the box: no ship, no privilege, no unit
+    // action. Comparing a rendered config writes one short-lived file under
+    // /tmp, which the checker removes before it returns.
     for (const forbidden of ["rsync", "sudo ", "systemctl", "bun run", "install "]) {
       expect(block, `the drift preflight must not run: ${forbidden}`).not.toContain(forbidden);
     }
