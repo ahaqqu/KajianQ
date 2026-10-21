@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { disposePostgresPools } from "../../packages/infra/src/index";
 import {
   CITATION_GRAMMAR,
+  CITATION_IDENTITY,
   createStagingHarness,
   REFUSAL_MARKERS,
 } from "../../packages/eval/scripts/staging-harness.mjs";
@@ -126,6 +127,85 @@ describe("CITATION_GRAMMAR (shared staging harness)", () => {
     for (const script of ["eval-run.mjs", "eval-smoke.mjs"]) {
       const source = readFileSync(resolve(process.cwd(), "packages/eval/scripts", script), "utf8");
       expect(source).toMatch(/citationGrammar:\s*harness\.citationGrammar,/);
+    }
+  });
+});
+
+/**
+ * The composition root's Matn identity resolver. The harness is JavaScript, so
+ * the engine's optional `citationIdentity` cannot be enforced by the type
+ * system there: deleting the one property line that hands it to the CLIs would
+ * compile and pass every package test while the release gate silently reverted
+ * to exact-row scoring — a parallel narration of the required hadith then
+ * scores 0. It is therefore pinned here, like the grammar: the delivery by
+ * identity, the map's own behaviour through the delivered reference, and the
+ * pass-through in both CLI sources.
+ */
+describe("CITATION_IDENTITY (shared staging harness)", () => {
+  const frameOf = (labels) => ({ citations: labels.map((label) => ({ label })) });
+
+  it("resolves a mapped pair of parallel chains to one identity, and nothing else", () => {
+    const identity = CITATION_IDENTITY.identityOf("HR. Bukhari no. 191");
+    expect(identity).not.toBeNull();
+    // The map's own equivalence: 186 and 191 narrate the same report, so the
+    // resolver answers the same identity for both — a plain identity function
+    // (each label its own key) fails this.
+    expect(CITATION_IDENTITY.identityOf("HR. Bukhari no. 186")).toBe(identity);
+  });
+
+  it("resolves a label outside the map to null — the fail-closed state", () => {
+    expect(CITATION_IDENTITY.identityOf("HR. Bukhari no. 99999")).toBeNull();
+  });
+
+  it("delivers the identity from the real composition root, not only declares it", async () => {
+    // Behavioural, through the harness's OWN reference: a dropped delivery is
+    // `undefined`, and the scorer's documented no-identity degradation then
+    // keeps the exact-label comparison and scores the parallel narration 0. The
+    // URL is never dialled — `resolvePostgresStore` builds a lazy pool — and the
+    // memoized pool is released below so the run does not leak a handle.
+    const harness = await createStagingHarness(
+      { databaseUrl: "postgres://unused:unused@127.0.0.1:1/unused" },
+      {},
+    );
+    try {
+      expect(harness.citationIdentity).toBe(CITATION_IDENTITY);
+      const identity = harness.citationIdentity;
+      const frame = frameOf(["HR. Bukhari no. 186"]);
+      // The same evidence, with and without the delivery: only the delivered
+      // resolver scores the parallel narration present.
+      expect(
+        citationValidity(["HR. Bukhari no. 191"], "", {
+          frame,
+          grammar: harness.citationGrammar,
+          identity,
+        }),
+      ).toBe(1);
+      expect(
+        citationValidity(["HR. Bukhari no. 191"], "", { frame, grammar: harness.citationGrammar }),
+      ).toBe(0);
+      // A required label the map does not carry stays unmatched — the scorer
+      // never guesses an identity for it.
+      expect(
+        citationValidity(["HR. Bukhari no. 99999"], "", {
+          frame,
+          grammar: harness.citationGrammar,
+          identity,
+        }),
+      ).toBe(0);
+    } finally {
+      await disposePostgresPools();
+    }
+  });
+
+  it("forwards the harness's identity into the scorer in both eval CLIs", () => {
+    // The second half of the delivery: the harness can hold the identity and
+    // both entry points still drop it on the floor. They are `#!/usr/bin/env
+    // bun` scripts that connect to staging on import, so the pass-through is
+    // pinned where it lives — the same instrument this file already uses for
+    // the grammar and the refusal-marker drift between the two CLIs.
+    for (const script of ["eval-run.mjs", "eval-smoke.mjs"]) {
+      const source = readFileSync(resolve(process.cwd(), "packages/eval/scripts", script), "utf8");
+      expect(source).toMatch(/citationIdentity:\s*harness\.citationIdentity,/);
     }
   });
 });

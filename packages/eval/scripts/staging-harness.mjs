@@ -62,13 +62,13 @@ export const CITATION_GRAMMAR = {
 };
 
 /**
- * The canonical hadith-identity resolver the scorer compares citations with.
+ * The Matn identity resolver the scorer compares citations with.
  * The map is the DOMAIN's curated, owner-signed data (`hadith-identities-v0`);
  * the composition root loads it here and hands the engine an opaque resolver,
  * so the engine learns no hadith vocabulary and cannot drift from the map. A
  * label the map does not carry resolves to `null`, which keeps the scorer on
- * its exact-label comparison — an unmapped or fabricated citation cannot match
- * another.
+ * its exact-label comparison — an unmapped or fabricated citation can satisfy
+ * only the identical required label, never another.
  */
 const HADITH_IDENTITY_FIXTURE = new URL(
   "../../kajianq-domain/fixtures/hadith-identities-v0.json",

@@ -119,6 +119,59 @@ describe("parseHadithIdentitySet", () => {
     ).toThrow(HadithIdentityError);
   });
 
+  it("rejects a dash-joined range: one key names one corpus row, not two", () => {
+    // The citation grammar keeps a dash compound whole on purpose (fail-closed
+    // for the gate), so a range parses as one label — but a map key has to name
+    // exactly one row, or a curation mistake silently widens what matches.
+    for (const range of ["HR. Bukhari no. 191-192", "HR. Bukhari no. 191—192"]) {
+      expect(() =>
+        parseHadithIdentitySet({ ...valid, groups: [{ ...group, canonical: range }] }),
+      ).toThrow(/not a single hadith citation/);
+      expect(() =>
+        parseHadithIdentitySet({ ...valid, groups: [{ ...group, members: [range] }] }),
+      ).toThrow(/not a single hadith citation/);
+    }
+  });
+
+  it("rejects a number no corpus row carries (a glued letter, not an integer)", () => {
+    // The corpus renders the number from `hadithNo`, an integer; `no. 5010a`
+    // is a spelling no row holds, so it can never be a group's key.
+    expect(() =>
+      parseHadithIdentitySet({
+        ...valid,
+        groups: [{ ...group, members: ["HR. Bukhari no. 5010a"] }],
+      }),
+    ).toThrow(/not a single hadith citation/);
+  });
+
+  it("rejects a zero-padded number: no row renders it, and it folds to no key", () => {
+    // `no. 0191` normalizes to a different key than `no. 191`, so the padded
+    // spelling would be a dead identity that no evidence label resolves — one
+    // that also claims a row the duplicate check cannot see it claim.
+    for (const padded of ["HR. Bukhari no. 0191", "HR. Bukhari no. 0000000191"]) {
+      expect(() =>
+        parseHadithIdentitySet({ ...valid, groups: [{ ...group, canonical: padded }] }),
+      ).toThrow(/not a single hadith citation/);
+      expect(() =>
+        parseHadithIdentitySet({ ...valid, groups: [{ ...group, members: [padded] }] }),
+      ).toThrow(/not a single hadith citation/);
+    }
+  });
+
+  it("accepts a graded label — the number is still one corpus row", () => {
+    const graded = { ...valid, groups: [{ ...group, canonical: "HR. Bukhari no. 1 (Sahih)" }] };
+    expect(parseHadithIdentitySet(graded).groups[0]?.canonical).toBe("HR. Bukhari no. 1 (Sahih)");
+  });
+
+  it("rejects a duplicated group id, which would merge two narrations' claims", () => {
+    expect(() =>
+      parseHadithIdentitySet({
+        ...valid,
+        groups: [group, { ...group, canonical: "HR. Bukhari no. 3" }],
+      }),
+    ).toThrow(/group id "g" is already used/);
+  });
+
   it("rejects a label claimed by two groups", () => {
     expect(() =>
       parseHadithIdentitySet({

@@ -16,8 +16,9 @@ import { parseHadithCitation } from "./hadith-source";
  * unmapped, fabricated, or unrelated citation can never resolve into a group.
  *
  * The parser is loud on a malformed map (a duplicated label, a label that is not
- * a hadith citation, an empty group) because a silent skip would turn a curation
- * mistake into a gate that scores differently from the map a reader sees.
+ * a single hadith citation, a duplicated group id, an empty group) because a
+ * silent skip would turn a curation mistake into a gate that scores differently
+ * from the map a reader sees.
  */
 
 export type HadithIdentityGroup = {
@@ -52,13 +53,30 @@ function requiredString(value: unknown, field: string, source: string): string {
 }
 
 /**
- * Parse an identity map from untrusted JSON. Every label must be a single
- * hadith citation (`HR. Collection no. N`, grade optional), and a label may
- * appear in one place only — across groups and inside one group.
+ * The number shape the corpus stores: one integer per (collection, number) row,
+ * rendered without leading zeros. A dash-joined range (`no. 191-192`), a letter
+ * glued to the number (`no. 5010a`) or a zero-padded number (`no. 0191`) names
+ * more than one row, or a spelling no row carries — so it is not a single
+ * citation, and a map key must be one.
+ */
+const CORPUS_CITATION_NUMBER = /^[1-9]\d*$/;
+
+/** Whether a label names exactly one corpus row: a hadith citation whose number
+ * has the corpus's own shape. */
+function isSingleHadithCitation(label: string): boolean {
+  const parsed = parseHadithCitation(label);
+  return parsed !== null && CORPUS_CITATION_NUMBER.test(parsed.hadithNo);
+}
+
+/**
+ * Parse an identity map from untrusted JSON. Every label must name exactly one
+ * corpus row — a single hadith citation (`HR. Collection no. N`, grade
+ * optional), never a dash-joined range — and a label and a group id may each
+ * appear in one place only, across groups and inside one group.
  */
 export function parseHadithIdentitySet(
   input: unknown,
-  source = "hadith identity set",
+  source = "matn identity set",
 ): HadithIdentitySet {
   if (!isRecord(input)) throw new HadithIdentityError(`${source}: must be an object`);
   const id = requiredString(input["id"], "id", source);
@@ -71,13 +89,20 @@ export function parseHadithIdentitySet(
   }
 
   const seen = new Map<string, string>();
+  const groupIds = new Set<string>();
   const groups = input["groups"].map((raw, index) => {
     const where = `${source}: groups[${index}]`;
     if (!isRecord(raw)) throw new HadithIdentityError(`${where} must be an object`);
     const groupId = requiredString(raw["id"], "id", where);
+    if (groupIds.has(groupId)) {
+      throw new HadithIdentityError(`${where}: group id "${groupId}" is already used`);
+    }
+    groupIds.add(groupId);
     const canonical = requiredString(raw["canonical"], "canonical", where);
-    if (parseHadithCitation(canonical) === null) {
-      throw new HadithIdentityError(`${where}: canonical "${canonical}" is not a hadith citation`);
+    if (!isSingleHadithCitation(canonical)) {
+      throw new HadithIdentityError(
+        `${where}: canonical "${canonical}" is not a single hadith citation`,
+      );
     }
     if (!Array.isArray(raw["members"]) || raw["members"].length === 0) {
       throw new HadithIdentityError(`${where}: members must be a non-empty array`);
@@ -85,8 +110,10 @@ export function parseHadithIdentitySet(
     const canonicalKey = normalizeCitationLabel(canonical);
     const claim = (label: string, field: string): string => {
       const key = normalizeCitationLabel(label);
-      if (parseHadithCitation(label) === null) {
-        throw new HadithIdentityError(`${where}: ${field} "${label}" is not a hadith citation`);
+      if (!isSingleHadithCitation(label)) {
+        throw new HadithIdentityError(
+          `${where}: ${field} "${label}" is not a single hadith citation`,
+        );
       }
       const previous = seen.get(key);
       if (previous !== undefined) {
