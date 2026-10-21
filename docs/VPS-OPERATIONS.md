@@ -102,8 +102,11 @@ What it does, in order:
    the commands it grants are exercised by this very deploy. A destination under
    the server's major-version directory is resolved the way `apply.sh` resolves
    it — the first existing `conf.d` directory, then the file name — so a copy
-   under another version cannot stand in for the target. A mismatch fails the
-   deploy and names each file, with the expected and installed digest for a
+   under another version cannot stand in for the target. With no `conf.d`
+   directory at all, `apply.sh` skips that row and the check skips it too: the
+   skip is named and the row is not counted as compared, so the deploy never
+   demands a posture the installer has no directory to place. A mismatch fails
+   the deploy and names each file, with the expected and installed digest for a
    content change and the first mismatching line of a rendered block, and the
    remedy: run `sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env` on the
    box from a checkout of the revision being deployed, then deploy again. The

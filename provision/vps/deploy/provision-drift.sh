@@ -46,6 +46,12 @@
 #            test of what the grant authorizes; widening the grant to read the
 #            file would trade that boundary for a weaker check.
 #
+# A destination may carry the server's major version in a directory glob (the
+# Postgres conf.d path). apply.sh resolves the first existing directory and
+# skips the row when there is none, so this check skips it too: it never refuses
+# a posture the box has no directory to hold. A skipped row is named and is not
+# counted as compared; the green line reports it.
+#
 # Usage: bash provision-drift.sh --emit-manifest <checkout>
 #        bash provision-drift.sh --check [--root <dir>] [--manifest-base64 <value>]
 
@@ -128,6 +134,7 @@ emit_manifest() {
 
 FAILURES=0
 CHECKED=0
+SKIPPED=0
 
 refuse() {
     local line
@@ -141,7 +148,10 @@ refuse() {
 # Postgres conf.d path carries the server's major version — and apply.sh picks
 # the first existing DIRECTORY (`ls -d .../conf.d | head -1`), then appends the
 # file name. Resolving the first existing file instead would let a matching copy
-# under a later major version hide a target apply.sh never wrote.
+# under a later major version hide a target apply.sh never wrote. With no
+# directory at all apply.sh skips the row and exits 0, so this returns 2: the
+# checker skips the same row rather than refusing a posture apply.sh cannot
+# place (a refusal whose remedy — run apply.sh — would only skip again).
 resolve_destination() {
     local dst="$1" pattern="${ROOT%/}/${1#/}" dir base candidate
     case "${pattern}" in
@@ -157,6 +167,9 @@ resolve_destination() {
                             return 0
                         fi
                     done
+                    # The literal glob reached no directory: apply.sh's
+                    # `ls -d ... | head -1 || true` is empty for this row too.
+                    return 2
                     ;;
                 *)
                     # A glob in the file name itself: first existing match.
@@ -181,23 +194,23 @@ resolve_destination() {
     return 1
 }
 
-# The first difference render_matches found, for the refusal message.
-RENDER_MISMATCH=""
-
 # Compare a rendered config against its repository template. Each
 # __KAJIANQ_*__ token stands for a value from the box's proxy.env, so it matches
 # any text up to the directive's `;`: a placeholder is a directive's value, and
 # a second directive appended to the same line is a hand edit, not a value. The
 # line count must match too, which catches a template that gained or lost a line.
+#
+# On a mismatch this prints the first difference on stdout and returns 1; on a
+# match it prints nothing and returns 0. The reason travels as the function's
+# output, so a call site inside a command substitution still carries it.
 render_matches() {
     local installed="$1" template_b64="$2" template line actual regex total n=0
-    RENDER_MISMATCH=""
     if ! template="$(mktemp)"; then
-        RENDER_MISMATCH="comparison scratch file could not be created"
+        printf 'comparison scratch file could not be created'
         return 1
     fi
-    if ! printf '%s' "${template_b64}" | base64 -d >"${template}"; then
-        RENDER_MISMATCH="the template could not be decoded from the manifest"
+    if ! printf '%s' "${template_b64}" | base64 -d >"${template}" 2>/dev/null; then
+        printf 'the template could not be decoded from the manifest'
         rm -f "${template}"
         return 1
     fi
@@ -209,14 +222,16 @@ render_matches() {
                 regex="$(printf '%s' "${line}" |
                     sed -e 's/[][\.^$*+?(){}|]/\\&/g' -e 's/__KAJIANQ_[A-Z_]*__/[^;]*/g')"
                 if ! [[ "${actual}" =~ ^${regex}$ ]]; then
-                    RENDER_MISMATCH="line ${n} differs: installed '${actual}', template '${line}'"
+                    printf 'line %s differs: installed %s, template %s' \
+                        "${n}" "'${actual}'" "'${line}'"
                     rm -f "${template}"
                     return 1
                 fi
                 ;;
             *)
                 if [ "${actual}" != "${line}" ]; then
-                    RENDER_MISMATCH="line ${n} differs: installed '${actual}', template '${line}'"
+                    printf 'line %s differs: installed %s, template %s' \
+                        "${n}" "'${actual}'" "'${line}'"
                     rm -f "${template}"
                     return 1
                 fi
@@ -226,7 +241,7 @@ render_matches() {
     total="$(wc -l <"${installed}")"
     rm -f "${template}"
     if [ "${total}" -ne "${n}" ]; then
-        RENDER_MISMATCH="the installed copy has ${total} lines, the template has ${n}"
+        printf 'the installed copy has %s lines, the template has %s' "${total}" "${n}"
         return 1
     fi
     return 0
@@ -234,11 +249,19 @@ render_matches() {
 
 check_manifest() {
     local manifest="$1" name kind src dst owner group mode sha bytes payload
-    local installed actual expected
+    local installed actual expected status reason
     while IFS='|' read -r name kind src dst owner group mode sha bytes payload; do
         [ -n "${name}" ] || continue
+        status=0
+        installed="$(resolve_destination "${dst}")" || status=$?
+        if [ "${status}" -eq 2 ]; then
+            SKIPPED=$((SKIPPED + 1))
+            printf 'deploy: no directory matches %s — apply.sh skips this row too, so it is not compared\n' \
+                "$(dirname "${dst}")" >&2
+            continue
+        fi
         CHECKED=$((CHECKED + 1))
-        if ! installed="$(resolve_destination "${dst}")"; then
+        if [ "${status}" -ne 0 ]; then
             case "${kind}" in
                 link)
                     refuse \
@@ -294,9 +317,9 @@ check_manifest() {
                 fi
                 ;;
             render)
-                if ! render_matches "${installed}" "${payload}"; then
+                if ! reason="$(render_matches "${installed}" "${payload}")"; then
                     refuse \
-                        "${dst} does not match provision/vps/${src} (placeholder values aside): ${RENDER_MISMATCH} — run provision/vps/apply.sh on the box"
+                        "${dst} does not match provision/vps/${src} (placeholder values aside): ${reason} — run provision/vps/apply.sh on the box"
                 fi
                 ;;
             sudoers)
@@ -333,8 +356,13 @@ check_manifest "${MANIFEST}"
 
 if [ "${FAILURES}" -ne 0 ]; then
     printf 'deploy: %s of %s provisioned artifact(s) do not match the checkout\n' \
-        "${FAILURES}" "${CHECKED}" >&2
+        "${FAILURES}" "$((CHECKED + SKIPPED))" >&2
     printf 'deploy: run provision/vps/apply.sh on the box from a checkout of the revision being deployed, then deploy again\n' >&2
     exit 1
 fi
-printf 'deploy: provisioned artifacts match the checkout (%s)\n' "${CHECKED}"
+if [ "${SKIPPED}" -ne 0 ]; then
+    printf 'deploy: provisioned artifacts match the checkout (%s of %s; %s skipped — no directory for the row, as apply.sh also skips it)\n' \
+        "${CHECKED}" "$((CHECKED + SKIPPED))" "${SKIPPED}"
+else
+    printf 'deploy: provisioned artifacts match the checkout (%s)\n' "${CHECKED}"
+fi

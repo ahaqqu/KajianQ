@@ -578,10 +578,11 @@ first time.
 What it does, in order: creates the `kajianq` service account and the
 `kajianq-deploy` identity; renders and installs the nginx server block, links it
 into `sites-enabled`, and reloads nginx; installs both logrotate stanzas and
-validates them; installs the journald cap; installs the Postgres posture;
-installs and **enables** (does not start) the API and cron units; installs the
-backup units and enables the timer; installs the sudo grant for
-`kajianq-deploy` only after `visudo -cf` parses it.
+validates them; installs the journald cap; installs the Postgres posture where
+the server's `conf.d` directory exists (otherwise logs that Postgres must be
+installed and skips that step); installs and **enables** (does not start) the API
+and cron units; installs the backup units and enables the timer; installs the
+sudo grant for `kajianq-deploy` only after `visudo -cf` parses it.
 
 ### Create the deploy identity's key
 
@@ -806,9 +807,12 @@ The deploy gates on all of these, and fails loudly on any of them:
   the checkout the deploy runs from. A difference fails the deploy, naming the
   file and the remedy: run `apply.sh` on the box from a pulled checkout. A
   content change is reported with the expected and installed digest, a rendered
-  block with the first line that differs. The marker script's presence, mode and
-  content are part of that comparison, so a deleted or non-executable marker is
-  refused before the provenance gate reads a record.
+  block with the first line that differs. The Postgres posture is compared only
+  where a `conf.d` directory exists: with none, `apply.sh` skips the row, and the
+  preflight skips it too instead of refusing a file the installer cannot place.
+  The marker script's presence, mode and content are part of that comparison, so
+  a deleted or non-executable marker is refused before the provenance gate reads
+  a record.
 - the web build produced an SPA (`apps/web/dist/index.html` exists)
 - the API restarted and `systemctl is-active` reports active
 - the reclamation ran once — so a rotated env var fails the deploy rather than
