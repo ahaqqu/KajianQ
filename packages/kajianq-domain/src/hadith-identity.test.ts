@@ -64,10 +64,23 @@ describe("the shipped identity map", () => {
     }
   });
 
+  it("classifies the travel Maghrib/Isha family as one narration", () => {
+    const canonical = identityOf("HR. Bukhari no. 1108");
+    expect(canonical).not.toBeNull();
+    expect(identityOf("HR. Bukhari no. 1110"), "Anas's other chain").toBe(canonical);
+    expect(identityOf("HR. Muslim no. 1624"), "Ibn Umar's same Maghrib/Isha practice").toBe(
+      canonical,
+    );
+  });
+
   it("keeps a different hadith on the same subject a different identity", () => {
     expect(identityOf("HR. Muslim no. 534")).not.toBe(identityOf("HR. Muslim no. 153"));
     expect(identityOf("HR. Muslim no. 534")).not.toBe(identityOf("HR. Muslim no. 154"));
     expect(identityOf("HR. Bukhari no. 1108")).not.toBe(identityOf("HR. Malik no. 331"));
+    expect(identityOf("HR. Bukhari no. 1108")).not.toBe(identityOf("HR. Malik no. 326"));
+    expect(identityOf("HR. Bukhari no. 1108")).not.toBe(identityOf("HR. Muslim no. 1626"));
+    expect(identityOf("HR. Bukhari no. 1108")).not.toBe(identityOf("HR. Muslim no. 1630"));
+    expect(identityOf("HR. Bukhari no. 1108")).not.toBe(identityOf("HR. Ibn Majah no. 1070"));
     expect(identityOf("HR. Bukhari no. 191")).not.toBe(identityOf("HR. Bukhari no. 5026"));
   });
 
@@ -79,6 +92,7 @@ describe("the shipped identity map", () => {
   it("returns null for a label the map does not carry", () => {
     expect(identityOf("HR. Bukhari no. 99999")).toBeNull();
     expect(identityOf("HR. Bukhari no. 5026")).toBeNull();
+    expect(identityOf("HR. Bukhari no. 1624")).toBeNull();
     expect(identityOf("QS. 2:255")).toBeNull();
     expect(identityOf("")).toBeNull();
   });

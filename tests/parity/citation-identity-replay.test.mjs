@@ -67,8 +67,15 @@ const ROWS = [
       "HR. Muslim no. 1624",
       "HR. Muslim no. 1630",
     ],
+    expected: 1,
+    why: "1624 is the same Maghrib/Isha travel practice as 1108; the other five are different prayer pairs or broader Tabuk reports",
+  },
+  {
+    questionId: "falsification — a different travel prayer pair",
+    required: ["HR. Bukhari no. 1108"],
+    evidence: ["HR. Malik no. 331", "HR. Muslim no. 1626"],
     expected: 0,
-    why: "these are different jamak narrations (other Companions, other prayer pairs), not chains of 1108",
+    why: "the same subject does not make another prayer pair the required narration",
   },
   {
     questionId: "gs-v0-013",
@@ -156,7 +163,7 @@ describe("recorded run replay — citation identity", () => {
     });
   }
 
-  it("flips the recorded run's parallel-chain zeros, not its unrelated-hadith zeros", () => {
+  it("flips the recorded run's parallel-narration zeros, not its unrelated-citation zeros", () => {
     const moved = ROWS.filter((row) => row.questionId.startsWith("gs-v0-")).filter(
       (row) =>
         citationValidity(row.required, "", {
@@ -169,7 +176,7 @@ describe("recorded run replay — citation identity", () => {
           grammar,
         }),
     );
-    expect(moved.map((row) => row.questionId)).toEqual(["gs-v0-003", "gs-v0-013"]);
+    expect(moved.map((row) => row.questionId)).toEqual(["gs-v0-003", "gs-v0-006", "gs-v0-013"]);
   });
 
   it("flips the falsification row the rule exists to accept, and only with the map", () => {
