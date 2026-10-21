@@ -144,7 +144,15 @@ export const FEEDBACK_INITIAL_STATUS = "pending";
 
 /** The persisted feedback row, echoed so the client sees its anchor landed. */
 export const FeedbackResponseSchema = v.object({
-  id: v.pipe(v.string(), v.minLength(1)),
+  /** The row the write inserted or updated. A repeat verdict on the same element
+   * updates that row in place, so the id is stable across repeats. */
+  id: v.pipe(
+    v.string(),
+    v.minLength(1),
+    v.description(
+      "The stored feedback row's id. A repeat verdict on the same element updates that row in place, so the id is the same on every submission.",
+    ),
+  ),
   messageId: v.pipe(v.string(), v.minLength(1)),
   /** The stored thumb; anchored flags persist as an implicit "down". */
   rating: v.nullable(FeedbackRatingSchema),

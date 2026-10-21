@@ -111,12 +111,14 @@ export function postgresTraceMethods(
     },
 
     insertFeedback(input: FeedbackInsert) {
-      const id = crypto.randomUUID();
-      // Upsert: the functional unique index keys one verdict per
-      // (user, answer, element) on the same COALESCE'd expression list, so a
-      // repeat thumb updates the row in place — the id and row count stay stable.
+      // The row id is the store's (`feedback.id` defaults to gen_random_uuid()),
+      // and the functional unique index keys one verdict per (user, answer,
+      // element) on the same COALESCE'd expression list: a repeat updates that
+      // row in place, so RETURNING id is the only value that names the stored row
+      // on both the insert and the conflict path. An id minted here is never
+      // written — on insert the column defaults, on conflict the row keeps its own.
       // `user_id` NULL never conflicts (Postgres NULLs are distinct).
-      return Effect.as(
+      return Effect.flatMap(
         sqlEffect(
           sql,
           () =>
@@ -138,9 +140,16 @@ export function postgresTraceMethods(
             free_text = EXCLUDED.free_text,
             status = EXCLUDED.status,
             created_at = now()
-        ` as Promise<unknown[]>,
+          RETURNING id
+        ` as Promise<{ id: string }[]>,
         ),
-        id,
+        (rows) => {
+          const [row] = rows;
+          if (!row) {
+            return Effect.fail(constraintError(new Error("feedback upsert returned no row")));
+          }
+          return Effect.succeed(row.id);
+        },
       );
     },
 

@@ -53,7 +53,9 @@ export const FEEDBACK_OPENAPI = describeRoute({
   },
   responses: {
     200: {
-      description: "The stored feedback row, with its canonical message id and anchor echoed",
+      description:
+        "The stored feedback row: `id` is that row's id, the same on a repeated verdict, " +
+        "with its canonical message id and anchor echoed",
       content: { "application/json": { schema: resolver(FeedbackResponseSchema) } },
     },
     400: {

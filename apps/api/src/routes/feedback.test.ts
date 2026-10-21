@@ -327,29 +327,40 @@ describe("POST /v1/feedback", () => {
     expect(await second.json()).toEqual({ error: "rate_limited" });
   });
 
-  // A repeat verdict updates the one row in place, never multiplying review rows.
-  it("upserts a repeated verdict: one row per (user, answer, element), latest wins", async () => {
+  // A repeat verdict updates the one row in place, never multiplying review rows,
+  // and answers with the id of that row.
+  it("upserts a repeated verdict: one row per (user, answer, element), latest wins, same id", async () => {
     const { store, userId, token } = await wiredStore();
     const messageId = await seedAnswer(store, userId);
-    await post(token, { messageId, rating: "up" });
+    const first = await post(token, { messageId, rating: "up" });
+    const firstBody = (await first.json()) as { id: string };
     const again = await post(token, { messageId, rating: "up", freeText: "second tap" });
     expect(again.status).toBe(200);
+    const againBody = (await again.json()) as { id: string };
     const changed = await post(token, { messageId, rating: "down" });
     expect(changed.status).toBe(200);
+    const changedBody = (await changed.json()) as { id: string };
+    expect(againBody.id).toBe(firstBody.id);
+    expect(changedBody.id).toBe(firstBody.id);
     const rows = store.allFeedback();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ userId, messageId, rating: -1, anchorType: "answer" });
+    expect(rows[0]?.id).toBe(firstBody.id);
+    expect(rows.filter((row) => row.id === firstBody.id)).toHaveLength(1);
   });
 
-  it("upserts a repeated flag on the same element without a sibling row", async () => {
+  it("upserts a repeated flag on the same element without a sibling row, same id", async () => {
     const { store, userId, token } = await wiredStore();
     const messageId = await seedAnswer(store, userId);
     const target = store.allChildren()[0]?.id as string;
     const anchor = { type: "chunk", category: "irrelevant_chunk", id: target };
-    await post(token, { messageId, anchor, freeText: "first" });
-    await post(token, { messageId, anchor, freeText: "second" });
+    const first = await post(token, { messageId, anchor, freeText: "first" });
+    const firstBody = (await first.json()) as { id: string };
+    const second = await post(token, { messageId, anchor, freeText: "second" });
+    const secondBody = (await second.json()) as { id: string };
+    expect(secondBody.id).toBe(firstBody.id);
     expect(store.allFeedback()).toHaveLength(1);
-    expect(store.allFeedback()[0]).toMatchObject({ freeText: "second" });
+    expect(store.allFeedback()[0]).toMatchObject({ id: firstBody.id, freeText: "second" });
   });
 
   // A rehydrated transcript addresses the answer by the chat ROW id, a live surface by

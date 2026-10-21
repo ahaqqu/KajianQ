@@ -343,6 +343,37 @@ describe("rag-store-postgres adapter (fake runner)", () => {
     expect(sql._calls).toHaveLength(0);
   });
 
+  it("insertFeedback returns the stored row id on both the insert and the conflict path", async () => {
+    const sql = makeFakeSql();
+    const store = createPostgresRagStore(sql);
+    const input = {
+      messageId: "m1",
+      userId: "u1",
+      rating: 1 as const,
+      anchorType: "answer",
+      anchorId: null,
+      category: null,
+      freeText: null,
+    };
+    // Insert path: the column defaults to gen_random_uuid(), so the row id can
+    // only come back from RETURNING.
+    sql._setTag([{ id: "inserted-row" }]);
+    expect(await runOk(store.insertFeedback(input))).toBe("inserted-row");
+    const insertSql = sql._calls[0]?.text ?? "";
+    expect(insertSql).toContain("ON CONFLICT");
+    expect(insertSql).toContain("RETURNING id");
+    expect(insertSql).not.toMatch(/INSERT INTO feedback \(\s*id\b/);
+    // Conflict path: the update reports the row it updated, not a fresh id.
+    sql._setTag([{ id: "existing-row" }]);
+    expect(await runOk(store.insertFeedback({ ...input, rating: -1 }))).toBe("existing-row");
+    // An empty RETURNING is a constraint failure, never a minted id that names
+    // no stored row.
+    sql._setTag([]);
+    const err = await runFail(store.insertFeedback(input));
+    expect(err.kind).toBe("constraint");
+    expect((err.cause as Error).message).toMatch(/returned no row/);
+  });
+
   it("getAnswerTraceByMessage returns null when absent and the parsed Trace when present", async () => {
     const sql = makeFakeSql();
     const store = createPostgresRagStore(sql);

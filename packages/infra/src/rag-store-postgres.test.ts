@@ -269,7 +269,7 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
         content: "Allah Mahahidup [QS. 2:255].",
         answerTraceId: storedTraceId,
       });
-      yield* store.insertFeedback({
+      const firstThumbId = yield* store.insertFeedback({
         messageId,
         userId,
         rating: 1,
@@ -290,7 +290,7 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
       });
       // A repeat verdict UPSERTS: the functional unique index keys one verdict
       // per (user, answer, element), so the row count stays 1.
-      yield* store.insertFeedback({
+      const repeatThumbId = yield* store.insertFeedback({
         messageId,
         userId,
         rating: 1,
@@ -304,6 +304,11 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
           sql!`SELECT count(*)::int AS n FROM feedback
         WHERE user_id = ${userId} AND message_id = ${messageId} AND anchor_type = 'answer'`,
       )) as { n: number }[];
+      const storedThumbIds = (yield* Effect.promise(
+        () =>
+          sql!`SELECT id::text AS id FROM feedback
+        WHERE user_id = ${userId} AND message_id = ${messageId} AND anchor_type = 'answer'`,
+      )) as { id: string }[];
       const target = yield* store.getAnswerFeedbackTarget(messageId);
       // The rehydrated transcript carries the chat ROW id (store-generated), not
       // the trace's message_id — the target must resolve from both.
@@ -317,7 +322,10 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
       const orphanedTarget = yield* store.getAnswerFeedbackTarget(messageId);
       const deadToken = yield* store.resolveUserId(token);
       return {
+        firstThumbId,
+        repeatThumbId,
         thumbRows,
+        storedThumbIds,
         target,
         byRowId,
         absentTarget,
@@ -326,8 +334,18 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
         deadToken,
       };
     });
-    const { thumbRows, target, byRowId, absentTarget, nonUuidTarget, orphanedTarget, deadToken } =
-      await Effect.runPromise(program);
+    const {
+      firstThumbId,
+      repeatThumbId,
+      thumbRows,
+      storedThumbIds,
+      target,
+      byRowId,
+      absentTarget,
+      nonUuidTarget,
+      orphanedTarget,
+      deadToken,
+    } = await Effect.runPromise(program);
     expect(target).not.toBeNull();
     expect(target?.userId).toBeTruthy();
     expect(target?.trace).toEqual(trace);
@@ -338,6 +356,11 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
     expect(absentTarget).toBeNull();
     expect(nonUuidTarget).toBeNull();
     expect(thumbRows[0]?.n).toBe(1);
+    // The insert path answers with the row the database stored, and a repeat
+    // verdict on the same element answers with that same row's id.
+    expect(storedThumbIds).toHaveLength(1);
+    expect(firstThumbId).toBe(storedThumbIds[0]?.id);
+    expect(repeatThumbId).toBe(firstThumbId);
     expect(orphanedTarget).toBeNull();
     expect(deadToken).toBeNull();
   }, 60_000);
