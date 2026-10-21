@@ -120,11 +120,15 @@ describe("recorded run — the two retrieval metrics", () => {
   });
 
   it("reads 0.750 once the short-surah completion is applied to the recorded set", () => {
-    // The recorded retrieval is fixed; this is the same set with the addresses a
-    // completion read adds beside it — the target surahs come from the recorded
-    // labels, and the read is the corpus's own surah rows. The whole budget is
-    // modelled here: a recorded set already carries any named scope read's chunks,
-    // and the one row the metric moves has no named reference, so its union is exact.
+    // An address-union MODEL of the recorded set, not a live-run prediction: the
+    // target surahs come from the recorded labels and the read is the corpus's own
+    // surah rows, capped by the configured budget. A live run completes before the
+    // neighbourhood arm, so a completion chunk can become an anchor the recorded
+    // run never had and the arm can then add an address the completion alone did
+    // not (the gs-v0-009 shape); the model also ignores the named read's spend
+    // inside the shared cap, because the fixture carries no origins. The one row
+    // this metric moves names no reference and is not truncated, so its union is
+    // identical either way — the 0.750 is the recorded set's, not a live promise.
     const completed = REPLAY.map((row) => {
       const verses = row.retrieved.flatMap((entry, index) => {
         const match = /^QS\. (\d+):(\d+)$/.exec(entry.label ?? "");

@@ -406,8 +406,9 @@ describe("evidence for #241 — expansion is independent of router paraphrase", 
   });
 
   it("does not expand when only the sub-queries name a surah (C2's asymmetric negative)", async () => {
-    // The question names no surah, so no scope may be read even though a sub-query
-    // names one loudly — a sub-query-keyed implementation cannot pass this.
+    // The question names no surah and the fused set holds no verse, so neither
+    // trigger may read even though a sub-query names one loudly — a
+    // sub-query-keyed implementation cannot pass this.
     const { store } = await corpus();
     const { retrieve, events, reads } = harness(store);
     const chunks = await retrieve(
@@ -547,6 +548,7 @@ describe("short-surah completion", () => {
           value: "1",
           returned: 6,
           cap: DEFAULT_SCOPE_EXPANSION_CAP,
+          remaining: DEFAULT_SCOPE_EXPANSION_CAP,
           truncated: false,
         },
         at: 1,
@@ -586,7 +588,8 @@ describe("short-surah completion", () => {
         key: RETRIEVED_SCOPE_KEY,
         value: "1",
         returned: 2,
-        cap: DEFAULT_SCOPE_EXPANSION_CAP - 4,
+        cap: DEFAULT_SCOPE_EXPANSION_CAP,
+        remaining: DEFAULT_SCOPE_EXPANSION_CAP - 4,
         truncated: false,
       },
     ]);

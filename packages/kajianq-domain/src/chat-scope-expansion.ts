@@ -77,8 +77,15 @@ export type ScopeDetail = {
   key: string;
   value: string;
   returned: number;
+  /** The configured cap; the one budget both triggers share. */
   cap: number;
+  /** The budget this read was given — a completion records what the named read
+   * left of the cap. */
+  remaining?: number;
   truncated: boolean;
+  /** Set on a completion target the shared budget never reached: no read ran and
+   * `returned` is zero. */
+  skipped?: "budget";
 };
 
 /** What the expansion contributed, plus the trace detail describing it. */

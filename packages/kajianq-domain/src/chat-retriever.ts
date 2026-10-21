@@ -215,12 +215,13 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
           // The hierarchy bonuses are the spec's; the Principle bonus applies only on an
           // analogy question, so the fuse is told the intent the route read.
           const fused = rrfFuse(lists, (chunk) => hierarchyBonus(chunk, routed.intent));
+          const scopeCap = deps.scopeExpansionCap ?? DEFAULT_SCOPE_EXPANSION_CAP;
           // Detection runs on the verbatim question, not on a sub-query, so the
           // router's paraphrase cannot flip the scope (ADR-0045).
           const expansion = yield* expandSurahScope({
             sourceText: routed.sourceText,
             existingIds: new Set(fused.map((c) => c.id)),
-            cap: deps.scopeExpansionCap ?? DEFAULT_SCOPE_EXPANSION_CAP,
+            cap: scopeCap,
             store: deps.store,
             bridge: deps.bridge,
           });
@@ -236,11 +237,14 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
           // ADR-0045's second trigger: a fused verse can be one of a short surah's
           // verses while the surah's opening — the verse that may answer the question
           // — sits outside every list. The same bounded read completes it from the
-          // parent's opening, out of what the named read left of the one budget.
+          // parent's opening, out of what the named read left of the one budget; the
+          // event names that remainder beside the configured cap, so neither the
+          // target set nor the starvation hides.
           const completion = yield* expandRetrievedSurahScope({
             retrieved: fused,
             existingIds: new Set(scoped.map((chunk) => chunk.id)),
-            cap: (deps.scopeExpansionCap ?? DEFAULT_SCOPE_EXPANSION_CAP) - expansion.chunks.length,
+            cap: scopeCap,
+            remaining: scopeCap - expansion.chunks.length,
             store: deps.store,
             bridge: deps.bridge,
           });

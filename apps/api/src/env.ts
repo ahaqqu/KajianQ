@@ -34,8 +34,9 @@ export type AppBindings = {
    * leaves the reviewer unchanged, because the pre-gate only ever removes spend
    * (fail-open). */
   JEV_API_KEY?: string;
-  /** The surah-reference scope-expansion budget, as a non-negative integer string.
-   * Absent = the domain default; `0` disables the expansion. Config, never a secret,
+  /** The scope-expansion budget both triggers share — the surah the question names
+   * and the short surah a retrieved verse completes — as a non-negative integer
+   * string. Absent = the domain default; `0` disables both. Config, never a secret,
    * but it rides the same filtered env view so the knob reaches the pipeline's wiring. */
   SCOPE_EXPANSION_CAP?: string;
   /** The retrieved-verse neighbourhood expansion, as non-negative integer strings: how
