@@ -63,8 +63,8 @@ function artifacts() {
 }
 
 /** The manifest the deploy ships to the box, emitted from the real checkout. */
-function emitManifest() {
-  const result = sh("bash", [DRIFT, "--emit-manifest", REPO]);
+function emitManifest(checkout = REPO) {
+  const result = sh("bash", [DRIFT, "--emit-manifest", checkout]);
   expect(result.status, result.stderr).toBe(0);
   return result.stdout;
 }
@@ -165,6 +165,33 @@ function applyWithMode(mode) {
   return { dir, copy };
 }
 
+/**
+ * A checkout whose apply.sh table carries one extra row, for the shape probe a
+ * future versioned destination would trip. The real source tree is linked in,
+ * so the shipped manifest emitter hashes the shipped files.
+ */
+function checkoutWithExtraRow(row) {
+  const dir = mkdtempSync(join(tmpdir(), "kajianq-extra-row-"));
+  const source = join(dir, "provision/vps");
+  mkdirSync(source, { recursive: true });
+  writeFileSync(
+    join(source, "apply.sh"),
+    read("provision/vps/apply.sh").replace("deploy-grant|", `${row}\ndeploy-grant|`),
+  );
+  for (const entry of [
+    "backup",
+    "journald",
+    "logrotate",
+    "nginx",
+    "postgres",
+    "sudoers",
+    "systemd",
+  ]) {
+    symlinkSync(resolve(REPO, "provision/vps", entry), join(source, entry));
+  }
+  return { checkout: dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+}
+
 describe("the artifact set is enumerated from apply.sh itself", () => {
   it("lists every artifact apply.sh places, with its destination, owner and mode", () => {
     const rows = artifacts();
@@ -202,6 +229,20 @@ describe("the artifact set is enumerated from apply.sh itself", () => {
     expect(byName.get("nginx-enabled").src).toBe(byName.get("nginx-conf").dst);
     expect(byName.get("nginx-enabled").dst).toBe("/etc/nginx/sites-enabled/kajianq.conf");
     expect(byName.get("postgres").dst).toBe("/etc/postgresql/*/main/conf.d/99-kajianq.conf");
+  });
+
+  it("carries one versioned destination, and the checker keys its skip to that row", () => {
+    // The zero-conf.d skip is the one apply.sh implements, for its Postgres row
+    // only; every other row's destination reaches install literally. The
+    // checker's skip row must name this row, so a new versioned row cannot slip
+    // into the skip just by carrying a glob.
+    const versioned = artifacts().filter((row) => dirname(row.dst).includes("*"));
+    expect(versioned.map((row) => row.name)).toEqual(["postgres"]);
+    const checker = read("provision/vps/deploy/provision-drift.sh");
+    const skipRow = /^VERSIONED_SKIP_ROW="([^"]+)"/m.exec(checker)?.[1];
+    expect(skipRow, "provision-drift.sh must name the row apply.sh resolves").toBe(
+      versioned[0].name,
+    );
   });
 
   it("has one install site per row and no install that bypasses the table", () => {
@@ -464,23 +505,108 @@ describe("the drift preflight", () => {
     }
   });
 
-  it("skips the Postgres row when no conf.d directory exists, as apply.sh does", () => {
+  it("skips the Postgres row when Postgres is not installed, as apply.sh does", () => {
     // apply.sh resolves the row against the first existing conf.d directory and
     // logs "install postgresql" when there is none. The check must skip the same
-    // row: refusing would name a remedy apply.sh cannot carry out on that box,
-    // so the deploy would fail again on every retry.
+    // row — and say that is why, so this case is not confused with a Postgres
+    // tree that lost its conf.d directory: refusing would name a remedy apply.sh
+    // cannot carry out on that box, so the deploy would fail again on every retry.
     const fixture = driftFixture({ without: ["postgres"] });
     try {
       expect(existsSync(join(fixture.dir, "etc/postgresql"))).toBe(false);
       const result = fixture.check();
       expect(result.status, result.stderr).toBe(0);
       expect(result.stderr).toContain("no directory matches /etc/postgresql/*/main/conf.d");
+      expect(result.stderr).toContain("Postgres is not installed");
       expect(result.stderr).not.toContain("run provision/vps/apply.sh");
       expect(result.stdout).toContain(
         `(${PROVISIONED_ARTIFACTS - 1} of ${PROVISIONED_ARTIFACTS}; 1 skipped`,
       );
+      expect(result.stdout).toContain("Postgres is not installed, as apply.sh also skips the row");
     } finally {
       fixture.cleanup();
+    }
+  });
+
+  it("names the consequence when Postgres is installed but has no conf.d", () => {
+    // `/etc/postgresql` present without main/conf.d is not "Postgres is not
+    // installed": the installer skips the row and the log/reachability posture
+    // is never applied. The check still skips the row apply.sh skips, but it
+    // must say that the posture is missing rather than pass a bare skip.
+    const fixture = driftFixture({ without: ["postgres"] });
+    try {
+      mkdirSync(join(fixture.dir, "etc/postgresql/16/main"), { recursive: true });
+      const result = fixture.check();
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stderr).toContain("no conf.d directory under");
+      expect(result.stderr).toContain("/etc/postgresql");
+      expect(result.stderr).toContain("posture is not applied on this box");
+      expect(result.stderr).not.toContain("Postgres is not installed");
+      expect(result.stdout).toContain("Postgres is installed but has no conf.d");
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it("refuses an unreadable /etc/postgresql instead of skipping it", () => {
+    // chmod 000 makes the glob expand to nothing for the same reason an absent
+    // directory does. The check cannot tell "no Postgres" from "cannot see
+    // Postgres", so it must refuse rather than pass the box green.
+    const fixture = driftFixture();
+    const postgres = join(fixture.dir, "etc/postgresql");
+    try {
+      chmodSync(postgres, 0o000);
+      const result = fixture.check();
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain("cannot read or search");
+      expect(result.stderr).toContain("/etc/postgresql");
+      expect(result.stderr).not.toContain("no directory matches");
+      expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
+    } finally {
+      chmodSync(postgres, 0o755);
+      fixture.cleanup();
+    }
+  });
+
+  it("refuses a conf.d that is not a directory, as apply.sh fails to install into it", () => {
+    // apply.sh resolves this row with `ls -d`, which matches a regular file and
+    // then hands <file>/99-kajianq.conf to install. The check must fail the row
+    // too, not read the missing directory as "nothing to place".
+    const fixture = driftFixture({ without: ["postgres"] });
+    try {
+      const confD = fixture.path("/etc/postgresql/*/main/conf.d");
+      mkdirSync(dirname(confD), { recursive: true });
+      writeFileSync(confD, "not a directory\n");
+      const result = fixture.check();
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain("/etc/postgresql/16/main/conf.d is not a directory");
+      expect(result.stderr).not.toContain("no directory matches");
+      expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it("refuses a second versioned row instead of skipping it uncompared", () => {
+    // apply.sh resolves a versioned destination for the Postgres row only; a
+    // second row carrying a directory glob would reach `install` literally and
+    // fail. The check must refuse it, not infer a skip from the glob shape.
+    const extra =
+      "postgres-log|config|postgres/99-kajianq.conf|/etc/postgresql/*/main/log.d/99-kajianq.conf|root|root|644";
+    const checkout = checkoutWithExtraRow(extra);
+    const fixture = driftFixture();
+    try {
+      const manifest = fixtureManifest(emitManifest(checkout.checkout));
+      expect(manifest.split("\n").filter(Boolean)).toHaveLength(PROVISIONED_ARTIFACTS + 1);
+      const result = fixture.check({ manifest });
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain("/etc/postgresql/*/main/log.d/99-kajianq.conf");
+      expect(result.stderr).toContain("carries a versioned destination");
+      expect(result.stderr).not.toContain("no directory matches");
+      expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS + 1}`);
+    } finally {
+      fixture.cleanup();
+      checkout.cleanup();
     }
   });
 
