@@ -54,12 +54,22 @@
 # entry that is not a directory (the install into it would fail); it skips only
 # where apply.sh skips, and it names the two skip states apart — no Postgres at
 # all, versus Postgres installed with no conf.d, where the log/reachability
-# posture is never applied. An unsearchable /etc/postgresql is refused rather
-# than skipped: an empty glob under a directory this identity cannot read looks
-# the same as an absent one. Any other row whose destination carries a
-# directory glob is refused because apply.sh hands that row's literal path to
-# install and fails, so the check must not skip it uncompared. A skipped row is
-# named and is not counted as compared; the green line reports it.
+# posture is never applied.
+#
+# The version choice is the one place this check cannot see what apply.sh sees:
+# apply.sh runs as root and expands the glob through directories root alone may
+# enter, while this check runs as the deploy identity. Resolving as root would
+# need privilege the preflight does not have and must not hold, so this check
+# refuses instead of resolving a different version: every directory the
+# pattern's expansion must enter — the static prefix, each `<ver>` under it,
+# each `<ver>/main`, each `conf.d` — is tested for read and search, and the
+# first one this identity cannot enter is refused rather than read as "no
+# match". A version directory it cannot see is one root's expansion may still
+# pick, and then apply.sh would write a directory this check never compared.
+# Any other row whose destination carries a directory glob is refused because
+# apply.sh hands that row's literal path to install and fails, so the check
+# must not skip it uncompared. A skipped row is named and is not counted as
+# compared; the green line reports it.
 #
 # Usage: bash provision-drift.sh --emit-manifest <checkout>
 #        bash provision-drift.sh --check [--root <dir>] [--manifest-base64 <value>]
@@ -160,6 +170,21 @@ refuse() {
 # destination there is a row apply.sh cannot place and this check refuses it.
 VERSIONED_SKIP_ROW="postgres"
 
+# A directory this identity cannot read and search, printed so a refusal names
+# it; an absent directory is not printed — absence is a state the caller
+# interprets. A glob expands to nothing under either, which is why a read
+# failure anywhere on an expansion path has to be refused rather than read as
+# "nothing matches".
+unreadable_dir() {
+    local path="$1"
+    [ -e "${path}" ] || return 1
+    if [ -r "${path}" ] && [ -x "${path}" ]; then
+        return 1
+    fi
+    printf '%s\n' "${path}"
+    return 0
+}
+
 # The first path in the static prefix's chain that this identity cannot read and
 # search. An empty glob under an unsearchable ancestor is not evidence of an
 # absent directory: every probe below it fails the same way, so a skip there
@@ -167,14 +192,63 @@ VERSIONED_SKIP_ROW="postgres"
 unsearchable_prefix() {
     local path="$1" parent
     while [ -n "${path}" ] && [ "${path}" != "/" ]; do
-        if [ -e "${path}" ] && { [ ! -r "${path}" ] || [ ! -x "${path}" ]; }; then
-            printf '%s\n' "${path}"
+        if unreadable_dir "${path}"; then
             return 0
         fi
         parent="$(dirname "${path}")"
         [ "${parent}" != "${path}" ] || break
         path="${parent}"
     done
+    return 1
+}
+
+# Every directory an expansion of a versioned pattern must enter below its
+# static prefix: the matches of each glob component, and every fixed component
+# below them. Prints the first one this identity cannot read and search, and
+# returns 0; returns 1 when the whole expansion is visible here.
+#
+# Root ignores the bits that stop this identity, so a directory it cannot enter
+# may still hold a version root's expansion picks. The refusal is what keeps
+# this check from comparing one directory while apply.sh writes another.
+unsearchable_expansion() {
+    local path="$1" suffix="$2" component candidate entry
+    suffix="${suffix#/}"
+    [ -n "${suffix}" ] || return 1
+    component="${suffix%%/*}"
+    case "${suffix}" in
+        */*) suffix="${suffix#*/}" ;;
+        *) suffix="" ;;
+    esac
+    case "${component}" in
+        *'*'*)
+            # Matching the glob reads this directory; entering a match stats
+            # that match's children.
+            if unreadable_dir "${path}"; then
+                return 0
+            fi
+            for entry in "${path}"/*; do
+                [ -d "${entry}" ] || continue
+                # shellcheck disable=SC2053 # the component IS the pattern
+                [[ "${entry##*/}" == ${component} ]] || continue
+                if unreadable_dir "${entry}"; then
+                    return 0
+                fi
+                if unsearchable_expansion "${entry}" "${suffix}"; then
+                    return 0
+                fi
+            done
+            ;;
+        *)
+            candidate="${path%/}/${component}"
+            [ -d "${candidate}" ] || return 1
+            if unreadable_dir "${candidate}"; then
+                return 0
+            fi
+            if unsearchable_expansion "${candidate}" "${suffix}"; then
+                return 0
+            fi
+            ;;
+    esac
     return 1
 }
 
@@ -190,7 +264,8 @@ unsearchable_prefix() {
 #   2  the row apply.sh skips, with no static prefix on the box
 #   3  the row apply.sh skips, with a static prefix but no match under it
 #   4  a versioned destination on a row apply.sh does not resolve
-#   5  the static prefix exists but this identity cannot read or search it
+#   5  the static prefix, or a directory its glob expands through, cannot be
+#      read or searched by this identity
 #   6  the glob matched an entry that is not a directory
 # For 3, 5 and 6 the offending path is printed on stdout.
 resolve_destination() {
@@ -202,16 +277,28 @@ resolve_destination() {
             case "${dir}" in
                 *'*'*)
                     [ "${name}" = "${VERSIONED_SKIP_ROW}" ] || return 4
-                    # The text before the first `*` is the only part of the
-                    # pattern that is a fixed path on the box.
+                    # The fixed path the glob expands under: the directory that
+                    # holds the first glob component. That is the text before
+                    # the `*` when it ends at a component boundary, and its
+                    # parent when the `*` shares a component with fixed text.
                     prefix="${dir%%\**}"
-                    prefix="${prefix%/}"
+                    case "${prefix}" in
+                        */) prefix="${prefix%/}" ;;
+                        *) prefix="$(dirname "${prefix}")" ;;
+                    esac
                     [ -n "${prefix}" ] || prefix="/"
                     if found="$(unsearchable_prefix "${prefix}")"; then
                         printf '%s\n' "${found}"
                         return 5
                     fi
                     [ -e "${prefix}" ] || return 2
+                    # Every directory below the prefix that the expansion must
+                    # enter, before the first match is trusted: root resolves
+                    # through directories this identity cannot.
+                    if found="$(unsearchable_expansion "${prefix}" "${dir#"${prefix}"}")"; then
+                        printf '%s\n' "${found}"
+                        return 5
+                    fi
                     # shellcheck disable=SC2086 # the glob IS the destination
                     match="$(ls -d ${dir} 2>/dev/null | head -1 || true)"
                     if [ -z "${match}" ]; then
@@ -333,7 +420,7 @@ check_manifest() {
             5)
                 CHECKED=$((CHECKED + 1))
                 refuse \
-                    "cannot read or search ${installed} as $(id -un) — an unreadable path and an absent one both yield an empty glob, so ${dst} is refused instead of skipped" \
+                    "cannot read or search ${installed} as $(id -un) — an unreadable path and an absent one both yield an empty glob, and root's apply.sh expands through paths this identity cannot enter, so ${dst} is refused instead of skipped" \
                     "make ${installed} readable and searchable for the deploy identity, then deploy again"
                 continue
                 ;;
