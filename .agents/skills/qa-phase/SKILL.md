@@ -12,19 +12,18 @@ The manager owns the decision and the ticket; the `qa` role agent runs the probe
 
 **A QA-needed change's PR must not carry a closing keyword for its issue** — the issue closes on the verdict, and a mechanical closure at merge asserts a verification that has not happened. The `pr-creation` skill's closing-keyword rule owns which phrasings close and which stay safe; a QA-needed PR references its issue inside that safe class (`Refs #N`).
 
-## Three shapes — every change is classified
+## The shape table — every change is classified
 
 A change is classified before its PR merges, and the manager records the decision either way (a `QA phase: not needed because …` line in the final summary counts as the record).
 
-| Change                                                                   | Shape              | What verifies it                                                                                                 |
-| ------------------------------------------------------------------------ | ------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| Tests-only, scripts, docs, skills, agent files, CI metadata              | **Inert**          | Nothing — no QA phase. Record why: the change cannot alter deployed behaviour.                                   |
-| Eval scorers, fixtures, smoke selection                                  | **Gate-affecting** | **Falsification** — does the gate still fail when it should? Staging user-behaviour probing cannot judge a gate. |
-| Routes, chat pipeline, prompts, retrieval, contracts, migrations, web UI | **Runtime**        | **Full staging QA**, adversarial persona included.                                                               |
+| Change                                                                                                                                                                                                                                            | Shape                            | What verifies it                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Docs, skills, ADRs, `SPECS.md`, CI metadata, and test-only changes whose subject is not itself a deployed artifact                                                                                                                                | **Inert**                        | A review and CI — no QA phase. Record why.                                                                       |
+| The checkers that judge deployed artifacts — the drift preflight, a table validator, a mode-format rule — and their own fixtures                                                                                                                  | **Inert, with fixture evidence** | CI and its fixtures — no QA phase. Record why.                                                                   |
+| Eval scorers, Golden Set fixtures, smoke selection                                                                                                                                                                                                | **Gate-affecting**               | **Falsification** — does the gate still fail when it should? Staging user-behaviour probing cannot judge a gate. |
+| Routes, chat pipeline, prompts, retrieval, contracts, migrations, web UI, any production validator/parser/refusal whose output a deployed path emits, and the installed artifacts under `provision/vps` (a unit, an nginx route, a sudoers grant) | **Runtime**                      | **Full staging QA**, adversarial persona included.                                                               |
 
-The middle shape is the one that gets mistaken for the third. A gate-affecting change ships no user-visible behaviour to probe, and a healthy answer from staging says nothing about whether the gate can still go red — so its QA phase is the gate's own falsification, written as a QA ticket with a mutation observable (`the gate must fail on <defect>` — the mutations the ticket names, e.g. an ungrounded non-refusal) instead of a user observable.
-
-The classification is a judgement about **what the change can break**, not about its diff size: a one-line prompt edit is runtime; a large test-suite refactor is inert.
+**The deciding question is whether a review or a fixture can settle every claim, not whether the file is code** — QA's instrument is the deployed environment, so it is owed only where the claim lives there, and the same object in the runtime path or the eval fixtures takes the runtime or gate-affecting row. The gate-affecting shape is the one mistaken for runtime: it ships no user-visible behaviour, so its QA is the gate's own falsification with a mutation observable, not a user observable. Classification rests on what the change can break, not its diff size — a one-line prompt edit is runtime, a large test refactor is inert — and over-classifying spends a session and a paid probe proving what a unit test already proved.
 
 ## The QA ticket (the manager writes it)
 
