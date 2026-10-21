@@ -67,13 +67,15 @@ Publish the approved tickets. **How** depends on the project's issue tracker —
 
 #### Type labels
 
-Every published ticket carries **exactly one** type label, and the tracker must never hold an issue without one:
+Every ticket published to an issue tracker carries **exactly one** type label, and the tracker must never hold an issue without one:
 
 - **`bug`** — the current state is wrong: a false claim, a check that stays green when it should redden, a flaky or broken path, a defect QA found.
-- **`enhancement`** — the current state is right and the work improves it: a refactor, a doc or gate sharpening, hardening, tooling, a verification round that closes no defect.
+- **`enhancement`** — the current state is right and the work improves it: a refactor, a doc or gate sharpening, hardening, tooling, a verification round filed with no known defect.
 - **`feature`** — a capability that does not exist yet: a new stage, route, screen, dataset, or policy the product gains.
 
-The distinction is **what the ticket asserts about today**, not how large the change is. A one-line false statement is a `bug`; a quarter of new pipeline is a `feature`. Work that only re-verifies or hardens what already exists is an `enhancement` — labelling a verification round `bug` asserts a defect that has not been found.
+The distinction is **what the ticket asserts about today**, not how large the change is, and not the channel it arrived by: a one-line false statement is a `bug`, a quarter of new pipeline is a `feature`, and a review finding takes the label of what it asserts — a defect is a `bug`, a suggestion is an `enhancement`.
+
+Work that only re-verifies or hardens what already exists is an `enhancement`: a verification round filed with no known defect asserts verification, not a defect, so labelling it `bug` would assert a defect that has not been found. A defect the round later establishes is filed as its own new `bug` ticket — the round is not relabelled, because it asserted verification, not a defect.
 
 An issue arriving without one is classified at intake, by the same rule, before any dispatch — the same duty the manager's intake owns for a card with no Status.
 
