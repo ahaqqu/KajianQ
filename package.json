@@ -55,16 +55,17 @@
     "@playwright/test": "1.64.0",
     "@size-limit/file": "14.2.0",
     "@types/node": "26.6.5",
-    "@vitest/coverage-v8": "4.1.11",
+    "@vitest/coverage-v8": "5.0.3",
     "fast-check": "4.10.2",
     "playwright-bdd": "9.2.1",
     "size-limit": "14.2.0",
     "typescript": "7.0.2",
-    "vite-plus": "0.3.0"
+    "vite-plus": "1.1.0"
   },
   "overrides": {
     "effect": "4.0.2",
-    "tinypool": "2.1.2"
+    "tinypool": "2.1.2",
+    "vitest": "5.0.3"
   },
   "size-limit": [
     {
