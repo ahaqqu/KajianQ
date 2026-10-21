@@ -58,7 +58,7 @@
     "@vitest/coverage-v8": "4.1.11",
     "fast-check": "4.10.2",
     "playwright-bdd": "9.2.1",
-    "size-limit": "13.0.3",
+    "size-limit": "14.2.0",
     "typescript": "7.0.2",
     "vite-plus": "0.3.0"
   },
