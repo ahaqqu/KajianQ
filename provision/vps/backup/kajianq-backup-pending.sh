@@ -3,11 +3,15 @@
 # before the job body can run.
 #
 # Installed by provision/vps/apply.sh at /usr/local/sbin/kajianq-backup-pending
-# and run from kajianq-backup.service's ExecStartPre, so it runs whether or not
-# the job body does: a moved `bun`, an absent deployed bundle, or a broken
-# ExecStart leaves this marker instead of the previous success. The deploy's
-# provenance preflight refuses `status=pending`, which is the only durable
-# evidence a run that died before the job wrote anything can leave.
+# and run from kajianq-backup.service's ExecStartPre, so a unit that starts
+# writes it before the job body runs: a moved `bun`, an absent deployed bundle,
+# or a broken ExecStart leaves this marker instead of the previous success. The
+# deploy's provenance preflight refuses `status=pending`, the only durable
+# evidence a run that starts and dies before the job writes anything can leave.
+# A run systemd never starts — a `Requires=` dependency failing before any
+# ExecStartPre — writes no marker and leaves the previous record in place; the
+# gate header (`provision/vps/deploy/backup-provenance.sh`) states the same
+# pre-spawn limit.
 #
 # The unit's EnvironmentFile is optional (`EnvironmentFile=-`) for this reason:
 # systemd loads that file before the first ExecStartPre, and a missing required
