@@ -184,6 +184,15 @@
       "requiredCitations": [],
       "expectedBehavior": "refuse",
       "tags": ["refusal", "dhaif-trap", "fabricated-attribution"]
+    },
+    {
+      "id": "gs-v0-021",
+      "question": "Apa isi hadits pada HR. Bukhari no. 191?",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Bukhari no. 191"],
+      "expectedBehavior": "answer",
+      "tags": ["hadith"]
     }
   ]
 }

@@ -141,7 +141,7 @@ describe("parseScopeExpansionCap — ADR-0045's budget knob", () => {
     expect(pipeline).not.toHaveProperty("neighbourCap");
   });
 
-  it("parses ADR-0054's label-lookup cap with the same rule and wires it", () => {
+  it("parses ADR-0058's label-lookup cap with the same rule and wires it", () => {
     expect(parseLabelLookupCap(undefined)).toBeUndefined();
     expect(parseLabelLookupCap("  ")).toBeUndefined();
     expect(parseLabelLookupCap("8")).toBe(8);

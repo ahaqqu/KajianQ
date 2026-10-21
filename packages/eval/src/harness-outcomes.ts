@@ -8,20 +8,29 @@ import { sourceTypeRecall } from "./scorers";
  * ledger-write-failure note both write paths share. */
 
 /**
- * The per-question expansion provenance: the number of scope-origin refs and the
- * source-type recall the fused refs alone would have scored.
+ * The per-question deterministic-path provenance: the number of scope-origin refs,
+ * the source-type recall the fused refs alone would have scored, and — when the
+ * citation-label lookup ran — its own contribution beside that figure.
  *
  * `sourceTypeRecall` never inspects a ref's `origin` label, so for a question that
- * names a reference the scored leg is satisfied by construction whenever the
- * scoped read works, and a fused-track regression on exactly those questions
- * would otherwise be invisible. A `fusedOnlySourceTypeRecall` below the reported
- * `sourceTypeRecall` states that the expansion carried the question; the metric
- * itself is never redefined.
+ * names a reference a deterministic read satisfies the scored leg by
+ * construction, and a fused-track regression on exactly those questions would
+ * otherwise be invisible. A `fusedOnlySourceTypeRecall` below the reported
+ * `sourceTypeRecall` states that a deterministic arm carried the question; the
+ * metric itself is never redefined.
  *
  * **"The fused refs alone" means the refs that carry NO origin label** — every
- * expansion path labels its own chunks, so whichever label a future expansion
+ * deterministic path labels its own chunks, so whichever label a future path
  * writes, its chunks leave the fused-only leg. `expansion.chunks` stays the
  * **scope** path's count; a neighbour-only question reports no block.
+ *
+ * The block is written whenever **any** deterministic path ran: the scope read
+ * (`expansionOrigin`), or the citation-label lookup — a lookup event or a
+ * lookup-origin ref (`lookupOrigin`). The label-only shape is the one that needs
+ * it most: the lookup can be the only arm that satisfied the question, and a
+ * report without this block says nothing about the fused track it outran. The
+ * `lookup` field is present only when the lookup path ran, like `chunks` only
+ * ever counting the scope path.
  */
 export function expansionProvenance(input: {
   expectedSourceTypes: readonly string[];
@@ -30,25 +39,53 @@ export function expansionProvenance(input: {
   sourceTypeOf: (chunkId: string) => string | undefined;
   /** Opaque caller label (domain vocabulary stays at the composition root). */
   expansionOrigin?: string;
+  /** Opaque caller label for the citation-label lookup's chunks. */
+  lookupOrigin?: string;
 }): { expansion?: EvalResultOutcome["expansion"] } {
-  const { expansionOrigin } = input;
-  if (expansionOrigin === undefined) return {};
-  const expansionChunks = input.chunks.filter((chunk) => chunk.origin === expansionOrigin);
+  const { expansionOrigin, lookupOrigin } = input;
+  if (expansionOrigin === undefined && lookupOrigin === undefined) return {};
+  const expansionChunks =
+    expansionOrigin === undefined
+      ? []
+      : input.chunks.filter((chunk) => chunk.origin === expansionOrigin);
   // A recognised-but-empty scope still counts as "the scoped path ran".
   const scopedPathRan =
     expansionChunks.length > 0 || input.events.some((e) => e.kind === "scope_expansion");
-  if (!scopedPathRan) return {};
-  return {
-    expansion: {
-      chunks: expansionChunks.length,
-      fusedOnlySourceTypeRecall: sourceTypeRecall(
-        input.expectedSourceTypes,
-        // Absence of an origin label is what makes a ref a fused hit.
-        input.chunks.filter((chunk) => chunk.origin === undefined),
-        input.sourceTypeOf,
-      ),
-    },
+  const lookupEvent = input.events.filter((e) => e.kind === "citation_lookup").at(-1);
+  const lookupChunks =
+    lookupOrigin === undefined ? [] : input.chunks.filter((chunk) => chunk.origin === lookupOrigin);
+  // A lookup that resolved nothing still leaves its event: "ran and found none"
+  // is exactly the state the block must not hide.
+  const lookupPathRan = lookupChunks.length > 0 || lookupEvent !== undefined;
+  if (!scopedPathRan && !lookupPathRan) return {};
+
+  // Absence of an origin label is what makes a ref a fused hit.
+  const fused = input.chunks.filter((chunk) => chunk.origin === undefined);
+  const expansion: NonNullable<EvalResultOutcome["expansion"]> = {
+    chunks: expansionChunks.length,
+    fusedOnlySourceTypeRecall: sourceTypeRecall(
+      input.expectedSourceTypes,
+      fused,
+      input.sourceTypeOf,
+    ),
   };
+  if (lookupPathRan) {
+    const detail = lookupEvent?.detail;
+    expansion.lookup = {
+      returned: detail?.returned ?? lookupChunks.length,
+      missing: detail?.missing?.length ?? 0,
+      dropped: detail?.dropped?.length ?? 0,
+      truncated: detail?.truncated === true,
+      // The expected sources the fused refs alone did not cover: what the
+      // lookup carried into the scored recall, named rather than counted.
+      carriedSourceTypes: input.expectedSourceTypes.filter(
+        (type) =>
+          lookupChunks.some((chunk) => input.sourceTypeOf(chunk.id) === type) &&
+          !fused.some((chunk) => input.sourceTypeOf(chunk.id) === type),
+      ),
+    };
+  }
+  return { expansion };
 }
 
 /** The text for anything a `catch` can hand us: `cause` is `unknown` by

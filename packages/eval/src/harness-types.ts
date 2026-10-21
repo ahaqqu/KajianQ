@@ -46,6 +46,12 @@ export type TraceEventLike = {
     returned?: number;
     cap?: number;
     truncated?: boolean;
+    /** The `citation_lookup` event's resolved labels. */
+    labels?: string[];
+    /** The `citation_lookup` event's labels no stored row carried. */
+    missing?: string[];
+    /** The labels the lookup's grammar saw but did not resolve. */
+    dropped?: { label: string; reason: string }[];
   };
   /** The event's cost record (feeds the report's costs). */
   cost?: CostRecordLike;

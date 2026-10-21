@@ -21,6 +21,7 @@ import { Effect } from "effect";
 import { createLogger, resolvePostgresStore } from "@app/infra";
 import { BudgetExceededError, postChatSse } from "@app/eval";
 import {
+  CITATION_LOOKUP_ORIGIN,
   DEFAULT_REFUSALS,
   SCOPE_EXPANSION_ORIGIN,
   addressesNamedBy,
@@ -40,6 +41,14 @@ export const REFUSAL_MARKERS = [DEFAULT_REFUSALS.id, DEFAULT_REFUSALS.en];
  * the composition root — the engine package only compares opaque labels.
  */
 export const EXPANSION_ORIGIN = SCOPE_EXPANSION_ORIGIN;
+
+/**
+ * The opaque `origin` label the domain pack writes on citation-label lookup
+ * chunks (ADR-0058), injected beside the scope label for the same reason: the
+ * harness compares it and never names it, and the provenance block can then
+ * report a label-only question's lookup contribution.
+ */
+export const LOOKUP_ORIGIN = CITATION_LOOKUP_ORIGIN;
 
 /**
  * The citation grammar the scorer normalizes labels with. It is the
@@ -199,5 +208,6 @@ export async function createStagingHarness(config, budget) {
     citationGrammar: CITATION_GRAMMAR,
     citationIdentity: CITATION_IDENTITY,
     expansionOrigin: EXPANSION_ORIGIN,
+    lookupOrigin: LOOKUP_ORIGIN,
   };
 }

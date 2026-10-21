@@ -289,7 +289,7 @@ describe("printSummary (#290, #340)", () => {
       "  mean citation-address recall: 1.000",
       "  mean citation validity: 1.000",
       "  cost: 0.000025 USD  budget exceeded: false",
-      "  scoped: q3 — expansion chunks 5, fused-only source-type recall 1.000 (reported 1.000)",
+      "  deterministic: q3 — scope chunks 5; fused-only source-type recall 1.000 (reported 1.000)",
     ]);
     expect(printed).not.toMatch(/^ {2}(failed|skipped): /m);
   });
@@ -320,7 +320,43 @@ describe("printSummary (#290, #340)", () => {
     ).not.toContain("tracked retrieval debt");
   });
 
-  it("keeps the summary shape and order, with the failure line between scoped and skipped", () => {
+  it("names the label lookup when it carried a label-only question (B1)", () => {
+    // The #277 shape: no scope path ran, the fused arm alone scored nothing, and
+    // the lookup supplied the only expected source. The summary must say so.
+    const labelOnly = {
+      questionId: "q5",
+      passed: true,
+      sourceTypeRecall: 1,
+      citationAddressRecall: 1,
+      citationValidity: 1,
+      expansion: {
+        chunks: 0,
+        fusedOnlySourceTypeRecall: 0,
+        lookup: {
+          returned: 1,
+          missing: 0,
+          dropped: 0,
+          truncated: false,
+          carriedSourceTypes: ["hadith"],
+        },
+      },
+    };
+    const printed = printedSummary(
+      {
+        passed: 2,
+        failed: 0,
+        skipped: 0,
+        budgetExceeded: false,
+        results: [scored, labelOnly],
+      },
+      FIXTURE,
+    );
+    expect(printed).toContain(
+      "  deterministic: q5 — lookup returned 1, missing 0, dropped 0 (carried hadith); fused-only source-type recall 0.000 (reported 1.000)",
+    );
+  });
+
+  it("keeps the summary shape and order, with the failure line between the deterministic and skipped lines", () => {
     const scoped = {
       questionId: "q4",
       passed: true,
@@ -347,7 +383,7 @@ describe("printSummary (#290, #340)", () => {
       "  mean citation-address recall: 1.000",
       "  mean citation validity: 0.667",
       "  cost: 0.000025 USD  budget exceeded: false",
-      "  scoped: q4 — expansion chunks 5, fused-only source-type recall 1.000 (reported 1.000)",
+      "  deterministic: q4 — scope chunks 5; fused-only source-type recall 1.000 (reported 1.000)",
       "  failed: q3 citationValidity=0.000",
       "  skipped: q2 — transport down",
     ]);

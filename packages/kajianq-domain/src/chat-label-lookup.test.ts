@@ -6,6 +6,7 @@ import { runChatPipelinePromise, type ChatPipelineDeps } from "./chat-pipeline";
 import type { GeneratorProvider } from "./chat-generator";
 import { CITATION_LOOKUP_ORIGIN, DEFAULT_LABEL_LOOKUP_CAP } from "./chat-label-lookup";
 import { DEFAULT_REFUSALS } from "./chat-refusal";
+import { dhaifWarning } from "./chat-postprocess";
 import type { KajianQFilters } from "./filters";
 import { createMemoryRagStore } from "./test-utils/memory-rag-store";
 import { createStubChatProviders } from "./test-utils/stub-chat-providers";
@@ -42,6 +43,7 @@ async function seedHadith(
     hadithNo: string;
     ordinal: number;
     vector: readonly number[];
+    grade?: "sahih" | "hasan" | "dhaif";
   },
 ): Promise<string> {
   const sourceKey = `hadith/${opts.collection}/section/${opts.book}`;
@@ -67,6 +69,7 @@ async function seedHadith(
         collection: opts.collection,
         hadithNo: opts.hadithNo,
         book: opts.book,
+        ...(opts.grade !== undefined ? { grade: opts.grade } : {}),
         citation: `HR. ${DISPLAY[opts.collection] ?? opts.collection} no. ${opts.hadithNo}`,
       },
     }),
@@ -177,6 +180,7 @@ describe("citation-label lookup — retrieval seam", () => {
     expect(lookupEvent(events)?.detail).toEqual({
       labels: ["HR. Bukhari no. 4697"],
       missing: [],
+      dropped: [],
       returned: 1,
       cap: DEFAULT_LABEL_LOOKUP_CAP,
       truncated: false,
@@ -196,6 +200,69 @@ describe("citation-label lookup — retrieval seam", () => {
     expect(lookupEvent(events)?.detail).toEqual({
       labels: ["HR. Bukhari no. 999999"],
       missing: ["HR. Bukhari no. 999999"],
+      dropped: [],
+      returned: 0,
+      cap: DEFAULT_LABEL_LOOKUP_CAP,
+      truncated: false,
+    });
+  });
+
+  it("records a glued range as seen and unresolved instead of reading its head", async () => {
+    const { store } = await bukhariBook();
+    const { retrieve, events, reads } = harness(store);
+    const chunks = await retrieve(
+      routed("Jelaskan HR. Bukhari no. 4697-4700.", ["hadits bukhari 4697 4700"]),
+    );
+
+    // The head names a real row, but the form names a range: the arm declines
+    // the whole address rather than reading 4697 and discarding 4700.
+    expect(chunks.some((chunk) => chunk.origin === CITATION_LOOKUP_ORIGIN)).toBe(false);
+    expect(reads).toEqual([]);
+    expect(lookupEvent(events)?.detail).toEqual({
+      labels: [],
+      missing: [],
+      dropped: [{ label: "HR. Bukhari no. 4697-4700", reason: "range" }],
+      returned: 0,
+      cap: DEFAULT_LABEL_LOOKUP_CAP,
+      truncated: false,
+    });
+  });
+
+  it("records a spaced range or comma list as seen and unresolved, never its head", async () => {
+    const { store } = await bukhariBook();
+    const { retrieve, events, reads } = harness(store);
+    const chunks = await retrieve(
+      routed("Bandingkan HR. Bukhari no. 4697 — 4700 dan HR. Bukhari no. 191, 192.", [
+        "bandingkan hadits",
+      ]),
+    );
+
+    expect(chunks.some((chunk) => chunk.origin === CITATION_LOOKUP_ORIGIN)).toBe(false);
+    expect(reads).toEqual([]);
+    expect(lookupEvent(events)?.detail).toEqual({
+      labels: [],
+      missing: [],
+      dropped: [
+        { label: "HR. Bukhari no. 4697 — 4700", reason: "range" },
+        { label: "HR. Bukhari no. 191, 192", reason: "list" },
+      ],
+      returned: 0,
+      cap: DEFAULT_LABEL_LOOKUP_CAP,
+      truncated: false,
+    });
+  });
+
+  it("records a collection the corpus does not carry as seen and unresolved", async () => {
+    const { store } = await bukhariBook();
+    const { retrieve, events, reads } = harness(store);
+    const chunks = await retrieve(routed("Jelaskan HR. Fictitious no. 1.", ["hadits"]));
+
+    expect(chunks.some((chunk) => chunk.origin === CITATION_LOOKUP_ORIGIN)).toBe(false);
+    expect(reads).toEqual([]);
+    expect(lookupEvent(events)?.detail).toEqual({
+      labels: [],
+      missing: [],
+      dropped: [{ label: "HR. Fictitious no. 1", reason: "collection" }],
       returned: 0,
       cap: DEFAULT_LABEL_LOOKUP_CAP,
       truncated: false,
@@ -276,6 +343,7 @@ describe("citation-label lookup — retrieval seam", () => {
     expect(lookupEvent(events)?.detail).toEqual({
       labels: ["HR. Bukhari no. 1"],
       missing: [],
+      dropped: [],
       returned: 2,
       cap: 2,
       truncated: true,
@@ -381,6 +449,73 @@ describe("citation-label lookup — delivered answer", () => {
         ?.turns.map((turn) => turn.content)
         .join("\n") ?? "";
     expect(context).not.toContain("arabic 999999");
+  });
+
+  it("leaves a declined range and an unknown collection on the pipeline trace", async () => {
+    const { store } = await bukhariBook();
+    const answer = await runChatPipelinePromise(
+      pipelineDeps(store, { answerText: DEFAULT_REFUSALS.id }),
+      { text: "Jelaskan HR. Bukhari no. 4697-4700 dan HR. Fictitious no. 1." },
+    );
+
+    const lookup = answer.trace.events.find((event) => event.kind === "citation_lookup");
+    // A label span the arm saw and declined is trace content: a reader can tell
+    // it from a question that named no label at all.
+    expect(lookup?.kind === "citation_lookup" ? lookup.detail.dropped : undefined).toEqual([
+      { label: "HR. Bukhari no. 4697-4700", reason: "range" },
+      { label: "HR. Fictitious no. 1", reason: "collection" },
+    ]);
+    const retrieval = answer.trace.events.find((event) => event.kind === "retrieval");
+    const refs = retrieval?.kind === "retrieval" ? retrieval.detail.chunks : [];
+    expect(refs.some((ref) => ref.origin === CITATION_LOOKUP_ORIGIN)).toBe(false);
+  });
+
+  it("lets a named label outrank the route's inferred filters, and still flags a weak grade", async () => {
+    const store = createMemoryRagStore();
+    // A sahih neighbour satisfies the routed filter and keeps the fused search
+    // from probing that filter away; the dhaif label is reachable only by identity.
+    const near = await seedHadith(store, {
+      collection: "bukhari",
+      book: 65,
+      hadithNo: "4696",
+      ordinal: 0,
+      vector: NEAR,
+      grade: "sahih",
+    });
+    const labelled = await seedHadith(store, {
+      collection: "bukhari",
+      book: 65,
+      hadithNo: "4697",
+      ordinal: 1,
+      vector: FAR,
+      grade: "dhaif",
+    });
+    const answer = await runChatPipelinePromise(
+      pipelineDeps(store, { answerText: "Hadits HR. Bukhari no. 4697 menerangkan isinya." }),
+      { text: QUESTION_4697, filters: { grade: ["sahih"] } },
+    );
+    const retrieval = answer.trace.events.find((event) => event.kind === "retrieval");
+    const refs = retrieval?.kind === "retrieval" ? retrieval.detail.chunks : [];
+
+    // The routed filter still governs the fused arm...
+    expect(refs.some((ref) => ref.id === near && ref.origin === undefined)).toBe(true);
+    // ...and the identity-addressed read is deliberately not bound by it: the
+    // label the caller named outranks the route's inferred grade, on the same
+    // footing as the scope and neighbour reads (ADR-0058).
+    expect(refs.some((ref) => ref.id === labelled && ref.origin === CITATION_LOOKUP_ORIGIN)).toBe(
+      true,
+    );
+    const routing = answer.trace.events.find((event) => event.kind === "source_routing");
+    expect(routing?.kind === "source_routing" ? routing.detail.filters : undefined).toEqual({
+      grade: ["sahih"],
+    });
+    // The product rule reads the chunk's stored grade, so the weak label is
+    // flagged rather than silently admitted as strong.
+    expect(answer.text).toContain(dhaifWarning("id"));
+    const rules = answer.trace.events.find((event) => event.kind === "product_rules");
+    expect(rules?.kind === "product_rules" ? rules.detail.applied : undefined).toContain(
+      "dhaif_warning",
+    );
   });
 
   it("leaves a neighbouring question with no label exactly as it was", async () => {

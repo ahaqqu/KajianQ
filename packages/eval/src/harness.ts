@@ -85,9 +85,13 @@ export type HarnessDeps = {
   citationIdentity?: CitationIdentity;
   /** The opaque `origin` label the domain pack puts on chunks its scope expansion
    * added (ADR-0045), supplied by the composition root — the engine must not
-   * hard-code a caller's label. When set, each outcome records the expansion's
+   * hard-code a caller's label. When set, each outcome records the scope path's
    * contribution; omitted, no block is written. */
   expansionOrigin?: string;
+  /** The opaque `origin` label the domain pack puts on chunks its citation-label
+   * lookup added (ADR-0058). Supplying it makes the provenance block record a
+   * label-only question's lookup contribution; the engine never names the label. */
+  lookupOrigin?: string;
   label?: string;
   now?: () => number;
 };
@@ -202,6 +206,7 @@ export function scoreQuestion(
     | "citationIdentity"
     | "expansionOrigin"
     | "gateAddressRecall"
+    | "lookupOrigin"
   >,
   frame?: CitationFrameLike | null,
 ): EvalResultOutcome {
@@ -242,6 +247,7 @@ export function scoreQuestion(
       events,
       sourceTypeOf: deps.sourceTypeOf,
       ...(deps.expansionOrigin !== undefined ? { expansionOrigin: deps.expansionOrigin } : {}),
+      ...(deps.lookupOrigin !== undefined ? { lookupOrigin: deps.lookupOrigin } : {}),
     }),
   };
 }

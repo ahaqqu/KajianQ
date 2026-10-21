@@ -287,7 +287,7 @@ export {
   type ScopeStore,
 } from "./chat-scope-expansion";
 
-// -- Citation-label lookup (ADR-0054) ---------------------------------------
+// -- Citation-label lookup (ADR-0058) ---------------------------------------
 export {
   CITATION_LOOKUP_ORIGIN,
   DEFAULT_LABEL_LOOKUP_CAP,

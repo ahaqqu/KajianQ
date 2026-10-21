@@ -133,6 +133,7 @@ const result = await evalpkg.runGoldenSet(selection.set, {
   // under test. The eval gate (offline, on the recorded set) keeps the address
   // conjunct; #515's retrieval half — the neighbouring #277 workstream — lifts this.
   gateAddressRecall: false,
+  lookupOrigin: harness.lookupOrigin,
   label,
   budget,
 });

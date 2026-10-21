@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import type { Chunk, StoreError } from "@app/rag-core";
 import { expansionChunk, type ScopeChildRow } from "./chat-scope-expansion";
-import { citationReferencesIn } from "./chat-citation-reference";
+import { citationLabelScan, type DroppedCitationLabel } from "./chat-citation-reference";
 
 /**
  * Citation-label lookup (ADR-0058) — the deterministic retrieval arm that reads
@@ -52,12 +52,15 @@ export type LabelLookupBridge = <A>(effect: Effect.Effect<A, StoreError>) => Pro
 
 export type LabelLookup = {
   chunks: readonly Chunk[];
-  /** Null when the question named no label — nothing to record. */
+  /** Null when the question named no label and no citation-shaped span —
+   * nothing to record. */
   detail: {
-    /** The labels the question named, normalized, in first-appearance order. */
+    /** The labels the lookup resolved, normalized, in first-appearance order. */
     labels: string[];
     /** The labels no stored row carried. */
     missing: string[];
+    /** The spans the grammar saw but the lookup did not resolve, and why. */
+    dropped: DroppedCitationLabel[];
     returned: number;
     cap: number;
     truncated: boolean;
@@ -79,8 +82,14 @@ export function lookupCitationLabels(input: {
 }): Effect.Effect<LabelLookup, { cause: unknown }> {
   return Effect.gen(function* () {
     if (input.cap <= 0) return { chunks: [], detail: null };
-    const references = citationReferencesIn(input.sourceText ?? "");
-    if (references.length === 0) return { chunks: [], detail: null };
+    const scan = citationLabelScan(input.sourceText ?? "");
+    // A question that named no citation-shaped span at all is the only state
+    // with nothing to record. A span seen and not resolved still records the
+    // event: "named no label" and "declined this label" must stay distinct.
+    if (scan.references.length === 0 && scan.dropped.length === 0) {
+      return { chunks: [], detail: null };
+    }
+    const references = scan.references;
     const chunks: Chunk[] = [];
     const missing: string[] = [];
     const added = new Set<string>();
@@ -112,6 +121,7 @@ export function lookupCitationLabels(input: {
       detail: {
         labels: references.map((reference) => reference.label),
         missing,
+        dropped: scan.dropped,
         returned: chunks.length,
         cap: input.cap,
         truncated,
