@@ -829,10 +829,20 @@ The deploy gates on all of these, and fails loudly on any of them:
   named path readable and searchable for the deploy identity (its mode or
   ownership), then deploy again; `apply.sh` cannot clear it, because it installs
   into that tree and leaves the mode that hides it in place. That refusal closes
-  with that remedy alone and does not repeat the `apply.sh` instruction; a
-  mismatch closes with the `apply.sh` remedy. A `conf.d` that is a regular file
-  is refused with a remedy to remove it or repair Postgres, then apply and
-  deploy again, because `apply.sh` resolves it and fails to install into it.
+  with that remedy alone and does not repeat the `apply.sh` instruction. The
+  generic `apply.sh` closing prints only when no refusal in the run is one an
+  apply cannot clear, so a mismatch in such a run keeps its per-file `apply.sh`
+  line and the run ends without the generic closing; the count line then reads
+  `could not be compared or do not match the checkout` rather than `do not match
+  the checkout`. A rendered block whose comparison cannot run — the scratch file
+  is unavailable or the manifest's template payload does not decode — is
+  refused with that cause and its own remedy, not reported as a mismatch. A row
+  naming a kind outside `config`, `render`, `link` and `sudoers` is refused
+  with a repair of the artifact table, installed or not, because `apply.sh`
+  exits 1 on that table. A
+  `conf.d` that is a regular file is refused with a remedy to repair Postgres so
+  that path is a directory again, then apply and deploy again; removing the file
+  alone leaves the row skipped, so the posture stays unapplied.
   The marker script's presence, mode and content are part of that comparison, so
   a deleted or non-executable marker is refused before the provenance gate reads
   a record.

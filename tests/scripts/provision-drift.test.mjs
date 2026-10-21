@@ -42,6 +42,17 @@ const PROVISIONED_ARTIFACTS = 13;
 /** The 12-character digest the drift refusal prints, computed independently. */
 const digest12 = (text) => createHash("sha256").update(text).digest("hex").slice(0, 12);
 
+/** How many times a line appears, for "exactly one count line" assertions. */
+const countOf = (text, needle) => text.split(needle).length - 1;
+
+/** The count line's apply-clearable form, with its total. */
+const mismatchCount = (failures, total = PROVISIONED_ARTIFACTS) =>
+  `${failures} of ${total} provisioned artifact(s) do not match the checkout`;
+
+/** The count line's form when any refusal is one an apply cannot clear. */
+const manualCount = (failures, total = PROVISIONED_ARTIFACTS) =>
+  `${failures} of ${total} provisioned artifact(s) could not be compared or do not match the checkout`;
+
 const OWNER = spawnSync("id", ["-un"], { encoding: "utf8" }).stdout.trim();
 const GROUP = spawnSync("id", ["-gn"], { encoding: "utf8" }).stdout.trim();
 
@@ -125,7 +136,7 @@ function driftFixture({ without = [] } = {}) {
     manifest,
     path,
     install,
-    check: ({ manifest: given = manifest, base64 = false } = {}) =>
+    check: ({ manifest: given = manifest, base64 = false, env } = {}) =>
       base64
         ? sh("bash", [
             DRIFT,
@@ -135,7 +146,10 @@ function driftFixture({ without = [] } = {}) {
             "--manifest-base64",
             Buffer.from(given).toString("base64"),
           ])
-        : sh("bash", [DRIFT, "--check", "--root", dir], { input: given }),
+        : sh("bash", [DRIFT, "--check", "--root", dir], {
+            input: given,
+            ...(env ? { env: { ...process.env, ...env } } : {}),
+          }),
     cleanup: () => rmSync(dir, { recursive: true, force: true }),
   };
 }
@@ -348,7 +362,8 @@ describe("the drift preflight", () => {
       expect(drift.stderr).toContain(
         "run provision/vps/apply.sh on the box from a checkout of the revision being deployed, then deploy again",
       );
-      expect(drift.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
+      expect(drift.stderr).toContain(mismatchCount(1));
+      expect(drift.stderr).not.toContain("could not be compared");
     } finally {
       fixture.cleanup();
     }
@@ -475,7 +490,8 @@ describe("the drift preflight", () => {
         expect(result.stderr).toContain(artifact);
         expect(result.stderr).toContain(source);
         expect(result.stderr).toContain("run provision/vps/apply.sh");
-        expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
+        expect(result.stderr).toContain(mismatchCount(1));
+        expect(result.stderr).not.toContain("could not be compared");
         if (detail) expect(result.stderr).toContain(detail);
       } finally {
         fixture.cleanup();
@@ -496,7 +512,7 @@ describe("the drift preflight", () => {
       const result = fixture.check();
       expect(result.status, result.stderr).toBe(1);
       expect(result.stderr).toContain(applyTarget);
-      expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
+      expect(result.stderr).toContain(mismatchCount(1));
 
       // Once apply.sh's own target exists, it is what the check compares; the
       // matching copy under the later version is not the installed artifact.
@@ -537,7 +553,7 @@ describe("the drift preflight", () => {
       expect(result.status, result.stderr).toBe(1);
       expect(result.stderr).toContain(`installed ${digest12(drifted)}`);
       expect(result.stderr).not.toContain("no directory matches");
-      expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
+      expect(result.stderr).toContain(mismatchCount(1));
     } finally {
       fixture.cleanup();
       checkout.cleanup();
@@ -600,7 +616,10 @@ describe("the drift preflight", () => {
       expect(result.stderr).toContain("cannot read or search");
       expect(result.stderr).toContain("/etc/postgresql");
       expect(result.stderr).not.toContain("no directory matches");
-      expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
+      expect(result.stderr).toContain(manualCount(1));
+      expect(result.stderr).not.toContain(
+        "run provision/vps/apply.sh on the box from a checkout of the revision being deployed",
+      );
     } finally {
       chmodSync(postgres, 0o755);
       fixture.cleanup();
@@ -633,7 +652,7 @@ describe("the drift preflight", () => {
       expect(result.stderr).not.toContain(
         "run provision/vps/apply.sh on the box from a checkout of the revision being deployed",
       );
-      expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
+      expect(result.stderr).toContain(manualCount(1));
       expect(result.stdout).not.toContain("match the checkout");
     } finally {
       chmodSync(hidden, 0o755);
@@ -667,7 +686,7 @@ describe("the drift preflight", () => {
       expect(result.stderr).toContain("cannot read or search");
       expect(result.stderr).toContain(older);
       expect(result.stderr).not.toContain("no conf.d directory");
-      expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
+      expect(result.stderr).toContain(manualCount(1));
       expect(result.stdout).not.toContain("match the checkout");
     } finally {
       chmodSync(older, 0o755);
@@ -688,7 +707,7 @@ describe("the drift preflight", () => {
       expect(result.stderr).toContain("cannot read or search");
       expect(result.stderr).toContain(hidden);
       expect(result.stderr).not.toContain("no conf.d directory");
-      expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
+      expect(result.stderr).toContain(manualCount(1));
     } finally {
       chmodSync(hidden, 0o755);
       fixture.cleanup();
@@ -710,7 +729,7 @@ describe("the drift preflight", () => {
       expect(result.stderr).toContain(hidden);
       expect(result.stderr).not.toContain("no conf.d directory");
       expect(result.stderr).not.toContain("no directory matches");
-      expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
+      expect(result.stderr).toContain(manualCount(1));
       expect(result.stdout).not.toContain("match the checkout");
     } finally {
       chmodSync(hidden, 0o755);
@@ -731,13 +750,16 @@ describe("the drift preflight", () => {
       expect(result.status, result.stderr).toBe(1);
       expect(result.stderr).toContain("/etc/postgresql/16/main/conf.d is not a directory");
       expect(result.stderr).not.toContain("no directory matches");
+      const confDPath = fixture.path("/etc/postgresql/16/main/conf.d");
       expect(result.stderr).toContain(
-        `remove ${fixture.path("/etc/postgresql/16/main/conf.d")} or repair Postgres, then run provision/vps/apply.sh on the box and deploy again`,
+        `repair Postgres so ${confDPath} is a directory (recreate conf.d), then run provision/vps/apply.sh on the box and deploy again`,
       );
+      expect(result.stderr).toContain("removing it alone leaves the row skipped");
+      expect(result.stderr).not.toContain(`remove ${confDPath} or repair Postgres`);
       expect(result.stderr).not.toContain(
         "run provision/vps/apply.sh on the box from a checkout of the revision being deployed",
       );
-      expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
+      expect(result.stderr).toContain(manualCount(1));
     } finally {
       fixture.cleanup();
     }
@@ -763,7 +785,7 @@ describe("the drift preflight", () => {
       expect(result.stderr).not.toContain(
         "run provision/vps/apply.sh on the box from a checkout of the revision being deployed",
       );
-      expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS + 1}`);
+      expect(result.stderr).toContain(manualCount(1, PROVISIONED_ARTIFACTS + 1));
     } finally {
       fixture.cleanup();
       checkout.cleanup();
@@ -785,10 +807,122 @@ describe("the drift preflight", () => {
       expect(result.stderr).not.toContain(
         "run provision/vps/apply.sh on the box from a checkout of the revision being deployed",
       );
-      expect(result.stderr).toContain(`1 of ${PROVISIONED_ARTIFACTS}`);
+      expect(result.stderr).toContain(manualCount(1));
     } finally {
       fixture.cleanup();
     }
+  });
+
+  it("refuses a render comparison whose scratch file cannot be created", () => {
+    // mktemp failing means no comparison ran. That is not a mismatch an apply
+    // clears — apply.sh's render() calls the same mktemp — so the refusal names
+    // the scratch directory and the run withholds the generic apply closing.
+    const fixture = driftFixture();
+    try {
+      const result = fixture.check({ env: { TMPDIR: "/nonexistent-kajianq-tmp" } });
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain("comparison scratch file could not be created");
+      expect(result.stderr).toContain(
+        "/etc/nginx/sites-available/kajianq.conf could not be compared with provision/vps/nginx/kajianq.conf",
+      );
+      expect(result.stderr).not.toContain("(placeholder values aside)");
+      expect(result.stderr).toContain("make the deploy identity's scratch directory writable");
+      expect(result.stderr).toContain(manualCount(1));
+      expect(result.stderr).not.toContain("run provision/vps/apply.sh");
+      expect(result.stderr).not.toContain(
+        "run provision/vps/apply.sh on the box from a checkout of the revision being deployed",
+      );
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it("refuses a render payload the manifest cannot decode", () => {
+    // A corrupt payload names no installed state to install over; the next
+    // deploy decodes the same manifest and refuses again, so an apply is not
+    // the remedy.
+    const fixture = driftFixture();
+    try {
+      const manifest = fixture.manifest
+        .split("\n")
+        .map((line) => {
+          if (!line.startsWith("nginx-conf|")) return line;
+          const cells = line.split("|");
+          cells[cells.length - 1] = "this is not base64";
+          return cells.join("|");
+        })
+        .join("\n");
+      expect(manifest).not.toBe(fixture.manifest);
+      const result = fixture.check({ manifest });
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain("the template could not be decoded from the manifest");
+      expect(result.stderr).toContain(
+        "/etc/nginx/sites-available/kajianq.conf could not be compared with provision/vps/nginx/kajianq.conf",
+      );
+      expect(result.stderr).not.toContain("(placeholder values aside)");
+      expect(result.stderr).toContain("re-emit the manifest");
+      expect(result.stderr).toContain(manualCount(1));
+      expect(result.stderr).not.toContain(
+        "run provision/vps/apply.sh on the box from a checkout of the revision being deployed",
+      );
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it("refuses an unknown kind on a row that is not installed, as the table bug it is", () => {
+    // An absent file must not take the "not installed — run apply.sh" branch
+    // before the kind is read: that remedy exits 1 on an unknown kind.
+    const fixture = driftFixture({ without: ["logrotate-proxy"] });
+    try {
+      const manifest = fixture.manifest.replace("|config|", "|bogus|");
+      expect(manifest).not.toBe(fixture.manifest);
+      const result = fixture.check({ manifest });
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain("unknown artifact kind in the manifest (bogus)");
+      expect(result.stderr).toContain("repair the artifact table");
+      expect(result.stderr).not.toContain("is not installed");
+      expect(result.stderr).not.toContain("run provision/vps/apply.sh");
+      expect(result.stderr).toContain(manualCount(1));
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it("keeps the refusals it collected when the loop dies mid-run", () => {
+    // A directory where a config file is expected passes the owner/mode check
+    // and then makes the unguarded sha256sum exit under `set -e`. The refusal
+    // already gathered for the drifted unit must still reach the operator.
+    const fixture = driftFixture();
+    try {
+      const api = fixture.path("/etc/systemd/system/kajianq-api.service");
+      writeFileSync(api, `${readFileSync(api, "utf8")}# edited\n`);
+      const cron = fixture.path("/etc/systemd/system/kajianq-cron.service");
+      rmSync(cron);
+      mkdirSync(cron);
+      chmodSync(cron, 0o644);
+
+      const result = fixture.check();
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain("Is a directory");
+      expect(result.stderr).toContain(
+        "/etc/systemd/system/kajianq-api.service differs from provision/vps/systemd/kajianq-api.service",
+      );
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it("names each refusal's class where the remedy is known", () => {
+    // The class is not a list of sites kept in step by hand: a call site passes
+    // "apply" or "manual" as a literal, and `refuse` rejects anything else, so a
+    // new refusal cannot inherit a default or a second counter.
+    const script = read("provision/vps/deploy/provision-drift.sh");
+    const classes = [...script.matchAll(/^\s*refuse (\S+) \\$/gm)].map((match) => match[1]);
+    expect(classes.length).toBeGreaterThan(0);
+    expect(new Set(classes)).toEqual(new Set(["apply", "manual"]));
+    expect(script).not.toMatch(/^\s*refuse\s+"/m);
+    expect(script).not.toContain("refuse_uncleared_by_apply");
   });
 
   it("carries a rendered mismatch out of a command substitution", () => {
@@ -835,7 +969,7 @@ describe("the drift preflight", () => {
 
       const result = fixture.check();
       expect(result.status, result.stderr).toBe(1);
-      expect(result.stderr).toContain(`2 of ${PROVISIONED_ARTIFACTS}`);
+      expect(result.stderr).toContain(mismatchCount(2));
       expect(result.stderr).toContain(`checkout sha256 ${digest12(original)}`);
       expect(result.stderr).toContain(`installed ${digest12(edited)}`);
       const line =
@@ -882,7 +1016,7 @@ describe("the drift preflight", () => {
 
       const result = fixture.check();
       expect(result.status).toBe(1);
-      expect(result.stderr).toContain(`3 of ${PROVISIONED_ARTIFACTS}`);
+      expect(result.stderr).toContain(mismatchCount(3));
       for (const artifact of [
         "/usr/local/sbin/kajianq-backup-pending",
         "/etc/systemd/system/kajianq-api.service",
@@ -890,6 +1024,62 @@ describe("the drift preflight", () => {
       ]) {
         expect(result.stderr).toContain(artifact);
       }
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it("withholds the generic closing when a mixed run holds a comparison that could not run", () => {
+    // One mismatch an apply clears and one refusal it cannot: the count line
+    // covers both states once, the mismatch keeps its per-file apply line, and
+    // the run does not close with the generic apply remedy.
+    const fixture = driftFixture();
+    const hidden = join(fixture.dir, "etc/postgresql/16/main");
+    try {
+      const unit = fixture.path("/etc/systemd/system/kajianq-backup.service");
+      writeFileSync(unit, `${readFileSync(unit, "utf8")}# drift\n`);
+      chmodSync(hidden, 0o000);
+
+      const result = fixture.check();
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain(manualCount(2));
+      expect(countOf(result.stderr, "provisioned artifact(s)")).toBe(1);
+      expect(result.stderr).toContain("cannot read or search");
+      expect(result.stderr).toContain(
+        `make ${hidden} readable and searchable for the deploy identity, then deploy again`,
+      );
+      expect(result.stderr).toContain(
+        "/etc/systemd/system/kajianq-backup.service differs from provision/vps/systemd/kajianq-backup.service",
+      );
+      expect(result.stderr).not.toContain(mismatchCount(2));
+      expect(result.stderr).not.toContain("from a checkout of the revision being deployed");
+    } finally {
+      chmodSync(hidden, 0o755);
+      fixture.cleanup();
+    }
+  });
+
+  it("keeps the plain count line and the generic closing when every refusal is a mismatch", () => {
+    // The run-level rule's other side: two mismatches and no manual refusal
+    // still end with the apply remedy the operator can act on.
+    const fixture = driftFixture();
+    try {
+      for (const artifact of [
+        "/etc/systemd/system/kajianq-api.service",
+        "/etc/systemd/system/kajianq-backup.service",
+      ]) {
+        const path = fixture.path(artifact);
+        writeFileSync(path, `${readFileSync(path, "utf8")}# drift\n`);
+      }
+
+      const result = fixture.check();
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain(mismatchCount(2));
+      expect(countOf(result.stderr, "provisioned artifact(s)")).toBe(1);
+      expect(result.stderr).not.toContain("could not be compared");
+      expect(result.stderr).toContain(
+        "run provision/vps/apply.sh on the box from a checkout of the revision being deployed, then deploy again",
+      );
     } finally {
       fixture.cleanup();
     }
