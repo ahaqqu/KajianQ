@@ -66,11 +66,53 @@ describe("the shipped identity map", () => {
 
   it("classifies the travel Maghrib/Isha family as one narration", () => {
     const canonical = identityOf("HR. Bukhari no. 1108");
-    expect(canonical).not.toBeNull();
-    expect(identityOf("HR. Bukhari no. 1110"), "Anas's other chain").toBe(canonical);
-    expect(identityOf("HR. Muslim no. 1624"), "Ibn Umar's same Maghrib/Isha practice").toBe(
-      canonical,
+    expect(canonical).toBe("HR. Bukhari no. 1108");
+    for (const label of [
+      "HR. Bukhari no. 1109",
+      "HR. Bukhari no. 1110",
+      "HR. Muslim no. 1621",
+      "HR. Muslim no. 1624",
+    ]) {
+      expect(identityOf(label), label).toBe(canonical);
+    }
+  });
+
+  it("keeps the travel group's membership exactly the signed set", () => {
+    const group = SET.groups.find(
+      (candidate) => candidate.id === "combining-prayers-in-travel-maghrib-isha",
     );
+    expect(group?.canonical).toBe("HR. Bukhari no. 1108");
+    expect(group?.members).toEqual([
+      "HR. Bukhari no. 1109",
+      "HR. Bukhari no. 1110",
+      "HR. Muslim no. 1621",
+      "HR. Muslim no. 1624",
+    ]);
+  });
+
+  it("keeps every other narration a different identity from the travel group", () => {
+    const travel = identityOf("HR. Bukhari no. 1108");
+    // Another narration — even one on the same subject — never shares this
+    // identity: the merit-of-recitation hadith 5026, the wudu demonstration 186,
+    // the right-hand eating instruction, purity is half of faith, and the travel
+    // rows that narrate another prayer pair rather than a chain of this report.
+    for (const other of [
+      "HR. Bukhari no. 5026",
+      "HR. Bukhari no. 186",
+      "HR. Muslim no. 5265",
+      "HR. Muslim no. 534",
+      "HR. Muslim no. 1626",
+      "HR. Muslim no. 1627",
+      "HR. Muslim no. 1630",
+      "HR. Malik no. 326",
+      "HR. Malik no. 331",
+      "HR. Ibn Majah no. 1070",
+    ]) {
+      expect(identityOf(other), other).not.toBe(travel);
+    }
+    // The map holds four narrations; none of their keys aliases another.
+    const keys = ["HR. Bukhari no. 186", "HR. Muslim no. 5265", "HR. Muslim no. 534", travel];
+    expect(new Set(keys).size).toBe(keys.length);
   });
 
   it("keeps a different hadith on the same subject a different identity", () => {
@@ -93,6 +135,10 @@ describe("the shipped identity map", () => {
     expect(identityOf("HR. Bukhari no. 99999")).toBeNull();
     expect(identityOf("HR. Bukhari no. 5026")).toBeNull();
     expect(identityOf("HR. Bukhari no. 1624")).toBeNull();
+    // Numeric neighbours of a member are not the member: membership is curated
+    // per corpus row, so no range or proximity widens a group.
+    expect(identityOf("HR. Bukhari no. 1111")).toBeNull();
+    expect(identityOf("HR. Muslim no. 1622")).toBeNull();
     expect(identityOf("QS. 2:255")).toBeNull();
     expect(identityOf("")).toBeNull();
   });
