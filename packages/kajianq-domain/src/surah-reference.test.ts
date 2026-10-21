@@ -469,11 +469,11 @@ describe("detectSurahReference — the collapse's recorded false positive (R2)",
 });
 
 /**
- * Every class normalization transforms — case, vowels, apostrophes,
- * separators, diacritics, digits, tatweel, Arabic script — densely enough
- * that a step which stops producing a fixed point is generated rather than
- * stumbled on. The grapheme-unit string covers printable Unicode outside
- * that list.
+ * Every class the comparison form keeps or rewrites — case, vowels,
+ * apostrophes, separators, diacritics, digits, tatweel, Arabic letters — has a
+ * representative in the unit list, so a step which stops producing a fixed
+ * point is generated rather than stumbled on. The grapheme-unit string samples
+ * printable Unicode beyond that list.
  */
 const normalizationInput = fc.oneof(
   fc.string({ unit: "grapheme" }),
