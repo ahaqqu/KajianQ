@@ -363,7 +363,31 @@ describe("POST /v1/feedback", () => {
     expect(store.allFeedback()[0]).toMatchObject({ id: firstBody.id, freeText: "second" });
   });
 
-  it("documents the response id as the stored row's id, stable across a repeat", async () => {
+  // A different anchor is a different row: the conflict key includes the anchor
+  // element, so flagging a second chunk of the same answer must not overwrite the
+  // first flag's id (and re-flagging the first answers its own row again).
+  it("answers a different id for a different chunk anchor of the same answer", async () => {
+    const { store, userId, token } = await wiredStore();
+    const messageId = await seedAnswer(store, userId, { chunkCount: 2 });
+    const chunkA = store.allChildren()[0]?.id as string;
+    const chunkB = store.allChildren()[1]?.id as string;
+    const anchorA = { type: "chunk", category: "irrelevant_chunk", id: chunkA };
+    const anchorB = { type: "chunk", category: "irrelevant_chunk", id: chunkB };
+    const first = await post(token, { messageId, anchor: anchorA });
+    const other = await post(token, { messageId, anchor: anchorB });
+    expect(first.status).toBe(200);
+    expect(other.status).toBe(200);
+    const firstId = ((await first.json()) as { id: string }).id;
+    const otherId = ((await other.json()) as { id: string }).id;
+    expect(otherId).not.toBe(firstId);
+    expect(store.allFeedback()).toHaveLength(2);
+    // Re-flagging the first chunk answers its original row, not a third.
+    const again = await post(token, { messageId, anchor: anchorA });
+    expect(((await again.json()) as { id: string }).id).toBe(firstId);
+    expect(store.allFeedback()).toHaveLength(2);
+  });
+
+  it("documents the response id's repeat invariant once, pointing the 200 at it", async () => {
     const api = createApi();
     const res = await api.request("/openapi.json", {}, env);
     expect(res.ok).toBe(true);
@@ -388,10 +412,10 @@ describe("POST /v1/feedback", () => {
     };
     const ok = doc.paths["/v1/feedback"]?.post.responses["200"];
     expect(ok?.description).toContain("stored feedback row");
-    expect(ok?.description).toContain("same on a repeated verdict");
+    expect(ok?.description).toContain("(canonical: `FeedbackResponseSchema.id`)");
     const id = ok?.content["application/json"]?.schema.properties?.id;
     expect(id?.description).toContain("stored feedback row's id");
-    expect(id?.description).toContain("same on every submission");
+    expect(id?.description).toContain("a different anchor is a different row");
   });
 
   // A rehydrated transcript addresses the answer by the chat ROW id, a live surface by

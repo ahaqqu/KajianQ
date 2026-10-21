@@ -39,10 +39,11 @@ export type AnswerFeedbackTarget = {
 
 export interface RagStoreFeedback {
   /** Persist one feedback row (anonymous thumb or trace-anchored flag) against
-   * an answer message and return the id of the stored row. A repeat verdict on
-   * the same (user, answer, element) updates that row in place and returns the
-   * same id. The `feedback.rating` column admits only −1/1; the shared contract
-   * decides which wire shape maps to which. */
+   * an answer message and return the id of the stored row. What a repeat
+   * submission answers is the response contract's (canonical:
+   * `FeedbackResponseSchema.id`'s description). The `feedback.rating` column
+   * admits only −1/1; the shared contract decides which wire shape maps to
+   * which. */
   insertFeedback(input: FeedbackInsert): Effect.Effect<string, StoreError>;
 
   /** The feedback target for one answer message: the persisted Trace plus its

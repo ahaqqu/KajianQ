@@ -111,13 +111,9 @@ export function postgresTraceMethods(
     },
 
     insertFeedback(input: FeedbackInsert) {
-      // The row id is the store's (`feedback.id` defaults to gen_random_uuid()),
-      // and the functional unique index keys one verdict per (user, answer,
-      // element) on the same COALESCE'd expression list: a repeat updates that
-      // row in place, so RETURNING id is the only value that names the stored row
-      // on both the insert and the conflict path. An id minted here is never
-      // written — on insert the column defaults, on conflict the row keeps its own.
-      // `user_id` NULL never conflicts (Postgres NULLs are distinct).
+      // The id must come from RETURNING: the column defaults to gen_random_uuid()
+      // and DO UPDATE keeps the row's own id, so an id minted here names no row on
+      // either path. `user_id` NULL never conflicts (Postgres NULLs are distinct).
       return Effect.flatMap(
         sqlEffect(
           sql,

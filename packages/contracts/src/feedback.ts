@@ -144,13 +144,13 @@ export const FEEDBACK_INITIAL_STATUS = "pending";
 
 /** The persisted feedback row, echoed so the client sees its anchor landed. */
 export const FeedbackResponseSchema = v.object({
-  /** The row the write inserted or updated. A repeat verdict on the same element
-   * updates that row in place, so the id is stable across repeats. */
+  /** The row this write inserted or updated; what a repeat submission answers
+   * is stated once in this field's `description` (canonical: that description). */
   id: v.pipe(
     v.string(),
     v.minLength(1),
     v.description(
-      "The stored feedback row's id. A repeat verdict on the same element updates that row in place, so the id is the same on every submission.",
+      "The stored feedback row's id: a second submission for the same user, answer and anchor updates that row in place, so it answers this same id; a different anchor is a different row with its own id.",
     ),
   ),
   messageId: v.pipe(v.string(), v.minLength(1)),
