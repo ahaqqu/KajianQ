@@ -144,7 +144,7 @@ describe("memory RagStore chat maps compare by the uuid column's canonical text"
     expect(rows.map((m) => [m.id, m.answerTraceId])).toEqual([[MESSAGE_ID, "trace-row-1"]]);
   });
 
-  it("canonicalises a re-cased supplied message id, so the row and the trace agree", async () => {
+  it("canonicalises a re-cased supplied message id, so the row and the transcript agree", async () => {
     const state: MemoryChatState = { chatSessions: new Map(), chatMessages: new Map() };
     const methods = memoryChatMethods(state);
     const upper = MESSAGE_ID.toUpperCase();
