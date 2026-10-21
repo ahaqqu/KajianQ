@@ -111,8 +111,12 @@ describe("the shipped identity map", () => {
       expect(identityOf(other), other).not.toBe(travel);
     }
     // The map holds four narrations; none of their keys aliases another.
-    const keys = ["HR. Bukhari no. 186", "HR. Muslim no. 5265", "HR. Muslim no. 534", travel];
-    expect(new Set(keys).size).toBe(keys.length);
+    expect(SET.groups.map((group) => group.canonical)).toEqual([
+      "HR. Bukhari no. 186",
+      "HR. Muslim no. 5265",
+      "HR. Muslim no. 534",
+      travel,
+    ]);
   });
 
   it("keeps a different hadith on the same subject a different identity", () => {
