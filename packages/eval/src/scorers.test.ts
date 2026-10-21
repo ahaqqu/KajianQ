@@ -312,6 +312,13 @@ describe("citationValidity — citation identity", () => {
   const frameOf = (labels: string[]): CitationFrameLike => ({
     citations: labels.map((label) => ({ label })),
   });
+  /** Each label names itself, so this block exercises the scorer's address
+   * comparison rather than a grammar's parsing. */
+  const labelAddresses: CitationGrammar = {
+    normalizeLabel: (label) => label,
+    labelsInText: () => [],
+    addressesNamedBy: (label) => [label],
+  };
 
   it("accepts a parallel narration of the required citation", () => {
     expect(
@@ -343,6 +350,26 @@ describe("citationValidity — citation identity", () => {
     expect(
       citationValidity(["label-unmapped"], "", {
         frame: frameOf(["label-parallel"]),
+        identity: family,
+      }),
+    ).toBe(0);
+  });
+
+  it("keeps an unmapped required label's exact match when an identity is injected", () => {
+    // The address comparison runs before the identity is consulted: the map's
+    // silence about a label must not narrow it to a miss, or a required
+    // citation the map does not cover scores 0 against its own evidence.
+    expect(
+      citationValidity(["label-unmapped"], "", {
+        frame: frameOf(["label-unmapped"]),
+        grammar: labelAddresses,
+        identity: family,
+      }),
+    ).toBe(1);
+    expect(
+      citationValidity(["label-unmapped"], "", {
+        frame: frameOf(["label-unrelated"]),
+        grammar: labelAddresses,
         identity: family,
       }),
     ).toBe(0);

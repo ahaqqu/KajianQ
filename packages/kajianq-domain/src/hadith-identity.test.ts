@@ -144,6 +144,20 @@ describe("parseHadithIdentitySet", () => {
     ).toThrow(/not a single hadith citation/);
   });
 
+  it("rejects a zero-padded number: no row renders it, and it folds to no key", () => {
+    // `no. 0191` normalizes to a different key than `no. 191`, so the padded
+    // spelling would be a dead identity that no evidence label resolves — one
+    // that also claims a row the duplicate check cannot see it claim.
+    for (const padded of ["HR. Bukhari no. 0191", "HR. Bukhari no. 0000000191"]) {
+      expect(() =>
+        parseHadithIdentitySet({ ...valid, groups: [{ ...group, canonical: padded }] }),
+      ).toThrow(/not a single hadith citation/);
+      expect(() =>
+        parseHadithIdentitySet({ ...valid, groups: [{ ...group, members: [padded] }] }),
+      ).toThrow(/not a single hadith citation/);
+    }
+  });
+
   it("accepts a graded label — the number is still one corpus row", () => {
     const graded = { ...valid, groups: [{ ...group, canonical: "HR. Bukhari no. 1 (Sahih)" }] };
     expect(parseHadithIdentitySet(graded).groups[0]?.canonical).toBe("HR. Bukhari no. 1 (Sahih)");

@@ -53,12 +53,13 @@ function requiredString(value: unknown, field: string, source: string): string {
 }
 
 /**
- * The number shape the corpus stores: one integer per (collection, number) row.
- * A dash-joined range (`no. 191-192`) or a letter glued to the number names
- * more than one row — or a spelling no row carries — so it is not a single
+ * The number shape the corpus stores: one integer per (collection, number) row,
+ * rendered without leading zeros. A dash-joined range (`no. 191-192`), a letter
+ * glued to the number (`no. 5010a`) or a zero-padded number (`no. 0191`) names
+ * more than one row, or a spelling no row carries — so it is not a single
  * citation, and a map key must be one.
  */
-const CORPUS_CITATION_NUMBER = /^\d+$/;
+const CORPUS_CITATION_NUMBER = /^[1-9]\d*$/;
 
 /** Whether a label names exactly one corpus row: a hadith citation whose number
  * has the corpus's own shape. */
@@ -75,7 +76,7 @@ function isSingleHadithCitation(label: string): boolean {
  */
 export function parseHadithIdentitySet(
   input: unknown,
-  source = "hadith identity set",
+  source = "matn identity set",
 ): HadithIdentitySet {
   if (!isRecord(input)) throw new HadithIdentityError(`${source}: must be an object`);
   const id = requiredString(input["id"], "id", source);
