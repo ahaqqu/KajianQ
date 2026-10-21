@@ -54,7 +54,7 @@ console.log(
   `eval:run: golden set "${fixture.id}" — ${fixture.questions.length} questions, status ${fixture.status}`,
 );
 
-// The staging seams (store, sourceType scan, transport, traces, ledger,
+// The staging seams (store, chunk-metadata scan, transport, traces, ledger,
 // refusal markers) come from the shared bootstrap — one copy, no drift.
 const harness = await createStagingHarness(config, budget);
 
@@ -63,6 +63,7 @@ const harnessResult = await evalpkg.runGoldenSet(fixture, {
   traces: harness.traces,
   ledger: harness.ledger,
   sourceTypeOf: harness.sourceTypeOf,
+  citationOf: harness.citationOf,
   refusalMarkers: harness.refusalMarkers,
   citationGrammar: harness.citationGrammar,
   citationIdentity: harness.citationIdentity,

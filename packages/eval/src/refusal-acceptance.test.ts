@@ -73,6 +73,14 @@ function sourceTypeOf(chunkId: string): string | undefined {
   return question?.expectedSourceTypes[Number(match[2])];
 }
 
+/** Resolve one opaque chunk id back to the fixture's required citation. */
+function citationOf(chunkId: string): string | undefined {
+  const match = /^src-(.+)-(\d+)$/.exec(chunkId);
+  if (match === null) return undefined;
+  const question = FIXTURE.questions.find((q) => q.id === match[1]);
+  return question?.requiredCitations[Number(match[2])];
+}
+
 /** One scripted answer. `chunks` are opaque ids (see `chunksFor`); `events` follow
  * the retrieval event. */
 type Answer = {
@@ -122,6 +130,7 @@ function makeHarness(script: Record<string, Answer>) {
     traces,
     ledger,
     sourceTypeOf,
+    citationOf,
     refusalMarkers: [REFUSAL],
     budget: new Budget(undefined),
     label: "refusal-acceptance-test",
@@ -160,14 +169,16 @@ describe("trap acceptance: refuse, or ground it (#250)", () => {
       passed: true,
       refused: true,
       citationValidity: 1,
-      retrievalRecall: 1,
+      sourceTypeRecall: 1,
+      citationAddressRecall: 1,
     });
     // The grounded decline is NOT a refusal: it is accepted on its verified citation.
     expect(byId.get(GROUNDED_RENDERING.id)).toMatchObject({
       passed: true,
       refused: false,
       citationValidity: 1,
-      retrievalRecall: 1,
+      sourceTypeRecall: 1,
+      citationAddressRecall: 1,
     });
   });
 
@@ -269,7 +280,8 @@ describe("trap acceptance: refuse, or ground it (#250)", () => {
       passed: false,
       refused: true,
       citationValidity: 1,
-      retrievalRecall: 1,
+      sourceTypeRecall: 1,
+      citationAddressRecall: 1,
     });
   });
 
@@ -289,7 +301,8 @@ describe("trap acceptance: refuse, or ground it (#250)", () => {
       passed: true,
       refused: true,
       citationValidity: 1,
-      retrievalRecall: 1,
+      sourceTypeRecall: 1,
+      citationAddressRecall: 1,
     });
   });
 

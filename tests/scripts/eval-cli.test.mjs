@@ -76,7 +76,7 @@ const FIXTURE = [
   {
     id: "gs-v0-003",
     expectedSourceTypes: ["hadith"],
-    requiredCitations: ["HR. Bukhari no. 149"],
+    requiredCitations: ["HR. Bukhari no. 191"],
     expectedBehavior: "answer",
   },
   {
@@ -92,7 +92,8 @@ const scoredOutcome = (questionId, overrides = {}) => ({
   questionId,
   expectedBehavior: "answer",
   passed: false,
-  retrievalRecall: 1,
+  sourceTypeRecall: 1,
+  citationAddressRecall: 1,
   citationValidity: 1,
   refused: false,
   ...overrides,
@@ -105,9 +106,17 @@ describe("failureLines (#340)", () => {
     ]);
   });
 
-  it("names a retrieval-recall miss with the expected source types", () => {
-    expect(failureLines([scoredOutcome("gs-v0-010", { retrievalRecall: 0.5 })], FIXTURE)).toEqual([
-      "  failed: gs-v0-010 retrievalRecall=0.500 (expected quran, hadith, retrieved 1/2)",
+  it("names a source-type-recall miss with the expected source types", () => {
+    expect(failureLines([scoredOutcome("gs-v0-010", { sourceTypeRecall: 0.5 })], FIXTURE)).toEqual([
+      "  failed: gs-v0-010 sourceTypeRecall=0.500 (expected quran, hadith, retrieved 1/2)",
+    ]);
+  });
+
+  it("names an address-recall miss with the required citation it never surfaced", () => {
+    expect(
+      failureLines([scoredOutcome("gs-v0-003", { citationAddressRecall: 0 })], FIXTURE),
+    ).toEqual([
+      "  failed: gs-v0-003 citationAddressRecall=0.000 (required HR. Bukhari no. 191, retrieved 0/1)",
     ]);
   });
 
@@ -131,11 +140,18 @@ describe("failureLines (#340)", () => {
   it("names every dimension that failed, in one line, when several did", () => {
     expect(
       failureLines(
-        [scoredOutcome("gs-v0-010", { retrievalRecall: 0.5, citationValidity: 0, refused: true })],
+        [
+          scoredOutcome("gs-v0-010", {
+            sourceTypeRecall: 0.5,
+            citationAddressRecall: 0,
+            citationValidity: 0,
+            refused: true,
+          }),
+        ],
         FIXTURE,
       ),
     ).toEqual([
-      "  failed: gs-v0-010 retrievalRecall=0.500 (expected quran, hadith, retrieved 1/2); citationValidity=0.000 (required QS. 2:275, present 0/1); behavior=over-refusal (expected an answer, the answer was refused)",
+      "  failed: gs-v0-010 sourceTypeRecall=0.500 (expected quran, hadith, retrieved 1/2); citationAddressRecall=0.000 (required QS. 2:275, retrieved 0/1); citationValidity=0.000 (required QS. 2:275, present 0/1); behavior=over-refusal (expected an answer, the answer was refused)",
     ]);
   });
 
@@ -153,8 +169,8 @@ describe("failureLines (#340)", () => {
   it("degrades to the bare value only for a fixture that genuinely lacks the question (B4)", () => {
     // The `[]` is deliberate: no fixture is in hand, so no rule label exists to
     // print. An *omitted* fixture fails loudly instead of degrading every line.
-    expect(failureLines([scoredOutcome("q9", { retrievalRecall: 0.5 })], [])).toEqual([
-      "  failed: q9 retrievalRecall=0.500",
+    expect(failureLines([scoredOutcome("q9", { sourceTypeRecall: 0.5 })], [])).toEqual([
+      "  failed: q9 sourceTypeRecall=0.500",
     ]);
   });
 
@@ -174,7 +190,8 @@ describe("failureLines (#340)", () => {
       questionId: "gs-v0-019",
       passed: false,
       skipped: true,
-      retrievalRecall: 0,
+      sourceTypeRecall: 0,
+      citationAddressRecall: 0,
       citationValidity: 0,
       notes: ["skipped: transport down"],
     };
@@ -186,14 +203,16 @@ describe("printSummary (#290, #340)", () => {
   const scored = {
     questionId: "q1",
     passed: true,
-    retrievalRecall: 1,
+    sourceTypeRecall: 1,
+    citationAddressRecall: 1,
     citationValidity: 1,
   };
   const skipped = {
     questionId: "q2",
     passed: false,
     skipped: true,
-    retrievalRecall: 0,
+    sourceTypeRecall: 0,
+    citationAddressRecall: 0,
     citationValidity: 0,
     notes: ["skipped: transport down"],
   };
@@ -201,13 +220,14 @@ describe("printSummary (#290, #340)", () => {
     questionId: "q3",
     expectedBehavior: "answer",
     passed: false,
-    retrievalRecall: 1,
+    sourceTypeRecall: 1,
+    citationAddressRecall: 1,
     citationValidity: 0,
     refused: false,
   };
 
   // `questions` has no default: every caller hands the fixture it holds, as both CLIs do.
-  function printedSummary(result, questions) {
+  function printedSummary(result, questions, extra = {}) {
     const spy = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
       printSummary("eval:smoke", {
@@ -216,6 +236,7 @@ describe("printSummary (#290, #340)", () => {
         result,
         costMicroUsd: 25,
         questions,
+        ...extra,
       });
       // Read the calls before `mockRestore`, which drops them.
       return spy.mock.calls.map((call) => call[0]).join("\n");
@@ -245,9 +266,10 @@ describe("printSummary (#290, #340)", () => {
     const scoped = {
       questionId: "q3",
       passed: true,
-      retrievalRecall: 1,
+      sourceTypeRecall: 1,
+      citationAddressRecall: 1,
       citationValidity: 1,
-      expansion: { chunks: 5, fusedOnlyRetrievalRecall: 1 },
+      expansion: { chunks: 5, fusedOnlySourceTypeRecall: 1 },
     };
     const printed = printedSummary(
       {
@@ -263,21 +285,49 @@ describe("printSummary (#290, #340)", () => {
       "",
       "eval:smoke summary — run run-1",
       "  questions: 2  passed: 2  failed: 0  skipped: 0",
-      "  mean retrieval recall: 1.000",
+      "  mean source-type recall: 1.000",
+      "  mean citation-address recall: 1.000",
       "  mean citation validity: 1.000",
       "  cost: 0.000025 USD  budget exceeded: false",
-      "  scoped: q3 — expansion chunks 5, fused-only recall 1.000 (reported 1.000)",
+      "  scoped: q3 — expansion chunks 5, fused-only source-type recall 1.000 (reported 1.000)",
     ]);
     expect(printed).not.toMatch(/^ {2}(failed|skipped): /m);
+  });
+
+  it("names the smoke's reported-but-not-gated address misses as tracked debt", () => {
+    const printed = printedSummary(
+      {
+        passed: 1,
+        failed: 0,
+        skipped: 0,
+        budgetExceeded: false,
+        results: [scored],
+      },
+      FIXTURE,
+      { trackedAddressMisses: ["gs-v0-006", "gs-v0-016"] },
+    );
+    expect(printed).toContain(
+      "  address recall: reported, not gated — tracked retrieval debt: gs-v0-006, gs-v0-016",
+    );
+    // The address mean still prints above it: the dimension is reported in full.
+    expect(printed).toContain("  mean citation-address recall: 1.000");
+    // A caller that gates on the dimension (eval:run) prints no debt line.
+    expect(
+      printedSummary(
+        { passed: 1, failed: 0, skipped: 0, budgetExceeded: false, results: [scored] },
+        FIXTURE,
+      ),
+    ).not.toContain("tracked retrieval debt");
   });
 
   it("keeps the summary shape and order, with the failure line between scoped and skipped", () => {
     const scoped = {
       questionId: "q4",
       passed: true,
-      retrievalRecall: 1,
+      sourceTypeRecall: 1,
+      citationAddressRecall: 1,
       citationValidity: 1,
-      expansion: { chunks: 5, fusedOnlyRetrievalRecall: 1 },
+      expansion: { chunks: 5, fusedOnlySourceTypeRecall: 1 },
     };
     const printed = printedSummary(
       {
@@ -293,10 +343,11 @@ describe("printSummary (#290, #340)", () => {
       "",
       "eval:smoke summary — run run-1",
       "  questions: 4  passed: 2  failed: 1  skipped: 1",
-      "  mean retrieval recall: 1.000",
+      "  mean source-type recall: 1.000",
+      "  mean citation-address recall: 1.000",
       "  mean citation validity: 0.667",
       "  cost: 0.000025 USD  budget exceeded: false",
-      "  scoped: q4 — expansion chunks 5, fused-only recall 1.000 (reported 1.000)",
+      "  scoped: q4 — expansion chunks 5, fused-only source-type recall 1.000 (reported 1.000)",
       "  failed: q3 citationValidity=0.000",
       "  skipped: q2 — transport down",
     ]);

@@ -3,7 +3,7 @@
  * staging-harness.mjs — the shared staging bootstrap for the eval CLIs.
  *
  * `eval:run` and `eval:smoke` build the same staging seams — the Postgres
- * store, the `doc_children` sourceType join, the ledger and trace bridges, and
+ * store, the `doc_children` chunk-metadata join, the ledger and trace bridges, and
  * the refusal markers — so they share one module: a copy per entry point
  * drifts, and one entry point's fix then silently misses the other.
  *
@@ -99,15 +99,18 @@ export async function createStagingHarness(config, budget) {
   });
   const runStore = (effect) => Effect.runPromise(effect);
 
-  // Chunk-id → sourceType resolver for retrieval recall: the trace's retrieval
-  // events carry only chunk ids (ADR-0007), and the source-type labels live in
+  // Chunk-id → metadata resolvers for the two retrieval metrics: the trace's
+  // retrieval events carry only chunk ids (ADR-0007), and the labels live in
   // the chunks' metadata, so the join is this harness's job. It goes through
   // the store's own `getDocChildrenByIds` seam read — the ids a trace names are
   // exactly the rows that read exists for — resolved lazily per retrieval and
-  // memoized, so a long run does not re-read the same chunk row.
+  // memoized, so a long run does not re-read the same chunk row. `sourceType`
+  // answers source-type recall; `citation` answers citation-address recall.
   const sourceTypeByChunkId = new Map();
+  const citationByChunkId = new Map();
   const sourceTypeOf = (id) => sourceTypeByChunkId.get(id);
-  const loadSourceTypes = async (chunkIds) => {
+  const citationOf = (id) => citationByChunkId.get(id);
+  const loadChunkMetadata = async (chunkIds) => {
     const missing = [...new Set(chunkIds)].filter((id) => !sourceTypeByChunkId.has(id));
     if (missing.length === 0) return;
     // The store seam is effect-shaped: without the await this iterates the
@@ -119,6 +122,8 @@ export async function createStagingHarness(config, budget) {
       // Cache the miss too: a chunk without a sourceType label must not be
       // re-queried by every later question that retrieves it.
       else sourceTypeByChunkId.set(row.id, undefined);
+      if (typeof meta.citation === "string") citationByChunkId.set(row.id, meta.citation);
+      else citationByChunkId.set(row.id, undefined);
     }
   };
 
@@ -152,11 +157,11 @@ export async function createStagingHarness(config, budget) {
       // the harness triggered — count them into the cap.
       budget.add(trace.events.reduce((s, e) => s + (e.cost?.costMicroUsd ?? 0), 0));
       budget.check();
-      // Warm the sourceType cache from the retrieval events this trace carries,
-      // before the scorer reads the (synchronous) resolver.
+      // Warm both metadata caches from the retrieval events this trace carries,
+      // before the scorer reads the (synchronous) resolvers.
       for (const event of trace.events) {
         if (event.kind === "retrieval") {
-          await loadSourceTypes((event.detail?.chunks ?? []).map((ref) => ref.id));
+          await loadChunkMetadata((event.detail?.chunks ?? []).map((ref) => ref.id));
         }
       }
       return trace.events;
@@ -184,7 +189,9 @@ export async function createStagingHarness(config, budget) {
     store,
     runStore,
     sourceTypeByChunkId,
+    citationByChunkId,
     sourceTypeOf,
+    citationOf,
     transport,
     traces,
     ledger,

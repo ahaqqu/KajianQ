@@ -155,6 +155,7 @@ export {
   type ModelSubQuery,
 } from "./chat-router-decompose";
 export {
+  ADDRESS_RECALL_TRACKED_MISSES,
   DAIF_TRAP_LABEL,
   GOLDEN_SET_LABELS,
   GOLDEN_SET_TAG_VOCABULARY,

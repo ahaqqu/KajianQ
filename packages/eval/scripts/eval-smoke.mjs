@@ -49,7 +49,11 @@
 import * as evalpkg from "@app/eval";
 // The required coverage classes and the held-out cases are the domain pack's
 // vocabulary, imported so a rename cannot strand the gate.
-import { SMOKE_COVERAGE_TAGS, SMOKE_HELD_OUT_IDS } from "@app/kajianq-domain";
+import {
+  ADDRESS_RECALL_TRACKED_MISSES,
+  SMOKE_COVERAGE_TAGS,
+  SMOKE_HELD_OUT_IDS,
+} from "@app/kajianq-domain";
 import { createStagingHarness } from "./staging-harness.mjs";
 import { createChatReadinessGate, waitForReadiness } from "./readiness.mjs";
 import {
@@ -102,7 +106,7 @@ try {
   fail("eval:smoke", err instanceof Error ? err.message : String(err));
 }
 
-// The staging bootstrap (store, sourceType scan, transport, traces, ledger, refusal
+// The staging bootstrap (store, chunk-metadata scan, transport, traces, ledger, refusal
 // markers) is shared with eval:run — one copy, no drift.
 const harness = await createStagingHarness(config, budget);
 
@@ -118,10 +122,17 @@ const result = await evalpkg.runGoldenSet(selection.set, {
   traces: harness.traces,
   ledger: harness.ledger,
   sourceTypeOf: harness.sourceTypeOf,
+  citationOf: harness.citationOf,
   refusalMarkers: harness.refusalMarkers,
   citationGrammar: harness.citationGrammar,
   citationIdentity: harness.citationIdentity,
   expansionOrigin: harness.expansionOrigin,
+  // The deployed smoke REPORTS citation-address recall but does not gate on it.
+  // Its held-out sample is not derived from the retrieval gap, so a known-unfixed
+  // retrieval miss could redden a deploy for a reason unrelated to the change
+  // under test. The eval gate (offline, on the recorded set) keeps the address
+  // conjunct; #515's retrieval half — the neighbouring #277 workstream — lifts this.
+  gateAddressRecall: false,
   label,
   budget,
 });
@@ -134,6 +145,7 @@ printSummary("eval:smoke", {
   result,
   costMicroUsd: budget.total,
   questions: fixture.questions,
+  trackedAddressMisses: ADDRESS_RECALL_TRACKED_MISSES,
 });
 
 // A run whose readiness retries are spent ends on the gate's failure, and the

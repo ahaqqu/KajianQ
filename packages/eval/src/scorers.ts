@@ -8,15 +8,21 @@ import type {
   TraceEventLike,
 } from "./harness-types";
 import { requireCitationIdentity, resolveIdentity } from "./citation-identity";
+import { comparedAddressesOf } from "./scorers-address";
 
-/** Deterministic scorers — retrieval recall, citation validity, refusal
- * correctness — with no LLM involvement: the metrics come from persisted
- * traces and the answer text alone. */
+export { citationAddressRecall } from "./scorers-address";
 
-/** Retrieval recall: the fraction of the question's expected source types found
- * among the retrieval event's retrieved chunks; the trace carries only chunk
- * ids, so the caller supplies `sourceTypeOf` to resolve them. */
-export function retrievalRecall(
+/** Deterministic scorers — source-type recall, citation-address recall,
+ * citation validity, refusal correctness — with no LLM involvement: the metrics
+ * come from persisted traces and the answer text alone. */
+
+/** Source-type recall: the fraction of the question's expected source types
+ * found among the retrieval event's retrieved chunks; the trace carries only
+ * chunk ids, so the caller supplies `sourceTypeOf` to resolve them. This asks
+ * whether retrieval reached the right **kind** of source; it says nothing about
+ * whether the required address was among the chunks (see
+ * {@link citationAddressRecall}). */
+export function sourceTypeRecall(
   expectedSourceTypes: readonly string[],
   retrieved: readonly ChunkRefLike[],
   sourceTypeOf: (chunkId: string) => string | undefined,
@@ -131,12 +137,10 @@ function groundedLabels(
         sameIdentity(identity, citation, evidence),
     );
   }
-  const named = new Set(
-    evidence.flatMap((label) => namedAddressesOf(label, grammar) ?? []).map(grammar.normalizeLabel),
-  );
+  const named = new Set(evidence.flatMap((label) => comparedAddressesOf(label, grammar) ?? []));
   return required.filter((citation) => {
-    const addresses = namedAddressesOf(citation, grammar);
-    if (addresses !== null && addresses.every((a) => named.has(grammar.normalizeLabel(a)))) {
+    const addresses = comparedAddressesOf(citation, grammar);
+    if (addresses !== null && addresses.every((address) => named.has(address))) {
       return true;
     }
     return sameIdentity(identity, citation, evidence);
@@ -156,13 +160,6 @@ function sameIdentity(
   if (requiredIdentity === null) return false;
   return evidence.some((label) => resolveIdentity(identity, label) === requiredIdentity);
 }
-
-/** The addresses one label names; `null` is a refusal, and `[]` falls back to
- * the label so a label the grammar cannot parse matches whole. */
-const namedAddressesOf = (label: string, grammar: CitationGrammar): readonly string[] | null => {
-  const declared = grammar.addressesNamedBy(label);
-  return declared === null ? null : declared.length > 0 ? declared : [label];
-};
 
 /**
  * Citation validity: the fraction of the question's required citations the

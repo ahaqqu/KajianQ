@@ -112,6 +112,7 @@ function makeDeps(
     traces,
     ledger,
     sourceTypeOf: (id: string) => (id === "c1" || id === "x1" ? "source-a" : undefined),
+    citationOf: (id: string) => (id === "c1" || id === "x1" ? "label-1" : undefined),
     budget: opts.budget ?? new Budget(undefined),
     refusalMarkers: ["tidak menemukan dalil yang memadai"],
     label: "test-label",
@@ -134,7 +135,8 @@ describe("runGoldenSet", () => {
     for (const saved of savedResults) expect(saved.runId).toBe("run-1");
     expect(savedResults[0]?.outcome).toMatchObject({
       passed: true,
-      retrievalRecall: 1,
+      sourceTypeRecall: 1,
+      citationAddressRecall: 1,
       citationValidity: 1,
     });
   });
@@ -331,7 +333,8 @@ describe("runGoldenSet", () => {
       skipped: true,
       refused: false,
       passed: false,
-      retrievalRecall: 0,
+      sourceTypeRecall: 0,
+      citationAddressRecall: 0,
       citationValidity: 0,
       notes: ["skipped: transport down"],
     });
@@ -390,6 +393,7 @@ describe("runGoldenSet", () => {
         },
       },
       sourceTypeOf: (id) => (id === "c1" ? "source-a" : undefined),
+      citationOf: (id) => (id === "c1" ? "label-1" : undefined),
       budget: new Budget(undefined),
       refusalMarkers: [refusal],
     };
@@ -398,7 +402,8 @@ describe("runGoldenSet", () => {
     expect(byId.get("skipped")).toMatchObject({
       passed: false,
       refused: false,
-      retrievalRecall: 0,
+      sourceTypeRecall: 0,
+      citationAddressRecall: 0,
       citationValidity: 0,
       skipped: true,
       notes: ["skipped: fetch failed: ECONNRESET"],
@@ -413,10 +418,61 @@ describe("runGoldenSet", () => {
     expect(byId.get("unscored")).toMatchObject({
       passed: false,
       refused: false,
-      retrievalRecall: 1,
+      sourceTypeRecall: 1,
+      citationAddressRecall: 1,
       citationValidity: 0,
     });
     expect(byId.get("unscored")).not.toHaveProperty("skipped");
+  });
+
+  it("applies a run's address-gate policy to every outcome it persists", async () => {
+    // The deployed smoke reports citation-address recall without gating on it;
+    // `runGoldenSet` is the path that decision travels, so the flag must reach the
+    // scorer and the persisted row, not only the direct `scoreQuestion` call.
+    const one: GoldenSet = {
+      id: "set-gate",
+      status: "v0-draft",
+      questions: [
+        {
+          id: "q1",
+          question: "one",
+          language: "id",
+          expectedSourceTypes: ["source-a"],
+          requiredCitations: ["label-1"],
+          expectedBehavior: "answer",
+        },
+      ],
+    };
+    const addressMiss = makeDeps({
+      traceEvents: () => [
+        {
+          kind: "retrieval",
+          stage: "retriever",
+          detail: { chunks: [{ id: "c2" }, { id: "c3" }] },
+        },
+      ],
+    }).deps;
+    const withNeighbours = {
+      ...addressMiss,
+      sourceTypeOf: (id: string) => (id === "c2" ? "source-a" : undefined),
+      citationOf: (id: string) => (id === "c2" ? "label-2" : "label-3"),
+    };
+    const gated = await runGoldenSet(one, withNeighbours);
+    expect(gated.passed).toBe(0);
+    expect(gated.results[0]).toMatchObject({
+      citationAddressRecall: 0,
+      citationValidity: 1,
+      sourceTypeRecall: 1,
+      passed: false,
+    });
+    const reported = await runGoldenSet(one, { ...withNeighbours, gateAddressRecall: false });
+    expect(reported.passed).toBe(1);
+    expect(reported.results[0]).toMatchObject({
+      citationAddressRecall: 0,
+      citationValidity: 1,
+      sourceTypeRecall: 1,
+      passed: true,
+    });
   });
 
   it("persists the expansion's contribution on each scoped outcome (C1)", async () => {
@@ -444,8 +500,9 @@ describe("runGoldenSet", () => {
     // q1 expects source-a, which ONLY the expansion ref supplies: the reported recall is
     // 1 while the fused track alone scores 0 — the report's statement that it carried it.
     expect(savedResults[0]?.outcome).toMatchObject({
-      retrievalRecall: 1,
-      expansion: { chunks: 1, fusedOnlyRetrievalRecall: 0 },
+      sourceTypeRecall: 1,
+      citationAddressRecall: 1,
+      expansion: { chunks: 1, fusedOnlySourceTypeRecall: 0 },
     });
   });
 
