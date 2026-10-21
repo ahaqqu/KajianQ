@@ -559,17 +559,40 @@ describe("erasure a restore must re-apply", () => {
   const doBlocks = (text) => [...text.matchAll(/DO \$\$[\s\S]*?END \$\$/g)].map((m) => m[0]);
 
   /**
+   * Strip a `--` comment from one SQL line, quote-aware: inside a single-quoted
+   * literal a `--` is data, not the start of a comment, so the text after it stays
+   * in the comparison. A quote is escaped by doubling it (`'it''s -- data'`), so a
+   * doubled quote is skipped rather than read as one literal closing and the next
+   * opening.
+   */
+  const stripSqlComment = (line) => {
+    let quoted = false;
+    for (let i = 0; i < line.length; i += 1) {
+      if (line[i] === "'") {
+        if (quoted && line[i + 1] === "'") {
+          i += 1;
+          continue;
+        }
+        quoted = !quoted;
+        continue;
+      }
+      if (!quoted && line[i] === "-" && line[i + 1] === "-") return line.slice(0, i);
+    }
+    return line;
+  };
+
+  /**
    * One residual assertion block in comparable form: `--` comment text is stripped
    * per line before the lines are joined (a comment runs to the end of its line, so
    * stripping after the join would let a commented-out predicate and a live one
    * normalise to the same text), then blank lines, leading/trailing whitespace and
    * the trailing statement terminator are dropped. Internal spacing and literals
-   * stay verbatim.
+   * stay verbatim, including a `--` inside a literal, which is data.
    */
   const normalizeBlock = (block) =>
     block
       .split("\n")
-      .map((line) => line.replace(/--.*$/, "").trim())
+      .map((line) => stripSqlComment(line).trim())
       .filter(Boolean)
       .join(" ")
       .replace(/;$/, "");
@@ -661,6 +684,26 @@ describe("erasure a restore must re-apply", () => {
     // A comment's own text is not part of the predicate: two blocks that differ only in a
     // comment are equal, so re-wording one does not redden the pin.
     expect(normalizeBlock("DO $$\nBEGIN\n  NULL; -- note\nEND $$")).toBe(
+      normalizeBlock("DO $$\nBEGIN\n  NULL;\nEND $$"),
+    );
+  });
+
+  it("keeps a `--` inside a literal in the comparison, so a difference after it reddens", () => {
+    // A quote-unaware strip truncates the line at the literal's `--` on both sides, so a
+    // difference after it disappears and a weakened assertion pins green. The strip follows
+    // single-quoted literals, including their doubled-quote escapes.
+    const block = (tail) =>
+      [
+        "DO $$",
+        "BEGIN",
+        "  IF EXISTS (SELECT 1 WHERE note = 'it''s -- data" + tail + "') THEN NULL;",
+        "  END IF;",
+        "END $$",
+      ].join("\n");
+    expect(normalizeBlock(block(" x"))).not.toBe(normalizeBlock(block("")));
+    // A `--` outside a literal still starts a comment, whatever the comment's text
+    // contains — quotes in a comment do not reopen a literal.
+    expect(normalizeBlock("DO $$\nBEGIN\n  NULL; -- note 'it''s'\nEND $$")).toBe(
       normalizeBlock("DO $$\nBEGIN\n  NULL;\nEND $$"),
     );
   });

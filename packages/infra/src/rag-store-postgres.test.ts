@@ -713,6 +713,17 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
       return rows[0];
     };
 
+    /** One row per table the subtree holds (two chat messages: the question and
+     * its answer), so a case can tell a seeded subtree from a swept one. */
+    const SEEDED = {
+      users: 1,
+      sessions: 1,
+      chat_sessions: 1,
+      chat_messages: 2,
+      answer_traces: 1,
+      feedback: 1,
+    };
+
     const EMPTY = {
       users: 0,
       sessions: 0,
@@ -722,17 +733,76 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
       feedback: 0,
     };
 
+    /**
+     * The tables the adapter's own postcondition SQL declares as verified, read
+     * from that module's markers: every backstop below is generated from the
+     * declared set, so a table the erasure gains gets a case, and one it drops
+     * cannot leave a case behind.
+     */
+    const DECLARED_TABLES = [
+      ...new Set(
+        [
+          ...readFileSync(
+            resolve(process.cwd(), "packages/infra/src/rag-store-postgres-erasure.ts"),
+            "utf8",
+          ).matchAll(/SELECT '([a-z_]+)' AS verified_table/g),
+        ].map((match) => match[1]!),
+      ),
+    ].sort();
+
+    type SubtreeIds = { userId: string; chatSessionId: string };
+
+    /**
+     * How a row of a verified table is attributed to the subject: the column a
+     * suppression trigger matches, and the seeded id it compares against. Keyed by
+     * the declared set — a declared table with no entry has no suppression
+     * backstop (its generated case reddens), and a key outside the set is a stale
+     * entry the backstop pin reddens.
+     */
+    type Attribution = { column: string; id: (ids: SubtreeIds) => string };
+    const ATTRIBUTION: Record<string, Attribution> = {
+      users: { column: "id", id: ({ userId }) => userId },
+      sessions: { column: "user_id", id: ({ userId }) => userId },
+      chat_sessions: { column: "user_id", id: ({ userId }) => userId },
+      // `chat_messages` has no user column: its owner is its session, and its
+      // residual check runs before the `chat_sessions` delete — the only point
+      // where the rows can still be attributed to the subject.
+      chat_messages: { column: "session_id", id: ({ chatSessionId }) => chatSessionId },
+      answer_traces: { column: "user_id", id: ({ userId }) => userId },
+      feedback: { column: "user_id", id: ({ userId }) => userId },
+    };
+
+    /**
+     * The cascading foreign-key edge that would remove a verified table's rows
+     * with its parent, read from the schema instead of restated: `chat_messages`
+     * reaches `users` through `chat_sessions`, so its edge is the message→session
+     * FK, not a user column. `users` is the root of the closure and has none.
+     */
+    async function cascadingEdges() {
+      const rows = (await sql!.query(
+        `WITH RECURSIVE cascading(tbl) AS (
+           SELECT 'users'::regclass::oid
+           UNION
+           SELECT c.conrelid
+           FROM pg_constraint c
+           JOIN cascading ON c.confrelid = cascading.tbl
+           WHERE c.contype = 'f' AND c.confdeltype = 'c'
+         )
+         SELECT c.conname AS name,
+                c.conrelid::regclass::text AS table_name,
+                pg_get_constraintdef(c.oid) AS definition
+         FROM pg_constraint c
+         JOIN cascading ON c.conrelid = cascading.tbl
+         WHERE c.contype = 'f' AND c.confdeltype = 'c'
+           AND c.conrelid <> 'users'::regclass`,
+      )) as { name: string; table_name: string; definition: string }[];
+      return new Map(rows.map((row) => [row.table_name, row]));
+    }
+
     it("erases every table in one call, and a repeat call is a no-op", async () => {
       if (!URL) return;
       const { userId, token, chatSessionId } = await seedSubtree();
-      expect(await subtreeCounts(userId, chatSessionId)).toEqual({
-        users: 1,
-        sessions: 1,
-        chat_sessions: 1,
-        chat_messages: 2,
-        answer_traces: 1,
-        feedback: 1,
-      });
+      expect(await subtreeCounts(userId, chatSessionId)).toEqual(SEEDED);
 
       await Effect.runPromise(store.deleteUserCascade(userId));
       expect(await subtreeCounts(userId, chatSessionId)).toEqual(EMPTY);
@@ -743,43 +813,52 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
       expect(await subtreeCounts(userId, chatSessionId)).toEqual(EMPTY);
     }, 60_000);
 
-    it("sweeps a child row the FK cascade cannot reach — the FK is the backstop, not the mechanism", async () => {
-      if (!URL) return;
-      const { userId } = await Effect.runPromise(store.createSession());
-      const messageId = `${PREFIX}-no-user-fk`;
-      // A deployment whose `feedback` user FK is missing — drift, or a table added
-      // later without one — leaves rows the parent delete cannot cascade. The
-      // explicit sweep is what removes them; the FK is only the backstop.
-      await sql!.query("ALTER TABLE feedback DROP CONSTRAINT IF EXISTS feedback_user_fk");
-      try {
-        await sql!`INSERT INTO feedback (message_id, user_id, rating, anchor_type)
-          VALUES (${messageId}, ${userId}::uuid, 1, 'answer')`;
-        expect(await subtreeCounts(userId, crypto.randomUUID())).toMatchObject({ feedback: 1 });
-
-        await Effect.runPromise(store.deleteUserCascade(userId));
-        expect(await subtreeCounts(userId, crypto.randomUUID())).toMatchObject({
-          users: 0,
-          sessions: 0,
-          feedback: 0,
-        });
-      } finally {
-        // Leave the shared schema exactly as it was found, even on a failure: the
-        // fixture rows first (a survivor would block the constraint re-add), then
-        // the constraint itself when the drop left it absent.
-        await sql!`DELETE FROM feedback WHERE message_id = ${messageId}`;
-        await sql!`DELETE FROM users WHERE id = ${userId}::uuid`;
-        await sql!.query(`DO $$
-          BEGIN
-            IF NOT EXISTS (
-              SELECT 1 FROM pg_constraint
-              WHERE conname = 'feedback_user_fk' AND conrelid = 'feedback'::regclass
-            ) THEN
-              ALTER TABLE feedback ADD CONSTRAINT feedback_user_fk
-                FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE;
-            END IF;
-          END $$`);
-      }
-    }, 60_000);
+    // The sweep has to be the mechanism, not the FK cascade: with a table's
+    // cascading edge dropped, nothing but that table's explicit sweep can remove
+    // the subject's rows, so a sweep weakened on BOTH the adapter and the restore
+    // copy (`... AND false`, which a statement-by-statement text comparison cannot
+    // see) leaves a row behind and the postcondition reports it. With the edge
+    // intact the cascade removes the row instead and hides the edit — which is why
+    // every verified table needs this case, not just the one whose FK a deployment
+    // might lose.
+    //
+    // `users` has no edge to drop: its row is the subject, so the tree case above
+    // and the final postcondition are what catch a `users` sweep that removes
+    // nothing.
+    for (const table of DECLARED_TABLES.filter((name) => name !== "users")) {
+      it(`sweeps ${table} without the FK cascade — the sweep is the mechanism`, async () => {
+        if (!URL) return;
+        const attribution = ATTRIBUTION[table];
+        if (!attribution) {
+          throw new Error(
+            `add ATTRIBUTION["${table}"]: the postcondition declares ${table}, so its sweep needs a backstop`,
+          );
+        }
+        const edge = (await cascadingEdges()).get(table);
+        if (!edge) {
+          throw new Error(
+            `${table} is a declared verified table but no cascading FK edge reaches it`,
+          );
+        }
+        const ids = await seedSubtree();
+        await sql!.query(`ALTER TABLE ${table} DROP CONSTRAINT ${edge.name}`);
+        try {
+          expect(await subtreeCounts(ids.userId, ids.chatSessionId)).toEqual(SEEDED);
+          await Effect.runPromise(store.deleteUserCascade(ids.userId));
+          expect(await subtreeCounts(ids.userId, ids.chatSessionId)).toEqual(EMPTY);
+        } finally {
+          // Leave the shared schema exactly as it was found, even on a failure:
+          // this table's surviving rows first (a survivor would block the
+          // constraint re-add), then the rest of the subtree through the parent
+          // delete, then the constraint itself as it was defined.
+          await sql!.query(`DELETE FROM ${table} WHERE ${attribution.column} = $1::uuid`, [
+            attribution.id(ids),
+          ]);
+          await sql!`DELETE FROM users WHERE id = ${ids.userId}::uuid`;
+          await sql!.query(`ALTER TABLE ${table} ADD CONSTRAINT ${edge.name} ${edge.definition}`);
+        }
+      }, 60_000);
+    }
 
     it("a failing child delete rolls the erasure back and surfaces as an error", async () => {
       if (!URL) return;
@@ -798,14 +877,7 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
         expect(Exit.isFailure(exit)).toBe(true);
         // The whole transaction rolled back: a failed erasure leaves the subtree
         // intact rather than half-erased, so a retry can still complete it.
-        expect(await subtreeCounts(userId, chatSessionId)).toEqual({
-          users: 1,
-          sessions: 1,
-          chat_sessions: 1,
-          chat_messages: 2,
-          answer_traces: 1,
-          feedback: 1,
-        });
+        expect(await subtreeCounts(userId, chatSessionId)).toEqual(SEEDED);
       } finally {
         await sql!.query(`DROP TRIGGER IF EXISTS ${refusal} ON feedback`);
         await sql!.query(`DROP FUNCTION IF EXISTS ${refusal}()`);
@@ -815,22 +887,12 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
       expect(await subtreeCounts(userId, chatSessionId)).toMatchObject({ users: 0, feedback: 0 });
     }, 60_000);
 
-    type SuppressedTable =
-      | "users"
-      | "sessions"
-      | "chat_sessions"
-      | "chat_messages"
-      | "answer_traces"
-      | "feedback";
-
-    type SubtreeIds = { userId: string; chatSessionId: string };
-
     /** A `BEFORE DELETE` trigger that silently skips the subject's rows on one
      * table — the failure the postcondition exists for: the sweep succeeds and
      * removes nothing, and the FK cascade's own delete is skipped the same way,
      * so only a count inside the transaction can see the surviving row. Returns
-     * the cleanup that drops the trigger and its function. */
-    const suppressDeletes = async (table: SuppressedTable, when: string) => {
+     * the teardown that drops the trigger and its function. */
+    const suppressDeletes = async (table: string, when: string) => {
       const fn = `suppress_${table}_${PREFIX.replace(/[^a-zA-Z0-9_]/g, "_")}`;
       await sql!.query(
         `CREATE FUNCTION ${fn}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$`,
@@ -845,41 +907,26 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
       };
     };
 
-    const SEEDED = {
-      users: 1,
-      sessions: 1,
-      chat_sessions: 1,
-      chat_messages: 2,
-      answer_traces: 1,
-      feedback: 1,
-    };
-
-    // One case per table the residual assertion verifies: the trigger suppresses
-    // that table's delete for the subject's rows, so the postcondition has to
-    // name it and roll the transaction back. A weakened assertion predicate —
-    // `WHERE false` in place of `WHERE EXISTS (…)`, on either side of the
-    // restore pin — makes the call succeed with the row still there, so the
-    // table's case reddens.
-    const SUPPRESSED: { table: SuppressedTable; when: (ids: SubtreeIds) => string }[] = [
-      { table: "users", when: ({ userId }) => `OLD.id = '${userId}'::uuid` },
-      { table: "sessions", when: ({ userId }) => `OLD.user_id = '${userId}'::uuid` },
-      { table: "chat_sessions", when: ({ userId }) => `OLD.user_id = '${userId}'::uuid` },
-      // `chat_messages` has no user column: its owner is its session, and its
-      // residual check runs before the `chat_sessions` delete — the only point
-      // where the rows can still be attributed to the subject.
-      {
-        table: "chat_messages",
-        when: ({ chatSessionId }) => `OLD.session_id = '${chatSessionId}'::uuid`,
-      },
-      { table: "answer_traces", when: ({ userId }) => `OLD.user_id = '${userId}'::uuid` },
-      { table: "feedback", when: ({ userId }) => `OLD.user_id = '${userId}'::uuid` },
-    ];
-
-    for (const { table, when } of SUPPRESSED) {
+    // One suppression case per table the postcondition verifies, generated from
+    // the declared set: the trigger makes that table's delete a no-op for the
+    // subject's rows, so only the postcondition can see the survivor and roll the
+    // transaction back. A weakened assertion predicate — `WHERE false` in place of
+    // `WHERE EXISTS (…)`, on either side of the restore pin — lets the call
+    // succeed with the row still there, so the table's case reddens.
+    for (const table of DECLARED_TABLES) {
       it(`a suppressed ${table} delete fails the erasure — the residual assertion is the detector`, async () => {
         if (!URL) return;
+        const attribution = ATTRIBUTION[table];
+        if (!attribution) {
+          throw new Error(
+            `add ATTRIBUTION["${table}"]: the postcondition declares ${table}, so it needs a suppression backstop`,
+          );
+        }
         const ids = await seedSubtree();
-        const cleanup = await suppressDeletes(table, when(ids));
+        const dropSuppression = await suppressDeletes(
+          table,
+          `OLD.${attribution.column} = '${attribution.id(ids)}'::uuid`,
+        );
         try {
           const failure = await runFail(store.deleteUserCascade(ids.userId));
           expect(failure.kind).toBe("constraint");
@@ -891,7 +938,7 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
           // a dangling foreign key.
           expect(await subtreeCounts(ids.userId, ids.chatSessionId)).toEqual(SEEDED);
         } finally {
-          await cleanup();
+          await dropSuppression();
         }
         // The obstruction is gone, so the same call completes the erasure.
         await Effect.runPromise(store.deleteUserCascade(ids.userId));
@@ -899,18 +946,22 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
       }, 60_000);
     }
 
+    it("keys the per-table backstops to the declared set — no gap, no stale entry", () => {
+      // The case set is generated from the postcondition's markers, so there is no
+      // list to keep in step; what remains per table is its attribution and its
+      // seeded row count, and both must cover exactly the declared set. A table the
+      // postcondition gains reddens here until they exist, and a table it drops
+      // reddens until the stale keys go.
+      expect(Object.keys(ATTRIBUTION).sort()).toEqual(DECLARED_TABLES);
+      expect(Object.keys(SEEDED).sort()).toEqual(DECLARED_TABLES);
+    });
+
     it("verifies every table a cascading foreign key path reaches from users", async () => {
       if (!URL) return;
       // The declared set, read from the module's own postcondition SQL: a table a
       // cascading FK path reaches from `users` is a table the erasure must verify,
       // so a migration that adds one reddens here instead of being forgotten.
-      const source = readFileSync(
-        resolve(process.cwd(), "packages/infra/src/rag-store-postgres-erasure.ts"),
-        "utf8",
-      );
-      const declared = [
-        ...new Set([...source.matchAll(/SELECT '([a-z_]+)' AS verified_table/g)].map((m) => m[1]!)),
-      ];
+      const declared = DECLARED_TABLES;
       const derived = (await sql!.query(
         `WITH RECURSIVE cascading(tbl) AS (
            SELECT 'users'::regclass::oid
