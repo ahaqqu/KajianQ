@@ -247,13 +247,15 @@ jobs:
         # persisted per question and printed as a `skipped: <message>` line, so
         # the red is actionable from the log and from `eval_results`.
         # Readiness (the restart window): the smoke polls `/v1/health` before it
-        # samples and retries a first-question transport failure with backoff
-        # (`packages/eval/scripts/readiness.mjs` states the budget), so a skip
-        # here means the API answered and then went down mid-run instead of the
-        # smoke sampling a deploy's restart window; a target that never becomes
-        # ready reds the step with a `readiness:` message before a question is
-        # asked. Do not move this step off `post deploy checks` or widen the
-        # sample to make it pass.
+        # samples, and a `/v1/chat` round-trip that ends without a response (a
+        # failed connection or a 502/503/504 edge rejection) is retried on any
+        # question out of one per-run budget (`packages/eval/scripts/readiness.mjs`
+        # states it); when that budget is spent the step reds with a `readiness:`
+        # message instead of reading the window as a mid-run outage. A stream that
+        # breaks after its headers is a real failure and is never retried. A target
+        # that never becomes ready reds the step before a question is asked. Do not
+        # move this step off `post deploy checks` or widen the sample to make it
+        # pass.
         # Attribution (#340): a scored failure prints a `failed: <questionId> …`
         # line naming the dimension that missed, so the block is what answers
         # "which question, which dimension". The extraction below is

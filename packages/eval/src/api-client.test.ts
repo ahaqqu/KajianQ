@@ -153,12 +153,15 @@ describe("parseChatMeta", () => {
 });
 
 /**
- * The transport error's `status` is the seam a caller reads to tell "the target is
- * not serving" (a readiness question) from "the target answered and the answer was
- * bad" (an eval result). It must therefore survive every way a round-trip can fail
- * without an answer: an edge rejection carries the status, a failed connection and a
- * broken stream carry `null`. The message is what the run log prints, so a status
- * rejection keeps the exact `/v1/chat returned <status>: <body>` shape.
+ * The transport error's `status` and `phase` are the seam a caller reads to tell
+ * "the target is not serving" (a readiness question) from "the target answered and
+ * the answer was bad" (an eval result). It must therefore survive every way a
+ * round-trip can fail without an answer: an edge rejection carries the status and
+ * `response` phase, a failed connection carries `null` and `connect`, and a broken
+ * stream carries `null` and `stream` — the last two are deliberately distinguishable
+ * because only the first never got response headers. The message is what the run log
+ * prints, so a status rejection keeps the exact `/v1/chat returned <status>: <body>`
+ * shape.
  */
 describe("postChatSse", () => {
   const input = { baseUrl: "https://staging.example", token: "t-1", question: "q" };
@@ -192,6 +195,7 @@ describe("postChatSse", () => {
     }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ChatTransportError);
     expect((err as ChatTransportError).status).toBe(502);
+    expect((err as ChatTransportError).phase).toBe("response");
     expect((err as ChatTransportError).detail).toContain("502 Bad Gateway");
     expect((err as Error).message).toBe("/v1/chat returned 502: <html>502 Bad Gateway</html>");
   });
@@ -205,6 +209,7 @@ describe("postChatSse", () => {
     }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ChatTransportError);
     expect((err as ChatTransportError).status).toBeNull();
+    expect((err as ChatTransportError).phase).toBe("connect");
     expect((err as Error).message).toBe(
       "/v1/chat request failed: fetch failed: Connection refused",
     );
@@ -223,6 +228,7 @@ describe("postChatSse", () => {
     }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ChatTransportError);
     expect((err as ChatTransportError).status).toBeNull();
+    expect((err as ChatTransportError).phase).toBe("stream");
     expect((err as Error).message).toBe("/v1/chat request failed: stream failed: ECONNRESET");
   });
 });

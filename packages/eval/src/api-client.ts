@@ -148,20 +148,32 @@ function parseFrame(frame: string): { event: string; data: string } | null {
 }
 
 /**
+ * Which part of the `/v1/chat` round-trip failed: `connect` before any response
+ * headers (DNS, refused, timeout), `response` once the edge answered with a
+ * non-2xx (or a 2xx with no body), or `stream` after a 200's headers when the
+ * body broke mid-read.
+ */
+export type ChatTransportPhase = "connect" | "response" | "stream";
+
+/**
  * A `/v1/chat` request that produced no answer: the edge answered with a
- * non-2xx status, or the request/stream failed before a body was read.
+ * non-2xx status, the connection failed, or the answer stream broke after its
+ * headers.
  *
- * `status` is the response status when the edge answered, `null` when the
- * connection failed (DNS, refused, timeout, or a stream that broke). It is the
- * one fact a caller needs to tell "the target was not available" from "the
- * target answered and the answer was bad": the first is a readiness question,
- * the second an eval result. `detail` is the bounded response body, or the
+ * `status` is the response status when the edge answered, `null` otherwise;
+ * `phase` says whether an answer could have existed. Together they are what a
+ * caller needs to tell "the target was not available" from "the target answered
+ * and the answer was bad": only a `connect` failure or a `response`-phase
+ * 502/503/504 is readiness. A `stream` failure is answered-then-failed — the app
+ * accepted the request and may already have spent on the turn — so it must not
+ * be retried as a readiness retry. `detail` is the bounded response body, or the
  * network cause, and it stays in `message` for the run log.
  */
 export class ChatTransportError extends Error {
   constructor(
     readonly status: number | null,
     readonly detail: string,
+    readonly phase: ChatTransportPhase,
   ) {
     super(
       status === null
@@ -200,18 +212,19 @@ export async function postChatSse(input: ChatClientInput): Promise<ChatSseResult
       ...(input.signal !== undefined ? { signal: input.signal } : {}),
     });
   } catch (err) {
-    throw new ChatTransportError(null, transportCause(err));
+    throw new ChatTransportError(null, transportCause(err), "connect");
   }
   if (!res.ok || res.body === null) {
     throw new ChatTransportError(
       res.status,
       res.body === null ? "no response body" : await safeText(res),
+      "response",
     );
   }
   try {
     return await consumeSseToText(res.body);
   } catch (err) {
-    throw new ChatTransportError(null, `stream failed: ${transportCause(err)}`);
+    throw new ChatTransportError(null, `stream failed: ${transportCause(err)}`, "stream");
   }
 }
 

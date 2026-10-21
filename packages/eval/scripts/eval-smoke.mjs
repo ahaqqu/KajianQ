@@ -27,13 +27,17 @@
  * before the first question the smoke polls `GET /v1/health` until it answers 2xx,
  * for at most READINESS_BUDGET_MS (60 s; 3 s between attempts, 5 s per request). An
  * exhausted budget reds the run with a `readiness:` message before a single
- * question is asked — nothing sampled, skipped, or spent. A transport failure on
- * the FIRST question (nothing answered yet this run) is the same class of problem:
- * a failed connection or a 502/503/504 is retried up to FIRST_ANSWER_RETRIES times
- * with exponential backoff, and if it still fails the run's verdict is a
- * `readiness:` failure, not a skip. Any failure after the first answered question
- * is a real failure and is never retried, so a skip here means the API was
- * answering and then went down mid-run.
+ * question is asked — nothing sampled, skipped, or spent. A `/v1/chat` round-trip
+ * that ends without a response — a failed connection, or a 502/503/504 edge
+ * rejection — is readiness on ANY question, because no answer exists to judge and
+ * nothing was spent. It is retried with exponential backoff (2 s, 4 s, 8 s) out of
+ * one per-run budget of three retries; when that is spent the verdict is a
+ * `readiness:` failure naming the question and the last cause, not a skip. A
+ * request whose response headers arrived and whose stream then broke is
+ * answered-then-failed: a real failure, never retried. So is any 4xx or 500. A skip
+ * therefore means a question could not be measured — a readiness failure with its
+ * retries spent, or a real failure after the target answered — never "the smoke
+ * sampled a restart window and moved on".
  *
  * A live run needs staging secrets (the VPS store URL + vendor keys); absent them
  * the script fails fast with the missing name. Run instructions: SPECS §3.7.
@@ -47,7 +51,7 @@ import * as evalpkg from "@app/eval";
 // vocabulary, imported so a rename cannot strand the gate.
 import { SMOKE_COVERAGE_TAGS, SMOKE_HELD_OUT_IDS } from "@app/kajianq-domain";
 import { createStagingHarness } from "./staging-harness.mjs";
-import { createFirstAnswerGate, waitForReadiness } from "./readiness.mjs";
+import { createChatReadinessGate, waitForReadiness } from "./readiness.mjs";
 import {
   createBudget,
   exitWithPolicy,
@@ -102,10 +106,11 @@ try {
 // markers) is shared with eval:run — one copy, no drift.
 const harness = await createStagingHarness(config, budget);
 
-// The first question gets the readiness classification: its transport failure is
-// retried with backoff and, if it never lands, reported as readiness rather than
-// swallowed as a skip. After the first answered question the gate is a pass-through.
-const gate = createFirstAnswerGate(harness.transport);
+// Every question gets the readiness classification: a no-response round-trip is
+// retried out of one per-run budget and, if that is spent, reported as readiness
+// rather than swallowed as a skip. A broken stream or an app error passes straight
+// through as the real failure it is.
+const gate = createChatReadinessGate(harness.transport);
 
 const label = config.runLabel ?? `${fixture.id}-smoke`;
 const result = await evalpkg.runGoldenSet(selection.set, {
@@ -130,9 +135,9 @@ printSummary("eval:smoke", {
   questions: fixture.questions,
 });
 
-// A target that never accepted its first question is a readiness failure, and the
+// A run whose readiness retries are spent ends on the gate's failure, and the
 // verdict says so — the skip rows above are the harness's record of a run that could
-// not start, not a measured outage. Printed after the summary so the evidence block
+// not finish, not a measured outage. Printed after the summary so the evidence block
 // keeps both.
 const readinessFailure = gate.readinessFailure();
 if (readinessFailure !== undefined) fail("eval:smoke", readinessFailure.message);

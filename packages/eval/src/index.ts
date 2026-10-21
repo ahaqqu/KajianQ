@@ -36,6 +36,7 @@ export {
   parseCitationsFrame,
   postChatSse,
   type ChatSseResult,
+  type ChatTransportPhase,
 } from "./api-client";
 export {
   runGoldenSet,

@@ -14,21 +14,37 @@
  *    `is-active` (unit state, not HTTP), and makes one `/v1/health` request; the
  *    seconds after it are exactly when a proxy can still answer 502.
  *
- * 2. **Transport is not quality.** A transport failure on the FIRST question —
- *    before any question has been answered in this run — is a readiness failure,
- *    not an eval result. A readiness-class transport error (the connection failed,
- *    or the edge answered 502/503/504 — a rejection, so no answer was paid for) is
- *    retried FIRST_ANSWER_RETRIES times with exponential backoff
- *    (FIRST_ANSWER_BACKOFF_MS doubling per retry). If every attempt is rejected the
- *    run ends on a `readiness:` failure naming the attempt count and the last
- *    cause, never on a bare skip. Any other error, and any transport failure after
- *    the first answered question, is a real failure: it is never retried, and the
- *    shared exit policy reddens on it.
+ * 2. **A rejection is not an answer.** A `/v1/chat` round-trip that ends without a
+ *    response — the connection failed before headers, or the edge rejected it
+ *    with 502/503/504 — is readiness-class on ANY question, not only the first:
+ *    no answer exists to judge and nothing was spent, so it is transport, not
+ *    quality. The gate retries it with exponential backoff (CHAT_RETRY_BACKOFF_MS
+ *    doubling per retry) out of ONE per-run budget of CHAT_RETRY_BUDGET retries,
+ *    shared by every question; when that budget is spent the run's verdict is a
+ *    `readiness:` failure naming the question and the last cause, never a bare
+ *    skip. The single budget is what keeps a flapping edge from looping: every
+ *    retry any question spends comes out of the same three.
+ *
+ *    This is the wait the `/v1/health` poll cannot give. The poll can be green
+ *    while `/v1/chat` still rejects — they share the nginx upstream, but the app
+ *    accepts a chat POST only once its own routes are serving — so a rejection
+ *    after an answered question is the same restart window, not a mid-run outage.
+ *    The wait does not cover a request whose response headers arrived and whose
+ *    stream then broke: the app accepted the request and may already have paid
+ *    for the turn, so that is answered-then-failed — a real failure, never
+ *    retried, because a retry would abandon a spent turn the run never bills. Nor
+ *    does it cover a 4xx or 500: the app answered, so it is quality, and retrying
+ *    it would hide the defect the eval exists to catch. A target that outlasts
+ *    the per-run budget reds the run as readiness: the wait is bounded, not a
+ *    guarantee of recovery.
  *
  * 3. **Skipped stays honest.** Any skip still fails the run (`exitPolicy` in
- *    `eval-cli.mjs`). Because the wait above runs first, a skip now means the API
- *    was answering and then went down mid-run — not that the smoke sampled a
- *    restart window.
+ *    `eval-cli.mjs`). A skip means a question could not be measured: a
+ *    readiness-class failure once the run's retries are spent (the verdict is
+ *    then the `readiness:` failure, and every unasked question carries a skip
+ *    row too), or a real failure after the target answered — a broken stream, a
+ *    4xx/5xx that is not a restart rejection, a failed trace read. It never means
+ *    "the smoke sampled a restart window and moved on".
  *
  * Why this lives in `scripts/` and not in the engine: the engine (`@app/eval`)
  * measures the target it is given, and `eval:run` is operator-invoked against a
@@ -50,11 +66,11 @@ export const READINESS_INTERVAL_MS = 3_000;
 /** Per-request timeout, so one hung request cannot swallow the whole budget. */
 export const READINESS_REQUEST_TIMEOUT_MS = 5_000;
 
-/** Extra attempts the first question gets after a readiness-class transport failure. */
-export const FIRST_ANSWER_RETRIES = 3;
+/** Retries the whole run may spend on readiness-class `/v1/chat` failures. */
+export const CHAT_RETRY_BUDGET = 3;
 
-/** First-question backoff, doubled per retry (2 s, 4 s, 8 s). */
-export const FIRST_ANSWER_BACKOFF_MS = 2_000;
+/** First chat-readiness backoff, doubled per retry (2 s, 4 s, 8 s). */
+export const CHAT_RETRY_BACKOFF_MS = 2_000;
 
 /** The route the readiness poll reads. */
 export const HEALTH_PATH = "/v1/health";
@@ -72,13 +88,15 @@ export class ReadinessError extends Error {
 
 /**
  * Whether a transport error says "the target is not available" rather than
- * "the answer was wrong". `null` status is a failed connection; 502/503/504 is
- * the edge rejecting the request, which is what a restart window looks like.
+ * "the answer was wrong". Only a failure that never got a response qualifies: a
+ * failed connection (`connect` phase) or an edge rejection (`response` phase,
+ * 502/503/504). A stream that broke after the headers is `stream` phase — the app
+ * accepted the request — so it is not readiness.
  */
 export function isReadinessClassError(err) {
-  return (
-    err instanceof ChatTransportError && (err.status === null || READINESS_STATUSES.has(err.status))
-  );
+  if (!(err instanceof ChatTransportError)) return false;
+  if (err.phase === "connect") return true;
+  return err.phase === "response" && err.status !== null && READINESS_STATUSES.has(err.status);
 }
 
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -156,48 +174,48 @@ export async function waitForReadiness({
 }
 
 /**
- * Wrap a transport so the first question's transport failure is classified as
- * readiness (retried with backoff, then reported as a `ReadinessError`) while
- * every failure after the first answered question passes through untouched.
+ * Wrap a transport so a readiness-class failure on any question — no response
+ * headers, or a 502/503/504 edge rejection — is retried out of one per-run
+ * budget, then reported as a `ReadinessError`; every other failure passes
+ * through untouched.
  *
  * `readinessFailure()` is how the caller tells the run's verdict apart from a
- * skip: it is set only when the target never accepted a question, and it is the
- * error the run ended on. Once it is set, later questions fail fast with it — a
- * target that never became ready does not get a fresh retry budget per question.
+ * skip: it is set only when the run's retry budget is exhausted, and it is the
+ * error the run ended on. Once it is set, later questions fail fast with it.
  */
-export function createFirstAnswerGate(
+export function createChatReadinessGate(
   transport,
   {
-    retries = FIRST_ANSWER_RETRIES,
-    backoffMs = FIRST_ANSWER_BACKOFF_MS,
+    retries = CHAT_RETRY_BUDGET,
+    backoffMs = CHAT_RETRY_BACKOFF_MS,
     classify = isReadinessClassError,
     sleep = defaultSleep,
     log = console.log,
   } = {},
 ) {
-  let answered = 0;
+  let retriesSpent = 0;
   let readinessFailure;
 
   const gated = {
     async ask(question) {
       if (readinessFailure !== undefined) throw readinessFailure;
-      for (let attempt = 0; ; attempt += 1) {
+      for (;;) {
         try {
-          const reply = await transport.ask(question);
-          answered += 1;
-          return reply;
+          return await transport.ask(question);
         } catch (err) {
-          // Mid-run, or not a readiness-class error: a real failure, never retried.
-          if (answered > 0 || !classify(err)) throw err;
-          if (attempt >= retries) {
+          if (!classify(err)) throw err;
+          if (retriesSpent >= retries) {
             readinessFailure = new ReadinessError(
-              `readiness: /v1/chat did not accept the first question within ${retries + 1} attempts; last: ${causeText(err)}`,
+              `readiness: /v1/chat did not accept question ${question.id} within the run's ${retries} readiness ${
+                retries === 1 ? "retry" : "retries"
+              }; last: ${causeText(err)}`,
             );
             throw readinessFailure;
           }
-          const waitMs = backoffMs * 2 ** attempt;
+          const waitMs = backoffMs * 2 ** retriesSpent;
+          retriesSpent += 1;
           log(
-            `readiness: first question attempt ${attempt + 1}/${retries + 1} — ${causeText(err)}; retrying in ${waitMs} ms`,
+            `readiness: /v1/chat retry ${retriesSpent}/${retries} for question ${question.id} — ${causeText(err)}; waiting ${waitMs} ms`,
           );
           await sleep(waitMs);
         }
@@ -209,5 +227,7 @@ export function createFirstAnswerGate(
     transport: gated,
     /** The readiness failure this run ended on, or `undefined` when it measured its sample. */
     readinessFailure: () => readinessFailure,
+    /** How many of the run's retries the questions have spent so far. */
+    retriesSpent: () => retriesSpent,
   };
 }
