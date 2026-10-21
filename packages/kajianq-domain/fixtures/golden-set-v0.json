@@ -26,7 +26,7 @@
       "question": "Bagaimana tata cara wudhu menurut hadits?",
       "language": "id",
       "expectedSourceTypes": ["hadith"],
-      "requiredCitations": ["HR. Bukhari no. 149"],
+      "requiredCitations": ["HR. Bukhari no. 191"],
       "expectedBehavior": "answer",
       "tags": ["fikih", "hadith"]
     },
@@ -53,7 +53,7 @@
       "question": "Apakah menjamak shalat saat safar diperbolehkan? Sebutkan dalilnya.",
       "language": "id",
       "expectedSourceTypes": ["hadith"],
-      "requiredCitations": ["HR. Bukhari no. 1101"],
+      "requiredCitations": ["HR. Bukhari no. 1108"],
       "expectedBehavior": "answer",
       "tags": ["fikih", "hadith"]
     },
@@ -98,7 +98,7 @@
       "question": "Sebutkan hadits tentang kebersihan itu sebagian dari iman!",
       "language": "id",
       "expectedSourceTypes": ["hadith"],
-      "requiredCitations": ["HR. Muslim no. 223"],
+      "requiredCitations": ["HR. Muslim no. 534"],
       "expectedBehavior": "answer",
       "tags": ["hadith", "grade-check"]
     },
@@ -116,7 +116,7 @@
       "question": "Bagaimana adab makan menurut hadits Rasulullah?",
       "language": "id",
       "expectedSourceTypes": ["hadith"],
-      "requiredCitations": ["HR. Muslim no. 2020"],
+      "requiredCitations": ["HR. Muslim no. 5265"],
       "expectedBehavior": "answer",
       "tags": ["adab", "hadith"]
     },
@@ -153,7 +153,7 @@
       "question": "What is the ruling on praying in a garment that contains gold?",
       "language": "en",
       "expectedSourceTypes": ["hadith"],
-      "requiredCitations": ["HR. Muslim no. 2064"],
+      "requiredCitations": ["HR. Nasai no. 5144"],
       "expectedBehavior": "answer",
       "tags": ["fikih", "hadith", "english"]
     },
