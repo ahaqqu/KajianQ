@@ -138,7 +138,7 @@ What it does, in order:
    its previous revision, where a red after the ship would leave the new tree
    live, the API restarted, and the smoke and doctor below skipped.
 3. **Build.** `bun run build:web` for the PWA, then two `bun build
---target=bun` bundles from `apps/api/src/boot.ts` (serving) and
+   --target=bun` bundles from `apps/api/src/boot.ts` (serving) and
    `apps/api/src/cleanup.ts` (the nightly reclamation). Bundling for Bun is what
    makes `pg` a dependency of the artifact rather than a runtime resolve against
    a `node_modules` tree the box does not have. A missing
@@ -379,7 +379,7 @@ Three distinct identities, deliberately:
 > `NOPASSWD:ALL` rule installed for the cutover session, and the grant §1.5
 > described had never actually been installed. Removing the temporary rule
 > therefore broke the next push to `main` at the restart step — `sudo: a
-password is required`, after the tree had already shipped (Staging run
+> password is required`, after the tree had already shipped (Staging run
 > 35548824035). The fix moved the grant into the repository and put executable
 > pins on it, so the host precondition and the deploy script can no longer
 > disagree silently. Record: ADR-0044 decision 6.

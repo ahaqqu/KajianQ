@@ -12,6 +12,16 @@ export default defineConfig({
     // DB-less gate keeps full parallelism. The serial property therefore belongs to
     // the configuration, not to whoever remembers to pass a flag.
     fileParallelism: !process.env.DATABASE_URL,
+    // @fast-check/vitest reaches into Vitest's TestRunner for the current suite,
+    // and that state lives in the module instance the runner loads. Externalized,
+    // the package would import its own copy of Vitest and `test.prop` would throw
+    // "failed to find the current suite"; inlining keeps it in the runner's module
+    // graph.
+    server: {
+      deps: {
+        inline: ["@fast-check/vitest"],
+      },
+    },
     include: [
       "packages/**/src/**/*.{test,prop.test}.ts",
       "apps/**/src/**/*.{test,prop.test}.ts",
