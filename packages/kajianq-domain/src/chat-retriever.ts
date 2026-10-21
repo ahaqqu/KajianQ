@@ -22,7 +22,6 @@ import {
   filterEntries,
   hierarchyBonus,
   lookupCitationLabels,
-  nextRelaxation,
   rrfFuse,
   type NeighbourChildRow,
   type ScopeChildRow,
@@ -225,21 +224,12 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
             store: deps.store,
             bridge: deps.bridge,
           });
-          if (expansion.scope !== null) {
-            run.record({
-              stage: "retriever",
-              kind: "scope_expansion",
-              detail: expansion.scope,
-              at: run.now(),
-            });
-          }
           const scoped = [...fused, ...expansion.chunks];
           // ADR-0045's second trigger: a fused verse can be one of a short surah's
-          // verses while the surah's opening — the verse that may answer the question
-          // — sits outside every list. The same bounded read completes it from the
-          // parent's opening, out of what the named read left of the one budget; the
-          // event names that remainder beside the configured cap, so neither the
-          // target set nor the starvation hides.
+          // verses while its opening — the verse that may answer the question — sits
+          // outside every list. The same bounded read completes it from that opening,
+          // out of what the named read left; the record names that remainder beside
+          // the configured cap, so neither the target set nor the starvation hides.
           const completion = yield* expandRetrievedSurahScope({
             retrieved: fused,
             existingIds: new Set(scoped.map((chunk) => chunk.id)),
@@ -248,11 +238,17 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
             store: deps.store,
             bridge: deps.bridge,
           });
-          for (const scope of completion.scopes) {
+          // One record per scope read, in read order: the named read first, then each
+          // completion target — including one the shared budget never reached.
+          const scopeDetails = [
+            ...(expansion.scope === null ? [] : [expansion.scope]),
+            ...completion.scopes,
+          ];
+          for (const detail of scopeDetails) {
             run.record({
               stage: "retriever",
               kind: "scope_expansion",
-              detail: scope,
+              detail,
               at: run.now(),
             });
           }
