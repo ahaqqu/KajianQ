@@ -452,10 +452,9 @@ describe("worktree-cleanup", () => {
 
     expect(result.status).toBe(0);
     // The failed inspection is reported per item; the run keeps going to the other slugs.
-    expect(result.stdout).toMatch(
-      /kept {2}a-stale: failed to inspect \(fatal: not a git repository/,
-    );
-    expect(result.stdout).toContain("kept  a-stale");
+    // The parenthesis carries git's own first stderr line, a third-party string this
+    // repo does not stabilize: pin the script-owned line and keep that detail opaque.
+    expect(result.stdout).toMatch(/^kept {2}a-stale: failed to inspect \(.+\)$/m);
     expect(fx.exists("a-stale")).toBe(true);
     expect(fx.branchExists("agent/a-stale")).toBe(true);
     expect(result.stdout).toContain("removed z-healthy (PR merged)");
@@ -463,6 +462,36 @@ describe("worktree-cleanup", () => {
     // The broken entry never reaches the gh consultation: exactly one lookup.
     expect(callLog(fx)).toEqual(["pr view agent/z-healthy --json state,headRefOid"]);
     fx.dispose();
+  });
+
+  it("reports a failed inspection in its own shape whatever wording git supplies", () => {
+    // The same failure carries different prose across git versions, and the script
+    // forwards git's first stderr line. Both wordings are inputs here, so pinning either
+    // one in an assertion reddens on every host — not only on a host whose git happens
+    // to emit the other.
+    const wordings = [
+      "fatal: not a git repository (or any of the parent directories): .git",
+      "fatal: gitfile does not point to a valid repository: /gone-gitdir",
+    ];
+
+    for (const wording of wordings) {
+      const fx = makeFixture();
+      fx.addCommitted("a-stale");
+      fx.fakeGh({});
+      fx.failGitStatus(wording);
+
+      const result = runClean(fx);
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toMatch(/^kept {2}a-stale: failed to inspect \(.+\)$/m);
+      // The detail is this case's own input: the script must forward it, not replace it.
+      expect(result.stdout).toContain(`kept  a-stale: failed to inspect (${wording})`);
+      expect(result.stdout).toMatch(/^done: 0 removed, 1 kept$/m);
+      expect(callLog(fx)).toEqual([]);
+      expect(fx.exists("a-stale")).toBe(true);
+      expect(fx.branchExists("agent/a-stale")).toBe(true);
+      fx.dispose();
+    }
   });
 
   it("keeps a locked worktree with its reason against every destructive flag (#239)", () => {
@@ -545,9 +574,9 @@ describe("worktree-cleanup", () => {
     const result = runClean(fx);
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toMatch(
-      /kept {2}raced: failed to remove \(fatal: cannot remove a locked working tree/,
-    );
+    // Same rule as the failed inspection: the parenthesis is git's prose, the surviving
+    // lock and branch below are what prove the failed-removal path fired.
+    expect(result.stdout).toMatch(/^kept {2}raced: failed to remove \(.+\)$/m);
     expect(fx.exists("raced")).toBe(true);
     expect(fx.branchExists("agent/raced")).toBe(true);
     expect(git(fx.dir, ["rev-parse", "agent/raced"])).toBe(tip);

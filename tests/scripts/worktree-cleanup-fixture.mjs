@@ -46,6 +46,8 @@ const MAIN_ROOT = realpathSync(
     .trim(),
 );
 const REAL_WORKTREES = join(MAIN_ROOT, ".worktrees");
+// The binary a case's `git` shim delegates to, resolved once from the real PATH.
+const REAL_GIT = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
 
 const GIT_ENV = {
   ...process.env,
@@ -209,6 +211,25 @@ esac
     wtPath,
     run,
     fakeGh: installGh,
+    // A `git` shim that fails `status --porcelain` with the case's own stderr line and
+    // delegates every other invocation to the real binary, so a case can vary the wording
+    // a failed inspection carries without any assertion pinning it.
+    failGitStatus(message) {
+      mkdirSync(join(dir, "bin"), { recursive: true });
+      const messageFile = join(dir, "bin", "git-status-error.txt");
+      writeFileSync(messageFile, `${message}\n`);
+      writeFileSync(
+        join(dir, "bin", "git"),
+        `#!/bin/sh
+if [ "$1" = "status" ] && [ "$2" = "--porcelain" ]; then
+  cat '${messageFile}' >&2
+  exit 128
+fi
+exec '${REAL_GIT}' "$@"
+`,
+      );
+      chmodSync(join(dir, "bin", "git"), 0o755);
+    },
     addUnstarted(slug) {
       git(dir, ["worktree", "add", "-q", wtPath(slug), "-b", `agent/${slug}`]);
     },
