@@ -668,11 +668,13 @@ describe("#443 — a citation-free asserting refusal draft ships the product's r
  *
  * The invariant: **the delivered answer closes with exactly one canonical
  * not-a-fatwa disclaimer.** A model paraphrase cannot satisfy the control — it
- * may state a weaker promise, and the footer peel cannot see it — and it cannot
- * survive beside the canonical copy either: the rule removes the draft's
- * wording and writes its own at the close. The `product_rules` event names the
- * rule, so the trace shows the normalisation happened instead of the delivered
- * text carrying it by luck.
+ * may state a weaker promise, and the footer peel cannot see it — and a
+ * paraphrase the rule can isolate does not survive beside the canonical copy
+ * either: the rule removes that unit and writes its own at the close. A
+ * paraphrase folded into a sentence with answer content is kept, beside the
+ * close rather than deleted with it. The `product_rules` event names the rule,
+ * so the trace shows the normalisation happened instead of the delivered text
+ * carrying it by luck.
  */
 describe("the disclaimer's one canonical close on the wiring's path", () => {
   it("replaces a paraphrased disclaimer instead of suppressing the canonical copy", async () => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { AssembledContext, Chunk } from "@app/rag-core";
+import { splitAnswerBlocks } from "../../../apps/web/src/lib/chat-peel";
 import { MACHINE_TRANSLATION_LABEL } from "./chat-assembler";
 import {
   applyProductRules,
@@ -16,7 +17,13 @@ import { routedQuery } from "./test-utils/routed-query";
  * The deterministic product rules: the dhaif warning and the
  * machine-translation label are appended when the model omitted them and never
  * duplicated when it did not; the ulama disclaimer is the rule's own close,
- * written exactly once whatever the model wrote; none is applied to a refusal.
+ * written whatever the draft carried and removed only when a unit is wholly the
+ * disclaimer; none is applied to a refusal.
+ *
+ * The disclaimer cases run the client's real peel (`splitAnswerBlocks`) as well
+ * as reading the server text, because the guarantee is about the answer a user
+ * reads: the rule's copy lands in the footer, and no paraphrase survives in the
+ * body in place of it.
  */
 
 const context = (
@@ -246,6 +253,11 @@ describe("the ulama disclaimer — one canonical close, whatever the draft says"
     expect(occurrences(draft.text, canonical)).toBe(1);
     expect(closesWithCanonical(draft.text)).toBe(true);
     expect(applied).toContain("ulama_disclaimer");
+    // The delivered answer: the body the reader sees, and the footer the card
+    // draws from the rule's copy.
+    const delivered = splitAnswerBlocks(draft.text);
+    expect(delivered.body).toBe("Jawaban.");
+    expect(delivered.disclaimer).toBe(canonical);
   });
 
   it("leaves a draft that already closes with the canonical copy untouched", () => {
@@ -256,6 +268,9 @@ describe("the ulama disclaimer — one canonical close, whatever the draft says"
     // The rule ran and changed nothing: the event records a change, and its
     // presence already says the rules ran.
     expect(applied).not.toContain("ulama_disclaimer");
+    const delivered = splitAnswerBlocks(draft.text);
+    expect(delivered.body).toBe("Jawaban.");
+    expect(delivered.disclaimer).toBe(canonical);
   });
 
   it("collapses a draft carrying both copies to one canonical close", () => {
@@ -270,6 +285,9 @@ describe("the ulama disclaimer — one canonical close, whatever the draft says"
       expect(draft.text).not.toContain("silakan merujuk kepada ulama");
       expect(closesWithCanonical(draft.text)).toBe(true);
       expect(applied).toContain("ulama_disclaimer");
+      const delivered = splitAnswerBlocks(draft.text);
+      expect(delivered.body, text).toBe("Jawaban.");
+      expect(delivered.disclaimer, text).toBe(canonical);
     }
   });
 
@@ -286,6 +304,9 @@ describe("the ulama disclaimer — one canonical close, whatever the draft says"
     expect(occurrences(draft.text, canonical)).toBe(1);
     expect(closesWithCanonical(draft.text)).toBe(true);
     expect(applied).toContain("ulama_disclaimer");
+    const delivered = splitAnswerBlocks(draft.text);
+    expect(delivered.body).toBe(`Jawaban.\n\n${other}`);
+    expect(delivered.disclaimer).toBe(canonical);
   });
 
   it("removes a disclaimer the model placed mid-answer and closes with the canonical copy", () => {
@@ -312,7 +333,85 @@ describe("the ulama disclaimer — one canonical close, whatever the draft says"
         "id",
       );
       expect(draft.text, preface).toBe(`Jawaban.\n\n${canonical}`);
+      expect(splitAnswerBlocks(draft.text).body, preface).toBe("Jawaban.");
     }
+  });
+
+  it("clears the qualifier and emphasis variants of the claim", () => {
+    // Each of these delivered the paraphrase in the body beside the canonical
+    // close when the claim was a fixed list of adjacent words: a qualifier may
+    // sit between the negation and `fatwa`, and emphasis may wrap the noun.
+    const drafts = [
+      ["id", `Jawaban.\n\nJawaban ini bukan suatu fatwa; rujuk ulama.`],
+      ["id", `Jawaban.\n\nJawaban ini bukan **fatwa**; rujuk ulama.`],
+      ["en", `Answer.\n\nThis is not a legal fatwa; ask a scholar.`],
+      ["en", `Answer.\n\nThis is not meant to be a fatwa; ask a scholar.`],
+    ] as const;
+    for (const [locale, text] of drafts) {
+      const body = text.split("\n\n")[0]!;
+      const copy = ulamaDisclaimer(locale);
+      const { draft } = applyProductRules({ text }, context([]), locale);
+      expect(draft.text, text).toBe(`${body}\n\n${copy}`);
+      const delivered = splitAnswerBlocks(draft.text);
+      expect(delivered.body, text).toBe(body);
+      expect(delivered.disclaimer, text).toBe(copy);
+    }
+  });
+
+  it("keeps the sentence that follows a quoted disclaimer", () => {
+    // The closing quote rides the sentence boundary: a boundary that stopped
+    // inside it merged the next sentence into the removed unit and deleted it.
+    const text = 'Jawaban. Menurut kaidah: "Jawaban ini bukan fatwa." Itu sebabnya wajib bertanya.';
+    const { draft } = applyProductRules({ text }, context([]), "id");
+    expect(draft.text).toBe(`${text}\n\n${canonical}`);
+    expect(splitAnswerBlocks(draft.text).body).toBe(text);
+  });
+
+  it("closes a quoted disclaimer at its quotation mark, keeping the next sentence", () => {
+    // A quoted claim is its own unit: the unit ends at the period AND the closing
+    // quote. A boundary that stopped at the period left the quote outside, merged
+    // `Penutup.` into the unit, and deleted both.
+    const { draft } = applyProductRules(
+      { text: 'Jawaban. "Jawaban ini bukan fatwa." Penutup.' },
+      context([]),
+      "id",
+    );
+    expect(draft.text).toBe(`Jawaban. Penutup.\n\n${canonical}`);
+  });
+
+  it("keeps a dhaif note whose own sentence carries the claim", () => {
+    // The claim in another sense — asserting something about the hadith, with
+    // the citation in the same unit. Deleting the unit would delete the note
+    // and leave the citation alone.
+    const note = "Peringatan: hadits ini bukan fatwa tetapi tetap hujah. [HR. Malik no. 18]";
+    const { draft, applied } = applyProductRules(
+      { text: `Jawaban.\n\n${note}` },
+      context([chunk({ sourceType: "hadith", grade: "dhaif", citation: "HR. Malik no. 18" })]),
+      "id",
+    );
+    expect(draft.text).toContain(note);
+    expect(draft.text).toContain(dhaifWarning("id"));
+    expect(applied).toContain("dhaif_warning");
+    expect(splitAnswerBlocks(draft.text).body).toContain(note);
+  });
+
+  it("keeps a table row that carries the claim, header and rule included", () => {
+    // A table row is not a disclaimer sentence: removing the row's unit used to
+    // take the header and the rule line with it and leave a dangling pipe.
+    const table = ["| No | Keterangan |", "| --- | --- |", "| 1 | Jawaban ini bukan fatwa. |"].join(
+      "\n",
+    );
+    const { draft } = applyProductRules({ text: `Jawaban.\n\n${table}` }, context([]), "id");
+    expect(draft.text).toBe(`Jawaban.\n\n${table}\n\n${canonical}`);
+  });
+
+  it("keeps a sentence that uses the claim in its contrastive sense", () => {
+    // `bukan fatwa melainkan …` asserts what the hadith is, not what the answer
+    // is: the claim's presence alone must not delete the sentence.
+    const sentence = "Hadits ini bukan fatwa melainkan kabar yang wajib diyakini.";
+    const { draft } = applyProductRules({ text: `Jawaban.\n\n${sentence}` }, context([]), "id");
+    expect(draft.text).toBe(`Jawaban.\n\n${sentence}\n\n${canonical}`);
+    expect(splitAnswerBlocks(draft.text).body).toContain(sentence);
   });
 
   it("keeps a dhaif note that shared the model's disclaimer paragraph", () => {
@@ -419,14 +518,16 @@ describe("hasWeakWarning — the one predicate the frame and the postprocess sha
 });
 
 describe("chatSystemPrompt — the grounding rules the model receives", () => {
-  it("states the grounding, citation, dhaif, disclaimer, Arabic, and language rules (id)", () => {
+  it("states the grounding, citation, dhaif, Arabic, and language rules (id)", () => {
     const prompt = chatSystemPrompt("id");
     expect(prompt).toMatch(/HANYA dari konteks/);
     expect(prompt).toMatch(/sitasi/i);
     expect(prompt).toMatch(/dhaif/);
-    expect(prompt).toMatch(/bukan fatwa/);
     expect(prompt).toMatch(/teks Arab/i);
     expect(prompt).toMatch(/bahasa yang sama dengan pertanyaan/);
+    // The disclaimer is the rule's copy, not an instruction: asking the model
+    // for it would buy a sentence the rule strips and rewrites.
+    expect(prompt).not.toMatch(/bukan fatwa/i);
   });
 
   it("states the same rules in English", () => {
@@ -434,9 +535,9 @@ describe("chatSystemPrompt — the grounding rules the model receives", () => {
     expect(prompt).toMatch(/ONLY from the provided context/);
     expect(prompt).toMatch(/citation/i);
     expect(prompt).toMatch(/dhaif/);
-    expect(prompt).toMatch(/not a fatwa/);
     expect(prompt).toMatch(/Arabic text/i);
     expect(prompt).toMatch(/same language as the user's question/);
+    expect(prompt).not.toMatch(/not a fatwa/i);
   });
 
   it("forbids naming a citation that is not in the context (the fabrication rule)", () => {

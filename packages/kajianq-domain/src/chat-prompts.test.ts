@@ -68,7 +68,7 @@ describe("the no-gloss rule", () => {
  * pastinya!"): with the grounding rules tightened, the generator produced a
  * well-cited answer explaining that no year is known. The reviewer passed it
  * — correctly, it was grounded — so no `refusal` event was recorded and the
- * refusal case failed. A separate rule 8 saying the same thing was ignored;
+ * refusal case failed. A separate rule saying the same thing was ignored;
  * the model kept explaining the gap. The condition now lives INSIDE rule 1,
  * where the canonical refusal is specified, and it closes the "the context
  * says the fact is unknown" loophole explicitly.
@@ -117,7 +117,7 @@ describe("the usul authority order", () => {
   ] as const)("states the authority order in order (%s)", (language, sources) => {
     const rule = chatSystemPrompt(language)
       .split("\n")
-      .find((line) => line.startsWith("8."));
+      .find((line) => line.startsWith("7."));
     expect(rule).toBeDefined();
     // Every source of the authority order is named, and named in that order —
     // the sequence is the content, so its absence is the defect.
@@ -131,7 +131,7 @@ describe("the usul authority order", () => {
     // the authority rule, not a separate hint.
     const rule = chatSystemPrompt(language)
       .split("\n")
-      .find((line) => line.startsWith("8."))!;
+      .find((line) => line.startsWith("7."))!;
     const grades = ["mutawatir", "sahih", "hasan"].map((grade) => rule.indexOf(grade));
     for (const grade of grades) expect(grade).toBeGreaterThan(-1);
     expect(grades).toEqual([...grades].sort((a, b) => a - b));
@@ -140,7 +140,7 @@ describe("the usul authority order", () => {
 
   it("scopes the rule to the context so it cannot license outside knowledge", () => {
     // The authority order must never become a second source of evidence: rule 2
-    // forbids any citation the context does not print, and rule 8 may only order
+    // forbids any citation the context does not print, and rule 7 may only order
     // what is already there.
     expect(chatSystemPrompt("id")).toMatch(/Bila konteks memuat lebih dari satu jenis sumber/);
     expect(chatSystemPrompt("en")).toMatch(/When the context carries more than one kind of source/);
@@ -162,7 +162,7 @@ describe("the usul authority order", () => {
  * excellent" is answered from what the context states about the things
  * compared. Without it the refusal condition could swallow such a question:
  * rule 1 listed an absent "name" among the things that make an answer missing,
- * and rule 7's ban on added interpretation left no stated permission to reuse
+ * and rule 6's ban on added interpretation left no stated permission to reuse
  * the question's own term for a passage the context contains. The duty lives
  * INSIDE rule 1, beside the refusal it qualifies, because a separate rule was
  * ignored (see the specific-fact block above).
@@ -204,7 +204,7 @@ describe("the evidence-present answer rule", () => {
 
   it("leaves the absent-fact refusal and the no-gloss ban intact", () => {
     // The permission must not read as "answer anything topical": the same rule
-    // still routes a demanded-but-absent fact to the exact sentence, and rule 7
+    // still routes a demanded-but-absent fact to the exact sentence, and rule 6
     // still forbids interpretation the context does not carry.
     expect(ruleOne("id")).toContain(`"${DEFAULT_REFUSALS.id}"`);
     expect(ruleOne("en")).toContain(`"${DEFAULT_REFUSALS.en}"`);
