@@ -85,6 +85,7 @@ Every state change below follows the transition rules under **Project board — 
 ### 0. Intake
 
 - Establish the task scope: what the change is, what done looks like, and the target branch (default `main`).
+- **Every ticket carries one type label — `bug`, `enhancement` or `feature` — and intake supplies a missing one.** The label state what the ticket asserts about today (a defect, an improvement to working behaviour, or a capability not yet built), never how large the change is; `to-tickets` owns the rule and `AGENTS.md` names the labels. A ticket with none — a review finding, a QA defect, the owner's own filing — is classified before any dispatch, on the same reading, and the label is added; a tracker that holds issues with no type label cannot be triaged by label, and the omission is silent exactly like an uncarded ticket.
 - If the task is underspecified, grill the user (`grill-with-docs`) or escalate before spawning A. A clear task up front prevents flaky downstream runs.
 - A defect the task surfaces anywhere in the loop that reached a state the workflow calls good — merged work, an accepted ticket, a defect the QA role or the owner filed, a red post-merge run — is an **escaped defect** and a **bug retrospective** trigger, not only a fix to schedule: file the defect's ticket if none exists and run the retrospective beside its fix (**Bug retrospectives**).
 
