@@ -132,6 +132,35 @@ describe("CITATION_GRAMMAR (shared staging harness)", () => {
 });
 
 /**
+ * The composition root's chunk-metadata join. The trace carries chunk ids only,
+ * so address recall reads the chunk's `citation` metadata through this resolver;
+ * a dropped delivery would leave every required citation at 0 while type recall
+ * still read 1.000.
+ */
+describe("citationOf (shared staging harness)", () => {
+  it("delivers the citation-label resolver from the real composition root", async () => {
+    const harness = await createStagingHarness(
+      { databaseUrl: "postgres://unused:unused@127.0.0.1:1/unused" },
+      {},
+    );
+    try {
+      expect(harness.citationOf).toBeTypeOf("function");
+      // Nothing is loaded yet: an unresolved chunk has no label, never a guess.
+      expect(harness.citationOf("not-loaded-yet")).toBeUndefined();
+    } finally {
+      await disposePostgresPools();
+    }
+  });
+
+  it("forwards the resolver into the scorer in both eval CLIs", () => {
+    for (const script of ["eval-run.mjs", "eval-smoke.mjs"]) {
+      const source = readFileSync(resolve(process.cwd(), "packages/eval/scripts", script), "utf8");
+      expect(source).toMatch(/citationOf:\s*harness\.citationOf,/);
+    }
+  });
+});
+
+/**
  * The composition root's Matn identity resolver. The harness is JavaScript, so
  * the engine's optional `citationIdentity` cannot be enforced by the type
  * system there: deleting the one property line that hands it to the CLIs would

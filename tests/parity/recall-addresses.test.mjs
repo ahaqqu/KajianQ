@@ -1,0 +1,115 @@
+/// <reference types="node" />
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vite-plus/test";
+import { citationAddressRecall, sourceTypeRecall } from "../../packages/eval/src/scorers";
+import { addressesNamedBy, normalizeCitationLabel } from "../../packages/kajianq-domain/src/index";
+
+/**
+ * Address recall measured on the recorded full-set run whose retrieval is
+ * snapshotted in `golden-set-v0-replay.json`. The fixture's rows carry the exact
+ * chunks the run's last retrieval event returned (the corpus's own citation
+ * label and source type), so the two metrics can be compared on the same
+ * evidence without a live model call: source-type recall is what the run
+ * reported, address recall is what it should have reported.
+ *
+ * It lives under `tests/` because the question set and the citation grammar
+ * belong to the domain pack and the scorers to the engine. The grammar is the
+ * domain's own — the same functions the staging composition root injects — so
+ * the comparison form here cannot drift from the gate's.
+ */
+
+const REPLAY = JSON.parse(
+  readFileSync(
+    new URL("../../packages/kajianq-domain/fixtures/golden-set-v0-replay.json", import.meta.url),
+    "utf8",
+  ),
+).rows;
+
+const FIXTURE = JSON.parse(
+  readFileSync(
+    new URL("../../packages/kajianq-domain/fixtures/golden-set-v0.json", import.meta.url),
+    "utf8",
+  ),
+);
+
+const GRAMMAR = {
+  normalizeLabel: normalizeCitationLabel,
+  labelsInText: () => [],
+  addressesNamedBy,
+};
+
+const requiredById = new Map(
+  FIXTURE.questions.map((question) => [question.id, question.requiredCitations]),
+);
+
+const refsOf = (row) => row.retrieved.map((_, index) => ({ id: `c${index}` }));
+const sourceTypeOf = (row) => (id) => row.retrieved[Number(id.slice(1))]?.sourceType ?? undefined;
+const citationOf = (row) => (id) => row.retrieved[Number(id.slice(1))]?.label ?? undefined;
+
+const mean = (values) => values.reduce((sum, value) => sum + value, 0) / values.length;
+
+const typeRecallOf = (row) =>
+  sourceTypeRecall(row.expectedSourceTypes, refsOf(row), sourceTypeOf(row));
+const addressRecallOf = (row) =>
+  citationAddressRecall(requiredById.get(row.questionId), refsOf(row), citationOf(row), GRAMMAR);
+
+describe("recorded run — the two retrieval metrics", () => {
+  it("carries the whole recorded run", () => {
+    expect(REPLAY.length).toBe(20);
+    expect(REPLAY.every((row) => row.retrieved.length > 0)).toBe(true);
+  });
+
+  it("reports source-type recall 1.000 — the number the run printed", () => {
+    expect(REPLAY.every((row) => typeRecallOf(row) === 1)).toBe(true);
+    expect(mean(REPLAY.map(typeRecallOf))).toBeCloseTo(1, 3);
+  });
+
+  it("reports address recall 0.700 on the same retrieved sets", () => {
+    // Six questions reached a source of the required type without reaching the
+    // fixture's required address. Every one of them still scores 1 on type
+    // recall: that gap is exactly what the type-only metric cannot see.
+    const missed = REPLAY.filter((row) => addressRecallOf(row) < 1).map((row) => row.questionId);
+    expect(missed).toEqual([
+      "gs-v0-006",
+      "gs-v0-007",
+      "gs-v0-008",
+      "gs-v0-011",
+      "gs-v0-012",
+      "gs-v0-016",
+    ]);
+    expect(mean(REPLAY.map(addressRecallOf))).toBeCloseTo(0.7, 3);
+    for (const row of REPLAY) {
+      if (addressRecallOf(row) < 1) expect(typeRecallOf(row), row.questionId).toBe(1);
+    }
+  });
+
+  it("breaks out the eight rows the issue names, under the fixture at head", () => {
+    // The recorded run's own fixture has since been re-curated on five rows; this
+    // table scores the recorded retrieval against the addresses the set requires
+    // now. Three of the eight (003, 013, 017) name an address the run did return;
+    // five still miss it.
+    const expected = new Map([
+      ["gs-v0-003", "HR. Bukhari no. 191"],
+      ["gs-v0-007", "QS. 42:11"],
+      ["gs-v0-008", "HR. Bukhari no. 5026"],
+      ["gs-v0-011", "HR. Muslim no. 534"],
+      ["gs-v0-012", "QS. 1:1"],
+      ["gs-v0-013", "HR. Muslim no. 5265"],
+      ["gs-v0-016", "HR. Bukhari no. 1395"],
+      ["gs-v0-017", "HR. Nasai no. 5144"],
+    ]);
+    const hits = [];
+    for (const [questionId, required] of expected) {
+      expect(requiredById.get(questionId), questionId).toEqual([required]);
+      const row = REPLAY.find((candidate) => candidate.questionId === questionId);
+      const hit = addressRecallOf(row) === 1;
+      expect(typeRecallOf(row), `${questionId}: the source type was still reached`).toBe(1);
+      hits.push([questionId, hit]);
+    }
+    expect(hits.filter(([, hit]) => hit).map(([questionId]) => questionId)).toEqual([
+      "gs-v0-003",
+      "gs-v0-013",
+      "gs-v0-017",
+    ]);
+  });
+});

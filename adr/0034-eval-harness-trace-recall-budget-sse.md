@@ -2,7 +2,7 @@
 
 ## Decision
 
-1. **Retrieval recall is read from the answer trace, not recomputed.** The harness scores by reading the retrieval event of the trace the API persisted for the answer and joining its chunk references to their source-type metadata. What is scored is exactly what the served pipeline retrieved — no re-run drift, no second retrieval spend. Scoring therefore requires the store to be reachable, and an answer whose trace was never persisted scores as no recall rather than as a guess.
+1. **Recall is read from the answer trace, not recomputed, and it has two dimensions.** The harness reads the retrieval event of the trace the API persisted for the answer and joins its chunk references to their metadata. **Source-type recall** asks whether retrieval reached the expected kinds of source; **citation-address recall** asks whether it retrieved the specific address each required citation names, in the citation gate's comparison form. What is scored is exactly what the served pipeline retrieved — no re-run drift, no second retrieval spend. Scoring therefore requires the store to be reachable, and an answer whose trace was never persisted scores as no recall rather than as a guess. A question passes only when both dimensions are complete; an address a fused set never retrieved is a gap the source-type dimension cannot see.
 2. **One budget accumulator covers both spend sides.** The hard `EVAL_BUDGET_MICRO_USD` cap is enforced by a single accumulator that adds each answer trace's recorded event costs and any harness-side LLM costs; exceeding the cap aborts the run, fail-closed, because an over-budget eval run is a defect rather than a warning. Unset or zero is an explicit unlimited opt-out.
 3. **The chat route streams one frame contract from its first release, and the harness consumes the same stream the client does** — one wire contract, two consumers, and no convenience endpoint to keep in sync. The harness tolerates server-side buffering and therefore does not measure time to first token.
 
@@ -16,4 +16,5 @@ The structural reason is that the trace the interface renders is the same eviden
 
 - The store becomes a hard dependency of scoring, not only of serving: the harness fails fast when it cannot read traces.
 - Scoring reads the same trace shape the interface renders, so the two cannot be kept true separately.
+- A run can be fully source-type-recall-complete while its required addresses were never retrieved; the report now distinguishes the two, and the gate refuses to call that run green.
 - The Golden Set carries a status field distinguishing draft from canonical, so content curation stays a human gate rather than an artifact of the loader.

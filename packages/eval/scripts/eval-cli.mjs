@@ -55,16 +55,17 @@ export function loadFixture(prefix, config, { assertV0 = false } = {}) {
 export const mean = (xs) => (xs.length === 0 ? null : xs.reduce((a, b) => a + b, 0) / xs.length);
 
 /**
- * Scope-expanded questions print their fused-only recall beside the reported one:
- * the scorer reads chunk refs and never their `origin`, so full reported recall
- * there can hide a broken fused track. No `expansion` field, no line.
+ * Scope-expanded questions print their fused-only source-type recall beside the
+ * reported one: the scorer reads chunk refs and never their `origin`, so full
+ * reported recall there can hide a broken fused track. No `expansion` field, no
+ * line.
  */
 export function expansionLines(scored) {
   return scored
     .filter((x) => x.expansion !== undefined)
     .map(
       (x) =>
-        `  scoped: ${x.questionId} — expansion chunks ${x.expansion.chunks}, fused-only recall ${x.expansion.fusedOnlyRetrievalRecall.toFixed(3)} (reported ${x.retrievalRecall.toFixed(3)})`,
+        `  scoped: ${x.questionId} — expansion chunks ${x.expansion.chunks}, fused-only source-type recall ${x.expansion.fusedOnlySourceTypeRecall.toFixed(3)} (reported ${x.sourceTypeRecall.toFixed(3)})`,
     );
 }
 
@@ -102,15 +103,16 @@ function requireFixture(questions, caller) {
 /**
  * The per-question lines for scored questions that failed. Each names the question,
  * then every dimension that missed its rule with the evidence: the numeric ones
- * below 1 (`retrievalRecall`, `citationValidity`) plus the behavior rule — an
- * `answer` question misses it by refusing (over-refusal is a defect), a `refuse`
- * question by answering ungrounded. `questions` is the fixture in hand, never a
- * store read, and supplies the rule's own labels; a question it does not hold
- * degrades to the bare value, which `requireFixture` makes the only degradation.
+ * below 1 (`sourceTypeRecall`, `citationAddressRecall`, `citationValidity`) plus
+ * the behavior rule — an `answer` question misses it by refusing (over-refusal is
+ * a defect), a `refuse` question by answering ungrounded. `questions` is the
+ * fixture in hand, never a store read, and supplies the rule's own labels; a
+ * question it does not hold degrades to the bare value, which `requireFixture`
+ * makes the only degradation.
  *
  * The behavior verdict is printed only where the outcome decides it: for an
  * `answer` question `refused` decides it, for a `refuse` question only when the
- * other two dimensions are full, so the line attributes the failure to the
+ * other three dimensions are full, so the line attributes the failure to the
  * dimension the outcome does evidence rather than claim a miss it does not.
  * Spelled `behavior` to match `expectedBehavior`; an outcome with no failed
  * dimension prints its ledger-write cause rather than an empty line.
@@ -123,13 +125,22 @@ export function failureLines(failed, questions) {
     .map((x) => {
       const question = byId.get(x.questionId);
       const rules = [];
-      if (x.retrievalRecall < 1) {
+      if (x.sourceTypeRecall < 1) {
         const expected = question?.expectedSourceTypes ?? [];
-        const retrieved = Math.round(x.retrievalRecall * expected.length);
+        const retrieved = Math.round(x.sourceTypeRecall * expected.length);
         rules.push(
           expected.length > 0
-            ? `retrievalRecall=${x.retrievalRecall.toFixed(3)} (expected ${expected.join(", ")}, retrieved ${retrieved}/${expected.length})`
-            : `retrievalRecall=${x.retrievalRecall.toFixed(3)}`,
+            ? `sourceTypeRecall=${x.sourceTypeRecall.toFixed(3)} (expected ${expected.join(", ")}, retrieved ${retrieved}/${expected.length})`
+            : `sourceTypeRecall=${x.sourceTypeRecall.toFixed(3)}`,
+        );
+      }
+      if (x.citationAddressRecall !== undefined && x.citationAddressRecall < 1) {
+        const required = question?.requiredCitations ?? [];
+        const surfaced = Math.round(x.citationAddressRecall * required.length);
+        rules.push(
+          required.length > 0
+            ? `citationAddressRecall=${x.citationAddressRecall.toFixed(3)} (required ${required.join(", ")}, retrieved ${surfaced}/${required.length})`
+            : `citationAddressRecall=${x.citationAddressRecall.toFixed(3)}`,
         );
       }
       if (x.citationValidity < 1) {
@@ -146,7 +157,8 @@ export function failureLines(failed, questions) {
       } else if (
         x.expectedBehavior === "refuse" &&
         x.refused === false &&
-        x.retrievalRecall === 1 &&
+        x.sourceTypeRecall === 1 &&
+        x.citationAddressRecall === 1 &&
         x.citationValidity === 1
       ) {
         rules.push(
@@ -174,7 +186,14 @@ export function printSummary(prefix, { runId, questionCount, result, costMicroUs
       "",
       `${prefix} summary — run ${runId}`,
       `  questions: ${questionCount}  passed: ${result.passed}  failed: ${result.failed}  skipped: ${result.skipped}`,
-      `  mean retrieval recall: ${mean(scored.map((x) => x.retrievalRecall))?.toFixed(3) ?? "n/a"}`,
+      `  mean source-type recall: ${mean(scored.map((x) => x.sourceTypeRecall))?.toFixed(3) ?? "n/a"}`,
+      `  mean citation-address recall: ${
+        mean(
+          scored
+            .filter((x) => x.citationAddressRecall !== undefined)
+            .map((x) => x.citationAddressRecall),
+        )?.toFixed(3) ?? "n/a"
+      }`,
       `  mean citation validity: ${mean(scored.map((x) => x.citationValidity))?.toFixed(3) ?? "n/a"}`,
       `  cost: ${(costMicroUsd / 1e6).toFixed(6)} USD  budget exceeded: ${result.budgetExceeded}`,
       ...expansionLines(scored),

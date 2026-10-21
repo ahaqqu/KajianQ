@@ -2,9 +2,9 @@
  * eval — the domain-agnostic Golden Set benchmark harness (#8).
  *
  * Runs a versioned question set against a chat API target, scores answers
- * deterministically from persisted traces (retrieval recall, citation
- * validity, refusal correctness), persists per-run results to the eval
- * ledger, and caps spend with a hard budget. The engine owns the measurement
+ * deterministically from persisted traces (source-type recall, citation-address
+ * recall, citation validity, refusal correctness), persists per-run results to
+ * the eval ledger, and caps spend with a hard budget. The engine owns the measurement
  * machinery; the question-set contents and expected-source vocabularies come
  * from the product (kajianq-domain's fixture), never named here.
  */
@@ -19,13 +19,14 @@ export {
 } from "./smoke-subset";
 export {
   behaviorAccepted,
+  citationAddressRecall,
   citationLabelsPresent,
   citationValidity,
   detectRefusal,
   groundedAnswer,
   refusalCorrectness,
   retrievalEventsOf,
-  retrievalRecall,
+  sourceTypeRecall,
 } from "./scorers";
 export { Budget, BudgetExceededError, budgetCapFromEnv } from "./budget";
 export { CitationGrammarError, requireCitationGrammar } from "./citation-grammar";

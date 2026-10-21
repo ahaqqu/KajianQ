@@ -1,7 +1,7 @@
 import type { EvalResultOutcome, GoldenQuestion } from "@app/contracts";
 import { StoreError } from "@app/rag-core";
 import type { ChunkRefLike, TraceEventLike } from "./harness-types";
-import { retrievalRecall } from "./scorers";
+import { sourceTypeRecall } from "./scorers";
 
 /** Per-question outcome helpers, split out of `harness.ts` to respect the agentic
  * size limits: the expansion provenance, the transport-skip outcome, and the
@@ -9,13 +9,13 @@ import { retrievalRecall } from "./scorers";
 
 /**
  * The per-question expansion provenance: the number of scope-origin refs and the
- * recall the fused refs alone would have scored.
+ * source-type recall the fused refs alone would have scored.
  *
- * `retrievalRecall` never inspects a ref's `origin` label, so for a question that
+ * `sourceTypeRecall` never inspects a ref's `origin` label, so for a question that
  * names a reference the scored leg is satisfied by construction whenever the
  * scoped read works, and a fused-track regression on exactly those questions
- * would otherwise be invisible. A `fusedOnlyRetrievalRecall` below the reported
- * `retrievalRecall` states that the expansion carried the question; the metric
+ * would otherwise be invisible. A `fusedOnlySourceTypeRecall` below the reported
+ * `sourceTypeRecall` states that the expansion carried the question; the metric
  * itself is never redefined.
  *
  * **"The fused refs alone" means the refs that carry NO origin label** — every
@@ -41,7 +41,7 @@ export function expansionProvenance(input: {
   return {
     expansion: {
       chunks: expansionChunks.length,
-      fusedOnlyRetrievalRecall: retrievalRecall(
+      fusedOnlySourceTypeRecall: sourceTypeRecall(
         input.expectedSourceTypes,
         // Absence of an origin label is what makes a ref a fused hit.
         input.chunks.filter((chunk) => chunk.origin === undefined),
@@ -99,7 +99,8 @@ export function skippedOutcome(question: GoldenQuestion, err: unknown): EvalResu
     questionId: question.id,
     expectedBehavior: question.expectedBehavior,
     passed: false,
-    retrievalRecall: 0,
+    sourceTypeRecall: 0,
+    citationAddressRecall: 0,
     citationValidity: 0,
     refused: false,
     skipped: true,

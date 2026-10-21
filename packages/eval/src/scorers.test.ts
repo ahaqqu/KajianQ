@@ -2,12 +2,13 @@ import { describe, expect, it } from "vite-plus/test";
 import { Budget, BudgetExceededError, budgetCapFromEnv } from "./budget";
 import {
   behaviorAccepted,
+  citationAddressRecall,
   citationLabelsPresent,
   citationValidity,
   detectRefusal,
   groundedAnswer,
   refusalCorrectness,
-  retrievalRecall,
+  sourceTypeRecall,
 } from "./scorers";
 import { scoreQuestion } from "./harness";
 import type { GoldenQuestion } from "@app/contracts";
@@ -29,27 +30,163 @@ const question: GoldenQuestion = {
   expectedBehavior: "answer",
 };
 
-describe("retrievalRecall", () => {
+describe("sourceTypeRecall", () => {
   it("scores 1 when every expected source type was retrieved", () => {
-    const recall = retrievalRecall(["source-a", "source-b"], [{ id: "c1" }, { id: "c2" }], (id) =>
+    const recall = sourceTypeRecall(["source-a", "source-b"], [{ id: "c1" }, { id: "c2" }], (id) =>
       id === "c1" ? "source-a" : "source-b",
     );
     expect(recall).toBe(1);
   });
 
   it("scores partially when only some expected types were retrieved", () => {
-    const recall = retrievalRecall(["source-a", "source-b"], [{ id: "c1" }], () => "source-a");
+    const recall = sourceTypeRecall(["source-a", "source-b"], [{ id: "c1" }], () => "source-a");
     expect(recall).toBe(0.5);
   });
 
   it("scores 0 when nothing expected was retrieved", () => {
-    const recall = retrievalRecall(["source-a"], [{ id: "c1" }], () => "source-c");
+    const recall = sourceTypeRecall(["source-a"], [{ id: "c1" }], () => "source-c");
     expect(recall).toBe(0);
   });
 
   it("scores 1 for a question with no expected sources", () => {
-    const recall = retrievalRecall([], [], () => undefined);
+    const recall = sourceTypeRecall([], [], () => undefined);
     expect(recall).toBe(1);
+  });
+
+  it("scores 1 for the right TYPE even when the required address is absent", () => {
+    // The defect this metric cannot see: the fused set reached the right kind of
+    // source and none of its labels is the address the fixture requires.
+    expect(sourceTypeRecall(["source-a"], [{ id: "c1" }], () => "source-a")).toBe(1);
+    expect(
+      citationAddressRecall(["SRC. Alpha no. 1"], [{ id: "c1" }], () => "SRC. Alpha no. 2"),
+    ).toBe(0);
+  });
+});
+
+describe("citationAddressRecall", () => {
+  const retrieved = (labels: (string | undefined)[]) =>
+    labels.map((label, index) => ({ label, id: `c${index}` }));
+  const citationOfFor = (labels: (string | undefined)[]) => (id: string) =>
+    labels[Number(id.slice(1))];
+
+  it("scores 1 when the required address is among the retrieved chunks", () => {
+    const labels = ["SRC. Alpha no. 1"];
+    expect(
+      citationAddressRecall(["SRC. Alpha no. 1"], retrieved(labels), citationOfFor(labels)),
+    ).toBe(1);
+  });
+
+  it("scores 0 for a neighbouring address of the same source type", () => {
+    const labels = ["SRC. Alpha no. 2", "SRC. Alpha no. 3"];
+    expect(
+      citationAddressRecall(["SRC. Alpha no. 1"], retrieved(labels), citationOfFor(labels)),
+    ).toBe(0);
+  });
+
+  it("requires every named citation — there is no any-of form", () => {
+    const labels = ["SRC. Alpha no. 1"];
+    expect(
+      citationAddressRecall(
+        ["SRC. Alpha no. 1", "SRC. Alpha no. 2"],
+        retrieved(labels),
+        citationOfFor(labels),
+      ),
+    ).toBe(0.5);
+  });
+
+  it("scores 1 when the question names no required citation", () => {
+    expect(citationAddressRecall([], [], () => undefined)).toBe(1);
+  });
+
+  it("scores 0 when a retrieved chunk has no citation label at all", () => {
+    expect(citationAddressRecall(["SRC. Alpha no. 1"], [{ id: "c1" }], () => undefined)).toBe(0);
+  });
+
+  it("uses the injected grammar's address list: a retrieved range names its whole interior", () => {
+    const rangeGrammar = {
+      normalizeLabel: (label: string) => label.trim(),
+      labelsInText: () => [],
+      addressesNamedBy: (label: string): readonly string[] => {
+        const match = /^(Q\.?S\. \d+):(\d+)-(\d+)$/.exec(label);
+        if (match === null) return [label];
+        const out: string[] = [];
+        for (let n = Number(match[2]); n <= Number(match[3]); n += 1) out.push(`${match[1]}:${n}`);
+        return out;
+      },
+    };
+    const labels = ["QS. 1:1-3"];
+    expect(
+      citationAddressRecall(["QS. 1:3"], retrieved(labels), citationOfFor(labels), rangeGrammar),
+    ).toBe(1);
+    expect(
+      citationAddressRecall(["QS. 1:4"], retrieved(labels), citationOfFor(labels), rangeGrammar),
+    ).toBe(0);
+  });
+
+  it("normalizes both sides through the grammar, so a grade suffix is not an address change", () => {
+    const grammar = {
+      normalizeLabel: (label: string) => label.replace(/\s+\([^)]*\)$/, ""),
+      labelsInText: () => [],
+      addressesNamedBy: (label: string): readonly string[] => [label],
+    };
+    const labels = ["SRC. Alpha no. 1 (Graded)"];
+    expect(
+      citationAddressRecall(
+        ["SRC. Alpha no. 1"],
+        retrieved(labels),
+        citationOfFor(labels),
+        grammar,
+      ),
+    ).toBe(1);
+  });
+
+  it("fails closed on a required label the grammar declares but cannot enumerate", () => {
+    const unenumerable = {
+      normalizeLabel: (label: string) => label,
+      labelsInText: () => [],
+      addressesNamedBy: (label: string): readonly string[] | null =>
+        label.includes("-") ? null : [label],
+    };
+    const labels = ["SRC. Alpha no. 1-2"];
+    expect(
+      citationAddressRecall(
+        ["SRC. Alpha no. 1-2"],
+        retrieved(labels),
+        citationOfFor(labels),
+        unenumerable,
+      ),
+    ).toBe(0);
+  });
+
+  it("keeps an opaque label whole when the grammar names nothing for it", () => {
+    const noGrammarMatch = {
+      normalizeLabel: (label: string) => label,
+      labelsInText: () => [],
+      addressesNamedBy: (): readonly string[] => [],
+    };
+    const labels = ["an opaque chunk label"];
+    expect(
+      citationAddressRecall(
+        ["an opaque chunk label"],
+        retrieved(labels),
+        citationOfFor(labels),
+        noGrammarMatch,
+      ),
+    ).toBe(1);
+  });
+
+  it("compares exactly when no grammar is injected", () => {
+    const labels = ["SRC. Alpha no. 1 (Graded)"];
+    expect(
+      citationAddressRecall(["SRC. Alpha no. 1"], retrieved(labels), citationOfFor(labels)),
+    ).toBe(0);
+    expect(
+      citationAddressRecall(
+        ["SRC. Alpha no. 1 (Graded)"],
+        retrieved(labels),
+        citationOfFor(labels),
+      ),
+    ).toBe(1);
   });
 });
 
@@ -598,6 +735,8 @@ describe("behaviorAccepted (#250: refuse, or ground it)", () => {
 });
 
 describe("scoreQuestion", () => {
+  /** The retrieved chunks' citation labels: c1 carries the required label. */
+  const citationOf = (id: string) => (id === "c1" ? "label-1" : undefined);
   const retrievalEvent: TraceEventLike = {
     kind: "retrieval",
     stage: "retriever",
@@ -607,19 +746,24 @@ describe("scoreQuestion", () => {
   it("passes a fully correct answer", () => {
     const outcome = scoreQuestion(question, "… label-1 …", [retrievalEvent], {
       sourceTypeOf: (id) => (id === "c1" ? "source-a" : "source-b"),
+      citationOf,
     });
     expect(outcome.passed).toBe(true);
-    expect(outcome.retrievalRecall).toBe(1);
+    expect(outcome.sourceTypeRecall).toBe(1);
     expect(outcome.citationValidity).toBe(1);
   });
 
-  it("passes a parallel narration through the injected identity", () => {
+  it("scores a parallel narration citation-valid, but not address-retrieved", () => {
+    // The identity map lets the ANSWER cite the required narration through a
+    // parallel chain; it does not make that chain the fixture's own address, so
+    // retrieval never surfaced label-a and the question cannot pass on it.
     const outcome = scoreQuestion(
       { ...question, requiredCitations: ["label-a"] },
       "",
       [retrievalEvent],
       {
         sourceTypeOf: (id) => (id === "c1" ? "source-a" : "source-b"),
+        citationOf,
         citationIdentity: {
           identityOf: (label) => (label === "label-a" || label === "label-b" ? "family-1" : null),
         },
@@ -627,12 +771,51 @@ describe("scoreQuestion", () => {
       { citations: [{ label: "label-b" }] },
     );
     expect(outcome.citationValidity).toBe(1);
-    expect(outcome.passed).toBe(true);
+    expect(outcome.citationAddressRecall).toBe(0);
+    expect(outcome.sourceTypeRecall).toBe(1);
+    expect(outcome.passed).toBe(false);
+  });
+
+  it("separates type recall from address recall on a neighbour-only fused set", () => {
+    // Falsification: the fixture's required address is replaced by its neighbour
+    // in the fused set, then the address-bearing ref is dropped altogether. The
+    // source type stays reached throughout; the address score moves 1 -> 0.
+    const exact = scoreQuestion(question, "… label-1 …", [retrievalEvent], {
+      sourceTypeOf: (id) => (id === "c1" ? "source-a" : "source-b"),
+      citationOf: (id) => (id === "c1" ? "label-1" : undefined),
+    });
+    expect(exact.sourceTypeRecall).toBe(1);
+    expect(exact.citationAddressRecall).toBe(1);
+    expect(exact.passed).toBe(true);
+
+    const neighbour = scoreQuestion(question, "… label-1 …", [retrievalEvent], {
+      sourceTypeOf: (id) => (id === "c1" ? "source-a" : "source-b"),
+      citationOf: (id) => (id === "c2" ? "label-2" : undefined),
+    });
+    expect(neighbour.sourceTypeRecall).toBe(1);
+    expect(neighbour.citationAddressRecall).toBe(0);
+    expect(neighbour.passed).toBe(false);
+
+    // Drop the address-bearing chunk: the same types are still reached by two
+    // neighbouring chunks, so only the address dimension moves.
+    const droppedEvent: TraceEventLike = {
+      kind: "retrieval",
+      stage: "retriever",
+      detail: { chunks: [{ id: "c2" }, { id: "c3" }] },
+    };
+    const dropped = scoreQuestion(question, "… label-1 …", [droppedEvent], {
+      sourceTypeOf: (id) => (id === "c2" ? "source-a" : "source-b"),
+      citationOf: (id) => (id === "c2" ? "label-2" : "label-3"),
+    });
+    expect(dropped.sourceTypeRecall).toBe(1);
+    expect(dropped.citationAddressRecall).toBe(0);
+    expect(dropped.passed).toBe(false);
   });
 
   it("fails when the required citation is missing", () => {
     const outcome = scoreQuestion(question, "no citation here", [retrievalEvent], {
       sourceTypeOf: () => "source-a",
+      citationOf,
     });
     expect(outcome.passed).toBe(false);
     expect(outcome.citationValidity).toBe(0);
@@ -641,13 +824,14 @@ describe("scoreQuestion", () => {
   it("scores recall 0 when no retrieval event exists in the trace", () => {
     const outcome = scoreQuestion(question, "label-1", [], {
       sourceTypeOf: () => undefined,
+      citationOf,
     });
-    expect(outcome.retrievalRecall).toBe(0);
+    expect(outcome.sourceTypeRecall).toBe(0);
     expect(outcome.passed).toBe(false);
   });
 
   it("records the expansion's contribution beside the unchanged metric (C1)", () => {
-    // `retrievalRecall` reads every ref regardless of origin, so the expansion
+    // `sourceTypeRecall` reads every ref regardless of origin, so the expansion
     // refs satisfy the expected source; the outcome must still say WHICH path.
     const scoped: TraceEventLike = {
       kind: "retrieval",
@@ -663,10 +847,11 @@ describe("scoreQuestion", () => {
     const outcome = scoreQuestion(question, "… label-1 …", [scoped], {
       sourceTypeOf: (id) =>
         id === "c1" ? "source-a" : id.startsWith("x") ? "source-b" : undefined,
+      citationOf,
       expansionOrigin: "expansion",
     });
-    expect(outcome.retrievalRecall).toBe(1);
-    expect(outcome.expansion).toEqual({ chunks: 2, fusedOnlyRetrievalRecall: 0.5 });
+    expect(outcome.sourceTypeRecall).toBe(1);
+    expect(outcome.expansion).toEqual({ chunks: 2, fusedOnlySourceTypeRecall: 0.5 });
   });
 
   it("keeps every expansion path out of the fused-only leg (A4 of the #274 fix round)", () => {
@@ -685,11 +870,12 @@ describe("scoreQuestion", () => {
     };
     const outcome = scoreQuestion(question, "… label-1 …", [scoped], {
       sourceTypeOf: (id) => (id === "c1" ? "source-a" : "source-b"),
+      citationOf,
       expansionOrigin: "expansion",
     });
-    expect(outcome.retrievalRecall).toBe(1);
+    expect(outcome.sourceTypeRecall).toBe(1);
     // `chunks` counts the SCOPE path only; the fused-only leg is the ref with no origin label.
-    expect(outcome.expansion).toEqual({ chunks: 1, fusedOnlyRetrievalRecall: 0.5 });
+    expect(outcome.expansion).toEqual({ chunks: 1, fusedOnlySourceTypeRecall: 0.5 });
   });
 
   it("records a recognised-but-empty scope honestly (0 chunks, fused-only = reported)", () => {
@@ -706,16 +892,18 @@ describe("scoreQuestion", () => {
       ],
       {
         sourceTypeOf: (id) => (id === "c1" ? "source-a" : undefined),
+        citationOf,
         expansionOrigin: "expansion",
       },
     );
     // The scoped read ran and added nothing: the report says so beside the fused-only figure.
-    expect(outcome.expansion).toEqual({ chunks: 0, fusedOnlyRetrievalRecall: 0.5 });
+    expect(outcome.expansion).toEqual({ chunks: 0, fusedOnlySourceTypeRecall: 0.5 });
   });
 
   it("omits the expansion block when the scoped path did not run", () => {
     const outcome = scoreQuestion(question, "… label-1 …", [retrievalEvent], {
       sourceTypeOf: (id) => (id === "c1" ? "source-a" : "source-b"),
+      citationOf,
       expansionOrigin: "expansion",
     });
     expect(Object.hasOwn(outcome, "expansion")).toBe(false);
@@ -724,8 +912,9 @@ describe("scoreQuestion", () => {
   it("scores exactly as before when no origin label is injected", () => {
     const outcome = scoreQuestion(question, "… label-1 …", [retrievalEvent], {
       sourceTypeOf: (id) => (id === "c1" ? "source-a" : "source-b"),
+      citationOf,
     });
-    expect(outcome.retrievalRecall).toBe(1);
+    expect(outcome.sourceTypeRecall).toBe(1);
     expect(Object.hasOwn(outcome, "expansion")).toBe(false);
   });
 
@@ -742,6 +931,7 @@ describe("scoreQuestion", () => {
       [{ kind: "refusal", stage: "generator" }],
       {
         sourceTypeOf: () => undefined,
+        citationOf,
       },
     );
     expect(outcome.passed).toBe(true);
@@ -754,7 +944,7 @@ describe("scoreQuestion", () => {
       question,
       "a grounded answer whose marker spelling differs",
       [retrievalEvent],
-      { sourceTypeOf: (id) => (id === "c1" ? "source-a" : "source-b") },
+      { sourceTypeOf: (id) => (id === "c1" ? "source-a" : "source-b"), citationOf },
       { citations: [{ label: "label-1" }] },
     );
     expect(outcome.citationValidity).toBe(1);
@@ -768,6 +958,7 @@ describe("scoreQuestion", () => {
       [retrievalEvent],
       {
         sourceTypeOf: () => "source-a",
+        citationOf,
       },
       { citations: [{ label: "some-other-label" }] },
     );

@@ -181,6 +181,7 @@ function sampleDeps(transport) {
         },
       },
       sourceTypeOf: () => undefined,
+      citationOf: () => undefined,
       budget: new Budget(undefined),
       refusalMarkers: [],
       label: "stub",

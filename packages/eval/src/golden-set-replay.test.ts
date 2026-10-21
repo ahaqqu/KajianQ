@@ -44,7 +44,11 @@ const FIXTURE = JSON.parse(
 const ROWS = FIXTURE.rows;
 
 const GRAMMAR: CitationGrammar = {
-  normalizeLabel: (label) => label,
+  // The fixture's `required` labels are already in the gate's comparison form;
+  // its retrieved labels keep the corpus's trailing grade, which the comparison
+  // form drops. No other normalization is needed, so this file adds no
+  // vocabulary of its own.
+  normalizeLabel: (label) => label.replace(/\s+\([^)]*\)$/u, ""),
   labelsInText: () => [],
   addressesNamedBy: (label) => [label],
 };
@@ -84,6 +88,7 @@ function headOutcome(row: Row): ReturnType<typeof scoreQuestion> {
     eventsOf(row),
     {
       sourceTypeOf: (id) => row.retrieved[Number(id.slice(1))]?.sourceType ?? undefined,
+      citationOf: (id) => row.retrieved[Number(id.slice(1))]?.label ?? undefined,
       refusalMarkers: [],
       citationGrammar: GRAMMAR,
     },
@@ -115,7 +120,26 @@ describe("golden-set-v0 replay — the collection fold measured on the recorded 
     const outcomes = ROWS.map(headOutcome);
     expect(outcomes.filter((outcome) => outcome.passed).length).toBe(9);
     expect(mean(outcomes.map((outcome) => outcome.citationValidity))).toBeCloseTo(0.5, 3);
-    expect(mean(outcomes.map((outcome) => outcome.retrievalRecall))).toBeCloseTo(1, 3);
+    expect(mean(outcomes.map((outcome) => outcome.sourceTypeRecall))).toBeCloseTo(1, 3);
+  });
+
+  it("reports 0.700 address recall where the type-only metric reads 1.000", () => {
+    // The recorded run's own fusion never surfaced the required address for these
+    // six rows, so a type-only recall of 1.000 over-reports what was retrieved.
+    const outcomes = ROWS.map(headOutcome);
+    const missed = outcomes
+      .filter((outcome) => outcome.citationAddressRecall !== 1)
+      .map((outcome) => outcome.questionId);
+    expect(missed).toEqual([
+      "gs-v0-006",
+      "gs-v0-007",
+      "gs-v0-008",
+      "gs-v0-011",
+      "gs-v0-012",
+      "gs-v0-016",
+    ]);
+    expect(mean(outcomes.map((outcome) => outcome.citationAddressRecall!))).toBeCloseTo(0.7, 3);
+    expect(mean(outcomes.map((outcome) => outcome.sourceTypeRecall))).toBeCloseTo(1, 3);
   });
 
   it("flips no other row's pass state, so the fold's blast radius is one case", () => {

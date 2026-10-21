@@ -112,6 +112,7 @@ function makeDeps(
     traces,
     ledger,
     sourceTypeOf: (id: string) => (id === "c1" || id === "x1" ? "source-a" : undefined),
+    citationOf: (id: string) => (id === "c1" || id === "x1" ? "label-1" : undefined),
     budget: opts.budget ?? new Budget(undefined),
     refusalMarkers: ["tidak menemukan dalil yang memadai"],
     label: "test-label",
@@ -134,7 +135,8 @@ describe("runGoldenSet", () => {
     for (const saved of savedResults) expect(saved.runId).toBe("run-1");
     expect(savedResults[0]?.outcome).toMatchObject({
       passed: true,
-      retrievalRecall: 1,
+      sourceTypeRecall: 1,
+      citationAddressRecall: 1,
       citationValidity: 1,
     });
   });
@@ -331,7 +333,8 @@ describe("runGoldenSet", () => {
       skipped: true,
       refused: false,
       passed: false,
-      retrievalRecall: 0,
+      sourceTypeRecall: 0,
+      citationAddressRecall: 0,
       citationValidity: 0,
       notes: ["skipped: transport down"],
     });
@@ -390,6 +393,7 @@ describe("runGoldenSet", () => {
         },
       },
       sourceTypeOf: (id) => (id === "c1" ? "source-a" : undefined),
+      citationOf: (id) => (id === "c1" ? "label-1" : undefined),
       budget: new Budget(undefined),
       refusalMarkers: [refusal],
     };
@@ -398,7 +402,8 @@ describe("runGoldenSet", () => {
     expect(byId.get("skipped")).toMatchObject({
       passed: false,
       refused: false,
-      retrievalRecall: 0,
+      sourceTypeRecall: 0,
+      citationAddressRecall: 0,
       citationValidity: 0,
       skipped: true,
       notes: ["skipped: fetch failed: ECONNRESET"],
@@ -413,7 +418,8 @@ describe("runGoldenSet", () => {
     expect(byId.get("unscored")).toMatchObject({
       passed: false,
       refused: false,
-      retrievalRecall: 1,
+      sourceTypeRecall: 1,
+      citationAddressRecall: 1,
       citationValidity: 0,
     });
     expect(byId.get("unscored")).not.toHaveProperty("skipped");
@@ -444,8 +450,9 @@ describe("runGoldenSet", () => {
     // q1 expects source-a, which ONLY the expansion ref supplies: the reported recall is
     // 1 while the fused track alone scores 0 — the report's statement that it carried it.
     expect(savedResults[0]?.outcome).toMatchObject({
-      retrievalRecall: 1,
-      expansion: { chunks: 1, fusedOnlyRetrievalRecall: 0 },
+      sourceTypeRecall: 1,
+      citationAddressRecall: 1,
+      expansion: { chunks: 1, fusedOnlySourceTypeRecall: 0 },
     });
   });
 

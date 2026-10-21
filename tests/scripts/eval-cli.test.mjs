@@ -92,7 +92,8 @@ const scoredOutcome = (questionId, overrides = {}) => ({
   questionId,
   expectedBehavior: "answer",
   passed: false,
-  retrievalRecall: 1,
+  sourceTypeRecall: 1,
+  citationAddressRecall: 1,
   citationValidity: 1,
   refused: false,
   ...overrides,
@@ -105,9 +106,17 @@ describe("failureLines (#340)", () => {
     ]);
   });
 
-  it("names a retrieval-recall miss with the expected source types", () => {
-    expect(failureLines([scoredOutcome("gs-v0-010", { retrievalRecall: 0.5 })], FIXTURE)).toEqual([
-      "  failed: gs-v0-010 retrievalRecall=0.500 (expected quran, hadith, retrieved 1/2)",
+  it("names a source-type-recall miss with the expected source types", () => {
+    expect(failureLines([scoredOutcome("gs-v0-010", { sourceTypeRecall: 0.5 })], FIXTURE)).toEqual([
+      "  failed: gs-v0-010 sourceTypeRecall=0.500 (expected quran, hadith, retrieved 1/2)",
+    ]);
+  });
+
+  it("names an address-recall miss with the required citation it never surfaced", () => {
+    expect(
+      failureLines([scoredOutcome("gs-v0-003", { citationAddressRecall: 0 })], FIXTURE),
+    ).toEqual([
+      "  failed: gs-v0-003 citationAddressRecall=0.000 (required HR. Bukhari no. 149, retrieved 0/1)",
     ]);
   });
 
@@ -131,11 +140,18 @@ describe("failureLines (#340)", () => {
   it("names every dimension that failed, in one line, when several did", () => {
     expect(
       failureLines(
-        [scoredOutcome("gs-v0-010", { retrievalRecall: 0.5, citationValidity: 0, refused: true })],
+        [
+          scoredOutcome("gs-v0-010", {
+            sourceTypeRecall: 0.5,
+            citationAddressRecall: 0,
+            citationValidity: 0,
+            refused: true,
+          }),
+        ],
         FIXTURE,
       ),
     ).toEqual([
-      "  failed: gs-v0-010 retrievalRecall=0.500 (expected quran, hadith, retrieved 1/2); citationValidity=0.000 (required QS. 2:275, present 0/1); behavior=over-refusal (expected an answer, the answer was refused)",
+      "  failed: gs-v0-010 sourceTypeRecall=0.500 (expected quran, hadith, retrieved 1/2); citationAddressRecall=0.000 (required QS. 2:275, retrieved 0/1); citationValidity=0.000 (required QS. 2:275, present 0/1); behavior=over-refusal (expected an answer, the answer was refused)",
     ]);
   });
 
@@ -153,8 +169,8 @@ describe("failureLines (#340)", () => {
   it("degrades to the bare value only for a fixture that genuinely lacks the question (B4)", () => {
     // The `[]` is deliberate: no fixture is in hand, so no rule label exists to
     // print. An *omitted* fixture fails loudly instead of degrading every line.
-    expect(failureLines([scoredOutcome("q9", { retrievalRecall: 0.5 })], [])).toEqual([
-      "  failed: q9 retrievalRecall=0.500",
+    expect(failureLines([scoredOutcome("q9", { sourceTypeRecall: 0.5 })], [])).toEqual([
+      "  failed: q9 sourceTypeRecall=0.500",
     ]);
   });
 
@@ -174,7 +190,8 @@ describe("failureLines (#340)", () => {
       questionId: "gs-v0-019",
       passed: false,
       skipped: true,
-      retrievalRecall: 0,
+      sourceTypeRecall: 0,
+      citationAddressRecall: 0,
       citationValidity: 0,
       notes: ["skipped: transport down"],
     };
@@ -186,14 +203,16 @@ describe("printSummary (#290, #340)", () => {
   const scored = {
     questionId: "q1",
     passed: true,
-    retrievalRecall: 1,
+    sourceTypeRecall: 1,
+    citationAddressRecall: 1,
     citationValidity: 1,
   };
   const skipped = {
     questionId: "q2",
     passed: false,
     skipped: true,
-    retrievalRecall: 0,
+    sourceTypeRecall: 0,
+    citationAddressRecall: 0,
     citationValidity: 0,
     notes: ["skipped: transport down"],
   };
@@ -201,7 +220,8 @@ describe("printSummary (#290, #340)", () => {
     questionId: "q3",
     expectedBehavior: "answer",
     passed: false,
-    retrievalRecall: 1,
+    sourceTypeRecall: 1,
+    citationAddressRecall: 1,
     citationValidity: 0,
     refused: false,
   };
@@ -245,9 +265,10 @@ describe("printSummary (#290, #340)", () => {
     const scoped = {
       questionId: "q3",
       passed: true,
-      retrievalRecall: 1,
+      sourceTypeRecall: 1,
+      citationAddressRecall: 1,
       citationValidity: 1,
-      expansion: { chunks: 5, fusedOnlyRetrievalRecall: 1 },
+      expansion: { chunks: 5, fusedOnlySourceTypeRecall: 1 },
     };
     const printed = printedSummary(
       {
@@ -263,10 +284,11 @@ describe("printSummary (#290, #340)", () => {
       "",
       "eval:smoke summary — run run-1",
       "  questions: 2  passed: 2  failed: 0  skipped: 0",
-      "  mean retrieval recall: 1.000",
+      "  mean source-type recall: 1.000",
+      "  mean citation-address recall: 1.000",
       "  mean citation validity: 1.000",
       "  cost: 0.000025 USD  budget exceeded: false",
-      "  scoped: q3 — expansion chunks 5, fused-only recall 1.000 (reported 1.000)",
+      "  scoped: q3 — expansion chunks 5, fused-only source-type recall 1.000 (reported 1.000)",
     ]);
     expect(printed).not.toMatch(/^ {2}(failed|skipped): /m);
   });
@@ -275,9 +297,10 @@ describe("printSummary (#290, #340)", () => {
     const scoped = {
       questionId: "q4",
       passed: true,
-      retrievalRecall: 1,
+      sourceTypeRecall: 1,
+      citationAddressRecall: 1,
       citationValidity: 1,
-      expansion: { chunks: 5, fusedOnlyRetrievalRecall: 1 },
+      expansion: { chunks: 5, fusedOnlySourceTypeRecall: 1 },
     };
     const printed = printedSummary(
       {
@@ -293,10 +316,11 @@ describe("printSummary (#290, #340)", () => {
       "",
       "eval:smoke summary — run run-1",
       "  questions: 4  passed: 2  failed: 1  skipped: 1",
-      "  mean retrieval recall: 1.000",
+      "  mean source-type recall: 1.000",
+      "  mean citation-address recall: 1.000",
       "  mean citation validity: 0.667",
       "  cost: 0.000025 USD  budget exceeded: false",
-      "  scoped: q4 — expansion chunks 5, fused-only recall 1.000 (reported 1.000)",
+      "  scoped: q4 — expansion chunks 5, fused-only source-type recall 1.000 (reported 1.000)",
       "  failed: q3 citationValidity=0.000",
       "  skipped: q2 — transport down",
     ]);

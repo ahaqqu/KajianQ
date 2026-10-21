@@ -3,10 +3,11 @@ import { Budget, BudgetExceededError } from "./budget";
 import { expansionProvenance, ledgerFailureNote, skippedOutcome } from "./harness-outcomes";
 import {
   behaviorAccepted,
+  citationAddressRecall,
   citationValidity,
   detectRefusal,
   groundedAnswer,
-  retrievalRecall,
+  sourceTypeRecall,
 } from "./scorers";
 import type {
   CitationFrameLike,
@@ -63,6 +64,9 @@ export type HarnessDeps = {
   ledger: RunLedger;
   /** Chunk-id → source-type resolver (from the store or fixture metadata). */
   sourceTypeOf: (chunkId: string) => string | undefined;
+  /** Chunk-id → citation-label resolver (the chunk's own `citation` metadata);
+   * the trace carries only ids, so address recall needs this join. */
+  citationOf: (chunkId: string) => string | undefined;
   budget: Budget;
   /** Refusal markers in the answer text (domain vocabulary, caller-supplied). */
   refusalMarkers?: readonly string[];
@@ -177,20 +181,33 @@ export async function runGoldenSet(set: GoldenSet, deps: HarnessDeps): Promise<H
 }
 
 /** Score one question from its answer text, trace events, and the citations frame
- * when the transport carried one. Trap rule + residual: `behaviorAccepted`. */
+ * when the transport carried one. A question passes only when behaviour, both
+ * recall dimensions and citation validity are all complete; the trap rule's
+ * residual lives in `behaviorAccepted`. */
 export function scoreQuestion(
   question: GoldenQuestion,
   answerText: string,
   events: readonly TraceEventLike[],
   deps: Pick<
     HarnessDeps,
-    "sourceTypeOf" | "refusalMarkers" | "citationGrammar" | "citationIdentity" | "expansionOrigin"
+    | "sourceTypeOf"
+    | "citationOf"
+    | "refusalMarkers"
+    | "citationGrammar"
+    | "citationIdentity"
+    | "expansionOrigin"
   >,
   frame?: CitationFrameLike | null,
 ): EvalResultOutcome {
   const retrieval = events.filter((e) => e.kind === "retrieval").at(-1);
   const chunks = retrieval?.detail?.chunks ?? [];
-  const recall = retrievalRecall(question.expectedSourceTypes, chunks, deps.sourceTypeOf);
+  const sourceTypes = sourceTypeRecall(question.expectedSourceTypes, chunks, deps.sourceTypeOf);
+  const addressRecall = citationAddressRecall(
+    question.requiredCitations,
+    chunks,
+    deps.citationOf,
+    deps.citationGrammar,
+  );
   const citations = citationValidity(question.requiredCitations, answerText, {
     frame,
     events,
@@ -200,12 +217,13 @@ export function scoreQuestion(
   const refused = detectRefusal(events, answerText, deps.refusalMarkers ?? []);
   const grounded = groundedAnswer({ frame, events });
   const correct = behaviorAccepted(question.expectedBehavior, refused, grounded);
-  const passed = correct && citations === 1 && recall === 1;
+  const passed = correct && citations === 1 && sourceTypes === 1 && addressRecall === 1;
   return {
     questionId: question.id,
     expectedBehavior: question.expectedBehavior,
     passed,
-    retrievalRecall: recall,
+    sourceTypeRecall: sourceTypes,
+    citationAddressRecall: addressRecall,
     citationValidity: citations,
     refused,
     ...expansionProvenance({
@@ -247,7 +265,14 @@ export function buildReport(set: GoldenSet, run: BuildReportRun): EvalRunReport 
     passed: run.passed,
     failed: run.failed,
     skipped: run.skipped,
-    meanRetrievalRecall: mean(run.scored.map((r) => r.retrievalRecall)),
+    meanSourceTypeRecall: mean(run.scored.map((r) => r.sourceTypeRecall)),
+    // Every scored row a run writes carries the metric; the filter keeps the
+    // mean honest for an outcome shape read from a pre-metric ledger row.
+    meanCitationAddressRecall: mean(
+      run.scored.flatMap((r) =>
+        r.citationAddressRecall === undefined ? [] : [r.citationAddressRecall],
+      ),
+    ),
     meanCitationValidity: mean(run.scored.map((r) => r.citationValidity)),
     costMicroUsd: run.costMicroUsd,
     budgetExceeded: run.budgetExceeded,
