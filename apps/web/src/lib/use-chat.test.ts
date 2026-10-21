@@ -1,10 +1,19 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, renderHook, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { ChatSessionMessages } from "@app/contracts";
 import { useChat } from "./use-chat";
+import { MessageCard } from "../components/chat/MessageCard";
 
 // React 19 + vitest: mark the environment for act() (renderHook's flushes).
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -23,7 +32,7 @@ import { useChat } from "./use-chat";
  * the cache still holds.
  */
 
-type ChatMeta = { sessionId: string };
+type ChatMeta = { sessionId: string; messageId: string };
 
 const mocks = vi.hoisted(() => ({
   loadStoredSessionId: vi.fn<() => string | null>(),
@@ -33,11 +42,12 @@ const mocks = vi.hoisted(() => ({
     (
       body: unknown,
       handlers: {
-        onMeta?: (meta: { sessionId: string }) => void;
+        onMeta?: (meta: { sessionId: string; messageId: string }) => void;
         onDelta: (delta: string) => void;
       },
     ) => Promise<void>
   >(),
+  sendFeedback: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 }));
 
 vi.mock("./chat-store", () => ({
@@ -55,6 +65,7 @@ vi.mock("./chat-store", () => ({
   },
 }));
 vi.mock("./chat-client", () => ({ askChat: mocks.askChat }));
+vi.mock("./feedback", () => ({ sendFeedback: mocks.sendFeedback }));
 
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve!: (value: T) => void;
@@ -157,7 +168,8 @@ function setupChat(
     send: (text = "Siapa Nabi Muhammad?") => act(() => result.current.send(text)),
     delta: (text = "Jawaban ") => act(() => onDelta(text)),
     /** The stream's `meta` frame: the session the server minted or confirmed. */
-    meta: (sessionId: string) => act(() => onMeta({ sessionId })),
+    meta: (sessionId: string, messageId = "live-message") =>
+      act(() => onMeta({ sessionId, messageId })),
   };
 }
 
@@ -173,6 +185,35 @@ function refetchMidTurn(chat: ReturnType<typeof setupChat>): void {
   });
 }
 
+/**
+ * A chat surface wired to the real components: the hook's turns rendered as
+ * `MessageCard`s with the same persisted-id gate the page applies, plus a
+ * button that starts a turn so a test can drive the pre-`meta` window.
+ */
+function ChatAffordances() {
+  const chat = useChat("id");
+  return createElement(
+    "div",
+    null,
+    createElement(
+      "button",
+      {
+        type: "button",
+        "data-testid": "probe-send",
+        onClick: () => chat.send("Siapa Nabi Muhammad?"),
+      },
+      "send",
+    ),
+    chat.messages.map((message) =>
+      createElement(MessageCard, {
+        key: message.id,
+        message,
+        persisted: chat.persistedMessageIds.has(message.id),
+      }),
+    ),
+  );
+}
+
 describe("useChat — transcript vs. the live turn and the route", () => {
   beforeEach(() => {
     let n = 0;
@@ -180,6 +221,7 @@ describe("useChat — transcript vs. the live turn and the route", () => {
     mocks.loadStoredSessionId.mockReturnValue("sess-1");
   });
   afterEach(() => {
+    cleanup();
     vi.unstubAllGlobals();
     vi.clearAllMocks();
   });
@@ -218,6 +260,74 @@ describe("useChat — transcript vs. the live turn and the route", () => {
     await waitFor(() => expect(chat.result.current.busy).toBe(false));
     expect(chat.result.current.messages).toHaveLength(2);
     expect(chat.result.current.messages[1]).toMatchObject({ content: "Jawaban " });
+  });
+
+  it("re-keys the live answer to the streamed message id, so feedback names the persisted row", async () => {
+    const chat = setupChat();
+
+    chat.send();
+    const userId = chat.result.current.messages[0]?.id;
+    const placeholderId = chat.result.current.messages[1]?.id;
+    // The optimistic answer's id is a client-local placeholder: it names no row.
+    expect(placeholderId).toBeDefined();
+    expect(chat.result.current.persistedMessageIds.has(placeholderId!)).toBe(false);
+    // The first frame names the persisted answer, before any delta arrives.
+    chat.meta("sess-1", "m-server-1");
+    chat.delta("Jawaban ");
+    act(() => chat.answer.resolve());
+    await waitFor(() => expect(chat.result.current.busy).toBe(false));
+
+    // The assistant turn carries the id the stream named — the id rehydration
+    // returns — and later patches land on it; the user turn keeps its local key.
+    expect(chat.result.current.messages[1]).toMatchObject({
+      id: "m-server-1",
+      role: "assistant",
+      content: "Jawaban ",
+    });
+    expect(chat.result.current.messages[0]?.id).toBe(userId);
+    // From `meta` on, that id is a persisted row the feedback may address.
+    expect(chat.result.current.persistedMessageIds.has("m-server-1")).toBe(true);
+    expect(chat.result.current.persistedMessageIds.has(placeholderId!)).toBe(false);
+  });
+
+  it("withholds feedback until meta names the row, then posts the streamed id", async () => {
+    const answer = deferred<void>();
+    let onMeta: (meta: ChatMeta) => void = () => {};
+    mocks.askChat.mockImplementation(
+      (_body: unknown, handlers: { onMeta?: (meta: ChatMeta) => void }) => {
+        onMeta = handlers.onMeta ?? (() => {});
+        return answer.promise;
+      },
+    );
+    // The transcript query never resolves; the live turn is the only content.
+    mocks.rehydrateSession.mockReturnValue(new Promise(() => {}));
+    mocks.sendFeedback.mockResolvedValue({
+      id: "fb1",
+      messageId: "live-row-9",
+      rating: "up",
+      anchor: null,
+      status: "pending",
+    });
+
+    const view = render(
+      createElement(QueryClientProvider, { client: makeClient() }, createElement(ChatAffordances)),
+    );
+    fireEvent.click(screen.getByTestId("probe-send"));
+
+    // Before `meta` the answer is addressed by its client-local placeholder,
+    // which names no row: the affordance is not rendered and nothing is posted.
+    expect(screen.queryByTestId("feedback-up")).toBeNull();
+    expect(mocks.sendFeedback).not.toHaveBeenCalled();
+
+    act(() => onMeta({ sessionId: "sess-1", messageId: "live-row-9" }));
+
+    // After `meta`, the affordance appears and the click posts the streamed id.
+    fireEvent.click(screen.getByTestId("feedback-up"));
+    await waitFor(() =>
+      expect(mocks.sendFeedback).toHaveBeenCalledWith("live-row-9", { rating: "up" }),
+    );
+    act(() => answer.resolve());
+    view.unmount();
   });
 
   it("a transcript fetched before the turn never replaces it when it resolves after the turn", async () => {

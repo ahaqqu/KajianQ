@@ -1,6 +1,11 @@
 import { Effect } from "effect";
 import { FEEDBACK_INITIAL_STATUS, type Trace } from "@app/contracts";
-import type { AnswerFeedbackTarget, FeedbackInsert, RagStore } from "./rag-store";
+import {
+  canonicalMessageId,
+  type AnswerFeedbackTarget,
+  type FeedbackInsert,
+  type RagStore,
+} from "./rag-store";
 import { constraintError, parseTrace } from "./rag-store-shared";
 import { sqlEffect, type SqlRunner } from "./rag-store-postgres-errors";
 
@@ -37,6 +42,10 @@ export function postgresTraceMethods(
       // while `Trace.id` is any non-empty string. Callers must persist dependent
       // rows (notably an `answer_trace_id` FK) using the id returned here.
       const id = crypto.randomUUID();
+      // The message reference is stored in the same canonical form as the
+      // `chat_messages.id` row it names: this column is TEXT and would otherwise
+      // keep a caller's re-cased spelling while the uuid row stored lowercase.
+      const messageId = canonicalMessageId(input.messageId);
       return Effect.flatMap(parsed, (trace) =>
         Effect.as(
           sqlEffect(
@@ -45,7 +54,7 @@ export function postgresTraceMethods(
               sql`
             INSERT INTO answer_traces (id, message_id, user_id, trace)
             VALUES (
-              ${id}, ${input.messageId}, ${input.userId},
+              ${id}, ${messageId}, ${input.userId},
               ${JSON.stringify(trace)}::jsonb
             )
           ` as Promise<unknown[]>,
@@ -78,12 +87,13 @@ export function postgresTraceMethods(
     },
 
     getAnswerTraceByMessage(messageId) {
+      const canonicalId = canonicalMessageId(messageId);
       return Effect.flatMap(
         sqlEffect(
           sql,
           () =>
             sql`
-          SELECT trace FROM answer_traces WHERE message_id = ${messageId}
+          SELECT trace FROM answer_traces WHERE message_id = ${canonicalId}
         ` as Promise<{ trace: unknown }[]>,
         ),
         (rows) => {
@@ -136,13 +146,17 @@ export function postgresTraceMethods(
 
     getAnswerFeedbackTarget(messageId) {
       // One read for the whole feedback target: the trace, its owner, and the
-      // answer text joined through `chat_messages.answer_trace_id`. The caller's
-      // id may be EITHER identifier the client holds — the stream's
-      // `meta.messageId` (the trace's `message_id`) or a rehydrated transcript
-      // row id (`chat_messages.id`). That row id is uuid-typed, so the OR arm
-      // casts; a non-uuid id can only match `t.message_id` and omits the cast
-      // arm rather than failing. The target carries the trace's CANONICAL id.
-      const byEither = isUuid(messageId);
+      // answer text joined through `chat_messages.answer_trace_id`. The answer's
+      // message id and its trace's `message_id` are written as one value, but the
+      // store does not constrain them equal, so the read accepts either address a
+      // client can hold — the live stream's `meta.messageId` or a rehydrated row
+      // id. The row id is uuid-typed, so that arm casts; a non-uuid id can only
+      // match `t.message_id` and omits the cast arm rather than failing. The
+      // target carries the trace's message id, the canonical key feedback rows use.
+      // The reference is canonical on write, so an incoming re-cased spelling is
+      // canonicalised before it is compared either way.
+      const canonicalId = canonicalMessageId(messageId);
+      const byEither = isUuid(canonicalId);
       return Effect.flatMap(
         sqlEffect(sql, () =>
           byEither
@@ -151,8 +165,8 @@ export function postgresTraceMethods(
                  m.content AS answer_text
           FROM answer_traces t
           LEFT JOIN chat_messages m ON m.answer_trace_id = t.id
-          WHERE t.message_id = ${messageId}
-             OR m.id = ${messageId}::uuid
+          WHERE t.message_id = ${canonicalId}
+             OR m.id = ${canonicalId}::uuid
         ` as Promise<
                 {
                   trace_message_id: string;
@@ -166,7 +180,7 @@ export function postgresTraceMethods(
                  m.content AS answer_text
           FROM answer_traces t
           LEFT JOIN chat_messages m ON m.answer_trace_id = t.id
-          WHERE t.message_id = ${messageId}
+          WHERE t.message_id = ${canonicalId}
         ` as Promise<
                 {
                   trace_message_id: string;

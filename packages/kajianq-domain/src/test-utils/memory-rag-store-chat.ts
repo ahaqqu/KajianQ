@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { StoreError, type RagStore } from "@app/infra";
+import { StoreError, canonicalMessageId, type RagStore } from "@app/infra";
 import { canonicalUuid } from "./memory-rag-store-uuid";
 
 /**
@@ -80,7 +80,10 @@ export function memoryChatMethods(
       return Effect.sync(() => {
         // A uuid, like the real `chat_messages.id`: only uuid message ids pass
         // the feedback route's contract, and answers are addressed by this id.
-        const id = crypto.randomUUID();
+        // A supplied id is the caller's one mint for this message and its trace;
+        // it is stored and returned in the column's canonical form, so a re-cased
+        // spelling cannot diverge from the trace's message reference.
+        const id = canonicalMessageId(input.id ?? crypto.randomUUID());
         state.chatMessages.set(canonicalUuid(id), {
           // `session_id` is a uuid column: it holds the canonical text form, not
           // the spelling the request carried, so either spelling reads it back.

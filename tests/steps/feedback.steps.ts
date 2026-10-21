@@ -7,21 +7,33 @@ import { expect } from "@playwright/test";
  * body so each scenario asserts the ANCHOR the client sent: a thumb carries
  * the answer rating with no anchor; a Trace-panel flag carries the chunk id;
  * a citation-sheet flag carries the citation label. The wire shapes mirror
- * the shared @app/contracts feedback contract the route validates.
+ * the shared @app/contracts feedback contract the route validates: the stub
+ * 404s a message id that is not a uuid, so the fixture cannot drift back to a
+ * non-uuid placeholder and still show the sent state.
  */
 
 const { When, Then } = createBdd();
 
 const SESSION = { userId: "u1", sessionId: "sess-e2e", token: "tok-e2e", expiresAt: 1 };
 
+/**
+ * The answer's persisted message id, which the stub stream names in `meta`.
+ * UUID-shaped, because the real feedback contract (`v.uuid()`) refuses anything
+ * else — the fixture must model a value the route would accept.
+ */
+const STREAM_MESSAGE_ID = "6f1c2a1e-8f3b-4c5d-9e7a-1b2c3d4e5f60";
+
+/** The real route's message-id contract, as the feedback stub enforces it. */
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const DISCLAIMER = "Jawaban ini bukan fatwa; rujuk ulama untuk keputusan hukum.";
 
 const ANSWER_FIXTURE = [
-  'event: meta\ndata: {"sessionId":"sess-e2e","messageId":"m-live","traceId":"tr-live"}\n\n',
+  `event: meta\ndata: {"sessionId":"sess-e2e","messageId":"${STREAM_MESSAGE_ID}","traceId":"tr-live"}\n\n`,
   "event: delta\ndata: Allah Mahahidup sebagaimana firman-Nya ",
   `event: delta\ndata: [QS. 2:255].\ndata: \ndata: ${DISCLAIMER}\n\n`,
-  'event: citations\ndata: {"messageId":"m-live","refusal":false,"dhaifWarning":false,"citations":[{"label":"QS. 2:255","arabic":"اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ","translation":"Allah, tidak ada tuhan selain Dia.","machineTranslated":true,"source":"Al-Baqarah"}]}\n\n',
-  'event: trace\ndata: {"messageId":"m-live","sources":[{"id":"chunk-1","source":"Al-Baqarah"}],"technical":{"intent":"ruling","routing":{"sources":[],"filters":{}},"subQueries":["apa itu ayat kursi"],"chunks":[{"id":"chunk-1","source":"Al-Baqarah","score":0.03125}],"models":["router-stub","generator-stub"]}}\n\n',
+  `event: citations\ndata: {"messageId":"${STREAM_MESSAGE_ID}","refusal":false,"dhaifWarning":false,"citations":[{"label":"QS. 2:255","arabic":"اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ","translation":"Allah, tidak ada tuhan selain Dia.","machineTranslated":true,"source":"Al-Baqarah"}]}\n\n`,
+  `event: trace\ndata: {"messageId":"${STREAM_MESSAGE_ID}","sources":[{"id":"chunk-1","source":"Al-Baqarah"}],"technical":{"intent":"ruling","routing":{"sources":[],"filters":{}},"subQueries":["apa itu ayat kursi"],"chunks":[{"id":"chunk-1","source":"Al-Baqarah","score":0.03125}],"models":["router-stub","generator-stub"]}}\n\n`,
   "event: done\ndata: {}\n\n",
 ].join("");
 
@@ -48,9 +60,23 @@ async function openChatWithFixtures(page: import("@playwright/test").Page): Prom
     });
   });
   await page.route("**/v1/feedback", async (route) => {
-    feedbackBodies.push((route.request().postDataJSON() ?? {}) as Record<string, unknown>);
+    const body = (route.request().postDataJSON() ?? {}) as Record<string, unknown>;
+    feedbackBodies.push(body);
+    // The real route refuses a non-uuid before the store and 404s an id that
+    // names no row. The stub enforces the shape so the fixture stays a value
+    // the route would accept; the exact-id assertions catch a uuid placeholder.
+    if (typeof body["messageId"] !== "string" || !UUID_SHAPE.test(body["messageId"])) {
+      await route.fulfill({ status: 404, json: { error: "not_found" } });
+      return;
+    }
     await route.fulfill({
-      json: { id: "fb-e2e", messageId: "m-live", rating: null, anchor: null, status: "pending" },
+      json: {
+        id: "fb-e2e",
+        messageId: STREAM_MESSAGE_ID,
+        rating: null,
+        anchor: null,
+        status: "pending",
+      },
     });
   });
   await page.addInitScript(() => {
@@ -87,8 +113,9 @@ Then("the thumbs carry my rating and anchor the answer", async () => {
   const body = feedbackBodies[0] ?? {};
   expect(body.rating).toBe("up");
   expect(body.anchor).toBeUndefined();
-  expect(typeof body.messageId).toBe("string");
-  expect((body.messageId as string).length).toBeGreaterThan(0);
+  // The live answer is addressed by the streamed `meta.messageId` — the persisted
+  // chat message id — not a client-local key (ADR-0056).
+  expect(body.messageId).toBe(STREAM_MESSAGE_ID);
 });
 
 Then("the feedback bar thanks me", async ({ page }) => {
@@ -100,6 +127,8 @@ Then("the flag carries the chunk reference and the reason category", async () =>
   const anchor = (feedbackBodies[0] ?? {})["anchor"] as Record<string, unknown>;
   expect(anchor).toEqual({ type: "chunk", category: "irrelevant_chunk", id: "chunk-1" });
   expect(feedbackBodies[0]?.["rating"]).toBeUndefined();
+  // A flag from the live Trace panel names the same persisted message.
+  expect(feedbackBodies[0]?.["messageId"]).toBe(STREAM_MESSAGE_ID);
 });
 
 Then("the flag button confirms the report", async ({ page }) => {

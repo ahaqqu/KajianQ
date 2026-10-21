@@ -53,6 +53,13 @@ type TranscriptSnapshot = {
 export function useChat(locale: "id" | "en") {
   const [sessionId, setSessionId] = useState<string | null>(loadStoredSessionId());
   const [messages, setMessages] = useState<readonly ChatSessionMessage[]>([]);
+  // The ids known to name a persisted row — rehydrated turns, plus a live
+  // answer once `meta` arrives. The live turn is rendered before that, under a
+  // client-local placeholder that names nothing; feedback addressed to it would
+  // 404, so the view gates its affordances on membership here.
+  const [persistedMessageIds, setPersistedMessageIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ChatError>(null);
   const [online, setOnline] = useState(true);
@@ -145,7 +152,11 @@ export function useChat(locale: "id" | "en") {
     // without new data.
     if (transcript.dataUpdatedAt <= appliedTranscriptAtRef.current) return;
     appliedTranscriptAtRef.current = transcript.dataUpdatedAt;
-    setMessages(snapshot.transcript?.messages ?? []);
+    const applied = snapshot.transcript?.messages ?? [];
+    setMessages(applied);
+    // Every rehydrated turn names its persisted row by construction: it came
+    // from the transcript, not from an optimistic placeholder.
+    setPersistedMessageIds(new Set(applied.map((m) => m.id)));
   }, [
     busy,
     sessionId,
@@ -177,7 +188,7 @@ export function useChat(locale: "id" | "en") {
         content: text,
         createdAt: Date.now(),
       };
-      const assistantId = crypto.randomUUID();
+      let assistantId: string = crypto.randomUUID();
       const assistantTurn: ChatSessionMessage = {
         id: assistantId,
         role: "assistant",
@@ -192,6 +203,18 @@ export function useChat(locale: "id" | "en") {
         {
           onMeta: (meta) => {
             liveSessionRef.current = meta.sessionId;
+            // `meta.messageId` is the answer's persisted chat message id — the
+            // value rehydration returns and feedback addresses (ADR-0056). Re-key
+            // the live turn to it, so a report filed before a reload names the
+            // real row; the local id above is only a placeholder until this frame.
+            // The id is known persisted from here on, whatever the re-key does.
+            setPersistedMessageIds((prev) => new Set(prev).add(meta.messageId));
+            if (meta.messageId === assistantId) return;
+            const localId = assistantId;
+            assistantId = meta.messageId;
+            setMessages((prev) =>
+              prev.map((m) => (m.id === localId ? { ...m, id: assistantId } : m)),
+            );
           },
           onDelta: (delta) =>
             setMessages((prev) =>
@@ -224,11 +247,14 @@ export function useChat(locale: "id" | "en") {
     liveSessionRef.current = null;
     setSessionId(null);
     setMessages([]);
+    setPersistedMessageIds(new Set());
     setError(null);
   }, []);
 
   return {
     messages,
+    // The ids a feedback affordance may address — see the state's comment.
+    persistedMessageIds,
     busy,
     error,
     online,

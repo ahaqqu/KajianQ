@@ -118,6 +118,7 @@ describe("ChatView pre-fill seeding", () => {
       createElement(ChatView, {
         locale: "id",
         messages: [],
+        persistedMessageIds: new Set<string>(),
         busy: false,
         loadingTranscript: false,
         transcriptTruncated: false,

@@ -36,6 +36,7 @@ function renderView(overrides: {
       createElement(ChatView, {
         locale: "id",
         messages: [],
+        persistedMessageIds: new Set<string>(),
         busy: overrides.busy ?? false,
         loadingTranscript: overrides.loadingTranscript ?? false,
         transcriptTruncated: false,

@@ -125,4 +125,43 @@ describe("memory RagStore chat maps compare by the uuid column's canonical text"
       [SESSION_ID, "Apa itu Ayat Kursi?"],
     ]);
   });
+
+  it("writes a caller-supplied message id, the one mint its trace reference reuses", async () => {
+    const state: MemoryChatState = { chatSessions: new Map(), chatMessages: new Map() };
+    const methods = memoryChatMethods(state);
+    const written = await Effect.runPromise(
+      methods.insertChatMessage({
+        id: MESSAGE_ID,
+        sessionId: SESSION_ID,
+        role: "assistant",
+        content: "Ayat Kursi adalah QS. 2:255.",
+        answerTraceId: "trace-row-1",
+      }),
+    );
+    expect(written).toBe(MESSAGE_ID);
+    expect([...state.chatMessages.keys()]).toEqual([MESSAGE_ID]);
+    const rows = await Effect.runPromise(methods.getChatMessages(SESSION_ID));
+    expect(rows.map((m) => [m.id, m.answerTraceId])).toEqual([[MESSAGE_ID, "trace-row-1"]]);
+  });
+
+  it("canonicalises a re-cased supplied message id, so the row and the transcript agree", async () => {
+    const state: MemoryChatState = { chatSessions: new Map(), chatMessages: new Map() };
+    const methods = memoryChatMethods(state);
+    const upper = MESSAGE_ID.toUpperCase();
+    const written = await Effect.runPromise(
+      methods.insertChatMessage({
+        id: upper,
+        sessionId: SESSION_ID,
+        role: "assistant",
+        content: "Ayat Kursi adalah QS. 2:255.",
+        answerTraceId: "trace-row-1",
+      }),
+    );
+    // The uuid column's canonical form is what the caller must stream and what
+    // the rehydrated transcript returns — not the spelling the caller supplied.
+    expect(written).toBe(MESSAGE_ID);
+    expect([...state.chatMessages.keys()]).toEqual([MESSAGE_ID]);
+    const rows = await Effect.runPromise(methods.getChatMessages(SESSION_ID));
+    expect(rows.map((m) => m.id)).toEqual([MESSAGE_ID]);
+  });
 });

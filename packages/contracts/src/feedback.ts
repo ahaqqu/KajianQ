@@ -103,10 +103,12 @@ const FeedbackFreeTextSchema = v.optional(
 );
 
 /**
- * The request body. `messageId` is the answer's message id (a uuid — the id
- * the chat route mints); `freeText` is optional color for either shape
- * (spec §2: "Free-text optional"), capped so a report cannot smuggle in an
- * essay (or personal data beyond a sentence).
+ * The request body. `messageId` is the answer's message id — the
+ * `chat_messages.id` the stream's `meta` frame and the rehydration transcript
+ * both carry (a uuid, which is why a malformed address is a contract refusal);
+ * `freeText` is optional color for either shape (spec §2: "Free-text
+ * optional"), capped so a report cannot smuggle in an essay (or personal data
+ * beyond a sentence).
  *
  * The one-shape invariant is STRUCTURAL, not a cross-field check: the schema
  * is a union of the two valid shapes, each forbidding the other key with

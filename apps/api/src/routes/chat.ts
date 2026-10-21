@@ -101,6 +101,14 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
 
   await runStore(store.insertChatMessage({ sessionId, role: "user", content: req.message }));
 
+  // The answer's message id is minted ONCE and written to both rows: the
+  // assistant message's `chat_messages.id` and its trace's `message_id`. That
+  // is what makes the stream's `meta.messageId`, the structured frames and the
+  // rehydrated transcript's message `id` one joinable value (ADR-0056); a
+  // second mint here would silently split that identity again. The store
+  // returns the id's canonical form, and THAT is what the stream carries: a
+  // caller-supplied spelling (a re-cased uuid) must not put one spelling on
+  // the wire and another in the row it names.
   const answerMessageId = crypto.randomUUID();
   const traceId = crypto.randomUUID();
 
@@ -148,14 +156,17 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
   const storedTraceId = (await runStore(
     store.insertAnswerTrace({ messageId: answerMessageId, userId, trace: answer.trace }),
   )) as string;
-  await runStore(
+  // The store canonicalises the caller's id; adopt its return value for the
+  // stream and the structured frames, so all of them name the row as it is.
+  const storedMessageId = (await runStore(
     store.insertChatMessage({
+      id: answerMessageId,
       sessionId,
       role: "assistant",
       content: answer.text,
       answerTraceId: storedTraceId,
     }),
-  );
+  )) as string;
 
   // The SSE wire contract (meta → deltas → citations → trace → done,
   // ADR-0034 + ADR-0040 for the `trace` frame). This branch's real question is
@@ -190,7 +201,7 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
   // reconstructs pipeline machinery from raw events.
   const { citations, trace: traceFrame } = await answerFramesFor({
     trace: answer.trace,
-    messageId: answerMessageId,
+    messageId: storedMessageId,
     answerText: answer.text,
     fetchChunks: chunkFetcher(store, runStore),
     warn: (msg, fields) => logger.warn(msg, fields),
@@ -203,7 +214,7 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
         enc.encode(
           sseFrame(
             "meta",
-            JSON.stringify({ sessionId, messageId: answerMessageId, traceId: storedTraceId }),
+            JSON.stringify({ sessionId, messageId: storedMessageId, traceId: storedTraceId }),
           ),
         ),
       );

@@ -1,6 +1,11 @@
 import { Effect } from "effect";
 import { FEEDBACK_INITIAL_STATUS } from "@app/contracts";
-import type { AnswerFeedbackTarget, FeedbackInsert, RagStore } from "@app/infra";
+import {
+  canonicalMessageId,
+  type AnswerFeedbackTarget,
+  type FeedbackInsert,
+  type RagStore,
+} from "@app/infra";
 import { canonicalUuid } from "./memory-rag-store-uuid";
 
 /** Feedback methods of the in-memory RagStore, sharing the main factory's maps by reference. */
@@ -52,21 +57,23 @@ export function memoryFeedbackMethods(
     },
     getAnswerFeedbackTarget(messageId) {
       return Effect.sync(() => {
-        // Dual-id resolution: the id may be the trace's `message_id` (the live
-        // stream's meta; a TEXT column the adapter compares exactly) or a
-        // rehydrated chat row id (`chat_messages.id`, uuid-typed, so that OR arm
-        // casts and canonicalises case) — the Postgres adapter resolves both.
-        let trace = state.traces.get(messageId);
-        let owner = state.traceOwners.get(messageId) ?? null;
+        // Dual-id resolution: the answer's message id is written to both the
+        // trace's `message_id` (the live stream's meta; stored canonically, a
+        // TEXT column) and the chat row's `id` (uuid-typed, so that OR arm casts
+        // and canonicalises case), but the store does not constrain them
+        // equal — the id may address either. The Postgres adapter resolves both.
+        const lookupId = canonicalMessageId(messageId);
+        let trace = state.traces.get(lookupId);
+        let owner = state.traceOwners.get(lookupId) ?? null;
         let chatRow = undefined;
-        let canonicalMessageId = messageId;
+        let canonicalId = lookupId;
         if (trace === undefined) {
           chatRow = state.chatMessages.get(canonicalUuid(messageId));
           const traceId = chatRow?.answerTraceId ?? null;
           if (traceId === null) return null;
           trace = state.traceRows.get(traceId);
           owner = state.traceRowOwners.get(traceId) ?? null;
-          canonicalMessageId = state.traceRowMessageIds.get(traceId) ?? messageId;
+          canonicalId = state.traceRowMessageIds.get(traceId) ?? lookupId;
         }
         if (trace === undefined) return null;
         const traceId = (trace as { id?: string }).id;
@@ -76,7 +83,7 @@ export function memoryFeedbackMethods(
         const target: AnswerFeedbackTarget = {
           // The trace's canonical message id: the caller keys the feedback row
           // by this, never by the looked-up alias.
-          messageId: canonicalMessageId,
+          messageId: canonicalId,
           userId: owner,
           trace: trace as never,
           answerText,

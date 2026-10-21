@@ -16,6 +16,26 @@ import type { RagStoreTrace } from "./rag-store-trace-seam";
  */
 export type { StoreError };
 
+/**
+ * The canonical text form of an answer's message id — what `chat_messages.id`
+ * (a `uuid` column) stores and returns for any admitted spelling.
+ *
+ * `answer_traces.message_id` is TEXT and keeps the spelling it is given, so a
+ * caller-supplied id reaches the two columns differently unless the seam
+ * normalises it: the uuid column would store lowercase while the trace keeps a
+ * re-cased spelling, and the transcript's `id` would no longer equal the id the
+ * stream and the trace carry. Both inserts canonicalise through this one
+ * function, so the caller's spelling cannot re-split the answer's identity.
+ *
+ * Only case needs normalising: `crypto.randomUUID()` already mints this form,
+ * and every request-side message id passes `v.uuid()`, whose grammar is the
+ * canonical hyphenated shape in either case — the uuid cast's wider forms
+ * (braces, a hyphen-less 32-hex string) never reach the seam.
+ */
+export function canonicalMessageId(id: string): string {
+  return id.toLowerCase();
+}
+
 /** The failure type of every RagStore method — see `@app/rag-core`'s closed taxonomy. */
 export type StoreFailure = StoreError;
 
@@ -117,7 +137,21 @@ export interface RagStore
    * exist — the chat route checks a client-supplied `sessionId` against it. */
   getChatSessionUser(sessionId: string): Effect.Effect<string | null, StoreError>;
 
+  /**
+   * Write one chat message and return its row id (`chat_messages.id`). That
+   * id is the message's identity across the API: the transcript returns it,
+   * the live answer's `meta` frame carries it, and feedback addresses the
+   * message by it. `id` lets a caller that also persists a row referencing
+   * the message — the answer trace's `message_id` — mint the id once and
+   * write it into both, instead of learning it only after this insert;
+   * absent, the store mints one. The store returns the id's canonical text
+   * form (`canonicalMessageId`), which is what the row stores: a caller that
+   * supplies a re-cased uuid must use the returned value for the trace
+   * reference and the stream, or the two would disagree on spelling.
+   */
   insertChatMessage(input: {
+    /** The row id to write; absent lets the store mint one. */
+    id?: string;
     sessionId: string;
     role: string;
     content: string;

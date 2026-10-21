@@ -1,11 +1,12 @@
 import { Effect } from "effect";
-import type {
-  AlignedPairInsert,
-  DocChildInsert,
-  DocParentInsert,
-  FeedbackInsert,
-  RagStore,
-  SimilarChild,
+import {
+  canonicalMessageId,
+  type AlignedPairInsert,
+  type DocChildInsert,
+  type DocParentInsert,
+  type FeedbackInsert,
+  type RagStore,
+  type SimilarChild,
 } from "@app/infra";
 import {
   memoryAuthMethods,
@@ -234,16 +235,19 @@ export function createMemoryRagStore(): RagStore & {
     },
     insertAnswerTrace(input) {
       return Effect.sync(() => {
-        traces.set(input.messageId, input.trace);
+        // Same canonical reference the Postgres adapter stores: the trace's
+        // TEXT message reference and the uuid chat row must agree on spelling.
+        const messageId = canonicalMessageId(input.messageId);
+        traces.set(messageId, input.trace);
         traceRows.set(input.trace.id as string, input.trace); // row id = FK key
-        traceOwners.set(input.messageId, input.userId);
+        traceOwners.set(messageId, input.userId);
         traceRowOwners.set(input.trace.id as string, input.userId);
-        traceRowMessageIds.set(input.trace.id as string, input.messageId); // canonical key
+        traceRowMessageIds.set(input.trace.id as string, messageId); // canonical key
         return input.trace.id;
       });
     },
     getAnswerTraceByMessage(messageId) {
-      return Effect.succeed((traces.get(messageId) as never) ?? null);
+      return Effect.succeed((traces.get(canonicalMessageId(messageId)) as never) ?? null);
     },
     getAnswerTraceById(id) {
       return Effect.succeed((traceRows.get(id) as never) ?? null);
