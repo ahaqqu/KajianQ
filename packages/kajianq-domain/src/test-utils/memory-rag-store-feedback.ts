@@ -52,10 +52,11 @@ export function memoryFeedbackMethods(
     },
     getAnswerFeedbackTarget(messageId) {
       return Effect.sync(() => {
-        // Dual-id resolution: the id may be the trace's `message_id` (the live
-        // stream's meta; a TEXT column the adapter compares exactly) or a
-        // rehydrated chat row id (`chat_messages.id`, uuid-typed, so that OR arm
-        // casts and canonicalises case) — the Postgres adapter resolves both.
+        // Dual-id resolution: the answer's message id is written to both the
+        // trace's `message_id` (the live stream's meta; a TEXT column the adapter
+        // compares exactly) and the chat row's `id` (uuid-typed, so that OR arm
+        // casts and canonicalises case), but the store does not constrain them
+        // equal — the id may address either. The Postgres adapter resolves both.
         let trace = state.traces.get(messageId);
         let owner = state.traceOwners.get(messageId) ?? null;
         let chatRow = undefined;

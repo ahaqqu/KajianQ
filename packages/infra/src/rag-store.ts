@@ -117,7 +117,18 @@ export interface RagStore
    * exist — the chat route checks a client-supplied `sessionId` against it. */
   getChatSessionUser(sessionId: string): Effect.Effect<string | null, StoreError>;
 
+  /**
+   * Write one chat message and return its row id (`chat_messages.id`). That
+   * id is the message's identity across the API: the transcript returns it,
+   * the live answer's `meta` frame carries it, and feedback addresses the
+   * message by it. `id` lets a caller that also persists a row referencing
+   * the message — the answer trace's `message_id` — mint the id once and
+   * write it into both, instead of learning it only after this insert;
+   * absent, the store mints one.
+   */
   insertChatMessage(input: {
+    /** The row id to write; absent lets the store mint one. */
+    id?: string;
     sessionId: string;
     role: string;
     content: string;

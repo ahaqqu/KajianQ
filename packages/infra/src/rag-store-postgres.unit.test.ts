@@ -382,6 +382,18 @@ describe("rag-store-postgres adapter (fake runner)", () => {
     expect(sql._calls[1]?.text).toContain("INSERT INTO chat_messages");
   });
 
+  it("insertChatMessage writes the caller's id, so the message and its trace share one identity", async () => {
+    const sql = makeFakeSql();
+    const store = createPostgresRagStore(sql);
+    const id = "0b8fe2a5-6b1a-4d0e-9a7c-1f2e3d4c5b6a";
+    const written = await runOk(
+      store.insertChatMessage({ id, sessionId: "s1", role: "assistant", content: "hi" }),
+    );
+    expect(written).toBe(id);
+    // The id column is the first bind value of the INSERT.
+    expect(sql._calls[0]?.values?.[0]).toBe(id);
+  });
+
   it("createSession writes users + sessions in one atomic transaction", async () => {
     const sql = makeFakeSql();
     const store = createPostgresRagStore(sql);

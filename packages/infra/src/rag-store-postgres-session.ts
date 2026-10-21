@@ -58,7 +58,9 @@ export function postgresSessionMethods(
     },
 
     insertChatMessage(input) {
-      const id = crypto.randomUUID();
+      // A caller-supplied id is the message's identity in `answer_traces.message_id`
+      // too; the column's default is the fallback, never a second mint.
+      const id = input.id ?? crypto.randomUUID();
       return Effect.as(
         sqlEffect(
           sql,

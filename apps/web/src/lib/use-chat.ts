@@ -177,7 +177,7 @@ export function useChat(locale: "id" | "en") {
         content: text,
         createdAt: Date.now(),
       };
-      const assistantId = crypto.randomUUID();
+      let assistantId: string = crypto.randomUUID();
       const assistantTurn: ChatSessionMessage = {
         id: assistantId,
         role: "assistant",
@@ -192,6 +192,16 @@ export function useChat(locale: "id" | "en") {
         {
           onMeta: (meta) => {
             liveSessionRef.current = meta.sessionId;
+            // `meta.messageId` is the answer's persisted chat message id — the
+            // value rehydration returns and feedback addresses (ADR-0056). Re-key
+            // the live turn to it, so a report filed before a reload names the
+            // real row; the local id above is only a placeholder until this frame.
+            if (meta.messageId === assistantId) return;
+            const localId = assistantId;
+            assistantId = meta.messageId;
+            setMessages((prev) =>
+              prev.map((m) => (m.id === localId ? { ...m, id: assistantId } : m)),
+            );
           },
           onDelta: (delta) =>
             setMessages((prev) =>

@@ -136,12 +136,13 @@ export function postgresTraceMethods(
 
     getAnswerFeedbackTarget(messageId) {
       // One read for the whole feedback target: the trace, its owner, and the
-      // answer text joined through `chat_messages.answer_trace_id`. The caller's
-      // id may be EITHER identifier the client holds — the stream's
-      // `meta.messageId` (the trace's `message_id`) or a rehydrated transcript
-      // row id (`chat_messages.id`). That row id is uuid-typed, so the OR arm
-      // casts; a non-uuid id can only match `t.message_id` and omits the cast
-      // arm rather than failing. The target carries the trace's CANONICAL id.
+      // answer text joined through `chat_messages.answer_trace_id`. The answer's
+      // message id and its trace's `message_id` are written as one value, but the
+      // store does not constrain them equal, so the read accepts either address a
+      // client can hold — the live stream's `meta.messageId` or a rehydrated row
+      // id. The row id is uuid-typed, so that arm casts; a non-uuid id can only
+      // match `t.message_id` and omits the cast arm rather than failing. The
+      // target carries the trace's message id, the canonical key feedback rows use.
       const byEither = isUuid(messageId);
       return Effect.flatMap(
         sqlEffect(sql, () =>

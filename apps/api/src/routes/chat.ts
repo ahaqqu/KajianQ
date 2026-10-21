@@ -101,6 +101,11 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
 
   await runStore(store.insertChatMessage({ sessionId, role: "user", content: req.message }));
 
+  // The answer's message id is minted ONCE and written to both rows: the
+  // assistant message's `chat_messages.id` and its trace's `message_id`. That
+  // is what makes the stream's `meta.messageId`, the structured frames and the
+  // rehydrated transcript's message `id` one joinable value (ADR-0056); a
+  // second mint here would silently split that identity again.
   const answerMessageId = crypto.randomUUID();
   const traceId = crypto.randomUUID();
 
@@ -150,6 +155,7 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
   )) as string;
   await runStore(
     store.insertChatMessage({
+      id: answerMessageId,
       sessionId,
       role: "assistant",
       content: answer.text,

@@ -124,7 +124,14 @@ export const ChatRequestSchema = v.object({
 
 export type ChatRequest = v.InferOutput<typeof ChatRequestSchema>;
 
-/** The streamed meta event payload (sent as the first SSE `meta` frame). */
+/**
+ * The streamed meta event payload (sent as the first SSE `meta` frame).
+ * `messageId` is the answer's persisted chat message id (`chat_messages.id`) —
+ * the value the rehydration transcript returns as that message's `id` and both
+ * structured frames carry, so a client joins stream to history without
+ * translating id spaces. `traceId` is the trace ROW id
+ * (`chat_messages.answer_trace_id`), a distinct space naming the evidence.
+ */
 export const ChatMetaSchema = v.object({
   sessionId: v.pipe(v.string(), v.minLength(1)),
   messageId: v.pipe(v.string(), v.minLength(1)),
@@ -171,7 +178,8 @@ export type ChatCitation = v.InferOutput<typeof ChatCitationSchema>;
  * hybrid refusal delivers that draft with the product rules' copy appended; every
  * other refusal delivers product copy in the draft's place.
  * `dhaifWarning` tells the UI to render the deterministic warning card the
- * answer text carries.
+ * answer text carries. `messageId` is the message this frame decorates — the
+ * chat message id the transcript returns for the same answer.
  */
 export const ChatCitationsFrameSchema = v.object({
   messageId: v.pipe(v.string(), v.minLength(1)),
@@ -212,7 +220,8 @@ export type ChatTraceChunk = v.InferOutput<typeof ChatTraceChunkSchema>;
  * order, deduplicated); `technical` carries the router intent, the sub-queries,
  * the scored chunks, and the model identities (opaque `modelId` strings from
  * `model_configs`). Emitted live as the SSE `trace` frame (after `citations`,
- * before `done`) and per assistant message on the rehydration transcript.
+ * before `done`) and per assistant message on the rehydration transcript;
+ * `messageId` names the message it renders for, in both views.
  */
 export const ChatTraceFrameSchema = v.object({
   messageId: v.pipe(v.string(), v.minLength(1)),
@@ -255,11 +264,13 @@ export const ChatTraceFrameSchema = v.object({
 export type ChatTraceFrame = v.InferOutput<typeof ChatTraceFrameSchema>;
 
 /**
- * One rehydrated transcript message, mapped from the persisted chat rows. An
- * assistant message carries `citations` when its persisted trace resolves to a
- * frame, and the two-layer `trace` frame when its trace derives to one; a user
- * message (or an assistant message whose trace is missing) carries neither and
- * renders as plain text.
+ * One rehydrated transcript message, mapped from the persisted chat rows. `id`
+ * is `chat_messages.id` — the identity the live stream's `meta.messageId`
+ * carried for that answer, so a rehydrated turn joins to the stream without a
+ * translation table. An assistant message carries `citations` when its
+ * persisted trace resolves to a frame, and the two-layer `trace` frame when its
+ * trace derives to one; a user message (or an assistant message whose trace is
+ * missing) carries neither and renders as plain text.
  */
 export const ChatSessionMessageSchema = v.object({
   id: v.pipe(v.string(), v.minLength(1)),

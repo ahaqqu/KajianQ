@@ -11,11 +11,14 @@ import type { StoreError } from "@app/rag-core";
  */
 export interface RagStoreTrace {
   /**
-   * Persist the Trace for one answer, owned by `userId`. The store writes
-   * the @app/contracts `Trace` shape verbatim — it never re-serializes or
-   * invents a parallel trace schema (ADR-0007). The user link makes the
-   * trace cascade-delete with its owner on anonymous self-deletion
-   * (ADR-0007).
+   * Persist the Trace for one answer, owned by `userId`. `messageId` is the
+   * answer's message id — for a chat answer, the `chat_messages.id` the client
+   * receives on the stream and in the rehydration transcript; a failed run's
+   * trace carries a reserved id with no message row, because the run produced
+   * no answer to address. The store writes the @app/contracts `Trace` shape
+   * verbatim — it never re-serializes or invents a parallel trace schema
+   * (ADR-0007). The user link makes the trace cascade-delete with its owner on
+   * anonymous self-deletion (ADR-0007).
    */
   insertAnswerTrace(input: {
     messageId: string;
@@ -23,14 +26,14 @@ export interface RagStoreTrace {
     trace: Trace;
   }): Effect.Effect<string, StoreError>;
 
-  /** Fetch a persisted Trace by answer message id. */
+  /** Fetch a persisted Trace by the answer's message id (`chat_messages.id`). */
   getAnswerTraceByMessage(messageId: string): Effect.Effect<Trace | null, StoreError>;
 
   /**
    * Fetch a persisted Trace by its ROW id — the value
    * `chat_messages.answer_trace_id` FKs. Distinct from
-   * `getAnswerTraceByMessage`: that column carries the route's answer
-   * message id, not the chat message row's id.
+   * `getAnswerTraceByMessage`: that column carries the answer's message id,
+   * not the trace row's own id.
    */
   getAnswerTraceById(id: string): Effect.Effect<Trace | null, StoreError>;
 }

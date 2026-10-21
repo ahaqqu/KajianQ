@@ -14,14 +14,17 @@ const { When, Then } = createBdd();
 
 const SESSION = { userId: "u1", sessionId: "sess-e2e", token: "tok-e2e", expiresAt: 1 };
 
+/** The answer's persisted message id, which the stub stream names in `meta`. */
+const STREAM_MESSAGE_ID = "m-live";
+
 const DISCLAIMER = "Jawaban ini bukan fatwa; rujuk ulama untuk keputusan hukum.";
 
 const ANSWER_FIXTURE = [
-  'event: meta\ndata: {"sessionId":"sess-e2e","messageId":"m-live","traceId":"tr-live"}\n\n',
+  `event: meta\ndata: {"sessionId":"sess-e2e","messageId":"${STREAM_MESSAGE_ID}","traceId":"tr-live"}\n\n`,
   "event: delta\ndata: Allah Mahahidup sebagaimana firman-Nya ",
   `event: delta\ndata: [QS. 2:255].\ndata: \ndata: ${DISCLAIMER}\n\n`,
-  'event: citations\ndata: {"messageId":"m-live","refusal":false,"dhaifWarning":false,"citations":[{"label":"QS. 2:255","arabic":"اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ","translation":"Allah, tidak ada tuhan selain Dia.","machineTranslated":true,"source":"Al-Baqarah"}]}\n\n',
-  'event: trace\ndata: {"messageId":"m-live","sources":[{"id":"chunk-1","source":"Al-Baqarah"}],"technical":{"intent":"ruling","routing":{"sources":[],"filters":{}},"subQueries":["apa itu ayat kursi"],"chunks":[{"id":"chunk-1","source":"Al-Baqarah","score":0.03125}],"models":["router-stub","generator-stub"]}}\n\n',
+  `event: citations\ndata: {"messageId":"${STREAM_MESSAGE_ID}","refusal":false,"dhaifWarning":false,"citations":[{"label":"QS. 2:255","arabic":"اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ","translation":"Allah, tidak ada tuhan selain Dia.","machineTranslated":true,"source":"Al-Baqarah"}]}\n\n`,
+  `event: trace\ndata: {"messageId":"${STREAM_MESSAGE_ID}","sources":[{"id":"chunk-1","source":"Al-Baqarah"}],"technical":{"intent":"ruling","routing":{"sources":[],"filters":{}},"subQueries":["apa itu ayat kursi"],"chunks":[{"id":"chunk-1","source":"Al-Baqarah","score":0.03125}],"models":["router-stub","generator-stub"]}}\n\n`,
   "event: done\ndata: {}\n\n",
 ].join("");
 
@@ -87,8 +90,9 @@ Then("the thumbs carry my rating and anchor the answer", async () => {
   const body = feedbackBodies[0] ?? {};
   expect(body.rating).toBe("up");
   expect(body.anchor).toBeUndefined();
-  expect(typeof body.messageId).toBe("string");
-  expect((body.messageId as string).length).toBeGreaterThan(0);
+  // The live answer is addressed by the streamed `meta.messageId` — the persisted
+  // chat message id — not a client-local key (ADR-0056).
+  expect(body.messageId).toBe(STREAM_MESSAGE_ID);
 });
 
 Then("the feedback bar thanks me", async ({ page }) => {
@@ -100,6 +104,8 @@ Then("the flag carries the chunk reference and the reason category", async () =>
   const anchor = (feedbackBodies[0] ?? {})["anchor"] as Record<string, unknown>;
   expect(anchor).toEqual({ type: "chunk", category: "irrelevant_chunk", id: "chunk-1" });
   expect(feedbackBodies[0]?.["rating"]).toBeUndefined();
+  // A flag from the live Trace panel names the same persisted message.
+  expect(feedbackBodies[0]?.["messageId"]).toBe(STREAM_MESSAGE_ID);
 });
 
 Then("the flag button confirms the report", async ({ page }) => {

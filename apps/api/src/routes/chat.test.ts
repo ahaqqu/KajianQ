@@ -104,6 +104,12 @@ vi.mock("../lib/chat-wiring", async (importOriginal) => {
         runStore: runStoreEffect,
       };
     },
+    // The transcript route rehydrates through the store-only entry, so the
+    // stream → history join is asserted against the same in-memory store.
+    buildStoreWiring: () => ({
+      fullStore: currentStore,
+      runStore: runStoreEffect,
+    }),
   };
 });
 
@@ -411,6 +417,50 @@ describe("POST /v1/chat", () => {
 
     const assistant = store.allChatMessages().find((m) => m.role === "assistant");
     expect(assistant?.answerTraceId).toBe(meta.traceId);
+  }, 15000);
+
+  // The stream-to-history join is a client-facing contract (ADR-0056): the id
+  // `meta` carries is the chat message row's id, so a client that keeps the
+  // streamed answer can address the same answer in the rehydrated transcript
+  // without translating id spaces. One mint feeds the trace's `message_id` and
+  // the chat row's `id`.
+  it("streams the chat message id the rehydrated transcript returns", async () => {
+    const { store, token } = await wiredStore();
+    currentStore = store;
+    await seed(store);
+    currentOverrides = { answerText: "Jawaban berdasar konteks. QS. 2:255" };
+
+    const { status, frames, meta } = await postChat(token, { message: "Apa itu Ayat Kursi?" });
+    expect(status).toBe(200);
+
+    const rowId = store.allChatMessages().find((m) => m.role === "assistant")?.id as string;
+    expect(rowId).toBe(meta.messageId);
+    // The trace's message reference is the same value, not a parallel id.
+    expect(store.allTraces().has(rowId)).toBe(true);
+
+    const res = await createApi().request(
+      `/v1/chat/sessions/${meta.sessionId}/messages`,
+      { headers: { authorization: `Bearer ${token}` } },
+      env,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      messages: {
+        id: string;
+        role: string;
+        citations?: { messageId: string };
+        trace?: { messageId: string };
+      }[];
+    };
+    const assistant = body.messages.find((m) => m.role === "assistant");
+    expect(assistant?.id).toBe(meta.messageId);
+    expect(assistant?.citations?.messageId).toBe(meta.messageId);
+    expect(assistant?.trace?.messageId).toBe(meta.messageId);
+
+    const citationsFrame = JSON.parse(
+      frames.find((f) => f.event === "citations")?.data ?? "null",
+    ) as { messageId: string };
+    expect(citationsFrame.messageId).toBe(meta.messageId);
   }, 15000);
 
   it("replays the vendor's own delta sequence, with appended rules as a trailing delta", async () => {

@@ -23,7 +23,7 @@ import { useChat } from "./use-chat";
  * the cache still holds.
  */
 
-type ChatMeta = { sessionId: string };
+type ChatMeta = { sessionId: string; messageId: string };
 
 const mocks = vi.hoisted(() => ({
   loadStoredSessionId: vi.fn<() => string | null>(),
@@ -33,7 +33,7 @@ const mocks = vi.hoisted(() => ({
     (
       body: unknown,
       handlers: {
-        onMeta?: (meta: { sessionId: string }) => void;
+        onMeta?: (meta: { sessionId: string; messageId: string }) => void;
         onDelta: (delta: string) => void;
       },
     ) => Promise<void>
@@ -157,7 +157,8 @@ function setupChat(
     send: (text = "Siapa Nabi Muhammad?") => act(() => result.current.send(text)),
     delta: (text = "Jawaban ") => act(() => onDelta(text)),
     /** The stream's `meta` frame: the session the server minted or confirmed. */
-    meta: (sessionId: string) => act(() => onMeta({ sessionId })),
+    meta: (sessionId: string, messageId = "live-message") =>
+      act(() => onMeta({ sessionId, messageId })),
   };
 }
 
@@ -218,6 +219,27 @@ describe("useChat — transcript vs. the live turn and the route", () => {
     await waitFor(() => expect(chat.result.current.busy).toBe(false));
     expect(chat.result.current.messages).toHaveLength(2);
     expect(chat.result.current.messages[1]).toMatchObject({ content: "Jawaban " });
+  });
+
+  it("re-keys the live answer to the streamed message id, so feedback names the persisted row", async () => {
+    const chat = setupChat();
+
+    chat.send();
+    const userId = chat.result.current.messages[0]?.id;
+    // The first frame names the persisted answer, before any delta arrives.
+    chat.meta("sess-1", "m-server-1");
+    chat.delta("Jawaban ");
+    act(() => chat.answer.resolve());
+    await waitFor(() => expect(chat.result.current.busy).toBe(false));
+
+    // The assistant turn carries the id the stream named — the id rehydration
+    // returns — and later patches land on it; the user turn keeps its local key.
+    expect(chat.result.current.messages[1]).toMatchObject({
+      id: "m-server-1",
+      role: "assistant",
+      content: "Jawaban ",
+    });
+    expect(chat.result.current.messages[0]?.id).toBe(userId);
   });
 
   it("a transcript fetched before the turn never replaces it when it resolves after the turn", async () => {

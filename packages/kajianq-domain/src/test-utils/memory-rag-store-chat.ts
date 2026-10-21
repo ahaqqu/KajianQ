@@ -80,7 +80,8 @@ export function memoryChatMethods(
       return Effect.sync(() => {
         // A uuid, like the real `chat_messages.id`: only uuid message ids pass
         // the feedback route's contract, and answers are addressed by this id.
-        const id = crypto.randomUUID();
+        // A supplied id is the caller's one mint for this message and its trace.
+        const id = input.id ?? crypto.randomUUID();
         state.chatMessages.set(canonicalUuid(id), {
           // `session_id` is a uuid column: it holds the canonical text form, not
           // the spelling the request carried, so either spelling reads it back.
