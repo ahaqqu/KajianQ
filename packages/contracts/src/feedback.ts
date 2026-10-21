@@ -96,6 +96,9 @@ const FeedbackFreeTextSchema = v.optional(
       STORABLE_TEXT,
       `Free text must be storable as text: no U+0000 and no unpaired surrogate (up to ${FEEDBACK_FREE_TEXT_MAX_LENGTH} characters).`,
     ),
+    v.description(
+      `Optional free text on either feedback shape, capped at ${FEEDBACK_FREE_TEXT_MAX_LENGTH} UTF-16 code units measured on the raw string with no trim — an astral character counts as two, so the JSON Schema maxLength (a code-point count) admits a body this cap refuses. The pattern admits no U+0000 and no unpaired surrogate: U+0000 is a value the store refuses, and an unpaired surrogate would be stored as U+FFFD, a silently different report; both answer 400 invalid_request before auth or the store. Every other control character is storable and accepted.`,
+    ),
   ),
 );
 

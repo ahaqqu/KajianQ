@@ -406,7 +406,7 @@ describe("POST /v1/feedback", () => {
     };
     const schema = doc.paths["/v1/feedback"]?.post.requestBody.content["application/json"]?.schema;
     const shapes = (schema?.anyOf ?? []) as {
-      properties: { freeText?: { pattern?: string } };
+      properties: { freeText?: { pattern?: string; maxLength?: number; description?: string } };
     }[];
     expect(shapes).toHaveLength(2);
     for (const { properties } of shapes) {
@@ -415,6 +415,14 @@ describe("POST /v1/feedback", () => {
       expect(published.test("\u0000")).toBe(false);
       expect(published.test("\ud800")).toBe(false);
       expect(published.test("tidak relevan")).toBe(true);
+      // `maxLength` counts code points, the route's cap counts UTF-16 code
+      // units; the description is the only place the document can state which
+      // unit a client must measure against the cap.
+      expect(properties.freeText?.maxLength).toBe(2000);
+      expect(properties.freeText?.description).toContain("UTF-16 code units");
+      expect(properties.freeText?.description).toContain("no trim");
+      expect(properties.freeText?.description).toContain("U+0000");
+      expect(properties.freeText?.description).toContain("unpaired surrogate");
     }
   });
 
