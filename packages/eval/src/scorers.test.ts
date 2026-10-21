@@ -307,7 +307,7 @@ describe("citationValidity — citation identity", () => {
    * one narration family, and `null` for everything the map does not carry. */
   const family: CitationIdentity = {
     identityOf: (label) =>
-      label === "HR. Bukhari no. 191" || label === "HR. Bukhari no. 186" ? "wudu" : null,
+      label === "label-required" || label === "label-parallel" ? "family-1" : null,
   };
   const frameOf = (labels: string[]): CitationFrameLike => ({
     citations: labels.map((label) => ({ label })),
@@ -315,8 +315,8 @@ describe("citationValidity — citation identity", () => {
 
   it("accepts a parallel narration of the required citation", () => {
     expect(
-      citationValidity(["HR. Bukhari no. 191"], "", {
-        frame: frameOf(["HR. Bukhari no. 186"]),
+      citationValidity(["label-required"], "", {
+        frame: frameOf(["label-parallel"]),
         identity: family,
       }),
     ).toBe(1);
@@ -324,16 +324,16 @@ describe("citationValidity — citation identity", () => {
 
   it("keeps the exact-row comparison when no identity is injected", () => {
     expect(
-      citationValidity(["HR. Bukhari no. 191"], "", {
-        frame: frameOf(["HR. Bukhari no. 186"]),
+      citationValidity(["label-required"], "", {
+        frame: frameOf(["label-parallel"]),
       }),
     ).toBe(0);
   });
 
   it("keeps an unrelated citation invalid", () => {
     expect(
-      citationValidity(["HR. Bukhari no. 191"], "", {
-        frame: frameOf(["HR. Bukhari no. 5026"]),
+      citationValidity(["label-required"], "", {
+        frame: frameOf(["label-unrelated"]),
         identity: family,
       }),
     ).toBe(0);
@@ -341,8 +341,8 @@ describe("citationValidity — citation identity", () => {
 
   it("keeps a required label the map cannot resolve unmatched", () => {
     expect(
-      citationValidity(["HR. Bukhari no. 99999"], "", {
-        frame: frameOf(["HR. Bukhari no. 186"]),
+      citationValidity(["label-unmapped"], "", {
+        frame: frameOf(["label-parallel"]),
         identity: family,
       }),
     ).toBe(0);
@@ -350,12 +350,12 @@ describe("citationValidity — citation identity", () => {
 
   it("accepts a parallel narration through the trace's grounded labels", () => {
     expect(
-      citationValidity(["HR. Bukhari no. 191"], "", {
+      citationValidity(["label-required"], "", {
         events: [
           {
             kind: "review",
             stage: "reviewer",
-            detail: { verdict: "{}", grounded: ["HR. Bukhari no. 186"] },
+            detail: { verdict: "{}", grounded: ["label-parallel"] },
           },
         ],
         identity: family,
@@ -365,10 +365,10 @@ describe("citationValidity — citation identity", () => {
 
   it("accepts a parallel narration through the answer text's citation spans", () => {
     expect(
-      citationValidity(["HR. Bukhari no. 191"], "… HR. Bukhari no. 186 …", {
+      citationValidity(["label-required"], "… label-parallel …", {
         grammar: {
           normalizeLabel: (label) => label,
-          labelsInText: () => ["HR. Bukhari no. 186"],
+          labelsInText: () => ["label-parallel"],
           addressesNamedBy: (label) => [label],
         },
         identity: family,
@@ -378,7 +378,7 @@ describe("citationValidity — citation identity", () => {
 
   it("does not let an empty frame fall back to the text, even with an identity", () => {
     expect(
-      citationValidity(["HR. Bukhari no. 191"], "… HR. Bukhari no. 186 …", {
+      citationValidity(["label-required"], "… label-parallel …", {
         frame: frameOf([]),
         identity: family,
       }),
@@ -388,14 +388,14 @@ describe("citationValidity — citation identity", () => {
   it("fails loudly on a resolver that returns a non-string identity", () => {
     const malformed = { identityOf: () => undefined } as unknown as CitationIdentity;
     expect(() =>
-      citationValidity(["HR. Bukhari no. 191"], "", {
-        frame: frameOf(["HR. Bukhari no. 186"]),
+      citationValidity(["label-required"], "", {
+        frame: frameOf(["label-parallel"]),
         identity: malformed,
       }),
     ).toThrow(CitationIdentityError);
     try {
-      citationValidity(["HR. Bukhari no. 191"], "", {
-        frame: frameOf(["HR. Bukhari no. 186"]),
+      citationValidity(["label-required"], "", {
+        frame: frameOf(["label-parallel"]),
         identity: malformed,
       });
     } catch (error) {
@@ -406,8 +406,8 @@ describe("citationValidity — citation identity", () => {
   it("fails loudly on a resolver whose identity is blank", () => {
     const blank = { identityOf: () => "" } as CitationIdentity;
     expect(() =>
-      citationValidity(["HR. Bukhari no. 191"], "", {
-        frame: frameOf(["HR. Bukhari no. 186"]),
+      citationValidity(["label-required"], "", {
+        frame: frameOf(["label-parallel"]),
         identity: blank,
       }),
     ).toThrow(CitationIdentityError);
@@ -594,7 +594,7 @@ describe("scoreQuestion", () => {
       {
         sourceTypeOf: (id) => (id === "c1" ? "source-a" : "source-b"),
         citationIdentity: {
-          identityOf: (label) => (label === "label-a" || label === "label-b" ? "family" : null),
+          identityOf: (label) => (label === "label-a" || label === "label-b" ? "family-1" : null),
         },
       },
       { citations: [{ label: "label-b" }] },

@@ -1,12 +1,13 @@
-# ADR-0054: Citation validity judges hadith identity, not the corpus row
+# ADR-0054: Citation validity judges Matn identity, not the corpus row
 
 ## Decision
 
 A required citation is satisfied when the answer's evidence carries the **same hadith**, not when it
 carries the same corpus row. The scorer resolves every hadith label — the requirement and each evidence
 label — through a curated, owner-signed **matn-identity map** to its canonical identity, and compares
-identities. The Golden Set keeps one canonical label per requirement; the map, not the fixture, carries
-the parallel chains.
+identities. The Golden Set keeps one required label per requirement; the map, not the fixture, carries
+the parallel chains, and a group's canonical label is the map's identity key rather than the fixture's
+required one.
 
 Identity is the **narration**, not the topic: rows share an identity when they carry the same report or
 instruction, allowing different wording and a different chain. A row that shares only a subject, a
@@ -41,8 +42,7 @@ cites, not whether the metric can see a correct citation, and it belongs to the 
   comparison, so the engine's existing callers and the recorded replays are unchanged.
 - The identity map is a domain-pack fixture; adding a group or a member is a gate-affecting, owner-signed
   curation change, not a test-only edit.
-- The Golden Set fixture keeps one canonical label per requirement; no row and no label is re-curated to
+- The Golden Set fixture keeps one required label per requirement; no row and no label is re-curated to
   match a model's output.
-- A citation outside the map, a refusal, and an unrelated hadith all stay invalid; those boundaries are
-  pinned in tests.
-- `SPECS.md` §3.7 records the scoring semantics, and this record takes its §8 row.
+- An unmapped label can satisfy only the identical required label, a refusal carries no citations and
+  stays invalid, and an unrelated hadith stays invalid; those boundaries are pinned in tests.
