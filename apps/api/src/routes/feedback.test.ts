@@ -363,6 +363,37 @@ describe("POST /v1/feedback", () => {
     expect(store.allFeedback()[0]).toMatchObject({ id: firstBody.id, freeText: "second" });
   });
 
+  it("documents the response id as the stored row's id, stable across a repeat", async () => {
+    const api = createApi();
+    const res = await api.request("/openapi.json", {}, env);
+    expect(res.ok).toBe(true);
+    const doc = (await res.json()) as {
+      paths: Record<
+        string,
+        {
+          post: {
+            responses: Record<
+              string,
+              {
+                description?: string;
+                content: Record<
+                  string,
+                  { schema: { properties?: Record<string, { description?: string }> } }
+                >;
+              }
+            >;
+          };
+        }
+      >;
+    };
+    const ok = doc.paths["/v1/feedback"]?.post.responses["200"];
+    expect(ok?.description).toContain("stored feedback row");
+    expect(ok?.description).toContain("same on a repeated verdict");
+    const id = ok?.content["application/json"]?.schema.properties?.id;
+    expect(id?.description).toContain("stored feedback row's id");
+    expect(id?.description).toContain("same on every submission");
+  });
+
   // A rehydrated transcript addresses the answer by the chat ROW id, a live surface by
   // the trace's message id: both land on the same canonically-keyed row.
   it("keys the row by the canonical trace message id even when addressed by the row id", async () => {
