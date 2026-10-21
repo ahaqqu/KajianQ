@@ -135,8 +135,12 @@ What it does, in order:
    `apply.sh` hands that row's literal path to install and fails. A `conf.d`
    that is a regular file is refused with a remedy to repair Postgres so that
    path is a directory again, then apply and deploy again; removing the file
-   alone leaves the row skipped, so the posture stays unapplied. These
-   refusals close with their own remedy and no `apply.sh` instruction.
+   alone leaves the row skipped, so the posture stays unapplied. Each refusal
+   ends the way its state does: one whose remedy needs no apply closes with that
+   remedy and no `apply.sh` instruction, and one whose repair is followed by an
+   install names both — the `conf.d`-is-a-file refusal is the only state above
+   that names an install. The endings, state by state, are listed in a table at
+   the end of this section.
    The failure summary prints the generic `apply.sh` closing only when no
    refusal in the run is one an apply cannot clear; a mismatch in such a run
    keeps its per-file `apply.sh` line and the run ends without the generic
@@ -146,9 +150,10 @@ What it does, in order:
    when any refusal is not. A mismatch fails the deploy and names each file,
    with the expected and installed digest for a content change and the first
    mismatching line of a rendered block; when every refusal in the run is one
-   an apply clears, the run also closes with the remedy: run `sudo
-   provision/vps/apply.sh --env /etc/kajianq/proxy.env` on the box from a
-   checkout of the revision being deployed, then deploy again.
+   an apply clears, the run also closes with its own line — `deploy: run
+   provision/vps/apply.sh on the box from a checkout of the revision being
+   deployed, then deploy again` — and the operator's form of that command is
+   `sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env` from that checkout.
    The gate changes no installed state (comparing the rendered block writes one
    short-lived file under `/tmp`), and it runs before the provenance check below
    because a stale unit can satisfy that check's record — exactly the state a
@@ -218,6 +223,33 @@ A deploy **does not**: run migrations (operator action — §2.3), run
 `provision/vps/apply.sh` (step 1 refuses a stale box instead — applying is
 root's, on the box), take a snapshot (§2.4), touch DNS, or restart the backup
 timer.
+
+Each refusal's closing, state by state. Each row carries the line the script
+prints — on stderr, prefixed `deploy:` — with the box's own paths and values
+standing where `provision/vps/deploy/provision-drift.sh` interpolates them; the
+class is the one the script assigns, and the run-level close in step 1 follows
+from it. A `manual` remedy can still name `provision/vps/apply.sh` — the
+artifact table it repairs lives there — and both table-repair rows say an apply
+cannot change their state. The `conf.d`-is-a-file repair is the one `manual`
+state whose remedy names a run of the apply, because the repair is followed by
+an install.
+
+| State                                                                                     | Class    | The closing line(s)                                                                                                                                                                   |
+| ----------------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| a versioned destination on a row `apply.sh` does not resolve                              | `manual` | `repair the artifact table in provision/vps/apply.sh so only the postgres row carries a directory glob, then deploy again — running apply.sh cannot place this row's literal path`    |
+| a path the deploy identity cannot read or search                                          | `manual` | `make <path> readable and searchable for the deploy identity, then deploy again`                                                                                                      |
+| a `conf.d` that is not a directory                                                        | `manual` | `repair Postgres so <path> is a directory (recreate conf.d), then run provision/vps/apply.sh on the box and deploy again`                                                             |
+| a kind outside `config`, `render`, `link` and `sudoers`                                   | `manual` | `repair the artifact table in provision/vps/apply.sh so the row names config, render, link or sudoers, then deploy again — apply.sh cannot change a kind this check does not compare` |
+| a rendered block whose comparison cannot run: the scratch file cannot be created          | `manual` | `make the deploy identity's scratch directory writable (TMPDIR, or /tmp when it is unset), free space there if it is full, then deploy again`                                         |
+| a rendered block whose comparison cannot run: the payload does not decode                 | `manual` | `re-emit the manifest from a checkout of the revision being deployed, then deploy again`                                                                                              |
+| an installed artifact or link that is missing                                             | `apply`  | `<path> is not installed … so run provision/vps/apply.sh on the box`, then `the deploy refuses a box whose provisioned files do not match the checkout`                               |
+| a rendered block that differs                                                             | `apply`  | `<path> does not match provision/vps/<src> (placeholder values aside): <first difference> — run provision/vps/apply.sh on the box`                                                    |
+| any other installed-state difference: a link's target, owner/group/mode, a digest, a size | `apply`  | the line names the file, its installed state and the checkout's expected state, then `— run provision/vps/apply.sh on the box`                                                        |
+
+The two skip states are not refusals and add no failure to the count: with no
+`/etc/postgresql` at all the line names the skip and no apply, and with
+`/etc/postgresql` present but no `main/conf.d` the row is still skipped, and the
+line names the install that would apply the posture.
 
 ### 1.2 What triggers a deploy
 
