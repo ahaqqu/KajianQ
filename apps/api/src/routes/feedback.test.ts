@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createApi } from "../app";
 import { parseFeedbackRequest } from "../lib/feedback";
+import { STORABLE_TEXT_PATTERN } from "@app/contracts";
 import { runStoreEffect } from "@app/kajianq-domain";
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 import { createMemoryRateLimiter } from "@app/rate";
@@ -366,6 +367,55 @@ describe("POST /v1/feedback", () => {
     expect(rows[0]?.messageId).toBe(messageId);
     await post(token, { messageId, rating: "up" });
     expect(store.allFeedback()).toHaveLength(1);
+  });
+
+  it("answers 400 invalid_request to a free text the store cannot hold, and writes nothing (#510)", async () => {
+    const { store, userId, token } = await wiredStore();
+    const messageId = await seedAnswer(store, userId);
+    for (const freeText of ["\u0000", "\u0000riba", "riba\u0000", "\ud800", "\udc00"]) {
+      const res = await post(token, { messageId, rating: "up", freeText });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_request" });
+    }
+    // Validation runs before auth: an unauthenticated NUL body is refused as a
+    // body, never answered with the missing-session 401.
+    const noAuth = await post(null, { messageId, rating: "up", freeText: "\u0000" });
+    expect(noAuth.status).toBe(400);
+    expect(store.allFeedback()).toHaveLength(0);
+  });
+
+  it("still stores the free text the store can hold, control characters included (#510)", async () => {
+    const { store, userId, token } = await wiredStore();
+    const messageId = await seedAnswer(store, userId);
+    for (const freeText of ["tidak relevan", "\u0001\u0007", "😀"]) {
+      const res = await post(token, { messageId, rating: "up", freeText });
+      expect(res.status).toBe(200);
+      expect(store.allFeedback()[0]).toMatchObject({ freeText });
+    }
+  });
+
+  it("documents the free-text storability rule as the pattern the route enforces (#510)", async () => {
+    const api = createApi();
+    const res = await api.request("/openapi.json", {}, env);
+    expect(res.ok).toBe(true);
+    const doc = (await res.json()) as {
+      paths: Record<
+        string,
+        { post: { requestBody: { content: Record<string, { schema: { anyOf?: unknown } }> } } }
+      >;
+    };
+    const schema = doc.paths["/v1/feedback"]?.post.requestBody.content["application/json"]?.schema;
+    const shapes = (schema?.anyOf ?? []) as {
+      properties: { freeText?: { pattern?: string } };
+    }[];
+    expect(shapes).toHaveLength(2);
+    for (const { properties } of shapes) {
+      expect(properties.freeText?.pattern).toBe(STORABLE_TEXT_PATTERN);
+      const published = new RegExp(properties.freeText?.pattern ?? "(?!)");
+      expect(published.test("\u0000")).toBe(false);
+      expect(published.test("\ud800")).toBe(false);
+      expect(published.test("tidak relevan")).toBe(true);
+    }
   });
 
   it("documents the one-shape invariant in /openapi.json, not only at runtime", async () => {

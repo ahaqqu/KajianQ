@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { STORABLE_TEXT_PATTERN } from "./chat";
 
 /**
  * Feedback API contracts (ADR-0007): the `POST /v1/feedback` surface.
@@ -75,6 +76,30 @@ export const FeedbackAnchorSchema = v.variant("type", [
 export type FeedbackAnchor = v.InferOutput<typeof FeedbackAnchorSchema>;
 
 /**
+ * Optional colour on either shape, stored verbatim in `free_text text`. The
+ * field carries the shared storability rule (`STORABLE_TEXT_PATTERN`) rather
+ * than a second character class: `text` cannot hold U+0000, and an unpaired
+ * surrogate cannot be UTF-8 encoded — a write would store U+FFFD, a silently
+ * different report than the user sent. The cap runs first, so an over-length
+ * report stays the length issue; `v.regex` publishes the rule in
+ * `/openapi.json` for the same reason it does on the chat message.
+ */
+const FEEDBACK_FREE_TEXT_MAX_LENGTH = 2000;
+
+const STORABLE_TEXT = new RegExp(STORABLE_TEXT_PATTERN);
+
+const FeedbackFreeTextSchema = v.optional(
+  v.pipe(
+    v.string(),
+    v.maxLength(FEEDBACK_FREE_TEXT_MAX_LENGTH),
+    v.regex(
+      STORABLE_TEXT,
+      `Free text must be storable as text: no U+0000 and no unpaired surrogate (up to ${FEEDBACK_FREE_TEXT_MAX_LENGTH} characters).`,
+    ),
+  ),
+);
+
+/**
  * The request body. `messageId` is the answer's message id (a uuid — the id
  * the chat route mints); `freeText` is optional color for either shape
  * (spec §2: "Free-text optional"), capped so a report cannot smuggle in an
@@ -91,14 +116,14 @@ export const FeedbackThumbShape = v.object({
   messageId: v.pipe(v.string(), v.uuid()),
   rating: FeedbackRatingSchema,
   anchor: v.optional(v.never()),
-  freeText: v.optional(v.pipe(v.string(), v.maxLength(2000))),
+  freeText: FeedbackFreeTextSchema,
 });
 
 export const FeedbackFlagShape = v.object({
   messageId: v.pipe(v.string(), v.uuid()),
   rating: v.optional(v.never()),
   anchor: FeedbackAnchorSchema,
-  freeText: v.optional(v.pipe(v.string(), v.maxLength(2000))),
+  freeText: FeedbackFreeTextSchema,
 });
 
 export const FeedbackRequestSchema = v.union([FeedbackThumbShape, FeedbackFlagShape]);
