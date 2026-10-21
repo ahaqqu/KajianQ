@@ -147,27 +147,72 @@ function parseFrame(frame: string): { event: string; data: string } | null {
   return { event, data: dataLines.join("\n") };
 }
 
+/**
+ * A `/v1/chat` request that produced no answer: the edge answered with a
+ * non-2xx status, or the request/stream failed before a body was read.
+ *
+ * `status` is the response status when the edge answered, `null` when the
+ * connection failed (DNS, refused, timeout, or a stream that broke). It is the
+ * one fact a caller needs to tell "the target was not available" from "the
+ * target answered and the answer was bad": the first is a readiness question,
+ * the second an eval result. `detail` is the bounded response body, or the
+ * network cause, and it stays in `message` for the run log.
+ */
+export class ChatTransportError extends Error {
+  constructor(
+    readonly status: number | null,
+    readonly detail: string,
+  ) {
+    super(
+      status === null
+        ? `/v1/chat request failed: ${detail}`
+        : `/v1/chat returned ${status}: ${detail}`,
+    );
+    this.name = "ChatTransportError";
+  }
+}
+
+/** The bounded cause text for a failed fetch or stream, `cause` included: the
+ * fetch layer reports "fetch failed" and puts the actionable code one level down. */
+function transportCause(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  const cause = err.cause instanceof Error ? err.cause.message : undefined;
+  return cause !== undefined && cause !== "" ? `${err.message}: ${cause}` : err.message;
+}
+
 /** POST one question to `/v1/chat` and consume the SSE response. */
 export async function postChatSse(input: ChatClientInput): Promise<ChatSseResult> {
   const doFetch = input.fetchImpl ?? fetch;
-  const res = await doFetch(`${input.baseUrl.replace(/\/$/, "")}/v1/chat`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${input.token}`,
-      accept: "text/event-stream",
-    },
-    body: JSON.stringify({
-      message: input.question,
-      ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
-      ...(input.language !== undefined ? { language: input.language } : {}),
-    }),
-    ...(input.signal !== undefined ? { signal: input.signal } : {}),
-  });
-  if (!res.ok || res.body === null) {
-    throw new Error(`/v1/chat returned ${res.status}: ${await safeText(res)}`);
+  let res: Response;
+  try {
+    res = await doFetch(`${input.baseUrl.replace(/\/$/, "")}/v1/chat`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${input.token}`,
+        accept: "text/event-stream",
+      },
+      body: JSON.stringify({
+        message: input.question,
+        ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
+        ...(input.language !== undefined ? { language: input.language } : {}),
+      }),
+      ...(input.signal !== undefined ? { signal: input.signal } : {}),
+    });
+  } catch (err) {
+    throw new ChatTransportError(null, transportCause(err));
   }
-  return consumeSseToText(res.body);
+  if (!res.ok || res.body === null) {
+    throw new ChatTransportError(
+      res.status,
+      res.body === null ? "no response body" : await safeText(res),
+    );
+  }
+  try {
+    return await consumeSseToText(res.body);
+  } catch (err) {
+    throw new ChatTransportError(null, `stream failed: ${transportCause(err)}`);
+  }
 }
 
 async function safeText(res: Response): Promise<string> {

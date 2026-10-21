@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
+  ChatTransportError,
   consumeSseToText,
   parseChatMeta,
   parseCitationsFrame,
+  postChatSse,
   type ChatSseResult,
 } from "./api-client";
 
@@ -147,5 +149,80 @@ describe("parseChatMeta", () => {
       traceId: null,
       malformed: "junk",
     });
+  });
+});
+
+/**
+ * The transport error's `status` is the seam a caller reads to tell "the target is
+ * not serving" (a readiness question) from "the target answered and the answer was
+ * bad" (an eval result). It must therefore survive every way a round-trip can fail
+ * without an answer: an edge rejection carries the status, a failed connection and a
+ * broken stream carry `null`. The message is what the run log prints, so a status
+ * rejection keeps the exact `/v1/chat returned <status>: <body>` shape.
+ */
+describe("postChatSse", () => {
+  const input = { baseUrl: "https://staging.example", token: "t-1", question: "q" };
+
+  it("returns the consumed SSE result on a 200", async () => {
+    const enc = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          enc.encode(
+            'event: meta\ndata: {"messageId":"m1","traceId":"t1"}\n\nevent: delta\ndata: hello\n\n',
+          ),
+        );
+        controller.close();
+      },
+    });
+    const result = await postChatSse({
+      ...input,
+      fetchImpl: async () =>
+        new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } }),
+    });
+    expect(result.text).toBe("hello");
+    expect(result.messageId).toBe("m1");
+    expect(result.traceId).toBe("t1");
+  });
+
+  it("carries the edge status on a 502, with the body in the message", async () => {
+    const err = await postChatSse({
+      ...input,
+      fetchImpl: async () => new Response("<html>502 Bad Gateway</html>", { status: 502 }),
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ChatTransportError);
+    expect((err as ChatTransportError).status).toBe(502);
+    expect((err as ChatTransportError).detail).toContain("502 Bad Gateway");
+    expect((err as Error).message).toBe("/v1/chat returned 502: <html>502 Bad Gateway</html>");
+  });
+
+  it("carries a null status when the connection fails, naming the cause", async () => {
+    const err = await postChatSse({
+      ...input,
+      fetchImpl: async () => {
+        throw new TypeError("fetch failed", { cause: new Error("Connection refused") });
+      },
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ChatTransportError);
+    expect((err as ChatTransportError).status).toBeNull();
+    expect((err as Error).message).toBe(
+      "/v1/chat request failed: fetch failed: Connection refused",
+    );
+  });
+
+  it("carries a null status when the stream breaks after the headers", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      pull() {
+        throw new Error("ECONNRESET");
+      },
+    });
+    const err = await postChatSse({
+      ...input,
+      fetchImpl: async () =>
+        new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } }),
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ChatTransportError);
+    expect((err as ChatTransportError).status).toBeNull();
+    expect((err as Error).message).toBe("/v1/chat request failed: stream failed: ECONNRESET");
   });
 });
