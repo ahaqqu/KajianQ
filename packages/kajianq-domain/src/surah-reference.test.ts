@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { fc, test as fcTest } from "@fast-check/vitest";
 import { describe, expect, it } from "vite-plus/test";
 import { TOTAL_AYAHS, TOTAL_SURAHS } from "./quran-source";
 import {
@@ -193,13 +194,14 @@ const REFERENT_MOVING_NEGATIVES: readonly Pick<PinnedDescription, "phrase" | "mo
 
 /**
  * True when `phrase`'s words appear in `text` as a contiguous run of whole
- * words. Both sides are normalized here (`normalizeSurahText` is idempotent),
- * so a caller may pass raw literals: the detector normalizes an admitted entry
- * the same way, and a raw phrase cannot silently disagree with it on case,
- * punctuation or an apostrophe. The detector's description search matches a
- * padded ` phrase ` on normalized text, so it matches whole words only —
- * containment has to agree, or a negative like `caves` for `cave` counts as
- * carrying the entry's words while the detector can never match it.
+ * words. Both sides are normalized here, and the normal form is a fixed point,
+ * so a caller may pass an already-normalized `text` or a raw phrase without
+ * changing the comparison; the detector normalizes an admitted entry the same
+ * way, so a raw phrase cannot silently disagree with it on case, punctuation or
+ * an apostrophe. The detector's description search matches a padded ` phrase `
+ * on normalized text, so it matches whole words only — containment has to
+ * agree, or a negative like `caves` for `cave` counts as carrying the entry's
+ * words while the detector can never match it.
  */
 function containsWordRun(text: string, phrase: string): boolean {
   const words = normalizeSurahText(text)
@@ -216,9 +218,12 @@ function containsWordRun(text: string, phrase: string): boolean {
  * Why a row cannot be a guard row, or null when it can: it must carry a
  * referent-moving negative, every negative must carry the phrase's words as a
  * contiguous word run on normalized text (the detector's padded whole-phrase
- * match), and detection must stay null on every negative. The guard loop over
- * the rows and the always-on typo negative call this one predicate, so both pin
- * the containment the guard depends on.
+ * match), and detection must stay null on every negative.
+ *
+ * The rows loop calls this to pin its null verdict, and every row in it passes
+ * the word-run branch by construction, so those calls say nothing about that
+ * branch. The typo probe's call is the one that reaches it: it pins the
+ * rejection reason, not just a non-null verdict.
  */
 function rowRejection(row: { phrase: string; movedBy: readonly string[] }): string | null {
   if (row.movedBy.length === 0) return `${row.phrase}: no referent-moving negative`;
@@ -242,13 +247,16 @@ function rowRejection(row: { phrase: string; movedBy: readonly string[] }): stri
  * The named mutation (`pluralTypo`): admit `the chapter of the cave` into the
  * table and pin it with this negative as its `movedBy`; the guard rejects the
  * row on the word-run check instead of trusting a negative the detector never
- * matches.
+ * matches. The negative also names the surah it means, as a maintainer writing
+ * a referent would, so detection is non-null on it: a containment regression
+ * would still reject the row through the detection branch, and only the pinned
+ * reason tells that rejection from the word-run one.
  */
 const WORD_ALIGNMENT_PROBES: readonly { name: string; phrase: string; movedBy: string }[] = [
   {
     name: "pluralTypo",
     phrase: "the chapter of the cave",
-    movedBy: "the chapter of the caves in the hadith",
+    movedBy: "the chapter of the caves in the hadith, i.e. surah al-kahf",
   },
 ];
 
@@ -257,19 +265,24 @@ const WORD_ALIGNMENT_PROBES: readonly { name: string; phrase: string; movedBy: s
  * the normalized question the detector's matcher sees. The helper normalizes
  * the phrase itself, so a raw literal cannot disagree with detection on case,
  * punctuation or an apostrophe. `apostrophe` is that class — `the prophet's`
- * has to match `the prophets`; `markerName` is the agreement check, a raw
- * phrase the detector recognises from the same text.
+ * has to match `the prophets`, and detection reads the phrase as no reference.
+ *
+ * `markerName`'s phrase carries a `surah` marker, so detection reads it through
+ * the marker-gated name rule, not through the description path whose table is
+ * empty; its `detected` value pins that rule, and the row shares with the
+ * helper only the normalized text a raw phrase has to agree on.
  */
 const RAW_PHRASE_ROWS: readonly {
   name: string;
   text: string;
   phrase: string;
-  detected?: SurahReference;
+  detected: SurahReference | null;
 }[] = [
   {
     name: "apostrophe",
     text: normalizeSurahText("Which is the prophet's cave in the hadith?"),
     phrase: "the prophet's cave",
+    detected: null,
   },
   {
     name: "markerName",
@@ -309,30 +322,31 @@ describe("detectSurahReference — the curated description table", () => {
       expect(rowRejection(entry), entry.phrase).toBeNull();
     }
 
-    // The typo row is not an entry: the guard must reject it, and it does so
-    // through the same predicate the rows above use. The phrase is a substring
-    // of the negative but not a word run of it, and detection is null on the
-    // negative while the table is empty — a containment regression at the
-    // guard's call site accepts the row and reddens here.
+    // The typo row is not an entry: the guard must reject it, and the phrase is
+    // a substring of the negative but not a word run of it. Detection is
+    // non-null on the negative (it names a surah), so the detection branch
+    // rejects the row too — only the pinned reason shows the word-run branch
+    // did, and a containment regression in the helper reddens here.
+    expect(WORD_ALIGNMENT_PROBES).toHaveLength(1);
     for (const probe of WORD_ALIGNMENT_PROBES) {
       expect(normalizeSurahText(probe.movedBy), probe.name).toContain(
         normalizeSurahText(probe.phrase),
       );
-      expect(
-        rowRejection({ phrase: probe.phrase, movedBy: [probe.movedBy] }),
-        probe.name,
-      ).not.toBeNull();
+      expect(rowRejection({ phrase: probe.phrase, movedBy: [probe.movedBy] }), probe.name).toMatch(
+        /: the phrase is not a word run of the negative$/,
+      );
     }
 
     // A raw phrase is what the helper receives: it normalizes both sides, so
-    // the phrase cannot disagree with the detector, which normalizes an
-    // admitted entry the same way. The `markerName` row is the agreement — a
-    // raw phrase the detector recognises is a word run the helper recognises.
+    // the phrase cannot disagree with the detector's description path, which
+    // matches an admitted entry on the same normalized text. `markerName`
+    // shares only that normalisation with detection — its phrase is read by
+    // the marker-gated name rule, not the empty description table — and
+    // `apostrophe` is the same normalisation with no reference either way.
+    expect(RAW_PHRASE_ROWS).toHaveLength(2);
     for (const row of RAW_PHRASE_ROWS) {
       expect(containsWordRun(row.text, row.phrase), row.name).toBe(true);
-      if (row.detected !== undefined) {
-        expect(detectSurahReference(row.text), row.name).toEqual(row.detected);
-      }
+      expect(detectSurahReference(row.text), row.name).toEqual(row.detected);
     }
   });
 
@@ -451,6 +465,51 @@ describe("detectSurahReference — the collapse's recorded false positive (R2)",
     expect(normalizeSurahText("fiil")).toBe(normalizeSurahText("fil"));
     expect(detectSurahReference("surat fiil madhi")).toEqual({ surah: 105 });
     expect(detectSurahReference("surat fiil dalam bahasa arab")).toEqual({ surah: 105 });
+  });
+});
+
+/**
+ * Every class normalization transforms — case, vowels, apostrophes,
+ * separators, diacritics, digits — densely enough that a step which stops
+ * producing a fixed point is generated rather than stumbled on. `fc.string()`
+ * covers the rest of the input space.
+ */
+const normalizationInput = fc.oneof(
+  fc.string(),
+  fc.string({
+    unit: fc.constantFrom(
+      "a",
+      "A",
+      "e",
+      "E",
+      "i",
+      "I",
+      "o",
+      "O",
+      "u",
+      "U",
+      "z",
+      "Z",
+      "1",
+      "9",
+      " ",
+      "-",
+      "'",
+      "`",
+      "\u0301",
+      "\u2019",
+      "é",
+    ),
+  }),
+);
+
+describe("normalizeSurahText", () => {
+  // The comparison form is a fixed point. The helper normalizes both sides,
+  // including a `text` a caller already normalized, and the detector matches an
+  // admitted entry's padded phrase on the same form.
+  fcTest.prop([normalizationInput])("is idempotent", (text) => {
+    const once = normalizeSurahText(text);
+    expect(normalizeSurahText(once)).toBe(once);
   });
 });
 
