@@ -55,18 +55,32 @@ export function loadFixture(prefix, config, { assertV0 = false } = {}) {
 export const mean = (xs) => (xs.length === 0 ? null : xs.reduce((a, b) => a + b, 0) / xs.length);
 
 /**
- * Scope-expanded questions print their fused-only source-type recall beside the
- * reported one: the scorer reads chunk refs and never their `origin`, so full
- * reported recall there can hide a broken fused track. No `expansion` field, no
- * line.
+ * Questions whose retrieval used a deterministic path print the fused-only
+ * source-type recall beside the reported one: the scorer reads chunk refs and
+ * never their `origin`, so full reported recall there can hide a broken fused
+ * track. A label-only question has no scope path, so its line names the lookup's
+ * own contribution instead — the arm that carried the pass must be the line's
+ * subject. No `expansion` field, no line.
  */
 export function expansionLines(scored) {
   return scored
     .filter((x) => x.expansion !== undefined)
-    .map(
-      (x) =>
-        `  scoped: ${x.questionId} — expansion chunks ${x.expansion.chunks}, fused-only source-type recall ${x.expansion.fusedOnlySourceTypeRecall.toFixed(3)} (reported ${x.sourceTypeRecall.toFixed(3)})`,
-    );
+    .map((x) => {
+      const parts = [];
+      if (x.expansion.chunks > 0) parts.push(`scope chunks ${x.expansion.chunks}`);
+      if (x.expansion.lookup !== undefined) {
+        const { returned, missing, dropped, carriedSourceTypes } = x.expansion.lookup;
+        parts.push(
+          `lookup returned ${returned}, missing ${missing}, dropped ${dropped}${
+            carriedSourceTypes.length > 0 ? ` (carried ${carriedSourceTypes.join(", ")})` : ""
+          }`,
+        );
+      }
+      parts.push(
+        `fused-only source-type recall ${x.expansion.fusedOnlySourceTypeRecall.toFixed(3)} (reported ${x.sourceTypeRecall.toFixed(3)})`,
+      );
+      return `  deterministic: ${x.questionId} — ${parts.join("; ")}`;
+    });
 }
 
 /**

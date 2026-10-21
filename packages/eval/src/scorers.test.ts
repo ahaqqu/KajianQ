@@ -896,28 +896,88 @@ describe("scoreQuestion", () => {
     expect(outcome.expansion).toEqual({ chunks: 2, fusedOnlySourceTypeRecall: 0.5 });
   });
 
-  it("keeps every expansion path out of the fused-only leg (A4 of the #274 fix round)", () => {
-    // The fused-only leg must exclude BOTH refs: excluding only the scope origin
-    // would count the neighbour chunk as fused and equal the reported recall.
-    const scoped: TraceEventLike = {
+  it("records the lookup's contribution on a label-only question (B1)", () => {
+    // The #277 question shape: no scope path runs, the fused arm misses the
+    // expected source, and a citation_lookup ref supplies it. The report must
+    // show which arm carried the pass and what the fused arm alone scored,
+    // otherwise a fused-track regression on exactly these questions is invisible.
+    const labelOnly = {
       kind: "retrieval",
       stage: "retriever",
       detail: {
         chunks: [
           { id: "c1", score: 0.5, rankDense: 1 },
-          { id: "x1", origin: "expansion" },
-          { id: "n1", origin: "verse_neighbours" },
+          { id: "l1", origin: "citation_lookup" },
         ],
       },
-    };
-    const outcome = scoreQuestion(question, "… label-1 …", [scoped], {
+    } satisfies TraceEventLike;
+    const lookupEvent = {
+      kind: "citation_lookup",
+      stage: "retriever",
+      detail: {
+        labels: ["HR. Bukhari no. 4697"],
+        missing: [],
+        dropped: [],
+        returned: 1,
+        cap: 8,
+        truncated: false,
+      },
+    } satisfies TraceEventLike;
+    const outcome = scoreQuestion(question, "… label-1 …", [labelOnly, lookupEvent], {
       sourceTypeOf: (id) => (id === "c1" ? "source-a" : "source-b"),
       citationOf,
       expansionOrigin: "expansion",
+      lookupOrigin: "citation_lookup",
+    });
+    expect(outcome.sourceTypeRecall).toBe(1);
+    expect(outcome.expansion).toEqual({
+      chunks: 0,
+      fusedOnlySourceTypeRecall: 0.5,
+      lookup: {
+        returned: 1,
+        missing: 0,
+        dropped: 0,
+        truncated: false,
+        carriedSourceTypes: ["source-b"],
+      },
+    });
+  });
+
+  it("keeps every deterministic path out of the fused-only leg", () => {
+    // No scope path ran: the block must exist because the lookup ran, and both
+    // labelled refs (the neighbour's and the lookup's) must leave the fused-only
+    // leg. A scope-origin ref here would trigger the block on its own and hide a
+    // lookup-only trace that produces nothing.
+    const labelOnly = {
+      kind: "retrieval",
+      stage: "retriever",
+      detail: {
+        chunks: [
+          { id: "c1", score: 0.5, rankDense: 1 },
+          { id: "n1", origin: "verse_neighbours" },
+          { id: "l1", origin: "citation_lookup" },
+        ],
+      },
+    } satisfies TraceEventLike;
+    const outcome = scoreQuestion(question, "… label-1 …", [labelOnly], {
+      sourceTypeOf: (id) => (id === "c1" ? "source-a" : "source-b"),
+      citationOf,
+      expansionOrigin: "expansion",
+      lookupOrigin: "citation_lookup",
     });
     expect(outcome.sourceTypeRecall).toBe(1);
     // `chunks` counts the SCOPE path only; the fused-only leg is the ref with no origin label.
-    expect(outcome.expansion).toEqual({ chunks: 1, fusedOnlySourceTypeRecall: 0.5 });
+    expect(outcome.expansion).toEqual({
+      chunks: 0,
+      fusedOnlySourceTypeRecall: 0.5,
+      lookup: {
+        returned: 1,
+        missing: 0,
+        dropped: 0,
+        truncated: false,
+        carriedSourceTypes: ["source-b"],
+      },
+    });
   });
 
   it("records a recognised-but-empty scope honestly (0 chunks, fused-only = reported)", () => {
@@ -942,7 +1002,7 @@ describe("scoreQuestion", () => {
     expect(outcome.expansion).toEqual({ chunks: 0, fusedOnlySourceTypeRecall: 0.5 });
   });
 
-  it("omits the expansion block when the scoped path did not run", () => {
+  it("omits the expansion block when no deterministic path ran", () => {
     const outcome = scoreQuestion(question, "… label-1 …", [retrievalEvent], {
       sourceTypeOf: (id) => (id === "c1" ? "source-a" : "source-b"),
       citationOf,

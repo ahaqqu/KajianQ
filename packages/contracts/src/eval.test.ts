@@ -70,6 +70,24 @@ describe("EvalResultOutcomeSchema", () => {
     expect(parsed.expansion).toEqual({ chunks: 7, fusedOnlySourceTypeRecall: 0 });
   });
 
+  it("carries the label lookup's contribution on a label-only question (B1)", () => {
+    const lookup = {
+      returned: 1,
+      missing: 0,
+      dropped: 0,
+      truncated: false,
+      carriedSourceTypes: ["source-b"],
+    };
+    const parsed = v.parse(EvalResultOutcomeSchema, {
+      ...PRE_CHANGE_OUTCOME,
+      expansion: { chunks: 0, fusedOnlySourceTypeRecall: 0, lookup },
+    });
+    // The reported recall is untouched; the lookup's own figures sit beside it, so
+    // "the lookup carried this pass" is a persisted fact rather than a trace read.
+    expect(parsed.expansion?.fusedOnlySourceTypeRecall).toBe(0);
+    expect(parsed.expansion?.lookup).toEqual(lookup);
+  });
+
   it("rejects an expansion block with an impossible count or recall", () => {
     expect(
       v.safeParse(EvalResultOutcomeSchema, {
@@ -81,6 +99,22 @@ describe("EvalResultOutcomeSchema", () => {
       v.safeParse(EvalResultOutcomeSchema, {
         ...CURRENT_OUTCOME,
         expansion: { chunks: 1, fusedOnlySourceTypeRecall: 1.5 },
+      }).success,
+    ).toBe(false);
+    expect(
+      v.safeParse(EvalResultOutcomeSchema, {
+        ...PRE_CHANGE_OUTCOME,
+        expansion: {
+          chunks: 0,
+          fusedOnlySourceTypeRecall: 0,
+          lookup: {
+            returned: -1,
+            missing: 0,
+            dropped: 0,
+            truncated: false,
+            carriedSourceTypes: [],
+          },
+        },
       }).success,
     ).toBe(false);
   });

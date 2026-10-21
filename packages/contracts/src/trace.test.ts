@@ -125,6 +125,21 @@ describe("trace contract", () => {
         at: 3,
       },
       {
+        // Citation-label lookup: the retriever read the chunks the question's own
+        // label addresses; `labels` are the normalized labels and `missing` names
+        // the ones the store did not carry.
+        stage: "retriever",
+        kind: "citation_lookup",
+        detail: {
+          labels: ["HR. Bukhari no. 4697"],
+          missing: [],
+          returned: 1,
+          cap: 8,
+          truncated: false,
+        },
+        at: 3,
+      },
+      {
         stage: "assembler",
         kind: "assembly",
         detail: { turnCount: 2, chunkCount: 1 },
@@ -168,7 +183,7 @@ describe("trace contract", () => {
     const trace = parseTrace({ id: "t", createdAt: 0, events });
     // The kinds are named, not just counted: a count cannot tell "both variants
     // are in the union" from "one replaced the other".
-    expect(trace.events).toHaveLength(12);
+    expect(trace.events).toHaveLength(13);
     expect(trace.events.map((event) => event.kind)).toEqual([
       "intent",
       "subquery",
@@ -176,6 +191,7 @@ describe("trace contract", () => {
       "filter_relaxed",
       "scope_expansion",
       "neighbour_expansion",
+      "citation_lookup",
       "assembly",
       "llm_call",
       "review",

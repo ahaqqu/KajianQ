@@ -138,6 +138,45 @@ export const TraceEventSchema = v.variant("kind", [
     at: v.pipe(v.number(), v.integer()),
   }),
   v.object({
+    /** A deterministic citation-label lookup: the retriever read the chunks a
+     * citation label named in the verbatim question addresses, one bounded read
+     * per label. It also records the spans it saw and did not resolve, so a
+     * declined form leaves a trace instead of reading as a question that named
+     * no label. Labels are caller-supplied strings; the engine interprets
+     * neither them nor the metadata keys the read matched. */
+    stage: v.literal("retriever"),
+    kind: v.literal("citation_lookup"),
+    detail: v.object({
+      /** The labels the question named, normalized, in first-appearance order. */
+      labels: v.array(v.pipe(v.string(), v.minLength(1))),
+      /** Labels no stored row carried. A label here added no chunk, so the
+       * generator never sees it as evidence — the canonical refusal is the
+       * answer, and the trace says the lookup ran rather than stayed silent. */
+      missing: v.array(v.pipe(v.string(), v.minLength(1))),
+      /** Citation-shaped spans the question wrote and the lookup did not
+       * resolve, each with the caller's reason. Optional so a trace recorded
+       * before the field existed still parses; a span here is the trace's
+       * statement that "no label" and "declined this label" are different
+       * states, never silent. */
+      dropped: v.optional(
+        v.array(
+          v.object({
+            label: v.pipe(v.string(), v.minLength(1)),
+            /** Caller vocabulary, opaque to the engine (e.g. range, collection). */
+            reason: v.pipe(v.string(), v.minLength(1)),
+          }),
+        ),
+      ),
+      /** Chunks added; the configured budget; whether the read or the budget left
+       * a matching row out. */
+      returned: v.pipe(v.number(), v.integer(), v.minValue(0)),
+      cap: v.pipe(v.number(), v.integer(), v.minValue(0)),
+      truncated: v.boolean(),
+    }),
+    cost: v.optional(CostRecordSchema),
+    at: v.pipe(v.number(), v.integer()),
+  }),
+  v.object({
     stage: StageSchema,
     kind: v.literal("llm_call"),
     detail: v.optional(

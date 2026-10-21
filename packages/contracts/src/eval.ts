@@ -91,23 +91,31 @@ export type EvalResultOutcome = {
    */
   skipped?: boolean | undefined;
   /**
-   * ADR-0045 scope expansion, when the question's retrieval used it.
-   * `sourceTypeRecall` reads the retrieval event's chunk refs and never inspects
-   * their `origin` label, so for a question that names a reference the expansion
-   * satisfies the scored leg **by construction** whenever the scoped read works:
-   * a fused-track regression on exactly those questions is invisible in
-   * `sourceTypeRecall` alone. This block makes it visible per question,
-   * deterministically (no LLM judge): `chunks` is how many of the retrieved refs
-   * the scoped read added, and `fusedOnlySourceTypeRecall` is the source-type
-   * recall those same refs score with the expansion's refs excluded — a number
-   * below `sourceTypeRecall` is the exact statement "the expansion carried this
-   * question". Absent = the trace recorded no expansion for this question (no
-   * scoped read happened).
+   * Deterministic-path provenance, when the question's retrieval used one.
+   * `sourceTypeRecall` never inspects a ref's `origin` label, so a question that
+   * names a reference is satisfied **by construction** whenever a deterministic
+   * read works, and a fused-track regression on exactly those questions is
+   * invisible in `sourceTypeRecall` alone. This block makes it visible,
+   * deterministically: `fusedOnlySourceTypeRecall` is what the refs with no
+   * origin label score — a number below `sourceTypeRecall` means a deterministic
+   * arm carried the question. `chunks` is the **scope** read's count; `lookup`
+   * is the citation-label lookup's own contribution, present exactly when that
+   * path ran. Absent = no deterministic read was recorded.
    */
   expansion?:
     | {
         chunks: number;
         fusedOnlySourceTypeRecall: number;
+        /** The lookup's own contribution (ADR-0058); the trace event's fields. */
+        lookup?:
+          | {
+              returned: number;
+              missing: number;
+              dropped: number;
+              truncated: boolean;
+              carriedSourceTypes: string[];
+            }
+          | undefined;
       }
     | undefined;
   /** Optional note (e.g. which required citation was missing). */
@@ -136,6 +144,16 @@ const EvalResultOutcomeInputSchema = v.object({
       fusedOnlySourceTypeRecall: v.optional(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
       /** The pre-rename name for `fusedOnlySourceTypeRecall`. */
       fusedOnlyRetrievalRecall: v.optional(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
+      /** The citation-label lookup's contribution (ADR-0058). */
+      lookup: v.optional(
+        v.object({
+          returned: v.pipe(v.number(), v.integer(), v.minValue(0)),
+          missing: v.pipe(v.number(), v.integer(), v.minValue(0)),
+          dropped: v.pipe(v.number(), v.integer(), v.minValue(0)),
+          truncated: v.boolean(),
+          carriedSourceTypes: v.array(v.pipe(v.string(), v.minLength(1))),
+        }),
+      ),
     }),
   ),
   notes: v.optional(v.array(v.pipe(v.string(), v.minLength(1)))),
@@ -171,6 +189,7 @@ export const EvalResultOutcomeSchema = v.pipe(
               chunks: expansion.chunks,
               fusedOnlySourceTypeRecall: (expansion.fusedOnlySourceTypeRecall ??
                 expansion.fusedOnlyRetrievalRecall)!,
+              ...(expansion.lookup !== undefined ? { lookup: expansion.lookup } : {}),
             },
           }
         : {}),

@@ -11,6 +11,7 @@ import {
 } from "@app/rag-core";
 import type { KajianQFilters } from "./filters";
 import {
+  DEFAULT_LABEL_LOOKUP_CAP,
   DEFAULT_NEIGHBOUR_CAP,
   DEFAULT_NEIGHBOUR_RADIUS,
   DEFAULT_SCOPE_EXPANSION_CAP,
@@ -19,6 +20,7 @@ import {
   createFilterRelaxation,
   filterEntries,
   hierarchyBonus,
+  lookupCitationLabels,
   nextRelaxation,
   rrfFuse,
   type NeighbourChildRow,
@@ -74,6 +76,12 @@ export type RetrieverStore = {
     anchorChildIds: readonly string[],
     opts: { radius: number; limit: number },
   ): Effect.Effect<readonly NeighbourChildRow[], StoreError>;
+  /** The bounded exact-match read of the children carrying a label's opaque metadata
+   * pairs — the one read the citation-label arm issues. */
+  findDocChildrenByMetadata(
+    match: Readonly<Record<string, string | number>>,
+    opts: { limit: number },
+  ): Effect.Effect<readonly ScopeChildRow[], StoreError>;
 };
 
 /** Effect bridge the wiring injects (keeps this module free of runner imports). */
@@ -92,6 +100,9 @@ export type KajianQRetrieverDeps = {
    * **either** disables it. */
   neighbourRadius?: number;
   neighbourCap?: number;
+  /** Budget cap for the citation-label lookup over the labels a question names,
+   * defaulting to `DEFAULT_LABEL_LOOKUP_CAP`; `0` disables it. */
+  labelLookupCap?: number;
 };
 
 export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<KajianQFilters> {
@@ -219,7 +230,28 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
               at: run.now(),
             });
           }
-          const inContext = [...fused, ...expansion.chunks];
+          const scoped = [...fused, ...expansion.chunks];
+          // An exact citation label is an identifier, not a topic: the passage it
+          // names can lose a similarity race to its own neighbours, so the label
+          // the question wrote is read from the corpus's identity for it. Detection
+          // runs on the verbatim question, like the scope read above; the arm adds
+          // chunks beside the fused hits and never renders one from the string.
+          const lookup = yield* lookupCitationLabels({
+            sourceText: routed.sourceText,
+            existingIds: new Set(scoped.map((c) => c.id)),
+            cap: deps.labelLookupCap ?? DEFAULT_LABEL_LOOKUP_CAP,
+            store: deps.store,
+            bridge: deps.bridge,
+          });
+          if (lookup.detail !== null) {
+            run.record({
+              stage: "retriever",
+              kind: "citation_lookup",
+              detail: lookup.detail,
+              at: run.now(),
+            });
+          }
+          const inContext = [...scoped, ...lookup.chunks];
           // ADR-0049: the neighbourhood of the verses now in context — the gate requires
           // every address a citation names, so the fix is to have the address, not to weaken
           // the gate. `inContext` is both the anchor source (in retrieval order) and the dedup set.

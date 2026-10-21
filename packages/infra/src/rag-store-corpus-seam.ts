@@ -70,6 +70,20 @@ export interface RagStoreCorpus {
   ): Effect.Effect<readonly DocChildById[], StoreError>;
 
   /**
+   * Child chunks whose `metadata` carries **every** key/value pair in `match`,
+   * as a bounded exact-match read (JSONB containment on the metadata column).
+   * The pairs are opaque: the store never learns that a key means a citation
+   * label or an address, and it compares the JSON scalars as stored — a string
+   * and a number are different values, never coerced. Rows come back in stable
+   * `id` order with no embeddings and the parent title, at most `limit` rows;
+   * `limit <= 0` and an empty `match` return no rows without issuing a query.
+   */
+  findDocChildrenByMetadata(
+    match: Readonly<Record<string, string | number>>,
+    opts: { limit: number },
+  ): Effect.Effect<readonly DocChildById[], StoreError>;
+
+  /**
    * The children **neighbouring** the given anchor children inside their own
    * parent: at most `radius` positions before and after each anchor, in stable
    * within-parent `ordinal` order. Anchors are addressed by **child id**, and the

@@ -1040,6 +1040,43 @@ describe("Postgres eval-ledger methods (unit, fake SQL)", () => {
     expect(err.kind).toBe("transport");
   });
 
+  it("findDocChildrenByMetadata binds the containment match and limit", async () => {
+    const sql = makeFakeSql();
+    const store = createPostgresRagStore(sql);
+    sql._setQuery([
+      {
+        id: "c1",
+        parent_id: "p1",
+        text_raw: "raw",
+        text_ar: "ar",
+        text_id: "id",
+        citation: { fixture: "metadata", unit: 4697 },
+        embedding_primary: null,
+        embedding_fallback: null,
+        ordinal: 0,
+        metadata: { sourceType: "s1", unit: 4697 },
+        created_at: new Date(0),
+        parent_title: "book 65",
+      },
+    ]);
+    const rows = await runOk(
+      store.findDocChildrenByMetadata({ sourceType: "s1", unit: 4697 }, { limit: 3 }),
+    );
+    // The match object is one bound JSONB parameter — keys are never interpolated.
+    expect(sql._calls[0]?.values).toEqual([JSON.stringify({ sourceType: "s1", unit: 4697 }), 3]);
+    expect(sql._calls[0]?.text).toContain("metadata @> $1::jsonb");
+    expect(sql._calls[0]?.text).toContain("ORDER BY c.id ASC");
+    expect(rows[0]).toMatchObject({ id: "c1", parentTitle: "book 65", ordinal: 0 });
+  });
+
+  it("findDocChildrenByMetadata short-circuits an empty match and a non-positive limit", async () => {
+    const sql = makeFakeSql();
+    const store = createPostgresRagStore(sql);
+    expect(await runOk(store.findDocChildrenByMetadata({}, { limit: 3 }))).toEqual([]);
+    expect(await runOk(store.findDocChildrenByMetadata({ unit: 1 }, { limit: 0 }))).toEqual([]);
+    expect(sql._calls).toEqual([]);
+  });
+
   it("listDocChildrenByParentSourceKey binds the key and limit, orders by ordinal (ADR-0045)", async () => {
     const sql = makeFakeSql();
     const store = createPostgresRagStore(sql);

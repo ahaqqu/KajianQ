@@ -31,48 +31,41 @@ export function createRagStoreFromEnv(env: { DATABASE_URL?: string }): RagStore 
 }
 
 /**
- * Parse the scope-expansion budget: absent/empty = the domain default, `0` disables
- * expansion, and anything that is not a non-negative integer is a typed config
- * failure — a typo cannot silently leave the cap at a value nobody chose.
- */
-export function parseScopeExpansionCap(raw: string | undefined): number | undefined {
-  if (raw === undefined || raw.trim() === "") return undefined;
-  const value = Number(raw);
-  if (!Number.isInteger(value) || value < 0) {
-    throw new ChatConfigError(
-      `chat route: SCOPE_EXPANSION_CAP must be a non-negative integer (got "${raw}")`,
-      "SCOPE_EXPANSION_CAP",
-    );
-  }
-  return value;
-}
-
-/**
- * The one parser behind the two neighbourhood knobs: absent/empty = the domain
+ * The one parser behind every bounded retrieval knob: absent/empty = the domain
  * default, a malformed value is a typed config failure naming the variable, and
  * **`0` is the documented disable while a negative value is malformed config** —
  * `-1` is not a second spelling of "off". The failure is raised when the chat
  * wiring builds, which the chat route does **per request**, so the process boots
  * green and every `/v1/chat` request answers 503.
  */
-function parseNeighbourKnob(raw: string | undefined, name: string): number | undefined {
+function parseBoundedKnob(raw: string | undefined, name: string): number | undefined {
   if (raw === undefined || raw.trim() === "") return undefined;
   const value = Number(raw);
   if (!Number.isInteger(value) || value < 0) {
     throw new ChatConfigError(
-      `chat route: ${name} must be a non-negative integer (got "${raw}"); 0 disables the expansion`,
+      `chat route: ${name} must be a non-negative integer (got "${raw}"); 0 disables the path`,
       name,
     );
   }
   return value;
 }
 
-/** `NEIGHBOUR_EXPANSION_RADIUS`: ordinals on each side of a verse. */
-export function parseNeighbourRadius(raw: string | undefined): number | undefined {
-  return parseNeighbourKnob(raw, "NEIGHBOUR_EXPANSION_RADIUS");
+/** `SCOPE_EXPANSION_CAP`: children of a named surah the scope expansion may add. */
+export function parseScopeExpansionCap(raw: string | undefined): number | undefined {
+  return parseBoundedKnob(raw, "SCOPE_EXPANSION_CAP");
 }
 
-/** `NEIGHBOUR_EXPANSION_CAP`: chunks the expansion may add. */
+/** `NEIGHBOUR_EXPANSION_RADIUS`: ordinals on each side of a retrieved verse. */
+export function parseNeighbourRadius(raw: string | undefined): number | undefined {
+  return parseBoundedKnob(raw, "NEIGHBOUR_EXPANSION_RADIUS");
+}
+
+/** `NEIGHBOUR_EXPANSION_CAP`: chunks the neighbourhood expansion may add. */
 export function parseNeighbourCap(raw: string | undefined): number | undefined {
-  return parseNeighbourKnob(raw, "NEIGHBOUR_EXPANSION_CAP");
+  return parseBoundedKnob(raw, "NEIGHBOUR_EXPANSION_CAP");
+}
+
+/** `LABEL_LOOKUP_CAP`: chunks the citation-label lookup may add per query. */
+export function parseLabelLookupCap(raw: string | undefined): number | undefined {
+  return parseBoundedKnob(raw, "LABEL_LOOKUP_CAP");
 }

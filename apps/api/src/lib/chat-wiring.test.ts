@@ -7,6 +7,7 @@ import {
   buildStoreWiring,
   ChatConfigError,
   createProvidersFromEnv,
+  parseLabelLookupCap,
   parseNeighbourCap,
   parseNeighbourRadius,
   parseScopeExpansionCap,
@@ -138,6 +139,22 @@ describe("parseScopeExpansionCap — ADR-0045's budget knob", () => {
     const pipeline = buildChatWiring(keyed).pipeline;
     expect(pipeline).not.toHaveProperty("neighbourRadius");
     expect(pipeline).not.toHaveProperty("neighbourCap");
+  });
+
+  it("parses ADR-0058's label-lookup cap with the same rule and wires it", () => {
+    expect(parseLabelLookupCap(undefined)).toBeUndefined();
+    expect(parseLabelLookupCap("  ")).toBeUndefined();
+    expect(parseLabelLookupCap("8")).toBe(8);
+    // `0` is a real value: it turns the arm off without making the query fail.
+    expect(parseLabelLookupCap("0")).toBe(0);
+    for (const bad of ["-1", "abc", "1.5", "12x"]) {
+      expect(() => parseLabelLookupCap(bad)).toThrow(/LABEL_LOOKUP_CAP/);
+    }
+    const keyed = { DATABASE_URL: "postgres://x", DEEPSEEK_API_KEY: "k" };
+    expect(buildChatWiring({ ...keyed, LABEL_LOOKUP_CAP: "5" }).pipeline).toMatchObject({
+      labelLookupCap: 5,
+    });
+    expect(buildChatWiring(keyed).pipeline).not.toHaveProperty("labelLookupCap");
   });
 });
 
