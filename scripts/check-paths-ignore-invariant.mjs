@@ -12,7 +12,11 @@
  *   `e2e.yml` boots the web build and the API entry and executes the Playwright-BDD
  *   suite, so its entries add `playwright.config.ts`, `tests/features/**` and
  *   `tests/steps/**`. `vps-restore-drill.yml` executes
- *   `provision/vps/backup/restore-drill.mjs`.
+ *   `provision/vps/backup/restore-drill.mjs` AND, through `spawnSync`, the scripts
+ *   that file runs — `kajianq-backup.mjs`, `kajianq-restore.mjs` — plus the
+ *   migration `psql` applies. None of those three has an import edge from the
+ *   drill, so they are explicit drill entries and the drill's own text is asserted
+ *   to still name them.
  *
  * WHY IT EXISTS (the silent failure it closes)
  *   GitHub skips a push run only when EVERY changed file matches an ignore pattern:
@@ -24,20 +28,33 @@
  *   all — a required check then blocks the merge forever — so the two PR-triggered
  *   workflows pin that half to the docs class and widening it is a refusal here.
  *
- * THE CLASS IS DEFINED ONCE AND DERIVED PER WORKFLOW
- *   `staging.yml`'s push trigger defines the docs class and the test class. The other
- *   two workflows must apply exactly the docs class plus the test class, minus the
- *   members each names as its own execution input: `e2e.yml` keeps `tests/**` and
+ * THE TEST CLASS IS DERIVED AT STAGING; THE DOCS CLASS IS PINNED
+ *   `staging.yml`'s push trigger is where the test class is named: its non-docs
+ *   patterns ARE the class. Every policed workflow — staging included — must carry
+ *   exactly the pinned docs class plus every test-class member, minus the members it
+ *   records as its own execution inputs: `e2e.yml` keeps `tests/**` and
  *   `playwright.config.ts` because they ARE the suite it runs; the drill keeps none.
- *   A member added at `staging.yml` therefore fails this gate until it is applied or
- *   recorded as a kept input — a second, drifting glob list cannot pass.
+ *   The docs class is the pinned `DOCS_ONLY_PATTERNS` constant, not derived: deriving
+ *   it from the same list would make the assertion circular and could not notice a
+ *   docs pattern going missing — the one edit that re-widens staging's paid deploy.
+ *   Staging is therefore asserted against the derivation too, so dropping `docs/**`
+ *   there refuses by name. A test-class member added at the source fails the other
+ *   two workflows until it is applied or recorded as a kept input — a second,
+ *   drifting glob list cannot pass. Both `pull_request` halves are asserted equal to
+ *   the same pinned docs class.
  *
  * THE CLOSURE IS COMPUTED FROM IMPORTS, NEVER FROM A NAME LIST
  *   A name-based check passes the exact failure it exists to catch — a RENAME into
  *   the class. The check instead walks the real import graph (static
- *   `import`/`export … from`, literal `import(…)`, CSS `@import`/`url(…)`,
- *   `index.html` `src`/`href`), resolving relative, Vite-root-absolute and
- *   workspace-package specifiers through each package's `exports` map.
+ *   `import`/`export … from`, literal `import(…)` and `require(…)`, CSS
+ *   `@import`/`url(…)`, `index.html` `src`/`href`), resolving relative,
+ *   Vite-root-absolute and workspace-package specifiers through each package's
+ *   `exports` map. Subprocess execution is not an import edge: the drill's
+ *   `run("bun", …)` targets and the `${HERE}` / `${REPO_ROOT}` path literals it and
+ *   `psql` consume are asserted against the explicit drill entries, so a newly
+ *   executed file refuses by name before the walk can miss it. A closure that
+ *   follows no edge at all is refused: it would print "0 matches" having walked
+ *   nothing.
  *
  * GITHUB'S GLOB SEMANTICS, NOT THE SHELL'S
  *   `*` never crosses `/`; `**` matches anything including `/`; `**` before `/`
@@ -50,21 +67,40 @@
  * FAIL CLOSED
  *   Every "cannot read my input" state refuses with a non-zero exit rather than
  *   passing: an unreadable or unparsable workflow; a missing, mistyped or empty
- *   trigger list; a missing policed workflow; a push set that does not derive from
- *   the class; a kept input no closure file backs; a `pull_request` filter wider than
- *   the docs class; a `deploy.sh` whose artifact set moved; an import specifier that
- *   resolves to nothing (a resolver gap must never look like "no edge"); and a
- *   missing YAML parser.
+ *   trigger list; a missing policed workflow; a push set that does not carry the
+ *   pinned docs class plus the class at its source (staging's own included); a kept
+ *   input no closure file backs; a workflow carrying a `paths-ignore` this check does
+ *   not list; a PR half on a workflow recorded as having none; a `pull_request`
+ *   filter wider or narrower than the docs class; a `deploy.sh` or drill whose
+ *   executed-file set moved; a Playwright config that stopped selecting the suite
+ *   this check walks; an import specifier that resolves to nothing (a resolver gap
+ *   must never look like "no edge"); a closure that followed no edge; and a missing
+ *   YAML parser.
  *
  * WHAT IT DOES NOT COVER
  *   - `paths:` include-filters (ordered `!` semantics).
+ *   - Subprocess execution outside the drill's pinned forms: a command built from a
+ *     variable, `Bun.spawn`, a direct `spawnSync`, and a `require`/`import` whose
+ *     specifier is not a string literal are invisible. The drill is the only policed
+ *     workflow that executes repo files, so its forms are pinned explicitly; a
+ *     workflow that starts executing files needs its own pin.
  *   - Non-import reachability of build inputs: `tsconfig.json`, `vite.config.ts`,
  *     `package.json`, Tailwind's content scanning, `tsc --noEmit` inputs (the
  *     colocated `*.test.ts` files `build:web` typechecks are outside the emitted
- *     graph by design), `import.meta.glob`, and Vite-plugin virtual modules.
+ *     graph by design; `bun run check` typechecks them before merge, so that gap is
+ *     CI-caught, not silent), `import.meta.glob`, and Vite-plugin virtual modules.
+ *   - Config-driven selection: `playwright.config.ts`'s `testDir` (`features`,
+ *     `steps`) and `webServer.command` are modelled by the `BDD_FEATURES` /
+ *     `BDD_STEPS` / `API_ENTRY` pins and the config text is asserted to still name
+ *     them; the config is not parsed, so a selection built another way refuses
+ *     rather than being read.
+ *   - Runner globs (`vitest.config.ts`'s `include`): neither `bun run e2e` nor the
+ *     drill executes vitest, so they are outside these two workflows.
  *   - Files in `node_modules`: never in a push's changed-file set, treated as leaves.
  *   - Workflows that carry no `paths-ignore`: this gate judges filters, not their
- *     absence. It also keeps each class safe, not correctly scoped.
+ *     absence. It lists them as the "not policed, on purpose" inventory so the
+ *     coverage claim is readable. It also keeps each class safe, not correctly
+ *     scoped.
  *
  * Run: `bun run lint`. `--root <dir>` is a read-only test seam for fixture
  * trees; the check writes nothing, ever.
@@ -80,13 +116,16 @@ export const REPO_ROOT = resolve(HERE, "..");
 /** Every "cannot verify" state — the refusal the caller turns into exit 1. */
 export class InvariantRefusal extends Error {}
 
-/** The push trigger that defines the docs class and the test class. */
+/** The push trigger that names the test class; its docs half is the pinned constant. */
 export const POLICED_WORKFLOW = ".github/workflows/staging.yml";
 export const E2E_WORKFLOW = ".github/workflows/e2e.yml";
 export const DRILL_WORKFLOW = ".github/workflows/vps-restore-drill.yml";
 
-/** Patterns that cannot alter a build artifact or a workflow's execution, so
- * ignoring only these needs no closure check. */
+/** The pinned docs class: patterns that cannot alter a build artifact or a workflow's
+ * execution. Every policed workflow's push set must carry exactly these plus the test
+ * class, and both `pull_request` halves must be exactly these. Pinned rather than
+ * derived, because a docs pattern leaving the set is what re-widens staging's paid
+ * deploy and nothing else in the graph would notice. */
 export const DOCS_ONLY_PATTERNS = [
   "**.md",
   "docs/**",
@@ -110,9 +149,26 @@ export const FILE_ENTRIES = [
 /** The API entry E2E boots, the config that selects its suite, and the suite dirs. */
 export const API_ENTRY = "apps/api/src/boot.ts";
 export const PLAYWRIGHT_CONFIG = "playwright.config.ts";
+export const BDD_FEATURES = "tests/features/**/*.feature";
+export const BDD_STEPS = "tests/steps/**/*.ts";
 export const BDD_DIRS = ["tests/features", "tests/steps"];
-/** The entry the restore drill executes. */
-export const DRILL_ENTRY = "provision/vps/backup/restore-drill.mjs";
+/** The entry the restore drill executes, the directory it builds sibling paths in,
+ * and the files it executes without an import edge: the scripts it spawns through
+ * `run("bun", …)` and the migration it feeds to `psql`. */
+export const DRILL_DIR = "provision/vps/backup";
+export const DRILL_ENTRY = `${DRILL_DIR}/restore-drill.mjs`;
+export const DRILL_SPAWN_SCRIPTS = [
+  `${DRILL_DIR}/kajianq-backup.mjs`,
+  `${DRILL_DIR}/kajianq-restore.mjs`,
+];
+export const DRILL_SQL = "packages/infra/migrations/0001_init.sql";
+/** `run("bun", …)` sites the drill carries: the backup once and the restore twice
+ * (the negative-control pass and the erasure pass). A further spawn site means a
+ * file the entry set does not walk, so it refuses until the set moves deliberately. */
+export const DRILL_BUN_SPAWNS = 3;
+
+/** Every workflow lives here; the policed set is a subset and the rest is inventory. */
+export const WORKFLOW_DIR = ".github/workflows";
 
 /** Module extensions tried when a specifier carries none, in order. */
 const MODULE_EXTS = [".ts", ".tsx", ".mts", ".cts", ".mjs", ".cjs", ".js", ".jsx"];
@@ -135,6 +191,7 @@ const UNMODELLED_GLOB_CHARS = /[?+[\]{}\\]/;
 const STATIC_IMPORT_RE = /\bimport\s*(?:type\s+)?(?:[\w$*{},\s]*?\sfrom\s*)?["']([^"']+)["']/g;
 const EXPORT_FROM_RE = /\bexport\s+(?:type\s+)?(?:\*|\{[^}]*\})\s*from\s*["']([^"']+)["']/g;
 const DYNAMIC_IMPORT_RE = /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g;
+const REQUIRE_RE = /(?<![\w.$])require\s*\(\s*["']([^"']+)["']\s*\)/g;
 const CSS_IMPORT_RE = /@import\s+(?:url\(\s*)?["']?([^"')\s;]+)["']?\s*\)?/g;
 const CSS_URL_RE = /url\(\s*(?:["']([^"']+)["']|([^"')]+))\s*\)/g;
 const HTML_REF_RE = /<(?:script|link|img|source)\b[^>]*?\b(?:src|href)\s*=\s*["']([^"']+)["']/gi;
@@ -323,12 +380,12 @@ function collect(text, regex, group = 1) {
 }
 
 /**
- * Every import edge in one source file: JS/TS static imports, re-exports and
- * literal dynamic imports; CSS `@import` chains and `url(…)` assets; HTML
- * `src`/`href` on script/link/img/source. A `module` edge that resolves to nothing
- * is a broken build (refused); an `asset` reference may be a runtime URL (`/chat`)
- * and is soft-skipped when no file backs it. Type-only imports are followed too —
- * over-reporting is a red gate — and runtime specifiers are dropped.
+ * Every import edge in one source file: JS/TS static imports, re-exports, literal
+ * dynamic imports and literal `require(…)` calls; CSS `@import` chains and `url(…)`
+ * assets; HTML `src`/`href` on script/link/img/source. A `module` edge that resolves
+ * to nothing is a broken build (refused); an `asset` reference may be a runtime URL
+ * (`/chat`) and is soft-skipped when no file backs it. Type-only imports are followed
+ * too — over-reporting is a red gate — and runtime specifiers are dropped.
  */
 export function extractSpecifiers(text, ext) {
   if (ext === "html") {
@@ -345,6 +402,7 @@ export function extractSpecifiers(text, ext) {
     ...collect(text, STATIC_IMPORT_RE, 1).map((spec) => ({ spec, kind: "module" })),
     ...collect(text, EXPORT_FROM_RE, 1).map((spec) => ({ spec, kind: "module" })),
     ...collect(text, DYNAMIC_IMPORT_RE, 1).map((spec) => ({ spec, kind: "module" })),
+    ...collect(text, REQUIRE_RE, 1).map((spec) => ({ spec, kind: "module" })),
   ];
 }
 
@@ -493,11 +551,17 @@ export function resolveBareSpecifier(spec, workspaceIndex, root, fromFile) {
  * `baseDir` is what a leading `/` resolves against), returning `{ closure,
  * looseRefs }`: absolute file path → `{ entry, parent, baseDir }`, so every hit
  * prints its chain, plus the asset references no file backs.
- * Fail-closed: an unresolvable `module` specifier refuses (a broken build must not
- * read as "no edge"), while an unresolvable `asset` reference is collected —
+ * Fail-closed: an empty entry list refuses (a closure of nothing would make "0
+ * matches" vacuous); an unresolvable `module` specifier refuses (a broken build must
+ * not read as "no edge"), while an unresolvable `asset` reference is collected —
  * `<a href="/chat">` and API paths are legitimately fileless.
  */
 export function buildClosure(entries, root) {
+  if (entries.length === 0) {
+    throw new InvariantRefusal(
+      'no execution entries to walk — a closure of nothing would make "0 matches" vacuous',
+    );
+  }
   const workspaceIndex = loadWorkspaceIndex(root);
   const closure = new Map();
   const looseRefs = [];
@@ -506,7 +570,9 @@ export function buildClosure(entries, root) {
     const file = asFile(resolve(root, entry.file));
     if (!file) {
       throw new InvariantRefusal(
-        `deploy entry ${entry.file} not found — deploy.sh's artifact set and this check disagree`,
+        `execution entry ${entry.file} not found under ${root} — this check walks that entry; ` +
+          "update the workflow's entry set deliberately (deploy.sh's artifact list, the BDD dirs, " +
+          "or the drill's spawned scripts)",
       );
     }
     closure.set(file, { entry: entry.file, parent: null, baseDir: resolve(root, entry.baseDir) });
@@ -592,6 +658,67 @@ export function assertDeployEntrySet(deployShText) {
   }
 }
 
+/** Assert the drill's executed-file set still matches the entries this check walks.
+ * The drill spawns its two production scripts through `run("bun", …)` and feeds a
+ * migration to `psql`; no import edge reaches any of them, so the text is asserted
+ * the way `assertDeployEntrySet` asserts deploy.sh: a new `${HERE}` / `${REPO_ROOT}`
+ * target or an extra `bun` spawn site refuses until it is listed deliberately. */
+export function assertDrillEntrySet(drillText) {
+  const spawned = [
+    ...new Set(
+      [...drillText.matchAll(/\$\{HERE\}([\w.-]+\.(?:mjs|ts))/g)].map(
+        (match) => `${DRILL_DIR}/${match[1]}`,
+      ),
+    ),
+  ];
+  const applied = [
+    ...new Set([...drillText.matchAll(/\$\{REPO_ROOT\}([\w./-]+\.sql)/g)].map((match) => match[1])),
+  ];
+  const declared = [...DRILL_SPAWN_SCRIPTS, DRILL_SQL];
+  const found = [...new Set([...spawned, ...applied])];
+  const unlisted = missingFrom(found, declared);
+  if (unlisted.length > 0) {
+    throw new InvariantRefusal(
+      `${DRILL_ENTRY} executes ${unlisted.map((file) => `"${file}"`).join(", ")}, which this ` +
+        "check does not walk — add it to the drill entries deliberately, or the closure claim is false",
+    );
+  }
+  const missing = missingFrom(declared, found);
+  if (missing.length > 0) {
+    throw new InvariantRefusal(
+      `${DRILL_ENTRY} no longer names ${missing.map((file) => `"${file}"`).join(", ")} — the ` +
+        "drill's executed-file set moved; update DRILL_SPAWN_SCRIPTS / DRILL_SQL deliberately",
+    );
+  }
+  const bunSpawns = [...drillText.matchAll(/\brun\(\s*"bun"/g)].length;
+  if (bunSpawns !== DRILL_BUN_SPAWNS) {
+    throw new InvariantRefusal(
+      `${DRILL_ENTRY} runs \`bun\` ${bunSpawns} time(s) but this check knows ` +
+        `${DRILL_BUN_SPAWNS} spawn site(s) — a script this drill executes is outside the walked ` +
+        "entries or spawns by a form this check cannot read; list it deliberately",
+    );
+  }
+}
+
+/** The Playwright config selects the suite from a hard-coded pin, not by being read:
+ * assert the config still names the BDD dirs and the API entry this check walks, so a
+ * moved suite refuses instead of leaving the old dirs green in the closure. */
+export function assertPlaywrightSelection(configText) {
+  const pins = [
+    [BDD_FEATURES, "the BDD features selection"],
+    [BDD_STEPS, "the BDD steps selection"],
+    [API_ENTRY, "the API entry the suite boots"],
+  ];
+  for (const [needle, what] of pins) {
+    if (!configText.includes(needle)) {
+      throw new InvariantRefusal(
+        `${PLAYWRIGHT_CONFIG} no longer names ${needle} (${what}) — this check walks the suite ` +
+          "the config selects from those pinned paths; move the entry set and this check together",
+      );
+    }
+  }
+}
+
 /** The files under a repo-relative directory, POSIX separators, sorted for
  * deterministic output. A missing directory yields no files; a kept pattern that
  * pointed at it then fails its closure assertion rather than passing vacuously. */
@@ -621,9 +748,15 @@ export function e2eEntries(root) {
   ];
 }
 
-/** The entry `vps-restore-drill.yml` executes. */
+/** The entries `vps-restore-drill.yml` executes: the drill, the two scripts it
+ * spawns through `run("bun", …)`, and the migration it feeds to `psql`. The latter
+ * three have no import edge from the drill, which is why they are explicit. */
 export function drillEntries() {
-  return [{ file: DRILL_ENTRY, baseDir: "." }];
+  return [
+    { file: DRILL_ENTRY, baseDir: "." },
+    ...DRILL_SPAWN_SCRIPTS.map((file) => ({ file, baseDir: "." })),
+    { file: DRILL_SQL, baseDir: "." },
+  ];
 }
 
 export function deployEntries() {
@@ -638,14 +771,14 @@ export function deriveTestClass(classPatterns) {
   return classPatterns.filter((pattern) => !DOCS_ONLY_PATTERNS.includes(pattern));
 }
 
-/** How each policed workflow derives from the class at `POLICED_WORKFLOW`.
- * `definesClass` marks the source; `keep` names class members the workflow itself
- * executes, so it must not ignore them; `pullRequest` marks a workflow whose PR half
- * this check pins to the docs class. */
+/** How each policed workflow is checked. `keep` names class members the workflow
+ * itself executes, so it must not ignore them; `pullRequest` records whether the
+ * workflow has a PR-triggered half this check must pin to the docs class. Every spec
+ * — the class source included — is asserted against the pinned docs class plus the
+ * derived test class. */
 export const WORKFLOW_SPECS = [
   {
     file: POLICED_WORKFLOW,
-    definesClass: true,
     pullRequest: false,
     entryLabel: "deploy entry",
     entries: () => deployEntries(),
@@ -671,8 +804,9 @@ function missingFrom(a, b) {
   return a.filter((item) => !b.includes(item));
 }
 
-/** Refuse a push set that is not exactly the docs class plus the test class minus
- * this workflow's kept inputs — the class is named once, at its source. */
+/** Refuse a push set that is not exactly the pinned docs class plus the test class
+ * minus this workflow's kept inputs. The class source is asserted too: its docs half
+ * comes from the pin, not from itself, so a dropped docs pattern refuses. */
 function assertDerivedPushClass(spec, patterns, testClass) {
   const keep = spec.keep ?? [];
   const staleKeep = missingFrom(keep, testClass);
@@ -687,12 +821,22 @@ function assertDerivedPushClass(spec, patterns, testClass) {
   const missing = missingFrom(expected, patterns);
   const unexpected = missingFrom(patterns, expected);
   if (missing.length === 0 && unexpected.length === 0) return;
+  const source = spec.file === POLICED_WORKFLOW;
+  const remedy =
+    (missing.length > 0
+      ? `; missing ${missing.map((p) => `"${p}"`).join(", ")} — ${
+          source
+            ? "add it back to this workflow's own list, it is part of the pinned docs class"
+            : "add it to this workflow's own list, the source already carries it"
+        }`
+      : "") +
+    (unexpected.length > 0
+      ? `; unexpected ${unexpected.map((p) => `"${p}"`).join(", ")} — remove it here, or add ` +
+        `it at the source ${POLICED_WORKFLOW}`
+      : "");
   throw new InvariantRefusal(
-    `${spec.file}'s on.push.paths-ignore does not derive from the class at ${POLICED_WORKFLOW}` +
-      (missing.length > 0 ? `; missing ${missing.map((p) => `"${p}"`).join(", ")}` : "") +
-      (unexpected.length > 0 ? `; unexpected ${unexpected.map((p) => `"${p}"`).join(", ")}` : "") +
-      " — the class is named once at its source; apply a new member there, or record it as " +
-      "this workflow's kept execution input",
+    `${spec.file}'s on.push.paths-ignore is not the pinned docs class plus the test class ` +
+      `at ${POLICED_WORKFLOW}${remedy}`,
   );
 }
 
@@ -732,6 +876,94 @@ function assertKeptInputs(spec, closure, root) {
   }
 }
 
+/** Every `.github/workflows/*.yml` under `root`, sorted. */
+export function workflowFiles(root) {
+  const dir = join(root, WORKFLOW_DIR);
+  if (!existsSync(dir)) {
+    throw new InvariantRefusal(
+      `no ${WORKFLOW_DIR} directory under ${root} — cannot inventory the workflows`,
+    );
+  }
+  return readdirSync(dir)
+    .filter((name) => /\.ya?ml$/.test(name))
+    .sort()
+    .map((name) => `${WORKFLOW_DIR}/${name}`);
+}
+
+/** The `on.<event>.paths-ignore` filters a workflow carries, across every event it
+ * declares. Tolerates a workflow with no push trigger (a reusable one); a document
+ * it cannot read still refuses, because an unreadable workflow could be hiding a
+ * filter. */
+export function readPathFilters(text, yamlParse, where = "the workflow") {
+  const parse = yamlParse ?? runtimeYamlParser();
+  let doc;
+  try {
+    doc = parse(text);
+  } catch (error) {
+    throw new InvariantRefusal(`cannot parse ${where}: ${error.message}`);
+  }
+  if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
+    throw new InvariantRefusal(`${where} is not a mapping — cannot read its triggers`);
+  }
+  const on = doc.on ?? doc["on"] ?? doc[true];
+  if (on === null || typeof on !== "object" || Array.isArray(on)) return [];
+  return Object.entries(on)
+    .filter(
+      ([, trigger]) =>
+        trigger !== null &&
+        typeof trigger === "object" &&
+        !Array.isArray(trigger) &&
+        trigger["paths-ignore"] !== undefined,
+    )
+    .map(([event]) => `on.${event}.paths-ignore`);
+}
+
+/** Refuse a workflow that carries a filter this check does not police, and a PR half
+ * on a workflow recorded as having none; return the workflows that carry no filter —
+ * the "not policed, on purpose" inventory the coverage claim must be readable from. */
+export function inspectWorkflows(root) {
+  const known = new Map(WORKFLOW_SPECS.map((spec) => [spec.file, spec]));
+  const unpoliced = [];
+  for (const file of workflowFiles(root)) {
+    const filters = readPathFilters(readFileSync(join(root, file), "utf8"), undefined, file);
+    const spec = known.get(file);
+    if (!spec) {
+      if (filters.length > 0) {
+        throw new InvariantRefusal(
+          `${file} carries ${filters.join(", ")} but is not listed in WORKFLOW_SPECS — a ` +
+            "filtered workflow this check never reads skips while the work it gates changes, and " +
+            "a skipped run reads as success; list it there with its execution entries and kept " +
+            "inputs, or drop the filter deliberately",
+        );
+      }
+      unpoliced.push(file);
+      continue;
+    }
+    if (!spec.pullRequest && filters.includes("on.pull_request.paths-ignore")) {
+      throw new InvariantRefusal(
+        `${file} carries on.pull_request.paths-ignore but WORKFLOW_SPECS records no ` +
+          "pull_request half for it — a path-ignored workflow never reports on a PR at all, so its " +
+          "checks are absent rather than failed; record the gating decision and pin that half in " +
+          "this check, or drop the filter",
+      );
+    }
+  }
+  return unpoliced;
+}
+
+/** Refuse a closure the walk could not open: entries but no edge means the extractor
+ * saw nothing, and "0 matches" over it would certify a graph never walked. */
+function assertWalkedClosure(spec, closure, entries) {
+  if (closure.size > entries.length) return;
+  throw new InvariantRefusal(
+    `${spec.file}'s execution closure followed no import edge from its ` +
+      `${entries.length} ${entries.length === 1 ? "entry" : "entries"} ` +
+      `(${closure.size} file(s) in all) — "0 matches" over an empty graph certifies nothing; ` +
+      "model the form that executes these files or list their entries deliberately (see the " +
+      "script header's unmodelled forms)",
+  );
+}
+
 /** Verify every policed workflow against `root`; returns the evidence the OK line
  * prints and throws InvariantRefusal for any "cannot verify" state or any hit. */
 export function verify(root = REPO_ROOT) {
@@ -749,6 +981,7 @@ export function verify(root = REPO_ROOT) {
         "workflows derive their class from it, so an empty class would police them vacuously",
     );
   }
+  const unpoliced = inspectWorkflows(root);
   const files = collectRepoFiles(root);
   const workflows = [];
   for (const spec of WORKFLOW_SPECS) {
@@ -761,7 +994,12 @@ export function verify(root = REPO_ROOT) {
     }
     const text = readFileSync(workflowPath, "utf8");
     const patterns = parsePathsIgnore(text);
-    if (!spec.definesClass) assertDerivedPushClass(spec, patterns, testClass);
+    // Compile before judging the class: an unmodelled glob or a negation is an input
+    // this check cannot read, and that refusal must not be masked by a derivation one.
+    const compiled = compilePatterns(patterns);
+    // The source is asserted too: its docs half is the pinned constant, so this is
+    // the refusal that catches a docs pattern leaving staging.
+    assertDerivedPushClass(spec, patterns, testClass);
     if (spec.pullRequest) assertPullRequestDocsOnly(spec.file, text);
     if (spec.file === POLICED_WORKFLOW) {
       const deployShPath = join(root, DEPLOY_SH);
@@ -772,12 +1010,30 @@ export function verify(root = REPO_ROOT) {
       }
       assertDeployEntrySet(readFileSync(deployShPath, "utf8"));
     }
+    if (spec.file === E2E_WORKFLOW) {
+      const configPath = join(root, PLAYWRIGHT_CONFIG);
+      if (!existsSync(configPath)) {
+        throw new InvariantRefusal(
+          `${PLAYWRIGHT_CONFIG} not found — this check walks the suite that config selects`,
+        );
+      }
+      assertPlaywrightSelection(readFileSync(configPath, "utf8"));
+    }
+    if (spec.file === DRILL_WORKFLOW) {
+      const drillPath = join(root, DRILL_ENTRY);
+      if (!existsSync(drillPath)) {
+        throw new InvariantRefusal(
+          `${DRILL_ENTRY} not found — this check walks the files that drill executes`,
+        );
+      }
+      assertDrillEntrySet(readFileSync(drillPath, "utf8"));
+    }
 
     const entries = spec.entries(root);
     const { closure, looseRefs } = buildClosure(entries, root);
+    assertWalkedClosure(spec, closure, entries);
     assertKeptInputs(spec, closure, root);
 
-    const compiled = compilePatterns(patterns);
     const matched = files.flatMap((file) => {
       const hit = firstMatch(compiled, file);
       return hit ? [{ file, pattern: hit.pattern }] : [];
@@ -800,14 +1056,14 @@ export function verify(root = REPO_ROOT) {
     }
     workflows.push({ file: spec.file, patterns, matched, closure, entries, looseRefs });
   }
-  return { testClass, workflows };
+  return { testClass, workflows, unpoliced };
 }
 
 function main() {
   const flag = process.argv.indexOf("--root");
   const root = flag === -1 ? REPO_ROOT : resolve(process.argv[flag + 1]);
   try {
-    const { testClass, workflows } = verify(root);
+    const { testClass, workflows, unpoliced } = verify(root);
     for (const workflow of workflows) {
       console.log(
         `paths-ignore-invariant OK — ${workflow.file} on.push.paths-ignore ` +
@@ -818,6 +1074,7 @@ function main() {
     }
     console.log(
       `  test class derived from ${POLICED_WORKFLOW}: ${testClass.length} patterns; ` +
+        `docs class pinned at ${DOCS_ONLY_PATTERNS.length} patterns; ` +
         "pull_request filters carry the docs class only",
     );
     // The same asset can sit in several closures; count each reference once.
@@ -828,6 +1085,9 @@ function main() {
     );
     console.log(
       `  assets referenced but not files (runtime URLs, outside the graph): ${loose.size}`,
+    );
+    console.log(
+      `  not policed, on purpose (no paths-ignore): ${unpoliced.length > 0 ? unpoliced.join(", ") : "none"}`,
     );
   } catch (error) {
     if (error instanceof InvariantRefusal) {

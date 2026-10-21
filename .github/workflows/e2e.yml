@@ -8,11 +8,19 @@ name: E2E
 # either still runs E2E. GitHub skips a trigger only when EVERY changed file
 # matches an ignore pattern, so a change mixing docs/tests and code still runs.
 #
+# The colocated `*.test.ts` files this filter ignores are still a build input
+# without an import edge: `bun run build` typechecks them through
+# `apps/web/tsconfig.json`'s `include` before the webServer boots. That gap is
+# CI-caught rather than a silent skip — `bun run check` runs the same typecheck
+# before merge — and no test file enters the emitted `dist/` graph.
+#
 # pull_request keeps the docs class only: a path-ignored workflow does not fail
 # on a PR, it never reports at all, so widening that half is a gating decision,
 # not a trigger edit. scripts/check-paths-ignore-invariant.mjs refuses a wider
-# PR filter and checks this push class against the workflow's own execution
-# closure. workflow_dispatch is unaffected — an operator can always run it.
+# PR filter, checks this push class against the workflow's own execution
+# closure, and refuses a playwright.config.ts whose BDD selection moved away
+# from the dirs that closure walks. workflow_dispatch is unaffected — an
+# operator can always run it.
 on:
   pull_request:
     paths-ignore:
@@ -35,7 +43,7 @@ on:
       # two ARE this suite's input, so they are deliberately not listed. The
       # check named in the header keeps every other member in sync with
       # staging.yml and proves none of them reaches the closure this workflow
-      # executes.
+      # executes — the web build, the API entry and every BDD feature/step file.
       - "**/*.test.ts"
       - "**/*.test.mjs"
       - "**/test-utils/**"

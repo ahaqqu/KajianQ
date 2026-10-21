@@ -64,16 +64,18 @@ on:
       # list, so a rename that moves a production module into this class fails
       # the gate; and when the check cannot read this trigger it refuses
       # (non-zero) rather than passing.
-      # The class is defined once, here, and every workflow that ignores it
+      # The TEST class is defined once, here, and every workflow that ignores it
       # derives its list from these patterns rather than pasting a second copy:
       # e2e.yml ignores the class minus tests/** and playwright.config.ts (those
       # are the BDD suite and its config, so a change to them must run E2E), and
       # vps-restore-drill.yml ignores the whole class (no member is in the
-      # drill's execution closure). scripts/check-paths-ignore-invariant.mjs
-      # polices all three push triggers, proves each workflow's kept members are
-      # real closure inputs, and refuses a pull_request filter wider than the
-      # docs class — a path-ignored workflow never reports on a PR at all, so
-      # widening that half is a gating decision, not a trigger edit.
+      # drill's execution closure — its imported modules, the scripts it spawns
+      # and the migration it applies). scripts/check-paths-ignore-invariant.mjs
+      # polices all three push triggers, asserts every list against this test
+      # class plus the docs class the check pins, proves each workflow's kept
+      # members are real closure inputs, and refuses a pull_request filter that
+      # is not the docs class — a path-ignored workflow never reports on a PR at
+      # all, so widening that half is a gating decision, not a trigger edit.
       # No step in this workflow executes a test, and no test-class file
       # reaches a shipped artifact: deploy.sh builds build:web,
       # apps/api/src/boot.ts, apps/api/src/cleanup.ts and
