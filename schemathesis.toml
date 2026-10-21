@@ -1,16 +1,16 @@
 # Schemathesis configuration
 # https://docs.schemathesis.io
 
-# The /v1/chat message storability rule — U+0000 and unpaired surrogates are
-# refused with 400 invalid_request — reaches /openapi.json as a `pattern`, but
-# Schemathesis cannot generate from it: its validator rejects a pattern that
-# names UTF-16 surrogate code points, drops the pattern, and emits bodies the
-# route must refuse. The hook file reads that same published `pattern` back and
-# accepts one documented rejection only — a 400 whose `message` does not match
-# it — keeping every other rejected positive case a failure. A pattern is the
-# only JSON-Schema form the rule has, so this is the narrowest honest allowance
-# for what a schema-driven generator cannot express; the hook's docstring holds
-# the detail.
+# The chat message and feedback free-text storability rule — U+0000 and
+# unpaired surrogates are refused with 400 invalid_request — reaches
+# /openapi.json as a `pattern`, but Schemathesis cannot generate from it: its
+# validator rejects a pattern that names UTF-16 surrogate code points, drops
+# the pattern, and emits bodies the routes must refuse. The hook file reads
+# that same published `pattern` back and accepts one documented rejection only
+# — a 400 whose `message` or `freeText` does not match it — keeping every other
+# rejected positive case a failure. A pattern is the only JSON-Schema form the
+# rule has, so this is the narrowest honest allowance for what a schema-driven
+# generator cannot express; the hook's docstring holds the detail.
 hooks = "scripts/schemathesis-hooks.py"
 
 # Suppress unsupported_method: the ingress returns 405 for TRACE/CONNECT without
