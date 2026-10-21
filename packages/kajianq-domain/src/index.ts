@@ -78,6 +78,13 @@ export {
   type HadithRecord,
   type HadithSourceType,
 } from "./hadith-source";
+export {
+  HadithIdentityError,
+  identityResolver,
+  parseHadithIdentitySet,
+  type HadithIdentityGroup,
+  type HadithIdentitySet,
+} from "./hadith-identity";
 export { alignEditions, type AlignmentStats } from "./hadith-align";
 export {
   assertHadithIntegrity,

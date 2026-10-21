@@ -65,6 +65,7 @@ const harnessResult = await evalpkg.runGoldenSet(fixture, {
   sourceTypeOf: harness.sourceTypeOf,
   refusalMarkers: harness.refusalMarkers,
   citationGrammar: harness.citationGrammar,
+  citationIdentity: harness.citationIdentity,
   expansionOrigin: harness.expansionOrigin,
   ...(config.runLabel !== undefined ? { label: config.runLabel } : {}),
   budget,

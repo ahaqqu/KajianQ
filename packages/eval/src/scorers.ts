@@ -3,9 +3,11 @@ import type {
   ChunkRefLike,
   CitationFrameLike,
   CitationGrammar,
+  CitationIdentity,
   RetrievalLike,
   TraceEventLike,
 } from "./harness-types";
+import { requireCitationIdentity, resolveIdentity } from "./citation-identity";
 
 /** Deterministic scorers — retrieval recall, citation validity, refusal
  * correctness — with no LLM involvement: the metrics come from persisted
@@ -59,13 +61,15 @@ export function citationLabelsPresent(input: {
   frame?: CitationFrameLike | null;
   events?: readonly TraceEventLike[];
   grammar?: CitationGrammar;
+  identity?: CitationIdentity;
 }): string[] {
-  const { required, answerText, frame, events, grammar } = input;
+  const { required, answerText, frame, events, grammar, identity } = input;
   // An unwired grammar fails loudly at the engine's grammar entry.
   if (grammar !== undefined) requireCitationGrammar(grammar);
+  if (identity !== undefined) requireCitationIdentity(identity);
   const evidence = verifiedEvidenceLabels({ frame, events });
-  if (evidence !== undefined) return groundedLabels(required, evidence, grammar);
-  return groundedLabels(required, textCandidateLabels(answerText, grammar), grammar);
+  if (evidence !== undefined) return groundedLabels(required, evidence, grammar, identity);
+  return groundedLabels(required, textCandidateLabels(answerText, grammar), grammar, identity);
 }
 
 /** The `grounded` list of the trace's `review` event, or `undefined` when the
@@ -106,22 +110,51 @@ function textCandidateLabels(answerText: string, grammar?: CitationGrammar): str
  * the gate's own relation from the injected grammar, so the engine re-derives
  * nothing. A `null` declaration refuses on either side; without a grammar the
  * comparison stays the byte-exact substring test.
+ *
+ * A citation that is not the same row but is the same **narration** matches
+ * through the injected {@link CitationIdentity}: the identity is consulted only
+ * after the address comparison misses, and only when the required label
+ * resolves; a label the map does not carry resolves to `null` and matches
+ * nothing. That keeps the exact-row path and the fail-closed behavior for
+ * unmapped, fabricated, and unrelated citations.
  */
 function groundedLabels(
   required: readonly string[],
   evidence: readonly string[],
   grammar?: CitationGrammar,
+  identity?: CitationIdentity,
 ): string[] {
   if (grammar === undefined) {
-    return required.filter((citation) => evidence.some((label) => label.includes(citation)));
+    return required.filter(
+      (citation) =>
+        evidence.some((label) => label.includes(citation)) ||
+        sameIdentity(identity, citation, evidence),
+    );
   }
   const named = new Set(
     evidence.flatMap((label) => namedAddressesOf(label, grammar) ?? []).map(grammar.normalizeLabel),
   );
   return required.filter((citation) => {
     const addresses = namedAddressesOf(citation, grammar);
-    return addresses !== null && addresses.every((a) => named.has(grammar.normalizeLabel(a)));
+    if (addresses !== null && addresses.every((a) => named.has(grammar.normalizeLabel(a)))) {
+      return true;
+    }
+    return sameIdentity(identity, citation, evidence);
   });
+}
+
+/** Whether one required citation names the same curated identity as any
+ * evidence label. `null` on either side means the map carries no identity, and
+ * the answer is no — never a guess. */
+function sameIdentity(
+  identity: CitationIdentity | undefined,
+  citation: string,
+  evidence: readonly string[],
+): boolean {
+  if (identity === undefined) return false;
+  const requiredIdentity = resolveIdentity(identity, citation);
+  if (requiredIdentity === null) return false;
+  return evidence.some((label) => resolveIdentity(identity, label) === requiredIdentity);
 }
 
 /** The addresses one label names; `null` is a refusal, and `[]` falls back to
@@ -135,7 +168,9 @@ const namedAddressesOf = (label: string, grammar: CitationGrammar): readonly str
  * Citation validity: the fraction of the question's required citations the
  * answer's evidence contains, in the preference order
  * {@link citationLabelsPresent} owns. No required citations scores 1; without a
- * grammar the text path keeps its two-argument semantics.
+ * grammar the text path keeps its two-argument semantics. An injected
+ * {@link CitationIdentity} lets a required citation be satisfied by a parallel
+ * narration of it, never by a different one.
  */
 export function citationValidity(
   requiredCitations: readonly string[],
@@ -144,11 +179,14 @@ export function citationValidity(
     frame?: CitationFrameLike | null | undefined;
     events?: readonly TraceEventLike[];
     grammar?: CitationGrammar;
+    identity?: CitationIdentity;
   },
 ): number {
-  // Guarded before the empty-required early return, so an unwired grammar fails
-  // even on a question whose citations are trivially satisfied.
+  // Guarded before the empty-required early return, so an unwired grammar or a
+  // malformed identity resolver fails even on a question whose citations are
+  // trivially satisfied.
   if (evidence?.grammar !== undefined) requireCitationGrammar(evidence.grammar);
+  if (evidence?.identity !== undefined) requireCitationIdentity(evidence.identity);
   if (requiredCitations.length === 0) return 1;
   const present = citationLabelsPresent({
     required: requiredCitations,
@@ -156,6 +194,7 @@ export function citationValidity(
     ...(evidence?.frame !== undefined ? { frame: evidence.frame } : {}),
     ...(evidence?.events !== undefined ? { events: evidence.events } : {}),
     ...(evidence?.grammar !== undefined ? { grammar: evidence.grammar } : {}),
+    ...(evidence?.identity !== undefined ? { identity: evidence.identity } : {}),
   }).length;
   return present / requiredCitations.length;
 }

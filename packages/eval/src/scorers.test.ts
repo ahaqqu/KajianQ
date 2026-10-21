@@ -11,8 +11,14 @@ import {
 } from "./scorers";
 import { scoreQuestion } from "./harness";
 import type { GoldenQuestion } from "@app/contracts";
-import type { CitationFrameLike, CitationGrammar, TraceEventLike } from "./harness-types";
+import type {
+  CitationFrameLike,
+  CitationGrammar,
+  CitationIdentity,
+  TraceEventLike,
+} from "./harness-types";
 import { CitationGrammarError } from "./citation-grammar";
+import { CitationIdentityError } from "./citation-identity";
 
 const question: GoldenQuestion = {
   id: "gs-test-1",
@@ -296,6 +302,124 @@ describe("citationValidity", () => {
   });
 });
 
+describe("citationValidity — citation identity", () => {
+  /** The engine must not import the domain pack, so the identity is faked:
+   * one narration family, and `null` for everything the map does not carry. */
+  const family: CitationIdentity = {
+    identityOf: (label) =>
+      label === "HR. Bukhari no. 191" || label === "HR. Bukhari no. 186" ? "wudu" : null,
+  };
+  const frameOf = (labels: string[]): CitationFrameLike => ({
+    citations: labels.map((label) => ({ label })),
+  });
+
+  it("accepts a parallel narration of the required citation", () => {
+    expect(
+      citationValidity(["HR. Bukhari no. 191"], "", {
+        frame: frameOf(["HR. Bukhari no. 186"]),
+        identity: family,
+      }),
+    ).toBe(1);
+  });
+
+  it("keeps the exact-row comparison when no identity is injected", () => {
+    expect(
+      citationValidity(["HR. Bukhari no. 191"], "", {
+        frame: frameOf(["HR. Bukhari no. 186"]),
+      }),
+    ).toBe(0);
+  });
+
+  it("keeps an unrelated citation invalid", () => {
+    expect(
+      citationValidity(["HR. Bukhari no. 191"], "", {
+        frame: frameOf(["HR. Bukhari no. 5026"]),
+        identity: family,
+      }),
+    ).toBe(0);
+  });
+
+  it("keeps a required label the map cannot resolve unmatched", () => {
+    expect(
+      citationValidity(["HR. Bukhari no. 99999"], "", {
+        frame: frameOf(["HR. Bukhari no. 186"]),
+        identity: family,
+      }),
+    ).toBe(0);
+  });
+
+  it("accepts a parallel narration through the trace's grounded labels", () => {
+    expect(
+      citationValidity(["HR. Bukhari no. 191"], "", {
+        events: [
+          {
+            kind: "review",
+            stage: "reviewer",
+            detail: { verdict: "{}", grounded: ["HR. Bukhari no. 186"] },
+          },
+        ],
+        identity: family,
+      }),
+    ).toBe(1);
+  });
+
+  it("accepts a parallel narration through the answer text's citation spans", () => {
+    expect(
+      citationValidity(["HR. Bukhari no. 191"], "… HR. Bukhari no. 186 …", {
+        grammar: {
+          normalizeLabel: (label) => label,
+          labelsInText: () => ["HR. Bukhari no. 186"],
+          addressesNamedBy: (label) => [label],
+        },
+        identity: family,
+      }),
+    ).toBe(1);
+  });
+
+  it("does not let an empty frame fall back to the text, even with an identity", () => {
+    expect(
+      citationValidity(["HR. Bukhari no. 191"], "… HR. Bukhari no. 186 …", {
+        frame: frameOf([]),
+        identity: family,
+      }),
+    ).toBe(0);
+  });
+
+  it("fails loudly on a resolver that returns a non-string identity", () => {
+    const malformed = { identityOf: () => undefined } as unknown as CitationIdentity;
+    expect(() =>
+      citationValidity(["HR. Bukhari no. 191"], "", {
+        frame: frameOf(["HR. Bukhari no. 186"]),
+        identity: malformed,
+      }),
+    ).toThrow(CitationIdentityError);
+    try {
+      citationValidity(["HR. Bukhari no. 191"], "", {
+        frame: frameOf(["HR. Bukhari no. 186"]),
+        identity: malformed,
+      });
+    } catch (error) {
+      expect((error as CitationIdentityError).kind).toBe("citation_identity_malformed");
+    }
+  });
+
+  it("fails loudly on a resolver whose identity is blank", () => {
+    const blank = { identityOf: () => "" } as CitationIdentity;
+    expect(() =>
+      citationValidity(["HR. Bukhari no. 191"], "", {
+        frame: frameOf(["HR. Bukhari no. 186"]),
+        identity: blank,
+      }),
+    ).toThrow(CitationIdentityError);
+  });
+
+  it("fails loudly on a resolver with no identityOf, even with no required citations", () => {
+    expect(() => citationValidity([], "", { identity: {} as unknown as CitationIdentity })).toThrow(
+      CitationIdentityError,
+    );
+  });
+});
+
 describe("citationLabelsPresent", () => {
   const frameOf = (labels: string[]): CitationFrameLike => ({
     citations: labels.map((label) => ({ label })),
@@ -460,6 +584,23 @@ describe("scoreQuestion", () => {
     expect(outcome.passed).toBe(true);
     expect(outcome.retrievalRecall).toBe(1);
     expect(outcome.citationValidity).toBe(1);
+  });
+
+  it("passes a parallel narration through the injected identity", () => {
+    const outcome = scoreQuestion(
+      { ...question, requiredCitations: ["label-a"] },
+      "",
+      [retrievalEvent],
+      {
+        sourceTypeOf: (id) => (id === "c1" ? "source-a" : "source-b"),
+        citationIdentity: {
+          identityOf: (label) => (label === "label-a" || label === "label-b" ? "family" : null),
+        },
+      },
+      { citations: [{ label: "label-b" }] },
+    );
+    expect(outcome.citationValidity).toBe(1);
+    expect(outcome.passed).toBe(true);
   });
 
   it("fails when the required citation is missing", () => {

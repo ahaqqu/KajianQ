@@ -1,0 +1,47 @@
+{
+  "id": "hadith-identities-v0",
+  "status": "v0-draft",
+  "$comment": "Canonical matn identities for the hadith narrations the Golden Set requires. A group is one narration; its members are rows the corpus holds separately because each carries its own chain. Membership is the same report or instruction, not the same topic: wording and chain may differ, the operative content may not. The canonical label is the group's identity key; the Golden Set's required label need not be the canonical. A label outside every group is its own identity, so it can never match another. Owner-signed gate data: adding a group or a member changes what citation validity accepts.",
+  "groups": [
+    {
+      "id": "wudu-abdullah-bin-zaid",
+      "canonical": "HR. Bukhari no. 186",
+      "members": [
+        "HR. Bukhari no. 185",
+        "HR. Bukhari no. 191",
+        "HR. Bukhari no. 192",
+        "HR. Bukhari no. 197",
+        "HR. Bukhari no. 199",
+        "HR. Muslim no. 555",
+        "HR. Nasai no. 98",
+        "HR. Nasai no. 99",
+        "HR. Abu Dawud no. 119",
+        "HR. Tirmidhi no. 47"
+      ]
+    },
+    {
+      "id": "eating-with-the-right-hand",
+      "canonical": "HR. Muslim no. 5265",
+      "members": [
+        "HR. Muslim no. 5264",
+        "HR. Muslim no. 5267",
+        "HR. Malik no. 1676",
+        "HR. Abu Dawud no. 3776",
+        "HR. Tirmidhi no. 1799",
+        "HR. Tirmidhi no. 1800",
+        "HR. Ibn Majah no. 3266",
+        "HR. Ibn Majah no. 3268"
+      ]
+    },
+    {
+      "id": "purity-is-half-of-faith",
+      "canonical": "HR. Muslim no. 534",
+      "members": ["HR. Tirmidhi no. 3517", "HR. Ibn Majah no. 280", "HR. Nasai no. 2437"]
+    },
+    {
+      "id": "combining-prayers-in-travel-anas",
+      "canonical": "HR. Bukhari no. 1108",
+      "members": ["HR. Bukhari no. 1110"]
+    }
+  ]
+}

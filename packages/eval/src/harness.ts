@@ -11,6 +11,7 @@ import {
 import type {
   CitationFrameLike,
   CitationGrammar,
+  CitationIdentity,
   CostRecordLike,
   TraceEventLike,
 } from "./harness-types";
@@ -69,6 +70,11 @@ export type HarnessDeps = {
    * root (the engine stays agnostic) so scorer and gate normalize identically;
    * omitted, scoring uses the byte-exact substring check. */
   citationGrammar?: CitationGrammar;
+  /** The canonical citation-identity resolver, supplied by the composition root
+   * (the engine compares opaque keys). Omitted, citation validity keeps the
+   * exact-label comparison; supplied, a required citation is also satisfied by
+   * a parallel narration of it. */
+  citationIdentity?: CitationIdentity;
   /** The opaque `origin` label the domain pack puts on chunks its scope expansion
    * added (ADR-0045), supplied by the composition root — the engine must not
    * hard-code a caller's label. When set, each outcome records the expansion's
@@ -178,7 +184,7 @@ export function scoreQuestion(
   events: readonly TraceEventLike[],
   deps: Pick<
     HarnessDeps,
-    "sourceTypeOf" | "refusalMarkers" | "citationGrammar" | "expansionOrigin"
+    "sourceTypeOf" | "refusalMarkers" | "citationGrammar" | "citationIdentity" | "expansionOrigin"
   >,
   frame?: CitationFrameLike | null,
 ): EvalResultOutcome {
@@ -189,6 +195,7 @@ export function scoreQuestion(
     frame,
     events,
     ...(deps.citationGrammar !== undefined ? { grammar: deps.citationGrammar } : {}),
+    ...(deps.citationIdentity !== undefined ? { identity: deps.citationIdentity } : {}),
   });
   const refused = detectRefusal(events, answerText, deps.refusalMarkers ?? []);
   const grounded = groundedAnswer({ frame, events });
