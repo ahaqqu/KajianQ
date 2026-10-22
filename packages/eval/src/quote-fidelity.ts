@@ -1,3 +1,5 @@
+import type { QuoteEquivalence } from "./harness-types";
+
 /**
  * Quote fidelity: does each quoted span in an answer appear in a chunk the answer cites?
  *
@@ -6,69 +8,105 @@
  * answers the narrower, deterministic question: are the words inside quotation marks actually
  * the words of a cited chunk?
  *
- * It verifies **existence, not attribution**: a quote found in any cited chunk passes. The
- * alternative — resolving which citation a span points at — needs the answer's inline label
- * positions, and the measured misattribution rate is low enough that the simpler check is the
- * honest one to start with; a stricter scorer can refine later without changing this contract.
+ * It verifies **existence, not attribution**: a quote found in any cited chunk passes. Resolving
+ * which citation a span points at needs the answer's inline label positions; a stricter scorer
+ * can refine later without changing this contract.
  *
- * No model is involved. Experiments show a model tier cannot gate support
- * (`docs/research/experiments.md` E4), and that this check is precise (E3).
+ * The fold here is deliberately script-generic — case, punctuation, combining marks and a
+ * script's own orthographic variants. Equivalences that belong to a particular language or
+ * corpus arrive through `QuoteEquivalence` entries from the caller.
  */
 
-/** Diacritics, tatweel, and the annotation marks a script may carry. */
-const DIACRITICS = /[\u064B-\u0652\u0670\u06D6-\u06ED\u0640]/gu;
+/** Any combining mark: diacritics, annotation marks and accent marks. */
+const COMBINING_MARKS = /\p{M}+/gu;
 
-/** Orthographic variants in the scripts this corpus carries that must not decide a quote. */
-const FOLD: Readonly<Record<string, string>> = {
-  أ: "ا",
-  إ: "ا",
-  آ: "ا",
-  ى: "ي",
-  ة: "ه",
-  ؤ: "و",
-  ئ: "ي",
-};
+/** Tatweel/kashida elongates a word but carries no word of its own. */
+const TATWEEL = /\u0640/gu;
+
+/** Arabic-script variants no spelling difference may decide a quote: alef wasla, alef
+ * maksura and ta marbuta. The hamza- and maddah-carrying letters fold through the
+ * compatibility decomposition in `normaliseQuote`, which turns each into its carrier
+ * plus a mark. */
+const SCRIPT_VARIANTS = /[ٱىة]/gu;
+const SCRIPT_FOLD: Readonly<Record<string, string>> = { ٱ: "ا", ى: "ي", ة: "ه" };
+
+/** Everything that is not a letter or a number separates words. */
+const WORD_SEPARATOR = /[^\p{L}\p{N}]+/gu;
+const WORD_CHARACTER = /[\p{L}\p{N}]/u;
+const WHITESPACE_RUN = /\s+/gu;
 
 const ELLIPSIS = /\.\.\.|…/u;
 
-/** A quoted span as the answer rendered it, and where it ends. */
-export type QuotedSpan = { readonly quote: string; readonly end: number };
+/** The shortest quoted span that counts as a citation claim; shorter spans are emphasis or a
+ * quoted term, and scoring them would let typography decide the metric. */
+export const MIN_QUOTE_LENGTH = 8;
+
+/** A typographic quotation of at least {@link MIN_QUOTE_LENGTH} characters. */
+const TYPOGRAPHIC_QUOTE = new RegExp(`“([^”]{${MIN_QUOTE_LENGTH},})”`, "gu");
 
 /**
- * Fold everything that must not matter — diacritics, alef/ya/ta-marbuta variants,
- * punctuation, case, and the space Indonesian puts inside a divine epithet ("Maha Perkasa"
- * and "Mahaperkasa" are the same words).
+ * Fold everything that must not decide a quote — case, punctuation, combining marks, and a
+ * script's orthographic variants — then apply the caller's own equivalences (they see the
+ * folded, lower-cased text; give a pattern the `g` flag when it must apply repeatedly).
  */
-export function normaliseQuote(text: string): string {
-  return text
-    .replace(DIACRITICS, "")
-    .replace(/[أإآىةؤئ]/gu, (character) => FOLD[character] ?? character)
+export function normaliseQuote(
+  text: string,
+  equivalences: readonly QuoteEquivalence[] = [],
+): string {
+  let normalised = text
+    .normalize("NFKD")
+    .replace(COMBINING_MARKS, "")
+    .replace(TATWEEL, "")
     .toLowerCase()
-    .replace(/\bmaha\s+/gu, "maha")
-    .replace(/[^\p{L}\p{N}\u0600-\u06FF ]+/gu, " ")
-    .replace(/\s+/gu, " ")
+    .replace(SCRIPT_VARIANTS, (character) => SCRIPT_FOLD[character] ?? character)
+    .replace(WORD_SEPARATOR, " ")
     .trim();
+  for (const { pattern, replacement } of equivalences) {
+    normalised = normalised.replace(pattern, replacement);
+  }
+  return normalised.replace(WHITESPACE_RUN, " ").trim();
 }
 
 /**
- * True when every fragment of the quote appears, in order, inside the chunk.
+ * The first occurrence of `needle` at or after `from` that does not begin or end inside a
+ * word. A match boundary is what stops a quote from splicing onto a longer word: `nyucikan
+ * harta` must not pass inside `menyucikan harta`.
+ */
+function indexOfAligned(text: string, needle: string, from = 0): number {
+  let at = text.indexOf(needle, from);
+  while (at >= 0) {
+    const before = at === 0 ? "" : text[at - 1]!;
+    const after = text[at + needle.length] ?? "";
+    if (!WORD_CHARACTER.test(before) && !WORD_CHARACTER.test(after)) return at;
+    at = text.indexOf(needle, at + 1);
+  }
+  return -1;
+}
+
+/**
+ * True when every fragment of the quote appears, in order and on word boundaries, inside the
+ * chunk.
  *
  * The split happens **before** normalisation: normalising first erases the ellipsis and turns
  * an elided quote into one contiguous string no chunk contains.
  */
-export function quoteAppearsIn(quote: string, chunk: string): boolean {
-  const chunkText = normaliseQuote(chunk);
-  const whole = normaliseQuote(quote);
+export function quoteAppearsIn(
+  quote: string,
+  chunk: string,
+  equivalences: readonly QuoteEquivalence[] = [],
+): boolean {
+  const chunkText = normaliseQuote(chunk, equivalences);
+  const whole = normaliseQuote(quote, equivalences);
   if (whole.length === 0) return false;
-  if (chunkText.includes(whole)) return true;
+  if (indexOfAligned(chunkText, whole) >= 0) return true;
   const fragments = quote
     .split(ELLIPSIS)
-    .map(normaliseQuote)
+    .map((fragment) => normaliseQuote(fragment, equivalences))
     .filter((fragment) => fragment.length > 0);
   if (fragments.length < 2) return false;
   let position = 0;
   for (const fragment of fragments) {
-    const found = chunkText.indexOf(fragment, position);
+    const found = indexOfAligned(chunkText, fragment, position);
     if (found < 0) return false;
     position = found + fragment.length;
   }
@@ -80,34 +118,32 @@ export function quoteAppearsIn(quote: string, chunk: string): boolean {
  *
  * Typographic quotes are unambiguous and are taken first. Straight quotes are ambiguous in
  * running text — `"a" and "b"` has four — so the spans already taken are blanked, and the rest
- * is split on the straight mark, where the odd segments are the quoted ones. A span shorter
- * than eight characters is emphasis or a quoted term, not a citation claim, and is skipped.
+ * is split on the straight mark, where the odd segments are the quoted ones. An unterminated
+ * trailing segment is not a quotation and is dropped rather than scored. A span shorter than
+ * {@link MIN_QUOTE_LENGTH} is emphasis or a quoted term, not a citation claim, and is skipped.
  */
-export function quotedSpansIn(answer: string): QuotedSpan[] {
-  const spans: QuotedSpan[] = [];
+export function quotedSpansIn(answer: string): string[] {
+  const spans: string[] = [];
   const taken: Array<[number, number]> = [];
-  for (const match of answer.matchAll(/“([^”]{8,})”/gu)) {
+  for (const match of answer.matchAll(TYPOGRAPHIC_QUOTE)) {
     const start = match.index ?? 0;
-    spans.push({ quote: match[1] ?? "", end: start + match[0].length });
+    spans.push(match[1] ?? "");
     taken.push([start, start + match[0].length]);
   }
-  const blanked = [...answer]
-    .map((character, index) =>
-      taken.some(([start, end]) => index >= start && index < end) ? "\u0000" : character,
-    )
-    .join("");
-  let position = 0;
+  // Blank by UTF-16 slicing: `match.index` and `match[0].length` count UTF-16 code units, so a
+  // code-point walk would drift after an astral character and could blank the next opener.
+  let blanked = answer;
+  for (const [start, end] of taken) {
+    blanked = blanked.slice(0, start) + "\u0000".repeat(end - start) + blanked.slice(end);
+  }
+  const quoteCount = blanked.split('"').length - 1;
   for (const [index, part] of blanked.split('"').entries()) {
-    if (index % 2 === 1 && part.trim().length >= 8) {
-      spans.push({ quote: part, end: position + part.length + 1 });
+    if (index % 2 === 1 && index < quoteCount && part.trim().length >= MIN_QUOTE_LENGTH) {
+      spans.push(part);
     }
-    position += part.length + 1;
   }
   return spans;
 }
-
-/** Which chunk texts an answer offers to check against. */
-export type CitedText = { readonly label: string; readonly text: string };
 
 export type QuoteAudit = {
   /** Quoted spans found in the answer. */
@@ -125,14 +161,18 @@ export type QuoteAudit = {
  * whether "quoted nothing" is a pass, and a refusal that quotes nothing must not read as
  * verified evidence.
  */
-export function auditQuotes(answerText: string, cited: readonly CitedText[]): QuoteAudit {
+export function auditQuotes(
+  answerText: string,
+  citedTexts: readonly string[],
+  equivalences: readonly QuoteEquivalence[] = [],
+): QuoteAudit {
   const unverifiable: string[] = [];
   let quoted = 0;
   let verified = 0;
   for (const span of quotedSpansIn(answerText)) {
     quoted += 1;
-    if (cited.some((citation) => quoteAppearsIn(span.quote, citation.text))) verified += 1;
-    else unverifiable.push(span.quote);
+    if (citedTexts.some((text) => quoteAppearsIn(span, text, equivalences))) verified += 1;
+    else unverifiable.push(span);
   }
   return { quoted, verified, unverifiable };
 }

@@ -60,9 +60,11 @@ export type TraceEventLike = {
   at?: number;
 };
 
-/** The subset of the `citations` frame (ADR-0040) the harness scores with: the
- * labels the SERVER grounded against the persisted trace, never the rest of the
- * frame (Arabic, translation, badges). */
+/** The subset of the `citations` frame (ADR-0040) the harness scores with. Each input
+ * has one role: the server-grounded `label` feeds citation validity, and the citing
+ * chunk's `arabic`/`translation` text feeds quote fidelity (existence in that text, no
+ * attribution). The frame's other fields (`grade`, `machineTranslated`, `source`) are
+ * not read here. */
 export type CitationFrameLike = {
   citations: readonly {
     label: string;
@@ -93,6 +95,21 @@ export type CitationGrammar = {
    * injected from the domain pack so the engine learns no domain vocabulary.
    */
   addressesNamedBy: (label: string) => readonly string[] | null;
+};
+
+/**
+ * One language- or corpus-specific equivalence the quote scorer applies after its
+ * generic fold, injected by the composition root. The scorer folds case, punctuation
+ * and combining marks for every script; a rule such as a language's optional word
+ * space is that caller's policy, not the engine's.
+ *
+ * `pattern` sees the folded, lower-cased text (letters, numbers and single spaces), so
+ * it can be written against the words rather than their punctuation; include the `g`
+ * flag when every occurrence must be replaced.
+ */
+export type QuoteEquivalence = {
+  readonly pattern: RegExp;
+  readonly replacement: string;
 };
 
 /**

@@ -1,3 +1,5 @@
+/** The per-question scorer: the harness owns the run lifecycle, this module owns one
+ * question's verdict. */
 import type { EvalResultOutcome, GoldenQuestion } from "@app/contracts";
 import type { HarnessDeps } from "./harness";
 import { expansionProvenance, quoteFidelityOutcome } from "./harness-outcomes";
@@ -10,9 +12,6 @@ import {
   groundedAnswer,
   sourceTypeRecall,
 } from "./scorers";
-
-/** The per-question scorer, split out of `harness.ts` to respect the agentic size limits:
- * the harness owns the run lifecycle, this module owns one question's verdict. */
 
 /** Score one question from its answer text, trace events, and the citations frame
  * when the transport carried one. A question passes only when behaviour, both
@@ -33,6 +32,7 @@ export function scoreQuestion(
     | "expansionOrigin"
     | "gateAddressRecall"
     | "lookupOrigin"
+    | "quoteEquivalences"
   >,
   frame?: CitationFrameLike | null,
 ): EvalResultOutcome {
@@ -51,9 +51,6 @@ export function scoreQuestion(
     ...(deps.citationGrammar !== undefined ? { grammar: deps.citationGrammar } : {}),
     ...(deps.citationIdentity !== undefined ? { identity: deps.citationIdentity } : {}),
   });
-  // Quote fidelity is measured only when the answer quotes something: an answer that quotes
-  // nothing (a refusal, or a plain statement) has no fidelity to score, and a 1 for it would
-  // read as "its evidence checks out".
   const refused = detectRefusal(events, answerText, deps.refusalMarkers ?? []);
   const grounded = groundedAnswer({ frame, events });
   const correct = behaviorAccepted(question.expectedBehavior, refused, grounded);
@@ -69,7 +66,7 @@ export function scoreQuestion(
     sourceTypeRecall: sourceTypes,
     citationAddressRecall: addressRecall,
     citationValidity: citations,
-    ...quoteFidelityOutcome(answerText, frame),
+    ...quoteFidelityOutcome(answerText, frame, deps.quoteEquivalences),
     refused,
     ...expansionProvenance({
       expectedSourceTypes: question.expectedSourceTypes,

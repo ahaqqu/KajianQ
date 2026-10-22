@@ -1,13 +1,17 @@
 import type { EvalResultOutcome, EvalRunReport, GoldenQuestion, GoldenSet } from "@app/contracts";
 import { Budget, BudgetExceededError } from "./budget";
 import { ledgerFailureNote, skippedOutcome } from "./harness-outcomes";
+import { scoreQuestion } from "./harness-score";
 import type {
   CitationFrameLike,
   CitationGrammar,
   CitationIdentity,
   CostRecordLike,
+  QuoteEquivalence,
   TraceEventLike,
 } from "./harness-types";
+
+export { scoreQuestion } from "./harness-score";
 
 /** EvalHarness: run a Golden Set against a chat target, score each question
  * deterministically, persist per-run results, and cap cost. Transport-agnostic:
@@ -84,6 +88,10 @@ export type HarnessDeps = {
    * lookup added (ADR-0058). Supplying it makes the provenance block record a
    * label-only question's lookup contribution; the engine never names the label. */
   lookupOrigin?: string;
+  /** Language- or corpus-specific quote equivalences, supplied by the composition
+   * root and applied after the scorer's generic fold, so the engine ships no language
+   * policy. Omitted, quotes are compared under the generic fold alone. */
+  quoteEquivalences?: readonly QuoteEquivalence[];
   label?: string;
   now?: () => number;
 };
@@ -180,10 +188,6 @@ export async function runGoldenSet(set: GoldenSet, deps: HarnessDeps): Promise<H
   return { runId, passed, failed, skipped, budgetExceeded, results };
 }
 
-import { scoreQuestion } from "./harness-score";
-
-export { scoreQuestion } from "./harness-score";
-
 /** The persisted `eval_runs.report` payload (shared with the CLI). */
 export type BuildReportRun = {
   runId: string;
@@ -204,6 +208,9 @@ export type BuildReportRun = {
 export function buildReport(set: GoldenSet, run: BuildReportRun): EvalRunReport {
   const mean = (xs: readonly number[]): number | null =>
     xs.length === 0 ? null : xs.reduce((a, b) => a + b, 0) / xs.length;
+  const quoteFidelity = run.scored.flatMap((r) =>
+    r.quoteFidelity === undefined ? [] : [r.quoteFidelity],
+  );
   return {
     runId: run.runId,
     setId: set.id,
@@ -222,9 +229,10 @@ export function buildReport(set: GoldenSet, run: BuildReportRun): EvalRunReport 
       ),
     ),
     meanCitationValidity: mean(run.scored.map((r) => r.citationValidity)),
-    meanQuoteFidelity: mean(
-      run.scored.flatMap((r) => (r.quoteFidelity === undefined ? [] : [r.quoteFidelity])),
-    ),
+    meanQuoteFidelity: mean(quoteFidelity),
+    // The mean's denominator, so a perfect mean over two answers cannot read as one over
+    // a hundred; absent when no answer was measured, like the mean's own null.
+    ...(quoteFidelity.length > 0 ? { quoteFidelityMeasured: quoteFidelity.length } : {}),
     costMicroUsd: run.costMicroUsd,
     budgetExceeded: run.budgetExceeded,
     results: [...run.results],

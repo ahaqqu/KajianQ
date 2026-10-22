@@ -231,7 +231,7 @@ export function printSummary(
           ]
         : []),
       `  mean citation validity: ${mean(scored.map((x) => x.citationValidity))?.toFixed(3) ?? "n/a"}`,
-      `  mean quote fidelity: ${mean(quoteMeasured.map((x) => x.quoteFidelity))?.toFixed(3) ?? "n/a"} (${quoteMeasured.length} of ${scored.length} answers quoted)`,
+      `  mean quote fidelity: ${mean(quoteMeasured.map((x) => x.quoteFidelity))?.toFixed(3) ?? "n/a"} (${quoteMeasured.length} of ${scored.length} answers measured)`,
       `  cost: ${(costMicroUsd / 1e6).toFixed(6)} USD  budget exceeded: ${result.budgetExceeded}`,
       ...expansionLines(scored),
       ...failureLines(failed, questions),

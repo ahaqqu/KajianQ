@@ -52,6 +52,25 @@ describe("EvalResultOutcomeSchema", () => {
     expect(v.safeParse(EvalResultOutcomeSchema, withoutRecall).success).toBe(false);
   });
 
+  it("parses a pre-metric outcome without the quote-fidelity field", () => {
+    const parsed = v.parse(EvalResultOutcomeSchema, PRE_CHANGE_OUTCOME);
+    expect(parsed.quoteFidelity).toBeUndefined();
+  });
+
+  it("parses and preserves a quote-fidelity measurement", () => {
+    const parsed = v.parse(EvalResultOutcomeSchema, { ...CURRENT_OUTCOME, quoteFidelity: 0.5 });
+    expect(parsed.quoteFidelity).toBe(0.5);
+  });
+
+  it("rejects a quote fidelity outside 0..1", () => {
+    expect(
+      v.safeParse(EvalResultOutcomeSchema, { ...CURRENT_OUTCOME, quoteFidelity: 1.5 }).success,
+    ).toBe(false);
+    expect(
+      v.safeParse(EvalResultOutcomeSchema, { ...CURRENT_OUTCOME, quoteFidelity: -0.1 }).success,
+    ).toBe(false);
+  });
+
   it("carries the scope expansion's contribution when the scoped path ran (#243 C1)", () => {
     const parsed = v.parse(EvalResultOutcomeSchema, {
       ...CURRENT_OUTCOME,
@@ -141,6 +160,54 @@ describe("EvalResultOutcomeSchema", () => {
     expect(parsed.results[0]?.expansion?.fusedOnlySourceTypeRecall).toBe(0);
     expect(parsed.meanSourceTypeRecall).toBe(1);
     expect(parsed.meanCitationAddressRecall).toBe(1);
+  });
+
+  it("round-trips a present quote-fidelity mean and its measured count", () => {
+    const parsed = v.parse(EvalRunReportSchema, {
+      runId: "r1",
+      setId: "golden-set-v0",
+      startedAt: 1,
+      finishedAt: 2,
+      questions: 1,
+      passed: 1,
+      failed: 0,
+      skipped: 0,
+      meanSourceTypeRecall: 1,
+      meanCitationValidity: 1,
+      meanQuoteFidelity: 0.5,
+      quoteFidelityMeasured: 2,
+      costMicroUsd: 0,
+      budgetExceeded: false,
+      results: [{ ...CURRENT_OUTCOME, quoteFidelity: 0.5 }],
+      costs: [],
+    });
+    expect(parsed.meanQuoteFidelity).toBe(0.5);
+    expect(parsed.quoteFidelityMeasured).toBe(2);
+    expect(parsed.results[0]?.quoteFidelity).toBe(0.5);
+  });
+
+  it("reads a report whose quote-fidelity mean is null and carries no count", () => {
+    const parsed = v.parse(EvalRunReportSchema, {
+      runId: "r1",
+      setId: "golden-set-v0",
+      startedAt: 1,
+      finishedAt: 2,
+      questions: 1,
+      passed: 1,
+      failed: 0,
+      skipped: 0,
+      meanSourceTypeRecall: 1,
+      meanCitationValidity: 1,
+      meanQuoteFidelity: null,
+      costMicroUsd: 0,
+      budgetExceeded: false,
+      results: [CURRENT_OUTCOME],
+      costs: [],
+    });
+    // `null` is a measured "nothing to average", distinct from a pre-metric report
+    // where both fields are absent.
+    expect(parsed.meanQuoteFidelity).toBeNull();
+    expect(parsed.quoteFidelityMeasured).toBeUndefined();
   });
 
   it("reads a pre-change report, whose metric names and columns predate this contract", () => {

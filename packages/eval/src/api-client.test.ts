@@ -132,6 +132,20 @@ describe("parseCitationsFrame", () => {
     ).toEqual({ citations: [{ label: "kept" }] });
   });
 
+  it("keeps each citation's arabic and translation text for quote fidelity", () => {
+    expect(
+      parseCitationsFrame(
+        '{"citations":[{"label":"alpha","arabic":"asl","translation":"terjemahan"},{"label":"beta","arabic":"asl-2"},{"label":"gamma","translation":""}]}',
+      ),
+    ).toEqual({
+      citations: [
+        { label: "alpha", arabic: "asl", translation: "terjemahan" },
+        { label: "beta", arabic: "asl-2" },
+        { label: "gamma" },
+      ],
+    });
+  });
+
   it("returns null for junk rather than throwing", () => {
     expect(parseCitationsFrame("junk")).toBeNull();
   });

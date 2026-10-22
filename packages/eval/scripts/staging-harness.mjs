@@ -23,6 +23,7 @@ import { BudgetExceededError, postChatSse } from "@app/eval";
 import {
   CITATION_LOOKUP_ORIGIN,
   DEFAULT_REFUSALS,
+  QUOTE_EQUIVALENCES,
   SCOPE_EXPANSION_ORIGIN,
   addressesNamedBy,
   citationCandidatesIn,
@@ -209,5 +210,8 @@ export async function createStagingHarness(config, budget) {
     citationIdentity: CITATION_IDENTITY,
     expansionOrigin: EXPANSION_ORIGIN,
     lookupOrigin: LOOKUP_ORIGIN,
+    // The language's own quote-normalisation equivalences, owned by the domain pack
+    // (`QUOTE_EQUIVALENCES`) and injected here so the engine's fold stays generic.
+    quoteEquivalences: QUOTE_EQUIVALENCES,
   };
 }

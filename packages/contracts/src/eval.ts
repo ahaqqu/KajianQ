@@ -1,5 +1,9 @@
 import * as v from "valibot";
-import { EvalResultOutcomeSchema, ExpectedBehaviorSchema } from "./eval-outcome";
+import {
+  EvalResultOutcomeSchema,
+  ExpectedBehaviorSchema,
+  type EvalResultOutcome,
+} from "./eval-outcome";
 import { CostRecordSchema, type CostRecord } from "./trace";
 
 /**
@@ -57,78 +61,8 @@ export const GoldenSetSchema = v.object({
 
 export type GoldenSet = v.InferOutput<typeof GoldenSetSchema>;
 
-/** The per-question result verdict the harness writes. */
-export type EvalResultOutcome = {
-  questionId: string;
-  expectedBehavior: "answer" | "refuse";
-  /** True when the question passed the run's gate: the expected behaviour plus every
-   * dimension that run gated on. The deployed smoke reports, but does not gate on,
-   * citation-address recall while a known retrieval gap stands. */
-  passed: boolean;
-  /**
-   * Source-type recall: the fraction of the question's expected source types
-   * found among the retrieval event's chunks (0..1). It answers "did retrieval
-   * reach the right kind of source", not "did it reach the required address".
-   */
-  sourceTypeRecall: number;
-  /**
-   * Citation-address recall: the fraction of the question's required citations
-   * whose **specific address** the retrieval event's chunks carry (0..1), in
-   * the citation grammar's comparison form. Every required citation is
-   * required; an empty list scores 1. Absent only on rows persisted before the
-   * metric existed — those runs never measured it.
-   */
-  citationAddressRecall?: number | undefined;
-  /** Fraction of required citations present in the answer (0..1). */
-  citationValidity: number;
-  /**
-   * Quote fidelity: the fraction of the answer's quoted spans that appear, in order, in at
-   * least one chunk the answer cites (0..1). Absent when the answer quoted nothing — a refusal
-   * that quotes nothing has no fidelity to measure, and must not read as verified evidence.
-   * Verifies existence, not attribution: a span found in any cited chunk counts.
-   */
-  quoteFidelity?: number | undefined;
-  /** Whether the scorer saw a refusal (a trace `refusal` event or refusal text). */
-  refused: boolean;
-  /**
-   * True when the question never scored (transport/scoring failure) —
-   * excluded from the report's scored means and never counted as a scored
-   * failure.
-   */
-  skipped?: boolean | undefined;
-  /**
-   * Deterministic-path provenance, when the question's retrieval used one.
-   * `sourceTypeRecall` never inspects a ref's `origin` label, so a question that
-   * names a reference is satisfied **by construction** whenever a deterministic
-   * read works, and a fused-track regression on exactly those questions is
-   * invisible in `sourceTypeRecall` alone. This block makes it visible,
-   * deterministically: `fusedOnlySourceTypeRecall` is what the refs with no
-   * origin label score — a number below `sourceTypeRecall` means a deterministic
-   * arm carried the question. `chunks` is the **scope** read's count; `lookup`
-   * is the citation-label lookup's own contribution, present exactly when that
-   * path ran. Absent = no deterministic read was recorded.
-   */
-  expansion?:
-    | {
-        chunks: number;
-        fusedOnlySourceTypeRecall: number;
-        /** The lookup's own contribution (ADR-0058); the trace event's fields. */
-        lookup?:
-          | {
-              returned: number;
-              missing: number;
-              dropped: number;
-              truncated: boolean;
-              carriedSourceTypes: string[];
-            }
-          | undefined;
-      }
-    | undefined;
-  /** Optional note (e.g. which required citation was missing). */
-  notes?: string[] | undefined;
-};
-
 export { EvalResultOutcomeSchema, ExpectedBehaviorSchema } from "./eval-outcome";
+export type { EvalResultOutcome } from "./eval-outcome";
 
 /**
  * The aggregate report of one harness run (kajianq-traceability rule 4: eval
@@ -156,11 +90,19 @@ export type EvalRunReport = {
   /** Mean citation validity over scored questions (null when none scored). */
   meanCitationValidity: number | null;
   /**
-   * Mean quote fidelity over the answers that quoted something (0..1), or null when none did.
-   * Per-question scores live in `results`; an answer that quoted nothing is excluded rather
-   * than counted as perfect.
+   * Mean quote fidelity over the scored answers that carried a measurement (0..1), or null
+   * when none did. `quoteFidelityMeasured` is its denominator: a perfect mean over two
+   * answers must not read as a perfect mean over a hundred. Per-question scores live in
+   * `results`; an answer that quoted nothing is excluded rather than counted as perfect.
+   * Report-only: no gate reads it.
    */
   meanQuoteFidelity?: number | null | undefined;
+  /**
+   * How many scored answers carried a `quoteFidelity` measurement — the denominator of
+   * `meanQuoteFidelity`. Absent when none was measured, and on reports written before the
+   * field existed.
+   */
+  quoteFidelityMeasured?: number | undefined;
   /** Total spend (harness + pipeline traces triggered), in micro-USD. */
   costMicroUsd: number;
   /** True when the run aborted early because the budget cap was hit. */
@@ -191,6 +133,7 @@ const EvalRunReportInputSchema = v.object({
   ),
   meanCitationValidity: v.nullable(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
   meanQuoteFidelity: v.optional(v.nullable(v.pipe(v.number(), v.minValue(0), v.maxValue(1)))),
+  quoteFidelityMeasured: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
   costMicroUsd: v.pipe(v.number(), v.integer(), v.minValue(0)),
   budgetExceeded: v.boolean(),
   results: v.array(EvalResultOutcomeSchema),
@@ -226,6 +169,9 @@ export const EvalRunReportSchema = v.pipe(
     meanCitationValidity: input.meanCitationValidity,
     ...(input.meanQuoteFidelity !== undefined
       ? { meanQuoteFidelity: input.meanQuoteFidelity }
+      : {}),
+    ...(input.quoteFidelityMeasured !== undefined
+      ? { quoteFidelityMeasured: input.quoteFidelityMeasured }
       : {}),
     costMicroUsd: input.costMicroUsd,
     budgetExceeded: input.budgetExceeded,
