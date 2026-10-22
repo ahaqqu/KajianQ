@@ -351,6 +351,7 @@ export const CLAIM_ROOTS = [
   "scripts",
   "docs",
   "adr",
+  "research",
   ".agents",
   ".zcode",
   ".githooks",

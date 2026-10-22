@@ -57,3 +57,15 @@ would mean re-embedding 42k rows of a paid corpus.
 
 `decision-brief.md` is the ask: four decisions, in the order the measurements support. Nothing
 here is binding until the owner accepts it and it becomes an ADR.
+
+## Reviewing this branch
+
+The branch passes the repository's gates: `bun run check`, `bun run lint`, `bun run test`,
+`bun run boundary`, `bun run agentic-limits`, `bun run size-limit`, `bun run openapi:check` and
+`bun run docs:links`. The research tree is a registered claim root, so its documents are
+link-checked with the rest.
+
+Nothing here is committed to `main`, and no pull request is open. The three typed modules are
+research artefacts under `research/`, not package code: they have tests and no production
+importer, which is why they have not been moved into `packages/` — that move belongs with the
+implementation that gives them a caller.
