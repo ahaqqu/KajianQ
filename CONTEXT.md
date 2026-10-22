@@ -41,7 +41,7 @@ A general Islamic legal/ethical maxim (e.g., _yusr_ "ease", _rahmah_ "mercy", _d
 _Avoid_: value, theme, concept (ambiguous)
 
 **Principle Index**:
-The curated table of ~10–20 Principles with verified source anchors (Quran verses, hadith, kitab passages), retrieved alongside specific rulings so answers keep the big picture.
+The planned curated table of ~10–20 Principles with verified source anchors (Quran verses, hadith, kitab passages), to be retrieved alongside specific rulings so answers keep the big picture; the table schema exists, but no entries do yet.
 _Avoid_: principle table, rules index
 
 **Smart Router**:
@@ -102,11 +102,11 @@ The versioned collection of Indonesian/English test questions with expected sour
 _Avoid_: eval set, test set (unqualified)
 
 **Terminology Glossary**:
-The bilingual terminology **concept graph** mapping Indonesian and Arabic religious terms to shared language-neutral concept nodes with typed relations (broader/narrower/related/part_of), living in Postgres (`concept`, `lemma`, `concept_relation`, `lemma_evidence` tables). Built via LLM extraction from aligned Quran pairs with human review; seeded from license-safe resources (QSAC, Quranic Arabic Corpus, Arabic WordNet, Wordnet Bahasa). Supersedes the flat bilingual term table (ADR-0014). Used for Query Expansion.
+The planned bilingual terminology **concept graph** mapping Indonesian and Arabic religious terms to shared language-neutral concept nodes with typed relations (broader/narrower/related/part_of); its schema lives in Postgres (`concept`, `lemma`, `concept_relation`, `lemma_evidence` tables), but it holds no data and has no ingestion path or consumer yet. To be built via LLM extraction from aligned Quran pairs with human review; seeded from license-safe resources (QSAC, Quranic Arabic Corpus, Arabic WordNet, Wordnet Bahasa). Supersedes the flat bilingual term table (ADR-0014). Planned for Query Expansion.
 _Avoid_: dictionary (ambiguous with generic dictionaries), glossary table (superseded — implies the flat variant-table model)
 
 **Query Expansion**:
-Smart Router stage-2 augmentation that emits Arabic term variants from the Terminology Glossary as an additional retrieval channel alongside the Indonesian sub-queries, fused via RRF. The router LLM receives the relevant concept slice (1–2 hop subgraph) as prompt context and picks contextually appropriate Arabic expansion terms; expansion candidates are recorded in the Trace. Expansion only — never replaces the original user query; never whole-query translation (rejected in favour of expansion; ADR-0014).
+Planned Smart Router stage-2 augmentation that will emit Arabic term variants from the Terminology Glossary as an additional retrieval channel alongside the Indonesian sub-queries, fused via RRF. The router LLM will receive the relevant concept slice (1–2 hop subgraph) as prompt context and pick contextually appropriate Arabic expansion terms; expansion candidates will be recorded in the Trace. Expansion only — never replaces the original user query; never whole-query translation (rejected in favour of expansion; ADR-0014).
 _Avoid_: query translation (a different, rejected mechanism)
 
 **Deep Think**:
