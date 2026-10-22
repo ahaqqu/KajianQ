@@ -6,11 +6,11 @@ import type { KajianQFilters } from "./filters";
 import { routedQuery } from "./test-utils/routed-query";
 
 /**
- * Filter relaxation: the router's `madzhab`/`grade`/`textLayer` filters are HINTS
- * inferred by the cheap-tier model, which does not reliably obey the prompt's "leave
- * unconstrained attributes empty" — a hint that empties the result set is wrong, not
- * strict. The retriever retries once with the hint given up, and records the drop: a
- * silent fallback would hide the machinery the trace exists to expose.
+ * Filter relaxation: the router's `grade` filter is a HINT inferred by the
+ * cheap-tier model, which does not reliably obey the prompt's "leave
+ * unconstrained attributes empty" — a hint that empties the result set is wrong,
+ * not strict. The retriever retries with the hint given up, and records the drop:
+ * a silent fallback would hide the machinery the trace exists to expose.
  */
 
 const cost = { modelId: "m", tokensIn: 1, tokensOut: 1, latencyMs: 1, costMicroUsd: 1 };
@@ -64,12 +64,10 @@ const routed = (filters: KajianQFilters) => routedQuery("apa maksud ayat kursi",
 describe("retriever filter relaxation", () => {
   it("retries unfiltered when the inferred filters match nothing, and records the drop", async () => {
     const { retriever, calls, recorded, run } = makeRetriever({ hitsWhenFiltered: 0 });
-    const chunks = await run<{ id: string }[]>(
-      retriever.retrieve(routed({ textLayer: ["sharh"] })),
-    );
+    const chunks = await run<{ id: string }[]>(retriever.retrieve(routed({ grade: ["sahih"] })));
 
     expect(chunks.length).toBeGreaterThan(0);
-    expect(calls[0]).toEqual({ textLayer: ["sharh"] });
+    expect(calls[0]).toEqual({ grade: ["sahih"] });
     expect(calls[1]).toEqual({});
 
     const relaxed = recorded.filter((e) => e.kind === "filter_relaxed");
@@ -163,27 +161,27 @@ describe("filter relaxation gives up one dimension at a time", () => {
   };
 
   it("retries the WHOLE record once when no single hint is at fault", async () => {
-    // Two dimensions unsatisfiable at once: every per-dimension probe still carries the
-    // other dead one and returns nothing, so the sweep alone would leave the run
-    // searching a record that matches no rows.
-    const { store, calls } = makeStore(["principleTags", "textLayer"]);
+    // Two dimensions unsatisfiable at once: every per-dimension probe still carries
+    // the other dead one and returns nothing, so the sweep alone would leave the run
+    // searching a record that matches no rows. Two such dimensions are a real state —
+    // a source no row carries and a grade no row carries.
+    const { store, calls } = makeStore(["sourceType", "grade"]);
     const recorded: { kind: string }[] = [];
     const chunks = await runWith<{ id: string }[]>(store, recorded, {
-      principleTags: ["yusr"],
-      textLayer: ["sharh"],
-      grade: ["sahih"],
+      sourceType: ["principle"],
+      grade: ["mutawatir"],
     });
 
     // The probes run in the declared order, each omitting exactly one dimension.
     expect(calls.slice(0, 4)).toEqual([
-      { principleTags: ["yusr"], textLayer: ["sharh"], grade: ["sahih"] },
-      { textLayer: ["sharh"], grade: ["sahih"] },
-      { principleTags: ["yusr"], grade: ["sahih"] },
-      { principleTags: ["yusr"], textLayer: ["sharh"] },
+      { sourceType: ["principle"], grade: ["mutawatir"] },
+      { sourceType: ["principle"] },
+      { grade: ["mutawatir"] },
+      {},
     ]);
-    // Then ONE record-level retry with `{}`, adopted: the record as a SET was what matched
-    // nothing. It is recorded as a whole-record drop instead of a silent widening.
-    expect(calls[4]).toEqual({});
+    // The last of those is ONE record-level retry with `{}`, adopted: the record as a
+    // SET was what matched nothing. It is recorded as a whole-record drop instead of
+    // a silent widening.
     expect(chunks.length).toBeGreaterThan(0);
 
     const relaxed = recorded.filter((e) => e.kind === "filter_relaxed") as unknown as {
@@ -195,28 +193,28 @@ describe("filter relaxation gives up one dimension at a time", () => {
       };
     }[];
     expect(relaxed.map((e) => [e.detail.dropped, e.detail.adopted])).toEqual([
-      [{ principleTags: ["yusr"] }, false],
-      [{ textLayer: ["sharh"] }, false],
-      [{ grade: ["sahih"] }, false],
+      [{ grade: ["mutawatir"] }, false],
+      [{ sourceType: ["principle"] }, false],
       // Every live dimension at once: the record-level last resort.
-      [{ principleTags: ["yusr"], textLayer: ["sharh"], grade: ["sahih"] }, true],
+      [{ sourceType: ["principle"], grade: ["mutawatir"] }, true],
     ]);
     expect(relaxed.at(-1)?.detail.retained).toEqual({});
     expect(relaxed.at(-1)?.detail.hits).toBeGreaterThan(0);
 
     // Adopted for the RUN: the remaining searches run unfiltered rather than re-probing.
-    expect(calls).toHaveLength(8);
+    expect(calls).toHaveLength(7);
     for (const call of calls.slice(4)) expect(call).toEqual({});
   });
 
   it("gives up only the dimension that matched nothing, and records what survived", async () => {
-    const { store, calls } = makeStore(["textLayer"]);
+    const { store, calls } = makeStore(["sourceType"]);
     const recorded: { kind: string }[] = [];
-    await runWith(store, recorded, { textLayer: ["sharh"], grade: ["sahih"] });
+    await runWith(store, recorded, { sourceType: ["principle"], grade: ["sahih"] });
 
-    expect(calls[0]).toEqual({ textLayer: ["sharh"], grade: ["sahih"] });
-    expect(calls[1]).toEqual({ grade: ["sahih"] });
-    for (const call of calls.slice(1)) expect(call).toEqual({ grade: ["sahih"] });
+    expect(calls[0]).toEqual({ sourceType: ["principle"], grade: ["sahih"] });
+    expect(calls[1]).toEqual({ sourceType: ["principle"] }); // probe: drop grade
+    expect(calls[2]).toEqual({ grade: ["sahih"] }); // probe: drop sourceType — hits
+    for (const call of calls.slice(2)) expect(call).toEqual({ grade: ["sahih"] });
 
     const relaxed = recorded.filter((e) => e.kind === "filter_relaxed") as unknown as {
       detail: {
@@ -226,26 +224,29 @@ describe("filter relaxation gives up one dimension at a time", () => {
         adopted: boolean;
       };
     }[];
-    expect(relaxed).toHaveLength(1);
-    expect(relaxed[0]?.detail.dropped).toEqual({ textLayer: ["sharh"] });
-    expect(relaxed[0]?.detail.retained).toEqual({ grade: ["sahih"] });
-    expect(relaxed[0]?.detail.hits).toBeGreaterThan(0);
-    expect(relaxed[0]?.detail.adopted).toBe(true);
+    // The probe that changed nothing is on the trace beside the adopted drop.
+    expect(relaxed.map((e) => [e.detail.dropped, e.detail.adopted])).toEqual([
+      [{ grade: ["sahih"] }, false],
+      [{ sourceType: ["principle"] }, true],
+    ]);
+    expect(relaxed[1]?.detail.retained).toEqual({ grade: ["sahih"] });
+    expect(relaxed[1]?.detail.hits).toBeGreaterThan(0);
   });
 
   it("learns the drop once for the run, not once per sub-query per track", async () => {
-    const { store, calls } = makeStore(["textLayer"]);
-    await runWith(store, [], { textLayer: ["sharh"], grade: ["sahih"] });
+    const { store, calls } = makeStore(["grade"]);
+    await runWith(store, [], { sourceType: ["quran"], grade: ["sahih"] });
 
     // The adopted record carries into the second sub-query and the fallback track, so a
     // wrong hint costs one extra search for the run, not one per branch.
     expect(calls).toHaveLength(5);
-    expect(calls.filter((c) => "textLayer" in c)).toHaveLength(1);
+    expect(calls.filter((c) => "grade" in c)).toHaveLength(1);
   });
 
   it("keeps a satisfiable hint and probes past it to the dimension that is actually blocking", async () => {
-    // The declared order would give up `grade` first and widen a sahih-screened question
-    // over dhaif material for no reason; only the drop that helped is adopted.
+    // The declared order gives up `grade` first; dropping it does not help here, so
+    // the probe is discarded and only the drop that helped — the source selection —
+    // is adopted. A blind whole-record retry could not tell the two apart.
     const { store, calls } = makeStore(["sourceType"]);
     const recorded: { kind: string }[] = [];
     await runWith(store, recorded, { sourceType: ["principle"], grade: ["sahih"] });
@@ -289,11 +290,11 @@ describe("filter relaxation gives up one dimension at a time", () => {
       listDocChildNeighboursByChildIds: () => Effect.succeed([]),
     };
 
-    const chunks = await runWith<{ id: string }[]>(store, recorded, { textLayer: ["sharh"] });
+    const chunks = await runWith<{ id: string }[]>(store, recorded, { grade: ["sahih"] });
 
     // One unfiltered search, and it is the rescue: the run REACHES a `{}` search instead
     // of refusing at the filtered one.
-    expect(calls[0]).toEqual({ textLayer: ["sharh"] });
+    expect(calls[0]).toEqual({ grade: ["sahih"] });
     expect(calls[1]).toEqual({});
     expect(calls.filter((call) => Object.keys(call).length === 0)).toHaveLength(1);
     expect(chunks).toHaveLength(0);
@@ -307,45 +308,9 @@ describe("filter relaxation gives up one dimension at a time", () => {
       };
     }[];
     expect(relaxed).toHaveLength(1);
-    expect(relaxed[0]?.detail.dropped).toEqual({ textLayer: ["sharh"] });
+    expect(relaxed[0]?.detail.dropped).toEqual({ grade: ["sahih"] });
     expect(relaxed[0]?.detail.retained).toEqual({});
     expect(relaxed[0]?.detail.hits).toBe(0);
     expect(relaxed[0]?.detail.adopted).toBe(false);
-  });
-
-  it("still issues the record-level rescue at the two-live-dimension boundary", async () => {
-    // The boundary of the guard above: two live dimensions, neither individually at fault,
-    // so `{}` is genuinely untried and the rescue must fire — a tighter guard would
-    // silently turn this back into a refusal.
-    const { store, calls } = makeStore(["principleTags", "textLayer"]);
-    const recorded: { kind: string }[] = [];
-    const chunks = await runWith<{ id: string }[]>(store, recorded, {
-      principleTags: ["yusr"],
-      textLayer: ["sharh"],
-    });
-
-    expect(calls.slice(0, 3)).toEqual([
-      { principleTags: ["yusr"], textLayer: ["sharh"] },
-      { textLayer: ["sharh"] },
-      { principleTags: ["yusr"] },
-    ]);
-    expect(calls[3]).toEqual({});
-    expect(chunks.length).toBeGreaterThan(0);
-
-    const relaxed = recorded.filter((e) => e.kind === "filter_relaxed") as unknown as {
-      detail: {
-        dropped: Record<string, string[]>;
-        retained: Record<string, string[]>;
-        hits: number;
-        adopted: boolean;
-      };
-    }[];
-    expect(relaxed.map((e) => [e.detail.dropped, e.detail.adopted])).toEqual([
-      [{ principleTags: ["yusr"] }, false],
-      [{ textLayer: ["sharh"] }, false],
-      // Every live dimension at once — the record-level last resort, adopted.
-      [{ principleTags: ["yusr"], textLayer: ["sharh"] }, true],
-    ]);
-    expect(relaxed.at(-1)?.detail.retained).toEqual({});
   });
 });

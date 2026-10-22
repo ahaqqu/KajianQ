@@ -1,7 +1,7 @@
 import type { SubQuery } from "@app/rag-core";
 import { entriesToFilters, filterEntries } from "./chat-filter-policy";
 import type { KajianQFilters, RoutableSource } from "./filters";
-import type { Intent, PrincipleTag, SubjectArea, SubQueryRole } from "./taxonomy";
+import type { Intent, SubjectArea, SubQueryRole } from "./taxonomy";
 
 /**
  * Smart Router stage 3: source routing — the rules that turn the router's
@@ -32,17 +32,16 @@ import type { Intent, PrincipleTag, SubjectArea, SubQueryRole } from "./taxonomy
  * {@link SourceRoleNotExpressibleError} instead of contributing nothing quietly.
  *
  * An **empty category selection stays empty**, so a role may add to it but never
- * turn "every source" into a filter; and selecting a source is **not** filtering by
- * a Principle tag — the tag filter is the model's classification, the selection is
- * which index to read, and a trace reader must tell them apart.
+ * turn "every source" into a filter; and selecting a source is **not** filtering
+ * by a Principle tag — the tag is the model's classification and stays on the
+ * Trace, the selection is which index to read, and a trace reader must tell them
+ * apart.
  */
 
 export type SourceRoutingInput = {
   intent: Intent;
   category?: SubjectArea;
   needsPrinciple: boolean;
-  /** The Principle tags the reply named, already narrowed to the vocabulary. */
-  principleTags: readonly PrincipleTag[];
   filters: KajianQFilters;
   /**
    * The parts retrieval will actually fan out over — `decomposeQuery`'s output,
@@ -123,17 +122,14 @@ export function roleSources(role: string): readonly RoutableSource[] {
 }
 
 /**
- * Decide the filters retrieval runs with: the reply's hints plus this stage's
- * source selection and Principle tags. A dimension the caller set explicitly wins
- * — the router never overrules the person asking the question.
+ * Decide the filters retrieval runs with: the reply's hinted dimensions plus
+ * this stage's source selection. A dimension the caller set explicitly wins —
+ * the router never overrules the person asking the question.
  */
 export function routeFilters(input: SourceRoutingInput): KajianQFilters {
   const filters: KajianQFilters = { ...input.filters };
   const sources = sourceTypesOf(input);
   if (sources.length > 0 && filters.sourceType === undefined) filters.sourceType = sources;
-  if (input.principleTags.length > 0 && filters.principleTags === undefined) {
-    filters.principleTags = [...input.principleTags];
-  }
   return filters;
 }
 

@@ -5,17 +5,16 @@ import { nextRelaxation, type FilterEntry } from "./chat-filter-policy";
  * unit-testable object with no store and no effects.
  *
  * The router's filters are hints a cheap model inferred, and it does not
- * reliably leave unconstrained attributes empty (observed: a Quran question
- * routed with a text-layer hint no Quran chunk carries), so a hint that
- * matches nothing empties the context and makes the answer uncitable. The
- * retriever therefore gives a hint up and retries.
+ * reliably leave unconstrained attributes empty, so a hint that matches nothing
+ * empties the context and makes the answer uncitable. The retriever therefore
+ * gives a hint up and retries.
  *
  * **What this owns, and why it is not just "drop the filters".** Emptying the
  * whole filter record on the first zero-hit search is a widening the trace
- * cannot describe: a wrong text-layer hint takes a grade screen down with it,
- * so a question routed to strong-grade evidence silently comes back over weak
- * material too — and one event naming the whole set reads identically whether
- * one hint was wrong or all of them were.
+ * cannot describe: a wrong grade hint takes the source selection down with it,
+ * so a question routed to one source silently comes back over every source —
+ * and one event naming the whole set reads identically whether one hint was
+ * wrong or all of them were.
  *
  * So a zero-hit search **probes** the dimensions in a declared order: each probe
  * omits exactly one dimension, and only a probe that returns hits is *adopted*
@@ -33,14 +32,13 @@ import { nextRelaxation, type FilterEntry } from "./chat-filter-policy";
  *
  * **The record-level last resort.** A per-dimension probe can only help when
  * *exactly one* dimension is unsatisfiable: with two, every probe still carries
- * the other and every probe returns nothing. Two dead dimensions are the
- * expected state today, not a corner case — no row carries `madzhab`,
- * `textLayer` or `principleTags`, and the router prompt offers all three as
- * hints. So when the sweep exhausts with nothing adopted, the policy hands out
- * **one more** probe that omits every live dimension at once: the retry runs
- * with `{}`, and the earlier `adopted: false` probes stay on the trace as the
- * evidence that no single dimension was at fault. Without it a wrong hint turns
- * into a refusal for a question the corpus can serve.
+ * the other and every probe returns nothing. Two dimensions can be jointly
+ * unsatisfiable while each matches rows on its own — a source selection and a
+ * grade need not overlap — so when the sweep exhausts with nothing adopted, the
+ * policy hands out **one more** probe that omits every live dimension at once:
+ * the retry runs with `{}`, and the earlier `adopted: false` probes stay on the
+ * trace as the evidence that no single dimension was at fault. Without it a
+ * wrong hint turns into a refusal for a question the corpus can serve.
  *
  * **The last resort runs a record nothing has run yet, or it does not run.**
  * It is issued only with two or more live dimensions. One live dimension's own

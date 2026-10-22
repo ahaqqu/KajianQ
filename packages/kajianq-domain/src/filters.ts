@@ -1,17 +1,21 @@
 /**
  * KajianQ retrieval filter dimensions — the domain vocabulary the domain pack
- * supplies to the engine's generic `Query<TFilters>` (CONTEXT.md: Madzhab,
- * Grade, Matn/Sharh, Principle). Re-exported from the pack's barrel so chat
- * stages and callers share one type.
+ * supplies to the engine's generic `Query<TFilters>` (CONTEXT.md: Grade,
+ * Source type). Re-exported from the pack's barrel so chat stages and callers
+ * share one type.
  *
- * **Every dimension is a set** (spec §3.3 item 3: `source_type`, `madzhab`,
- * `grade IN …`, `principle_tags ANY …`). A one-value dimension is a one-element
- * set, so the store's `metadata->>key = ANY($n::text[])` mapping in
- * `chat-filter-policy.ts` is the single shape every dimension takes — there is
- * no second, single-valued spelling that could quietly disagree with it.
+ * **Only dimensions the corpus carries are filters.** Madzhab, TextLayer and
+ * Principle stay in the router's vocabulary — the classification is trace
+ * content — but no stored row carries their metadata keys, so they are not
+ * filter dimensions: a route may not ask for a constraint the corpus cannot
+ * satisfy.
+ *
+ * **Every dimension is a set** (spec §3.3 item 3: `sourceType`, `grade IN …`).
+ * A one-value dimension is a one-element set, so the store's
+ * `metadata->>key = ANY($n::text[])` mapping in `chat-filter-policy.ts` is the
+ * single shape every dimension takes — there is no second, single-valued
+ * spelling that could quietly disagree with it.
  */
-
-import type { PrincipleTag } from "./taxonomy";
 
 /** One of the four Sunni legal schools (CONTEXT.md "Madzhab"). */
 export const MADZHABS = ["hanafi", "maliki", "syafii", "hambali"] as const;
@@ -42,18 +46,15 @@ export type RoutableSource = (typeof ROUTABLE_SOURCES)[number];
  * engine threads them through untouched; only this pack names the dimensions.
  *
  * A dimension that is absent — or present as an empty list — constrains
- * nothing. A dimension carrying a value the store cannot express is a typed
- * failure, never a dropped key: see `chat-filter-policy.ts`.
+ * nothing. A dimension carrying a value the store cannot express — a retired
+ * dimension included — is a typed failure, never a dropped key: see
+ * `chat-filter-policy.ts`.
  */
 export type KajianQFilters = {
   /** Source types to search; empty = every source. Selects the index. */
   sourceType?: readonly RoutableSource[];
-  madzhab?: readonly Madzhab[];
   /** Spec §3.3 item 3's `grade IN …` — the grades a hadith may carry. */
   grade?: readonly Grade[];
-  textLayer?: readonly TextLayer[];
-  /** Spec §3.3 item 3's `principle_tags ANY …` (the Principle Index). */
-  principleTags?: readonly PrincipleTag[];
 };
 
 /**
@@ -62,14 +63,13 @@ export type KajianQFilters = {
  * **Exhaustive on purpose.** This is the one place a dimension is declared
  * *and* mapped, so a dimension added to {@link KajianQFilters} and forgotten
  * here is a typecheck failure rather than a filter that silently never reaches
- * the store. The keys are the corpus's own spellings (`sourceType`), not the
- * spec's prose spellings (`source_type`); the spec names the concept, the
- * stored key is what the SQL binds.
+ * the store. It is also pinned to the metadata keys ingestion actually writes
+ * by a test beside this module: a dimension added without data fails there
+ * rather than matching nothing. The keys are the corpus's own spellings
+ * (`sourceType`), not the spec's prose spellings (`source_type`); the spec
+ * names the concept, the stored key is what the SQL binds.
  */
 export const FILTER_DIMENSIONS: Record<keyof KajianQFilters, string> = {
   sourceType: "sourceType",
-  madzhab: "madzhab",
   grade: "grade",
-  textLayer: "textLayer",
-  principleTags: "principleTags",
 };

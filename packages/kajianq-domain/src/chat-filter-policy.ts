@@ -2,8 +2,7 @@ import { FILTER_DIMENSIONS, type KajianQFilters } from "./filters";
 
 /**
  * The domain→store filter mapping — Smart Router stage 3 (spec §3.3 item 3:
- * "index selection + SQL metadata filters (`source_type`, `madzhab`,
- * `grade IN …`, `principle_tags ANY …`)").
+ * "index selection + SQL metadata filters (`sourceType`, `grade IN …`)").
  *
  * **The invariant this module owns** (the reason it exists as its own file):
  * *the routing decision the trace publishes and the filter record the store
@@ -13,19 +12,20 @@ import { FILTER_DIMENSIONS, type KajianQFilters } from "./filters";
  *
  * 1. **A dimension with no store key.** `FILTER_DIMENSIONS` is an exhaustive
  *    `Record<keyof KajianQFilters, …>`: adding a dimension to the filter type
- *    without naming the metadata key it maps to is a typecheck failure.
- *    Otherwise a route can decide "search the Quran, for the yusr lens" and the
- *    search runs over the whole corpus with no error, no trace entry, and no
- *    gate that notices — the failure this invariant forbids.
+ *    without naming the metadata key it maps to is a typecheck failure, and a
+ *    test pins the map to the keys ingestion writes. Otherwise a route can
+ *    decide "search the Quran, for the yusr lens" and the search runs over the
+ *    whole corpus with no error, no trace entry, and no gate that notices — the
+ *    failure this invariant forbids.
  * 2. **A key the store cannot express.** The store seam takes
  *    `Record<string, string | readonly string[]>`
  *    (`RagStore.similaritySearch`) and compiles it to
  *    `metadata->>$key = ANY($key::text[])`. Anything else — a number, a nested
- *    object, an unknown dimension name a caller invented (the spec's
- *    `source_type` snake_case spelling is the realistic near-miss) — is
- *    rejected here with a typed {@link FilterNotExpressibleError} that the
- *    retriever surfaces as its stage failure. A silently-ignored filter is an
- *    answer to a different question than the router decided to answer.
+ *    object, a retired or invented dimension name (the spec's `source_type`
+ *    snake_case spelling is the realistic near-miss) — is rejected here with a
+ *    typed {@link FilterNotExpressibleError} that the retriever surfaces as its
+ *    stage failure. A silently-ignored filter is an answer to a different
+ *    question than the router decided to answer.
  *
  * Nothing here interprets what a value *means*: the keys and values are
  * opaque strings the domain pack owns.
@@ -88,7 +88,8 @@ function valuesOf(dimension: string, raw: unknown): readonly string[] | null {
  * Read a filters object into the store's expressible entries, in the declared
  * dimension order (deterministic: two runs over equal filters bind identical
  * parameter lists). Throws on a dimension the store cannot express — including
- * a key this pack does not declare, whatever it is spelled.
+ * a retired dimension or any other key this pack does not declare, whatever it
+ * is spelled.
  */
 export function filterEntries(filters: KajianQFilters | undefined): FilterEntry[] {
   const source = (filters ?? {}) as Record<string, unknown>;
@@ -133,17 +134,14 @@ export function metadataFilters(filters: KajianQFilters | undefined): Record<str
 
 /**
  * The order filter relaxation gives up dimensions when a search matches
- * nothing (see the retriever). Cheapest-to-be-wrong hint first, the routing
- * *decision* last:
+ * nothing (see the retriever). The model's hint goes before the routing
+ * *decision*:
  *
- * 1. `principleTags` — the Principle Index is not ingested yet, so a tag filter
- *    that matches nothing is the expected state, not a defect in the route.
- * 2. `textLayer` — no corpus row carries the key, and the router's hint for it
- *    is unreliable on a Quran question.
- * 3-5. `grade`, `madzhab`, then `sourceType` — each an actual routing decision;
- *    `sourceType` goes last because dropping it is the widest possible
+ * 1. `grade` — a hint the cheap model inferred, so it is the cheapest to be
+ *    wrong about.
+ * 2. `sourceType` — the routing decision; dropping it is the widest possible
  *    widening (every source back in play) and the trace must show the route
- *    gave up its own decision only after every cheaper hint.
+ *    gave up its own decision only after the cheaper hint.
  *
  * The type is `keyof KajianQFilters` on purpose: the order matches on the
  * domain *dimension*, while the trace records the store *key*, and this is the
@@ -152,10 +150,7 @@ export function metadataFilters(filters: KajianQFilters | undefined): Record<str
  * this module, so neither direction of drift is silent.
  */
 export const RELAXATION_ORDER = [
-  "principleTags",
-  "textLayer",
   "grade",
-  "madzhab",
   "sourceType",
 ] as const satisfies readonly (keyof KajianQFilters)[];
 
