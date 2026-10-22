@@ -27,9 +27,10 @@ export type Query<TFilters extends Record<string, unknown> = DefaultFilters> = {
 export type Chunk = {
   id: string;
   text: string;
-  /** Retrieval provenance for the Trace (rrf_score, rank_dense, rank_sparse). */
+  /** Retrieval provenance for the Trace (rrf_score, rank_dense). */
   score?: number;
   rankDense?: number;
+  /** A sparse-rank slot the trace contract accepts; no producer sets it. */
   rankSparse?: number;
   /**
    * The reranker's score for this chunk when a rerank pass ran and applied —
@@ -165,7 +166,7 @@ export interface Router<TFilters extends Record<string, unknown> = DefaultFilter
 }
 
 /**
- * Retriever: hybrid search over the store, fused and scored. A decorator that
+ * Retriever: vector search over the store, fused and scored. A decorator that
  * reorders (the decision-model rerank) may reorder only the fused block — the
  * chunks without an `origin` label — and returns every labelled chunk in the
  * position it held, so a downstream stage sees the same set in the same slots.
