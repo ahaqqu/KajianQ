@@ -239,3 +239,41 @@ for a single rewrite. The spread per question is enormous: 013 ranges over ranks
 3. **Some rows stay out of reach.** 007 (230–463) and 021 (22,510+) are not found by any
    wording — evidence that a vocabulary lever alone does not close the identity class, which
    is what the tool loop and the verified address hypothesis exist to cover.
+
+## E7 — Does the reranker realise the union's reach? (2026-10)
+
+**Setup.** For each of the 17 questions: retrieve the top 10 for the user's query and the top
+10 for each of E6's four rewrites; union and dedupe (19–37 candidates); ask the same class of
+reranker the product uses to order them; the required row is a hit when it lands in the top
+five (`research/union-rerank-probe.py`).
+
+**Result.**
+
+|                                         | user's query | four-query union |
+| --------------------------------------- | -----------: | ---------------: |
+| required row in the candidate pool      |        11/17 |        **12/17** |
+| required row in the reranker's top five |     **3/17** |         **7/17** |
+
+**The first two runs measured the harness, not the system.** The reranker sometimes answers
+with indices (`["0","1","4"]`) and sometimes with address strings, and the parser only
+accepted addresses — so real hits were scored as misses (1/17 and 3/17 before the fix, 7/17
+after). A candidate-ranking probe must accept both answer shapes, or it understates the
+system it is measuring.
+
+**What it establishes.**
+
+1. **The union roughly doubles candidate reach and the reranker converts about half of it.**
+   Top-five 3 → 7, with the gains concentrated on Quran rows (002, 005, 010, 012, 014 all
+   move into the top five) and one regression (003 fell out).
+2. **On hadith the remaining misses are mostly address choice, not retrieval.** For 006 and
+   017 the required row _is in the pool_ and the reranker prefers another narration — for
+   006, `Nasai 598`, the same report under another chain. No reranker can prefer the
+   curator's canonical choice, because nothing in the corpus marks it. That is the evidence
+   unit's job, not the reranker's.
+3. **The oracle is not reached.** Twelve rows are reachable in the pool; seven are selected.
+   A better reranker might close part of the gap, but the hadith pattern above says the
+   ceiling is set by the contract, not by ranking quality.
+
+**Caveats.** One reranker model and prompt, excerpts capped at 400 characters centred on the
+matn, n=17. The excerpt cap alone could explain part of the gap, and the union may be hurt
+by pool size (the smallest pool, 003's, is the one that regressed).
