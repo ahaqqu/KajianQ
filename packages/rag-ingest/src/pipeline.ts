@@ -79,7 +79,7 @@ async function summarizeParents(
     const { summary, cost } = await summarizer({
       sourceKey: parent.sourceKey,
       title: parent.title,
-      // The summary, not the parent text, becomes the embedded parent text.
+      // The summary is stored on the parent's metadata; no parent embedding is computed.
       childTexts: parent.children.map((c) => c.textPrimary),
     });
     if (summary.trim().length === 0) {

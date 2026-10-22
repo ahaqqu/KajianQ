@@ -493,7 +493,7 @@ describe("runIngestion", () => {
     expect(f.children()).toHaveLength(3);
   });
 
-  it("stores the LLM parent summary and embeds parents from summaries", async () => {
+  it("stores the LLM parent summary on the parent's metadata", async () => {
     const f = fakeStore();
     const summarizer = vi.fn(async (input: { sourceKey: string }) => ({
       summary: `summary ${input.sourceKey}`,

@@ -16,10 +16,9 @@ export type SummarizerProvider = Provider;
 
 /**
  * The LLM-backed parent summarizer: summarizes the surah's ayahs (Arabic
- * primary + Indonesian secondary shown to the model) into the summary the
- * parent's embedding is computed from — never the full text. Returns the call's
- * CostRecord alongside the summary, because every LLM call leaves
- * model/tokens/cost on the run's trace.
+ * primary + Indonesian secondary shown to the model) into the summary stored
+ * on the parent's metadata. Returns the call's CostRecord alongside the
+ * summary, because every LLM call leaves model/tokens/cost on the run's trace.
  */
 export function surahSummarizer(
   provider: SummarizerProvider,
