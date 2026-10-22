@@ -22,10 +22,12 @@ export { createRagStore, type RagStoreProvider } from "./rag-store-factory";
 // adapter or vendor classes.
 export { StoreError, type StoreErrorKind } from "@app/rag-core";
 export {
+  DEFAULT_PROFILE,
   loadProviderConfig,
   parseCandidateKey,
   parseProviderConfig,
   resolveChain,
+  ProviderConfigError,
   ProviderConfigSchema,
   type Candidate,
   type ModelConfig,

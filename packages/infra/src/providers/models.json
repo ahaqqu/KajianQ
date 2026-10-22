@@ -1,5 +1,5 @@
 {
-  "$comment": "Provider config \u2014 the single source of truth for the ADR-0009 vendor allowlist: endpoints, model ids, api-key env names, prices per MTok, and per-role fallback chains (ADR-0022). Vendor data lives ONLY here (and the model_configs DB mirror); no .ts file in the engine may name a vendor \u2014 the boundary gate enforces it by scanning .ts and not .json. Prices are micro-USD per MTok (1 USD = 1e6 micro-USD, so a $0.50/MTok input price is 500000), PR-reviewed like any model decision. Defaults from SPECS.md \u00a73.4 (2026-08).",
+  "$comment": "Provider config \u2014 the single source of truth for the ADR-0009 vendor allowlist: endpoints, model ids, api-key env names, prices per MTok, per-role fallback chains (ADR-0022), and the named role-chain profiles selected by PROVIDER_PROFILE (ADR-0059). The default profile is the base `roles` block and is deliberately NOT declared here: a non-empty `default` entry is a load-time config fault, since the loader returns the base roles before consulting it. Vendor data lives ONLY here (and the model_configs DB mirror); no .ts file in the engine may name a vendor \u2014 the boundary gate enforces it by scanning .ts and not .json. Prices are micro-USD per MTok (1 USD = 1e6 micro-USD, so a $0.50/MTok input price is 500000), PR-reviewed like any model decision. Defaults from SPECS.md \u00a73.4 (2026-08).",
   "vendors": {
     "gemini": {
       "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -101,6 +101,24 @@
         }
       }
     },
+    "ollama-cloud": {
+      "$comment": "Ollama Cloud Pro on paid terms — OpenAI-compatible at /v1, so the existing chat-completions adapter serves it with no new adapter. Selected ONLY by a profile (see `profiles`); the default chains stay on DeepSeek. Terms promise zero data retention, never logged, never trained on; NO signed DPA is on file — the owner accepted that basis for personal data, and the register (docs/GDPR-ARTICLE-30-RECORD.md §8) and ADR-0059 state the absence rather than implying an agreement.",
+      "baseUrl": "https://ollama.com/v1",
+      "apiKeyEnv": "OLLAMA_API_KEY",
+      "protocol": "chat-completions",
+      "freeTier": false,
+      "personalDataAllowed": true,
+      "models": {
+        "deepseek-v4.1-flash": {
+          "$comment": "Priced at the vendor's published peak rate ($0.30 in / $1.20 out per MTok); off-peak halves. The peak rate is recorded for the same reason as the DeepSeek row: a cost line must never understate the invoice.",
+          "capabilities": ["generate", "stream"],
+          "priceMicroUsdPerMTok": {
+            "in": 300000,
+            "out": 1200000
+          }
+        }
+      }
+    },
     "typesafe": {
       "$comment": "ADR-0042: TypeSafe AI 'System One' decision endpoint \u2014 typed structured questions (Choice/Score/Noul) over a state, priced on input tokens only (output free). Not a chat or embedding vendor: it backs the `decision` serving role (the reviewer pre-gate) and the bench-only `decision-candidates` role.",
       "baseUrl": "https://api.typesafe.ai/v1",
@@ -155,6 +173,14 @@
     "decision": {
       "$comment": "The decision-model SERVING role (ADR-0042 adoption): the reviewer pre-gate's pinned decision model \u2014 the model the committed multilingual gate report adopted. Separate from the bench-only `decision-candidates` role so a re-bench can add challengers without changing what serves. Always active wherever JEV_API_KEY is bound (recorded as the ADR-0042 consequence); absent key = the pre-gate is not wired and the reviewer behaves as it did before adoption \u2014 no enable/disable flag exists. Batched: one call per answer, input-priced, ~$0.0001 per screen at the pinned $0.042/MTok.",
       "chain": ["typesafe:jev-1.13.0"]
+    }
+  },
+  "profiles": {
+    "ollama": {
+      "generator": ["ollama-cloud:deepseek-v4.1-flash"],
+      "reviewer": ["ollama-cloud:deepseek-v4.1-flash"],
+      "reviewer-live": ["ollama-cloud:deepseek-v4.1-flash"],
+      "cheap": ["ollama-cloud:deepseek-v4.1-flash", "gemini:gemini-3-flash-preview"]
     }
   }
 }

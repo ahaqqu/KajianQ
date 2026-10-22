@@ -76,9 +76,6 @@ function roleHasKey(
   );
 }
 
-/** The checked-in provider config is immutable at runtime: parse once at module load. */
-const CACHED_PROVIDER_CONFIG: ProviderConfig = loadProviderConfig();
-
 /**
  * Resolve the chat pipeline's provider roles from the checked-in config and the
  * Worker bindings. Roles without a keyed candidate resolve to a Provider whose
@@ -90,9 +87,12 @@ const CACHED_PROVIDER_CONFIG: ProviderConfig = loadProviderConfig();
  */
 export function createProvidersFromEnv(
   env: Record<string, string | undefined>,
-  // The config is a parameter (defaulting to the cached parse) so resolution
-  // stays a pure function of (config, env), drivable by a synthetic vendor set.
-  config: ProviderConfig = CACHED_PROVIDER_CONFIG,
+  // The config is a parameter (defaulting to the checked-in config with this
+  // env's `PROVIDER_PROFILE` applied) so resolution stays a pure function of
+  // (config, env), drivable by a synthetic vendor set. An unknown profile
+  // throws a typed `ProviderConfigError` here at wiring time — never a silent
+  // fall back to the default chains.
+  config: ProviderConfig = loadProviderConfig(env.PROVIDER_PROFILE),
 ): ChatProviders {
   const missing = new Set<string>();
   const resolve = (role: string) => {

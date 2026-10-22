@@ -31,9 +31,18 @@ const PASSTHROUGH_KEYS = [
   "GEMINI_PAID_API_KEY",
   "DASHSCOPE_API_KEY",
   "DEEPSEEK_API_KEY",
+  // The profile-selected chat vendor's key. Optional by default (the default chains
+  // never reference it); with a profile that routes a serving role to this row and
+  // the key dropped here, that role fails with a typed error naming the variable —
+  // never a silent fallback to the default vendor.
+  "OLLAMA_API_KEY",
   // Optional (never a boot precondition), but it MUST be passed through: a key
   // dropped here leaves the reviewer pre-gate silently dead in serving.
   "JEV_API_KEY",
+  // Optional config (absent = the default chains) that must ride this filtered view
+  // or the profile switch is dead in serving; an unknown profile then fails the boot
+  // provider-posture report with a typed config error.
+  "PROVIDER_PROFILE",
   // Optional config (absent = the domain default) that must ride this filtered
   // view or the knob is dead in serving.
   "SCOPE_EXPANSION_CAP",
@@ -116,17 +125,21 @@ export function serveApi(opts: ServeOptions): { stop: () => Promise<void> } {
   const hostname = opts.hostname ?? env.KAJIANQ_API_HOST ?? "127.0.0.1";
   const port = opts.port ?? Number(env.PORT ?? "8787");
 
+  // Resolve the provider posture BEFORE binding. A config fault (an unknown
+  // profile, a malformed models.json) then exits the boot with a typed error
+  // instead of opening a socket that immediately closes and restart-looping.
+  const providers = createProvidersFromEnv(chatEnv);
+  const logger = createLogger({ service: "api", route: "bootstrap" });
+
   const server = Bun.serve({
     hostname,
     port,
     fetch: (request) => opts.api.fetch(request, bindings, undefined as never),
   });
 
-  const logger = createLogger({ service: "api", route: "bootstrap" });
   // Runs outside the request path's `wiringOr503`: a config fault fails the boot
-  // just after `Bun.serve` binds (systemd restarts the unit), never a silent
-  // per-request default.
-  reportProviderPosture(createProvidersFromEnv(chatEnv), logger);
+  // before the socket binds, never a silent per-request default.
+  reportProviderPosture(providers, logger);
   logger.info("server.listening", { hostname, port });
 
   const stop = async (): Promise<void> => {

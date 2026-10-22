@@ -453,15 +453,40 @@ credentials, origin, provider keys); `APP_ENV` is not one of them — production
 arrives as a new decision and a new host (ADR-0044's revisit trigger for a second host),
 never an edit here.
 
-Two keys are **hard preconditions of the chat path**, not optional:
+The chat path's **hard preconditions depend on the selected provider profile**
+(ADR-0059); the embedder is untouched by either:
 
-- `DEEPSEEK_API_KEY` — the generator/router head and the reviewer
-- `GEMINI_PAID_API_KEY` — the embedder head
+- `default` (or no `PROVIDER_PROFILE`): `DEEPSEEK_API_KEY` — the
+  generator/router head and the reviewer
+- `ollama`: `OLLAMA_API_KEY` — the generator/router head, the reviewer and the
+  live reviewer; a missing key fails each such call with a typed provider error
+  naming `OLLAMA_API_KEY`, never a silent route back to DeepSeek
+- both: `GEMINI_PAID_API_KEY` — the embedder head
 
-Without them, a chat question fails its embedder or reviewer stage with a typed
-error while `/v1/health` and anonymous session minting stay green — so the
-deploy smokes alone will not tell you they are missing. Set them before you
-deploy.
+Without the profile's key, a chat question fails its embedder, generator or
+reviewer stage with a typed error while `/v1/health` and anonymous session
+minting stay green — so the deploy smokes alone will not tell you they are
+missing. Set them before you deploy.
+
+**Switching the chat vendor on the box.** `PROVIDER_PROFILE` selects a named
+chain set from `models.json`; the switch is configuration, not a code change:
+
+```bash
+sudoedit /etc/kajianq/api.env   # add OLLAMA_API_KEY=<key> and PROVIDER_PROFILE=ollama
+sudo systemctl restart kajianq-api
+```
+
+**Rolling back** is the single line removal:
+
+```bash
+sudoedit /etc/kajianq/api.env   # remove the PROVIDER_PROFILE line
+sudo systemctl restart kajianq-api
+```
+
+The `OLLAMA_API_KEY` line may stay; it is inert under the default profile. The
+default chains then serve exactly as before — no config JSON edit and no revert
+commit. Confirm which vendor answered from the answer trace's model identity,
+and from the startup `providers.posture` line's `missingKeys`.
 
 The serving process reports its provider posture **once at startup**, as a
 `providers.posture` line in `journalctl -u kajianq-api`:
@@ -934,18 +959,21 @@ run that next.
 The engine is model-agnostic and the vendor/model selection is configuration, so
 you are not locked to any provider. What the default configuration expects:
 
-| Role                 | Default head      | Key                   | Required?                                |
-| -------------------- | ----------------- | --------------------- | ---------------------------------------- |
-| Embedder             | Gemini embeddings | `GEMINI_PAID_API_KEY` | **Yes** — chat fails without it          |
-| Generator + router   | DeepSeek          | `DEEPSEEK_API_KEY`    | **Yes** — chat fails without it          |
-| Reviewer             | DeepSeek          | `DEEPSEEK_API_KEY`    | **Yes** — shares the key above           |
-| Generator challenger | DashScope         | `DASHSCOPE_API_KEY`   | No                                       |
-| Free-tier Gemini     | —                 | `GEMINI_API_KEY`      | No — non-personal calls only (ingestion) |
+| Role                   | Default head      | Key                   | Required?                                                   |
+| ---------------------- | ----------------- | --------------------- | ----------------------------------------------------------- |
+| Embedder               | Gemini embeddings | `GEMINI_PAID_API_KEY` | **Yes** — chat fails without it                             |
+| Generator + router     | DeepSeek          | `DEEPSEEK_API_KEY`    | **Yes** — chat fails without it                             |
+| Reviewer               | DeepSeek          | `DEEPSEEK_API_KEY`    | **Yes** — shares the key above                              |
+| Generator challenger   | DashScope         | `DASHSCOPE_API_KEY`   | No                                                          |
+| Switchable chat vendor | Ollama Cloud      | `OLLAMA_API_KEY`      | No under `default`; **Yes** under `PROVIDER_PROFILE=ollama` |
+| Free-tier Gemini       | —                 | `GEMINI_API_KEY`      | No — non-personal calls only (ingestion)                    |
 
 Prices live in `packages/infra/src/providers/models.json`, per model, in
 micro-USD per million tokens, and every query's cost is recorded on its trace.
 Model choice per stage comes from configuration; there is no vendor name in any
-engine `.ts` file, enforced by the boundary gate.
+engine `.ts` file, enforced by the boundary gate. `PROVIDER_PROFILE` selects a
+named chain set ([ADR-0059](../adr/0059-chat-provider-profiles-and-ollama-cloud.md));
+the default chains, and the rollback, are the DeepSeek mix above.
 
 **The paid-vs-free rule is a hard one.** Chat questions can reveal religious
 convictions, which is sensitive data. Personal data never routes through a

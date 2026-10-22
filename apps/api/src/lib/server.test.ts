@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { createLogger, type ProviderConfig } from "@app/infra";
+import { createLogger, ProviderConfigError, type ProviderConfig } from "@app/infra";
 import { CHAT_SERVING_ROLES, createProvidersFromEnv } from "./chat-wiring";
 import { bindingsFromEnv, reportProviderPosture, serveApi } from "./server";
 
@@ -235,5 +235,29 @@ describe("reportProviderPosture — the boot ops report (#226)", () => {
     expect(postureLines[0]).toContain('"preGate":"not_wired"');
     expect(postureLines[0]).toContain(key);
     expect(logged.join("\n")).not.toContain(SECRET);
+  });
+
+  it("resolves the provider posture before the socket binds", () => {
+    // A config fault must exit the boot before `Bun.serve`: a bound-then-closed
+    // socket plus a systemd restart loop is a worse failure than a clean throw.
+    const serve = vi.fn(() => ({ stop: async () => {} }));
+    const globals = globalThis as { Bun?: unknown };
+    const previousBun = globals.Bun;
+    globals.Bun = { serve };
+    try {
+      expect(() =>
+        serveApi({
+          api: { fetch: () => new Response("ok") } as unknown as Parameters<
+            typeof serveApi
+          >[0]["api"],
+          hostname: "127.0.0.1",
+          port: 0,
+          env: { PROVIDER_PROFILE: "olama" },
+        }),
+      ).toThrow(ProviderConfigError);
+      expect(serve).not.toHaveBeenCalled();
+    } finally {
+      globals.Bun = previousBun;
+    }
   });
 });
