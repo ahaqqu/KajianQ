@@ -59,7 +59,7 @@ ADR-0019) and `bun run truth` (no dependency without an importer).
 **Never hide the machinery** — a hard product boundary (spec §1.5), not a
 nice-to-have. Every answer persists a full `answer_traces` record: router
 intent, sub-queries (including Query Expansion candidates, ADR-0014), retrieved
-chunks with scores (`rrf_score`, `rank_dense`, `rank_sparse`), routing filters,
+chunks with scores (`rrf_score`, `rank_dense`), routing filters,
 model identity, tokens in/out, latency, computed cost. `Trace` / `TraceEvent` /
 `CostRecord` are typed in `packages/contracts` and consumed by the pipeline,
 PWA, admin, and eval from one shape; `TraceEvent` is a strict discriminated

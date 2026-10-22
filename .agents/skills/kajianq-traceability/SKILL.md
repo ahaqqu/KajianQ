@@ -10,7 +10,7 @@ The product promise (spec §1.5): **never hide the machinery.** Traceability is 
 
 ## What must always be true
 
-1. **Every answer persists a full trace** (the `answer_traces` table): router intent JSON, sub-queries, retrieved chunks with `rrf_score`/`rank_dense`/`rank_sparse`, routing filters, model identity, tokens in/out, latency, computed cost. The trace follows a shared typed contract — `Trace` / `TraceEvent` / `CostRecord` from `packages/contracts` — consumed identically by the pipeline, the PWA, admin, and the eval harness.
+1. **Every answer persists a full trace** (the `answer_traces` table): router intent JSON, sub-queries, retrieved chunks with `rrf_score`/`rank_dense`, routing filters, model identity, tokens in/out, latency, computed cost. The trace follows a shared typed contract — `Trace` / `TraceEvent` / `CostRecord` from `packages/contracts` — consumed identically by the pipeline, the PWA, admin, and the eval harness.
 2. **Every LLM call is recorded** — model identity, tokens, latency, cost attach to the trace of the answer (or ingestion/eval run) that triggered it. An untraced LLM call is a defect on the same level as a crashing one.
 3. **UI renders persisted trace records** — never reconstructs pipeline internals ad hoc. The answer payload and the trace payload come from the same recorded run.
 4. **Batch jobs produce reports:** ingestion runs (chunk counts, sharh/matn separation audit, spot-check scores, quarantine counts, cost), eval runs (`eval_runs`/`eval_results` with metrics), glossary builds (extraction/cluster/review counts). Reports are stored, inspectable, and citable (release notes cite the eval run).
@@ -19,7 +19,7 @@ The product promise (spec §1.5): **never hide the machinery.** Traceability is 
 ## Trace-shaped thinking for each pipeline area
 
 - **Smart Router stages 1–3:** every stage's JSON output (intent, sub-queries, routing decisions, applied filters) lands in the trace. Query Expansion candidates — both offered and selected terms — are recorded.
-- **Retrieval:** chunk ids with both dense and sparse ranks plus fused score. When the posture is ID-fallback fusion, per-track scores stay distinguishable.
+- **Retrieval:** chunk ids with their dense rank plus the fused score. When the posture is ID-fallback fusion, per-track scores stay distinguishable.
 - **Assembly & generation:** final presentation order, assembled context size, cache hits, model identity, tokens, cost. Deep Think additionally records per-round coverage: passages examined vs. relevant vs. used.
 - **Post-processing:** citation-validator verdict per citation, dhaif flags raised, refusal events with reason and stage (a refusal is first-class trace content, not silence). A suppressed or rewritten answer must leave a trace of why.
 - **Feedback:** thumbs + trace-anchored flags store the element reference; accepted reports link to the Golden Set case they became.

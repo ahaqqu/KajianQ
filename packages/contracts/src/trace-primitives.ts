@@ -50,13 +50,14 @@ export type Stage = v.InferOutput<typeof StageSchema>;
 
 /**
  * A retrieved-chunk reference inside a `retrieval` event (ADR-0007). Carries
- * the two channel ranks plus the fused score so the Trace panel can show
+ * the chunk's dense rank plus the fused score so the Trace panel can show
  * retrieval provenance per chunk.
  */
 export const ChunkRefSchema = v.object({
   id: v.pipe(v.string(), v.minLength(1)),
   score: v.optional(v.number()),
   rankDense: v.optional(v.number()),
+  /** A sparse-rank slot; no producer sets it. */
   rankSparse: v.optional(v.number()),
   /**
    * The reranker's score for this chunk when a rerank pass ran and applied —
