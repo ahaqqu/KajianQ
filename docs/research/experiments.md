@@ -191,3 +191,9 @@ the thing that lets an answer through.
 **Caveats.** One model, one prompt, six claims, one draw each. The negation class is known
 hard for English checkers and has no Arabic/Indonesian evaluation; the single failure here
 is consistent with the ~80% attribution ceiling reported for fine-tuned models.
+
+E3's logic is implemented in TypeScript as [`research/quote-fidelity.ts`](../../research/quote-fidelity.ts),
+with the positive and negative cases as tests (`bun test research/quote-fidelity.test.ts`):
+verbatim, elided and diacritics-stripped quotes are faithful; a paraphrase, a span from
+another chunk, and an empty quote are not. It is a research artefact — the integration into
+the eval gate belongs to the Phase 0 change.
