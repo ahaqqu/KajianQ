@@ -37,7 +37,9 @@ A research brief is one screen, written before the first search, and it changes 
 `research/<slug>` branch at the paths the dispatch names: the manager's task text names the brief's
 file, the log's file, the prototype directory and, for a bug, where the failing test lives. This
 skill does not choose them — it cannot invent repository structure, and two researchers left to
-their own layout produce two branches the manager cannot read. Commit the brief before the first
+their own layout produce two branches the manager cannot read. If no paths are named, do not start:
+ask the manager for them, because an artifact the dispatch never located is unpublished work, and
+unpublished artifacts are lost work. Commit the brief before the first
 experiment and append to the log as each experiment ends; a result that lives only in the final
 report is not retrievable next month.
 

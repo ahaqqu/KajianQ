@@ -65,9 +65,13 @@ function documentedSections() {
 
 /** The role allowlist from the script source, so this suite follows the
  * script's own authority instead of duplicating it. The delimiter is the
- * array's own closing `]`, which cannot occur inside a quoted role name: the
- * capture cannot end early, and a malformed declaration produces no match at
- * all — the throw below, not a prefix of the list parsed as the whole of it. */
+ * array's own closing `])`, which cannot occur inside a well-formed quoted
+ * role name, so the capture cannot end early on a role entry. The guarantee is
+ * per-entry, not per-list: a `])` inside a comment in the array truncates the
+ * capture at that point. The throw below is therefore the loud failure for the
+ * case the pattern can detect — a declaration with no closing delimiter at
+ * all, which produces no match rather than a prefix of the list parsed as the
+ * whole of it — not a proof that every malformed list fails to parse. */
 function rolesFromSource(source = SCRIPT_SOURCE) {
   const match = source.match(/const ROLES = new Set\(\[([^\]]*)\]\)/);
   if (!match) {

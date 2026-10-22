@@ -105,8 +105,9 @@ reports a **stuck-report** to the manager, containing exactly:
 
 The receiver must be able to act on this without re-deriving the history.
 **Never fake done:** the completion criterion is unchanged — a PR must exist
-and all its checks must be green. A stuck-report never substitutes for that
-evidence; escalate instead.
+and all its checks must be green (for the researcher: the pushed
+`research/<slug>` branch with its committed artifacts). A stuck-report never
+substitutes for that evidence; escalate instead.
 
 ### Workspace isolation (canonical)
 
@@ -144,7 +145,9 @@ branches mid-run and corrupts each other's diffs. Therefore:
   adapter). Never use `.wt/` either — `.worktrees/` is the one in-repo
   convention, it is committed to `.gitignore`, and `bun run worktree:clean`
   (run from the main checkout) owns removal, keeping any branch with unmerged
-  work. Cleanup is the manager's duty, not yours.
+  work. Cleanup is the manager's duty, not yours — except the researcher's own
+  worktree, which the researcher removes itself before reporting done, once
+  the branch is pushed (Workspace isolation, above).
 - Before **any** `git` state-changing operation (commit, push, branch,
   checkout), verify with `git branch --show-current` that you are on your
   dispatch's branch (`agent/<slug>`, or `research/<slug>` for the researcher)
