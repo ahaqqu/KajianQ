@@ -148,7 +148,7 @@ units and the model becomes a diagnostic. If it rejects all of them while accept
 true quotes, equivalence is safe to accept and the model earns a gate seat.
 
 **Measured** ([`experiments.md`](experiments.md) E4, six claims × four conditions): true
-6/6 accepted, parallel 5/6, wrong-address 0/4… 0/6 rejected, adversarial **1/6 accepted** —
+6/6 accepted, parallel 5/6, wrong-address 0/6 rejected, adversarial **1/6 accepted** —
 a negation flip passed. The rule therefore fires: the model tier is a **diagnostic**, not
 a gate.
 
