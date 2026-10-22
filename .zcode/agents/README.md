@@ -5,13 +5,14 @@ workflow dispatches. Each role is a defined subagent whose file carries its
 operating persona, frontmatter, and completion criterion. The `reviewer`
 applies the `code-review` skill end-to-end, runs both thermo passes itself when the diff touches code, and posts findings via `thermos-with-comments` at thermos depth.
 
-| Role                  | File                    | Purpose                                                                                              |
-| --------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------- |
-| implementer (default) | `implementer.md`        | regular guided implementation, end-to-end to a green PR                                              |
-| senior-implementer    | `senior-implementer.md` | hard / `model:high` tickets — correctness/trust invariants that fail silently; also writes the tests |
-| fixer                 | `fixer.md`              | owns review feedback: accepts/rejects each itemized finding, applies accepted fixes, keeps CI green  |
-| reviewer              | `reviewer.md`           | applies `code-review` end-to-end, running both thermos passes itself when the diff touches code      |
-| qa                    | `qa.md`                 | adversarial staging verification of a merged change — verdict with per-probe evidence; no worktree   |
+| Role                  | File                    | Purpose                                                                                                 |
+| --------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------- |
+| implementer (default) | `implementer.md`        | regular guided implementation, end-to-end to a green PR                                                 |
+| senior-implementer    | `senior-implementer.md` | hard / `model:high` tickets — correctness/trust invariants that fail silently; also writes the tests    |
+| researcher            | `researcher.md`         | deep research when the mechanism is unknown: brief, measured prototypes, experiment log, decision brief |
+| fixer                 | `fixer.md`              | owns review feedback: accepts/rejects each itemized finding, applies accepted fixes, keeps CI green     |
+| reviewer              | `reviewer.md`           | applies `code-review` end-to-end, running both thermos passes itself when the diff touches code         |
+| qa                    | `qa.md`                 | adversarial staging verification of a merged change — verdict with per-probe evidence; no worktree      |
 
 The manager is the session agent itself — it has no role file.
 
@@ -150,7 +151,10 @@ branches mid-run and corrupts each other's diffs. Therefore:
 
 Implementer-class roles are explicitly authorized to commit, push, and open a
 pull request for the assigned task. Never merge it — the manager verifies CI
-and asks the owner before merging.
+and asks the owner before merging. The `researcher` is the exception in the
+other direction: it may commit and push its `research/<slug>` branch and opens
+no pull request — a research result reaches production only through a decision
+the manager takes and an implementer executes.
 
 ### Context budgets (defaults)
 

@@ -66,7 +66,7 @@ function documentedSections() {
 /** The role allowlist from the script source, so this suite follows the
  * script's own authority instead of duplicating it. */
 function rolesFromScriptSource() {
-  const match = SCRIPT_SOURCE.match(/const ROLES = new Set\(\[([^\]]*)\]\)/);
+  const match = SCRIPT_SOURCE.match(/const ROLES = new Set\(\[([\s\S]*?)\]\)/);
   if (!match) {
     throw new Error(
       "cannot read the role allowlist from scripts/dsh-dispatch-prompt.mjs: " +
