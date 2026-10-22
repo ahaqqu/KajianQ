@@ -65,6 +65,12 @@ The branch passes the repository's gates: `bun run check`, `bun run lint`, `bun 
 `bun run docs:links`. The research tree is a registered claim root, so its documents are
 link-checked with the rest.
 
+The three test files here are **not** in the repository's test universe: the runner's include
+globs are `packages/`, `apps/` and `tests/`, and a contract test pins exactly those three roots,
+so a fourth would be a policy change rather than a research artefact. Run them with
+`bun test research/`; adopting them into CI belongs with moving the modules into a package that
+has a caller.
+
 Nothing here is committed to `main`, and no pull request is open. The three typed modules are
 research artefacts under `research/`, not package code: they have tests and no production
 importer, which is why they have not been moved into `packages/` — that move belongs with the
