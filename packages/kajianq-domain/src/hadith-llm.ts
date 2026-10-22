@@ -14,7 +14,7 @@ export type HadithSummarizerProvider = Provider;
 
 /**
  * The LLM-backed parent summarizer: summarizes a (collection, book/section) parent's hadiths
- * into the summary its embedding is computed from, and returns the call's CostRecord.
+ * into the summary stored on the parent's metadata, and returns the call's CostRecord.
  */
 export function hadithSectionSummarizer(
   provider: HadithSummarizerProvider,

@@ -236,7 +236,7 @@ describe("Quran ingestion (fixture = real source data)", () => {
     }
   });
 
-  it("computes parent embeddings from summaries, not full text", async () => {
+  it("stores the surah summary on the parent's metadata", async () => {
     const raw = await loadFixtureBundle();
     const store = createMemoryRagStore();
     await runIngestion(

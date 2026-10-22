@@ -21,8 +21,8 @@ import {
  * The domain wiring that turns parsed Quran sources into the engine's
  * ingestion inputs: one parent per surah, one child per ayah, one aligned
  * pair per (Arabic, Indonesian) ayah for the concept-graph build
- * (ADR-0014), plus the LLM parent summarizer (surah summaries; parent
- * embeddings computed from summaries, not full text).
+ * (ADR-0014), plus the LLM parent summarizer (surah summaries stored on the
+ * parent's metadata; no parent embedding is computed).
  *
  * Everything here is KajianQ domain logic — the engine seams
  * (`@app/rag-ingest`, `RagStore`, `Provider`) receive it as typed values.

@@ -167,7 +167,7 @@ describe("hadith ingestion (fixture = real source data)", () => {
     expect(gradeOf("4").citation).toBe("HR. Abu Dawud no. 4 (Sahih)");
   });
 
-  it("computes parent embeddings from summaries, not full text", async () => {
+  it("stores the section summary on the parent's metadata", async () => {
     const store = createMemoryRagStore();
     await ingestFixture(store);
     const parent = store.allParents().find((p) => p.sourceKey === hadithSourceKey("abudawud", 1));
