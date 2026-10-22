@@ -59,6 +59,14 @@ An unmapped label remains its own singleton (fail-closed). Every accepted equiva
 (`address-identical` vs `curated-identity`), so a reader can see that the answer cited a
 parallel narration rather than the canonical address.
 
+Implemented as [`research/evidence-units.ts`](../../research/evidence-units.ts) with eleven
+tests: address-grammar folding (case, punctuation, verse ranges, `no. 3756.2` → `no. 3756`),
+unit validation (canonical must be a member, no address in two units of the same question),
+and the two policies — `strict` accepts only the canonical address, `equivalent` accepts any
+member and reports `canonical` or `member` so the trace can tell them apart. The current
+Golden Set validates as 18 singleton units with no problems, which is the migration path: a
+unit set can start as today's addresses and gain members only where a curator signs them.
+
 ## 3. What the gate computes
 
 | metric             | definition                                                                                        | deterministic?      | role                                      |
