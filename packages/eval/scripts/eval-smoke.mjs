@@ -49,11 +49,7 @@
 import * as evalpkg from "@app/eval";
 // The required coverage classes and the held-out cases are the domain pack's
 // vocabulary, imported so a rename cannot strand the gate.
-import {
-  ADDRESS_RECALL_TRACKED_MISSES,
-  SMOKE_COVERAGE_TAGS,
-  SMOKE_HELD_OUT_IDS,
-} from "@app/kajianq-domain";
+import { SMOKE_COVERAGE_TAGS, SMOKE_HELD_OUT_IDS } from "@app/kajianq-domain";
 import { createStagingHarness } from "./staging-harness.mjs";
 import { createChatReadinessGate, waitForReadiness } from "./readiness.mjs";
 import {
@@ -146,7 +142,9 @@ printSummary("eval:smoke", {
   result,
   costMicroUsd: budget.total,
   questions: fixture.questions,
-  trackedAddressMisses: ADDRESS_RECALL_TRACKED_MISSES,
+  // The debt line is a measurement of this run's sample, derived by the summary
+  // from the outcomes above; no full-set list can outlive the run it describes.
+  reportAddressMisses: true,
 });
 
 // A run whose readiness retries are spent ends on the gate's failure, and the

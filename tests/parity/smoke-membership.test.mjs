@@ -6,7 +6,6 @@ import {
   SmokeSubsetError,
 } from "../../packages/eval/src/smoke-subset";
 import {
-  ADDRESS_RECALL_TRACKED_MISSES,
   SMOKE_COVERAGE_TAGS,
   SMOKE_HELD_OUT_IDS,
 } from "../../packages/kajianq-domain/src/taxonomy";
@@ -111,12 +110,18 @@ describe("the staged smoke subset's default membership", () => {
     for (const id of SMOKE_HELD_OUT_IDS) expect(DEFAULT_IDS).not.toContain(id);
   });
 
-  it("keeps the reported address debt pointing at real fixture questions", () => {
-    const ids = new Set(FIXTURE.questions.map((q) => q.id));
-    for (const id of ADDRESS_RECALL_TRACKED_MISSES) expect(ids.has(id), id).toBe(true);
-    // The debt is reported by the smoke but never held out of QA: every id stays
-    // in the full set the release run and QA ask.
-    expect(ADDRESS_RECALL_TRACKED_MISSES.length).toBeGreaterThan(0);
+  it("keeps the deleted address-debt constant's name out of the domain vocabulary", async () => {
+    // This pins one name, not the whole invariant, and says so: the smoke prints
+    // the misses its own run scored, so the constant's name stays deleted. A list
+    // reintroduced under a different name passes this check. The invariant is
+    // pinned where the line is produced: `eval-cli.test.mjs` fixes the whole
+    // reporting block, and `eval-staging-harness.test.mjs` fixes the smoke's
+    // summary-call inputs, so a hand list carried through an argument fails there
+    // whatever it is called. A list smuggled inside `result` or the fixture, or
+    // printed beside the summary rather than through it, would still escape both
+    // pins: they check the call's inputs and the block, not the data in them.
+    const taxonomy = await import("../../packages/kajianq-domain/src/taxonomy");
+    expect(Object.hasOwn(taxonomy, "ADDRESS_RECALL_TRACKED_MISSES")).toBe(false);
   });
 
   it("reddens when the fixture no longer carries a held-out case", () => {

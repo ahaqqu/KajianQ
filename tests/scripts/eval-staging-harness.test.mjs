@@ -264,17 +264,42 @@ describe("the smoke's coverage wiring", () => {
   });
 
   it("reports address recall in the smoke without gating on it, and keeps the eval gate", () => {
-    // A random held-out sample must not redden a deploy on a known-unfixed
-    // retrieval gap, so the deployed smoke turns the address gate off and prints
-    // the tracked misses; the full eval keeps the conjunct. Both are one line in
-    // a `.mjs` entry typecheck never sees, hence the source pin.
+    // A held-out sample must not redden a deploy on a known-unfixed retrieval
+    // gap, so the deployed smoke turns the address gate off and prints the misses
+    // its own scoring produced; the full eval keeps the conjunct. Both are one
+    // line in a `.mjs` entry typecheck never sees, hence the source pin.
     const smoke = readFileSync(
       resolve(process.cwd(), "packages/eval/scripts/eval-smoke.mjs"),
       "utf8",
     );
     const run = readFileSync(resolve(process.cwd(), "packages/eval/scripts/eval-run.mjs"), "utf8");
     expect(smoke).toContain("gateAddressRecall: false");
-    expect(smoke).toMatch(/trackedAddressMisses:\s*ADDRESS_RECALL_TRACKED_MISSES/);
+    expect(smoke).toContain("reportAddressMisses: true");
+    // No caller-supplied miss list: the summary derives the line from the run.
+    expect(smoke).not.toContain("ADDRESS_RECALL_TRACKED_MISSES");
+    expect(smoke).not.toMatch(/trackedAddressMisses\s*:/);
     expect(run).not.toContain("gateAddressRecall");
+
+    // The summary call's inputs, pinned whole. A hand list can only reach the
+    // printed line through an argument, so the exact option set is the pin —
+    // whatever a list or its option would be named — and a spread would carry
+    // keys past the list. `reportAddressMisses: true` is the only reporting input.
+    expect(smoke.match(/printSummary\(/g)).toHaveLength(1);
+    const summaryCall = /printSummary\("eval:smoke",\s*\{([\s\S]*?)\n\}\);/.exec(smoke);
+    expect(summaryCall).not.toBeNull();
+    const summaryInputs = (summaryCall?.[1] ?? "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "" && !line.startsWith("//"));
+    expect(summaryInputs.map((entry) => entry.split(":")[0].replace(/,$/, ""))).toEqual([
+      "runId",
+      "questionCount",
+      "result",
+      "costMicroUsd",
+      "questions",
+      "reportAddressMisses",
+    ]);
+    expect(summaryInputs).toContain("reportAddressMisses: true,");
+    expect(summaryCall?.[1]).not.toContain("...");
   });
 });
