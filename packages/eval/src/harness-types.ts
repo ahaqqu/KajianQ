@@ -60,11 +60,11 @@ export type TraceEventLike = {
   at?: number;
 };
 
-/** The subset of the `citations` frame (ADR-0040) the harness scores with. Each input
- * has one role: the server-grounded `label` feeds citation validity, and the citing
- * chunk's `arabic`/`translation` text feeds quote fidelity (existence in that text, no
- * attribution). The frame's other fields (`grade`, `machineTranslated`, `source`) are
- * not read here. */
+/** The subset of the `citations` frame (ADR-0040) the harness scores with. The
+ * server-grounded `label` is the evidence for citation validity **and** for the grounded
+ * branch of behaviour acceptance; the citing chunk's `arabic`/`translation` text feeds
+ * quote fidelity (existence in that text, no attribution). The frame's other fields
+ * (`grade`, `machineTranslated`, `source`) are not read here. */
 export type CitationFrameLike = {
   citations: readonly {
     label: string;

@@ -9,12 +9,14 @@ import {
   REFUSAL_MARKERS,
 } from "../../packages/eval/scripts/staging-harness.mjs";
 import { DEFAULT_REFUSALS } from "../../packages/kajianq-domain/src/chat-reviewer";
+import { QUOTE_EQUIVALENCES } from "../../packages/kajianq-domain/src/chat-quote-equivalences";
 import {
   addressesNamedBy,
   citationCandidatesIn,
   normalizeCitationLabel,
 } from "../../packages/kajianq-domain/src/index";
 import { citationValidity } from "../../packages/eval/src/scorers";
+import { scoreQuestion } from "../../packages/eval/src/harness";
 import { requireCitationGrammar } from "../../packages/eval/src/citation-grammar";
 
 /**
@@ -235,6 +237,78 @@ describe("CITATION_IDENTITY (shared staging harness)", () => {
     for (const script of ["eval-run.mjs", "eval-smoke.mjs"]) {
       const source = readFileSync(resolve(process.cwd(), "packages/eval/scripts", script), "utf8");
       expect(source).toMatch(/citationIdentity:\s*harness\.citationIdentity,/);
+    }
+  });
+});
+
+/**
+ * The composition root's quote-equivalences seam. `staging-harness.mjs` is
+ * JavaScript and `HarnessDeps.quoteEquivalences` is optional, so deleting the
+ * one `quoteEquivalences: QUOTE_EQUIVALENCES,` property still compiles and
+ * leaves every package test green while the Indonesian epithet fold silently
+ * reverts to a paraphrase: an honest "Maha Perkasa" quotation of a chunk's
+ * "Mahaperkasa" then scores 0. The delivery is therefore pinned here, like the
+ * citation grammar's: identity with the domain module's own list, the scorer's
+ * result through the delivered reference, and the pass-through in both CLI
+ * sources.
+ */
+describe("QUOTE_EQUIVALENCES (shared staging harness)", () => {
+  const QUESTION = {
+    id: "gs-v0-quote-equivalence",
+    question: "Bagaimana sifat Allah?",
+    language: "id",
+    expectedSourceTypes: ["primary"],
+    requiredCitations: ["QS. 59:23"],
+    expectedBehavior: "answer",
+  };
+  const FRAME = {
+    citations: [
+      {
+        label: "QS. 59:23",
+        translation: "Dialah Allah Yang Mahaperkasa lagi Maha Bijaksana.",
+      },
+    ],
+  };
+  const DEPS = {
+    sourceTypeOf: () => "primary",
+    citationOf: () => "QS. 59:23",
+    refusalMarkers: [],
+  };
+  const ANSWER = 'Dialah "Maha Perkasa lagi Maha Bijaksana" (QS. 59:23).';
+
+  it("delivers the domain module's equivalences from the real composition root", async () => {
+    // Behavioural, through the harness's OWN reference: a dropped delivery is
+    // `undefined`, and the scorer then applies only its generic fold, under
+    // which the spaced epithet does not reproduce the chunk's joined spelling.
+    // The URL is never dialled — `resolvePostgresStore` builds a lazy pool — and
+    // the memoized pool is released below so the run does not leak a handle.
+    const harness = await createStagingHarness(
+      { databaseUrl: "postgres://unused:unused@127.0.0.1:1/unused" },
+      {},
+    );
+    try {
+      expect(harness.quoteEquivalences).toBe(QUOTE_EQUIVALENCES);
+      const delivered = harness.quoteEquivalences;
+      expect(
+        scoreQuestion(QUESTION, ANSWER, [], { ...DEPS, quoteEquivalences: delivered }, FRAME)
+          .quoteFidelity,
+      ).toBe(1);
+      // The same evidence without the delivery is a paraphrase to the scorer.
+      expect(scoreQuestion(QUESTION, ANSWER, [], DEPS, FRAME).quoteFidelity).toBe(0);
+    } finally {
+      await disposePostgresPools();
+    }
+  });
+
+  it("forwards the harness's equivalences into the scorer in both eval CLIs", () => {
+    // The second half of the delivery: the harness can hold the equivalences and
+    // both entry points still drop them on the floor. They are `#!/usr/bin/env
+    // bun` scripts that connect to staging on import, so the pass-through is
+    // pinned where it lives — the same instrument this file already uses for the
+    // grammar, the identity and the refusal-marker drift between the two CLIs.
+    for (const script of ["eval-run.mjs", "eval-smoke.mjs"]) {
+      const source = readFileSync(resolve(process.cwd(), "packages/eval/scripts", script), "utf8");
+      expect(source).toMatch(/quoteEquivalences:\s*harness\.quoteEquivalences,/);
     }
   });
 });
